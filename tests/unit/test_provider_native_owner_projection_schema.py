@@ -8,6 +8,7 @@ from referencing import Registry, Resource
 SCHEMA_ROOT = Path(__file__).resolve().parents[2] / "schemas"
 OWNER_SCHEMA_PATH = SCHEMA_ROOT / "provider-native-owner-search-response.v1.schema.json"
 CANONICAL_SELECTOR_SCHEMA_PATH = SCHEMA_ROOT / "canonical-item-selector.v1.schema.json"
+EXACT_DEFINITIONS_SCHEMA_PATH = SCHEMA_ROOT / "exact-definitions.v1.schema.json"
 
 
 def load_schema(path: Path) -> dict:
@@ -17,8 +18,11 @@ def load_schema(path: Path) -> dict:
 def validator() -> jsonschema.Draft202012Validator:
     owner_schema = load_schema(OWNER_SCHEMA_PATH)
     selector_schema = load_schema(CANONICAL_SELECTOR_SCHEMA_PATH)
+    exact_definitions_schema = load_schema(EXACT_DEFINITIONS_SCHEMA_PATH)
     registry = Registry().with_resource(
         selector_schema["$id"], Resource.from_contents(selector_schema)
+    ).with_resource(
+        exact_definitions_schema["$id"], Resource.from_contents(exact_definitions_schema)
     )
     return jsonschema.Draft202012Validator(owner_schema, registry=registry)
 
@@ -94,4 +98,3 @@ def test_legacy_projection_packet_fails_closed() -> None:
     )
     errors = list(validator().iter_errors(response(legacy)))
     assert errors
-

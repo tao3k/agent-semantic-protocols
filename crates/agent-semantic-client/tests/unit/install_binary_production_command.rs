@@ -45,11 +45,23 @@ async fn built_asp_install_binary_publishes_hook_generation_independent_of_runti
         "Cargo-built asp binary must exist: {}",
         asp.display()
     );
+    let codex_home = state_home.path().join("codex-home");
+    let plugin_cache = codex_home.join("plugins/cache/asp-project/asp-codex-plugin/current");
+    std::fs::create_dir_all(&plugin_cache).expect("create isolated plugin cache");
+    std::fs::write(
+        plugin_cache.join("payload.marker"),
+        b"plugin-cache-must-not-change",
+    )
+    .expect("write isolated plugin cache marker");
+    let plugin_cache_before = directory_identity(&plugin_cache);
+    let plugin_source = workspace_root.join("asp-codex-plugin");
+    let plugin_source_before = directory_identity(&plugin_source);
 
     let output = Command::new(asp)
         .args(["install", "binary"])
         .current_dir(workspace_root)
         .env("ASP_STATE_HOME", state_home.path())
+        .env("CODEX_HOME", &codex_home)
         .env_remove("ASP_NO_AGENT")
         .output()
         .expect("execute actual Cargo-built asp install binary");
@@ -64,15 +76,29 @@ async fn built_asp_install_binary_publishes_hook_generation_independent_of_runti
     assert!(install_stdout.contains("hookGeneration=blake3-256:"));
     assert!(install_stdout.contains("hookGenerationSwitch=atomic"));
     assert!(install_stdout.contains("runtimeServerLifecycle=resident-owner-independent"));
+    assert_eq!(
+        directory_identity(&plugin_source),
+        plugin_source_before,
+        "binary installation must not rewrite the plugin source payload"
+    );
+    assert_eq!(
+        directory_identity(&plugin_cache),
+        plugin_cache_before,
+        "binary installation must not mutate the global Codex plugin cache"
+    );
 
     let hook_generation =
         agent_semantic_artifacts::hook_generation::read_current_hook_generation(state_home.path())
             .expect("read installed HookGeneration")
             .expect("installed HookGeneration current");
-    assert_eq!(hook_generation.schema_version, "1");
+    assert_eq!(hook_generation.schema_version, 1);
     assert_eq!(
-        hook_generation.evaluator_path,
-        activation_independent_evaluator(&hook_generation)
+        hook_generation.hook_binary_path.parent(),
+        hook_generation.generation_path.parent()
+    );
+    assert_eq!(
+        hook_generation.hook_binary_path.file_name(),
+        Some(std::ffi::OsStr::new("asp-hook"))
     );
 
     let pending_path = agent_semantic_artifacts::runtime_artifact_publication::
@@ -192,7 +218,10 @@ async fn built_asp_install_binary_publishes_hook_generation_independent_of_runti
             "Runtime {runtime_state}: {context}"
         );
         assert!(
-            context.contains("\"source\":\"reader-probe\""),
+            context.contains("\"access\":\"read\"")
+                && context.contains("\"accessMode\":\"O_RDONLY\"")
+                && (context.contains("\"evidence\":\"reader-behavior-dynamic-cache\"")
+                    || context.contains("\"evidence\":\"reader-probe-open-read-only\"")),
             "Runtime {runtime_state}: {context}"
         );
         assert!(
@@ -213,8 +242,39 @@ async fn built_asp_install_binary_publishes_hook_generation_independent_of_runti
     );
 }
 
-fn activation_independent_evaluator(
-    receipt: &agent_semantic_artifacts::hook_generation::HookGenerationReceipt,
-) -> PathBuf {
-    receipt.generation_path.join("bin/asp")
+fn directory_identity(root: &Path) -> String {
+    let mut files = Vec::new();
+    collect_files(root, root, &mut files);
+    files.sort_by(|left, right| left.0.cmp(&right.0));
+    let mut hasher = blake3::Hasher::new();
+    for (relative, bytes) in files {
+        hasher.update(relative.as_bytes());
+        hasher.update(&[0]);
+        hasher.update(&(bytes.len() as u64).to_le_bytes());
+        hasher.update(&bytes);
+    }
+    format!("blake3-256:{}", hasher.finalize().to_hex())
+}
+
+fn collect_files(root: &Path, current: &Path, files: &mut Vec<(String, Vec<u8>)>) {
+    let mut entries = std::fs::read_dir(current)
+        .unwrap_or_else(|error| panic!("read {}: {error}", current.display()))
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap_or_else(|error| panic!("collect {}: {error}", current.display()));
+    entries.sort_by_key(std::fs::DirEntry::file_name);
+    for entry in entries {
+        let path = entry.path();
+        if path.is_dir() {
+            collect_files(root, &path, files);
+        } else {
+            files.push((
+                path.strip_prefix(root)
+                    .expect("file under identity root")
+                    .to_string_lossy()
+                    .into_owned(),
+                std::fs::read(&path)
+                    .unwrap_or_else(|error| panic!("read {}: {error}", path.display())),
+            ));
+        }
+    }
 }

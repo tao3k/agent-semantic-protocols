@@ -3,6 +3,8 @@
 pub mod build_support;
 mod cli;
 mod manager;
+mod manager_validation;
+mod receipt;
 mod responsibility;
 
 pub use agent_semantic_content_identity::{SchemaContractIdentity, schema_contract_identities};

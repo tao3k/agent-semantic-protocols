@@ -1,5 +1,6 @@
 //! Compiler-facing Reader policy projection and fixture support.
 
+#[cfg(feature = "compiler")]
 use serde_json::Value;
 
 #[path = "reader_probe_core.rs"]
@@ -7,7 +8,7 @@ mod core;
 
 pub use core::{
     ReaderProbeAccess, ReaderProbeObservation, bind_reader_probe_observation,
-    classify_open_access_mode, diagnose_reader_probe,
+    classify_open_access_mode, diagnose_reader_probe, diagnose_reader_probe_with_state_home,
 };
 
 #[cfg(target_os = "macos")]
@@ -25,6 +26,7 @@ pub fn materialize_reader_probe_fixture() -> Result<std::path::PathBuf, String> 
     fixture::materialize()
 }
 
+#[cfg(feature = "compiler")]
 pub(crate) fn observed_reader_subject(tool_input: &Value) -> Option<&str> {
     let observation = tool_input.get(core::READER_PROBE_FIELD)?;
     if observation.get("access")?.as_str()? != "read" {

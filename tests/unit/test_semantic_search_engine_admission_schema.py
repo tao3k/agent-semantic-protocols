@@ -38,6 +38,15 @@ def test_artifact_bound_progressive_receipt_is_valid() -> None:
     VALIDATOR.validate(progressive_receipt())
 
 
+def test_artifact_bound_asp_python_graphs_receipt_is_valid() -> None:
+    receipt = progressive_receipt()
+    receipt.update(
+        requestedEngine="asp-python-graphs",
+        selectedEngine="asp-python-graphs",
+    )
+    VALIDATOR.validate(receipt)
+
+
 def test_missing_candidate_identity_can_only_be_blocked_without_selection() -> None:
     receipt = progressive_receipt()
     receipt.update(
@@ -50,13 +59,13 @@ def test_missing_candidate_identity_can_only_be_blocked_without_selection() -> N
     VALIDATOR.validate(receipt)
 
 
-def test_blocked_progressive_request_cannot_silently_select_legacy() -> None:
+@pytest.mark.parametrize("removed_engine", ["graph-turbo", "legacy-graph-turbo"])
+def test_removed_engine_identifier_is_rejected(removed_engine: str) -> None:
     receipt = progressive_receipt()
     receipt.update(
-        selectedEngine="legacy-graph-turbo",
-        decision="blocked",
-        reason="candidate-artifact-identity-missing",
-        candidateArtifactIdentity=None,
+        requestedEngine=removed_engine,
+        selectedEngine=removed_engine,
+        decision="ready",
     )
 
     with pytest.raises(ValidationError):

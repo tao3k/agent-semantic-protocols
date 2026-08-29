@@ -103,7 +103,7 @@ def run_graph_turbo_rank(
         [
             sys.executable,
             "-m",
-            "asp_graph_turbo",
+            "asp_python_graphs",
             "rank",
             str(packet_path),
             "--format",
@@ -120,7 +120,7 @@ def run_graph_turbo_cache(
     args: list[str], env: dict[str, str]
 ) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        [sys.executable, "-m", "asp_graph_turbo", "cache", *args],
+        [sys.executable, "-m", "asp_python_graphs", "cache", *args],
         check=True,
         text=True,
         capture_output=True,

@@ -10,6 +10,22 @@ pub(super) use serde_json::json;
 
 pub(super) use crate::classifier::registry;
 
+pub(super) fn bind_confirmed_reader(payload: &mut serde_json::Value, subject: &str) {
+    let observation = agent_semantic_hook::ReaderProbeObservation {
+        subject: subject.to_owned(),
+        access: agent_semantic_hook::ReaderProbeAccess::Read,
+        backend: "hook-generation-reader-catalog".to_owned(),
+        terminal: "reader-behavior-catalog-hit".to_owned(),
+        elapsed_micros: 0,
+        probe_process_launched: false,
+        cleanup_verified: true,
+        cache_hit: false,
+        behavior_key: None,
+    };
+    agent_semantic_hook::bind_reader_probe_observation(payload, Some(&observation))
+        .expect("bind confirmed Reader observation");
+}
+
 pub(super) fn temp_root(label: &str) -> PathBuf {
     let nonce = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

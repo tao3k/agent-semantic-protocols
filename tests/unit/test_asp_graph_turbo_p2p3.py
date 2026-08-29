@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from asp_graph_turbo import TypedGraph, rank_frontier
-from asp_graph_turbo.cache import _BACKEND_CACHE
+from asp_python_graphs import TypedGraph, rank_frontier
+from asp_python_graphs.cache import _BACKEND_CACHE
 
 
 def _sample_path_packet() -> dict[str, object]:

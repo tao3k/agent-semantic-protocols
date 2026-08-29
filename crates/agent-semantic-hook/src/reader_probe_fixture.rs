@@ -26,10 +26,7 @@ pub(super) fn materialize() -> Result<PathBuf, String> {
     let path = root.join(format!("fixture-{digest}"));
     if !path.try_exists().map_err(|error| error.to_string())? {
         let nonce = MATERIALIZATION_NONCE.fetch_add(1, Ordering::Relaxed);
-        let candidate = root.join(format!(
-            ".fixture-{}-{nonce}-{digest}",
-            std::process::id()
-        ));
+        let candidate = root.join(format!(".fixture-{}-{nonce}-{digest}", std::process::id()));
         let mut file = std::fs::OpenOptions::new()
             .write(true)
             .create_new(true)

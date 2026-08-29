@@ -5,8 +5,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from asp_graph_turbo.metrics_cli import main
-from asp_graph_turbo.real_trigger_metrics import (
+from asp_python_graphs.metrics_cli import main
+from asp_python_graphs.real_trigger_metrics import (
     REAL_TRIGGER_METRICS_SCHEMA_ID,
     build_real_trigger_metrics,
     render_real_trigger_metrics,

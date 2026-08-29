@@ -33,7 +33,7 @@ fn shell_action(command: &str) -> ToolAction {
         operation: OperationIntent::ShellCommand,
         command: Some(command.to_string()),
         command_tokens: None,
-        leading_shell_stage: true,
+        shell_envelope_command: Some(command.to_owned()),
         paths: Vec::new(),
         has_declared_filesystem_access: false,
     }

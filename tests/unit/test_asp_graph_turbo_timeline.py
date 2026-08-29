@@ -7,11 +7,11 @@ import subprocess
 import sys
 from pathlib import Path
 
-from asp_graph_turbo.artifact_timeline import (
+from asp_python_graphs.artifact_timeline import (
     TimelineParameters,
     evaluate_artifact_timeline,
 )
-from unit.asp_graph_turbo_timeline_support import (
+from unit.asp_python_graphs_timeline_support import (
     write_microburst_repeat_artifacts,
 )
 
@@ -47,7 +47,7 @@ def test_timeline_cli_is_lightweight_artifact_entrypoint(tmp_path) -> None:
     write_microburst_repeat_artifacts(tmp_path)
     env = os.environ.copy()
     env["PYTHONPATH"] = str(
-        _REPO_ROOT / "packages" / "python" / "asp_graph_turbo" / "src"
+        _REPO_ROOT / "packages" / "python" / "asp_python_graphs" / "src"
     )
 
     completed = subprocess.run(
@@ -55,7 +55,7 @@ def test_timeline_cli_is_lightweight_artifact_entrypoint(tmp_path) -> None:
             sys.executable,
             "-S",
             "-m",
-            "asp_graph_turbo",
+            "asp_python_graphs",
             "timeline",
             str(tmp_path),
             "--recent-sessions",

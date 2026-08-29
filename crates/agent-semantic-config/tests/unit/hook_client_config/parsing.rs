@@ -143,7 +143,7 @@ fn default_template_round_trips_through_config_parser() {
             .argv_prefix_any
             .contains(&vec!["git".to_owned(), "grep".to_owned()])
     );
-    assert_eq!(config.rules.len(), 15);
+    assert_eq!(config.rules.len(), 16);
     assert_eq!(
         config
             .rules
@@ -151,6 +151,7 @@ fn default_template_round_trips_through_config_parser() {
             .map(|rule| rule.id.as_str())
             .collect::<Vec<_>>(),
         [
+            "allow-explicit-no-agent",
             "allow-owner-scoped-mutation",
             "registered-asp-reasoning-search",
             "registered-asp-structured-projection",
@@ -161,7 +162,7 @@ fn default_template_round_trips_through_config_parser() {
             "live-corpus-qualification-dispatch",
             "gerbil-build-role-dispatch",
             "deny-agent-search-json",
-            "route-unresolved-source-access-to-asp-languages",
+            "route-read-to-asp-languages",
             "route-shell-structured-document-read",
             "allow-bounded-json-projection",
             "allow-bounded-toml-projection",
@@ -357,7 +358,7 @@ entrySkillPath = "/tmp/asp-state/org/templates/ASP_ORG_SKILL.org"
 }
 
 #[test]
-fn template_routes_unresolved_bash_source_access_through_capability_policies() {
+fn template_routes_confirmed_bash_read_through_declared_action() {
     let root = temp_root("hook-client-template-workspace-files");
     let config_path = root.join("hooks").join("config.toml");
     fs::create_dir_all(config_path.parent().expect("config parent")).expect("config dir");
@@ -367,9 +368,13 @@ fn template_routes_unresolved_bash_source_access_through_capability_policies() {
     let read_route = config
         .rules
         .iter()
-        .find(|rule| rule.id == "route-unresolved-source-access-to-asp-languages")
-        .expect("unresolved Bash source-access route");
+        .find(|rule| rule.id == "route-read-to-asp-languages")
+        .expect("confirmed Bash Read route");
     assert_eq!(read_route.matcher.as_deref(), Some("Bash"));
+    assert_eq!(
+        read_route.actions,
+        [agent_semantic_config::HookClientActionKind::Read]
+    );
     assert!(!read_route.profiles_list.is_empty());
     let _ = fs::remove_dir_all(root);
 }

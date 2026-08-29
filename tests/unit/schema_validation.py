@@ -11,11 +11,34 @@ from referencing import Registry, Resource
 
 def schema_validator_for(schema_path: Path) -> Draft202012Validator:
     schema = _load_schema(schema_path)
-    registry = Registry().with_resources(
-        (loaded_schema["$id"], Resource.from_contents(loaded_schema))
-        for loaded_schema in _load_local_schemas(schema_path.parent)
-        if "$id" in loaded_schema
-    )
+    resources = []
+    for loaded_path in sorted(schema_path.parent.glob("*.schema.json")):
+        loaded_schema = _load_schema(loaded_path)
+        resource = Resource.from_contents(loaded_schema)
+        if "$id" in loaded_schema:
+            resources.append((loaded_schema["$id"], resource))
+        # Resolve relative references against the local bundle deterministically
+        # instead of dereferencing the hosted document URL during validation.
+        resources.append((loaded_path.as_uri(), resource))
+        resources.append(
+            (
+                f"https://tao3k.github.io/agent-semantic-protocols/schemas/{loaded_path.name}",
+                resource,
+            )
+        )
+        resources.append(
+            (
+                f"https://schemas.agent-semantic-protocols.dev/{loaded_path.name}",
+                resource,
+            )
+        )
+        resources.append(
+            (
+                f"https://schemas.agent-semantic-protocols.dev/schemas/{loaded_path.name}",
+                resource,
+            )
+        )
+    registry = Registry().with_resources(resources)
     return Draft202012Validator(schema, registry=registry)
 
 

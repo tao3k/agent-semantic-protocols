@@ -1,5 +1,6 @@
 use std::collections::BTreeSet;
 
+use agent_semantic_provider_protocol::ProviderSchemaReference;
 use serde::{Deserialize, Serialize};
 
 const SCHEMA_ID: &str = "agent.semantic-protocols.provider-runtime-contract-receipt";
@@ -18,8 +19,8 @@ pub enum ProviderRuntimeContractTransport {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProviderRuntimeContractOperation {
     pub operation: String,
-    pub request_schema_id: String,
-    pub response_schema_id: String,
+    pub request_schema: ProviderSchemaReference,
+    pub response_schema: ProviderSchemaReference,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -90,12 +91,11 @@ impl ProviderRuntimeContractReceipt {
         }
         let mut operations = BTreeSet::new();
         for operation in &self.operations {
-            if operation.operation.trim().is_empty()
-                || operation.request_schema_id.trim().is_empty()
-                || operation.response_schema_id.trim().is_empty()
-            {
+            if operation.operation.trim().is_empty() {
                 return Err("provider runtime contract operation fields are required".to_owned());
             }
+            validate_schema_reference("requestSchema", &operation.request_schema)?;
+            validate_schema_reference("responseSchema", &operation.response_schema)?;
             if !operations.insert(operation.operation.as_str()) {
                 return Err(format!(
                     "provider runtime contract operation is duplicated: {}",
@@ -118,8 +118,8 @@ impl ProviderRuntimeContractReceipt {
                     .map(|operation| format!(
                         "{}({}=>{})",
                         operation.operation,
-                        operation.request_schema_id,
-                        operation.response_schema_id,
+                        operation.request_schema.schema_id,
+                        operation.response_schema.schema_id,
                     ))
                     .collect::<Vec<_>>()
                     .join(",")
@@ -161,6 +161,18 @@ impl ProviderRuntimeContractReceipt {
             .as_str()
         ))
     }
+}
+
+fn validate_schema_reference(
+    field: &str,
+    reference: &ProviderSchemaReference,
+) -> Result<(), String> {
+    if reference.schema_id.trim().is_empty() || reference.schema_version != "1" {
+        return Err(format!(
+            "provider runtime contract {field} requires structured schemaId and schemaVersion=1"
+        ));
+    }
+    Ok(())
 }
 
 fn validate_digest(field: &str, digest: &str) -> Result<(), String> {

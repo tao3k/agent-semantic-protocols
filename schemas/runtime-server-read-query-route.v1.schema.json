@@ -56,7 +56,6 @@
         "selector",
         "projection",
         "cacheFresh",
-        "fallbackDeclared",
         "generationPublished",
         "workspaceOwnerEndpointExposed",
         "elapsedMicros"
@@ -68,14 +67,13 @@
         "projectId": {"type": "string", "minLength": 1},
         "workspaceIdentity": {"type": "string", "minLength": 1},
         "route": {"const": "global-runtime-internal-workspace"},
-        "state": {"enum": ["projected", "fallback-projected", "unavailable"]},
-        "source": {"enum": ["admitted-generation", "provider-native-exact", "none"]},
+        "state": {"enum": ["projected", "unavailable"]},
+        "source": {"enum": ["admitted-generation", "none"]},
         "selector": {"type": "string", "minLength": 1},
         "projection": {"enum": ["source", "callable-skeleton"]},
         "cachedOwnerDigest": {"type": ["string", "null"]},
         "liveOwnerDigest": {"type": ["string", "null"]},
         "cacheFresh": {"type": "boolean"},
-        "fallbackDeclared": {"type": "boolean"},
         "generationPublished": {"const": false},
         "workspaceOwnerEndpointExposed": {"const": false},
         "reasonKind": {"type": ["string", "null"]},
@@ -93,15 +91,6 @@
               "reasonKind": {"type": "string", "minLength": 1},
               "retryAfterMs": {"type": "integer", "minimum": 0},
               "nextAction": {"type": "string", "minLength": 1}
-            }
-          }
-        },
-        {
-          "if": {"properties": {"state": {"const": "fallback-projected"}}, "required": ["state"]},
-          "then": {
-            "properties": {
-              "source": {"const": "provider-native-exact"},
-              "fallbackDeclared": {"const": true}
             }
           }
         }

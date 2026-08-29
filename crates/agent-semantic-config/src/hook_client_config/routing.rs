@@ -185,7 +185,7 @@ pub struct HookClientRuleMatchConfig {
     /// Exact shell environment assignments in the leading assignment block of
     /// the first parsed command stage.
     #[serde(default)]
-    pub leading_environment_assignment_any: Vec<String>,
+    pub process_environment_assignment_any: Vec<String>,
     #[serde(default)]
     pub command_contains_any: Vec<String>,
     #[serde(default)]

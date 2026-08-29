@@ -20,6 +20,42 @@ impl Default for ClientHookConfig {
 }
 
 impl ClientHookConfig {
+    fn classification_runtime(&self, runtime: &HookRuntime) -> HookRuntime {
+        let mut classification_runtime = runtime.clone();
+        let mut provider_projections = self.provider_projections.clone();
+        crate::hook_config::core::implementation::profile_provider_projection::merge_provider_projection_facts(
+            &mut provider_projections,
+            &classification_runtime.policy_providers,
+        );
+        classification_runtime.policy_providers = provider_projections;
+        classification_runtime
+    }
+
+    pub(crate) fn observed_action_receipt(
+        &self,
+        runtime: &HookRuntime,
+        action: &ToolAction,
+    ) -> (serde_json::Value, Vec<agent_semantic_config::LanguageId>) {
+        let classification_runtime = self.classification_runtime(runtime);
+        let agent_action = crate::action_ir::project_agent_action(
+            &classification_runtime,
+            action,
+            Some(action.paths.as_slice()),
+            None,
+        );
+        let mut language_ids = crate::collect_source_selector_matches(
+            &classification_runtime,
+            action.paths.iter().map(String::as_str),
+            |_| true,
+        )
+        .into_iter()
+        .map(|matched| matched.provider.language_id)
+        .collect::<Vec<_>>();
+        language_ids.sort();
+        language_ids.dedup();
+        (agent_action.receipt_value(), language_ids)
+    }
+
     /// Compile a validated source configuration for the reference side of the
     /// config-derived black-box coverage framework.
     pub fn compile_policy_coverage_reference(config: HookClientConfigFile) -> Result<Self, String> {
@@ -200,13 +236,7 @@ impl ClientHookConfig {
         event: &str,
         action: &ToolAction,
     ) -> Option<crate::hook_config::HookPolicyCandidate> {
-        let mut classification_runtime = runtime.clone();
-        let mut provider_projections = self.provider_projections.clone();
-        crate::hook_config::core::implementation::profile_provider_projection::merge_provider_projection_facts(
-            &mut provider_projections,
-            &classification_runtime.policy_providers,
-        );
-        classification_runtime.policy_providers = provider_projections;
+        let classification_runtime = self.classification_runtime(runtime);
         let runtime = &classification_runtime;
         let mut command_tokens: Option<Option<Cow<'_, [String]>>> = None;
         for rule_index in self.candidate_rule_indices(platform, event) {
@@ -621,8 +651,8 @@ impl ClientHookConfig {
                     })
                     .collect::<Vec<_>>();
                 let environment_entries =
-                    self.durable_leading_environment_decisions(&runtime, Some(&path))?;
-                let bytes = crate::CommandDecisionShard::new_with_leading_environment_assignments(
+                    self.durable_process_environment_decisions(&runtime, Some(&path))?;
+                let bytes = crate::CommandDecisionShard::new_with_process_environment_assignments(
                     entries,
                     environment_entries,
                 )?
@@ -721,8 +751,8 @@ impl ClientHookConfig {
                 (prefix, decision)
             })
             .collect();
-        let environment_entries = self.durable_leading_environment_decisions(&runtime, None)?;
-        crate::CommandDecisionShard::new_with_leading_environment_assignments(
+        let environment_entries = self.durable_process_environment_decisions(&runtime, None)?;
+        crate::CommandDecisionShard::new_with_process_environment_assignments(
             entries,
             environment_entries,
         )?

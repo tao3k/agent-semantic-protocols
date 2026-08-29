@@ -29,6 +29,7 @@ pub(super) fn validate_config(config: &HookClientConfigFile) -> Result<(), Strin
     validate_rule_profile_references(&config.rules, &config.profiles)?;
     validate_command_profiles(&config.command_profiles)?;
     validate_command_sets(&config.command_sets)?;
+    validate_reader_behavior_patterns(&config.reader_behavior_patterns)?;
     validate_capability_policies(&config.capability_policies)?;
     validate_rule_dispatches(&config.rules)?;
     validate_unique_rule_ids(&config.rules)?;
@@ -38,6 +39,30 @@ pub(super) fn validate_config(config: &HookClientConfigFile) -> Result<(), Strin
         &config.command_sets,
         &config.capability_policies,
     )
+}
+
+fn validate_reader_behavior_patterns(patterns: &[Vec<String>]) -> Result<(), String> {
+    let mut unique = HashSet::new();
+    for (index, pattern) in patterns.iter().enumerate() {
+        if pattern.is_empty() {
+            return Err(format!(
+                "readerBehaviorPatterns[{index}] must contain an executable basename"
+            ));
+        }
+        validate_non_empty_values("readerBehaviorPatterns[][]", pattern)?;
+        let executable = &pattern[0];
+        if executable.contains('/') || executable == "." || executable == ".." {
+            return Err(format!(
+                "readerBehaviorPatterns[{index}][0] must be an executable basename"
+            ));
+        }
+        if !unique.insert(pattern) {
+            return Err(format!(
+                "readerBehaviorPatterns contains duplicate pattern {pattern:?}"
+            ));
+        }
+    }
+    Ok(())
 }
 
 fn validate_codex_host_matchers(config: &HookClientConfigFile) -> Result<(), String> {
@@ -405,12 +430,12 @@ fn validate_rule_schema_shape(
         }
         if !rule
             .match_config
-            .leading_environment_assignment_any
+            .process_environment_assignment_any
             .is_empty()
             && !rule.terminal
         {
             return Err(format!(
-                "hook rule `{}` using leadingEnvironmentAssignmentAny must be terminal",
+                "hook rule `{}` using processEnvironmentAssignmentAny must be terminal",
                 rule.id
             ));
         }
@@ -473,8 +498,8 @@ fn validate_match_schema_shape(
     validate_non_empty_values("rules[].match.argvTokenAll[]", &match_config.argv_token_all)?;
     validate_unique_values("rules[].match.argvTokenAll", &match_config.argv_token_all)?;
     validate_environment_assignments(
-        "rules[].match.leadingEnvironmentAssignmentAny",
-        &match_config.leading_environment_assignment_any,
+        "rules[].match.processEnvironmentAssignmentAny",
+        &match_config.process_environment_assignment_any,
     )?;
     validate_argv_pattern_bindings(&match_config.argv_pattern_any)?;
     validate_non_empty_values(

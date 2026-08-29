@@ -542,9 +542,14 @@ mod request_lifecycle_tests {
             crate::runtime_contract::ProviderRuntimeContractTransport::RuntimeIpc,
             vec![crate::runtime_contract::ProviderRuntimeContractOperation {
                 operation: "owner-items".to_owned(),
-                request_schema_id: "agent.semantic-protocols.asp-client-server-request".to_owned(),
-                response_schema_id: "agent.semantic-protocols.asp-client-server-response"
-                    .to_owned(),
+                request_schema: agent_semantic_provider_protocol::ProviderSchemaReference {
+                    schema_id: "agent.semantic-protocols.asp-client-server-request".to_owned(),
+                    schema_version: "1".to_owned(),
+                },
+                response_schema: agent_semantic_provider_protocol::ProviderSchemaReference {
+                    schema_id: "agent.semantic-protocols.asp-client-server-response".to_owned(),
+                    schema_version: "1".to_owned(),
+                },
             }],
         )
         .expect("runtime contract")

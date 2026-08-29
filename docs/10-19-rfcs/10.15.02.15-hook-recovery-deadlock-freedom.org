@@ -21,8 +21,8 @@ typed target/lane, and scoped command that advances the state.
 
 * Architecture
 
-=ASP_NO_AGENT=1= has two inherited-process projections and no payload
-projection.  Both have absolute precedence:
+=ASP_NO_AGENT=1= has two inherited-process projections with absolute
+pre-bootstrap precedence:
 
 #+begin_example
 Plugin launcher: detect inherited ASP_NO_AGENT=1 -> {} -> stop
@@ -33,12 +33,8 @@ The launcher branch MUST execute before State Home/current/binary resolution
 or stdin.  The evaluator branch MUST execute before runtime construction,
 workspace discovery, configuration or provider projection, mmap/file locks,
 Runtime or ASP Server access, lifecycle observation, stdin, and telemetry. The
-inherited value must be exactly =1=. An
-assignment inside the protected command is too late: the Host has already
-launched the enforcing Hook process, so it is ordinary command data and cannot
-grant recovery authority. Neither matcher configuration nor classifier
-orchestration may create a second command-scoped bypass. The complete recovery
-decision path performs no payload parsing and MUST satisfy
+inherited value must be exactly =1=. These two layer-zero paths perform no
+payload parsing and MUST satisfy
 =hookDecisionCpuMicros < 1000=. This exclusive
 hard boundary measures work owned by Hook; =hookDecisionElapsedMicros= remains
 an observed wall receipt and MUST NOT be relabeled as deterministic algorithm
@@ -47,6 +43,20 @@ The CPU hard boundary is not the operating target. At least 75% of a 32-process
 concurrent pressure sample MUST satisfy wall =elapsedMicros <= 500=. Thus a result
 such as 823us is still admitted by the fail-closed boundary but is a performance
 regression because it lacks sufficient scheduling and filesystem headroom.
+
+Codex Bash PreTool additionally has one command-local projection in the Rust
+=asp-hook= process boundary. Before resolving HookGeneration, the Shell Parser
+proves that =ASP_NO_AGENT=1= reaches the requested process through
+exactly one of =NAME=VALUE command=, =env NAME=VALUE command=, or
+=export NAME=VALUE; exec command=. Config V1 mirrors this invariant with
+=processEnvironmentAssignmentAny=["ASP_NO_AGENT=1"]= as a highest-priority
+terminal allow over all Hook policy; it MUST NOT add argv, language,
+search/query, profile, or Runtime predicates.  Raw JSON text, quoted text,
+unrelated stages, and =export ...; command= without =exec= do not establish
+authority. This command-local path parses the Host payload but terminates
+before HookGeneration, Reader Probe, subagent admission, Runtime, or any other
+policy rule. The process guard and Config witness accepting different
+topologies is a failed publication candidate.
 
 For an ordinary =asp= CLI invocation, inherited =ASP_NO_AGENT=1= selects the
 =agent-semantic-client= single-thread server-first IPC lane.  That lane creates no Tokio

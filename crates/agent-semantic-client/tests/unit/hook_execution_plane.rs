@@ -1,3 +1,15 @@
+fn typed_hook_decision_context(response: &serde_json::Value) -> serde_json::Value {
+    let context = response["hookSpecificOutput"]["additionalContext"]
+        .as_str()
+        .expect("typed Hook decision context");
+    serde_json::from_str(
+        context
+            .strip_prefix("[agent-hook-decision] ")
+            .expect("typed Hook decision prefix"),
+    )
+    .expect("typed Hook decision JSON")
+}
+
 #[cfg(target_os = "macos")]
 fn publish_fixture_generation(
     workspace: &std::path::Path,
@@ -13,16 +25,21 @@ fn publish_fixture_generation(
     let config = agent_semantic_config::default_hook_client_config_template().into_bytes();
     let config_path = candidate.join("config.toml");
     std::fs::write(&config_path, &config).expect("write candidate config");
-    let compiled = agent_semantic_hook::compile_hook_matcher_generation(&config_path, &candidate)
-        .expect("compile HookGeneration fixture");
+    let canonical = agent_semantic_config::default_hook_client_config_file()
+        .expect("canonical HookGeneration config");
+    let compiled = agent_semantic_hook::aot_compiler::compile_aot_hook_generation(
+        &canonical,
+        "candidate-unpublished",
+    )
+    .expect("compile HookGeneration fixture");
     let registry = std::fs::read(workspace.join("agents/config.toml"))
         .expect("read canonical Agent registry fixture");
     let prepared = prepare_hook_generation(
         state_home,
         HookGenerationCandidate {
-            evaluator_binary: std::path::Path::new(env!("CARGO_BIN_EXE_asp")),
+            hook_binary: &workspace.join("target/debug/asp-hook"),
             config: &config,
-            compiled_matcher: &compiled.bytes,
+            compiled_matcher: &compiled,
             registry: &registry,
         },
     )
@@ -37,22 +54,36 @@ fn publish_fixture_generation(
             "command": reader_probe_command(home, subject)
         }
     });
-    let mut component_payload = payload.clone();
-    let component =
-        agent_semantic_hook::observe_and_bind_reader_probe(&mut component_payload, Some("Bash"))
-            .expect("run candidate Reader component validation")
-            .expect("candidate Reader component observation");
+    let command = payload["tool_input"]["command"]
+        .as_str()
+        .expect("candidate Reader command");
+    let component = agent_semantic_hook::diagnose_reader_probe_with_state_home(
+        agent_semantic_hook::semantic_shell_tokens(command),
+        subject.to_owned(),
+        Vec::new(),
+        state_home,
+    )
+    .expect("candidate Reader component observation");
     assert_eq!(
         component.access,
-        agent_semantic_hook::ReaderProbeAccess::Unknown,
+        agent_semantic_hook::ReaderProbeAccess::Read,
         "component={component:?}"
     );
-    assert_eq!(component.terminal, "policy-fast-path-unresolved-source");
-    assert_eq!(component.elapsed_micros, 0);
-    assert!(!component.probe_process_launched);
+    assert!(
+        matches!(
+            component.terminal.as_str(),
+            "open-entry-observed" | "reader-behavior-cache-hit"
+        ),
+        "component={component:?}"
+    );
+    assert!(
+        component.elapsed_micros < 150_000,
+        "component={component:?}"
+    );
     assert!(component.cleanup_verified);
     let validation = run_codex_pre_tool_binding_probe_with_generation(
         &prepared.receipt.generation_path,
+        &prepared.receipt.generation_digest,
         state_home,
         &payload,
     );
@@ -68,22 +99,14 @@ fn publish_fixture_generation(
     let context = validation["hookSpecificOutput"]["additionalContext"]
         .as_str()
         .expect("candidate Reader PreTool validation context");
-    assert!(
-        context.contains("policy-fast-path-unresolved-source"),
-        "{context}"
-    );
-    assert!(context.contains("\"accessMode\":\"unknown\""), "{context}");
-    assert!(context.contains("\"elapsedMicros\":0"), "{context}");
-    assert!(
-        context.contains("\"probeProcessLaunched\":false"),
-        "{context}"
-    );
+    assert!(context.contains("\"accessMode\":\"O_RDONLY\""), "{context}");
     assert!(context.contains("\"cleanupVerified\":true"), "{context}");
+    assert!(context.contains("\"access\":\"read\""), "{context}");
     assert!(
-        !context.contains("\"source\":\"reader-probe\""),
+        context.contains("\"evidence\":\"reader-behavior-dynamic-cache\"")
+            || context.contains("\"evidence\":\"reader-probe-open-read-only\""),
         "{context}"
     );
-    assert!(!context.contains("\"permission\":\"read\""), "{context}");
     assert!(
         context.contains(prepared.receipt.generation_digest.as_str()),
         "{context}"
@@ -95,30 +118,40 @@ fn publish_fixture_generation(
 
 #[cfg(target_os = "macos")]
 fn run_codex_pre_tool_binding_probe_with_generation(
-    generation_root: &std::path::Path,
+    generation_path: &std::path::Path,
+    generation_digest: &str,
     state_home: &std::path::Path,
     payload: &serde_json::Value,
 ) -> std::process::Output {
     use std::io::Write;
     use std::process::{Command, Stdio};
 
-    let mut child = Command::new(env!("CARGO_BIN_EXE_asp"))
-        .args([
-            "hook",
-            "pre-tool",
-            "--client",
-            "codex",
-            "--host-match",
-            "Bash",
-        ])
-        .env("ASP_HOOK_GENERATION_ROOT", generation_root)
-        .env("ASP_STATE_HOME", state_home)
-        .env_remove("ASP_NO_AGENT")
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .expect("spawn candidate Reader PreTool validation");
+    let mut child = Command::new(
+        generation_path
+            .parent()
+            .expect("HookGeneration root")
+            .join("asp-hook"),
+    )
+    .args([
+        "hook",
+        "pre-tool",
+        "--client",
+        "codex",
+        "--host-match",
+        "Bash",
+    ])
+    .env(
+        "ASP_HOOK_GENERATION_ROOT",
+        generation_path.parent().expect("HookGeneration root"),
+    )
+    .env("ASP_HOOK_GENERATION_DIGEST", generation_digest)
+    .env("ASP_STATE_HOME", state_home)
+    .env_remove("ASP_NO_AGENT")
+    .stdin(Stdio::piped())
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped())
+    .spawn()
+    .expect("spawn candidate Reader PreTool validation");
     serde_json::to_writer(
         child.stdin.as_mut().expect("candidate validation stdin"),
         payload,
@@ -170,10 +203,11 @@ async fn run_fixture_hook(
     payload: &serde_json::Value,
     trace: bool,
 ) -> agent_semantic_hook_testkit::HookScenarioReceipt {
-    let mut spec =
-        agent_semantic_hook_testkit::HookProcessSpec::new(env!("CARGO_BIN_EXE_asp"), workspace);
+    let mut spec = agent_semantic_hook_testkit::HookProcessSpec::new(
+        workspace.join("asp-codex-plugin/bin/asp-hook"),
+        workspace,
+    );
     spec.args = vec![
-        "hook".to_owned(),
         "pre-tool".to_owned(),
         "--client".to_owned(),
         "codex".to_owned(),
@@ -263,7 +297,7 @@ fn hook_event_plane_has_zero_runtime_server_dependencies() {
         include_str!("../../src/command/hook.rs"),
         include_str!("../../src/hook_bootstrap.rs"),
         include_str!("../../src/command/hook_runtime.rs"),
-        include_str!("../../../agent-semantic-hook/src/runtime_config.rs"),
+        include_str!("../../../agent-semantic-hook/src/aot_evaluator_cli.rs"),
     ] {
         for forbidden in [
             "RuntimeServerClientExecutor",
@@ -308,13 +342,13 @@ fn hook_event_plane_has_zero_runtime_server_dependencies() {
         );
     }
 
-    let snapshot = include_str!("../../../agent-semantic-hook/src/runtime_config.rs");
-    assert!(snapshot.contains("MmapOptions"));
-    assert!(snapshot.contains("durable_snapshot_config"));
-    assert!(snapshot.contains("from_durable_snapshot_config"));
-    assert!(!snapshot.contains("OnceLock"));
+    let snapshot = include_str!("../../../agent-semantic-hook/src/aot_evaluator_cli.rs");
+    assert!(snapshot.contains("compiled-hook-generation.json"));
+    assert!(snapshot.contains("load_generation"));
+    assert!(snapshot.contains("evaluate_payload_at_generation"));
+    assert!(!snapshot.contains("matcher.bin"));
+    assert!(!snapshot.contains("MmapOptions"));
     assert!(!snapshot.contains("managed_hook_config::materialize"));
-    assert!(!snapshot.contains("load_asp_session_policy"));
 
     let event_state = include_str!("../../../agent-semantic-hook/src/event_state.rs");
     assert!(event_state.contains("try_lock_exclusive"));
@@ -463,6 +497,7 @@ fn unrelated_host_actions_are_excluded_by_the_physical_plugin_matcher_set() {
 
 #[test]
 fn missing_or_mismatched_host_match_signal_is_a_json_fail_closed_terminal() {
+    let _cold_process_guard = crate::install_binary_test_guard::acquire();
     let read_payload = serde_json::json!({
         "hook_event_name": "PreToolUse",
         "tool_name": "Read",
@@ -540,11 +575,55 @@ fn post_tool_observation_emits_one_json_document_without_runtime_receipt() {
     assert!(!stderr.contains("runtime-server"), "stderr={stderr}");
 }
 
+#[test]
+fn dedicated_hook_control_post_tool_is_valid_and_inside_host_deadline() {
+    use std::io::Write;
+    use std::process::{Command, Stdio};
+    use std::time::{Duration, Instant};
+
+    let _cold_process_guard = crate::install_binary_test_guard::acquire();
+    let state = tempfile::tempdir().expect("isolated Hook control state");
+    let started = Instant::now();
+    let mut child = Command::new(env!("CARGO_BIN_EXE_asp-hook"))
+        .args(["hook", "post-tool", "--client", "codex"])
+        .env_clear()
+        .env("HOME", state.path())
+        .env("ASP_STATE_HOME", state.path())
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn dedicated Hook control");
+    child
+        .stdin
+        .take()
+        .expect("Hook control stdin")
+        .write_all(br#"{"tool_name":"update_plan","tool_input":{"plan":[]}}"#)
+        .expect("write PostTool payload and release writer");
+    let output = child.wait_with_output().expect("wait for Hook control");
+    let elapsed = started.elapsed();
+    assert!(
+        output.status.success(),
+        "stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&output.stdout)
+            .expect("valid Hook control JSON"),
+        serde_json::json!({})
+    );
+    assert!(
+        elapsed < Duration::from_secs(1),
+        "dedicated Hook control elapsed {elapsed:?} exceeded Host deadline"
+    );
+}
+
 #[cfg(target_os = "macos")]
 #[tokio::test]
 async fn structured_rust_read_binary_path_is_local_bounded_and_runtime_free() {
     use std::time::{SystemTime, UNIX_EPOCH};
 
+    let _cold_process_guard = crate::install_binary_test_guard::acquire();
     let workspace = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .and_then(std::path::Path::parent)
@@ -619,28 +698,20 @@ async fn structured_rust_read_binary_path_is_local_bounded_and_runtime_free() {
     let context = response["hookSpecificOutput"]["additionalContext"]
         .as_str()
         .expect("typed Hook decision context");
+    let typed = typed_hook_decision_context(&response);
     assert!(
         context.contains("registered-source-route-required"),
         "{context}"
     );
-    assert!(context.contains("\"accessMode\":\"unknown\""), "{context}");
-    assert!(
-        context.contains("policy-fast-path-unresolved-source"),
-        "{context}"
-    );
-    assert!(context.contains("\"elapsedMicros\":0"), "{context}");
-    assert!(
-        context.contains("\"probeProcessLaunched\":false"),
-        "{context}"
-    );
+    assert!(context.contains("\"accessMode\":\"O_RDONLY\""), "{context}");
     assert!(context.contains("\"cleanupVerified\":true"), "{context}");
+    assert!(context.contains("\"access\":\"read\""), "{context}");
     assert!(
-        !context.contains("\"source\":\"reader-probe\""),
+        context.contains("\"evidence\":\"reader-behavior-dynamic-cache\""),
         "{context}"
     );
-    assert!(!context.contains("\"permission\":\"read\""), "{context}");
     assert!(
-        context.contains("\"operationIntent\":\"shell-command\""),
+        context.contains("\"operationIntent\":\"source-read\""),
         "{context}"
     );
     assert!(context.contains("blake3-256:"), "{context}");
@@ -653,16 +724,9 @@ async fn structured_rust_read_binary_path_is_local_bounded_and_runtime_free() {
     );
     assert!(!context.contains("asp session @"), "{context}");
     assert!(!stderr.contains("runtime-server"), "stderr={stderr}");
-    let execution_micros = stderr
-        .lines()
-        .find_map(|line| {
-            line.strip_prefix(
-                "[asp-hook] route=local-policy-evaluator stage=complete elapsedMicros=",
-            )
-        })
-        .expect("Hook local execution completion trace")
-        .parse::<u128>()
-        .expect("Hook execution latency is an integer");
+    let execution_micros = typed["elapsedMicros"]
+        .as_u64()
+        .expect("typed AOT Hook execution latency");
     assert!(
         execution_micros < 100_000,
         "structured Read Hook execution exceeded 100ms: executionMicros={execution_micros} stderr={stderr}"
@@ -679,56 +743,35 @@ async fn structured_rust_read_binary_path_is_local_bounded_and_runtime_free() {
     let warm_context = warm_response["hookSpecificOutput"]["additionalContext"]
         .as_str()
         .expect("warm typed Hook decision context");
+    let warm_typed = typed_hook_decision_context(&warm_response);
     assert!(
         warm_context.contains("blake3-256:"),
         "warm Hook invocation must load the immutable generation: {warm_context}"
     );
-    let warm_execution_micros = warm_stderr
-        .lines()
-        .find_map(|line| {
-            line.strip_prefix(
-                "[asp-hook] route=local-policy-evaluator stage=complete elapsedMicros=",
-            )
-        })
-        .expect("warm Hook local execution completion trace")
-        .parse::<u128>()
-        .expect("warm Hook execution latency is an integer");
+    let warm_execution_micros = warm_typed["elapsedMicros"]
+        .as_u64()
+        .expect("warm typed AOT Hook execution latency");
     assert!(
         warm_execution_micros < 100_000,
         "warm structured Read Hook execution exceeded 100ms: executionMicros={warm_execution_micros} stderr={warm_stderr}"
     );
 
-    fn find_compiled_matcher(path: &std::path::Path) -> Option<std::path::PathBuf> {
-        let entries = std::fs::read_dir(path).ok()?;
-        for entry in entries.flatten() {
-            let candidate = entry.path();
-            if candidate.is_dir() {
-                if let Some(found) = find_compiled_matcher(&candidate) {
-                    return Some(found);
-                }
-            } else if candidate.file_name().and_then(|name| name.to_str()) == Some("matcher.bin") {
-                return Some(candidate);
-            }
-        }
-        None
-    }
-    let snapshot = find_compiled_matcher(&state_home).expect("compiled matcher snapshot");
-    let matcher_dir = snapshot.parent().expect("active matcher parent");
-    let published_files = std::fs::read_dir(matcher_dir)
-        .expect("read active matcher directory")
-        .filter_map(Result::ok)
-        .filter(|entry| entry.file_type().is_ok_and(|kind| kind.is_file()))
-        .collect::<Vec<_>>();
-    assert!(
-        published_files.len() == 1
-            && published_files[0].file_name().to_str() == Some("matcher.bin"),
-        "Hook generation must own one stable compiled matcher component: {published_files:?}"
+    let current =
+        agent_semantic_artifacts::hook_generation::read_current_hook_generation(&state_home)
+            .expect("read immutable HookGeneration")
+            .expect("published HookGeneration");
+    let immutable: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(&current.generation_path).expect("read AOT generation"),
+    )
+    .expect("decode AOT generation");
+    assert_eq!(
+        immutable["schemaId"],
+        "agent.semantic-protocols.hook-generation"
     );
-    let immutable = std::fs::read(&snapshot).expect("read immutable matcher snapshot");
-    assert_eq!(&immutable[..8], b"ASPHK1PC");
+    assert_eq!(immutable["schemaVersion"], 1);
     assert!(
-        immutable.len() > 120,
-        "compiled matcher omitted its section index"
+        !state_home.join("hooks/compiled/matcher.bin").exists(),
+        "legacy mmap matcher publication must not coexist with HookGeneration"
     );
     std::fs::remove_dir_all(root).expect("cleanup isolated Hook state");
 }
@@ -810,9 +853,9 @@ async fn config_source_edit_does_not_republish_or_change_active_hook_generation(
     let context = response["hookSpecificOutput"]["additionalContext"]
         .as_str()
         .expect("typed Hook decision context");
-    assert!(context.contains("blake3-256:"), "{context}");
+    assert!(context.contains(&publication), "{context}");
     assert!(
-        context.contains("registered rust source operand"),
+        context.contains("Confirmed rust source reads are denied"),
         "{context}"
     );
     assert!(
@@ -822,24 +865,20 @@ async fn config_source_edit_does_not_republish_or_change_active_hook_generation(
         )),
         "{context}"
     );
-    assert!(context.contains("\"accessMode\":\"unknown\""), "{context}");
-    assert!(
-        context.contains("policy-fast-path-unresolved-source"),
-        "{context}"
-    );
-    assert!(context.contains("\"elapsedMicros\":0"), "{context}");
-    assert!(
-        context.contains("\"probeProcessLaunched\":false"),
-        "{context}"
-    );
+    assert!(context.contains("\"accessMode\":\"O_RDONLY\""), "{context}");
     assert!(context.contains("\"cleanupVerified\":true"), "{context}");
+    assert!(context.contains("\"access\":\"read\""), "{context}");
     assert!(
-        !context.contains("\"source\":\"reader-probe\""),
+        context.contains("\"evidence\":\"reader-behavior-dynamic-cache\""),
         "{context}"
     );
-    assert!(!context.contains("\"permission\":\"read\""), "{context}");
 
     let unchanged_source = std::fs::read_to_string(&config_path).expect("read Hook config source");
     assert_eq!(unchanged_source, stale);
+    let current =
+        agent_semantic_artifacts::hook_generation::read_current_hook_generation(&state_home)
+            .expect("read current HookGeneration")
+            .expect("current HookGeneration");
+    assert_eq!(current.generation_digest, publication);
     std::fs::remove_dir_all(root).expect("cleanup isolated Hook state");
 }

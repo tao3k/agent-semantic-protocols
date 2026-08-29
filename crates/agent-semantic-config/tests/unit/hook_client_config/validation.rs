@@ -326,13 +326,14 @@ fn canonical_source_routing_uses_bash_capability_profiles_without_legacy_search(
     let route = config
         .rules
         .iter()
-        .find(|rule| rule.id == "route-unresolved-source-access-to-asp-languages")
+        .find(|rule| rule.id == "route-read-to-asp-languages")
         .expect("registered source routing rule");
     assert_eq!(route.matcher.as_deref(), Some("Bash"));
     assert_eq!(
-        route.match_config.capability_policy_all,
-        ["registered-source-access"]
+        route.actions,
+        [agent_semantic_config::HookClientActionKind::Read]
     );
+    assert!(route.match_config.capability_policy_all.is_empty());
     assert!(route.match_config.argv_prefix_any.is_empty());
     assert_eq!(
         route.profiles_list,

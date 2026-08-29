@@ -27,7 +27,13 @@
       "enum": ["bootstrap", "classification", "decision-emission"]
     },
     "failureKind": {
-      "enum": ["invalid-invocation", "runtime-error", "runtime-panic"]
+      "enum": [
+        "invalid-invocation",
+        "launcher-process-exited",
+        "launcher-target-unavailable",
+        "runtime-error",
+        "runtime-panic"
+      ]
     },
     "event": {
       "type": ["string", "null"]
@@ -38,6 +44,11 @@
     "runtimeArtifactFingerprint": {
       "type": "string",
       "minLength": 1
+    },
+    "exitCode": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 255
     },
     "executablePath": {
       "type": ["string", "null"]

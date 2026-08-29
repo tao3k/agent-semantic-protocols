@@ -379,6 +379,10 @@ mod tests {
                         "languageId": language_id,
                         "providerId": provider_id
                     },
+                    "requestSchema": {
+                        "schemaId": "agent.semantic-protocols.search-owner-request",
+                        "schemaVersion": "1"
+                    },
                     "inputs": [],
                     "requirements": [],
                     "effects": {
@@ -389,7 +393,10 @@ mod tests {
                         "streaming": false
                     },
                     "output": {
-                        "schemaId": "agent.semantic-protocols.search-packet",
+                        "schema": {
+                            "schemaId": "agent.semantic-protocols.search-packet",
+                            "schemaVersion": "1"
+                        },
                         "mediaType": "application/json"
                     },
                     "failureSchemaIds": ["agent.semantic-protocols.route-failure"],

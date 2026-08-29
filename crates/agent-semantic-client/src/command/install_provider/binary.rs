@@ -51,13 +51,13 @@ pub(crate) async fn run_install_binary(args: &[String]) -> Result<(), String> {
     let runtime_endpoint_path =
         agent_semantic_client_db::runtime_server_endpoint_path(&runtime_state.protocol_home)?;
     println!(
-        "[asp-install-binary] binaryPath={} binaryInstall={} binaryContentDigest={} digestAlgorithm=blake3-256 binaryCurrent={} binarySwitch=atomic hookGeneration={} hookEvaluatorDigest={} hookConfigDigest={} hookMatcherDigest={} hookRegistryDigest={} hookCurrent={} hookGenerationSwitch=atomic hookGenerationLockMicros={} hookEvaluatorValidationMicros={} hookGenerationRetention={} hookGenerationRetainedCount={} hookConfigPublication={} hookConfigCoupling=hook-generation agentConfigPublication=current agentConfigCoupling=hook-generation runtimeServerLifecycle=resident-owner-independent reasonKind=none providerReconciliation=not-on-binary-install installedProviderArtifacts=not-on-binary-install developerIdentityReceipt={} installSource={} installScope=global projectRoot={} executablePath={} stateHome={} stateHomeSource={:?} aspStateHomePresent={} homePresent={} pendingActivationPath={} appliedActivationPath={} runtimeEndpointPath={}",
+        "[asp-install-binary] binaryPath={} binaryInstall={} binaryContentDigest={} digestAlgorithm=blake3-256 binaryCurrent={} binarySwitch=atomic hookGeneration={} hookBinaryDigest={} hookConfigDigest={} hookMatcherDigest={} hookRegistryDigest={} hookCurrent={} hookGenerationSwitch=atomic hookGenerationLockMicros={} hookBinaryValidationMicros={} hookGenerationRetention={} hookGenerationRetainedCount={} hookConfigPublication={} hookConfigCoupling=hook-generation agentConfigPublication=current agentConfigCoupling=hook-generation runtimeServerLifecycle=resident-owner-independent reasonKind=none providerReconciliation=not-on-binary-install installedProviderArtifacts=not-on-binary-install developerIdentityReceipt={} installSource={} installScope=global projectRoot={} executablePath={} stateHome={} stateHomeSource={:?} aspStateHomePresent={} homePresent={} pendingActivationPath={} appliedActivationPath={} runtimeEndpointPath={}",
         installed.path.display(),
         installed.status,
         installed.artifact_digest,
         installed.path.display(),
         hook_generation.publication.generation.generation_digest,
-        hook_generation.publication.generation.evaluator_digest,
+        hook_generation.publication.generation.hook_binary_digest,
         hook_generation.publication.generation.config_digest,
         hook_generation
             .publication
@@ -66,7 +66,7 @@ pub(crate) async fn run_install_binary(args: &[String]) -> Result<(), String> {
         hook_generation.publication.generation.registry_digest,
         hook_generation.publication.current_path.display(),
         hook_generation.publication.lock_elapsed_micros,
-        hook_generation.evaluator_validation_elapsed_micros,
+        hook_generation.hook_binary_validation_elapsed_micros,
         hook_generation.publication.retention_policy,
         hook_generation.publication.retained_generation_count,
         hook_generation.config_source_status,
@@ -92,7 +92,7 @@ pub(crate) async fn run_install_hook(args: &[String]) -> Result<(), String> {
     }
     if args.iter().any(|arg| arg == "--codex") {
         return Err(
-            "Codex plugin installation uses `asp install plugin --codex [PROJECT_ROOT]`".to_owned(),
+            "Codex plugin publication uses `asp install plugin <status|publish> --codex [PROJECT_ROOT]`".to_owned(),
         );
     }
     let mut forwarded = vec!["install".to_owned()];
@@ -102,7 +102,7 @@ pub(crate) async fn run_install_hook(args: &[String]) -> Result<(), String> {
 
 pub(crate) async fn run_install_plugin(args: &[String]) -> Result<(), String> {
     if args.is_empty() || has_help_flag(args) {
-        return cli_help::print_install_plugin_help();
+        return cli_help::print_install_plugin_help(args);
     }
     hook_runtime::run_codex_plugin_install_args(args).await
 }

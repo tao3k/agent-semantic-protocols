@@ -177,6 +177,16 @@ export ASP_DEVENV_PROFILE_NATIVE_READY="${profile}"
 export NIX_BUILD_TOP="${build_top}"
 
 cd -- "${repo_root}"
+# Cargo's Darwin toolchain may emit -liconv while the active profile keeps
+# libiconv outside the default linker search path.  Export the profile's
+# concrete library directory before either execution mode so the normal fast
+# path and the full shell path have identical linking semantics.
+for iconv_lib in /nix/store/*-libiconv-*/lib; do
+  if [[ -f "${iconv_lib}/libiconv.dylib" ]]; then
+    export RUSTFLAGS="${RUSTFLAGS-} -L${iconv_lib}"
+    break
+  fi
+done
 if [[ "${ASP_DEVENV_EXEC_ALLOW_NON_STORE_PROFILE:-0}" == "1" && "${profile}" != /nix/store/* ]]; then
   export PATH="${profile}/bin:${PATH}"
   exec /bin/bash --noprofile --norc -c 'exec "$@"' asp-devenv "$@"
@@ -192,6 +202,12 @@ exec "${profile}/bin/bash" --noprofile --norc -c '
   source "$DEVENV_PROFILE/setup"
   unset outputs out buildInputs
   unset NIX_ENFORCE_PURITY
+  for iconv_lib in /nix/store/*-libiconv-*/lib; do
+    if [[ -f "${iconv_lib}/libiconv.dylib" ]]; then
+      export RUSTFLAGS="${RUSTFLAGS-} -L${iconv_lib}"
+      break
+    fi
+  done
   export IN_NIX_SHELL=impure
   exec "$@"
 ' asp-devenv "$@"

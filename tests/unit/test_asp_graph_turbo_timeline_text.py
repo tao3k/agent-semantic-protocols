@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from asp_graph_turbo.artifact_timeline import (
+from asp_python_graphs.artifact_timeline import (
     TimelineParameters,
     evaluate_artifact_timeline,
 )
-from asp_graph_turbo.artifact_timeline_text import timeline_text_lines
-from unit.asp_graph_turbo_timeline_support import (
+from asp_python_graphs.artifact_timeline_text import timeline_text_lines
+from unit.asp_python_graphs_timeline_support import (
     write_microburst_repeat_artifacts,
 )
 

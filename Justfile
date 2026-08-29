@@ -107,7 +107,7 @@ agent-tools-install-global bin_dir="":
     @bin_dir="{{bin_dir}}"; \
     if [ -z "${bin_dir}" ]; then bin_dir="${SEMANTIC_AGENT_BIN_DIR:-{{asp_runtime_bin}}}"; fi; \
       just agent-tools-install-protocol "${bin_dir}"; \
-      rm -f "${bin_dir}/asp-graph-turbo" "${bin_dir}/graph-turbo"; \
+      rm -f "${bin_dir}/asp-python-graphs" "${bin_dir}/graph-turbo"; \
       just agent-tools-install-languages; \
       echo "[agent-tools-install-global] installed asp with built-in graph-turbo ranker and all language provider harnesses into ${bin_dir}"
 
@@ -300,15 +300,15 @@ benchmark-large-library-search-runtime-baseline:
     test -n "${ASP_STATE_HOME:-}"; receipt="$PWD/.cache/large-library-runtime-search.v1.receipt.json"; mkdir -p "$(dirname "$receipt")"; set +e; direnv exec . env ASP_BENCHMARK_BIN="$PWD/target/release/asp" uv run --project packages/python --frozen python -m tools.semantic_sandtable --repo-root . --json --large-library-runtime-benchmark --large-library-runtime-asp-bin target/release/asp --large-library-runtime-state-home "$ASP_STATE_HOME" > "$receipt"; runtime_status=$?; set -e; direnv exec . env ASP_BENCHMARK_BIN="$PWD/target/release/asp" uv run --project packages/python --frozen python -m tools.semantic_sandtable.large_library_runtime_baseline --baseline benchmarks/large-library-runtime-search.v1.baseline.json --receipt "$receipt"; baseline_status=$?; test "$runtime_status" -eq 0; test "$baseline_status" -eq 0
 
 check-graph-turbo-focused:
-    uv run --project packages/python/asp_graph_turbo --frozen pytest \
-      tests/unit/test_asp_graph_turbo_request.py \
-      tests/unit/test_asp_graph_turbo_feedback.py \
-      tests/unit/test_asp_graph_turbo_calibration.py \
-      tests/unit/test_asp_graph_turbo_projection_fields.py \
-      tests/unit/test_asp_graph_turbo_ranking_collection_fields.py \
-      tests/unit/test_asp_graph_turbo_read_loop.py \
-      tests/unit/test_asp_graph_turbo_timeline.py \
-      tests/unit/test_asp_graph_turbo_timeline_text.py \
+    uv run --project packages/python/asp_python_graphs --frozen pytest \
+      tests/unit/test_asp_python_graphs_request.py \
+      tests/unit/test_asp_python_graphs_feedback.py \
+      tests/unit/test_asp_python_graphs_calibration.py \
+      tests/unit/test_asp_python_graphs_projection_fields.py \
+      tests/unit/test_asp_python_graphs_ranking_collection_fields.py \
+      tests/unit/test_asp_python_graphs_read_loop.py \
+      tests/unit/test_asp_python_graphs_timeline.py \
+      tests/unit/test_asp_python_graphs_timeline_text.py \
       tests/unit/semantic_sandtable/test_agent_observation_pipe.py \
       tests/unit/semantic_sandtable/test_agent_observation_read_loop.py \
       tests/unit/semantic_sandtable/test_expectations.py
@@ -326,7 +326,7 @@ check-language-evidence-smoke-core: check-language-evidence-smoke-setup
       ASP_LANGUAGE_EVIDENCE_SMOKE_SCOPE=core-fast \
       ASP_LANGUAGE_EVIDENCE_LANGUAGES=rust,python,typescript \
       ASP_LANGUAGE_EVIDENCE_TIMING_JSON="$protocol_home/language-evidence-smoke-core-fast.json" \
-      uv run --project packages/python/asp_graph_turbo --frozen pytest tests/unit/test_language_evidence_smoke.py -q
+      uv run --project packages/python/asp_python_graphs --frozen pytest tests/unit/test_language_evidence_smoke.py -q
     protocol_home="$(PATH="$PWD/.bin:$PATH" .bin/asp hook paths . | awk -F= '$1=="protocolHome"{print substr($0, 14)}')" && \
       cat "$protocol_home/language-evidence-smoke-core-fast.json"
 
@@ -346,7 +346,7 @@ check-language-evidence-smoke-all: check-language-evidence-smoke-all-setup
       ASP_LANGUAGE_EVIDENCE_SMOKE_SCOPE=all-providers \
       ASP_LANGUAGE_EVIDENCE_MAX_COMMAND_SECONDS_JULIA=2 \
       ASP_LANGUAGE_EVIDENCE_TIMING_JSON="$protocol_home/language-evidence-smoke-all-providers.json" \
-      uv run --project packages/python/asp_graph_turbo --frozen pytest tests/unit/test_language_evidence_smoke.py -q
+      uv run --project packages/python/asp_python_graphs --frozen pytest tests/unit/test_language_evidence_smoke.py -q
     protocol_home="$(PATH="$PWD/.bin:$PATH" .bin/asp hook paths . | awk -F= '$1=="protocolHome"{print substr($0, 14)}')" && \
       cat "$protocol_home/language-evidence-smoke-all-providers.json"
 

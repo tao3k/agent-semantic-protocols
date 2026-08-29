@@ -1,0 +1,82 @@
+#+title: ASP Python Graphs gRPC Service
+#+property: schema_id agent.semantic-protocols.asp-python-graphs-session
+#+property: schema_version 1
+
+* Authority
+
+The shared southbound contract is =asp-python-graphs-session= v1.  It is a
+private gRPC bidirectional stream between ASP Server and the installed
+=asp-python-graphs= algorithm artifact.  It is not the public ASP Client
+Protocol and not a language-provider protocol.
+
+ASP Server owns process and channel lifecycle.  Python owns only algorithm
+state and evaluation.  Parallel stdin/stdout, workspace database, HTTP,
+per-query process, and provider-private graph paths are forbidden.
+
+* Envelope and operations
+
+The protobuf package is the stable =asp.python.graphs= namespace.  It MUST NOT
+carry a version suffix.  Contract evolution is owned by =schemaVersion= and
+=payloadSchemaId= inside the JSON envelope; changing the protobuf namespace is
+not a schema-version mechanism.
+
+The protobuf wire type contains one =bytes json= field.  The JSON value is
+validated against shared schemas before dispatch and after receipt.  Required
+operations are =hello=, =open-generation=, =evaluate=,
+=release-generation=, =cancel=, =health=, and =shutdown=.
+
+Every request and receipt echoes request ID, workspace identity when scoped,
+generation digest when scoped, and service epoch.  Unknown operations,
+root-digest substitution, cross-generation receipts, non-monotone sequence,
+and duplicate terminals fail closed.
+
+* Backpressure
+
+ASP Server admission capacity and Python evaluation concurrency are explicit
+Ready-receipt fields.  The gRPC window is not the only memory bound.  ASP
+Server returns =asp-python-graphs-backpressure= when its bounded queue is full.
+Python uses an =asyncio.Semaphore= and bounded executor for CPU work.  Results
+are committed in request-ID order only where the caller requires ordering;
+independent requests may complete out of order.
+
+* Cancellation and shutdown
+
+ClientFrame cancellation propagates through ASP Server to the algorithm
+request.  ASP Server's terminal registry is the linearization authority:
+cancellation recorded before result commit wins, and a later Python receipt is
+discarded and counted as a late result.  Dropping a client stream cancels its
+owned outstanding requests.
+
+Shutdown closes admission, sends =shutdown=, drains accepted requests for the
+published deadline, cancels remaining work, closes the gRPC channel, joins the
+Tokio task group, and reaps the child.  Process exit is never inferred from a
+dropped sender alone.
+
+* Transport topology
+
+#+begin_src text
+language clients except Scheme
+  -> ASP Client Protocol gRPC/ClientFrame
+Scheme
+  -> ASP Client Protocol HTTP/JSON adapter
+both
+  -> one ASP Server frame owner and workspace-generation admission
+  -> one ASP Server graphs supervisor
+  -> private UDS gRPC stream carrying versioned JSON envelopes
+  -> asp-python-graphs grpc.aio service
+#+end_src
+
+The HTTP adapter and gRPC ClientFrame binding produce identical route, schema,
+generation, cancellation, and terminal semantics.  The Python service has no
+HTTP adapter because it is not a language client.
+
+* Proof and test obligations
+
+Red tests cover single-flight start, bounded saturation, slow consumer,
+concurrent generation publication, stale service epoch, cross-generation
+response, duplicate terminal, cancellation race, process crash, malformed JSON,
+malformed protobuf envelope, and shutdown drain.  Lean countermodels first show
+why the removed direct IPC/stdio/dual-authority designs permit cross-generation
+or late-result behavior; the corrected model proves generation closure,
+exactly-once terminal, cancellation safety, bounded-buffer safety, and monotone
+publication without axioms.

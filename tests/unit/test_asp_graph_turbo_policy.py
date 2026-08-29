@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from asp_graph_turbo import TypedGraph, rank_frontier
-from asp_graph_turbo.policy import edge_weight_for
+from asp_python_graphs import TypedGraph, rank_frontier
+from asp_python_graphs.policy import edge_weight_for
 
 
 def centrality_packet() -> dict[str, object]:

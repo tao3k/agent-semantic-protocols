@@ -147,6 +147,39 @@ fn plugin_launcher_types_missing_binary_instead_of_exiting_127() {
 
 #[cfg(unix)]
 #[test]
+fn plugin_launcher_types_missing_current_hook_binary_instead_of_exiting_127() {
+    let root = temp_root("launcher-missing-current-hook-binary");
+    let generation = root
+        .join("hooks/generations/blake3-256")
+        .join("b".repeat(64));
+    std::fs::create_dir_all(&generation).expect("create incomplete generation fixture");
+    std::os::unix::fs::symlink(&generation, root.join("hooks/current"))
+        .expect("publish incomplete HookGeneration current");
+    let launcher = root.join("asp-hook");
+    std::fs::write(&launcher, ASP_CODEX_PLUGIN_HOOK_LAUNCHER)
+        .expect("write isolated plugin launcher");
+
+    let output = std::process::Command::new("/bin/sh")
+        .arg(&launcher)
+        .args(["pre-tool", "--client", "codex", "--host-match", "Bash"])
+        .env("ASP_STATE_HOME", &root)
+        .env("HOME", root.join("missing-home"))
+        .env("PATH", "")
+        .output()
+        .expect("run plugin launcher without Hook binary");
+    assert_eq!(output.status.code(), Some(0));
+    let host_output: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("valid Codex failure envelope");
+    assert_eq!(
+        host_output["hookSpecificOutput"]["permissionDecision"],
+        "deny"
+    );
+    assert!(output.stderr.is_empty());
+    std::fs::remove_dir_all(root).expect("remove isolated launcher state");
+}
+
+#[cfg(unix)]
+#[test]
 fn plugin_launcher_executes_only_the_current_immutable_hook_generation() {
     use std::os::unix::fs::PermissionsExt;
 
@@ -154,10 +187,9 @@ fn plugin_launcher_executes_only_the_current_immutable_hook_generation() {
     let generation = root
         .join("hooks/generations/blake3-256")
         .join("a".repeat(64));
-    let runtime_dir = generation.join("bin");
-    std::fs::create_dir_all(&runtime_dir).expect("create immutable generation fixture");
+    std::fs::create_dir_all(&generation).expect("create immutable generation fixture");
     let invocation = root.join("invocation.txt");
-    let runtime = runtime_dir.join("asp");
+    let runtime = generation.join("asp-hook");
     std::fs::write(
         &runtime,
         format!(
@@ -249,9 +281,9 @@ fn plugin_launcher_never_falls_back_to_legacy_profile_slots() {
             "hookSpecificOutput": {
                 "hookEventName": "PreToolUse",
                 "permissionDecision": "deny",
-                "permissionDecisionReason": "ASP Hook evaluator is unavailable (HookGeneration current is missing or its evaluator is non-executable). Publish a verified ASP artifact with: asp install binary"
+                "permissionDecisionReason": "ASP Hook binary is unavailable (HookGeneration current is missing or its asp-hook is non-executable). Publish a verified ASP artifact with: asp install binary"
             },
-            "systemMessage": "ASP Hook evaluator is unavailable (HookGeneration current is missing or its evaluator is non-executable). Publish a verified ASP artifact with: asp install binary"
+            "systemMessage": "ASP Hook binary is unavailable (HookGeneration current is missing or its asp-hook is non-executable). Publish a verified ASP artifact with: asp install binary"
         })
     );
     assert!(!invocation.exists(), "legacy artifact must never execute");

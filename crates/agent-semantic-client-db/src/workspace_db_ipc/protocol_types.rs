@@ -396,10 +396,6 @@ pub enum WorkspaceDbIpcOperation {
     ReadRuntimeGenerationDurability {
         project_root: String,
     },
-    EvaluateGraphTurbo {
-        project_root: String,
-        message: serde_json::Value,
-    },
     AgentSessionRegistry {
         project_root: String,
         operation: AgentSessionRegistryIpcOperation,
@@ -603,11 +599,6 @@ pub enum WorkspaceDbIpcResult {
     },
     RuntimeGenerationMutationSubmission {
         receipt: crate::runtime_server_admission::WorkspaceGenerationMutationSubmissionReceipt,
-    },
-    GraphTurboEvaluation {
-        workspace_identity: String,
-        project_root: String,
-        receipt: serde_json::Value,
     },
     AgentSessionRegistry {
         result: AgentSessionRegistryIpcResult,

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ._asp_graph_turbo_common import TypedGraph, rank_frontier
+from ._asp_python_graphs_common import TypedGraph, rank_frontier
 
 
 def test_owner_query_reports_match_text_clause_coverage() -> None:

@@ -47,15 +47,24 @@
   "$defs": {
     "digest": { "type": "string", "pattern": "^(blake3-256|sha256):[0-9a-f]{64}$" },
     "schemaIdentifier": { "type": "string", "minLength": 1 },
+    "schemaReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaId", "schemaVersion"],
+      "properties": {
+        "schemaId": { "$ref": "#/$defs/schemaIdentifier" },
+        "schemaVersion": { "const": "1" }
+      }
+    },
     "method": {
       "type": "object",
       "additionalProperties": false,
       "required": [
         "method",
         "routeId",
-        "requestSchemaId",
-        "responseSchemaId",
-        "errorSchemaIds",
+        "requestSchema",
+        "responseSchema",
+        "errorSchemas",
         "parameters",
         "cancellable",
         "streaming"
@@ -63,11 +72,11 @@
       "properties": {
         "method": { "type": "string", "pattern": "^[a-z][a-z0-9-]*(\\.[a-z][a-z0-9-]*)+$" },
         "routeId": { "type": "string", "pattern": "^[a-z][a-z0-9-]*(\\.[a-z][a-z0-9-]*)+$" },
-        "requestSchemaId": { "$ref": "#/$defs/schemaIdentifier" },
-        "responseSchemaId": { "$ref": "#/$defs/schemaIdentifier" },
-        "errorSchemaIds": {
+        "requestSchema": { "$ref": "#/$defs/schemaReference" },
+        "responseSchema": { "$ref": "#/$defs/schemaReference" },
+        "errorSchemas": {
           "type": "array",
-          "items": { "$ref": "#/$defs/schemaIdentifier" }
+          "items": { "$ref": "#/$defs/schemaReference" }
         },
         "parameters": {
           "type": "array",

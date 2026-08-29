@@ -12,7 +12,7 @@ fn hook_generation_prepare_commit_publishes_bound_candidate() {
     let evaluator = fixture.evaluator("g1");
     let prepared = prepare(&fixture, &evaluator, b"g1").expect("prepare HookGeneration");
     assert_eq!(
-        prepared.receipt.evaluator_path.parent(),
+        prepared.receipt.hook_binary_path.parent(),
         prepared.receipt.generation_path.parent()
     );
     let publication =
@@ -20,9 +20,12 @@ fn hook_generation_prepare_commit_publishes_bound_candidate() {
     assert_eq!(publication.schema_version, 1);
     assert!(publication.current_path.is_symlink());
     assert_eq!(
-        std::fs::read_link(&publication.stable_evaluator_path()).expect("stable evaluator link"),
-        Path::new("../current/asp-hook-evaluator")
+        std::fs::read_link(&publication.current_path)
+            .expect("current HookGeneration target")
+            .parent(),
+        Some(Path::new("generations/blake3-256"))
     );
+    assert!(publication.generation.hook_binary_path.exists());
     assert_bound_lookup(fixture.state_home());
 }
 
@@ -32,8 +35,8 @@ fn candidate_validation_and_commit_failure_preserve_previous() {
     let first = fixture.evaluator("g1");
     let first = prepare(&fixture, &first, b"g1").expect("prepare first");
     commit_hook_generation(fixture.state_home(), &first).expect("commit first");
-    let previous = std::fs::read_link(fixture.state_home().join("hooks/current"))
-        .expect("previous current");
+    let previous =
+        std::fs::read_link(fixture.state_home().join("hooks/current")).expect("previous current");
 
     let rejected = fixture.evaluator("rejected");
     let rejected = prepare(&fixture, &rejected, b"rejected").expect("prepare rejected");
@@ -48,7 +51,9 @@ fn candidate_validation_and_commit_failure_preserve_previous() {
     let failed = fixture.evaluator("commit-failed");
     let failed = prepare(&fixture, &failed, b"commit-failed").expect("prepare failed commit");
     let hooks = fixture.state_home().join("hooks");
-    let mut permissions = std::fs::metadata(&hooks).expect("hooks metadata").permissions();
+    let mut permissions = std::fs::metadata(&hooks)
+        .expect("hooks metadata")
+        .permissions();
     permissions.set_mode(0o555);
     std::fs::set_permissions(&hooks, permissions.clone()).expect("freeze hooks root");
     let result = commit_hook_generation(fixture.state_home(), &failed);
@@ -78,16 +83,25 @@ fn concurrent_publication_and_lookup_never_cross_bind_generation() {
                 let prepared =
                     prepare(&fixture, &evaluator, label.as_bytes()).expect("prepare concurrent");
                 barrier.wait();
-                commit_hook_generation(fixture.state_home(), &prepared)
-                    .expect("commit concurrent");
+                let publication = commit_hook_generation(fixture.state_home(), &prepared);
+                if let Err(error) = &publication {
+                    assert!(
+                        error.contains("reasonKind=hook-generation-publication-conflict"),
+                        "unexpected publication failure: {error}"
+                    );
+                }
                 assert_bound_lookup(fixture.state_home());
+                publication.is_ok()
             })
         })
         .collect::<Vec<_>>();
     barrier.wait();
-    for reader in readers {
-        reader.join().expect("publication thread");
-    }
+    let committed = readers
+        .into_iter()
+        .map(|reader| reader.join().expect("publication thread"))
+        .filter(|committed| *committed)
+        .count();
+    assert!(committed > 0);
     assert_bound_lookup(fixture.state_home());
 }
 
@@ -103,8 +117,8 @@ fn ten_developer_installs_keep_current_and_one_previous() {
         assert!(receipt.retained_generation_count <= 2);
         assert_bound_lookup(fixture.state_home());
     }
-    let retained = std::fs::read_dir(fixture.state_home().join("hooks/candidates"))
-        .expect("candidates")
+    let retained = std::fs::read_dir(fixture.state_home().join("hooks/generations/blake3-256"))
+        .expect("Hook generations")
         .filter_map(Result::ok)
         .filter(|entry| entry.file_type().is_ok_and(|kind| kind.is_dir()))
         .count();
@@ -137,7 +151,7 @@ fn prepare(
     prepare_hook_generation(
         fixture.state_home(),
         HookGenerationCandidate {
-            evaluator_binary: evaluator,
+            hook_binary: evaluator,
             config: b"config",
             compiled_matcher: generation,
             registry: b"registry",
@@ -146,15 +160,16 @@ fn prepare(
 }
 
 fn assert_bound_lookup(state_home: &Path) {
-    let stable = state_home.join("hooks/bin/asp-hook-evaluator");
-    let evaluator = std::fs::canonicalize(&stable).expect("resolve stable evaluator");
-    let generation = evaluator
+    let current = state_home.join("hooks/current");
+    let hook_binary =
+        std::fs::canonicalize(current.join("asp-hook")).expect("resolve current Hook binary");
+    let generation = hook_binary
         .parent()
         .expect("candidate parent")
         .join("compiled-hook-generation.json");
-    let evaluator_label = std::fs::read_to_string(evaluator).expect("evaluator bytes");
+    let hook_binary_label = std::fs::read_to_string(hook_binary).expect("Hook binary bytes");
     let generation_label = std::fs::read_to_string(generation).expect("generation bytes");
-    assert!(evaluator_label.contains(&generation_label));
+    assert!(hook_binary_label.contains(&generation_label));
 }
 
 struct Fixture {
@@ -185,20 +200,5 @@ impl Fixture {
         permissions.set_mode(0o755);
         std::fs::set_permissions(&path, permissions).expect("executable");
         path
-    }
-}
-
-trait PublicationPaths {
-    fn stable_evaluator_path(&self) -> PathBuf;
-}
-
-impl PublicationPaths
-    for agent_semantic_artifacts::hook_generation::HookGenerationPublicationReceipt
-{
-    fn stable_evaluator_path(&self) -> PathBuf {
-        self.current_path
-            .parent()
-            .expect("hooks root")
-            .join("bin/asp-hook-evaluator")
     }
 }

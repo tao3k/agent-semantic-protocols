@@ -2,7 +2,7 @@
 
 use asp_rust_project_harness_policy::AspRustProjectHarnessScenarioPackage;
 
-pub const ASP_HOOK_SCENARIO_PACKAGE_NAME: &str = "asp-hook-v1";
+pub const ASP_HOOK_SCENARIO_PACKAGE_NAME: &str = "asp-hook";
 pub const GENERIC_WRAPPER_TESTING_ROLE_DISPATCH_SCENARIO_ID: &str =
     "generic-wrapper-testing-role-dispatch";
 pub const GIT_HISTORY_TESTING_DISPATCH_SCENARIO_ID: &str = "git-history-testing-dispatch";

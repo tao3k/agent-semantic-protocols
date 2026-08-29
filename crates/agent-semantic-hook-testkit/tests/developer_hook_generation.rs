@@ -19,7 +19,7 @@ fn launcher() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../asp-codex-plugin/bin/asp-hook")
 }
 
-fn evaluator(root: &Path, label: &str) -> PathBuf {
+fn hook_binary(root: &Path, label: &str) -> PathBuf {
     let path = root.join(format!("asp-{label}"));
     std::fs::write(
         &path,
@@ -27,12 +27,12 @@ fn evaluator(root: &Path, label: &str) -> PathBuf {
             "#!/bin/sh\nprintf '%s\\n' '{{\"generation\":\"{label}\",\"launcherGenerationRoot\":\"'\"$ASP_HOOK_GENERATION_ROOT\"'\"}}'\n"
         ),
     )
-    .expect("write evaluator");
+    .expect("write Hook binary");
     let mut permissions = std::fs::metadata(&path)
-        .expect("evaluator metadata")
+        .expect("Hook binary metadata")
         .permissions();
     permissions.set_mode(0o755);
-    std::fs::set_permissions(&path, permissions).expect("evaluator mode");
+    std::fs::set_permissions(&path, permissions).expect("Hook binary mode");
     path
 }
 
@@ -50,11 +50,11 @@ fn prepare_candidate(
     sources: &Path,
     label: &str,
 ) -> agent_semantic_artifacts::hook_generation::PreparedHookGeneration {
-    let evaluator = evaluator(sources, label);
+    let hook_binary = hook_binary(sources, label);
     prepare_hook_generation(
         state_home,
         HookGenerationCandidate {
-            evaluator_binary: &evaluator,
+            hook_binary: &hook_binary,
             config: format!("schemaVersion = 1\nlabel = \"{label}\"\n").as_bytes(),
             compiled_matcher: format!("matcher:{label}").as_bytes(),
             registry: format!("registry:{label}").as_bytes(),
@@ -123,11 +123,11 @@ async fn thirty_two_real_launcher_calls_crossing_switch_observe_only_old_or_new(
     let sources = temp.path().join("sources");
     std::fs::create_dir_all(&sources).expect("sources");
     publish(&state_home, &sources, "old");
-    let next_evaluator = evaluator(&sources, "new");
+    let next_hook_binary = hook_binary(&sources, "new");
     let next = prepare_hook_generation(
         &state_home,
         HookGenerationCandidate {
-            evaluator_binary: &next_evaluator,
+            hook_binary: &next_hook_binary,
             config: b"schemaVersion = 1\nlabel = \"new\"\n",
             compiled_matcher: b"matcher:new",
             registry: b"registry:new",
@@ -174,7 +174,7 @@ async fn mutable_config_source_edit_does_not_change_active_launcher_generation()
 }
 
 #[tokio::test]
-async fn inherited_layer_zero_escape_precedes_missing_generation_but_payload_assignment_does_not() {
+async fn inherited_escape_precedes_generation_and_the_fixture_launcher_does_not_parse_policy() {
     let _serial = DEVELOPER_LAUNCHER_TEST_SERIAL.lock().await;
     let temp = tempfile::tempdir().expect("temp state");
     let missing_state = temp.path().join("missing");
@@ -199,6 +199,8 @@ async fn inherited_layer_zero_escape_precedes_missing_generation_but_payload_ass
     let sources = temp.path().join("sources");
     std::fs::create_dir_all(&sources).expect("sources");
     publish(temp.path(), &sources, "ordinary-policy");
+    // This fixture binary only reports the generation it was launched from;
+    // command-local policy is covered by the real asp-hook process contract.
     let observed = invoke(
         temp.path(),
         json!({"tool_input": {"command": "ASP_NO_AGENT=1 cat source.rs"}}),
@@ -223,10 +225,7 @@ fn parse_compile_validate_and_publication_failures_preserve_previous_generation(
     let config_path = candidate_root.join("config.toml");
 
     std::fs::write(&config_path, "[").expect("invalid config source");
-    assert!(
-        agent_semantic_hook::compile_hook_matcher_generation(&config_path, &candidate_root)
-            .is_err()
-    );
+    assert!(agent_semantic_config::load_hook_client_config_file(&config_path).is_err());
     assert_current(&state_home, &previous_digest);
 
     let semantic_invalid = agent_semantic_config::default_hook_client_config_template().replacen(
@@ -235,10 +234,7 @@ fn parse_compile_validate_and_publication_failures_preserve_previous_generation(
         1,
     );
     std::fs::write(&config_path, semantic_invalid).expect("semantic-invalid config");
-    assert!(
-        agent_semantic_hook::compile_hook_matcher_generation(&config_path, &candidate_root)
-            .is_err()
-    );
+    assert!(agent_semantic_config::load_hook_client_config_file(&config_path).is_err());
     assert_current(&state_home, &previous_digest);
 
     std::fs::write(
@@ -246,12 +242,22 @@ fn parse_compile_validate_and_publication_failures_preserve_previous_generation(
         agent_semantic_config::default_hook_client_config_template(),
     )
     .expect("valid config");
-    let mut compiled =
-        agent_semantic_hook::compile_hook_matcher_generation(&config_path, &candidate_root)
-            .expect("compile candidate")
-            .bytes;
+    let canonical = agent_semantic_config::load_hook_client_config_file(&config_path)
+        .expect("load candidate config");
+    let mut compiled = agent_semantic_hook::aot_compiler::compile_aot_hook_generation(
+        &canonical,
+        "candidate-test",
+    )
+    .expect("compile candidate");
     compiled[0] ^= 0xff;
-    assert!(agent_semantic_hook::validate_compiled_hook_matcher(&compiled).is_err());
+    assert!(
+        agent_semantic_hook::aot_evaluator::evaluate_pre_tool(
+            std::str::from_utf8(&compiled).unwrap_or("not-json"),
+            r#"{"tool_name":"Bash","tool_input":{"command":"head src/lib.rs"}}"#,
+            "Bash",
+        )
+        .is_err()
+    );
     assert_current(&state_home, &previous_digest);
 
     let next = prepare_candidate(&state_home, &sources, "next");
@@ -263,7 +269,18 @@ fn parse_compile_validate_and_publication_failures_preserve_previous_generation(
         .open(lock_path)
         .expect("publication lock");
     lock.try_lock_exclusive().expect("hold publication lock");
-    assert!(commit_hook_generation(&state_home, &next).is_err());
+    let contention_started = std::time::Instant::now();
+    let contention = commit_hook_generation(&state_home, &next)
+        .expect_err("concurrent HookGeneration publication must fail closed");
+    assert!(
+        contention.contains("reasonKind=hook-generation-publication-conflict"),
+        "contention={contention}"
+    );
+    assert!(
+        contention_started.elapsed() < std::time::Duration::from_millis(25),
+        "HookGeneration publication contention must not block: elapsed={:?}",
+        contention_started.elapsed()
+    );
     FileExt::unlock(&lock).expect("release publication lock");
     assert_current(&state_home, &previous_digest);
 }

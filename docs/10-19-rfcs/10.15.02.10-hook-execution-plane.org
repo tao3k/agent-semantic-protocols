@@ -178,15 +178,17 @@ The planes are:
    process. Missing identity fails closed here; Runtime availability is not a
    prerequisite for a deny.
 
-An explicitly inherited =ASP_NO_AGENT=1= is the process-level emergency bypass
+An explicitly inherited =ASP_NO_AGENT=1= is the layer-zero emergency bypass
 for the Host Hook adapter.  For an actual Hook event, the bootstrap MUST return
 the empty Host success response before reading the action payload, loading
-matcher state, or evaluating policy. A command-payload assignment is not
-equivalent: it is ordinary data observed after the Host already launched the
-Hook process and MUST NOT bypass policy. Classifier orchestration and matcher
-configuration do not create a second recovery authority. Values other than the
-exact inherited process value =1= and similarly named variables MUST NOT
-bypass policy. This bypass does
+matcher state, or evaluating policy. The second recovery layer is the Codex
+Bash PreTool Rust process guard mirrored by its Config V1 rule: only
+parser-proven process transfer of
+the exact assignment through direct assignment, =env=, or =export; exec=
+terminates allow. It is universal across Hook policy and has no argv/language
+condition. Quoted or unbound payload text and non-=exec= export do not bypass.
+Values other than the exact value =1= and similarly named variables MUST NOT
+bypass policy. These bypasses do
 not change ASP command, Runtime Server, workspace-generation, provider, or
 schema semantics; callers MUST remove it when verifying the repaired normal
 path.

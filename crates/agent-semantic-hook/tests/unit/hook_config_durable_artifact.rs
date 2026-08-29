@@ -85,8 +85,8 @@ fn durable_hydration_rematerializes_declarative_actions_and_profiles() {
         .config
         .rules
         .iter_mut()
-        .find(|rule| rule.id == "route-unresolved-source-access-to-asp-languages")
-        .expect("declarative unresolved source-access rule");
+        .find(|rule| rule.id == "route-read-to-asp-languages")
+        .expect("declarative Reader action rule");
     declared.match_config.native_matcher_any.clear();
     declared.match_config.profile_any.clear();
     declared.match_config.profile_extension_any.clear();
@@ -96,21 +96,21 @@ fn durable_hydration_rematerializes_declarative_actions_and_profiles() {
     let rule = hydrated
         .rules
         .iter()
-        .find(|rule| rule.id == "route-unresolved-source-access-to-asp-languages")
-        .expect("hydrated unresolved source-access rule");
+        .find(|rule| rule.id == "route-read-to-asp-languages")
+        .expect("hydrated Reader action rule");
     let runtime = HookRuntime {
         policy_providers: hydrated.provider_projections.clone(),
         project_root: ".".to_owned(),
         rankers: Vec::new(),
         providers: Vec::new(),
     };
-    let action = ToolAction::normalized_shell_policy_action(
-        "opaque-source-consumer docs/plan.org".to_owned(),
-        "docs/plan.org".to_owned(),
+    let action = ToolAction::normalized_shell_command_action(
+        "opaque-source-consumer < docs/plan.org".to_owned(),
+        "Bash".to_owned(),
     );
 
     assert!(rule.matches_before_paths(&runtime, "codex", "pre-tool", &action, None));
-    assert!(rule.matches_after_paths(&runtime, &action.paths));
+    assert!(rule.matches_after_paths(&runtime, &["docs/plan.org".to_owned()]));
 }
 
 #[test]

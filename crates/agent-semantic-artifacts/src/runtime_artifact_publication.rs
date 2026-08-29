@@ -245,6 +245,39 @@ pub async fn commit_runtime_artifact_activation(
         .ok_or_else(|| "Runtime activation target has no artifact kind".to_owned())?;
     let slots = RuntimeArtifactSlotAuthority::for_artifact(&resident_root, artifact_kind);
     let guard = RuntimeArtifactMutationGuard::try_acquire(&artifact_root)?;
+    let derived_serving_digest = match slots.active_target().await? {
+        Some(active) => Some(runtime_artifact_candidate_digest(&active).await?),
+        None => None,
+    };
+    if event.previous_artifact_digest.as_ref() != derived_serving_digest.as_ref() {
+        return Err(format!(
+            "state=runtime-artifact-activation-failed reasonKind=serving-artifact-identity-mismatch expected={:?} observed={:?}",
+            event.previous_artifact_digest, derived_serving_digest
+        ));
+    }
+    if let Some(caller_digest) = serving_digest
+        && Some(caller_digest) != derived_serving_digest.as_ref()
+    {
+        return Err(format!(
+            "state=runtime-artifact-activation-failed reasonKind=serving-artifact-caller-drift expected={:?} observed={caller_digest}",
+            derived_serving_digest
+        ));
+    }
+    let event_artifact_digest = runtime_artifact_candidate_digest(&event.artifact_path).await?;
+    if event_artifact_digest != event.artifact_digest {
+        return Err(format!(
+            "state=runtime-artifact-activation-failed reasonKind=artifact-bytes-digest-mismatch expected={} observed={event_artifact_digest}",
+            event.artifact_digest
+        ));
+    }
+    let candidate_artifact = event.candidate_slot_path.join(artifact_kind);
+    let candidate_artifact_digest = runtime_artifact_candidate_digest(&candidate_artifact).await?;
+    if candidate_artifact_digest != event.artifact_digest {
+        return Err(format!(
+            "state=runtime-artifact-activation-failed reasonKind=candidate-slot-digest-mismatch expected={} observed={candidate_artifact_digest}",
+            event.artifact_digest
+        ));
+    }
     let pending_path = runtime_artifact_activation_event_path(state_home);
     let pending_bytes = std::fs::read(&pending_path).map_err(|error| {
         format!(
@@ -265,9 +298,7 @@ pub async fn commit_runtime_artifact_activation(
             event.activation_generation, current_pending.activation_generation
         ));
     }
-    slots
-        .commit_ready(&event.candidate_slot_path.join(artifact_kind))
-        .await?;
+    slots.commit_ready(&candidate_artifact).await?;
     publish_resident_runtime_alias(&event.candidate_identity.stable_path, &resident_root).await?;
     publish_applied_runtime_artifact_activation(state_home, event)?;
     drop(guard);
@@ -275,7 +306,7 @@ pub async fn commit_runtime_artifact_activation(
     slots.prune_unreachable_publications().await?;
     Ok(RuntimeArtifactActivationCommitReceipt {
         artifact_digest: event.artifact_digest.clone(),
-        previous_serving_digest: serving_digest.cloned(),
+        previous_serving_digest: derived_serving_digest,
         activation_generation: event.activation_generation,
         state: "applied".to_owned(),
     })

@@ -174,7 +174,7 @@ fn only_canonical_host_matchers_activate_native_policy_rules() {
         Scenario {
             name: "Bash command",
             payload: shell_surface("Bash", "command", command),
-            expected_rule: Some("route-unresolved-source-access-to-asp-languages"),
+            expected_rule: Some("route-read-to-asp-languages"),
             forbidden_rule: None,
         },
         Scenario {
@@ -244,32 +244,32 @@ fn only_canonical_host_matchers_activate_native_policy_rules() {
         Scenario {
             name: "TypeScript unresolved Bash source access",
             payload: shell("opaque-source-consumer src/app.ts"),
-            expected_rule: Some("route-unresolved-source-access-to-asp-languages"),
+            expected_rule: None,
             forbidden_rule: None,
         },
         Scenario {
             name: "Python unresolved Bash source access",
             payload: shell("opaque-source-consumer src/app.py"),
-            expected_rule: Some("route-unresolved-source-access-to-asp-languages"),
+            expected_rule: None,
             forbidden_rule: None,
         },
         Scenario {
             name: "Julia unresolved Bash source access",
             payload: shell("opaque-source-consumer src/app.jl"),
-            expected_rule: Some("route-unresolved-source-access-to-asp-languages"),
+            expected_rule: None,
             forbidden_rule: None,
         },
         Scenario {
             name: "Gerbil Scheme unresolved Bash source access",
             payload: shell("opaque-source-consumer src/app.ss"),
-            expected_rule: Some("route-unresolved-source-access-to-asp-languages"),
+            expected_rule: None,
             forbidden_rule: None,
         },
         Scenario {
             name: "JSON input redirection stays on structured projector route",
             payload: shell("opaque-source-consumer < package.json"),
             expected_rule: Some("route-shell-structured-document-read"),
-            forbidden_rule: Some("route-unresolved-source-access-to-asp-languages"),
+            forbidden_rule: Some("route-read-to-asp-languages"),
         },
         Scenario {
             name: "structured Grep",
@@ -323,7 +323,7 @@ fn functions_exec_code_parser_rejects_near_misses() {
             "tool_input": {"code": code},
         }),
         expected_rule: None,
-        forbidden_rule: Some("route-unresolved-source-access-to-asp-languages"),
+        forbidden_rule: Some("route-read-to-asp-languages"),
     });
     run_scenarios(TEST_NAME, &scenarios);
 }
@@ -340,17 +340,17 @@ fn priority_overlaps_have_explicit_winners() {
         (
             "action-first parser read over python profile",
             shell("unknown-consumer < src/app.py"),
-            "route-unresolved-source-access-to-asp-languages",
+            "route-read-to-asp-languages",
         ),
         (
             "parser read over typescript profile",
             shell("unknown-consumer < src/app.ts"),
-            "route-unresolved-source-access-to-asp-languages",
+            "route-read-to-asp-languages",
         ),
         (
             "parser read over rust profile",
             shell("unknown-consumer < src/lib.rs"),
-            "route-unresolved-source-access-to-asp-languages",
+            "route-read-to-asp-languages",
         ),
         (
             "repository history intent dominates embedded source read",

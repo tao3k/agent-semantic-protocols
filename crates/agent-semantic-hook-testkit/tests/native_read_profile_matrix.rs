@@ -39,7 +39,7 @@ fn shell_org_and_markdown_reads_fail_closed_through_registered_profiles() {
             "the physical Bash matcher owns the Host action"
         );
         assert_eq!(
-            decision["fields"]["configRuleId"], "route-unresolved-source-access-to-asp-languages",
+            decision["fields"]["configRuleId"], "route-read-to-asp-languages",
             "language={language_id}"
         );
         assert_eq!(decision["languageIds"][0], language_id);
@@ -47,7 +47,7 @@ fn shell_org_and_markdown_reads_fail_closed_through_registered_profiles() {
 }
 
 #[test]
-fn unresolved_registered_source_operands_fail_closed_without_fabricating_read_permission() {
+fn unresolved_registered_source_operands_remain_allow_without_fabricating_read_permission() {
     for (language_id, command) in [
         (
             "rust",
@@ -69,15 +69,12 @@ fn unresolved_registered_source_operands_fail_closed_without_fabricating_read_pe
             None,
         )
         .expect("classify an Execute action with an unproven source operand");
-        assert_eq!(decision["decision"], "deny", "language={language_id}");
+        assert_eq!(decision["decision"], "allow", "language={language_id}");
         assert_eq!(
             decision["fields"]["agentAction"]["hostInvocation"]["action"], "execute",
             "shell semantics must not rewrite the physical Bash Host action"
         );
-        assert_eq!(
-            decision["fields"]["configRuleId"],
-            "route-unresolved-source-access-to-asp-languages"
-        );
+        assert!(decision["fields"]["configRuleId"].is_null());
         assert_eq!(decision["languageIds"][0], language_id);
         assert!(
             decision["fields"]["agentAction"]["semanticCapabilities"]

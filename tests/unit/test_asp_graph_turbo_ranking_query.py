@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from asp_graph_turbo.cache import backend_fingerprint
-from asp_graph_turbo.profiles import resolve_profile
-from asp_graph_turbo.ranking_build import rank_fingerprint
+from asp_python_graphs.cache import backend_fingerprint
+from asp_python_graphs.profiles import resolve_profile
+from asp_python_graphs.ranking_build import rank_fingerprint
 
-from ._asp_graph_turbo_common import (
+from ._asp_python_graphs_common import (
     TypedGraph,
     rank_frontier,
     sample_packet,

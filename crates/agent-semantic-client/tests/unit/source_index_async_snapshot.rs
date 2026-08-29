@@ -85,7 +85,11 @@ async fn async_snapshot_reads_each_owner_once_and_preserves_canonical_order() {
             .iter()
             .map(|(path, _)| path.to_owned())
             .collect::<Vec<_>>(),
-        vec!["src/a.rs".to_owned(), "src/z.rs".to_owned()]
+        vec![
+            "Cargo.toml".to_owned(),
+            "src/a.rs".to_owned(),
+            "src/z.rs".to_owned(),
+        ]
     );
     tokio::fs::remove_dir_all(root)
         .await

@@ -1022,6 +1022,18 @@
       "reviewState": "accepted",
       "owner": "asp.schema-family.schema-manager",
       "rationale": "Semantic failure envelopes and agent document notes are independently owned concepts."
+    },
+    {
+      "fingerprint": "sha256:cdc2dcd81e732654fa694ca6c35927e035f59839a13122496ad8fd2c53646119",
+      "occurrenceSetDigest": "sha256:4ab6c39ad4c67fb9b0c3de112215ab8a0deb9ee1cc8035d7a3db6d9e7ed9d045",
+      "familyIds": [
+        "asp.schema-family.asp-client",
+        "asp.schema-family.provider"
+      ],
+      "decision": "extract-family-definition",
+      "reviewState": "accepted",
+      "owner": "asp.schema-family.schema-manager",
+      "rationale": "Structured SchemaReference is a shared manager-owned declaration used by client and provider contracts."
     }
   ]
 }

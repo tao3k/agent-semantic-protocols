@@ -516,8 +516,8 @@ pub(crate) fn runtime_source_index_provider_projection(
             .map(
                 |operation| agent_semantic_client_core::RuntimeProviderOperation {
                     operation: operation.operation,
-                    request_schema_id: operation.request_schema_id,
-                    response_schema_id: operation.response_schema_id,
+                    request_schema_id: operation.request_schema.schema_id,
+                    response_schema_id: operation.response_schema.schema_id,
                 },
             )
             .collect();

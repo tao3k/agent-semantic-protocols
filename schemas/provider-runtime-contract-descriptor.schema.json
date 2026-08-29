@@ -18,14 +18,14 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["operation", "requestSchemaId", "responseSchemaId"],
+        "required": ["operation", "requestSchema", "responseSchema"],
         "properties": {
           "operation": {
             "type": "string",
             "pattern": "^[a-z][a-z0-9-]*(\\.[a-z][a-z0-9-]*)*$"
           },
-          "requestSchemaId": { "type": "string", "minLength": 1 },
-          "responseSchemaId": { "type": "string", "minLength": 1 }
+          "requestSchema": { "$ref": "provider-definitions.v1.schema.json#/$defs/schemaReference" },
+          "responseSchema": { "$ref": "provider-definitions.v1.schema.json#/$defs/schemaReference" }
         }
       }
     }

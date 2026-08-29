@@ -4,6 +4,7 @@
 
 mod client_protocol;
 mod grpc;
+mod http;
 mod provider_project_resolution;
 
 pub use client_protocol::{
@@ -14,6 +15,7 @@ pub use grpc::{
     AspClientGrpcService, AspClientGrpcTransport, bind_asp_client_grpc_unix,
     serve_asp_client_grpc_unix,
 };
+pub use http::{ASP_CLIENT_HTTP_FRAME_PATH, serve_asp_client_http_json};
 
 pub use provider_project_resolution::provider_capabilities_permit_project_resolution;
 pub use provider_project_resolution::{

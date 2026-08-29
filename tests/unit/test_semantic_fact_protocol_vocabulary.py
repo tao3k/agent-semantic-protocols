@@ -11,10 +11,10 @@ from typing import Any
 
 
 _ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(_ROOT / "packages" / "python" / "asp_graph_turbo" / "src"))
+sys.path.insert(0, str(_ROOT / "packages" / "python" / "asp_python_graphs" / "src"))
 
-from asp_graph_turbo.profiles import DEFAULT_PROFILES  # noqa: E402
-from asp_graph_turbo.protocol_vocabulary import (  # noqa: E402
+from asp_python_graphs.profiles import DEFAULT_PROFILES  # noqa: E402
+from asp_python_graphs.protocol_vocabulary import (  # noqa: E402
     FACT_GRAPH_ONLY_RELATIONS,
     GRAPH_TURBO_INTERNAL_RELATIONS,
     ONTOLOGY_ONLY_RELATIONS,

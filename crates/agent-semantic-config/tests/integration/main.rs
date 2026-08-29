@@ -3,8 +3,8 @@ mod codex_plugin_config;
 
 #[path = "action_match_config.rs"]
 mod action_match_config;
-#[path = "default_registered_source_capability_rule.rs"]
-mod default_registered_source_capability_rule;
+#[path = "default_registered_source_action_rule.rs"]
+mod default_registered_source_action_rule;
 #[path = "profile_rule_dsl.rs"]
 mod profile_rule_dsl;
 #[path = "wrapper_match_contract.rs"]

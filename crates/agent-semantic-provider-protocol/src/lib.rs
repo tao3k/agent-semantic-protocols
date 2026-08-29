@@ -58,6 +58,7 @@ pub use route::{
     ProviderRouteEffects, ProviderRouteInputSlot, ProviderRouteInputSource, ProviderRouteOutput,
     ProviderRouteRequiredState, ProviderRouteRequirement, ProviderRouteSpec, ProviderRouteTarget,
     ProviderRouteTelemetry, ProviderRouteTelemetryPolicy, ProviderRouteValueType,
+    ProviderSchemaReference,
 };
 pub use syntax_query::{
     PROVIDER_SYNTAX_QUERY_OPERATION, PROVIDER_SYNTAX_QUERY_REQUEST_SCHEMA_ID,

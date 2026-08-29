@@ -52,8 +52,14 @@ fn runtime_source_index_projection_is_derived_from_live_register() {
                 },
                 "operations": [{
                     "operation": "projection-batch",
-                    "requestSchemaId": "agent.semantic-protocols.provider-language-projection-batch-request",
-                    "responseSchemaId": "agent.semantic-protocols.provider-language-projection-batch-response"
+                    "requestSchema": {
+                        "schemaId": "agent.semantic-protocols.provider-language-projection-batch-request",
+                        "schemaVersion": "1"
+                    },
+                    "responseSchema": {
+                        "schemaId": "agent.semantic-protocols.provider-language-projection-batch-response",
+                        "schemaVersion": "1"
+                    }
                 }]
             },
             "routes": [{
@@ -73,7 +79,10 @@ fn runtime_source_index_projection_is_derived_from_live_register() {
                     "streaming": false
                 },
                 "output": {
-                    "schemaId": "agent.semantic-protocols.search-packet",
+                    "schema": {
+                        "schemaId": "agent.semantic-protocols.search-packet",
+                        "schemaVersion": "1"
+                    },
                     "mediaType": "application/json"
                 },
                 "failureSchemaIds": ["agent.semantic-protocols.route-failure"],

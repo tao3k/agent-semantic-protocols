@@ -46,27 +46,6 @@ pub(crate) fn runtime_server_command() -> Command {
     ServerArgs::command()
 }
 
-pub(crate) async fn runtime_server_workspace_session_async(
-    project_root: &Path,
-) -> Result<agent_semantic_client_db::workspace_db_ipc::WorkspaceDbIpcSession, String> {
-    let (workspace_identity, canonical_project_root) =
-        runtime_server_query_workspace_scope(project_root)?;
-    let state_home = state_home()?;
-    let endpoint_path =
-        agent_semantic_client_db::runtime_server_control::runtime_server_endpoint_path_async(
-            &state_home,
-        )
-        .await?;
-    let endpoint = read_endpoint(&endpoint_path).await?;
-    Ok(
-        agent_semantic_client_db::workspace_db_ipc::WorkspaceDbIpcSession::for_runtime_server_client(
-            &endpoint,
-            workspace_identity,
-            canonical_project_root,
-        ),
-    )
-}
-
 pub(crate) async fn runtime_server_workspace_session_for_admission_async(
     project_root: &Path,
 ) -> Result<agent_semantic_client_db::workspace_db_ipc::WorkspaceDbIpcSession, String> {
@@ -79,23 +58,6 @@ pub(crate) async fn runtime_server_workspace_session_for_admission_async(
         project_root,
     )
     .await
-}
-
-pub(super) fn runtime_server_query_workspace_scope(
-    project_root: &Path,
-) -> Result<(String, PathBuf), String> {
-    if !project_root.is_absolute() {
-        return Err(format!(
-            "Runtime Server query root must already be canonical and absolute: {}",
-            project_root.display()
-        ));
-    }
-    let workspace_identity =
-        agent_semantic_client_db::AgentSessionRegistry::workspace_id(project_root)?;
-    // Query derives only the stable workspace key. The Runtime data plane is
-    // the sole authority for whether an immutable generation exists; catalog
-    // admission, bootstrap, repair, and retry remain lifecycle-only actions.
-    Ok((workspace_identity, project_root.to_path_buf()))
 }
 
 pub(crate) async fn run_runtime_server_command(args: &[String]) -> Result<(), String> {

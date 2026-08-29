@@ -92,7 +92,7 @@ pub(super) struct RuleMatch {
     argv_pattern_any: Vec<Vec<String>>,
     argv_prefix_any: Vec<Vec<String>>,
     argv_token_all: Vec<String>,
-    leading_environment_assignment_any: Vec<String>,
+    process_environment_assignment_any: Vec<String>,
     command_contains_any: CompiledCommandContains,
     path_any: Vec<String>,
     path_glob_any: CompiledPathGlobs,
@@ -311,7 +311,7 @@ impl RuleMatch {
             argv_pattern_any: config.argv_pattern_any,
             argv_prefix_any: config.argv_prefix_any,
             argv_token_all: config.argv_token_all,
-            leading_environment_assignment_any: config.leading_environment_assignment_any,
+            process_environment_assignment_any: config.process_environment_assignment_any,
             command_contains_any,
             path_any: config.path_any,
             path_glob_any,
@@ -375,11 +375,11 @@ impl RuleMatch {
         .ok_or(())
     }
 
-    fn matches_command(&self, facts: &crate::execute_rule_facts::ExecuteRuleFacts<'_>) -> bool {
+    fn matches_command(&self, facts: &crate::execute_rule_facts::ExecuteRuleFacts<'_, '_>) -> bool {
         if self.command_any.is_empty()
             && self.argv_prefix_any.is_empty()
             && self.argv_token_all.is_empty()
-            && self.leading_environment_assignment_any.is_empty()
+            && self.process_environment_assignment_any.is_empty()
             && self.command_contains_any.is_empty()
         {
             return true;
@@ -414,16 +414,15 @@ impl RuleMatch {
                     })
                 },
             );
-        let leading_environment_match = environment_assignment::matches(
-            command,
-            &self.leading_environment_assignment_any,
-            facts.leading_shell_stage(),
+        let process_environment_match = environment_assignment::matches(
+            facts.shell_envelope_command().unwrap_or(command),
+            &self.process_environment_assignment_any,
         );
         token_match
             && prefix_match
             && argv_token_match
             && contains_match
-            && leading_environment_match
+            && process_environment_match
     }
 
     fn matches_path(&self, paths: &[String]) -> bool {
@@ -554,6 +553,7 @@ impl CompiledHookRule {
         durable_matcher: Option<DurableRuleMatcherArtifact>,
         executable_capabilities: Option<&std::collections::BTreeSet<String>>,
     ) -> Result<Self, String> {
+        let declared_actions = config.actions.clone();
         let wrapper_match =
             if config.matcher_policies.iter().any(|policy| {
                 *policy == agent_semantic_config::HookClientMatcherPolicy::WrappedCommand
@@ -602,33 +602,16 @@ impl CompiledHookRule {
                 && referenced_semantic_capabilities.iter().all(|capability| {
                     *capability == agent_semantic_config::HookClientActionKind::Read
                 });
-            let semantic_capabilities_are_typed_source_access = !referenced_semantic_capabilities
-                .is_empty()
-                && referenced_semantic_capabilities.iter().all(|capability| {
-                    matches!(
-                        capability,
-                        agent_semantic_config::HookClientActionKind::Read
-                            | agent_semantic_config::HookClientActionKind::Unknown
-                    )
-                })
-                && referenced_semantic_capabilities
-                    .contains(&agent_semantic_config::HookClientActionKind::Unknown);
-            let unresolved_source_access_contract = semantic_capabilities_are_typed_source_access
-                || (config
-                    .match_config
-                    .native_matcher_any
+            let declared_actions_are_typed_read = !declared_actions.is_empty()
+                && declared_actions
                     .iter()
-                    .all(|matcher| matcher == "Bash")
-                    && config
-                        .match_config
-                        .host_invocation_any
-                        .contains(&agent_semantic_config::HookClientHostInvocationKind::Execute));
+                    .all(|action| *action == agent_semantic_config::HookClientActionKind::Read);
             if !native_matchers_are_read
                 && !semantic_capabilities_are_typed_read
-                && !unresolved_source_access_contract
+                && !declared_actions_are_typed_read
             {
                 return Err(format!(
-                    "rule `{}` expands registered source without an exact Read contract or Execute plus Unknown unresolved-source-access contract",
+                    "rule `{}` expands registered source without an exact Read action contract",
                     config.id
                 ));
             }
@@ -667,10 +650,18 @@ impl CompiledHookRule {
                 })
                 .collect::<Result<Vec<_>, String>>()
         };
-        let policy_all = resolve_capability_policies(
+        let mut policy_all = resolve_capability_policies(
             "capabilityPolicyAll",
             &mut raw_match_config.capability_policy_all,
         )?;
+        if !declared_actions.is_empty() {
+            policy_all.push(agent_semantic_config::HookClientCapabilityPolicyConfig {
+                id: format!("rule-action:{}", config.id),
+                host_invocation_any: Vec::new(),
+                semantic_capability_any: declared_actions,
+                subject_kind_any: Vec::new(),
+            });
+        }
         let policy_any = resolve_capability_policies(
             "capabilityPolicyAny",
             &mut raw_match_config.capability_policy_any,

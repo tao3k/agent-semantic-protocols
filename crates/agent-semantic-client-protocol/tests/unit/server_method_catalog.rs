@@ -1,4 +1,7 @@
-use crate::{ServerClientRoute, resolve_server_client_method, server_client_methods};
+use crate::{
+    ResolvedServerClientMethod, ServerClientRoute, resolve_server_client_method,
+    resolve_server_client_method_owner, server_client_methods,
+};
 
 #[test]
 fn server_catalog_exposes_northbound_search_query_and_schema_bundle_methods() {
@@ -10,6 +13,7 @@ fn server_catalog_exposes_northbound_search_query_and_schema_bundle_methods() {
     assert_eq!(
         names,
         [
+            "asp.graphs.evaluate",
             "asp.schema.bundle",
             "rust.query",
             "rust.search",
@@ -17,11 +21,66 @@ fn server_catalog_exposes_northbound_search_query_and_schema_bundle_methods() {
         ]
     );
     assert!(!names.contains(&"rust.projection-batch"));
-    assert!(methods.iter().all(|method| {
+    assert!(
+        methods
+            .iter()
+            .filter(|method| method.method != "asp.graphs.evaluate")
+            .all(|method| {
+                method
+                    .request_schema_id
+                    .starts_with("agent.semantic-protocols.asp-client-")
+            })
+    );
+}
+
+#[test]
+fn server_catalog_exposes_the_runtime_owned_graph_evaluation_method() {
+    let methods = server_client_methods(["rust".to_owned()]).expect("Rust method catalog");
+    let method = methods
+        .iter()
+        .find(|method| method.method == "asp.graphs.evaluate")
+        .expect("graph evaluation method");
+    assert_eq!(method.route_id, "asp.graphs.evaluate");
+    assert_eq!(
+        method.request_schema_id,
+        "agent.semantic-protocols.semantic-graph-turbo-request"
+    );
+    assert_eq!(
+        method.response_schema_id,
+        "agent.semantic-protocols.semantic-graph-turbo-result"
+    );
+    assert_eq!(
         method
-            .request_schema_id
-            .starts_with("agent.semantic-protocols.asp-client-")
-    }));
+            .parameters
+            .iter()
+            .map(|parameter| parameter.name.as_str())
+            .collect::<Vec<_>>(),
+        [
+            "schemaId",
+            "schemaVersion",
+            "protocolId",
+            "protocolVersion",
+            "packetKind",
+            "surface",
+            "sourceSnapshot",
+            "workspaceGeneration",
+            "queryTerms",
+            "profile",
+            "algorithm",
+            "seedIds",
+            "budget",
+            "graph",
+            "graphs"
+        ]
+    );
+    assert_eq!(
+        resolve_server_client_method_owner("asp.graphs.evaluate", ["rust".to_owned()]),
+        Ok(ResolvedServerClientMethod::Server(
+            ServerClientRoute::GraphsEvaluate
+        ))
+    );
+    assert!(method.cancellable);
+    assert!(!method.streaming);
 }
 
 #[test]

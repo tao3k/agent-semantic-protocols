@@ -16,8 +16,6 @@ typedef int (*probe_open_fn)(const char *, int, ...);
 typedef int (*probe_openat_fn)(int, const char *, int, ...);
 static probe_open_fn probe_original_open;
 static probe_openat_fn probe_original_openat;
-static probe_open_fn probe_original_open_nocancel;
-static probe_openat_fn probe_original_openat_nocancel;
 
 __attribute__((constructor)) static void initialize_probe(void) {
   probe_target = getenv("ASP_READER_PROBE_TARGET");
@@ -26,10 +24,6 @@ __attribute__((constructor)) static void initialize_probe(void) {
     probe_fd = atoi(fd);
   probe_original_open = (probe_open_fn)dlsym(RTLD_NEXT, "open");
   probe_original_openat = (probe_openat_fn)dlsym(RTLD_NEXT, "openat");
-  probe_original_open_nocancel =
-      (probe_open_fn)dlsym(RTLD_NEXT, "open$NOCANCEL");
-  probe_original_openat_nocancel =
-      (probe_openat_fn)dlsym(RTLD_NEXT, "openat$NOCANCEL");
 }
 
 static void report_target_open(const char *path, int flags) {
@@ -51,7 +45,7 @@ static int replacement_open(const char *path, int flags, ...) {
   va_end(args);
   report_target_open(path, flags);
   if (probe_original_open == NULL)
-    _exit(87);
+    return probe_target_open_nocancel(path, flags, mode);
   return probe_original_open(path, flags, mode);
 }
 
@@ -62,31 +56,8 @@ static int replacement_openat(int directory, const char *path, int flags, ...) {
   va_end(args);
   report_target_open(path, flags);
   if (probe_original_openat == NULL)
-    _exit(87);
+    return probe_target_openat_nocancel(directory, path, flags, mode);
   return probe_original_openat(directory, path, flags, mode);
-}
-
-static int replacement_open_nocancel(const char *path, int flags, ...) {
-  va_list args;
-  va_start(args, flags);
-  int mode = open_mode(flags, args);
-  va_end(args);
-  report_target_open(path, flags);
-  if (probe_original_open_nocancel == NULL)
-    _exit(87);
-  return probe_original_open_nocancel(path, flags, mode);
-}
-
-static int replacement_openat_nocancel(int directory, const char *path,
-                                       int flags, ...) {
-  va_list args;
-  va_start(args, flags);
-  int mode = open_mode(flags, args);
-  va_end(args);
-  report_target_open(path, flags);
-  if (probe_original_openat_nocancel == NULL)
-    _exit(87);
-  return probe_original_openat_nocancel(directory, path, flags, mode);
 }
 
 #define DYLD_INTERPOSE(replacement, replacee)                                  \
@@ -100,5 +71,3 @@ static int replacement_openat_nocancel(int directory, const char *path,
 
 DYLD_INTERPOSE(replacement_open, open)
 DYLD_INTERPOSE(replacement_openat, openat)
-DYLD_INTERPOSE(replacement_open_nocancel, probe_target_open_nocancel)
-DYLD_INTERPOSE(replacement_openat_nocancel, probe_target_openat_nocancel)

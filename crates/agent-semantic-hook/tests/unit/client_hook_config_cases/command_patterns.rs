@@ -1,6 +1,7 @@
 use super::common::{
     ClientHookConfig, DecisionKind, Duration, HookClassificationRequest, Instant,
-    classify_hook_with_config, fs, json, load_client_config, registry, temp_root,
+    bind_confirmed_reader, classify_hook_with_config, fs, json, load_client_config, registry,
+    temp_root,
 };
 
 #[test]
@@ -74,8 +75,8 @@ fn repository_git_history_command_set_routes_only_history_inspection_to_testing(
 }
 
 #[test]
-fn terminal_allow_rule_uses_parser_owned_leading_environment_assignment() {
-    let root = temp_root("leading-environment-assignment");
+fn terminal_allow_rule_uses_parser_owned_process_environment_assignment() {
+    let root = temp_root("process-environment-assignment");
     let config_path = root.join("config.toml");
     fs::write(
         &config_path,
@@ -93,7 +94,7 @@ decision = "allow"
 terminal = true
 
 [rules.match]
-leadingEnvironmentAssignmentAny = ["CI_MODE=1"]
+processEnvironmentAssignmentAny = ["CI_MODE=1"]
 
 [[rules]]
 id = "deny-shell-fallback"
@@ -108,7 +109,12 @@ toolAny = ["Bash", "functions.exec_command"]
     let config = load_client_config(&config_path).expect("load client config");
     let runtime = crate::classifier::registry_without_providers();
 
-    for command in ["CI_MODE=1 cargo test", "TRACE=1 CI_MODE=1 cargo test"] {
+    for command in [
+        "CI_MODE=1 cargo test",
+        "TRACE=1 CI_MODE=1 cargo test",
+        "env CI_MODE=1 cargo test",
+        "export CI_MODE=1; exec cargo test",
+    ] {
         let decision = classify_hook_with_config(HookClassificationRequest {
             registry: &runtime,
             config: &config,
@@ -131,9 +137,9 @@ toolAny = ["Bash", "functions.exec_command"]
 
     for command in [
         "NOT_CI_MODE=1 cargo test",
-        "env CI_MODE=1 cargo test",
         "printf warmup && CI_MODE=1 cargo test",
         "bash -lc 'CI_MODE=1 cargo test'",
+        "export CI_MODE=1; cargo test",
     ] {
         let decision = classify_hook_with_config(HookClassificationRequest {
             registry: &runtime,
@@ -335,15 +341,16 @@ argvPrefixAny = [[]]
 }
 
 #[test]
-fn bash_unknown_source_access_projects_explore_choice_plane_guidance() {
+fn bash_confirmed_reader_projects_explore_choice_plane_guidance() {
     let config = ClientHookConfig::default();
     let registry = registry();
     let mut payload = json!({
         "tool_name": "Bash",
-        "tool_input": {"command": "opaque-source-consumer src/app.ts"}
+        "tool_input": {"command": "head src/app.ts"}
     });
     agent_semantic_hook::bind_plugin_host_matcher(&mut payload, Some("Bash"), None)
         .expect("bind canonical Bash matcher");
+    bind_confirmed_reader(&mut payload, "src/app.ts");
     let decision = classify_hook_with_config(HookClassificationRequest {
         registry: &registry,
         config: &config,
@@ -358,7 +365,7 @@ fn bash_unknown_source_access_projects_explore_choice_plane_guidance() {
             .fields
             .get("configRuleId")
             .and_then(serde_json::Value::as_str),
-        Some("route-unresolved-source-access-to-asp-languages")
+        Some("route-read-to-asp-languages")
     );
     assert_eq!(
         decision
@@ -398,10 +405,7 @@ fn bash_unknown_source_access_projects_explore_choice_plane_guidance() {
             "Hook must not materialize Runtime lifecycle state through {forbidden}"
         );
     }
-    assert_eq!(
-        decision.subject.command.as_deref(),
-        Some("opaque-source-consumer src/app.ts")
-    );
+    assert_eq!(decision.subject.command.as_deref(), Some("head src/app.ts"));
     let decision_json = serde_json::to_value(&decision).expect("serialize hook decision");
     assert!(
         decision_json.get("interactiveCommand").is_none(),
@@ -415,8 +419,7 @@ fn bash_unknown_source_access_projects_explore_choice_plane_guidance() {
         decision_json["fields"]["agentAction"]["semanticCapabilities"]
             .as_array()
             .is_some_and(|capabilities| capabilities.iter().any(|capability| {
-                capability["action"] == "unknown"
-                    && capability["evidence"] == "registered-source-operand"
+                capability["action"] == "read" && capability["evidence"] == "reader-probe"
             }))
     );
     let decision_schema: serde_json::Value = serde_json::from_str(include_str!(
@@ -475,10 +478,11 @@ fn claude_platform_uses_configured_native_agent_symbol() {
     let runtime = registry();
     let mut payload = json!({
         "tool_name": "Bash",
-        "tool_input": {"command": "opaque-source-consumer src/app.ts"}
+        "tool_input": {"command": "head src/app.ts"}
     });
     agent_semantic_hook::bind_plugin_host_matcher(&mut payload, Some("Bash"), None)
         .expect("bind canonical Bash matcher");
+    bind_confirmed_reader(&mut payload, "src/app.ts");
     let decision = classify_hook_with_config(HookClassificationRequest {
         registry: &runtime,
         config: &config,
@@ -501,15 +505,15 @@ fn configurable_hook_default_rule_classification_stays_fast() {
     let payloads = [
         json!({
             "tool_name": "Bash",
-            "tool_input": {"command": "opaque-source-consumer src/cli/agent-hooks.ts"}
+            "tool_input": {"command": "head src/cli/agent-hooks.ts"}
         }),
         json!({
             "tool_name": "Bash",
-            "tool_input": {"command": "opaque-source-consumer src/cli/agent-hooks.ts"}
+            "tool_input": {"command": "head src/cli/agent-hooks.ts"}
         }),
         json!({
             "tool_name": "Bash",
-            "tool_input": {"command": "opaque-source-consumer README.md"}
+            "tool_input": {"command": "head README.md"}
         }),
         json!({
             "tool_name": "Bash",
@@ -519,6 +523,14 @@ fn configurable_hook_default_rule_classification_stays_fast() {
     .map(|mut payload| {
         agent_semantic_hook::bind_plugin_host_matcher(&mut payload, Some("Bash"), None)
             .expect("bind canonical Bash matcher");
+        if let Some(subject) = payload["tool_input"]["command"]
+            .as_str()
+            .filter(|command| command.starts_with("head "))
+            .and_then(|command| command.split_whitespace().last())
+            .map(str::to_owned)
+        {
+            bind_confirmed_reader(&mut payload, &subject);
+        }
         payload
     });
     // Keep the total decision count high while using short samples so unrelated

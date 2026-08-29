@@ -8,6 +8,7 @@ pub use agent_semantic_provider_protocol::{
     PROVIDER_SYNTAX_QUERY_REQUEST_SCHEMA_ID, PROVIDER_SYNTAX_QUERY_RESPONSE_SCHEMA_ID,
     ProviderRegisterOperation, ProviderRegisterRequest, ProviderRegisterResponse,
     ProviderRegisterResult, ProviderRegisterSnapshot, ProviderRegistrationDocument,
+    ProviderSchemaReference,
     ProviderSyntaxQueryCapture, ProviderSyntaxQueryRequest, ProviderSyntaxQueryResponse,
     SyntaxQueryPattern, SyntaxQueryPlan, SyntaxQueryPredicate, SyntaxQueryPredicateOp,
     SyntaxQueryPredicateValue,

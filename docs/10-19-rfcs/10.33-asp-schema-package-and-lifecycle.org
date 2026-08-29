@@ -15,6 +15,15 @@ provider, or retained by an explicit lifecycle decision.
 
 * Decision
 
+Schema Manager publication has one version-one public receipt identity:
+=schemaId=, =schemaVersion=, and =schemaDigest=.  The digest is the
+content-addressed digest of the deterministically ordered managed schema
+entries.  Language, profile, and membership details remain manager-owned
+verification material and are not protocol fields in the public receipt.
+Consumers MUST reject legacy string references and receipts carrying
+additional fields; a =schemaReference= is always the structured pair
+={schemaId,schemaVersion}=.
+
 The =asp-schema-manager= Python package owns deterministic, read-only schema analysis.
 It MUST:
 

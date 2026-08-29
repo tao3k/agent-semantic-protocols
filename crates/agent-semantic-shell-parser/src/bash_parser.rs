@@ -41,6 +41,9 @@ pub(crate) fn bash_ast_tokens(command: &str) -> Option<Vec<String>> {
     parser.set_language(&language).ok()?;
     let tree = parser.parse(command, None)?;
     let root = tree.root_node();
+    if std::env::var_os("ASP_TRACE_SHELL_PARSER").is_some() {
+        eprintln!("[shell-parser-ast] {}", root.to_sexp());
+    }
     if root.has_error() && !parse_errors_are_supported_redirections(root, command.as_bytes(), None)
     {
         return None;
@@ -221,6 +224,12 @@ fn collect_bash_tokens(node: tree_sitter::Node<'_>, source: &[u8], tokens: &mut 
         tokens.extend(command_tokens);
         return;
     }
+    if node.kind() == "declaration_command" {
+        let mut command_tokens = Vec::new();
+        collect_declaration_command_words(node, source, &mut command_tokens);
+        tokens.extend(command_tokens);
+        return;
+    }
     if node.child_count() == 0 {
         let Some(text) = node_text(node, source) else {
             return;
@@ -233,6 +242,26 @@ fn collect_bash_tokens(node: tree_sitter::Node<'_>, source: &[u8], tokens: &mut 
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         collect_bash_tokens(child, source, tokens);
+    }
+}
+
+fn collect_declaration_command_words(
+    node: tree_sitter::Node<'_>,
+    source: &[u8],
+    tokens: &mut Vec<String>,
+) {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if matches!(
+            child.kind(),
+            "declare" | "export" | "local" | "readonly" | "typeset"
+        ) {
+            if let Some(text) = node_text(child, source) {
+                tokens.push(text);
+            }
+        } else {
+            collect_command_words(child, source, tokens);
+        }
     }
 }
 

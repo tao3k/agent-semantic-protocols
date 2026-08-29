@@ -1,21 +1,25 @@
-//! Codex plugin installation path for `asp install plugin --codex`.
+//! Global Codex plugin status and explicit publication for `asp install plugin`.
 
 use std::env;
 use std::fs;
+#[cfg(test)]
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+#[cfg(test)]
 use std::sync::atomic::{AtomicU64, Ordering};
 
 const ASP_CODEX_PLUGIN_NAME: &str = "asp-codex-plugin";
 const ASP_CODEX_PLUGIN_MARKETPLACE_NAME: &str = "asp-project";
-#[path = "hook_runtime_codex_plugin_authority.rs"]
+#[cfg(test)]
+#[path = "../../tests/unit/hook_runtime_codex_plugin_authority.rs"]
 mod authority;
 #[cfg(test)]
 pub(in crate::command) use authority::{
     ASP_CODEX_PLUGIN_HOOK_LAUNCHER, ASP_CODEX_PLUGIN_HOOKS_JSON, ASP_CODEX_PLUGIN_MANIFEST_JSON,
     ASP_CODEX_PLUGIN_MARKETPLACE_JSON,
 };
+#[cfg(test)]
 pub(in crate::command) use authority::{
     remove_codex_managed_global_hook_config, validate_codex_plugin_source_payload,
 };
@@ -23,21 +27,20 @@ pub(in crate::command) use authority::{
 #[cfg(test)]
 #[path = "../../tests/unit/plugin_hook_authority.rs"]
 mod plugin_hook_authority_tests;
+#[cfg(test)]
 static CODEX_CONFIG_PUBLISH_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
+#[cfg(test)]
 #[derive(Debug)]
 pub(super) struct CodexHookConfigInstallReceipt {
     pub(super) changed: bool,
-    pub(super) digest: String,
 }
-
-#[path = "hook_runtime_codex_plugin_path.rs"]
-mod plugin_path;
 
 #[path = "hook_runtime_codex_plugin_install.rs"]
 mod install;
-pub(super) use install::install_codex_plugin_hooks;
+pub(super) use install::{inspect_codex_plugin_publication, publish_codex_plugin_payload};
 
+#[cfg(test)]
 fn write_codex_config_atomically(path: &Path, bytes: &[u8]) -> Result<bool, String> {
     if path.is_file() {
         let existing = fs::read(path)
@@ -103,15 +106,6 @@ fn is_codex_plugin_source_root(root: &Path) -> bool {
         .join(".codex-plugin")
         .join("plugin.json")
         .is_file()
-}
-
-fn display_codex_plugin_source_root(project_root: &Path, plugin_source_root: &Path) -> String {
-    let display = super::display_path(project_root, plugin_source_root);
-    if display.is_empty() {
-        ".".to_string()
-    } else {
-        display
-    }
 }
 
 fn ensure_codex_plugin_marketplace_registered(

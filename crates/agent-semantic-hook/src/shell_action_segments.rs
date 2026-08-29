@@ -24,11 +24,11 @@ pub(super) fn split_shell_command(
         .iter()
         .flat_map(agent_semantic_shell_parser::command_stage_behavior_facts)
         .any(|fact| fact.subject.is_some());
+    let shell_envelope_command = command.to_owned();
     Some(
         stages
             .into_iter()
-            .enumerate()
-            .map(|(index, stage)| {
+            .map(|stage| {
                 let command_tokens = stage.words().to_vec();
                 let command = agent_semantic_shell_parser::render_bash_command_stage(&stage);
                 let mut paths = agent_semantic_shell_parser::command_stage_source_paths(&stage);
@@ -46,7 +46,7 @@ pub(super) fn split_shell_command(
                     operation: OperationIntent::ShellCommand,
                     command: Some(command),
                     command_tokens: Some(command_tokens),
-                    leading_shell_stage: index == 0,
+                    shell_envelope_command: Some(shell_envelope_command.clone()),
                     paths,
                     has_declared_filesystem_access,
                 }

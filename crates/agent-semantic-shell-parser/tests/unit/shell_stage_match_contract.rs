@@ -1,29 +1,34 @@
 use agent_semantic_shell_parser::{
     MAX_COMMAND_CANDIDATES, PrefixMatch, bash::parse_bash_command_candidates,
-    command_stages_match_leading_environment_assignment, command_stages_match_wrapped_prefix,
+    command_stages_match_process_environment_assignment, command_stages_match_wrapped_prefix,
 };
 
 #[test]
-fn leading_environment_assignment_is_parser_owned_and_stage_bounded() {
+fn process_environment_assignment_is_parser_owned_and_stage_bounded() {
     let expected = vec!["BUILD_MODE=ci".to_owned()];
     for command in [
         "BUILD_MODE=ci cargo test",
         "TRACE=1 BUILD_MODE=ci cargo test",
-    ] {
-        let stages = parse_bash_command_candidates(command).expect("valid Bash command");
-        assert!(command_stages_match_leading_environment_assignment(
-            &stages, &expected
-        ));
-    }
-    for command in [
-        "NOT_BUILD_MODE=ci cargo test",
         "env BUILD_MODE=ci cargo test",
-        "printf warmup && BUILD_MODE=ci cargo test",
-        "bash -lc 'BUILD_MODE=ci cargo test'",
+        "/usr/bin/env BUILD_MODE=ci cargo test",
+        "export BUILD_MODE=ci; exec cargo test",
     ] {
         let stages = parse_bash_command_candidates(command).expect("valid Bash command");
         assert!(
-            !command_stages_match_leading_environment_assignment(&stages, &expected),
+            command_stages_match_process_environment_assignment(&stages, &expected),
+            "command={command:?} stages={stages:?}"
+        );
+    }
+    for command in [
+        "NOT_BUILD_MODE=ci cargo test",
+        "printf warmup && BUILD_MODE=ci cargo test",
+        "bash -lc 'BUILD_MODE=ci cargo test'",
+        "export BUILD_MODE=ci; cargo test",
+        "export BUILD_MODE=ci; printf warmup; exec cargo test",
+    ] {
+        let stages = parse_bash_command_candidates(command).expect("valid Bash command");
+        assert!(
+            !command_stages_match_process_environment_assignment(&stages, &expected),
             "{command}"
         );
     }

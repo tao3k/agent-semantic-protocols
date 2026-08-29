@@ -26,8 +26,10 @@ pub use schema_bundle::{
 };
 pub use server_method_catalog::{
     CANCELLATION_PROBE_METHOD, CANCELLATION_PROBE_REQUEST_SCHEMA_ID,
-    CANCELLATION_PROBE_RESPONSE_SCHEMA_ID, ServerClientRoute, resolve_server_client_method,
-    server_client_catalog, server_client_methods,
+    CANCELLATION_PROBE_RESPONSE_SCHEMA_ID, GRAPH_EVALUATE_METHOD, GRAPH_EVALUATE_REQUEST_SCHEMA_ID,
+    GRAPH_EVALUATE_RESPONSE_SCHEMA_ID, ResolvedServerClientMethod, ServerClientRoute,
+    resolve_server_client_method, resolve_server_client_method_owner, server_client_catalog,
+    server_client_methods,
 };
 
 pub const CLIENT_PROTOCOL_ID: &str = "agent.semantic-protocols.client";

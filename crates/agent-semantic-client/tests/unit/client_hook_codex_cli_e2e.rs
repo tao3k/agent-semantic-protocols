@@ -83,7 +83,7 @@ fn install_plugin_command(root: &Path, test_path: &std::ffi::OsStr, codex_home: 
         .current_dir(root)
         .env("PATH", test_path)
         .env("CODEX_HOME", codex_home)
-        .args(["install", "plugin", "--codex", "."]);
+        .args(["install", "plugin", "publish", "--codex", "."]);
     command
 }
 

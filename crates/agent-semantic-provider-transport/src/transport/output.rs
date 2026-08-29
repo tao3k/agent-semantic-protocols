@@ -149,6 +149,11 @@ pub(super) async fn collect_provider_output(
     // Provider invocations are not resident. Once the leader exits, any
     // remaining descendant belongs to this invocation and must be terminated
     // before inherited output pipes can keep collection alive indefinitely.
+    // Give a just-exited shell leader one scheduler turn to publish any
+    // background child into the inherited process group before probing and
+    // killing it. Without this handoff, concurrent invocations can race the
+    // fork and report a clean group while the descendant survives.
+    tokio::task::yield_now().await;
     let descendant_cleanup_required = kill_provider_process_group(child.process_group_id);
     if descendant_cleanup_required {
         warn!(

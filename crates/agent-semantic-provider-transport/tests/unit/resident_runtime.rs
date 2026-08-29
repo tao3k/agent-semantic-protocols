@@ -20,10 +20,14 @@ fn receipt() -> ProviderRuntimeContractReceipt {
         ProviderRuntimeContractTransport::RuntimeIpc,
         vec![ProviderRuntimeContractOperation {
             operation: "provider-search".to_owned(),
-            request_schema_id: "agent.semantic-protocols.runtime-provider-search-request"
-                .to_owned(),
-            response_schema_id: "agent.semantic-protocols.runtime-provider-search-receipt"
-                .to_owned(),
+            request_schema: agent_semantic_provider_protocol::ProviderSchemaReference {
+                schema_id: "agent.semantic-protocols.runtime-provider-search-request".to_owned(),
+                schema_version: "1".to_owned(),
+            },
+            response_schema: agent_semantic_provider_protocol::ProviderSchemaReference {
+                schema_id: "agent.semantic-protocols.runtime-provider-search-receipt".to_owned(),
+                schema_version: "1".to_owned(),
+            },
         }],
     )
     .expect("runtime contract receipt")

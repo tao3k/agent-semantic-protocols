@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import pytest
-from asp_graph_turbo import render_compact
+from asp_python_graphs import render_compact
 
 from ._common import (
     _GRAPH_TURBO_REQUEST_SCHEMA,

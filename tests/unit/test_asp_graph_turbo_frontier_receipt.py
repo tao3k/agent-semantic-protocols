@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unit._asp_graph_turbo_common import (
+from unit._asp_python_graphs_common import (
     Path,
     TypedGraph,
     json,
@@ -13,7 +13,7 @@ from unit._asp_graph_turbo_common import (
     sys,
 )
 
-from asp_graph_turbo.frontier_receipt import (
+from asp_python_graphs.frontier_receipt import (
     FrontierCodeRead,
     FrontierTestCommand,
     FrontierTestResult,
@@ -58,7 +58,7 @@ def test_frontier_receipt_cli_emits_schema_valid_receipt() -> None:
     command = [
         sys.executable,
         "-m",
-        "asp_graph_turbo.graph_turbo_cli",
+        "asp_python_graphs.graph_turbo_cli",
         "receipt",
         "--receipt-id",
         "test.frontier-receipt-cli",

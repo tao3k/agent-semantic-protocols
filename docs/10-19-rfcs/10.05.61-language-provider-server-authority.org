@@ -51,8 +51,8 @@ required by native Scenario and Live Corpus qualification.
 
 The Runtime-published loopback HTTP endpoint is the single client authority.
 Each client performs =Initialize -> catalog -> Request -> Cancel/Cancelled ->
-Shutdown= over =POST /protocol/frame=.  The immutable catalog uses unversioned
-=schemaId= values with =schemaVersion= "1".  Canonical provider routes are
+Shutdown= over =POST /protocol/frame=.  The immutable catalog uses structured
+=schemaId= and =schemaVersion= "1" references.  Canonical provider routes are
 =<language>.search=, =<language>.query=, and =<language>.search.owner=; their
 request and response schema IDs are respectively the runtime search,
 provider-native exact, and provider-native owner contracts.  The Runtime Server

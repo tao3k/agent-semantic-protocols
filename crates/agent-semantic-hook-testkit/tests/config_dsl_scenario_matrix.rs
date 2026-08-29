@@ -152,6 +152,158 @@ fn assert_declared_winner(decision: &Value, rule: &toml::Value, case: &str) {
 }
 
 #[test]
+fn canonical_config_document_sections_are_owned_by_testkit_and_aot_projection() {
+    let config = agent_semantic_config::default_hook_client_config_file()
+        .expect("load canonical Hook Config V1");
+    assert_eq!(
+        config.schema_id.as_deref(),
+        Some(agent_semantic_config::CLIENT_HOOK_CONFIG_SCHEMA_ID)
+    );
+    assert_eq!(
+        config.schema_version.as_deref(),
+        Some(agent_semantic_config::CLIENT_HOOK_CONFIG_SCHEMA_VERSION)
+    );
+    assert_eq!(
+        config.contract_fingerprint.as_deref(),
+        Some(agent_semantic_config::hook_client_contract_fingerprint().as_str())
+    );
+    assert_eq!(
+        config.agent_calling.symbol("codex", "asp_testing"),
+        "@asp_testing"
+    );
+    assert_eq!(
+        config.agent_calling.symbol("claude", "asp_testing"),
+        "@agent-asp-testing"
+    );
+
+    let expected_readers = ["cat", "head", "tail", "bat", "grep", "rg", "sed"]
+        .into_iter()
+        .map(str::to_owned)
+        .collect::<BTreeSet<_>>();
+    assert_eq!(
+        config
+            .reader_behavior_patterns
+            .iter()
+            .filter_map(|pattern| pattern.first().cloned())
+            .collect::<BTreeSet<_>>(),
+        expected_readers
+    );
+
+    let expected_profiles = [
+        ("rust", "rust", "asp-rust", ["rs", "rsx"].as_slice()),
+        (
+            "typescript",
+            "typescript",
+            "asp-typescript",
+            ["ts", "tsx", "js", "jsx", "mts", "cts", "mjs", "cjs"].as_slice(),
+        ),
+        ("python", "python", "asp-python", ["py", "pyi"].as_slice()),
+        ("julia", "julia", "asp-julia", ["jl"].as_slice()),
+        (
+            "gerbil-scheme",
+            "gerbil-scheme",
+            "asp-gerbil-scheme",
+            ["ss", "ssi", "scm", "sld"].as_slice(),
+        ),
+        ("org", "org", "asp-org", ["org"].as_slice()),
+        ("markdown", "md", "asp-md", ["md", "markdown"].as_slice()),
+    ];
+    assert_eq!(config.profiles.len(), expected_profiles.len());
+    for (name, language, provider, extensions) in expected_profiles {
+        let profile = config
+            .profiles
+            .get(name)
+            .unwrap_or_else(|| panic!("missing canonical profile {name}"));
+        assert_eq!(profile.language_id, language, "profile={name}");
+        assert_eq!(profile.provider_id, provider, "profile={name}");
+        assert_eq!(profile.extension_any, extensions, "profile={name}");
+        assert!(!profile.source_root_any.is_empty(), "profile={name}");
+    }
+
+    assert_eq!(
+        config
+            .command_profiles
+            .iter()
+            .map(|profile| profile.id.as_str())
+            .collect::<BTreeSet<_>>(),
+        [
+            "rust-cargo",
+            "typescript-node",
+            "python-uv",
+            "julia-pkg",
+            "c-cmake",
+            "gerbil-gxpkg",
+            "gerbil-gxi",
+            "lean-lake",
+        ]
+        .into_iter()
+        .collect()
+    );
+    let command_set = config.command_sets.as_slice();
+    assert_eq!(command_set.len(), 1);
+    assert_eq!(command_set[0].id, "git-history-inspection");
+    assert!(
+        command_set[0]
+            .argv_prefix_any
+            .contains(&vec!["git".into(), "log".into()])
+    );
+    assert!(
+        command_set[0]
+            .argv_prefix_any
+            .contains(&vec!["git".into(), "show".into()])
+    );
+    assert!(
+        !command_set[0]
+            .argv_prefix_any
+            .contains(&vec!["git".into(), "grep".into()])
+    );
+
+    let provider_routes = config
+        .provider_routes
+        .iter()
+        .map(|route| (route.language_id.as_str(), route.provider_id.as_str()))
+        .collect::<BTreeSet<_>>();
+    assert_eq!(provider_routes.len(), 7);
+    assert!(provider_routes.contains(&("org", "asp-org")));
+    assert!(provider_routes.contains(&("md", "asp-md")));
+
+    let generation = agent_semantic_hook::aot_compiler::compile_aot_hook_generation(
+        &config,
+        "blake3-256:testkit-canonical-document",
+    )
+    .expect("compile canonical AOT HookGeneration");
+    let generation: Value = serde_json::from_slice(&generation).expect("decode AOT generation");
+    assert_eq!(generation["schemaVersion"], 1);
+    assert_eq!(
+        generation["registeredLanguages"]
+            .as_array()
+            .expect("registered languages")
+            .iter()
+            .filter_map(Value::as_str)
+            .collect::<BTreeSet<_>>(),
+        [
+            "gerbil-scheme",
+            "julia",
+            "md",
+            "org",
+            "python",
+            "rust",
+            "typescript"
+        ]
+        .into_iter()
+        .collect()
+    );
+    assert_eq!(
+        generation["rules"]
+            .as_array()
+            .expect("compiled AOT rules")
+            .len(),
+        22,
+        "profile expansion must produce the complete compiled rule set"
+    );
+}
+
+#[test]
 fn canonical_dsl_has_one_scenario_contract_for_every_rule_and_no_legacy_action_axis() {
     let production =
         toml::from_str::<toml::Value>(&agent_semantic_hook::default_client_config_template())
@@ -187,8 +339,10 @@ fn canonical_dsl_has_one_scenario_contract_for_every_rule_and_no_legacy_action_a
         assert!(rule.get("hostAction").is_none());
         assert!(rule.get("semanticAction").is_none());
         assert!(rule.get("hostInvocations").is_none());
-        assert!(rule["match"].get("actionAny").is_none());
-        assert!(rule["match"].get("hostInvocationAny").is_none());
+        if let Some(rule_match) = rule.get("match") {
+            assert!(rule_match.get("actionAny").is_none());
+            assert!(rule_match.get("hostInvocationAny").is_none());
+        }
     }
 
     for witness in matrix_rules {
@@ -345,8 +499,16 @@ fn current_thread_cpu_nanos() -> u128 {
 fn canonical_dsl_matcher_cpu_cost_stays_inside_the_declared_gate() {
     const SAMPLES: u128 = 64;
 
-    let runtime = runtime();
-    let config = config();
+    let config = agent_semantic_config::default_hook_client_config_file()
+        .expect("load canonical Hook Config V1");
+    let generation = String::from_utf8(
+        agent_semantic_hook::aot_compiler::compile_aot_hook_generation(
+            &config,
+            "blake3-256:testkit-config-dsl-performance",
+        )
+        .expect("compile canonical serving AOT generation"),
+    )
+    .expect("canonical AOT generation is UTF-8");
     let matrix = toml::from_str::<toml::Value>(MATRIX).expect("parse scenario matrix");
     let maximum = matrix["performance"]["maxMatcherMicros"]
         .as_integer()
@@ -372,12 +534,24 @@ fn canonical_dsl_matcher_cpu_cost_stays_inside_the_declared_gate() {
         if projection_binary.is_some_and(|binary| !executable_is_available(binary)) {
             continue;
         }
-        // Exclude one-time matcher/config compilation from the declared
-        // steady-state CPU gate; the measured loop is the real hot path.
-        let _ = classify_command(&runtime, &config, command);
+        let payload = json!({
+            "session_id": "testkit-config-dsl-performance",
+            "cwd": workspace_root(),
+            "hook_event_name": "PreToolUse",
+            "tool_name": "Bash",
+            "tool_input": {"command": command}
+        })
+        .to_string();
+        let classify = || {
+            agent_semantic_hook::aot_evaluator::evaluate_pre_tool(&generation, &payload, "Bash")
+                .expect("evaluate canonical serving AOT generation")
+        };
+        // Exclude one-time CPU/cache initialization. Every measured sample
+        // executes the exact borrowed evaluator used by the plugin launcher.
+        let _ = classify();
         let started = current_thread_cpu_nanos();
         for _ in 0..SAMPLES {
-            let _ = classify_command(&runtime, &config, command);
+            let _ = classify();
         }
         let mean_micros = (current_thread_cpu_nanos() - started) / 1_000 / SAMPLES;
         assert!(

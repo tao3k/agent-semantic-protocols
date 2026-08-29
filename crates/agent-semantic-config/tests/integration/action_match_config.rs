@@ -6,12 +6,69 @@ fn default_config() -> HookClientConfigFile {
 }
 
 #[test]
+fn reader_behavior_catalog_is_a_compact_deterministic_argv_list() {
+    let config = default_config();
+    assert!(
+        config
+            .reader_behavior_patterns
+            .contains(&vec!["head".to_owned()])
+    );
+    assert!(
+        config
+            .reader_behavior_patterns
+            .contains(&vec!["sed".to_owned(), "-n".to_owned()])
+    );
+    assert!(config.reader_behavior_patterns.iter().all(|pattern| {
+        !pattern.is_empty()
+            && !pattern[0].contains('/')
+            && pattern.iter().all(|token| !token.is_empty())
+    }));
+    let unique = config
+        .reader_behavior_patterns
+        .iter()
+        .collect::<std::collections::HashSet<_>>();
+    assert_eq!(unique.len(), config.reader_behavior_patterns.len());
+}
+
+#[test]
+fn reader_behavior_catalog_rejects_duplicate_empty_and_path_executables() {
+    let mut duplicate = default_config();
+    duplicate
+        .reader_behavior_patterns
+        .push(vec!["head".to_owned()]);
+    assert!(
+        duplicate
+            .validate()
+            .expect_err("duplicate Reader pattern")
+            .contains("duplicate pattern")
+    );
+
+    let mut empty = default_config();
+    empty.reader_behavior_patterns.push(Vec::new());
+    assert!(
+        empty
+            .validate()
+            .expect_err("empty Reader pattern")
+            .contains("must contain an executable basename")
+    );
+
+    let mut path = default_config();
+    path.reader_behavior_patterns
+        .push(vec!["/usr/bin/head".to_owned()]);
+    assert!(
+        path.validate()
+            .expect_err("path Reader pattern")
+            .contains("must be an executable basename")
+    );
+}
+
+#[test]
 fn source_access_rule_is_owned_by_bash_capability_and_language_profiles() {
     let config = default_config();
     let rule = config
         .rules
         .iter()
-        .find(|rule| rule.id == "route-unresolved-source-access-to-asp-languages")
+        .find(|rule| rule.id == "route-read-to-asp-languages")
         .expect("Bash source access plus language profiles route should exist");
     let dispatch = rule
         .dispatch
@@ -46,7 +103,7 @@ fn default_template_uses_rule_local_matcher_policies() {
     let source_access_rule = config
         .rules
         .iter()
-        .find(|rule| rule.id == "route-unresolved-source-access-to-asp-languages")
+        .find(|rule| rule.id == "route-read-to-asp-languages")
         .expect("Bash source-access route rule");
     assert!(source_access_rule.matcher_policies.is_empty());
 
@@ -167,7 +224,7 @@ fn typed_action_rule_shape_probe() {
     let rule = config
         .rules
         .iter()
-        .find(|rule| rule.id == "route-unresolved-source-access-to-asp-languages")
+        .find(|rule| rule.id == "route-read-to-asp-languages")
         .expect("typed action rule should exist");
     eprintln!("{rule:#?}");
 }

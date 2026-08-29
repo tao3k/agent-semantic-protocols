@@ -47,9 +47,15 @@ def test_language_schema_bundles_publish_client_and_provider_protocols() -> None
         assert isinstance(receipt, dict)
         assert receipt["schemaId"] == "agent.semantic-protocols.language-schema-bundle-receipt"
         assert receipt["schemaVersion"] == "1"
-        assert receipt["languageId"] == provider.language_id
-        assert receipt["bundleDigest"].startswith("blake3-256:")
-        names = {entry["name"] for entry in receipt["schemas"]}
+        assert set(receipt) == {"schemaId", "schemaVersion", "schemaDigest"}
+        assert receipt["schemaDigest"].startswith("blake3-256:")
+        membership = load_json(
+            provider.package_root / "schemas/.asp-schema-manager-membership.json"
+        )
+        assert isinstance(membership, dict)
+        assert membership["languageId"] == provider.language_id
+        assert membership["bundleDigest"] == receipt["schemaDigest"]
+        names = {entry["name"] for entry in membership["schemas"]}
         assert REQUIRED_CLIENT_SCHEMAS <= names
         assert REQUIRED_PROVIDER_SCHEMAS <= names
 
@@ -72,9 +78,10 @@ def test_provider_registration_is_the_only_package_local_wire_authority() -> Non
             "project-resolution",
         }
         for operation in operations:
-            assert operation["requestSchemaId"].startswith(
-                "https://schemas.agent-semantic-protocols.dev/"
-            )
-            assert operation["responseSchemaId"].startswith(
-                "https://schemas.agent-semantic-protocols.dev/"
-            )
+            assert set(operation) >= {"requestSchema", "responseSchema"}
+            assert "requestSchemaId" not in operation
+            assert "responseSchemaId" not in operation
+            assert set(operation["requestSchema"]) == {"schemaId", "schemaVersion"}
+            assert set(operation["responseSchema"]) == {"schemaId", "schemaVersion"}
+            assert operation["requestSchema"]["schemaId"]
+            assert operation["responseSchema"]["schemaId"]

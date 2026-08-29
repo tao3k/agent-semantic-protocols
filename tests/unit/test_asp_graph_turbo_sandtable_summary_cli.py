@@ -7,7 +7,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from unit.asp_graph_turbo_cli_support import (
+from unit.asp_python_graphs_cli_support import (
     sample_graph_turbo_request,
     validate_shared_schema,
 )
@@ -26,7 +26,7 @@ def test_graph_turbo_sandtable_summary_combines_benchmark_and_receipt(tmp_path) 
         [
             sys.executable,
             "-m",
-            "asp_graph_turbo",
+            "asp_python_graphs",
             "sandtable-summary",
             "--benchmark",
             str(benchmark_path),
@@ -63,7 +63,7 @@ def test_graph_turbo_sandtable_summary_text_is_single_table_row(tmp_path) -> Non
         [
             sys.executable,
             "-m",
-            "asp_graph_turbo",
+            "asp_python_graphs",
             "sandtable-summary",
             "--benchmark",
             str(benchmark_path),
@@ -93,7 +93,7 @@ def test_graph_turbo_sandtable_summary_can_benchmark_packet_inline(tmp_path) -> 
         [
             sys.executable,
             "-m",
-            "asp_graph_turbo",
+            "asp_python_graphs",
             "sandtable-summary",
             "--benchmark-packet",
             str(packet_path),
@@ -146,7 +146,7 @@ def test_graph_turbo_sandtable_summary_reports_disabled_topology_membership(
         [
             sys.executable,
             "-m",
-            "asp_graph_turbo",
+            "asp_python_graphs",
             "sandtable-summary",
             "--benchmark-packet",
             str(packet_path),
@@ -194,7 +194,7 @@ def test_graph_turbo_sandtable_summary_consumes_benchmark_report_scenario(
         [
             sys.executable,
             "-m",
-            "asp_graph_turbo",
+            "asp_python_graphs",
             "sandtable-summary",
             "--benchmark",
             str(benchmark_path),
@@ -242,7 +242,7 @@ def test_graph_turbo_sandtable_summary_text_includes_context_metrics(
         [
             sys.executable,
             "-m",
-            "asp_graph_turbo",
+            "asp_python_graphs",
             "sandtable-summary",
             "--benchmark",
             str(benchmark_path),
@@ -301,7 +301,7 @@ def _benchmark_stdout(packet_path: Path) -> str:
         [
             sys.executable,
             "-m",
-            "asp_graph_turbo",
+            "asp_python_graphs",
             "benchmark",
             str(packet_path),
             "--runs",

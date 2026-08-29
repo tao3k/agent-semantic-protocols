@@ -11,6 +11,13 @@ pub const PROVIDER_ROUTE_SCHEMA_VERSION: &str = "1";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ProviderSchemaReference {
+    pub schema_id: String,
+    pub schema_version: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProviderRouteSpec {
     pub schema_id: String,
     pub schema_version: String,
@@ -19,7 +26,7 @@ pub struct ProviderRouteSpec {
     pub authority: ProviderRouteAuthority,
     pub target: ProviderRouteTarget,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub request_schema_id: Option<String>,
+    pub request_schema: Option<ProviderSchemaReference>,
     pub inputs: Vec<ProviderRouteInputSlot>,
     pub requirements: Vec<ProviderRouteRequirement>,
     pub effects: ProviderRouteEffects,
@@ -137,7 +144,7 @@ pub enum ProviderRouteConcurrency {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProviderRouteOutput {
-    pub schema_id: String,
+    pub schema: ProviderSchemaReference,
     pub media_type: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub projection_kind: Option<String>,
@@ -230,9 +237,9 @@ impl ProviderRouteSpec {
                 "providerId must use the asp-<language> identity",
             ));
         }
-        require_schema_id("output.schemaId", &self.output.schema_id)?;
-        if let Some(request_schema_id) = &self.request_schema_id {
-            require_schema_id("requestSchemaId", request_schema_id)?;
+        validate_schema_reference("output.schema", &self.output.schema)?;
+        if let Some(request_schema) = &self.request_schema {
+            validate_schema_reference("requestSchema", request_schema)?;
         }
         if self.output.media_type != "application/json" {
             return Err(ProviderRouteCompileError::new(
@@ -422,6 +429,24 @@ fn require_schema_id(field: &str, value: &str) -> Result<(), ProviderRouteCompil
     }
 }
 
+fn validate_schema_reference(
+    field: &str,
+    reference: &ProviderSchemaReference,
+) -> Result<(), ProviderRouteCompileError> {
+    require_schema_id(&format!("{field}.schemaId"), &reference.schema_id)?;
+    if reference.schema_version.is_empty()
+        || !reference
+            .schema_version
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || byte == b'.')
+    {
+        return Err(ProviderRouteCompileError::new(format!(
+            "{field}.schemaVersion must be a dotted numeric version"
+        )));
+    }
+    Ok(())
+}
+
 fn require_unique(field: &str, values: &[String]) -> Result<(), ProviderRouteCompileError> {
     let mut seen = BTreeSet::new();
     for value in values {
@@ -467,7 +492,10 @@ mod tests {
                 language_id: "rust".into(),
                 provider_id: "asp-rust".into(),
             },
-            request_schema_id: Some("agent.semantic-protocols.search-owner-request".into()),
+            request_schema: Some(ProviderSchemaReference {
+                schema_id: "agent.semantic-protocols.search-owner-request".into(),
+                schema_version: "1".into(),
+            }),
             inputs: vec![ProviderRouteInputSlot {
                 name: "query".into(),
                 value_type: ProviderRouteValueType::String,
@@ -486,7 +514,10 @@ mod tests {
                 streaming: false,
             },
             output: ProviderRouteOutput {
-                schema_id: "agent.semantic-protocols.search-packet".into(),
+                schema: ProviderSchemaReference {
+                    schema_id: "agent.semantic-protocols.search-packet".into(),
+                    schema_version: "1".into(),
+                },
                 media_type: "application/json".into(),
                 projection_kind: None,
             },

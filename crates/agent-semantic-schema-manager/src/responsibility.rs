@@ -137,7 +137,7 @@ fn validate_reference_decisions(
         }
         if !matches!(
             decision.decision.as_str(),
-            "extract" | "defer" | "intentional-duplication"
+            "extract" | "extract-family-definition" | "defer" | "intentional-duplication"
         ) {
             return Err(format!(
                 "unknown reference decision {}: {}",

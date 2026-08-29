@@ -9,10 +9,33 @@ mod runtime;
 pub fn diagnose_reader_probe(
     command_tokens: Vec<String>,
     subject: String,
+    reader_behavior_patterns: Vec<Vec<String>>,
 ) -> Option<ReaderProbeObservation> {
     runtime::observe(&runtime::ReaderProbeRequest {
         command_tokens,
         subject,
+        reader_behavior_patterns,
+        dynamic_cache_root: None,
+    })
+}
+
+#[doc(hidden)]
+pub fn diagnose_reader_probe_with_state_home(
+    command_tokens: Vec<String>,
+    subject: String,
+    reader_behavior_patterns: Vec<Vec<String>>,
+    state_home: &std::path::Path,
+) -> Option<ReaderProbeObservation> {
+    runtime::observe(&runtime::ReaderProbeRequest {
+        command_tokens,
+        subject,
+        reader_behavior_patterns,
+        dynamic_cache_root: Some(
+            state_home
+                .join("hooks")
+                .join("reader-behavior")
+                .join("dynamic-catalog"),
+        ),
     })
 }
 
@@ -61,6 +84,8 @@ pub struct ReaderProbeObservation {
     pub elapsed_micros: u64,
     pub probe_process_launched: bool,
     pub cleanup_verified: bool,
+    pub cache_hit: bool,
+    pub behavior_key: Option<String>,
 }
 
 #[cfg(target_os = "macos")]
@@ -107,6 +132,8 @@ pub fn bind_reader_probe_observation(
                 "timeout": observation.terminal == "probe-timeout",
                 "policyFastPath": !observation.probe_process_launched,
                 "cleanupVerified": observation.cleanup_verified,
+                "cacheHit": observation.cache_hit,
+                "behaviorKey": observation.behavior_key,
             }),
         );
     }

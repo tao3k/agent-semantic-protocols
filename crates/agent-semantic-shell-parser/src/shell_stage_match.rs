@@ -117,21 +117,76 @@ pub fn command_stages_match_wrapped_prefix(
     PrefixMatch::NotMatched
 }
 
-/// Match an exact environment assignment in the leading assignment block of
-/// the first parsed command stage. Assignments passed to an executable such as
-/// `env NAME=VALUE` and assignments in later shell stages do not match.
-pub fn command_stages_match_leading_environment_assignment(
+/// Match an exact process-environment assignment carried by one of the three
+/// bounded shell forms that preserve it for the target process:
+///
+/// - `NAME=VALUE command ...`
+/// - `/usr/bin/env NAME=VALUE command ...`
+/// - `export NAME=VALUE; exec command ...`
+///
+/// This is a parser fact, not a substring check. An assignment in an unrelated
+/// stage, a nested shell string, or a non-`exec` continuation does not match.
+pub fn command_stages_match_process_environment_assignment<S: AsRef<str>>(
     stages: &[CommandStage],
-    expected: &[String],
+    expected: &[S],
 ) -> bool {
-    let Some(first_stage) = stages.first() else {
+    let command_stages = stages
+        .iter()
+        .filter(|stage| !stage.is_separator())
+        .collect::<Vec<_>>();
+    let Some(first_stage) = command_stages.first() else {
         return false;
     };
-    first_stage
+    if first_stage
         .words()
         .iter()
         .take_while(|word| is_environment_assignment(word))
-        .any(|assignment| expected.iter().any(|expected| assignment == expected))
+        .any(|assignment| {
+            expected
+                .iter()
+                .any(|expected| assignment == expected.as_ref())
+        })
+    {
+        return true;
+    }
+
+    if first_stage
+        .executable()
+        .is_some_and(|word| command_token_basename(word) == "env")
+        && first_stage
+            .words()
+            .iter()
+            .skip(1)
+            .take_while(|word| is_environment_assignment(word))
+            .any(|assignment| {
+                expected
+                    .iter()
+                    .any(|expected| assignment == expected.as_ref())
+            })
+    {
+        return true;
+    }
+
+    if command_stages.len() != 2
+        || first_stage
+            .executable()
+            .is_none_or(|word| command_token_basename(word) != "export")
+        || command_stages[1]
+            .executable()
+            .is_none_or(|word| command_token_basename(word) != "exec")
+    {
+        return false;
+    }
+    first_stage
+        .words()
+        .iter()
+        .skip(1)
+        .all(|word| is_environment_assignment(word))
+        && first_stage.words().iter().skip(1).any(|assignment| {
+            expected
+                .iter()
+                .any(|expected| assignment == expected.as_ref())
+        })
 }
 
 fn is_environment_assignment(word: &str) -> bool {

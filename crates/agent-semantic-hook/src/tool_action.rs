@@ -78,8 +78,10 @@ pub(crate) struct ToolAction {
     pub(crate) operation: OperationIntent,
     pub(crate) command: Option<String>,
     pub(crate) command_tokens: Option<Vec<String>>,
-    /// True only for the original shell envelope's first executable stage.
-    pub(crate) leading_shell_stage: bool,
+    /// Original Host shell envelope. Compound-command stage projection must
+    /// retain this invocation-level fact so process-environment transfer is
+    /// not lost when individual stages are classified.
+    pub(crate) shell_envelope_command: Option<String>,
     pub(crate) paths: Vec<String>,
     pub(crate) has_declared_filesystem_access: bool,
 }
@@ -95,7 +97,7 @@ impl ToolAction {
             operation: OperationIntent::DirectRead,
             command: None,
             command_tokens: None,
-            leading_shell_stage: true,
+            shell_envelope_command: None,
             paths: vec![path],
             // Synthetic policy action; no parser-owned shell projection here.
             has_declared_filesystem_access: false,
@@ -113,7 +115,7 @@ impl ToolAction {
             operation: OperationIntent::ShellCommand,
             command: Some(command),
             command_tokens: Some(command_tokens),
-            leading_shell_stage: true,
+            shell_envelope_command: None,
             paths: vec![path],
             // Synthetic policy action; no parser-owned shell projection here.
             has_declared_filesystem_access: false,
@@ -134,9 +136,9 @@ impl ToolAction {
             host_action,
             surface: ToolSurface::CodexShell,
             operation: OperationIntent::ShellCommand,
+            shell_envelope_command: Some(command.clone()),
             command: Some(command),
             command_tokens: Some(command_tokens),
-            leading_shell_stage: true,
             paths: Vec::new(),
             // Synthetic envelope action; split_shell_command owns parsed facts.
             has_declared_filesystem_access: false,
@@ -636,7 +638,7 @@ pub fn collect_tool_actions(tool_name: &str, tool_input: &Value) -> Vec<ToolActi
             operation,
             command,
             command_tokens,
-            leading_shell_stage: true,
+            shell_envelope_command: None,
             paths,
             has_declared_filesystem_access: false,
         })
@@ -724,7 +726,7 @@ pub fn collect_tool_actions(tool_name: &str, tool_input: &Value) -> Vec<ToolActi
         operation,
         command,
         command_tokens,
-        leading_shell_stage: true,
+        shell_envelope_command: None,
         paths,
         has_declared_filesystem_access,
     };

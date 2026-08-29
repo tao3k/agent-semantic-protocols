@@ -55,10 +55,23 @@ fn canonical_config_covers_registered_source_bash_matrix() {
             let path = format!("src/witness.{extension}");
             let mut payload = json!({
                 "tool_name": "Bash",
-                "tool_input": {"command": format!("opaque-source-consumer {path}")}
+                "tool_input": {"command": format!("head {path}")}
             });
             agent_semantic_hook::bind_plugin_host_matcher(&mut payload, Some("Bash"), None)
                 .expect("bind canonical Bash matcher");
+            let observation = agent_semantic_hook::ReaderProbeObservation {
+                subject: path.clone(),
+                access: agent_semantic_hook::ReaderProbeAccess::Read,
+                backend: "hook-generation-reader-catalog".to_owned(),
+                terminal: "reader-behavior-catalog-hit".to_owned(),
+                elapsed_micros: 0,
+                probe_process_launched: false,
+                cleanup_verified: true,
+                cache_hit: false,
+                behavior_key: None,
+            };
+            agent_semantic_hook::bind_reader_probe_observation(&mut payload, Some(&observation))
+                .expect("bind confirmed Reader observation");
             {
                 let decision = classify_hook_with_config(HookClassificationRequest {
                     registry: &runtime,
@@ -69,7 +82,7 @@ fn canonical_config_covers_registered_source_bash_matrix() {
                 });
                 assert_eq!(
                     decision.fields.get("configRuleId").and_then(Value::as_str),
-                    Some("route-unresolved-source-access-to-asp-languages"),
+                    Some("route-read-to-asp-languages"),
                     "{payload}"
                 );
                 assert_eq!(decision.decision, DecisionKind::Deny);
@@ -210,7 +223,6 @@ fn classify<'a>(
         payload: &payload,
     })
 }
-
 
 #[test]
 fn production_match_policy_contract() {

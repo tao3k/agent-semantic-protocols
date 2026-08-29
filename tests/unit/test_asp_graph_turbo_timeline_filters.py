@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from asp_graph_turbo.artifact_timeline import (
+from asp_python_graphs.artifact_timeline import (
     TimelineParameters,
     evaluate_artifact_timeline,
 )
-from unit.asp_graph_turbo_timeline_support import write_timeline_json
+from unit.asp_python_graphs_timeline_support import write_timeline_json
 
 
 def test_timeline_filters_since_and_recent_sessions(tmp_path) -> None:

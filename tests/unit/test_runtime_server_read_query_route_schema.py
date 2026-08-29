@@ -50,7 +50,6 @@ def valid_unavailable_receipt() -> dict:
         "cachedOwnerDigest": None,
         "liveOwnerDigest": None,
         "cacheFresh": False,
-        "fallbackDeclared": False,
         "generationPublished": False,
         "workspaceOwnerEndpointExposed": False,
         "reasonKind": "provider-native-exact-unavailable",
@@ -83,17 +82,13 @@ def test_public_receipt_cannot_expose_owner_endpoint_or_publish() -> None:
     assert list(validator().iter_errors(value))
 
 
-def test_fallback_requires_declared_provider_capability() -> None:
+def test_provider_native_fallback_is_not_part_of_the_contract() -> None:
     value = valid_unavailable_receipt()
     value.update(
         state="fallback-projected",
         source="provider-native-exact",
-        fallbackDeclared=True,
         reasonKind=None,
         retryAfterMs=None,
         nextAction=None,
     )
-    assert not list(validator().iter_errors(value))
-    value["fallbackDeclared"] = False
     assert list(validator().iter_errors(value))
-

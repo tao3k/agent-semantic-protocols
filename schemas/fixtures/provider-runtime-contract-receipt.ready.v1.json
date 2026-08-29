@@ -10,8 +10,8 @@
   "operations": [
     {
       "operation": "lexical-search",
-      "requestSchemaId": "agent.semantic-protocols.semantic-query-packet",
-      "responseSchemaId": "agent.semantic-protocols.semantic-search-packet"
+      "requestSchema": {"schemaId": "agent.semantic-protocols.semantic-query-packet", "schemaVersion": "1"},
+      "responseSchema": {"schemaId": "agent.semantic-protocols.semantic-search-packet", "schemaVersion": "1"}
     }
   ]
 }

@@ -3,6 +3,8 @@ from pathlib import Path
 
 from jsonschema import Draft202012Validator
 
+from unit.schema_validation import schema_validator_for
+
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -14,27 +16,29 @@ def load(path: str) -> dict[str, object]:
 def test_provider_register_document_is_schema_owned() -> None:
     schema = load("schemas/provider-register.schema.json")
     Draft202012Validator.check_schema(schema)
-    Draft202012Validator(schema).validate(load("schemas/provider-register.json"))
+    schema_validator_for(ROOT / "schemas/provider-register.schema.json").validate(
+        load("schemas/provider-register.json")
+    )
 
 
 def test_external_provider_register_request_uses_the_shared_wire_schema() -> None:
     schema = load("schemas/provider-register-request.schema.json")
     Draft202012Validator.check_schema(schema)
-    Draft202012Validator(schema).validate(
+    schema_validator_for(ROOT / "schemas/provider-register-request.schema.json").validate(
         {
             "schemaId": "agent.semantic-protocols.provider-register.request",
             "schemaVersion": "1",
             "expectedGeneration": 4,
             "request": {
-                "operation": "register",
-                "provider": {
+                "operation": "initialize",
+                "providers": [{
                     "languageId": "zig",
                     "providerId": "asp-zig",
                     "registration": {
                         "languageId": "zig",
                         "providerId": "asp-zig",
-                    },
-                },
+                    }
+                }],
             },
         }
     )
@@ -43,7 +47,7 @@ def test_external_provider_register_request_uses_the_shared_wire_schema() -> Non
 def test_generation_conflict_is_a_typed_provider_register_response() -> None:
     schema = load("schemas/provider-register-response.schema.json")
     Draft202012Validator.check_schema(schema)
-    Draft202012Validator(schema).validate(
+    schema_validator_for(ROOT / "schemas/provider-register-response.schema.json").validate(
         {
             "schemaId": "agent.semantic-protocols.provider-register.response",
             "schemaVersion": "1",

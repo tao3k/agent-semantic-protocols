@@ -4,11 +4,18 @@
 
 pub mod agent_route_registry;
 mod codex_plugin_config;
+mod codex_plugin_payload;
 pub mod embedded_agent_assets;
 mod hook_client_config;
 pub mod runtime_dev;
 
 pub use codex_plugin_config::codex_config_plugin_enabled;
+pub use codex_plugin_payload::{
+    CODEX_PLUGIN_HOOKS_RELATIVE_PATH, CODEX_PLUGIN_LAUNCHER_RELATIVE_PATH,
+    CODEX_PLUGIN_MANIFEST_RELATIVE_PATH, CodexPluginPayloadIdentity, CodexPluginPayloadInspection,
+    CodexPluginPayloadState, codex_plugin_cache_root, inspect_codex_plugin_payload,
+    load_codex_plugin_payload_identity,
+};
 
 pub use hook_client_config::hook_client_contract_fingerprint;
 

@@ -14,6 +14,8 @@ mod ast_patch;
 mod codex;
 #[path = "unit/codex_multi_agent_v2_control_plane.rs"]
 mod codex_multi_agent_v2_control_plane;
+#[path = "unit/codex_plugin_install.rs"]
+mod codex_plugin_install;
 #[path = "unit/command/ascent_search_router_graph_state.rs"]
 mod command_ascent_search_router_graph_state;
 #[path = "unit/command/dispatch_agent_session_policy.rs"]

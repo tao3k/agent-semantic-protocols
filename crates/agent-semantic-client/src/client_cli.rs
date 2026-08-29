@@ -33,7 +33,6 @@ pub async fn run_cli_args(
             Ok(())
         }
         Some("tools") => crate::tools_cli::run_tools(&parsed.project_root, &parsed.forwarded_args),
-        Some("wrap") => crate::tools_cli::run_wrap(&parsed.forwarded_args),
         Some("providers") => run_providers(parsed).await,
         Some("doctor") => run_doctor(parsed).await,
         Some("cache") => {

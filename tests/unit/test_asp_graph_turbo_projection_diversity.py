@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ._asp_graph_turbo_common import (
+from ._asp_python_graphs_common import (
     TypedGraph,
     rank_frontier,
     render_compact,

@@ -22,14 +22,6 @@ pub(crate) fn render_agent_semantic_protocols_installed_skill(
     render_agent_semantic_protocols_skill_from_contract()
 }
 
-pub(crate) fn render_agent_semantic_protocols_plugin_skill(
-    _project_root: &Path,
-    _org_state_skill_path: &Path,
-    _org_artifacts_path: &Path,
-) -> Result<String, String> {
-    render_agent_semantic_protocols_skill_from_contract()
-}
-
 fn render_agent_semantic_protocols_skill_from_contract() -> Result<String, String> {
     let rendered = renderable_agent_semantic_protocols_skill_template()?;
     validate_agent_semantic_protocols_skill(&rendered)?;

@@ -10,8 +10,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use hook_runtime_skill::hook_runtime_skill_render::validate_agent_semantic_protocols_skill;
 use hook_runtime_skill::{
-    install_agent_semantic_protocols_agent_config, install_agent_semantic_protocols_plugin_skill,
-    install_agent_semantic_protocols_skill,
+    install_agent_semantic_protocols_agent_config, install_agent_semantic_protocols_skill,
 };
 
 fn activation_provider(
@@ -207,67 +206,6 @@ fn install_project_skill_does_not_write_codex_plugin_skill() {
 }
 
 #[test]
-fn install_plugin_skill_writes_only_codex_plugin_skill() {
-    let root = temp_project_root("skill-plugin-only");
-    let project_skill_path = root
-        .join(".agents")
-        .join("skills")
-        .join("agent-semantic-protocols")
-        .join("SKILL.org");
-    let plugin_contract_path =
-        codex_plugin_cache_skill_path(&root).with_file_name("SKILL.contract.org");
-    write_stale_contract(&plugin_contract_path);
-
-    let _global_scope = crate::hook_runtime_skill::hook_runtime_skill::PluginSkillScope::Global;
-    let installed = install_agent_semantic_protocols_plugin_skill(
-        &root,
-        crate::hook_runtime_skill::hook_runtime_skill::PluginSkillScope::Project,
-        &test_activation(),
-        &test_runtime_profiles(),
-    )
-    .unwrap();
-    assert!(
-        installed.skill_path.is_none(),
-        "plugin skill install must not create project SKILL.org"
-    );
-    let plugin_skill_path = installed.plugin_skill_path.expect("plugin skill path");
-    assert_eq!(plugin_skill_path, codex_plugin_cache_skill_path(&root));
-
-    let plugin_skill = std::fs::read_to_string(&plugin_skill_path).expect("read plugin skill");
-    assert!(plugin_skill.contains("* ASP Org"));
-    assert!(plugin_skill.contains(":SKILL_ID: asp-org"));
-    assert!(
-        plugin_skill.contains("asp paths --get orgStateSkill"),
-        "{plugin_skill}"
-    );
-    assert!(
-        plugin_skill.contains("asp paths --get orgArtifacts"),
-        "{plugin_skill}"
-    );
-    assert!(!plugin_skill.contains("SKILL.contract.org"));
-    assert!(!plugin_skill.contains("Contract Assertions"));
-    assert!(!plugin_skill.contains("asp-skill-has-root-heading"));
-    assert!(!plugin_skill.contains("#+CONTRACT_ORG:"));
-    assert!(!plugin_skill.contains(&root.display().to_string()));
-    assert!(
-        !project_skill_path.exists(),
-        "Codex plugin skill install must not write .agents/skills"
-    );
-    assert!(
-        !plugin_skill_path
-            .with_file_name("SKILL.contract.org")
-            .exists(),
-        "plugin cache must not contain SKILL.contract.org"
-    );
-    assert!(
-        !root.join("asp-codex-plugin").exists(),
-        "plugin skill render must not create downstream asp-codex-plugin"
-    );
-
-    let _ = std::fs::remove_dir_all(root);
-}
-
-#[test]
 fn install_agent_config_preserves_providers_and_removes_legacy_skill_config() {
     let root = temp_project_root("agent-config");
     let config_path = root.join(".agents").join("asp.toml");
@@ -336,18 +274,6 @@ fn write_plugin_manifest(root: &std::path::Path) {
         r#"{"name":"asp-codex-plugin","version":"0.1.0","description":"test","author":{"name":"ASP"},"skills":"./skills/"}"#,
     )
     .expect("write plugin manifest");
-}
-
-fn codex_plugin_cache_skill_path(root: &std::path::Path) -> std::path::PathBuf {
-    root.join(".codex")
-        .join("plugins")
-        .join("cache")
-        .join("asp-project")
-        .join("asp-codex-plugin")
-        .join("0.1.0")
-        .join("skills")
-        .join("agent-semantic-protocols")
-        .join("SKILL.org")
 }
 
 fn temp_project_root(name: &str) -> std::path::PathBuf {

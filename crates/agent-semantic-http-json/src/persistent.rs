@@ -3,10 +3,10 @@ use http_body_util::{BodyExt, Full};
 use hyper::{Request, client::conn::http2};
 use hyper_util::rt::{TokioExecutor, TokioIo};
 use std::sync::Arc;
-use tokio::{net::TcpStream, sync::Mutex, task::JoinHandle};
+use tokio::{net::TcpStream, task::JoinHandle};
 
 pub struct HttpJsonConnection {
-    sender: Arc<Mutex<http2::SendRequest<Full<Bytes>>>>,
+    sender: Arc<http2::SendRequest<Full<Bytes>>>,
     driver: Option<JoinHandle<Result<(), String>>>,
 }
 
@@ -35,7 +35,7 @@ impl HttpJsonConnection {
                 .map_err(|e| format!("HTTP/2 connection: {e}"))
         });
         Ok(Self {
-            sender: Arc::new(Mutex::new(sender)),
+            sender: Arc::new(sender),
             driver: Some(driver),
         })
     }
@@ -45,7 +45,7 @@ impl HttpJsonConnection {
             .header("content-type", "application/json")
             .body(Full::new(body))
             .map_err(|e| e.to_string())?;
-        let mut sender = self.sender.lock().await.clone();
+        let mut sender = (*self.sender).clone();
         let response = sender
             .send_request(request)
             .await

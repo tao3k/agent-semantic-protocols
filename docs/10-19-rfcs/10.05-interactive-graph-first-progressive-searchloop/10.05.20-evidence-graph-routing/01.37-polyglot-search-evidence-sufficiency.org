@@ -84,15 +84,17 @@ the paired-run receipt.
 :END:
 
 The executable Rust receipt refines a fail-closed model.  A blocked admission
-has no selected engine; therefore an identity failure cannot be reinterpreted
-as permission to execute the legacy engine.
+has no selected engine.  =asp-python-graphs= is the canonical service and
+engine identity of the production Python graph algorithms; Graph Turbo is an
+internal algorithm family, not a public identifier.  A future
+=progressive-gql-logic= implementation is a separately artifact-bound
+algorithm candidate.  Neither identity is an alias or fallback for the other.
 
 #+name: search-engine-candidate-admission-model
 #+begin_src typst
 #let admit(requested, identity-valid) = {
-  if requested == "legacy-graph-turbo" {
-    (decision: "ready", selected: requested)
-  } else if identity-valid {
+  if (requested == "asp-python-graphs" or requested == "progressive-gql-logic")
+    and identity-valid {
     (decision: "ready", selected: requested)
   } else {
     (decision: "blocked", selected: none)
@@ -102,7 +104,9 @@ as permission to execute the legacy engine.
 #let missing = admit("progressive-gql-logic", false)
 #assert(missing.decision == "blocked")
 #assert(missing.selected == none)
-#assert(missing.selected != "legacy-graph-turbo")
+#let production = admit("asp-python-graphs", true)
+#assert(production.decision == "ready")
+#assert(production.selected == "asp-python-graphs")
 "ok"
 #+end_src
 
@@ -111,18 +115,21 @@ The Lean owner
 same refinement through =missing_progressive_identity_is_blocked=,
 =invalid_progressive_identity_is_blocked=,
 =blocked_candidate_admission_selects_no_engine=, and
-=progressive_identity_failure_cannot_fallback_to_legacy=.  AXLE audits these
-theorems against this clause ID; the model does not assume the desired
+=progressive_identity_failure_cannot_fallback_to_graph_turbo=.  AXLE audits
+these theorems against this clause ID; the model does not assume the desired
 no-fallback conclusion as an axiom.
 
-Before router integration, Rust owns a small internal admission boundary.  It
-accepts an engine kind and an optional candidate artifact identity; it does not
-parse agent-facing CLI arguments.  The default engine is =legacy-graph-turbo=.
+Rust owns a small internal admission boundary.  It accepts the canonical
+ASP Python Graphs or progressive GQL/Logic algorithm identity together with its
+bound artifact identity; it does not parse agent-facing CLI arguments and it
+does not expose engine selection as a public choice.  The production default
+is =asp-python-graphs=.
 
 A =progressive-gql-logic= request is ready only when provider, runtime, and
 semantic-contract digests are all present and syntactically valid SHA-256
 identities.  Missing or malformed identity produces a typed blocked receipt.
-The admission layer must not silently select legacy after a progressive request
+Any unknown or retired engine identifier is rejected as an unknown value.  The
+admission layer must not select the other algorithm after an identity failure
 because that would make paired receipts misreport which engine executed.
 
 The receipt schema is

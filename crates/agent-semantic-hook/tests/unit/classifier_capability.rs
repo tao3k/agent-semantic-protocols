@@ -578,7 +578,7 @@ fn registered_explorer_profile_denies_unscoped_read_capability() {
 }
 
 #[test]
-fn command_payload_no_agent_marker_is_not_subagent_recovery_authority() {
+fn process_bound_no_agent_marker_is_subagent_recovery_authority_only_for_pre_tool() {
     let runtime = crate::HookRuntime {
         project_root: ".".to_owned(),
         rankers: Vec::new(),
@@ -599,6 +599,16 @@ fn command_payload_no_agent_marker_is_not_subagent_recovery_authority() {
             payload: &payload,
         });
 
-        assert!(decision.fields.get("bypassScope").is_none(), "{event}");
+        if event == "pre-tool" {
+            assert_eq!(
+                decision
+                    .fields
+                    .get("bypassScope")
+                    .and_then(serde_json::Value::as_str),
+                Some("host-policy")
+            );
+        } else {
+            assert!(decision.fields.get("bypassScope").is_none(), "{event}");
+        }
     }
 }

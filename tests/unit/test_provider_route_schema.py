@@ -91,20 +91,20 @@ def test_all_seven_provider_registrations_have_canonical_inventory_and_root_iden
             operation["operation"]: operation
             for operation in registration["runtimeContract"]["operations"]
         }
-        assert "search" in operations
-        assert operations["search"]["requestSchemaId"] == (
-            "agent.semantic-protocols.runtime-provider-search-request"
+        # High-level search is owned by ASP Server; provider runtime exposes
+        # only language-specific capabilities.  Route declarations are the
+        # client/server boundary and must carry structured schema references.
+        assert all(
+            operation.get("requestSchema", {}).get("schemaId")
+            and operation["requestSchema"].get("schemaVersion")
+            and operation.get("responseSchema", {}).get("schemaId")
+            and operation["responseSchema"].get("schemaVersion")
+            for operation in operations.values()
         )
-        assert operations["search"]["responseSchemaId"] == (
-            "agent.semantic-protocols.runtime-provider-search-receipt"
-        )
-        if language_id not in {"org", "md"}:
-            assert operations["query"]["requestSchemaId"] == (
-                "agent.semantic-protocols.provider-native-exact-request"
-            )
-            assert operations["search.owner"]["responseSchemaId"] == (
-                "agent.semantic-protocols.provider-native-owner-search-response"
-            )
+        # Provider runtime operations must not claim ASP Server's high-level
+        # search authority; that route is validated separately in the shared
+        # provider-route contract.
+        assert "search" not in operations
         inventory = registration["sourceInventory"]
         assert inventory["configFiles"]
         assert inventory["sourceExtensions"]
@@ -113,3 +113,24 @@ def test_all_seven_provider_registrations_have_canonical_inventory_and_root_iden
         descriptor_ref = registration["providerDescriptor"]["$ref"]
         assert (path.parent / descriptor_ref).is_file()
     assert registrations["org"].name != registrations["md"].name
+
+
+def test_rust_registration_routes_use_structured_output_schema_references() -> None:
+    registration = json.loads(
+        (
+            ROOT
+            / "languages/rust-lang-project-harness/provider/asp-provider-registration.json"
+        ).read_text()
+    )
+    routes = registration["routes"]
+    assert len(routes) == 4
+    for route in routes:
+        output = route["output"]
+        assert set(output) <= {"schema", "mediaType", "projectionKind"}
+        assert output["schema"]["schemaId"]
+        assert output["schema"]["schemaVersion"] == "1"
+        assert output["mediaType"] == "application/json"
+        assert "schemaId" not in output
+        assert "schemaVersion" not in output
+        if "projectionKind" in output:
+            assert output["projectionKind"]

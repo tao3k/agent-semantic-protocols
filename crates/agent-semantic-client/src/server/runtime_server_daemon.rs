@@ -166,6 +166,15 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
     let lifecycle_bus = agent_semantic_client_db::runtime_telemetry_bus::RuntimeTelemetryBus::new();
     let (runtime_search_service, runtime_search_requests) =
         agent_semantic_client_db::runtime_search_service::runtime_search_service_channel();
+    // The Runtime Server is the sole owner of the resident Python Graphs
+    // lifecycle. Connection establishment is lazy, but all callers share this
+    // one manager and its one long-lived UDS stream.
+    let graph_socket = state_home.join("runtime/server/asp-python-graphs.sock");
+    let graph_descriptor = state_home.join("runtime/server/asp-python-graphs-artifact.v1.json");
+    let graph_server = match agent_semantic_runtime_server::asp_python_graphs_artifact::AspPythonGraphsArtifactDescriptor::load(&graph_descriptor).await {
+        Ok(artifact) => agent_semantic_runtime_server::asp_python_graphs_transport::AspPythonGraphsServer::from_artifact(artifact, graph_socket, 32)?,
+        Err(error) => agent_semantic_runtime_server::asp_python_graphs_transport::AspPythonGraphsServer::unavailable(graph_socket, 32, error)?,
+    };
     let generation_builder_state_home = state_home.to_path_buf();
     let generation_builder_provider_register = std::sync::Arc::clone(&provider_register);
     let generation_builder_runtime_search = runtime_search_service.clone();
@@ -321,6 +330,7 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
         runtime_provider_catalog.clone(),
         std::sync::Arc::clone(&provider_register),
         runtime_search_requests,
+        graph_server.clone(),
     ));
     let endpoint_path =
         agent_semantic_client_db::runtime_server_control::runtime_server_endpoint_path_async(

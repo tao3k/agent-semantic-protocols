@@ -1,0 +1,282 @@
+//! Codex plugin payload identity and installed-cache comparison.
+
+use std::fs;
+use std::path::{Path, PathBuf};
+
+/// Relative path of the canonical Codex plugin manifest.
+pub const CODEX_PLUGIN_MANIFEST_RELATIVE_PATH: &str = ".codex-plugin/plugin.json";
+/// Relative path of the canonical Codex Hook routing payload.
+pub const CODEX_PLUGIN_HOOKS_RELATIVE_PATH: &str = "hooks/hooks.json";
+/// Relative path of the fixed Codex Hook launcher.
+pub const CODEX_PLUGIN_LAUNCHER_RELATIVE_PATH: &str = "bin/asp-hook";
+
+const PAYLOAD_DIGEST_DOMAIN: &[u8] = b"agent.semantic-protocols.codex-plugin-payload\0";
+
+/// Content identity of the three-file Codex plugin payload.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CodexPluginPayloadIdentity {
+    /// Plugin name declared by the manifest.
+    pub plugin_name: String,
+    /// Cache-busting plugin version declared by the manifest.
+    pub version: String,
+    /// Domain-separated digest of manifest, Hook routing, and launcher bytes.
+    pub digest: String,
+}
+
+/// Relationship between a validated source payload and the global installed cache.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CodexPluginPayloadState {
+    Current,
+    PublicationRequired,
+    Missing,
+    Corrupt,
+}
+
+impl CodexPluginPayloadState {
+    /// Stable receipt value for this payload state.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Current => "current",
+            Self::PublicationRequired => "plugin-payload-publication-required",
+            Self::Missing => "plugin-cache-missing",
+            Self::Corrupt => "installed-cache-corrupt",
+        }
+    }
+}
+
+/// Typed result of comparing source payload authority with one installed cache root.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CodexPluginPayloadInspection {
+    /// Classified source-to-cache relationship.
+    pub state: CodexPluginPayloadState,
+    /// Validated identity of the source payload.
+    pub source: CodexPluginPayloadIdentity,
+    /// Validated installed identity when the cache is readable.
+    pub installed: Option<CodexPluginPayloadIdentity>,
+    /// Global Codex cache root inspected for this plugin version.
+    pub installed_root: PathBuf,
+    /// Typed diagnostic detail for missing or corrupt cache state.
+    pub detail: Option<String>,
+}
+
+/// Build the deterministic global Codex cache path for a plugin version.
+pub fn codex_plugin_cache_root(
+    codex_home: &Path,
+    marketplace_name: &str,
+    plugin_name: &str,
+    version: &str,
+) -> PathBuf {
+    codex_home
+        .join("plugins")
+        .join("cache")
+        .join(marketplace_name)
+        .join(plugin_name)
+        .join(version)
+}
+
+/// Compare one validated source payload with a concrete installed cache root.
+pub fn inspect_codex_plugin_payload(
+    source_root: &Path,
+    installed_root: &Path,
+) -> Result<CodexPluginPayloadInspection, String> {
+    let source = load_codex_plugin_payload_identity(source_root)
+        .map_err(|error| format!("invalid source Codex plugin payload: {error}"))?;
+    if !installed_root.is_dir() {
+        return Ok(CodexPluginPayloadInspection {
+            state: CodexPluginPayloadState::Missing,
+            source,
+            installed: None,
+            installed_root: installed_root.to_path_buf(),
+            detail: Some("installed plugin cache root does not exist".to_owned()),
+        });
+    }
+    let installed = match load_codex_plugin_payload_identity(installed_root) {
+        Ok(installed) => installed,
+        Err(error) => {
+            return Ok(CodexPluginPayloadInspection {
+                state: CodexPluginPayloadState::Corrupt,
+                source,
+                installed: None,
+                installed_root: installed_root.to_path_buf(),
+                detail: Some(error),
+            });
+        }
+    };
+    let state = if source == installed {
+        CodexPluginPayloadState::Current
+    } else {
+        CodexPluginPayloadState::PublicationRequired
+    };
+    Ok(CodexPluginPayloadInspection {
+        state,
+        source,
+        installed: Some(installed),
+        installed_root: installed_root.to_path_buf(),
+        detail: None,
+    })
+}
+
+/// Validate and digest a Codex plugin payload rooted at `plugin_root`.
+pub fn load_codex_plugin_payload_identity(
+    plugin_root: &Path,
+) -> Result<CodexPluginPayloadIdentity, String> {
+    let manifest_bytes = read_payload_file(plugin_root, CODEX_PLUGIN_MANIFEST_RELATIVE_PATH)?;
+    let manifest =
+        serde_json::from_slice::<serde_json::Value>(&manifest_bytes).map_err(|error| {
+            format!(
+                "invalid {}: {error}",
+                plugin_root
+                    .join(CODEX_PLUGIN_MANIFEST_RELATIVE_PATH)
+                    .display()
+            )
+        })?;
+    let plugin_name = required_manifest_string(&manifest, "name")?.to_owned();
+    let version = required_manifest_string(&manifest, "version")?.to_owned();
+    if manifest.get("hooks").is_some() || manifest.get("skills").is_some() {
+        return Err(format!(
+            "{} must remain a Hook-only standard-directory manifest without `hooks` or `skills` fields",
+            plugin_root
+                .join(CODEX_PLUGIN_MANIFEST_RELATIVE_PATH)
+                .display()
+        ));
+    }
+    let hooks = read_payload_file(plugin_root, CODEX_PLUGIN_HOOKS_RELATIVE_PATH)?;
+    let hooks_value = serde_json::from_slice::<serde_json::Value>(&hooks).map_err(|error| {
+        format!(
+            "invalid {}: {error}",
+            plugin_root.join(CODEX_PLUGIN_HOOKS_RELATIVE_PATH).display()
+        )
+    })?;
+    let events = hooks_value
+        .get("hooks")
+        .and_then(serde_json::Value::as_object)
+        .filter(|events| !events.is_empty())
+        .ok_or_else(|| {
+            format!(
+                "{} has no Hook event map",
+                plugin_root.join(CODEX_PLUGIN_HOOKS_RELATIVE_PATH).display()
+            )
+        })?;
+    for handler in events
+        .values()
+        .filter_map(serde_json::Value::as_array)
+        .flatten()
+        .filter_map(|group| group.get("hooks"))
+        .filter_map(serde_json::Value::as_array)
+        .flatten()
+    {
+        if !handler
+            .get("command")
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|command| command.starts_with("\"$PLUGIN_ROOT/bin/asp-hook\" "))
+        {
+            return Err(format!(
+                "{} contains a Hook handler that bypasses the plugin-owned launcher",
+                plugin_root.join(CODEX_PLUGIN_HOOKS_RELATIVE_PATH).display()
+            ));
+        }
+    }
+    let launcher = read_payload_file(plugin_root, CODEX_PLUGIN_LAUNCHER_RELATIVE_PATH)?;
+    let launcher_text = std::str::from_utf8(&launcher).map_err(|error| {
+        format!(
+            "{} is not UTF-8: {error}",
+            plugin_root
+                .join(CODEX_PLUGIN_LAUNCHER_RELATIVE_PATH)
+                .display()
+        )
+    })?;
+    if !launcher_text.starts_with("#!/bin/sh\n")
+        || !launcher_text.contains("hooks/current")
+        || !launcher_text.contains("ASP_HOOK_GENERATION_ROOT")
+        || !launcher_text.contains("$asp_hook_generation_root/asp-hook")
+        || launcher_text.contains("runtime/bin/asp")
+        || launcher_text.contains("runtime/profiles/asp/active")
+        || launcher_text.contains("runtime/profiles/asp/healthy")
+    {
+        return Err(format!(
+            "{} must resolve only immutable HookGeneration policy and lifecycle binaries",
+            plugin_root
+                .join(CODEX_PLUGIN_LAUNCHER_RELATIVE_PATH)
+                .display()
+        ));
+    }
+
+    let mut hasher = blake3::Hasher::new();
+    hasher.update(PAYLOAD_DIGEST_DOMAIN);
+    for (relative, bytes) in [
+        (CODEX_PLUGIN_MANIFEST_RELATIVE_PATH, manifest_bytes),
+        (CODEX_PLUGIN_HOOKS_RELATIVE_PATH, hooks),
+        (CODEX_PLUGIN_LAUNCHER_RELATIVE_PATH, launcher),
+    ] {
+        hasher.update(relative.as_bytes());
+        hasher.update(&[0]);
+        hasher.update(&(bytes.len() as u64).to_le_bytes());
+        hasher.update(&bytes);
+    }
+    Ok(CodexPluginPayloadIdentity {
+        plugin_name,
+        version,
+        digest: format!("blake3-256:{}", hasher.finalize().to_hex()),
+    })
+}
+
+fn required_manifest_string<'a>(
+    manifest: &'a serde_json::Value,
+    field: &str,
+) -> Result<&'a str, String> {
+    manifest
+        .get(field)
+        .and_then(serde_json::Value::as_str)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| format!("Codex plugin manifest is missing non-empty `{field}`"))
+}
+
+fn read_payload_file(plugin_root: &Path, relative: &str) -> Result<Vec<u8>, String> {
+    let path = plugin_root.join(relative);
+    fs::read(&path).map_err(|error| format!("failed to read {}: {error}", path.display()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const MANIFEST: &[u8] = include_bytes!("../../../asp-codex-plugin/.codex-plugin/plugin.json");
+    const HOOKS: &[u8] = include_bytes!("../../../asp-codex-plugin/hooks/hooks.json");
+    const LAUNCHER: &[u8] = include_bytes!("../../../asp-codex-plugin/bin/asp-hook");
+
+    #[test]
+    fn canonical_payload_has_a_typed_content_identity() {
+        let fixture = tempfile::tempdir().expect("payload fixture");
+        write_bundle(fixture.path(), MANIFEST, HOOKS, LAUNCHER);
+        let identity = load_codex_plugin_payload_identity(fixture.path()).expect("identity");
+        assert_eq!(identity.plugin_name, "asp-codex-plugin");
+        assert!(identity.digest.starts_with("blake3-256:"));
+    }
+
+    #[test]
+    fn disk_validator_rejects_direct_runtime_launcher_authority() {
+        let fixture = tempfile::tempdir().expect("payload fixture");
+        let launcher = String::from_utf8(LAUNCHER.to_vec())
+            .expect("launcher UTF-8")
+            .replace("hooks/current", "runtime/bin/asp");
+        write_bundle(fixture.path(), MANIFEST, HOOKS, launcher.as_bytes());
+        assert!(
+            load_codex_plugin_payload_identity(fixture.path())
+                .expect_err("Runtime authority must fail")
+                .contains("immutable HookGeneration")
+        );
+    }
+
+    fn write_bundle(root: &Path, manifest: &[u8], hooks: &[u8], launcher: &[u8]) {
+        for (relative, bytes) in [
+            (CODEX_PLUGIN_MANIFEST_RELATIVE_PATH, manifest),
+            (CODEX_PLUGIN_HOOKS_RELATIVE_PATH, hooks),
+            (CODEX_PLUGIN_LAUNCHER_RELATIVE_PATH, launcher),
+        ] {
+            let path = root.join(relative);
+            fs::create_dir_all(path.parent().expect("payload parent"))
+                .expect("create payload parent");
+            fs::write(path, bytes).expect("write payload");
+        }
+    }
+}

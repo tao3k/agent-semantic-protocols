@@ -179,6 +179,7 @@ pub struct RuntimeAspClientDispatcher {
     schema_bundles: crate::schema_bundle::RuntimeSchemaBundleCatalog,
     workspace_registry: Arc<RuntimeServerWorkspaceRegistry>,
     initialized_workspaces: Arc<Mutex<HashMap<ClientWorkspaceKey, InitializedWorkspace>>>,
+    runtime_search_service: RuntimeSearchServiceHandle,
     installed_provider_targets: Arc<[(String, String)]>,
     generation_admission:
         Arc<agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmission>,
@@ -193,7 +194,7 @@ pub struct RuntimeAspClientDispatcher {
 impl RuntimeAspClientDispatcher {
     fn new(
         schema_bundles: crate::schema_bundle::RuntimeSchemaBundleCatalog,
-        _runtime_search_service: RuntimeSearchServiceHandle,
+        runtime_search_service: RuntimeSearchServiceHandle,
         workspace_registry: Arc<RuntimeServerWorkspaceRegistry>,
         initialized_workspaces: Arc<Mutex<HashMap<ClientWorkspaceKey, InitializedWorkspace>>>,
         installed_provider_targets: Arc<[(String, String)]>,
@@ -208,6 +209,7 @@ impl RuntimeAspClientDispatcher {
     ) -> Self {
         Self {
             schema_bundles,
+            runtime_search_service,
             workspace_registry,
             initialized_workspaces,
             installed_provider_targets,
@@ -351,6 +353,7 @@ impl AspClientDispatcher for RuntimeAspClientDispatcher {
         let workspace_registry = Arc::clone(&self.workspace_registry);
         let schema_bundles = self.schema_bundles.clone();
         let initialized_workspaces = Arc::clone(&self.initialized_workspaces);
+        let runtime_search_service = self.runtime_search_service.clone();
         let installed_provider_targets = Arc::clone(&self.installed_provider_targets);
         let generation_admission = Arc::clone(&self.generation_admission);
         let query_generation_authority = self.query_generation_authority.clone();
@@ -375,13 +378,62 @@ impl AspClientDispatcher for RuntimeAspClientDispatcher {
                         .map_err(|error| error.to_string())
                         .map_err(AspClientOperationError::Message);
                 }
-                let (language_id, route) =
-                    agent_semantic_client_protocol::resolve_server_client_method(
-                        &request.method,
-                        installed_provider_targets
-                            .iter()
-                            .map(|(language_id, _)| language_id.clone()),
-                    )?;
+                let resolved = agent_semantic_client_protocol::resolve_server_client_method_owner(
+                    &request.method,
+                    installed_provider_targets
+                        .iter()
+                        .map(|(language_id, _)| language_id.clone()),
+                )?;
+                if let agent_semantic_client_protocol::ResolvedServerClientMethod::Server(
+                    ServerClientRoute::GraphsEvaluate,
+                ) = resolved
+                {
+                    let initialized = initialized_workspaces
+                        .lock()
+                        .map_err(|_| "ASP client workspace-root registry poisoned".to_owned())?
+                        .get(&(
+                            request.workspace_identity.as_str().to_owned(),
+                            request.session_id.as_str().to_owned(),
+                        ))
+                        .cloned()
+                        .ok_or_else(|| {
+                            "ASP client request requires an initialized workspace root".to_owned()
+                        })?;
+                    let (generation_digest, generation_token) = query_generation
+                        .borrow()
+                        .get(request.workspace_identity.as_str())
+                        .and_then(|state| match state {
+                            RuntimeQueryGenerationState::Ready(generation) => Some((
+                                generation.generation_digest().to_owned(),
+                                generation.generation_token(),
+                            )),
+                            _ => None,
+                        })
+                        .ok_or_else(|| {
+                            "graph evaluation requires an active Ready workspace generation"
+                                .to_owned()
+                        })?;
+                    let receipt = runtime_search_service
+                        .graphs_evaluate(
+                            initialized.project_root,
+                            request.workspace_identity.as_str().to_owned(),
+                            generation_digest,
+                            generation_token,
+                            request.request_id.as_str().to_owned(),
+                            request.params,
+                        )
+                        .await?;
+                    return Ok(receipt);
+                }
+                let agent_semantic_client_protocol::ResolvedServerClientMethod::Language {
+                    language_id,
+                    route,
+                } = resolved
+                else {
+                    return Err(AspClientOperationError::Message(
+                        "unsupported server-owned client method".to_owned(),
+                    ));
+                };
                 let provider_id = installed_provider_targets
                     .iter()
                     .find_map(|(installed_language_id, provider_id)| {
@@ -577,14 +629,40 @@ impl AspClientDispatcher for RuntimeAspClientDispatcher {
                             ),
                         }));
                     }
-                    return Err(AspClientOperationError::Message(
-                                terminal.error.unwrap_or_else(|| {
-                                    format!(
-                                        "workspace generation admission reached terminal state {:?}",
-                                        terminal.state
-                                    )
-                                }),
-                            ));
+                    let reason_kind = match terminal.state {
+                        agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmissionState::Queued => {
+                            "runtime-generation-queued"
+                        }
+                        agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmissionState::Building => {
+                            "runtime-generation-building"
+                        }
+                        agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmissionState::Cancelled => {
+                            "runtime-generation-admission-cancelled"
+                        }
+                        agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmissionState::Failed => {
+                            generation_admission_reason_kind(terminal.failure_stage.as_ref())
+                        }
+                        agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmissionState::Ready => {
+                            unreachable!("Ready admission bypasses failure terminal")
+                        }
+                    };
+                    let message = terminal.error.unwrap_or_else(|| {
+                        format!(
+                            "workspace generation admission reached terminal state {:?}",
+                            terminal.state
+                        )
+                    });
+                    return Err(AspClientOperationError::Terminal(AspClientDispatchError {
+                        reason_kind: reason_kind.to_owned(),
+                        message,
+                        details: Some(serde_json::json!({
+                            "admissionState": format!("{:?}", terminal.state),
+                            "attempt": terminal.attempt,
+                            "failureStage": terminal.failure_stage,
+                            "languageId": language_id,
+                            "providerId": provider_id,
+                        })),
+                    }));
                 }
                 let commit = terminal.commit.ok_or_else(|| {
                     "workspace generation admission reached Ready without a commit".to_owned()
@@ -666,12 +744,22 @@ impl AspClientDispatcher for RuntimeAspClientDispatcher {
                             ),
                         }));
                     }
-                    return Err(AspClientOperationError::Message(
-                        "active-workspace-generation-required schemaVersion=1 state=Failed"
-                            .to_owned(),
-                    ));
+                    return Err(AspClientOperationError::Terminal(AspClientDispatchError {
+                        reason_kind: "active-workspace-generation-required".to_owned(),
+                        message:
+                            "active-workspace-generation-required schemaVersion=1 state=Failed"
+                                .to_owned(),
+                        details: Some(serde_json::json!({
+                            "generationState": "not-ready",
+                            "languageId": language_id,
+                            "providerId": provider_id,
+                        })),
+                    }));
                 };
                 match route {
+                    agent_semantic_client_protocol::ServerClientRoute::GraphsEvaluate => {
+                        unreachable!("server-owned graph route is handled before language dispatch")
+                    }
                     agent_semantic_client_protocol::ServerClientRoute::CancellationProbe => {
                         unreachable!("cancellation probe is owned by the lifecycle route")
                     }

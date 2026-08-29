@@ -19,6 +19,14 @@ fn main() -> std::process::ExitCode {
         };
         agent_semantic_client::hook_bootstrap::terminate_hook_process(code)
     }
+    if hook_args.first().is_some_and(|argument| argument == "hook")
+        && hook_args
+            .get(1)
+            .is_some_and(|argument| argument == "pre-tool")
+    {
+        agent_semantic_hook::run_aot_evaluator_cli();
+        agent_semantic_client::hook_bootstrap::terminate_hook_process(0)
+    }
     let synchronous_hook_dispatch =
         agent_semantic_client::hook_bootstrap::is_synchronous_hook_dispatch(hook_args);
     if synchronous_hook_dispatch {

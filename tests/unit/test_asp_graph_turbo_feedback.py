@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from asp_graph_turbo.feedback import (
+from asp_python_graphs.feedback import (
     feedback_packet_from_sandtable,
     merge_feedback_into_packet,
 )
 
-from ._asp_graph_turbo_common import (
+from ._asp_python_graphs_common import (
     _GRAPH_TURBO_FEEDBACK_SCHEMA,
     _GRAPH_TURBO_SCHEMA,
     Path,
@@ -206,7 +206,7 @@ def test_feedback_cli_builds_packet_and_rank_cli_consumes_it(tmp_path: Path) -> 
         [
             sys.executable,
             "-m",
-            "asp_graph_turbo",
+            "asp_python_graphs",
             "feedback",
             str(report),
         ],
@@ -235,7 +235,7 @@ def test_feedback_cli_builds_packet_and_rank_cli_consumes_it(tmp_path: Path) -> 
         [
             sys.executable,
             "-m",
-            "asp_graph_turbo",
+            "asp_python_graphs",
             "rank",
             "--feedback",
             str(feedback),

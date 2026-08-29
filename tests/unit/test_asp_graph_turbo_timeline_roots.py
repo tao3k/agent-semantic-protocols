@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from asp_graph_turbo.artifact_timeline import evaluate_artifact_timeline
-from unit.asp_graph_turbo_timeline_support import write_timeline_json
+from asp_python_graphs.artifact_timeline import evaluate_artifact_timeline
+from unit.asp_python_graphs_timeline_support import write_timeline_json
 
 
 def test_timeline_resolves_package_local_project_root_actions(tmp_path) -> None:

@@ -22,6 +22,12 @@ const EXACT_QUERY_REQUEST_SCHEMA_ID: &str =
 const OWNER_SEARCH_REQUEST_SCHEMA_ID: &str =
     "agent.semantic-protocols.asp-client-owner-search-request";
 
+pub const GRAPH_EVALUATE_METHOD: &str = "asp.graphs.evaluate";
+pub const GRAPH_EVALUATE_REQUEST_SCHEMA_ID: &str =
+    "agent.semantic-protocols.semantic-graph-turbo-request";
+pub const GRAPH_EVALUATE_RESPONSE_SCHEMA_ID: &str =
+    "agent.semantic-protocols.semantic-graph-turbo-result";
+
 pub const CANCELLATION_PROBE_METHOD: &str = "asp.lifecycle.cancellation";
 pub const CANCELLATION_PROBE_REQUEST_SCHEMA_ID: &str =
     "agent.semantic-protocols.asp-client-cancellation-probe-request";
@@ -31,15 +37,26 @@ pub const CANCELLATION_PROBE_RESPONSE_SCHEMA_ID: &str =
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ServerClientRoute {
     CancellationProbe,
+    GraphsEvaluate,
     Search,
     ExactQuery,
     OwnerSearch,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ResolvedServerClientMethod {
+    Server(ServerClientRoute),
+    Language {
+        language_id: String,
+        route: ServerClientRoute,
+    },
 }
 
 impl ServerClientRoute {
     pub const fn operation(self) -> &'static str {
         match self {
             Self::CancellationProbe => "lifecycle.cancellation",
+            Self::GraphsEvaluate => "graphs.evaluate",
             Self::Search => "search",
             Self::ExactQuery => "query",
             Self::OwnerSearch => "search.owner",
@@ -64,7 +81,7 @@ pub fn server_client_methods(
             owner_search_method(&language_id),
         ]);
     }
-    methods.push(schema_bundle_method());
+    methods.extend([schema_bundle_method(), graphs_evaluate_method()]);
     methods.sort_by(|left, right| left.method.cmp(&right.method));
     Ok(methods)
 }
@@ -136,6 +153,23 @@ pub fn resolve_server_client_method(
     method: &str,
     language_ids: impl IntoIterator<Item = String>,
 ) -> Result<(String, ServerClientRoute), String> {
+    match resolve_server_client_method_owner(method, language_ids)? {
+        ResolvedServerClientMethod::Language { language_id, route } => Ok((language_id, route)),
+        ResolvedServerClientMethod::Server(_) => Err(format!(
+            "state=route-owner-mismatch reasonKind=server-owned-method-requires-server-dispatch method={method}"
+        )),
+    }
+}
+
+pub fn resolve_server_client_method_owner(
+    method: &str,
+    language_ids: impl IntoIterator<Item = String>,
+) -> Result<ResolvedServerClientMethod, String> {
+    if method == GRAPH_EVALUATE_METHOD {
+        return Ok(ResolvedServerClientMethod::Server(
+            ServerClientRoute::GraphsEvaluate,
+        ));
+    }
     let mut resolved = None;
     for language_id in language_ids {
         let Some(route) = method
@@ -149,7 +183,7 @@ pub fn resolve_server_client_method(
                 "state=route-ambiguous reasonKind=multiple-installed-client-methods method={method}"
             ));
         }
-        resolved = Some((language_id, route));
+        resolved = Some(ResolvedServerClientMethod::Language { language_id, route });
     }
     resolved.ok_or_else(|| {
         format!(
@@ -164,6 +198,37 @@ fn route_from_suffix(suffix: &str) -> Option<ServerClientRoute> {
         "query" => Some(ServerClientRoute::ExactQuery),
         "search.owner" => Some(ServerClientRoute::OwnerSearch),
         _ => None,
+    }
+}
+
+fn graphs_evaluate_method() -> ClientMethod {
+    ClientMethod {
+        method: GRAPH_EVALUATE_METHOD.to_owned(),
+        route_id: GRAPH_EVALUATE_METHOD.to_owned(),
+        request_schema_id: GRAPH_EVALUATE_REQUEST_SCHEMA_ID.to_owned(),
+        response_schema_id: GRAPH_EVALUATE_RESPONSE_SCHEMA_ID.to_owned(),
+        error_schema_ids: vec![ROUTE_FAILURE_SCHEMA_ID.to_owned()],
+        parameters: vec![
+            required_string("schemaId"),
+            required_string("schemaVersion"),
+            required_string("protocolId"),
+            required_string("protocolVersion"),
+            required_string("packetKind"),
+            required_string("surface"),
+            required("sourceSnapshot", ClientParameterType::Json),
+            required("workspaceGeneration", ClientParameterType::Json),
+            required("queryTerms", ClientParameterType::StringArray),
+            required_string("profile"),
+            required_string("algorithm"),
+            required("seedIds", ClientParameterType::StringArray),
+            required("budget", ClientParameterType::UnsignedInteger),
+            // The shared schema's anyOf(graph, graphs) constraint remains the
+            // payload authority; catalog metadata advertises both branches.
+            optional("graph", ClientParameterType::Json),
+            optional("graphs", ClientParameterType::Json),
+        ],
+        cancellable: true,
+        streaming: false,
     }
 }
 

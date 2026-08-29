@@ -14,10 +14,16 @@ fn contract() -> ProviderRuntimeContractReceipt {
         ProviderRuntimeContractTransport::RuntimeIpc,
         vec![ProviderRuntimeContractOperation {
             operation: "projection-batch-stdin".to_owned(),
-            request_schema_id: "agent.semantic-protocols.language-projection-batch-request.v1"
-                .to_owned(),
-            response_schema_id: "agent.semantic-protocols.language-projection-batch-response.v1"
-                .to_owned(),
+            request_schema: agent_semantic_provider_protocol::ProviderSchemaReference {
+                schema_id: "agent.semantic-protocols.language-projection-batch-request.v1"
+                    .to_owned(),
+                schema_version: "1".to_owned(),
+            },
+            response_schema: agent_semantic_provider_protocol::ProviderSchemaReference {
+                schema_id: "agent.semantic-protocols.language-projection-batch-response.v1"
+                    .to_owned(),
+                schema_version: "1".to_owned(),
+            },
         }],
     )
     .expect("provider runtime contract")

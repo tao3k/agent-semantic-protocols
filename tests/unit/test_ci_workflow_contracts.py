@@ -180,7 +180,7 @@ def test_agent_tools_run_asp_rejects_stale_default_binary() -> None:
     justfile = JUSTFILE.read_text(encoding="utf-8")
 
     runner = justfile.split("_agent-tools-run-asp bin_dir +args:", 1)[1]
-    runner = runner.split("# Install asp, asp-graph-turbo", 1)[0]
+    runner = runner.split("# Install asp, asp-python-graphs", 1)[0]
 
     assert 'protocol_bin="${ASP_BIN:-${bin_dir}/asp}"' in runner
     assert '[ -z "${ASP_BIN:-}" ]' in runner

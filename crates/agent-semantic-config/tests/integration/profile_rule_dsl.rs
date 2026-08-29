@@ -88,13 +88,13 @@ fn hook_config_schema_exposes_only_the_public_rule_axes() {
 }
 
 #[test]
-fn language_route_materializes_bash_unknown_source_access_in_internal_ir() {
+fn language_route_materializes_bash_read_action_in_internal_ir() {
     let mut config = agent_semantic_config::default_hook_client_config_file()
         .expect("parse canonical hook config");
     let public_rule = config
         .rules
         .iter_mut()
-        .find(|rule| rule.id == "route-unresolved-source-access-to-asp-languages")
+        .find(|rule| rule.id == "route-read-to-asp-languages")
         .expect("language route rule");
     assert_eq!(public_rule.matcher.as_deref(), Some("Bash"));
     assert_eq!(
@@ -115,7 +115,7 @@ fn language_route_materializes_bash_unknown_source_access_in_internal_ir() {
     let compiled_rule = config
         .rules
         .iter()
-        .find(|rule| rule.id == "route-unresolved-source-access-to-asp-languages")
+        .find(|rule| rule.id == "route-read-to-asp-languages")
         .expect("compiled language route rule");
     assert!(
         compiled_rule
@@ -125,9 +125,10 @@ fn language_route_materializes_bash_unknown_source_access_in_internal_ir() {
     );
     assert!(compiled_rule.match_config.host_invocation_any.is_empty());
     assert_eq!(
-        compiled_rule.match_config.capability_policy_all,
-        ["registered-source-access"]
+        compiled_rule.actions,
+        [agent_semantic_config::HookClientActionKind::Read]
     );
+    assert!(compiled_rule.match_config.capability_policy_all.is_empty());
     assert!(
         compiled_rule
             .match_config
@@ -144,7 +145,7 @@ fn unknown_profile_reference_fails_closed() {
     config
         .rules
         .iter_mut()
-        .find(|rule| rule.id == "route-unresolved-source-access-to-asp-languages")
+        .find(|rule| rule.id == "route-read-to-asp-languages")
         .expect("language route rule")
         .profiles_list
         .push("missing-language".to_owned());

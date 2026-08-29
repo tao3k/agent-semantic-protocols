@@ -59,7 +59,7 @@ responsibilities = ["public_api"]
 rationale = "harness facade exports pytest, policy, search, and verification APIs"
 
 [[tool.python-lang-project-harness.verification.profile_hints]]
-owner_path = "packages/python/asp_graph_turbo/src/asp_graph_turbo/__init__.py"
+owner_path = "packages/python/asp_python_graphs/src/asp_python_graphs/__init__.py"
 responsibilities = ["public_api"]
 rationale = "graph turbo facade is consumed by ASP ranking and cache evidence tools"
 
@@ -73,7 +73,7 @@ addopts = [
   "--python-project-harness",
 ]
 pythonpath = [
-  "packages/python/asp_graph_turbo/src",
+  "packages/python/asp_python_graphs/src",
   "packages/python/asp_memory_engine/src",
   "packages/python/tools/src",
   "packages/python/src",

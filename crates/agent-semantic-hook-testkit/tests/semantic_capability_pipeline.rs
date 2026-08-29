@@ -267,7 +267,7 @@ fn bash_source_access_plus_language_profile_does_not_depend_on_executable_names(
     assert_eq!(registered_source_read["decision"], "deny");
     assert_eq!(
         registered_source_read["fields"]["configRuleId"],
-        "route-unresolved-source-access-to-asp-languages"
+        "route-read-to-asp-languages"
     );
     assert!(
         capabilities(&registered_source_read)
@@ -534,7 +534,7 @@ fn registered_source_root_and_parser_read_behavior_compose_into_the_source_searc
     assert_eq!(decision["decision"], "deny", "decision={decision:#}");
     assert_eq!(
         decision["fields"]["configRuleId"],
-        "route-unresolved-source-access-to-asp-languages"
+        "route-read-to-asp-languages"
     );
     assert!(
         decision["routes"]
@@ -561,7 +561,7 @@ fn registered_source_root_without_read_behavior_does_not_trigger_source_search()
     );
     assert_ne!(
         decision["fields"]["configRuleId"],
-        "route-unresolved-source-access-to-asp-languages"
+        "route-read-to-asp-languages"
     );
     assert!(
         capabilities(&decision)

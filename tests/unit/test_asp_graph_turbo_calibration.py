@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from asp_graph_turbo.calibration import (
+from asp_python_graphs.calibration import (
     apply_profile_calibrations,
     profile_calibration_from_feedback,
 )
-from asp_graph_turbo.profiles import resolve_profile
+from asp_python_graphs.profiles import resolve_profile
 
-from ._asp_graph_turbo_common import (
+from ._asp_python_graphs_common import (
     _GRAPH_TURBO_CALIBRATION_SCHEMA,
     _GRAPH_TURBO_SCHEMA,
     Path,
@@ -189,7 +189,7 @@ def test_calibration_cli_builds_packet_and_rank_cli_consumes_it(tmp_path: Path) 
         [
             sys.executable,
             "-m",
-            "asp_graph_turbo",
+            "asp_python_graphs",
             "calibrate",
             str(feedback_path),
             str(request_path),
@@ -219,7 +219,7 @@ def test_calibration_cli_builds_packet_and_rank_cli_consumes_it(tmp_path: Path) 
         [
             sys.executable,
             "-m",
-            "asp_graph_turbo",
+            "asp_python_graphs",
             "rank",
             "--calibration",
             str(calibration_path),

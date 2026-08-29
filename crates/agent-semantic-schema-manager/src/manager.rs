@@ -3,14 +3,22 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io::Write;
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 
-use agent_semantic_content_identity::exact_selector_merkle::canonical_content_digest;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::responsibility::{
     SchemaFamily, SchemaReferenceDecision, SchemaResponsibility, audit_schema_responsibilities,
+};
+
+use crate::manager_validation::{
+    ensure_unique, local_schema_name, schema_references, validate_identity, validate_relative_path,
+    validate_schema_name,
+};
+use crate::receipt::{
+    BUNDLE_MEMBERSHIP_FILE, SchemaBundleMembership, read_receipt_if_present, schema_digest,
+    tagged_content_digest, verify_bundle_receipt_blocking,
 };
 
 pub const PROFILE_REGISTRY_SCHEMA_ID: &str =
@@ -57,9 +65,14 @@ pub struct SchemaBundleEntry {
 pub struct LanguageSchemaBundleReceipt {
     pub schema_id: String,
     pub schema_version: String,
+    pub schema_digest: String,
+    #[serde(skip)]
     pub language_id: String,
+    #[serde(skip)]
     pub profile_digest: String,
+    #[serde(skip)]
     pub bundle_digest: String,
+    #[serde(skip)]
     pub schemas: Vec<SchemaBundleEntry>,
 }
 
@@ -337,6 +350,10 @@ impl SchemaManager {
             LanguageSchemaBundleReceipt {
                 schema_id: BUNDLE_RECEIPT_SCHEMA_ID.to_owned(),
                 schema_version: SCHEMA_VERSION.to_owned(),
+                schema_digest: tagged_content_digest(
+                    b"asp.language-schema-bundle.v1",
+                    &[&bundle_bytes],
+                ),
                 language_id: profile.language_id.clone(),
                 profile_digest: tagged_content_digest(
                     b"asp.language-schema-profile.v1",
@@ -439,7 +456,12 @@ fn write_bundle(
         )
     })?;
     let receipt_path = schema_root.join(BUNDLE_RECEIPT_FILE);
-    let previous = read_receipt_if_present(&receipt_path)?;
+    let previous = match read_receipt_if_present(&receipt_path) {
+        Ok(previous) => previous,
+        // A pre-MVP1 receipt is deliberately not accepted as a current
+        // receipt, but materialization must be able to replace it atomically.
+        Err(_) => None,
+    };
     let expected_names = documents.keys().cloned().collect::<BTreeSet<_>>();
     let mut changed_count = 0;
     for (name, bytes) in documents {
@@ -474,6 +496,19 @@ fn write_bundle(
         .map_err(|error| format!("encode schema bundle receipt: {error}"))?;
     if fs::read(&receipt_path).ok().as_deref() != Some(receipt_bytes.as_slice()) {
         atomic_write(&receipt_path, &receipt_bytes)?;
+        changed_count += 1;
+    }
+    let membership = SchemaBundleMembership {
+        language_id: receipt.language_id.clone(),
+        profile_digest: receipt.profile_digest.clone(),
+        bundle_digest: receipt.bundle_digest.clone(),
+        schemas: receipt.schemas.clone(),
+    };
+    let membership_path = schema_root.join(BUNDLE_MEMBERSHIP_FILE);
+    let membership_bytes = serde_json::to_vec_pretty(&membership)
+        .map_err(|error| format!("encode schema bundle membership: {error}"))?;
+    if fs::read(&membership_path).ok().as_deref() != Some(membership_bytes.as_slice()) {
+        atomic_write(&membership_path, &membership_bytes)?;
         changed_count += 1;
     }
     sync_directory(schema_root)?;
@@ -518,110 +553,6 @@ fn report(
     }
 }
 
-fn schema_references(value: &Value) -> Vec<&str> {
-    let mut references = Vec::new();
-    let mut pending = vec![value];
-    while let Some(value) = pending.pop() {
-        match value {
-            Value::Object(object) => {
-                for key in ["$ref", "$dynamicRef"] {
-                    if let Some(Value::String(reference)) = object.get(key) {
-                        references.push(reference.as_str());
-                    }
-                }
-                pending.extend(object.values());
-            }
-            Value::Array(array) => pending.extend(array),
-            _ => {}
-        }
-    }
-    references
-}
-
-fn local_schema_name(reference: &str) -> Option<&str> {
-    let target = reference.split('#').next().unwrap_or_default();
-    if target.is_empty() {
-        return None;
-    }
-    let name = target.rsplit('/').next()?;
-    name.ends_with(".schema.json").then_some(name)
-}
-
-fn schema_digest(bytes: &[u8]) -> String {
-    tagged_content_digest(b"asp.language-schema-file.v1", &[bytes])
-}
-
-fn tagged_content_digest(domain: &[u8], parts: &[&[u8]]) -> String {
-    format!(
-        "blake3-256:{}",
-        canonical_content_digest(domain, parts).as_str()
-    )
-}
-
-fn read_receipt_if_present(path: &Path) -> Result<Option<LanguageSchemaBundleReceipt>, String> {
-    let bytes = match fs::read(path) {
-        Ok(bytes) => bytes,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-        Err(error) => {
-            return Err(format!(
-                "read schema bundle receipt {}: {error}",
-                path.display()
-            ));
-        }
-    };
-    serde_json::from_slice(&bytes)
-        .map(Some)
-        .map_err(|error| format!("decode schema bundle receipt {}: {error}", path.display()))
-}
-
-fn verify_bundle_receipt_blocking(
-    receipt_path: &Path,
-) -> Result<LanguageSchemaBundleReceipt, String> {
-    let receipt = read_receipt_if_present(receipt_path)?.ok_or_else(|| {
-        format!(
-            "schema bundle receipt is missing: {}",
-            receipt_path.display()
-        )
-    })?;
-    if receipt.schema_id != BUNDLE_RECEIPT_SCHEMA_ID || receipt.schema_version != SCHEMA_VERSION {
-        return Err("schema bundle receipt identity is unsupported".to_owned());
-    }
-    validate_identity("languageId", &receipt.language_id)?;
-    let schema_root = receipt_path.parent().ok_or_else(|| {
-        format!(
-            "schema bundle receipt has no schema root: {}",
-            receipt_path.display()
-        )
-    })?;
-    let mut previous_name: Option<&str> = None;
-    for entry in &receipt.schemas {
-        validate_schema_name(&entry.name)?;
-        if previous_name.is_some_and(|previous| previous >= entry.name.as_str()) {
-            return Err("schema bundle receipt entries must be sorted and unique".to_owned());
-        }
-        previous_name = Some(&entry.name);
-        let bytes = fs::read(schema_root.join(&entry.name))
-            .map_err(|error| format!("read receipt-owned schema {}: {error}", entry.name))?;
-        let actual = schema_digest(&bytes);
-        if actual != entry.digest {
-            return Err(format!(
-                "schema bundle receipt digest mismatch for {}: expected={} actual={actual}",
-                entry.name, entry.digest
-            ));
-        }
-    }
-    let bundle_bytes = serde_json::to_vec(&receipt.schemas)
-        .map_err(|error| format!("encode receipt schema entries: {error}"))?;
-    let actual_bundle = tagged_content_digest(b"asp.language-schema-bundle.v1", &[&bundle_bytes]);
-    if actual_bundle != receipt.bundle_digest {
-        return Err(format!(
-            "schema bundle receipt bundle digest mismatch: expected={} actual={actual_bundle}",
-            receipt.bundle_digest
-        ));
-    }
-    Ok(receipt)
-}
-
 fn atomic_write(target: &Path, bytes: &[u8]) -> Result<(), String> {
     let parent = target
         .parent()
@@ -642,46 +573,4 @@ fn sync_directory(path: &Path) -> Result<(), String> {
     fs::File::open(path)
         .and_then(|directory| directory.sync_all())
         .map_err(|error| format!("sync schema bundle directory {}: {error}", path.display()))
-}
-
-fn validate_identity(field: &str, value: &str) -> Result<(), String> {
-    if value.is_empty()
-        || !value
-            .bytes()
-            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
-    {
-        return Err(format!("{field} must be a lowercase semantic identity"));
-    }
-    Ok(())
-}
-
-fn ensure_unique(field: &str, values: &[String]) -> Result<(), String> {
-    let mut unique = BTreeSet::new();
-    for value in values {
-        if !unique.insert(value) {
-            return Err(format!("duplicate {field}: {value}"));
-        }
-    }
-    Ok(())
-}
-
-fn validate_schema_name(name: &str) -> Result<(), String> {
-    if !name.ends_with(".schema.json") || Path::new(name).components().count() != 1 {
-        return Err(format!(
-            "schema name must be a basename ending in .schema.json: {name}"
-        ));
-    }
-    Ok(())
-}
-
-fn validate_relative_path(field: &str, path: &str) -> Result<(), String> {
-    let path = Path::new(path);
-    if path.is_absolute()
-        || path
-            .components()
-            .any(|component| !matches!(component, Component::Normal(_)))
-    {
-        return Err(format!("{field} must be a normalized relative path"));
-    }
-    Ok(())
 }

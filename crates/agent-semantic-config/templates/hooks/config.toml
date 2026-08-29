@@ -7,6 +7,19 @@ protocolId = "@HOOK_PROTOCOL_ID@"
 protocolVersion = "@HOOK_PROTOCOL_VERSION@"
 contractFingerprint = "@HOOK_CLIENT_CONTRACT_FINGERPRINT@"
 
+# Upstream-maintained deterministic Reader facts. Unknown command shapes are
+# observed once by the bounded TMP probe and recorded in the State Home dynamic
+# catalog; they are not added to this list at runtime.
+readerBehaviorPatterns = [
+  ["cat"],
+  ["head"],
+  ["tail"],
+  ["bat"],
+  ["grep"],
+  ["rg"],
+  ["sed", "-n"],
+]
+
 [agentCalling]
 defaultPattern = "@{name}"
 
@@ -161,20 +174,26 @@ argvPrefixAny = [
   ["git", "blame"],
 ]
 
-# Reusable predicates over the normalized AgentAction envelope. Rules compose
-# these facts; they do not duplicate tool-name or provider-extension heuristics.
-[[capabilityPolicies]]
-id = "registered-language-source"
-subjectKindAny = ["registered-language-source", "registered-language-source-pattern"]
+# The command-local escape is the second no-agent layer. A parser-proven
+# process environment binding bypasses all Hook policy for that Bash process.
+[[rules]]
+id = "allow-explicit-no-agent"
+priority = 200000
+matcher = "Bash"
+intent = "no-agent"
+decision = "allow"
+terminal = true
+event = "pre-tool"
+platform = "codex"
+message = "Allowed an explicitly no-agent process without Hook policy routing."
 
-[[capabilityPolicies]]
-id = "filesystem-read"
-semanticCapabilityAny = ["read"]
+[rules.match]
+processEnvironmentAssignmentAny = ["ASP_NO_AGENT=1"]
 
-[[capabilityPolicies]]
-id = "registered-source-access"
-semanticCapabilityAny = ["read", "unknown"]
-subjectKindAny = ["registered-language-source", "registered-language-source-pattern"]
+[rules.fields]
+bypassOwner = "hook-matcher"
+bypassScope = "host-policy"
+recoveryAuthority = "explicit-no-agent-process"
 
 # Native Host Edit actions with an explicit workspace path receive a stable
 # mutation intent. Agent registration profiles remain the authority that may

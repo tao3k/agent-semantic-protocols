@@ -5,7 +5,7 @@ description = "Python workspace for Agent Semantic Protocols packages."
 requires-python = ">=3.12"
 dependencies = [
     "agent-semantic-protocols-tools",
-    "asp-graph-turbo",
+    "asp-python-graphs",
     "asp-memory-engine",
     "asp-schema-manager",
 ]
@@ -21,14 +21,14 @@ package = false
 
 [tool.uv.sources]
 agent-semantic-protocols-tools = { workspace = true }
-asp-graph-turbo = { workspace = true }
+asp-python-graphs = { workspace = true }
 python-lang-project-harness = { path = "../../languages/python-lang-project-harness", editable = true }
 asp-memory-engine = { workspace = true }
 asp-schema-manager = { workspace = true }
 
 [tool.uv.workspace]
 members = [
-    "asp_graph_turbo",
+    "asp_python_graphs",
     "tools",
     "asp_memory_engine",
     "asp_schema_manager",

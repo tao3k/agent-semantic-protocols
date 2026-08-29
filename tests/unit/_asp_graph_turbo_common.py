@@ -7,7 +7,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from asp_graph_turbo import (
+from asp_python_graphs import (
     TypedGraph,
     rank_frontier,
     render_compact,

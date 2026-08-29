@@ -32,14 +32,30 @@ compiler = [
     "dep:tokio",
     "dep:which",
 ]
-evaluator = ["dep:agent-semantic-shell-parser", "dep:libc", "dep:which"]
+evaluator = [
+    "dep:agent-semantic-shell-parser",
+    "dep:blake3",
+    "dep:fs2",
+    "dep:libc",
+    "dep:which",
+]
 
 [[bin]]
-name = "asp-hook-evaluator"
-path = "src/bin/asp_hook_evaluator.rs"
-test = false
-bench = false
+name = "asp-hook"
+path = "src/bin/asp_hook.rs"
 required-features = ["evaluator"]
+
+[[test]]
+name = "aot_evaluator_dependency_boundary"
+path = "tests/integration/aot_evaluator_dependency_boundary.rs"
+
+[[test]]
+name = "candidate_validation"
+path = "tests/integration/candidate_validation.rs"
+
+[[test]]
+name = "hook_binary_process"
+path = "tests/integration/hook_binary_process.rs"
 
 [build-dependencies]
 agent-semantic-schema-manager = { workspace = true, optional = true }

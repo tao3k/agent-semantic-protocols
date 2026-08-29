@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ._asp_graph_turbo_common import (
+from ._asp_python_graphs_common import (
     _GRAPH_TURBO_SCHEMA,
     TypedGraph,
     rank_frontier,
@@ -10,9 +10,9 @@ from ._asp_graph_turbo_common import (
     sample_packet,
     schema_validator_for,
 )
-from asp_graph_turbo import SourceSinkFrontier
-from asp_graph_turbo.path_scipy import graph_turbo_scipy_yen_path_candidates
-from asp_graph_turbo.profiles import resolve_profile
+from asp_python_graphs import SourceSinkFrontier
+from asp_python_graphs.path_scipy import graph_turbo_scipy_yen_path_candidates
+from asp_python_graphs.profiles import resolve_profile
 
 
 def test_small_graph_keeps_python_bfs_path_backend() -> None:

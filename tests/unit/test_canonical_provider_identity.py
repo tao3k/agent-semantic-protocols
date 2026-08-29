@@ -4,6 +4,8 @@ import json
 import pytest
 from jsonschema import Draft202012Validator, ValidationError
 
+from unit.schema_validation import schema_validator_for
+
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -60,7 +62,9 @@ def registered_provider_descriptors(
 def test_provider_register_conforms_to_asp_schema() -> None:
     schema = load("schemas/provider-register.schema.json")
     Draft202012Validator.check_schema(schema)
-    Draft202012Validator(schema).validate(load("schemas/provider-register.json"))
+    schema_validator_for(ROOT / "schemas/provider-register.schema.json").validate(
+        load("schemas/provider-register.json")
+    )
 
 
 def test_external_provider_is_discovered_only_from_provider_register(tmp_path: Path) -> None:

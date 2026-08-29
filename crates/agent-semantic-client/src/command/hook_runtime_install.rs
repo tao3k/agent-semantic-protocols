@@ -1,9 +1,7 @@
 //! Installation owner for hook runtime and Codex plugin surfaces.
 
-use super::hook_runtime_codex_plugin::install_codex_plugin_hooks;
 use super::hook_runtime_skill::{
-    install_agent_semantic_protocols_agent_config, install_agent_semantic_protocols_plugin_skill,
-    install_agent_semantic_protocols_skill,
+    install_agent_semantic_protocols_agent_config, install_agent_semantic_protocols_skill,
 };
 use super::hook_runtime_subagent::{install_claude_resident_agents, subagent_model_arg};
 use super::{
@@ -24,7 +22,7 @@ pub(super) async fn run_install(args: &[String]) -> Result<(), String> {
     let client = flag_value(args, "--client").unwrap_or("codex");
     if client == "codex" {
         return Err(
-            "Codex plugin installation uses `asp install plugin --codex`; direct hook configuration is not a Codex surface."
+            "Codex plugin publication uses `asp install plugin <status|publish> --codex [PROJECT_ROOT]`; direct hook configuration is not a Codex surface."
                 .to_string(),
         );
     }
@@ -40,7 +38,30 @@ mod hook_runtime_install_tests;
 
 #[derive(Debug)]
 struct CodexPluginInstallRequest {
+    operation: CodexPluginInstallOperation,
     project_root: PathBuf,
+    source_root_source: CodexPluginSourceRootSource,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum CodexPluginInstallOperation {
+    Status,
+    Publish,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum CodexPluginSourceRootSource {
+    StateHomeDev,
+    ExplicitOverride,
+}
+
+impl CodexPluginSourceRootSource {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::StateHomeDev => "state-home-dev",
+            Self::ExplicitOverride => "explicit-override",
+        }
+    }
 }
 
 fn parse_codex_plugin_install_args(args: &[String]) -> Result<CodexPluginInstallRequest, String> {
@@ -50,28 +71,63 @@ fn parse_codex_plugin_install_args(args: &[String]) -> Result<CodexPluginInstall
             std::iter::once("asp install plugin".to_string()).chain(args.iter().cloned()),
         )
         .map_err(|error| error.to_string())?;
-    let project_root = match matches.get_one::<String>("project-root") {
-        Some(project_root) => fs::canonicalize(project_root)
-            .map_err(|error| format!("failed to resolve plugin project root: {error}"))?,
-        None => {
-            let state_home = agent_semantic_runtime::resolve_state_home()?;
-            agent_semantic_artifacts::runtime_artifact_catalog::load_runtime_developer_root(
-                &state_home,
-            )?
-            .ok_or_else(|| {
-                "global plugin install requires ASP_STATE_HOME [dev].root or an explicit PROJECT_ROOT"
-                    .to_owned()
-            })?
+    let (operation, operation_matches) = match matches.subcommand() {
+        Some(("status", matches)) => (CodexPluginInstallOperation::Status, matches),
+        Some(("publish", matches)) => (CodexPluginInstallOperation::Publish, matches),
+        _ => {
+            return Err(
+                "asp install plugin requires an explicit `status` or `publish` subcommand"
+                    .to_owned(),
+            );
         }
     };
-    Ok(CodexPluginInstallRequest { project_root })
+    let (project_root, source_root_source) = match operation_matches
+        .get_one::<String>("project-root")
+    {
+        Some(project_root) => (
+            fs::canonicalize(project_root)
+                .map_err(|error| format!("failed to resolve plugin project root: {error}"))?,
+            CodexPluginSourceRootSource::ExplicitOverride,
+        ),
+        None => {
+            let state_home = agent_semantic_runtime::resolve_state_home()?;
+            (
+                agent_semantic_artifacts::runtime_artifact_catalog::load_runtime_developer_root(
+                    &state_home,
+                )?
+                .ok_or_else(|| {
+                    "global plugin publication requires ASP_STATE_HOME [dev].root or an explicit PROJECT_ROOT override"
+                        .to_owned()
+                })?,
+                CodexPluginSourceRootSource::StateHomeDev,
+            )
+        }
+    };
+    Ok(CodexPluginInstallRequest {
+        operation,
+        project_root,
+        source_root_source,
+    })
 }
 
 pub(in crate::command) async fn run_codex_plugin_install_args(
     args: &[String],
 ) -> Result<(), String> {
     let request = parse_codex_plugin_install_args(args)?;
-    run_install_for_client("codex", request.project_root, None, "plugin-install").await
+    match request.operation {
+        CodexPluginInstallOperation::Status => {
+            super::hook_runtime_codex_plugin::inspect_codex_plugin_publication(
+                &request.project_root,
+                request.source_root_source.as_str(),
+            )
+        }
+        CodexPluginInstallOperation::Publish => {
+            super::hook_runtime_codex_plugin::publish_codex_plugin_payload(
+                &request.project_root,
+                request.source_root_source.as_str(),
+            )
+        }
+    }
 }
 
 async fn run_install_for_client(
@@ -117,42 +173,19 @@ async fn run_install_for_client(
     timings.mark("user-config");
     remove_incompatible_hook_event_state(&project_root)?;
     timings.mark("event-state");
-    let (config_path, extra_config_receipt) = match client {
-        "codex" => install_codex_plugin_hooks(&project_root, &binary_install.path)?,
-        "claude" => install_claude_project_hooks(
-            &project_root,
-            subagent_model
-                .as_deref()
-                .ok_or_else(|| "Claude install requires a configured subagent model".to_owned())?,
-        )?,
-        _ => unreachable!("client support checked before install"),
-    };
+    let (config_path, extra_config_receipt) = install_claude_project_hooks(
+        &project_root,
+        subagent_model
+            .as_deref()
+            .ok_or_else(|| "Claude install requires a configured subagent model".to_owned())?,
+    )?;
     timings.mark("project-hooks");
-    let agent_config_receipt = if client == "codex" {
-        "not-on-plugin-install".to_owned()
-    } else {
-        let agent_config_path = install_agent_semantic_protocols_agent_config(&project_root)?;
-        timings.mark("agent-config");
-        display_path(&project_root, &agent_config_path)
-    };
-    let installed_skill = Some(match client {
-        "codex" => install_agent_semantic_protocols_plugin_skill(&project_root)?,
-        "claude" => install_agent_semantic_protocols_skill(&project_root)?,
-        _ => unreachable!("client support checked before install"),
-    });
+    let agent_config_path = install_agent_semantic_protocols_agent_config(&project_root)?;
+    timings.mark("agent-config");
+    let agent_config_receipt = display_path(&project_root, &agent_config_path);
+    let installed_skill = Some(install_agent_semantic_protocols_skill(&project_root)?);
     timings.mark("skill");
     let plugin_cache_path = Option::<PathBuf>::None;
-    if client == "codex" {
-        let manual_project_cache = project_root.join(".codex/plugins/cache/asp-project");
-        if manual_project_cache.exists() {
-            fs::remove_dir_all(&manual_project_cache).map_err(|error| {
-                format!(
-                    "failed to remove retired manual Codex project plugin cache {}: {error}",
-                    manual_project_cache.display()
-                )
-            })?;
-        }
-    }
     timings.mark("plugin-cache");
     let active_artifact = agent_semantic_hook::materialize_active_asp_artifact_receipt(
         &binary_install.path,

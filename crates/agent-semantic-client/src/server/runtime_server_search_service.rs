@@ -9,6 +9,7 @@ pub(super) async fn serve_runtime_search_requests(
     mut requests: tokio_stream::wrappers::ReceiverStream<
         agent_semantic_client_db::runtime_search_service::RuntimeSearchServiceRequest,
     >,
+    graph_server: agent_semantic_runtime_server::asp_python_graphs_transport::AspPythonGraphsServer,
 ) {
     use agent_semantic_client_db::runtime_search_service::RuntimeSearchServiceRequest;
     use tokio_stream::StreamExt;
@@ -30,6 +31,8 @@ pub(super) async fn serve_runtime_search_requests(
 
     let mut runtimes = std::collections::BTreeMap::<String, ResidentProviderRuntime>::new();
     let mut tasks = tokio::task::JoinSet::new();
+    const GRAPH_REQUEST_CAPACITY: usize = 32;
+    let graph_slots = std::sync::Arc::new(tokio::sync::Semaphore::new(GRAPH_REQUEST_CAPACITY));
     while let Some(request) = requests.next().await {
         match request {
             RuntimeSearchServiceRequest::ProviderRuntime {
@@ -269,6 +272,74 @@ pub(super) async fn serve_runtime_search_requests(
                     let _ = response.send(result);
                 });
             }
+            RuntimeSearchServiceRequest::GraphsEvaluate {
+                project_root: _project_root,
+                workspace_identity,
+                generation_digest,
+                generation_token,
+                request_id,
+                payload,
+                mut response,
+            } => {
+                // The lifecycle multiplexes one bounded stream. A bounded
+                // semaphore keeps the JoinSet from becoming a second mailbox:
+                // saturation is a typed immediate terminal, not an unbounded
+                // task backlog.
+                let permit = match graph_slots.clone().try_acquire_owned() {
+                    Ok(permit) => permit,
+                    Err(_) => {
+                        let _ = response.send(Err(
+                            "state=busy reasonKind=asp-python-graphs-capacity-exhausted".to_owned(),
+                        ));
+                        continue;
+                    }
+                };
+                let graph_server = graph_server.clone();
+                tasks.spawn(async move {
+                    let _permit = permit;
+                    let cancellation = agent_semantic_client_db::runtime_generation_cancellation::GenerationCancellation::new();
+                    let mut operation = Box::pin(async {
+                        let identity = agent_semantic_runtime_server::asp_python_graphs_transport::GraphGenerationIdentity::new(
+                            workspace_identity,
+                            generation_digest,
+                        )?;
+                        validate_graph_generation(&payload, &identity.generation_digest)?;
+                        let graph_payload = payload.get("graph").cloned().ok_or_else(|| {
+                            "asp-python-graphs graph evaluation requires payload.graph".to_owned()
+                        })?;
+                        let open_payload = serde_json::json!({
+                            "graph": graph_payload,
+                            "sourceSnapshot": payload.get("sourceSnapshot").cloned().unwrap_or(serde_json::Value::Null),
+                            "workspaceGeneration": payload.get("workspaceGeneration").cloned().unwrap_or(serde_json::Value::Null),
+                        });
+                        let lease = graph_server
+                            .open_generation_with_token(identity, generation_token, open_payload, cancellation.clone())
+                            .await?;
+                        let evaluate_payload = adapt_graph_evaluate_payload(&payload)?;
+                        let result = lease
+                            .evaluate_with_request_id(evaluate_payload, request_id, cancellation.clone())
+                            .await;
+                        let release = lease.release().await;
+                        match (result, release) {
+                            (Ok(value), Ok(())) => Ok(value),
+                            (Err(primary), Ok(())) => Err(primary),
+                            (Ok(_), Err(release_error)) => Err(format!(
+                                "asp-python-graphs release failed: {release_error}"
+                            )),
+                            (Err(primary), Err(release_error)) => Err(format!(
+                                "{primary}; asp-python-graphs release failed: {release_error}"
+                            )),
+                        }
+                    });
+                    tokio::select! {
+                        result = &mut operation => { let _ = response.send(result); }
+                        _ = response.closed() => {
+                            cancellation.cancel();
+                            let _ = operation.await;
+                        }
+                    }
+                });
+            }
             RuntimeSearchServiceRequest::ProviderOwner {
                 workspace_identity,
                 project_root,
@@ -355,5 +426,54 @@ pub(super) async fn serve_runtime_search_requests(
     for (_, runtime) in runtimes {
         let _ = runtime.authority.shutdown().await;
     }
+    let _ = graph_server.shutdown().await;
     while tasks.join_next().await.is_some() {}
+}
+
+fn adapt_graph_evaluate_payload(payload: &serde_json::Value) -> Result<serde_json::Value, String> {
+    let object = payload
+        .as_object()
+        .ok_or_else(|| "asp-python-graphs graph request must be an object".to_owned())?;
+    let terms = object
+        .get("queryTerms")
+        .cloned()
+        .ok_or_else(|| "asp-python-graphs graph request requires queryTerms".to_owned())?;
+    let mut rank_payload = serde_json::Map::new();
+    for (source, target) in [
+        ("seedIds", "seedIds"),
+        ("kindBudgets", "kindBudgets"),
+        ("windowMerge", "windowMerge"),
+        ("pathBudget", "pathBudget"),
+        ("pathMaxHops", "pathMaxHops"),
+        ("cache", "cache"),
+        ("queryClauses", "queryClauses"),
+    ] {
+        if let Some(value) = object.get(source) {
+            rank_payload.insert(target.to_owned(), value.clone());
+        }
+    }
+    Ok(serde_json::json!({
+        "terms": terms,
+        "profile": object.get("profile").cloned().unwrap_or_else(|| serde_json::Value::String("owner-query".to_owned())),
+        "budget": object.get("budget").cloned().unwrap_or(serde_json::Value::from(8)),
+        "rankPayload": rank_payload,
+    }))
+}
+
+fn validate_graph_generation(payload: &serde_json::Value, generation_digest: &str) -> Result<(), String> {
+    let root = payload
+        .get("workspaceGeneration")
+        .and_then(|generation| generation.get("rootDigest"))
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| "asp-python-graphs graph request requires workspaceGeneration.rootDigest".to_owned())?;
+    let matches = root == generation_digest
+        || generation_digest
+            .strip_prefix("blake3-256:")
+            .is_some_and(|digest| digest == root);
+    if !matches {
+        return Err(format!(
+            "state=stale-generation reasonKind=graph-generation-root-mismatch expected={generation_digest} observed={root}"
+        ));
+    }
+    Ok(())
 }

@@ -21,11 +21,18 @@ def validator() -> Draft202012Validator:
 def contract(transport: str) -> dict[str, object]:
     value: dict[str, object] = {
         "transport": transport,
+        "clientBinding": "schema-driven",
         "operations": [
             {
                 "operation": "projection-batch-stdin",
-                "requestSchemaId": "provider-language-projection-batch-request.v1",
-                "responseSchemaId": "provider-language-projection-batch-response.v1",
+                "requestSchema": {
+                    "schemaId": "provider-language-projection-batch-request",
+                    "schemaVersion": "1",
+                },
+                "responseSchema": {
+                    "schemaId": "provider-language-projection-batch-response",
+                    "schemaVersion": "1",
+                },
             }
         ],
     }
@@ -34,7 +41,7 @@ def contract(transport: str) -> dict[str, object]:
             "schemaId": "agent.semantic-protocols.asp-client-server-descriptor",
             "schemaVersion": "1",
             "transport": "http-json",
-        "command": ["serve"],
+            "command": ["serve"],
             "healthPath": "/health",
             "requestPath": "/v1/provider-runtime",
             "shutdownPath": "/shutdown",
@@ -57,6 +64,17 @@ def test_versioned_and_legacy_runtime_transport_names_are_rejected() -> None:
     for transport in ("unsupported-transport",):
         errors = list(schema_validator.iter_errors(contract(transport)))
         assert errors, f"legacy transport namespace must be rejected: {transport}"
+
+
+def test_legacy_string_schema_references_are_rejected() -> None:
+    value = contract("http-json")
+    operation = value["operations"][0]
+    operation.pop("requestSchema")
+    operation.pop("responseSchema")
+    operation["requestSchemaId"] = "provider-language-projection-batch-request"
+    operation["responseSchemaId"] = "provider-language-projection-batch-response"
+
+    assert not validator().is_valid(value)
 
 
 def test_runtime_contract_schema_remains_v1_owned() -> None:

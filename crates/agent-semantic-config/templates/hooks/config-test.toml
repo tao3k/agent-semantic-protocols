@@ -19,6 +19,25 @@ maxMatcherMicros = 1000
 #   terminal, or profile clauses that this scenario is intended to exercise.
 # - positive/negative payloads are witnesses, never alternate rule definitions.
 [[rules]]
+id = "allow-explicit-no-agent"
+ruleComposition = [
+  { pointer = "/matcher", equals = "Bash" },
+  { pointer = "/terminal", equals = true },
+  { pointer = "/match/processEnvironmentAssignmentAny", contains = "ASP_NO_AGENT=1" },
+]
+positiveCommands = [
+  "ASP_NO_AGENT=1 cargo test -p agent-semantic-hook",
+  "/usr/bin/env ASP_NO_AGENT=1 arbitrary-command --unknown-option fixture.rs",
+  "export ASP_NO_AGENT=1; exec arbitrary-command --unknown-option fixture.rs",
+]
+negativeCommands = [
+  "printf 'ASP_NO_AGENT=1 cargo test'",
+  "export ASP_NO_AGENT=1; cargo test -p agent-semantic-hook",
+  "printf warmup; ASP_NO_AGENT=1 cargo test -p agent-semantic-hook",
+]
+wrapperExemption = "process environment authority is defined by the three exact transfer topologies"
+
+[[rules]]
 id = "allow-owner-scoped-mutation"
 ruleComposition = [
   { pointer = "/matcher", equals = "^apply_patch$" },

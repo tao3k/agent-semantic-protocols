@@ -29,12 +29,22 @@
       }
     },
     {
+      "if": {"properties": {"decision": {"const": "ready"}, "requestedEngine": {"const": "asp-python-graphs"}}},
+      "then": {
+        "properties": {
+          "selectedEngine": {"const": "asp-python-graphs"},
+          "reason": {"type": "null"},
+          "candidateArtifactIdentity": {"$ref": "#/$defs/artifactIdentity"}
+        }
+      }
+    },
+    {
       "if": {"properties": {"decision": {"const": "blocked"}}},
       "then": {"properties": {"selectedEngine": {"type": "null"}, "reason": {"type": "string"}}}
     }
   ],
   "$defs": {
-    "engine": {"enum": ["legacy-graph-turbo", "progressive-gql-logic"]},
+    "engine": {"enum": ["asp-python-graphs", "progressive-gql-logic"]},
     "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
     "artifactIdentity": {
       "type": "object", "additionalProperties": false,

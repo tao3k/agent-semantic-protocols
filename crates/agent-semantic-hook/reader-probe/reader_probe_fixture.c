@@ -8,7 +8,16 @@ int main(int argc, char **argv) {
     sleep(5);
     return 0;
   }
-  int flags = argv[1][0] == 'r' ? O_RDONLY : O_WRONLY;
+  int flags;
+  if (strcmp(argv[1], "read") == 0) {
+    flags = O_RDONLY;
+  } else if (strcmp(argv[1], "write") == 0) {
+    flags = O_WRONLY;
+  } else if (strcmp(argv[1], "read-write") == 0) {
+    flags = O_RDWR;
+  } else {
+    return 65;
+  }
   int fd = open(argv[2], flags);
   if (fd >= 0) close(fd);
   return fd >= 0 ? 0 : 1;

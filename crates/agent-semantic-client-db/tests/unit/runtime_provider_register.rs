@@ -39,8 +39,14 @@ fn installed_capability(language_id: &str, provider_id: &str) -> ProviderRegistr
         "clientBinding": "schema-driven",
         "operations": [{
             "operation": "search.owner",
-            "requestSchemaId": "agent.semantic-protocols.search-owner-request",
-            "responseSchemaId": "agent.semantic-protocols.search-packet"
+            "requestSchema": {
+                "schemaId": "agent.semantic-protocols.search-owner-request",
+                "schemaVersion": "1"
+            },
+            "responseSchema": {
+                "schemaId": "agent.semantic-protocols.search-packet",
+                "schemaVersion": "1"
+            }
         }]
     });
     provider.registration["routes"] = json!([{
@@ -60,7 +66,10 @@ fn installed_capability(language_id: &str, provider_id: &str) -> ProviderRegistr
             "streaming": false
         },
         "output": {
-            "schemaId": "agent.semantic-protocols.search-packet",
+            "schema": {
+                "schemaId": "agent.semantic-protocols.search-packet",
+                "schemaVersion": "1"
+            },
             "mediaType": "application/json"
         },
         "failureSchemaIds": ["agent.semantic-protocols.route-failure"],

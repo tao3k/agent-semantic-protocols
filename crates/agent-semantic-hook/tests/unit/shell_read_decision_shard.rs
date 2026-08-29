@@ -56,8 +56,8 @@ fn unknown_or_corrupt_tables_fail_closed_without_inventing_a_winner() {
 }
 
 #[test]
-fn leading_environment_assignment_terminal_entry_precedes_longer_command_profile() {
-    let shard = CommandDecisionShard::new_with_leading_environment_assignments(
+fn process_environment_assignment_terminal_entry_precedes_longer_command_profile() {
+    let shard = CommandDecisionShard::new_with_process_environment_assignments(
         vec![(
             vec!["cargo".to_owned(), "test".to_owned()],
             decision("testing"),
@@ -77,9 +77,9 @@ fn leading_environment_assignment_terminal_entry_precedes_longer_command_profile
     let nested = "env BYPASS=1 cargo test";
     let nested_tokens = ["env", "BYPASS=1", "cargo", "test"].map(str::to_owned);
     let selected = CommandDecisionShard::select_for_command(&shard, nested, &nested_tokens)
-        .expect("select nested command profile")
-        .expect("testing decision");
-    assert_eq!(selected.message, "testing");
+        .expect("select env process transfer")
+        .expect("terminal environment decision");
+    assert_eq!(selected.message, "terminal-bypass");
 }
 
 #[test]

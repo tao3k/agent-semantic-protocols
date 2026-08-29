@@ -1,5 +1,15 @@
-use super::{PROBE_TIMEOUT, observe_one};
+use super::{PROBE_COLD_TIMEOUT, observe_one};
 use agent_semantic_hook::ReaderProbeAccess;
+
+#[cfg(target_os = "macos")]
+static COLD_PROBE_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+#[cfg(target_os = "macos")]
+fn cold_probe_test_guard() -> std::sync::MutexGuard<'static, ()> {
+    COLD_PROBE_TEST_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
 
 #[cfg(target_os = "macos")]
 fn fixture() -> String {
@@ -15,19 +25,33 @@ fn fixture() -> String {
     path.to_string_lossy().into_owned()
 }
 
+#[cfg(target_os = "macos")]
+fn cache_fixture() -> tempfile::TempDir {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    let cache = tempfile::tempdir().expect("Reader behavior cache");
+    std::fs::set_permissions(cache.path(), std::fs::Permissions::from_mode(0o700))
+        .expect("private Reader behavior cache");
+    cache
+}
+
 #[test]
 fn explicit_diagnostic_timeout_kills_and_reaps_the_fixture() {
     #[cfg(target_os = "macos")]
     {
+        let _test_guard = cold_probe_test_guard();
+        let cache = cache_fixture();
         let started = std::time::Instant::now();
         let observation = observe_one(
             &[fixture(), "hang".to_owned(), "fixture.rs".to_owned()],
             "fixture.rs".to_owned(),
+            &[],
+            Some(cache.path()),
         );
         assert_eq!(observation.access, ReaderProbeAccess::Unknown);
         assert_eq!(observation.terminal, "probe-timeout");
         assert!(observation.cleanup_verified, "observation={observation:?}");
-        assert!(started.elapsed() < PROBE_TIMEOUT + std::time::Duration::from_millis(200));
+        assert!(started.elapsed() < PROBE_COLD_TIMEOUT + std::time::Duration::from_millis(200));
     }
 }
 
@@ -35,7 +59,7 @@ fn explicit_diagnostic_timeout_kills_and_reaps_the_fixture() {
 fn non_macos_backend_fails_closed() {
     #[cfg(not(target_os = "macos"))]
     {
-        let observation = observe_one(&[], "fixture.rs".to_owned());
+        let observation = observe_one(&[], "fixture.rs".to_owned(), &[], None);
         assert_eq!(observation.access, ReaderProbeAccess::Unknown);
         assert_eq!(observation.terminal, "unsupported-platform");
     }
@@ -63,6 +87,7 @@ fn profile_sentinel_is_reused_as_one_stable_inode() {
 fn concurrent_first_materialization_is_atomic_and_content_verified() {
     #[cfg(target_os = "macos")]
     {
+        let _test_guard = cold_probe_test_guard();
         let root = tempfile::tempdir().expect("isolated Reader materialization root");
         let workers = (0..32)
             .map(|_| {
@@ -90,5 +115,257 @@ fn concurrent_first_materialization_is_atomic_and_content_verified() {
                 0
             );
         }
+    }
+}
+
+#[test]
+fn static_catalog_is_a_process_free_reader_fact() {
+    let observation = observe_one(
+        &["/opt/tools/head".to_owned(), "src/lib.rs".to_owned()],
+        "src/lib.rs".to_owned(),
+        &[vec!["head".to_owned()]],
+        None,
+    );
+    assert_eq!(observation.access, ReaderProbeAccess::Read);
+    assert_eq!(observation.terminal, "reader-behavior-catalog-hit");
+    assert_eq!(observation.backend, "hook-generation-reader-catalog");
+    assert!(!observation.probe_process_launched);
+    assert!(!observation.cache_hit);
+}
+
+#[test]
+fn static_catalog_requires_the_complete_declared_prefix() {
+    let patterns = [vec!["sed".to_owned(), "-n".to_owned()]];
+    let read = observe_one(
+        &["sed".to_owned(), "-n".to_owned(), "src/lib.rs".to_owned()],
+        "src/lib.rs".to_owned(),
+        &patterns,
+        None,
+    );
+    assert_eq!(read.access, ReaderProbeAccess::Read);
+    assert!(!read.probe_process_launched);
+
+    let edit = observe_one(
+        &["sed".to_owned(), "-i".to_owned(), "src/lib.rs".to_owned()],
+        "src/lib.rs".to_owned(),
+        &patterns,
+        None,
+    );
+    assert_ne!(edit.terminal, "reader-behavior-catalog-hit");
+}
+
+#[test]
+fn verified_reader_is_reused_from_state_home_without_a_second_process() {
+    #[cfg(target_os = "macos")]
+    {
+        let _test_guard = cold_probe_test_guard();
+        let cache = cache_fixture();
+        let tokens = vec![fixture(), "read".to_owned(), "fixture.rs".to_owned()];
+        let first = observe_one(&tokens, "fixture.rs".to_owned(), &[], Some(cache.path()));
+        assert_eq!(first.access, ReaderProbeAccess::Read, "{first:?}");
+        assert!(first.probe_process_launched, "{first:?}");
+        assert!(!first.cache_hit);
+        let second = observe_one(&tokens, "fixture.rs".to_owned(), &[], Some(cache.path()));
+        assert_eq!(second.access, ReaderProbeAccess::Read, "{second:?}");
+        assert!(!second.probe_process_launched, "{second:?}");
+        assert!(second.cache_hit, "{second:?}");
+        assert_eq!(first.behavior_key, second.behavior_key);
+    }
+}
+
+#[test]
+fn concurrent_cold_miss_launches_exactly_one_probe() {
+    #[cfg(target_os = "macos")]
+    {
+        let _test_guard = cold_probe_test_guard();
+        let probe_root = super::materialize_probe_root().expect("probe root");
+        super::materialize_interposer(&probe_root).expect("prime interposer");
+        super::materialize_profile_sentinel(&probe_root, "fixture.rs").expect("prime sentinel");
+        let cache = cache_fixture();
+        super::prepare_dynamic_cache_root(cache.path()).expect("prime cache namespace");
+        let fixture_path = fixture();
+        let workers = (0..32)
+            .map(|_| {
+                let cache = cache.path().to_owned();
+                let tokens = vec![
+                    fixture_path.clone(),
+                    "read".to_owned(),
+                    "fixture.rs".to_owned(),
+                ];
+                std::thread::spawn(move || {
+                    observe_one(&tokens, "fixture.rs".to_owned(), &[], Some(&cache))
+                })
+            })
+            .collect::<Vec<_>>();
+        let observations = workers
+            .into_iter()
+            .map(|worker| worker.join().expect("Reader worker"))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            observations
+                .iter()
+                .filter(|observation| observation.probe_process_launched)
+                .count(),
+            1,
+            "observations={observations:#?}"
+        );
+        assert!(
+            observations.iter().all(|observation| {
+                observation.access == ReaderProbeAccess::Read
+                    || (observation.access == ReaderProbeAccess::Unknown
+                        && matches!(
+                            observation.terminal.as_str(),
+                            "reader-behavior-cache-busy" | "probe-timeout"
+                        ))
+            }),
+            "observations={observations:#?}"
+        );
+        let eventual_read = observe_one(
+            &[fixture_path, "read".to_owned(), "fixture.rs".to_owned()],
+            "fixture.rs".to_owned(),
+            &[],
+            Some(cache.path()),
+        );
+        assert_eq!(
+            eventual_read.access,
+            ReaderProbeAccess::Read,
+            "{eventual_read:?}"
+        );
+        let after_commit = observe_one(
+            &[fixture(), "read".to_owned(), "fixture.rs".to_owned()],
+            "fixture.rs".to_owned(),
+            &[],
+            Some(cache.path()),
+        );
+        assert_eq!(
+            after_commit.access,
+            ReaderProbeAccess::Read,
+            "{after_commit:?}"
+        );
+        assert!(after_commit.cache_hit, "{after_commit:?}");
+        assert!(!after_commit.probe_process_launched, "{after_commit:?}");
+    }
+}
+
+#[test]
+fn write_behavior_is_never_published_as_reader_cache() {
+    #[cfg(target_os = "macos")]
+    {
+        let _test_guard = cold_probe_test_guard();
+        let cache = cache_fixture();
+        let tokens = vec![fixture(), "write".to_owned(), "fixture.rs".to_owned()];
+        for _ in 0..2 {
+            let observation =
+                observe_one(&tokens, "fixture.rs".to_owned(), &[], Some(cache.path()));
+            assert_ne!(
+                observation.access,
+                ReaderProbeAccess::Read,
+                "{observation:?}"
+            );
+            assert!(matches!(
+                observation.access,
+                ReaderProbeAccess::NotRead | ReaderProbeAccess::Unknown
+            ));
+            assert!(!observation.cache_hit);
+        }
+    }
+}
+
+#[test]
+fn timeout_is_never_published_as_reader_cache() {
+    #[cfg(target_os = "macos")]
+    {
+        let _test_guard = cold_probe_test_guard();
+        let cache = cache_fixture();
+        let tokens = vec![fixture(), "hang".to_owned(), "fixture.rs".to_owned()];
+        for _ in 0..2 {
+            let observation =
+                observe_one(&tokens, "fixture.rs".to_owned(), &[], Some(cache.path()));
+            assert_eq!(observation.access, ReaderProbeAccess::Unknown);
+            assert_eq!(observation.terminal, "probe-timeout");
+            assert!(observation.probe_process_launched);
+            assert!(!observation.cache_hit);
+            assert!(observation.cleanup_verified);
+        }
+    }
+}
+
+#[test]
+fn corrupt_positive_record_is_rejected_and_atomically_replaced() {
+    #[cfg(target_os = "macos")]
+    {
+        let _test_guard = cold_probe_test_guard();
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let cache = cache_fixture();
+        super::prepare_dynamic_cache_root(cache.path()).expect("prepare cache namespace");
+        let key = blake3::hash(b"corrupt-record-fixture");
+        super::publish_dynamic_cache_record(cache.path(), &key).expect("publish positive record");
+        assert!(super::dynamic_cache_hit(cache.path(), &key));
+        let record = super::dynamic_cache_record_path(cache.path(), &key);
+        std::fs::write(&record, b"corrupt").expect("corrupt record");
+        std::fs::set_permissions(&record, std::fs::Permissions::from_mode(0o600))
+            .expect("private corrupt record");
+        super::clear_process_positive_cache();
+        assert!(!super::dynamic_cache_hit(cache.path(), &key));
+        super::publish_dynamic_cache_record(cache.path(), &key).expect("replace corrupt record");
+        assert!(super::dynamic_cache_hit(cache.path(), &key));
+    }
+}
+
+#[test]
+fn state_homes_and_argument_shapes_do_not_share_dynamic_authority() {
+    #[cfg(target_os = "macos")]
+    {
+        let _test_guard = cold_probe_test_guard();
+        let first_home = cache_fixture();
+        let second_home = cache_fixture();
+        let read = vec![fixture(), "read".to_owned(), "fixture.rs".to_owned()];
+        let read_alt = vec![
+            fixture(),
+            "read".to_owned(),
+            "--alternate".to_owned(),
+            "fixture.rs".to_owned(),
+        ];
+
+        let first = observe_one(&read, "fixture.rs".to_owned(), &[], Some(first_home.path()));
+        let other_home = observe_one(
+            &read,
+            "fixture.rs".to_owned(),
+            &[],
+            Some(second_home.path()),
+        );
+        let other_shape = observe_one(
+            &read_alt,
+            "fixture.rs".to_owned(),
+            &[],
+            Some(first_home.path()),
+        );
+        assert!(first.probe_process_launched, "{first:?}");
+        assert!(other_home.probe_process_launched, "{other_home:?}");
+        assert!(other_shape.probe_process_launched, "{other_shape:?}");
+        assert_ne!(first.behavior_key, other_shape.behavior_key);
+    }
+}
+
+#[test]
+fn dynamic_catalog_retention_is_bounded() {
+    #[cfg(target_os = "macos")]
+    {
+        let _test_guard = cold_probe_test_guard();
+        let cache = cache_fixture();
+        super::prepare_dynamic_cache_root(cache.path()).expect("prepare cache");
+        for index in 0_u64..300 {
+            let key = blake3::hash(&index.to_le_bytes());
+            super::publish_dynamic_cache_record(cache.path(), &key).expect("publish record");
+        }
+        let records = std::fs::read_dir(cache.path())
+            .expect("read cache")
+            .filter_map(Result::ok)
+            .filter(|entry| {
+                entry.path().extension().and_then(|value| value.to_str()) == Some("bin")
+            })
+            .count();
+        assert_eq!(records, super::DYNAMIC_CACHE_MAX_RECORDS);
     }
 }

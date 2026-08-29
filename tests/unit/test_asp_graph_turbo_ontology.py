@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from asp_graph_turbo import (
+from asp_python_graphs import (
     TypedGraph,
     ontology_catalog_to_graph_request,
     rank_frontier,

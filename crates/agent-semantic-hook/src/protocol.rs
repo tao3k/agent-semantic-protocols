@@ -440,6 +440,45 @@ pub fn parse_payload(input: &str) -> Result<Value, AgentHookError> {
     serde_json::from_str(input).map_err(AgentHookError::InvalidPayload)
 }
 
+/// Render the only Codex PreToolUse deny wire shape emitted by ASP.
+///
+/// The complete ASP decision remains available as typed JSON inside
+/// `additionalContext`; it is deliberately not flattened into the Host
+/// envelope because Codex rejects unknown top-level fields.
+pub fn render_codex_pre_tool_deny(decision_value: &Value, message: &str) -> Value {
+    let context = serde_json::to_string(decision_value).unwrap_or_else(|_| {
+        "{\"schemaId\":\"agent.semantic-protocols.hook.execution-failure\",\"schemaVersion\":1,\"decision\":\"deny\"}".to_owned()
+    });
+    json!({
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "deny",
+            "permissionDecisionReason": message,
+            "additionalContext": format!("[agent-hook-decision] {context}"),
+        },
+        "systemMessage": message,
+    })
+}
+
+/// Render a Codex PermissionRequest decision without leaking ASP receipt
+/// fields into the Host schema.
+pub fn render_codex_permission_request(behavior: &str, message: Option<&str>) -> Value {
+    let mut decision = json!({ "behavior": behavior });
+    if let Some(message) = message {
+        decision["message"] = Value::String(message.to_owned());
+    }
+    let mut envelope = json!({
+        "hookSpecificOutput": {
+            "hookEventName": "PermissionRequest",
+            "decision": decision,
+        }
+    });
+    if let Some(message) = message {
+        envelope["systemMessage"] = Value::String(message.to_owned());
+    }
+    envelope
+}
+
 /// Render a shared hook decision into the selected platform response envelope.
 pub fn render_platform_response(decision: &HookDecision) -> Result<Value, AgentHookError> {
     let message = platform_decision_message(decision);
@@ -472,16 +511,16 @@ pub fn render_platform_response(decision: &HookDecision) -> Result<Value, AgentH
     match decision.decision {
         DecisionKind::Deny => {
             if decision.platform == "codex" && decision.event == "permission-request" {
-                return Ok(json!({
-                    "hookSpecificOutput": {
-                        "hookEventName": "PermissionRequest",
-                        "decision": {
-                            "behavior": "deny",
-                            "message": message.as_ref(),
-                        },
-                    },
-                    "systemMessage": message.as_ref(),
-                }));
+                return Ok(render_codex_permission_request(
+                    "deny",
+                    Some(message.as_ref()),
+                ));
+            }
+            if decision.platform == "codex" && decision.event == "pre-tool" {
+                return Ok(render_codex_pre_tool_deny(
+                    &decision_value,
+                    message.as_ref(),
+                ));
             }
             return Ok(json!({
                 "hookSpecificOutput": {
@@ -512,14 +551,7 @@ pub fn render_platform_response(decision: &HookDecision) -> Result<Value, AgentH
         DecisionKind::Allow => {
             if decision.event == "permission-request" {
                 if decision.platform == "codex" {
-                    return Ok(json!({
-                        "hookSpecificOutput": {
-                            "hookEventName": "PermissionRequest",
-                            "decision": {
-                                "behavior": "allow",
-                            },
-                        }
-                    }));
+                    return Ok(render_codex_permission_request("allow", None));
                 }
                 return Ok(json!({
                     "hookSpecificOutput": {

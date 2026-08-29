@@ -86,20 +86,20 @@ The retired dependency chain admits this concrete cycle:
    cannot become executable work;
 4. canonical install requires the replacement binary that step 1 prevented.
 
-The new ordering has one explicit recovery layer. An inherited
+The new ordering has two explicit recovery layers. An inherited
 =ASP_NO_AGENT=1= in the Hook process environment is a bootstrap recovery
-override evaluated before payload or matcher state access. An assignment in
-the protected command is not inherited by the already-running Hook and cannot
-be recovery authority. Classifier orchestration and matcher configuration MUST
-NOT create a second bypass. The process-level form emits an empty Host-success
-response and terminates. This precedence is scoped by the CLI
+override evaluated before payload or matcher state access. The process-level
+form emits an empty Host-success response and terminates. This precedence is scoped by the CLI
 grammar: the process must first be an actual =asp hook <event>= dispatch.
 =ASP_NO_AGENT=1 asp --version= remains an ordinary CLI invocation and cannot be
 captured by the synchronous Hook bootstrap.
 
-The generic leading-environment matcher remains available for ordinary policy
-composition, but it is not recovery authority and the production policy does
-not bind it to =ASP_NO_AGENT=.
+For Codex Bash PreTool, the Rust Hook process owns one pre-generation
+command-local guard and Config V1 owns its declarative rule witness. Their
+=processEnvironmentAssignmentAny= predicate consumes only parser-proven direct,
+=env=, or =export; exec= process transfer and then terminates allow before all
+other policy. It carries no argv, language, profile, or Runtime condition.
+Unbound payload text is not authority.
 
 Config-independent provider-binary admission uses a constant-time registry
 candidate gate before constructing a shell action graph.  Commands whose

@@ -3,7 +3,6 @@ use clap::{Arg, ArgAction, Command};
 const ROOT_COMMANDS: &[(&str, &str)] = &[
     ("providers", "Inspect registered language providers"),
     ("tools", "Inspect and run ASP support tools"),
-    ("wrap", "Run an ASP-owned tool wrapper"),
     ("cache", "Inspect and maintain ASP caches"),
     ("cloud", "Inspect optional cloud state"),
     ("hook", "Run and inspect host hook integration"),
@@ -117,38 +116,6 @@ fn tools_command() -> Command {
             Command::new("doctor")
                 .about("Check support-tool availability")
                 .arg(project_root_arg()),
-        )
-        .subcommand(
-            Command::new("wrap")
-                .about("Run an ASP-owned tool wrapper")
-                .arg(
-                    Arg::new("tool")
-                        .value_name("TOOL")
-                        .required(true)
-                        .value_parser(["asp-graph-turbo"]),
-                )
-                .arg(
-                    Arg::new("args")
-                        .value_name("ARGS")
-                        .num_args(0..)
-                        .allow_hyphen_values(true),
-                ),
-        )
-}
-
-fn wrap_command() -> Command {
-    Command::new("wrap")
-        .bin_name("asp wrap")
-        .about("Run an ASP-owned tool wrapper")
-        .subcommand(
-            Command::new("asp-graph-turbo")
-                .about("Run the graph-turbo compatibility wrapper")
-                .arg(
-                    Arg::new("args")
-                        .value_name("ARGS")
-                        .num_args(0..)
-                        .allow_hyphen_values(true),
-                ),
         )
 }
 

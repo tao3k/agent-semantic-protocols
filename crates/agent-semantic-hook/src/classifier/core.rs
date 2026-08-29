@@ -345,6 +345,7 @@ pub fn classify_hook_with_config(request: HookClassificationRequest<'_>) -> Hook
             request.payload,
             &actions,
             request.config,
+            request.registry,
         );
     }
     let decision = if let Some(decision) =
@@ -360,7 +361,13 @@ pub fn classify_hook_with_config(request: HookClassificationRequest<'_>) -> Hook
         allow(request.platform, request.event, subject)
     };
     if is_explicit_no_agent_host_bypass(&decision) {
-        return with_hook_match_receipt(decision, request.payload, &actions, request.config);
+        return with_hook_match_receipt(
+            decision,
+            request.payload,
+            &actions,
+            request.config,
+            request.registry,
+        );
     }
     let decision = resolve_dispatch_decision(decision, request.payload);
     let mut decision = if matches!(request.event, "pre-tool" | "permission-request") {
@@ -375,7 +382,13 @@ pub fn classify_hook_with_config(request: HookClassificationRequest<'_>) -> Hook
     let decision = with_prompt_scope_fields(decision, request.payload);
     let decision =
         with_agent_org_artifact_recovery(decision, request.config, &request.registry.project_root);
-    let decision = with_hook_match_receipt(decision, request.payload, &actions, request.config);
+    let decision = with_hook_match_receipt(
+        decision,
+        request.payload,
+        &actions,
+        request.config,
+        request.registry,
+    );
     decision
 }
 
@@ -384,8 +397,22 @@ fn with_hook_match_receipt(
     payload: &Value,
     actions: &[ToolAction],
     config: &ClientHookConfig,
+    registry: &HookRuntime,
 ) -> HookDecision {
+    let had_agent_action = decision.fields.contains_key("agentAction");
     let mut decision = with_action_receipt_fields(decision, payload, actions);
+    if let Some(action) = actions.first()
+        && !had_agent_action
+        && decision.language_ids.is_empty()
+        && !decision.fields.contains_key("configRuleId")
+        && !action.paths.is_empty()
+    {
+        let (agent_action_receipt, language_ids) = config.observed_action_receipt(registry, action);
+        decision
+            .fields
+            .insert("agentAction".to_owned(), agent_action_receipt);
+        decision.language_ids = language_ids;
+    }
     if let Some(command) = payload_command(payload) {
         // Compound commands are matched per parser-owned stage, but a Hook
         // receipt must retain the exact Host envelope that was authorized or

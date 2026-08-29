@@ -14,6 +14,8 @@ pub enum HookExecutionPhase {
 #[serde(rename_all = "kebab-case")]
 pub enum HookExecutionFailureKind {
     InvalidInvocation,
+    LauncherProcessExited,
+    LauncherTargetUnavailable,
     RuntimeError,
     RuntimePanic,
 }
@@ -29,6 +31,8 @@ pub struct HookExecutionFailure {
     pub event: Option<String>,
     pub client: Option<String>,
     pub runtime_artifact_fingerprint: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exit_code: Option<i32>,
     pub executable_path: Option<String>,
     pub launcher_binary_path: Option<String>,
     pub launcher_path: Option<String>,
@@ -63,6 +67,7 @@ impl HookExecutionFailure {
             event,
             client,
             runtime_artifact_fingerprint: crate::hook_runtime_artifact_fingerprint(),
+            exit_code: None,
             executable_path: std::env::current_exe()
                 .ok()
                 .map(|path| path.display().to_string()),
@@ -72,6 +77,38 @@ impl HookExecutionFailure {
             plugin_payload_version,
             message: message.into(),
         }
+    }
+
+    #[must_use]
+    pub fn with_exit_code(mut self, exit_code: i32) -> Self {
+        self.exit_code = Some(exit_code);
+        self
+    }
+}
+
+/// Render a typed execution failure through the exact Codex event envelope.
+///
+/// The fixed plugin launcher owns no policy serialization. The single Rust
+/// HookGeneration binary renders every event-specific terminal.
+pub fn render_codex_execution_failure(failure: &HookExecutionFailure) -> serde_json::Value {
+    let message = failure.message.as_str();
+    match failure.event.as_deref() {
+        Some("pre-tool") => {
+            let receipt = serde_json::to_value(failure).unwrap_or_else(|_| {
+                serde_json::json!({
+                    "schemaId": "agent.semantic-protocols.hook.execution-failure",
+                    "schemaVersion": 1,
+                    "state": "failed",
+                    "phase": "decision-emission",
+                    "failureKind": "runtime-error",
+                    "runtimeArtifactFingerprint": "unavailable",
+                    "message": "failed to serialize Hook execution failure",
+                })
+            });
+            crate::render_codex_pre_tool_deny(&receipt, message)
+        }
+        Some("permission-request") => crate::render_codex_permission_request("deny", Some(message)),
+        _ => serde_json::json!({}),
     }
 }
 

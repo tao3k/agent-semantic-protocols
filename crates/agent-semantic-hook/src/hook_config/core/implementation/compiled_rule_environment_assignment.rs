@@ -3,25 +3,22 @@
 use super::ClientHookConfig;
 use crate::{HookDecision, HookRuntime};
 
-pub(super) fn matches(command: &str, expected: &[String], leading_shell_stage: bool) -> bool {
+pub(super) fn matches(command: &str, expected: &[String]) -> bool {
     expected.is_empty()
-        || (leading_shell_stage
-            && agent_semantic_shell_parser::parse_bash_command_candidates(command).is_ok_and(
-            |stages| {
-                agent_semantic_shell_parser::command_stages_match_leading_environment_assignment(
-                    &stages, expected,
-                )
-            },
-        ))
+        || agent_semantic_shell_parser::parse_bash_command_candidates(command).is_ok_and(|stages| {
+            agent_semantic_shell_parser::command_stages_match_process_environment_assignment(
+                &stages, expected,
+            )
+        })
 }
 
 impl ClientHookConfig {
-    pub(super) fn durable_leading_environment_decisions(
+    pub(super) fn durable_process_environment_decisions(
         &self,
         runtime: &HookRuntime,
         shell_read_path: Option<&str>,
     ) -> Result<Vec<(Vec<String>, HookDecision)>, String> {
-        self.durable_leading_environment_assignments()?
+        self.durable_process_environment_assignments()?
             .into_iter()
             .map(|assignment| {
                 let action = match shell_read_path {
@@ -38,12 +35,12 @@ impl ClientHookConfig {
                     .classify_candidate(runtime, "codex", "pre-tool", &action)
                     .ok_or_else(|| {
                         format!(
-                            "leading environment assignment has no compiled Hook decision: {assignment}"
+                            "process environment assignment has no compiled Hook decision: {assignment}"
                         )
                     })?;
                 if !candidate.terminal {
                     return Err(format!(
-                        "leading environment assignment Hook decision must be terminal: {assignment}"
+                        "process environment assignment Hook decision must be terminal: {assignment}"
                     ));
                 }
                 let mut decision = candidate.decision;
@@ -66,7 +63,7 @@ impl ClientHookConfig {
             .collect()
     }
 
-    fn durable_leading_environment_assignments(
+    fn durable_process_environment_assignments(
         &self,
     ) -> Result<std::collections::BTreeSet<String>, String> {
         let source = self
@@ -77,7 +74,7 @@ impl ClientHookConfig {
             .rules
             .iter()
             .filter(|rule| rule.enabled && rule.terminal)
-            .flat_map(|rule| rule.match_config.leading_environment_assignment_any.iter())
+            .flat_map(|rule| rule.match_config.process_environment_assignment_any.iter())
             .cloned()
             .collect())
     }

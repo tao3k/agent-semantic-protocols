@@ -9,6 +9,8 @@ license = "MIT"
 agent-semantic-client-core = { path = "../agent-semantic-client-core" }
 agent-semantic-client-protocol = { path = "../agent-semantic-client-protocol" }
 agent-semantic-runtime = { path = "../agent-semantic-runtime" }
+agent-semantic-http-json = { path = "../agent-semantic-http-json" }
+bytes.workspace = true
 serde = { workspace = true }
 serde_json = { workspace = true }
 tokio.workspace = true

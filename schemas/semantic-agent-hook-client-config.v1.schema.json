@@ -18,8 +18,15 @@
     "protocolVersion": {
       "const": "1"
     },
-    "wrapper_match": {
-      "const": "enable"
+    "readerBehaviorPatterns": {
+      "description": "Deterministic Reader behavior argv prefixes compiled into HookGeneration.",
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "array",
+        "minItems": 1,
+        "items": { "type": "string", "minLength": 1 }
+      }
     },
     "commandProfiles": {
       "type": "array",
@@ -62,12 +69,6 @@
     },
     "agentCalling": {
       "$ref": "#/$defs/agentCalling"
-    },
-    "aspCommandIntentPolicy": {
-      "$ref": "#/$defs/aspCommandIntentPolicy"
-    },
-    "executionLanes": {
-      "$ref": "#/$defs/executionLanes"
     },
     "rules": {
       "description": "Typed client-hook rules. Rule ids are runtime-validated as unique because config-derived decisions use fields.configRuleId as the machine receipt.",
@@ -258,96 +259,6 @@
         }
       }
     },
-    "aspCommandIntentPolicy": {
-      "description": "Parser-owned classification policy for public asp language commands.",
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "controlPlane": {
-          "$ref": "#/$defs/aspControlPlaneIntent"
-        },
-        "reasoning": {
-          "$ref": "#/$defs/aspReasoningIntent"
-        },
-        "exactEvidence": {
-          "$ref": "#/$defs/aspExactEvidenceIntent"
-        },
-        "directReadFallback": {
-          "$ref": "#/$defs/aspDirectReadFallbackIntent"
-        },
-        "invalidEvidence": {
-          "$ref": "#/$defs/aspInvalidEvidenceIntent"
-        }
-      }
-    },
-    "executionLanes": {
-      "description": "Deterministic command execution lanes that do not require a reasoning agent.",
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "testing": {"$ref": "#/$defs/executionLane"}
-      }
-    },
-    "executionLane": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "enabled": {"type": "boolean"},
-        "transport": {"const": "current-session"},
-        "commandPrefixes": {"$ref": "#/$defs/nonEmptyStringArray"},
-        "receiptKind": {"type": "string", "minLength": 1}
-      }
-    },
-    "aspControlPlaneIntent": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "rootCommands": {"$ref": "#/$defs/nonEmptyStringArray"}
-      }
-    },
-    "aspReasoningIntent": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "rootCommands": {"$ref": "#/$defs/nonEmptyStringArray"},
-        "guideCommand": {"type": "boolean"},
-        "searchRoutes": {"$ref": "#/$defs/nonEmptyStringArray"},
-        "queryFlags": {"$ref": "#/$defs/nonEmptyStringArray"},
-        "unprojectedQuery": {"type": "boolean"}
-      }
-    },
-    "aspExactEvidenceIntent": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "queryProjectionFlags": {"$ref": "#/$defs/nonEmptyStringArray"},
-        "queryProjectionViews": {"$ref": "#/$defs/nonEmptyStringArray"},
-        "selectorKinds": {"$ref": "#/$defs/nonEmptyStringArray"},
-        "requireSameLanguage": {"type": "boolean"}
-      }
-    },
-    "aspDirectReadFallbackIntent": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "fromHookValues": {"$ref": "#/$defs/nonEmptyStringArray"}
-      }
-    },
-    "aspInvalidEvidenceIntent": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "rejectProjectedQueryWithoutExactSelector": {"type": "boolean"},
-        "rejectCrossLanguageSelector": {"type": "boolean"}
-      }
-    },
-    "nonEmptyStringArray": {
-      "type": "array",
-      "items": {
-        "type": "string",
-        "minLength": 1
-      }
-    },
     "agentOrgArtifacts": {
       "$ref": "https://schemas.agent-semantic-protocols.dev/semantic-agent-definitions.schema.json#/$defs/agentOrgArtifacts"
     },
@@ -533,7 +444,7 @@
           "uniqueItems": true,
           "items": { "type": "string", "minLength": 1 }
         },
-        "leadingEnvironmentAssignmentAny": {
+        "processEnvironmentAssignmentAny": {
           "description": "Exact NAME=VALUE assignments matched only in the leading assignment block of the first parsed shell stage.",
           "type": "array",
           "uniqueItems": true,

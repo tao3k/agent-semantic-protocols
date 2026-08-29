@@ -6,7 +6,7 @@ import json
 import subprocess
 import sys
 
-from unit.asp_graph_turbo_cli_support import (
+from unit.asp_python_graphs_cli_support import (
     sample_graph_turbo_request,
     validate_shared_schema,
 )
@@ -20,7 +20,7 @@ def test_graph_turbo_rank_compact_projects_algorithm_evidence(tmp_path) -> None:
         [
             sys.executable,
             "-m",
-            "asp_graph_turbo",
+            "asp_python_graphs",
             "rank",
             str(packet_path),
             "--format",
@@ -60,7 +60,7 @@ def test_graph_turbo_rank_json_owns_trace_path_score_explanations(tmp_path) -> N
         [
             sys.executable,
             "-m",
-            "asp_graph_turbo",
+            "asp_python_graphs",
             "rank",
             str(packet_path),
             "--format",
@@ -104,7 +104,7 @@ def test_graph_turbo_rank_summary_json_preserves_frontier_without_full_packet(
         [
             sys.executable,
             "-m",
-            "asp_graph_turbo",
+            "asp_python_graphs",
             "rank",
             str(packet_path),
             "--format",
@@ -118,7 +118,7 @@ def test_graph_turbo_rank_summary_json_preserves_frontier_without_full_packet(
         [
             sys.executable,
             "-m",
-            "asp_graph_turbo",
+            "asp_python_graphs",
             "rank",
             str(packet_path),
             "--format",

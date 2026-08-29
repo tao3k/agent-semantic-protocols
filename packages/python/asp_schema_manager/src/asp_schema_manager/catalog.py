@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import hashlib
 import json
 from pathlib import Path
 from typing import Any, Iterator
@@ -20,6 +21,31 @@ class SchemaDocument:
     protocol_schema_id: str | None
     references: tuple[str, ...]
     byte_length: int
+
+
+@dataclass(frozen=True)
+class ProtoContract:
+    """A canonical protobuf contract owned by a runtime package.
+
+    Protobuf sources are intentionally not discovered from ``schemas/``.  The
+    runtime-server source is the owner; this record only projects its stable
+    identity and declared consumers for read-only catalog receipts.
+    """
+
+    relative_path: str
+    owner_package: str
+    consumers: tuple[str, ...]
+    source_digest: str
+
+
+_PROVIDER_STREAM_PROTO = (
+    "crates/agent-semantic-runtime-server/proto/asp-provider-stream.proto"
+)
+_PROVIDER_STREAM_OWNER = "agent-semantic-runtime-server"
+_PROVIDER_STREAM_CONSUMERS = (
+    "runtime-server:server-binding",
+    "provider-transport:client-binding",
+)
 
 
 def _walk(value: Any) -> Iterator[Any]:
@@ -107,3 +133,47 @@ def load_catalog(workspace_root: Path) -> tuple[list[SchemaDocument], list[dict[
             )
         )
     return documents, diagnostics
+
+
+def load_proto_contracts(
+    workspace_root: Path,
+) -> tuple[list[ProtoContract], list[dict[str, Any]]]:
+    """Load the runtime-server-owned protobuf contract receipt.
+
+    This is deliberately an explicit owner lookup rather than a recursive
+    ``*.proto`` scan.  Build consumers may reference this file from their own
+    package trees, but those references do not create additional sources or
+    owners.  The digest covers the exact source bytes so formatting changes
+    are visible to downstream publication checks.
+    """
+
+    root = workspace_root.resolve()
+    path = root / _PROVIDER_STREAM_PROTO
+    if not path.is_file():
+        return [], [
+            {
+                "severity": "error",
+                "code": "missing-proto-contract",
+                "message": "canonical runtime-server protobuf contract is missing",
+                "protoPath": _PROVIDER_STREAM_PROTO,
+            }
+        ]
+    try:
+        source = path.read_bytes()
+    except OSError as error:
+        return [], [
+            {
+                "severity": "error",
+                "code": "unreadable-proto-contract",
+                "message": str(error),
+                "protoPath": _PROVIDER_STREAM_PROTO,
+            }
+        ]
+
+    contract = ProtoContract(
+        relative_path=_PROVIDER_STREAM_PROTO,
+        owner_package=_PROVIDER_STREAM_OWNER,
+        consumers=_PROVIDER_STREAM_CONSUMERS,
+        source_digest=f"sha256:{hashlib.sha256(source).hexdigest()}",
+    )
+    return [contract], []

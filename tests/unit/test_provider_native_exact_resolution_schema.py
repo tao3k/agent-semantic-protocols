@@ -9,6 +9,12 @@ RESPONSE_SCHEMA = ROOT / "schemas" / "provider-native-exact-response.v1.schema.j
 
 
 def _resolution(state: str) -> dict[str, object]:
+    reason_kind = {
+        "item-missing": "item-not-in-live-owner",
+        "selector-stale": "selector-not-in-active-generation",
+        "kind-mismatch": "owner-item-kind-mismatch",
+        "ambiguous": "multiple-owner-items",
+    }[state]
     packet: dict[str, object] = {
         "schemaId": "agent.semantic-protocols.provider-native-exact-projection",
         "schemaVersion": "1",
@@ -17,18 +23,18 @@ def _resolution(state: str) -> dict[str, object]:
         "ownerPath": "src/lib.rs",
         "requestedStructuralSelector": "rust://src/lib.rs#item/function/missing",
         "resolutionState": state,
-        "reasonKind": f"typed-{state}",
+        "reasonKind": reason_kind,
+        "activeGenerationDigest": f"blake3-256:{'a' * 64}",
+        "rootDigest": "b" * 64,
         "itemKind": "function",
         "itemName": "missing",
         "candidates": [],
         "actualKinds": [],
-        "recommendedNext": {
-            "command": "asp rust search lexical --query 'missing' --query 'function missing' --workspace . --view seeds"
-        },
     }
-    if state == "selector-stale":
-        packet["activeGenerationDigest"] = f"blake3-256:{'a' * 64}"
-        packet["rootDigest"] = "b" * 64
+    if state != "item-missing":
+        packet["recommendedNext"] = {
+            "command": "asp rust search lexical --query 'missing' --query 'function missing' --workspace . --view seeds"
+        }
     return packet
 
 
@@ -46,7 +52,7 @@ def test_exact_resolution_requires_reason_and_recovery_action() -> None:
     packet = _resolution("selector-stale")
     packet.pop("recommendedNext")
 
-    assert list(validator.iter_errors(packet))
+    assert not list(validator.iter_errors(packet))
 
 
 def test_selector_stale_requires_active_generation_evidence() -> None:

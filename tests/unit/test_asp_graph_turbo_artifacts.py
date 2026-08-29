@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from asp_graph_turbo.artifacts import (
+from asp_python_graphs.artifacts import (
     evaluate_search_artifacts,
     search_packet_to_graph_turbo_request,
 )

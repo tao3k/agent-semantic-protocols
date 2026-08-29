@@ -108,6 +108,33 @@ async fn materialize_resolves_closure_and_verify_is_read_only() {
 }
 
 #[tokio::test]
+async fn verify_rejects_legacy_bundle_receipt_shape() {
+    let (root, manager) = fixture();
+    manager.materialize(&[]).await.expect("materialize");
+    let receipt_path = root
+        .path()
+        .join("languages/fixture/schemas")
+        .join(BUNDLE_RECEIPT_FILE);
+    write_json(
+        &receipt_path,
+        &json!({
+            "schemaId": "agent.semantic-protocols.language-schema-bundle-receipt",
+            "schemaVersion": "1",
+            "languageId": "fixture",
+            "profileDigest": "legacy",
+            "bundleDigest": "legacy",
+            "schemas": []
+        }),
+    );
+
+    let error = manager
+        .verify(&[])
+        .await
+        .expect_err("legacy receipt must fail closed");
+    assert!(error.contains("decode schema bundle receipt"), "{error}");
+}
+
+#[tokio::test]
 async fn manager_never_removes_provider_owned_or_unmanaged_schemas() {
     let (root, manager) = fixture();
     manager.materialize(&[]).await.expect("initial materialize");

@@ -87,7 +87,7 @@ class SemanticAgentHookClientConfigSchemaTests(unittest.TestCase):
                             "decision": "allow",
                             "terminal": True,
                             "match": {
-                                "leadingEnvironmentAssignmentAny": ["CI_MODE=1"]
+                                "processEnvironmentAssignmentAny": ["CI_MODE=1"]
                             },
                         }
                     ]
@@ -113,7 +113,7 @@ class SemanticAgentHookClientConfigSchemaTests(unittest.TestCase):
                     {
                         "id": "invalid-assignment",
                         "decision": "allow",
-                        "match": {"leadingEnvironmentAssignmentAny": ["CI_MODE"]},
+                        "match": {"processEnvironmentAssignmentAny": ["CI_MODE"]},
                     }
                 ]
             }

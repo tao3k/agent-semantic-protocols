@@ -3,19 +3,12 @@
 #[path = "hook_runtime_skill_render.rs"]
 pub(crate) mod hook_runtime_skill_render;
 
-use self::hook_runtime_skill_render::{
-    render_agent_semantic_protocols_installed_skill, render_agent_semantic_protocols_plugin_skill,
-};
+use self::hook_runtime_skill_render::render_agent_semantic_protocols_installed_skill;
 
 use agent_semantic_hook::project_agent_config_path;
 use agent_semantic_runtime::project_state_paths;
 use std::fs;
 use std::path::{Path, PathBuf};
-
-const ASP_CODEX_PLUGIN_NAME: &str = "asp-codex-plugin";
-const ASP_CODEX_PLUGIN_MARKETPLACE_NAME: &str = "asp-project";
-const ASP_CODEX_PLUGIN_MANIFEST_JSON: &str =
-    include_str!("../../../../asp-codex-plugin/.codex-plugin/plugin.json");
 
 pub(super) fn install_agent_semantic_protocols_skill(
     project_root: &Path,
@@ -37,29 +30,6 @@ pub(super) fn install_agent_semantic_protocols_skill(
     Ok(InstalledAgentSkillPaths {
         skill_path: Some(skill_path),
         plugin_skill_path: None,
-    })
-}
-
-pub(super) fn install_agent_semantic_protocols_plugin_skill(
-    project_root: &Path,
-) -> Result<InstalledAgentSkillPaths, String> {
-    let paths = project_state_paths(project_root)?;
-    let org_state_skill_path = paths
-        .protocol_home
-        .join("org")
-        .join("templates")
-        .join("ASP_ORG_SKILL.org");
-    let org_artifacts_path = paths.artifacts_dir.join("org");
-    let rendered_skill = render_agent_semantic_protocols_plugin_skill(
-        project_root,
-        &org_state_skill_path,
-        &org_artifacts_path,
-    )?;
-    let global_plugin_skill_path = global_codex_plugin_cache_skill_path()?;
-    write_agent_skill(&global_plugin_skill_path, &rendered_skill)?;
-    Ok(InstalledAgentSkillPaths {
-        skill_path: None,
-        plugin_skill_path: Some(global_plugin_skill_path),
     })
 }
 
@@ -149,60 +119,6 @@ fn merge_agent_semantic_protocols_agent_config(existing: &str) -> Result<String,
         root.remove("hook");
     }
     toml::to_string_pretty(&config).map_err(|error| error.to_string())
-}
-
-fn global_codex_plugin_cache_skill_path() -> Result<PathBuf, String> {
-    let config_path = global_codex_config_path()?;
-    let codex_home = config_path
-        .parent()
-        .ok_or_else(|| "global Codex config path has no parent".to_string())?;
-    Ok(codex_home
-        .join("plugins")
-        .join("cache")
-        .join(ASP_CODEX_PLUGIN_MARKETPLACE_NAME)
-        .join(ASP_CODEX_PLUGIN_NAME)
-        .join(codex_plugin_manifest_version()?)
-        .join(codex_plugin_skill_relative_path()))
-}
-
-// This helper is used by the production healthcheck module. The integration
-// test harness also mounts this module in isolation, where that caller is not
-// present.
-#[allow(dead_code)]
-pub(crate) fn active_codex_plugin_skill_path(
-    _project_root: &Path,
-) -> Result<Option<PathBuf>, String> {
-    let global_skill_path = global_codex_plugin_cache_skill_path()?;
-    if global_skill_path.exists() {
-        return Ok(Some(global_skill_path));
-    }
-    Ok(None)
-}
-
-fn global_codex_config_path() -> Result<PathBuf, String> {
-    if let Some(path) = std::env::var_os("CODEX_HOME").filter(|value| !value.is_empty()) {
-        return Ok(PathBuf::from(path).join("config.toml"));
-    }
-    std::env::var_os("HOME")
-        .filter(|value| !value.is_empty())
-        .map(|home| PathBuf::from(home).join(".codex").join("config.toml"))
-        .ok_or_else(|| "missing CODEX_HOME and HOME; cannot locate Codex config".to_string())
-}
-
-fn codex_plugin_skill_relative_path() -> PathBuf {
-    Path::new("skills")
-        .join("agent-semantic-protocols")
-        .join("SKILL.org")
-}
-
-fn codex_plugin_manifest_version() -> Result<String, String> {
-    let manifest = serde_json::from_str::<serde_json::Value>(ASP_CODEX_PLUGIN_MANIFEST_JSON)
-        .map_err(|error| format!("invalid ASP Codex plugin manifest JSON: {error}"))?;
-    let version = manifest
-        .get("version")
-        .and_then(serde_json::Value::as_str)
-        .ok_or_else(|| "ASP Codex plugin manifest missing string `version`".to_string())?;
-    Ok(version.to_string())
 }
 
 fn write_agent_skill(skill_path: &Path, rendered_skill: &str) -> Result<(), String> {

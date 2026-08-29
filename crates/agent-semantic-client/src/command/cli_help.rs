@@ -2,7 +2,21 @@ include!("cli_help_model.rs");
 pub(crate) fn install_plugin_command() -> Command {
     Command::new("plugin")
         .bin_name("asp install plugin")
-        .about("Install the ASP Codex plugin globally")
+        .about("Inspect or publish the ASP Codex plugin payload")
+        .subcommand(install_plugin_operation_command(
+            "status",
+            "Compare the source payload with the installed Codex cache",
+        ))
+        .subcommand(install_plugin_operation_command(
+            "publish",
+            "Publish a changed payload through the Codex plugin CLI",
+        ))
+}
+
+fn install_plugin_operation_command(name: &'static str, about: &'static str) -> Command {
+    Command::new(name)
+        .bin_name(format!("asp install plugin {name}"))
+        .about(about)
         .arg(
             Arg::new("codex")
                 .long("codex")
@@ -13,7 +27,9 @@ pub(crate) fn install_plugin_command() -> Command {
         .arg(
             Arg::new("project-root")
                 .value_name("PROJECT_ROOT")
-                .help("Explicit ASP source root; defaults to ASP_STATE_HOME [dev].root"),
+                .help(
+                    "Optional developer source-root override; publication remains global and defaults to ASP_STATE_HOME [dev].root",
+                ),
         )
 }
 
@@ -363,6 +379,16 @@ pub(crate) fn selected_command(args: &[String]) -> Command {
         [hook, break_glass, ..] if hook == "hook" && break_glass == "break-glass" => {
             super::hook_break_glass::break_glass_command()
         }
+        [install, plugin, operation, ..]
+            if install == "install"
+                && plugin == "plugin"
+                && matches!(operation.as_str(), "status" | "publish") =>
+        {
+            install_plugin_command()
+                .find_subcommand(operation)
+                .cloned()
+                .expect("known plugin operation")
+        }
         [install, plugin, ..] if install == "install" && plugin == "plugin" => {
             install_plugin_command()
         }
@@ -397,7 +423,6 @@ fn selected_command_default(args: &[String]) -> Command {
         (Some("session"), _) => session_control_plane_command(),
         (Some("providers"), _) => providers_command(),
         (Some("tools"), _) => tools_command(),
-        (Some("wrap"), _) => wrap_command(),
         (Some("cache"), Some("gc")) => agent_semantic_client::project_registry_gc_clap_command(),
         (Some("cache"), Some("clean")) => {
             agent_semantic_client::project_registry_clean_clap_command()
@@ -484,8 +509,13 @@ fn print_help_if_requested_unchecked(args: &[String]) -> Result<bool, String> {
     Ok(true)
 }
 
-#[allow(dead_code)]
-pub(crate) fn print_install_plugin_help() -> Result<(), String> {
+pub(crate) fn print_install_plugin_help(args: &[String]) -> Result<(), String> {
+    if let Some(operation) = args.first().map(String::as_str)
+        && matches!(operation, "status" | "publish")
+        && let Some(command) = install_plugin_command().find_subcommand(operation).cloned()
+    {
+        return print_command_help(command);
+    }
     print_command_help(install_plugin_command())
 }
 #[cfg(test)]

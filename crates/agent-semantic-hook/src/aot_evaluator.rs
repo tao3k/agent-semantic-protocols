@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use serde::{Deserialize, Serialize};
 
 pub const HOOK_GENERATION_SCHEMA_ID: &str = "agent.semantic-protocols.hook-generation";
@@ -11,6 +13,10 @@ pub struct CompiledHookGeneration<'a> {
     pub schema_version: u32,
     #[serde(borrow)]
     pub generation_digest: &'a str,
+    #[serde(default, borrow)]
+    pub reader_behavior_patterns: Vec<Vec<&'a str>>,
+    #[serde(default, borrow)]
+    pub registered_languages: Vec<&'a str>,
     #[serde(borrow)]
     pub rules: Vec<CompiledDecisionRule<'a>>,
 }
@@ -20,6 +26,8 @@ pub struct CompiledHookGeneration<'a> {
 pub struct CompiledDecisionRule<'a> {
     #[serde(borrow)]
     pub id: &'a str,
+    #[serde(default)]
+    pub priority: i64,
     #[serde(borrow)]
     pub matchers: Vec<&'a str>,
     #[serde(default)]
@@ -28,6 +36,8 @@ pub struct CompiledDecisionRule<'a> {
     pub registered_extensions: Vec<&'a str>,
     #[serde(borrow)]
     pub decision: &'a str,
+    #[serde(default = "default_operation_intent")]
+    pub intent: &'a str,
     #[serde(borrow)]
     pub reason_kind: &'a str,
     #[serde(borrow)]
@@ -38,6 +48,49 @@ pub struct CompiledDecisionRule<'a> {
     pub language: Option<&'a str>,
     #[serde(default, borrow)]
     pub route: Option<&'a str>,
+    #[serde(default, borrow)]
+    pub argv_prefix_any: Vec<Vec<&'a str>>,
+    #[serde(default, borrow)]
+    pub command_contains_any: Vec<&'a str>,
+    #[serde(default, borrow)]
+    pub argv_token_all: Vec<&'a str>,
+    #[serde(default, borrow)]
+    pub argv_source_glob_any: Vec<&'a str>,
+    #[serde(default, borrow)]
+    pub command_any: Vec<&'a str>,
+    #[serde(default, borrow)]
+    pub process_environment_assignment_any: Vec<&'a str>,
+    #[serde(default, borrow)]
+    pub path_glob_any: Vec<&'a str>,
+    #[serde(default)]
+    pub argv_workspace_regular_file: bool,
+    #[serde(default)]
+    pub argv_structured_document_file: bool,
+    #[serde(default, borrow)]
+    pub structured_projection: Option<BorrowedStructuredProjection<'a>>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BorrowedStructuredProjection<'a> {
+    #[serde(borrow)]
+    binary: &'a str,
+    #[serde(default)]
+    optional_subcommand_any: Vec<String>,
+    #[serde(default)]
+    option_any: Vec<String>,
+    #[serde(default)]
+    option_value_arity: std::collections::BTreeMap<String, u8>,
+    #[serde(default = "default_max_slice_items")]
+    max_slice_items: usize,
+}
+
+const fn default_max_slice_items() -> usize {
+    64
+}
+
+const fn default_operation_intent() -> &'static str {
+    "host-tool"
 }
 
 #[derive(Debug, Deserialize)]
@@ -50,6 +103,8 @@ pub struct BorrowedHookPayload<'a> {
     pub session_id: Option<&'a str>,
     #[serde(default, borrow)]
     pub tool_use_id: Option<&'a str>,
+    #[serde(default, borrow)]
+    pub cwd: Option<&'a str>,
 }
 
 #[derive(Debug, Serialize, PartialEq, Eq)]
@@ -63,6 +118,7 @@ pub struct AotHookDecision<'a> {
     pub config_rule_id: &'a str,
     pub generation_digest: &'a str,
     pub evidence: &'static str,
+    pub operation_intent: &'a str,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub profile: Option<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -70,13 +126,15 @@ pub struct AotHookDecision<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub route: Option<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub subject: Option<&'a str>,
+    pub subject: Option<Cow<'a, str>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub session_id: Option<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_use_id: Option<&'a str>,
-    pub message: &'a str,
-    pub context: &'a str,
+    pub message: String,
+    pub context: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub recovery_command: Option<String>,
     pub access: &'static str,
     pub access_mode: &'static str,
     pub backend: &'a str,
@@ -92,8 +150,8 @@ pub struct AotHookDecision<'a> {
 
 #[derive(Deserialize)]
 struct BorrowedShellToolInput<'a> {
-    #[serde(default)]
-    command: Option<&'a str>,
+    #[serde(default, borrow)]
+    command: Option<Cow<'a, str>>,
     #[serde(default, rename = "_aspReaderProbe")]
     reader_probe: Option<BorrowedReaderProbe<'a>>,
 }
@@ -117,7 +175,7 @@ struct BorrowedReaderProbe<'a> {
 }
 
 struct ConfirmedRead<'a> {
-    subject: &'a str,
+    subject: Cow<'a, str>,
     evidence: &'static str,
     backend: &'a str,
     terminal: &'a str,
@@ -140,13 +198,22 @@ fn confirmed_read_subject<'a>(
             && probe.schema_version == 1
             && probe.access == "read"
             && probe.access_mode == "O_RDONLY"
-            && probe.terminal == "open-entry-observed"
+            && matches!(
+                probe.terminal,
+                "open-entry-observed" | "reader-behavior-catalog-hit" | "reader-behavior-cache-hit"
+            )
             && probe.cleanup_verified
             && registered_source_operand(probe.subject, registered_extensions)
         {
             return Ok(Some(ConfirmedRead {
-                subject: probe.subject,
-                evidence: "reader-probe-open-read-only",
+                subject: Cow::Borrowed(probe.subject),
+                evidence: match probe.backend {
+                    "hook-generation-reader-catalog" => "reader-behavior-static-catalog",
+                    "state-home-reader-catalog" | "process-memory-reader-catalog" => {
+                        "reader-behavior-dynamic-cache"
+                    }
+                    _ => "reader-probe-open-read-only",
+                },
                 backend: probe.backend,
                 terminal: probe.terminal,
                 elapsed_micros: u64::try_from(probe.elapsed_micros).unwrap_or(u64::MAX),
@@ -159,7 +226,7 @@ fn confirmed_read_subject<'a>(
         }
         return Ok(None);
     }
-    let Some(command) = input.command else {
+    let Some(command) = input.command.as_deref() else {
         return Ok(None);
     };
     let mut tokens = command.split_whitespace();
@@ -173,7 +240,7 @@ fn confirmed_read_subject<'a>(
             && registered_source_operand(subject, registered_extensions)
         {
             return Ok(Some(ConfirmedRead {
-                subject,
+                subject: Cow::Owned(subject.to_owned()),
                 evidence: "shell-redirection-read",
                 backend: "shell-redirection",
                 terminal: "policy-fast-path-confirmed-read",
@@ -200,6 +267,7 @@ fn registered_source_operand(subject: &str, registered_extensions: &[&str]) -> b
 pub struct AotReaderProbeRequest {
     pub command_tokens: Vec<String>,
     pub subject: String,
+    pub reader_behavior_patterns: Vec<Vec<String>>,
 }
 
 pub fn reader_probe_request(
@@ -222,7 +290,7 @@ pub fn reader_probe_request(
     if input.reader_probe.is_some() {
         return Ok(None);
     }
-    let Some(command) = input.command else {
+    let Some(command) = input.command.as_deref() else {
         return Ok(None);
     };
     let stages = match agent_semantic_shell_parser::parse_bash_command_candidates(command) {
@@ -245,7 +313,8 @@ pub fn reader_probe_request(
         {
             continue;
         }
-        if confirmed_read_subject(payload.tool_input.get(), &rule.registered_extensions)?.is_some() {
+        if confirmed_read_subject(payload.tool_input.get(), &rule.registered_extensions)?.is_some()
+        {
             return Ok(None);
         }
         let mut subjects = agent_semantic_shell_parser::command_stage_source_paths(stage)
@@ -260,6 +329,11 @@ pub fn reader_probe_request(
         return Ok(Some(AotReaderProbeRequest {
             command_tokens: stage.words().to_vec(),
             subject,
+            reader_behavior_patterns: generation
+                .reader_behavior_patterns
+                .iter()
+                .map(|pattern| pattern.iter().map(|token| (*token).to_owned()).collect())
+                .collect(),
         }));
     }
     Ok(None)
@@ -287,7 +361,14 @@ pub fn evaluate_pre_tool<'a>(
     }
 
     for rule in &generation.rules {
-        if !rule.matchers.contains(&host_matcher) {
+        if !rule
+            .matchers
+            .iter()
+            .any(|matcher| configured_matcher_matches(matcher, host_matcher))
+        {
+            continue;
+        }
+        if !rule_conditions_match(rule, &generation, &payload)? {
             continue;
         }
         let confirmed_read = if host_matcher == "Bash"
@@ -301,8 +382,21 @@ pub fn evaluate_pre_tool<'a>(
         if rule.actions.iter().any(|action| *action == "read") && confirmed_read.is_none() {
             continue;
         }
-        let subject = confirmed_read.as_ref().map(|read| read.subject);
+        let subject = confirmed_read.as_ref().map(|read| read.subject.clone());
         let read_evidence = confirmed_read.as_ref().map(|read| read.evidence);
+        let message = rule.message.replace(
+            "{{languageId}}",
+            rule.language.unwrap_or("registered-language"),
+        );
+        let recovery_command = rule
+            .language
+            .zip(subject.as_deref())
+            .map(|(language, subject)| {
+                format!(
+                    "asp {language} search owner {subject} items --workspace {} --view seeds",
+                    payload.cwd.unwrap_or(".")
+                )
+            });
         return Ok(Some(AotHookDecision {
             schema_id: "agent.semantic-protocols.hook.decision",
             schema_version: 1,
@@ -312,17 +406,23 @@ pub fn evaluate_pre_tool<'a>(
             config_rule_id: rule.id,
             generation_digest: generation.generation_digest,
             evidence: read_evidence.unwrap_or("host-matcher"),
+            operation_intent: rule.intent,
             profile: rule.profile,
             language: rule.language,
             route: rule.route,
             subject,
             session_id: payload.session_id,
             tool_use_id: payload.tool_use_id,
-            message: rule.message,
-            context: rule.message,
-            access: if read_evidence.is_some() { "read" } else { "unknown" },
+            message: message.clone(),
+            context: message,
+            recovery_command,
+            access: if read_evidence.is_some() {
+                "read"
+            } else {
+                "unknown"
+            },
             access_mode: if read_evidence.is_some() {
-                "read-only"
+                "O_RDONLY"
             } else {
                 "unknown"
             },
@@ -332,7 +432,9 @@ pub fn evaluate_pre_tool<'a>(
             terminal: confirmed_read
                 .as_ref()
                 .map_or("host-matcher-decision", |read| read.terminal),
-            elapsed_micros: confirmed_read.as_ref().map_or(0, |read| read.elapsed_micros),
+            elapsed_micros: confirmed_read
+                .as_ref()
+                .map_or(0, |read| read.elapsed_micros),
             process_launched: confirmed_read
                 .as_ref()
                 .is_some_and(|read| read.process_launched),
@@ -354,10 +456,206 @@ pub fn evaluate_pre_tool<'a>(
     Ok(None)
 }
 
-fn host_matcher_matches_tool_name(host_matcher: &str, tool_name: &str) -> bool {
+fn rule_conditions_match(
+    rule: &CompiledDecisionRule<'_>,
+    generation: &CompiledHookGeneration<'_>,
+    payload: &BorrowedHookPayload<'_>,
+) -> Result<bool, String> {
+    let has_conditions = !rule.argv_prefix_any.is_empty()
+        || !rule.command_contains_any.is_empty()
+        || !rule.argv_token_all.is_empty()
+        || !rule.argv_source_glob_any.is_empty()
+        || !rule.command_any.is_empty()
+        || !rule.process_environment_assignment_any.is_empty()
+        || !rule.path_glob_any.is_empty()
+        || rule.argv_workspace_regular_file
+        || rule.argv_structured_document_file
+        || rule.structured_projection.is_some();
+    if !has_conditions {
+        return Ok(true);
+    }
+    let input: BorrowedShellToolInput<'_> = serde_json::from_str(payload.tool_input.get())
+        .map_err(|error| format!("decode Host tool input for AOT rule matching: {error}"))?;
+    if payload.tool_name != "Bash" {
+        return Ok(rule.path_glob_any.is_empty() || payload.tool_input.get().contains("*** "));
+    }
+    let Some(command) = input.command.as_deref() else {
+        return Ok(false);
+    };
+    let stages = agent_semantic_shell_parser::parse_bash_command_candidates(command)
+        .map_err(|error| format!("parse Bash command for AOT rule matching: {error}"))?;
+    let words = stages
+        .iter()
+        .filter(|stage| !stage.is_separator())
+        .flat_map(|stage| stage.words().iter())
+        .map(String::as_str)
+        .collect::<Vec<_>>();
+    if !rule.process_environment_assignment_any.is_empty()
+        && !agent_semantic_shell_parser::command_stages_match_process_environment_assignment(
+            &stages,
+            &rule.process_environment_assignment_any,
+        )
+    {
+        return Ok(false);
+    }
+    if !rule.argv_prefix_any.is_empty()
+        && !rule
+            .argv_prefix_any
+            .iter()
+            .any(|pattern| match_argv_pattern(&stages, pattern, &generation.registered_languages))
+    {
+        return Ok(false);
+    }
+    if !rule.command_contains_any.is_empty()
+        && !rule
+            .command_contains_any
+            .iter()
+            .any(|needle| command.contains(needle))
+    {
+        return Ok(false);
+    }
+    if !rule.argv_token_all.is_empty()
+        && !rule
+            .argv_token_all
+            .iter()
+            .all(|required| words.iter().any(|word| word == required))
+    {
+        return Ok(false);
+    }
+    let source_paths = stages
+        .iter()
+        .filter(|stage| !stage.is_separator())
+        .flat_map(agent_semantic_shell_parser::command_stage_source_paths)
+        .collect::<Vec<_>>();
+    if !rule.argv_source_glob_any.is_empty()
+        && !source_paths.iter().any(|path| {
+            rule.argv_source_glob_any
+                .iter()
+                .any(|pattern| simple_path_glob_matches(pattern, path))
+        })
+    {
+        return Ok(false);
+    }
+    if !rule.path_glob_any.is_empty()
+        && !source_paths.iter().any(|path| {
+            rule.path_glob_any
+                .iter()
+                .any(|pattern| simple_path_glob_matches(pattern, path))
+        })
+    {
+        return Ok(false);
+    }
+    if !rule.command_any.is_empty()
+        && !stages
+            .iter()
+            .filter_map(|stage| stage.executable())
+            .any(|executable| {
+                let basename = executable.rsplit('/').next().unwrap_or(executable);
+                rule.command_any.iter().any(|command| basename == *command)
+            })
+    {
+        return Ok(false);
+    }
+    if rule.argv_structured_document_file
+        && !source_paths
+            .iter()
+            .any(|path| has_any_extension(path, &["json", "toml"]))
+    {
+        return Ok(false);
+    }
+    if rule.argv_workspace_regular_file {
+        let cwd = std::path::Path::new(payload.cwd.unwrap_or("."));
+        if !source_paths.iter().any(|path| {
+            let path = std::path::Path::new(path);
+            let resolved = if path.is_absolute() {
+                path.to_path_buf()
+            } else {
+                cwd.join(path)
+            };
+            resolved.is_file()
+        }) {
+            return Ok(false);
+        }
+    }
+    if let Some(spec) = &rule.structured_projection {
+        let classification =
+            agent_semantic_shell_parser::structured::classify_single_bounded_path_command(
+                command,
+                agent_semantic_shell_parser::structured::BoundedPathCommandSpec {
+                    binary: spec.binary,
+                    optional_subcommand_any: &spec.optional_subcommand_any,
+                    option_any: &spec.option_any,
+                    option_value_arity: &spec.option_value_arity,
+                    max_slice_items: spec.max_slice_items,
+                },
+            );
+        if !matches!(
+            classification,
+            agent_semantic_shell_parser::structured::StructuredFilterClassification::BoundedPath { .. }
+                | agent_semantic_shell_parser::structured::StructuredFilterClassification::BoundedScalarPredicate { .. }
+        ) {
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
+
+fn match_argv_pattern(
+    stages: &[agent_semantic_shell_parser::CommandStage],
+    pattern: &[&str],
+    registered_languages: &[&str],
+) -> bool {
+    if let Some(index) = pattern
+        .iter()
+        .position(|token| *token == "<registered-language>")
+    {
+        return registered_languages.iter().any(|language| {
+            let mut concrete = pattern
+                .iter()
+                .map(|token| (*token).to_owned())
+                .collect::<Vec<_>>();
+            concrete[index] = (*language).to_owned();
+            agent_semantic_shell_parser::command_stages_match_wrapped_prefix(stages, &concrete)
+                .routes_protected()
+        });
+    }
+    let concrete = pattern
+        .iter()
+        .map(|token| (*token).to_owned())
+        .collect::<Vec<_>>();
+    agent_semantic_shell_parser::command_stages_match_wrapped_prefix(stages, &concrete)
+        .routes_protected()
+}
+
+fn simple_path_glob_matches(pattern: &str, path: &str) -> bool {
+    if pattern == "**" || pattern == "*" {
+        return true;
+    }
+    pattern
+        .rsplit_once("*.")
+        .is_some_and(|(_, extension)| has_any_extension(path, &[extension]))
+        || pattern == path
+}
+
+fn has_any_extension(path: &str, extensions: &[&str]) -> bool {
+    path.rsplit_once('.')
+        .is_some_and(|(_, extension)| extensions.contains(&extension))
+}
+
+pub fn host_matcher_matches_tool_name(host_matcher: &str, tool_name: &str) -> bool {
     host_matcher == tool_name
+        || (host_matcher.ends_with("__") && tool_name.starts_with(host_matcher))
         || (tool_name == "apply_patch" && matches!(host_matcher, "apply_patch" | "Edit" | "Write"))
         || (tool_name == "spawn_agent" && matches!(host_matcher, "spawn_agent" | "Agent"))
+}
+
+fn configured_matcher_matches(configured: &str, host_matcher: &str) -> bool {
+    configured == host_matcher
+        || configured
+            .strip_prefix('^')
+            .and_then(|matcher| matcher.strip_suffix('$'))
+            == Some(host_matcher)
+        || (configured == "^mcp__.*$" && host_matcher == "mcp__")
 }
 
 #[cfg(test)]

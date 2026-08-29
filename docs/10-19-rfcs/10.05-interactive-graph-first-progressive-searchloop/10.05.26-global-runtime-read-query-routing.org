@@ -49,21 +49,17 @@ Read-query execution MUST NOT publish a generation, mutate an overlay, write a
 freshness receipt, or advance workspace authority.  It MAY calculate a live
 owner digest for comparison with an admitted generation.
 
-* Freshness and fallback
+* Freshness and fail-closed admission
 
 Before a cached exact projection is returned, the Runtime Server compares its
 recorded owner identity and digest with the live owner identity and digest.
 A mismatch rejects the cached hit.
 
 When an admitted exact generation cannot be opened within the read budget, the
-server MAY use the registered provider-native exact projection capability.
-That fallback is valid only when it is declared by the active provider
-registration and returns the same selector and projection identity.  It does
-not publish or reconcile a generation.
-
-If neither admitted generation nor provider-native exact projection is
-available, the server returns a typed terminal receipt containing
-=reasonKind=, =retryAfterMs=, and an executable =nextAction=.  A bare
+server returns a typed terminal receipt containing =reasonKind=,
+=retryAfterMs=, and an executable =nextAction=.  It MUST NOT dispatch a
+provider-native fallback, open a private workspace-owner route, accept a
+different generation, or silently retry through another authority.  A bare
 =generation-discovery-in-progress= message is not a valid terminal result.
 
 * CLI projection stability
@@ -80,16 +76,15 @@ projection and MUST NOT define public CLI aliases independently.
 4. A cached projection is returned only when its owner digest is current.
 5. Every query terminates with a projection or a typed actionable failure
    within its finite wall budget.
-6. Provider-native fallback is registry-declared and preserves selector and
-   projection identity.
+6. An unavailable admitted generation cannot execute through any second
+   provider, transport, engine, or workspace-owner authority.
 
 * Qualification scenarios
 
 - a read-only resident succeeds while direct workspace-owner socket access is
   denied by the host sandbox;
 - a changed live owner invalidates an otherwise matching cached selector;
-- generation discovery that exceeds the budget falls back without publishing;
-- an undeclared provider fallback fails closed with a typed next action;
+- generation discovery that exceeds the budget fails closed without publishing;
+- an attempted provider fallback is rejected as a second authority;
 - =--code= and =--projection source= produce the same normalized request;
 - no public receipt or command contains a private owner socket path.
-

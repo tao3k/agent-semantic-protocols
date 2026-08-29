@@ -25,3 +25,27 @@ fn failure_receipt_is_single_valid_json_document() {
         .validate(&value)
         .expect("receipt satisfies execution failure schema");
 }
+
+#[test]
+fn launcher_exit_code_is_typed_by_the_execution_failure_schema() {
+    let mut failure = HookExecutionFailure::new(
+        HookExecutionPhase::Bootstrap,
+        HookExecutionFailureKind::LauncherTargetUnavailable,
+        Some("pre-tool".to_owned()),
+        Some("codex".to_owned()),
+        "launcher target unavailable",
+    );
+    failure.exit_code = Some(127);
+    let value = serde_json::to_value(failure).expect("serialize launcher failure");
+    assert_eq!(value["failureKind"], "launcher-target-unavailable");
+    assert_eq!(value["exitCode"], 127);
+
+    let schema: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../../schemas/semantic-agent-hook-execution-failure.schema.json"
+    ))
+    .expect("execution failure schema JSON");
+    jsonschema::validator_for(&schema)
+        .expect("execution failure schema")
+        .validate(&value)
+        .expect("launcher receipt satisfies execution failure schema");
+}

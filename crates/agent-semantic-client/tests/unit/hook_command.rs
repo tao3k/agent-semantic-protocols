@@ -1,6 +1,6 @@
 #[path = "../../src/command/hook.rs"]
 mod hook;
-#[path = "../../src/command/hook_runtime_context.rs"]
+#[path = "hook_runtime_context.rs"]
 mod hook_runtime_context;
 use hook_runtime_context::payload_indicates_subagent_context;
 use serde_json::json;
@@ -296,9 +296,9 @@ fn install_plugin_codex_help_is_non_mutating() {
         .current_dir(&root)
         .env("PATH", "")
         .env("PRJ_CACHE_HOME", root.join(".cache"))
-        .args(["install", "plugin", "--codex", "--help"])
+        .args(["install", "plugin", "status", "--codex", "--help"])
         .output()
-        .expect("run asp install plugin --codex --help");
+        .expect("run asp install plugin status --codex --help");
 
     assert!(
         output.status.success(),
@@ -393,7 +393,7 @@ fn payload_subagent_detection_ignores_main_thread_payloads() {
 }
 
 #[test]
-fn asp_is_the_only_hook_binary_target() {
+fn hook_binaries_follow_the_policy_and_lifecycle_package_boundary() {
     let output = Command::new("cargo")
         .args(["metadata", "--format-version", "1", "--no-deps"])
         .current_dir(workspace_root())
@@ -412,7 +412,7 @@ fn asp_is_the_only_hook_binary_target() {
     );
     assert_eq!(
         package_bin_targets(&metadata, "agent-semantic-client"),
-        vec!["asp".to_string()]
+        vec!["asp".to_string(), "asp-hook".to_string()]
     );
 }
 

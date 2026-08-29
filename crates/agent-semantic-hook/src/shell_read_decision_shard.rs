@@ -14,7 +14,7 @@ struct ShellReadDecisionEntry {
 #[derive(Clone, Copy, Serialize, Deserialize)]
 enum CommandDecisionMatchKind {
     Prefix,
-    LeadingEnvironmentAssignment,
+    ProcessEnvironmentAssignment,
 }
 
 /// Immutable decision table selected by normalized argv prefix.
@@ -26,10 +26,10 @@ pub struct CommandDecisionShard {
 impl CommandDecisionShard {
     /// Build a table from config-compiled winning decisions.
     pub fn new(entries: Vec<(Vec<String>, HookDecision)>) -> Result<Self, String> {
-        Self::new_with_leading_environment_assignments(entries, Vec::new())
+        Self::new_with_process_environment_assignments(entries, Vec::new())
     }
 
-    pub fn new_with_leading_environment_assignments(
+    pub fn new_with_process_environment_assignments(
         prefix_entries: Vec<(Vec<String>, HookDecision)>,
         environment_entries: Vec<(Vec<String>, HookDecision)>,
     ) -> Result<Self, String> {
@@ -39,7 +39,7 @@ impl CommandDecisionShard {
             .chain(environment_entries.into_iter().map(|entry| {
                 (
                     entry,
-                    CommandDecisionMatchKind::LeadingEnvironmentAssignment,
+                    CommandDecisionMatchKind::ProcessEnvironmentAssignment,
                 )
             }))
             .map(|((argv_prefix, decision), match_kind)| {
@@ -65,8 +65,8 @@ impl CommandDecisionShard {
                 .filter(|entry| {
                     matches!(
                         entry.match_kind,
-                        CommandDecisionMatchKind::LeadingEnvironmentAssignment
-                    ) && agent_semantic_shell_parser::command_stages_match_leading_environment_assignment(
+                        CommandDecisionMatchKind::ProcessEnvironmentAssignment
+                    ) && agent_semantic_shell_parser::command_stages_match_process_environment_assignment(
                         stages,
                         &entry.argv_prefix,
                     )
@@ -116,14 +116,14 @@ impl CommandDecisionShard {
         let shard = postcard::from_bytes::<Self>(bytes)
             .map_err(|error| format!("decode shell-read decision shard: {error}"))?;
         // Prefix-only commands are the overwhelmingly common Hook path.  A
-        // leading environment assignment cannot exist without `=`, so avoid
+        // A process environment assignment cannot exist without `=`, so avoid
         // constructing the parser-owned command graph unless an environment
         // matcher can possibly win.  The lexical check is only a negative
         // performance gate; every positive match still belongs to the parser.
         let has_environment_matcher = shard.entries.iter().any(|entry| {
             matches!(
                 entry.match_kind,
-                CommandDecisionMatchKind::LeadingEnvironmentAssignment
+                CommandDecisionMatchKind::ProcessEnvironmentAssignment
             )
         });
         let stages = (has_environment_matcher && command.contains('='))
@@ -138,9 +138,9 @@ impl CommandDecisionShard {
             .transpose()
     }
 
-    /// Select only a declarative leading-environment decision. This terminal
+    /// Select only a declarative process-environment decision. This terminal
     /// layer is evaluated before specialized structured-projector routing.
-    pub fn select_leading_environment_for_command(
+    pub fn select_process_environment_for_command(
         bytes: &[u8],
         command: &str,
     ) -> Result<Option<HookDecision>, String> {
@@ -150,15 +150,15 @@ impl CommandDecisionShard {
         let shard = postcard::from_bytes::<Self>(bytes)
             .map_err(|error| format!("decode command decision shard: {error}"))?;
         let stages = agent_semantic_shell_parser::parse_bash_command_candidates(command)
-            .map_err(|error| format!("parse leading environment decision key: {error}"))?;
+            .map_err(|error| format!("parse process environment decision key: {error}"))?;
         shard
             .entries
             .iter()
             .filter(|entry| {
                 matches!(
                     entry.match_kind,
-                    CommandDecisionMatchKind::LeadingEnvironmentAssignment
-                ) && agent_semantic_shell_parser::command_stages_match_leading_environment_assignment(
+                    CommandDecisionMatchKind::ProcessEnvironmentAssignment
+                ) && agent_semantic_shell_parser::command_stages_match_process_environment_assignment(
                     &stages,
                     &entry.argv_prefix,
                 )

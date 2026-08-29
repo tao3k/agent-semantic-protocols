@@ -8,16 +8,16 @@ import subprocess
 import sys
 from pathlib import Path
 
-from asp_graph_turbo.artifact_events import (
+from asp_python_graphs.artifact_events import (
     artifact_events_from_packet,
     artifact_events_packet,
     scan_artifact_events,
 )
-from asp_graph_turbo.artifact_timeline import (
+from asp_python_graphs.artifact_timeline import (
     TimelineParameters,
     evaluate_artifact_events_timeline,
 )
-from unit.asp_graph_turbo_timeline_support import write_microburst_repeat_artifacts
+from unit.asp_python_graphs_timeline_support import write_microburst_repeat_artifacts
 from unit.schema_validation import schema_validator_for
 
 
@@ -81,7 +81,7 @@ def test_timeline_cli_accepts_schema_owned_events_json(tmp_path) -> None:
     )
     env = os.environ.copy()
     env["PYTHONPATH"] = str(
-        _REPO_ROOT / "packages" / "python" / "asp_graph_turbo" / "src"
+        _REPO_ROOT / "packages" / "python" / "asp_python_graphs" / "src"
     )
 
     completed = subprocess.run(
@@ -89,7 +89,7 @@ def test_timeline_cli_accepts_schema_owned_events_json(tmp_path) -> None:
             sys.executable,
             "-S",
             "-m",
-            "asp_graph_turbo",
+            "asp_python_graphs",
             "timeline",
             str(tmp_path),
             "--events-json",

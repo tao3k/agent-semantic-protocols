@@ -5,8 +5,12 @@ edition.workspace = true
 license.workspace = true
 publish = false
 
+[features]
+default = ["compiler"]
+compiler = ["agent-semantic-hook/compiler"]
+
 [dependencies]
-agent-semantic-hook = { path = "../agent-semantic-hook" }
+agent-semantic-hook = { path = "../agent-semantic-hook", default-features = false, features = ["evaluator"] }
 asp-rust-project-harness-policy = { path = "../../build-support/asp-rust-project-harness-policy" }
 libc.workspace = true
 serde.workspace = true

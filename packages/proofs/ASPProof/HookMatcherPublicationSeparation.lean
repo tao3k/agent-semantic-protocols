@@ -4,19 +4,17 @@ namespace ASPProof.HookMatcherPublicationSeparation
 structure MatcherState where
   generation : Option Nat
 
-/-- One Binary v1 value owns every projection in one generation. Cross-file
-generation mixtures are unrepresentable. -/
+/-- One schema-v1 AOT value owns the complete policy and Reader catalog in one
+generation. Cross-file matcher shards and mixed generations are unrepresentable. -/
 structure MatcherBundle (Projection : Type) where
   generation : Nat
-  evaluatorBinaryDigest : Nat
+  hookBinaryDigest : Nat
   configDigest : Nat
   compiledMatcherDigest : Nat
   registryDigest : Nat
   receiptDigest : Nat
-  complete : Projection
-  directRead : Projection
-  shellRead : Projection
-  commandProfile : Projection
+  compiledPolicy : Projection
+  readerCatalog : Projection
 
 def atomicSwitch (_current next : MatcherBundle Projection) : MatcherBundle Projection :=
   next
@@ -25,16 +23,38 @@ theorem atomic_switch_exposes_one_complete_generation
     (current next : MatcherBundle Projection) :
     let visible := atomicSwitch current next
     visible.generation = next.generation ∧
-      visible.evaluatorBinaryDigest = next.evaluatorBinaryDigest ∧
+      visible.hookBinaryDigest = next.hookBinaryDigest ∧
       visible.configDigest = next.configDigest ∧
       visible.compiledMatcherDigest = next.compiledMatcherDigest ∧
       visible.registryDigest = next.registryDigest ∧
       visible.receiptDigest = next.receiptDigest ∧
-      visible.complete = next.complete ∧
-      visible.directRead = next.directRead ∧
-      visible.shellRead = next.shellRead ∧
-      visible.commandProfile = next.commandProfile := by
+      visible.compiledPolicy = next.compiledPolicy ∧
+      visible.readerCatalog = next.readerCatalog := by
   simp [atomicSwitch]
+
+/-- Policy and lifecycle events enter one immutable Hook binary. Their internal
+routes cannot observe different executable generations. -/
+inductive HookEventPlane where
+  | policy
+  | lifecycle
+  deriving DecidableEq
+
+def binaryDigestForPlane
+    (bundle : MatcherBundle Projection) : HookEventPlane → Nat
+  | .policy => bundle.hookBinaryDigest
+  | .lifecycle => bundle.hookBinaryDigest
+
+theorem atomic_switch_keeps_policy_and_lifecycle_on_one_generation
+    (current next : MatcherBundle Projection) (plane : HookEventPlane) :
+    binaryDigestForPlane (atomicSwitch current next) plane =
+      binaryDigestForPlane next plane := by
+  cases plane <;> rfl
+
+theorem policy_and_lifecycle_share_one_hook_binary
+    (bundle : MatcherBundle Projection) :
+    binaryDigestForPlane bundle .policy =
+      binaryDigestForPlane bundle .lifecycle := by
+  rfl
 
 /-- Mutable Config source is candidate input, never serving state. -/
 def editConfigSource (active : MatcherBundle Projection) (_newSourceDigest : Nat) :
@@ -145,10 +165,12 @@ inductive RecoveryNode where
   | recovered
   deriving DecidableEq
 
-/-- Both inherited process boundaries terminate before the Policy Kernel. -/
+/-- Both inherited process boundaries and the parser-proven command process
+environment terminate before the Policy Kernel. -/
 inductive RecoveryOverrideOrigin where
   | pluginLauncherEnvironment
   | evaluatorProcessEnvironment
+  | commandProcessEnvironment
   deriving DecidableEq
 
 structure RecoveryModel where
@@ -206,22 +228,56 @@ theorem launcher_environment_override_makes_deadlock_unreachable :
           overrideOrigin := some .pluginLauncherEnvironment } := by
   simp [formsLegacyRecoveryCycle, recoveryEdge]
 
-/-- Only inherited process inputs exist before Hook policy evaluation. Tool
-payload is observed after the two recovery boundaries and is never authority. -/
-inductive RecoveryInput where
-  | pluginLauncherEnvironment
-  | evaluatorProcessEnvironment
-  | toolPayload
+/-- A Bash payload is recovery authority only when its parsed process topology
+proves that the assignment reaches the requested child process. -/
+inductive CommandEnvironmentEvidence where
+  | directAssignment
+  | envUtility
+  | exportExec
+  | unboundText
   deriving DecidableEq
 
-def hasRecoveryAuthority : RecoveryInput → Bool
-  | .pluginLauncherEnvironment => true
-  | .evaluatorProcessEnvironment => true
-  | .toolPayload => false
+def commandEnvironmentHasRecoveryAuthority : CommandEnvironmentEvidence → Bool
+  | .directAssignment => true
+  | .envUtility => true
+  | .exportExec => true
+  | .unboundText => false
 
-theorem tool_payload_cannot_be_recovery_authority :
-    hasRecoveryAuthority .toolPayload = false := by
+/-- The command-local guard is evaluated before generation resolution. A valid
+process transfer remains available even when no HookGeneration can be read. -/
+def commandEscapeBeforeGeneration
+    (evidence : CommandEnvironmentEvidence) (generationAvailable : Bool) : Bool :=
+  commandEnvironmentHasRecoveryAuthority evidence || generationAvailable
+
+theorem direct_assignment_is_recovery_authority :
+    commandEnvironmentHasRecoveryAuthority .directAssignment = true := by
   rfl
+
+theorem env_utility_assignment_is_recovery_authority :
+    commandEnvironmentHasRecoveryAuthority .envUtility = true := by
+  rfl
+
+theorem export_exec_assignment_is_recovery_authority :
+    commandEnvironmentHasRecoveryAuthority .exportExec = true := by
+  rfl
+
+theorem unbound_payload_text_is_not_recovery_authority :
+    commandEnvironmentHasRecoveryAuthority .unboundText = false := by
+  rfl
+
+theorem export_exec_escape_survives_missing_generation :
+    commandEscapeBeforeGeneration .exportExec false = true := by
+  rfl
+
+theorem unbound_text_cannot_escape_missing_generation :
+    commandEscapeBeforeGeneration .unboundText false = false := by
+  rfl
+
+theorem command_environment_override_makes_deadlock_unreachable :
+    ¬ formsLegacyRecoveryCycle
+      { legacyDeadlockModel with
+          overrideOrigin := some .commandProcessEnvironment } := by
+  simp [formsLegacyRecoveryCycle, recoveryEdge]
 
 /-- Recovery precedence is scoped to a parsed Hook event.  The override cannot
 capture ordinary ASP CLI commands before their own parser runs. -/

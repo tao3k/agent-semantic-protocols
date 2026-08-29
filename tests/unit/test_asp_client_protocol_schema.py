@@ -45,9 +45,20 @@ def test_client_catalog_exposes_codegen_parameter_contract() -> None:
             {
                 "method": "rust.search",
                 "routeId": "rust.search",
-                "requestSchemaId": "agent.semantic-protocols.client.frame",
-                "responseSchemaId": "agent.semantic-protocols.search-packet",
-                "errorSchemaIds": ["agent.semantic-protocols.route-failure"],
+                "requestSchema": {
+                    "schemaId": "agent.semantic-protocols.client.frame",
+                    "schemaVersion": "1",
+                },
+                "responseSchema": {
+                    "schemaId": "agent.semantic-protocols.search-packet",
+                    "schemaVersion": "1",
+                },
+                "errorSchemas": [
+                    {
+                        "schemaId": "agent.semantic-protocols.route-failure",
+                        "schemaVersion": "1",
+                    }
+                ],
                 "parameters": [
                     {
                         "name": "query",

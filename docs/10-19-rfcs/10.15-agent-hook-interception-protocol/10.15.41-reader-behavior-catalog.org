@@ -1,0 +1,108 @@
+#+title: Reader Behavior Catalog and Bounded Cold Observation
+#+startup: overview
+
+* Status
+
+This document defines the current Reader behavior classification contract for
+Codex =Bash= PreToolUse events.  It is part of the Hook interception protocol;
+it is not a search-provider protocol and it does not change provider schemas.
+
+* Host fact and behavior fact are separate
+
+Codex supplies the exact Host matcher fact =Bash= together with =tool_input=.
+That fact says which Host entry point ran.  It does not prove that an arbitrary
+command reads a registered source file.
+
+The Hook compiler first projects registered source operands from
+=profilesList=.  A deny decision is legal only after a typed Reader behavior
+fact proves read-only access.  Unknown and write-capable observations allow the
+Host command to continue; they are never promoted to Read.
+
+* Ordered classification
+
+The evaluator uses one ordered four-level classifier:
+
+1. The immutable HookGeneration contains a compact
+   =readerBehaviorPatterns = [[argv-prefix] ...]= catalog.  An exact executable
+   basename plus argv-prefix match is a process-free static Reader fact.
+2. A bounded process-memory catalog reuses positive facts already verified in
+   the current Hook process.  Its key binds the State Home cache root and the
+   complete behavior key; it retains at most 256 facts and performs no
+   filesystem or process operation on a hit.
+3. The global ASP State Home contains positive dynamic Reader facts.  A fact is
+   keyed by canonical executable identity, file identity and timestamps,
+   normalized argv shape, and registered profile extension.  Only an exact key
+   match is reusable.
+4. A cache miss may run one bounded cold observation.  On macOS the observation
+   replaces only the registered source operand with a private read-only
+   sentinel and observes =open/openat= entry flags.  Only =O_RDONLY= publishes a
+   positive dynamic fact.  =O_WRONLY=, =O_RDWR=, no observation, early exit,
+   timeout, and cleanup failure remain non-Reader terminals.
+
+The static and dynamic catalogs are performance authorities.  They do not
+change the action semantics: the rule remains =matcher = "Bash"= plus
+=actions = ["read"]= plus =profilesList=.
+
+* State Home and concurrency
+
+Dynamic records live below the stable global State Home namespace
+=hooks/reader-behavior/dynamic-catalog=.  Path names do not encode a schema
+version; the compact record magic and behavior-key domain carry the schema
+identity.
+
+The catalog has 64 shard locks.  Concurrent misses for the same behavior key
+have one cold observer; followers consume the committed positive record.
+Preparation and child observation are separate bounded lifecycle phases.  Cache
+lock acquisition and materialization have a 25 ms preparation deadline.  Once
+the child has been spawned, syscall observation has a fresh 100 ms cold-miss
+deadline, followed by mandatory process-group termination and direct-child
+reap.  The cold boundary crosses macOS process launch and dyld exactly once;
+the process-memory and State Home cache-hit paths remain process-free and carry
+the sub-millisecond performance contract.  This prevents scheduler pressure
+from turning a real =O_RDONLY= entry into a false Unknown while keeping every
+miss well inside the one-second Host Hook deadline.
+No child or lock may survive the Hook process.  Records are private, same-UID,
+no-follow files, committed by atomic rename, and retained to a bounded maximum
+of 256 positive facts.
+
+Corrupt, partial, wrong-owner, permissive, symlink, or unknown records are
+cache misses.  They are not accepted and do not become policy authority.
+
+* Safety invariants
+
+- A registered filename alone is not Read evidence.
+- Unknown source access is Allow, not Deny.
+- Only an observed or catalogued read-only behavior can feed =actions=[read]=.
+- Unknown and write-capable observations never publish cache facts.
+- Executable, argv-shape, or profile changes invalidate reuse.
+- The cold observer is the only layer that executes a candidate command; cache
+  hits and static patterns never launch a process.
+- The Hook timeout is terminal and cleanup is part of the receipt.
+- =ASP_NO_AGENT=1= has two independent pre-policy paths.  An inherited Hook
+  process environment returns the Host pass-through envelope before reading
+  state or stdin. For a Bash PreTool payload, the Rust process boundary and
+  Shell Parser recognize
+  exactly =NAME=VALUE command=, =env NAME=VALUE command=, and
+  =export NAME=VALUE; exec command= process-transfer forms before resolving
+  HookGeneration. The Config DSL mirrors this invariant with
+  =processEnvironmentAssignmentAny=["ASP_NO_AGENT=1"]= in one highest priority
+  terminal allow. Unbound text, later unrelated stages, and
+  =export ...; command= without =exec= are not recovery authority.
+- A black-box harness must close and release its stdin writer immediately after
+  the JSON payload.  Flushing without dropping the writer does not publish EOF
+  and creates a harness-induced evaluator deadlock.
+- The immutable generation contains one schema-v1 AOT JSON policy artifact;
+  the retired =matcher.bin=/=ASPHK1PC= compiler is not a publication owner.
+- The same atomic HookGeneration binds one =asp-hook= binary.  Host event
+  routing is an internal typed dispatch within that executable; policy and
+  lifecycle events can therefore never observe different executable
+  generations.  The plugin launcher only resolves =hooks/current= and =exec=s
+  this binary.  It does not classify actions, parse policy, or select a second
+  executable.
+- AOT compilation must project every canonical Config TOML rule, including
+  =matcherPolicies=, command profiles/sets, dominance priority, structured
+  projections, native Edit aliases, and Reader profile/glob facts.  A rule
+  without a serving witness is a failed publication candidate.
+
+The corresponding executable model is
+=ASPProof.HookCommandBehavior= and its audit module.

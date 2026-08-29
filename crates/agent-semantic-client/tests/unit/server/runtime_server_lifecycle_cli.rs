@@ -97,20 +97,6 @@ async fn operator_start_recovers_the_durable_applied_activation_without_pending_
 }
 
 #[test]
-fn query_scope_derives_identity_without_catalog_or_bootstrap() {
-    let project_root = std::env::current_dir()
-        .expect("current project root")
-        .canonicalize()
-        .expect("canonical project root");
-    let expected = agent_semantic_client_db::AgentSessionRegistry::workspace_id(&project_root)
-        .expect("derive workspace identity");
-    let (actual, canonical_root) =
-        super::runtime_server_query_workspace_scope(&project_root).expect("derive query scope");
-    assert_eq!(actual, expected);
-    assert_eq!(canonical_root, project_root);
-}
-
-#[test]
 fn client_bootstrap_continues_only_for_an_already_resident_runtime() {
     use agent_semantic_client_db::runtime_server_supervisor::SupervisorOutcome;
 

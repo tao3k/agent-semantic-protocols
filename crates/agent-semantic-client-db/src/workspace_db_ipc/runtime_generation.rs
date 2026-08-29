@@ -637,46 +637,6 @@ impl WorkspaceDbIpcSession {
         }
     }
 
-    pub async fn evaluate_graph_turbo(
-        &self,
-        request: agent_semantic_search_projection::GraphTurboEvaluationRequest,
-    ) -> Result<agent_semantic_search_projection::GraphTurboResultPacketV1, String> {
-        let expected_workspace_identity = self.workspace_identity().to_owned();
-        let expected_project_root = self.runtime_project_root()?.display().to_string();
-        let result = self
-            .call_operation(WorkspaceDbIpcOperation::EvaluateGraphTurbo {
-                project_root: expected_project_root.clone(),
-                message: request.into_value(),
-            })
-            .await?;
-        match result {
-            WorkspaceDbIpcResult::GraphTurboEvaluation {
-                workspace_identity,
-                project_root,
-                receipt,
-            } if workspace_identity == expected_workspace_identity
-                && project_root == expected_project_root =>
-            {
-                agent_semantic_search_projection::GraphTurboResultPacketV1::from_value(receipt)
-                    .map_err(|error| format!("invalid Graph Turbo evaluation receipt: {error}"))
-            }
-            WorkspaceDbIpcResult::GraphTurboEvaluation {
-                workspace_identity,
-                project_root,
-                ..
-            } => Err(format!(
-                "Runtime Server Graph Turbo response binding mismatch: expectedWorkspace={} actualWorkspace={} expectedProjectRoot={} actualProjectRoot={}",
-                expected_workspace_identity,
-                workspace_identity,
-                expected_project_root,
-                project_root,
-            )),
-            other => Err(format!(
-                "Runtime Server returned unexpected Graph Turbo result: {other:?}"
-            )),
-        }
-    }
-
     pub async fn runtime_search_generation_authority(
         &self,
     ) -> Result<crate::runtime_server_workspace::WorkspaceSearchGenerationAuthority, String> {

@@ -6,8 +6,14 @@ use super::{
 fn operation() -> ProviderRuntimeContractOperation {
     ProviderRuntimeContractOperation {
         operation: "lexical-search".to_owned(),
-        request_schema_id: "agent.semantic-protocols.semantic-query-packet".to_owned(),
-        response_schema_id: "agent.semantic-protocols.semantic-search-packet".to_owned(),
+        request_schema: agent_semantic_provider_protocol::ProviderSchemaReference {
+            schema_id: "agent.semantic-protocols.semantic-query-packet".to_owned(),
+            schema_version: "1".to_owned(),
+        },
+        response_schema: agent_semantic_provider_protocol::ProviderSchemaReference {
+            schema_id: "agent.semantic-protocols.semantic-search-packet".to_owned(),
+            schema_version: "1".to_owned(),
+        },
     }
 }
 

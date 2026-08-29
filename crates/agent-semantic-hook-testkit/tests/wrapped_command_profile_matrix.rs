@@ -86,26 +86,53 @@ fn wrapped_gxi_profile_requires_an_ss_operand() {
 }
 
 #[test]
-fn command_payload_no_agent_assignment_is_not_process_recovery_authority() {
-    let scenario = gerbil_build_scenario();
-    let gerbil_build = scenario["positiveCommands"]
-        .as_array()
-        .and_then(|commands| commands.first())
-        .and_then(toml::Value::as_str)
-        .expect("Gerbil positive command");
-    let command = format!("ASP_NO_AGENT=1 {gerbil_build}");
-    let decision = classify_hook_scenario(
-        &empty_runtime(),
-        &ClientHookConfig::default(),
-        "codex",
-        "pre-tool",
-        &shell(&command),
-    )
-    .expect("classify explicit no-Agent escape");
+fn process_bound_no_agent_assignment_bypasses_all_hook_policy() {
+    let config = ClientHookConfig::default();
+    for command in [
+        "ASP_NO_AGENT=1 cargo test -p agent-semantic-hook",
+        "/usr/bin/env ASP_NO_AGENT=1 asp rust search pipe owner",
+        "export ASP_NO_AGENT=1; exec asp rust query --selector rust://owner",
+    ] {
+        let decision = classify_hook_scenario(
+            &empty_runtime(),
+            &config,
+            "codex",
+            "pre-tool",
+            &shell(command),
+        )
+        .expect("classify explicit no-Agent escape");
 
-    assert_eq!(decision["decision"], "deny");
-    assert_eq!(
-        decision["fields"]["configRuleId"],
-        "gerbil-build-role-dispatch"
-    );
+        assert_eq!(decision["decision"], "allow", "command={command}");
+        assert_eq!(
+            decision["fields"]["configRuleId"], "allow-explicit-no-agent",
+            "command={command}"
+        );
+        assert_eq!(
+            decision["fields"]["bypassScope"], "host-policy",
+            "command={command}"
+        );
+    }
+}
+
+#[test]
+fn text_or_non_exec_assignment_cannot_claim_no_agent_authority() {
+    let config = ClientHookConfig::default();
+    for command in [
+        "printf 'ASP_NO_AGENT=1 cargo test'",
+        "export ASP_NO_AGENT=1; cargo test -p agent-semantic-hook",
+        "printf warmup; ASP_NO_AGENT=1 cargo test -p agent-semantic-hook",
+    ] {
+        let decision = classify_hook_scenario(
+            &empty_runtime(),
+            &config,
+            "codex",
+            "pre-tool",
+            &shell(command),
+        )
+        .expect("classify non-authoritative no-Agent text");
+        assert_ne!(
+            decision["fields"]["configRuleId"], "allow-explicit-no-agent",
+            "command={command}"
+        );
+    }
 }

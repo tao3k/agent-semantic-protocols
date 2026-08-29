@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from asp_graph_turbo import TypedGraph
-from asp_graph_turbo.query_weights import (
+from asp_python_graphs import TypedGraph
+from asp_python_graphs.query_weights import (
     query_package_cohesion_adjustment,
     query_package_cohesion_tokens,
 )

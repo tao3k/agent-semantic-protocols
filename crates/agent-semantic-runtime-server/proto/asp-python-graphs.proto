@@ -1,0 +1,12 @@
+syntax = "proto3";
+
+package asp.python.graphs;
+
+// JSON remains schema-owned; protobuf owns only the efficient gRPC envelope.
+message GraphsEnvelope {
+  bytes json = 1;
+}
+
+service AspPythonGraphs {
+  rpc Session(stream GraphsEnvelope) returns (stream GraphsEnvelope);
+}

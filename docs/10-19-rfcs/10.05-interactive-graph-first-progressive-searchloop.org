@@ -43,17 +43,21 @@ clients of this route.  They do not own provider execution, workspace
 generation, cache construction, projection truth, lifecycle recovery, or a
 semantic fast path.
 
-The Runtime daemon mounts exactly one public =AspClientGrpcService= on the
-existing Runtime data socket.  The service consumes the transport-neutral
-=ClientFrame= schema and serves bounded Tokio streams.  Runtime audits the
-existing =data_socket= before endpoint allocation; it does not create a fourth
-socket.
+The Runtime daemon mounts the public =AspClientFrameService= through both the
+=AspClientGrpcService= gRPC adapter and the =serve_http_json= HTTP/JSON
+adapter.  Both adapters consume the same transport-neutral =ClientFrame=
+schema, method catalog, lifecycle admission, and dispatcher; neither adapter
+may parse a method into a second route or provide a fallback.  Runtime audits
+the existing =data_socket= before endpoint allocation; it does not create a
+fourth semantic authority.
 
 The current endpoint field is the Runtime-owned bounded UDS
 =client_endpoint=.  A v1 =client_http_endpoint= record may be consumed only as
-authoritative input to one-way endpoint migration.  It never authorizes an HTTP
-listener, fallback, dual serve, or second current endpoint.  There is no public
-HTTP/JSON or TCP SearchLoop service.
+authoritative input to one-way endpoint migration.  It never authorizes a
+second current endpoint or semantic dispatcher.  When an HTTP endpoint is
+advertised, its one canonical frame path is only a transport adapter over the
+same =AspClientFrameService=; gRPC and HTTP/JSON round trips therefore produce
+identical typed responses, including admission failures.
 
 The package and route contract is owned by
 [[file:10.05-interactive-graph-first-progressive-searchloop/10.05.01-server-client-package-responsibility.org][10.05.01 Server/Client Package Responsibility]].

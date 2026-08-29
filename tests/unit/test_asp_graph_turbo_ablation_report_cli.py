@@ -8,7 +8,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from asp_graph_turbo_cli_support import (
+from asp_python_graphs_cli_support import (
     sample_graph_turbo_request,
     validate_shared_schema,
 )
@@ -22,7 +22,7 @@ def test_graph_turbo_ablation_report_cli_generates_schema_packet(tmp_path) -> No
         [
             sys.executable,
             "-m",
-            "asp_graph_turbo",
+            "asp_python_graphs",
             "ablation-report",
             str(packet_path),
             "--runs",
@@ -69,7 +69,7 @@ def test_graph_turbo_ablation_report_cli_can_render_text(tmp_path) -> None:
         [
             sys.executable,
             "-m",
-            "asp_graph_turbo",
+            "asp_python_graphs",
             "ablation-report",
             str(packet_path),
             "--variant",
@@ -109,7 +109,7 @@ def test_graph_turbo_ablation_report_exposes_receipt_read_memory_and_quality_del
         [
             sys.executable,
             "-m",
-            "asp_graph_turbo",
+            "asp_python_graphs",
             "ablation-report",
             str(packet_path),
             "--runs",
@@ -148,7 +148,7 @@ def test_graph_turbo_ablation_report_exposes_query_first_stage_signal(
         [
             sys.executable,
             "-m",
-            "asp_graph_turbo",
+            "asp_python_graphs",
             "ablation-report",
             str(packet_path),
             "--runs",
@@ -208,7 +208,7 @@ def test_graph_turbo_ablation_report_can_fail_quality_gate(tmp_path) -> None:
         [
             sys.executable,
             "-m",
-            "asp_graph_turbo",
+            "asp_python_graphs",
             "ablation-report",
             str(packet_path),
             "--runs",
@@ -238,7 +238,7 @@ def test_graph_turbo_ablation_report_can_fail_quality_gate(tmp_path) -> None:
 
 def _subprocess_env() -> dict[str, str]:
     repo_root = Path(__file__).resolve().parents[2]
-    package_src = repo_root / "packages/python/asp_graph_turbo/src"
+    package_src = repo_root / "packages/python/asp_python_graphs/src"
     unit_tests = repo_root / "tests/unit"
     env = os.environ.copy()
     env["PYTHONPATH"] = os.pathsep.join(
@@ -257,19 +257,19 @@ def _sensitive_fixture_path() -> Path:
 def _query_first_stage_request() -> dict[str, object]:
     packet = sample_graph_turbo_request()
     packet["queryTerms"] = [
-        "asp_graph_turbo",
+        "asp_python_graphs",
         "queryClauses",
         "typed",
         "graph",
         "request",
     ]
     packet["queryClauses"] = [
-        "asp_graph_turbo queryClauses clause coverage scoring",
+        "asp_python_graphs queryClauses clause coverage scoring",
         "typed graph request rank objective",
     ]
     packet["seedIds"] = [
-        "query:asp_graph_turbo",
-        "owner:packages/python/asp_graph_turbo/src/asp_graph_turbo/ranking_score.py",
+        "query:asp_python_graphs",
+        "owner:packages/python/asp_python_graphs/src/asp_python_graphs/ranking_score.py",
     ]
     graph = packet["graph"]
     assert isinstance(graph, dict)
@@ -281,43 +281,43 @@ def _query_first_stage_request() -> dict[str, object]:
 def _query_first_stage_nodes() -> list[dict[str, object]]:
     return [
         {
-            "id": "query:asp_graph_turbo",
+            "id": "query:asp_python_graphs",
             "kind": "query",
             "role": "term",
-            "value": "asp_graph_turbo queryClauses typed graph request",
+            "value": "asp_python_graphs queryClauses typed graph request",
             "action": "lexical",
         },
         {
-            "id": "owner:packages/python/asp_graph_turbo/src/asp_graph_turbo/ranking_score.py",
+            "id": "owner:packages/python/asp_python_graphs/src/asp_python_graphs/ranking_score.py",
             "kind": "owner",
             "role": "path",
-            "value": "packages/python/asp_graph_turbo/src/asp_graph_turbo/ranking_score.py",
-            "path": "packages/python/asp_graph_turbo/src/asp_graph_turbo/ranking_score.py",
-            "ownerPath": "packages/python/asp_graph_turbo/src/asp_graph_turbo/ranking_score.py",
+            "value": "packages/python/asp_python_graphs/src/asp_python_graphs/ranking_score.py",
+            "path": "packages/python/asp_python_graphs/src/asp_python_graphs/ranking_score.py",
+            "ownerPath": "packages/python/asp_python_graphs/src/asp_python_graphs/ranking_score.py",
         },
         {
             "id": "item:package-and-request",
             "kind": "item",
             "role": "symbol",
             "value": "queryClauses coverage scoring typed graph request rank",
-            "path": "packages/python/asp_graph_turbo/src/asp_graph_turbo/ranking_score.py",
-            "ownerPath": "packages/python/asp_graph_turbo/src/asp_graph_turbo/ranking_score.py",
+            "path": "packages/python/asp_python_graphs/src/asp_python_graphs/ranking_score.py",
+            "ownerPath": "packages/python/asp_python_graphs/src/asp_python_graphs/ranking_score.py",
             "symbol": "queryClauses",
         },
         {
             "id": "item:rust-mention",
             "kind": "item",
             "role": "symbol",
-            "value": "asp_graph_turbo queryClauses",
+            "value": "asp_python_graphs queryClauses",
             "path": "crates/agent-semantic-client/tests/unit/search_history.rs",
             "ownerPath": "crates/agent-semantic-client/tests/unit/search_history.rs",
-            "symbol": "asp_graph_turbo",
+            "symbol": "asp_python_graphs",
         },
         {
             "id": "test:ranking-score",
             "kind": "test",
             "role": "path",
-            "value": "tests/unit/test_asp_graph_turbo_ranking_query.py",
+            "value": "tests/unit/test_asp_python_graphs_ranking_query.py",
         },
     ]
 
@@ -325,22 +325,22 @@ def _query_first_stage_nodes() -> list[dict[str, object]]:
 def _query_first_stage_edges() -> list[dict[str, str]]:
     return [
         {
-            "source": "query:asp_graph_turbo",
+            "source": "query:asp_python_graphs",
             "target": "item:package-and-request",
             "relation": "matches",
         },
         {
-            "source": "query:asp_graph_turbo",
+            "source": "query:asp_python_graphs",
             "target": "item:rust-mention",
             "relation": "matches",
         },
         {
-            "source": "owner:packages/python/asp_graph_turbo/src/asp_graph_turbo/ranking_score.py",
+            "source": "owner:packages/python/asp_python_graphs/src/asp_python_graphs/ranking_score.py",
             "target": "item:package-and-request",
             "relation": "contains",
         },
         {
-            "source": "owner:packages/python/asp_graph_turbo/src/asp_graph_turbo/ranking_score.py",
+            "source": "owner:packages/python/asp_python_graphs/src/asp_python_graphs/ranking_score.py",
             "target": "test:ranking-score",
             "relation": "covers",
         },

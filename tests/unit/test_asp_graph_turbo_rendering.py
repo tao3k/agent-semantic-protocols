@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ._asp_graph_turbo_common import (
+from ._asp_python_graphs_common import (
     TypedGraph,
     rank_frontier,
     render_compact,
@@ -57,7 +57,7 @@ def test_compact_render_uses_asp_graph_frontier_contract() -> None:
     assert "\nomit=code,full-score-vector,full-graph\n" in compact
     assert "\navoid=raw-read,repeat-owner,broad-lexical,manual-window-scan\n" in compact
     assert (
-        "\npipeChoice=bounded-fanout maxBranches=3 repeat=false owner=asp-graph-turbo\n"
+        "\npipeChoice=bounded-fanout maxBranches=3 repeat=false owner=asp-python-graphs\n"
         in compact
     )
     assert (

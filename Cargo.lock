@@ -190,8 +190,10 @@ version = "0.1.0"
 dependencies = [
  "agent-semantic-client-core",
  "agent-semantic-client-protocol",
+ "agent-semantic-http-json",
  "agent-semantic-runtime",
  "asp-rust-project-harness-policy",
+ "bytes",
  "hyper-util",
  "prost",
  "serde",
@@ -209,6 +211,7 @@ dependencies = [
 name = "agent-semantic-config"
 version = "0.1.0"
 dependencies = [
+ "blake3",
  "figment",
  "regex",
  "serde",
@@ -389,6 +392,7 @@ dependencies = [
  "agent-semantic-schema-manager",
  "agent-semantic-search",
  "blake3",
+ "hyper-util",
  "prost",
  "serde",
  "serde_json",
@@ -398,6 +402,7 @@ dependencies = [
  "tonic",
  "tonic-prost",
  "tonic-prost-build",
+ "tower",
 ]
 
 [[package]]
@@ -4982,6 +4987,7 @@ dependencies = [
  "blake3",
  "cargo-lock",
  "cargo_toml",
+ "libc",
  "proc-macro2",
  "quote",
  "regex",

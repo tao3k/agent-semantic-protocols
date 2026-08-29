@@ -1,6 +1,5 @@
 //! Language provider command facade.
 
-use super::provider_execution::take_frontier_receipt_request;
 use super::provider_usage;
 
 use agent_semantic_client::{
@@ -86,7 +85,6 @@ pub(crate) async fn run_language_command(
         agent_semantic_search::command_diagnostics::take_search_command_diagnostic_options(
             &mut command_args,
         )?;
-    let frontier_receipt = take_frontier_receipt_request(&mut command_args)?;
     let mut command_diagnostics = diagnostic_options
         .is_enabled()
         .then(|| {
@@ -99,14 +97,6 @@ pub(crate) async fn run_language_command(
         })
         .flatten();
     let result: Result<(), String> = async {
-    if frontier_receipt.is_some()
-        && command_args
-            .first()
-            .is_none_or(|command| command != "search")
-    {
-        return Err("--frontier-receipt-out is supported only for search commands".to_string());
-    }
-
     if is_help(&command_args) {
         println!("{}", provider_usage());
         return Ok(());

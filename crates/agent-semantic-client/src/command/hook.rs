@@ -22,6 +22,10 @@ pub(crate) async fn run_hook_command(args: &[String]) -> Result<(), String> {
         println!("{}", usage());
         return Ok(());
     }
+    if args.first().is_some_and(|event| event == "pre-tool") {
+        agent_semantic_hook::run_aot_evaluator_cli();
+        return Ok(());
+    }
     let forwarded = forwarded_hook_args(args)?;
     if matches!(
         args.first().map(String::as_str),
@@ -110,5 +114,5 @@ fn forwarded_event_args(event: &str, rest: &[String]) -> Result<Vec<String>, Str
 }
 
 fn usage() -> String {
-    "usage: asp install hook --client claude [PROJECT_ROOT] [--subagent-model MODEL]\n       asp hook accept-host --host-rollout PATH --host-probe-path PATH --host-sentinel TOKEN\n       asp hook doctor --client <codex|claude> [--host-rollout PATH --host-probe-path PATH --host-sentinel TOKEN] ...\n       asp hook enablement [PROJECT_ROOT] [--json]\n       asp hook paths [PROJECT_ROOT]\n       asp hook break-glass mint --defect-kind <KIND> --command <COMMAND> [PROJECT_ROOT]\n       asp hook --client <codex|claude> --event <event> ...\n       asp hook <pre-tool|post-tool|stop|event> ...\n       asp install plugin --codex".to_string()
+    "usage: asp install hook --client claude [PROJECT_ROOT] [--subagent-model MODEL]\n       asp hook accept-host --host-rollout PATH --host-probe-path PATH --host-sentinel TOKEN\n       asp hook doctor --client <codex|claude> [--host-rollout PATH --host-probe-path PATH --host-sentinel TOKEN] ...\n       asp hook enablement [PROJECT_ROOT] [--json]\n       asp hook paths [PROJECT_ROOT]\n       asp hook break-glass mint --defect-kind <KIND> --command <COMMAND> [PROJECT_ROOT]\n       asp hook --client <codex|claude> --event <event> ...\n       asp hook <pre-tool|post-tool|stop|event> ...\n       asp install plugin <status|publish> --codex [PROJECT_ROOT]".to_string()
 }

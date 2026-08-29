@@ -11,7 +11,7 @@ from pathlib import Path
 import time
 from typing import Any
 
-from unit._asp_graph_turbo_common import (
+from unit._asp_python_graphs_common import (
     _GRAPH_TURBO_REQUEST_SCHEMA,
     _GRAPH_TURBO_SCHEMA,
     TypedGraph,

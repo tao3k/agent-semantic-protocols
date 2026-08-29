@@ -15,6 +15,7 @@ use tokio::{
 };
 
 pub mod hook_scenarios;
+#[cfg(feature = "compiler")]
 pub mod installed_publication;
 
 pub const DEFAULT_HOOK_TIMEOUT: Duration = Duration::from_secs(2);
@@ -130,6 +131,7 @@ impl std::fmt::Display for HookTestKitError {
 
 impl std::error::Error for HookTestKitError {}
 
+#[cfg(feature = "compiler")]
 pub fn classify_hook_scenario(
     registry: &agent_semantic_hook::HookRuntime,
     config: &agent_semantic_hook::ClientHookConfig,
@@ -149,6 +151,7 @@ pub fn classify_hook_scenario(
     serde_json::to_value(decision).map_err(HookTestKitError::Encode)
 }
 
+#[cfg(feature = "compiler")]
 pub fn classify_codex_plugin_scenario(
     registry: &agent_semantic_hook::HookRuntime,
     config: &agent_semantic_hook::ClientHookConfig,
@@ -196,6 +199,11 @@ pub async fn run_hook_process(
         .await
         .map_err(HookTestKitError::Io)?;
     stdin.shutdown().await.map_err(HookTestKitError::Io)?;
+    // `AsyncWriteExt::shutdown` flushes the pipe but retaining ChildStdin can
+    // keep the write descriptor alive. Hook evaluators read one bounded JSON
+    // document to EOF, so the harness must release its handle before waiting
+    // for the child or it manufactures a deterministic deadlock.
+    drop(stdin);
 
     let mut stdout = child
         .stdout
