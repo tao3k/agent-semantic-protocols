@@ -10,7 +10,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tests/unit"))
 
-from asp_python_graphs_cli_support import validate_shared_schema
+from unit.asp_graph_turbo_cli_support import validate_shared_schema
 
 
 def test_graph_turbo_agent_benefit_reports_read_locator_feedback_and_matrix() -> None:

@@ -311,31 +311,31 @@ fn registered_reasoning_search_dispatches_before_raw_search_rules_and_lazy_loads
     assert!(
         asp_search_decision
             .message
-            .contains("delegate search to the registered ASP Explorer"),
+            .contains("Delegate the denied search to ASP Explorer"),
         "registered search dispatch must explain the Explorer evidence path: {}",
         asp_search_decision.message
     );
     assert!(
         asp_search_decision
             .message
-            .contains("main thread with `asp <language> query --selector ... --projection source`"),
+            .contains("materialize only that selector from the main thread"),
         "registered search dispatch must return exact query materialization to the main thread: {}",
         asp_search_decision.message
     );
     assert!(
         asp_search_decision
             .message
-            .contains("reserved for explicit debug or programmatic automation"),
+            .contains("Use `--json` only for explicitly requested debugging"),
         "registered search dispatch must keep JSON outside normal Explorer search: {}",
         asp_search_decision.message
     );
     assert_eq!(
-        asp_search_decision.fields["choicePlaneOwner"].as_str(),
-        Some("org-contract:agent-interactive")
+        asp_search_decision.fields["collaborationNamespace"].as_str(),
+        Some("collaboration")
     );
     assert_eq!(
-        asp_search_decision.fields["agentWindowCommand"].as_str(),
-        Some("asp session --agents choice-plane")
+        asp_search_decision.fields["collaborationTool"].as_str(),
+        Some("spawn_agent")
     );
     assert!(!asp_search_decision.fields.contains_key("residentName"));
     assert_eq!(

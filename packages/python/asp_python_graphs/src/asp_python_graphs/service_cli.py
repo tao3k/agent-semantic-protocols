@@ -1,4 +1,9 @@
-"""Run the ASP Server-owned Python Graphs gRPC service."""
+"""Private launcher for the ASP Server-owned Python Graphs gRPC service.
+
+This module has one admitted operation, ``serve``.  It does not rank packets,
+manage generations, or expose an algorithm command; those responsibilities
+belong to the resident gRPC session and ASP Server.
+"""
 
 from __future__ import annotations
 
@@ -12,6 +17,7 @@ from .grpc_service import DEFAULT_MAX_IN_FLIGHT, serve
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="asp-python-graphs serve")
+    parser.add_argument("command", choices=["serve"])
     parser.add_argument("--socket", required=True, type=Path)
     parser.add_argument(
         "--max-in-flight", type=int, default=DEFAULT_MAX_IN_FLIGHT

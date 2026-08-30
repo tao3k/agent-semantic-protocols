@@ -57,12 +57,12 @@ fn canonical_config_covers_registered_source_bash_matrix() {
                 "tool_name": "Bash",
                 "tool_input": {"command": format!("head {path}")}
             });
-            agent_semantic_hook::bind_plugin_host_matcher(&mut payload, Some("Bash"), None)
+            agent_semantic_hook::bind_plugin_host_matcher(&mut payload, "Bash")
                 .expect("bind canonical Bash matcher");
             let observation = agent_semantic_hook::ReaderProbeObservation {
                 subject: path.clone(),
                 access: agent_semantic_hook::ReaderProbeAccess::Read,
-                backend: "hook-generation-reader-catalog".to_owned(),
+                backend: "hook-policy-bundle-reader-catalog".to_owned(),
                 terminal: "reader-behavior-catalog-hit".to_owned(),
                 elapsed_micros: 0,
                 probe_process_launched: false,
@@ -123,11 +123,18 @@ fn bundled_plugin_matchers_preserve_one_host_action_identity_per_entry() {
         .iter()
         .map(|entry| entry["matcher"].as_str().expect("native matcher"))
         .collect::<Vec<_>>();
-    assert_eq!(
-        matchers,
-        ["^apply_patch$", "Bash", "spawn_agent", "^mcp__.*$"]
+    assert_eq!(&matchers[..3], ["^apply_patch$", "Bash", "spawn_agent"]);
+    assert!(
+        matchers[3..]
+            .iter()
+            .all(|matcher| matcher.starts_with("mcp__codex_app__"))
     );
+    assert!(matchers.contains(&"mcp__codex_app__send_message_to_thread"));
+    assert!(matchers.contains(&"mcp__codex_app__automation_update"));
+    assert!(!matchers.contains(&"mcp__codex_app__consume_usage_reset"));
+    assert!(!matchers.contains(&"mcp__codex_app__uninstall_plugin"));
     assert!(!matchers.contains(&"*"));
+    assert!(!matchers.contains(&"^mcp__.*$"));
 }
 
 #[test]
@@ -204,13 +211,11 @@ fn classify<'a>(
         .unwrap_or_default()
         .to_owned();
     let binding = match tool_name.as_str() {
-        "apply_patch" | "Bash" | "spawn_agent" => agent_semantic_hook::bind_plugin_host_matcher(
-            &mut payload,
-            Some(tool_name.as_str()),
-            None,
-        ),
+        "apply_patch" | "Bash" | "spawn_agent" => {
+            agent_semantic_hook::bind_plugin_host_matcher(&mut payload, tool_name.as_str())
+        }
         name if name.starts_with("mcp__") => {
-            agent_semantic_hook::bind_plugin_host_matcher(&mut payload, None, Some("mcp__"))
+            agent_semantic_hook::bind_plugin_host_matcher(&mut payload, name)
         }
         _ => Ok(()),
     };

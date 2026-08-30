@@ -12,6 +12,7 @@ use agent_semantic_hook::{
     HOOK_DECISION_SCHEMA_VERSION, HOOK_PROTOCOL_ID, HOOK_PROTOCOL_VERSION, HookDecision,
     ReasonKind, StdinMode, append_hook_event_state, has_recorded_subagent_context,
     latest_hook_session_agent_route, latest_hook_session_agent_route_for_root,
+    latest_hook_session_agent_route_for_root_matching_rules,
 };
 use fs2::FileExt;
 use serde_json::Value;
@@ -406,7 +407,7 @@ fn registered_agent_dispatch_requires_complete_canonical_fields() {
     let serialized = serde_json::to_value(&decision).expect("serialize configured dispatch");
     assert!(
         serialized.get("interactiveCommand").is_none(),
-        "configured dispatch must not synthesize a Rust-owned ChoicePlane"
+        "configured dispatch must not synthesize a Rust-owned lifecycle command"
     );
 
     decision.fields.insert(
@@ -458,12 +459,12 @@ fn latest_session_route_is_read_only_and_config_selected() {
         selected.fields.remove(preselected_field);
     }
     selected.fields.insert(
-        "agentWindowCommand".to_owned(),
-        Value::String("asp session --agents choice-plane".to_owned()),
+        "collaborationTool".to_owned(),
+        Value::String("spawn_agent".to_owned()),
     );
     selected.fields.insert(
-        "choicePlaneOwner".to_owned(),
-        Value::String("org-contract:agent-interactive".to_owned()),
+        "collaborationNamespace".to_owned(),
+        Value::String("collaboration".to_owned()),
     );
     selected.fields.insert(
         "denyEvidenceRef".to_owned(),
@@ -488,6 +489,41 @@ fn latest_session_route_is_read_only_and_config_selected() {
 }
 
 #[test]
+fn current_rule_filter_skips_newer_event_from_retired_generation() {
+    use std::collections::BTreeSet;
+
+    let _state_home = AspStateHomeGuard::activate_isolated();
+    let project_root = unique_project_root();
+    for rule in ["current-route", "retired-route"] {
+        let mut selected = decision(rule, 1);
+        insert_registered_agent_dispatch(&mut selected);
+        selected
+            .fields
+            .insert("configRuleId".to_owned(), Value::String(rule.to_owned()));
+        selected.fields.insert(
+            "collaborationTool".to_owned(),
+            Value::String("spawn_agent".to_owned()),
+        );
+        selected.fields.insert(
+            "collaborationNamespace".to_owned(),
+            Value::String("collaboration".to_owned()),
+        );
+        append_hook_event_state(&project_root, &selected).expect("append selected route");
+    }
+
+    let route = latest_hook_session_agent_route_for_root_matching_rules(
+        &project_root,
+        Some("root-session-test"),
+        &BTreeSet::from(["current-route".to_owned()]),
+    )
+    .expect("read current route")
+    .expect("matching current route");
+    assert_eq!(route.config_rule_id, "current-route");
+
+    fs::remove_dir_all(project_root).ok();
+}
+
+#[test]
 fn current_root_route_never_falls_back_to_a_newer_different_session() {
     let _state_home = AspStateHomeGuard::activate_isolated();
     let project_root = unique_project_root();
@@ -501,12 +537,12 @@ fn current_root_route_never_falls_back_to_a_newer_different_session() {
             .fields
             .insert("configRuleId".to_owned(), Value::String(rule.to_owned()));
         selected.fields.insert(
-            "agentWindowCommand".to_owned(),
-            Value::String("asp session --agents choice-plane".to_owned()),
+            "collaborationTool".to_owned(),
+            Value::String("spawn_agent".to_owned()),
         );
         selected.fields.insert(
-            "choicePlaneOwner".to_owned(),
-            Value::String("org-contract:agent-interactive".to_owned()),
+            "collaborationNamespace".to_owned(),
+            Value::String("collaboration".to_owned()),
         );
         selected.fields.insert(
             "hostRootSessionId".to_owned(),

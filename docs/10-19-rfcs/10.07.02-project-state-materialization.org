@@ -1,6 +1,15 @@
 #+title: RFC 10.07.02 - Project State Materialization
 #+startup: overview
 
+* V1 refactor design hold
+
+Workspace resolution is targeted to produce an exact content-addressed
+binding committed by the ASP Server. A valid virtual Cargo workspace may have
+no root package; its canonical member set is authoritative. This section does
+not add a schema or serving table and does not change state-home,
+direct-link, project-entry, active-candidate, or activation records. Removal
+of those identities is a later approved in-place transaction.
+
 * Status
 
 Proposed.

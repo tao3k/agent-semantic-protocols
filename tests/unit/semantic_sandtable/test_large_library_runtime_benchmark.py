@@ -10,7 +10,7 @@ import time
 
 import pytest
 
-from jsonschema import Draft202012Validator
+from unit.schema_validation import schema_validator_for
 
 from tools.semantic_sandtable.large_library_runtime_benchmark import (
     run_large_library_runtime_benchmark,
@@ -49,9 +49,7 @@ def test_runtime_benchmark_rejects_missing_release_binary_and_corpora(
         state_home=tmp_path / "state",
     )
 
-    Draft202012Validator(json.loads(_SCHEMA.read_text(encoding="utf-8"))).validate(
-        receipt
-    )
+    schema_validator_for(_SCHEMA).validate(receipt)
     assert receipt["status"] == "fail"
     assert receipt["binary"]["releaseVerified"] is False
     assert receipt["workspaceDeployments"] == []
@@ -174,9 +172,7 @@ def test_runtime_benchmark_executes_fd_as_an_independent_path_stage(
 def test_runtime_corpus_manifest_has_all_unique_real_library_targets() -> None:
     manifest = json.loads(_CORPUS_MANIFEST.read_text(encoding="utf-8"))
 
-    Draft202012Validator(
-        json.loads(_CORPUS_SCHEMA.read_text(encoding="utf-8"))
-    ).validate(manifest)
+    schema_validator_for(_CORPUS_SCHEMA).validate(manifest)
     corpora = manifest["corpora"]
     assert len(corpora) == 17
     assert all(len(entry["git"]["revision"]) == 40 for entry in corpora)

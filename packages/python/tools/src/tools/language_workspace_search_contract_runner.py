@@ -56,7 +56,7 @@ def _asp_command(root: Path, asp_bin: str | None) -> list[str]:
             "run",
             "-q",
             "-p",
-            "agent-semantic-protocol",
+            "agent-semantic-client",
             "--bin",
             "asp",
             "--",

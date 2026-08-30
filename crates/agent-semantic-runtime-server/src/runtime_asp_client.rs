@@ -171,8 +171,6 @@ type ClientWorkspaceKey = (String, String);
 #[derive(Clone)]
 struct InitializedWorkspace {
     project_root: std::path::PathBuf,
-    candidate:
-        agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationCandidateIdentity,
 }
 
 #[derive(Clone)]
@@ -271,13 +269,16 @@ pub fn build_frame_service(
                         "client initialize workspaceIdentity does not match projectRoot".to_owned(),
                     );
                 }
-                let candidate = agent_semantic_client_db::runtime_server_admission::discover_workspace_generation_candidate(&project_root).await?;
-                let workspace_generation =
-                    client_generation_digest(candidate.candidate_generation.digest.as_str())?;
+                // Client initialization binds identity only. Language generation admission is
+                // intentionally deferred to language methods so Multi-Agent lifecycle calls do
+                // not depend on a provider project entry or Source Index generation.
+                let workspace_generation = format!(
+                    "blake3-256:{}",
+                    blake3::hash(workspace_identity.as_bytes()).to_hex()
+                );
                 let key = (workspace_identity.clone(), session_id);
                 let initialized = InitializedWorkspace {
                     project_root: project_root.clone(),
-                    candidate,
                 };
                 let mut workspaces = initialized_workspaces
                     .lock()
@@ -513,12 +514,13 @@ impl AspClientDispatcher for RuntimeAspClientDispatcher {
                     .borrow()
                     .get(request.workspace_identity.as_str())
                     .is_some_and(|state| matches!(state, RuntimeQueryGenerationState::Ready(_)));
-                let queued_receipt = if !query_generation_ready {
+                let terminal = if !query_generation_ready {
+                    let candidate = agent_semantic_client_db::runtime_server_admission::discover_workspace_generation_candidate(&project_root).await?;
                     let queued_receipt = generation_admission
                     .enqueue_query_demand_for_candidate(
                         request.workspace_identity.as_str().to_owned(),
                         project_root.clone(),
-                        initialized.candidate,
+                        candidate,
                         Vec::new(),
                         Some(
                             agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationProviderTarget {
@@ -526,64 +528,24 @@ impl AspClientDispatcher for RuntimeAspClientDispatcher {
                                 provider_id: Some(provider_id.clone()),
                             },
                         ),
-                    )?;
-                    Some(queued_receipt)
+                    )
+                    .await?;
+                    generation_admission
+                        .wait_terminal_attempt(
+                            request.workspace_identity.as_str(),
+                            &project_root,
+                            queued_receipt.attempt,
+                        )
+                        .await
+                        .map_err(AspClientOperationError::Message)?
                 } else {
-                    None
-                };
-                let terminal = match queued_receipt.or_else(|| {
-                    generation_admission.status(request.workspace_identity.as_str(), &project_root)
-                }) {
-                    Some(observed) => observed,
-                    None if exact_query_params.is_some() => {
-                        let params = exact_query_params
-                            .as_ref()
-                            .expect("ExactQuery params were checked above");
-                        let elapsed_micros = elapsed_micros(admission_started);
-                        let failure = AspClientExactQueryFailure {
-                            schema_id: "agent.semantic-protocols.asp-client-exact-query-failure"
-                                .to_owned(),
-                            schema_version: "1".to_owned(),
-                            state: "failed".to_owned(),
-                            operation_id: request.request_id.as_str().to_owned(),
-                            language_id: language_id.clone(),
-                            provider_id: provider_id.clone(),
-                            requested_selector: Some(params.selector.clone()),
-                            resolved_selector: None,
-                            projection_kind: Some(params.projection.clone()),
-                            phase: "workspace-generation-admission".to_owned(),
-                            reason_kind: "runtime-generation-admission-receipt-missing".to_owned(),
-                            generation_digest: None,
-                            root_digest: None,
-                            recommended_next: serde_json::json!({
-                                "action": "inspect-runtime-generation-admission",
-                                "workspaceIdentity": request.workspace_identity.as_str(),
-                            }),
-                            resident_read_elapsed_micros: 0,
-                            service_elapsed_micros: elapsed_micros,
-                            elapsed_micros,
-                            work_counters: AspClientRuntimeWorkCounters::default(),
-                            details: serde_json::json!({
-                                "admissionState": "receipt-missing",
-                                "languageId": language_id,
-                                "providerId": provider_id,
-                            }),
-                        };
-                        failure.validate()?;
-                        return Err(AspClientOperationError::Terminal(AspClientDispatchError {
-                            reason_kind: failure.reason_kind.clone(),
-                            message: "workspace generation admission has no current receipt"
-                                .to_owned(),
-                            details: Some(
-                                serde_json::to_value(failure).map_err(|error| error.to_string())?,
-                            ),
-                        }));
-                    }
-                    None => {
-                        return Err(AspClientOperationError::Message(
-                            "workspace generation admission has no current receipt".to_owned(),
-                        ));
-                    }
+                    generation_admission
+                        .status(request.workspace_identity.as_str(), &project_root)
+                        .ok_or_else(|| {
+                            AspClientOperationError::Message(
+                                "workspace generation admission has no current receipt".to_owned(),
+                            )
+                        })?
                 };
                 if terminal.state
                     != agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmissionState::Ready
@@ -835,6 +797,14 @@ impl AspClientDispatcher for RuntimeAspClientDispatcher {
                             Some(&authority),
                             100,
                         )?;
+                        let owner_paths = lookup
+                            .hits
+                            .iter()
+                            .map(|hit| hit.owner_path.clone())
+                            .collect::<Vec<_>>();
+                        let parser_owned_selector_pairs = generation
+                            .resident()
+                            .parser_owned_callable_selector_pairs(&owner_paths)?;
                         let elapsed_micros = elapsed_micros(started);
                         record_runtime_route_performance(
                             &telemetry_sender,
@@ -854,7 +824,7 @@ impl AspClientDispatcher for RuntimeAspClientDispatcher {
                                 "resident", lookup,
                             )],
                             elapsed_micros,
-                            Vec::new(),
+                            parser_owned_selector_pairs,
                         )
                         .await?;
                         Ok(serde_json::to_value(receipt)

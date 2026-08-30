@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unit._asp_python_graphs_common import (
+from unit._asp_graph_turbo_common import (
     _GRAPH_TURBO_SCHEMA,
     _GRAPH_TURBO_REQUEST_SCHEMA,
     TypedGraph,

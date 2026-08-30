@@ -53,10 +53,10 @@ pub struct HookClientConfigFile {
     pub command_profiles: Vec<super::profiles::HookClientCommandProfileConfig>,
     #[serde(default)]
     pub command_sets: Vec<super::profiles::HookClientCommandSetConfig>,
-    /// Deterministic Reader behavior facts compiled into HookGeneration.
+    /// Deterministic Reader behavior facts compiled into the Hook policy bundle.
     ///
-    /// Each inner vector is an executable basename followed by an optional
-    /// argv prefix. The list is data, not Rust command-name policy.
+    /// Each inner vector is an executable basename followed by optional
+    /// argv-token globs. The list is data, not Rust command-name policy.
     #[serde(default)]
     pub reader_behavior_patterns: Vec<Vec<String>>,
     #[serde(default)]

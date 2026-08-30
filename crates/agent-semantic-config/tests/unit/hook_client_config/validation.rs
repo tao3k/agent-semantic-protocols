@@ -329,10 +329,7 @@ fn canonical_source_routing_uses_wrapped_profiles_without_legacy_search() {
         .find(|rule| rule.id == "route-read-to-asp-languages")
         .expect("registered source routing rule");
     assert!(route.matcher.is_none());
-    assert_eq!(
-        route.matcher_policies,
-        [agent_semantic_config::HookClientMatcherPolicy::WrappedCommand]
-    );
+    assert!(route.matcher_policies.is_empty());
     assert_eq!(
         route.actions,
         [agent_semantic_config::HookClientActionKind::Read]
@@ -403,11 +400,11 @@ commandAny = ["cargo"]
 }
 
 #[test]
-fn rule_matcher_accepts_codex_regex_grammar_and_rejects_invalid_regex() {
+fn rule_matcher_accepts_exact_host_aliases_and_rejects_regex_syntax() {
     for (name, matcher) in [
-        ("canonical-apply-patch", "^apply_patch$"),
+        ("canonical-apply-patch", "apply_patch"),
         ("official-edit-aliases", "Edit|Write"),
-        ("dynamic-mcp", "^mcp__.*$"),
+        ("exact-mcp", "mcp__filesystem__read_file"),
     ] {
         let root = temp_root(name);
         let config_path = root.join("config.toml");
@@ -424,24 +421,24 @@ matcher = "{matcher}"
             ),
         );
 
-        load_hook_client_config_file(&config_path).expect("official Codex matcher expression");
+        load_hook_client_config_file(&config_path).expect("declarative Host matcher expression");
 
         let _ = fs::remove_dir_all(root);
     }
 
-    let root = temp_root("invalid-codex-matcher-regex");
+    let root = temp_root("unsupported-codex-matcher-regex");
     let config_path = root.join("config.toml");
     write_canonical_config_overlay(
         &config_path,
         r#"
 [[rules]]
-id = "invalid-codex-matcher-regex"
+id = "unsupported-codex-matcher-regex"
 platform = "codex"
-matcher = "["
+matcher = "^mcp__.*$"
 decision = "deny"
 "#,
     );
-    let error = load_hook_client_config_file(&config_path).expect_err("invalid regex must fail");
-    assert!(error.contains("invalid Codex Host matcher"), "{error}");
+    let error = load_hook_client_config_file(&config_path).expect_err("regex syntax must fail");
+    assert!(error.contains("unsupported Host matcher"), "{error}");
     let _ = fs::remove_dir_all(root);
 }

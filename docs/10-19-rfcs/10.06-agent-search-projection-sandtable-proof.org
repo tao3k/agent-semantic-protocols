@@ -278,7 +278,7 @@ The task required coverage of:
 2. import and storage propagation;
 3. DB lookup and facade propagation;
 4. candidate projection;
-5. client API;
+5. ASP Server DB API;
 6. search consumer;
 7. proof/receipt boundary;
 8. regression tests;
@@ -370,7 +370,7 @@ a materially better finite DAG:
 - three independent first-stage axes:
   - candidate type;
   - DB lookup facade;
-  - client API;
+  - ASP Server DB API;
 - three dependent propagation nodes;
 - three conditional test-discovery nodes;
 - =maxFanout=3=;
@@ -386,8 +386,8 @@ Three exact-owner searches executed as one reported parallel batch:
 | Axis | Owner | Selected identities |
 |------+-------+---------------------|
 | type | =source_index/types.rs= | =ClientDbSourceIndexCandidate=, =ClientDbSourceIndexSelectorPayloadProof=, lookup result/selectors, related types |
-| DB facade | =source_index_facade/lookup.rs= | project/client lookup functions, snapshot lookup result, schema/current-row checks |
-| client API | =source_index/api.rs= | =CurrentSourceIndexSnapshot=, =refresh_generation= |
+| DB facade | =engine/source_index_facade/lookup.rs= | project/owner lookup functions, snapshot lookup result, schema/current-row checks |
+| ASP Server DB API | =server_source_index/api.rs= | =CurrentSourceIndexSnapshot=, =refresh_generation= |
 
 All three reported exit =0= and zero-millisecond rounded latency.
 

@@ -154,11 +154,11 @@ pub(super) async fn rank_graph_turbo_packet(
 ) -> Result<agent_semantic_search_projection::GraphTurboResultPacketV1, String> {
     let state_home = agent_semantic_runtime::state_core::resolve_state_home()?;
     let client = crate::AspClient::new(state_home, project_root);
-    let request = resident_graph_turbo_message(packet_bytes)?;
+    let request = decode_graph_turbo_request(packet_bytes)?;
     client.graphs_evaluate(request.into_value()).await
 }
 
-fn resident_graph_turbo_message(
+fn decode_graph_turbo_request(
     packet_bytes: &[u8],
 ) -> Result<agent_semantic_search_projection::GraphTurboEvaluationRequest, String> {
     let message = serde_json::from_slice::<serde_json::Value>(packet_bytes)
@@ -168,8 +168,8 @@ fn resident_graph_turbo_message(
 }
 
 #[cfg(test)]
-#[path = "../../tests/unit/command/graph_runtime_resident.rs"]
-mod graph_runtime_resident_tests;
+#[path = "../../tests/unit/command/graph_turbo_request.rs"]
+mod graph_turbo_request_tests;
 
 fn flag_value(args: &[String], flag: &str) -> Option<String> {
     args.windows(2)

@@ -98,7 +98,7 @@ jobs:
           if [[ -x "${environment_dir}/bin/python" ]]; then
             service_python="${environment_dir}/bin/python"
             service_launcher="${service_dir}/asp-python-graphs-service"
-            service_arguments_json='["--socket=${socketPath}"]'
+            service_arguments_json='["serve", "--socket=${socketPath}"]'
             cat > "${service_launcher}" <<'EOF'
           #!/usr/bin/env bash
           set -euo pipefail
@@ -109,7 +109,7 @@ jobs:
           else
             service_python="${environment_dir}/Scripts/python.exe"
             service_launcher="${service_python}"
-            service_arguments_json='["-m", "asp_python_graphs.service_cli", "--socket=${socketPath}"]'
+            service_arguments_json='["-m", "asp_python_graphs.service_cli", "serve", "--socket=${socketPath}"]'
           fi
           uv pip install --python "${service_python}" \
             packages/python/asp_memory_engine packages/python/asp_python_graphs
@@ -169,12 +169,12 @@ jobs:
           "./package/${ASP_BINARY}${{ matrix.exe }}" guide >/dev/null
           if [[ -x package/asp-python-graphs.bundle/asp-python-graphs-service ]]; then
             service_launcher="$PWD/package/asp-python-graphs.bundle/asp-python-graphs-service"
-            service_publication_args=(--argument '--socket=${socketPath}')
-            service_run_args=(--socket)
+            service_publication_args=(--argument serve --argument '--socket=${socketPath}')
+            service_run_args=(serve --socket)
           else
             service_launcher="$PWD/package/asp-python-graphs.bundle/environment/Scripts/python.exe"
-            service_publication_args=(--argument -m --argument asp_python_graphs.service_cli --argument '--socket=${socketPath}')
-            service_run_args=(-m asp_python_graphs.service_cli --socket)
+            service_publication_args=(--argument -m --argument asp_python_graphs.service_cli --argument serve --argument '--socket=${socketPath}')
+            service_run_args=(-m asp_python_graphs.service_cli serve --socket)
           fi
           test -x "${service_launcher}" || test -f "${service_launcher}"
           service_state="$RUNNER_TEMP/asp-python-graphs-release-state"

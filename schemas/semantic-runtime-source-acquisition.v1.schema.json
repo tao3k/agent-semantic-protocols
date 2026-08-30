@@ -219,10 +219,10 @@
       ],
       "properties": {
         "owner": {
-          "const": "asp"
+          "const": "asp-server"
         },
         "operation": {
-          "const": "clone-or-fetch-checkout-index"
+          "const": "clone-or-fetch-checkout"
         },
         "stateNamespace": {
           "type": "string",
@@ -233,8 +233,7 @@
           "minLength": 1
         },
         "indexOwner": {
-          "type": "string",
-          "minLength": 1
+          "const": "asp-server"
         }
       }
     },
@@ -256,7 +255,7 @@
           "minLength": 1
         },
         "owner": {
-          "const": "asp"
+          "const": "gerbil-scheme"
         },
         "stateNamespace": {
           "type": "string",
@@ -274,8 +273,7 @@
           "const": "code-with-comments"
         },
         "indexOwner": {
-          "type": "string",
-          "minLength": 1
+          "const": "asp-server"
         }
       }
     },

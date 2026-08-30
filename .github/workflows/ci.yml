@@ -71,7 +71,7 @@ jobs:
         run: |
           set -euo pipefail
           uv run --project packages/python/asp_python_graphs --frozen \
-            python -m asp_python_graphs.service_cli --help
+            python -m asp_python_graphs.service_cli serve --help
 
       - name: Install sccache
         uses: taiki-e/install-action@v2
@@ -337,7 +337,7 @@ jobs:
           ASP_LANGUAGE_EVIDENCE_SMOKE_SCOPE=core-fast \
             ASP_LANGUAGE_EVIDENCE_LANGUAGES=rust,python,typescript \
             ASP_LANGUAGE_EVIDENCE_TIMING_JSON=.cache/agent-semantic-protocol/language-evidence-smoke-core-fast.json \
-            uv run --project packages/python/asp_graph_turbo --frozen pytest tests/unit/test_language_evidence_smoke.py -q
+            uv run --project packages/python/asp_python_graphs --frozen pytest tests/unit/test_language_evidence_smoke.py -q
           cat .cache/agent-semantic-protocol/language-evidence-smoke-core-fast.json
 
       - name: Tree-sitter query contract gates

@@ -8,7 +8,7 @@ pub const CODEX_PLUGIN_MANIFEST_RELATIVE_PATH: &str = ".codex-plugin/plugin.json
 /// Relative path of the canonical Codex Hook routing payload.
 pub const CODEX_PLUGIN_HOOKS_RELATIVE_PATH: &str = "hooks/hooks.json";
 /// Relative path of the fixed Codex Hook launcher.
-pub const CODEX_PLUGIN_LAUNCHER_RELATIVE_PATH: &str = "bin/asp-hook";
+pub const CODEX_PLUGIN_LAUNCHER_RELATIVE_PATH: &str = "bin/asp-hook-exec";
 
 const PAYLOAD_DIGEST_DOMAIN: &[u8] = b"agent.semantic-protocols.codex-plugin-payload\0";
 
@@ -168,7 +168,7 @@ pub fn load_codex_plugin_payload_identity(
         if !handler
             .get("command")
             .and_then(serde_json::Value::as_str)
-            .is_some_and(|command| command.starts_with("\"$PLUGIN_ROOT/bin/asp-hook\" "))
+            .is_some_and(|command| command.starts_with("\"$PLUGIN_ROOT/bin/asp-hook-exec\" "))
         {
             return Err(format!(
                 "{} contains a Hook handler that bypasses the plugin-owned launcher",
@@ -186,15 +186,15 @@ pub fn load_codex_plugin_payload_identity(
         )
     })?;
     if !launcher_text.starts_with("#!/bin/sh\n")
-        || !launcher_text.contains("hooks/current")
-        || !launcher_text.contains("ASP_HOOK_GENERATION_ROOT")
-        || !launcher_text.contains("$asp_hook_generation_root/asp-hook")
-        || launcher_text.contains("runtime/bin/asp")
+        || !launcher_text.contains("runtime/bin/asp-hook")
+        || launcher_text.contains("hooks/current")
+        || launcher_text.contains("ASP_HOOK_GENERATION_ROOT")
+        || launcher_text.contains("runtime/bin/asp\"")
         || launcher_text.contains("runtime/profiles/asp/active")
         || launcher_text.contains("runtime/profiles/asp/healthy")
     {
         return Err(format!(
-            "{} must resolve only immutable HookGeneration policy and lifecycle binaries",
+            "{} must resolve only the canonical Runtime Hook binary",
             plugin_root
                 .join(CODEX_PLUGIN_LAUNCHER_RELATIVE_PATH)
                 .display()
@@ -242,7 +242,7 @@ mod tests {
 
     const MANIFEST: &[u8] = include_bytes!("../../../asp-codex-plugin/.codex-plugin/plugin.json");
     const HOOKS: &[u8] = include_bytes!("../../../asp-codex-plugin/hooks/hooks.json");
-    const LAUNCHER: &[u8] = include_bytes!("../../../asp-codex-plugin/bin/asp-hook");
+    const LAUNCHER: &[u8] = include_bytes!("../../../asp-codex-plugin/bin/asp-hook-exec");
 
     #[test]
     fn canonical_payload_has_a_typed_content_identity() {
@@ -254,16 +254,16 @@ mod tests {
     }
 
     #[test]
-    fn disk_validator_rejects_direct_runtime_launcher_authority() {
+    fn disk_validator_rejects_client_binary_as_hook_authority() {
         let fixture = tempfile::tempdir().expect("payload fixture");
         let launcher = String::from_utf8(LAUNCHER.to_vec())
             .expect("launcher UTF-8")
-            .replace("hooks/current", "runtime/bin/asp");
+            .replace("runtime/bin/asp-hook", "runtime/bin/asp");
         write_bundle(fixture.path(), MANIFEST, HOOKS, launcher.as_bytes());
         assert!(
             load_codex_plugin_payload_identity(fixture.path())
-                .expect_err("Runtime authority must fail")
-                .contains("immutable HookGeneration")
+                .expect_err("Client binary Hook authority must fail")
+                .contains("canonical Runtime Hook binary")
         );
     }
 

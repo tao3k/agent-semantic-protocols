@@ -1,4 +1,9 @@
-"""Explicit asp-python-graphs command dispatcher."""
+"""Offline Graph-Turbo evidence dispatcher.
+
+Runtime ordering is not exposed here.  The ASP Server's private gRPC endpoint
+is the only Runtime authority; this dispatcher remains solely for offline
+benchmark, calibration, and receipt analysis.
+"""
 
 from __future__ import annotations
 
@@ -8,20 +13,10 @@ from collections.abc import Callable, Sequence
 
 
 _COMMANDS: dict[str, tuple[str, str, str]] = {
-    "serve": (
-        "asp_python_graphs.service_cli",
-        "main",
-        "Serve the ASP Server-owned private gRPC algorithm interface.",
-    ),
-    "rank": (
-        "asp_python_graphs.cli",
-        "main",
-        "Rank a graph turbo request packet into compact frontier output.",
-    ),
     "benchmark": (
         "asp_python_graphs.benchmark_cli",
         "main",
-        "Benchmark graph turbo ranking for sandtable evidence.",
+        "Benchmark Graph-Turbo ordering for offline sandtable evidence.",
     ),
     "ablate": (
         "asp_python_graphs.ablation_cli",
@@ -31,7 +26,7 @@ _COMMANDS: dict[str, tuple[str, str, str]] = {
     "ablation-report": (
         "asp_python_graphs.ablation_report_cli",
         "main",
-        "Compare graph turbo ablation variants for ranking calibration.",
+        "Compare Graph-Turbo ablation variants for offline calibration.",
     ),
     "agent-benefit": (
         "asp_python_graphs.agent_benefit_cli",
@@ -110,7 +105,3 @@ def _print_help(*, file: object | None = None) -> None:
     output.write("commands:\n")
     for name, (_, _, summary) in sorted(_COMMANDS.items()):
         output.write(f"  {name:<12} {summary}\n")
-
-
-if __name__ == "__main__":
-    raise SystemExit(main(sys.argv[1:]))

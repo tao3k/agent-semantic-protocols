@@ -205,7 +205,7 @@ fn command_shard_covers_every_configured_profile_and_rule_pattern_without_litera
             expected.fields.get("configRuleId"),
             "prefix={prefix:?}"
         );
-        if expected.reason_kind == crate::ReasonKind::SubagentReceiptRequired {
+        if expected.reason_kind == crate::ReasonKind::AgentChoiceRequired {
             let target_agent = actual
                 .fields
                 .get("targetAgent")

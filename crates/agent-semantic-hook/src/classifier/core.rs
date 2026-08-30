@@ -6,7 +6,7 @@ use serde_json::Value;
 
 use super::agent_org_artifacts::with_agent_org_artifact_recovery;
 use super::decision::allow;
-use crate::agent_dispatch_message::{AgentDispatchMessageFields, render_choice_plane_instruction};
+use crate::agent_dispatch_message::render_collaboration_instruction;
 use crate::{
     ClientHookConfig, DecisionKind, HookDecision, HookRuntime, OperationIntent, ReasonKind,
     ToolAction, collect_tool_actions, payload_string, subject_for_action,
@@ -52,121 +52,56 @@ fn dispatch_target_field<'a>(decision: &'a HookDecision, field: &str) -> Option<
         .filter(|value| !value.trim().is_empty())
 }
 
-fn registered_profile_allows_decision_intent(
-    decision: &HookDecision,
-    payload: &serde_json::Value,
-) -> bool {
-    let Some(intent) = decision
-        .fields
-        .get("intent")
-        .and_then(serde_json::Value::as_str)
-    else {
-        return false;
-    };
-    payload
-        .get("registered_allowed_rule_intents")
-        .or_else(|| payload.get("registeredAllowedRuleIntents"))
-        .and_then(serde_json::Value::as_array)
-        .is_some_and(|allowed| {
-            allowed
-                .iter()
-                .any(|candidate| candidate.as_str() == Some(intent))
-        })
-}
-
 pub(super) fn resolve_dispatch_decision(
     mut decision: HookDecision,
     payload: &serde_json::Value,
 ) -> HookDecision {
     if decision.decision == DecisionKind::Allow
-        || decision.reason_kind != ReasonKind::SubagentReceiptRequired
+        || decision.reason_kind != ReasonKind::AgentChoiceRequired
     {
         return decision;
     }
-    let current_agent = payload
-        .get("agent_type")
-        .or_else(|| payload.get("agentType"))
+    let agent_role = payload
+        .get("agent_role")
+        .or_else(|| payload.get("agentRole"))
         .and_then(serde_json::Value::as_str)
         .filter(|value| !value.trim().is_empty());
-    let current_agent_id = payload
-        .get("agent_id")
-        .or_else(|| payload.get("agentId"))
-        .and_then(serde_json::Value::as_str)
-        .filter(|value| !value.trim().is_empty());
-    let registration_verified = payload
-        .get("registration_verified")
-        .or_else(|| payload.get("registrationVerified"))
-        .and_then(serde_json::Value::as_bool)
-        .unwrap_or(false);
-    let registered_agent_name = registration_verified
-        .then(|| {
-            payload
-                .get("registered_agent_name")
-                .or_else(|| payload.get("registeredAgentName"))
-                .and_then(serde_json::Value::as_str)
-                .filter(|value| !value.trim().is_empty())
-        })
-        .flatten();
     let target_agent = dispatch_target_field(&decision, "targetAgent");
     let agent_matches = target_agent.is_some_and(|target| {
-        registered_agent_name.is_some_and(|registered| {
-            registered
-                .chars()
+        agent_role.is_some_and(|role| {
+            role.chars()
                 .map(|ch| if ch == '-' { '_' } else { ch })
                 .eq(target.chars().map(|ch| if ch == '-' { '_' } else { ch }))
         })
     });
-    let registered_intent_matches = registered_profile_allows_decision_intent(&decision, payload);
-    if registration_verified
-        && current_agent.is_some()
-        && current_agent_id.is_some()
-        && registered_agent_name.is_some()
-        && agent_matches
-        && registered_intent_matches
-    {
+    if agent_matches {
         decision.decision = DecisionKind::Allow;
         decision.reason_kind = ReasonKind::None;
         decision.routes.clear();
         decision.message = format!(
-            "Allowed: this command is already executing inside the configured typed `{}` Agent; dispatch is idempotent and must not recurse.",
-            registered_agent_name.unwrap_or("subagent")
+            "Allowed: this command is already executing inside the Config-selected `{}` Agent; dispatch is idempotent and must not recurse.",
+            agent_role.unwrap_or("agent")
         );
         decision.fields.insert(
             "dispatchSatisfied".to_owned(),
             serde_json::Value::Bool(true),
         );
         decision.fields.insert(
-            "currentAgentType".to_owned(),
-            serde_json::Value::String(current_agent.unwrap_or_default().to_owned()),
-        );
-        decision.fields.insert(
-            "currentRegisteredAgentName".to_owned(),
-            serde_json::Value::String(registered_agent_name.unwrap_or_default().to_owned()),
+            "currentAgentRole".to_owned(),
+            serde_json::Value::String(agent_role.unwrap_or_default().to_owned()),
         );
         decision.fields.insert(
             "dispatchAdmission".to_owned(),
-            serde_json::Value::String(
-                if registered_intent_matches {
-                    "verified-registration-intent"
-                } else {
-                    "verified-registration-agent"
-                }
-                .to_owned(),
-            ),
+            serde_json::Value::String("config-agent-role".to_owned()),
         );
         return decision;
     }
 
-    let target_agent = target_agent.unwrap_or("configured");
-    let receipt_kind = dispatch_target_field(&decision, "receiptKind").unwrap_or("unspecified");
-    let target_symbol = dispatch_target_field(&decision, "targetAgentSymbol")
-        .map(str::to_owned)
-        .unwrap_or_else(|| format!("@{target_agent}"));
-    let dispatch_instruction = render_choice_plane_instruction(AgentDispatchMessageFields {
-        agent: target_agent,
-        symbol: Some(&target_symbol),
-        receipt_kind,
-    });
+    let target_agent = decision
+        .fields
+        .get("targetAgent")
+        .and_then(serde_json::Value::as_str);
+    let dispatch_instruction = render_collaboration_instruction(target_agent);
     if decision.message.trim().is_empty() {
         decision.message = dispatch_instruction;
     } else if !decision.message.contains(&dispatch_instruction) {
@@ -175,139 +110,6 @@ pub(super) fn resolve_dispatch_decision(
     decision.fields.insert(
         "dispatchGuidance".to_owned(),
         serde_json::Value::String("delegate-exact-command-to-typed-agent".to_owned()),
-    );
-    decision
-}
-
-fn enforce_registered_subagent_capability(
-    mut decision: HookDecision,
-    payload: &serde_json::Value,
-    actions: &[ToolAction],
-) -> HookDecision {
-    if is_explicit_no_agent_host_bypass(&decision) {
-        return decision;
-    }
-    let is_subagent = payload
-        .get("is_subagent")
-        .and_then(serde_json::Value::as_bool)
-        .unwrap_or(false);
-    if !is_subagent {
-        return decision;
-    }
-
-    let registration_verified = payload
-        .get("registration_verified")
-        .and_then(serde_json::Value::as_bool)
-        .unwrap_or(false);
-    let edit_is_denied = payload
-        .get("registered_denied_actions")
-        .or_else(|| payload.get("registeredDeniedActions"))
-        .and_then(serde_json::Value::as_array)
-        .is_some_and(|denied| denied.iter().any(|action| action.as_str() == Some("edit")));
-    let attempts_edit = actions.iter().any(|action| {
-        action.host_action == crate::action_ir::HostInvocationKind::Edit
-            || action
-                .derive_agent_action()
-                .filesystem_permissions
-                .iter()
-                .any(|permission| {
-                    permission.permission == crate::action_ir::FilesystemPermissionKind::Write
-                })
-    });
-    if registration_verified && edit_is_denied && attempts_edit {
-        let agent_name = payload
-            .get("registered_agent_name")
-            .or_else(|| payload.get("registeredAgentName"))
-            .and_then(serde_json::Value::as_str)
-            .filter(|name| !name.trim().is_empty())
-            .unwrap_or("read-only subagent");
-        decision.decision = DecisionKind::Deny;
-        decision.reason_kind = ReasonKind::ReadOnlySubagentWrite;
-        decision.message =
-            format!("编辑模式必须在主线程完成，当前的 {agent_name} 不允许执行 edit action。");
-        decision.fields.insert(
-            "registeredAgentName".to_owned(),
-            serde_json::Value::String(agent_name.to_owned()),
-        );
-        decision.fields.insert(
-            "permissionAction".to_owned(),
-            serde_json::Value::String("edit".to_owned()),
-        );
-        decision.fields.insert(
-            "requiredAction".to_owned(),
-            serde_json::Value::String("complete-edit-in-main-thread".to_owned()),
-        );
-        return decision;
-    }
-    let registered_agent_name = payload
-        .get("registered_agent_name")
-        .or_else(|| payload.get("registeredAgentName"))
-        .and_then(serde_json::Value::as_str)
-        .filter(|name| !name.trim().is_empty())
-        .unwrap_or("registered subagent");
-    let allowed_rule_intents = payload
-        .get("registered_allowed_rule_intents")
-        .or_else(|| payload.get("registeredAllowedRuleIntents"))
-        .and_then(serde_json::Value::as_array);
-    let matched_rule_intent = decision
-        .fields
-        .get("intent")
-        .and_then(serde_json::Value::as_str)
-        .map(str::to_owned);
-    let profile_allows_intent = registered_profile_allows_decision_intent(&decision, payload);
-    if registration_verified && !profile_allows_intent {
-        let attempted = matched_rule_intent.as_deref().unwrap_or("unscoped-command");
-        let allowed = allowed_rule_intents
-            .into_iter()
-            .flatten()
-            .filter_map(serde_json::Value::as_str)
-            .collect::<Vec<_>>()
-            .join(", ");
-        decision.decision = DecisionKind::Deny;
-        decision.reason_kind = ReasonKind::SubagentCapabilityDenied;
-        decision.message = format!(
-            "当前的 {registered_agent_name} Profile 不允许执行 Rule intent `{attempted}`；仅允许：{allowed}。"
-        );
-        decision.fields.insert(
-            "registeredAgentName".to_owned(),
-            serde_json::Value::String(registered_agent_name.to_owned()),
-        );
-        decision.fields.insert(
-            "attemptedRuleIntent".to_owned(),
-            serde_json::Value::String(attempted.to_owned()),
-        );
-        decision.fields.insert(
-            "capabilityAdmission".to_owned(),
-            serde_json::Value::String("agent-profile-rule-intent-scope".to_owned()),
-        );
-        return decision;
-    }
-    if decision.decision != DecisionKind::Allow {
-        return decision;
-    }
-    if registration_verified && profile_allows_intent {
-        decision.fields.insert(
-            "capabilityAdmission".to_owned(),
-            serde_json::Value::String("verified-registration-intent".to_owned()),
-        );
-        decision.fields.insert(
-            "registeredAgentName".to_owned(),
-            serde_json::Value::String(registered_agent_name.to_owned()),
-        );
-        return decision;
-    }
-
-    decision.decision = DecisionKind::Deny;
-    decision.reason_kind = ReasonKind::SubagentReceiptRequired;
-    decision.message =
-        "registered subagent capability receipt is required before tool execution".to_owned();
-    decision.fields.insert(
-        "requiredAction".to_owned(),
-        serde_json::Value::String("dispatch-registered-agent-capability".to_owned()),
-    );
-    decision.fields.insert(
-        "capabilityAdmission".to_owned(),
-        serde_json::Value::String("registered-route-required".to_owned()),
     );
     decision
 }
@@ -369,12 +171,7 @@ pub fn classify_hook_with_config(request: HookClassificationRequest<'_>) -> Hook
             request.registry,
         );
     }
-    let decision = resolve_dispatch_decision(decision, request.payload);
-    let mut decision = if matches!(request.event, "pre-tool" | "permission-request") {
-        enforce_registered_subagent_capability(decision, request.payload, &actions)
-    } else {
-        decision
-    };
+    let mut decision = resolve_dispatch_decision(decision, request.payload);
     if decision.reason_kind == ReasonKind::RegisteredSourceRouteRequired {
         super::materialize_source_access_deny_message(&mut decision);
     }
@@ -419,7 +216,7 @@ fn with_hook_match_receipt(
         // denied rather than a re-rendered inner stage.
         decision.subject.command = Some(command);
     }
-    if decision.reason_kind == ReasonKind::SubagentReceiptRequired
+    if decision.reason_kind == ReasonKind::AgentChoiceRequired
         && let Some(command) = payload_command(payload)
         && !decision.message.contains(&command)
     {

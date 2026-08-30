@@ -21,6 +21,16 @@
 
 * Search projection summary
 
+** Source Index owner
+
+Source Index construction and persistence are ASP Server DB work, implemented
+by =agent-semantic-client-db=.  That package owns the Turso canonical rows,
+Merkle/generation identities, provider-fact materialization, and resident
+read projection.  =agent-semantic-client= only submits typed ClientFrame
+operations and renders receipts; it MUST NOT collect source files, build an
+index, open Turso, or publish a generation.  A language provider returns
+parser-owned facts and never performs Source Index work.
+
 ** Runtime cache ownership
 
 Each language/provider identity owns one resident entry and one bounded
@@ -126,9 +136,9 @@ client gate passes.  A warm result cannot qualify an implementation whose first
 request performs synchronous preparation.
 
 The cold-client gate records at least elapsed time, Runtime control roundtrips,
-mmap opens, provider invocations, database opens by the client, workspace walks,
+mmap opens, provider invocations, database opens by the Runtime Server, workspace walks,
 generation admissions, generation rebuilds, and fallback attempts.  Provider
-invocations, client database opens, workspace walks, generation admissions,
+invocations, Runtime Server DB opens, workspace walks, generation admissions,
 generation rebuilds, and fallback attempts MUST all be zero for a query against
 an already published generation.
 
@@ -196,7 +206,8 @@ The public read contract is
 returns the source-blob digest, owner-subtree digest, and canonical inclusion
 proof.  A miss remains bound to the requested owner path, generation digest,
 and workspace root.  Proof validation failure is terminal generation
-corruption; it MUST NOT fall back to a client-local scan or database lookup.
+corruption; it MUST NOT fall back to a client-local scan or an ASP Server DB
+lookup outside the admitted Runtime read.
 
 Owner upsert, tombstone, and relocation continue to enter through the existing
 typed Runtime data-plane operations and the single resident writer.  They
@@ -257,7 +268,7 @@ provider-to-Runtime admission encoding.  Referenced is the Runtime-to-agent
 resident encoding.  The reference is content-addressed and resolves only
 inside the same admitted immutable generation.  A missing, mismatched, or
 cross-generation reference is typed generation corruption and MUST NOT fall
-back to a client database, provider execution, source read, or identity
+back to an ASP Server DB operation outside the admitted read, provider execution, source read, or identity
 reconstruction.
 
 The protocol remains schema version =1= while Runtime-internal mmap layouts
@@ -309,7 +320,7 @@ candidate/root identity, and service timing.
 
 Exact structural selector v1 already carries generic path segments. Providers MUST use the existing segment =kind= field for =match-arm= and =branch= identities, and MUST preserve the ordinary v1 envelope fields for owner path, parser identity, generation identity, native fact identity, byte range, and source authority. Runtime publication stores those nodes in the same immutable evidence context as their enclosing item; no v2 schema, language-private side packet, or renderer reconstruction is permitted.
 
-An exact branch selector is a bounded Runtime read: it resolves one branch source segment and its parent relation from the Ready generation. A missing branch entry is a typed projection-scope omission or generation corruption according to the admitted context, never permission to read the enclosing dispatch function, invoke a provider, open a client database, or rebuild a generation during the agent-facing query.
+An exact branch selector is a bounded Runtime read: it resolves one branch source segment and its parent relation from the Ready generation. A missing branch entry is a typed projection-scope omission or generation corruption according to the admitted context, never permission to read the enclosing dispatch function, invoke a provider, open an ASP Server DB outside the admitted read, or rebuild a generation during the agent-facing query.
 
 Exact selector resolution MUST execute inside the Runtime Server data plane as
 one typed operation: generation read, cache lookup, provider-owner repair,
@@ -392,8 +403,15 @@ replacement or runtime artifact transition.
 The Runtime Server is the sole live owner of cache admission, source-index generations,
 Turso connections, MVCC publication, and the resident writer queue.  Agent-facing
 =asp cache= commands are typed IPC adapters only; they MUST NOT open =facts.turso=,
-bootstrap or migrate a client database, publish a second local-cache generation, or
+bootstrap or migrate the ASP Server DB, publish a second local-cache generation, or
 take ownership from the resident server.
+
+This cache/source-index generation authority is distinct from the Gerbil
+provider-local Structural Index.  Gerbil search may render parser-owned
+Structural Index facts, but it MUST NOT shell out to =asp= for source-index
+lookup or cache control.  Any cache operation crosses the ASP Server IPC
+boundary explicitly; an absent provider-local fact is a typed no-output state,
+not an implicit Rust CLI fallback.
 
 Warm validation and cold construction are internal Runtime writer-lane actions.
 They enter the same RuntimeServer admission and atomic publication queue and
@@ -481,13 +499,15 @@ The language-neutral conformance surface is
 [[file:../../schemas/agent-facing-search-trace-receipt.v1.schema.json][agent-facing-search-trace-receipt.v1]].  This is the sole v1 contract; an
 incremental backend refinement does not create another protocol version.
 
-A language-scoped source-index lookup MUST derive its index owner from the
-registered provider for the requested =languageId= when no explicit
-=index-owner= is supplied.  It MUST NOT fall back to the global source-index
-snapshot or request complete-generation admission.  The admitted generation
-and its receipt MUST remain bound to that =languageId=, =providerId=, and
-=providerWorkspaceIdentityDigest=; =providerProcessCount= and provider command
-receipts MUST exclude every unrelated provider.
+A language-scoped source-index lookup MUST be admitted by the ASP Server for
+the requested =languageId=.  The wire-level index owner is always
+=asp-server=; provider registration supplies the language/provider scope and
+provenance, not a second index authority.  It MUST NOT fall back to an
+unscoped source-index snapshot or accept a client-supplied =index-owner=.
+The admitted generation and its receipt MUST remain bound to that
+=languageId=, =providerId=, and =providerWorkspaceIdentityDigest=;
+=providerProcessCount= and provider command receipts MUST exclude every
+unrelated provider.
 
 The lookup MUST consume the registered provider source envelope or its admitted
 generation snapshot.  A resident transport path such as =live/client= is not a
@@ -3114,9 +3134,9 @@ and field-name deduplication saves more tokens than the lost line anchors cost.
 ** Read-only source-index storage boundary
 
 Agent-facing source-index lookup, search, and inspection are strict read-only
-operations. They MUST open the Turso client database through a read-only
-connection and MUST NOT require write permission on the client directory or
-database file. A successful read path creates or mutates no database, WAL,
+operations. The ASP Server DB Engine opens the Turso database through a
+read-only connection and MUST NOT require write permission on the client
+directory or database file. A successful read path creates or mutates no database, WAL,
 shared-memory, lock, manifest, layout, or cache-generation file.
 
 The read path MUST NOT bootstrap tables or migrate columns. Schema convergence
@@ -3790,9 +3810,9 @@ Completed:
   renderer.  Julia =search prime --view seeds= is the first focused calibration
   target for this path.
 - [X] =asp-python-graphs= emits =semantic-graph-turbo-result.v1= ranking
-  packets from typed graph facts through the ASP Server, and a Python sandtable validates the package
-  CLI through schema-owned stdout instead of treating compact debug text as the
-  source of truth.
+  packets from typed graph facts through the ASP Server.  Python sandtable
+  tooling validates offline evidence packets only; the private gRPC service,
+  not a package CLI, is the Runtime source of truth.
 - [X] ASP fast search routes default candidate frontiers through
   =asp-python-graphs= Graph-Turbo ranking and keeps the trusted response in
   =semantic-graph-turbo-result.v1= or a schema-owned JSON projection.

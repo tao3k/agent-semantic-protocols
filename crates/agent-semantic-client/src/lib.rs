@@ -10,16 +10,12 @@ pub mod cli;
 mod cli_args;
 mod client_cli;
 mod command;
-pub mod session_control_plane;
 pub use command::search_router_graph_state;
-mod agent_session_choice_state;
 mod hook_break_glass;
-mod multi_agent_session;
 pub(crate) mod server;
 pub use agent_semantic_context_product as context_product_state;
 
 pub mod agent_session_lifecycle_projection;
-pub mod codex_multi_agent_v2_control_plane;
 pub mod exact_projection;
 pub mod graph;
 mod language_command;
@@ -29,7 +25,6 @@ mod runtime_language_client;
 #[path = "../tests/unit/runtime_language_client.rs"]
 mod runtime_language_client_tests;
 mod search_history;
-pub mod source_index;
 mod state_cli;
 mod syntax_query_preflight;
 #[cfg(test)]
@@ -45,8 +40,6 @@ pub use language_command::{
 pub use runtime_language_client::AspClient;
 
 pub mod cli_failure;
-#[doc(hidden)]
-pub mod hook_bootstrap;
 pub use command::protocol_binary::{
     publish_runtime_server_artifact, published_runtime_server_artifact_digest,
 };
@@ -67,10 +60,6 @@ pub use agent_semantic_runtime::{
 pub use cli::{run_cli_args, run_cli_from_env};
 pub use client_cli::{
     run_cli_args as run_client_cli_args, run_cli_from_env as run_client_cli_from_env,
-};
-pub use source_index::{
-    SourceIndexCandidate, SourceIndexLookupResult, SourceIndexLookupState,
-    SourceIndexRefreshReport, SourceIndexSourceKind,
 };
 pub use syntax_query_preflight::validate_syntax_query_request as validate_client_syntax_query_request;
 

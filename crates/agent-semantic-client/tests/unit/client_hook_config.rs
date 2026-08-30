@@ -181,7 +181,7 @@ fn missing_hook_config_auto_refreshes_then_routes_search_to_host_role() {
 
     assert_eq!(decision["decision"], "deny", "{decision}");
     assert_eq!(
-        decision["reasonKind"], "subagent-receipt-required",
+        decision["reasonKind"], "agent-choice-required",
         "{decision}"
     );
     assert_eq!(decision["fields"]["targetAgent"], "asp_explorer");

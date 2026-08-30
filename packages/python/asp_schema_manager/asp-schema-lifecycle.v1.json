@@ -19,6 +19,12 @@
       "status": "active",
       "owner": "packages/python/asp_schema_manager",
       "rationale": "Defines the deterministic audit receipt emitted by asp-schema."
+    },
+    {
+      "schemaPath": "schemas/content-binding.schema.json",
+      "status": "active",
+      "owner": "crates/agent-semantic-content-identity and ASP Server",
+      "rationale": "Defines the V1 exact content identity and authority stamp envelope; schemaVersion carries protocol versioning while Rust names remain neutral."
     }
   ]
 }

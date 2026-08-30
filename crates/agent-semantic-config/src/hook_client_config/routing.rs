@@ -299,7 +299,7 @@ pub enum HookClientConfigReasonKind {
     BulkSourceDump,
     RawBroadSearch,
     AgentSearchJson,
-    SubagentReceiptRequired,
+    AgentChoiceRequired,
 }
 
 /// Config-level route kind spelling for a rule route.

@@ -19,28 +19,55 @@ maxMatcherMicros = 1000
 #   terminal, or profile clauses that this scenario is intended to exercise.
 # - positive/negative payloads are witnesses, never alternate rule definitions.
 [[rules]]
-id = "allow-explicit-no-agent"
+id = "allow-codex-thread-control"
 ruleComposition = [
-  { pointer = "/matcher", equals = "Bash" },
+  { pointer = "/matcher", equals = "mcp__codex_app__create_thread|mcp__codex_app__fork_thread|mcp__codex_app__list_threads|mcp__codex_app__list_archived_threads|mcp__codex_app__read_thread|mcp__codex_app__read_thread_terminal|mcp__codex_app__send_message_to_thread|mcp__codex_app__wait_threads|mcp__codex_app__handoff_thread|mcp__codex_app__get_handoff_status|mcp__codex_app__navigate_to_codex_page|mcp__codex_app__open_in_codex|mcp__codex_app__set_thread_archived|mcp__codex_app__set_thread_pinned|mcp__codex_app__set_thread_title|mcp__codex_app__share_thread" },
+  { pointer = "/intent", equals = "host-thread-control" },
   { pointer = "/terminal", equals = true },
-  { pointer = "/match/processEnvironmentAssignmentAny", contains = "ASP_NO_AGENT=1" },
 ]
-positiveCommands = [
-  "ASP_NO_AGENT=1 cargo test -p agent-semantic-hook",
-  "/usr/bin/env ASP_NO_AGENT=1 arbitrary-command --unknown-option fixture.rs",
-  "export ASP_NO_AGENT=1; arbitrary-command --unknown-option fixture.rs",
-  "export ASP_NO_AGENT=1; exec arbitrary-command --unknown-option fixture.rs",
+positiveTools = [
+  { name = "mcp__codex_app__send_message_to_thread", input = { threadId = "thread-1", prompt = "continue" } },
 ]
-negativeCommands = [
-  "printf 'ASP_NO_AGENT=1 cargo test'",
-  "printf warmup; ASP_NO_AGENT=1 cargo test -p agent-semantic-hook",
+negativeTools = [
+  { name = "mcp__filesystem__send_message", input = {} },
 ]
-wrapperExemption = "process environment authority is defined by direct, env, or exported transfer topology"
+wrapperExemption = "native Codex thread control has no shell wrapper form"
+
+[[rules]]
+id = "allow-codex-workspace-observation"
+ruleComposition = [
+  { pointer = "/matcher", equals = "mcp__codex_app__list_projects|mcp__codex_app__load_workspace_dependencies" },
+  { pointer = "/intent", equals = "host-workspace-observation" },
+  { pointer = "/terminal", equals = true },
+]
+positiveTools = [
+  { name = "mcp__codex_app__list_projects", input = {} },
+]
+negativeTools = [
+  { name = "mcp__filesystem__list_directory", input = {} },
+]
+wrapperExemption = "native Codex workspace observation has no shell wrapper form"
+
+[[rules]]
+id = "allow-codex-automation-control"
+ruleComposition = [
+  { pointer = "/matcher", equals = "mcp__codex_app__automation_update" },
+  { pointer = "/intent", equals = "host-automation-control" },
+  { pointer = "/terminal", equals = true },
+]
+positiveTools = [
+  { name = "mcp__codex_app__automation_update", input = { mode = "view", id = "automation-1" } },
+]
+negativeTools = [
+  { name = "mcp__codex_app__consume_usage_reset", input = {} },
+  { name = "mcp__codex_app__uninstall_plugin", input = { plugin = "fixture" } },
+]
+wrapperExemption = "native Codex automation control has no shell wrapper form"
 
 [[rules]]
 id = "allow-owner-scoped-mutation"
 ruleComposition = [
-  { pointer = "/matcher", equals = "^apply_patch$" },
+  { pointer = "/matcher", equals = "apply_patch" },
   { pointer = "/platform", equals = "codex" },
   { pointer = "/intent", equals = "owner-scoped-mutation" },
   { pointer = "/match/pathGlobAny", contains = "**" },
@@ -241,7 +268,6 @@ negativeCommands = ["asp healthcheck --json", "asp paths --json"]
 id = "route-read-to-asp-languages"
 wrapperExemption = "the positive command is already the production nested devenv and rtk wrapper envelope"
 ruleComposition = [
-  { pointer = "/matcherPolicies", contains = "wrapped_command" },
   { pointer = "/actions", contains = "read" },
   { pointer = "/profilesList", contains = "rust" },
   { pointer = "/profilesList", contains = "org" },

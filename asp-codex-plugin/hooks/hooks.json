@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$PLUGIN_ROOT/bin/asp-hook\" session-start --client codex",
+            "command": "\"$PLUGIN_ROOT/bin/asp-hook-exec\" session-start --client codex",
             "timeout": 1,
             "statusMessage": "Loading Agent Semantic Protocol activation"
           }
@@ -18,7 +18,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$PLUGIN_ROOT/bin/asp-hook\" user-prompt --client codex",
+            "command": "\"$PLUGIN_ROOT/bin/asp-hook-exec\" user-prompt --client codex",
             "timeout": 1,
             "statusMessage": "Planning Agent Semantic Protocol search flow"
           }
@@ -31,7 +31,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$PLUGIN_ROOT/bin/asp-hook\" pre-tool --client codex --host-match apply_patch",
+            "command": "\"$PLUGIN_ROOT/bin/asp-hook-exec\" pre-tool --client codex --host-match apply_patch",
             "timeout": 1,
             "statusMessage": "Checking Agent Semantic Protocol edit policy"
           }
@@ -42,7 +42,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$PLUGIN_ROOT/bin/asp-hook\" pre-tool --client codex --host-match Bash",
+            "command": "\"$PLUGIN_ROOT/bin/asp-hook-exec\" pre-tool --client codex --host-match Bash",
             "timeout": 1,
             "statusMessage": "Checking Agent Semantic Protocol command policy"
           }
@@ -53,35 +53,87 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$PLUGIN_ROOT/bin/asp-hook\" pre-tool --client codex --host-match spawn_agent",
+            "command": "\"$PLUGIN_ROOT/bin/asp-hook-exec\" pre-tool --client codex --host-match spawn_agent",
             "timeout": 1,
             "statusMessage": "Checking Agent Semantic Protocol agent policy"
           }
         ]
       },
       {
-        "matcher": "^mcp__.*$",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "\"$PLUGIN_ROOT/bin/asp-hook\" pre-tool --client codex --host-match-prefix mcp__",
-            "timeout": 1,
-            "statusMessage": "Checking Agent Semantic Protocol MCP policy"
-          }
-        ]
-      }
-    ],
-    "PermissionRequest": [
+        "matcher": "mcp__codex_app__automation_update",
+        "hooks": [{ "type": "command", "command": "\"$PLUGIN_ROOT/bin/asp-hook-exec\" pre-tool --client codex --host-match mcp__codex_app__automation_update", "timeout": 1, "statusMessage": "Checking Agent Semantic Protocol Host control policy" }]
+      },
       {
-        "matcher": "*",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "\"$PLUGIN_ROOT/bin/asp-hook\" permission-request --client codex",
-            "timeout": 1,
-            "statusMessage": "Checking Agent Semantic Protocol approval policy"
-          }
-        ]
+        "matcher": "mcp__codex_app__create_thread",
+        "hooks": [{ "type": "command", "command": "\"$PLUGIN_ROOT/bin/asp-hook-exec\" pre-tool --client codex --host-match mcp__codex_app__create_thread", "timeout": 1, "statusMessage": "Checking Agent Semantic Protocol thread policy" }]
+      },
+      {
+        "matcher": "mcp__codex_app__fork_thread",
+        "hooks": [{ "type": "command", "command": "\"$PLUGIN_ROOT/bin/asp-hook-exec\" pre-tool --client codex --host-match mcp__codex_app__fork_thread", "timeout": 1, "statusMessage": "Checking Agent Semantic Protocol thread policy" }]
+      },
+      {
+        "matcher": "mcp__codex_app__list_threads",
+        "hooks": [{ "type": "command", "command": "\"$PLUGIN_ROOT/bin/asp-hook-exec\" pre-tool --client codex --host-match mcp__codex_app__list_threads", "timeout": 1, "statusMessage": "Checking Agent Semantic Protocol thread policy" }]
+      },
+      {
+        "matcher": "mcp__codex_app__list_projects",
+        "hooks": [{ "type": "command", "command": "\"$PLUGIN_ROOT/bin/asp-hook-exec\" pre-tool --client codex --host-match mcp__codex_app__list_projects", "timeout": 1, "statusMessage": "Checking Agent Semantic Protocol workspace policy" }]
+      },
+      {
+        "matcher": "mcp__codex_app__list_archived_threads",
+        "hooks": [{ "type": "command", "command": "\"$PLUGIN_ROOT/bin/asp-hook-exec\" pre-tool --client codex --host-match mcp__codex_app__list_archived_threads", "timeout": 1, "statusMessage": "Checking Agent Semantic Protocol thread policy" }]
+      },
+      {
+        "matcher": "mcp__codex_app__read_thread",
+        "hooks": [{ "type": "command", "command": "\"$PLUGIN_ROOT/bin/asp-hook-exec\" pre-tool --client codex --host-match mcp__codex_app__read_thread", "timeout": 1, "statusMessage": "Checking Agent Semantic Protocol thread policy" }]
+      },
+      {
+        "matcher": "mcp__codex_app__read_thread_terminal",
+        "hooks": [{ "type": "command", "command": "\"$PLUGIN_ROOT/bin/asp-hook-exec\" pre-tool --client codex --host-match mcp__codex_app__read_thread_terminal", "timeout": 1, "statusMessage": "Checking Agent Semantic Protocol thread policy" }]
+      },
+      {
+        "matcher": "mcp__codex_app__load_workspace_dependencies",
+        "hooks": [{ "type": "command", "command": "\"$PLUGIN_ROOT/bin/asp-hook-exec\" pre-tool --client codex --host-match mcp__codex_app__load_workspace_dependencies", "timeout": 1, "statusMessage": "Checking Agent Semantic Protocol workspace policy" }]
+      },
+      {
+        "matcher": "mcp__codex_app__send_message_to_thread",
+        "hooks": [{ "type": "command", "command": "\"$PLUGIN_ROOT/bin/asp-hook-exec\" pre-tool --client codex --host-match mcp__codex_app__send_message_to_thread", "timeout": 1, "statusMessage": "Checking Agent Semantic Protocol thread policy" }]
+      },
+      {
+        "matcher": "mcp__codex_app__wait_threads",
+        "hooks": [{ "type": "command", "command": "\"$PLUGIN_ROOT/bin/asp-hook-exec\" pre-tool --client codex --host-match mcp__codex_app__wait_threads", "timeout": 1, "statusMessage": "Checking Agent Semantic Protocol thread policy" }]
+      },
+      {
+        "matcher": "mcp__codex_app__handoff_thread",
+        "hooks": [{ "type": "command", "command": "\"$PLUGIN_ROOT/bin/asp-hook-exec\" pre-tool --client codex --host-match mcp__codex_app__handoff_thread", "timeout": 1, "statusMessage": "Checking Agent Semantic Protocol thread policy" }]
+      },
+      {
+        "matcher": "mcp__codex_app__get_handoff_status",
+        "hooks": [{ "type": "command", "command": "\"$PLUGIN_ROOT/bin/asp-hook-exec\" pre-tool --client codex --host-match mcp__codex_app__get_handoff_status", "timeout": 1, "statusMessage": "Checking Agent Semantic Protocol thread policy" }]
+      },
+      {
+        "matcher": "mcp__codex_app__navigate_to_codex_page",
+        "hooks": [{ "type": "command", "command": "\"$PLUGIN_ROOT/bin/asp-hook-exec\" pre-tool --client codex --host-match mcp__codex_app__navigate_to_codex_page", "timeout": 1, "statusMessage": "Checking Agent Semantic Protocol thread policy" }]
+      },
+      {
+        "matcher": "mcp__codex_app__open_in_codex",
+        "hooks": [{ "type": "command", "command": "\"$PLUGIN_ROOT/bin/asp-hook-exec\" pre-tool --client codex --host-match mcp__codex_app__open_in_codex", "timeout": 1, "statusMessage": "Checking Agent Semantic Protocol thread policy" }]
+      },
+      {
+        "matcher": "mcp__codex_app__set_thread_archived",
+        "hooks": [{ "type": "command", "command": "\"$PLUGIN_ROOT/bin/asp-hook-exec\" pre-tool --client codex --host-match mcp__codex_app__set_thread_archived", "timeout": 1, "statusMessage": "Checking Agent Semantic Protocol thread policy" }]
+      },
+      {
+        "matcher": "mcp__codex_app__set_thread_pinned",
+        "hooks": [{ "type": "command", "command": "\"$PLUGIN_ROOT/bin/asp-hook-exec\" pre-tool --client codex --host-match mcp__codex_app__set_thread_pinned", "timeout": 1, "statusMessage": "Checking Agent Semantic Protocol thread policy" }]
+      },
+      {
+        "matcher": "mcp__codex_app__set_thread_title",
+        "hooks": [{ "type": "command", "command": "\"$PLUGIN_ROOT/bin/asp-hook-exec\" pre-tool --client codex --host-match mcp__codex_app__set_thread_title", "timeout": 1, "statusMessage": "Checking Agent Semantic Protocol thread policy" }]
+      },
+      {
+        "matcher": "mcp__codex_app__share_thread",
+        "hooks": [{ "type": "command", "command": "\"$PLUGIN_ROOT/bin/asp-hook-exec\" pre-tool --client codex --host-match mcp__codex_app__share_thread", "timeout": 1, "statusMessage": "Checking Agent Semantic Protocol thread policy" }]
       }
     ],
     "PostToolUse": [
@@ -89,7 +141,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$PLUGIN_ROOT/bin/asp-hook\" post-tool --client codex",
+            "command": "\"$PLUGIN_ROOT/bin/asp-hook-exec\" post-tool --client codex",
             "timeout": 1,
             "statusMessage": "Updating Agent Semantic Protocol search state"
           }
@@ -101,9 +153,9 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$PLUGIN_ROOT/bin/asp-hook\" subagent-start --client codex",
+            "command": "\"$PLUGIN_ROOT/bin/asp-hook-exec\" subagent-start --client codex",
             "timeout": 1,
-            "statusMessage": "Preparing Agent Semantic Protocol subagent context"
+            "statusMessage": "Observing Agent Semantic Protocol subagent start"
           }
         ]
       }
@@ -113,9 +165,9 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$PLUGIN_ROOT/bin/asp-hook\" subagent-stop --client codex",
+            "command": "\"$PLUGIN_ROOT/bin/asp-hook-exec\" subagent-stop --client codex",
             "timeout": 1,
-            "statusMessage": "Checking Agent Semantic Protocol subagent evidence"
+            "statusMessage": "Observing Agent Semantic Protocol subagent stop"
           }
         ]
       }
@@ -125,7 +177,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$PLUGIN_ROOT/bin/asp-hook\" stop --client codex",
+            "command": "\"$PLUGIN_ROOT/bin/asp-hook-exec\" stop --client codex",
             "timeout": 1,
             "statusMessage": "Checking Agent Semantic Protocol changed files"
           }

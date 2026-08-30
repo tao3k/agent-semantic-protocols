@@ -22,7 +22,7 @@ pub(crate) async fn run_install_binary(args: &[String]) -> Result<(), String> {
     install_binary_config_admission::admit_embedded_hook_config()?;
     let artifact_root = runtime_state.protocol_home.join("runtime/artifacts");
     let plan = protocol_binary::ProtocolBinaryInstallPlan::capture(artifact_root)?;
-    let hook_generation = install_binary_config_admission::publish_embedded_hook_generation(
+    let hook_runtime = install_binary_config_admission::publish_embedded_hook_runtime(
         &runtime_state.protocol_home,
         plan.current_exe(),
     )
@@ -51,25 +51,15 @@ pub(crate) async fn run_install_binary(args: &[String]) -> Result<(), String> {
     let runtime_endpoint_path =
         agent_semantic_client_db::runtime_server_endpoint_path(&runtime_state.protocol_home)?;
     println!(
-        "[asp-install-binary] binaryPath={} binaryInstall={} binaryContentDigest={} digestAlgorithm=blake3-256 binaryCurrent={} binarySwitch=atomic hookGeneration={} hookBinaryDigest={} hookConfigDigest={} hookMatcherDigest={} hookRegistryDigest={} hookCurrent={} hookGenerationSwitch=atomic hookGenerationLockMicros={} hookBinaryValidationMicros={} hookGenerationRetention={} hookGenerationRetainedCount={} hookConfigPublication={} hookConfigCoupling=hook-generation agentConfigPublication=current agentConfigCoupling=hook-generation runtimeServerLifecycle=resident-owner-independent reasonKind=none providerReconciliation=not-on-binary-install installedProviderArtifacts=not-on-binary-install developerIdentityReceipt={} installSource={} installScope=global projectRoot={} executablePath={} stateHome={} stateHomeSource={:?} aspStateHomePresent={} homePresent={} pendingActivationPath={} appliedActivationPath={} runtimeEndpointPath={}",
+        "[asp-install-binary] binaryPath={} binaryInstall={} binaryContentDigest={} digestAlgorithm=blake3-256 binaryCurrent={} binarySwitch=atomic hookBinaryPath={} hookBinaryDigest={} hookBinarySwitch=atomic hookBinaryLockMicros={} hookConfigPublication={} hookConfigCoupling=embedded-in-hook-binary agentConfigPublication=current agentConfigCoupling=embedded-in-hook-binary runtimeServerLifecycle=resident-owner-independent reasonKind=none providerReconciliation=not-on-binary-install installedProviderArtifacts=not-on-binary-install developerIdentityReceipt={} installSource={} installScope=global projectRoot={} executablePath={} stateHome={} stateHomeSource={:?} aspStateHomePresent={} homePresent={} pendingActivationPath={} appliedActivationPath={} runtimeEndpointPath={}",
         installed.path.display(),
         installed.status,
         installed.artifact_digest,
         installed.path.display(),
-        hook_generation.publication.generation.generation_digest,
-        hook_generation.publication.generation.hook_binary_digest,
-        hook_generation.publication.generation.config_digest,
-        hook_generation
-            .publication
-            .generation
-            .compiled_matcher_digest,
-        hook_generation.publication.generation.registry_digest,
-        hook_generation.publication.current_path.display(),
-        hook_generation.publication.lock_elapsed_micros,
-        hook_generation.hook_binary_validation_elapsed_micros,
-        hook_generation.publication.retention_policy,
-        hook_generation.publication.retained_generation_count,
-        hook_generation.config_source_status,
+        hook_runtime.path.display(),
+        hook_runtime.artifact_digest,
+        hook_runtime.lock_elapsed_micros,
+        hook_runtime.config_source_status,
         active_artifact_receipt.as_str(),
         plan.install_source_kind(),
         project_root.display(),

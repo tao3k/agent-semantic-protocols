@@ -253,17 +253,17 @@
       "minimum": 0
     },
     "clientDbSourceIndexGenerationCount": {
-      "description": "Number of source-index generations visible in the local DB Engine client database.",
+      "description": "Number of source-index generations visible in the ASP Server DB Engine.",
       "type": "integer",
       "minimum": 0
     },
     "clientDbSourceIndexOwnerCount": {
-      "description": "Number of source-index owner rows visible in the local DB Engine client database.",
+      "description": "Number of source-index owner rows visible in the ASP Server DB Engine.",
       "type": "integer",
       "minimum": 0
     },
     "clientDbSourceIndexSelectorCount": {
-      "description": "Number of source-index selector rows visible in the local DB Engine client database.",
+      "description": "Number of source-index selector rows visible in the ASP Server DB Engine.",
       "type": "integer",
       "minimum": 0
     },

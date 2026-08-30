@@ -7,9 +7,9 @@ use tokio::sync::watch;
 use tokio::task::JoinSet;
 
 use crate::runtime_server_agent_session_status::AgentSessionStatusHandle;
+pub use crate::runtime_server_asp_python_graphs_status::AspPythonGraphsStatusHandle;
 use crate::runtime_server_control::RuntimeServerEndpoint;
 use crate::runtime_server_control::status_memory::RuntimeServerStatusMemoryWriter;
-pub use crate::runtime_server_asp_python_graphs_status::AspPythonGraphsStatusHandle;
 
 use crate::WorkspaceDbRegistry;
 
@@ -154,10 +154,7 @@ impl RuntimeServer {
         self
     }
 
-    pub fn with_asp_python_graphs_status(
-        mut self,
-        status: AspPythonGraphsStatusHandle,
-    ) -> Self {
+    pub fn with_asp_python_graphs_status(mut self, status: AspPythonGraphsStatusHandle) -> Self {
         self.status_memory.set_asp_python_graphs(status.shared());
         self.asp_python_graphs_status = Some(status);
         self

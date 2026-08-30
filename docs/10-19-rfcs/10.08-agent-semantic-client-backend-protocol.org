@@ -1,7 +1,7 @@
 #+TITLE: RFC: Agent Semantic Client Backend Protocol
 #+AUTHOR: agent-semantic-protocols
 #+DATE: 2026-06-02
-#+STATUS: draft
+#+STATUS: superseded
 #+RFC: 008
 #+DEPENDS: docs/10-19-rfcs/10.03-code-intelligence-lane.org (003), docs/10-19-rfcs/10.05-interactive-graph-first-progressive-searchloop.org (005)
 #+SEE_ALSO: docs/10-19-rfcs/10.15-agent-hook-interception-protocol.org - hook routing over provider manifests.
@@ -15,6 +15,15 @@ retired.  =agent-semantic-client-cache-manifest.v1= is retained only to validate
 artifacts during explicit migration; it is not a live cache authority.  Runtime Server cache-control
 v1 and its resident generation are the sole status, mutation, and reusable-search authority.
 Clients and providers never open or reconstruct the legacy cache and never fall back to it.
+
+This RFC's earlier local-CLI/local-cache topology is historical context only and
+is superseded by the server-first contracts in RFC 10.05, RFC 10.05.01, RFC
+10.17, and RFC 10.18.  The current architecture has one Runtime Server
+ClientFrame route: the ASP Server owns lifecycle, admission, Turso/Merkle
+Source Index materialization, and generation publication; =agent-semantic-client=
+only transports typed requests and renders receipts.  No client-local Source
+Index, cache authority, provider CLI fallback, or standalone graph service is
+part of the current design.
 
 =agent-semantic-client= is the local-first agent client over native semantic
 language providers.  It exposes one stable =asp= command surface while routing

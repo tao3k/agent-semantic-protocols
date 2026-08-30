@@ -706,9 +706,7 @@ impl AspPythonGraphsServer {
                 .and_then(Value::as_object)
                 .and_then(|payload| payload.get("result"))
                 .cloned()
-                .ok_or_else(|| {
-                    "asp-python-graphs timeline receipt lacks payload.result".to_owned()
-                })
+                .ok_or_else(|| "asp-python-graphs timeline receipt lacks payload.result".to_owned())
         });
         if let Some(error) = transport_error {
             if !error.contains("cancelled") {

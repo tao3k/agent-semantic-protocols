@@ -14,5 +14,6 @@ harness = false
 
 
 [dependencies]
+globset.workspace = true
 tree-sitter = "0.26"
 tree-sitter-bash = "0.25"

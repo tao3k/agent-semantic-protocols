@@ -18,7 +18,7 @@ fn bare_eperm_becomes_an_explicit_agent_facing_boundary_receipt() {
 
 #[test]
 fn already_typed_or_domain_errors_are_not_rewritten() {
-    let message = "subagent-receipt-required: registration is missing";
+    let message = "agent-choice-required: select the configured Agent";
     assert_eq!(materialize_cli_failure(message), message);
 }
 

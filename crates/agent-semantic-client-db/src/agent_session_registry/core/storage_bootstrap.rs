@@ -76,6 +76,7 @@ pub(in crate::agent_session_registry) async fn bootstrap_turso_agent_session_sch
     validate_turso_agent_sessions_instance_identity(&connection).await?;
     super::retirement::bootstrap_turso_agent_session_retirement_schema(&connection).await?;
     super::dispatch::bootstrap_turso_agent_dispatch_schema(&connection).await?;
+    super::super::collaboration::bootstrap_collaboration_snapshot_schema(&connection).await?;
     execute_turso_statement(
         &connection,
         "CREATE TABLE IF NOT EXISTS asp_host_child_match_decisions (

@@ -92,6 +92,39 @@ publication consumes that verified bundle through the explicit
 artifact-publication path; the release bundle does not publish a public graph
 executable or add a second service lifecycle.
 
+*** Service-first algorithm boundary
+
+The Runtime ranking path is service-first.  =asp_python_graphs.service_cli
+serve= is the only executable entry point for the server-managed Graph-Turbo
+service.  The ranking implementation is an import-only Python algorithm API
+invoked by the gRPC session after ASP Server admission; =cli.py= and a direct
+=graph turbo rank= command are not public or Runtime surfaces.  Offline
+benchmark, calibration, and receipt tools may import the pure algorithm API
+only for evidence generation.  They MUST NOT own lifecycle, generation
+admission, provider execution, cache publication, or a second authority.
+
+The Gerbil provider's Structural Index is a separate provider-local parser
+projection.  It is not an =asp-python-graphs= input, not an =asp-rust=
+algorithm, and not a graph-service lifecycle.  ASP Server owns source-index
+generation, persistence, lookup, and runtime-source checkout acquisition
+through its IPC control plane.  Gerbil may emit its parser-owned Structural
+Index/interface facts and selector metadata, but it does not build, query, or
+persist a Source Index.  No Gerbil search path may spawn an =asp= executable
+or claim the ASP Server source-index authority.
+The resident timeline handler imports the shared timeline-parameter model and
+does not import an offline =*_cli= parser; command-line parsing is an evidence
+adapter only.
+
+The Gerbil provider's Structural Index is a provider-local parser/interface
+artifact.  A Gerbil search handler MUST NOT invoke the installed =asp= binary
+to read or rebuild a source index: that would turn a provider request into a
+recursive CLI control path and would mix the ASP Server source-index owner
+with the Gerbil parser owner.  Runtime search either returns provider-owned
+parser facts already admitted in the request or emits a typed no-output
+receipt that defers Source Index lookup to ASP Server.  Source-index cache
+control and lookup are explicit server IPC operations owned by ASP Server and
+are never hidden subprocesses or local checkout scans inside provider search.
+
 The exact release environment layout remains an MVP1 architecture decision,
 not a release acceptance claim.  A candidate bundle must prove that its
 absolute executable locator remains valid after extraction on every supported

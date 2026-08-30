@@ -198,7 +198,7 @@ impl ClientHookConfig {
         );
     }
 
-    fn candidate_rule_indices(&self, platform: &str, event: &str) -> &[usize] {
+    fn candidate_rule_indices(&self, platform: &str, event: &str, tool_name: &str) -> &[usize] {
         let canonical_event = super::canonical_event(event);
         let event_candidates = self
             .rule_candidates
@@ -206,10 +206,14 @@ impl ClientHookConfig {
             .or_else(|| self.rule_candidates.get("*"))
             .expect("compiled rule index always contains the wildcard event");
         let canonical_platform = platform.to_ascii_lowercase();
-        event_candidates
+        let platform_candidates = event_candidates
             .get(canonical_platform.as_str())
             .or_else(|| event_candidates.get("*"))
-            .expect("compiled rule index always contains the wildcard platform")
+            .expect("compiled rule index always contains the wildcard platform");
+        platform_candidates
+            .get(canonical_host_tool_key(tool_name))
+            .or_else(|| platform_candidates.get("*"))
+            .expect("compiled rule index always contains the wildcard Host tool")
     }
 
     pub(crate) fn agent_org_artifacts_recovery(
@@ -239,7 +243,7 @@ impl ClientHookConfig {
         let classification_runtime = self.classification_runtime(runtime);
         let runtime = &classification_runtime;
         let mut command_tokens: Option<Option<Cow<'_, [String]>>> = None;
-        for rule_index in self.candidate_rule_indices(platform, event) {
+        for rule_index in self.candidate_rule_indices(platform, event, action.tool_name.as_str()) {
             let rule = &self.rules[*rule_index];
             let needs_command_tokens = rule.match_config.needs_command_tokens();
             let command_token_slice = if needs_command_tokens {
@@ -459,12 +463,21 @@ fn compile_resolved_config(
 fn compile_rule_candidate_index(rules: &[CompiledHookRule]) -> super::RuleCandidateIndex {
     let mut event_keys = std::collections::BTreeSet::from(["*".to_owned()]);
     let mut platform_keys = std::collections::BTreeSet::from(["*".to_owned()]);
+    let mut host_tool_keys = std::collections::BTreeSet::from(["*".to_owned()]);
     for rule in rules {
         if let Some(event) = rule.canonical_event_key() {
             event_keys.insert(event);
         }
         if let Some(platform) = rule.canonical_platform_key() {
             platform_keys.insert(platform);
+        }
+        if let Some(matchers) = rule.indexed_host_matcher_keys() {
+            host_tool_keys.extend(
+                matchers
+                    .into_iter()
+                    .map(canonical_host_tool_key)
+                    .map(str::to_owned),
+            );
         }
     }
 
@@ -474,29 +487,46 @@ fn compile_rule_candidate_index(rules: &[CompiledHookRule]) -> super::RuleCandid
             let platform_candidates = platform_keys
                 .iter()
                 .map(|platform| {
-                    let indices = rules
+                    let host_tool_candidates = host_tool_keys
                         .iter()
-                        .enumerate()
-                        .filter_map(|(index, rule)| {
-                            let event_matches = match rule.canonical_event_key() {
-                                Some(rule_event) => event != "*" && rule_event == event,
-                                None => true,
-                            };
-                            let platform_matches = match rule.canonical_platform_key() {
-                                Some(rule_platform) => {
-                                    platform != "*" && rule_platform == *platform
-                                }
-                                None => true,
-                            };
-                            (event_matches && platform_matches).then_some(index)
+                        .map(|host_tool| {
+                            let indices = rules
+                                .iter()
+                                .enumerate()
+                                .filter_map(|(index, rule)| {
+                                    let event_matches = match rule.canonical_event_key() {
+                                        Some(rule_event) => event != "*" && rule_event == event,
+                                        None => true,
+                                    };
+                                    let platform_matches = match rule.canonical_platform_key() {
+                                        Some(rule_platform) => {
+                                            platform != "*" && rule_platform == *platform
+                                        }
+                                        None => true,
+                                    };
+                                    let host_tool_matches =
+                                        rule.can_match_indexed_host_tool(host_tool);
+                                    (event_matches && platform_matches && host_tool_matches)
+                                        .then_some(index)
+                                })
+                                .collect();
+                            (host_tool.clone(), indices)
                         })
                         .collect();
-                    (platform.clone(), indices)
+                    (platform.clone(), host_tool_candidates)
                 })
                 .collect();
             (event, platform_candidates)
         })
         .collect()
+}
+
+fn canonical_host_tool_key(tool_name: &str) -> &str {
+    match tool_name {
+        "Edit" | "Write" => "apply_patch",
+        "Agent" => "spawn_agent",
+        other => other,
+    }
 }
 
 impl ClientHookConfig {
@@ -811,7 +841,7 @@ impl ClientHookConfig {
         Ok(prefixes)
     }
 
-    /// Hydrate the compiled matcher without invoking any regex, glob, or Aho builder.
+    /// Hydrate the compiled matcher from its declarative durable facts.
     pub fn from_durable_snapshot_config(
         artifact: DurableHookConfigArtifact,
     ) -> Result<Self, String> {

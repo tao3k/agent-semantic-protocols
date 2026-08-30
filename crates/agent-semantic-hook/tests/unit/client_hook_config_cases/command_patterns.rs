@@ -1,7 +1,6 @@
 use super::common::{
-    ClientHookConfig, DecisionKind, Duration, HookClassificationRequest, Instant,
-    bind_confirmed_reader, classify_hook_with_config, fs, json, load_client_config, registry,
-    temp_root,
+    ClientHookConfig, DecisionKind, Duration, HookClassificationRequest, bind_confirmed_reader,
+    classify_hook_with_config, fs, json, load_client_config, registry, temp_root,
 };
 
 #[test]
@@ -348,7 +347,7 @@ fn bash_confirmed_reader_projects_explore_choice_plane_guidance() {
         "tool_name": "Bash",
         "tool_input": {"command": "head src/app.ts"}
     });
-    agent_semantic_hook::bind_plugin_host_matcher(&mut payload, Some("Bash"), None)
+    agent_semantic_hook::bind_plugin_host_matcher(&mut payload, "Bash")
         .expect("bind canonical Bash matcher");
     bind_confirmed_reader(&mut payload, "src/app.ts");
     let decision = classify_hook_with_config(HookClassificationRequest {
@@ -372,21 +371,21 @@ fn bash_confirmed_reader_projects_explore_choice_plane_guidance() {
             .fields
             .get("requiredAction")
             .and_then(serde_json::Value::as_str),
-        Some("open-org-interactive-choice-plane")
+        Some("collaboration.spawn_agent")
     );
     assert_eq!(
         decision
             .fields
-            .get("agentWindowCommand")
+            .get("collaborationTool")
             .and_then(serde_json::Value::as_str),
-        Some("asp session --agents choice-plane")
+        Some("spawn_agent")
     );
     assert_eq!(
         decision
             .fields
-            .get("choicePlaneOwner")
+            .get("collaborationNamespace")
             .and_then(serde_json::Value::as_str),
-        Some("org-contract:agent-interactive")
+        Some("collaboration")
     );
     assert_eq!(decision.fields["targetAgent"], "asp_explorer");
     assert_eq!(
@@ -409,7 +408,7 @@ fn bash_confirmed_reader_projects_explore_choice_plane_guidance() {
     let decision_json = serde_json::to_value(&decision).expect("serialize hook decision");
     assert!(
         decision_json.get("interactiveCommand").is_none(),
-        "Hook decisions must not serialize a Rust-owned ChoicePlane command"
+        "Hook decisions must not serialize a Rust-owned lifecycle command"
     );
     assert_eq!(
         decision_json["fields"]["agentAction"]["hostInvocation"]["action"],
@@ -466,8 +465,11 @@ fn bash_confirmed_reader_projects_explore_choice_plane_guidance() {
     assert!(
         rendered["hookSpecificOutput"]["permissionDecisionReason"]
             .as_str()
-            .is_some_and(|message| message.contains("asp session")),
-        "configured resident deny must reference the Org-backed Agent window: {rendered}"
+            .is_some_and(|message| {
+                message.contains("`collaboration.spawn_agent`")
+                    && message.contains("`collaboration.list_agents`")
+            }),
+        "configured deny must reference the native collaboration tools: {rendered}"
     );
     assert!(rendered.get("systemMessage").is_some());
 }
@@ -480,7 +482,7 @@ fn claude_platform_uses_configured_native_agent_symbol() {
         "tool_name": "Bash",
         "tool_input": {"command": "head src/app.ts"}
     });
-    agent_semantic_hook::bind_plugin_host_matcher(&mut payload, Some("Bash"), None)
+    agent_semantic_hook::bind_plugin_host_matcher(&mut payload, "Bash")
         .expect("bind canonical Bash matcher");
     bind_confirmed_reader(&mut payload, "src/app.ts");
     let decision = classify_hook_with_config(HookClassificationRequest {
@@ -521,7 +523,7 @@ fn configurable_hook_default_rule_classification_stays_fast() {
         }),
     ]
     .map(|mut payload| {
-        agent_semantic_hook::bind_plugin_host_matcher(&mut payload, Some("Bash"), None)
+        agent_semantic_hook::bind_plugin_host_matcher(&mut payload, "Bash")
             .expect("bind canonical Bash matcher");
         if let Some(subject) = payload["tool_input"]["command"]
             .as_str()
@@ -547,7 +549,7 @@ fn configurable_hook_default_rule_classification_stays_fast() {
     let mut best_denied = 0usize;
 
     for _ in 0..samples {
-        let start = Instant::now();
+        let start = thread_cpu_time();
         let mut denied = 0usize;
         for index in 0..iterations {
             let decision = classify_hook_with_config(HookClassificationRequest {
@@ -561,7 +563,7 @@ fn configurable_hook_default_rule_classification_stays_fast() {
                 denied += 1;
             }
         }
-        let elapsed = start.elapsed();
+        let elapsed = thread_cpu_time().saturating_sub(start);
         if elapsed < best_elapsed {
             best_elapsed = elapsed;
             best_denied = denied;
@@ -574,7 +576,7 @@ fn configurable_hook_default_rule_classification_stays_fast() {
         best_elapsed.as_millis()
     );
     for (payload_index, payload) in payloads.iter().enumerate() {
-        let started = Instant::now();
+        let started = thread_cpu_time();
         for _ in 0..200 {
             let _ = classify_hook_with_config(HookClassificationRequest {
                 registry: &registry,
@@ -586,7 +588,7 @@ fn configurable_hook_default_rule_classification_stays_fast() {
         }
         eprintln!(
             "configurable_hook_default_rule_payload_perf index={payload_index} ns_per_decision={}",
-            started.elapsed().as_nanos() / 200
+            thread_cpu_time().saturating_sub(started).as_nanos() / 200
         );
     }
 
@@ -605,6 +607,24 @@ fn configurable_hook_default_rule_classification_stays_fast() {
     );
 
     let _ = fs::remove_dir_all(root);
+}
+
+#[cfg(unix)]
+fn thread_cpu_time() -> Duration {
+    let mut value = libc::timespec {
+        tv_sec: 0,
+        tv_nsec: 0,
+    };
+    let status = unsafe { libc::clock_gettime(libc::CLOCK_THREAD_CPUTIME_ID, &mut value) };
+    assert_eq!(status, 0, "read thread CPU clock");
+    Duration::new(value.tv_sec as u64, value.tv_nsec as u32)
+}
+
+#[cfg(not(unix))]
+fn thread_cpu_time() -> Duration {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("system time after Unix epoch")
 }
 
 #[test]

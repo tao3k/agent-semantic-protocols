@@ -45,6 +45,8 @@ example : decideShard (.verifiedRead batKey) batKey = .consume := by
 #check released_writer_reaches_input_terminal
 #check unknown_inner_candidate_does_not_mask_wrapped_read
 #check non_read_candidates_cannot_create_reader_authority
+#check argv_many_accepts_zero_tokens
+#check argv_many_accepts_arbitrary_tokens
 #check equal_permission_terminals_remain_unknown
 #check distinct_permission_terminals_prove_read
 #check same_key_observer_forces_follower_wait

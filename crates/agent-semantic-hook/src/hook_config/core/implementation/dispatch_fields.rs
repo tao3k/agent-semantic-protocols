@@ -41,10 +41,10 @@ pub(super) fn extend_dispatch_fields(
         );
     }
     for (field, value) in [
-        ("requiredAction", "open-org-interactive-choice-plane"),
-        ("nextAction", "run-asp-session-agent-window"),
-        ("agentWindowCommand", "asp session --agents choice-plane"),
-        ("choicePlaneOwner", "org-contract:agent-interactive"),
+        ("requiredAction", "collaboration.spawn_agent"),
+        ("nextAction", "spawn-configured-agent"),
+        ("collaborationNamespace", "collaboration"),
+        ("collaborationTool", "spawn_agent"),
     ] {
         fields.insert(
             field.to_string(),

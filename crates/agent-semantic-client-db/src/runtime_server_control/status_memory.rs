@@ -23,8 +23,7 @@ pub(crate) struct RuntimeServerStatusMemoryWriter {
     mapping: MmapMut,
     endpoint: RuntimeServerEndpoint,
     generation: u64,
-    asp_python_graphs:
-        Option<std::sync::Arc<std::sync::RwLock<super::AspPythonGraphsStatus>>>,
+    asp_python_graphs: Option<std::sync::Arc<std::sync::RwLock<super::AspPythonGraphsStatus>>>,
     agent_sessions:
         Option<std::sync::Arc<std::sync::RwLock<Vec<super::RuntimeServerAgentSessionStatus>>>>,
 }
@@ -105,7 +104,7 @@ impl RuntimeServerStatusMemoryWriter {
         );
         let snapshot = RuntimeServerStatusSnapshot {
             asp_python_graphs: self
-            .asp_python_graphs
+                .asp_python_graphs
                 .as_ref()
                 .and_then(|status| status.read().ok().map(|status| status.clone())),
             agent_sessions: self

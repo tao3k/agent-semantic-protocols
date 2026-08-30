@@ -22,7 +22,7 @@ def test_serve_subcommand_forwards_one_absolute_socket_and_capacity(
 
     assert (
         service_cli.main(
-            ["--socket", str(socket_path), "--max-in-flight", "7"]
+            ["serve", "--socket", str(socket_path), "--max-in-flight", "7"]
         )
         == 0
     )
@@ -31,4 +31,9 @@ def test_serve_subcommand_forwards_one_absolute_socket_and_capacity(
 
 def test_serve_subcommand_rejects_relative_socket() -> None:
     with pytest.raises(SystemExit):
-        service_cli.main(["--socket", "graphs.sock"])
+        service_cli.main(["serve", "--socket", "graphs.sock"])
+
+
+def test_service_entry_rejects_algorithm_commands() -> None:
+    with pytest.raises(SystemExit):
+        service_cli.main(["rank", "--socket", "/tmp/graphs.sock"])

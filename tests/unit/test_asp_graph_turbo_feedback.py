@@ -6,8 +6,9 @@ from asp_python_graphs.feedback import (
     feedback_packet_from_sandtable,
     merge_feedback_into_packet,
 )
+from asp_python_graphs.algorithm import RankOptions, load_packet, rank_packet
 
-from ._asp_python_graphs_common import (
+from ._asp_graph_turbo_common import (
     _GRAPH_TURBO_FEEDBACK_SCHEMA,
     _GRAPH_TURBO_SCHEMA,
     Path,
@@ -192,7 +193,7 @@ def test_feedback_policy_accumulates_multiple_receipts() -> None:
     assert "receipt-boost:+0.70:frontier-success" in reasons["item:good"]
 
 
-def test_feedback_cli_builds_packet_and_rank_cli_consumes_it(tmp_path: Path) -> None:
+def test_feedback_evidence_command_and_algorithm_api_consume_it(tmp_path: Path) -> None:
     report = tmp_path / "sandtable.json"
     feedback = tmp_path / "feedback.json"
     request = tmp_path / "request.json"
@@ -231,23 +232,12 @@ def test_feedback_cli_builds_packet_and_rank_cli_consumes_it(tmp_path: Path) -> 
         == []
     )
 
-    ranked = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "asp_python_graphs",
-            "rank",
-            "--feedback",
-            str(feedback),
-            "--format",
-            "json",
-            str(request),
-        ],
-        check=True,
-        text=True,
-        capture_output=True,
+    payload = result_to_packet(
+        rank_packet(
+            load_packet(str(request)),
+            RankOptions(feedback=(str(feedback),)),
+        )
     )
-    payload = json.loads(ranked.stdout)
 
     assert payload["rank"].index("item:good") < payload["rank"].index("item:bad")
     assert payload["algorithmMetrics"]["receiptBoostCount"] == 1

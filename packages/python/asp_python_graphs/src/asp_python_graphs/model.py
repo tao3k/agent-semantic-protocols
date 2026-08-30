@@ -1,4 +1,4 @@
-"""Compatibility exports for ASP graph turbo models."""
+"""Shared ASP Python Graphs model exports."""
 
 from __future__ import annotations
 

@@ -14,13 +14,13 @@ Do not run raw source tools again for this step. The file extension maps to the
 {agent_flow}
 "#;
 
-const CODEX_AGENT_FLOW: &str = r#"Codex: use the ChoicePlane's returned `spawn_agent` target (`agent_type`) for ASP search/query work.
-If that registered Agent is unavailable, re-enter `asp session --agents choice-plane`, execute only its returned Host action, and require the native Host receipt before running the route.
-After the route command succeeds, continue exactly with the returned `next` action; no ChoicePlane re-run is needed for this denial.
+const CODEX_AGENT_FLOW: &str = r#"Codex: use `collaboration.spawn_agent` with the Config-resolved `agent_type` for ASP search/query work.
+Verify the returned canonical agent path with `collaboration.list_agents`, and require the native Host receipt before running the route.
+After the route command succeeds, continue exactly with the returned `next` action; no ASP lifecycle command is needed.
 If denied repeatedly, do not switch to raw shell sources. Run the `next` action from this payload only after the route command completes.
 "#;
 
-const CLAUDE_AGENT_FLOW: &str = r#"Claude: invoke the ChoicePlane's returned registered Agent with Claude's `@agent-<name>` mention (or the Agent tool in SDK mode), then run the selected safe route there.
+const CLAUDE_AGENT_FLOW: &str = r#"Claude: invoke the Config-resolved registered Agent with Claude's native Agent tool or `@agent-<name>` mention, then run the selected safe route there.
 "#;
 
 const DEFAULT_AGENT_FLOW: &str = r#"Run the selected safe route directly. Use the configured registered Agent only when the active client exposes it for this session.

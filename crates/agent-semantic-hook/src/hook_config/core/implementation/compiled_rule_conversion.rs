@@ -13,7 +13,7 @@ impl From<HookClientConfigReasonKind> for ReasonKind {
             HookClientConfigReasonKind::BulkSourceDump => Self::BulkSourceDump,
             HookClientConfigReasonKind::RawBroadSearch => Self::RawBroadSearch,
             HookClientConfigReasonKind::AgentSearchJson => Self::AgentSearchJson,
-            HookClientConfigReasonKind::SubagentReceiptRequired => Self::SubagentReceiptRequired,
+            HookClientConfigReasonKind::AgentChoiceRequired => Self::AgentChoiceRequired,
         }
     }
 }

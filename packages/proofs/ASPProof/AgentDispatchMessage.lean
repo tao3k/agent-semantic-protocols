@@ -15,12 +15,12 @@ structure ProviderRoute where
   agent : Route
 deriving DecidableEq, Repr
 
-def choicePlaneCommand : String :=
-  "asp session --agents choice-plane"
+def collaborationTool : String :=
+  "collaboration.spawn_agent"
 
 def render (route : Route) : String :=
-  "Please use `" ++ choicePlaneCommand ++
-    "` to create or resume the " ++ route.agentKind ++
+  "Use `" ++ collaborationTool ++
+    "` to create the " ++ route.agentKind ++
     " `" ++ route.callTarget ++ "` (" ++ route.role ++
     "; " ++ route.description ++ ")."
 
@@ -28,20 +28,20 @@ def renderProvider (route : ProviderRoute) : String :=
   render route.agent
 
 def explorer : Route where
-  agentKind := "Subagent"
+  agentKind := "Agent"
   callTarget := "@asp_explorer"
   role := "Evidence Explorer"
   description := "for code and evidence search"
 
 def testing : Route where
-  agentKind := "Subagent"
+  agentKind := "Agent"
   callTarget := "@asp_testing"
   role := "Test Runner"
   description := "for build and test jobs"
 
 theorem rendering_is_four_slot_substitution (route : Route) :
     render route =
-      "Please use `asp session --agents choice-plane` to create or resume the " ++
+      "Use `collaboration.spawn_agent` to create the " ++
         route.agentKind ++ " `" ++ route.callTarget ++ "` (" ++ route.role ++
         "; " ++ route.description ++ ")." := by
   rfl
@@ -53,12 +53,12 @@ theorem provider_identity_does_not_change_message_grammar
 
 theorem explorer_sentence_is_canonical :
     render explorer =
-      "Please use `asp session --agents choice-plane` to create or resume the Subagent `@asp_explorer` (Evidence Explorer; for code and evidence search)." := by
+      "Use `collaboration.spawn_agent` to create the Agent `@asp_explorer` (Evidence Explorer; for code and evidence search)." := by
   rfl
 
 theorem testing_sentence_is_canonical :
     render testing =
-      "Please use `asp session --agents choice-plane` to create or resume the Subagent `@asp_testing` (Test Runner; for build and test jobs)." := by
+      "Use `collaboration.spawn_agent` to create the Agent `@asp_testing` (Test Runner; for build and test jobs)." := by
   rfl
 
 end ASPProof.AgentDispatchMessage

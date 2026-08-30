@@ -5,11 +5,10 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from collections.abc import Mapping, Sequence
-from pathlib import Path
+from collections.abc import Sequence
 from typing import Any
 
-from .cli import _rank_packet
+from .algorithm import load_packet, rank_packet
 from .frontier_receipt import (
     FrontierCodeRead,
     FrontierTestCommand,
@@ -20,8 +19,8 @@ from .frontier_receipt import (
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parse_args(argv)
-    packet = _load_packet(args.packet)
-    result = _rank_packet(packet, args)
+    packet = load_packet(args.packet)
+    result = rank_packet(packet, args)
     receipt = frontier_receipt_from_result(
         result,
         receipt_id=args.receipt_id,
@@ -68,16 +67,6 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     parser.add_argument("--commands-to-validation", type=int, default=None)
     parser.add_argument("--field", action="append", default=[])
     return parser.parse_args(argv)
-
-
-def _load_packet(path: str) -> Mapping[str, object]:
-    if path == "-":
-        packet = json.load(sys.stdin)
-    else:
-        packet = json.loads(Path(path).read_text(encoding="utf-8"))
-    if not isinstance(packet, Mapping):
-        raise SystemExit("graph turbo packet must be a JSON object")
-    return packet
 
 
 def _code_reads(args: argparse.Namespace) -> tuple[FrontierCodeRead, ...]:

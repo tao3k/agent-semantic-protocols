@@ -55,21 +55,12 @@ fn runtime_source_index_context_is_owned_by_runtime() {
     assert_eq!(
         context.registry_fingerprint,
         runtime_source_registry_fingerprint(
-            (
-                canonical(&checkout_root).as_path(),
-                "python",
-                "asp-python"
-            )
-                .into()
+            (canonical(&checkout_root).as_path(), "python", "asp-python").into()
         )
     );
     assert!(context.registry_fingerprint.contains("runtimeSource\n"));
     assert!(context.registry_fingerprint.contains("language=python"));
-    assert!(
-        context
-            .registry_fingerprint
-            .contains("provider=asp-python")
-    );
+    assert!(context.registry_fingerprint.contains("provider=asp-python"));
     let _ = fs::remove_dir_all(root);
 }
 
@@ -106,9 +97,8 @@ fn runtime_source_index_files_are_collected_by_runtime() {
     fs::write(root.join("src/readme.md"), "# ignored\n").expect("write ignored extension");
     fs::write(root.join(".git/ignored.rs"), "pub fn ignored() {}\n").expect("write vcs file");
 
-    let files =
-        collect_runtime_source_index_files((root.as_path(), "rust", "asp-rust", 8).into())
-            .expect("collect runtime source index files");
+    let files = collect_runtime_source_index_files((root.as_path(), "rust", "asp-rust", 8).into())
+        .expect("collect runtime source index files");
 
     assert_eq!(files.len(), 2);
     assert_eq!(files[0].path, root.join("src/lib.rs"));
@@ -140,14 +130,14 @@ fn runtime_source_acquisition_clones_and_checks_out_version() {
         repository: upstream.display().to_string(),
         checkout: "v0.18.2".to_string(),
         state_namespace: "runtime-source/gerbil-scheme".to_string(),
-        index_owner: "asp-structural-index".to_string(),
+        index_owner: "asp-server".to_string(),
     };
 
     let checkout = ensure_runtime_source_checkout(&root, &spec).expect("runtime source checkout");
 
     assert_eq!(checkout.language_id, "gerbil-scheme");
     assert_eq!(checkout.state_namespace, "runtime-source/gerbil-scheme");
-    assert_eq!(checkout.index_owner, "asp-structural-index");
+    assert_eq!(checkout.index_owner, "asp-server");
     assert!(
         checkout
             .checkout_dir

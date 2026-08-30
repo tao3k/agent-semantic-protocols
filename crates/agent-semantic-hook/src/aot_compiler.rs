@@ -4,16 +4,17 @@ use agent_semantic_config::HookClientConfigFile;
 use serde::Serialize;
 use serde_json::Value;
 
-use crate::aot_evaluator::{HOOK_GENERATION_SCHEMA_ID, HOOK_GENERATION_SCHEMA_VERSION};
+use crate::aot_evaluator::{HOOK_POLICY_BUNDLE_SCHEMA_ID, HOOK_POLICY_BUNDLE_SCHEMA_VERSION};
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct OwnedCompiledHookGeneration {
+struct OwnedCompiledHookPolicyBundle {
     schema_id: &'static str,
     schema_version: u32,
     generation_digest: String,
     reader_behavior_patterns: Vec<Vec<String>>,
     registered_languages: Vec<String>,
+    agent_calling_pattern: String,
     rules: Vec<OwnedCompiledDecisionRule>,
 }
 
@@ -55,22 +56,59 @@ struct CompiledProfile {
     extensions: Vec<String>,
 }
 
-pub fn compile_aot_hook_generation(
+pub fn compile_aot_hook_policy_bundle(
     config: &HookClientConfigFile,
     generation_digest: impl Into<String>,
 ) -> Result<Vec<u8>, String> {
     let projection = serde_json::to_value(config)
         .map_err(|error| format!("failed to project canonical Hook config: {error}"))?;
-    compile_aot_hook_generation_projection(&projection, generation_digest)
+    compile_aot_hook_policy_bundle_projection(&projection, generation_digest)
 }
 
-fn compile_aot_hook_generation_projection(
+/// Compile the matcher, policy and Agent registry embedded in this executable.
+///
+/// The canonical Runtime Hook binary is the only executable authority for Hook
+/// evaluation. The returned digest therefore identifies the embedded policy
+/// inputs; there is no separately published evaluator binary or
+/// standalone `runtime/bin/asp-hook` executable.
+pub fn compile_embedded_hook_policy_bundle() -> Result<Vec<u8>, String> {
+    let config_source = agent_semantic_config::default_hook_client_config_template();
+    let config = agent_semantic_config::default_hook_client_config_file()
+        .map_err(|error| format!("load embedded Hook config: {error}"))?;
+    let registry = agent_semantic_config::embedded_agent_assets::embedded_agent_assets()
+        .iter()
+        .find(|asset| asset.file_name == "config.toml")
+        .ok_or("embedded Hook Agent registry is missing config.toml")?
+        .contents;
+    let mut identity = blake3::Hasher::new();
+    identity.update(b"agent-semantic-hook-embedded-policy\0");
+    identity.update(config_source.as_bytes());
+    identity.update(b"\0");
+    identity.update(registry);
+    compile_aot_hook_policy_bundle(
+        &config,
+        format!("blake3-256:{}", identity.finalize().to_hex()),
+    )
+}
+
+fn compile_aot_hook_policy_bundle_projection(
     projection: &Value,
     generation_digest: impl Into<String>,
 ) -> Result<Vec<u8>, String> {
     let profiles = compile_profiles(projection)?;
     let command_profiles = compile_command_profile_patterns(projection)?;
     let command_sets = compile_command_sets(projection)?;
+    let agent_calling_pattern = projection
+        .get("agentCalling")
+        .and_then(|calling| {
+            calling
+                .get("platformPatterns")
+                .and_then(|patterns| patterns.get("codex"))
+                .and_then(Value::as_str)
+                .or_else(|| calling.get("defaultPattern").and_then(Value::as_str))
+        })
+        .ok_or("canonical Hook config has no Codex/default Agent calling pattern")?
+        .to_owned();
     let rule_values = projection
         .get("rules")
         .and_then(Value::as_array)
@@ -97,15 +135,16 @@ fn compile_aot_hook_generation_projection(
         .collect::<Vec<_>>();
     registered_languages.sort();
     registered_languages.dedup();
-    serde_json::to_vec(&OwnedCompiledHookGeneration {
-        schema_id: HOOK_GENERATION_SCHEMA_ID,
-        schema_version: HOOK_GENERATION_SCHEMA_VERSION,
+    serde_json::to_vec(&OwnedCompiledHookPolicyBundle {
+        schema_id: HOOK_POLICY_BUNDLE_SCHEMA_ID,
+        schema_version: HOOK_POLICY_BUNDLE_SCHEMA_VERSION,
         generation_digest: generation_digest.into(),
         reader_behavior_patterns: compile_reader_behavior_patterns(projection)?,
         registered_languages,
+        agent_calling_pattern,
         rules,
     })
-    .map_err(|error| format!("failed to encode compiled HookGeneration: {error}"))
+    .map_err(|error| format!("failed to encode compiled HookPolicyBundle: {error}"))
 }
 
 fn compile_reader_behavior_patterns(projection: &Value) -> Result<Vec<Vec<String>>, String> {
@@ -188,13 +227,25 @@ fn compile_rules(
                 .collect::<Vec<_>>()
         })
         .collect::<Vec<_>>();
-    let wrapped_command = rule
-        .get("matcherPolicies")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-        .filter_map(Value::as_str)
-        .any(|policy| policy == "wrapped_command");
+    let actions: Vec<String> = rule
+        .get("actions")
+        .and_then(serde_json::Value::as_array)
+        .map(|actions| {
+            actions
+                .iter()
+                .filter_map(serde_json::Value::as_str)
+                .map(|action| action.to_ascii_lowercase())
+                .collect()
+        })
+        .unwrap_or_default();
+    let wrapped_command = actions.iter().any(|action| action == "read")
+        || rule
+            .get("matcherPolicies")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .any(|policy| policy == "wrapped_command");
     if wrapped_command {
         matchers.push("Bash".to_owned());
     }
@@ -228,17 +279,6 @@ fn compile_rules(
         .and_then(|dispatch| dispatch.get("agent"))
         .and_then(Value::as_str)
         .map(str::to_owned);
-    let actions: Vec<String> = rule
-        .get("actions")
-        .and_then(serde_json::Value::as_array)
-        .map(|actions| {
-            actions
-                .iter()
-                .filter_map(serde_json::Value::as_str)
-                .map(|action| action.to_ascii_lowercase())
-                .collect()
-        })
-        .unwrap_or_default();
     let intent = optional_string(rule, "intent").unwrap_or_else(|| {
         if actions.iter().any(|action| action == "read") {
             "source-read".to_owned()

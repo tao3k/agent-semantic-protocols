@@ -25,7 +25,7 @@ agent-semantic-client-protocol = { path = "../agent-semantic-client-protocol" }
 agent-semantic-context-product = { path = "../agent-semantic-context-product" }
 agent-semantic-search-projection = { path = "../agent-semantic-search-projection" }
 agent-semantic-config = { path = "../agent-semantic-config" }
-agent-semantic-hook = { path = "../agent-semantic-hook" }
+agent-semantic-hook = { path = "../agent-semantic-hook", features = ["compiler"] }
 agent-semantic-provider-transport = { path = "../agent-semantic-provider-transport" }
 agent-semantic-runtime = { path = "../agent-semantic-runtime" }
 agent-semantic-search = { path = "../agent-semantic-search" }

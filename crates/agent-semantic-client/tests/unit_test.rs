@@ -12,8 +12,6 @@ mod agent_session_lifecycle_projection;
 mod ast_patch;
 #[path = "unit/codex/mod.rs"]
 mod codex;
-#[path = "unit/codex_multi_agent_v2_control_plane.rs"]
-mod codex_multi_agent_v2_control_plane;
 #[path = "unit/codex_plugin_install.rs"]
 mod codex_plugin_install;
 #[path = "unit/command/ascent_search_router_graph_state.rs"]
@@ -34,8 +32,6 @@ mod graph_render;
 mod healthcheck;
 #[path = "unit/hook_command.rs"]
 mod hook_command;
-#[path = "unit/hook_execution_plane.rs"]
-mod hook_execution_plane;
 #[path = "unit/hook_paths.rs"]
 mod hook_paths;
 #[path = "unit/install_binary_existing_state_production_command.rs"]

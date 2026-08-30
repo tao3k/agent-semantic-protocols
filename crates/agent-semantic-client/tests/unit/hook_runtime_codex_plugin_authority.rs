@@ -9,7 +9,7 @@ pub(in crate::command) const ASP_CODEX_PLUGIN_MANIFEST_JSON: &str =
 pub(in crate::command) const ASP_CODEX_PLUGIN_HOOKS_JSON: &str =
     include_str!("../../../../asp-codex-plugin/hooks/hooks.json");
 pub(in crate::command) const ASP_CODEX_PLUGIN_HOOK_LAUNCHER: &str =
-    include_str!("../../../../asp-codex-plugin/bin/asp-hook");
+    include_str!("../../../../asp-codex-plugin/bin/asp-hook-exec");
 pub(in crate::command) const ASP_CODEX_PLUGIN_MARKETPLACE_JSON: &str =
     include_str!("../../../../.agents/plugins/marketplace.json");
 
@@ -51,7 +51,19 @@ pub(in crate::command) fn validate_codex_plugin_source_payload() -> Result<Strin
         .get("hooks")
         .and_then(serde_json::Value::as_object)
         .ok_or_else(|| "ASP Codex plugin hooks JSON missing hooks event map".to_string())?;
-    if events.len() != 8
+    let required_events = [
+        "SessionStart",
+        "UserPromptSubmit",
+        "PreToolUse",
+        "PostToolUse",
+        "SubagentStart",
+        "SubagentStop",
+        "Stop",
+    ];
+    if events.len() != required_events.len()
+        || required_events
+            .iter()
+            .any(|event| !events.contains_key(*event))
         || events["PreToolUse"][0]["matcher"]
             .as_str()
             .map(str::trim)
@@ -61,16 +73,16 @@ pub(in crate::command) fn validate_codex_plugin_source_payload() -> Result<Strin
         return Err("ASP Codex plugin Hook payload is incomplete".to_string());
     }
     if !ASP_CODEX_PLUGIN_HOOK_LAUNCHER.starts_with("#!/bin/sh\n")
-        || !ASP_CODEX_PLUGIN_HOOK_LAUNCHER.contains("hooks/current")
-        || !ASP_CODEX_PLUGIN_HOOK_LAUNCHER.contains("ASP_HOOK_GENERATION_ROOT")
-        || ASP_CODEX_PLUGIN_HOOK_LAUNCHER.contains("runtime/bin/asp")
+        || !ASP_CODEX_PLUGIN_HOOK_LAUNCHER.contains("runtime/bin/asp-hook")
+        || ASP_CODEX_PLUGIN_HOOK_LAUNCHER.contains("hooks/current")
+        || ASP_CODEX_PLUGIN_HOOK_LAUNCHER.contains("ASP_HOOK_GENERATION_ROOT")
         || ASP_CODEX_PLUGIN_HOOK_LAUNCHER.contains("runtime/profiles/asp/active")
         || ASP_CODEX_PLUGIN_HOOK_LAUNCHER.contains("runtime/profiles/asp/healthy")
-        || !ASP_CODEX_PLUGIN_HOOK_LAUNCHER.contains("$asp_hook_generation_root/asp-hook")
-        || !ASP_CODEX_PLUGIN_HOOK_LAUNCHER.contains("exec \"$hook_bin\" hook \"$@\"")
+        || !ASP_CODEX_PLUGIN_HOOK_LAUNCHER.contains("$asp_hook_state_home/runtime/bin/asp-hook")
+        || !ASP_CODEX_PLUGIN_HOOK_LAUNCHER.contains("exec \"$hook_bin\" \"$@\"")
     {
         return Err(
-            "ASP Codex plugin Hook launcher must select the single immutable HookGeneration binary"
+            "ASP Codex plugin Hook launcher must select the canonical Runtime Hook binary"
                 .to_string(),
         );
     }
@@ -83,7 +95,7 @@ pub(in crate::command) fn validate_codex_plugin_source_payload() -> Result<Strin
         {
             if !handler["command"]
                 .as_str()
-                .is_some_and(|command| command.starts_with("\"$PLUGIN_ROOT/bin/asp-hook\" "))
+                .is_some_and(|command| command.starts_with("\"$PLUGIN_ROOT/bin/asp-hook-exec\" "))
             {
                 return Err(
                     "ASP Codex plugin Hook command bypasses the plugin-owned launcher".to_string(),

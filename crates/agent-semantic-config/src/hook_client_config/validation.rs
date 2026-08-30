@@ -56,6 +56,13 @@ fn validate_reader_behavior_patterns(patterns: &[Vec<String>]) -> Result<(), Str
                 "readerBehaviorPatterns[{index}][0] must be an executable basename"
             ));
         }
+        for token_glob in pattern.iter().skip(1) {
+            globset::Glob::new(token_glob).map_err(|error| {
+                format!(
+                    "readerBehaviorPatterns[{index}] contains invalid argv glob `{token_glob}`: {error}"
+                )
+            })?;
+        }
         if !unique.insert(pattern) {
             return Err(format!(
                 "readerBehaviorPatterns contains duplicate pattern {pattern:?}"
@@ -80,15 +87,20 @@ pub fn validate_codex_host_matcher_expression(matcher: &str) -> Result<(), Strin
     if matcher.is_empty() || matcher == "*" {
         return Ok(());
     }
-    if matcher
-        .chars()
-        .all(|character| character.is_ascii_alphanumeric() || matches!(character, '_' | '|'))
-    {
+    if matcher.split('|').all(|alias| {
+        !alias.is_empty()
+            && !alias.chars().any(|character| {
+                matches!(
+                    character,
+                    '^' | '$' | '*' | '+' | '?' | '(' | ')' | '[' | ']' | '{' | '}' | '\\'
+                )
+            })
+    }) {
         return Ok(());
     }
-    regex::Regex::new(matcher)
-        .map(|_| ())
-        .map_err(|error| format!("uses invalid Codex Host matcher `{matcher}`: {error}"))
+    Err(format!(
+        "uses unsupported Host matcher `{matcher}`; ASP config accepts only exact aliases separated by `|`"
+    ))
 }
 
 fn validate_agent_calling(config: &HookClientAgentCallingConfig) -> Result<(), String> {

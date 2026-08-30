@@ -1,11 +1,11 @@
-"""Cache command tests for the packaged ASP graph turbo CLI."""
+"""Offline cache-evidence command tests for ASP Python Graphs."""
 
 from __future__ import annotations
 
 import json
 import os
 
-from unit.asp_python_graphs_cli_support import (
+from unit.asp_graph_turbo_cli_support import (
     cache_key,
     changed_sample_graph_turbo_request,
     run_graph_turbo_cache,

@@ -4,7 +4,7 @@ use std::collections::BTreeSet;
 
 use super::{
     HookClientActionKind, HookClientActionSubjectKind, HookClientConfigDecision,
-    HookClientConfigFile, HookClientMatcherPolicy, HookClientRuleConfig,
+    HookClientConfigFile, HookClientRuleConfig,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -115,9 +115,6 @@ fn is_shell_registered_read_rule(rule: &HookClientRuleConfig) -> bool {
     let match_config = &rule.match_config;
     rule.enabled
         && matches!(rule.decision, HookClientConfigDecision::Deny)
-        && rule
-            .matcher_policies
-            .contains(&HookClientMatcherPolicy::WrappedCommand)
         && rule.actions.contains(&HookClientActionKind::Read)
         && !rule.profiles_list.is_empty()
         && (match_config.subject_kind_any.is_empty()

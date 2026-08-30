@@ -1,0 +1,7 @@
+import ASPProof.MultiAgentV2CollaborationAuthority
+
+open ASPProof.MultiAgentV2CollaborationAuthority
+
+#check collaboration_is_the_only_codex_namespace
+#check foreign_namespace_fails_closed
+#check runtime_registration_requires_the_exact_host_fact

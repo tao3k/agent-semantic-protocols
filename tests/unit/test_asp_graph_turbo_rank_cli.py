@@ -1,37 +1,22 @@
-"""Rank command tests for the packaged ASP graph turbo CLI."""
+"""Algorithm API tests; Runtime ranking is served through private gRPC."""
 
 from __future__ import annotations
 
-import json
-import subprocess
-import sys
+from asp_python_graphs import render_compact
+from asp_python_graphs.algorithm import RankOptions, rank_packet
+from asp_python_graphs.packet import result_to_packet
+from asp_python_graphs.summary_packet import result_to_summary_packet
 
-from unit.asp_python_graphs_cli_support import (
+from unit.asp_graph_turbo_cli_support import (
     sample_graph_turbo_request,
     validate_shared_schema,
 )
 
 
-def test_graph_turbo_rank_compact_projects_algorithm_evidence(tmp_path) -> None:
-    packet_path = tmp_path / "graph-turbo-request.json"
-    packet_path.write_text(json.dumps(sample_graph_turbo_request()), encoding="utf-8")
-
-    completed = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "asp_python_graphs",
-            "rank",
-            str(packet_path),
-            "--format",
-            "compact",
-        ],
-        check=True,
-        text=True,
-        capture_output=True,
+def test_graph_turbo_algorithm_compact_projects_algorithm_evidence() -> None:
+    stdout = render_compact(
+        rank_packet(sample_graph_turbo_request(), RankOptions())
     )
-
-    stdout = completed.stdout
     assert stdout.startswith(
         "[graph-frontier] profile=owner-query alg=typed-ppr-diverse"
     )
@@ -52,25 +37,10 @@ def test_graph_turbo_request_fixture_matches_shared_schema() -> None:
     )
 
 
-def test_graph_turbo_rank_json_owns_trace_path_score_explanations(tmp_path) -> None:
-    packet_path = tmp_path / "graph-turbo-request.json"
-    packet_path.write_text(json.dumps(sample_graph_turbo_request()), encoding="utf-8")
-
-    completed = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "asp_python_graphs",
-            "rank",
-            str(packet_path),
-            "--format",
-            "json",
-        ],
-        check=True,
-        text=True,
-        capture_output=True,
+def test_graph_turbo_algorithm_json_owns_trace_path_score_explanations() -> None:
+    payload = result_to_packet(
+        rank_packet(sample_graph_turbo_request(), RankOptions())
     )
-    payload = json.loads(completed.stdout)
     validate_shared_schema(payload, "semantic-graph-turbo-result.v1.schema.json")
 
     assert payload["schemaId"] == "agent.semantic-protocols.semantic-graph-turbo-result"
@@ -94,44 +64,14 @@ def test_graph_turbo_rank_json_owns_trace_path_score_explanations(tmp_path) -> N
     assert payload["algorithmMetrics"]["pathCandidateCount"] >= 1
 
 
-def test_graph_turbo_rank_summary_json_preserves_frontier_without_full_packet(
-    tmp_path,
-) -> None:
-    packet_path = tmp_path / "graph-turbo-request.json"
-    packet_path.write_text(json.dumps(sample_graph_turbo_request()), encoding="utf-8")
+def test_graph_turbo_algorithm_summary_preserves_frontier_without_full_packet() -> None:
+    result = rank_packet(sample_graph_turbo_request(), RankOptions())
+    payload = result_to_summary_packet(result)
+    full_payload = result_to_packet(result)
 
-    summary = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "asp_python_graphs",
-            "rank",
-            str(packet_path),
-            "--format",
-            "summary-json",
-        ],
-        check=True,
-        text=True,
-        capture_output=True,
-    )
-    full = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "asp_python_graphs",
-            "rank",
-            str(packet_path),
-            "--format",
-            "json",
-        ],
-        check=True,
-        text=True,
-        capture_output=True,
-    )
-    payload = json.loads(summary.stdout)
     validate_shared_schema(payload, "semantic-graph-turbo-summary.v1.schema.json")
 
-    assert len(summary.stdout) < len(full.stdout)
+    assert len(str(payload)) < len(str(full_payload))
     assert payload["schemaId"] == "agent.semantic-protocols.semantic-graph-turbo-summary"
     assert payload["packetKind"] == "graph-turbo-summary"
     assert payload["sourcePacketKind"] == "graph-turbo-result"

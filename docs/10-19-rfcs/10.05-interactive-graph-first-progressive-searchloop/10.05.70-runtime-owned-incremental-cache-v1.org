@@ -149,7 +149,7 @@ does not start a Runtime that was previously absent.  Manual Runtime restart is
 not a provider-catalog recovery step.
 
 Warm queries read only the immutable mmap generation.  They perform zero
-client database opens, zero provider invocations, zero publication locks, and
+client-side database opens, zero provider invocations, zero publication locks, and
 zero filesystem discovery.
 
 * Cache CLI boundary

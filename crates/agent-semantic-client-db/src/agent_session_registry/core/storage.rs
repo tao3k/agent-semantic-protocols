@@ -81,6 +81,10 @@ impl AgentSessionRegistry {
         AGENT_SESSION_REGISTRY_RUNTIME_OWNER_PROCESS.store(true, Ordering::Release);
     }
 
+    pub(crate) fn is_runtime_server_owner_process() -> bool {
+        AGENT_SESSION_REGISTRY_RUNTIME_OWNER_PROCESS.load(Ordering::Acquire)
+    }
+
     /// Return the canonical identity of one concrete checkout/worktree workspace.
     pub fn workspace_id(project_root: impl AsRef<Path>) -> Result<String, String> {
         Ok(ResolvedState::resolve(project_root.as_ref())?
@@ -281,10 +285,13 @@ impl AgentSessionRegistry {
                 project_root.display()
             )
         })?;
-        let Some(db_path) = super::publication::read_current_registry_path(&state.state_home)?
-        else {
-            return Ok(None);
-        };
+        // A client-side proxy is bound by the published Runtime endpoint, not by a
+        // locally observable registry publication. The physical registry path is
+        // Runtime-owned and may legitimately be unpublished while the resident
+        // data plane is healthy. Requiring that path here made SubagentStart fall
+        // back to the forbidden direct-open branch before it could issue the typed
+        // Runtime IPC registration.
+        let db_path = Self::db_path_for_state_root(&state.state_home);
         Ok(Some(Self {
             db_path,
             runtime_project_root: Some(project_root),

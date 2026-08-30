@@ -446,7 +446,7 @@ pub(super) async fn publish_provider_workspace(
 ) -> Result<PublishedProviderWorkspace, String> {
     let publication_root = protocol_home
         .join("runtime/provider-artifacts")
-        .join(&registration.binary)
+        .join(&registration.provider_id)
         .join("artifacts/blake3-merkle-v1");
     fs::create_dir_all(&publication_root)
         .map_err(|error| format!("create {}: {error}", publication_root.display()))?;

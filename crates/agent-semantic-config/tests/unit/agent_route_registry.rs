@@ -126,6 +126,7 @@ fn canonical_registry_compiles_host_routes() {
     assert_eq!(codex.route_key.as_str(), "asp_explorer");
     assert_eq!(claude.route_key.as_str(), "asp_explorer");
     assert_eq!(codex.session_lifetime, AgentSessionLifetime::Resident);
+    assert!(codex.is_resident_agent());
     assert_eq!(codex.focus_mode, super::AgentFocusMode::Leaf);
     assert_eq!(codex.platform.as_str(), "codex");
     assert_eq!(claude.platform.as_str(), "claude");
@@ -156,7 +157,7 @@ fn canonical_registry_compiles_host_routes() {
         codex.allowed_rule_intents,
         vec!["reasoning-search", "structured-projection"]
     );
-    assert_eq!(codex.agent_kind, "Subagent");
+    assert_eq!(codex.agent_kind, "agent");
     assert_eq!(codex.display_role, "Evidence Explorer");
     assert_eq!(codex.description, "for code and evidence search");
     assert_eq!(claude.description, codex.description);
@@ -179,7 +180,8 @@ fn canonical_registry_compiles_host_routes() {
         compile_agent_route(&loaded, "asp_testing", "codex").expect("Codex testing route");
     assert_eq!(testing.platform_host_agent_name.as_str(), "asp_testing");
     assert_eq!(testing.focus_mode, super::AgentFocusMode::Leaf);
-    assert_eq!(testing.agent_kind, "Subagent");
+    assert_eq!(testing.agent_kind, "agent");
+    assert!(testing.is_resident_agent());
     assert_eq!(testing.display_role, "Test Runner");
     assert_eq!(
         testing.allowed_rule_intents,
@@ -196,7 +198,8 @@ fn canonical_registry_compiles_host_routes() {
     let coding = compile_agent_route(&loaded, "asp_coding", "codex").expect("Codex coding route");
     assert_eq!(coding.platform_host_agent_name.as_str(), "asp_coding");
     assert_eq!(coding.focus_mode, super::AgentFocusMode::Leaf);
-    assert_eq!(coding.agent_kind, "Subagent");
+    assert_eq!(coding.agent_kind, "agent");
+    assert!(coding.is_resident_agent());
     assert_eq!(coding.display_role, "Owner-scoped Coding Worker");
     assert_eq!(
         coding.roles,
@@ -228,6 +231,51 @@ fn canonical_registry_compiles_host_routes() {
 }
 
 #[test]
+fn temporary_subagent_route_is_never_a_resident_db_agent() {
+    let root = tempfile::tempdir().expect("temporary Agent Loader root");
+    std::fs::write(
+        root.path().join("config.toml"),
+        r#"schema_id = "agent.semantic-protocols.agent-route-registry"
+schema_version = 1
+
+[platforms.codex]
+matcher = "*_codex.toml"
+
+[agents.temporary_probe]
+session_lifetime = "temporary"
+roles = ["temporary-probe"]
+allowed_rule_intents = ["reasoning-search"]
+agent_kind = "subagent"
+display_role = "Temporary Probe"
+description = "temporary Host subagent"
+"#,
+    )
+    .expect("write temporary registry");
+    std::fs::write(
+        root.path().join("temporary_probe_codex.toml"),
+        r#"name = "temporary_probe"
+description = "temporary Host subagent"
+model = "gpt-5.6-luna"
+model_reasoning_effort = "low"
+sandbox_mode = "read-only"
+developer_instructions = "Return a bounded receipt."
+"#,
+    )
+    .expect("write temporary Host profile");
+
+    let loaded = load_agent_route_registry_for_platform(&root.path().join("config.toml"), "codex")
+        .expect("load temporary Agent registry");
+    let route = loaded
+        .compile_route_for_platform_host_identity("codex", "temporary_probe")
+        .expect("resolve temporary Host identity")
+        .expect("temporary route exists");
+
+    assert_eq!(route.agent_kind, "subagent");
+    assert_eq!(route.session_lifetime, AgentSessionLifetime::Temporary);
+    assert!(!route.is_resident_agent());
+}
+
+#[test]
 fn managed_agent_schemas_have_stable_identity_and_internal_version() {
     for (schema, expected_id) in [
         (
@@ -255,6 +303,36 @@ fn managed_agent_schemas_have_stable_identity_and_internal_version() {
                 && !expected_id.contains(":v3")
         );
     }
+}
+
+#[test]
+fn route_registry_schema_owns_the_closed_agent_kind_set() {
+    let schema: serde_json::Value =
+        serde_json::from_str(super::AGENT_ROUTE_REGISTRY_SCHEMA).expect("route registry schema");
+    assert_eq!(
+        schema["$defs"]["agentRoute"]["properties"]["agent_kind"]["enum"],
+        serde_json::json!(["agent", "subagent"])
+    );
+}
+
+#[test]
+fn route_registry_rejects_an_agent_kind_outside_the_schema_set() {
+    let error = super::parse_agent_route_registry(
+        r#"schema_id = "agent.semantic-protocols.agent-route-registry"
+schema_version = 1
+[platforms.codex]
+matcher = "*_codex.toml"
+[agents.probe]
+session_lifetime = "resident"
+roles = ["explore"]
+allowed_rule_intents = ["reasoning-search"]
+agent_kind = "worker"
+display_role = "Probe"
+"#,
+        "invalid agent kind fixture",
+    )
+    .expect_err("agent_kind outside the schema enum must fail closed");
+    assert!(error.contains("agent_kind must be `agent` or `subagent`"));
 }
 
 #[test]
@@ -291,6 +369,7 @@ manager_projection = "legacy-shadow"
 session_lifetime = "resident"
 roles = ["subagent"]
 allowed_rule_intents = ["reasoning-search"]
+agent_kind = "agent"
 "#,
     )
     .expect("write invalid route registry");
@@ -324,6 +403,7 @@ matcher = "*_claude.md"
 session_lifetime = "resident"
 roles = ["explore"]
 allowed_rule_intents = ["reasoning-search"]
+agent_kind = "agent"
 "#,
     )
     .expect("write matcher registry");
@@ -389,6 +469,7 @@ matcher = "*_codex.toml"
 session_lifetime = "resident"
 roles = ["explore"]
 allowed_rule_intents = ["reasoning-search"]
+agent_kind = "agent"
 "#,
     )
     .expect("write route registry");
@@ -425,6 +506,7 @@ matcher = "*_claude.md"
 session_lifetime = "resident"
 roles = ["explore"]
 allowed_rule_intents = ["reasoning-search"]
+agent_kind = "agent"
 "#,
     )
     .expect("write route registry");
@@ -464,6 +546,7 @@ matcher = "*_claude.md"
 session_lifetime = "resident"
 roles = ["explore"]
 allowed_rule_intents = ["reasoning-search"]
+agent_kind = "agent"
 "#,
     )
     .expect("write route registry");
@@ -516,6 +599,7 @@ matcher = "*.toml"
 session_lifetime = "resident"
 roles = ["explore"]
 allowed_rule_intents = ["reasoning-search"]
+agent_kind = "agent"
 "#,
         "noncanonical matcher fixture",
     )

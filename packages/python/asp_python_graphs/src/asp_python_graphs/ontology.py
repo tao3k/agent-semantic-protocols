@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import json
 import re
 from collections.abc import Mapping
 from typing import Any
+
+from blake3 import blake3
 
 from .constants import ALGORITHM_ID
 
@@ -46,6 +49,12 @@ def ontology_catalog_to_graph_request(
     """Project a semantic-fact ontology catalog into a graph-turbo request."""
 
     graph = ontology_catalog_to_graph_packet(catalog, query=query, seed_id=seed_id)
+    catalog_digest = _catalog_digest(catalog)
+    owner_paths = {
+        str(node.get("ownerPath"))
+        for node in graph["nodes"]
+        if isinstance(node, Mapping) and node.get("ownerPath")
+    }
     return {
         "schemaId": "agent.semantic-protocols.semantic-graph-turbo-request",
         "schemaVersion": "1",
@@ -53,6 +62,20 @@ def ontology_catalog_to_graph_request(
         "protocolVersion": "1",
         "packetKind": "graph-turbo-request",
         "surface": "search-typed-frontier",
+        "sourceSnapshot": {
+            "schemaId": "asp.source-snapshot.v1",
+            "algorithm": "blake3-merkle-v1",
+            "rootDigest": catalog_digest,
+            "sourceKind": "derived-overlay",
+            "leafCount": len(graph["nodes"]),
+            "providerDigest": catalog_digest,
+        },
+        "workspaceGeneration": {
+            "rootDigest": catalog_digest,
+            "rootDepth": 0,
+            "leafCount": len(graph["nodes"]),
+            "ownerCount": len(owner_paths),
+        },
         "queryTerms": [query],
         "profile": profile,
         "algorithm": ALGORITHM_ID,
@@ -72,6 +95,11 @@ def ontology_catalog_to_graph_request(
         "cache": {"enabled": True},
         "graph": graph,
     }
+
+
+def _catalog_digest(catalog: Mapping[str, Any]) -> str:
+    payload = json.dumps(catalog, sort_keys=True, separators=(",", ":"))
+    return blake3(payload.encode("utf-8")).hexdigest()
 
 
 def ontology_catalog_to_graph_packet(

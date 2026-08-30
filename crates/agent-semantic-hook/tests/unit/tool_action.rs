@@ -24,7 +24,7 @@ fn plugin_host_action_binding_is_exact_and_materialized_in_action_ir() {
         "tool_name": "apply_patch",
         "tool_input": { "command": "*** Begin Patch\n*** End Patch" }
     });
-    bind_plugin_host_matcher(&mut payload, Some("apply_patch"), None)
+    bind_plugin_host_matcher(&mut payload, "apply_patch")
         .expect("bind canonical apply_patch matcher");
     let runtime = HookRuntime {
         project_root: ".".to_owned(),
@@ -47,25 +47,26 @@ fn plugin_host_matcher_binding_rejects_mismatch_and_unknown_matcher() {
     });
     let mut mismatch = payload.clone();
     assert!(
-        bind_plugin_host_matcher(&mut mismatch, Some("apply_patch"), None)
+        bind_plugin_host_matcher(&mut mismatch, "apply_patch")
             .unwrap_err()
             .contains("binding mismatch")
     );
     let mut unknown = payload;
     assert!(
-        bind_plugin_host_matcher(&mut unknown, Some("Delete"), None)
+        bind_plugin_host_matcher(&mut unknown, "Delete")
             .unwrap_err()
             .contains("unknown plugin Host matcher")
     );
 }
 
 #[test]
-fn plugin_host_action_binding_supports_the_declared_mcp_family() {
+fn plugin_host_action_binding_preserves_one_exact_mcp_tool_identity() {
     let mut payload = json!({
         "tool_name": "mcp__filesystem__read_file",
         "tool_input": { "path": "src/lib.rs" }
     });
-    bind_plugin_host_matcher(&mut payload, None, Some("mcp__")).expect("bind MCP matcher family");
+    bind_plugin_host_matcher(&mut payload, "mcp__filesystem__read_file")
+        .expect("bind exact MCP matcher");
     let runtime = HookRuntime {
         project_root: ".".to_owned(),
         rankers: Vec::new(),

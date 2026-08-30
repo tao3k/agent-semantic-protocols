@@ -347,7 +347,8 @@
           "subagent-",
           "host-agent-",
           "agent-semantic-project-",
-          "codex-session-"
+          "codex-session-",
+          "codex-collaboration-"
         ]
       },
       "membershipOverrides": {

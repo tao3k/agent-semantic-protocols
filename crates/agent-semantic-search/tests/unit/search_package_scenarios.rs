@@ -22,6 +22,14 @@ fn search_package_linear_performance_monitoring_covers_all_unit_surfaces() {
         "scenario must carry the package-level search performance policy id"
     );
     assert_benchmark_contract(&benchmark);
+    assert!(
+        benchmark.contains("measurement_status = \"not-measured\""),
+        "benchmark must declare when timing receipts have not been collected"
+    );
+    assert!(
+        !benchmark.contains("= \"0us\""),
+        "benchmark must not publish zero-valued placeholder timings"
+    );
 
     let surfaces = monitored_surfaces();
     assert!(

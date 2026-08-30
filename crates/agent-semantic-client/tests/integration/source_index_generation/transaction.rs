@@ -1,4 +1,4 @@
-use agent_semantic_client::source_index::{
+use agent_semantic_client_db::server_source_index::{
     PublishedSourceIndexGenerationV1, SourceIndexCollectionScope,
     WorkspaceSearchGenerationPublicationRequestV1, publish_workspace_search_generation_v1,
 };

@@ -107,7 +107,7 @@ fn normal_task_deny_without_source_bytes_is_accepted() {
     assert!(receipt.accepted(), "{receipt:?}");
     assert_eq!(
         receipt.reason_kind(),
-        "normal-task-hook-generation-bound-deny-observed"
+        "normal-task-hook-policy-bundle-bound-deny-observed"
     );
     std::fs::remove_file(path).expect("remove rollout");
 }
@@ -159,7 +159,7 @@ fn unified_exec_deny_without_source_bytes_is_accepted() {
     assert!(receipt.accepted(), "{receipt:?}");
     assert_eq!(
         receipt.reason_kind(),
-        "normal-task-hook-generation-bound-deny-observed"
+        "normal-task-hook-policy-bundle-bound-deny-observed"
     );
     std::fs::remove_file(path).expect("remove rollout");
 }
@@ -231,7 +231,7 @@ fn long_rollout_uses_bounded_prefix_and_tail_windows() {
     assert!(receipt.accepted(), "{receipt:?}");
     assert_eq!(
         receipt.reason_kind(),
-        "normal-task-hook-generation-bound-deny-observed"
+        "normal-task-hook-policy-bundle-bound-deny-observed"
     );
     std::fs::remove_file(path).expect("remove rollout");
 }

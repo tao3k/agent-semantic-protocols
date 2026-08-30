@@ -314,9 +314,7 @@ pub enum ReasonKind {
     SourceDirectoryEnumeration,
     AgentSearchJson,
     SemanticAstPatchRequired,
-    ReadOnlySubagentWrite,
-    SubagentCapabilityDenied,
-    SubagentReceiptRequired,
+    AgentChoiceRequired,
     FocusedSubagentNestedStart,
 }
 
@@ -442,19 +440,17 @@ pub fn parse_payload(input: &str) -> Result<Value, AgentHookError> {
 
 /// Render the only Codex PreToolUse deny wire shape emitted by ASP.
 ///
-/// The complete ASP decision remains available as typed JSON inside
-/// `additionalContext`; it is deliberately not flattened into the Host
-/// envelope because Codex rejects unknown top-level fields.
-pub fn render_codex_pre_tool_deny(decision_value: &Value, message: &str) -> Value {
-    let context = serde_json::to_string(decision_value).unwrap_or_else(|_| {
-        "{\"schemaId\":\"agent.semantic-protocols.hook.execution-failure\",\"schemaVersion\":1,\"decision\":\"deny\"}".to_owned()
-    });
+/// The typed decision is persisted in ASP's event ledger. The Host envelope
+/// deliberately exposes only the configured natural-language instruction:
+/// models should use the native collaboration operation, not parse an
+/// internal receipt.
+pub fn render_codex_pre_tool_deny(_decision_value: &Value, message: &str) -> Value {
     json!({
         "hookSpecificOutput": {
             "hookEventName": "PreToolUse",
             "permissionDecision": "deny",
             "permissionDecisionReason": message,
-            "additionalContext": format!("[agent-hook-decision] {context}"),
+            "additionalContext": message,
         },
         "systemMessage": message,
     })
@@ -492,10 +488,7 @@ pub fn render_platform_response(decision: &HookDecision) -> Result<Value, AgentH
             Value::String(message.as_ref().to_string()),
         );
     }
-    let decision_context = format!(
-        "[agent-hook-decision] {}",
-        serde_json::to_string(&decision_value).map_err(AgentHookError::InvalidOutput)?
-    );
+    let decision_context = message.as_ref().to_owned();
     if decision.platform == "codex"
         && decision.event == "post-tool"
         && !matches!(decision.decision, DecisionKind::Allow)
@@ -613,7 +606,10 @@ pub fn subagent_deny_message(message: &str) -> String {
     let mut lines = Vec::new();
     let mut inserted_subagent_instruction = false;
     for line in message.lines() {
-        if line.contains("spawn_agent") || line.contains("send_input") {
+        if line.contains("collaboration.spawn_agent")
+            || line.contains("collaboration.followup_task")
+            || line.contains("collaboration.send_message")
+        {
             if !inserted_subagent_instruction {
                 lines.push(
                     "Codex: already running inside a subagent; run the safe route below directly and return selector-only `[asp-search-subagent]` evidence with owner/read/next. Do not return source bodies, snippets, or line-range selectors.",

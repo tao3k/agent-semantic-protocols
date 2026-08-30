@@ -27,8 +27,10 @@ _agent-tools-run-asp bin_dir +args:
     if [ -x "${protocol_bin}" ]; then \
       stale_reason=""; \
       if [ -z "${ASP_BIN:-}" ]; then \
-        if [ -x target/release/asp ] && ! cmp -s target/release/asp "${protocol_bin}"; then \
-          stale_reason="target/release/asp content differs"; \
+        if [ -x target/release/asp ] && [ target/release/asp -nt "${protocol_bin}" ]; then \
+          stale_reason="target/release/asp is newer than ${protocol_bin}"; \
+        elif [ -d crates/agent-semantic-protocol/src ] && [ -n "$(find crates/agent-semantic-protocol/src -type f -newer "${protocol_bin}" -print -quit)" ]; then \
+          stale_reason="agent-semantic-protocol Rust source is newer than ${protocol_bin}"; \
         fi; \
       fi; \
       if [ -n "${stale_reason}" ]; then \
@@ -231,11 +233,20 @@ agent-tools-install-py:
     @just agent-tools-install-language python
 
 # Develop mode: build and install the Julia provider from this checkout.
-agent-tools-install-julia:
-    @just agent-tools-install-jl
+agent-tools-install-julia bin_dir="":
+    @just agent-tools-install-jl "{{bin_dir}}"
 
-agent-tools-install-jl:
-    @just agent-tools-install-language julia
+agent-tools-install-jl bin_dir="":
+    @set -e; \
+      state_home="{{asp_state_home}}"; \
+      ASP_JULIA_ALLOW_WRAPPER_FALLBACK=0 just agent-tools-install-language julia; \
+      if [ -n "{{bin_dir}}" ]; then \
+        mkdir -p "{{bin_dir}}"; \
+        provider_bin="$${state_home}/runtime/bin/asp-julia"; \
+        test -x "$${provider_bin}"; \
+        install -m 755 "$${provider_bin}" "{{bin_dir}}/asp-julia"; \
+      fi; \
+      echo "[agent-tools-install-julia] provider=asp-julia source=provider-registry fallback=disabled"
 
 # Develop mode: build and install the Gerbil Scheme provider from this checkout.
 agent-tools-install-gerbil:
@@ -336,7 +347,7 @@ check-provider-knowledge-axes:
     node tools/provider-knowledge-axes-close-loop.mjs
 
 check-language-evidence-smoke-all-setup: check-language-evidence-smoke-setup
-    just agent-tools-install-julia
+    just agent-tools-install-julia .bin
     PATH="$PWD/.bin:$PATH" .bin/asp julia guide {{julia_harness_project}} >/dev/null
 
 check-language-evidence-smoke-all: check-language-evidence-smoke-all-setup
@@ -357,14 +368,14 @@ check-live-corpus-search-query-all:
     PATH="$PWD/.bin:$PATH" .bin/asp server start >/dev/null
     PATH="$PWD/.bin:$PATH" .bin/asp live-corpus qualify --plan benchmarks/live-corpus-search-query-qualification.json
 
-provider-gate: check-rust-warnings check-schema-profiles check-rfc-docs check-schema-manager check-tree-sitter-query-contracts check-language-workspace-search-contracts check-graph-turbo-focused provider-gate-root provider-gate-rust provider-gate-typescript provider-gate-python provider-gate-julia
+provider-gate: check-rust-warnings check-schema-profiles check-rfc-docs check-schema-manager check-tree-sitter-query-contracts check-language-workspace-search-contracts check-graph-turbo-focused provider-gate-root provider-gate-rust provider-gate-typescript provider-gate-python provider-gate-julia provider-gate-gerbil
 
 check-rust-warnings:
     env RUSTFLAGS="-D warnings" cargo check -q -p agent-semantic-client
     env RUSTFLAGS="-D warnings" cargo check -q --manifest-path {{rust_harness_project}}/Cargo.toml --features cli,search
 
 check-schema-profiles:
-    uv run --project packages/python python -m tools schema profiles validate
+    uv run --project packages/python --frozen python -m tools schema profiles validate
 
 check-schema-manager: check-schema-proof-plan
 	uv run --project packages/python --frozen asp-schema-manager check --workspace-root . --fail-on-family-local-refs --fail-on-unclassified-schemas --fail-on-mixed-family-refs --fail-on-reference-decision-drift
@@ -517,6 +528,9 @@ provider-gate-julia:
 	{{julia_compiled_harness}} guide {{julia_harness_project}} >/dev/null
 	{{julia_compiled_harness}} agent doctor --json {{julia_harness_project}} >/dev/null
 	just check-language-evidence-smoke-all
+
+provider-gate-gerbil:
+    just test-gerbil-provider-http-json
 
 # Refresh the local runtime boundary used by semantic-facts pipe smokes.
 provider-gate-semantic-facts-setup:

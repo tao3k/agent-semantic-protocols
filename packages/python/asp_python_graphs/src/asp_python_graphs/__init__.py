@@ -1,4 +1,4 @@
-"""Typed graph reasoning helpers for ASP client-side frontier ranking."""
+"""Typed Graph-Turbo algorithm API used by the ASP Server gRPC service."""
 
 from .model import (
     AllowedTransition,
@@ -83,7 +83,10 @@ def __getattr__(name: str) -> object:
         value = exports[name]
         globals()[name] = value
         return value
-    from .turbo import DEFAULT_PROFILES, rank_frontier, render_compact, result_to_packet
+    from .packet import result_to_packet
+    from .profiles import DEFAULT_PROFILES
+    from .ranking import rank_frontier
+    from .render import render_compact
 
     exports = {
         "DEFAULT_PROFILES": DEFAULT_PROFILES,

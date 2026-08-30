@@ -9,17 +9,17 @@ fn native_matcher_is_the_only_public_rule_host_axis() {
         r#"
 id = "mcp-read"
 decision = "deny"
-matcher = "^mcp__.*$"
+matcher = "mcp__filesystem__read_file"
 "#,
     )
     .expect("parse native matcher rule DSL");
-    assert_eq!(rule.matcher.as_deref(), Some("^mcp__.*$"));
+    assert_eq!(rule.matcher.as_deref(), Some("mcp__filesystem__read_file"));
 
     let duplicate_host_axis = toml::from_str::<HookClientRuleConfig>(
         r#"
 id = "duplicate-mcp-read"
 decision = "deny"
-matcher = "^mcp__.*$"
+matcher = "mcp__filesystem__read_file"
 hostInvocations = ["mcp"]
 "#,
     );
@@ -88,7 +88,7 @@ fn hook_config_schema_exposes_only_the_public_rule_axes() {
 }
 
 #[test]
-fn language_route_materializes_wrapped_read_action_in_internal_ir() {
+fn language_route_materializes_default_wrapped_read_action_in_internal_ir() {
     let mut config = agent_semantic_config::default_hook_client_config_file()
         .expect("parse canonical hook config");
     let public_rule = config
@@ -97,10 +97,7 @@ fn language_route_materializes_wrapped_read_action_in_internal_ir() {
         .find(|rule| rule.id == "route-read-to-asp-languages")
         .expect("language route rule");
     assert!(public_rule.matcher.is_none());
-    assert_eq!(
-        public_rule.matcher_policies,
-        [agent_semantic_config::HookClientMatcherPolicy::WrappedCommand]
-    );
+    assert!(public_rule.matcher_policies.is_empty());
     assert_eq!(
         public_rule.profiles_list,
         [
@@ -122,10 +119,7 @@ fn language_route_materializes_wrapped_read_action_in_internal_ir() {
         .find(|rule| rule.id == "route-read-to-asp-languages")
         .expect("compiled language route rule");
     assert!(compiled_rule.match_config.native_matcher_any.is_empty());
-    assert_eq!(
-        compiled_rule.matcher_policies,
-        [agent_semantic_config::HookClientMatcherPolicy::WrappedCommand]
-    );
+    assert!(compiled_rule.matcher_policies.is_empty());
     assert!(compiled_rule.match_config.host_invocation_any.is_empty());
     assert_eq!(
         compiled_rule.actions,

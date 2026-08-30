@@ -8,7 +8,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from asp_python_graphs_cli_support import validate_shared_schema
+from unit.asp_graph_turbo_cli_support import validate_shared_schema
 
 
 def test_graph_turbo_ablation_cli_generates_packet_variants(tmp_path) -> None:

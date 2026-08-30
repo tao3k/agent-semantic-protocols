@@ -89,7 +89,7 @@ impl HookExecutionFailure {
 /// Render a typed execution failure through the exact Codex event envelope.
 ///
 /// The fixed plugin launcher owns no policy serialization. The single Rust
-/// HookGeneration binary renders every event-specific terminal.
+/// HookPolicyBundle binary renders every event-specific terminal.
 pub fn render_codex_execution_failure(failure: &HookExecutionFailure) -> serde_json::Value {
     let message = failure.message.as_str();
     match failure.event.as_deref() {

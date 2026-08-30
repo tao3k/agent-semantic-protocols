@@ -22,7 +22,7 @@ The current command still performs work that belongs to activation:
 
 1. load the complete source snapshot;
 2. hash every source blob and reconstruct the workspace Merkle tree;
-3. open the Turso client database;
+3. open the ASP Server Turso database;
 4. consult a projection record only after those costs;
 5. on a miss, publish an envelope and start the language provider.
 

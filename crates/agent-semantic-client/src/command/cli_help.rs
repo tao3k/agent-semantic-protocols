@@ -2,7 +2,9 @@ include!("cli_help_model.rs");
 pub(crate) fn install_plugin_command() -> Command {
     Command::new("plugin")
         .bin_name("asp install plugin")
-        .about("Inspect or publish the ASP Codex plugin payload")
+        .about(
+            "Inspect or publish the ASP Codex plugin payload globally; omitted PROJECT_ROOT resolves ASP_STATE_HOME [dev].root",
+        )
         .subcommand(install_plugin_operation_command(
             "status",
             "Compare the source payload with the installed Codex cache",
@@ -392,9 +394,6 @@ pub(crate) fn selected_command(args: &[String]) -> Command {
     };
 
     match path {
-        [agent, config, sync, ..] if agent == "agent" && config == "config" && sync == "sync" => {
-            agent_config_sync_command()
-        }
         [install, language, ..] if install == "install" && language == "language" => {
             install_language_command()
         }
@@ -443,6 +442,13 @@ pub(crate) fn selected_command(args: &[String]) -> Command {
 }
 
 fn selected_command_default(args: &[String]) -> Command {
+    if matches!(
+        args,
+        [config, agents, sync, ..]
+            if config == "config" && agents == "agents" && sync == "sync"
+    ) {
+        return agent_config_sync_command();
+    }
     let first = args.first().map(String::as_str);
     let second = args.get(1).map(String::as_str);
     match (first, second) {
@@ -453,9 +459,8 @@ fn selected_command_default(args: &[String]) -> Command {
         (Some("hook"), Some("enablement")) => hook_enablement_command(),
         (Some("hook"), Some("break-glass")) => super::hook_break_glass::break_glass_command(),
         (Some("hook"), _) => hook_command(),
-        (Some("agent"), Some("config")) => agent_config_command(),
-        (Some("agent"), _) => agent_command(),
-        (Some("session"), _) => session_control_plane_command(),
+        (Some("config"), Some("agents")) => agent_config_command(),
+        (Some("config"), _) => config_command(),
         (Some("providers"), _) => providers_command(),
         (Some("tools"), _) => tools_command(),
         (Some("wrap"), _) => Command::new("wrap")
@@ -528,6 +533,20 @@ pub(crate) fn print_help_if_requested(args: &[String]) -> Result<bool, String> {
             .any(|arg| matches!(arg.as_str(), "--help" | "-h"));
     if !requests_help {
         return Ok(false);
+    }
+
+    let requested_root = if args.first().map(String::as_str) == Some("help") {
+        args.get(1).map(String::as_str)
+    } else {
+        args.first().map(String::as_str)
+    };
+    if let Some(requested_root) = requested_root
+        && !matches!(requested_root, "--help" | "-h")
+        && !ROOT_COMMANDS
+            .iter()
+            .any(|(command, _)| *command == requested_root)
+    {
+        return Err(format!("unknown ASP command `{requested_root}`"));
     }
 
     print_help_if_requested_unchecked(args)

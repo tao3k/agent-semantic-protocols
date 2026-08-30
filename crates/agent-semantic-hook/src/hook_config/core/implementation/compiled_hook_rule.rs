@@ -14,6 +14,14 @@ impl CompiledHookRule {
             .as_ref()
             .map(|value| value.to_ascii_lowercase())
     }
+    pub(super) fn indexed_host_matcher_keys(&self) -> Option<Vec<&str>> {
+        self.match_config.agent_action.indexed_host_matcher_keys()
+    }
+    pub(super) fn can_match_indexed_host_tool(&self, tool_name: &str) -> bool {
+        self.match_config
+            .agent_action
+            .can_match_indexed_host_tool(tool_name)
+    }
     pub(super) fn durable_matcher_artifact(&self) -> DurableRuleMatcherArtifact {
         self.match_config.durable_matcher_artifact()
     }

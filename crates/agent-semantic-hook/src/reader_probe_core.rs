@@ -2,7 +2,7 @@
 
 use serde_json::Value;
 
-#[path = "reader_probe_runtime.rs"]
+#[path = "reader_probe_runtime/mod.rs"]
 mod runtime;
 
 #[doc(hidden)]

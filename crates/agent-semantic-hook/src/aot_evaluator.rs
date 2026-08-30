@@ -2,12 +2,12 @@ use std::borrow::Cow;
 
 use serde::{Deserialize, Serialize};
 
-pub const HOOK_GENERATION_SCHEMA_ID: &str = "agent.semantic-protocols.hook-generation";
-pub const HOOK_GENERATION_SCHEMA_VERSION: u32 = 1;
+pub const HOOK_POLICY_BUNDLE_SCHEMA_ID: &str = "agent.semantic-protocols.hook-policy-bundle";
+pub const HOOK_POLICY_BUNDLE_SCHEMA_VERSION: u32 = 1;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct CompiledHookGeneration<'a> {
+pub struct CompiledHookPolicyBundle<'a> {
     #[serde(borrow)]
     pub schema_id: &'a str,
     pub schema_version: u32,
@@ -17,6 +17,8 @@ pub struct CompiledHookGeneration<'a> {
     pub reader_behavior_patterns: Vec<Vec<&'a str>>,
     #[serde(default, borrow)]
     pub registered_languages: Vec<&'a str>,
+    #[serde(default = "default_agent_calling_pattern", borrow)]
+    pub agent_calling_pattern: &'a str,
     #[serde(borrow)]
     pub rules: Vec<CompiledDecisionRule<'a>>,
 }
@@ -30,7 +32,6 @@ pub struct CompiledDecisionRule<'a> {
     pub priority: i64,
     #[serde(borrow)]
     pub matchers: Vec<&'a str>,
-    #[serde(default)]
     pub wrapped_command: bool,
     #[serde(default)]
     pub actions: Vec<&'a str>,
@@ -95,6 +96,10 @@ const fn default_operation_intent() -> &'static str {
     "host-tool"
 }
 
+const fn default_agent_calling_pattern() -> &'static str {
+    "@{name}"
+}
+
 #[derive(Debug, Deserialize)]
 pub struct BorrowedHookPayload<'a> {
     #[serde(borrow)]
@@ -107,6 +112,17 @@ pub struct BorrowedHookPayload<'a> {
     pub tool_use_id: Option<&'a str>,
     #[serde(default, borrow)]
     pub cwd: Option<&'a str>,
+    /// Host-owned configured Agent identity. Child topology is not
+    /// registration authority: a temporary SubAgent never becomes resident
+    /// merely because it has a parent session.
+    #[serde(
+        default,
+        alias = "agentRole",
+        alias = "agent_type",
+        alias = "agentType",
+        borrow
+    )]
+    pub agent_role: Option<&'a str>,
 }
 
 #[derive(Debug, Serialize, PartialEq, Eq)]
@@ -212,7 +228,7 @@ fn confirmed_read_subject<'a>(
             return Ok(Some(ConfirmedRead {
                 subject: Cow::Borrowed(probe.subject),
                 evidence: match probe.backend {
-                    "hook-generation-reader-catalog" => "reader-behavior-static-catalog",
+                    "hook-policy-bundle-reader-catalog" => "reader-behavior-static-catalog",
                     "state-home-reader-catalog" | "process-memory-reader-catalog" => {
                         "reader-behavior-dynamic-cache"
                     }
@@ -283,8 +299,8 @@ pub fn reader_probe_request(
     if host_matcher != "Bash" {
         return Ok(None);
     }
-    let generation: CompiledHookGeneration<'_> = serde_json::from_str(generation_json)
-        .map_err(|error| format!("decode compiled HookGeneration: {error}"))?;
+    let generation: CompiledHookPolicyBundle<'_> = serde_json::from_str(generation_json)
+        .map_err(|error| format!("decode compiled HookPolicyBundle: {error}"))?;
     let payload: BorrowedHookPayload<'_> = serde_json::from_str(payload_json)
         .map_err(|error| format!("decode Hook payload: {error}"))?;
     if payload.tool_name != "Bash" {
@@ -302,15 +318,6 @@ pub fn reader_probe_request(
         Ok(stages) => stages,
         Err(_) => return Ok(None),
     };
-    let mut executable_stages = stages
-        .iter()
-        .filter(|stage| !stage.is_separator() && stage.executable().is_some());
-    let Some(stage) = executable_stages.next() else {
-        return Ok(None);
-    };
-    if executable_stages.next().is_some() {
-        return Ok(None);
-    }
     for rule in generation.rules {
         if !rule.matchers.iter().any(|matcher| *matcher == host_matcher)
             || !rule.actions.iter().any(|action| *action == "read")
@@ -322,25 +329,33 @@ pub fn reader_probe_request(
         {
             return Ok(None);
         }
-        let mut subjects = agent_semantic_shell_parser::command_stage_source_paths(stage)
-            .into_iter()
-            .filter(|path| registered_source_operand(path, &rule.registered_extensions));
-        let Some(subject) = subjects.next() else {
-            continue;
-        };
-        if subjects.next().is_some() {
-            return Ok(None);
+        for stage in stages
+            .iter()
+            .filter(|stage| !stage.is_separator() && stage.executable().is_some())
+        {
+            let mut subjects = agent_semantic_shell_parser::command_stage_source_paths(stage)
+                .into_iter()
+                .filter(|path| registered_source_operand(path, &rule.registered_extensions));
+            let Some(subject) = subjects.next() else {
+                continue;
+            };
+            // One probe observes one normalized executable/operand pair. A
+            // stage with several registered operands is not guessed; another
+            // stage in the same Host envelope may still carry one exact pair.
+            if subjects.next().is_some() {
+                continue;
+            }
+            return Ok(Some(AotReaderProbeRequest {
+                command_tokens: stage.words().to_vec(),
+                subject,
+                wrapped_command: rule.wrapped_command,
+                reader_behavior_patterns: generation
+                    .reader_behavior_patterns
+                    .iter()
+                    .map(|pattern| pattern.iter().map(|token| (*token).to_owned()).collect())
+                    .collect(),
+            }));
         }
-        return Ok(Some(AotReaderProbeRequest {
-            command_tokens: stage.words().to_vec(),
-            subject,
-            wrapped_command: rule.wrapped_command,
-            reader_behavior_patterns: generation
-                .reader_behavior_patterns
-                .iter()
-                .map(|pattern| pattern.iter().map(|token| (*token).to_owned()).collect())
-                .collect(),
-        }));
     }
     Ok(None)
 }
@@ -350,12 +365,12 @@ pub fn evaluate_pre_tool<'a>(
     payload_json: &'a str,
     host_matcher: &'a str,
 ) -> Result<Option<AotHookDecision<'a>>, String> {
-    let generation: CompiledHookGeneration<'a> =
+    let generation: CompiledHookPolicyBundle<'a> =
         serde_json::from_str(generation_json).map_err(|error| error.to_string())?;
-    if generation.schema_id != HOOK_GENERATION_SCHEMA_ID
-        || generation.schema_version != HOOK_GENERATION_SCHEMA_VERSION
+    if generation.schema_id != HOOK_POLICY_BUNDLE_SCHEMA_ID
+        || generation.schema_version != HOOK_POLICY_BUNDLE_SCHEMA_VERSION
     {
-        return Err("unsupported HookGeneration schema identity".to_owned());
+        return Err("unsupported HookPolicyBundle schema identity".to_owned());
     }
     let payload: BorrowedHookPayload<'a> =
         serde_json::from_str(payload_json).map_err(|error| error.to_string())?;
@@ -365,6 +380,34 @@ pub fn evaluate_pre_tool<'a>(
             payload.tool_name
         ));
     }
+    let shell_input = if payload.tool_name == "Bash" {
+        Some(
+            serde_json::from_str::<BorrowedShellToolInput<'_>>(payload.tool_input.get()).map_err(
+                |error| format!("decode Host tool input for AOT rule matching: {error}"),
+            )?,
+        )
+    } else {
+        None
+    };
+    let shell_command = shell_input
+        .as_ref()
+        .and_then(|input| input.command.as_deref());
+    let shell_stages = shell_command
+        .map(agent_semantic_shell_parser::parse_bash_command_candidates)
+        .transpose()
+        .map_err(|error| format!("parse Bash command for AOT rule matching: {error}"))?;
+    let mut registered_extensions = generation
+        .rules
+        .iter()
+        .flat_map(|rule| rule.registered_extensions.iter().copied())
+        .collect::<Vec<_>>();
+    registered_extensions.sort_unstable();
+    registered_extensions.dedup();
+    let invocation_read = if host_matcher == "Bash" && !registered_extensions.is_empty() {
+        confirmed_read_subject(payload.tool_input.get(), &registered_extensions)?
+    } else {
+        None
+    };
 
     for rule in &generation.rules {
         if !rule
@@ -374,10 +417,16 @@ pub fn evaluate_pre_tool<'a>(
         {
             continue;
         }
-        if !rule_conditions_match(rule, &generation, &payload)? {
+        if !rule_conditions_match(
+            rule,
+            &generation,
+            &payload,
+            shell_command,
+            shell_stages.as_deref(),
+        )? {
             continue;
         }
-        let confirmed_read = if host_matcher == "Bash"
+        let rule_confirmed_read = if host_matcher == "Bash"
             && rule.actions.iter().any(|action| *action == "read")
             && !rule.registered_extensions.is_empty()
         {
@@ -385,15 +434,34 @@ pub fn evaluate_pre_tool<'a>(
         } else {
             None
         };
-        if rule.actions.iter().any(|action| *action == "read") && confirmed_read.is_none() {
+        if rule.actions.iter().any(|action| *action == "read") && rule_confirmed_read.is_none() {
             continue;
         }
-        let subject = confirmed_read.as_ref().map(|read| read.subject.clone());
-        let read_evidence = confirmed_read.as_ref().map(|read| read.evidence);
-        let message = rule.message.replace(
-            "{{languageId}}",
-            rule.language.unwrap_or("registered-language"),
-        );
+        let confirmed_read = rule_confirmed_read.as_ref().or(invocation_read.as_ref());
+        if rule.reason_kind == "agent-choice-required"
+            && rule.route.is_some_and(|target| {
+                payload
+                    .agent_role
+                    .is_some_and(|role| normalized_agent_eq(role, target))
+            })
+        {
+            return Ok(None);
+        }
+        let subject = confirmed_read.map(|read| read.subject.clone());
+        let read_evidence = confirmed_read.map(|read| read.evidence);
+        let agent_dispatch_message = rule
+            .route
+            .map(|target| {
+                crate::agent_dispatch_message::render_collaboration_instruction(Some(target))
+            })
+            .unwrap_or_default();
+        let message = rule
+            .message
+            .replace(
+                "{{languageId}}",
+                rule.language.unwrap_or("registered-language"),
+            )
+            .replace("{{agentDispatchMessage}}", &agent_dispatch_message);
         let recovery_command = rule
             .language
             .zip(subject.as_deref())
@@ -432,40 +500,34 @@ pub fn evaluate_pre_tool<'a>(
             } else {
                 "unknown"
             },
-            backend: confirmed_read
-                .as_ref()
-                .map_or("not-attempted", |read| read.backend),
-            terminal: confirmed_read
-                .as_ref()
-                .map_or("host-matcher-decision", |read| read.terminal),
-            elapsed_micros: confirmed_read
-                .as_ref()
-                .map_or(0, |read| read.elapsed_micros),
-            process_launched: confirmed_read
-                .as_ref()
-                .is_some_and(|read| read.process_launched),
-            probe_process_launched: confirmed_read
-                .as_ref()
-                .is_some_and(|read| read.probe_process_launched),
-            policy_fast_path: confirmed_read
-                .as_ref()
-                .is_none_or(|read| read.policy_fast_path),
-            cleanup_verified: confirmed_read
-                .as_ref()
-                .is_none_or(|read| read.cleanup_verified),
-            timeout: confirmed_read.as_ref().is_some_and(|read| read.timeout),
-            reader_observation_micros: confirmed_read
-                .as_ref()
-                .map_or(0, |read| read.elapsed_micros),
+            backend: confirmed_read.map_or("not-attempted", |read| read.backend),
+            terminal: confirmed_read.map_or("host-matcher-decision", |read| read.terminal),
+            elapsed_micros: confirmed_read.map_or(0, |read| read.elapsed_micros),
+            process_launched: confirmed_read.is_some_and(|read| read.process_launched),
+            probe_process_launched: confirmed_read.is_some_and(|read| read.probe_process_launched),
+            policy_fast_path: confirmed_read.is_none_or(|read| read.policy_fast_path),
+            cleanup_verified: confirmed_read.is_none_or(|read| read.cleanup_verified),
+            timeout: confirmed_read.is_some_and(|read| read.timeout),
+            reader_observation_micros: confirmed_read.map_or(0, |read| read.elapsed_micros),
         }));
     }
     Ok(None)
 }
 
+fn normalized_agent_eq(left: &str, right: &str) -> bool {
+    left.chars()
+        .map(|character| if character == '-' { '_' } else { character })
+        .eq(right
+            .chars()
+            .map(|character| if character == '-' { '_' } else { character }))
+}
+
 fn rule_conditions_match(
     rule: &CompiledDecisionRule<'_>,
-    generation: &CompiledHookGeneration<'_>,
+    generation: &CompiledHookPolicyBundle<'_>,
     payload: &BorrowedHookPayload<'_>,
+    shell_command: Option<&str>,
+    shell_stages: Option<&[agent_semantic_shell_parser::CommandStage]>,
 ) -> Result<bool, String> {
     let has_conditions = !rule.argv_prefix_any.is_empty()
         || !rule.command_contains_any.is_empty()
@@ -480,16 +542,15 @@ fn rule_conditions_match(
     if !has_conditions {
         return Ok(true);
     }
-    let input: BorrowedShellToolInput<'_> = serde_json::from_str(payload.tool_input.get())
-        .map_err(|error| format!("decode Host tool input for AOT rule matching: {error}"))?;
     if payload.tool_name != "Bash" {
         return Ok(rule.path_glob_any.is_empty() || payload.tool_input.get().contains("*** "));
     }
-    let Some(command) = input.command.as_deref() else {
+    let Some(command) = shell_command else {
         return Ok(false);
     };
-    let stages = agent_semantic_shell_parser::parse_bash_command_candidates(command)
-        .map_err(|error| format!("parse Bash command for AOT rule matching: {error}"))?;
+    let Some(stages) = shell_stages else {
+        return Ok(false);
+    };
     let words = stages
         .iter()
         .filter(|stage| !stage.is_separator())
@@ -498,7 +559,7 @@ fn rule_conditions_match(
         .collect::<Vec<_>>();
     if !rule.process_environment_assignment_any.is_empty()
         && !agent_semantic_shell_parser::command_stages_match_process_environment_assignment(
-            &stages,
+            stages,
             &rule.process_environment_assignment_any,
         )
     {
@@ -508,7 +569,7 @@ fn rule_conditions_match(
         && !rule
             .argv_prefix_any
             .iter()
-            .any(|pattern| match_argv_pattern(&stages, pattern, &generation.registered_languages))
+            .any(|pattern| match_argv_pattern(stages, pattern, &generation.registered_languages))
     {
         return Ok(false);
     }
@@ -650,7 +711,6 @@ fn has_any_extension(path: &str, extensions: &[&str]) -> bool {
 
 pub fn host_matcher_matches_tool_name(host_matcher: &str, tool_name: &str) -> bool {
     host_matcher == tool_name
-        || (host_matcher.ends_with("__") && tool_name.starts_with(host_matcher))
         || (tool_name == "apply_patch" && matches!(host_matcher, "apply_patch" | "Edit" | "Write"))
         || (tool_name == "spawn_agent" && matches!(host_matcher, "spawn_agent" | "Agent"))
 }
@@ -661,7 +721,6 @@ fn configured_matcher_matches(configured: &str, host_matcher: &str) -> bool {
             .strip_prefix('^')
             .and_then(|matcher| matcher.strip_suffix('$'))
             == Some(host_matcher)
-        || (configured == "^mcp__.*$" && host_matcher == "mcp__")
 }
 
 #[cfg(test)]

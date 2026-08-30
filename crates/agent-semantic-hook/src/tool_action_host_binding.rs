@@ -11,7 +11,7 @@ fn host_invocation_from_matcher(matcher: &str) -> Option<HostInvocationKind> {
         "apply_patch" => Some(HostInvocationKind::Edit),
         "Bash" => Some(HostInvocationKind::Execute),
         "spawn_agent" => Some(HostInvocationKind::SpawnAgent),
-        "prefix:mcp__" => Some(HostInvocationKind::Mcp),
+        matcher if matcher.starts_with("mcp__") => Some(HostInvocationKind::Mcp),
         _ => None,
     }
 }
@@ -21,22 +21,12 @@ fn host_invocation_from_matcher(matcher: &str) -> Option<HostInvocationKind> {
 /// Exact matchers compare the real tool name; family matchers compare one
 /// declared prefix. This validates Host identity and does not classify shell
 /// semantics.
-pub fn bind_plugin_host_matcher(
-    payload: &mut Value,
-    exact_matcher: Option<&str>,
-    matcher_prefix: Option<&str>,
-) -> Result<(), String> {
-    if exact_matcher.is_some() == matcher_prefix.is_some() {
-        return Err(
-            "plugin Host matcher requires exactly one --host-match or --host-match-prefix"
-                .to_owned(),
-        );
+pub fn bind_plugin_host_matcher(payload: &mut Value, exact_matcher: &str) -> Result<(), String> {
+    if exact_matcher.trim().is_empty() {
+        return Err("plugin Host matcher requires one non-empty --host-match".to_owned());
     }
-    let matcher = exact_matcher
-        .map(str::to_owned)
-        .unwrap_or_else(|| format!("prefix:{}", matcher_prefix.unwrap_or_default()));
-    if host_invocation_from_matcher(&matcher).is_none() {
-        return Err(format!("unknown plugin Host matcher `{matcher}`"));
+    if host_invocation_from_matcher(exact_matcher).is_none() {
+        return Err(format!("unknown plugin Host matcher `{exact_matcher}`"));
     }
     let tool_name = payload
         .get("tool_name")
@@ -44,17 +34,18 @@ pub fn bind_plugin_host_matcher(
         .and_then(Value::as_str)
         .filter(|value| !value.trim().is_empty())
         .ok_or_else(|| "plugin Host matcher payload requires tool_name".to_owned())?;
-    let matcher_matches = exact_matcher.is_some_and(|expected| tool_name == expected)
-        || matcher_prefix.is_some_and(|prefix| tool_name.starts_with(prefix));
-    if !matcher_matches {
+    if tool_name != exact_matcher {
         return Err(format!(
-            "plugin Host matcher binding mismatch: matcher={matcher} toolName={tool_name}"
+            "plugin Host matcher binding mismatch: matcher={exact_matcher} toolName={tool_name}"
         ));
     }
     let object = payload
         .as_object_mut()
         .ok_or_else(|| "plugin Host matcher payload must be an object".to_owned())?;
-    object.insert(HOST_MATCHER_SIGNAL_FIELD.to_owned(), Value::String(matcher));
+    object.insert(
+        HOST_MATCHER_SIGNAL_FIELD.to_owned(),
+        Value::String(exact_matcher.to_owned()),
+    );
     Ok(())
 }
 

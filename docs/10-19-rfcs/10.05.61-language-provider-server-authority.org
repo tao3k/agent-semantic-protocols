@@ -426,3 +426,23 @@ validated session catalog and immutable Ready generation. Provider-native DTOs
 are internal server/provider contracts and are not northbound inputs. Non-Ready
 sessions return a typed admission response without consulting a prior generation
 or invoking a provider.
+
+** Scheme structural-index boundary
+
+The Gerbil Scheme provider's =semantic-structural-index= packet is a
+provider-local parser/interface format.  It is not a Graph-Turbo request, does
+not declare =asp-python-graphs= as an owner or consumer, and does not create a
+second ranking authority.  ASP Server treats it as a Scheme-provider output;
+it is not a cross-language Rust or Python service contract.  Graph-Turbo
+algorithm packets use their separate =asp-python-graphs= service contract.
+No structural-index field may infer a Graph-Turbo service dependency from the
+fact that both paths use the ASP Server.
+
+Runtime-source acquisition is a separate ASP Runtime cache contract.  Its
+wire-level =indexOwner= is =asp-server=: the Runtime Server owns source-index
+generation, persistence, lookup, and runtime-source checkout admission.  The
+embedded DB engine may remain the implementation/provider provenance (for
+example =db-engine-source-index=) inside that server, but it is not a second
+protocol authority and it is not a Scheme structural-index provider, Rust
+provider, or Graph-Turbo service.  Provider guide output must therefore invoke
+the Runtime cache without an obsolete =--index-owner= override.

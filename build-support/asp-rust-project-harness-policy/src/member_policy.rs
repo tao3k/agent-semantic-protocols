@@ -195,6 +195,16 @@ const ASP_WORKSPACE_MEMBER_POLICIES: &[AspRustProjectHarnessMemberPolicy] = &[
         availability_stability_owners: &[],
     },
     AspRustProjectHarnessMemberPolicy {
+        package_name: "agent-semantic-hook-testkit",
+        crate_root: "crates/agent-semantic-hook-testkit",
+        cargo_check_advice_allow_explanation: "scope=agent-semantic-hook-testkit cargo-check advice; owner=agent-semantic-hook-testkit build gate; finding_category=advisory policy findings; why_safe_now=the Hook TestKit keeps advisory findings visible while warning and error findings still fail the build; cleanup_trigger=clear the crate advisory backlog and remove this allowance",
+        verification_label: Some("Hook TestKit"),
+        rule_severity_overrides: &[],
+        criterion_performance_verification: false,
+        latency_sensitive_performance_owners: &[],
+        availability_stability_owners: &[],
+    },
+    AspRustProjectHarnessMemberPolicy {
         package_name: "agent-semantic-provider-transport",
         crate_root: "crates/agent-semantic-provider-transport",
         cargo_check_advice_allow_explanation: "scope=agent-semantic-provider-transport cargo-check advice; owner=agent-semantic-provider-transport build gate; finding_category=advisory policy findings; why_safe_now=provider transport keeps process orchestration advice visible while warning and error findings still fail the build; cleanup_trigger=clear the crate advisory backlog and remove this allowance",

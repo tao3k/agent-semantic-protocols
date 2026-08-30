@@ -7,7 +7,7 @@ license = "MIT"
 
 [dependencies]
 sha2.workspace = true
-agent-semantic-hook = { path = "../agent-semantic-hook" }
+agent-semantic-hook = { path = "../agent-semantic-hook", features = ["compiler"] }
 agent-semantic-config = { path = "../agent-semantic-config" }
 agent-semantic-runtime = { path = "../agent-semantic-runtime" }
 agent-semantic-tree-sitter = { version = "0.1.0", path = "../agent-semantic-tree-sitter" }

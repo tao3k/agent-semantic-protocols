@@ -45,18 +45,17 @@ such as 823us is still admitted by the fail-closed boundary but is a performance
 regression because it lacks sufficient scheduling and filesystem headroom.
 
 Codex Bash PreTool additionally has one command-local projection in the Rust
-=asp-hook= process boundary. Before resolving HookGeneration, the Shell Parser
+=asp-hook= process boundary. Before loading the embedded policy bundle, the Shell Parser
 proves that =ASP_NO_AGENT=1= reaches the requested process through
 exactly one of =NAME=VALUE command=, =env NAME=VALUE command=, or
-=export NAME=VALUE; command=. Config V1 mirrors this invariant with
-=processEnvironmentAssignmentAny=["ASP_NO_AGENT=1"]= as a highest-priority
-terminal allow over all Hook policy; it MUST NOT add argv, language,
-search/query, profile, or Runtime predicates.  Raw JSON text, quoted text,
+=export NAME=VALUE; command=. This is bootstrap authority, not a Config rule:
+Config V1 MUST NOT contain an =ASP_NO_AGENT= matcher, allow decision, or
+policy witness. Raw JSON text, quoted text,
 unrelated earlier stages and quoted assignment text do not establish
 authority. This command-local path parses the Host payload but terminates
-before HookGeneration, Reader Probe, subagent admission, Runtime, or any other
-policy rule. The process guard and Config witness accepting different
-topologies is a failed publication candidate.
+before the policy bundle, Reader Probe, Agent dispatch, Runtime, or any other
+policy rule. Any generation that embeds a policy rule for this escape is a
+failed publication candidate because policy cannot authorize its own bypass.
 
 For an ordinary =asp= CLI invocation, inherited =ASP_NO_AGENT=1= selects the
 =agent-semantic-client= single-thread server-first IPC lane.  That lane creates no Tokio
@@ -70,30 +69,31 @@ identity projection, and cannot override operator-stop or endpoint/candidate
 identity denial.  Such denial remains a V1 typed CLI failure.
 
 Hook invocation is one-shot but not low-concurrency. Concurrent Host actions
-MUST resolve the =hooks/current= pointer once, map the same immutable active
-generation, and evaluate independently. A =HookGeneration= is the indivisible
-product of evaluator binary digest, Config schema-version-1 digest, compiled
-matcher/policy digest, Agent registry digest, and its typed receipt. Directory,
-path-key, and logical namespace names are stable and MUST NOT carry version
-suffixes; schema identity and =schemaVersion= own evolution. The read path MUST
-NOT serialize behind a writer, queue for Runtime capacity, compile source, or
-publish a new generation. The Developer installer alone compiles and validates
-a candidate and atomically replaces =hooks/current=; readers observe either the
-prior complete generation or the next complete generation.
+MUST resolve the stable =ASP_STATE_HOME/runtime/bin/asp-hook= launcher and
+evaluate the policy bundle embedded in that exact executable. There is no
+second =hooks/current= pointer and no separately published Hook generation.
+The executable content digest binds the evaluator, Config schema-version-1
+bytes, compiled matcher/policy, Agent registry, and typed policy receipt. The
+read path MUST NOT serialize behind a writer, queue for Runtime capacity,
+compile mutable source, or publish policy. The Developer installer validates an
+=asp-hook= candidate and atomically replaces the stable Runtime tool launcher;
+each invocation observes either the prior complete executable or the next
+complete executable.
 
-Editing mutable Config or registry source MUST NOT affect the active
-generation. Parse, compile, validation, immutable materialization, or current
-publication failure MUST leave the prior current pointer unchanged. Immutable
-materialization may use Tokio blocking tasks; the current-pointer transaction
-is a bounded synchronous =fs2= lock, atomic symlink rename, and directory
-=fsync= with no =await= inside the lock.
+Editing mutable Config or registry source MUST NOT affect the installed Hook
+policy. Parse, compile, validation, immutable materialization, or launcher
+publication failure MUST leave the prior =runtime/bin/asp-hook= unchanged.
+Immutable materialization may use Tokio blocking tasks; the stable-launcher
+transaction is a bounded synchronous =fs2= lock, atomic symlink rename, and
+directory =fsync= with no =await= inside the lock.
 
-Hook publication and Runtime activation are distinct transactions. Hook commit
-MUST NOT wait for, inspect, or depend on Runtime activation. Runtime states
+Hook executable publication and Runtime serving activation are distinct
+authorities. Hook publication MUST NOT wait for, inspect, or depend on Runtime
+activation. Runtime states
 =stopped=, =pending=, =failed=, and =ready= cannot change Hook policy
-availability. The fixed Plugin launcher resolves only =hooks/current= and MUST
-NOT read =runtime/bin/asp=, Runtime current/healthy slots, endpoint state, or
-activation generation.
+availability. The fixed Plugin launcher resolves only
+=runtime/bin/asp-hook= and MUST NOT read =runtime/bin/asp=, Runtime
+active/healthy slots, endpoint state, or activation generation.
 
 Runtime binary publication has a separate dual-authority invariant.  Inside
 the sole =artifact-mutation.lock= transaction, Artifacts MUST allocate the next
@@ -113,11 +113,11 @@ serving authorities. Actor commit must compare the current pending generation
 under the same mutation guard; an older actor can neither retire nor overwrite
 a newer pending event.
 
-Each generation contains one immutable matcher artifact. Its fixed header
+Each installed =asp-hook= executable contains one immutable policy bundle. Its fixed header
 carries deterministic config and agent content identities plus the compiler
 generation digest; its body carries the compiled matcher.
 The complete matcher and policy-derived direct-read decision-template shards
-share the same generation and owner stamps. A direct-read shard is rendered by
+share the same policy digest and owner stamps. A direct-read shard is rendered by
 the complete composed policy compiler and contains the winning typed decision
 with a safely substituted source-path placeholder; the one-shot reader does not
 rehydrate the complete config, project providers, or rule graph. Shard identities are derived from normalized
@@ -148,10 +148,10 @@ Only a different or unproven identity may receive the dispatch deny.
   transition but becomes repairable when the recovery override is present.
 - a serialized reader queue has a concrete budget-violation counterexample;
 - lock-free reader latency and policy outcomes are invariant under reader count;
-- atomic publication exposes only the prior or next complete generation, never
+- atomic publication exposes only the prior or next complete Hook executable, never
   a torn matcher state.
-- mutable Config source edits preserve the active generation;
-- every candidate-stage failure preserves the previous generation;
+- mutable Config source edits preserve the installed Hook executable;
+- every candidate-stage failure preserves the previous Hook executable;
 - Hook commit is invariant under Runtime activation state;
 - Plugin-launcher and evaluator-process inherited overrides each break the
   legacy recovery cycle, while shell command assignment has no recovery
@@ -170,7 +170,7 @@ Only a different or unproven identity may receive the dispatch deny.
 * Executable refinement gates
 
 Rust tests MUST cover both process-environment bypass layers with missing
-generation/state/config,
+Hook executable/state/config,
 direct and arbitrarily wrapped command assignments, a similarly named variable
 that cannot bypass policy, mutable source edits without publication, ten
 consecutive Developer generations, parse/compile/validate/publication failure

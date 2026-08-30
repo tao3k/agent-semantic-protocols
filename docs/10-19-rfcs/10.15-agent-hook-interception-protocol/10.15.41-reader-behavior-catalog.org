@@ -22,13 +22,18 @@ Host command to continue; they are never promoted to Read.
 
 The evaluator uses one ordered four-level classifier:
 
-1. The immutable HookGeneration contains a compact
-   =readerBehaviorPatterns = [[argv-prefix] ...]= catalog.  An exact executable
-   basename plus argv-prefix match is a process-free static Reader fact.
+1. The immutable policy bundle embedded in =runtime/bin/asp-hook= contains a compact
+   =readerBehaviorPatterns = [[argv-pattern-prefix] ...]= catalog.  The Shell
+   Parser owns wrapper and argv boundaries; the executable matches by basename,
+   ordinary pattern tokens use =globset=, and a standalone =*= or =**= token
+   consumes zero or more argv tokens.  Undeclared trailing argv remain valid.
+   A successful pattern match is a process-free static Reader fact.
 2. A bounded process-memory catalog reuses positive facts already verified in
-   the current Hook process.  Its key binds the State Home cache root and the
-   complete behavior key; it retains at most 256 facts and performs no
-   filesystem or process operation on a hit.
+   the current Hook process.  Readers load one immutable =ArcSwap= snapshot;
+   publication uses RCU replacement, so concurrent hits share no =RwLock=.
+   Its key binds the State Home cache root and the complete behavior key; it
+   retains at most 256 facts and performs no filesystem or process operation
+   on a hit.
 3. The global ASP State Home contains positive dynamic Reader facts.  A fact is
    keyed by canonical executable identity, file identity and timestamps,
    normalized argv shape, and registered profile extension.  Only an exact key
@@ -102,22 +107,23 @@ cache misses.  They are not accepted and do not become policy authority.
   state or stdin. For a Bash PreTool payload, the Rust process boundary and
   Shell Parser recognize
   exactly =NAME=VALUE command=, =env NAME=VALUE command=, and
-  =export NAME=VALUE; command= process-transfer forms before resolving
-  HookGeneration. The Config DSL mirrors this invariant with
-  =processEnvironmentAssignmentAny=["ASP_NO_AGENT=1"]= in one highest priority
-  terminal allow. Unbound text, later unrelated stages, and
+  =export NAME=VALUE; command= process-transfer forms before loading the
+  embedded policy bundle. The Config DSL MUST NOT mirror this bootstrap authority as a
+  rule. Unbound text, later unrelated stages, and
   quoted assignment text and assignments introduced only after an earlier command are not recovery authority.
 - A black-box harness must close and release its stdin writer immediately after
   the JSON payload.  Flushing without dropping the writer does not publish EOF
   and creates a harness-induced evaluator deadlock.
 - The immutable generation contains one schema-v1 AOT JSON policy artifact;
   the retired =matcher.bin=/=ASPHK1PC= compiler is not a publication owner.
-- The same atomic HookGeneration binds one =asp-hook= binary.  Host event
+- One =asp-hook= executable binds its evaluator and embedded policy bundle.
+  Host event
   routing is an internal typed dispatch within that executable; policy and
   lifecycle events can therefore never observe different executable
-  generations.  The plugin launcher only resolves =hooks/current= and =exec=s
-  this binary.  It does not classify actions, parse policy, or select a second
-  executable.
+  or policy identities. The plugin launcher only resolves
+  =ASP_STATE_HOME/runtime/bin/asp-hook= and =exec=s the event directly. It does
+  not classify actions, parse policy, add a repeated =hook= namespace, or
+  select a second executable.
 - AOT compilation must project every canonical Config TOML rule, including
   =matcherPolicies=, command profiles/sets, dominance priority, structured
   projections, native Edit aliases, and Reader profile/glob facts.  A rule

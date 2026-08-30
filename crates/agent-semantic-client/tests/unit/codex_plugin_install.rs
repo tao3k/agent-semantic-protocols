@@ -8,7 +8,7 @@ mod unix {
     const MANIFEST: &[u8] =
         include_bytes!("../../../../asp-codex-plugin/.codex-plugin/plugin.json");
     const HOOKS: &[u8] = include_bytes!("../../../../asp-codex-plugin/hooks/hooks.json");
-    const LAUNCHER: &[u8] = include_bytes!("../../../../asp-codex-plugin/bin/asp-hook");
+    const LAUNCHER: &[u8] = include_bytes!("../../../../asp-codex-plugin/bin/asp-hook-exec");
 
     #[test]
     fn plugin_status_defaults_source_to_global_state_home_dev_root() {
@@ -207,7 +207,7 @@ mod unix {
         for (relative, bytes) in [
             (".codex-plugin/plugin.json", manifest),
             ("hooks/hooks.json", hooks),
-            ("bin/asp-hook", launcher),
+            ("bin/asp-hook-exec", launcher),
         ] {
             let path = root.join(relative);
             std::fs::create_dir_all(path.parent().expect("payload parent"))
@@ -247,7 +247,7 @@ if [ "$1 $2" = "plugin add" ]; then
   mkdir -p "$installed/.codex-plugin" "$installed/hooks" "$installed/bin"
   cp "$source_root/.codex-plugin/plugin.json" "$installed/.codex-plugin/plugin.json"
   cp "$source_root/hooks/hooks.json" "$installed/hooks/hooks.json"
-  cp "$source_root/bin/asp-hook" "$installed/bin/asp-hook"
+  cp "$source_root/bin/asp-hook-exec" "$installed/bin/asp-hook-exec"
   printf '%s\n' "$version" > "$CODEX_HOME/installed-version"
   count=0
   if [ -f "$CODEX_HOME/add-count" ]; then count=$(sed -n '1p' "$CODEX_HOME/add-count"); fi

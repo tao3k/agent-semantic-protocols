@@ -21,8 +21,8 @@ pub use shell_stage_match::{
     BashCommandMatch, CommandStage, MAX_COMMAND_CANDIDATES, MAX_STAGE_TOKENS, PrefixMatch,
     candidate_matches_prefix, command_stages_match_prefix,
     command_stages_match_process_environment_assignment, command_stages_match_wrapped_prefix,
-    match_bash_command_prefix, match_bash_wrapped_command_prefix, parse_bash_command_candidates,
-    render_bash_command_stage,
+    command_tokens_match_argv_pattern, match_bash_command_prefix,
+    match_bash_wrapped_command_prefix, parse_bash_command_candidates, render_bash_command_stage,
 };
 
 pub use source_paths::{

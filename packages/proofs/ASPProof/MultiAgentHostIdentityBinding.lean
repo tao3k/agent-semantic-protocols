@@ -1,4 +1,4 @@
-namespace ASPProof.MultiAgentChoicePlane
+namespace ASPProof.MultiAgentHostIdentityBinding
 
 inductive AgentSandboxMode where
   | readOnly
@@ -270,4 +270,4 @@ theorem recreation_requires_new_instance_registration_and_higher_generation
         evidence.replacementResident.binding.generation :=
   ⟨valid.2.2.1, valid.2.2.2.1, valid.2.2.2.2⟩
 
-end ASPProof.MultiAgentChoicePlane
+end ASPProof.MultiAgentHostIdentityBinding

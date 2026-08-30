@@ -18,7 +18,6 @@ pub(super) struct AgentActionMatch {
 enum CodexHostMatcher {
     All,
     Exact(Vec<String>),
-    Regex(regex::Regex),
     Invalid,
 }
 
@@ -27,23 +26,34 @@ impl CodexHostMatcher {
         if expression.is_empty() || expression == "*" {
             return Self::All;
         }
-        if expression
-            .chars()
-            .all(|character| character.is_ascii_alphanumeric() || matches!(character, '_' | '|'))
-        {
-            return Self::Exact(expression.split('|').map(str::to_owned).collect());
+        let exact = expression.split('|').collect::<Vec<_>>();
+        if exact.iter().all(|alias| {
+            !alias.is_empty()
+                && !alias.chars().any(|character| {
+                    matches!(
+                        character,
+                        '^' | '$' | '*' | '+' | '?' | '(' | ')' | '[' | ']' | '{' | '}' | '\\'
+                    )
+                })
+        }) {
+            return Self::Exact(exact.into_iter().map(str::to_owned).collect());
         }
-        regex::Regex::new(&expression)
-            .map(Self::Regex)
-            .unwrap_or(Self::Invalid)
+        Self::Invalid
     }
 
     fn matches(&self, candidate: &str) -> bool {
         match self {
             Self::All => true,
             Self::Exact(exact) => exact.iter().any(|value| value == candidate),
-            Self::Regex(regex) => regex.is_match(candidate),
             Self::Invalid => false,
+        }
+    }
+
+    fn exact_values(&self) -> Option<&[String]> {
+        match self {
+            Self::All => None,
+            Self::Exact(exact) => Some(exact),
+            Self::Invalid => Some(&[]),
         }
     }
 }
@@ -115,6 +125,24 @@ impl AgentActionMatch {
                         )
                     }) || !predicate.subject_kind_any.is_empty()
                 })
+    }
+
+    pub(super) fn indexed_host_matcher_keys(&self) -> Option<Vec<&str>> {
+        let mut keys = Vec::new();
+        for matcher in &self.native_matcher_any {
+            let exact = matcher.exact_values()?;
+            keys.extend(exact.iter().map(String::as_str));
+        }
+        Some(keys)
+    }
+
+    pub(super) fn can_match_indexed_host_tool(&self, tool_name: &str) -> bool {
+        self.native_matcher_any.is_empty()
+            || self.native_matcher_any.iter().any(|matcher| {
+                std::iter::once(tool_name)
+                    .chain(host_matcher_aliases(tool_name).iter().copied())
+                    .any(|candidate| matcher.matches(candidate))
+            })
     }
 
     pub(super) fn matches(

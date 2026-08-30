@@ -23,7 +23,8 @@ fn root_and_first_level_paths_select_their_own_commands() {
         "cache",
         "cloud",
         "hook",
-        "agent",
+        "config",
+        "session",
         "install",
         "paths",
         "healthcheck",
@@ -43,16 +44,30 @@ fn root_and_first_level_paths_select_their_own_commands() {
     ] {
         assert_selected(&[command, "--help"], command, &format!("asp {command}"));
     }
-    assert_selected(&["agent", "config", "--help"], "config", "asp agent config");
-    let mut agent = help_model::selected_command(&owned_args(&["agent", "--help"]));
-    let agent_help = agent.render_long_help().to_string();
-    assert!(agent_help.contains("config"));
-    assert!(!agent_help.contains("session"));
     assert_selected(
-        &["agent", "config", "sync", "--help"],
-        "sync",
-        "asp agent config sync",
+        &["config", "agents", "--help"],
+        "agents",
+        "asp config agents",
     );
+    let mut config = help_model::selected_command(&owned_args(&["config", "--help"]));
+    let config_help = config.render_long_help().to_string();
+    assert!(config_help.contains("agents"));
+    assert_selected(
+        &["config", "agents", "sync", "--help"],
+        "sync",
+        "asp config agents sync",
+    );
+    let mut session = help_model::selected_command(&owned_args(&["session", "--help"]));
+    let session_help = session.render_long_help().to_string();
+    assert!(session_help.contains("--children"));
+    assert!(session_help.contains("--agents"));
+}
+
+#[test]
+fn removed_agent_root_fails_closed_instead_of_rendering_root_help() {
+    let error = help_model::print_help_if_requested(&owned_args(&["agent", "--help"]))
+        .expect_err("the removed asp agent root must not look available");
+    assert_eq!(error, "unknown ASP command `agent`");
 }
 
 #[test]

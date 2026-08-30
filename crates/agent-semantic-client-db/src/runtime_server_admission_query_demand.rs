@@ -15,12 +15,12 @@ impl WorkspaceGenerationAdmission {
     /// Enqueue demand without making the request await admission/build work.
     /// The returned receipt is the server-owned queued snapshot; the dispatcher
     /// performs the actual admission and terminal transition asynchronously.
-    pub fn enqueue_query_demand_for_candidate(
+    pub async fn enqueue_query_demand_for_candidate(
         &self,
         workspace_identity: String,
         project_root: PathBuf,
         candidate: super::WorkspaceGenerationCandidateIdentity,
-        target_paths: Vec<PathBuf>,
+        mut target_paths: Vec<PathBuf>,
         provider_target: Option<super::WorkspaceGenerationProviderTarget>,
     ) -> Result<super::WorkspaceGenerationAdmissionReceipt, String> {
         if workspace_identity.trim().is_empty() {
@@ -30,38 +30,45 @@ impl WorkspaceGenerationAdmission {
             return Err("query-demand admission root must be absolute".to_owned());
         }
         candidate.validate()?;
-        let receipt = super::WorkspaceGenerationAdmissionReceipt {
-            schema_id: super::WORKSPACE_GENERATION_ADMISSION_RECEIPT_SCHEMA_ID.to_owned(),
-            schema_version: "1".to_owned(),
-            workspace_identity: workspace_identity.clone(),
-            trigger: super::WorkspaceGenerationAdmissionTrigger::QueryDemand,
-            admission_mode: super::WorkspaceGenerationAdmissionMode::ColdTargeted,
-            build_owner: "runtime-server".to_owned(),
-            cancellation_authority: "runtime-server".to_owned(),
-            request_lifetime_independent: true,
-            candidate_generation: candidate.candidate_generation.clone(),
-            policy_overlay_digest: candidate.policy_overlay_digest.clone(),
-            state: super::WorkspaceGenerationAdmissionState::Queued,
-            accepted: true,
-            attempt: 1,
-            failure_stage: None,
-            commit: None,
-            error: None,
-        };
-        receipt.validate()?;
-        let admission = self.clone();
-        tokio::spawn(async move {
-            let _ = admission
-                .submit_query_demand_for_candidate(
-                    workspace_identity,
-                    project_root,
-                    candidate,
-                    target_paths,
-                    provider_target,
-                )
-                .await;
-        });
-        Ok(receipt)
+        // An empty path set used to mean a complete workspace generation. A
+        // provider search has no single owner path, but it is still a narrow
+        // request. Keep a stable, in-workspace coverage key so a Rust-only
+        // generation is neither promoted to full coverage nor reused for a
+        // later language.
+        if target_paths.is_empty()
+            && let Some(provider_target) = provider_target.as_ref()
+        {
+            target_paths.push(
+                project_root
+                    .join(".asp-runtime-query-demand")
+                    .join("provider")
+                    .join(&provider_target.language_id),
+            );
+        }
+        let target_paths = target_paths
+            .into_iter()
+            .map(|path| {
+                if path.is_absolute() && path.starts_with(&project_root) {
+                    Ok(path)
+                } else {
+                    Err(
+                        "query-demand targets must be absolute paths inside the workspace"
+                            .to_owned(),
+                    )
+                }
+            })
+            .collect::<Result<BTreeSet<_>, _>>()?;
+        self.admit_with_mode(
+            workspace_identity,
+            project_root,
+            candidate,
+            super::WorkspaceGenerationBuildMode::RestoreOrBuild,
+            super::WorkspaceGenerationAdmissionTrigger::QueryDemand,
+            super::WorkspaceGenerationAdmissionMode::ColdTargeted,
+            provider_target,
+            Arc::new(target_paths),
+        )
+        .await
     }
 
     /// Enqueues one server-owned cold admission without tying it to the query lifetime.

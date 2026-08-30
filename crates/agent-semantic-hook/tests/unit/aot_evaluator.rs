@@ -1,21 +1,13 @@
 use super::evaluate_pre_tool;
 
 const GENERATION: &str = r#"{
-  "schemaId":"agent.semantic-protocols.hook-generation",
+  "schemaId":"agent.semantic-protocols.hook-policy-bundle",
   "schemaVersion":1,
   "generationDigest":"blake3-256:g1",
   "rules":[{
-    "id":"allow-explicit-no-agent",
-    "priority":200000,
-    "matchers":["Bash"],
-    "decision":"allow",
-    "intent":"no-agent",
-    "reasonKind":"hook-policy-bypass",
-    "message":"Allowed explicit no-agent process.",
-    "processEnvironmentAssignmentAny":["ASP_NO_AGENT=1"]
-  },{
     "id":"route-read-to-asp-languages",
     "matchers":["Bash"],
+    "wrappedCommand":true,
     "actions":["read"],
     "registeredExtensions":["rs","org","md"],
     "decision":"deny",
@@ -28,15 +20,34 @@ const GENERATION: &str = r#"{
 }"#;
 
 const EDIT_GENERATION: &str = r#"{
-  "schemaId":"agent.semantic-protocols.hook-generation",
+  "schemaId":"agent.semantic-protocols.hook-policy-bundle",
   "schemaVersion":1,
   "generationDigest":"blake3-256:g2",
   "rules":[{
     "id":"deny-edit",
     "matchers":["Edit"],
+    "wrappedCommand":false,
     "decision":"deny",
     "reasonKind":"edit-policy-denied",
     "message":"Edit is denied."
+  }]
+}"#;
+
+const TESTING_GENERATION: &str = r#"{
+  "schemaId":"agent.semantic-protocols.hook-policy-bundle",
+  "schemaVersion":1,
+  "generationDigest":"blake3-256:g3",
+  "agentCallingPattern":"@{name}",
+  "rules":[{
+    "id":"testing-role-dispatch",
+    "matchers":["Bash"],
+    "wrappedCommand":true,
+    "decision":"deny",
+    "intent":"test-build-command",
+    "reasonKind":"agent-choice-required",
+    "message":"Use ASP Testing. {{agentDispatchMessage}}",
+    "route":"asp_testing",
+    "argvPrefixAny":[["cargo","test"]]
   }]
 }"#;
 
@@ -75,27 +86,6 @@ fn mismatched_tool_name_is_fail_closed() {
 }
 
 #[test]
-fn process_bound_no_agent_assignment_is_a_terminal_allow() {
-    for command in [
-        "ASP_NO_AGENT=1 arbitrary-command src/a.rs",
-        "/usr/bin/env ASP_NO_AGENT=1 arbitrary-command src/a.rs",
-        "export ASP_NO_AGENT=1; arbitrary-command src/a.rs",
-        "export ASP_NO_AGENT=1; exec arbitrary-command src/a.rs",
-    ] {
-        let payload = serde_json::json!({
-            "tool_name": "Bash",
-            "tool_input": {"command": command}
-        })
-        .to_string();
-        let decision = evaluate_pre_tool(GENERATION, &payload, "Bash")
-            .expect("evaluate")
-            .expect("terminal allow");
-        assert_eq!(decision.config_rule_id, "allow-explicit-no-agent");
-        assert_eq!(decision.decision, "allow");
-    }
-}
-
-#[test]
 fn native_edit_alias_is_authoritative_without_source_inference() {
     let payload = r#"{"tool_name":"apply_patch","tool_input":{"patch":"*** Begin Patch"}}"#;
     let decision = evaluate_pre_tool(EDIT_GENERATION, payload, "Edit")
@@ -104,6 +94,53 @@ fn native_edit_alias_is_authoritative_without_source_inference() {
     assert_eq!(decision.evidence, "host-matcher");
     assert_eq!(decision.subject, None);
     assert_eq!(decision.terminal, "host-matcher-decision");
+}
+
+#[test]
+fn configured_testing_agent_role_makes_dispatch_idempotent() {
+    let payload = serde_json::json!({
+        "tool_name": "Bash",
+        "tool_input": {"command": "cargo test -p fixture"},
+        "agent_role": "asp_testing"
+    })
+    .to_string();
+    assert_eq!(
+        evaluate_pre_tool(TESTING_GENERATION, &payload, "Bash"),
+        Ok(None)
+    );
+}
+
+#[test]
+fn codex_configured_agent_type_makes_dispatch_idempotent() {
+    let payload = serde_json::json!({
+        "tool_name": "Bash",
+        "tool_input": {"command": "cargo test -p fixture"},
+        "agent_type": "asp_testing"
+    })
+    .to_string();
+    assert_eq!(
+        evaluate_pre_tool(TESTING_GENERATION, &payload, "Bash"),
+        Ok(None)
+    );
+}
+
+#[test]
+fn temporary_subagent_identity_cannot_satisfy_registered_agent_dispatch() {
+    let payload = serde_json::json!({
+        "tool_name": "Bash",
+        "tool_input": {"command": "cargo test -p fixture"},
+        "agent_id": "child-testing",
+        "agent_role": "temporary"
+    })
+    .to_string();
+    let decision = evaluate_pre_tool(TESTING_GENERATION, &payload, "Bash")
+        .expect("evaluate unverified child")
+        .expect("dispatch deny");
+    assert_eq!(decision.reason_kind, "agent-choice-required");
+    assert!(decision.message.contains("collaboration.spawn_agent({"));
+    assert!(decision.message.contains("collaboration.list_agents({"));
+    assert!(!decision.message.contains("`@asp_testing`"));
+    assert!(!decision.message.contains("{{agentDispatchMessage}}"));
 }
 
 #[test]

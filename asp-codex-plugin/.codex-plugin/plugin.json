@@ -1,6 +1,6 @@
 {
   "name": "asp-codex-plugin",
-  "version": "0.1.0+codex.20260828215729",
+  "version": "0.1.0+codex.20260830060340",
   "description": "Codex integration for Agent Semantic Protocol using native lifecycle hooks.",
   "author": {
     "name": "tao3k"

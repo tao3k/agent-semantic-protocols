@@ -89,36 +89,6 @@ fn sample_packet() -> serde_json::Value {
     })
 }
 
-fn sample_graph_turbo_request_packet() -> serde_json::Value {
-    json!({
-        "schemaId": "agent.semantic-protocols.semantic-graph-turbo-request",
-        "schemaVersion": "1",
-        "protocolId": "agent.semantic-protocols.semantic-language",
-        "protocolVersion": "1",
-        "packetKind": "graph-turbo-request",
-        "profile": "owner-query",
-        "algorithm": "typed-ppr-diverse",
-        "seedIds": ["query:parser"],
-        "budget": 4,
-        "kindBudgets": {"owner": 1, "item": 2, "test": 1},
-        "windowMerge": {"enabled": true, "maxGapLines": 8},
-        "pathBudget": 4,
-        "pathMaxHops": 4,
-        "cache": {"enabled": true},
-        "graph": {
-            "nodes": [
-                {"id": "query:parser", "kind": "query", "role": "term", "value": "parser", "action": "lexical"},
-                {"id": "owner:cli", "kind": "owner", "role": "path", "value": "src/cli.rs", "action": "owner"},
-                {"id": "item:render", "kind": "item", "role": "symbol", "value": "render_graph", "action": "syntax"}
-            ],
-            "edges": [
-                {"source": "query:parser", "target": "owner:cli", "relation": "matches"},
-                {"source": "owner:cli", "target": "item:render", "relation": "contains"}
-            ]
-        }
-    })
-}
-
 #[test]
 fn graph_render_cli_reads_packet_file() {
     let packet_path = temp_packet_path();

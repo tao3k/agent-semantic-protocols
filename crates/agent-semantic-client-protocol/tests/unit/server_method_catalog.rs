@@ -14,7 +14,10 @@ fn server_catalog_exposes_northbound_search_query_and_schema_bundle_methods() {
         names,
         [
             "asp.graphs.evaluate",
+            "asp.graphs.timeline",
             "asp.schema.bundle",
+            "asp.session.children",
+            "asp.session.host-event",
             "rust.query",
             "rust.search",
             "rust.search.owner"
@@ -28,8 +31,25 @@ fn server_catalog_exposes_northbound_search_query_and_schema_bundle_methods() {
             .all(|method| {
                 method
                     .request_schema_id
-                    .starts_with("agent.semantic-protocols.asp-client-")
+                    .starts_with("agent.semantic-protocols.")
             })
+    );
+}
+
+#[test]
+fn multi_agent_v2_methods_are_server_owned_and_language_independent() {
+    let languages = ["rust".to_owned(), "python".to_owned()];
+    assert_eq!(
+        resolve_server_client_method_owner(crate::MULTI_AGENT_HOST_EVENT_METHOD, languages.clone()),
+        Ok(ResolvedServerClientMethod::Server(
+            ServerClientRoute::MultiAgentHostEvent
+        ))
+    );
+    assert_eq!(
+        resolve_server_client_method_owner(crate::MULTI_AGENT_CHILDREN_METHOD, languages),
+        Ok(ResolvedServerClientMethod::Server(
+            ServerClientRoute::MultiAgentChildren
+        ))
     );
 }
 

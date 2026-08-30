@@ -22,14 +22,6 @@ struct AgentInteractiveChoiceEntry {
     use_if: String,
 }
 
-#[derive(Debug)]
-pub(crate) struct AdmittedAgentInteractiveChoice {
-    pub(crate) id: String,
-    pub(crate) instruction: String,
-    pub(crate) presentation: String,
-    pub(crate) use_if: String,
-}
-
 impl AgentInteractiveChoice {
     pub(in crate::command) fn read(path: &Path, expected_stage: &str) -> Result<Self, String> {
         let source = fs::read_to_string(path)
@@ -213,60 +205,6 @@ impl AgentInteractiveChoice {
         output
     }
 
-    pub(crate) fn admit_matching(
-        &self,
-        bindings: &[(&str, &str)],
-    ) -> Result<Vec<AdmittedAgentInteractiveChoice>, String> {
-        let mut admitted = Vec::new();
-        for entry in &self.entries {
-            if !interactive_condition_matches(entry.when.as_deref(), bindings)? {
-                continue;
-            }
-            admitted.push(AdmittedAgentInteractiveChoice {
-                id: entry.id.clone(),
-                instruction: render_interactive_template(&entry.full, bindings)?,
-                presentation: entry.presentation.clone(),
-                use_if: entry.use_if.clone(),
-            });
-        }
-        if admitted.is_empty() {
-            return Err(format!(
-                "agent-interactive `{}` admitted no row for the supplied typed bindings",
-                self.id
-            ));
-        }
-        Ok(admitted)
-    }
-
-    pub(crate) fn render_admitted_pane(
-        &self,
-        contract_id: &str,
-        choices: &[(&str, &str, &str)],
-        pane_context: &str,
-    ) -> String {
-        let mut output =
-            format!("[agent-interactive] contract={contract_id}\ncontext: {pane_context}");
-        for (selection, instruction, _why) in choices {
-            output.push_str(&format!(
-                "\nchoice: {}\n   action: {}",
-                selection, instruction
-            ));
-        }
-        output
-    }
-
-    pub(crate) fn render_admitted_action(
-        &self,
-        contract_id: &str,
-        choice: &AdmittedAgentInteractiveChoice,
-        pane_context: &str,
-    ) -> String {
-        format!(
-            "[agent-interactive] contract={contract_id}\ncontext: {pane_context}\naction: {}",
-            choice.instruction,
-        )
-    }
-
     fn render_interactive_header(&self, label: &str, contract_id: Option<&str>) -> String {
         let contract = contract_id
             .map(|contract_id| format!(" contract={contract_id}"))
@@ -374,54 +312,10 @@ impl AgentInteractiveChoiceEntry {
     }
 }
 
-fn interactive_condition_matches(
-    condition: Option<&str>,
-    bindings: &[(&str, &str)],
-) -> Result<bool, String> {
-    let Some(condition) = condition else {
-        return Ok(true);
-    };
-    condition.split('&').try_fold(true, |matches, clause| {
-        let (key, expected) = clause.trim().split_once('=').ok_or_else(|| {
-            format!("agent-interactive `when` clause must use TYPED_BINDING=value: {clause}")
-        })?;
-        let key = key.trim();
-        let expected = expected.trim();
-        let actual = bindings
-            .iter()
-            .find(|(binding, _)| *binding == key)
-            .map(|(_, value)| *value)
-            .ok_or_else(|| {
-                format!("agent-interactive `when` clause requires missing binding `{key}`")
-            })?;
-        Ok(matches && actual == expected)
-    })
-}
-
 fn optional_cell(value: &str) -> Option<String> {
     let value = value.trim();
     (!value.is_empty() && value != "-").then(|| value.to_string())
 }
-
-fn render_interactive_template(
-    template: &str,
-    bindings: &[(&str, &str)],
-) -> Result<String, String> {
-    let mut rendered = template.to_owned();
-    for (key, value) in bindings {
-        rendered = rendered.replace(&format!("{{{{{key}}}}}"), value);
-    }
-    if rendered.contains("{{") || rendered.contains("}}") {
-        return Err(format!(
-            "agent-interactive instruction contains an unresolved typed placeholder: {rendered}"
-        ));
-    }
-    Ok(rendered)
-}
-
-#[cfg(test)]
-#[path = "../../../tests/unit/command/org_capture_interactive_choice.rs"]
-mod tests;
 
 fn required_interactive_field(value: Option<String>, field: &str) -> Result<String, String> {
     value

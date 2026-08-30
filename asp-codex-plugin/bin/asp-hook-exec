@@ -1,0 +1,28 @@
+#!/bin/sh
+set -eu
+
+asp_hook_state_home=${ASP_STATE_HOME:-${HOME}/.agent-semantic-protocols}
+
+asp_hook_binary_unavailable() {
+    asp_hook_reason='ASP Hook evaluator is unavailable because the canonical Runtime Hook binary is missing or non-executable. Publish it with: asp install binary'
+    case "${1:-}" in
+        pre-tool)
+            printf '%s\n' "{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"$asp_hook_reason\"},\"systemMessage\":\"$asp_hook_reason\"}"
+            ;;
+        *)
+            printf '%s\n' "{\"systemMessage\":\"$asp_hook_reason\"}"
+            ;;
+    esac
+}
+
+if [ "${ASP_NO_AGENT:-}" = "1" ]; then
+    printf '%s\n' '{}'
+    exit 0
+fi
+
+hook_bin="$asp_hook_state_home/runtime/bin/asp-hook"
+if [ ! -x "$hook_bin" ]; then
+    asp_hook_binary_unavailable "${1:-}"
+    exit 0
+fi
+exec "$hook_bin" "$@"

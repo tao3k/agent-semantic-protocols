@@ -102,7 +102,7 @@ fn codex_post_tool_non_allow_decisions_use_the_observational_output_contract() {
             hook_output
                 .get("additionalContext")
                 .and_then(serde_json::Value::as_str)
-                .is_some_and(|context| context.starts_with("[agent-hook-decision] "))
+                .is_some_and(|context| context == decision.message)
         );
         assert_eq!(
             rendered

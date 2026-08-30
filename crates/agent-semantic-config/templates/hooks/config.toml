@@ -14,10 +14,14 @@ readerBehaviorPatterns = [
   ["cat"],
   ["head"],
   ["tail"],
-  ["bat"],
+  ["bat", "*"],
   ["grep"],
   ["rg"],
   ["sed", "-n"],
+  # `git` is not a Reader as a whole.  These patterns require the arguments
+  # that select source content; their trailing tokens use glob syntax.
+  ["git", "show", "*:*.?*"],
+  ["git", "diff", "**"],
 ]
 
 [agentCalling]
@@ -174,26 +178,41 @@ argvPrefixAny = [
   ["git", "blame"],
 ]
 
-# The command-local escape is the second no-agent layer. A parser-proven
-# process environment binding bypasses all Hook policy for that Bash process.
+# Codex thread lifecycle and message transport are Host coordination actions,
+# not shell commands or generic MCP execution. Keep their native tool names
+# exact so policy receipts retain the action that the Host actually invoked.
 [[rules]]
-id = "allow-explicit-no-agent"
-priority = 200000
-matcher = "Bash"
-intent = "no-agent"
+id = "allow-codex-thread-control"
+priority = 190000
+matcher = "mcp__codex_app__create_thread|mcp__codex_app__fork_thread|mcp__codex_app__list_threads|mcp__codex_app__list_archived_threads|mcp__codex_app__read_thread|mcp__codex_app__read_thread_terminal|mcp__codex_app__send_message_to_thread|mcp__codex_app__wait_threads|mcp__codex_app__handoff_thread|mcp__codex_app__get_handoff_status|mcp__codex_app__navigate_to_codex_page|mcp__codex_app__open_in_codex|mcp__codex_app__set_thread_archived|mcp__codex_app__set_thread_pinned|mcp__codex_app__set_thread_title|mcp__codex_app__share_thread"
+intent = "host-thread-control"
 decision = "allow"
 terminal = true
 event = "pre-tool"
 platform = "codex"
-message = "Allowed an explicitly no-agent process without Hook policy routing."
+message = "Allowed an exact Codex thread-control action after native Host matching."
 
-[rules.match]
-processEnvironmentAssignmentAny = ["ASP_NO_AGENT=1"]
+[[rules]]
+id = "allow-codex-workspace-observation"
+priority = 190000
+matcher = "mcp__codex_app__list_projects|mcp__codex_app__load_workspace_dependencies"
+intent = "host-workspace-observation"
+decision = "allow"
+terminal = true
+event = "pre-tool"
+platform = "codex"
+message = "Allowed an exact Codex workspace-observation action after native Host matching."
 
-[rules.fields]
-bypassOwner = "hook-matcher"
-bypassScope = "host-policy"
-recoveryAuthority = "explicit-no-agent-process"
+[[rules]]
+id = "allow-codex-automation-control"
+priority = 190000
+matcher = "mcp__codex_app__automation_update"
+intent = "host-automation-control"
+decision = "allow"
+terminal = true
+event = "pre-tool"
+platform = "codex"
+message = "Allowed an exact Codex automation control action; the Host remains the mutation authority."
 
 # Native Host Edit actions with an explicit workspace path receive a stable
 # mutation intent. Agent registration profiles remain the authority that may
@@ -201,7 +220,7 @@ recoveryAuthority = "explicit-no-agent-process"
 [[rules]]
 id = "allow-owner-scoped-mutation"
 priority = 150000
-matcher = "^apply_patch$"
+matcher = "apply_patch"
 intent = "owner-scoped-mutation"
 decision = "allow"
 terminal = true
@@ -223,8 +242,8 @@ matcherPolicies = ["wrapped_command"]
 priority = 100000
 intent = "reasoning-search"
 decision = "deny"
-reasonKind = "subagent-receipt-required"
-message = "Registered-source reasoning search is denied only in the current Agent. This policy is owned by Config TOML: delegate search to the registered ASP Explorer, require its exact selector receipt, then materialize that selector from the main thread with `asp <language> query --selector ... --projection source`. The `--json` flag is reserved for explicit debug or programmatic automation, not normal Explorer evidence flow. {{agentDispatchMessage}}"
+reasonKind = "agent-choice-required"
+message = "The current Agent cannot run this registered-source reasoning search. Delegate the denied search to ASP Explorer. It must return an exact selector; after that, materialize only that selector from the main thread with `asp <language> query --selector ... --projection source`. Use `--json` only for explicitly requested debugging or programmatic automation. {{agentDispatchMessage}}"
 event = "pre-tool"
 
 [rules.match]
@@ -244,7 +263,7 @@ matcherPolicies = ["wrapped_command"]
 priority = 100000
 intent = "structured-projection"
 decision = "deny"
-reasonKind = "subagent-receipt-required"
+reasonKind = "agent-choice-required"
 event = "pre-tool"
 
 [rules.match]
@@ -262,7 +281,7 @@ matcherPolicies = ["wrapped_command"]
 priority = 90000
 intent = "test-build-command"
 decision = "deny"
-reasonKind = "subagent-receipt-required"
+reasonKind = "agent-choice-required"
 message = "This operation is denied only in the current Agent; ASP remains available. {{agentDispatchMessage}}"
 event = "pre-tool"
 
@@ -292,7 +311,7 @@ matcherPolicies = ["wrapped_command"]
 priority = 91000
 intent = "review-command"
 decision = "deny"
-reasonKind = "subagent-receipt-required"
+reasonKind = "agent-choice-required"
 message = "Rust formatting verification is denied only in the current Agent; run the non-mutating `cargo fmt ... -- --check` form in the ASP Testing lane. {{agentDispatchMessage}}"
 event = "pre-tool"
 
@@ -317,7 +336,7 @@ matcherPolicies = ["wrapped_command"]
 priority = 90000
 intent = "review-command"
 decision = "deny"
-reasonKind = "subagent-receipt-required"
+reasonKind = "agent-choice-required"
 message = "Static review is denied only in the current Agent; run it in the ASP Testing lane and return the typed receipt. {{agentDispatchMessage}}"
 event = "pre-tool"
 
@@ -343,7 +362,7 @@ matcherPolicies = ["wrapped_command"]
 priority = 90000
 intent = "git-history-inspection"
 decision = "deny"
-reasonKind = "subagent-receipt-required"
+reasonKind = "agent-choice-required"
 message = "Git history inspection can emit large repository-object projections. Run this command in the ASP Testing lane and return a compact receipt. {{agentDispatchMessage}}"
 event = "pre-tool"
 
@@ -365,7 +384,7 @@ matcherPolicies = ["wrapped_command"]
 priority = 90000
 intent = "live-corpus-qualification"
 decision = "deny"
-reasonKind = "subagent-receipt-required"
+reasonKind = "agent-choice-required"
 message = "Live Corpus qualification is denied only in the current Agent; run the formal qualification in the ASP Testing execution lane. {{agentDispatchMessage}}"
 event = "pre-tool"
 
@@ -389,7 +408,7 @@ matcherPolicies = ["wrapped_command"]
 priority = 90000
 intent = "test-build-command"
 decision = "deny"
-reasonKind = "subagent-receipt-required"
+reasonKind = "agent-choice-required"
 message = "This Gerbil build is denied only in the current Agent; run it in the ASP Testing execution lane. {{agentDispatchMessage}}"
 event = "pre-tool"
 
@@ -426,12 +445,11 @@ commandContainsAny = ["--json"]
 [[rules]]
 id = "route-read-to-asp-languages"
 priority = 40000
-matcherPolicies = ["wrapped_command"]
 actions = ["read"]
 profilesList = ["rust", "typescript", "python", "julia", "gerbil-scheme", "org", "markdown"]
 decision = "deny"
 reasonKind = "registered-source-route-required"
-message = "Confirmed {{languageId}} source reads are denied. Use the parser-owned ASP route below instead of raw Read."
+message = "The current Agent cannot read this confirmed {{languageId}} source directly. Delegate the denied read to ASP Explorer and continue from its exact selector receipt. {{agentDispatchMessage}}"
 
 
 [rules.dispatch]

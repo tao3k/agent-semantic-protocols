@@ -8,15 +8,21 @@ pub mod aot_compiler;
 pub mod aot_evaluator;
 #[cfg(feature = "evaluator")]
 mod aot_evaluator_cli;
-#[cfg(feature = "compiler")]
-pub mod candidate_validation;
+#[cfg(feature = "evaluator")]
+mod aot_session_route;
 #[cfg(feature = "evaluator")]
 mod hook_binary;
 
 #[cfg(feature = "evaluator")]
-pub use aot_evaluator_cli::evaluate_payload_from_current;
-#[cfg(feature = "evaluator")]
 pub use aot_evaluator_cli::main_entry as run_aot_evaluator_cli;
+#[cfg(feature = "evaluator")]
+pub use aot_evaluator_cli::{
+    evaluate_payload_from_embedded, payload_has_process_no_agent_assignment,
+};
+#[cfg(feature = "evaluator")]
+pub use aot_session_route::{
+    AotHookSessionRouteReceipt, publish_aot_hook_session_route, read_aot_hook_session_route,
+};
 #[cfg(feature = "evaluator")]
 pub use hook_binary::run_from_env as run_hook_binary_from_env;
 
@@ -130,9 +136,7 @@ pub use reader_probe::{
     diagnose_reader_probe, diagnose_reader_probe_with_state_home,
 };
 #[cfg(all(any(feature = "compiler", feature = "evaluator"), target_os = "macos"))]
-pub use reader_probe::{
-    materialize_reader_probe_fixture, reader_probe_fixture_bytes,
-};
+pub use reader_probe::{materialize_reader_probe_fixture, reader_probe_fixture_bytes};
 
 #[cfg(feature = "compiler")]
 pub use provider_registry::ProviderDevelopmentRegistration;
@@ -181,7 +185,8 @@ pub use dev_context::{ActiveContextRecord, record_active_context};
 pub use event_state::{
     HookSessionAgentRoute, append_hook_event_state, apply_repeated_deny_replay,
     has_recorded_subagent_context, latest_hook_session_agent_route,
-    latest_hook_session_agent_route_for_root, remove_incompatible_hook_event_state,
+    latest_hook_session_agent_route_for_root,
+    latest_hook_session_agent_route_for_root_matching_rules, remove_incompatible_hook_event_state,
     try_append_hook_event_state,
 };
 #[cfg(feature = "compiler")]
@@ -266,3 +271,5 @@ pub use crate::provider_registry::{
 use agent_semantic_shell_parser as shell_parser;
 #[cfg(feature = "compiler")]
 mod agent_dispatch_message;
+#[cfg(feature = "compiler")]
+mod collaboration_snapshot_inbox;

@@ -11,13 +11,10 @@ from typing import TYPE_CHECKING, Any, Mapping
 
 from .service_protocol import (
     ServiceProtocolError,
-    nonnegative_int,
-    optional_mapping,
     positive_int,
     required_digest,
     required_string,
     service_receipt,
-    string_int_mapping,
     string_sequence,
     validate_service_envelope,
 )
@@ -47,6 +44,18 @@ class AspPythonGraphsSession:
     _cancelled_requests: set[str] = field(default_factory=set, init=False, repr=False)
 
     def handle(self, message: Mapping[str, Any]) -> dict[str, object]:
+        return self._handle(message, sequence_admitted=False)
+
+    def admit_message(
+        self, message: Mapping[str, Any], *, validate_service_epoch: bool = True
+    ) -> None:
+        """Validate and reserve transport order before a worker is spawned.
+
+        The gRPC reader is the actor that observes the incoming stream order.
+        Evaluation work may run in ``to_thread`` workers, so sequence
+        admission cannot be performed for the first time inside those workers
+        without making an otherwise ordered stream race.
+        """
         validate_service_envelope(message)
         sequence = message["sequence"]
         assert isinstance(sequence, int)
@@ -57,13 +66,35 @@ class AspPythonGraphsSession:
                 raise ServiceProtocolError(
                     "non-monotonic-sequence", "session sequence must increase monotonically"
                 )
-            if kind != "hello" and self.service_epoch != service_epoch:
+            if (
+                validate_service_epoch
+                and kind != "hello"
+                and self.service_epoch != service_epoch
+            ):
                 raise ServiceProtocolError(
                     "service-epoch-drift",
                     "message serviceEpoch does not match the bound service session",
                 )
             self._last_sequence = sequence
+
+    def handle_admitted(self, message: Mapping[str, Any]) -> dict[str, object]:
+        """Handle a message whose transport order was admitted by the reader."""
+        return self._handle(message, sequence_admitted=True)
+
+    def _handle(
+        self, message: Mapping[str, Any], *, sequence_admitted: bool
+    ) -> dict[str, object]:
+        if not sequence_admitted:
+            self.admit_message(message)
         request_id = str(message["requestId"])
+        kind = str(message["messageKind"])
+        service_epoch = str(message["serviceEpoch"])
+        with self._generation_lock:
+            if kind != "hello" and self.service_epoch != service_epoch:
+                raise ServiceProtocolError(
+                    "service-epoch-drift",
+                    "message serviceEpoch does not match the bound service session",
+                )
         if kind == "cancel":
             cancellation_id = str(message["cancellationId"])
             with self._generation_lock:
@@ -138,8 +169,11 @@ class AspPythonGraphsSession:
     ) -> dict[str, object]:
         from .artifact_event_packet import artifact_events_from_packet
         from .artifact_timeline import evaluate_artifact_events_timeline
-        from .artifact_timeline_parameters import TimelineParameters
-        from .timeline_cli import _parse_args, _parse_since
+        from .artifact_timeline_parameters import (
+            TimelineParameters,
+            parse_since,
+            parse_timeline_args,
+        )
 
         payload = message.get("payload")
         if not isinstance(payload, Mapping):
@@ -163,14 +197,14 @@ class AspPythonGraphsSession:
                 "invalid-timeline-arguments", "timeline payload.arguments must be strings"
             )
         try:
-            parsed = _parse_args(["--format", "json", *arguments])
+            parsed = parse_timeline_args(["--format", "json", *arguments])
             parameters = TimelineParameters(
                 subagent_start_gap_seconds=parsed.subagent_start_gap_seconds,
                 subagent_soft_max_seconds=parsed.subagent_soft_max_seconds,
                 subagent_hard_max_seconds=parsed.subagent_hard_max_seconds,
                 session_gap_seconds=parsed.session_gap_seconds,
                 examples=parsed.examples,
-                since_timestamp=_parse_since(parsed.since),
+                since_timestamp=parse_since(parsed.since),
                 recent_sessions=parsed.recent_sessions,
             )
             events = artifact_events_from_packet(packet)
@@ -306,7 +340,7 @@ class AspPythonGraphsSession:
     def _evaluate(
         self, message: Mapping[str, Any], request_id: str, graph: "TypedGraph"
     ) -> dict[str, object]:
-        from .ranking import rank_frontier
+        from .algorithm import rank_graph
         from .result_packet import result_to_packet
 
         workspace, generation, token, payload = self._generation_identity(message)
@@ -322,24 +356,13 @@ class AspPythonGraphsSession:
             raise ServiceProtocolError(
                 "invalid-rank-payload", "payload.rankPayload must be an object"
             )
-        result = rank_frontier(
+        controls = dict(rank_payload)
+        controls["seedIds"] = list(string_sequence(rank_payload.get("seedIds")))
+        controls["budget"] = positive_int(rank_payload.get("budget"), 8)
+        result = rank_graph(
             graph,
+            controls,
             profile=str(payload.get("profile", "owner-query")),
-            seeds=string_sequence(rank_payload.get("seedIds")),
-            limit=positive_int(payload.get("budget"), 8),
-            kind_budgets=string_int_mapping(rank_payload.get("kindBudgets")),
-            window_merge_enabled=bool(
-                optional_mapping(rank_payload.get("windowMerge")).get("enabled", True)
-            ),
-            window_merge_max_gap_lines=nonnegative_int(
-                optional_mapping(rank_payload.get("windowMerge")).get("maxGapLines"), 8
-            ),
-            path_budget=positive_int(rank_payload.get("pathBudget"), 4),
-            path_max_hops=positive_int(rank_payload.get("pathMaxHops"), 4),
-            cache_enabled=bool(
-                optional_mapping(rank_payload.get("cache")).get("enabled", True)
-            ),
-            query_clauses=string_sequence(rank_payload.get("queryClauses")),
         )
         receipt = self._receipt(request_id, "completed", workspace, generation, token,
                                 sequence=int(message["sequence"]))

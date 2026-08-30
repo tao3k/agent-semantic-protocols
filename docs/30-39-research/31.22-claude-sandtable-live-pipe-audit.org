@@ -989,12 +989,14 @@ costUsd=0.280277
 The executed flow was the intended three-step path: prime, pipe, and the
 primary selector query for =tokio/src/io/blocking.rs:15:35=.
 
-The receipt-driven feedback loop is now executable.  =asp-python-graphs
-feedback= converts the live sandtable JSON into a
+The receipt-driven feedback loop is now executable.  The offline evidence
+adapter converts the live sandtable JSON into a
 =semantic-graph-turbo-feedback.v1= packet containing schema-owned =receipt=
-nodes.  =asp-python-graphs rank --feedback <packet>= merges those receipt facts
-into the typed graph before ranking, so feedback still flows through the same
-sparse graph engine and shows up in result metrics and explanations.
+nodes.  The private ASP Server gRPC session receives that packet together with
+the graph request and merges the receipt facts before ranking, so feedback
+still flows through the same sparse graph engine and shows up in result metrics
+and explanations.  Offline tooling may call the import-only algorithm API to
+prepare evidence, but there is no =asp-python-graphs rank= command.
 
 The Tokio live receipt produced one success feedback node for
 =tokio/src/io/blocking.rs:15:35=.  Re-ranking the same =Vec scalar collection

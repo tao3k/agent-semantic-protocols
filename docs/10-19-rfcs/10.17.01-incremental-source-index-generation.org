@@ -2,6 +2,16 @@
 #+AUTHOR: ASP maintainers
 #+OPTIONS: toc:2
 
+* V1 refactor design hold
+
+The target V1 uses an exact content-addressed workspace/source binding owned
+by the ASP Server. ActivationGeneration is not product identity and will be
+removed from V1 semantics only in an approved in-place refactor. Until then,
+this is a design constraint, not a serving change: no generation, direct-link,
+project-entry, or active-candidate record is deleted, dual-read, or rerouted.
+The commit carries mutationId, leaseId, and expected digest for transaction
+ordering. See RFC 10.05 and the impact inventory for the non-executing plan.
+
 * Status
 
 Proposed for the V1 Turso source-index performance closure.

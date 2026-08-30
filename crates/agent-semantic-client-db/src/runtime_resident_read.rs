@@ -93,6 +93,14 @@ impl RuntimeResidentReadClient {
             .read_source_index(query, authority, limit)
     }
 
+    pub fn parser_owned_callable_selector_pairs(
+        &self,
+        owner_paths: &[String],
+    ) -> Result<Vec<(String, String)>, String> {
+        self.search_projection
+            .parser_owned_callable_selector_pairs(owner_paths)
+    }
+
     pub fn generation_digest(&self) -> String {
         self.exact_projection.generation_digest().to_owned()
     }

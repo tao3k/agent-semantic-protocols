@@ -1,5 +1,6 @@
 //! Append-only hook event state persisted by `asp hook`.
 
+use std::collections::BTreeSet;
 use std::fs::{self, File, OpenOptions};
 use std::io::{BufRead, BufReader, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
@@ -125,7 +126,7 @@ pub fn apply_repeated_deny_replay(
     let source_access_replay = is_source_access_replay_key(&replay_key);
     let preserve_parser_route_message = should_preserve_parser_route_message(decision);
     if source_access_replay && !preserve_parser_route_message {
-        insert_choice_plane_recovery_action_fields(decision);
+        insert_collaboration_recovery_action_fields(decision);
     }
     let compact_first_source_access_replay =
         source_access_replay && should_compact_source_access_deny_message(decision);
@@ -165,15 +166,15 @@ pub fn apply_repeated_deny_replay(
     Ok(true)
 }
 
-fn insert_choice_plane_recovery_action_fields(decision: &mut HookDecision) {
+fn insert_collaboration_recovery_action_fields(decision: &mut HookDecision) {
     decision
         .fields
         .entry("requiredAction".to_string())
-        .or_insert_with(|| Value::String("open-org-interactive-choice-plane".to_string()));
+        .or_insert_with(|| Value::String("collaboration.spawn_agent".to_string()));
     decision
         .fields
         .entry("nextAction".to_string())
-        .or_insert_with(|| Value::String("run-asp-session-agent-window".to_string()));
+        .or_insert_with(|| Value::String("spawn-configured-agent".to_string()));
     decision
         .fields
         .entry("forbiddenUntilResolved".to_string())
@@ -184,8 +185,12 @@ fn insert_choice_plane_recovery_action_fields(decision: &mut HookDecision) {
         .or_insert_with(|| Value::String("host-agent-action-receipt".to_string()));
     decision
         .fields
-        .entry("agentWindowCommand".to_string())
-        .or_insert_with(|| Value::String("asp session --agents choice-plane".to_string()));
+        .entry("collaborationNamespace".to_string())
+        .or_insert_with(|| Value::String("collaboration".to_string()));
+    decision
+        .fields
+        .entry("collaborationTool".to_string())
+        .or_insert_with(|| Value::String("spawn_agent".to_string()));
 }
 
 /// Return the newest denied Hook policy selection for this root session.
@@ -210,9 +215,37 @@ pub fn latest_hook_session_agent_route_for_root(
     ))
 }
 
+/// Read the newest route that still belongs to the current immutable Hook
+/// configuration. Events from older generations remain audit evidence, but
+/// cannot select a rule which the active configuration no longer declares.
+pub fn latest_hook_session_agent_route_for_root_matching_rules(
+    project_root: &Path,
+    root_session_id: Option<&str>,
+    current_rule_ids: &BTreeSet<String>,
+) -> Result<Option<HookSessionAgentRoute>, String> {
+    let state_path = ensure_project_hook_state_dir(project_root)?.join(HOOK_EVENT_STATE_FILE);
+    if !state_path.is_file() {
+        return Ok(None);
+    }
+    let lines = read_hook_event_state_tail(&state_path)?;
+    Ok(latest_hook_session_agent_route_from_lines_matching(
+        &lines,
+        root_session_id,
+        |route| current_rule_ids.contains(&route.config_rule_id),
+    ))
+}
+
 fn latest_hook_session_agent_route_from_lines(
     lines: &[String],
     required_root_session_id: Option<&str>,
+) -> Option<HookSessionAgentRoute> {
+    latest_hook_session_agent_route_from_lines_matching(lines, required_root_session_id, |_| true)
+}
+
+fn latest_hook_session_agent_route_from_lines_matching(
+    lines: &[String],
+    required_root_session_id: Option<&str>,
+    accepts: impl Fn(&HookSessionAgentRoute) -> bool,
 ) -> Option<HookSessionAgentRoute> {
     lines.iter().rev().find_map(|line| {
         let event = serde_json::from_str::<Value>(line).ok()?;
@@ -220,13 +253,13 @@ fn latest_hook_session_agent_route_from_lines(
             event.get("decision").and_then(Value::as_str),
             Some("deny" | "block")
         ) || event
-            .pointer("/fields/agentWindowCommand")
+            .pointer("/fields/collaborationTool")
             .and_then(Value::as_str)
-            != Some("asp session --agents choice-plane")
+            != Some("spawn_agent")
             || event
-                .pointer("/fields/choicePlaneOwner")
+                .pointer("/fields/collaborationNamespace")
                 .and_then(Value::as_str)
-                != Some("org-contract:agent-interactive")
+                != Some("collaboration")
         {
             return None;
         }
@@ -237,7 +270,7 @@ fn latest_hook_session_agent_route_from_lines(
         if required_root_session_id.is_some_and(|required| required != root_session_id) {
             return None;
         }
-        Some(HookSessionAgentRoute {
+        let route = HookSessionAgentRoute {
             command_digest: event
                 .pointer("/fields/commandDigest")
                 .and_then(Value::as_str)
@@ -254,7 +287,8 @@ fn latest_hook_session_agent_route_from_lines(
                 .pointer("/subject/command")
                 .and_then(Value::as_str)
                 .map(str::to_owned),
-        })
+        };
+        accepts(&route).then_some(route)
     })
 }
 
@@ -313,6 +347,13 @@ fn append_hook_event_state_with_lock_timeout(
         "fields": fields,
         "denyReplayKey": decision.fields.get("denyReplayKey"),
     });
+    append_hook_event_value(&state_path, &event)?;
+    FileExt::unlock(&writer_lock)
+        .map_err(|error| format!("unlock Hook event writer {}: {error}", state_dir.display()))?;
+    Ok(state_path)
+}
+
+fn append_hook_event_value(state_path: &Path, event: &Value) -> Result<(), String> {
     let mut line = event.to_string();
     line.push('\n');
     let state_len = fs::metadata(&state_path)
@@ -365,9 +406,7 @@ fn append_hook_event_state_with_lock_timeout(
             )
         })?;
     }
-    FileExt::unlock(&writer_lock)
-        .map_err(|error| format!("unlock Hook event writer {}: {error}", state_dir.display()))?;
-    Ok(state_path)
+    Ok(())
 }
 
 fn acquire_event_state_writer(state_dir: &Path, lock_timeout: Duration) -> Result<File, String> {

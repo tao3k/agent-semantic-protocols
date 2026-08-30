@@ -55,7 +55,7 @@ On a validated active-generation hit, query execution MUST NOT:
 
 - collect workspace files;
 - reconstruct a workspace snapshot or Merkle tree;
-- open the client database;
+- open the ASP Server DB;
 - spawn a provider;
 - read source files;
 - write a manifest.

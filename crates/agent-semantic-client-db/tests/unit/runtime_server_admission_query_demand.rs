@@ -44,9 +44,11 @@ async fn enqueue_query_demand_returns_queued_before_dispatcher_builds() {
     let id = "enqueue-integration".to_owned();
     let queued = admission
         .enqueue_query_demand_for_candidate(id.clone(), root.clone(), candidate(), Vec::new(), None)
+        .await
         .expect("enqueue");
     assert_eq!(queued.state, WorkspaceGenerationAdmissionState::Queued);
     assert!(queued.accepted);
+    assert!(admission.status(&id, &root).is_some());
     assert_eq!(builds.load(Ordering::SeqCst), 0);
     started.notified().await;
     let failed = admission.wait_terminal(&id, &root).await.expect("terminal");

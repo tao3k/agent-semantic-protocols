@@ -2,7 +2,7 @@
 name = "agent-semantic-client-db"
 version = "0.1.0"
 edition.workspace = true
-description = "Turso-backed DB Engine for the agent semantic client cache."
+description = "ASP Server-owned Turso/Merkle DB Engine for semantic source generations."
 license = "MIT"
 
 [features]
@@ -22,6 +22,8 @@ agent-semantic-content-identity.workspace = true
 agent-semantic-artifacts.workspace = true
 agent-semantic-client-core = { path = "../agent-semantic-client-core" }
 agent-semantic-client-protocol = { path = "../agent-semantic-client-protocol" }
+agent-semantic-client-server = { path = "../agent-semantic-client-server" }
+agent-semantic-config = { path = "../agent-semantic-config" }
 agent-semantic-provider-transport = { path = "../agent-semantic-provider-transport" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
@@ -84,7 +86,6 @@ required-features = ["turso-sync-server-e2e"]
 
 
 [dev-dependencies]
-agent-semantic-config = { path = "../agent-semantic-config" }
 criterion = { workspace = true }
 gix = { workspace = true }
 asp-rust-project-harness-policy.workspace = true

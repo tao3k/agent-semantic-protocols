@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 use crate::{aot_evaluator, reader_probe};
 
-/// Runs the standalone immutable `HookGeneration` evaluator entrypoint.
+/// Runs the Hook evaluator embedded in the canonical ASP binary.
 pub fn main_entry() {
     if inherited_no_agent_bypass() {
         // An empty object is a valid pass-through response for every Codex
@@ -20,35 +20,21 @@ pub fn main_entry() {
     let first = invocation
         .next()
         .and_then(|argument| argument.into_string().ok());
-    let event = if first.as_deref() == Some("hook") {
-        invocation
-            .next()
-            .and_then(|argument| argument.into_string().ok())
-    } else {
-        first
-    };
+    let event = first;
     match event.as_deref() {
         Some("pre-tool") => {}
         Some("permission") | Some("permission-request") => {
-            println!(
-                "{}",
-                crate::render_codex_permission_request(
-                    "deny",
-                    Some(
-                        "ASP Hook denies the permission request until the command is admitted by policy."
-                    ),
-                )
-            );
+            emit_permission_request_terminal();
             return;
         }
         // Observational Host events must still return one valid JSON object.
         // Producing no stdout makes Codex report an invalid PostToolUse Hook
         // response even though no policy decision is required for the event.
         Some(
-            "post-tool" | "stop" | "notification" | "user-prompt" | "session-start"
-            | "subagent-start" | "subagent-stop",
+            event @ ("post-tool" | "stop" | "notification" | "user-prompt" | "session-start"
+            | "subagent-start" | "subagent-stop"),
         ) => {
-            println!("{{}}");
+            emit_observational_event(event);
             return;
         }
         _ => {
@@ -64,8 +50,8 @@ pub fn main_entry() {
                 message,
             ),
             EvaluationFailure::GenerationAuthority(message) => (
-                "hook-generation-unavailable",
-                "hook-generation-unavailable",
+                "hook-policy-bundle-unavailable",
+                "hook-policy-bundle-unavailable",
                 message,
             ),
         };
@@ -88,6 +74,37 @@ pub fn main_entry() {
     }
 }
 
+fn emit_observational_event(event: &str) {
+    #[cfg(feature = "compiler")]
+    if event == "post-tool" {
+        let mut payload_json = String::new();
+        let observation = std::io::stdin()
+            .read_to_string(&mut payload_json)
+            .map_err(|error| format!("read PostToolUse payload: {error}"))
+            .and_then(|_| {
+                serde_json::from_str(&payload_json)
+                    .map_err(|error| format!("decode PostToolUse payload: {error}"))
+            })
+            .and_then(|payload| {
+                crate::collaboration_snapshot_inbox::observe_post_tool_payload(&payload)
+            });
+        if let Err(error) = observation {
+            eprintln!("ASP Hook collaboration heartbeat observation failed: {error}");
+        }
+    }
+    println!("{{}}");
+}
+
+/// PermissionRequest is the Host approval plane after PreToolUse policy.
+///
+/// This event carries no authenticated PreTool admission receipt, so it cannot
+/// safely re-evaluate or strengthen ASP policy. A policy denial terminates in
+/// PreToolUse; every invocation that reaches PermissionRequest is returned to
+/// the Host approval flow unchanged.
+fn emit_permission_request_terminal() {
+    println!("{}", crate::render_codex_permission_request("allow", None));
+}
+
 fn inherited_no_agent_bypass() -> bool {
     std::env::var_os("ASP_NO_AGENT").is_some_and(|value| value == "1")
 }
@@ -99,25 +116,15 @@ enum EvaluationFailure {
 
 fn evaluate() -> Result<(), EvaluationFailure> {
     let mut args = std::env::args_os().skip(1);
-    let mut generation_path = None;
+    let mut policy_bundle_path = None;
     let mut host_matcher = None;
     while let Some(argument) = args.next() {
         match argument.to_str() {
-            Some("--generation") => generation_path = args.next().map(PathBuf::from),
+            Some("--policy-bundle") => policy_bundle_path = args.next().map(PathBuf::from),
             Some("--host-match") => {
                 if host_matcher.is_some() {
                     return Err(EvaluationFailure::HostMatcherAuthority(
-                        "plugin Host matcher requires exactly one --host-match or --host-match-prefix"
-                            .to_owned(),
-                    ));
-                }
-                host_matcher = args.next().and_then(|value| value.into_string().ok());
-            }
-            Some("--host-match-prefix") => {
-                if host_matcher.is_some() {
-                    return Err(EvaluationFailure::HostMatcherAuthority(
-                        "plugin Host matcher requires exactly one --host-match or --host-match-prefix"
-                            .to_owned(),
+                        "plugin Host matcher requires exactly one --host-match".to_owned(),
                     ));
                 }
                 host_matcher = args.next().and_then(|value| value.into_string().ok());
@@ -127,8 +134,7 @@ fn evaluate() -> Result<(), EvaluationFailure> {
     }
     let host_matcher = host_matcher.ok_or_else(|| {
         EvaluationFailure::HostMatcherAuthority(
-            "plugin Host matcher requires exactly one --host-match or --host-match-prefix"
-                .to_owned(),
+            "plugin Host matcher requires exactly one --host-match".to_owned(),
         )
     })?;
     let mut payload_json = String::new();
@@ -153,34 +159,25 @@ fn evaluate() -> Result<(), EvaluationFailure> {
         println!("{{}}");
         return Ok(());
     }
-    let generation_path = match generation_path {
-        Some(path) => path,
-        None => match std::env::var_os("ASP_HOOK_GENERATION_ROOT") {
-            Some(root) if !root.is_empty() => {
-                PathBuf::from(root).join("compiled-hook-generation.json")
-            }
-            Some(_) => {
-                return Err(EvaluationFailure::GenerationAuthority(
-                    "ASP_HOOK_GENERATION_ROOT is set but empty".to_owned(),
-                ));
-            }
-            None => implicit_generation_path().map_err(EvaluationFailure::GenerationAuthority)?,
-        },
-    };
-    if let Some(typed) =
-        evaluate_payload_at_generation(&generation_path, &payload_json, &host_matcher)
-            .map_err(EvaluationFailure::GenerationAuthority)?
-    {
-        println!("{typed}");
+    let payload_json = serde_json::to_string(&payload).map_err(|error| {
+        EvaluationFailure::GenerationAuthority(format!("encode enriched Hook payload: {error}"))
+    })?;
+    let evaluated = match policy_bundle_path {
+        Some(path) => evaluate_payload_at_policy_bundle(&path, &payload_json, &host_matcher),
+        None => evaluate_payload_from_embedded(&payload_json, &host_matcher),
+    }
+    .map_err(EvaluationFailure::GenerationAuthority)?;
+    match evaluated {
+        Some(typed) => println!("{typed}"),
+        None => println!("{{}}"),
     }
     Ok(())
 }
 
 /// Evaluate one already-bounded Host payload against the immutable current
-/// HookGeneration. This is shared by the standalone evaluator and the direct
-/// `asp hook pre-tool` compatibility surface so there is only one policy
-/// engine and one publication format.
-pub fn evaluate_payload_from_current(
+/// HookPolicyBundle. This is shared by the standalone evaluator and the direct
+/// canonical Runtime Hook binary so there is only one policy engine.
+pub fn evaluate_payload_from_embedded(
     payload_json: &str,
     host_matcher: &str,
 ) -> Result<Option<serde_json::Value>, String> {
@@ -189,14 +186,26 @@ pub fn evaluate_payload_from_current(
     if command_local_no_agent_bypass(&payload, host_matcher) {
         return Ok(Some(serde_json::json!({})));
     }
-    let generation_path = implicit_generation_path()?;
-    evaluate_payload_at_generation(&generation_path, payload_json, host_matcher)
+    let payload_json = serde_json::to_string(&payload)
+        .map_err(|error| format!("encode enriched Hook payload: {error}"))?;
+    let policy_bundle = crate::aot_compiler::compile_embedded_hook_policy_bundle()?;
+    let policy_bundle = std::str::from_utf8(&policy_bundle)
+        .map_err(|error| format!("embedded Hook policy bundle is not UTF-8: {error}"))?;
+    evaluate_payload_with_policy_bundle(policy_bundle, &payload_json, host_matcher)
 }
 
 fn command_local_no_agent_bypass(payload: &serde_json::Value, host_matcher: &str) -> bool {
-    if host_matcher != "Bash"
-        || payload.get("tool_name").and_then(serde_json::Value::as_str) != Some("Bash")
-    {
+    if host_matcher != "Bash" {
+        return false;
+    }
+    payload_has_process_no_agent_assignment(payload)
+}
+
+/// Host payload evidence for the process-bound escape.  This is intentionally
+/// narrower than textual matching: only an actual Bash command stage with the
+/// exact environment assignment can activate it.
+pub fn payload_has_process_no_agent_assignment(payload: &serde_json::Value) -> bool {
+    if payload.get("tool_name").and_then(serde_json::Value::as_str) != Some("Bash") {
         return false;
     }
     let Some(command) = payload
@@ -214,35 +223,31 @@ fn command_local_no_agent_bypass(payload: &serde_json::Value, host_matcher: &str
     })
 }
 
-fn evaluate_payload_at_generation(
-    generation_path: &std::path::Path,
+fn evaluate_payload_at_policy_bundle(
+    policy_bundle_path: &std::path::Path,
     payload_json: &str,
     host_matcher: &str,
 ) -> Result<Option<serde_json::Value>, String> {
-    let mut generation = load_generation(&generation_path)?;
-    if let Some(generation_digest) = active_generation_digest(&generation_path)? {
-        let mut projection: serde_json::Value = serde_json::from_str(&generation)
-            .map_err(|error| format!("decode HookGeneration identity projection: {error}"))?;
-        projection["generationDigest"] = serde_json::Value::String(generation_digest);
-        generation = serde_json::to_string(&projection)
-            .map_err(|error| format!("encode HookGeneration identity projection: {error}"))?;
-    }
+    let policy_bundle = load_policy_bundle(policy_bundle_path)?;
+    evaluate_payload_with_policy_bundle(&policy_bundle, payload_json, host_matcher)
+}
+
+fn evaluate_payload_with_policy_bundle(
+    policy_bundle: &str,
+    payload_json: &str,
+    host_matcher: &str,
+) -> Result<Option<serde_json::Value>, String> {
     let mut payload_json = payload_json.to_owned();
     if let Some(decision) =
-        aot_evaluator::evaluate_pre_tool(&generation, &payload_json, host_matcher)?
+        aot_evaluator::evaluate_pre_tool(policy_bundle, &payload_json, host_matcher)?
     {
         if decision.decision == "allow" {
             return Ok(Some(serde_json::json!({})));
         }
-        let typed = serde_json::to_value(decision).map_err(|error| error.to_string())?;
-        let message = typed
-            .get("message")
-            .and_then(serde_json::Value::as_str)
-            .unwrap_or("ASP Hook denied the operation.");
-        return Ok(Some(crate::render_codex_pre_tool_deny(&typed, message)));
+        return render_and_record_deny(&decision, &payload_json).map(Some);
     }
     if let Some(request) =
-        aot_evaluator::reader_probe_request(&generation, &payload_json, &host_matcher)?
+        aot_evaluator::reader_probe_request(policy_bundle, &payload_json, host_matcher)?
     {
         let mut payload: serde_json::Value = serde_json::from_str(&payload_json)
             .map_err(|error| format!("decode Hook payload for Reader probe: {error}"))?;
@@ -266,110 +271,49 @@ fn evaluate_payload_at_generation(
             .map_err(|error| format!("encode Hook payload with Reader probe: {error}"))?;
     }
     if let Some(decision) =
-        aot_evaluator::evaluate_pre_tool(&generation, &payload_json, &host_matcher)?
+        aot_evaluator::evaluate_pre_tool(policy_bundle, &payload_json, host_matcher)?
     {
         if decision.decision == "allow" {
             return Ok(Some(serde_json::json!({})));
         }
-        let typed = serde_json::to_value(decision).map_err(|error| error.to_string())?;
-        let message = typed
-            .get("message")
-            .and_then(serde_json::Value::as_str)
-            .unwrap_or("ASP Hook denied the operation.");
-        return Ok(Some(crate::render_codex_pre_tool_deny(&typed, message)));
+        return render_and_record_deny(&decision, &payload_json).map(Some);
     }
     Ok(Some(serde_json::json!({})))
 }
 
-fn active_generation_digest(generation_path: &std::path::Path) -> Result<Option<String>, String> {
-    if let Some(digest) = std::env::var_os("ASP_HOOK_GENERATION_DIGEST") {
-        let digest = digest
-            .into_string()
-            .map_err(|_| "ASP_HOOK_GENERATION_DIGEST is not UTF-8".to_owned())?;
-        if digest.is_empty() {
-            return Err("ASP_HOOK_GENERATION_DIGEST is set but empty".to_owned());
-        }
-        return Ok(Some(digest));
+fn render_and_record_deny(
+    decision: &aot_evaluator::AotHookDecision<'_>,
+    payload_json: &str,
+) -> Result<serde_json::Value, String> {
+    let payload: serde_json::Value = serde_json::from_str(payload_json)
+        .map_err(|error| format!("decode denied Hook payload for event state: {error}"))?;
+    if decision.route.is_some() {
+        let project_root = payload
+            .get("cwd")
+            .and_then(serde_json::Value::as_str)
+            .map(PathBuf::from)
+            .or_else(|| std::env::current_dir().ok())
+            .ok_or_else(|| "configured Agent deny has no workspace root".to_owned())?;
+        crate::publish_aot_hook_session_route(&project_root, decision, &payload)?;
     }
-    let Some(name) = generation_path
-        .parent()
-        .and_then(std::path::Path::file_name)
-        .and_then(std::ffi::OsStr::to_str)
-    else {
-        return Ok(None);
-    };
-    Ok(
-        (name.len() == 64 && name.bytes().all(|byte| byte.is_ascii_hexdigit()))
-            .then(|| format!("blake3-256:{name}")),
-    )
+    let typed = serde_json::to_value(decision).map_err(|error| error.to_string())?;
+    let message = typed
+        .get("message")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("ASP Hook denied the operation.");
+    Ok(crate::render_codex_pre_tool_deny(&typed, message))
 }
 
-fn implicit_generation_path() -> Result<PathBuf, String> {
-    let state_home = match std::env::var_os("ASP_STATE_HOME") {
-        Some(path) if !path.is_empty() => PathBuf::from(path),
-        Some(_) => return Err("ASP_STATE_HOME is set but empty".to_owned()),
-        None => {
-            let home = std::env::var_os("HOME").ok_or("HOME is not set")?;
-            if home.is_empty() {
-                return Err("HOME is set but empty".to_owned());
-            }
-            PathBuf::from(home).join(".agent-semantic-protocols")
-        }
-    };
-    let current = state_home.join("hooks/current");
-    if current.exists() {
-        let generation_root = std::fs::canonicalize(&current).map_err(|error| {
-            format!(
-                "resolve current HookGeneration {}: {error}",
-                current.display()
-            )
-        })?;
-        return Ok(generation_root.join("compiled-hook-generation.json"));
+fn load_policy_bundle(path: &std::path::Path) -> Result<String, String> {
+    let metadata = std::fs::symlink_metadata(path)
+        .map_err(|error| format!("failed to inspect compiled Hook policy bundle: {error}"))?;
+    if !metadata.file_type().is_file() || metadata.file_type().is_symlink() {
+        return Err("Hook policy bundle is not a regular immutable file".to_owned());
     }
-    let launcher_executable = std::env::current_exe()
-        .map_err(|error| format!("resolve Hook evaluator executable: {error}"))?;
-    let immutable_evaluator = std::fs::canonicalize(&launcher_executable).map_err(|error| {
+    std::fs::read_to_string(path).map_err(|error| {
         format!(
-            "resolve Hook evaluator immutable candidate {}: {error}",
-            launcher_executable.display()
+            "failed to read Hook policy bundle {}: {error}",
+            path.display()
         )
-    })?;
-    let metadata = std::fs::symlink_metadata(&immutable_evaluator).map_err(|error| {
-        format!(
-            "inspect Hook evaluator immutable candidate {}: {error}",
-            immutable_evaluator.display()
-        )
-    })?;
-    if metadata.file_type().is_symlink() || !metadata.is_file() {
-        return Err(format!(
-            "Hook evaluator immutable candidate {} is not a regular non-symlink file",
-            immutable_evaluator.display()
-        ));
-    }
-    let parent = immutable_evaluator.parent().ok_or_else(|| {
-        format!(
-            "Hook evaluator immutable candidate {} has no parent directory",
-            immutable_evaluator.display()
-        )
-    })?;
-    Ok(parent.join("compiled-hook-generation.json"))
-}
-
-fn load_generation(path: &std::path::Path) -> Result<String, String> {
-    let current = path
-        .parent()
-        .ok_or("HookGeneration path has no current directory")?;
-    let current_metadata = std::fs::symlink_metadata(current)
-        .map_err(|error| format!("failed to inspect HookGeneration current directory: {error}"))?;
-    let generation_metadata = std::fs::symlink_metadata(path)
-        .map_err(|error| format!("failed to inspect compiled HookGeneration: {error}"))?;
-    if !current_metadata.file_type().is_dir()
-        || current_metadata.file_type().is_symlink()
-        || !generation_metadata.file_type().is_file()
-        || generation_metadata.file_type().is_symlink()
-    {
-        return Err("active HookGeneration is not a regular immutable publication".to_owned());
-    }
-    std::fs::read_to_string(path)
-        .map_err(|error| format!("failed to read HookGeneration {}: {error}", path.display()))
+    })
 }

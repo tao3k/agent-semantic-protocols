@@ -6,7 +6,7 @@ from asp_python_graphs.artifact_timeline import (
     TimelineParameters,
     evaluate_artifact_timeline,
 )
-from unit.asp_python_graphs_timeline_support import write_timeline_prime
+from unit.asp_graph_turbo_timeline_support import write_timeline_prime
 
 
 def test_timeline_reports_same_session_prime_suppression(tmp_path) -> None:

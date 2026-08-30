@@ -11,7 +11,6 @@ const CAPABILITY_SCHEMA_VERSION: &str = "1";
 const DEFERRED_SCHEMA_ID: &str = "agent.semantic-protocols.host-native-execution-required";
 const RECEIPT_KIND: &str = "asp-testing-execution-v1";
 const TESTING_AGENT: &str = "asp_testing";
-const REQUIRED_INTENT: &str = "live-corpus-qualification";
 const REASON_KIND: &str = "host-local-ipc-permission-denied";
 const RETRY_POLICY: &str = "do-not-retry-in-current-sandbox";
 const EXECUTION_AUTHORITY: &str = "host-native";
@@ -211,23 +210,14 @@ fn validate_deferred_receipt(receipt: &Value) -> Result<(), String> {
 }
 
 fn require_verified_testing_context(payload: &Value) -> Result<(), String> {
-    if payload
-        .get("registration_verified")
-        .and_then(Value::as_bool)
-        != Some(true)
-        || payload.get("registered_agent_name").and_then(Value::as_str) != Some(TESTING_AGENT)
-    {
-        return Err("host-native handoff requires verified asp_testing registration".to_owned());
-    }
-    let intents = payload
-        .get("registered_allowed_rule_intents")
-        .and_then(Value::as_array)
-        .ok_or_else(|| "host-native handoff requires registered Testing intents".to_owned())?;
-    if !intents
-        .iter()
-        .any(|value| value.as_str() == Some(REQUIRED_INTENT))
-    {
-        return Err("host-native handoff requires live-corpus-qualification intent".to_owned());
+    let role = payload
+        .get("agent_role")
+        .or_else(|| payload.get("agentRole"))
+        .and_then(Value::as_str);
+    if role != Some(TESTING_AGENT) {
+        return Err(
+            "host-native handoff requires Config-selected asp_testing Agent role".to_owned(),
+        );
     }
     Ok(())
 }

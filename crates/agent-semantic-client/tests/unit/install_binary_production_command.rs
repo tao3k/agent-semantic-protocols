@@ -32,19 +32,24 @@ impl Drop for IsolatedStateHome {
 }
 
 #[tokio::test]
-async fn built_asp_install_binary_publishes_hook_generation_independent_of_runtime_activation() {
+async fn built_asp_install_binary_publishes_runtime_hook_independent_of_runtime_activation() {
     let _install_guard = crate::install_binary_test_guard::acquire();
     let state_home = IsolatedStateHome::new();
     let workspace_root = Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .and_then(Path::parent)
         .expect("workspace root");
-    let asp = Path::new(env!("CARGO_BIN_EXE_asp"));
+    let built_asp = Path::new(env!("CARGO_BIN_EXE_asp"));
     assert!(
-        asp.is_file(),
+        built_asp.is_file(),
         "Cargo-built asp binary must exist: {}",
-        asp.display()
+        built_asp.display()
     );
+    let build_fixture = tempfile::tempdir().expect("isolated binary build directory");
+    let asp = build_fixture.path().join("asp");
+    let hook = build_fixture.path().join("asp-hook");
+    std::fs::copy(built_asp, &asp).expect("copy ASP binary fixture");
+    std::fs::copy(built_asp, &hook).expect("copy Hook binary fixture");
     let codex_home = state_home.path().join("codex-home");
     let plugin_cache = codex_home.join("plugins/cache/asp-project/asp-codex-plugin/current");
     std::fs::create_dir_all(&plugin_cache).expect("create isolated plugin cache");
@@ -57,7 +62,7 @@ async fn built_asp_install_binary_publishes_hook_generation_independent_of_runti
     let plugin_source = workspace_root.join("asp-codex-plugin");
     let plugin_source_before = directory_identity(&plugin_source);
 
-    let output = Command::new(asp)
+    let output = Command::new(&asp)
         .args(["install", "binary"])
         .current_dir(workspace_root)
         .env("ASP_STATE_HOME", state_home.path())
@@ -73,8 +78,9 @@ async fn built_asp_install_binary_publishes_hook_generation_independent_of_runti
         String::from_utf8_lossy(&output.stderr)
     );
     let install_stdout = String::from_utf8(output.stdout).expect("install receipt UTF-8");
-    assert!(install_stdout.contains("hookGeneration=blake3-256:"));
-    assert!(install_stdout.contains("hookGenerationSwitch=atomic"));
+    assert!(install_stdout.contains("hookBinaryPath="));
+    assert!(install_stdout.contains("hookBinaryDigest=blake3-256:"));
+    assert!(install_stdout.contains("hookBinarySwitch=atomic"));
     assert!(install_stdout.contains("runtimeServerLifecycle=resident-owner-independent"));
     assert_eq!(
         directory_identity(&plugin_source),
@@ -87,19 +93,19 @@ async fn built_asp_install_binary_publishes_hook_generation_independent_of_runti
         "binary installation must not mutate the global Codex plugin cache"
     );
 
-    let hook_generation =
-        agent_semantic_artifacts::hook_generation::read_current_hook_generation(state_home.path())
-            .expect("read installed HookGeneration")
-            .expect("installed HookGeneration current");
-    assert_eq!(hook_generation.schema_version, 1);
-    assert_eq!(
-        hook_generation.hook_binary_path.parent(),
-        hook_generation.generation_path.parent()
+    let installed_hook = state_home.path().join("runtime/bin/asp-hook");
+    assert!(
+        installed_hook.exists(),
+        "canonical Hook evaluator publication"
     );
-    assert_eq!(
-        hook_generation.hook_binary_path.file_name(),
-        Some(std::ffi::OsStr::new("asp-hook"))
-    );
+    assert!(!state_home.path().join("hooks/current").exists());
+    let embedded = agent_semantic_hook::aot_compiler::compile_embedded_hook_policy_bundle()
+        .expect("compile embedded policy identity");
+    let embedded: serde_json::Value =
+        serde_json::from_slice(&embedded).expect("decode embedded policy identity");
+    let policy_digest = embedded["generationDigest"]
+        .as_str()
+        .expect("embedded policy digest");
 
     let pending_path = agent_semantic_artifacts::runtime_artifact_publication::
         runtime_artifact_activation_event_path(state_home.path());
@@ -109,7 +115,7 @@ async fn built_asp_install_binary_publishes_hook_generation_independent_of_runti
     .expect("decode pending activation receipt");
     let expected_digest =
         agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest::from_bytes(
-            &std::fs::read(asp).expect("read Cargo-built asp binary"),
+            &std::fs::read(&asp).expect("read Cargo-built asp binary"),
         );
     assert!(activation.activation_generation > 0);
     assert_eq!(activation.artifact_digest, expected_digest);
@@ -174,7 +180,7 @@ async fn built_asp_install_binary_publishes_hook_generation_independent_of_runti
             _ => unreachable!(),
         }
         let mut spec = agent_semantic_hook_testkit::HookProcessSpec::new(
-            workspace_root.join("asp-codex-plugin/bin/asp-hook"),
+            workspace_root.join("asp-codex-plugin/bin/asp-hook-exec"),
             workspace_root,
         );
         spec.args = vec![
@@ -214,7 +220,7 @@ async fn built_asp_install_binary_publishes_hook_generation_independent_of_runti
             .as_str()
             .expect("generation-bound deny context");
         assert!(
-            context.contains(hook_generation.generation_digest.as_str()),
+            context.contains(policy_digest),
             "Runtime {runtime_state}: {context}"
         );
         assert!(
@@ -237,8 +243,8 @@ async fn built_asp_install_binary_publishes_hook_generation_independent_of_runti
         launcher_elapsed_micros.push((runtime_state, receipt.elapsed.as_micros()));
     }
     eprintln!(
-        "hook-generation-production-receipt generation={} runtimeStates={launcher_elapsed_micros:?}",
-        hook_generation.generation_digest
+        "hook-runtime-production-receipt policy={} runtimeStates={launcher_elapsed_micros:?}",
+        policy_digest
     );
 }
 

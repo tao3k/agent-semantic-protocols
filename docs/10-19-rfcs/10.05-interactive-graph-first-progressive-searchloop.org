@@ -101,6 +101,36 @@ does not create a second text protocol.
 Interactive transition semantics are owned by
 [[file:10.05-interactive-graph-first-progressive-searchloop/10.05.10-interactive-searchloop/00-overview.org][10.05.10 Interactive SearchLoop]].
 
+* Search/query wire and replay contract
+
+Search and exact query are two operations on one public =ClientFrame= data
+plane. The language CLI is only a typed adapter: it selects =search= or
+=query=, supplies the schema-owned parameters, and renders the returned frame.
+It does not create a provider route or interpret a URL/string heuristic.
+
+Every successful or terminal frame carries the same workspace identity,
+provider identity, generation identity, source-snapshot identity, request
+identity, and schema references. Search results carry the typed =routeGraph=,
+=actionFrontier=, and =recommendedNext= fields; query carries the canonical
+structural selector and the declared source or projection kind. A query may
+consume a selector produced by search only after the Runtime Server validates
+that selector against the active immutable generation and source snapshot.
+
+Admission is server-owned and precedes provider work. A cold search/query
+request first reaches a single-flight generation admission, observes its
+queued/building transition, and waits for one terminal receipt before reading
+or dispatching a provider. =Queued= and =Building= are intermediate states,
+never query results and never successful no-match evidence. A failed,
+cancelled, stale, torn, or cross-generation admission is a typed terminal
+error; it cannot fall back to a local provider or cached source.
+
+Replay is identity-bound: replaying the same request against the same
+workspace, provider, generation, source snapshot, selector, and schema
+references is deterministic; a changed request nonce or any changed identity
+must produce a new request and cannot reuse the prior terminal. Search and
+query terminals therefore preserve the original request identity and expose
+the server-owned error reason and next action without silent retry.
+
 * Global invariants
 
 ** One lifecycle authority

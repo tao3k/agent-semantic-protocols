@@ -104,7 +104,7 @@ def _selected_gates(names: list[str] | None) -> list[tuple[str, Gate]]:
 
 def _build_runtime(asp_bin: Path) -> None:
     run(["npm", "--prefix", "languages/typescript-lang-project-harness", "run", "build"])
-    run(["cargo", "build", "-q", "-p", "agent-semantic-protocol", "--bin", "asp"])
+    run(["cargo", "build", "-q", "-p", "agent-semantic-client", "--bin", "asp"])
     run(
         [
             "cargo",

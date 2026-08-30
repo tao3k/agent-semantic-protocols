@@ -63,16 +63,11 @@ pub struct AgentRouteSpec {
     pub focus_mode: AgentFocusMode,
     pub roles: Vec<String>,
     pub allowed_rule_intents: Vec<String>,
-    #[serde(default = "default_agent_kind")]
     pub agent_kind: String,
     #[serde(default)]
     pub display_role: String,
     #[serde(default)]
     pub description: Option<String>,
-}
-
-fn default_agent_kind() -> String {
-    "Subagent".to_owned()
 }
 
 #[derive(Debug, Clone, Copy, Default, Deserialize, PartialEq, Eq)]
@@ -254,6 +249,17 @@ pub struct HostAgentInvocationProjection {
 }
 
 impl CompiledAgentRoute {
+    /// Whether this Loader-owned route is eligible to become a durable child
+    /// AgentSession after a real Host Agent call.
+    ///
+    /// Merely appearing in a SubagentStart payload is not registration
+    /// authority. Temporary SubAgents and non-Agent Host kinds never become
+    /// resident ASP DB records.
+    #[must_use]
+    pub fn is_resident_agent(&self) -> bool {
+        self.agent_kind == "agent" && self.session_lifetime == AgentSessionLifetime::Resident
+    }
+
     #[must_use]
     pub fn host_invocation(&self, symbol: &str) -> HostAgentInvocationProjection {
         match self.platform.as_str() {
@@ -682,6 +688,12 @@ fn validate_agent_route_registry(registry: &AgentRouteRegistry) -> Result<(), St
     }
     for (agent_type, agent) in &registry.agents {
         validate_identifier(agent_type, "agent type")?;
+        if !matches!(agent.agent_kind.as_str(), "agent" | "subagent") {
+            return Err(format!(
+                "agent route `{agent_type}` agent_kind must be `agent` or `subagent`, found `{}`",
+                agent.agent_kind
+            ));
+        }
         validate_string_set(&agent.roles, agent_type, "roles")?;
         validate_string_set(
             &agent.allowed_rule_intents,

@@ -1,25 +1,10 @@
 #[path = "../../src/command/hook.rs"]
 mod hook;
-#[path = "hook_runtime_context.rs"]
-mod hook_runtime_context;
-use hook_runtime_context::payload_indicates_subagent_context;
-use serde_json::json;
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 mod hook_runtime {
-    pub(crate) fn read_hook_input_bounded() -> Result<String, String> {
-        Ok("{}".to_string())
-    }
-
     pub(crate) async fn run_hook_runtime_args(_args: Vec<String>) -> Result<(), String> {
-        Ok(())
-    }
-
-    pub(crate) async fn run_hook_from_bootstrap(
-        _args: &[String],
-        _input: String,
-    ) -> Result<(), String> {
         Ok(())
     }
 }
@@ -175,7 +160,7 @@ fn accept_host_cli_returns_a_schema_valid_success_receipt() {
     assert_eq!(receipt["state"], "accepted");
     assert_eq!(
         receipt["reasonKind"],
-        "normal-task-hook-generation-bound-deny-observed"
+        "normal-task-hook-policy-bundle-bound-deny-observed"
     );
     let _ = std::fs::remove_dir_all(root);
 }
@@ -321,19 +306,18 @@ fn install_plugin_codex_help_is_non_mutating() {
 }
 
 #[test]
-fn event_alias_delegates_to_hook_runtime() {
-    assert_eq!(
-        hook::forwarded_hook_args(&args(&["pre-tool", "--client", "codex"])).unwrap(),
-        args(&["hook", "--event", "pre-tool", "--client", "codex"])
-    );
-    assert_eq!(
-        hook::forwarded_hook_args(&args(&["permission-request", "--client", "codex"])).unwrap(),
-        args(&["hook", "--event", "permission-request", "--client", "codex"])
-    );
-    assert_eq!(
-        hook::forwarded_hook_args(&args(&["subagent-stop", "--client", "codex"])).unwrap(),
-        args(&["hook", "--event", "subagent-stop", "--client", "codex"])
-    );
+fn host_events_are_not_client_hook_subcommands() {
+    for event in [
+        "pre-tool",
+        "permission-request",
+        "post-tool",
+        "subagent-stop",
+    ] {
+        assert!(
+            hook::forwarded_hook_args(&args(&[event, "--client", "codex"])).is_err(),
+            "event={event} must be owned by the standalone asp-hook binary"
+        );
+    }
 }
 
 #[test]
@@ -342,54 +326,8 @@ fn platform_event_names_are_not_protocol_event_aliases() {
 }
 
 #[test]
-fn raw_hook_flags_stay_supported() {
-    assert_eq!(
-        hook::forwarded_hook_args(&args(&["--client", "codex", "--event", "stop"])).unwrap(),
-        args(&["hook", "--client", "codex", "--event", "stop"])
-    );
-}
-
-#[test]
-fn payload_subagent_detection_accepts_explicit_context_flags() {
-    assert!(payload_indicates_subagent_context(
-        &json!({"isSubagent": true})
-    ));
-    assert!(payload_indicates_subagent_context(
-        &json!({"parentAgentId": "agent-123"})
-    ));
-    assert!(payload_indicates_subagent_context(
-        &json!({"thread": {"threadKind": "child-agent"}})
-    ));
-    assert!(payload_indicates_subagent_context(&json!({
-        "agent_id": "019f-child",
-        "agent_type": "asp_testing"
-    })));
-}
-
-#[test]
-fn payload_subagent_detection_ignores_main_thread_payloads() {
-    assert!(!payload_indicates_subagent_context(&json!({
-        "session_id": "session-123",
-        "tool_name": "Bash",
-        "tool_input": {
-            "command": "asp rust search pipe 'subagent hook' --workspace . --view seeds"
-        }
-    })));
-    assert!(!payload_indicates_subagent_context(
-        &json!({"isSubagent": false})
-    ));
-    assert!(!payload_indicates_subagent_context(&json!({
-        "agent_id": "019f-child"
-    })));
-    assert!(!payload_indicates_subagent_context(&json!({
-        "agent_type": "asp_testing"
-    })));
-    assert!(!payload_indicates_subagent_context(&json!({
-        "tool_input": {
-            "agent_id": "business-record-id",
-            "agent_type": "business-record-type"
-        }
-    })));
+fn raw_host_event_flags_are_not_client_hook_commands() {
+    assert!(hook::forwarded_hook_args(&args(&["--client", "codex", "--event", "stop"])).is_err());
 }
 
 #[test]

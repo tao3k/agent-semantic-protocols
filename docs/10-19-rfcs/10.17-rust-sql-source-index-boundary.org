@@ -4,10 +4,11 @@
 
 * One-sentence summary
 
-ASP source indexing is Rust-owned DB Engine infrastructure: language providers
-emit bounded semantic facts, while Rust owns workspace source discovery, owner
-identity, selector ranges, cache invalidation, query acceleration,
-Turso-backed stable lookup, and optional external seed import.
+ASP source indexing is ASP Server-owned DB Engine infrastructure: language
+providers emit bounded semantic facts, while the server's DB owner performs
+workspace source discovery, owner identity, selector ranges, generation
+publication, cache invalidation, query acceleration, Turso-backed stable
+lookup, Merkle validation, and optional external seed import.
 
 * Problem
 
@@ -24,9 +25,9 @@ provider facts, or a provider-local recursive scan.
 
 * Contract
 
-Rust owns the workspace source index.
+The ASP Server owns the workspace source index.
 
-The Rust source index is DB Engine-backed and owns:
+The server DB source index is DB Engine-backed and owns:
 
 - workspace source discovery
 - file identity
@@ -48,13 +49,13 @@ include walking the whole workspace for every broad search, maintaining
 provider-local source caches, ranking owners, or implementing provider-local
 owner discovery.
 
-Broad search resolves candidate owners through the Rust DB Engine source index first.
-Only after Rust chooses an owner set may the CLI invoke language providers for
-bounded semantic fact extraction or owner-local validation.
+Broad search resolves candidate owners through the ASP Server DB Engine source
+index first. Only after the server chooses an owner set may the typed client
+request bounded provider semantic fact extraction or owner-local validation.
 
 * Workspace Source Scope
 
-The Rust source index owns one generation-bound source scope for one concrete
+The ASP Server DB source index owns one generation-bound source scope for one concrete
 Git worktree workspace.  Package-management entry files such as =Cargo.toml=,
 =pyproject.toml=, =Project.toml=, =package.json=, and =gerbil.pkg= dispatch
 provider-owned project resolvers.  Their package, target, dependency, and
@@ -81,9 +82,10 @@ Runtime-source checkouts are explicit external-source scopes. They remain
 outside the active project source-index scope, because broad project search must
 not rank versioned runtime mirrors ahead of the workspace being edited.
 
-=asp cache runtime-source acquire= is the materialization boundary for those
-mirrors. After clone/fetch/checkout succeeds, the command must write DB Engine
-source-index rows for the checkout root in the active project client DB with
+=asp cache runtime-source acquire= is the client adapter for the server-owned
+materialization boundary. After clone/fetch/checkout succeeds, the Runtime
+Server must write DB Engine source-index rows for the checkout root in its
+admitted workspace DB with
 =rawSourceStored=false=. The source-index generation project root is the
 checkout directory, not the active workspace root. Rows use the acquired
 language id and the supplied =--index-owner= as the owner/provider identity,
@@ -93,8 +95,9 @@ and index only source-like files for the acquired language.
 The acquisition receipt must report =sourceIndex=refreshed=, the active DB
 Engine path, generation id, checkout project root, file count, owner count,
 selector count, reused-generation state, and =rawSourceStored=false=. This does
-not replace provider structural artifacts: =asp cache import= remains the next command for replaying
-provider-emitted structural-index artifacts into the same client DB.
+not replace provider structural artifacts: =asp cache import= remains the next
+typed server operation for replaying provider-emitted structural-index
+artifacts into the same server DB owner.
 
 Refresh is incremental. If the latest matching project-root/schema generation
 has identical file hash evidence, refresh must reuse that generation and skip
@@ -107,8 +110,8 @@ source directories. When that evidence is unchanged, refresh may reuse the
 digest-bound =ProjectResolution= and latest owner rows without reinvoking the
 provider package-manager resolver. Recursive source-root discovery is forbidden. Agent-
 facing receipts must expose whether the source-index generation was reused.
-=asp cache source-index lookup= is the read-side debug and agent-routing
-surface for this index. It must read from the active project client DB while
+=asp cache source-index lookup= is a typed Runtime Server read adapter for this
+index. It must read from the admitted server DB while
 accepting an explicit =--index-root= for external/runtime scopes. The root
 command is unfiltered; language-scoped lookup must use the existing facade form
 =asp <language> cache source-index lookup= rather than an inner
@@ -249,7 +252,7 @@ The existing =refresh=, =rebuild=, lookup result states, and generation
 receipts remain the public surface. Internal Turso tables and indexes may be
 migrated additively when they preserve those v1 observations.
 
-The source-index write path MUST bootstrap only the base client DB state and
+The source-index write path MUST bootstrap only the ASP Server DB state and
 the source-index v1 tables it needs. It MUST NOT initialize graph, overlay,
 route-receipt, or generic FTS tables as a side effect. Source-index rows are
 the stable recall store; generic FTS remains owned by its own explicit search
@@ -434,7 +437,7 @@ Search/query performance is verified in three states.
 
 Cold path may build or refresh source, fact, or dependency indexes. Its receipt must report provider process count, provider elapsed time, indexed files, indexed owners, indexed facts, changed input hashes, Turso write counts, graph-turbo time, render time, packet-out mode, and the explicit refresh command that produced the state.
 
-Warm broad search must answer from Rust-owned source/fact/dependency indexes before exact projection. It should not start a language provider for workspace owner discovery, dependency topology, broad search ranking, or graph-turbo input assembly. Warm receipts must expose =sourceIndexHit=, =factIndexHit= or =dependencyIndexHit= as applicable, =providerProcessCount=, first route, graph-turbo time, and render time.
+Warm broad search must answer from ASP Server DB-owned source/fact/dependency indexes before exact projection. It should not start a language provider for workspace owner discovery, dependency topology, broad search ranking, or graph-turbo input assembly. Warm receipts must expose =sourceIndexHit=, =factIndexHit= or =dependencyIndexHit= as applicable, =providerProcessCount=, first route, graph-turbo time, and render time.
 
 Hot path reuses the same Rust index generation plus graph-turbo structural backend fingerprint. It should only re-rank or render the selected frontier and should be millisecond-level for broad routing.
 
@@ -484,9 +487,9 @@ layout instance instead of repeating git/config discovery per directory.
 
 This RFC does not require =gtags= in developer environments or CI.
 
-This RFC does not make Rust parse every language's semantic forms. Rust owns
-source indexing and graph/rank infrastructure; language providers still own
-language-specific semantic facts.
+This RFC does not make the ASP Server DB owner parse every language's semantic
+forms. The server owns source indexing and graph/rank infrastructure; language
+providers still own language-specific semantic facts.
 
 This RFC does not make provider binaries resident services. Provider calls stay
 bounded and explicit.
@@ -573,7 +576,7 @@ that each repeat git/config discovery.
 The import transaction commits immutable facts, active path membership, generation
 metadata, and the active pointer atomically. A source-index import MUST NOT run a
 synchronous =wal_checkpoint(TRUNCATE)= after that commit: checkpoint truncation is
-unbounded on a long-lived client DB and is cache maintenance rather than import
+unbounded on a long-lived server DB and is cache maintenance rather than import
 work. Turso WAL readers observe the committed pointer directly; normal WAL
 auto-checkpoint policy owns maintenance outside the source-index hot path.
 
@@ -584,8 +587,8 @@ maintenance.
 ** Controlled checkout evidence (2026-07-09)
 
 The controlled checkout mirrors the repository's tracked and unignored working
-tree files, creates a separate project-scoped client DB, and uses the registered
-provider binaries without copying build output.
+tree files, creates a separate project-scoped ASP Server DB owner, and uses the
+registered provider binaries without copying build output.
 
 | route | files | DB write | end-to-end wall |
 |-------+-------+----------+-----------------|

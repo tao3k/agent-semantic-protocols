@@ -42,6 +42,18 @@ def opened_session(*, initial_sequence: int) -> AspPythonGraphsSession:
     return session
 
 
+def test_admitted_message_is_not_claimed_again_by_worker() -> None:
+    session = opened_session(initial_sequence=1)
+    health = message("health", "health-admitted", 2)
+
+    session.admit_message(health)
+    receipt = session.handle_admitted(health)
+
+    assert receipt["messageKind"] == "receipt"
+    assert "processId" in receipt["payload"]  # type: ignore[operator]
+    assert session._last_sequence == 2
+
+
 def test_out_of_order_session_sequence_three_then_two_is_rejected() -> None:
     session = opened_session(initial_sequence=3)
 

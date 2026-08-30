@@ -40,7 +40,8 @@ schema list, transport loop, or fallback.
 | =agent-semantic-client-protocol= | Version-neutral wire types, stream envelopes, generation identity, typed terminal states, and schema identity.  No transport loop, provider process, search implementation, artifact publication, or CLI policy. |
 | =agent-semantic-schema-manager= | Single shared schema registry, profile resolver, downstream synchronization API, and language-plugin SDK manifest.  Language clients MUST NOT copy private schema-family lists or compile a second protocol namespace. |
 | =agent-semantic-runtime-server= | Sole server lifecycle, workspace/generation admission, ClientFrame gRPC service on the Runtime data socket, Tokio actor ownership, =tokio-stream= request/response streams, cancellation terminalization, and drain.  It is the only public provider-route admission authority. |
-| =agent-semantic-client= | Reusable typed ASP client plus the public =asp= binary adapter: session handshake, gRPC transport, bounded stream backpressure, cancellation, terminal receipt decoding, argv parsing, resident-Server connection, and typed presentation.  Library modules remain free of CLI assumptions and are shared by language clients and native integrations.  The binary owns no provider execution, search/projection algorithm, schema distribution, artifact mutation, retry loop, or CLI-local fast path; its only lifecycle mutation is the typed Runtime supervisor command/recovery surface. |
+| =agent-semantic-client= | Reusable typed ASP client plus the public =asp= binary adapter: session handshake, gRPC transport, bounded stream backpressure, cancellation, terminal receipt decoding, argv parsing, resident-Server connection, and typed presentation.  Library modules remain free of CLI assumptions and are shared by language clients and native integrations.  The binary owns no provider execution, Source Index collection, Merkle/Turso state, search/projection algorithm, schema distribution, artifact mutation, retry loop, or CLI-local fast path; its only lifecycle mutation is the typed Runtime supervisor command/recovery surface. |
+| =agent-semantic-client-db= | ASP Server in-process DB owner: Turso canonical Source Index rows, source blobs, Merkle/generation identities, provider-fact projection, bounded resident read projections, generation publication/recovery, and their typed receipts.  It has no public CLI authority or independent socket/transport lifecycle. |
 | =agent-semantic-artifacts= | Immutable content-addressed materialization, developer/release provenance, =active=/=healthy= two-slot invariant, Release Activity, retention, and the sole atomic artifact-publication transaction.  No process or socket await while holding its publication lock. |
 | =agent-semantic-runtime= | Reusable Tokio runtime primitives, typed actor identity, and process monitoring only.  No artifacts, public transport, CLI commands, provider routing, or active-server publication. |
 | =agent-semantic-search-projection= | Immutable projection model, segment/table codec, mmap reader, and payload-bearing exact projection.  No transport, Runtime lifecycle, DB publication, ranking, or CLI rendering. |
@@ -93,8 +94,9 @@ Package ownership for these methods is exact:
 - =agent-semantic-client-db= owns durable state and in-process operations only,
   with no socket, stream, retry, timeout, or client-session implementation;
 - =agent-semantic-client= owns the public CLI adapter and reaches Runtime state
-  only through typed ClientFrame or supervisor transactions; Hook evaluation
-  remains a separately published immutable HookGeneration entry.
+  only through typed ClientFrame or supervisor transactions; Host Hook events
+  enter the separate =runtime/bin/asp-hook= executable, whose immutable policy
+  bundle is embedded at build time and never shares Runtime serving state.
 
 Endpoint publication is a single precommit barrier.  The control listener,
 ClientFrame gRPC listener, provider listener, and status memory for one

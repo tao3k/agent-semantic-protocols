@@ -1,4 +1,4 @@
-//! Process boundary for the immutable HookGeneration executable.
+//! Process boundary for the canonical Runtime Hook executable.
 
 use std::ffi::OsString;
 
@@ -7,7 +7,7 @@ const NO_AGENT_ENV: &str = "ASP_NO_AGENT";
 /// Run the Hook evaluator while guaranteeing one valid Host JSON terminal.
 ///
 /// The inherited no-agent lane is deliberately checked before payload,
-/// generation, configuration, reader-probe, or async-runtime work. This is
+/// embedded policy, reader-probe, or async-runtime work. This is
 /// distinct from the parser-proven command-local process-environment rule.
 pub fn run_from_env() -> std::process::ExitCode {
     let arguments = std::env::args_os().skip(1).collect::<Vec<_>>();
@@ -34,13 +34,19 @@ fn inherited_no_agent_bypass() -> bool {
 
 fn hook_event(arguments: &[OsString]) -> Option<&str> {
     let first = arguments.first()?.to_str()?;
-    if first == "hook" {
-        arguments.get(1)?.to_str()
-    } else if first == "--version" {
-        None
-    } else {
-        Some(first)
-    }
+    matches!(
+        first,
+        "pre-tool"
+            | "permission-request"
+            | "post-tool"
+            | "stop"
+            | "notification"
+            | "user-prompt"
+            | "session-start"
+            | "subagent-start"
+            | "subagent-stop"
+    )
+    .then_some(first)
 }
 
 fn panic_terminal(event: Option<&str>, message: String) -> serde_json::Value {

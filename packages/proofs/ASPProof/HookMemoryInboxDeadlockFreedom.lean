@@ -103,31 +103,20 @@ inductive InboxReplayState
   | corrupt
   deriving DecidableEq
 
-/-- ChoicePlane state is projected only from authoritative registry state;
-recovery-log replay is observable diagnostics, never an admission dependency. -/
-def choicePlaneState
+/-- Collaboration registration state is projected only from authoritative
+registry state; recovery-log replay is observable diagnostics, never an
+admission dependency. -/
+def collaborationRegistrationState
     (registry : RegistryChoiceState) (_inbox : InboxReplayState) : RegistryChoiceState :=
   registry
 
-theorem inbox_permission_denial_cannot_block_live_choice_plane :
-    choicePlaneState .live .lockOpenPermissionDenied = .live := by
+theorem inbox_permission_denial_cannot_block_live_registration :
+    collaborationRegistrationState .live .lockOpenPermissionDenied = .live := by
   rfl
 
 theorem inbox_permission_denial_cannot_block_registration_choice :
-    choicePlaneState .registrationRequired .lockOpenPermissionDenied =
+    collaborationRegistrationState .registrationRequired .lockOpenPermissionDenied =
       .registrationRequired := by
-  rfl
-
-/-- Counterexample for the removed architecture: coupling ChoicePlane to inbox
-replay turns a non-authoritative lock error into a global lifecycle block. -/
-def legacyChoicePlaneState
-    (registry : RegistryChoiceState) (inbox : InboxReplayState) : RegistryChoiceState :=
-  match inbox with
-  | .reconciled => registry
-  | .lockOpenPermissionDenied | .corrupt => .blocked
-
-theorem legacy_inbox_lock_permission_denial_blocks_registration :
-    legacyChoicePlaneState .registrationRequired .lockOpenPermissionDenied = .blocked := by
   rfl
 
 end ASPProof.HookMemoryInboxDeadlockFreedom

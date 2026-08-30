@@ -146,7 +146,7 @@ fn static_catalog_is_a_process_free_reader_fact() {
     );
     assert_eq!(observation.access, ReaderProbeAccess::Read);
     assert_eq!(observation.terminal, "reader-behavior-catalog-hit");
-    assert_eq!(observation.backend, "hook-generation-reader-catalog");
+    assert_eq!(observation.backend, "hook-policy-bundle-reader-catalog");
     assert!(!observation.probe_process_launched);
     assert!(!observation.cache_hit);
 }
@@ -170,6 +170,49 @@ fn static_catalog_requires_the_complete_declared_prefix() {
         None,
     );
     assert_ne!(edit.terminal, "reader-behavior-catalog-hit");
+}
+
+#[test]
+fn static_catalog_matches_wrapped_absolute_executable_by_basename() {
+    let tokens = [
+        ".devenv/devenv-profile-exec".to_owned(),
+        "/usr/bin/git".to_owned(),
+        "show".to_owned(),
+        "HEAD:src/lib.rs".to_owned(),
+    ];
+    let patterns = [vec![
+        "git".to_owned(),
+        "show".to_owned(),
+        "*:*.?*".to_owned(),
+    ]];
+    assert!(super::static_reader_behavior_matches(
+        &tokens,
+        "HEAD:src/lib.rs",
+        &patterns,
+        true,
+    ));
+}
+
+#[test]
+fn static_catalog_does_not_scan_executable_like_tokens_after_subject() {
+    let tokens = [
+        "future-wrapper".to_owned(),
+        "src/lib.rs".to_owned(),
+        "/usr/bin/git".to_owned(),
+        "show".to_owned(),
+        "HEAD:other.rs".to_owned(),
+    ];
+    let patterns = [vec![
+        "git".to_owned(),
+        "show".to_owned(),
+        "*:*.?*".to_owned(),
+    ]];
+    assert!(!super::static_reader_behavior_matches(
+        &tokens,
+        "src/lib.rs",
+        &patterns,
+        true,
+    ));
 }
 
 #[test]
@@ -275,10 +318,7 @@ fn write_behavior_is_never_published_as_reader_cache() {
                 ReaderProbeAccess::Read,
                 "{observation:?}"
             );
-            assert!(matches!(
-                observation.access,
-                ReaderProbeAccess::Unknown
-            ));
+            assert!(matches!(observation.access, ReaderProbeAccess::Unknown));
             assert!(!observation.cache_hit);
         }
     }

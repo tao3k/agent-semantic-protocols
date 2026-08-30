@@ -11,7 +11,7 @@ from asp_python_graphs.artifact_timeline import (
     TimelineParameters,
     evaluate_artifact_timeline,
 )
-from unit.asp_python_graphs_timeline_support import (
+from unit.asp_graph_turbo_timeline_support import (
     write_microburst_repeat_artifacts,
 )
 

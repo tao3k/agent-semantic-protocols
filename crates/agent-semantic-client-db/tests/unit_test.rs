@@ -13,6 +13,8 @@ mod agent_session_runtime_proxy;
 mod codex_multi_agent_control_plane_owner;
 #[path = "unit/context_run_mvcc.rs"]
 mod context_run_mvcc;
+#[path = "unit/content_binding.rs"]
+mod content_binding;
 #[path = "unit/db.rs"]
 mod db;
 #[path = "unit/db/engine/mod.rs"]

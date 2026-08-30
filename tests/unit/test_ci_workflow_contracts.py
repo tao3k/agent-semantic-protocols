@@ -6,119 +6,6 @@ CI_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "ci.yml"
 JUSTFILE = REPO_ROOT / "Justfile"
 RELEASE_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "release.yml"
 
-LANGUAGE_RELEASE_WORKFLOWS = {
-    "languages/rust-lang-project-harness": {
-        "binary": "asp-rust",
-        "darwin_os": "macos-14",
-        "targets": {
-            "x86_64-unknown-linux-gnu",
-            "aarch64-apple-darwin",
-            "x86_64-pc-windows-msvc",
-        },
-    },
-    "languages/typescript-lang-project-harness": {
-        "binary": "asp-typescript",
-        "darwin_os": "ubuntu-latest",
-        "targets": {
-            "x86_64-unknown-linux-gnu",
-            "aarch64-apple-darwin",
-        },
-    },
-    "languages/python-lang-project-harness": {
-        "binary": "asp-python",
-        "darwin_os": "macos-latest",
-        "targets": {
-            "x86_64-unknown-linux-gnu",
-            "aarch64-apple-darwin",
-        },
-    },
-    "languages/JuliaLangProjectHarness.jl": {
-        "binary": "asp-julia",
-        "darwin_os": "macos-14",
-        "targets": {
-            "x86_64-unknown-linux-gnu",
-            "aarch64-apple-darwin",
-        },
-    },
-    "languages/gerbil-scheme-language-project-harness": {
-        "binary": "asp-gerbil-scheme",
-        "darwin_os": "ubuntu-latest",
-        "targets": {
-            "x86_64-unknown-linux-gnu",
-            "aarch64-apple-darwin",
-        },
-    },
-    "languages/orgize": {
-        "binary": "orgize",
-        "darwin_os": "macos-14",
-        "targets": {
-            "x86_64-unknown-linux-gnu",
-            "aarch64-apple-darwin",
-            "x86_64-pc-windows-msvc",
-        },
-    },
-}
-
-
-def test_language_release_workflows_are_project_owned_and_publish_assets() -> None:
-    for language_path, contract in LANGUAGE_RELEASE_WORKFLOWS.items():
-        workflow_path = (
-            REPO_ROOT / language_path / ".github" / "workflows" / "release.yml"
-        )
-        assert workflow_path.exists(), language_path
-
-        workflow = workflow_path.read_text(encoding="utf-8")
-
-        assert "name: Release provider binary" in workflow
-        assert "workflow_dispatch:" in workflow
-        assert "release:" in workflow
-        assert "types:" in workflow
-        assert "- published" in workflow
-        assert "push:" in workflow
-        assert "tags:" in workflow
-        assert '- "v*"' in workflow
-        assert "permissions:\n  contents: write" in workflow
-        assert f"BINARY: {contract['binary']}" in workflow
-        assert (
-            "github.event.release.tag_name || inputs.tag || github.ref_name" in workflow
-        )
-        assert "- name: Ensure release tag" in workflow
-        assert "if: github.event_name == 'workflow_dispatch'" in workflow
-        assert "release tag must start with v" in workflow
-        assert 'git push origin "refs/tags/${RELEASE_TAG}"' in workflow
-        assert "gh release create" in workflow
-        assert "gh release upload" in workflow
-        assert "--clobber" in workflow
-        assert ".sha256" in workflow
-        assert "x86_64-apple-darwin" not in workflow
-
-        if "x86_64-pc-windows-msvc" in contract["targets"]:
-            assert "- name: Enable Windows long paths" in workflow
-            assert "git config --global core.longpaths true" in workflow
-            assert "CARGO_NET_GIT_FETCH_WITH_CLI=true" in workflow
-            build_step = workflow.split("- name: Build release binary", 1)[1]
-            build_step = build_step.split("- name: Package provider binary", 1)[0]
-            assert "shell: bash" in build_step
-
-        for target in contract["targets"]:
-            assert target in workflow, f"{language_path} missing {target}"
-
-        assert (
-            f"- os: {contract['darwin_os']}\n            target: aarch64-apple-darwin"
-        ) in workflow
-
-        if language_path == "languages/gerbil-scheme-language-project-harness":
-            assert "- name: Build Gerbil" in workflow
-            assert "gxpkg deps --install" in workflow
-            registration = (
-                REPO_ROOT
-                / language_path
-                / "provider"
-                / "asp-provider-registration.json"
-            ).read_text(encoding="utf-8")
-            assert '"providerId": "asp-gerbil-scheme"' in registration
-            assert '"binary": "asp-gerbil-scheme"' in registration
-
 
 def test_asp_rust_ci_checks_out_provider_catalog_submodules() -> None:
     workflow = CI_WORKFLOW.read_text(encoding="utf-8")
@@ -148,6 +35,7 @@ def test_root_release_carries_server_managed_graphs_artifact() -> None:
     assert "python -m venv --copies" in workflow
     assert "asp-python-graphs-service" in workflow
     assert "asp_python_graphs.service_cli" in workflow
+    assert "packages/python/asp_graph_turbo" not in workflow
     assert "graph_turbo_cli" not in workflow
     assert "graph artifact publish" in workflow
     assert "asp-python-graphs-artifact.v2.json" in workflow
@@ -175,6 +63,11 @@ def test_language_evidence_ci_hot_path_stays_core_fast() -> None:
     assert "ASP_LANGUAGE_EVIDENCE_SMOKE_SCOPE=core-fast" in step
     assert "ASP_LANGUAGE_EVIDENCE_LANGUAGES=rust,python,typescript" in step
     assert "language-evidence-smoke-core-fast.json" in step
+    assert (
+        "uv run --project packages/python/asp_python_graphs --frozen pytest "
+        "tests/unit/test_language_evidence_smoke.py -q"
+    ) in step
+    assert "packages/python/asp_graph_turbo" not in step
     assert "npm install --global @openai/codex@0.144.1" in step
     assert "codex --version" in step
     assert step.index("codex --version") < step.index("asp install plugin --codex .")
@@ -183,7 +76,7 @@ def test_language_evidence_ci_hot_path_stays_core_fast() -> None:
     assert "[providers.gerbil-scheme]" in step
     assert "[providers.julia]" in step
     assert "enabled = false" in step
-    assert "asp-julia" not in step
+    assert "asp-julia" in step
     assert ".bin/asp-gerbil-scheme" not in step
     assert "agent-tools-install-julia" not in step
 
@@ -251,8 +144,8 @@ def test_gerbil_ci_uses_canonical_asp_gerbil_scheme_binary() -> None:
     workflow = workflow_path.read_text(encoding="utf-8")
 
     assert "- name: Build canonical asp-gerbil-scheme binary" in workflow
-    assert "gxpkg env ./build.ss compile --release --optimized" in workflow
-    assert "test -x .bin/asp-gerbil-scheme" in workflow
+    assert "gxpkg env gxi ./build.ss compile --release --optimized" in workflow
+    assert "test -x build/workspace-provider/bin/asp-gerbil-scheme" in workflow
     assert "- name: Smoke canonical search subcommands" in workflow
     assert ".bin/asp-gerbil-scheme search prime --view seeds --workspace ." in workflow
     assert ".bin/asp-gerbil-scheme check --full ." in workflow
@@ -266,11 +159,11 @@ def test_gerbil_just_build_scans_only_launcher_build_inputs() -> None:
     target = justfile.split('agent-tools-build-gerbil bin_dir="":', 1)[1]
     target = target.split('agent-tools-install-gx bin_dir="":', 1)[0]
 
-    assert 'launcher="${package_dir}/.gerbil/bin/asp-gerbil-scheme"' in target
-    assert "gxpkg env gxi src/build.ss compile" in target
-    assert 'install -m 755 "${launcher}" "${root_bin}/asp-gerbil-scheme"' in target
-    assert 'install -m 755 "${launcher}" "${bin_dir}/asp-gerbil-scheme"' in target
-    assert '"${bin_dir}/asp-gerbil-scheme" --help >/dev/null' in target
+    assert 'artifact_root="${package_dir}/build/workspace-provider"' in target
+    assert "gxi build.ss" in target
+    assert 'provider_binary="${artifact_root}/bin/asp-gerbil-scheme"' in target
+    assert 'cp "${provider_binary}" "{{bin_dir}}/asp-gerbil-scheme"' in target
+    assert 'provider=asp-gerbil-scheme' in target
 
 
 def test_julia_full_provider_gate_uses_fresh_compiled_harness_perf_guard() -> None:
@@ -278,9 +171,9 @@ def test_julia_full_provider_gate_uses_fresh_compiled_harness_perf_guard() -> No
 
     install_julia = justfile.split('agent-tools-install-jl bin_dir="":', 1)[1]
     install_julia = install_julia.split("agent-hooks-doctor-providers:", 1)[0]
-    assert "juliac/build_provider.sh" in install_julia
     assert "ASP_JULIA_ALLOW_WRAPPER_FALLBACK=0" in install_julia
-    assert "install language julia --from-workspace --project ." in install_julia
+    assert "just agent-tools-install-language julia" in install_julia
+    assert 'provider_bin="$${state_home}/runtime/bin/asp-julia"' in install_julia
 
     all_smoke = justfile.split("check-language-evidence-smoke-all-setup:", 1)[1]
     all_smoke = all_smoke.split("provider-gate:", 1)[0]

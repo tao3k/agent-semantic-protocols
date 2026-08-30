@@ -5,6 +5,7 @@ policy_ids = [
 ]
 agent_goal = "Keep every agent-semantic-search unit and integration surface represented by package-local scenario benchmark monitoring so new search behavior cannot land without a performance contract."
 reference_repositories = ["tao3k/agent-semantic-protocols"]
+monitored_surfaces = ["runtime_search_receipt"]
 reference_patterns = [
   "command_diagnostics",
   "document_auto_lexical_overlay_scenario",

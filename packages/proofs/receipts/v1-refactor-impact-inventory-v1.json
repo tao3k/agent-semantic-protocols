@@ -1,0 +1,193 @@
+{
+  "schemaRef": "asp.v1-refactor-impact-inventory",
+  "status": "safe-additive-v1-refactor-in-progress",
+  "purpose": "machine-readable impact inventory and refactor plan; this file is not an authorization mechanism",
+  "scope": "stabilize-v1-content-addressed-binding",
+  "servingMutationPerformed": false,
+  "v2WorkPerformed": false,
+  "inventoryMethod": {
+    "permittedEvidence": [
+      "git ls-files path inventory",
+      "parser-owned ASP search when Host IPC is available",
+      "literal scan of non-source documentation and receipts"
+    ],
+    "blockedEvidence": {
+      "reasonKind": "host-operation-not-permitted",
+      "failureLayer": "asp-cli-startup-or-ipc-boundary",
+      "originalError": "bind Runtime activation ready socket <host-runtime-tmp>/r.sock: Operation not permitted (os error 1)",
+      "pathPolicy": "portable repository-relative artifact; host-local absolute paths are redacted here",
+      "receipt": "packages/proofs/receipts/asp-rust-search-prime-main-v1.json"
+    },
+    "interpretation": "The source-owner scan could not be completed through the required parser-owned ASP route. No unavailable source occurrence is claimed as absent; this receipt is a pre-cutover gate, not acceptance."
+  },
+  "observedPublicSchemas": [
+    {
+      "path": "schemas/workspace-project-resolution-receipt.v1.schema.json",
+      "fieldsOrEnums": ["generation.generationId", "generation.candidateGeneration", "candidate-generation-ready", "project-entry-delta-classified", "generation-serving", "generation-retired", "candidate-generation-stale", "project-entry-required", "project-entry-parse-failed"],
+      "plannedV1Change": "replace product identity with exact content binding; retain unchanged until approved cutover"
+    },
+    {
+      "path": "schemas/provider-project-resolution-scenario-receipt.v1.schema.json",
+      "fieldsOrEnums": ["candidate-outside-scope", "missing-project-entry", "malformed-project-entry", "non-git-explicit-entry"],
+      "plannedV1Change": "reclassify project resolution around canonical descriptor and Server commit; do not change schema now"
+    },
+    {
+      "path": "schemas/runtime-server-read-query-route.v1.schema.json",
+      "fieldsOrEnums": ["runtime server read/query route contract"],
+      "plannedV1Change": "pin exact Server content binding instead of activation identity; no current route change"
+    },
+    {
+      "path": "schemas/runtime-server-workspace-canonical-materialization.v1.schema.json",
+      "fieldsOrEnums": ["canonical workspace materialization"],
+      "plannedV1Change": "make workspace/source digest binding the commit output; no current record change"
+    },
+    {
+      "path": "schemas/runtime-provider-search-receipt.v1.schema.json",
+      "fieldsOrEnums": ["provider search terminal receipt"],
+      "plannedV1Change": "echo exact content identity and remove external activation semantics in approved V1 edit"
+    },
+    {
+      "path": "schemas/content-binding.schema.json",
+      "fieldsOrEnums": ["schemaId=asp.content-binding", "schemaVersion=1", "six content digests", "authorityStamp"],
+      "plannedV1Change": "new non-serving shared V1 contract; version is carried by schemaVersion, not filename or Rust namespace"
+    }
+  ],
+  "runtimeAndArtifactOwners": [
+    {
+      "owner": "ArtifactCatalog",
+      "paths": ["crates/agent-semantic-artifacts/src/runtime_artifact_catalog.rs", "crates/agent-semantic-artifacts/src/runtime_artifact_publication.rs", "crates/agent-semantic-runtime/src/runtime_artifact_identity.rs"],
+      "affectedIdentity": ["artifactDigest", "RuntimeArtifactReference", "publication/activation dependency"],
+      "plannedV1Change": "Schema Manager signs RuntimeArtifactReference V1; Catalog validates and stores immutable dependency"
+    },
+    {
+      "owner": "RuntimeServer activation actor",
+      "paths": ["crates/agent-semantic-runtime-server/src/artifact_activation.rs", "crates/agent-semantic-runtime-server/src/query_generation.rs", "crates/agent-semantic-client-db/src/runtime_server/core.rs", "crates/agent-semantic-client-db/src/runtime_server_generation_admission.rs"],
+      "affectedIdentity": ["activationGeneration", "activation/admission ordering", "resident readiness"],
+      "plannedV1Change": "remove activation generation from product/admission/cache identity; retain only transaction-local fence during approved migration"
+    },
+    {
+      "owner": "Workspace/SourceIndex Server",
+      "paths": ["crates/agent-semantic-client-db/src/runtime_server_workspace/search_generation_authority.rs", "crates/agent-semantic-client-db/src/runtime_server_workspace/canonical_materialization.rs", "crates/agent-semantic-client-db/src/server_source_index/generation.rs", "crates/agent-semantic-client-db/src/server_source_index/generation_commit.rs", "crates/agent-semantic-client-db/src/engine/turso_source_index/active_generation.rs", "crates/agent-semantic-client-db/src/engine/turso_source_index/publish.rs"],
+      "affectedIdentity": ["generation", "source snapshot/index binding", "publication linearization"],
+      "plannedV1Change": "Server commits exact content binding with mutationId, leaseId, expectedDigest CAS; no provider or client authority"
+    },
+    {
+      "owner": "ASP Server shadow publication ledger",
+      "paths": ["crates/agent-semantic-client-db/src/runtime_server_workspace/content_binding.rs", "crates/agent-semantic-client-db/tests/content_binding.rs"],
+      "affectedIdentity": ["ContentIdentity", "ContentBinding", "ContentPublicationCommit"],
+      "plannedV1Change": "additive non-serving validation of one exact content commit; no current route, record, cache, or admission mutation"
+    }
+  ],
+  "dbRecordsAndKeys": [
+    {
+      "paths": ["crates/agent-semantic-client-db/src/runtime_server_admission_entry.rs", "crates/agent-semantic-client-db/src/runtime_server_admission_candidate.rs", "crates/agent-semantic-client-db/src/runtime_server_admission_catalog.rs", "crates/agent-semantic-client-db/src/runtime_server_admission_mutation.rs"],
+      "recordsOrKeys": ["project-entry", "active-candidate", "candidate generation", "admission mutation", "activation generation"],
+      "plannedV1Change": "replace identity-bearing fields at the single commit point with exact artifact/provider/workspace/source digests; no dual-read"
+    },
+    {
+      "paths": ["crates/agent-semantic-client-db/src/engine/source_index_candidate_projection.rs", "crates/agent-semantic-client-db/src/engine/source_index_candidate_selection.rs", "crates/agent-semantic-client-db/src/runtime_server_workspace/selector_overlay.rs", "crates/agent-semantic-client-db/src/runtime_server_workspace/pointer.rs"],
+      "recordsOrKeys": ["candidate selection", "selector overlay", "generation pointer", "cache/admission lookup"],
+      "plannedV1Change": "key lookup by exact content binding; activation and pending candidate values cease to be product keys"
+    },
+    {
+      "paths": ["crates/agent-semantic-client-db/src/runtime_server_workspace/atomic_snapshot_pointer.rs", "crates/agent-semantic-client-db/src/runtime_server_workspace/lease.rs", "crates/agent-semantic-client-db/src/runtime_server_workspace/durability.rs"],
+      "recordsOrKeys": ["snapshot pointer", "leaseId", "expected digest", "durable commit"],
+      "plannedV1Change": "keep transaction controls, bind them to exact content digest and mutationId"
+    }
+  ],
+  "cliAndClientConsumers": [
+    {
+      "paths": ["crates/agent-semantic-client/src/server/runtime_server_generation.rs", "crates/agent-semantic-client/src/server/runtime_server_search_service.rs", "crates/agent-semantic-client/src/command/search_config.rs", "crates/agent-semantic-client/src/command/search_router_graph_state.rs"],
+      "commands": ["asp server status", "asp rust search prime", "asp rust search pipe", "asp rust query"],
+      "plannedV1Change": "prime returns exact content binding; later operations pin it; activation generation is no longer accepted as query identity"
+    },
+    {
+      "paths": ["crates/agent-semantic-client-protocol/src/runtime_generation.rs", "crates/agent-semantic-client-protocol/src/workspace_source_mutation.rs", "crates/agent-semantic-client-db/src/runtime_server_control/frame.rs", "crates/agent-semantic-client-db/src/runtime_resident_read.rs"],
+      "consumers": ["ClientFrame", "runtime generation observation", "workspace mutation", "resident read/query"],
+      "plannedV1Change": "retain V1 envelope; replace only identity semantics after approval, with typed fail-closed mismatch"
+    },
+    {
+      "paths": ["crates/agent-semantic-client/src/command/install_binary_config_admission.rs", "crates/agent-semantic-client/src/command/install_provider/binary.rs", "crates/agent-semantic-client/src/command/install_provider/workspace.rs", "crates/agent-semantic-client/src/command/installed_provider_artifacts/core.rs"],
+      "consumers": ["artifact install/admission", "provider artifact registry"],
+      "plannedV1Change": "bind exact artifactDigest and providerContractDigest through ArtifactCatalog; no install or route mutation in this phase"
+    }
+  ],
+  "providerConsumers": [
+    {
+      "paths": ["crates/agent-semantic-client-db/src/server_source_index/provider_envelope.rs", "crates/agent-semantic-client-db/src/server_source_index/collect.rs", "crates/agent-semantic-client-db/src/server_source_index/generation_build.rs", "languages/rust-lang-project-harness"],
+      "contract": "Rust parser/project resolution facts and source-index materialization",
+      "plannedV1Change": "Rust produces stateless cargo_metadata DescribeProject facts, including virtual workspaces; Server canonicalizes and commits"
+    },
+    {
+      "paths": ["crates/agent-semantic-client-db/src/workspace_db_ipc/provider_owner.rs", "crates/agent-semantic-client-db/src/workspace_db_ipc/runtime_generation.rs", "crates/agent-semantic-client-db/src/workspace_db_ipc/validation.rs"],
+      "contract": "provider IPC, generation validation, and owner boundary",
+      "plannedV1Change": "provider receives exact Server binding and cannot create an alternate authority"
+    }
+  ],
+  "testsAndProofs": [
+    {
+      "paths": ["crates/agent-semantic-client-db/tests/unit/runtime_server_generation_admission.rs", "crates/agent-semantic-client-db/tests/unit/runtime_server_generation_admission_failure.rs", "crates/agent-semantic-client-db/tests/unit/runtime_server_generation_admission_mutation.rs", "crates/agent-semantic-client-db/tests/unit/runtime_server_endpoint_generation.rs"],
+      "plannedFailingTests": ["activation epoch cannot satisfy query identity", "digest mismatch fails closed", "CAS expected digest and mutationId are single commit", "rollback cannot resurrect stale binding"]
+    },
+    {
+      "paths": ["crates/agent-semantic-client-db/tests/unit/runtime_server_workspace/merkle_owner_index.rs", "crates/agent-semantic-client-db/tests/unit/runtime_server_workspace/resident_source_index.rs", "crates/agent-semantic-client-db/tests/unit/turso_source_index_materialization.rs", "crates/agent-semantic-client-db/tests/unit/workspace_project_resolution.rs"],
+      "plannedFailingTests": ["virtual Cargo workspace is valid", "source snapshot/index digest is exact", "torn publication and cross-generation selector fail closed"]
+    },
+    {
+      "paths": ["crates/agent-semantic-content-identity/tests/content_binding.rs", "crates/agent-semantic-client-db/tests/unit/content_binding.rs", "crates/agent-semantic-client-db/tests/unit_test.rs"],
+      "plannedFailingTests": ["schema version stays in the binding envelope", "provider contract and workspace/source snapshot mismatch fail closed", "stale CAS and unauthorized rollback preserve the active commit"],
+      "currentTestLayout": "client-db test is registered by tests/unit_test.rs from tests/unit/content_binding.rs",
+      "currentCommandAfterDependencyRecovery": "./.devenv/devenv-profile-exec cargo test -p agent-semantic-client-db --test unit_test content_binding",
+      "latestIndependentGate": {
+        "command": "./.devenv/devenv-profile-exec cargo test -p agent-semantic-content-identity --test content_binding",
+        "testProcessLaunched": true,
+        "testBinaryLaunched": true,
+        "exitCode": 0,
+        "passed": 3,
+        "failed": 0,
+        "ignored": 0,
+        "filtered": 0,
+        "durationSecondsApprox": 64,
+        "compilationSecondsApprox": 33.94,
+        "testExecutionSecondsApprox": 0,
+        "waitAttribution": "artifact lock wait included in total duration"
+      }
+    },
+    {
+      "paths": ["packages/proofs/ASPProof/ExactSelectorGenerationAdmission.lean", "packages/proofs/ASPProof/RuntimeServerGenerationReadiness.lean", "packages/proofs/ASPProof/SearchRouteRegistrySnapshotResolution.lean", "packages/proofs/ASPProof/ResidentProviderRelationGeneration.lean", "packages/proofs/ASPProof/HookRegistrationDeadlock.lean"],
+      "plannedProofReview": ["activation generation is not product identity", "one exact binding commit", "no cross-generation replay", "provider cannot become authority"],
+      "currentCaveat": "Proofs and source symbols must be re-audited through parser-owned ASP after Host IPC permission is repaired."
+    },
+    {
+      "paths": ["packages/proofs/receipts/asp-rust-search-prime-main-v1.json", "packages/proofs/receipts/asp-rust-live-query-warm-diagnostic-v1.json"],
+      "evidence": ["normal route Hook denial", "Host IPC EPERM", "diagnostic warm timings are not acceptance"],
+      "plannedV1Change": "retain as pre-cutover evidence; do not reinterpret activationGeneration=73 as authority"
+    }
+  ],
+  "nonExecutingRefactorPlan": {
+    "phase1": "repair or obtain Host IPC permission and rerun parser-owned inventory; do not use ASP_NO_AGENT as acceptance",
+    "phase2": "write deterministic failing tests against current V1 owner boundaries",
+    "phase3": "change existing V1 commit payload in one transaction to exact artifact/provider/workspace/source digests",
+    "phase4": "change prime and subsequent pin/echo semantics at the existing route without adapters or dual-serving",
+    "phase5": "remove activationGeneration/direct-link/project-entry/active-candidate from V1 only after pre/post gates pass",
+    "phase6": "run cold/warm/concurrency/failure-injection and replay gates, then publish a signed cutover receipt"
+  },
+  "destructiveApprovalTargets": [
+    "remove activationGeneration from public V1 receipt/schema fields and CLI output",
+    "remove direct-link identity from workspace/project records and resolution commands",
+    "remove project-entry identity and active-candidate authority from admission records",
+    "change cache/admission keys from generation/candidate identity to exact content binding",
+    "switch prime/query/query-set/search/exact/pipe to exact signed V1 binding",
+    "migrate or tombstone affected legacy records in the single approved transaction"
+  ],
+  "serviceRisk": {
+    "risks": ["old clients cannot pin the new identity", "stale resident sessions may be rejected", "in-flight candidates may fail closed", "index rebuild cost can affect cold latency"],
+    "rollback": "before cutover, retain old records unchanged; during cutover, abort on any digest/CAS/receipt mismatch; after a failed transaction, restore the previous immutable pointer by expected digest without recreating an activation identity",
+    "interruption": "bounded interruption is expected only during the explicitly approved transaction; no interruption is introduced by this artifact"
+  },
+  "prePostGates": {
+    "pre": ["Host/parser-owned source inventory complete", "all failing tests reproduced", "exact target list approved", "backup/rollback receipt durable", "no dirty protected Hook/plugin changes"],
+    "post": ["all old identity consumers absent from serving path", "single exact binding authority", "virtual workspace pass", "stale/torn/rollback/cancel fail-closed", "cold/warm/32-concurrent and repeat zero-diff artifacts", "live Rust search/query receipt"],
+    "artifactRoot": "packages/proofs/receipts/v1-refactor-impact-inventory-v1.json"
+  }
+}

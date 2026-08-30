@@ -12,7 +12,7 @@ session_lifetime = "resident"
 focus_mode = "leaf"
 roles = ["explore", "explorer", "subagent"]
 allowed_rule_intents = ["reasoning-search", "structured-projection"]
-agent_kind = "Subagent"
+agent_kind = "agent"
 display_role = "Evidence Explorer"
 description = "for code and evidence search"
 
@@ -21,7 +21,7 @@ session_lifetime = "resident"
 focus_mode = "leaf"
 roles = ["build", "subagent", "testing"]
 allowed_rule_intents = ["test-build-command", "review-command", "live-corpus-qualification", "git-history-inspection"]
-agent_kind = "Subagent"
+agent_kind = "agent"
 display_role = "Test Runner"
 description = "for build and test jobs"
 
@@ -30,6 +30,6 @@ session_lifetime = "resident"
 focus_mode = "leaf"
 roles = ["coding", "default", "subagent", "worker"]
 allowed_rule_intents = ["owner-scoped-mutation"]
-agent_kind = "Subagent"
+agent_kind = "agent"
 display_role = "Owner-scoped Coding Worker"
 description = "for edits restricted to explicitly registered owner paths"

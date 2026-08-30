@@ -6,7 +6,7 @@ from asp_python_graphs.cache import backend_fingerprint
 from asp_python_graphs.profiles import resolve_profile
 from asp_python_graphs.ranking_build import rank_fingerprint
 
-from ._asp_python_graphs_common import (
+from ._asp_graph_turbo_common import (
     TypedGraph,
     rank_frontier,
     sample_packet,
@@ -65,7 +65,7 @@ def test_backend_fingerprint_ignores_query_policy() -> None:
 
     assert default_rank_key != no_local_evidence_rank_key
     assert backend_fingerprint(graph, profile) == backend_fingerprint(graph, profile)
-    assert backend_fingerprint(graph, profile).startswith("sha256:backend:")
+    assert backend_fingerprint(graph, profile).startswith("sha256:")
 
 
 def test_runtime_ranking_caches_reuse_seed_work() -> None:

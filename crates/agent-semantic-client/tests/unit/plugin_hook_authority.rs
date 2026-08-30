@@ -28,7 +28,7 @@ fn bundled_manifest_uses_standard_hook_directory_without_unsupported_fields() {
         .get("hooks")
         .and_then(serde_json::Value::as_object)
         .expect("plugin hook event map");
-    assert_eq!(events.len(), 8);
+    assert_eq!(events.len(), 7);
     let pre_tool_matchers = events["PreToolUse"]
         .as_array()
         .expect("PreToolUse matcher groups")
@@ -41,11 +41,17 @@ fn bundled_manifest_uses_standard_hook_directory_without_unsupported_fields() {
         })
         .collect::<Vec<_>>();
     assert_eq!(
-        pre_tool_matchers,
-        ["^apply_patch$", "Bash", "spawn_agent", "^mcp__.*$"]
+        &pre_tool_matchers[..3],
+        ["^apply_patch$", "Bash", "spawn_agent"]
     );
+    assert!(
+        pre_tool_matchers[3..]
+            .iter()
+            .all(|matcher| matcher.starts_with("mcp__codex_app__"))
+    );
+    assert!(!pre_tool_matchers.contains(&"^mcp__.*$"));
 
-    for event in ["PermissionRequest", "PostToolUse"] {
+    for event in ["PostToolUse"] {
         let groups = events[event]
             .as_array()
             .unwrap_or_else(|| panic!("plugin Hook event {event} must contain matcher groups"));
@@ -89,7 +95,7 @@ fn bundled_manifest_uses_standard_hook_directory_without_unsupported_fields() {
                     _ => panic!("unexpected plugin event {event}"),
                 };
                 let command = handler["command"].as_str().expect("Hook command");
-                let base = format!("\"$PLUGIN_ROOT/bin/asp-hook\" {suffix} --client codex");
+                let base = format!("\"$PLUGIN_ROOT/bin/asp-hook-exec\" {suffix} --client codex");
                 assert!(
                     command.starts_with(&base),
                     "event={event} command={command}"
@@ -131,6 +137,7 @@ fn plugin_launcher_types_missing_binary_instead_of_exiting_127() {
         .env("ASP_STATE_HOME", root.join("missing-state"))
         .env("HOME", root.join("missing-home"))
         .env("PATH", "")
+        .env_remove("ASP_NO_AGENT")
         .output()
         .expect("run plugin launcher without PATH");
     assert_eq!(output.status.code(), Some(0));
@@ -140,21 +147,18 @@ fn plugin_launcher_types_missing_binary_instead_of_exiting_127() {
     assert!(
         receipt["hookSpecificOutput"]["permissionDecisionReason"]
             .as_str()
-            .is_some_and(|reason| reason.contains("HookGeneration current"))
+            .is_some_and(|reason| reason.contains("canonical Runtime Hook binary"))
     );
     std::fs::remove_dir_all(root).expect("remove isolated launcher state");
 }
 
 #[cfg(unix)]
 #[test]
-fn plugin_launcher_types_missing_current_hook_binary_instead_of_exiting_127() {
-    let root = temp_root("launcher-missing-current-hook-binary");
-    let generation = root
-        .join("hooks/generations/blake3-256")
-        .join("b".repeat(64));
-    std::fs::create_dir_all(&generation).expect("create incomplete generation fixture");
-    std::os::unix::fs::symlink(&generation, root.join("hooks/current"))
-        .expect("publish incomplete HookGeneration current");
+fn plugin_launcher_types_non_executable_runtime_hook_binary() {
+    let root = temp_root("launcher-non-executable-runtime-hook");
+    std::fs::create_dir_all(root.join("runtime/bin")).expect("create Runtime bin fixture");
+    std::fs::write(root.join("runtime/bin/asp-hook"), b"not executable")
+        .expect("write non-executable Runtime Hook binary");
     let launcher = root.join("asp-hook");
     std::fs::write(&launcher, ASP_CODEX_PLUGIN_HOOK_LAUNCHER)
         .expect("write isolated plugin launcher");
@@ -165,6 +169,7 @@ fn plugin_launcher_types_missing_current_hook_binary_instead_of_exiting_127() {
         .env("ASP_STATE_HOME", &root)
         .env("HOME", root.join("missing-home"))
         .env("PATH", "")
+        .env_remove("ASP_NO_AGENT")
         .output()
         .expect("run plugin launcher without Hook binary");
     assert_eq!(output.status.code(), Some(0));
@@ -180,16 +185,13 @@ fn plugin_launcher_types_missing_current_hook_binary_instead_of_exiting_127() {
 
 #[cfg(unix)]
 #[test]
-fn plugin_launcher_executes_only_the_current_immutable_hook_generation() {
+fn plugin_launcher_executes_only_the_canonical_runtime_hook_binary() {
     use std::os::unix::fs::PermissionsExt;
 
-    let root = temp_root("launcher-current-generation");
-    let generation = root
-        .join("hooks/generations/blake3-256")
-        .join("a".repeat(64));
-    std::fs::create_dir_all(&generation).expect("create immutable generation fixture");
+    let root = temp_root("launcher-runtime-hook");
+    std::fs::create_dir_all(root.join("runtime/bin")).expect("create Runtime bin fixture");
     let invocation = root.join("invocation.txt");
-    let runtime = generation.join("asp-hook");
+    let runtime = root.join("runtime/bin/asp-hook");
     std::fs::write(
         &runtime,
         format!(
@@ -203,8 +205,6 @@ fn plugin_launcher_executes_only_the_current_immutable_hook_generation() {
         .permissions();
     permissions.set_mode(0o755);
     std::fs::set_permissions(&runtime, permissions).expect("make canonical runtime executable");
-    std::os::unix::fs::symlink(&generation, root.join("hooks/current"))
-        .expect("publish HookGeneration current");
     let launcher = root.join("asp-hook");
     std::fs::write(&launcher, ASP_CODEX_PLUGIN_HOOK_LAUNCHER)
         .expect("write isolated plugin launcher");
@@ -215,12 +215,13 @@ fn plugin_launcher_executes_only_the_current_immutable_hook_generation() {
         .env("ASP_STATE_HOME", &root)
         .env("HOME", root.join("missing-home"))
         .env("PATH", "")
+        .env_remove("ASP_NO_AGENT")
         .output()
         .expect("run plugin launcher with canonical runtime");
     assert_eq!(output.status.code(), Some(0));
     assert_eq!(
         std::fs::read_to_string(&invocation).expect("read canonical runtime invocation"),
-        "hook pre-tool --client codex\n"
+        "pre-tool --client codex\n"
     );
     assert_eq!(
         serde_json::from_slice::<serde_json::Value>(&output.stdout)
@@ -272,6 +273,7 @@ fn plugin_launcher_never_falls_back_to_legacy_profile_slots() {
         .args(["pre-tool", "--client", "codex"])
         .env("ASP_STATE_HOME", &root)
         .env("PATH", "")
+        .env_remove("ASP_NO_AGENT")
         .output()
         .expect("run launcher with only legacy slots");
     assert_eq!(output.status.code(), Some(0));
@@ -281,9 +283,9 @@ fn plugin_launcher_never_falls_back_to_legacy_profile_slots() {
             "hookSpecificOutput": {
                 "hookEventName": "PreToolUse",
                 "permissionDecision": "deny",
-                "permissionDecisionReason": "ASP Hook binary is unavailable (HookGeneration current is missing or its asp-hook is non-executable). Publish a verified ASP artifact with: asp install binary"
+                "permissionDecisionReason": "ASP Hook evaluator is unavailable because the canonical Runtime Hook binary is missing or non-executable. Publish it with: asp install binary"
             },
-            "systemMessage": "ASP Hook binary is unavailable (HookGeneration current is missing or its asp-hook is non-executable). Publish a verified ASP artifact with: asp install binary"
+            "systemMessage": "ASP Hook evaluator is unavailable because the canonical Runtime Hook binary is missing or non-executable. Publish it with: asp install binary"
         })
     );
     assert!(!invocation.exists(), "legacy artifact must never execute");
@@ -312,11 +314,11 @@ fn plugin_launcher_contains_no_policy_or_runtime_server_plane() {
         .find("ASP_NO_AGENT")
         .expect("inherited process escape layer");
     let current = ASP_CODEX_PLUGIN_HOOK_LAUNCHER
-        .find("hooks/current")
-        .expect("HookGeneration current resolution");
+        .find("runtime/bin/asp-hook")
+        .expect("canonical Runtime Hook binary resolution");
     assert!(
         escape < current,
-        "escape authority must precede generation resolution"
+        "escape authority must precede Runtime Hook binary resolution"
     );
 }
 

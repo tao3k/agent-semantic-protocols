@@ -19,7 +19,7 @@
       "const": "1"
     },
     "readerBehaviorPatterns": {
-      "description": "Deterministic Reader behavior argv prefixes compiled into HookGeneration.",
+      "description": "Deterministic Reader behavior argv-pattern prefixes compiled into the standalone Hook policy bundle. Executables match by basename, ordinary tokens use globset, and a token equal to * or ** consumes zero or more argv tokens; undeclared trailing argv are allowed.",
       "type": "array",
       "uniqueItems": true,
       "items": {
@@ -317,7 +317,7 @@
             "raw-broad-search",
             "asp-reasoning-routed",
             "agent-search-json",
-            "subagent-receipt-required"
+            "agent-choice-required"
           ]
         },
         "message": {

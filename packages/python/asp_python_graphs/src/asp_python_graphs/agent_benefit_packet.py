@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 
-from .cli import _rank_packet
+from .algorithm import rank_packet
 from .packet import result_to_packet
 from .summary_packet import result_to_summary_packet
 
@@ -19,7 +19,7 @@ def build_agent_benefit_report(
     rank_args: object,
     quality_config: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
-    result = _rank_packet(packet, rank_args)
+    result = rank_packet(packet, rank_args)
     result_packet = result_to_packet(result)
     summary_packet = result_to_summary_packet(result)
     receipt_metrics = _mapping(_mapping(receipt).get("metrics"))

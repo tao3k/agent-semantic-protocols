@@ -1,14 +1,13 @@
 namespace ASPProof.HookMatcherPublicationSeparation
 
-/-- The control plane owns immutable matcher publication. -/
+/-- State Home owns exactly one canonical Runtime Hook binary. -/
 structure MatcherState where
-  generation : Option Nat
+  runtimeHookBinaryDigest : Option Nat
 
 /-- One schema-v1 AOT value owns the complete policy and Reader catalog in one
-generation. Cross-file matcher shards and mixed generations are unrepresentable. -/
+bundle. Cross-file matcher shards and mixed policy values are unrepresentable. -/
 structure MatcherBundle (Projection : Type) where
-  generation : Nat
-  hookBinaryDigest : Nat
+  runtimeHookBinaryDigest : Nat
   configDigest : Nat
   compiledMatcherDigest : Nat
   registryDigest : Nat
@@ -16,24 +15,23 @@ structure MatcherBundle (Projection : Type) where
   compiledPolicy : Projection
   readerCatalog : Projection
 
-def atomicSwitch (_current next : MatcherBundle Projection) : MatcherBundle Projection :=
+def atomicRuntimeHookSwitch (_current next : MatcherBundle Projection) : MatcherBundle Projection :=
   next
 
-theorem atomic_switch_exposes_one_complete_generation
+theorem atomic_runtime_hook_switch_exposes_one_complete_bundle
     (current next : MatcherBundle Projection) :
-    let visible := atomicSwitch current next
-    visible.generation = next.generation ∧
-      visible.hookBinaryDigest = next.hookBinaryDigest ∧
+    let visible := atomicRuntimeHookSwitch current next
+    visible.runtimeHookBinaryDigest = next.runtimeHookBinaryDigest ∧
       visible.configDigest = next.configDigest ∧
       visible.compiledMatcherDigest = next.compiledMatcherDigest ∧
       visible.registryDigest = next.registryDigest ∧
       visible.receiptDigest = next.receiptDigest ∧
       visible.compiledPolicy = next.compiledPolicy ∧
       visible.readerCatalog = next.readerCatalog := by
-  simp [atomicSwitch]
+  simp [atomicRuntimeHookSwitch]
 
 /-- Policy and lifecycle events enter one immutable Hook binary. Their internal
-routes cannot observe different executable generations. -/
+routes cannot observe different executable identities. -/
 inductive HookEventPlane where
   | policy
   | lifecycle
@@ -41,12 +39,12 @@ inductive HookEventPlane where
 
 def binaryDigestForPlane
     (bundle : MatcherBundle Projection) : HookEventPlane → Nat
-  | .policy => bundle.hookBinaryDigest
-  | .lifecycle => bundle.hookBinaryDigest
+  | .policy => bundle.runtimeHookBinaryDigest
+  | .lifecycle => bundle.runtimeHookBinaryDigest
 
-theorem atomic_switch_keeps_policy_and_lifecycle_on_one_generation
+theorem atomic_runtime_hook_switch_keeps_policy_and_lifecycle_on_one_binary
     (current next : MatcherBundle Projection) (plane : HookEventPlane) :
-    binaryDigestForPlane (atomicSwitch current next) plane =
+    binaryDigestForPlane (atomicRuntimeHookSwitch current next) plane =
       binaryDigestForPlane next plane := by
   cases plane <;> rfl
 
@@ -60,9 +58,10 @@ theorem policy_and_lifecycle_share_one_hook_binary
 def editConfigSource (active : MatcherBundle Projection) (_newSourceDigest : Nat) :
     MatcherBundle Projection := active
 
-theorem config_source_edit_preserves_active_generation
+theorem config_source_edit_preserves_runtime_hook_binary
     (active : MatcherBundle Projection) (newSourceDigest : Nat) :
-    (editConfigSource active newSourceDigest).generation = active.generation := by
+    (editConfigSource active newSourceDigest).runtimeHookBinaryDigest =
+      active.runtimeHookBinaryDigest := by
   rfl
 
 inductive CandidateStage where
@@ -75,7 +74,7 @@ inductive CandidateStage where
 def candidateTransition
     (current candidate : MatcherBundle Projection) (stageSucceeded : Bool) :
     MatcherBundle Projection :=
-  if stageSucceeded then atomicSwitch current candidate else current
+  if stageSucceeded then atomicRuntimeHookSwitch current candidate else current
 
 theorem candidate_stage_failure_preserves_previous
     (current candidate : MatcherBundle Projection) (stage : CandidateStage) :
@@ -90,47 +89,48 @@ inductive RuntimeActivationState where
   | ready
   deriving DecidableEq
 
-def commitHookGeneration
+def installRuntimeHookBinary
     (current candidate : MatcherBundle Projection)
     (_runtime : RuntimeActivationState) : MatcherBundle Projection :=
-  atomicSwitch current candidate
+  atomicRuntimeHookSwitch current candidate
 
-theorem hook_commit_is_runtime_independent
+theorem runtime_hook_install_is_runtime_server_independent
     (current candidate : MatcherBundle Projection)
     (left right : RuntimeActivationState) :
-    commitHookGeneration current candidate left =
-      commitHookGeneration current candidate right := by
+    installRuntimeHookBinary current candidate left =
+      installRuntimeHookBinary current candidate right := by
   rfl
 
 /-- Hook evaluation is total over both ready and unavailable states. -/
 inductive EvaluationResult where
-  | decision (generation : Nat)
+  | decision (binaryDigest : Nat)
   | unavailable
   deriving DecidableEq
 
 def evaluate (state : MatcherState) : EvaluationResult :=
-  match state.generation with
-  | some generation => .decision generation
+  match state.runtimeHookBinaryDigest with
+  | some binaryDigest => .decision binaryDigest
   | none => .unavailable
 
-def publish (state : MatcherState) (generation : Nat) : MatcherState :=
-  { state with generation := some generation }
+def install (state : MatcherState) (binaryDigest : Nat) : MatcherState :=
+  { state with runtimeHookBinaryDigest := some binaryDigest }
 
 /-- Missing matcher state terminates as a typed unavailable result; evaluation
 does not wait for publication or attempt recursive recovery. -/
-theorem missing_generation_terminates_unavailable :
-    evaluate { generation := none } = .unavailable := by
+theorem missing_runtime_hook_binary_terminates_unavailable :
+    evaluate { runtimeHookBinaryDigest := none } = .unavailable := by
   rfl
 
-/-- Evaluation cannot mutate or publish the matcher generation. -/
-theorem evaluation_preserves_generation (state : MatcherState) :
+/-- Evaluation cannot mutate or publish the installed Hook binary. -/
+theorem evaluation_preserves_runtime_hook_binary (state : MatcherState) :
     let _ := evaluate state
-    state.generation = state.generation := by
+    state.runtimeHookBinaryDigest = state.runtimeHookBinaryDigest := by
   rfl
 
 /-- Publishing is an explicit control-plane transition. -/
-theorem publication_makes_generation_readable (state : MatcherState) (generation : Nat) :
-    evaluate (publish state generation) = .decision generation := by
+theorem installation_makes_runtime_hook_binary_executable
+    (state : MatcherState) (binaryDigest : Nat) :
+    evaluate (install state binaryDigest) = .decision binaryDigest := by
   rfl
 
 /-- Counterexample for the retired coupled design: an evaluator that owns the
@@ -149,12 +149,27 @@ theorem separated_evaluation_cannot_self_wait :
     ¬ CoupledSelfWait true false := by
   simp [CoupledSelfWait]
 
-/-- Concurrent readers are independent projections of one immutable
-generation; reader cardinality cannot introduce serialization state. -/
+/-- Concurrent readers are independent projections of one immutable policy
+bundle; reader cardinality cannot introduce serialization state. -/
 theorem concurrent_readers_preserve_cardinality
     (state : MatcherState) (readers : List Reader) :
     (readers.map fun _ => evaluate state).length = readers.length := by
   simp
+
+/-- The public Client and the standalone Hook executable have disjoint command
+grammars.  Repeating `hook` inside `asp-hook` is therefore not an event route. -/
+inductive ExecutableSurface where
+  | client
+  | hook
+  deriving DecidableEq
+
+def acceptsHostEvent : ExecutableSurface → Bool
+  | .client => false
+  | .hook => true
+
+theorem only_standalone_hook_accepts_host_events :
+    acceptsHostEvent .client = false ∧ acceptsHostEvent .hook = true := by
+  decide
 
 /-- The four authorities that formed the retired recovery cycle. -/
 inductive RecoveryNode where
@@ -243,11 +258,10 @@ def commandEnvironmentHasRecoveryAuthority : CommandEnvironmentEvidence → Bool
   | .exportedCommand => true
   | .unboundText => false
 
-/-- The command-local guard is evaluated before generation resolution. A valid
-process transfer remains available even when no HookGeneration can be read. -/
-def commandEscapeBeforeGeneration
-    (evidence : CommandEnvironmentEvidence) (generationAvailable : Bool) : Bool :=
-  commandEnvironmentHasRecoveryAuthority evidence || generationAvailable
+/-- The command-local guard is evaluated before evaluator resolution. -/
+def commandEscapeBeforeEvaluator
+    (evidence : CommandEnvironmentEvidence) (evaluatorAvailable : Bool) : Bool :=
+  commandEnvironmentHasRecoveryAuthority evidence || evaluatorAvailable
 
 theorem direct_assignment_is_recovery_authority :
     commandEnvironmentHasRecoveryAuthority .directAssignment = true := by
@@ -265,12 +279,12 @@ theorem unbound_payload_text_is_not_recovery_authority :
     commandEnvironmentHasRecoveryAuthority .unboundText = false := by
   rfl
 
-theorem exported_command_escape_survives_missing_generation :
-    commandEscapeBeforeGeneration .exportedCommand false = true := by
+theorem exported_command_escape_survives_missing_evaluator :
+    commandEscapeBeforeEvaluator .exportedCommand false = true := by
   rfl
 
-theorem unbound_text_cannot_escape_missing_generation :
-    commandEscapeBeforeGeneration .unboundText false = false := by
+theorem unbound_text_cannot_escape_missing_evaluator :
+    commandEscapeBeforeEvaluator .unboundText false = false := by
   rfl
 
 theorem command_environment_override_makes_deadlock_unreachable :
@@ -301,11 +315,42 @@ theorem recovery_override_precedes_policy_for_hook_event :
     entersSynchronousHookBootstrap .hookEvent true = true := by
   rfl
 
-/-- Typed dispatch is a fixed point: once execution is in the requested Agent,
-the same policy must allow rather than emit another dispatch edge. -/
+/-- Escape authority is resolved before generation and policy. It is not a
+Config decision and therefore cannot be denied by the policy it bypasses. -/
+inductive HookBootstrapStage where
+  | inheritedEscape
+  | commandEscape
+  | evaluator
+  | policy
+  deriving DecidableEq
+
+def bootstrapRank : HookBootstrapStage → Nat
+  | .inheritedEscape => 0
+  | .commandEscape => 1
+  | .evaluator => 2
+  | .policy => 3
+
+theorem inherited_escape_precedes_evaluator_and_policy :
+    bootstrapRank .inheritedEscape < bootstrapRank .evaluator ∧
+      bootstrapRank .inheritedEscape < bootstrapRank .policy := by
+  decide
+
+theorem command_escape_precedes_evaluator_and_policy :
+    bootstrapRank .commandEscape < bootstrapRank .evaluator ∧
+      bootstrapRank .commandEscape < bootstrapRank .policy := by
+  decide
+
+/-- Agent kind is a closed Config fact. Child topology cannot manufacture a
+kind merely because the Host event is named `SubagentStart`. -/
+inductive AgentKind where
+  | agent
+  | subagent
+  deriving DecidableEq
+
 structure TypedAgentIdentity where
-  agentType : String
-  agentId : String
+  canonicalName : String
+  agentKind : AgentKind
+  configured : Bool
   deriving DecidableEq
 
 inductive DispatchResult where
@@ -315,29 +360,52 @@ inductive DispatchResult where
 
 def resolveTypedDispatch
     (current target : TypedAgentIdentity) : DispatchResult :=
-  if current = target then .allow else .dispatch target
+  if current = target ∧ current.configured = true then .allow else .dispatch target
 
-theorem typed_target_dispatch_is_a_fixed_point (identity : TypedAgentIdentity) :
+theorem typed_target_dispatch_is_a_fixed_point
+    (identity : TypedAgentIdentity) (configured : identity.configured = true) :
     resolveTypedDispatch identity identity = .allow := by
-  simp [resolveTypedDispatch]
+  simp [resolveTypedDispatch, configured]
 
-/-- The policy data plane precedes runtime construction. Only asynchronous
-lifecycle work owns a bounded multi-worker Tokio profile. -/
-structure HookProcessRuntime where
-  policyDataPlaneWorkerCount : Option Nat
-  asyncLifecycleWorkerCount : Nat
-
-def canonicalHookProcessRuntime : HookProcessRuntime := {
-  policyDataPlaneWorkerCount := none
-  asyncLifecycleWorkerCount := 2
+/-- Registry projection copies the configured kind; child/root topology and
+SubagentStart are not authorities for changing it. -/
+def projectConfiguredAgent
+    (configuredName : String) (configuredKind : AgentKind) :
+    TypedAgentIdentity := {
+  canonicalName := configuredName
+  agentKind := configuredKind
+  configured := true
 }
 
-def admitsConcurrentProgress (runtime : HookProcessRuntime) : Prop :=
-  runtime.policyDataPlaneWorkerCount = none ∧
-    2 ≤ runtime.asyncLifecycleWorkerCount
+theorem registry_projection_preserves_configured_agent_kind
+    (name : String) (kind : AgentKind) :
+    (projectConfiguredAgent name kind).agentKind = kind := by
+  rfl
 
-theorem policy_data_plane_precedes_runtime_and_lifecycle_is_not_single_worker :
-    admitsConcurrentProgress canonicalHookProcessRuntime := by
-  simp [admitsConcurrentProgress, canonicalHookProcessRuntime]
+/-- A configured Testing target is a terminal fixed point rather than another
+Choice Plane dispatch edge. -/
+theorem configured_testing_target_does_not_redispatch :
+    let testing := projectConfiguredAgent "asp_testing" .agent
+    resolveTypedDispatch testing testing = .allow := by
+  simp [projectConfiguredAgent, resolveTypedDispatch]
+
+/-- Neither policy evaluation nor observational lifecycle delivery constructs
+a Tokio runtime in the standalone Hook process. -/
+structure HookProcessRuntime where
+  policyRuntimeConstructed : Bool
+  observationalRuntimeConstructed : Bool
+
+def canonicalHookProcessRuntime : HookProcessRuntime := {
+  policyRuntimeConstructed := false
+  observationalRuntimeConstructed := false
+}
+
+def isRuntimeIndependent (runtime : HookProcessRuntime) : Prop :=
+  runtime.policyRuntimeConstructed = false ∧
+    runtime.observationalRuntimeConstructed = false
+
+theorem hook_event_plane_constructs_no_runtime :
+    isRuntimeIndependent canonicalHookProcessRuntime := by
+  simp [isRuntimeIndependent, canonicalHookProcessRuntime]
 
 end ASPProof.HookMatcherPublicationSeparation

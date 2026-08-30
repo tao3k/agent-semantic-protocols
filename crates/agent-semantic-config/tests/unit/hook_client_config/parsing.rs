@@ -143,7 +143,7 @@ fn default_template_round_trips_through_config_parser() {
             .argv_prefix_any
             .contains(&vec!["git".to_owned(), "grep".to_owned()])
     );
-    assert_eq!(config.rules.len(), 16);
+    assert_eq!(config.rules.len(), 18);
     assert_eq!(
         config
             .rules
@@ -151,7 +151,9 @@ fn default_template_round_trips_through_config_parser() {
             .map(|rule| rule.id.as_str())
             .collect::<Vec<_>>(),
         [
-            "allow-explicit-no-agent",
+            "allow-codex-thread-control",
+            "allow-codex-workspace-observation",
+            "allow-codex-automation-control",
             "allow-owner-scoped-mutation",
             "registered-asp-reasoning-search",
             "registered-asp-structured-projection",
@@ -371,10 +373,7 @@ fn template_routes_dynamic_wrapped_read_through_declared_action() {
         .find(|rule| rule.id == "route-read-to-asp-languages")
         .expect("confirmed Bash Read route");
     assert!(read_route.matcher.is_none());
-    assert_eq!(
-        read_route.matcher_policies,
-        [agent_semantic_config::HookClientMatcherPolicy::WrappedCommand]
-    );
+    assert!(read_route.matcher_policies.is_empty());
     assert_eq!(
         read_route.actions,
         [agent_semantic_config::HookClientActionKind::Read]
@@ -396,7 +395,7 @@ fn template_declares_the_canonical_apply_patch_matcher() {
         .iter()
         .find(|rule| rule.id == "allow-owner-scoped-mutation")
         .expect("native Edit rule");
-    assert_eq!(edit_rule.matcher.as_deref(), Some("^apply_patch$"));
+    assert_eq!(edit_rule.matcher.as_deref(), Some("apply_patch"));
 
     let _ = fs::remove_dir_all(root);
 }

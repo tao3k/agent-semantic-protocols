@@ -57,10 +57,10 @@ The receipt fixture records:
 - =commandsToFirstUsefulLocator= :: 1
 - =commandsToValidation= :: 3
 
-The fixture catalog also records a runtime command fixture emitted by
-=asp-python-graphs receipt=.  That receipt was generated from the graph-turbo
-sample request through the installed console entrypoint, then validated against
-=semantic-fact-frontier-receipt.v1.schema.json=.
+The fixture catalog also records a runtime command fixture emitted by the
+offline evidence subcommand =python -m asp_python_graphs receipt=.  That
+receipt was generated from the graph-turbo sample request through the project
+module, then validated against =semantic-fact-frontier-receipt.v1.schema.json=.
 
 - runtime output fingerprint :: =sha256:334014b9e114442b9467ead7c50df1b514b11a77ffa666174d9ad009e6286580=
 - runtime =frontierReturnedCount= :: 5
@@ -126,7 +126,7 @@ PYTHONPATH=packages/python/asp_python_graphs/src:tests \
 uv run --project packages/python/asp_python_graphs --frozen python - <<'PY' | \
 PYTHONPATH=packages/python/asp_python_graphs/src \
 uv run --project packages/python/asp_python_graphs --frozen \
-  asp-python-graphs receipt \
+  python -m asp_python_graphs receipt \
     --receipt-id agent-semantic-protocols.rfc014.frontier-receipt-runtime \
     --task-fingerprint real-project:agent-semantic-protocols:rfc014-runtime-capture \
     --command-fingerprint command:asp-python-graphs-receipt:rfc014 \
@@ -229,21 +229,21 @@ Fixture:
 Measured with the public package entrypoint:
 
 #+begin_example
-uv run --project packages/python/asp_python_graphs python -m asp_python_graphs.graph_turbo_cli benchmark \
+uv run --project packages/python/asp_python_graphs python -m asp_python_graphs benchmark \
   sandtables/fixtures/asp/graph-turbo-owner-query.json \
   --runs 30 --warmup-runs 3 --cache-mode disabled --format json
 # schemaId: agent.semantic-protocols.semantic-graph-turbo-benchmark
 # durationMs: min=1.478834 mean=1.741482 median=1.542083 p95=2.755084 max=3.142583
 # cacheStatus: disabled
 
-uv run --project packages/python/asp_python_graphs python -m asp_python_graphs.graph_turbo_cli benchmark \
+uv run --project packages/python/asp_python_graphs python -m asp_python_graphs benchmark \
   sandtables/fixtures/asp/graph-turbo-owner-query.json \
   --runs 30 --warmup-runs 3 --cache-mode enabled --format json
 # schemaId: agent.semantic-protocols.semantic-graph-turbo-benchmark
 # durationMs: min=1.230834 mean=1.372810 median=1.267271 p95=1.870416 max=2.435167
 # cacheStatus: hit
 
-uv run --project packages/python/asp_python_graphs python -m asp_python_graphs.graph_turbo_cli benchmark \
+uv run --project packages/python/asp_python_graphs python -m asp_python_graphs benchmark \
   sandtables/fixtures/asp/graph-turbo-owner-query.json \
   --runs 10 --warmup-runs 1 --cache-mode disabled --format text
 # [graph-benchmark] profile=owner-query runs=10 warmup=1 cacheMode=disabled medianMs=1.609833 p95Ms=2.549458
@@ -255,11 +255,11 @@ sandtable row:
 
 #+begin_example
 tmp_benchmark=$(mktemp /tmp/graph-turbo-benchmark.XXXXXX.json)
-uv run --project packages/python/asp_python_graphs python -m asp_python_graphs.graph_turbo_cli benchmark \
+uv run --project packages/python/asp_python_graphs python -m asp_python_graphs benchmark \
   sandtables/fixtures/asp/graph-turbo-owner-query.json \
   --runs 30 --warmup-runs 3 --cache-mode disabled --format json \
   > "$tmp_benchmark"
-uv run --project packages/python/asp_python_graphs python -m asp_python_graphs.graph_turbo_cli sandtable-summary \
+uv run --project packages/python/asp_python_graphs python -m asp_python_graphs sandtable-summary \
   --benchmark "$tmp_benchmark" \
   --receipt schemas/semantic-fact-frontier-receipt.fixtures.v1.json \
   --scenario rfc014-owner-query-fixture \
@@ -293,7 +293,7 @@ The offline comparison table is now fixed as a schema-owned fixture catalog:
 The live sandtable scoring rows now consume those report scenarios directly:
 
 #+begin_example
-uv run --project packages/python/asp_python_graphs python -m asp_python_graphs.graph_turbo_cli sandtable-summary \
+uv run --project packages/python/asp_python_graphs python -m asp_python_graphs sandtable-summary \
   --benchmark-packet sandtables/fixtures/asp/graph-turbo-owner-query.json \
   --benchmark-runs 5 \
   --benchmark-warmup-runs 1 \
@@ -312,7 +312,7 @@ uv run --project packages/python/asp_python_graphs python -m asp_python_graphs.g
 # medianMs: 1.566292
 # p95Ms: 1.674666
 
-uv run --project packages/python/asp_python_graphs python -m asp_python_graphs.graph_turbo_cli sandtable-summary \
+uv run --project packages/python/asp_python_graphs python -m asp_python_graphs sandtable-summary \
   --benchmark-packet sandtables/fixtures/asp/graph-turbo-owner-query.json \
   --benchmark-runs 5 \
   --benchmark-warmup-runs 1 \
@@ -331,7 +331,7 @@ uv run --project packages/python/asp_python_graphs python -m asp_python_graphs.g
 # medianMs: 1.615917
 # p95Ms: 1.8175
 
-uv run --project packages/python/asp_python_graphs python -m asp_python_graphs.graph_turbo_cli sandtable-summary \
+uv run --project packages/python/asp_python_graphs python -m asp_python_graphs sandtable-summary \
   --benchmark-packet sandtables/fixtures/asp/graph-turbo-owner-query.json \
   --benchmark-runs 5 \
   --benchmark-warmup-runs 1 \
@@ -388,10 +388,11 @@ The same metric surface was also exercised against a synthetic large
   cases.  The unit test validates the fixture catalog against
   =semantic-fact-frontier-receipt.v1.schema.json= and checks that recorded
   counts match the arrays in the receipt.
-- Graph-turbo now has an explicit =asp-python-graphs receipt= runtime capture
-  command.  The command ranks a graph-turbo request, preserves node selector
-  fields and selector action queue from the in-memory =GraphResult=, and emits
-  the receipt schema from caller-supplied followed/read/test facts.
+- Graph-turbo now has an explicit offline evidence receipt subcommand.  It
+  consumes a graph-turbo request/result, preserves node selector fields and
+  selector action queue from the in-memory =GraphResult=, and emits the receipt
+  schema from caller-supplied followed/read/test facts; Runtime ranking remains
+  exclusively in the ASP Server-owned gRPC service.
 - ASP search now has an explicit =--frontier-receipt-out= runtime capture
   trigger for graph-turbo frontier search commands.  The protocol facade
   strips this flag before provider execution and rejects non graph-turbo

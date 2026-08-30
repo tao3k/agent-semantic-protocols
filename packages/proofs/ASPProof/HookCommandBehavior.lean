@@ -91,6 +91,27 @@ def selectReaderCandidate : List ObservedSourceAccess → Option Nat
   | .read :: _ => some 0
   | _ :: remaining => (selectReaderCandidate remaining).map Nat.succ
 
+/-- Shell Parser owns declarative argv sequence matching. Ordinary glob tokens
+consume one argv value; a standalone many token consumes zero or more values;
+an exhausted pattern is a prefix match and therefore permits trailing argv. -/
+inductive ArgvPatternToken where
+  | one (glob : String)
+  | many
+  deriving DecidableEq, Repr
+
+inductive ArgvPatternMatches : List ArgvPatternToken → List String → Prop where
+  | prefix (actual : List String) : ArgvPatternMatches [] actual
+  | one {glob actual : String} {patterns : List ArgvPatternToken} {argv : List String} :
+      glob = actual →
+      ArgvPatternMatches patterns argv →
+      ArgvPatternMatches (.one glob :: patterns) (actual :: argv)
+  | manyZero {patterns : List ArgvPatternToken} {argv : List String} :
+      ArgvPatternMatches patterns argv →
+      ArgvPatternMatches (.many :: patterns) argv
+  | manyNext {patterns : List ArgvPatternToken} {actual : String} {argv : List String} :
+      ArgvPatternMatches (.many :: patterns) argv →
+      ArgvPatternMatches (.many :: patterns) (actual :: argv)
+
 theorem exact_behavior_key_reuses_verified_read
     (key : BehaviorKey)
     (origin : ReaderFactOrigin) :
@@ -159,5 +180,14 @@ theorem unknown_inner_candidate_does_not_mask_wrapped_read :
 theorem non_read_candidates_cannot_create_reader_authority :
     selectReaderCandidate [.unknown, .unknown] = none := by
   rfl
+
+theorem argv_many_accepts_zero_tokens (tail : List String) :
+    ArgvPatternMatches [.one "reader", .many] ("reader" :: tail) := by
+  exact .one rfl (.manyZero (.prefix tail))
+
+theorem argv_many_accepts_arbitrary_tokens (tail : List String) :
+    ArgvPatternMatches [.one "reader", .many]
+      ("reader" :: "--flag" :: "value" :: tail) := by
+  exact .one rfl (.manyNext (.manyNext (.manyZero (.prefix tail))))
 
 end ASPProof.HookCommandBehavior

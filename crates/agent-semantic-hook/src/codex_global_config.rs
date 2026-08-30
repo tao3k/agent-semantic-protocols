@@ -171,7 +171,7 @@ pub fn codex_global_hook_trust_state_status(
     })
 }
 
-fn codex_global_hook_events() -> [CodexGlobalHookEvent; 8] {
+fn codex_global_hook_events() -> [CodexGlobalHookEvent; 6] {
     [
         CodexGlobalHookEvent {
             config_name: "SessionStart",
@@ -207,20 +207,6 @@ fn codex_global_hook_events() -> [CodexGlobalHookEvent; 8] {
             matcher: None,
             status: "Updating semantic search flow state",
             hook_event: "post-tool",
-        },
-        CodexGlobalHookEvent {
-            config_name: "SubagentStart",
-            state_label: "subagent_start",
-            matcher: Some(ALL_TOOL_ACTION_MATCHER),
-            status: "Preparing semantic subagent context",
-            hook_event: "subagent-start",
-        },
-        CodexGlobalHookEvent {
-            config_name: "SubagentStop",
-            state_label: "subagent_stop",
-            matcher: Some(ALL_TOOL_ACTION_MATCHER),
-            status: "Checking semantic subagent evidence",
-            hook_event: "subagent-stop",
         },
         CodexGlobalHookEvent {
             config_name: "Stop",

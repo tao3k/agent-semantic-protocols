@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from jsonschema import Draft202012Validator
+from unit.schema_validation import schema_validator_for
 
 from tools.semantic_sandtable.agent_session import (
     AgentSessionConfig,
@@ -289,5 +289,4 @@ def _read_jsonl(path: Path) -> list[dict[str, object]]:
 
 
 def _validate_schema(schema_name: str, payload: dict[str, object]) -> None:
-    schema = json.loads((_ROOT / "schemas" / schema_name).read_text())
-    Draft202012Validator(schema).validate(payload)
+    schema_validator_for(_ROOT / "schemas" / schema_name).validate(payload)

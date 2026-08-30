@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from datetime import datetime
 from pathlib import Path
 from typing import Sequence
 
@@ -15,6 +14,7 @@ from .artifact_timeline import (
     evaluate_artifact_events_timeline,
     evaluate_artifact_timeline,
 )
+from .artifact_timeline_parameters import parse_since, parse_timeline_args
 from .artifact_timeline_text import write_timeline_text_report
 
 
@@ -58,47 +58,11 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 
 def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "artifact_dir",
-        nargs="?",
-        type=Path,
-        default=Path(".cache/agent-semantic-protocol/artifacts"),
-    )
-    parser.add_argument(
-        "--events-json",
-        type=Path,
-        help="Read schema-owned artifact events from a JSON packet instead of scanning artifact_dir.",
-    )
-    parser.add_argument("--subagent-start-gap-seconds", type=int, default=10)
-    parser.add_argument("--subagent-soft-max-seconds", type=int, default=30)
-    parser.add_argument("--subagent-hard-max-seconds", type=int, default=60)
-    parser.add_argument("--session-gap-seconds", type=int, default=600)
-    parser.add_argument("--examples", type=int, default=5)
-    parser.add_argument(
-        "--since",
-        help="Filter artifact events on or after this epoch second or ISO timestamp.",
-    )
-    parser.add_argument(
-        "--recent-sessions",
-        type=int,
-        help="Keep only the last N sessions after any --since filter.",
-    )
-    parser.add_argument("--format", choices=["text", "json"], default="text")
-    return parser.parse_args(argv)
+    return parse_timeline_args(argv)
 
 
 def _parse_since(value: str | None) -> float | None:
-    if value is None:
-        return None
-    stripped = value.strip()
-    if not stripped:
-        return None
-    try:
-        return float(stripped)
-    except ValueError:
-        normalized = stripped[:-1] + "+00:00" if stripped.endswith("Z") else stripped
-        return datetime.fromisoformat(normalized).timestamp()
+    return parse_since(value)
 
 
 if __name__ == "__main__":

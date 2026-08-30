@@ -433,7 +433,7 @@ pub(super) async fn serve_runtime_search_requests(
                 tasks.spawn(async move {
                     let result = match result {
                         Ok((runtime, registry)) => {
-                            agent_semantic_client::source_index::
+                            agent_semantic_client_db::server_source_index::
                                 prepare_runtime_server_owner_projection_with_resident_runtime_async(
                                     runtime,
                                     project_root,

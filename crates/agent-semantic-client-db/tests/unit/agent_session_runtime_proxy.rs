@@ -83,8 +83,6 @@ async fn project_registry_selects_runtime_proxy_from_unix_socket_endpoint() {
         .expect("create Runtime artifact directory");
     std::fs::write(&runtime_artifact, b"test-runtime-artifact")
         .expect("write immutable Runtime artifact fixture");
-    let _published_registry = AgentSessionRegistry::open_or_create_state_root(&state_home)
-        .expect("publish current V1 instance registry before endpoint publication");
     let mut endpoint = agent_semantic_client_db::prepare_runtime_server_endpoint(
         &state_home,
         &runtime_artifact,
@@ -135,7 +133,7 @@ async fn project_registry_selects_runtime_proxy_from_unix_socket_endpoint() {
             .await
             .expect("inspect project registry route")
             .is_some(),
-        "a published Unix socket endpoint must select the typed runtime proxy"
+        "a published Runtime endpoint must select the typed proxy without exposing the Runtime-owned physical registry"
     );
     assert!(!state_home.join("session-registry.turso").exists());
 }

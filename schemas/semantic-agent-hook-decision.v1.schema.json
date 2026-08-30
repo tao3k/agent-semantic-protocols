@@ -66,9 +66,7 @@
         "semantic-ast-patch-required",
         "edit-before-prime",
         "changed-check-required",
-        "read-only-subagent-write",
-        "subagent-capability-denied",
-        "subagent-receipt-required",
+        "agent-choice-required",
         "unsupported-platform",
         "policy"
       ]

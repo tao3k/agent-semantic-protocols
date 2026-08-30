@@ -246,7 +246,8 @@ fn owner_items_runtime_ignores_help_shaped_cache_and_rejects_help_success() {
         true,
         Some(LanguageOwnerItemsProviderOutput {
             status_success: true,
-            stdout: b"asp-gerbil-scheme - Gerbil Scheme semantic search and project harness\nUsage:\n",
+            stdout:
+                b"asp-gerbil-scheme - Gerbil Scheme semantic search and project harness\nUsage:\n",
             stderr: b"",
         }),
     )

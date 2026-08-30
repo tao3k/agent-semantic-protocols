@@ -4,7 +4,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use agent_semantic_client_protocol::{
     CLIENT_FRAME_SCHEMA_ID, CLIENT_PROTOCOL_ID, CLIENT_PROTOCOL_VERSION, ClientFrame,
     ClientFrameBase, ClientInfo, ClientRequestId, ClientSessionId, ClientWorkspaceIdentity,
-    SCHEMA_BUNDLE_REQUEST_SCHEMA_ID, SCHEMA_VERSION, SchemaBundleRequest, SchemaBundleResponse,
+    SCHEMA_BUNDLE_REQUEST_SCHEMA_ID,
+    SCHEMA_VERSION, SchemaBundleRequest, SchemaBundleResponse,
 };
 use agent_semantic_client_server::{
     AspClientGrpcTransport, bind_asp_client_grpc_unix, serve_asp_client_grpc_unix,

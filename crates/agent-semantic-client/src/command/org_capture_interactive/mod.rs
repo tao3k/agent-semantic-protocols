@@ -2,5 +2,5 @@
 
 mod choice;
 
-pub(crate) use choice::{AdmittedAgentInteractiveChoice, AgentInteractiveChoice};
+pub(crate) use choice::AgentInteractiveChoice;
 pub(super) use choice::{choice_arg_value, strip_choice_args};

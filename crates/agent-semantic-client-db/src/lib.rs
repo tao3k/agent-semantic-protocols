@@ -1,6 +1,6 @@
 #![deny(dead_code)]
 
-//! DB Engine facade and control adapters for `agent-semantic-client`.
+//! ASP Server-owned DB Engine facade and in-process control adapters.
 
 pub mod agent_session_registry;
 mod artifact_event_builder;
@@ -48,9 +48,9 @@ pub use runtime_server_owner_receipt::{
     RuntimeServerResidentTransactionReceipt, RuntimeServerSpawnReceipt,
     RuntimeServerSpawnReceiptRead, StaleRuntimeServerSpawnReceipt,
 };
+mod runtime_server_asp_python_graphs_status;
 pub mod runtime_server_diagnostics;
 mod runtime_server_generation_admission;
-mod runtime_server_asp_python_graphs_status;
 pub mod runtime_server_health;
 pub mod runtime_server_hook_admission_locator;
 pub mod runtime_server_observability;
@@ -60,6 +60,7 @@ pub mod runtime_server_workspace;
 pub mod runtime_telemetry_bus;
 pub mod search_incident;
 pub mod seqlock_json_memory;
+pub mod server_source_index;
 mod source_index;
 pub mod storage_contract;
 pub mod storage_performance_receipt;
@@ -95,6 +96,8 @@ pub use agent_semantic_client_core::ClientDbStatus;
 pub use agent_session_registry::{
     AGENT_SESSION_REGISTRY_DB_NAME, AGENT_SESSION_STATUS_ACTIVE, AGENT_SESSION_STATUS_ARCHIVED,
     AGENT_SESSION_STATUS_IDLE, AGENT_SESSION_STATUS_INVALID, AgentSessionDispatchClaimRequest,
+    CollaborationAgentObservation, CollaborationSnapshotPersistenceReceipt,
+    run_collaboration_snapshot_inbox,
     AgentSessionDispatchClaimResult, AgentSessionDispatchCompleteRequest,
     AgentSessionDispatchLeaseRecord, AgentSessionLookupRequest, AgentSessionRecord,
     AgentSessionRegisterRequest, AgentSessionRegistry, AgentSessionResidentName,

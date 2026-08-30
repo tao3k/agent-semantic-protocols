@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from jsonschema import Draft202012Validator
+from unit.schema_validation import schema_validator_for
 
 from tools.semantic_sandtable.cli import semantic_sandtable_main as main
 from tools.semantic_sandtable.large_library_optimization_analysis import (
@@ -190,14 +190,8 @@ def _metric_args(flag: str, metrics: dict[str, object]) -> list[str]:
 
 
 def _validate_schema(packet: dict[str, object]) -> None:
-    schema = json.loads(
-        (
-            _ROOT
-            / "schemas"
-            / (
-                "semantic-sandtable-large-library-optimization-variant-result."
-                "v1.schema.json"
-            )
-        ).read_text(encoding="utf-8")
-    )
-    Draft202012Validator(schema).validate(packet)
+    schema_validator_for(
+        _ROOT
+        / "schemas"
+        / "semantic-sandtable-large-library-optimization-variant-result.v1.schema.json"
+    ).validate(packet)

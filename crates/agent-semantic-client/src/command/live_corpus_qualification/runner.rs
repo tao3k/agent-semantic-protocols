@@ -325,6 +325,55 @@ fn validate_plan(plan: &QualificationPlan) -> Result<(), String> {
     if plan.cases.is_empty() || plan.required_languages.is_empty() {
         return Err("Live Corpus qualification plan is empty".to_owned());
     }
+    if plan.resident_sample_count < 128 {
+        return Err(format!(
+            "Live Corpus resident sample count is below the shared minimum: observed={} minimum=128",
+            plan.resident_sample_count
+        ));
+    }
+    let client_protocol = &plan.client_protocol;
+    if client_protocol.protocol_id != "agent.semantic-protocols.client"
+        || client_protocol.protocol_version != "1"
+        || client_protocol.transport != "http-json"
+        || client_protocol.phases
+            != [
+                "initialize",
+                "catalog",
+                "request",
+                "cancel",
+                "cancelled",
+                "shutdown",
+            ]
+        || client_protocol.required_telemetry_events
+            != [
+                "client_protocol_initialize",
+                "client_protocol_catalog",
+                "client_protocol_request",
+                "client_protocol_cancel",
+                "client_protocol_cancelled",
+                "client_protocol_shutdown",
+            ]
+        || client_protocol.applies_to_case_count != 17
+        || client_protocol.maximum_resident_micros != 1000
+        || client_protocol.session_policy != "one-initialize-per-session"
+        || client_protocol.ready_effects != ["mpsc", "oneshot", "cancel", "response"]
+        || client_protocol.forbidden_ready_effects
+            != [
+                "process",
+                "filesystem",
+                "dbWrite",
+                "generationMutation",
+                "providerActivation",
+                "controlPoll",
+            ]
+        || client_protocol.non_ready_dispatch_count != 0
+        || client_protocol.residual_task_count != 0
+        || client_protocol.p50_maximum_micros != 250
+        || client_protocol.p99_maximum_micros != 700
+        || client_protocol.max_maximum_micros != 1000
+    {
+        return Err("Live Corpus client protocol contract does not match shared schema".to_owned());
+    }
     let workspace_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let registered = agent_semantic_schema_manager::SchemaManager::new(workspace_root)
         .registered_language_profiles()?
@@ -361,6 +410,8 @@ fn validate_plan(plan: &QualificationPlan) -> Result<(), String> {
             ));
         }
         if case.query.selector_strategy != "first-ranked-parser-owned"
+            || case.query.owner_view != "items"
+            || case.query.projection_scope != "live-corpus"
             || case.search.method != "lexical"
             || case.search.view != "seeds"
         {

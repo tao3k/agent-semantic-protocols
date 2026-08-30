@@ -8,7 +8,9 @@ use crate::parse_bash_command_candidates;
 /// This avoids reparsing the rendered stage on compound Hook hot paths.
 pub fn command_stage_source_paths(stage: &crate::CommandStage) -> Vec<String> {
     let mut candidates = stage.words().iter().skip(1).cloned().collect::<Vec<_>>();
-    candidates.extend(embedded_literal_candidates(&candidates));
+    let embedded = embedded_literal_candidates(&candidates);
+    candidates.retain(|candidate| revision_qualified_path_candidate(candidate).is_none());
+    candidates.extend(embedded);
     stable_unique(&candidates)
 }
 
@@ -28,9 +30,12 @@ pub fn command_source_paths(command: &str, tokens: &[String]) -> Vec<String> {
         });
 
     let mut candidates = parsed_words.unwrap_or_else(|| tokens.to_vec());
+    let embedded_argv_candidates = embedded_literal_candidates(&candidates);
+    candidates.retain(|candidate| revision_qualified_path_candidate(candidate).is_none());
     candidates.extend(crate::bash_parser::quoted_literal_candidates(command));
     candidates.extend(crate::bash_parser::bash_heredoc_literal_candidates(command));
     let embedded_candidates = embedded_literal_candidates(&candidates);
+    candidates.extend(embedded_argv_candidates);
     candidates.extend(embedded_candidates);
     stable_unique(&candidates)
 }
@@ -69,13 +74,13 @@ pub fn embedded_literal_candidates(tokens: &[String]) -> Vec<String> {
     candidates.extend(
         tokens
             .iter()
-            .filter_map(|token| git_object_path_candidate(token))
+            .filter_map(|token| revision_qualified_path_candidate(token))
             .map(str::to_string),
     );
     stable_unique(&candidates)
 }
 
-fn git_object_path_candidate(token: &str) -> Option<&str> {
+fn revision_qualified_path_candidate(token: &str) -> Option<&str> {
     let (revision, path) = token.split_once(':')?;
     if revision.is_empty()
         || path.is_empty()

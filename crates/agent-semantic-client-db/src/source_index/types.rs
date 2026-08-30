@@ -1,4 +1,4 @@
-//! Public value types for DB Engine-owned source index rows.
+//! Public value types for ASP Server-owned source index rows.
 
 use std::path::{Path, PathBuf};
 
@@ -141,7 +141,7 @@ source_index_value_type!(ClientDbSourceIndexStructuralSelector);
 source_index_value_type!(ClientDbSourceIndexSelectorPayloadKind);
 
 source_index_value_type!(
-    /// Project-relative path retained by the DB Engine source index.
+/// Project-relative path retained by the ASP Server source index.
     ClientDbSourceIndexPath
 );
 source_index_value_type!(
@@ -165,7 +165,7 @@ source_index_value_type!(
     ClientDbSourceIndexSource
 );
 
-/// One DB Engine-owned source index generation imported into the client DB.
+/// One ASP Server-owned source index generation imported into the DB Engine.
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ClientDbSourceIndexImport {
     pub generation_id: CacheGenerationId,
@@ -259,7 +259,7 @@ pub struct ClientDbSourceIndexImportFile {
     >,
 }
 
-/// Request for building one Rust-owned source-index import packet.
+/// Request for the ASP Server DB Engine to build one source-index import packet.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ClientDbSourceIndexImportRequest {
     pub generation_id: CacheGenerationId,
@@ -410,7 +410,7 @@ impl From<ClientDbSourceIndexOwner> for ClientDbSourceIndexCandidate {
     }
 }
 
-/// Lookup result from the DB Engine-owned source index.
+/// Lookup result from the ASP Server-owned source index.
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ClientDbSourceIndexLookupResult {
     pub db_path: PathBuf,
@@ -433,7 +433,8 @@ pub struct ClientDbSourceIndexProjectLookupRequest<'a> {
 }
 
 /// Request for looking up source-index candidates from an already resolved
-/// client cache directory.
+/// State Core directory. The directory is only a DB locator; the ASP Server
+/// DB Engine remains the source-index authority.
 pub struct ClientDbSourceIndexClientDirLookupRequest<'a> {
     pub client_dir: &'a Path,
     pub indexed_project_root: &'a Path,
@@ -606,7 +607,7 @@ impl ClientDbSourceIndexRefreshResult {
     }
 }
 
-/// Lookup request for DB Engine-owned source index rows.
+/// Lookup request for ASP Server-owned source-index rows.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ClientDbSourceIndexLookup {
     pub project_root: PathBuf,
@@ -615,7 +616,7 @@ pub struct ClientDbSourceIndexLookup {
     pub limit: u32,
 }
 
-/// Lookup request for a multi-key Rust-owned source-index candidate query.
+/// Lookup request for a multi-key ASP Server DB source-index candidate query.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ClientDbSourceIndexCandidateLookup {
     pub project_root: PathBuf,
@@ -624,7 +625,7 @@ pub struct ClientDbSourceIndexCandidateLookup {
     pub limit: u32,
 }
 
-/// Lookup request for DB Engine-owned source index selector rows.
+/// Lookup request for ASP Server-owned source-index selector rows.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ClientDbSourceIndexSelectorLookup {
     pub project_root: PathBuf,

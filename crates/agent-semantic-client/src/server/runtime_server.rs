@@ -49,7 +49,7 @@ pub(crate) fn runtime_server_command() -> Command {
 pub(crate) async fn runtime_server_workspace_session_for_admission_async(
     project_root: &Path,
 ) -> Result<agent_semantic_client_db::workspace_db_ipc::WorkspaceDbIpcSession, String> {
-    // AgentSession/ChoicePlane registration is a global Runtime control-plane
+    // Multi-Agent v2 registration is a global Runtime control-plane
     // operation. It requires a stable workspace identity, but it must not
     // depend on a source-generation locator, Hook mmap inbox, or admission
     // catalog. Binding through the global endpoint removes the registration ->

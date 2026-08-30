@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import argparse
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from typing import Sequence
 
 from .artifact_events import ArtifactEvent, scan_artifact_events
 
@@ -18,6 +20,41 @@ class TimelineParameters:
     examples: int = 5
     since_timestamp: float | None = None
     recent_sessions: int | None = None
+
+
+def parse_timeline_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
+    """Parse timeline controls shared by offline evidence and the gRPC service."""
+
+    parser = argparse.ArgumentParser(description="Timeline parameter controls")
+    parser.add_argument(
+        "artifact_dir",
+        nargs="?",
+        type=Path,
+        default=Path(".cache/agent-semantic-protocol/artifacts"),
+    )
+    parser.add_argument("--events-json", type=Path)
+    parser.add_argument("--subagent-start-gap-seconds", type=int, default=10)
+    parser.add_argument("--subagent-soft-max-seconds", type=int, default=30)
+    parser.add_argument("--subagent-hard-max-seconds", type=int, default=60)
+    parser.add_argument("--session-gap-seconds", type=int, default=600)
+    parser.add_argument("--examples", type=int, default=5)
+    parser.add_argument("--since")
+    parser.add_argument("--recent-sessions", type=int)
+    parser.add_argument("--format", choices=["text", "json"], default="text")
+    return parser.parse_args(argv)
+
+
+def parse_since(value: str | None) -> float | None:
+    if value is None:
+        return None
+    stripped = value.strip()
+    if not stripped:
+        return None
+    try:
+        return float(stripped)
+    except ValueError:
+        normalized = stripped[:-1] + "+00:00" if stripped.endswith("Z") else stripped
+        return datetime.fromisoformat(normalized).timestamp()
 
 
 def filtered_events(root: Path, params: TimelineParameters) -> tuple[ArtifactEvent, ...]:

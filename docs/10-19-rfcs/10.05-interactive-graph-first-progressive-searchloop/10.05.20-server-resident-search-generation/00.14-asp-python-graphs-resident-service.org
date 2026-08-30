@@ -4,10 +4,11 @@
 * Decision
 
 =asp-python-graphs= is the production Python graph-algorithm service used by
-ASP Rust.  It is not a language provider, compatibility wrapper, or fallback
-engine.  Graph Turbo remains the algorithm family implemented inside the
-service, but =graph-turbo= is not a public service, package, route, schema,
-binary, or engine identifier.
+the ASP Server.  It is not a language provider, compatibility wrapper, or fallback
+engine.  Graph Turbo remains the algorithm/profile identity implemented inside
+the service, including its schema-visible algorithm and packet identities.
+Only the standalone executable, public route, and independent lifecycle are
+forbidden; =graph-turbo= is not a package, binary, or second authority.
 
 ASP Server is the only lifecycle and admission authority.  It owns the
 installed artifact identity, process, local endpoint, long-lived gRPC channel,
@@ -23,7 +24,8 @@ aliases:
 - direct workspace database IPC evaluation;
 - source-checkout, =uv run=, host Python, or PATH discovery at request time;
 - Rust ranking fallback or a second graph authority;
-- public =graph-turbo= identifiers.
+- a public standalone =graph-turbo= executable, route, or lifecycle authority;
+  schema-visible algorithm/profile identity remains valid.
 
 * Northbound language clients
 

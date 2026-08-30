@@ -7,6 +7,13 @@ from .command_spec import CommandSpec
 
 COMMANDS: tuple[CommandSpec, ...] = (
     CommandSpec(
+        ("schema", "profiles"),
+        "tools.schema_profiles",
+        "main",
+        "argv",
+        "Validate package-local copies of shared ASP schemas.",
+    ),
+    CommandSpec(
         ("sandtable",),
         "tools.semantic_sandtable.cli",
         "semantic_sandtable_main",
@@ -42,53 +49,46 @@ COMMANDS: tuple[CommandSpec, ...] = (
         "Validate Julia cache miss/hit performance evidence.",
     ),
     CommandSpec(
-        ("graph", "turbo"),
-        "asp_python_graphs.cli",
-        "main",
-        "argv",
-        "Rank typed ASP graph facts into compact frontier output.",
-    ),
-    CommandSpec(
         ("graph", "turbo", "benchmark"),
         "asp_python_graphs.benchmark_cli",
         "main",
         "argv",
-        "Benchmark graph turbo ranking for sandtable evidence.",
+        "Benchmark Graph-Turbo algorithm output for offline evidence only.",
     ),
     CommandSpec(
         ("graph", "turbo", "sandtable-summary"),
         "asp_python_graphs.sandtable_summary_cli",
         "main",
         "argv",
-        "Summarize graph turbo benchmark and receipt metrics.",
+        "Summarize offline Graph-Turbo benchmark and receipt evidence.",
     ),
     CommandSpec(
         ("graph", "turbo", "ablation-report"),
         "asp_python_graphs.ablation_report_cli",
         "main",
         "argv",
-        "Compare graph turbo ablation variants for ranking calibration.",
+        "Compare offline Graph-Turbo ablation variants for calibration.",
     ),
     CommandSpec(
         ("graph", "turbo", "agent-benefit"),
         "asp_python_graphs.agent_benefit_cli",
         "main",
         "argv",
-        "Report graph turbo agent reading, locator, feedback, and explanation benefits.",
+        "Report offline Graph-Turbo reading, locator, and explanation evidence.",
     ),
     CommandSpec(
         ("graph", "turbo", "artifacts"),
         "asp_python_graphs.artifacts_cli",
         "main",
         "argv",
-        "Evaluate graph turbo against cached ASP search artifacts.",
+        "Evaluate offline Graph-Turbo output against cached ASP artifacts.",
     ),
     CommandSpec(
         ("graph", "turbo", "timeline"),
         "asp_python_graphs.timeline_cli",
         "main",
         "argv",
-        "Infer search rounds and subagent microbursts from cached ASP artifacts.",
+        "Infer timeline evidence from cached ASP artifacts; no Runtime authority.",
     ),
     CommandSpec(
         ("syntax", "real-evidence"),

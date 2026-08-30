@@ -9,7 +9,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 from .benchmark_cli import benchmark_packet
-from .cli import _load_packet
+from .algorithm import load_packet
 from .sandtable_summary_args import parse_args
 from .sandtable_summary_packet import summary_packet
 from .sandtable_summary_render import render_text
@@ -52,7 +52,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 def _load_benchmark(args: argparse.Namespace) -> Mapping[str, object]:
     if args.benchmark is not None:
         return _load_json(args.benchmark)
-    packet = _load_packet(args.benchmark_packet)
+    packet = load_packet(args.benchmark_packet)
     return benchmark_packet(
         packet,
         runs=args.benchmark_runs,

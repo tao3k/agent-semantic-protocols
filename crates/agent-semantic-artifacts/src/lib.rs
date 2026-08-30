@@ -33,4 +33,3 @@ pub use repair_chain::{
     RepairChainFrameIdentity, RepairChainFrameInput, RepairChainFrameKind, RepairChainParentRef,
     build_repair_chain_frame,
 };
-pub mod hook_generation;

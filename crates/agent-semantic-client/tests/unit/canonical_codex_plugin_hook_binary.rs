@@ -44,9 +44,21 @@ fn plugin_hook_shape_uses_one_entry_per_native_action_family() {
         .map(|entry| entry["matcher"].as_str().expect("action matcher"))
         .collect::<Vec<_>>();
 
+    assert_eq!(&matchers[..3], ["^apply_patch$", "Bash", "spawn_agent"]);
+    assert!(
+        matchers[3..]
+            .iter()
+            .all(|matcher| matcher.starts_with("mcp__codex_app__"))
+    );
+    assert!(!matchers.contains(&"^mcp__.*$"));
     assert_eq!(
-        matchers,
-        vec!["^apply_patch$", "Bash", "spawn_agent", "^mcp__.*$"]
+        matchers
+            .iter()
+            .copied()
+            .collect::<std::collections::BTreeSet<_>>()
+            .len(),
+        matchers.len(),
+        "each native Host tool has one physical matcher"
     );
     assert!(!matchers.contains(&"*"));
     assert!(pre_tool_use.iter().all(|entry| {
@@ -66,7 +78,7 @@ fn plugin_hook_shape_uses_one_entry_per_native_action_family() {
         "--host-match apply_patch",
         "--host-match Bash",
         "--host-match spawn_agent",
-        "--host-match-prefix mcp__",
+        "--host-match mcp__codex_app__send_message_to_thread",
     ] {
         assert!(
             commands.iter().any(|command| command.ends_with(expected)),

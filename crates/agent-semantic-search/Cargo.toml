@@ -29,7 +29,7 @@ blake3.workspace = true
 agent-semantic-artifacts = { path = "../agent-semantic-artifacts" }
 globset.workspace = true
 agent-semantic-client-core = { path = "../agent-semantic-client-core" }
-agent-semantic-hook = { path = "../agent-semantic-hook" }
+agent-semantic-hook = { path = "../agent-semantic-hook", features = ["compiler"] }
 agent-semantic-provider-transport = { path = "../agent-semantic-provider-transport" }
 agent-semantic-runtime = { path = "../agent-semantic-runtime" }
 agent-semantic-search-projection = { path = "../agent-semantic-search-projection" }

@@ -67,7 +67,7 @@ class AspPythonGraphsGrpcHandler(grpc.GenericRpcHandler):
         async def evaluate(message: dict[str, object]) -> None:
             nonlocal active_evaluates
             try:
-                receipt = await asyncio.to_thread(session.handle, message)
+                receipt = await asyncio.to_thread(session.handle_admitted, message)
             except ServiceProtocolError as error:
                 receipt = unavailable_receipt(message, error.code, str(error))
             except Exception as error:  # fail closed at the service boundary
@@ -90,7 +90,7 @@ class AspPythonGraphsGrpcHandler(grpc.GenericRpcHandler):
 
         async def control(message: dict[str, object]) -> None:
             try:
-                receipt = session.handle(message)
+                receipt = session.handle_admitted(message)
             except ServiceProtocolError as error:
                 receipt = unavailable_receipt(message, error.code, str(error))
             except Exception as error:  # fail closed at the service boundary
@@ -104,6 +104,11 @@ class AspPythonGraphsGrpcHandler(grpc.GenericRpcHandler):
             try:
                 async for message in request_iterator:
                     kind = message.get("messageKind")
+                    try:
+                        session.admit_message(message, validate_service_epoch=False)
+                    except ServiceProtocolError as error:
+                        await outbound.put(unavailable_receipt(message, error.code, str(error)))
+                        continue
                     if kind in {"evaluate", "timeline"}:
                         if active_evaluates >= self._max_in_flight:
                             await outbound.put(

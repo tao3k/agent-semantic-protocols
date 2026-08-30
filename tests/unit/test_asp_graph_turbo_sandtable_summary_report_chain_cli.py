@@ -7,7 +7,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from unit.asp_python_graphs_cli_support import (
+from unit.asp_graph_turbo_cli_support import (
     sample_graph_turbo_request,
     validate_shared_schema,
 )

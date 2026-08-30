@@ -1,6 +1,17 @@
 #+TITLE: Canonical V1 Turso Source-Index Performance Decision
 #+STATUS: Active
 
+* V1 identity refactor hold
+
+This active V1 performance contract is retained without a serving cutover.
+The eventual key is the ASP Server's exact content-addressed artifact,
+provider-contract, workspace, and source binding; =activationGeneration= is
+not product identity. MutationId, leaseId, and expected-digest CAS remain
+transaction controls. No existing generation, direct-link, project-entry, or
+active-candidate record is changed by this RFC update. The exact in-place
+replacement and its performance gates are listed in RFC 10.05 and require
+separate approval.
+
 * Decision
 
 V1 has one canonical source-index representation. It is a scope-bound owner

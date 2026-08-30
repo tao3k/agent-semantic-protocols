@@ -11,11 +11,11 @@ pub(super) fn run_agent_config_command(args: &[String]) -> Result<(), String> {
     match args.first().map(String::as_str) {
         Some("sync") if args.len() == 1 => sync_agent_config(),
         Some("help" | "--help" | "-h") | None => {
-            println!("usage: asp agent config sync");
+            println!("usage: asp config agents sync");
             Ok(())
         }
         Some(command) => Err(format!(
-            "unknown agent config command {command}\nusage: asp agent config sync"
+            "unknown agents config command {command}\nusage: asp config agents sync"
         )),
     }
 }

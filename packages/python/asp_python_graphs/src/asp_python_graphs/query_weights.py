@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 
 from .model import Node, TypedGraph
+from .query_clause_coverage import query_clause_coverage_adjustment
 from .query_package_cohesion import (
     query_package_cohesion_adjustment,
     query_package_cohesion_tokens,
@@ -23,6 +24,7 @@ _QUERY_WEIGHT_NODE_KINDS = {"collection", "field", "hot", "item", "owner", "type
 _QUERY_MATCH_COMPOUND_RATIO = 0.25
 
 __all__ = [
+    "query_clause_coverage_adjustment",
     "query_node_match_bonus",
     "query_package_cohesion_adjustment",
     "query_package_cohesion_tokens",

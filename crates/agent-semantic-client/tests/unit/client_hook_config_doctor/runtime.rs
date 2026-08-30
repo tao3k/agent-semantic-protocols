@@ -80,7 +80,7 @@ decision = "deny"
     let stdout = stdout(&output);
     assert!(stdout.contains("enforcement=enforced"));
     assert!(stdout.contains(
-        "enforcementReason=hook-generation-bound-deny-observed"
+        "enforcementReason=hook-policy-bundle-bound-deny-observed"
     ));
     assert!(stdout.contains("|enforcement status=enforced"));
     std::fs::remove_dir_all(root).expect("cleanup temp project root");

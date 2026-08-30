@@ -2,7 +2,7 @@
 
 use std::{env, path::PathBuf};
 
-use super::agent_control_plane::{run_agent_command, run_session_control_plane_command};
+use super::agent_control_plane::run_config_command;
 use super::ast_patch::run_ast_patch_command;
 use super::dispatch_agent_session_policy::is_agent_session_control_json_command;
 use super::document_provider;
@@ -70,8 +70,7 @@ pub(crate) async fn run_protocol_command_started(
                 .to_string(),
         ),
         Some("hook") => run_hook_command(&args[1..]).await,
-        Some("agent") => run_agent_command(&args[1..]),
-        Some("session") => run_session_control_plane_command(&args[1..]).await,
+        Some("config") => run_config_command(&args[1..]),
         Some("install") => run_install_command(&args[1..]).await,
         Some("paths") => run_paths_command(&args[1..]),
         Some("healthcheck") => run_healthcheck_command(&args[1..]).await,
@@ -177,7 +176,7 @@ fn arg_option_value<'a>(args: &'a [String], flag: &str) -> Option<&'a str> {
 }
 
 fn usage() -> String {
-    "usage: asp [--help|--version] <guide|providers|tools|wrap|cache|cloud|hook|agent|install|paths|healthcheck|server|schema|workspace-db|live-corpus|ast-patch|graph|fd|rg|search|query|rust|typescript|python|julia|org|md> ...".to_string()
+    "usage: asp [--help|--version] <guide|providers|tools|wrap|cache|cloud|hook|config|session|install|paths|healthcheck|server|schema|workspace-db|live-corpus|ast-patch|graph|fd|rg|search|query|rust|typescript|python|julia|org|md> ...".to_string()
 }
 
 async fn run_client_command(args: Vec<String>) -> Result<(), String> {

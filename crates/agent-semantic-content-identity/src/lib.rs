@@ -109,3 +109,4 @@ pub mod workspace_memory_generation_segment;
 pub mod workspace_merkle_v1;
 pub mod workspace_search_identity;
 extern crate self as agent_semantic_content_identity;
+pub mod content_binding;

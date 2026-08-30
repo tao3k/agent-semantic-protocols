@@ -6,9 +6,10 @@ from asp_python_graphs.calibration import (
     apply_profile_calibrations,
     profile_calibration_from_feedback,
 )
+from asp_python_graphs.algorithm import RankOptions, load_packet, rank_packet
 from asp_python_graphs.profiles import resolve_profile
 
-from ._asp_python_graphs_common import (
+from ._asp_graph_turbo_common import (
     _GRAPH_TURBO_CALIBRATION_SCHEMA,
     _GRAPH_TURBO_SCHEMA,
     Path,
@@ -159,7 +160,7 @@ def test_calibration_relation_delta_changes_profile_matrix_channel() -> None:
     assert list(schema_validator_for(_GRAPH_TURBO_SCHEMA).iter_errors(adjusted)) == []
 
 
-def test_calibration_cli_builds_packet_and_rank_cli_consumes_it(tmp_path: Path) -> None:
+def test_calibration_evidence_command_and_algorithm_api_consume_it(tmp_path: Path) -> None:
     request_path = tmp_path / "request.json"
     feedback_path = tmp_path / "feedback.json"
     calibration_path = tmp_path / "calibration.json"
@@ -215,23 +216,12 @@ def test_calibration_cli_builds_packet_and_rank_cli_consumes_it(tmp_path: Path) 
         == []
     )
 
-    ranked = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "asp_python_graphs",
-            "rank",
-            "--calibration",
-            str(calibration_path),
-            "--format",
-            "json",
-            str(request_path),
-        ],
-        check=True,
-        text=True,
-        capture_output=True,
+    payload = result_to_packet(
+        rank_packet(
+            load_packet(str(request_path)),
+            RankOptions(calibration=(str(calibration_path),)),
+        )
     )
-    payload = json.loads(ranked.stdout)
 
     selected = _profile_compatibility(payload, "owner-query")
     assert selected["relationWeightMultiplier"]["collection_of"] == 1.08

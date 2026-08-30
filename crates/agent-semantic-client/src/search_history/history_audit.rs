@@ -62,7 +62,7 @@ async fn print_history_audit(audit_root: &Path, forwarded_args: &[String]) -> Re
     Ok(())
 }
 
-fn artifact_events_packet(
+pub(crate) fn artifact_events_packet(
     project_context: &ProjectContext,
     artifact_dir: &Path,
 ) -> Result<Option<Bytes>, String> {

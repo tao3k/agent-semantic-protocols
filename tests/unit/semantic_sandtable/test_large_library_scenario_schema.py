@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from jsonschema import Draft202012Validator
+from unit.schema_validation import schema_validator_for
 
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -45,10 +45,9 @@ def _target_library(scenario: dict[str, object]) -> dict[str, object]:
 
 
 def _validation_errors(scenario: dict[str, object]) -> list[str]:
-    schema = _load_json(
+    validator = schema_validator_for(
         _REPO_ROOT / "schemas" / "semantic-sandtable-scenario.v1.schema.json"
     )
-    validator = Draft202012Validator(schema)
     return [error.message for error in validator.iter_errors(scenario)]
 
 

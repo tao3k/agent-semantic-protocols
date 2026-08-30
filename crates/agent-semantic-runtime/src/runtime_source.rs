@@ -7,7 +7,7 @@ use std::{
     process::Command,
 };
 
-/// Source checkout request derived from a provider-owned runtime-source packet.
+/// Source checkout request admitted by the ASP Server from a runtime-source packet.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RuntimeSourceSpec {
     pub language_id: String,
@@ -28,14 +28,14 @@ pub struct RuntimeSourceCheckout {
     pub checkout_dir: PathBuf,
 }
 
-/// Runtime-source identity prepared for source-index refresh.
+/// Runtime-source identity prepared by the ASP Server for source-index refresh.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RuntimeSourceIndexContext {
     pub checkout_root: PathBuf,
     pub registry_fingerprint: String,
 }
 
-/// Runtime-source file prepared for source-index import.
+/// Runtime-source file prepared for ASP Server-owned source-index import.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RuntimeSourceIndexFile {
     pub path: PathBuf,

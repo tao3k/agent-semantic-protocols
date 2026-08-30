@@ -451,10 +451,7 @@ fn trailing_project_root(args: &[String]) -> Option<String> {
 
 fn default_provider_for_language(language_id: &str) -> (Option<String>, Option<String>) {
     match language_id {
-        "rust" => (
-            Some("asp-rust".to_string()),
-            Some("asp-rust".to_string()),
-        ),
+        "rust" => (Some("asp-rust".to_string()), Some("asp-rust".to_string())),
         "typescript" => (
             Some("asp-typescript".to_string()),
             Some("asp-typescript".to_string()),

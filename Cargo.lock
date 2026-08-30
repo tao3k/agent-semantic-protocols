@@ -138,6 +138,7 @@ dependencies = [
  "agent-semantic-artifacts",
  "agent-semantic-client-core",
  "agent-semantic-client-protocol",
+ "agent-semantic-client-server",
  "agent-semantic-config",
  "agent-semantic-content-identity",
  "agent-semantic-context-product",
@@ -212,7 +213,7 @@ version = "0.1.0"
 dependencies = [
  "blake3",
  "figment",
- "regex",
+ "globset",
  "serde",
  "serde_json",
  "tempfile",
@@ -250,6 +251,7 @@ dependencies = [
  "agent-semantic-schema-manager",
  "agent-semantic-shell-parser",
  "aho-corasick",
+ "arc-swap",
  "asp-rust-project-harness-policy",
  "base64 0.23.1",
  "blake3",
@@ -260,10 +262,8 @@ dependencies = [
  "jsonschema",
  "libc",
  "memmap2",
+ "orgize",
  "postcard",
- "regex",
- "regex-automata",
- "regex-syntax",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -282,6 +282,7 @@ dependencies = [
  "agent-semantic-hook",
  "asp-rust-project-harness-policy",
  "fs2",
+ "globset",
  "jsonschema",
  "libc",
  "serde",
@@ -464,6 +465,7 @@ dependencies = [
 name = "agent-semantic-shell-parser"
 version = "0.1.0"
 dependencies = [
+ "globset",
  "toml 0.9.12+spec-1.1.0",
  "tree-sitter",
  "tree-sitter-bash",

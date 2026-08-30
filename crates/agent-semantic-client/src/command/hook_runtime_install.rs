@@ -146,13 +146,13 @@ async fn run_install_for_client(
     let org_state_sync =
         crate::command::org_capture::require_materialized_org_state(&project_root)?;
     timings.mark("org-state");
-    let hook_generation =
-        crate::command::install_binary_config_admission::publish_embedded_hook_generation(
+    let hook_runtime =
+        crate::command::install_binary_config_admission::publish_embedded_hook_runtime(
             &runtime_state.protocol_home,
             binary_install_plan.current_exe(),
         )
         .await?;
-    timings.mark("hook-generation");
+    timings.mark("hook-runtime");
     let binary_install =
         crate::command::protocol_binary::ensure_protocol_binary_installed_transaction(
             &binary_install_plan,
@@ -164,12 +164,8 @@ async fn run_install_for_client(
         .protocol_home
         .join("hooks")
         .join("config.toml");
-    let user_config_status = hook_generation.config_source_status;
-    let hook_matcher_generation = hook_generation
-        .publication
-        .generation
-        .generation_digest
-        .to_string();
+    let user_config_status = hook_runtime.config_source_status;
+    let hook_binary_digest = hook_runtime.artifact_digest.to_string();
     timings.mark("user-config");
     remove_incompatible_hook_event_state(&project_root)?;
     timings.mark("event-state");
@@ -216,11 +212,11 @@ async fn run_install_for_client(
         user_config_status
     );
     println!(
-        "[{receipt_label}] client={client} activation={} activationRuntime=derived activationSync={}{} hookMatcherGeneration={} activeArtifactRoot={} activeArtifactByteReads={} activeArtifactBytesRead={} activeArtifactReceiptWrites={} agentConfig={} orgState={} orgStateSync={} orgSourceIndex={} config={}{}{}{}{} binary=asp binaryPath={} binaryInstall={} binaryContentDigest={} digestAlgorithm=blake3-256 binarySwitch=atomic mode=updated",
+        "[{receipt_label}] client={client} activation={} activationRuntime=derived activationSync={}{} hookBinaryDigest={} activeArtifactRoot={} activeArtifactByteReads={} activeArtifactBytesRead={} activeArtifactReceiptWrites={} agentConfig={} orgState={} orgStateSync={} orgSourceIndex={} config={}{}{}{}{} binary=asp binaryPath={} binaryInstall={} binaryContentDigest={} digestAlgorithm=blake3-256 binarySwitch=atomic mode=updated",
         display_path(&project_root, &activation_path),
         "server-register",
         user_config_receipt,
-        hook_matcher_generation,
+        hook_binary_digest,
         active_artifact.receipt.artifact_root_digest().as_str(),
         active_artifact.artifact_byte_reads,
         active_artifact.artifact_bytes_read,

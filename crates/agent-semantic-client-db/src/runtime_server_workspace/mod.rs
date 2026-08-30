@@ -89,3 +89,4 @@ pub use retirement::{
     ResidentWorkspaceRetirementReceipt,
 };
 mod atomic_snapshot_pointer;
+pub mod content_binding;

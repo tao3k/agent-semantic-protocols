@@ -49,7 +49,7 @@ def workspace_dev_command(
         "run",
         "--quiet",
         "--manifest-path",
-        str(repo_root / "crates" / "agent-semantic-protocol" / "Cargo.toml"),
+        str(repo_root / "crates" / "agent-semantic-client" / "Cargo.toml"),
         "--",
         *command[1:],
     ]

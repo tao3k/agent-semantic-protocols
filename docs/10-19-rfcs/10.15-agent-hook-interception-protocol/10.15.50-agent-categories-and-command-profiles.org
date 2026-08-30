@@ -99,9 +99,12 @@ syntax alone is not sufficient evidence that it can be installed.
   Codex host contract; ASP owns typed action classification after delivery.
 - The installer MUST validate the rendered hook manifest against that schema
   before any installed artifact is replaced.
-- Hook commands MUST use the plugin PATH contract.  In particular, the
-  =PreToolUse= command is exactly =asp hook pre-tool --client codex=; a
-  user-specific or content-addressed absolute binary path is invalid.
+- Hook commands MUST use the fixed Plugin launcher contract. In particular,
+  =PreToolUse= invokes ="$PLUGIN_ROOT/bin/asp-hook-exec" pre-tool --client codex=
+  and that script directly =exec=s
+  =ASP_STATE_HOME/runtime/bin/asp-hook=. A user-specific path, content-addressed
+  path, Client =asp hook pre-tool= command, or repeated =asp-hook hook=
+  namespace is invalid.
 - Unknown events, handler fields, hook kinds, and commands fail closed.
 - The active source and installed hook manifests MUST have the same content
   identity after installation.

@@ -153,3 +153,22 @@ def test_canonical_provider_identity_schema_accepts_every_registered_language() 
                 "providerId": provider_id,
             }
         )
+
+
+def test_gerbil_structural_index_is_not_a_python_graphs_authority() -> None:
+    structural_index = (
+        ROOT
+        / "languages/gerbil-scheme-language-project-harness/src/protocol/structural-index.ss"
+    ).read_text(encoding="utf-8")
+    structural_command = (
+        ROOT
+        / "languages/gerbil-scheme-language-project-harness/src/commands/search-structural.ss"
+    ).read_text(encoding="utf-8")
+
+    assert "asp-python-graphs" not in structural_index
+    assert "graphTurboOwner" not in structural_index
+    assert "asp-rust" not in structural_index
+    assert "heavyIndexOwner" not in structural_index
+    assert "asp-python-graphs" not in structural_command
+    assert "graphTurbo" not in structural_command
+    assert "asp-rust" not in structural_command

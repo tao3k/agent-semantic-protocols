@@ -38,6 +38,34 @@ def schema_validator_for(schema_path: Path) -> Draft202012Validator:
                 resource,
             )
         )
+        # Some older schema families intentionally use the repository-local
+        # authority.  Unit validation is offline and must resolve that
+        # authority from the same checked-out bundle, rather than attempting a
+        # network fetch (or treating a valid local reference as missing).
+        resources.append(
+            (
+                f"https://agent-semantic-protocols.local/{loaded_path.name}",
+                resource,
+            )
+        )
+        resources.append(
+            (
+                f"https://agent-semantic-protocols.local/schemas/{loaded_path.name}",
+                resource,
+            )
+        )
+        resources.append(
+            (
+                f"https://schemas.agent-semantic-protocols.local/{loaded_path.name}",
+                resource,
+            )
+        )
+        resources.append(
+            (
+                f"https://schemas.agent-semantic-protocols.local/schemas/{loaded_path.name}",
+                resource,
+            )
+        )
     registry = Registry().with_resources(resources)
     return Draft202012Validator(schema, registry=registry)
 

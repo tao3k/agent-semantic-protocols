@@ -165,7 +165,7 @@ def _run_loaded_scenario(
     path: Path,
     scenario: dict[str, Any],
     *,
-    isolate: bool,
+    isolate: bool = True,
 ) -> ScenarioResult:
     env = build_env(scenario.get("env", {}), repo_root=repo_root)
     if isolate:

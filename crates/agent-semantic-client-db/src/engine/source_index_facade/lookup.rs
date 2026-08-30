@@ -149,7 +149,7 @@ impl ClientDbEngine {
         .await
     }
 
-    /// Lookup source-index candidates from a resolved client directory's Turso read model.
+    /// Lookup source-index candidates from the ASP Server DB located by State Core.
     pub async fn lookup_source_index_read_model_from_client_dir(
         client_dir: impl AsRef<Path>,
         source_snapshot: &agent_semantic_content_identity::SourceSnapshotEvidence,

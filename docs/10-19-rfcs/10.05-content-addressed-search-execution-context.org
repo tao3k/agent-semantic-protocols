@@ -1,0 +1,118 @@
+#+TITLE: RFC 10.05 - V1 Content-Addressed Search Execution Binding
+#+STATUS: Design draft; refactor approval required
+#+OPTIONS: toc:2
+
+* Scope and hold
+
+This document is a V1 refactor design only. It stabilizes the current
+server-first protocol without adding a V2 schema, adapter, dual-read path, or
+dual-serving path. No public route, database serving record, provider binding,
+or client contract is changed by this document. The exact in-place changes
+listed below require explicit destructive approval.
+
+* First divergence
+
+The current model exposes =activationGeneration= together with
+=direct-link=, =project-entry=, and =active-candidate= records. These values
+mix activation ordering with product identity and make a mutable activation
+epoch look like a stable workspace/source binding. The corrected V1 model
+uses the ASP Server ArtifactCatalog and exact content digests as authority.
+
+* Stable V1 target
+
+The implementation keeps the Rust module and public type namespace neutral;
+the protocol version is carried by the shared schema's =schemaVersion= (and
+the matching =CONTENT_BINDING_SCHEMA_VERSION= constant), not by a filename or
+namespace suffix. This prevents a version label from becoming a second
+authority while still making schema negotiation explicit.
+
+The Schema Manager publishes one signed =RuntimeArtifactReference= V1. The
+ASP Server ArtifactCatalog verifies and stores that immutable dependency. The
+ProviderRegistry binds an exact =artifactDigest= to an exact
+=providerContractDigest=. The resident session key is content-derived.
+
+The ASP Server owns Workspace Registry, canonical project resolution,
+WorkspaceSnapshot, SourceIndex, admission, cancellation, backpressure, and
+the exact content-addressed workspace/source binding. The Rust provider only
+implements stateless =DescribeProject= from =cargo_metadata= and must accept a
+valid virtual Cargo workspace with no root package. It does not commit
+identity, own a lifecycle, or own a cache.
+
+=prime= opens or resolves an exact signed V1 execution binding. Subsequent
+=query-set=, =search=, =query=, =exact=, and =pipe= requests pin and echo the
+same content identity. Missing, stale, cross-source, torn, rollback, or
+signature-invalid bindings fail closed. A database transaction carries
+=mutationId=, =leaseId=, and CAS =expectedDigest=; those are concurrency
+controls, not external product identity. There is no external activation
+generation.
+
+* Activation and legacy identity removal
+
+=ActivationGeneration= is not part of the target product semantics and is
+not a replacement public identity. During the approved refactor it may remain
+only as an internal migration field until all consumers are changed. The
+final transaction removes it from V1 schemas, commands, records, cache keys,
+and admission keys. =direct-link=, =project-entry=, and =active-candidate=
+likewise remain untouched until a separate approval names each exact target.
+
+* Design review
+
+* Proof gate fan-in
+
+The combined Alex/Lean review is =CORRECTION_REQUIRED=. Alex could not
+produce parser-owned inventory facts because the Host IPC boundary returned
+=reasonKind=host-operation-not-permitted=. Lean requires a fresh Lake/AXLE
+audit and =#print axioms= before any V1 authority change. The machine-readable
+fan-in is
+=packages/proofs/receipts/v1-refactor-proof-gate-fan-in-v1.json=.
+
+The required serial order is: define =ContentIdentity= with runtime artifact,
+workspace snapshot, source generation, source index, schema, and provider
+catalog digests; prove activation observation is not product/request/
+publication authority; bind artifact/workspace/source/index exactly; introduce
+one durable =ContentPublicationCommit= with crash-before/after cuts; then
+prove readiness, selector, incremental admission, recovery, cross-content and
+rollback rejection; then run schema negatives and Rust crash/mismatch tests;
+only then run fresh Lean Lake/AXLE and =#print axioms= audits. Independent
+schema fixtures and crash countermodels may run in parallel only after their
+predecessor authority is fixed.
+
+The old epoch-authority declarations remain present until those content-bound
+theorems pass. No public V1 route, schema, record, provider binding, or cache
+key is changed in this gate.
+
+** Candidate A: retain activation generation as query identity
+
+This has low migration cost but preserves stale/torn identity, couples
+admission to actor ordering, and cannot bind artifact, provider contract,
+workspace, and source index. Rejected.
+
+** Candidate B: V1 in-place content binding with transaction fences
+
+This retains the current V1 envelope while changing the authority at the
+existing commit boundary: ArtifactCatalog owns immutable runtime dependency,
+Server owns exact workspace/source binding, and DB transaction/CAS fields
+provide concurrency. It adds no route and keeps rollback simple until the
+approved cutover. It is selected.
+
+Complexity is linear in descriptor members at commit and constant per exact
+binding lookup; warm reads are content-keyed and avoid activation-epoch
+resolution. Memory is bounded by Server-owned artifact/catalog/index limits.
+Signature and digest checks happen before commit. On failure, no binding is
+published; on cancellation, no commit occurs. The rejected alternatives are
+epoch-as-identity and a compatibility adapter/dual-serving layer because both
+retain ambiguous authority.
+
+Owner mapping: Schema Manager signs the artifact reference; ArtifactCatalog
+validates immutable runtime artifacts; ProviderRegistry validates exact
+provider/contract binding; ASP Server commits workspace/source identity and
+serves; Rust provider describes projects only. The impact inventory and
+non-executing migration plan are the approval artifacts.
+
+* Approval boundary
+
+The following are intentionally not executed here: deleting or renaming V1
+fields, changing public CLI routes, changing serving DB records, changing
+provider binding semantics, changing cache/admission keys, or disabling
+legacy records. A future approval must name the exact targets and validate
+pre/post route, receipt, replay, rollback, and live performance gates.

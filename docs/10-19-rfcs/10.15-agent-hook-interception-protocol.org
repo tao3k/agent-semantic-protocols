@@ -76,16 +76,21 @@ normal Codex/Claude deny envelope omits that serialized decision from
 =additionalContext=.  This is a breaking refinement of the existing v1
 contract, not a new schema version.
 
-The v1 implementation target is the shared protocol binary in this repository.
-The hook runtime itself stays in the =agent-semantic-hook= library crate:
+The v1 implementation has two explicit executable surfaces. The public =asp=
+Client owns administration. The standalone =asp-hook= executable owns Host
+events and embeds the compiled policy bundle:
 
 #+begin_src text
-asp hook pre-tool --client codex --activation .cache/agent-semantic-protocol/hooks/activation.json
-asp hook pre-tool --client claude --activation .cache/agent-semantic-protocol/hooks/activation.json
-asp hook pre-tool --client codex --activation .cache/agent-semantic-protocol/hooks/activation.json --emit decision
+asp-hook pre-tool --client codex
+asp-hook pre-tool --client claude
 asp hook doctor --client codex --activation .cache/agent-semantic-protocol/hooks/activation.json .
 asp install plugin --codex .
 #+end_src
+
+The fixed Plugin script =asp-hook-exec= is only an =exec= boundary. It resolves
+=ASP_STATE_HOME/runtime/bin/asp-hook= and forwards the event directly; it MUST
+NOT add another =hook= subcommand. Consequently =asp-hook hook pre-tool= and
+=asp hook pre-tool= are invalid Host event shapes.
 
 The runtime is intentionally language-neutral:
 
@@ -1342,8 +1347,9 @@ when the following implementation gates pass:
 6. Runtime config validation mirrors the shared schema shape for identifiers,
    min-length strings, event/platform enums, language id uniqueness, route
    =argv=, and route binary names.
-7. Config changes are observed on the next =asp hook=
-   process invocation without any watcher, daemon, or server loop.
+7. Mutable Config changes do not affect serving evaluation until the Developer
+   installer validates a new =asp-hook= binary containing the next policy
+   bundle. No watcher, daemon, or server loop compiles policy on the hot path.
 8. Validation gates pass:
    - =cargo test -p agent-semantic-hook=
    - =cargo test -p agent-semantic-client=
@@ -1352,7 +1358,7 @@ when the following implementation gates pass:
    - =asp-rust check --changed crates/agent-semantic-hook=
    - =asp-rust check --changed crates/agent-semantic-client=
 9. Direct-read payload field-family coverage is tested through the classifier
-    and through the real =asp hook pre-tool= runtime for at least these Codex
+    and through the real =asp-hook pre-tool= runtime for at least these Codex
     shapes: =path=, =file=, =absolutePath=, nested =resource.path=,
     =resources[].filePath=, and =file://= URI lists.  Each source match denies
     with =reasonKind=direct-source-read= and a route shaped as

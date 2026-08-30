@@ -53,12 +53,12 @@ struct ClaudeHookEvent {
     hook_event: &'static str,
 }
 
-/// Render the managed Codex hook block that dispatches through `asp hook`.
+/// Render the managed Codex hook block that dispatches through `asp-hook`.
 pub fn codex_hook_block(project_root: &Path) -> String {
     codex_hook_block_with_binary(project_root, None)
 }
 
-/// Render the managed Codex hook block that dispatches through `asp hook`.
+/// Render the managed Codex hook block that dispatches through `asp-hook`.
 pub fn codex_hook_block_with_binary(project_root: &Path, asp_binary: Option<&Path>) -> String {
     let events = codex_hook_events();
     let body = events
@@ -214,7 +214,7 @@ pub fn remove_codex_managed_hook_config(existing: &str) -> String {
     }
 }
 
-fn codex_hook_events() -> [CodexHookEvent; 8] {
+fn codex_hook_events() -> [CodexHookEvent; 6] {
     [
         CodexHookEvent {
             config_name: "SessionStart",
@@ -250,20 +250,6 @@ fn codex_hook_events() -> [CodexHookEvent; 8] {
             matcher: None,
             status: "Updating semantic search flow state",
             hook_event: "post-tool",
-        },
-        CodexHookEvent {
-            config_name: "SubagentStart",
-            state_label: "subagent_start",
-            matcher: Some(ALL_TOOL_ACTION_MATCHER),
-            status: "Preparing semantic subagent context",
-            hook_event: "subagent-start",
-        },
-        CodexHookEvent {
-            config_name: "SubagentStop",
-            state_label: "subagent_stop",
-            matcher: Some(ALL_TOOL_ACTION_MATCHER),
-            status: "Checking semantic subagent evidence",
-            hook_event: "subagent-stop",
         },
         CodexHookEvent {
             config_name: "Stop",
@@ -522,7 +508,7 @@ fn claude_hook_command(hook_event: &str, project_root: &Path) -> String {
     let project_root = shell_single_quoted(&project_root.display().to_string());
     let activation_path = shell_single_quoted(&activation_path.display().to_string());
     format!(
-        "{CLAUDE_MANAGED_COMMAND_MARKER}\nrepo_root={project_root}\ncd \"$repo_root\"\nactivation={activation_path}\nexec asp hook {hook_event} --client claude --activation \"$activation\"\n"
+        "{CLAUDE_MANAGED_COMMAND_MARKER}\nrepo_root={project_root}\ncd \"$repo_root\"\nactivation={activation_path}\nhook_bin=\"${{ASP_STATE_HOME:-${{HOME}}/.agent-semantic-protocols}}/runtime/bin/asp-hook\"\nexec \"$hook_bin\" {hook_event} --client claude --activation \"$activation\"\n"
     )
 }
 
@@ -556,10 +542,7 @@ fn is_managed_claude_group(group: &Value) -> bool {
 fn is_managed_claude_hook(hook: &Value) -> bool {
     hook.get("command")
         .and_then(Value::as_str)
-        .is_some_and(|command| {
-            command.contains(CLAUDE_MANAGED_COMMAND_MARKER)
-                || (command.contains("asp hook") && command.contains("--client claude"))
-        })
+        .is_some_and(|command| command.contains(CLAUDE_MANAGED_COMMAND_MARKER))
 }
 
 fn canonical_json(value: Value) -> Value {

@@ -112,6 +112,7 @@ version = "0.1.0"
 source = { editable = "asp_python_graphs" }
 dependencies = [
     { name = "asp-memory-engine" },
+    { name = "blake3" },
     { name = "grpcio" },
     { name = "scipy" },
 ]
@@ -124,6 +125,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "asp-memory-engine", editable = "asp_memory_engine" },
+    { name = "blake3", specifier = ">=1.0.8,<2" },
     { name = "grpcio", specifier = ">=1.75,<2" },
     { name = "scipy", specifier = ">=1.14" },
 ]

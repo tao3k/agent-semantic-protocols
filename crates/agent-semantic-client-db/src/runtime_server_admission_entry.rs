@@ -8,6 +8,8 @@ use super::{
     WorkspaceMutationIdentity,
 };
 
+const ADMISSION_ENTRY_COMMAND_CAPACITY: usize = 4096;
+
 #[derive(Clone, Copy, Debug)]
 pub(super) struct AdmissionEntryState {
     pub(super) building: bool,
@@ -72,7 +74,7 @@ impl AdmissionEntryAuthority {
             );
         }
         let (state_sender, state) = tokio::sync::watch::channel(initial);
-        let (commands, mut receiver) = tokio::sync::mpsc::channel(64);
+        let (commands, mut receiver) = tokio::sync::mpsc::channel(ADMISSION_ENTRY_COMMAND_CAPACITY);
         let task_scope = crate::runtime_server_runtime::RuntimeServerTaskScope::new(
             "generation-admission-entry",
         );

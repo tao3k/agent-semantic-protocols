@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Resident Python graph algorithms managed by ASP Server."
 requires-python = ">=3.11"
 dependencies = [
+    "blake3>=1.0.8,<2",
     "grpcio>=1.75,<2",
     "scipy>=1.14",
     "asp-memory-engine",

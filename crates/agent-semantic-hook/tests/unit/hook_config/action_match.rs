@@ -81,9 +81,9 @@ fn semantic_policy(
 }
 
 #[test]
-fn canonical_apply_patch_regex_and_official_aliases_share_codex_semantics() {
+fn canonical_apply_patch_and_official_aliases_share_host_semantics() {
     let matcher = AgentActionMatch::new(AgentActionMatchConfig {
-        native_matcher_any: vec!["^apply_patch$".to_owned()],
+        native_matcher_any: vec!["apply_patch".to_owned()],
         ..AgentActionMatchConfig::default()
     });
     let mut actions = crate::tool_action::collect_tool_actions(
@@ -128,7 +128,7 @@ fn canonical_apply_patch_regex_and_official_aliases_share_codex_semantics() {
 #[test]
 fn canonical_apply_patch_edit_is_not_derived_from_shell_syntax() {
     let matcher = AgentActionMatch::new(AgentActionMatchConfig {
-        native_matcher_any: vec!["^apply_patch$".to_owned()],
+        native_matcher_any: vec!["apply_patch".to_owned()],
         ..AgentActionMatchConfig::default()
     });
     let mut actions = crate::tool_action::collect_tool_actions(

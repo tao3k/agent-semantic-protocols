@@ -55,7 +55,7 @@ fn assert_codex_cli_hook_enforced(stdout: &str) {
         "Codex CLI Hook E2E is a publication gate; configured-but-not-enforced, missing delivery, and source leakage are failures: stdout={stdout}"
     );
     assert!(
-        stdout.contains("enforcementReason=hook-generation-bound-deny-observed"),
+        stdout.contains("enforcementReason=hook-policy-bundle-bound-deny-observed"),
         "enforced Codex CLI probe did not report the deny reason: stdout={stdout}"
     );
     assert!(

@@ -365,7 +365,7 @@ the source snapshot and validated workspace-generation evidence already held
 by the resident lease.  It MUST NOT contain the complete workspace snapshot,
 owner bytes, or serialized selector, term, or relation indexes.  Candidate
 lookup uses the resident =ReadSourceIndex= operation; Graph Turbo evaluation
-uses the resident =EvaluateGraphTurbo= operation.  A CLI that opens or decodes
+uses the resident =graphs/evaluate= ClientFrame method.  A CLI that opens or decodes
 the complete generation mmap after receiving this authority violates the
 contract.
 

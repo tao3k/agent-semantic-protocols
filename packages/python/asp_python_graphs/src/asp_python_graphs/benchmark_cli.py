@@ -11,14 +11,14 @@ import time
 from collections import Counter
 from collections.abc import Mapping, Sequence
 
-from .cli import _load_packet, _rank_packet
+from .algorithm import RankOptions, load_packet, rank_packet
 from .constants import ALGORITHM_ID
 from .packet import result_to_packet
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parse_args(argv)
-    packet = _load_packet(args.packet)
+    packet = load_packet(args.packet)
     benchmark = benchmark_packet(
         packet,
         runs=args.runs,
@@ -78,14 +78,14 @@ def benchmark_packet_with_result(
     rank_args = _rank_args(profile=profile, seed=seed, limit=limit)
     warmup_cache_statuses: list[str] = []
     for _ in range(warmup_runs):
-        warmup_packet = result_to_packet(_rank_packet(packet, rank_args))
+        warmup_packet = result_to_packet(rank_packet(packet, rank_args))
         warmup_cache_statuses.append(_cache_status(warmup_packet))
     durations: list[float] = []
     cache_statuses: list[str] = []
     last_packet: dict[str, object] | None = None
     for _ in range(runs):
         started = time.perf_counter()
-        result = _rank_packet(packet, rank_args)
+        result = rank_packet(packet, rank_args)
         durations.append((time.perf_counter() - started) * 1000.0)
         last_packet = result_to_packet(result)
         cache_statuses.append(_cache_status(last_packet))
@@ -221,7 +221,7 @@ def _profile_matrix(packet: Mapping[str, object]) -> Mapping[str, object]:
 def _rank_args(
     *, profile: str | None, seed: Sequence[str], limit: int | None
 ) -> argparse.Namespace:
-    return argparse.Namespace(profile=profile, seed=list(seed), limit=limit)
+    return RankOptions(profile=profile, seed=tuple(seed), limit=limit)
 
 
 def _packet_with_cache_mode(

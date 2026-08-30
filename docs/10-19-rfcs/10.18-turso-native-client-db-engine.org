@@ -6,7 +6,9 @@
 * One-sentence summary
 ASP owns a DB Engine v1 contract for durable search, state, topology,
 artifact evidence, and future writing workflows; Turso is the production
-backend and the public backend token is =turso=.
+backend and the public backend token is =turso=.  The ASP Runtime Server is the
+sole lifecycle and admission owner; the client reaches this DB only through
+typed Runtime operations.
 
 * Contract
 The DB Engine is the product boundary. Providers and command facades emit
@@ -70,8 +72,9 @@ facade:
 - route receipts.
 
 * Source-index and structural-index boundary
-Source-index stable data is written through
-=ClientDbEngine::refresh_source_index_import_from_client_dir=. The method
+Source-index stable data is written through the ASP Server DB Engine, currently
+implemented by
+=ClientDbEngine::refresh_source_index_import_from_client_dir=. The server
 bootstraps =client.turso=, writes generation/owner/selector rows, persists the
 source-index EvidenceGraph into =asp_graph_entity= / =asp_graph_edge=, and
 writes =source-index= namespace rows into =asp_search_document= for stable FTS
@@ -107,8 +110,10 @@ Ownership is:
 - =agent-semantic-client-core= exposes client-facing State Core services;
 - =agent-semantic-client-db= owns DB Engine schema, open/bootstrap, read/write
   sessions, and Turso adapters;
-- =agent-semantic-search= owns search routing, overlay merge, candidate
-  projection, and source-index lookup orchestration;
+- =agent-semantic-search= owns search routing, overlay merge, and candidate
+  projection; =agent-semantic-client-db= owns ASP Server source-index
+  materialization, Turso/Merkle persistence, and source-index lookup
+  orchestration;
 - language harnesses own native parse facts and shared schema packets.
 
 * Validation gates

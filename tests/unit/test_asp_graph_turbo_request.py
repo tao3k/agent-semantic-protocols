@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-from ._asp_python_graphs_common import (
+from ._asp_graph_turbo_common import (
     _GRAPH_TURBO_FIXTURE,
     _GRAPH_TURBO_REQUEST_SCHEMA,
     _GRAPH_TURBO_SCHEMA,
-    Path,
     TypedGraph,
     json,
     rank_frontier,
@@ -14,9 +13,8 @@ from ._asp_python_graphs_common import (
     sample_packet,
     sample_request,
     schema_validator_for,
-    subprocess,
-    sys,
 )
+from asp_python_graphs.algorithm import RankOptions, rank_packet
 
 
 def test_request_fixture_is_schema_owned_algorithm_input() -> None:
@@ -183,28 +181,13 @@ def test_result_packet_is_schema_owned_ranking_evidence() -> None:
     ]
 
 
-def test_tools_graph_turbo_cli_uses_request_packet_defaults(tmp_path: Path) -> None:
-    packet = tmp_path / "graph.json"
-    packet.write_text(
-        json.dumps(sample_request(profile="query-deps", budget=4)), encoding="utf-8"
+def test_algorithm_api_uses_request_packet_defaults() -> None:
+    payload = result_to_packet(
+        rank_packet(
+            sample_request(profile="query-deps", budget=4),
+            RankOptions(),
+        )
     )
-
-    completed = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "tools",
-            "graph",
-            "turbo",
-            str(packet),
-            "--format",
-            "json",
-        ],
-        check=True,
-        text=True,
-        capture_output=True,
-    )
-    payload = json.loads(completed.stdout)
     errors = list(schema_validator_for(_GRAPH_TURBO_SCHEMA).iter_errors(payload))
 
     assert errors == []
@@ -218,28 +201,15 @@ def test_tools_graph_turbo_cli_uses_request_packet_defaults(tmp_path: Path) -> N
     assert any(entry["action"] == "deps" for entry in payload["frontier"])
 
 
-def test_tools_graph_turbo_cli_applies_read_memory_suppression(tmp_path: Path) -> None:
-    packet = tmp_path / "graph.json"
+def test_algorithm_api_applies_read_memory_suppression() -> None:
     request = sample_request()
     request["readMemory"] = {"seenSelectors": ["src/cli.py:10:20"]}
-    packet.write_text(json.dumps(request), encoding="utf-8")
-
-    completed = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "tools",
-            "graph",
-            "turbo",
-            str(packet),
-            "--format",
-            "json",
-        ],
-        check=True,
-        text=True,
-        capture_output=True,
+    payload = result_to_packet(
+        rank_packet(
+            request,
+            RankOptions(),
+        )
     )
-    payload = json.loads(completed.stdout)
 
     assert "item:collect" not in payload["rank"]
     assert "hot:command" not in payload["rank"]

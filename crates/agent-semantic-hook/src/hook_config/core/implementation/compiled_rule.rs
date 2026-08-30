@@ -53,8 +53,10 @@ struct HookPolicyReceipt {
     kernel_version: &'static str,
 }
 
-type RuleCandidateIndex =
-    std::collections::BTreeMap<String, std::collections::BTreeMap<String, Vec<usize>>>;
+type RuleCandidateIndex = std::collections::BTreeMap<
+    String,
+    std::collections::BTreeMap<String, std::collections::BTreeMap<String, Vec<usize>>>,
+>;
 
 #[derive(Debug)]
 pub(in crate::hook_config) struct CompiledHookRule {

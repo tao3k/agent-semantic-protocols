@@ -16,26 +16,31 @@ allowed evaluation to wait on the same publication or lifecycle authority that
 the denied action needed to repair, producing recursive denial and terminal
 deadlock.
 
-* Control-plane publication
+* Canonical Runtime Hook binary
 :PROPERTIES:
 :CONTRACT_ID: ASP-RFC-10.15.02.16-CONTROL-PLANE-PUBLICATION
 :END:
 
-Only canonical install, plugin install, or =asp hook refresh= may:
+Only canonical =asp install binary= may:
 
 - materialize and validate =hooks/config.toml=;
 - combine provider language extensions and configured policy rules;
 - compile complete, direct-read, wrapped-read, and command-profile projections;
-- publish a Hook matcher generation.
+- publish the dedicated Rust =asp-hook= binary.
 
-Publication writes one Binary v1 bundle containing a typed section index and
-all immutable projections.  The temporary file is unique per concurrent
-publisher, is flushed before publication, and the whole generation becomes
-visible through one atomic rename.  Readers can therefore observe either the
-old complete generation or the new complete generation, never a mixture of
-shards from both.
+Matcher, policy, Reader catalog, and Agent registry inputs are compiled into
+that binary. Artifacts materializes the executable under the shared immutable
+=ASP_STATE_HOME/runtime/artifacts= catalog and atomically switches the sole
+=ASP_STATE_HOME/runtime/bin/asp-hook= launcher. There is no =hooks/current=,
+no copied evaluator under =hooks/generations=, and no second executable
+retention policy.
 
-Binary v1 section integrity uses BLAKE3-256.  The command-profile section is
+The Codex plugin owns only the stable shell entrypoint =bin/asp-hook-exec=.
+It checks inherited =ASP_NO_AGENT=1= and otherwise executes
+=ASP_STATE_HOME/runtime/bin/asp-hook <event> ...=. It does not parse policy,
+resolve Runtime Server active/healthy state, or carry a generation pointer.
+
+The embedded policy identity uses BLAKE3-256.  The command-profile section is
 generated from the finite =commandProfiles.categories= prefix space and the
 same Policy Kernel that produces the complete matcher.  Runtime selection is a
 normalized argv-prefix lookup followed by exact Host-envelope rebinding; it
@@ -50,27 +55,16 @@ Hook data-plane implementation.
 The Hook action evaluator may only:
 
 1. normalize the Host action;
-2. open and mmap =active-matcher.v1.bin=;
-3. locate one section from the immutable index;
-4. validate and decode only that section;
-5. return the policy decision.
+2. access the policy bytes embedded in its own canonical executable;
+3. evaluate the bounded matcher and optional Reader behavior probe;
+4. return one schema-valid Host decision.
 
 It must not parse or stat policy sources, invoke Runtime Server, acquire a
 publication lock, synchronize config, compile matchers, or repair corruption.
-A missing/corrupt generation terminates as a typed local-policy-unavailable
-decision whose first recovery command is
-=asp hook refresh --client codex=.  The workspace identity is derived from the
-current Git workspace and the command accepts no path argument. =ASP_NO_AGENT=1=
-remains a higher-priority passthrough before any state access.
-
-The refresh grammar is exactly:
-
-#+begin_src sh
-asp hook refresh --client codex
-#+end_src
-
-Neither =.= nor an explicit workspace path is accepted.  Git workspace
-resolution is an internal control-plane responsibility.
+A missing or non-executable canonical Runtime Hook binary terminates as a
+schema-valid typed unavailable decision. =ASP_NO_AGENT=1= remains a
+higher-priority passthrough before any binary or state access. Recovery is
+=asp install binary=; there is no Hook-specific refresh/publication command.
 
 * Recovery override and recursive-dispatch fixed point
 :PROPERTIES:
@@ -89,17 +83,18 @@ The retired dependency chain admits this concrete cycle:
 The new ordering has two explicit recovery layers. An inherited
 =ASP_NO_AGENT=1= in the Hook process environment is a bootstrap recovery
 override evaluated before payload or matcher state access. The process-level
-form emits an empty Host-success response and terminates. This precedence is scoped by the CLI
-grammar: the process must first be an actual =asp hook <event>= dispatch.
-=ASP_NO_AGENT=1 asp --version= remains an ordinary CLI invocation and cannot be
-captured by the synchronous Hook bootstrap.
+form emits an empty Host-success response and terminates. This precedence is
+scoped by the standalone executable grammar: the process must first be an
+actual =asp-hook <event>= dispatch.  The public =asp hook= namespace contains
+administrative commands only and cannot evaluate Host events.
+=ASP_NO_AGENT=1 asp --version= remains an ordinary Client invocation.
 
-For Codex Bash PreTool, the Rust Hook process owns one pre-generation
-command-local guard and Config V1 owns its declarative rule witness. Their
-=processEnvironmentAssignmentAny= predicate consumes only parser-proven direct,
-=env=, or exported process transfer and then terminates allow before all
-other policy. It carries no argv, language, profile, or Runtime condition.
-Unbound payload text is not authority.
+For Codex Bash PreTool, the Rust Hook process owns one pre-policy
+command-local guard. Config V1 deliberately owns no rule or witness for this
+escape. The bootstrap predicate consumes only parser-proven direct, =env=, or
+exported process transfer and then terminates before policy construction. It
+carries no argv, language, profile, or Runtime condition. Unbound payload text
+is not authority.
 
 Config-independent provider-binary admission uses a constant-time registry
 candidate gate before constructing a shell action graph.  Commands whose
@@ -117,10 +112,22 @@ but cannot turn a valid projector rule into policy-schema drift.  The explicit
 no-agent command rule is covered by the same end-to-end witness and branch
 inventory as every other production rule.
 
-Typed target dispatch is idempotent: when both current =agent_type=/=agent_id=
-equal the policy target, evaluation returns allow.  Missing or blank typed
-identity must be enriched from the Host session context before policy
-evaluation; an =is_subagent= boolean alone is not a dispatch identity.
+Typed target dispatch is idempotent and Config-owned.  Configured ASP Agents
+are loaded from the embedded Agent Config registry.  A temporary SubAgent does
+not become a resident Agent merely because =SubagentStart= was observed; that
+event is an observational extension point and returns one empty Host-success
+object.  Policy uses the Host-provided configured Agent identity when present,
+and otherwise routes through Choice Plane without inventing registration.
+
+=agentKind= is a Config-owned route fact with the closed values =agent= and
+=subagent=.  Child/root/parent topology and the Host event name do not infer or
+overwrite it.  The registration receipt carries =agentKind= together with the
+canonical Agent name, Host role, platform, route/profile/policy digests, and a
+nonzero generation.  Choice Plane and PreTool claim consume this exact field;
+an absent, unknown, or cross-bound kind is typed stale and must be
+re-registered.  Missing or blank typed identity must be enriched from the Host
+session context before policy evaluation; an =is_subagent= boolean alone is
+not a dispatch identity.
 
 The Lean model contains the four-node legacy cycle as a reachable
 counterexample and proves that either recovery-override origin makes every
@@ -138,19 +145,20 @@ proves the typed-target dispatch fixed point.
 - no single-thread runtime, global mutex, Runtime Server warm dependency, or
   recursive publication is permitted;
 - pre-tool and permission-request policy evaluation completes synchronously
-  before any Tokio runtime is constructed;
-- asynchronous lifecycle events use a bounded multi-worker Tokio profile; this
-  runtime owns local lifecycle only and does not connect the Hook policy data
-  plane to Runtime Server;
+  without constructing a Tokio runtime;
+- observational lifecycle events return one valid empty JSON object and do not
+  enter Client, Runtime Server, Agent registration, or policy publication;
 - black-box witnesses are generated from configured policy combinations rather
   than a hard-coded command list;
-- missing-generation, selected-section corruption, concurrent readers, and
-  concurrent publishers are mandatory scenarios.
+- missing evaluator, malformed embedded policy, concurrent readers, ten
+  consecutive Developer publications, and 32 calls crossing one atomic
+  Runtime Hook binary switch are mandatory scenarios.
 
 The Lean refinement is
 =ASPProof.HookMatcherPublicationSeparation=.  Its coupled-model counterexample
 shows that evaluation-owned publication can self-wait; the separated model
-proves missing generation terminates and evaluation preserves generation.
+proves a missing canonical evaluator terminates and evaluation cannot mutate
+the installed Runtime Hook binary.
 
 * Host Action identity and semantic Action projection
 :PROPERTIES:

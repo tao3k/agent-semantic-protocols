@@ -34,7 +34,7 @@ receipts; it does not redefine the normative protocol or the Lean model.
 | Protocol socket-free data planes | 2 passed |
 | Shared content contract | 3 passed |
 | Lean atomicity and epoch fencing | pass, zero diagnostics |
-| Client DB all-target check | pass, zero diagnostics |
+| ASP Server DB all-target check | pass, zero diagnostics |
 | Protocol all-target check | pass, zero diagnostics |
 
 The pre-refactor large-directory p99 was 119721875 ns.  The same strong gate

@@ -1,3 +1,5 @@
+#[path = "unit/argv_patterns.rs"]
+mod argv_patterns;
 #[path = "unit/bash_command_stages.rs"]
 mod bash_command_stages;
 #[path = "unit/shell_stage_match_contract.rs"]

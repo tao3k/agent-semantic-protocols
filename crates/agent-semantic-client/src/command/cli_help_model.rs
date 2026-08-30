@@ -7,8 +7,7 @@ const ROOT_COMMANDS: &[(&str, &str)] = &[
     ("cache", "Inspect and maintain ASP caches"),
     ("cloud", "Inspect optional cloud state"),
     ("hook", "Run and inspect host hook integration"),
-    ("session", "Open the Multi-Agent Lifecycle control plane"),
-    ("agent", "Manage ASP-owned agent configuration projections"),
+    ("config", "Manage ASP-owned global configuration"),
     (
         "install",
         "Install ASP binaries, hooks, plugins, or providers",
@@ -261,41 +260,23 @@ fn hook_enablement_command() -> Command {
         )
 }
 
-fn agent_command() -> Command {
-    Command::new("agent")
-        .bin_name("asp agent")
-        .about("Manage ASP-owned agent configuration projections")
+fn config_command() -> Command {
+    Command::new("config")
+        .bin_name("asp config")
+        .about("Manage ASP-owned global configuration")
         .subcommand(agent_config_command())
 }
 
-fn session_control_plane_command() -> Command {
-    Command::new("session")
-        .bin_name("asp session")
-        .about("Open the current Hook-selected Multi-Agent Lifecycle ChoicePlane")
-        .arg(
-            Arg::new("agents")
-                .long("agents")
-                .value_parser(["choice-plane"])
-                .required(true),
-        )
-        .arg(
-            Arg::new("json")
-                .long("json")
-                .help("Render the typed control-plane receipt")
-                .action(ArgAction::SetTrue),
-        )
-}
-
 fn agent_config_command() -> Command {
-    Command::new("config")
-        .bin_name("asp agent config")
+    Command::new("agents")
+        .bin_name("asp config agents")
         .about("Manage ASP-owned global agent configuration projections")
         .subcommand(agent_config_sync_command())
 }
 
 fn agent_config_sync_command() -> Command {
     Command::new("sync")
-        .bin_name("asp agent config sync")
+        .bin_name("asp config agents sync")
         .about("Reconcile global host agent configuration projections")
 }
 

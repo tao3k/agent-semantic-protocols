@@ -114,7 +114,7 @@ Turso documentation facts.
 
 | Upstream page | Fact ASP relies on | ASP design consequence |
 |---------------+--------------------+------------------------|
-| [[https://docs.turso.tech/sdk/rust/reference][Rust reference]] | The =turso= crate is the local/embedded Rust engine with async I/O and MVCC concurrent writes; =libsql= is the remote/existing-libSQL lane. | ASP's local client DB should use =turso= directly through =agent-semantic-client-db=, not a compatibility wrapper around retired RustSQL/rusqlite paths. |
+| [[https://docs.turso.tech/sdk/rust/reference][Rust reference]] | The =turso= crate is the local/embedded Rust engine with async I/O and MVCC concurrent writes; =libsql= is the remote/existing-libSQL lane. | ASP Server's workspace DB Engine uses =turso= directly through =agent-semantic-client-db=, not a compatibility wrapper around retired RustSQL/rusqlite paths. |
 | [[https://docs.turso.tech/tursodb/concurrent-writes][Concurrent writes]] | Default mode has one writer at a time; =PRAGMA journal_mode = 'mvcc'= plus =BEGIN CONCURRENT= allows concurrent writers; conflicts must roll back and retry. | High-throughput agent writes need transaction-body retry and idempotent row identity; statement-only retry is not sufficient. |
 | [[https://docs.turso.tech/sql-reference/multiprocess-access][Multi-process access]] | Multiple OS processes require experimental =multiprocess_wal=; it uses a shared =.tshm= coordinator; writers are still serialized; all live openers must use the same mode. | Current ASP process-per-command CLI/subagent lane must always open through a single helper with =experimental_multiprocess_wal(true)=. |
 | [[https://docs.turso.tech/sql-reference/multiprocess-access][Multi-process limitations]] | Multi-process WAL is not supported under MVCC / =BEGIN CONCURRENT=. | ASP needs two lanes: process-safe CLI WAL today, and a future single-process DB runtime for MVCC writer throughput. |
@@ -901,7 +901,7 @@ the DB Engine operation itself.
 Current P0 acceptance:
 
 - no public scenario benchmark may set a seconds-level target for a local
-  client DB operation;
+  ASP Server DB operation;
 - child-internal DB open/write/read pressure must stay in the millisecond /
   subsecond range;
 - schema/bootstrap convergence may use an exclusive operation lock, but normal

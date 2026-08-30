@@ -1,4 +1,6 @@
-//! DB Engine-owned source index rows for workspace source discovery.
+//! ASP Server-owned source-index rows for workspace source discovery.
+//! This module is the DB Engine contract; client code only consumes it through
+//! Runtime Server operations.
 
 mod generation_overlay;
 mod import;

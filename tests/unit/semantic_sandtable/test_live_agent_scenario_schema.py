@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 from typing import Any
 
-from jsonschema import Draft202012Validator
+from unit.schema_validation import schema_validator_for
 
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -68,7 +68,7 @@ def _live_agent_scenario() -> dict[str, Any]:
 
 class LiveAgentScenarioSchemaTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.validator = Draft202012Validator(_load_json(SCHEMA_PATH))
+        self.validator = schema_validator_for(SCHEMA_PATH)
 
     def validation_errors(self, scenario: dict[str, Any]) -> list[str]:
         return [error.message for error in self.validator.iter_errors(scenario)]

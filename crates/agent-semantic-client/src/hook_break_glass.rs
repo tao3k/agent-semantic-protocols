@@ -1,7 +1,6 @@
 //! One-shot, state-bound Hook break-glass capabilities.
 
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -11,7 +10,6 @@ pub(crate) const CAPABILITY_SCHEMA_ID: &str =
     "agent.semantic-protocols.hook-break-glass-capability";
 pub(crate) const CAPABILITY_SCHEMA_VERSION: &str = "1";
 pub(crate) const MAX_CAPABILITY_TTL_SECONDS: u64 = 60;
-const BREAK_GLASS_ENV: &str = "ASP_BREAK_GLASS_CAPABILITY";
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -35,12 +33,6 @@ pub(crate) struct HookBreakGlassIssue<'a> {
     pub deny_evidence_ref: &'a str,
     pub defect_kind: &'a str,
     pub ttl_seconds: u64,
-}
-
-pub(crate) enum HookBreakGlassEvaluation {
-    NotRequested,
-    Authorized(HookBreakGlassCapability),
-    Rejected(String),
 }
 
 pub(crate) fn protected_command_digest(command: &str) -> String {
@@ -110,141 +102,6 @@ fn issue_hook_break_glass_capability_at(
     Ok(capability)
 }
 
-pub(crate) fn evaluate_hook_break_glass(input: &[u8]) -> HookBreakGlassEvaluation {
-    match evaluate_hook_break_glass_inner(input) {
-        Ok(None) => HookBreakGlassEvaluation::NotRequested,
-        Ok(Some(capability)) => HookBreakGlassEvaluation::Authorized(capability),
-        Err(error) => HookBreakGlassEvaluation::Rejected(error),
-    }
-}
-
-fn evaluate_hook_break_glass_inner(
-    input: &[u8],
-) -> Result<Option<HookBreakGlassCapability>, String> {
-    let state_root = break_glass_root()?;
-    let inherited_request = std::env::var(BREAK_GLASS_ENV).ok();
-    evaluate_hook_break_glass_inner_at(
-        input,
-        &state_root,
-        unix_time_ms()?,
-        inherited_request.as_deref(),
-    )
-}
-
-fn evaluate_hook_break_glass_inner_at(
-    input: &[u8],
-    state_root: &Path,
-    now: u64,
-    inherited_capability_nonce: Option<&str>,
-) -> Result<Option<HookBreakGlassCapability>, String> {
-    let payload: Value = serde_json::from_slice(input)
-        .map_err(|error| format!("break-glass hook payload must be JSON: {error}"))?;
-    let command = hook_payload_command(&payload).unwrap_or_default();
-    let request = if let Some(nonce) = inherited_capability_nonce {
-        Some((nonce.to_owned(), command.to_owned()))
-    } else {
-        inline_break_glass_request(command)?
-    };
-    let Some((nonce, protected_command)) = request else {
-        return Ok(None);
-    };
-    validate_nonce(&nonce)?;
-    if protected_command.trim().is_empty() {
-        return Err("break-glass protected command must be non-empty".to_owned());
-    }
-    let pending_path = state_root.join("pending").join(format!("{nonce}.json"));
-    let bytes = fs::read(&pending_path)
-        .map_err(|error| format!("read pending break-glass capability: {error}"))?;
-    let capability = serde_json::from_slice::<HookBreakGlassCapability>(&bytes)
-        .map_err(|error| format!("decode pending break-glass capability: {error}"))?;
-    validate_capability(&capability, &nonce, &protected_command, &payload, now)?;
-    let consumed_dir = state_root.join("consumed");
-    create_private_dir(&consumed_dir)?;
-    let consumed_path = consumed_dir.join(format!("{nonce}.json"));
-    fs::rename(&pending_path, &consumed_path)
-        .map_err(|error| format!("atomically consume break-glass capability: {error}"))?;
-    append_consumption_audit(state_root, &capability, now)?;
-    Ok(Some(capability))
-}
-
-fn validate_capability(
-    capability: &HookBreakGlassCapability,
-    nonce: &str,
-    protected_command: &str,
-    payload: &Value,
-    now: u64,
-) -> Result<(), String> {
-    if capability.schema_id != CAPABILITY_SCHEMA_ID
-        || capability.schema_version != CAPABILITY_SCHEMA_VERSION
-        || capability.nonce != nonce
-    {
-        return Err("break-glass capability schema or nonce mismatch".to_owned());
-    }
-    let ttl = capability
-        .expires_at_unix_ms
-        .checked_sub(capability.issued_at_unix_ms)
-        .ok_or_else(|| "break-glass capability expiry precedes issue time".to_owned())?;
-    if ttl == 0
-        || ttl > MAX_CAPABILITY_TTL_SECONDS * 1000
-        || now < capability.issued_at_unix_ms
-        || now > capability.expires_at_unix_ms
-    {
-        return Err("break-glass capability is expired or has an invalid TTL".to_owned());
-    }
-    if capability.protected_command_digest != protected_command_digest(protected_command) {
-        return Err("break-glass protected command digest mismatch".to_owned());
-    }
-    let payload_root = payload
-        .get("cwd")
-        .and_then(Value::as_str)
-        .ok_or_else(|| "break-glass Hook payload requires cwd".to_owned())?;
-    let payload_root = canonical_workspace(Path::new(payload_root))?;
-    if capability.workspace_root != payload_root.to_string_lossy() {
-        return Err("break-glass workspace binding mismatch".to_owned());
-    }
-    let root_session_id = payload
-        .get("session_id")
-        .or_else(|| payload.get("sessionId"))
-        .and_then(Value::as_str)
-        .ok_or_else(|| "break-glass Hook payload requires root session identity".to_owned())?;
-    if capability.root_session_id != root_session_id {
-        return Err("break-glass root session binding mismatch".to_owned());
-    }
-    Ok(())
-}
-
-fn inline_break_glass_request(command: &str) -> Result<Option<(String, String)>, String> {
-    let command = command.trim_start();
-    let Some(rest) = strip_leading_assignment_prefix(command, "ASP_BREAK_GLASS_CAPABILITY=") else {
-        return Ok(None);
-    };
-    let boundary = rest
-        .find(char::is_whitespace)
-        .ok_or_else(|| "break-glass inline request must include a protected command".to_owned())?;
-    let nonce = rest[..boundary].to_owned();
-    let protected_command = rest[boundary..].trim_start().to_owned();
-    Ok(Some((nonce, protected_command)))
-}
-
-fn strip_leading_assignment_prefix<'a>(command: &'a str, prefix: &str) -> Option<&'a str> {
-    command.strip_prefix(prefix)
-}
-
-fn hook_payload_command(payload: &Value) -> Option<&str> {
-    [
-        "/tool_input/command",
-        "/tool_input/cmd",
-        "/toolInput/command",
-        "/toolInput/cmd",
-        "/input/command",
-        "/input/cmd",
-        "/command",
-        "/cmd",
-    ]
-    .into_iter()
-    .find_map(|pointer| payload.pointer(pointer).and_then(Value::as_str))
-}
-
 fn break_glass_root() -> Result<PathBuf, String> {
     agent_semantic_runtime::resolve_state_home()
         .map(|state_home| state_home.join("hook-break-glass"))
@@ -285,18 +142,6 @@ fn capability_nonce(
     hasher.finalize().to_hex().to_string()
 }
 
-fn validate_nonce(nonce: &str) -> Result<(), String> {
-    if nonce.len() == 64
-        && nonce
-            .bytes()
-            .all(|byte| byte.is_ascii_digit() || matches!(byte, b'a'..=b'f'))
-    {
-        Ok(())
-    } else {
-        Err("break-glass capability nonce must be 64 hexadecimal characters".to_owned())
-    }
-}
-
 fn create_private_dir(path: &Path) -> Result<(), String> {
     fs::create_dir_all(path)
         .map_err(|error| format!("create break-glass state directory: {error}"))?;
@@ -318,31 +163,3 @@ fn set_private_file_permissions(path: &Path) -> Result<(), String> {
     }
     Ok(())
 }
-
-fn append_consumption_audit(
-    state_root: &Path,
-    capability: &HookBreakGlassCapability,
-    consumed_at_unix_ms: u64,
-) -> Result<(), String> {
-    create_private_dir(state_root)?;
-    let audit = state_root.join("audit.jsonl");
-    let record = serde_json::json!({
-        "schemaId": "agent.semantic-protocols.hook-break-glass-consumption",
-        "schemaVersion": "1",
-        "consumedAtUnixMs": consumed_at_unix_ms,
-        "capability": capability,
-    });
-    let mut file = OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&audit)
-        .map_err(|error| format!("open break-glass audit: {error}"))?;
-    set_private_file_permissions(&audit)?;
-    writeln!(file, "{record}")
-        .and_then(|()| file.flush())
-        .map_err(|error| format!("append break-glass audit: {error}"))
-}
-
-#[cfg(test)]
-#[path = "../tests/unit/hook_break_glass.rs"]
-mod tests;

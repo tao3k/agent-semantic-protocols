@@ -459,7 +459,56 @@ pub(crate) fn runtime_source_index_provider_projection(
     ),
     String,
 > {
-    let registrations = register.installed_capabilities();
+    runtime_source_index_provider_projection_for_registrations(
+        artifacts,
+        register.installed_capabilities(),
+    )
+}
+
+/// Project only the provider explicitly admitted for a targeted generation.
+///
+/// A cold Rust search must not fail because an unrelated installed capability
+/// (for example Julia) has no artifact. The Runtime Server still validates the
+/// selected provider against the single immutable provider artifact document;
+/// it simply does not widen a targeted source-index build into a complete
+/// provider projection.
+pub(crate) fn runtime_source_index_provider_projection_for_target(
+    artifacts: &RuntimeProviderArtifacts,
+    register: &agent_semantic_client_db::runtime_provider_register::RuntimeProviderRegister,
+    language_id: &str,
+    provider_id: &str,
+) -> Result<
+    (
+        agent_semantic_client_core::RuntimeProviderProjection,
+        String,
+    ),
+    String,
+> {
+    let registrations = register
+        .installed_capabilities()
+        .into_iter()
+        .filter(|registration| {
+            registration.language_id == language_id && registration.provider_id == provider_id
+        })
+        .collect::<Vec<_>>();
+    if registrations.is_empty() {
+        return Err(format!(
+            "query-demand provider target has no registered provider: languageId={language_id} providerId={provider_id}"
+        ));
+    }
+    runtime_source_index_provider_projection_for_registrations(artifacts, registrations)
+}
+
+fn runtime_source_index_provider_projection_for_registrations(
+    artifacts: &RuntimeProviderArtifacts,
+    registrations: Vec<agent_semantic_provider_protocol::ProviderRegistrationDocument>,
+) -> Result<
+    (
+        agent_semantic_client_core::RuntimeProviderProjection,
+        String,
+    ),
+    String,
+> {
     if registrations.is_empty() {
         return Err(
             "state=provider-missing reasonKind=no-installed-provider-capability".to_owned(),

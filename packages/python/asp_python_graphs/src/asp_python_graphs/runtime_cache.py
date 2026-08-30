@@ -7,6 +7,7 @@ from collections.abc import Mapping
 from typing import TypeVar
 
 from .backend import SparseGraphBackend, multi_source_hop_lengths, reachable_edges
+from .cache_store import _cache_root
 from .model import OrientedEdge
 from .pagerank import (
     GraphTurboPprResult,
@@ -25,6 +26,8 @@ _REACHABLE_EDGE_CACHE: OrderedDict[
     tuple[str, tuple[str, ...], int],
     dict[tuple[str, str, str], OrientedEdge],
 ] = OrderedDict()
+_CACHE_SCOPE_INITIALIZED = False
+_CACHE_SCOPE: object | None = None
 
 _CacheKey = TypeVar("_CacheKey")
 _CacheValue = TypeVar("_CacheValue")
@@ -38,6 +41,7 @@ def cached_hop_lengths(
     *,
     enabled: bool,
 ) -> tuple[dict[str, int], str]:
+    _ensure_memory_cache_scope()
     if not enabled:
         return multi_source_hop_lengths(backend, seed_ids, max_depth), "disabled"
     key = (backend_key, seed_ids, max_depth)
@@ -58,6 +62,7 @@ def cached_pagerank(
     *,
     enabled: bool,
 ) -> tuple[GraphTurboPprResult, str]:
+    _ensure_memory_cache_scope()
     if not enabled:
         return (
             graph_turbo_typed_personalized_pagerank_result(
@@ -99,6 +104,7 @@ def cached_reachable_edges(
     *,
     enabled: bool,
 ) -> tuple[dict[tuple[str, str, str], OrientedEdge], str]:
+    _ensure_memory_cache_scope()
     if not enabled:
         return reachable_edges(backend, best_depth), "disabled"
     key = (backend_key, seed_ids, max_depth)
@@ -120,3 +126,16 @@ def _remember_cache_entry(
     cache.move_to_end(key)
     while len(cache) > _MAX_RUNTIME_CACHE_ENTRIES:
         cache.popitem(last=False)
+
+
+def _ensure_memory_cache_scope() -> None:
+    """Keep runtime-derived caches isolated by the configured cache home."""
+
+    global _CACHE_SCOPE, _CACHE_SCOPE_INITIALIZED
+    scope = _cache_root()
+    if _CACHE_SCOPE_INITIALIZED and scope != _CACHE_SCOPE:
+        _DEPTH_CACHE.clear()
+        _PPR_CACHE.clear()
+        _REACHABLE_EDGE_CACHE.clear()
+    _CACHE_SCOPE = scope
+    _CACHE_SCOPE_INITIALIZED = True

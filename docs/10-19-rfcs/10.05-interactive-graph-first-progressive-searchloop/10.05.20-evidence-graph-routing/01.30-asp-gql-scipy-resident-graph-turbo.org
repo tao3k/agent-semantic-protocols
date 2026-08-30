@@ -16,8 +16,8 @@ non-authoritative algorithm plane:
    facts;
 4. the Evidence Graph owns asserted, derived, proved, rejected, and provenance
    state, persisted through existing ASP storage boundaries;
-5. a resident Python Graph Server uses NumPy and SciPy to accelerate graph
-   algorithms and returns proposals only.
+5. the ASP Server-managed =asp-python-graphs= gRPC service uses NumPy and
+   SciPy to accelerate graph algorithms and returns proposals only.
 
 The Python plane is not a fifth authority layer.  It cannot admit evidence,
 write graph state, alter continuation identity, or mint proof receipts.
@@ -501,8 +501,9 @@ The renderer refinement is specified separately in
 
 The ASP Runtime Server owns the Graph Turbo capability through the existing
 workspace data-plane.  It MUST NOT publish a second socket or bypass the
-workspace binding token.  A rank request is a typed =EvaluateGraphTurbo=
-operation whose outer envelope is still the Runtime Server workspace request.
+workspace binding token.  A rank request is the schema-owned =graphs/evaluate=
+ClientFrame method whose outer envelope is still the Runtime Server workspace
+request.
 
 Before forwarding a rank request, Rust MUST compare the request
 =snapshotDigest= and =workspaceGenerationRootDigest= with the active resident
@@ -518,33 +519,20 @@ child failure, and request timeout fail the capability and remain visible in
 the status receipt.  Authority forgery and contradictory runtime ownership
 remain fail-closed protocol errors.
 
-The configured runtime artifact MUST be an already installed Python
-interpreter/environment containing =asp-python-graphs=.  Daemon request handling
-MUST NOT execute =uv=, =pip=, or another package manager.  The daemon owns one
-JSONL child, serializes transport access to it, and sends a typed shutdown
-before its own diagnostic lane drains.  That child multiplexes graph sessions;
-serialization of the JSONL transport MUST NOT collapse their identities.
+The configured runtime artifact MUST be a prebuilt, already verified
+=asp-python-graphs= service bundle with a private executable launcher bound to
+=asp_python_graphs.service_cli serve=.  Daemon request handling MUST NOT execute
+=uv=, =pip=, or another package manager.  ASP Server owns one bounded Tokio
+gRPC session to that launcher, multiplexes graph sessions by request identity,
+and sends typed shutdown before its task group drains.  The gRPC session, not
+stdin/stdout JSONL or a per-request process, is the transport authority.
 
-The JSONL transport is a Tokio-owned lifecycle.  Child stdin, stdout, stderr,
-request deadlines, cancellation, wait, and shutdown MUST remain inside the
-daemon's structured async task tree.  A resident call MUST NOT reserve a
-blocking-pool worker or create an OS reader thread.  The child is placed in an
-independent process group so an interactive signal to the foreground daemon is
-observed by the Rust supervisor first; the supervisor then sends the typed
-shutdown message and joins the child.  Timeout, EOF, cancellation, and daemon
-shutdown all converge on one terminal child wait, leaving no reader task or
-pipe authority behind.
-
-The daemon resolver accepts an absolute execution locator through
-=ASP_GRAPH_TURBO_PYTHON=.  It preserves that exact absolute locator for process
-launch and separately resolves the concrete artifact behind it for digest and
-freshness checks.  The resolved artifact path MUST NOT replace the execution
-locator: Python virtual environments may use a symlinked interpreter locator to
-select the environment even when its target bytes are shared with a base
-runtime.  Admission therefore binds both the configured execution locator and
-the resolved artifact digest.  An unset, non-absolute, or unresolvable value is
-reported as capability =unavailable=; it is never replaced by an implicit
-=python= lookup on =PATH=.
+The daemon resolves the descriptor's absolute =executionArtifactLocator= and
+verifies the complete launcher/environment digest before admission.  The
+configured execution locator remains part of the launch identity; it is never
+replaced by implicit =python= or =PATH= discovery.  A missing, non-absolute, or
+unresolvable locator is reported as capability =unavailable= and does not
+create a fallback executable or a second provider contract.
 
 The asp-python-graphs Runtime artifact is the sole publication input for the
 server-owned service contract.  The Runtime Server validates and atomically
@@ -560,18 +548,18 @@ GraphSession identity carried by =sessionId=, =nodeId=, =snapshotDigest=,
 Starting the daemon-global Python process requires only process identity and a
 successful process handshake.  It MUST NOT call workspace-generation admission
 or require a Git candidate snapshot.  Workspace, snapshot, continuation, and
-generation identities enter only on a typed =EvaluateGraphTurbo= call.  That
+generation identities enter only on a typed =graphs/evaluate= call.  That
 call is rejected before Python execution unless its outer Runtime Server lease
 and inner Graph Session identity name the same admitted generation.
 
-The ASP Runtime Server owns the resident Python Graph Turbo child.  The child
-is launched from a resolved installed Python runtime artifact; the lifecycle
-MUST NOT invoke =uv=, =pip=, or another package manager on the request path.
-The execution-command digest is part of the launch identity.  Multiple admitted
-graph sessions reuse one process across cold and warm rank calls until typed
-shutdown, replacement, or failure.  Warm state is keyed by complete graph
-session identity; neither a cache lookup nor a process-local object reference
-is continuation authority.
+The ASP Runtime Server owns the resident =asp-python-graphs= service process.
+The private launcher is started from the resolved verified artifact; the
+lifecycle MUST NOT invoke =uv=, =pip=, or another package manager on the request
+path.  The execution-command digest is part of the launch identity.  Multiple
+admitted graph sessions reuse one gRPC service process across cold and warm
+calls until typed shutdown, replacement, or failure.  Warm state is keyed by
+complete graph session identity; neither a cache lookup nor a process-local
+object reference is continuation authority.
 
 Python owns SciPy computation and returns candidate-only receipts.  It does
 not open Turso.  Rust =agent-semantic-client-db= owns the Turso cache and MUST

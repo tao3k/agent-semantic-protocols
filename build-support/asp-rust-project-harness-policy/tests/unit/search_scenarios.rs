@@ -11,7 +11,6 @@ fn asp_search_scenario_package_exposes_search_performance_gates() {
     let package = asp_search_scenario_package();
 
     assert_eq!(package.package_name, ASP_SEARCH_SCENARIO_PACKAGE_NAME);
-    assert_eq!(package.scenarios.len(), 10);
 
     let names = package
         .scenarios

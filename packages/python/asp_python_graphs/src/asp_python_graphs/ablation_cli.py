@@ -7,7 +7,7 @@ import json
 import sys
 from collections.abc import Iterable, Mapping, Sequence
 
-from .cli import _load_packet
+from .algorithm import load_packet
 from .policy import EDGE_WEIGHT_BY_RELATION
 
 ABLATION_VARIANTS = (
@@ -32,7 +32,7 @@ _PROVIDER_FACT_KINDS = frozenset(
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parse_args(argv)
-    packet = _load_packet(args.packet)
+    packet = load_packet(args.packet)
     variants = _selected_variants(args.variant)
     ablation_set = build_ablation_set(packet, variants)
     if args.format == "json":

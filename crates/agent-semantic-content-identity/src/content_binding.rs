@@ -1,0 +1,489 @@
+//! Exact content binding primitives for the Server-owned publication model.
+//!
+//! Protocol versioning belongs to the shared schema. This Rust module keeps
+//! the type namespace stable while exposing the schema version as a constant.
+
+use serde::{Deserialize, Serialize};
+
+pub const CONTENT_BINDING_SCHEMA_ID: &str = "asp.content-binding";
+pub const CONTENT_BINDING_SCHEMA_VERSION: &str = "1";
+const DIGEST_PREFIX: &str = "blake3-256:";
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RuntimeArtifactReference {
+    pub schema_digest: String,
+    pub artifact_digest: String,
+    pub provider_contract_digest: String,
+    pub signer_key_id: String,
+    pub signature: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceSnapshotReference {
+    pub workspace_id: String,
+    pub workspace_catalog_digest: String,
+    pub snapshot_digest: String,
+    pub source_root_digest: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SourceGenerationReference {
+    pub source_generation_id: String,
+    pub source_snapshot_digest: String,
+    pub source_index_digest: String,
+    pub provider_id: String,
+    pub provider_contract_digest: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AuthorityStamp {
+    pub key_id: String,
+    pub canonical_digest: String,
+    pub signature: String,
+}
+
+/// The schema-shaped binding envelope. The six fields remain in the stable
+/// `ContentIdentity` type so callers cannot accidentally use an authority
+/// stamp as content identity; this envelope is the JSON contract represented
+/// by `schemas/content-binding.schema.json`.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct ContentBinding {
+    #[serde(rename = "schemaId")]
+    pub schema_id: String,
+    #[serde(rename = "schemaVersion")]
+    pub schema_version: String,
+    #[serde(flatten)]
+    pub identity: ContentIdentity,
+    #[serde(rename = "authorityStamp")]
+    pub authority_stamp: AuthorityStamp,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ContentIdentity {
+    pub runtime_artifact_digest: String,
+    pub workspace_snapshot_digest: String,
+    pub source_generation_digest: String,
+    pub source_index_digest: String,
+    pub schema_digest: String,
+    pub provider_catalog_digest: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ContentPublicationCommit {
+    pub identity: ContentIdentity,
+    pub commit_digest: String,
+    pub authority_stamp: AuthorityStamp,
+    pub mutation_id: String,
+    pub lease_id: String,
+    pub expected_digest: Option<String>,
+    pub durable: bool,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ActivationObservation {
+    pub activation_generation: u64,
+    pub commit_digest: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ContentBindingError {
+    InvalidDigest { field: &'static str },
+    NonDurableCommit,
+    ContentMismatch,
+    CommitDigestMismatch,
+    InvalidCommitFence,
+    RollbackRequiresAuthority,
+}
+
+impl ContentIdentity {
+    pub fn validate(&self) -> Result<(), ContentBindingError> {
+        for (field, digest) in [
+            ("runtimeArtifactDigest", &self.runtime_artifact_digest),
+            ("workspaceSnapshotDigest", &self.workspace_snapshot_digest),
+            ("sourceGenerationDigest", &self.source_generation_digest),
+            ("sourceIndexDigest", &self.source_index_digest),
+            ("schemaDigest", &self.schema_digest),
+            ("providerCatalogDigest", &self.provider_catalog_digest),
+        ] {
+            if !is_digest(digest) {
+                return Err(ContentBindingError::InvalidDigest { field });
+            }
+        }
+        Ok(())
+    }
+
+    pub fn canonical_bytes(&self) -> Vec<u8> {
+        serde_json::to_vec(self).expect("ContentIdentity is serializable")
+    }
+
+    pub fn digest(&self) -> String {
+        format!(
+            "{DIGEST_PREFIX}{}",
+            blake3::hash(&self.canonical_bytes()).to_hex()
+        )
+    }
+
+    pub fn from_references(
+        artifact: &RuntimeArtifactReference,
+        workspace: &WorkspaceSnapshotReference,
+        source: &SourceGenerationReference,
+        provider_catalog_digest: String,
+    ) -> Result<Self, ContentBindingError> {
+        artifact.validate()?;
+        workspace.validate()?;
+        source.validate()?;
+        if artifact.provider_contract_digest != source.provider_contract_digest {
+            return Err(ContentBindingError::ContentMismatch);
+        }
+        if workspace.snapshot_digest != source.source_snapshot_digest {
+            return Err(ContentBindingError::ContentMismatch);
+        }
+        let identity = Self {
+            runtime_artifact_digest: artifact.artifact_digest.clone(),
+            workspace_snapshot_digest: workspace.snapshot_digest.clone(),
+            source_generation_digest: source.digest(),
+            source_index_digest: source.source_index_digest.clone(),
+            schema_digest: artifact.schema_digest.clone(),
+            provider_catalog_digest,
+        };
+        identity.validate()?;
+        Ok(identity)
+    }
+}
+
+impl RuntimeArtifactReference {
+    fn validate(&self) -> Result<(), ContentBindingError> {
+        validate_digest("schemaDigest", &self.schema_digest)?;
+        validate_digest("artifactDigest", &self.artifact_digest)?;
+        validate_digest("providerContractDigest", &self.provider_contract_digest)?;
+        if self.signer_key_id.is_empty() || self.signature.is_empty() {
+            return Err(ContentBindingError::InvalidCommitFence);
+        }
+        Ok(())
+    }
+}
+
+impl WorkspaceSnapshotReference {
+    fn validate(&self) -> Result<(), ContentBindingError> {
+        if self.workspace_id.is_empty() {
+            return Err(ContentBindingError::InvalidCommitFence);
+        }
+        validate_digest("workspaceCatalogDigest", &self.workspace_catalog_digest)?;
+        validate_digest("snapshotDigest", &self.snapshot_digest)?;
+        validate_digest("sourceRootDigest", &self.source_root_digest)
+    }
+}
+
+impl SourceGenerationReference {
+    fn validate(&self) -> Result<(), ContentBindingError> {
+        if self.source_generation_id.is_empty() || self.provider_id.is_empty() {
+            return Err(ContentBindingError::InvalidCommitFence);
+        }
+        validate_digest("sourceSnapshotDigest", &self.source_snapshot_digest)?;
+        validate_digest("sourceIndexDigest", &self.source_index_digest)?;
+        validate_digest("providerContractDigest", &self.provider_contract_digest)
+    }
+
+    pub fn canonical_bytes(&self) -> Vec<u8> {
+        serde_json::to_vec(self).expect("SourceGenerationReference is serializable")
+    }
+
+    pub fn digest(&self) -> String {
+        format!(
+            "{DIGEST_PREFIX}{}",
+            blake3::hash(&self.canonical_bytes()).to_hex()
+        )
+    }
+}
+
+impl ContentBinding {
+    pub fn new(
+        identity: ContentIdentity,
+        authority_stamp: AuthorityStamp,
+    ) -> Result<Self, ContentBindingError> {
+        identity.validate()?;
+        authority_stamp.validate_for(&identity.digest())?;
+        Ok(Self {
+            schema_id: CONTENT_BINDING_SCHEMA_ID.to_owned(),
+            schema_version: CONTENT_BINDING_SCHEMA_VERSION.to_owned(),
+            identity,
+            authority_stamp,
+        })
+    }
+
+    pub fn validate(&self) -> Result<(), ContentBindingError> {
+        if self.schema_id != CONTENT_BINDING_SCHEMA_ID
+            || self.schema_version != CONTENT_BINDING_SCHEMA_VERSION
+        {
+            return Err(ContentBindingError::InvalidCommitFence);
+        }
+        self.identity.validate()?;
+        self.authority_stamp.validate_for(&self.identity.digest())
+    }
+}
+
+impl AuthorityStamp {
+    pub fn validate_for(&self, canonical_digest: &str) -> Result<(), ContentBindingError> {
+        if self.key_id.is_empty() || self.signature.is_empty() {
+            return Err(ContentBindingError::InvalidCommitFence);
+        }
+        validate_digest("canonicalDigest", &self.canonical_digest)?;
+        if self.canonical_digest != canonical_digest {
+            return Err(ContentBindingError::ContentMismatch);
+        }
+        Ok(())
+    }
+}
+
+impl ContentPublicationCommit {
+    pub fn linearize(
+        identity: ContentIdentity,
+        authority_stamp: AuthorityStamp,
+    ) -> Result<Self, ContentBindingError> {
+        Self::linearize_with_expected(identity, authority_stamp, None)
+    }
+
+    pub fn linearize_with_expected(
+        identity: ContentIdentity,
+        authority_stamp: AuthorityStamp,
+        expected_digest: Option<&str>,
+    ) -> Result<Self, ContentBindingError> {
+        identity.validate()?;
+        authority_stamp.validate_for(&identity.digest())?;
+        let commit_digest = identity.digest();
+        if let Some(expected_digest) = expected_digest {
+            validate_digest("expectedDigest", expected_digest)?;
+        }
+        let fence_identity = expected_digest.unwrap_or("genesis");
+        Ok(Self {
+            authority_stamp,
+            mutation_id: format!("mutation:{commit_digest}:{fence_identity}"),
+            lease_id: format!("lease:{commit_digest}:{fence_identity}"),
+            expected_digest: expected_digest.map(str::to_owned),
+            identity,
+            commit_digest,
+            durable: true,
+        })
+    }
+
+    pub fn validate(&self) -> Result<(), ContentBindingError> {
+        if !self.durable {
+            return Err(ContentBindingError::NonDurableCommit);
+        }
+        self.identity.validate()?;
+        if self.commit_digest != self.identity.digest() {
+            return Err(ContentBindingError::CommitDigestMismatch);
+        }
+        self.authority_stamp.validate_for(&self.identity.digest())?;
+        if self.mutation_id.is_empty() || self.lease_id.is_empty() {
+            return Err(ContentBindingError::InvalidCommitFence);
+        }
+        if let Some(expected_digest) = self.expected_digest.as_deref() {
+            validate_digest("expectedDigest", expected_digest)?;
+        }
+        Ok(())
+    }
+
+    pub fn admit_exact(&self, requested: &ContentIdentity) -> Result<(), ContentBindingError> {
+        self.validate()?;
+        requested.validate()?;
+        if &self.identity != requested {
+            return Err(ContentBindingError::ContentMismatch);
+        }
+        Ok(())
+    }
+
+    pub fn rollback_without_authority(&self) -> Result<(), ContentBindingError> {
+        Err(ContentBindingError::RollbackRequiresAuthority)
+    }
+}
+
+impl ActivationObservation {
+    pub fn is_product_authority(&self) -> bool {
+        false
+    }
+
+    pub fn matches_commit(&self, commit: &ContentPublicationCommit) -> bool {
+        commit.validate().is_ok() && self.commit_digest == commit.commit_digest
+    }
+}
+
+fn is_digest(value: &str) -> bool {
+    let hex = value.strip_prefix(DIGEST_PREFIX).unwrap_or_default();
+    hex.len() == 64
+        && hex
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+}
+
+fn validate_digest(field: &'static str, value: &str) -> Result<(), ContentBindingError> {
+    if is_digest(value) {
+        Ok(())
+    } else {
+        Err(ContentBindingError::InvalidDigest { field })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn identity(seed: char) -> ContentIdentity {
+        let digest = format!("{DIGEST_PREFIX}{}", seed.to_string().repeat(64));
+        ContentIdentity {
+            runtime_artifact_digest: digest.clone(),
+            workspace_snapshot_digest: digest.clone(),
+            source_generation_digest: digest.clone(),
+            source_index_digest: digest.clone(),
+            schema_digest: digest.clone(),
+            provider_catalog_digest: digest,
+        }
+    }
+
+    fn authority(identity: &ContentIdentity) -> AuthorityStamp {
+        AuthorityStamp {
+            key_id: "test-authority".to_owned(),
+            canonical_digest: identity.digest(),
+            signature: "test-signature".to_owned(),
+        }
+    }
+
+    #[test]
+    fn one_identity_has_one_deterministic_commit_digest() {
+        let left_identity = identity('a');
+        let right_identity = identity('a');
+        let left =
+            ContentPublicationCommit::linearize(left_identity.clone(), authority(&left_identity))
+                .unwrap();
+        let right =
+            ContentPublicationCommit::linearize(right_identity.clone(), authority(&right_identity))
+                .unwrap();
+        assert_eq!(left, right);
+        assert!(left.validate().is_ok());
+    }
+
+    #[test]
+    fn same_numeric_label_different_content_is_rejected() {
+        let content = identity('a');
+        let commit =
+            ContentPublicationCommit::linearize(content.clone(), authority(&content)).unwrap();
+        let observation = ActivationObservation {
+            activation_generation: 73,
+            commit_digest: commit.commit_digest.clone(),
+        };
+        let mut different = identity('b');
+        different.schema_digest = identity('c').schema_digest;
+        assert!(observation.matches_commit(&commit));
+        assert_eq!(
+            commit.admit_exact(&different),
+            Err(ContentBindingError::ContentMismatch)
+        );
+        assert!(!observation.is_product_authority());
+    }
+
+    #[test]
+    fn corrupted_commit_and_non_durable_commit_fail_closed() {
+        let identity = identity('d');
+        let authority = authority(&identity);
+        let mut commit = ContentPublicationCommit::linearize(identity, authority).unwrap();
+        commit.commit_digest = format!("{DIGEST_PREFIX}{}", "e".repeat(64));
+        assert_eq!(
+            commit.validate(),
+            Err(ContentBindingError::CommitDigestMismatch)
+        );
+        commit.commit_digest = commit.identity.digest();
+        commit.durable = false;
+        assert_eq!(
+            commit.validate(),
+            Err(ContentBindingError::NonDurableCommit)
+        );
+    }
+
+    #[test]
+    fn invalid_transaction_fence_fails_closed() {
+        let content = identity('e');
+        let mut commit =
+            ContentPublicationCommit::linearize(content.clone(), authority(&content)).unwrap();
+        commit.expected_digest = Some(format!("{DIGEST_PREFIX}{}", "f".repeat(64)));
+        assert_eq!(
+            commit.validate(),
+            Err(ContentBindingError::InvalidCommitFence)
+        );
+    }
+
+    #[test]
+    fn rollback_requires_explicit_authority() {
+        let content = identity('f');
+        let commit =
+            ContentPublicationCommit::linearize(content.clone(), authority(&content)).unwrap();
+        assert_eq!(
+            commit.rollback_without_authority(),
+            Err(ContentBindingError::RollbackRequiresAuthority)
+        );
+    }
+
+    #[test]
+    fn references_must_share_provider_contract_content() {
+        let digest = |seed: char| format!("{DIGEST_PREFIX}{}", seed.to_string().repeat(64));
+        let artifact = RuntimeArtifactReference {
+            schema_digest: digest('a'),
+            artifact_digest: digest('b'),
+            provider_contract_digest: digest('c'),
+            signer_key_id: "schema-manager".to_owned(),
+            signature: "signed".to_owned(),
+        };
+        let workspace = WorkspaceSnapshotReference {
+            workspace_id: "workspace-test".to_owned(),
+            workspace_catalog_digest: digest('d'),
+            snapshot_digest: digest('e'),
+            source_root_digest: digest('f'),
+        };
+        let source = SourceGenerationReference {
+            source_generation_id: "source-test".to_owned(),
+            source_snapshot_digest: digest('e'),
+            source_index_digest: digest('a'),
+            provider_id: "asp-rust".to_owned(),
+            provider_contract_digest: digest('0'),
+        };
+        assert_eq!(
+            ContentIdentity::from_references(&artifact, &workspace, &source, digest('b')),
+            Err(ContentBindingError::ContentMismatch)
+        );
+    }
+
+    #[test]
+    fn workspace_and_source_snapshot_must_be_the_same_content() {
+        let digest = |seed: char| format!("{DIGEST_PREFIX}{}", seed.to_string().repeat(64));
+        let artifact = RuntimeArtifactReference {
+            schema_digest: digest('a'),
+            artifact_digest: digest('b'),
+            provider_contract_digest: digest('c'),
+            signer_key_id: "schema-manager".to_owned(),
+            signature: "signed".to_owned(),
+        };
+        let workspace = WorkspaceSnapshotReference {
+            workspace_id: "workspace-test".to_owned(),
+            workspace_catalog_digest: digest('d'),
+            snapshot_digest: digest('e'),
+            source_root_digest: digest('f'),
+        };
+        let source = SourceGenerationReference {
+            source_generation_id: "source-test".to_owned(),
+            source_snapshot_digest: digest('0'),
+            source_index_digest: digest('a'),
+            provider_id: "asp-rust".to_owned(),
+            provider_contract_digest: digest('c'),
+        };
+        assert_eq!(
+            ContentIdentity::from_references(&artifact, &workspace, &source, digest('b')),
+            Err(ContentBindingError::ContentMismatch)
+        );
+    }
+}

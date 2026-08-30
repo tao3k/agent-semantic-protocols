@@ -10,14 +10,14 @@ not introduce a v2 contract.
 * Problem
 
 The workspace already computes a root digest and per-path file digests, and the
-client database already stores structural-selector lookups and payload proofs.
+ASP Server DB already stores structural-selector lookups and payload proofs.
 Those facts do not currently terminate the warm query control flow.
 
 A warm exact-selector query may still:
 
 - start a language provider or parser;
 - publish provider source blobs to the content store;
-- open or rewrite the Turso client database and DB Engine manifest;
+- open or rewrite the ASP Server Turso database and DB Engine manifest;
 - rebuild source-index material that is already content-addressed.
 
 Consequently, data that looks cached is not an executable cache hit.  Exact

@@ -1,6 +1,6 @@
 pub(super) use std::fs;
 pub(super) use std::path::{Path, PathBuf};
-pub(super) use std::time::{Duration, Instant};
+pub(super) use std::time::Duration;
 
 pub(super) use agent_semantic_hook::{
     ClientHookConfig, DecisionKind, HookClassificationRequest, classify_hook_with_config,
@@ -14,7 +14,7 @@ pub(super) fn bind_confirmed_reader(payload: &mut serde_json::Value, subject: &s
     let observation = agent_semantic_hook::ReaderProbeObservation {
         subject: subject.to_owned(),
         access: agent_semantic_hook::ReaderProbeAccess::Read,
-        backend: "hook-generation-reader-catalog".to_owned(),
+        backend: "hook-policy-bundle-reader-catalog".to_owned(),
         terminal: "reader-behavior-catalog-hit".to_owned(),
         elapsed_micros: 0,
         probe_process_launched: false,

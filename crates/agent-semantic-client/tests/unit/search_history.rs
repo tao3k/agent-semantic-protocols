@@ -3,7 +3,7 @@ use std::path::Path;
 use agent_semantic_client_core::state_core::ResolvedState;
 use agent_semantic_client_db::ClientDbEngine;
 
-use crate::search_history::history_audit::artifact_events_packet;
+use crate::search_history::{artifact_events_packet, run_search_history};
 use crate::test_support::{CACHE_TEST_LOCK, EnvVarGuard};
 
 #[tokio::test]

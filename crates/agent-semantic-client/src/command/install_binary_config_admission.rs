@@ -1,12 +1,4 @@
-use std::path::Path;
-use std::sync::atomic::{AtomicU64, Ordering};
-
-use agent_semantic_artifacts::hook_generation::{
-    HookGenerationCandidate, HookGenerationPublicationReceipt, PreparedHookGeneration,
-    commit_hook_generation, prepare_hook_generation,
-};
-
-static CANDIDATE_SEQUENCE: AtomicU64 = AtomicU64::new(0);
+use std::path::{Path, PathBuf};
 
 pub(super) fn admit_embedded_hook_config() -> Result<(), String> {
     agent_semantic_config::default_hook_client_config_file()
@@ -18,72 +10,56 @@ pub(super) fn admit_embedded_hook_config() -> Result<(), String> {
         })
 }
 
-/// Publish the Hook matcher contract embedded in the installing executable.
+/// Materialize the human-readable operator copy of the embedded Hook config.
 ///
-/// Binary and matcher config are one compatibility generation.  Keeping this
-/// publication in the canonical binary installer means a stale matcher can
-/// never block the command that repairs the pair; Runtime Server availability
-/// is deliberately not part of this local recovery edge.
+/// Serving evaluation never reads this path. Matcher, policy and Agent
+/// registry bytes are compiled into the canonical `runtime/bin/asp-hook`
+/// executable.
 pub(super) fn publish_embedded_hook_config(protocol_home: &Path) -> Result<&'static str, String> {
     let path = protocol_home.join("hooks/config.toml");
     let status = super::managed_hook_config::materialize(&path).map_err(|error| {
         format!(
-            "ASP binary/config publication failed for {} after binary switch: {error}",
+            "ASP binary/config publication failed for {}: {error}",
             path.display()
         )
     })?;
     Ok(status.as_str())
 }
 
-pub(super) struct HookGenerationInstallReceipt {
-    pub publication: HookGenerationPublicationReceipt,
+pub(super) struct HookRuntimeInstallReceipt {
+    pub path: PathBuf,
+    pub artifact_digest: String,
+    pub lock_elapsed_micros: u128,
     pub config_source_status: &'static str,
-    pub hook_binary_validation_elapsed_micros: u128,
 }
 
-struct PreparedHookGenerationInstall {
-    prepared: PreparedHookGeneration,
-    config_source_status: &'static str,
-}
-
-/// Compile, validate, and atomically commit a complete HookGeneration.
+/// Publish the dedicated Rust Hook evaluator into the canonical Runtime bin.
 ///
-/// The candidate is built from immutable snapshots. The mutable installed
-/// config source is materialized for operators, but it is never read by the
-/// serving Hook binary and therefore cannot change the active generation.
-pub(super) async fn publish_embedded_hook_generation(
+/// The plugin launcher is a fixed shell entrypoint. It never owns a binary
+/// generation and always resolves this stable Runtime path.
+pub(super) async fn publish_embedded_hook_runtime(
     protocol_home: &Path,
     installing_asp_binary: &Path,
-) -> Result<HookGenerationInstallReceipt, String> {
-    let protocol_home = protocol_home.to_path_buf();
-    let candidate_home = protocol_home.clone();
+) -> Result<HookRuntimeInstallReceipt, String> {
+    admit_embedded_hook_config()?;
+    agent_semantic_hook::aot_compiler::compile_embedded_hook_policy_bundle()
+        .map_err(|error| format!("validate embedded Hook policy: {error}"))?;
     let hook_binary = resolve_hook_binary_candidate(installing_asp_binary)?;
-    let prepared = tokio::task::spawn_blocking(move || {
-        prepare_embedded_hook_generation_blocking(&candidate_home, &hook_binary)
-    })
-    .await
-    .map_err(|error| format!("HookGeneration candidate task failed: {error}"))??;
-    let validation_started = tokio::time::Instant::now();
-    agent_semantic_hook::candidate_validation::validate_hook_binary_candidate(
-        agent_semantic_hook::candidate_validation::HookBinaryCandidateValidation {
-            hook_binary_path: &prepared.prepared.receipt.hook_binary_path,
-            generation_path: &prepared.prepared.receipt.generation_path,
-            generation_digest: &prepared.prepared.receipt.generation_digest,
-            state_home: &protocol_home,
-        },
-    )
-    .await?;
-    let hook_binary_validation_elapsed_micros = validation_started.elapsed().as_micros();
-    let publication = tokio::task::spawn_blocking(move || {
-        commit_hook_generation(&protocol_home, &prepared.prepared)
-            .map(|publication| (publication, prepared.config_source_status))
-    })
-    .await
-    .map_err(|error| format!("HookGeneration commit task failed: {error}"))??;
-    Ok(HookGenerationInstallReceipt {
-        publication: publication.0,
-        config_source_status: publication.1,
-        hook_binary_validation_elapsed_micros,
+    let target = protocol_home.join("runtime/bin/asp-hook");
+    let publication =
+        agent_semantic_artifacts::runtime_artifact_publication::publish_runtime_tool_artifact(
+            protocol_home,
+            &hook_binary,
+            &target,
+            "asp-hook",
+        )
+        .await?;
+    let config_source_status = publish_embedded_hook_config(protocol_home)?;
+    Ok(HookRuntimeInstallReceipt {
+        path: publication.path,
+        artifact_digest: publication.artifact_digest.to_string(),
+        lock_elapsed_micros: publication.lock_elapsed_micros,
+        config_source_status,
     })
 }
 
@@ -107,7 +83,7 @@ fn resolve_executable_sibling(
     let candidate = parent.join(file_name);
     let metadata = std::fs::symlink_metadata(&candidate).map_err(|error| {
         format!(
-            "{label} candidate is unavailable at {}: {error}; build the single Hook binary in the same target directory before installation",
+            "{label} candidate is unavailable at {}: {error}; build the Hook package binary in the same target directory before installation",
             candidate.display()
         )
     })?;
@@ -125,74 +101,6 @@ fn resolve_executable_sibling(
         }
     }
     Ok(candidate)
-}
-
-fn prepare_embedded_hook_generation_blocking(
-    protocol_home: &Path,
-    hook_binary: &Path,
-) -> Result<PreparedHookGenerationInstall, String> {
-    admit_embedded_hook_config()?;
-    let config_source_status = publish_embedded_hook_config(protocol_home)?;
-    let config = agent_semantic_config::default_hook_client_config_template().into_bytes();
-    let registry = agent_semantic_config::embedded_agent_assets::embedded_agent_assets()
-        .iter()
-        .find(|asset| asset.file_name == "config.toml")
-        .ok_or_else(|| "embedded HookGeneration registry is missing config.toml".to_owned())?
-        .contents;
-    let registry_source = std::str::from_utf8(registry)
-        .map_err(|error| format!("embedded HookGeneration registry is not UTF-8: {error}"))?;
-    agent_semantic_config::agent_route_registry::parse_agent_route_registry(
-        registry_source,
-        "embedded HookGeneration registry",
-    )
-    .map_err(|error| format!("validate HookGeneration registry candidate: {error}"))?;
-    let candidate_root = protocol_home.join("hooks/staging").join(format!(
-        "candidate-{}-{}",
-        std::process::id(),
-        CANDIDATE_SEQUENCE.fetch_add(1, Ordering::Relaxed)
-    ));
-    let candidate_config = candidate_root.join("config.toml");
-    write_candidate(&candidate_config, &config)?;
-    let result = (|| {
-        let canonical = agent_semantic_config::default_hook_client_config_file()
-            .map_err(|error| format!("load canonical HookGeneration config: {error}"))?;
-        let compiled = agent_semantic_hook::aot_compiler::compile_aot_hook_generation(
-            &canonical,
-            "candidate-unpublished",
-        )
-        .map_err(|error| format!("compile HookGeneration candidate: {error}"))?;
-        let prepared = prepare_hook_generation(
-            protocol_home,
-            HookGenerationCandidate {
-                hook_binary,
-                config: &config,
-                compiled_matcher: &compiled,
-                registry,
-            },
-        )?;
-        Ok(PreparedHookGenerationInstall {
-            prepared,
-            config_source_status,
-        })
-    })();
-    // Scratch cleanup is outside the committed generation and cannot change
-    // either the prior current pointer on failure or the new pointer on success.
-    let _ = std::fs::remove_dir_all(&candidate_root);
-    result
-}
-
-fn write_candidate(path: &Path, bytes: &[u8]) -> Result<(), String> {
-    let parent = path
-        .parent()
-        .ok_or_else(|| format!("HookGeneration candidate has no parent: {}", path.display()))?;
-    std::fs::create_dir_all(parent).map_err(|error| {
-        format!(
-            "create HookGeneration candidate directory {}: {error}",
-            parent.display()
-        )
-    })?;
-    std::fs::write(path, bytes)
-        .map_err(|error| format!("write HookGeneration candidate {}: {error}", path.display()))
 }
 
 #[cfg(test)]

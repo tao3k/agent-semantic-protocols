@@ -42,7 +42,11 @@ pub(in super::super) async fn record_registered_provider_workspace_install(
         || install_target.path.clone(),
         |_| runtime_state.runtime_bin_dir.join(&provider_binary),
     );
-    let binary_artifact_root = runtime_state.protocol_home.join("runtime/artifacts");
+    let binary_artifact_root = runtime_state
+        .protocol_home
+        .join("runtime/provider-artifacts")
+        .join(provider_id)
+        .join("artifacts");
     let published = super::workspace::publish_provider_workspace(
         &runtime_state.protocol_home,
         &stable_entry,
@@ -104,9 +108,9 @@ pub(in super::super) async fn record_registered_provider_workspace_install(
             launcher_digest: Some(&launcher_digest),
         },
     )?;
-    publish_live_provider_registration(&runtime_state.protocol_home, live_registration).await?;
     let installed_provider_artifacts =
         publish_installed_artifacts_if_needed(&runtime_state.protocol_home, install_scope)?;
+    publish_live_provider_registration(&runtime_state.protocol_home, live_registration).await?;
     println!(
         "[asp-install] provider={} language={} scope={} installMode=develop-workspace-tree sourceKind=develop-workspace-tree devRoot={} target={} binary={} binaryContentDigest={} digestAlgorithm=blake3-256 artifactLeafCount={} artifactEntrypoint={} installedPath={} lock={} switch=atomic installedProviderArtifacts={} installedProviderArtifactsWrite={} installedProviderArtifactsChangedLeaves={} installedProviderArtifactsElapsedMicros={}",
         provider_id,

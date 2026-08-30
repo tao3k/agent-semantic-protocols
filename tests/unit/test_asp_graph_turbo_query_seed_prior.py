@@ -240,10 +240,10 @@ def test_clause_coverage_requires_package_path_for_package_clause() -> None:
                     "role": "symbol",
                     "value": "queryClauses coverage typed graph request",
                     "path": (
-                        "packages/python/asp_python_graphs/src/asp_python_graphs/cli.py"
+                        "packages/python/asp_python_graphs/src/asp_python_graphs/algorithm.py"
                     ),
                     "ownerPath": (
-                        "packages/python/asp_python_graphs/src/asp_python_graphs/cli.py"
+                        "packages/python/asp_python_graphs/src/asp_python_graphs/algorithm.py"
                     ),
                     "symbol": "queryClauses",
                 },

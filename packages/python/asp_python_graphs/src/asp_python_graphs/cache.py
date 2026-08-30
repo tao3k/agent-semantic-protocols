@@ -9,6 +9,7 @@ from collections.abc import Mapping
 
 from .backend import SparseGraphBackend, build_sparse_backend
 from .cache_store import (
+    _cache_root,
     _load_persistent_backend,
     _persistent_entry_count,
     _store_persistent_backend,
@@ -17,6 +18,8 @@ from .model import GraphCache, GraphProfile, TypedGraph
 
 _MAX_CACHE_ENTRIES = 16
 _BACKEND_CACHE: OrderedDict[str, SparseGraphBackend] = OrderedDict()
+_CACHE_SCOPE_INITIALIZED = False
+_CACHE_SCOPE: object | None = None
 
 
 def backend_fingerprint(graph: TypedGraph, profile: GraphProfile) -> str:
@@ -58,7 +61,7 @@ def backend_fingerprint(graph: TypedGraph, profile: GraphProfile) -> str:
         },
     }
     payload = json.dumps(canonical, sort_keys=True, separators=(",", ":"))
-    return "sha256:backend:" + hashlib.sha256(payload.encode("utf-8")).hexdigest()
+    return "sha256:" + hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 def packet_fingerprint(
@@ -134,6 +137,7 @@ def cached_sparse_backend(
     *,
     enabled: bool,
 ) -> tuple[SparseGraphBackend, GraphCache]:
+    _ensure_memory_cache_scope()
     if not enabled:
         backend = build_sparse_backend(graph, profile)
         return backend, GraphCache(
@@ -153,6 +157,17 @@ def cached_sparse_backend(
     _remember_backend(fingerprint, backend)
     _store_persistent_backend(fingerprint, backend)
     return backend, GraphCache(fingerprint, "miss", "scipy-csr", len(_BACKEND_CACHE))
+
+
+def _ensure_memory_cache_scope() -> None:
+    """Prevent an in-process cache from crossing configured project homes."""
+
+    global _CACHE_SCOPE, _CACHE_SCOPE_INITIALIZED
+    scope = _cache_root()
+    if _CACHE_SCOPE_INITIALIZED and scope != _CACHE_SCOPE:
+        _BACKEND_CACHE.clear()
+    _CACHE_SCOPE = scope
+    _CACHE_SCOPE_INITIALIZED = True
 
 
 def _remember_backend(fingerprint: str, backend: SparseGraphBackend) -> None:

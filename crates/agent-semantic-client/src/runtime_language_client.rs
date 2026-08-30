@@ -278,7 +278,7 @@ impl AspClient {
             .await
     }
 
-    async fn dispatch_method(
+    pub(crate) async fn dispatch_method(
         &self,
         method: String,
         params: serde_json::Value,

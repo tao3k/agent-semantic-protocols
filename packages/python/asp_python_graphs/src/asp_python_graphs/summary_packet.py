@@ -63,7 +63,7 @@ def result_to_summary_packet(result: GraphResult) -> dict[str, object]:
             for entry in full["profileMatrices"]
             if entry["profile"] == result.profile.name
         ],
-        "algorithmMetrics": full["algorithmMetrics"],
+        "algorithmMetrics": _summary_algorithm_metrics(full["algorithmMetrics"]),
         "omit": list(result.omit),
         "avoid": list(result.avoid),
         "projection": {
@@ -149,4 +149,21 @@ def _profile_compatibility_summary(
         "compatible": entry.compatible,
         "allowedRelationCount": len(entry.allowed_relations),
         "allowedTransitionCount": len(entry.allowed_transitions),
+    }
+
+
+def _summary_algorithm_metrics(value: object) -> dict[str, object]:
+    """Project only metrics owned by the summary schema.
+
+    Cache-layer status is part of the full result trace.  The compact summary
+    schema intentionally exposes the aggregate cache status only; the three
+    per-cache implementation statuses remain internal trace detail.
+    """
+
+    if not isinstance(value, Mapping):
+        return {}
+    return {
+        key: item
+        for key, item in value.items()
+        if key not in {"depthCacheStatus", "pprCacheStatus", "reachableEdgesCacheStatus"}
     }

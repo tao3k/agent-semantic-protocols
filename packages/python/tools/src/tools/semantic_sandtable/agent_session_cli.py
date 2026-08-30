@@ -93,6 +93,15 @@ def _add_session_metadata_arguments(parser: argparse.ArgumentParser) -> None:
         help="Session id for agent-session observability commands.",
     )
     parser.add_argument(
+        "--child-session-id",
+        dest="session_id",
+        default=argparse.SUPPRESS,
+        help=(
+            "Explicit child session id used by live and imported agent-session "
+            "receipts; overrides --session-id when supplied."
+        ),
+    )
+    parser.add_argument(
         "--agent",
         default="claude-sdk",
         choices=("claude-sdk", "claude-cli", "codex", "fixture", "unknown"),

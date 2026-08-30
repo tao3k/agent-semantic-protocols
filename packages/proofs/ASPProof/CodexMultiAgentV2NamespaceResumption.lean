@@ -11,7 +11,7 @@ inductive HostChildLiveness where
   | terminated
   deriving DecidableEq, Repr
 
-inductive ChoicePlaneDecision where
+inductive CollaborationDecision where
   | createNew
   | continueExisting
   deriving DecidableEq, Repr
@@ -42,7 +42,7 @@ def mayBindNamespace (requested durable : NamespaceKey) : Bool :=
 def chooseAction
     (namespaceState : DurableNamespaceState)
     (_hostLiveness : HostChildLiveness) :
-      NamespaceAction × ChoicePlaneDecision × CodexHostAction :=
+      NamespaceAction × CollaborationDecision × CodexHostAction :=
   match namespaceState with
   | .absent => (.create, .createNew, .spawnAgent)
   | .present => (.resume, .continueExisting, .followupTask)

@@ -90,6 +90,28 @@ For each canonical workspace identity, the server owns:
 The server must persist the publication record before exposing a new active
 generation.
 
+** Source Index package boundary
+
+=ASP-RFC-10.05-SRSG-DB-OWNER=: Source Index materialization is a DB Engine
+responsibility inside the ASP Server.  The =agent-semantic-client-db= package
+owns Turso tables, Merkle roots, source blobs, provider projections, generation
+publication, active-generation reads, and their typed receipts.  The server
+runtime calls this package through its bounded Tokio writer/read lanes.
+
+The =agent-semantic-client= package is not a Source Index owner.  It may contain
+only a typed server/IPC adapter when a command surface needs to ask the ASP
+Server for a lookup or an admission operation.  It MUST NOT collect workspace
+files, build Merkle state, open Turso, publish envelopes, or maintain a second
+generation cache.  Gerbil remains a parser-fact provider; it does not build or
+query the Source Index.
+
+Turso is the durable canonical store and the resident MemoryBackend/mmap
+projection is a server-managed read acceleration layer.  Merkle identities bind
+source bytes, selectors, workspace generation, and publication receipts; they
+do not create a client-side authority.  Any older client-local Source Index
+implementation is retired by this package boundary rather than exposed as a
+compatibility alias.
+
 ** Provider
 
 A provider parses language-owned input and returns a typed delta plus its

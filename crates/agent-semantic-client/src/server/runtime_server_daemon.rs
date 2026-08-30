@@ -193,38 +193,35 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
                     let runtime_provider_catalog = crate::command::installed_provider_artifacts::
                         load_runtime_provider_artifacts(&state_home)
                         .await?;
-                    let (registry, current_catalog_generation) = crate::command::
-                        installed_provider_artifacts::runtime_source_index_provider_projection(
+                    let (registry, current_catalog_generation) = if let Some(provider_target) =
+                        provider_target.as_ref()
+                    {
+                        let provider_id = provider_target.provider_id.as_deref().ok_or_else(|| {
+                            format!(
+                                "query-demand provider target requires resolved providerId: languageId={}",
+                                provider_target.language_id
+                            )
+                        })?;
+                        crate::command::installed_provider_artifacts::runtime_source_index_provider_projection_for_target(
                             &runtime_provider_catalog,
                             &provider_register,
-                        )?;
+                            &provider_target.language_id,
+                            provider_id,
+                        )?
+                    } else {
+                        crate::command::installed_provider_artifacts::runtime_source_index_provider_projection(
+                            &runtime_provider_catalog,
+                            &provider_register,
+                        )?
+                    };
                     let collection_scope = if let Some(provider_target) = provider_target {
-                        let provider_id = match provider_target.provider_id {
-                            Some(provider_id) => provider_id,
-                            None => {
-                                let providers = registry
-                                    .providers
-                                    .iter()
-                                    .filter(|provider| {
-                                        provider.runtime_operation("projection-batch").is_some()
-                                            && provider.language_id.as_str()
-                                                == provider_target.language_id
-                                    })
-                                    .collect::<Vec<_>>();
-                                match providers.as_slice() {
-                                    [provider] => provider.provider_id.as_str().to_owned(),
-                                    [] => return Err(format!(
-                                        "query-demand provider target has no registered provider: languageId={}",
-                                        provider_target.language_id
-                                    )),
-                                    _ => return Err(format!(
-                                        "query-demand provider target is ambiguous: languageId={}",
-                                        provider_target.language_id
-                                    )),
-                                }
-                            }
-                        };
-                        agent_semantic_client::source_index::SourceIndexCollectionScope::TargetProvider {
+                        let provider_id = provider_target.provider_id.ok_or_else(|| {
+                            format!(
+                                "query-demand provider target requires resolved providerId: languageId={}",
+                                provider_target.language_id
+                            )
+                        })?;
+                        agent_semantic_client_db::server_source_index::SourceIndexCollectionScope::TargetProvider {
                             language_id: agent_semantic_client_core::LanguageId::try_new(
                                 provider_target.language_id,
                             )?,
@@ -233,7 +230,7 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
                             )?,
                         }
                     } else if changed_paths.is_empty() {
-                        agent_semantic_client::source_index::SourceIndexCollectionScope::CompleteGeneration
+                        agent_semantic_client_db::server_source_index::SourceIndexCollectionScope::CompleteGeneration
                     } else {
                         let owner_paths = changed_paths
                             .iter()
@@ -249,11 +246,11 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
                                     .map(|relative| relative.to_string_lossy().into_owned())
                             })
                             .collect::<Result<Vec<_>, String>>()?;
-                        agent_semantic_client::source_index::SourceIndexCollectionScope::ExplicitOwners {
+                        agent_semantic_client_db::server_source_index::SourceIndexCollectionScope::ExplicitOwners {
                             owner_paths,
                         }
                     };
-                    let mut build = agent_semantic_client::source_index::
+                    let mut build = agent_semantic_client_db::server_source_index::
                         prepare_runtime_server_workspace_generation_with_runtime_service_async(
                     runtime_search_service,
                     project_root,
@@ -337,6 +334,13 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
             &state_home,
         )
         .await?;
+    agent_semantic_client_db::AgentSessionRegistry::mark_runtime_server_owner_process();
+    let agent_session_registry = std::sync::Arc::new(
+        agent_semantic_client_db::AgentSessionRegistry::open_or_create_state_root_async(
+            &state_home,
+        )
+        .await?,
+    );
     let server = RuntimeServer::bind_with_artifact_catalog(
         endpoint.clone(),
         std::sync::Arc::new(WorkspaceDbRegistry::default()),
@@ -354,7 +358,8 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
             owner_projection_builder,
             admission_catalog,
         )
-        .with_runtime_search_service(runtime_search_service.clone());
+        .with_runtime_search_service(runtime_search_service.clone())
+        .with_agent_session_registry_owner(std::sync::Arc::clone(&agent_session_registry));
     let query_generation_authority =
         agent_semantic_runtime_server::query_generation::RuntimeQueryGenerationAuthority::new();
     let mut generation_publications = server.workspace_generation_publication_subscribe();
@@ -384,7 +389,27 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
         .await
         .map_err(|error| format!("failed to publish ready Runtime Server endpoint: {error}"))?;
     let task_scope = RuntimeServerTaskScope::new("runtime-server-daemon");
+    // The monitor owns the in-process cancellation capability. It must never
+    // call the server's public IPC endpoint to control the same generation.
+    let monitor_shutdown = server.shutdown_handle();
+    let service_failure_shutdown = monitor_shutdown.clone();
+    let mut server_readiness = server.readiness_subscribe();
+    let (server_done_sender, mut server_done_receiver) = tokio::sync::oneshot::channel();
+    let server_task = task_scope.spawn("runtime-server", async move {
+        let result = server.serve().await;
+        let _ = server_done_sender.send(result.clone().map(|_| ()));
+        result
+    })?;
     let (client_grpc_shutdown, client_grpc_shutdown_receiver) = tokio::sync::watch::channel(false);
+    let collaboration_shutdown = client_grpc_shutdown.subscribe();
+    let collaboration_task = task_scope.spawn(
+        "codex-collaboration-snapshot-inbox",
+        agent_semantic_client_db::run_collaboration_snapshot_inbox(
+            std::sync::Arc::clone(&agent_session_registry),
+            state_home.to_path_buf(),
+            collaboration_shutdown,
+        ),
+    )?;
     let mut generation_shutdown = client_grpc_shutdown.subscribe();
     let (client_grpc_done_sender, mut client_grpc_done_receiver) = tokio::sync::oneshot::channel();
     let client_grpc_task = task_scope.spawn("asp-client-grpc", async move {
@@ -412,9 +437,6 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
         let _ = provider_stream_done_sender.send(result.clone());
         result
     })?;
-    // The monitor owns the in-process cancellation capability.  It must never
-    // call the server's public IPC endpoint to control the same generation.
-    let monitor_shutdown = server.shutdown_handle();
     // Telemetry initializes its Turso store in its own Tokio-owned lane.  It
     // cannot delay the already bound control plane from accepting its first
     // status request: endpoint readiness and observability are independent
@@ -465,6 +487,32 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
             }
         }
     })?;
+    if *server_readiness.borrow()
+        != agent_semantic_client_db::runtime_server_control::RuntimeServerState::Healthy
+    {
+        tokio::select! {
+            changed = server_readiness.changed() => {
+                changed.map_err(|_| "Runtime Server readiness channel closed before healthy publication".to_owned())?;
+            }
+            result = &mut server_done_receiver => {
+                return Err(format!(
+                    "Runtime Server exited before healthy publication: {}",
+                    result
+                        .map_err(|_| "Runtime Server task dropped its terminal receipt".to_owned())?
+                        .err()
+                        .unwrap_or_else(|| "unexpected clean exit".to_owned())
+                ));
+            }
+        }
+    }
+    if *server_readiness.borrow()
+        != agent_semantic_client_db::runtime_server_control::RuntimeServerState::Healthy
+    {
+        return Err(format!(
+            "Runtime Server published non-healthy readiness before activation: {:?}",
+            *server_readiness.borrow()
+        ));
+    }
     let running_artifact_digest =
         agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest::parse(
             &std::env::var("ASP_RUNTIME_BINARY_CONTENT_DIGEST").map_err(|_| {
@@ -491,7 +539,6 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
             "Runtime daemon pending activation and launcher artifact identities differ".to_owned(),
         );
     }
-    let service_failure_shutdown = server.shutdown_handle();
     let activation_state_home = state_home.to_path_buf();
     let activation_endpoint = endpoint.clone();
     let activation_running_artifact_digest = running_artifact_digest.clone();
@@ -640,12 +687,6 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
         }
         identity_monitor.shutdown().await;
     })?;
-    let (server_done_sender, mut server_done_receiver) = tokio::sync::oneshot::channel();
-    let server_task = task_scope.spawn("runtime-server", async move {
-        let result = server.serve().await;
-        let _ = server_done_sender.send(result.clone().map(|_| ()));
-        result
-    })?;
     let winner = tokio::select! {
         result = &mut server_done_receiver => ("server", result),
         result = &mut client_grpc_done_receiver => ("client-grpc", result),
@@ -670,6 +711,13 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
         .await
         .map_err(|error| format!("Runtime Server task failed: {error}"))?;
     let _ = generation_task.join().await;
+    let collaboration_result = collaboration_task
+        .join()
+        .await
+        .map_err(|error| format!("Codex Collaboration snapshot task failed: {error}"))?;
+    if let Err(error) = collaboration_result {
+        eprintln!("[codex-collaboration-snapshot] state=failed error={error}");
+    }
     query_generation_authority.clear_all();
     let identity_change = identity_change_receiver.try_recv().ok();
     let server_result = server_result.map(|_| ());

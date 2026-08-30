@@ -2,14 +2,16 @@ use super::{hook_event, panic_terminal};
 use std::ffi::OsString;
 
 #[test]
-fn event_binding_accepts_plugin_and_direct_shapes() {
-    assert_eq!(
-        hook_event(&[OsString::from("hook"), OsString::from("pre-tool"),]),
-        Some("pre-tool")
-    );
+fn event_binding_accepts_only_the_direct_hook_binary_shape() {
+    assert_eq!(hook_event(&[OsString::from("pre-tool")]), Some("pre-tool"));
     assert_eq!(
         hook_event(&[OsString::from("post-tool")]),
         Some("post-tool")
+    );
+    assert_eq!(
+        hook_event(&[OsString::from("hook"), OsString::from("pre-tool")]),
+        None,
+        "the standalone asp-hook binary must not recreate an `asp hook` namespace"
     );
     assert_eq!(hook_event(&[OsString::from("--version")]), None);
 }

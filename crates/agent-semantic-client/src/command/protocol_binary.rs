@@ -404,14 +404,65 @@ pub(crate) async fn install_qualified_provider_staging_target(
     checkout_root: PathBuf,
 ) -> Result<ProtocolBinaryInstall, String> {
     let authority = agent_semantic_artifacts::runtime_artifact_catalog::QualifiedRuntimeArtifactSource::develop_state_home_staging(checkout_root)?;
-    install_protocol_binary_target_transaction(
-        source,
-        target,
-        artifact_root,
-        binary_identity,
-        Some(authority),
-    )
-    .await
+    let binary_name = binary_identity.name();
+    if target.file_name() != Some(binary_name) {
+        return Err(format!(
+            "provider binary target {} does not match declared binary identity `{}`",
+            target.display(),
+            binary_name.to_string_lossy()
+        ));
+    }
+    let runtime_root = target.parent().and_then(Path::parent).ok_or_else(|| {
+        format!(
+            "provider binary target has no Runtime parent: {}",
+            target.display()
+        )
+    })?;
+    let state_home = runtime_root.parent().ok_or_else(|| {
+        format!(
+            "Runtime root has no state-home parent: {}",
+            runtime_root.display()
+        )
+    })?;
+    let expected_target = runtime_root.join("bin").join(binary_name);
+    if !same_protocol_binary_entry(target, &expected_target) {
+        return Err(format!(
+            "provider binary target must use the stable Runtime bin slot: expected={} actual={}",
+            expected_target.display(),
+            target.display()
+        ));
+    }
+    let artifact_kind = binary_name.to_string_lossy().into_owned();
+    authority.validate_source(state_home, source, &artifact_kind)?;
+    let guard =
+        agent_semantic_artifacts::runtime_artifact_retention::RuntimeArtifactMutationGuard::try_acquire(
+            artifact_root,
+        )?;
+    let publication =
+        agent_semantic_artifacts::runtime_artifact_catalog::publish_qualified_runtime_artifact_under_guard(
+            state_home,
+            source,
+            target,
+            artifact_root,
+            artifact_kind,
+            authority,
+            &guard,
+        )
+        .await?;
+    drop(guard);
+    Ok(ProtocolBinaryInstall {
+        path: publication.path,
+        // Provider staging is not a Runtime serving activation. The stable
+        // provider entry is atomically linked to the qualified CAS artifact,
+        // so there is no Runtime activation/quiescence receipt to validate.
+        status: "current",
+        artifact_digest: publication.artifact_digest.to_string(),
+        lock_acquisition_count: 0,
+        quiescence_operation: None,
+        quiescence_lease_nonce: None,
+        lease_producer_process_id: None,
+        lease_consumer_process_id: None,
+    })
 }
 
 async fn install_protocol_binary_target_transaction(

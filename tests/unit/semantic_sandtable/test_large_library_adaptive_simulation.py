@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from jsonschema import Draft202012Validator
+from unit.schema_validation import schema_validator_for
 
 from tools.semantic_sandtable.large_library_adaptive_simulation import (
     run_large_library_adaptive_simulation,
@@ -373,4 +373,8 @@ def _validate_schema(repo_root: Path, packet: dict[str, object]) -> None:
             / "semantic-graph-turbo-adaptive-simulation-report.v1.schema.json"
         ).read_text()
     )
-    Draft202012Validator(schema).validate(packet)
+    schema_validator_for(
+        repo_root
+        / "schemas"
+        / "semantic-graph-turbo-adaptive-simulation-report.v1.schema.json"
+    ).validate(packet)

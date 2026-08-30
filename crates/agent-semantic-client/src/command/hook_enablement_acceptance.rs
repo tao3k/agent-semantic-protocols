@@ -86,7 +86,7 @@ pub(super) async fn run(args: &[String]) -> Result<(), String> {
 }
 
 async fn accept(project_root: &Path) -> Result<HookEnablementAcceptanceReceipt, String> {
-    let launcher = project_root.join("asp-codex-plugin/bin/asp-hook");
+    let launcher = project_root.join("asp-codex-plugin/bin/asp-hook-exec");
     let hooks = project_root.join("asp-codex-plugin/hooks/hooks.json");
     require_executable(&launcher).await?;
     require_regular_file(&hooks, "Codex Hook manifest").await?;

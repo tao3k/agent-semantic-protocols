@@ -64,7 +64,7 @@ alone.
 | SciPy path lowering collapses parallel relations | =path_scipy_backend.py= retains one lowest-cost edge per =(source,target)= and stores one relation per pair | Confirmed |
 | Path cost is relation-blind | =edge_cost= is =1.0 / edge.weight= for positive weights | Confirmed |
 | Existing benchmark is already a search-quality benchmark | Current benchmark surfaces duration, median/p95, path backend/fallback, PPR, cache, and matrix statistics; the proposed closure/terminal/handoff metrics are absent | Rejected |
-| Python provider evidence is independent of global State Home | The parser-owned audit reached the package root but failed to open the Turso client DB under the resident sandbox | Not proven; State authority remains a gate |
+| Python provider evidence is independent of global State Home | The parser-owned audit reached the package root but failed to open the ASP Server Turso DB under the resident sandbox | Not proven; State authority remains a gate |
 
 The State Home failure is not source evidence about the planner algorithm.  It
 is evidence that a read-only planner invocation needs an explicit State access

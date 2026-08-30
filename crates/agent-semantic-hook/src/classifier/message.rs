@@ -40,7 +40,7 @@ pub fn materialize_source_access_deny_message(decision: &mut HookDecision) {
         .and_then(|value| value.as_str().map(str::to_owned))
         .unwrap_or_else(|| "source-access".to_owned());
     decision.message = format!(
-        "ASP denied source access (`{reason}`). Open the Org-owned interactive ChoicePlane with `asp session --agents choice-plane` to select a parser-owned recovery route."
+        "ASP denied source access (`{reason}`). Use `collaboration.spawn_agent` with the Config-resolved registered Agent, then run the parser-owned route in that agent."
     );
     prepend_typed_agent_guidance(decision);
 }
@@ -71,7 +71,7 @@ fn prepend_typed_agent_guidance(decision: &mut HookDecision) {
         _ => "this scoped job",
     };
     let guidance = format!(
-        "Please invoke `{symbol}` for registered Agent `{agent}` ({jobs}) through `asp session --agents choice-plane`; require receipt `{receipt_kind}` before retrying."
+        "Use `collaboration.spawn_agent` with `agent_type=\"{agent}\"` to create `{symbol}` for {jobs}; verify its canonical path with `collaboration.list_agents`, and require receipt `{receipt_kind}` before retrying."
     );
     decision.fields.insert(
         "targetAgentSymbol".to_owned(),

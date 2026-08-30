@@ -9,14 +9,14 @@ from collections.abc import Mapping, Sequence
 
 from .ablation_cli import ABLATION_VARIANTS
 from .ablation_report_packet import build_ablation_report
-from .cli import _load_packet
+from .algorithm import load_packet
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parse_args(argv)
     variants = _selected_variants(args.variant)
     report = build_ablation_report(
-        _load_packet(args.packet),
+        load_packet(args.packet),
         variants=variants,
         runs=args.runs,
         warmup_runs=args.warmup_runs,

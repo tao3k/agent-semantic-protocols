@@ -1,6 +1,7 @@
 //! Public interface for the DB-owned agent session registry.
 
 mod core;
+mod collaboration;
 pub(crate) mod dispatch;
 pub(crate) use dispatch as dispatch_owner;
 mod lifecycle;
@@ -15,6 +16,10 @@ pub(crate) use types as types_owner;
 pub use types::{AgentSessionModelObservationRef, AgentSessionModelObservationSource};
 
 pub use core::AgentSessionRegistry;
+pub use collaboration::{
+    CollaborationAgentObservation, CollaborationSnapshotPersistenceReceipt,
+    run_collaboration_snapshot_inbox,
+};
 pub use dispatch::derive_agent_session_dispatch_identity;
 pub use types::{
     AGENT_SESSION_REGISTRY_DB_NAME, AGENT_SESSION_STATUS_ACTIVE, AGENT_SESSION_STATUS_ARCHIVED,

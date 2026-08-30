@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/codex-collaboration-live-agents.v1.schema.json",
+  "title": "Codex Collaboration Live Agents",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["agents"],
+  "properties": {
+    "agents": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/liveAgent" },
+      "uniqueItems": true
+    }
+  },
+  "$defs": {
+    "canonicalAgentPath": {
+      "type": "string",
+      "pattern": "^/root(?:/[a-z0-9_]+)*$"
+    },
+    "agentStatus": {
+      "oneOf": [
+        { "type": "string", "minLength": 1 },
+        {
+          "type": "object",
+          "minProperties": 1,
+          "maxProperties": 1,
+          "additionalProperties": { "type": "string" }
+        }
+      ]
+    },
+    "liveAgent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["agent_name", "agent_status"],
+      "properties": {
+        "agent_name": { "$ref": "#/$defs/canonicalAgentPath" },
+        "agent_status": { "$ref": "#/$defs/agentStatus" }
+      }
+    }
+  }
+}

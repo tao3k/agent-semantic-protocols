@@ -30,7 +30,7 @@ fn permission_request_allow_renders_explicit_allow_for_claude() {
     let context = response["hookSpecificOutput"]["additionalContext"]
         .as_str()
         .expect("decision context");
-    assert!(context.contains("\"decision\":\"allow\""), "{context}");
+    assert_eq!(context, decision.message);
 }
 
 #[test]

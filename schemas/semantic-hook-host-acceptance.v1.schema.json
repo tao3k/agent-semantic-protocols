@@ -21,7 +21,7 @@
     "state": { "enum": ["accepted", "rejected"] },
     "reasonKind": {
       "enum": [
-        "normal-task-hook-generation-bound-deny-observed",
+        "normal-task-hook-policy-bundle-bound-deny-observed",
         "plugin-not-loaded",
         "probe-call-missing",
         "source-bytes-leaked",

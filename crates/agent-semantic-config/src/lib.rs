@@ -3,12 +3,17 @@
 //! Unified project identity, configuration, and local state layout for ASP.
 
 pub mod agent_route_registry;
+mod codex_collaboration;
 mod codex_plugin_config;
 mod codex_plugin_payload;
 pub mod embedded_agent_assets;
 mod hook_client_config;
 pub mod runtime_dev;
 
+pub use codex_collaboration::{
+    COLLABORATION_LIVE_AGENT_SNAPSHOT_SCHEMA_ID, CollaborationDispatchState,
+    CollaborationLiveAgent, CollaborationLiveAgentSnapshot, CollaborationLiveAgents,
+};
 pub use codex_plugin_config::codex_config_plugin_enabled;
 pub use codex_plugin_payload::{
     CODEX_PLUGIN_HOOKS_RELATIVE_PATH, CODEX_PLUGIN_LAUNCHER_RELATIVE_PATH,

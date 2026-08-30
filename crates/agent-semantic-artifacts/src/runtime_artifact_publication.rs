@@ -53,6 +53,102 @@ pub struct RuntimeArtifactPublicationReceipt {
     pub lease_consumer_process_id: u32,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RuntimeToolPublicationReceipt {
+    pub path: PathBuf,
+    pub artifact_digest: crate::blake3_content_digest::Blake3ContentDigest,
+    pub lock_elapsed_micros: u128,
+}
+
+/// Publish a non-serving executable into the canonical Runtime bin directory.
+///
+/// Runtime tools such as `asp-hook` share the immutable Artifacts catalog and
+/// mutation lock with the Runtime client, but do not create a Runtime Server
+/// activation event. Their stable `runtime/bin/<tool>` link is their sole
+/// executable authority.
+pub async fn publish_runtime_tool_artifact(
+    state_home: &Path,
+    source: &Path,
+    target: &Path,
+    artifact_kind: &str,
+) -> Result<RuntimeToolPublicationReceipt, String> {
+    let expected_parent = state_home.join("runtime/bin");
+    if target.parent() != Some(expected_parent.as_path())
+        || target.file_name().and_then(|name| name.to_str()) != Some(artifact_kind)
+    {
+        return Err(format!(
+            "Runtime tool target is not canonical: expected={}/{} actual={}",
+            expected_parent.display(),
+            artifact_kind,
+            target.display()
+        ));
+    }
+    let digest = runtime_artifact_candidate_digest(source).await?;
+    let candidate_dir = state_home
+        .join("runtime/tool-candidates")
+        .join(artifact_kind)
+        .join(digest.content_digest().as_str());
+    let prepared = crate::runtime_artifact_catalog::prepare_runtime_artifact_candidate_for_kind(
+        state_home,
+        &candidate_dir,
+        source,
+        artifact_kind,
+    )
+    .await?;
+    let artifact_root = state_home.join("runtime/artifacts");
+    let lock_started = std::time::Instant::now();
+    let guard = RuntimeArtifactMutationGuard::try_acquire(&artifact_root)?;
+    let publication = publish_runtime_tool_launcher(target, &prepared.path, artifact_kind);
+    let lock_elapsed_micros = lock_started.elapsed().as_micros();
+    drop(guard);
+    if let Err(error) = publication {
+        discard_prepared_runtime_artifact(&prepared).await?;
+        return Err(error);
+    }
+    Ok(RuntimeToolPublicationReceipt {
+        path: target.to_path_buf(),
+        artifact_digest: prepared.content_digest,
+        lock_elapsed_micros,
+    })
+}
+
+fn publish_runtime_tool_launcher(
+    target: &Path,
+    candidate: &Path,
+    artifact_kind: &str,
+) -> Result<(), String> {
+    let parent = target
+        .parent()
+        .ok_or_else(|| format!("Runtime tool launcher has no parent: {}", target.display()))?;
+    std::fs::create_dir_all(parent)
+        .map_err(|error| format!("create Runtime tool launcher directory: {error}"))?;
+    let staged = parent.join(format!(
+        ".{artifact_kind}.publication-{}.tmp",
+        std::process::id()
+    ));
+    match std::fs::remove_file(&staged) {
+        Ok(()) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(format!("remove stale Runtime tool launcher: {error}")),
+    }
+    stage_runtime_client_launcher(candidate, &staged)?;
+    let expected = std::fs::canonicalize(candidate)
+        .map_err(|error| format!("resolve Runtime tool candidate: {error}"))?;
+    let observed = std::fs::canonicalize(&staged)
+        .map_err(|error| format!("resolve staged Runtime tool launcher: {error}"))?;
+    if observed != expected {
+        let _ = std::fs::remove_file(&staged);
+        return Err("reasonKind=runtime-tool-launcher-candidate-mismatch".to_owned());
+    }
+    std::fs::rename(&staged, target).map_err(|error| {
+        let _ = std::fs::remove_file(&staged);
+        format!(
+            "reasonKind=runtime-tool-launcher-publication-failed target={} error={error}",
+            target.display()
+        )
+    })
+}
+
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RuntimeArtifactPublicationPhaseTrace {

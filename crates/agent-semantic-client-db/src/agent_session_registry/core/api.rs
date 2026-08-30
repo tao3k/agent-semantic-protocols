@@ -5,7 +5,7 @@ use super::storage::{
     block_on_agent_session_registry_async, turso_delete_session, turso_query_all_sessions,
     turso_query_sessions, turso_record_tool_event, turso_refresh_expired_sessions,
     turso_register_session, turso_session_by_id, turso_session_by_id_any_project,
-    turso_session_by_name, turso_session_for_root_session_id_any_project,
+    turso_session_by_name, turso_session_for_root_session_id_any_project, turso_session_is_retired,
     turso_set_archived_status, turso_update_session_status,
 };
 use crate::agent_session_registry::types::{
@@ -31,6 +31,42 @@ impl AgentSessionRegistry {
     }
 
     pub(crate) async fn query_all_sessions_local(&self) -> Result<Vec<AgentSessionRecord>, String> {
+        turso_query_all_sessions(&self.db_path).await
+    }
+
+    /// Register a child directly inside the sole Runtime Server DB owner.
+    ///
+    /// This is the Multi-Agent v2 mutation boundary. It deliberately avoids
+    /// the retired WorkspaceDb IPC proxy and every synchronous `block_on` bridge.
+    pub async fn register_session_from_runtime_owner(
+        &self,
+        request: AgentSessionRegisterRequest<'_>,
+    ) -> Result<AgentSessionRecord, String> {
+        if !Self::is_runtime_server_owner_process() {
+            return Err("Multi-Agent registration requires the Runtime Server DB owner".to_owned());
+        }
+        if turso_session_is_retired(
+            &self.db_path,
+            request.project_id.as_str(),
+            request.session_id.as_str(),
+        )
+        .await?
+        {
+            return Err(format!(
+                "retired physical session generation cannot be registered again: projectId={} sessionId={}",
+                request.project_id, request.session_id
+            ));
+        }
+        turso_register_session(&self.db_path, request).await
+    }
+
+    /// Read the current durable child set inside the Runtime Server DB owner.
+    pub async fn query_all_sessions_from_runtime_owner(
+        &self,
+    ) -> Result<Vec<AgentSessionRecord>, String> {
+        if !Self::is_runtime_server_owner_process() {
+            return Err("Multi-Agent projection requires the Runtime Server DB owner".to_owned());
+        }
         turso_query_all_sessions(&self.db_path).await
     }
 

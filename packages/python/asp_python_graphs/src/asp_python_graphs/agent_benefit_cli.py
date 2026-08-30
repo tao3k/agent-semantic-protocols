@@ -9,13 +9,13 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 from .agent_benefit_packet import build_agent_benefit_report
-from .cli import _load_packet
+from .algorithm import load_packet
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parse_args(argv)
     report = build_agent_benefit_report(
-        _load_packet(args.packet),
+        load_packet(args.packet),
         scenario=args.scenario,
         receipt=_load_receipt(args.receipt, args.receipt_fixture_id),
         rank_args=args,

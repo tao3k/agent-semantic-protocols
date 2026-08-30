@@ -144,7 +144,7 @@ pub(super) fn inspect_host_rollout(
     } else {
         (
             "accepted",
-            "normal-task-hook-generation-bound-deny-observed",
+            "normal-task-hook-policy-bundle-bound-deny-observed",
         )
     };
 

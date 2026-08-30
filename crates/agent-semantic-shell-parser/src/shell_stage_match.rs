@@ -244,6 +244,92 @@ pub fn candidate_matches_prefix(candidate: &[String], prefix: &[String]) -> bool
             })
 }
 
+/// Match a declarative argv glob pattern against a normalized command stage.
+///
+/// The executable is compared by basename so absolute paths and wrapper
+/// prefixes remain transparent. `*` and `**` are argv-sequence wildcards that
+/// consume zero or more tokens; every other pattern token is compiled by
+/// globset and consumes exactly one token. Once the declared prefix matches,
+/// additional argv are intentionally ignored.
+pub fn command_tokens_match_argv_pattern(
+    tokens: &[String],
+    pattern: &[String],
+    wrapped_command: bool,
+    boundary_token: &str,
+) -> bool {
+    if tokens.is_empty() || pattern.is_empty() {
+        return false;
+    }
+    let boundary = tokens
+        .iter()
+        .position(|token| token == boundary_token)
+        .unwrap_or(tokens.len());
+    let candidate_end = if boundary < tokens.len() {
+        boundary + 1
+    } else {
+        tokens.len()
+    };
+    let starts = if wrapped_command { 0..boundary } else { 0..1 };
+    starts.into_iter().any(|start| {
+        let Some(actual) = tokens.get(start..candidate_end) else {
+            return false;
+        };
+        argv_pattern_matches(actual, pattern)
+    })
+}
+
+fn argv_pattern_matches(actual: &[String], pattern: &[String]) -> bool {
+    let mut actual_index = 0usize;
+    let mut pattern_index = 0usize;
+    let mut sequence_wildcard = None;
+    let mut wildcard_consumed = 0usize;
+
+    loop {
+        if pattern_index == pattern.len() {
+            return true;
+        }
+        if matches!(pattern[pattern_index].as_str(), "*" | "**") {
+            sequence_wildcard = Some(pattern_index);
+            wildcard_consumed = actual_index;
+            pattern_index += 1;
+            continue;
+        }
+        if let Some(candidate) = actual.get(actual_index) {
+            let candidate = if actual_index == 0 {
+                command_token_basename(candidate)
+            } else {
+                candidate.as_str()
+            };
+            if argv_token_glob_matches(&pattern[pattern_index], candidate) {
+                actual_index += 1;
+                pattern_index += 1;
+                continue;
+            }
+        }
+        let Some(wildcard_index) = sequence_wildcard else {
+            return false;
+        };
+        if wildcard_consumed == actual.len() {
+            return false;
+        }
+        wildcard_consumed += 1;
+        actual_index = wildcard_consumed;
+        pattern_index = wildcard_index + 1;
+    }
+}
+
+fn argv_token_glob_matches(pattern: &str, actual: &str) -> bool {
+    if !pattern
+        .bytes()
+        .any(|byte| matches!(byte, b'*' | b'?' | b'[' | b']' | b'{' | b'}'))
+    {
+        return pattern == actual;
+    }
+    globset::Glob::new(pattern)
+        .map(|glob| glob.compile_matcher().is_match(actual))
+        .unwrap_or(false)
+}
+
 /// Parse a Bash command into bounded normalized command candidates.
 pub fn parse_bash_command_candidates(command: &str) -> Result<Vec<CommandStage>, String> {
     parse_bash_command_candidates_with_shell_operands(command, 0)

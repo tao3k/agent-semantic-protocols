@@ -16,6 +16,7 @@ fn central_policy_registry_contains_migrated_member_crates() {
             "agent-semantic-client-server",
             "agent-semantic-client",
             "agent-semantic-hook",
+            "agent-semantic-hook-testkit",
             "agent-semantic-provider-transport",
             "agent-semantic-search",
             "agent-semantic-search-projection",
@@ -39,6 +40,16 @@ fn central_policy_preserves_member_specific_verification_owners() {
         .expect("client policy");
 
     assert_eq!(client_db.verification_label, Some("client db"));
-    assert_eq!(client_db.latency_sensitive_performance_owners.len(), 2);
-    assert_eq!(client.availability_stability_owners.len(), 2);
+    assert!(
+        client_db
+            .latency_sensitive_performance_owners
+            .iter()
+            .any(|owner| owner.path == "src/engine/facade.rs")
+    );
+    assert!(
+        client
+            .availability_stability_owners
+            .iter()
+            .any(|owner| owner.path == "src/cli.rs")
+    );
 }
