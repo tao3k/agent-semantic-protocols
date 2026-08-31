@@ -17,7 +17,7 @@ The executable refinement is the product of four independent layers:
 
 1. workspace Runtime Server generation and health;
 2. root/session lifecycle generation and phase;
-3. per-agent host binding generation and release receipts;
+3. per-Agent Host binding generation and path observation;
 4. per-command dispatch generation and phase.
 
 =ASPProof.AgentSessionLifecycleProduct= owns those layers.
@@ -39,9 +39,10 @@ profile and whose target-verification receipt is current.
 * Multiplicity
 
 A root session may contain many resident slots and many temporary agents.
-Each resident slot has exactly one occupancy value: vacant, incumbent, or
-replacement.  Therefore at most one resident generation can be live per slot;
-temporary agents never consume resident slots.
+Each configured Agent path has exactly one observed state: unobserved, absent,
+or present. A present path is resumed with =followup_task=; an absent path may
+be introduced only by =spawn_agent=. Temporary Agents never become configured
+Agent paths implicitly.
 
 * Authority chain
 
@@ -54,10 +55,9 @@ configured profile
   -> host delivery receipt
 #+end_example
 
-Archive intent revokes durable dispatch but does not release the canonical
-path.  Replacement requires indexed host-termination and path-release receipts
-and a strictly newer generation.  Server restart preserves every non-server
-layer.
+Completion, failure, and interruption preserve the canonical Agent path.
+Host-tree absence is observation rather than release authority. Server restart
+preserves every non-server layer.
 
 * Removed architecture
 

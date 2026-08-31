@@ -26,6 +26,28 @@ use agent_semantic_client_db::{
 
 use crate::test_support::{StateHomeGuard, TestDir, environment_lock, workspace};
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn runtime_server_registry_rejects_non_gix_root_without_project_shell() {
+    let fixture = tempfile::TempDir::new().expect("create non-Gix registry fixture");
+    let state_home = fixture.path().join("state");
+    let project_root = fixture.path().join("ordinary-files");
+    std::fs::create_dir_all(&project_root).expect("create ordinary file root");
+    let registry = WorkspaceDbRegistry::with_state_home(&state_home);
+
+    let Err(error) = registry.bootstrap_workspace(&project_root).await else {
+        panic!("Runtime Server must reject a root not admitted by Gix");
+    };
+
+    assert!(
+        error.contains("refusing to materialize") && error.contains("ephemeral"),
+        "non-Gix temporary roots must fail closed with a stable materialization reason: {error}"
+    );
+    assert!(
+        !state_home.join("projects/by-id").exists(),
+        "rejected Tokio admission must create no State Core project shell"
+    );
+}
+
 #[tokio::test(flavor = "current_thread")]
 async fn wrong_workspace_identity_fails_before_database_open() {
     let _environment = environment_lock();

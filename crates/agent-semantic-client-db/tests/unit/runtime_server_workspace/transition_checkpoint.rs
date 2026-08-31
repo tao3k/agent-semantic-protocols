@@ -23,6 +23,7 @@ fn owner(path: &str, selector: &str, bytes: &[u8]) -> WorkspaceOwnerSnapshot {
             selector: selector.to_owned(),
             byte_start: 0,
             byte_end: bytes.len(),
+            query_keys: Vec::new(),
             derived_projections: Vec::new(),
         }],
     }

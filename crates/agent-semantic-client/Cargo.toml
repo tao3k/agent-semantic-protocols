@@ -53,6 +53,7 @@ tracing = "0.1.44"
 [[bin]]
 name = "asp"
 path = "src/main.rs"
+test = false
 
 [dev-dependencies]
 jsonschema = { workspace = true }

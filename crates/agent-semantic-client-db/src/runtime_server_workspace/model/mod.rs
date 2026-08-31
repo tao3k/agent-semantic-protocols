@@ -10,8 +10,9 @@ pub use core::{
     WORKSPACE_RUNTIME_SELECTOR_OVERLAY_RECEIPT_SCHEMA_ID, WorkspaceDataPlanePerformanceReceipt,
     WorkspaceDerivedProjectionSnapshot, WorkspaceGenerationBuild, WorkspaceGenerationDelta,
     WorkspaceGenerationSnapshot, WorkspaceGenerationState, WorkspaceMemoryGeneration,
+    WorkspaceOwnerProjection, WorkspaceOwnerSearchSeedSnapshot, WorkspaceOwnerSearchSnapshot,
     WorkspaceOwnerSnapshot, WorkspaceRecoveryReceipt, WorkspaceRecoverySource,
-    WorkspaceRuntimeMerkleOwnerRead, WorkspaceRuntimeOwnerRead, WorkspaceRuntimeSelectorOverlay,
-    WorkspaceRuntimeSelectorOverlayReceipt, WorkspaceRuntimeSelectorRead,
-    WorkspaceRuntimeSelectorRebind, WorkspaceSelectorSnapshot,
+    WorkspaceRuntimeMerkleOwnerRead, WorkspaceRuntimeOwnerRead, WorkspaceRuntimeOwnerSearchRead,
+    WorkspaceRuntimeSelectorOverlay, WorkspaceRuntimeSelectorOverlayReceipt,
+    WorkspaceRuntimeSelectorRead, WorkspaceRuntimeSelectorRebind, WorkspaceSelectorSnapshot,
 };

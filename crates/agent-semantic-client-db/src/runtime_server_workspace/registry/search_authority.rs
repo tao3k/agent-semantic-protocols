@@ -13,7 +13,7 @@ impl RuntimeServerWorkspaceRegistry {
             Ok(lease) => lease,
             Err(_) => return Ok(None),
         };
-        let authority = WorkspaceSearchGenerationAuthority::from_lease(&lease);
+        let authority = WorkspaceSearchGenerationAuthority::from_lease(&lease)?;
         authority.validate_binding(workspace_identity, &project_root.display().to_string())?;
         Ok(Some(authority))
     }

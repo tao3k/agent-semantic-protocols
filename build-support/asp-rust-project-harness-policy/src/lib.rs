@@ -2,11 +2,13 @@
 
 pub use rust_lang_project_harness::{
     RustHarnessConfig, RustHarnessRunScope, RustOwnerResponsibility,
-    RustProjectHarnessDownstreamPolicy, RustProjectHarnessWorkspaceEvidenceGraphMemberInput,
+    RustProjectHarnessBuildGateAuthority, RustProjectHarnessDownstreamPolicy,
+    RustProjectHarnessWorkspaceEvidenceGraphMemberInput,
     RustProjectHarnessWorkspaceMemberRunReport, RustProjectHarnessWorkspaceRunReport,
     RustVerificationProfileHint, RustVerificationStabilityPictureConfig, RustVerificationTaskKind,
     assert_rust_project_harness_clean_with_config,
     assert_rust_project_harness_downstream_policy_from_env,
+    assert_rust_project_harness_downstream_policy_with_authority,
     assert_rust_project_harness_verification_from_env_with_config,
     assert_rust_workspace_harness_clean_with_config,
     assert_rust_workspace_harness_downstream_policies, default_rust_harness_config,

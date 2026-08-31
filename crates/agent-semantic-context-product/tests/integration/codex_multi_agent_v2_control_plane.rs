@@ -38,8 +38,7 @@ fn agent(
                 phase: BindingPhase::Fresh,
                 child_session_id: Some(session_id.to_owned()),
                 canonical_message_target: Some(format!("agent://{session_id}")),
-                termination_receipt_indexed: false,
-                path_release_receipt_indexed: false,
+                path_observed: Some(true),
             },
             DispatchLifecycleProjection {
                 generation: Some(1),

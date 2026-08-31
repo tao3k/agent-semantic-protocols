@@ -19,9 +19,9 @@ pub enum SessionPhase {
     Unobserved,
     Declared,
     Active,
-    ArchiveIntentDurable,
-    Archived,
-    Retired,
+    Interrupted,
+    Completed,
+    Failed,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -31,8 +31,6 @@ pub enum BindingPhase {
     Unbound,
     Fresh,
     Stale,
-    HostTerminated,
-    PathReleased,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -69,8 +67,15 @@ pub struct HostBindingProjection {
     pub phase: BindingPhase,
     pub child_session_id: Option<String>,
     pub canonical_message_target: Option<String>,
-    pub termination_receipt_indexed: bool,
-    pub path_release_receipt_indexed: bool,
+    pub path_observed: Option<bool>,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum RequiredDispatchAction {
+    Unavailable,
+    SpawnAgent,
+    FollowupTask,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -89,6 +94,7 @@ pub struct AgentSessionLifecycleProjection {
     pub session: SessionLifecycleProjection,
     pub host_binding: HostBindingProjection,
     pub dispatch: DispatchLifecycleProjection,
+    pub required_dispatch_action: RequiredDispatchAction,
     pub durable_dispatch_authorized: bool,
 }
 
@@ -118,8 +124,6 @@ pub struct HostBindingFacts {
     pub child_session_id: Option<String>,
     pub canonical_message_target: Option<String>,
     pub observation: HostBindingObservation,
-    pub termination_receipt_indexed: bool,
-    pub path_release_receipt_indexed: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -139,12 +143,12 @@ pub fn session_phase_from_registry_status(status: Option<&str>) -> Result<Sessio
         None => Ok(SessionPhase::Unobserved),
         Some("declared") => Ok(SessionPhase::Declared),
         Some("active") => Ok(SessionPhase::Active),
-        Some("archive-intent-durable") => Ok(SessionPhase::ArchiveIntentDurable),
-        Some("archived") => Ok(SessionPhase::Archived),
-        Some("closed" | "retired") => Ok(SessionPhase::Retired),
-        Some(status @ ("idle" | "invalid" | "orphan-risk")) => Err(format!(
-            "registry status `{status}` conflates session, binding, or dispatch lifecycle"
-        )),
+        Some("interrupted") => Ok(SessionPhase::Interrupted),
+        Some("completed") => Ok(SessionPhase::Completed),
+        Some("failed") => Ok(SessionPhase::Failed),
+        Some(status @ ("idle" | "invalid" | "orphan-risk" | "archived" | "retired")) => Err(
+            format!("registry status `{status}` conflates session, binding, or dispatch lifecycle"),
+        ),
         Some(status) => Err(format!(
             "unsupported agent session registry status `{status}`"
         )),
@@ -152,9 +156,6 @@ pub fn session_phase_from_registry_status(status: Option<&str>) -> Result<Sessio
 }
 
 pub fn project_host_binding(facts: HostBindingFacts) -> Result<HostBindingProjection, String> {
-    if facts.path_release_receipt_indexed && !facts.termination_receipt_indexed {
-        return Err("path release receipt requires an indexed termination receipt".to_owned());
-    }
     if facts.recorded && facts.generation.is_none() {
         return Err("a recorded host binding requires a physical generation".to_owned());
     }
@@ -171,11 +172,7 @@ pub fn project_host_binding(facts: HostBindingFacts) -> Result<HostBindingProjec
         );
     }
 
-    let phase = if facts.path_release_receipt_indexed {
-        BindingPhase::PathReleased
-    } else if facts.termination_receipt_indexed {
-        BindingPhase::HostTerminated
-    } else if !facts.recorded {
+    let phase = if !facts.recorded {
         BindingPhase::Unbound
     } else {
         match facts.observation {
@@ -191,8 +188,13 @@ pub fn project_host_binding(facts: HostBindingFacts) -> Result<HostBindingProjec
         phase,
         child_session_id: facts.child_session_id,
         canonical_message_target: facts.canonical_message_target,
-        termination_receipt_indexed: facts.termination_receipt_indexed,
-        path_release_receipt_indexed: facts.path_release_receipt_indexed,
+        path_observed: match facts.observation {
+            HostBindingObservation::Unobserved => None,
+            HostBindingObservation::PresentFresh | HostBindingObservation::PresentStale => {
+                Some(true)
+            }
+            HostBindingObservation::Absent => Some(false),
+        },
     })
 }
 
@@ -260,8 +262,14 @@ impl AgentSessionLifecycleProjection {
         host_binding: HostBindingProjection,
         dispatch: DispatchLifecycleProjection,
     ) -> Self {
+        let required_dispatch_action = match host_binding.path_observed {
+            Some(true) => RequiredDispatchAction::FollowupTask,
+            Some(false) => RequiredDispatchAction::SpawnAgent,
+            None => RequiredDispatchAction::Unavailable,
+        };
         let durable_dispatch_authorized = session.phase == SessionPhase::Active
             && host_binding.phase == BindingPhase::Fresh
+            && host_binding.path_observed == Some(true)
             && session.generation.is_some()
             && host_binding.generation == session.generation
             && dispatch.generation == session.generation;
@@ -272,21 +280,18 @@ impl AgentSessionLifecycleProjection {
             session,
             host_binding,
             dispatch,
+            required_dispatch_action,
             durable_dispatch_authorized,
         }
     }
 
-    pub fn replacement_admitted(&self, replacement_generation: u64) -> bool {
-        let Some(session_generation) = self.session.generation else {
-            return false;
-        };
-        matches!(
-            self.session.phase,
-            SessionPhase::Archived | SessionPhase::Retired
-        ) && self.host_binding.phase == BindingPhase::PathReleased
-            && self.host_binding.termination_receipt_indexed
-            && self.host_binding.path_release_receipt_indexed
-            && self.host_binding.generation == Some(session_generation)
-            && replacement_generation > session_generation
+    pub fn followup_task_admitted(&self) -> bool {
+        self.required_dispatch_action == RequiredDispatchAction::FollowupTask
+            && self.host_binding.phase == BindingPhase::Fresh
+            && self.host_binding.generation == self.session.generation
+    }
+
+    pub fn spawn_agent_admitted(&self) -> bool {
+        self.required_dispatch_action == RequiredDispatchAction::SpawnAgent
     }
 }

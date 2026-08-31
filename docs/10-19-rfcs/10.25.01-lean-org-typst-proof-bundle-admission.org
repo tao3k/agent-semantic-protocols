@@ -303,19 +303,20 @@ stateDiagram-v2
 - command adapter: =packages/proofs/src/asp_proofs/cli.py=
 - index schema: =schemas/lean-org-typst-proof-bundle-index.v1.schema.json=
 - receipt schema: =schemas/axle-proof-bundle-audit-receipt.v1.schema.json=
-- first enforced index:
-  =packages/proofs/proof-bundles/agent-session-lifecycle-v1.json=
+- current enforced index:
+  =packages/proofs/proof-bundles/codex-collaboration-lifecycle.json=
 
 #+begin_src sh
 uv run --project packages/proofs --frozen \
   python -m asp_proofs bundle-audit \
-  packages/proofs/proof-bundles/agent-session-lifecycle-v1.json \
-  --output packages/proofs/receipts/agent-session-lifecycle-proof-bundle-audit-v1.json
+  packages/proofs/proof-bundles/codex-collaboration-lifecycle.json \
+  --output packages/proofs/receipts/codex-collaboration-lifecycle-audit.json
 #+end_src
 
 * Adoption boundary
 
-The first enforced inventory covers the transactional-generation and lifecycle
-proof families. New proof families must add their own explicit index instead of
-silently inheriting a global filename heuristic. Expansion is complete only when
-the relevant proof-owned test executes that index and retains its audit receipt.
+The enforced inventory covers the Collaboration V2 lifecycle product,
+executable followup refinement, Hook deadlock freedom, and typed control plane.
+New proof families must add their own explicit index instead of silently
+inheriting a global filename heuristic. Expansion is complete only when the
+relevant proof-owned test executes that index and retains its audit receipt.

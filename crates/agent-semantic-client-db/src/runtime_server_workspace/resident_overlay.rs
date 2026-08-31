@@ -24,6 +24,7 @@ struct ResidentOverlayState {
     revision: u64,
     workspace_snapshot: agent_semantic_content_identity::WorkspaceSnapshot,
     owners: HashMap<String, WorkspaceOwnerSnapshot>,
+    relations: HashMap<String, Vec<crate::ClientDbSourceIndexOwnedRelation>>,
     tombstones: HashSet<String>,
     selectors:
         HashMap<(super::model::ExactProjectionKind, String), WorkspaceRuntimeSelectorOverlay>,
@@ -73,6 +74,7 @@ impl ResidentOverlayStore {
         let owner_path = owner.owner_path.clone();
         let owner_digest = owner.content_digest.clone();
         state.owners.insert(owner_path.clone(), owner);
+        state.relations.insert(owner_path.clone(), Vec::new());
         state.tombstones.remove(&owner_path);
         state
             .selectors
@@ -89,6 +91,7 @@ impl ResidentOverlayStore {
         base: &WorkspaceMemoryGeneration,
         owners: Vec<WorkspaceOwnerSnapshot>,
         tombstones: Vec<String>,
+        relations: Vec<crate::ClientDbSourceIndexOwnedRelation>,
     ) -> Result<ResidentOverlaySnapshot, String> {
         if owners.is_empty() && tombstones.is_empty() {
             return Err("runtime owner delta must not be empty".to_owned());
@@ -109,6 +112,7 @@ impl ResidentOverlayStore {
                 ));
             }
             state.owners.insert(owner_path.clone(), owner);
+            state.relations.insert(owner_path.clone(), Vec::new());
             state.tombstones.remove(&owner_path);
             state
                 .selectors
@@ -127,9 +131,24 @@ impl ResidentOverlayStore {
                 ));
             }
             state.tombstones.insert(owner_path.clone());
+            state.relations.remove(&owner_path);
             state
                 .selectors
                 .retain(|_, selector| selector.owner_path != owner_path);
+        }
+        for relation in relations {
+            let owner_path = relation.owner_path.as_str();
+            if !changed.contains_key(owner_path) {
+                return Err(format!(
+                    "runtime owner delta relation is outside changed owner membership: {owner_path}"
+                ));
+            }
+            relation.relation.validate()?;
+            state
+                .relations
+                .get_mut(owner_path)
+                .expect("changed owner relation bucket was initialized")
+                .push(relation);
         }
         state.workspace_snapshot = state
             .workspace_snapshot
@@ -148,6 +167,7 @@ impl ResidentOverlayStore {
             return Err("runtime owner tombstone target is unavailable".to_owned());
         }
         state.tombstones.insert(owner_path.to_owned());
+        state.relations.remove(owner_path);
         state
             .selectors
             .retain(|_, selector| selector.owner_path != owner_path);
@@ -346,6 +366,15 @@ impl ResidentOverlaySnapshot {
         );
         source_snapshot.base_root_digest = Some(base.source_snapshot.root_digest.clone());
         source_snapshot.dirty_paths_digest = Some(overlay_delta_digest(&self.state));
+        let mut relations = self
+            .state
+            .relations
+            .values()
+            .flatten()
+            .cloned()
+            .collect::<Vec<_>>();
+        relations.sort();
+        relations.dedup();
         WorkspaceMemoryGeneration::try_from_build(super::model::WorkspaceGenerationBuild {
             projection_capability,
             workspace_identity: base.workspace_identity.clone(),
@@ -355,7 +384,7 @@ impl ResidentOverlaySnapshot {
             source_snapshot,
             module_graph_digest: base.module_graph_digest.clone(),
             project_resolutions: base.project_resolutions.clone(),
-            relations: base.relations.clone(),
+            relations,
             owners,
         })
     }
@@ -378,6 +407,7 @@ fn materialize_selector(
                 selector: overlay.structural_selector.clone(),
                 byte_start: overlay.byte_start,
                 byte_end: overlay.byte_end,
+                query_keys: Vec::new(),
                 derived_projections: Vec::new(),
             });
             owner.selectors.last_mut().expect("selector was inserted")
@@ -514,6 +544,7 @@ impl ResidentOverlayState {
                     std::iter::empty::<(String, String)>(),
                 ),
             owners: HashMap::new(),
+            relations: HashMap::new(),
             tombstones: HashSet::new(),
             selectors: HashMap::new(),
         }
@@ -532,6 +563,16 @@ impl ResidentOverlayState {
                 .cloned()
                 .map(|owner| (owner.owner_path.clone(), owner))
                 .collect(),
+            relations: generation.relations.iter().cloned().fold(
+                HashMap::<String, Vec<crate::ClientDbSourceIndexOwnedRelation>>::new(),
+                |mut relations, relation| {
+                    relations
+                        .entry(relation.owner_path.as_str().to_owned())
+                        .or_default()
+                        .push(relation);
+                    relations
+                },
+            ),
             tombstones: HashSet::new(),
             selectors: HashMap::new(),
         }

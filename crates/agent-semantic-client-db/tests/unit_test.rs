@@ -11,10 +11,10 @@ mod agent_session_registry_publication;
 mod agent_session_runtime_proxy;
 #[path = "unit/codex_multi_agent_control_plane_owner.rs"]
 mod codex_multi_agent_control_plane_owner;
-#[path = "unit/context_run_mvcc.rs"]
-mod context_run_mvcc;
 #[path = "unit/content_binding.rs"]
 mod content_binding;
+#[path = "unit/context_run_mvcc.rs"]
+mod context_run_mvcc;
 #[path = "unit/db.rs"]
 mod db;
 #[path = "unit/db/engine/mod.rs"]
@@ -115,8 +115,6 @@ mod turso_mvcc_benchmark;
 mod turso_mvcc_partition;
 #[path = "unit/turso_source_index_materialization.rs"]
 mod turso_source_index_materialization;
-#[path = "unit/workspace_db_ipc.rs"]
-mod workspace_db_ipc;
 #[path = "unit/workspace_db_registry.rs"]
 mod workspace_db_registry;
 #[path = "unit/workspace_project_resolution.rs"]

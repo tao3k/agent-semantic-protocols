@@ -1,0 +1,553 @@
+{
+  "schemaId": "asp.v1-current-state-architecture-audit",
+  "schemaVersion": "1",
+  "status": "evidence-incomplete-host-boundary",
+  "servingMutationPerformed": false,
+  "sourcePolicy": {
+    "paths": "repository-relative-only",
+    "absolutePaths": "forbidden",
+    "aspNoAgent": {
+      "diagnosticReceiptPresent": true,
+      "usedForAcceptance": false
+    },
+    "hookOrPluginModified": false
+  },
+  "firstDivergence": {
+    "layer": "asp-cli-startup-or-ipc-boundary",
+    "reasonKind": "host-operation-not-permitted",
+    "osError": "EPERM",
+    "meaning": "Host process, IPC, or filesystem permission failure before semantic ASP evidence; not Hook denial and not Runtime semantic termination."
+  },
+  "observedReceipts": [
+    {
+      "command": "./.devenv/devenv-profile-exec asp rust search prime --workspace .",
+      "schemaId": "agent.semantic-protocols.cli-failure",
+      "schemaVersion": 1,
+      "state": "blocked",
+      "failureLayer": "asp-cli-startup-or-ipc-boundary",
+      "reasonKind": "host-operation-not-permitted",
+      "osError": "EPERM",
+      "semanticFrameProduced": false
+    },
+    {
+      "operation": "asp session register-child",
+      "state": "blocked",
+      "reasonKind": "child-identity-inconsistent",
+      "observedCondition": "CODEX_THREAD_ID and CODEX_SESSION_ID were required to be equal by the old registration/evaluator path",
+      "interpretation": "The two Host identities were incorrectly collapsed into one product identity."
+    },
+    {
+      "operation": "asp rust search owner",
+      "state": "blocked",
+      "schemaId": "asp.search.playbook-receipt",
+      "schemaVersion": 1,
+      "reasonKind": "host-operation-not-permitted",
+      "osError": "EPERM",
+      "selector": null,
+      "semanticEvidence": false
+    },
+    {
+      "command": "./.devenv/devenv-profile-exec asp rust search owner crates/agent-semantic-runtime/src/runtime_identity_monitor.rs items --query 'activation_generation|RuntimeIdentity|artifact|evaluator|refresh|compare|persist|load' --workspace . --view seeds",
+      "schemaId": "agent-semantic-protocols.cli-failure",
+      "schemaVersion": 1,
+      "state": "blocked",
+      "failureLayer": "asp-cli-startup-or-ipc-boundary",
+      "reasonKind": "host-operation-not-permitted",
+      "osError": "EPERM",
+      "selector": null,
+      "semanticEvidence": false
+    },
+    {
+      "operation": "asp session register-child",
+      "state": "deferred",
+      "reasonKind": "host-local-ipc-permission-denied",
+      "errorKind": "permission-denied",
+      "executionAuthority": "host-native",
+      "message": "Sandbox cannot connect Runtime data endpoint; do not retry from the current sandbox",
+      "commandDigest": "blake3-256:26bb94d726fe485dcff5ab3ff3a28d13ea199f39cc6402cc577a5f3eaa0ae319",
+      "semanticFrameProduced": false
+    },
+    {
+      "operation": "authorized ASP_NO_AGENT Python diagnostic",
+      "state": "blocked",
+      "failureLayer": "asp-cli-startup-or-ipc-boundary",
+      "reasonKind": "host-operation-not-permitted",
+      "osError": "EPERM",
+      "originalError": "bind Runtime activation ready socket <host-runtime-tmp>/r.sock: Operation not permitted (os error 1)",
+      "schemaId": "agent-semantic-protocols.cli-failure",
+      "schemaVersion": 1,
+      "selector": null,
+      "semanticEvidence": false,
+      "acceptanceEligible": false
+    },
+    {
+      "operation": "aot_evaluator owner search",
+      "command": "./.devenv/devenv-profile-exec asp rust search owner crates/agent-semantic-hook/src/aot_evaluator.rs items --query 'generation_digest|cache|compiled|bundle|reuse' --workspace . --view seeds",
+      "state": "blocked",
+      "failureLayer": "asp-cli-startup-or-ipc-boundary",
+      "reasonKind": "host-operation-not-permitted",
+      "osError": "EPERM",
+      "schemaId": "agent-semantic-protocols.cli-failure",
+      "schemaVersion": 1,
+      "selector": null,
+      "semanticEvidence": false,
+      "consumerFunctionsInferred": false,
+      "modificationAllowed": false
+    },
+    {
+      "operation": "Runtime owner catalog/source-index admission",
+      "path": "crates/agent-semantic-content-identity/src/host_session_binding.rs",
+      "state": "ready-but-owner-missing",
+      "workspaceIdentity": "workspace-23cc5ba784c605ae",
+      "generationDigest": "blake3-256:a79e12b317b7f66e09be6cc5a51fe15071d6aad59ae90789d1e204850a8caee3",
+      "rootDigest": "c19585f0115d7bda2e0d0a8fcf8fd73b64ebae7ca46518889c683790c54074d4",
+      "selectors": [],
+      "semanticEvidence": false,
+      "classification": "contract-island-unwired"
+    },
+    {
+      "operation": "Runtime owner catalog/source-index admission",
+      "path": "crates/agent-semantic-client-protocol/src/agent_session.rs",
+      "state": "ready-but-owner-missing",
+      "workspaceIdentity": "workspace-23cc5ba784c605ae",
+      "generationDigest": "blake3-256:a79e12b317b7f66e09be6cc5a51fe15071d6aad59ae90789d1e204850a8caee3",
+      "rootDigest": "c19585f0115d7bda2e0d0a8fcf8fd73b64ebae7ca46518889c683790c54074d4",
+      "selectors": [],
+      "catalog": null,
+      "semanticEvidence": false,
+      "classification": "tracked-owner-also-missing"
+    },
+    {
+      "operation": "Host-native ASP registration",
+      "state": "blocked",
+      "reasonKind": "runtime-data-frame-early-eof",
+      "errorKind": "early-eof",
+      "semanticMeaning": "Runtime Server data endpoint did not return a complete frame; no owner catalog or session admission facts may be inferred."
+    },
+    {
+      "operation": "formal owner search",
+      "path": "crates/agent-semantic-client-protocol/src/agent_session.rs",
+      "state": "ready-but-owner-missing",
+      "outcome": "ready",
+      "catalog": null,
+      "selectors": [],
+      "types": [],
+      "callableSeams": [],
+      "workspaceIdentity": "workspace-23cc5ba784c605ae",
+      "generationDigest": "blake3-256:a79e12b317b7f66e09be6cc5a51fe15071d6aad59ae90789d1e204850a8caee3",
+      "rootDigest": "c19585f0115d7bda2e0d0a8fcf8fd73b64ebae7ca46518889c683790c54074d4",
+      "classification": "owner-catalog-source-generation-integration-failure"
+    },
+    {
+      "operation": "formal owner search",
+      "path": "crates/agent-semantic-client-protocol/src/agent_session.rs",
+      "state": "ready-but-owner-missing",
+      "clientFrame": {
+        "schemaId": "agent-semantic-protocols.client.frame",
+        "schemaVersion": 1,
+        "protocolId": "agent-semantic-protocols.client",
+        "protocolVersion": 1,
+        "sessionId": "asp-client-37647-1",
+        "requestId": "dispatch-37647-3",
+        "outcome": "ready"
+      },
+      "workspaceIdentity": "workspace-23cc5ba784c605ae",
+      "generationDigest": "blake3-256:a79e12b317b7f66e09be6cc5a51fe15071d6aad59ae90789d1e204850a8caee3",
+      "rootDigest": "c19585f0115d7bda2e0d0a8fcf8fd73b64ebae7ca46518889c683790c54074d4",
+      "selectors": [],
+      "catalog": null,
+      "semanticEvidence": false,
+      "classification": "owner-catalog-source-generation-integration-failure"
+    },
+    {
+      "operation": "Host-native ASP registration",
+      "state": "blocked",
+      "originalError": "failed to read Runtime Server data frame: early eof",
+      "typedFrame": false,
+      "launchCounts": null,
+      "classification": "runtime-data-endpoint-lifecycle-failure"
+    },
+    {
+      "operation": "explicit source-index staging",
+      "state": "blocked",
+      "reasonKind": "host-operation-not-permitted",
+      "osError": "EPERM",
+      "originalError": "Unable to create .git/index.lock: Operation not permitted",
+      "semanticMeaning": "The Host cannot perform the atomic index mutation needed to make untracked owners visible to the current catalog."
+    },
+    {
+      "operation": "formal owner search after Host-native staging",
+      "path": "crates/agent-semantic-client-protocol/src/agent_session.rs",
+      "state": "ready-but-owner-missing",
+      "catalog": null,
+      "selectors": [],
+      "workspaceIdentity": "workspace-23cc5ba784c605ae",
+      "generationDigest": "blake3-256:a79e12b317b7f66e09be6cc5a51fe15071d6aad59ae90789d1e204850a8caee3",
+      "rootDigest": "c19585f0115d7bda2e0d0a8fcf8fd73b64ebae7ca46518889c683790c54074d4",
+      "interpretation": "Staging did not change the result; the first root cause is Runtime source-generation/owner-catalog admission, not file tracking."
+    },
+    {
+      "operation": "formal owner search after client-protocol module wiring",
+      "path": "crates/agent-semantic-client-db/src/server_source_index",
+      "state": "ready-but-owner-missing",
+      "sessionId": "asp-client-42383-1",
+      "requestId": "dispatch-42383-3",
+      "workspaceIdentity": "workspace-23cc5ba784c605ae",
+      "generationDigest": "blake3-256:a79e12b317b7f66e09be6cc5a51fe15071d6aad59ae90789d1e204850a8caee3",
+      "rootDigest": "c19585f0115d7bda2e0d0a8fcf8fd73b64ebae7ca46518889c683790c54074d4",
+      "catalog": null,
+      "selectors": [],
+      "semanticEvidence": false,
+      "interpretation": "An existing source-index owner directory is also absent; the running catalog/generation was not published."
+    },
+    {
+      "operation": "formal owner search after client-protocol module wiring",
+      "path": "crates/agent-semantic-client-protocol/src",
+      "state": "ready-but-owner-missing",
+      "sessionId": "asp-client-42436-1",
+      "requestId": "dispatch-42436-3",
+      "workspaceIdentity": "workspace-23cc5ba784c605ae",
+      "generationDigest": "blake3-256:a79e12b317b7f66e09be6cc5a51fe15071d6aad59ae90789d1e204850a8caee3",
+      "rootDigest": "c19585f0115d7bda2e0d0a8fcf8fd73b64ebae7ca46518889c683790c54074d4",
+      "catalog": null,
+      "selectors": [],
+      "semanticEvidence": false,
+      "interpretation": "The entire client-protocol source owner is absent, so register-child terminalization cannot be parser-owned/admitted."
+    }
+  ],
+  "currentStateMap": [
+    {
+      "stage": "cli-install-publication",
+      "owners": [
+        "crates/agent-semantic-client/src/command/install_provider",
+        "crates/agent-semantic-artifacts/src/runtime_artifact_publication.rs"
+      ],
+      "status": "path-known-symbol-level-call-chain-unverified",
+      "authority": "not asserted from blocked source projection"
+    },
+    {
+      "stage": "runtime-identity-observation",
+      "owner": "crates/agent-semantic-runtime/src/runtime_identity_monitor.rs",
+      "field": "activation_generation",
+      "status": "field-and-uses-reported-by-read-only-inventory; source semantics unverified",
+      "authority": "must not be treated as product identity, selector, admission key, cache key, or ClientFrame identity"
+    },
+    {
+      "stage": "evaluator-creation-cache",
+      "owner": "packages/proofs/src/asp_proofs/_polyglot_search_semantics_evaluator.py",
+      "status": "owner-known; graph_digest and relation_registry_digest observed; exact cache key and freshness implementation unverified",
+      "required_identity": "runtime artifact, evaluator/runtime binary, schema/config/provider catalog, workspace snapshot, source generation, source index digests"
+    },
+    {
+      "stage": "evaluator-execution-binding",
+      "owner": "packages/proofs/src/asp_proofs/_polyglot_search_semantics_execution.py",
+      "observed_fields": [
+        "graph_digest",
+        "relation_registry_digest",
+        "execution_binding_digest"
+      ],
+      "status": "owner-known; exact invalidation and server admission linkage unverified"
+    },
+    {
+      "stage": "hook-evaluator-boundary",
+      "owner": "crates/agent-semantic-hook/src/aot_evaluator*",
+      "status": "protected; audit-only; no modification allowed"
+    },
+    {
+      "stage": "server-admission-selector",
+      "owner": "crates/agent-semantic-client-db/src/server_source_index and ASP Server",
+      "status": "authority is required by V1 design; exact current call chain blocked",
+      "servingMutationAllowed": false
+    },
+    {
+      "stage": "workspace-source-provider-terminal",
+      "owners": [
+        "crates/agent-semantic-client-db/src/server_source_index",
+        "languages/rust-lang-project-harness/src/search",
+        "crates/agent-semantic-runtime-server/src"
+      ],
+      "status": "known path families; exact frame propagation and terminal ownership blocked",
+      "required_invariant": "one exact content binding from prime through query-set/search/query/exact/pipe and exactly one terminal"
+    }
+  ],
+  "activationGenerationObservation": {
+    "reportedValue": 76,
+    "valueClass": "observation-only until source proof exists",
+    "sourceOrTrigger": "unverified; do not infer provenance from the numeric value because ASP source query ended at Host IPC boundary",
+    "knownConsumers": [
+      "crates/agent-semantic-runtime/src/runtime_identity_monitor.rs",
+      "docs/10-19-rfcs/10.05.02-atomic-resident-publication.org"
+    ],
+    "guarantees": [
+      "At most an internal monotonic event/fencing observation, if validated by implementation."
+    ],
+    "doesNotGuarantee": [
+      "content equality",
+      "selector freshness",
+      "artifact binary freshness",
+      "workspace/source-index compatibility",
+      "crash-safe publication identity"
+    ]
+  },
+  "stateHomePermissionBoundary": {
+    "classification": "HostPermissionFailure",
+    "layer": "host filesystem/socket operation",
+    "mustNotBecome": [
+      "Runtime activation failure",
+      "semantic admission failure",
+      "stale content identity",
+      "implicit restart/install recovery"
+    ],
+    "recovery": "After permission is repaired, retry the same atomic publication action with unchanged content identity."
+  },
+  "additionalCurrentEvidence": {
+    "workspaceIdentityObservation": "workspace-23cc5ba784c605ae",
+    "sourceBuilderFailure": {
+      "message": "Cargo manifest ./Cargo.toml was reported as neither a package nor a workspace member while cargo metadata on the same worktree succeeded",
+      "classification": "unresolved source-builder/catalog divergence",
+      "mustNotBecome": "provider-private workspace identity or string-path heuristic"
+    },
+    "implication": "Workspace identity and source catalog must be canonicalized by ASP Server before provider admission; provider output remains immutable facts only."
+  },
+  "designReview": {
+    "candidateA": {
+      "name": "numeric-generation-authority",
+      "security": "weak against same-label/different-content and rollback confusion",
+      "migration": "lowest short-term compatibility cost",
+      "complexity": "low protocol change, high hidden invalidation complexity",
+      "memoryLatency": "fast lookup but stale evaluator/index risk",
+      "rollbackCrashRecovery": "numeric ordering can accept the wrong content after crash or label reuse",
+      "leanRustBenchmark": "requires numeric authority and cannot prove content equality without extra bindings"
+    },
+    "candidateB": {
+      "name": "fully-content-addressed-product-identity",
+      "security": "strong exact identity and fail-closed cross-content rejection",
+      "migration": "largest seam and compatibility cost",
+      "complexity": "higher digest construction and propagation cost",
+      "memoryLatency": "larger keys and validation cost, bounded by server-owned immutable indexes",
+      "rollbackCrashRecovery": "safe only when commit/CAS and durable snapshot are authoritative",
+      "leanRustBenchmark": "best content-binding proof surface, but epoch/fencing concerns remain"
+    },
+    "candidateC": {
+      "name": "content-digest-product-identity-with-monotonic-epoch-fence",
+      "security": "content correctness is digest-bound; epoch cannot override digest mismatch",
+      "migration": "supports V1 seam while removing epoch from public identity later",
+      "complexity": "moderate: separate identity, commit, fence, and telemetry types",
+      "memoryLatency": "content-keyed resident reuse; epoch is scalar metadata, not cache key",
+      "rollbackCrashRecovery": "single durable content commit plus CAS expected digest; epoch only orders actor work",
+      "leanRustBenchmark": "maps cleanly to content identity, single commit, cancellation, and no-cross-content proofs"
+    },
+    "recommendation": "candidateC",
+    "recommendationStatus": "provisional-candidate-pending-code-verification",
+    "choice": "pending exact source evidence",
+    "reason": "Candidate C appears to remove the observed identity conflations while preserving a reversible V1 migration seam; candidateA appears unable to prevent stale content, and candidateB alone does not define actor fencing or crash ordering. These are review hypotheses, not implementation conclusions, until epoch usage, publication linearization, and evaluator keys are verified in source.",
+    "requiredProofBeforeServingMigration": [
+      "activation_is_not_product_identity",
+      "old evaluator cannot be reused after binary digest change",
+      "single durable content commit",
+      "no cross-content observation",
+      "HostPermissionFailure is outside semantic state"
+    ]
+  },
+  "architectureReviewEvidence": {
+    "independentRecommendation": "candidateC",
+    "counterexamples": {
+      "candidateA": [
+        "same numeric generation with different source snapshot can reuse a stale evaluator",
+        "environment equality cannot prove artifact or source content equality",
+        "numeric ordering cannot prevent rollback label reuse"
+      ],
+      "candidateB": [
+        "content identity alone does not define actor fencing or crash ordering",
+        "a migration without a single durable publication commit can still expose mixed records"
+      ],
+      "candidateC": [
+        "must reject any implementation that lets epoch enter evaluator/cache/admission keys",
+        "must retain one durable content commit because epoch alone cannot repair torn publication"
+      ]
+    },
+    "migrationOrder": [
+      "dual-record telemetry only: numeric epoch plus exact content tuple",
+      "evaluator lookup and reuse by exact tuple, with binary digest invalidation",
+      "make epoch non-authoritative for product identity, selector, admission, and cache",
+      "retain parser-owned locator facts while removing direct-link/project-entry identity",
+      "remove activationGeneration from admission after proof and live gates"
+    ],
+    "mustRemainSerial": [
+      "content identity definition before evaluator key migration",
+      "artifact/workspace/source/index exact binding before provider admission",
+      "single durable publication commit before readiness or selector admission",
+      "cross-content and rollback negatives before public route cutover"
+    ],
+    "canRunInParallel": [
+      "RFC and audit artifact updates",
+      "schema negative fixtures",
+      "Lean countermodel drafting",
+      "non-serving benchmark instrumentation design"
+    ],
+    "ownerMapping": {
+      "artifactPublication": "ASP Server Artifact Store",
+      "workspaceSnapshot": "ASP Server Workspace Registry",
+      "sourceIndex": "ASP Server SourceIndex owner",
+      "providerAdmission": "ASP Server validates exact tuple; Rust provider emits immutable facts",
+      "evaluator": "ASP Server evaluator lifecycle keyed by exact content tuple",
+      "hostFailure": "Host boundary; never Runtime semantic authority"
+    },
+    "gateMapping": {
+      "rust": "deterministic stale evaluator, same-label/different-content, cross-content, crash-cut, cancellation, single-flight and terminal tests",
+      "lean": "epoch non-authority, content identity uniqueness, single commit, no mixed observation, crash-before/after commit",
+      "benchmark": "cold/warm, 10 sequential, 32 same-key and different-key requests, build/lock/install/IPC/query phase separation"
+    }
+  },
+  "verifiedSourcePackets": {
+    "runtimeArtifactPublication": {
+      "path": "crates/agent-semantic-artifacts/src/runtime_artifact_publication.rs",
+      "observed": [
+        "current_runtime_artifact_activation_generation_under_guard reads pending.json and applied.json",
+        "next generation uses checked_add(1)",
+        "publish allocates generation and publication nonce under one guard",
+        "stale actor compares generation, artifact digest, and publication nonce",
+        "same artifact may be published again with a higher sequence"
+      ],
+      "semanticConclusion": "activationGeneration is publication sequence/stale-actor fencing, not content identity"
+    },
+    "runtimeIdentityMonitor": {
+      "path": "crates/agent-semantic-runtime/src/runtime_identity_monitor.rs",
+      "observed": [
+        "ResidentActivationIdentity contains generation, artifactDigest, and ownerEpoch",
+        "ordering comparison uses generation while identity change compares the complete tuple"
+      ],
+      "requiredChange": "keep generation for internal ordering/fencing/observability; exclude it from ContentIdentity, provider admission, cache keys, selectors, and workspace/source identity"
+    },
+    "evaluatorDivergence": {
+      "cliOwner": "crates/agent-semantic-hook/src/aot_evaluator_cli.rs",
+      "compilerOwner": "crates/agent-semantic-hook/src/aot_compiler.rs",
+      "observed": [
+        "evaluate_payload_from_embedded compiles the embedded hook policy bundle per call",
+        "generation digest covers embedded config template and registry",
+        "execution ASP binary digest is not included in that generation digest",
+        "active artifact receipt has runtime/binary and state/activation digest leaves",
+        "AotHookDecision carries policy generationDigest without active binary binding"
+      ],
+      "firstDivergence": "policy generation digest can remain equal across different ASP binaries"
+    },
+    "sessionIdentityDivergence": {
+      "clientOwner": "crates/agent-semantic-client/src/command/session.rs",
+      "runtimeOwner": "crates/agent-semantic-runtime/src/agent_session_status/runtime_session.rs",
+      "otherConsumers": [
+        "crates/agent-semantic-hook/src/dev_context",
+        "crates/agent-semantic-hook/src/classifier_recovery",
+        "crates/agent-semantic-hook/src/agent_dispatch_message.rs"
+      ],
+      "observed": [
+        "register-child treats CODEX_SESSION_ID as parent and CODEX_THREAD_ID as child",
+        "runtime status coalesces CODEX_SESSION_ID or CODEX_THREAD_ID and can select parent",
+        "Hook and classifier consume different environment variables"
+      ],
+      "firstDivergence": "multiple environment readers collapse parent/current identity differently"
+    }
+  },
+  "implementedMigrationSeam": {
+    "status": "additive-v1-non-serving",
+    "newOwners": [
+      "crates/agent-semantic-content-identity/src/runtime_execution.rs",
+      "crates/agent-semantic-content-identity/src/host_session_binding.rs",
+      "crates/agent-semantic-content-identity/src/search_execution.rs"
+    ],
+    "activationGeneration": "not present in new content or host identity structs",
+    "protectedBoundary": "Hook AOT producer remains audit-only; no Hook files changed",
+    "servingCutover": "not performed; requires runtime/source evidence and focused gates"
+  },
+  "sourceVerificationGaps": [
+    {
+      "path": "crates/agent-semantic-runtime/src/runtime_identity_monitor.rs",
+      "knownLines": [65, 103, 111, 132, 208, 282],
+      "mustVerify": [
+        "where activation_generation is created",
+        "which event increments it",
+        "whether it crosses the client/server frame",
+        "whether it participates in evaluator/cache/admission keys",
+        "whether it is persisted or loaded"
+      ],
+      "status": "blocked-by-host-source-boundary"
+    },
+    {
+      "path": "crates/agent-semantic-runtime/src/state_core/layout.rs",
+      "knownLines": [100, 141],
+      "mustVerify": [
+        "State Home resolver call layer",
+        "whether EPERM is typed before Runtime state handling"
+      ],
+      "status": "blocked-by-host-source-boundary"
+    },
+    {
+      "path": "packages/proofs/src/asp_proofs/_polyglot_search_semantics_evaluator.py",
+      "observedLines": [1, 22, 37, 46],
+      "mustVerify": [
+        "evaluator cache key fields",
+        "thread/session equality check",
+        "binary refresh invalidation",
+        "environment-variable fallback or retry"
+      ],
+      "status": "blocked-by-host-source-boundary"
+    },
+    {
+      "path": "packages/proofs/src/asp_proofs/_polyglot_search_semantics_execution.py",
+      "observedLines": [37, 83],
+      "observed": [
+        "graph_digest",
+        "relation_registry_digest",
+        "execution_binding_digest"
+      ],
+      "mustVerify": [
+        "whether execution binding is server-admitted",
+        "whether binary refresh invalidates the binding"
+      ],
+      "status": "blocked-by-host-source-boundary"
+    },
+    {
+      "path": "crates/agent-semantic-hook/src/aot_evaluator.rs",
+      "knownLines": [15, 137, 223, 233, 295, 484],
+      "observed": "schema/generation checks and cache labels reported by read-only inventory",
+      "status": "protected-hook-owner-audit-only",
+      "modificationAllowed": false
+    },
+    {
+      "path": "docs/10-19-rfcs/10.05.02-atomic-resident-publication.org",
+      "knownLine": 111,
+      "mustVerify": [
+        "whether activationGeneration remains in the serving tuple",
+        "the actual publication linearization point"
+      ],
+      "status": "blocked-by-host-source-boundary"
+    }
+  ],
+  "latestExplorerReceipt": {
+    "schemaId": "asp.search.playbook-receipt",
+    "schemaVersion": 1,
+    "state": "blocked",
+    "route": "parser-owned ASP Rust search owner",
+    "exactSelectors": [],
+    "owners": {
+      "sourceGenerationOwner": null,
+      "ownerCatalogPublicationRefresh": null,
+      "registerChildDispatchDataFrame": null,
+      "rustPrimeQuerySetSearchQueryExactPipe": null
+    },
+    "firstDivergence": {
+      "layer": "asp-cli-startup-or-ipc-boundary",
+      "reasonKind": "host-operation-not-permitted",
+      "osError": "EPERM",
+      "originalError": "Operation not permitted (os error 1)"
+    },
+    "semanticConclusion": "No source-semantic conclusion; owner evidence is unavailable."
+  },
+  "nextEvidenceGate": {
+    "required": "two independent exact source receipts for the current call chain",
+    "commands": [
+      "./.devenv/devenv-profile-exec asp rust search owner crates/agent-semantic-runtime/src/runtime_identity_monitor.rs items --query 'activation_generation|activationGeneration|generation|identity' --workspace . --view seeds",
+      "./.devenv/devenv-profile-exec asp rust search owner crates/agent-semantic-client/src crates/agent-semantic-runtime-server/src crates/agent-semantic-client-db/src/server_source_index items --query 'prime|query-set|admission|selector|terminal|evaluator|workspace|source' --workspace . --view seeds"
+    ],
+    "cutover": "forbidden until current-state evidence and migration seam are reviewed"
+  }
+}

@@ -74,6 +74,7 @@ fn write_registry(path: &Path, roots: &[&str]) {
                 "namespace": {"filenamePrefixes": [""]}
             }],
             "referenceDecisions": [],
+            "wireArtifacts": {},
             "rootSets": {"contract": roots},
             "profiles": [{
                 "languageId": "fixture",
@@ -319,5 +320,28 @@ fn canonical_client_profile_publishes_the_shared_schema_bundle_route() {
                 .as_array()
                 .is_some_and(|root_sets| root_sets.iter().any(|root| root == "client-protocol"))),
         "every registered language profile must consume the shared client-protocol root set"
+    );
+}
+
+#[test]
+fn canonical_client_protocol_wire_artifact_has_one_schema_manager_authority() {
+    let workspace = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(Path::parent)
+        .expect("workspace root");
+    let canonical = SchemaManager::new(workspace)
+        .canonical_wire_artifact_path("asp-client-protocol-v1")
+        .expect("resolve canonical ASP Client Protocol protobuf");
+
+    assert_eq!(
+        canonical,
+        workspace.join("schemas/asp-client-protocol.v1.proto")
+    );
+    assert!(canonical.is_file());
+    assert!(
+        !workspace
+            .join("crates/agent-semantic-client-server/proto/asp-client-protocol.proto")
+            .exists(),
+        "transport package must not retain a private protobuf authority"
     );
 }

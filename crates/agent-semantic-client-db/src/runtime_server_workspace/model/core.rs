@@ -49,7 +49,7 @@ use model_validation::validate_digest;
 pub(crate) use model_validation::validate_owners;
 
 pub const WORKSPACE_GENERATION_SCHEMA_ID: &str =
-    "agent.semantic-protocols.runtime-server-workspace-generation-snapshot.v1";
+    "agent.semantic-protocols.runtime-server-workspace-generation-snapshot.v2";
 pub const WORKSPACE_RUNTIME_SELECTOR_OVERLAY_RECEIPT_SCHEMA_ID: &str =
     "agent.semantic-protocols.runtime-server-selector-overlay-receipt.v1";
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -132,6 +132,10 @@ pub struct WorkspaceSelectorSnapshot {
     pub selector: String,
     pub byte_start: usize,
     pub byte_end: usize,
+    /// Canonical parser-owned lookup keys committed with this selector.
+    /// Runtime readers must never reconstruct these from selector text.
+    #[serde(default)]
+    pub query_keys: Vec<String>,
     pub derived_projections: Vec<WorkspaceDerivedProjectionSnapshot>,
 }
 
@@ -157,8 +161,45 @@ pub struct WorkspaceOwnerSnapshot {
     pub selectors: Vec<WorkspaceSelectorSnapshot>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WorkspaceOwnerProjection {
+    pub owner: WorkspaceOwnerSnapshot,
+    pub relations: Vec<crate::ClientDbSourceIndexOwnedRelation>,
+}
+
+/// One parser-owned selector seed read without source or projection payloads.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WorkspaceOwnerSearchSeedSnapshot {
+    pub selector: String,
+    pub byte_start: usize,
+    pub byte_end: usize,
+}
+
+/// Compact owner-local search snapshot from one committed generation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WorkspaceOwnerSearchSnapshot {
+    pub owner_path: String,
+    pub content_digest: String,
+    pub candidate_count: usize,
+    pub selectors: Vec<WorkspaceOwnerSearchSeedSnapshot>,
+}
+
+/// Result of a compact owner-local read from the active exact segment.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WorkspaceRuntimeOwnerSearchRead {
+    Owner {
+        generation_digest: String,
+        root_digest: String,
+        owner: WorkspaceOwnerSearchSnapshot,
+    },
+    OwnerMissing {
+        generation_digest: String,
+        root_digest: String,
+    },
+}
+
 pub const WORKSPACE_GENERATION_DELTA_SCHEMA_ID: &str =
-    "agent.semantic-protocols.workspace-generation-delta.v1";
+    "agent.semantic-protocols.workspace-generation-delta.v2";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -168,17 +209,19 @@ pub struct WorkspaceGenerationDelta {
     pub base_generation_digest: String,
     pub owners: Vec<WorkspaceOwnerSnapshot>,
     pub tombstones: Vec<String>,
+    pub relations: Vec<crate::ClientDbSourceIndexOwnedRelation>,
 }
 
 impl WorkspaceGenerationDelta {
     pub fn validate(&self) -> Result<(), String> {
         self.validate_identity_and_payload()?;
         let tombstones = self.validate_tombstones()?;
-        self.validate_owner_tombstone_disjoint(&tombstones)
+        self.validate_owner_tombstone_disjoint(&tombstones)?;
+        self.validate_relation_ownership()
     }
 
     fn validate_identity_and_payload(&self) -> Result<(), String> {
-        if self.schema_id != WORKSPACE_GENERATION_DELTA_SCHEMA_ID || self.schema_version != "1" {
+        if self.schema_id != WORKSPACE_GENERATION_DELTA_SCHEMA_ID || self.schema_version != "2" {
             return Err("workspace generation delta schema identity mismatch".to_owned());
         }
         if !self.base_generation_digest.starts_with("blake3-256:") {
@@ -188,6 +231,24 @@ impl WorkspaceGenerationDelta {
             return Err("workspace generation delta must contain at least one mutation".to_owned());
         }
         validate_owners(&self.owners)?;
+        Ok(())
+    }
+
+    fn validate_relation_ownership(&self) -> Result<(), String> {
+        let changed_owners = self
+            .owners
+            .iter()
+            .map(|owner| owner.owner_path.as_str())
+            .collect::<std::collections::BTreeSet<_>>();
+        for owned in &self.relations {
+            owned.relation.validate()?;
+            if !changed_owners.contains(owned.owner_path.as_str()) {
+                return Err(format!(
+                    "workspace generation delta relation is outside changed owner membership: {}",
+                    owned.owner_path.as_str()
+                ));
+            }
+        }
         Ok(())
     }
 
@@ -378,9 +439,7 @@ pub struct WorkspaceGenerationBuild {
     pub module_graph_digest: String,
     pub project_resolutions: Vec<agent_semantic_runtime::AdmittedProjectResolution>,
     pub owners: Vec<WorkspaceOwnerSnapshot>,
-    pub relations: Vec<
-        agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelation,
-    >,
+    pub relations: Vec<crate::ClientDbSourceIndexOwnedRelation>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -403,9 +462,7 @@ pub struct WorkspaceMemoryGeneration {
     pub workspace_source_scope_generation: String,
     pub project_resolutions: Vec<agent_semantic_runtime::AdmittedProjectResolution>,
     pub owners: Vec<WorkspaceOwnerSnapshot>,
-    pub relations: Vec<
-        agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelation,
-    >,
+    pub relations: Vec<crate::ClientDbSourceIndexOwnedRelation>,
 }
 
 impl WorkspaceMemoryGeneration {
@@ -601,7 +658,7 @@ impl WorkspaceGenerationSnapshot {
     }
 
     fn validate_snapshot_identity(&self) -> Result<(), String> {
-        if self.schema_id != WORKSPACE_GENERATION_SCHEMA_ID || self.schema_version != "1" {
+        if self.schema_id != WORKSPACE_GENERATION_SCHEMA_ID || self.schema_version != "2" {
             return Err("workspace generation snapshot schema identity mismatch".to_owned());
         }
         if self.workspace_identity.trim().is_empty()

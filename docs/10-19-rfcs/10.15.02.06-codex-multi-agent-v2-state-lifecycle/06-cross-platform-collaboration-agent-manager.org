@@ -1,0 +1,256 @@
+#+TITLE: Cross-Platform Collaboration Agent Manager
+#+STATUS: Draft
+#+OPTIONS: toc:2
+
+* Intent
+
+The repository =agents/*= tree is the canonical authority for ASP subagent
+definitions.  Codex, Claude, and future hosts consume deterministic projections
+of those definitions.  Host configuration files, installed state, smoke
+fixtures, and resident-session observations are never independent agent
+authorities.
+
+This RFC introduces a Subagent Manager with one pipeline:
+
+#+begin_example
+agents/* canonical catalog
+  -> validate AgentSpec
+  -> resolve platform model and capability policy
+  -> render host projection
+  -> validate rendered projection
+  -> publish atomically
+  -> dispatch or resume through a host adapter
+  -> record projection and lifecycle receipts
+#+end_example
+
+* Existing failure
+
+The current implementation distributes responsibility among workspace agent
+profiles, global state profiles, =sync.rs=, Codex-specific projection helpers,
+session registry commands, switch-model paths, and smoke-only TOML writers.
+
+That permits four forms of drift:
+
+1. a smoke helper can hard-code a model that differs from the canonical agent;
+2. a workspace template can be copied and parsed before its model placeholder
+   is rendered;
+3. global and host profiles can remain valid TOML while representing an older
+   model or role policy;
+4. the resident lifecycle can observe a stale host child and report a model
+   mismatch without a single publication receipt identifying the responsible
+   projection.
+
+Changing one hard-coded model string does not close this failure class.
+
+* Canonical AgentSpec
+
+Each managed subagent has one platform-neutral AgentSpec under =agents/*=.
+The catalog owns:
+
+#+begin_example
+agentId
+roles
+sessionName
+sessionLifetime
+permissionPolicy
+sandboxPolicy
+reasoningPolicy
+modelPolicy
+instructionSource
+capabilities
+fallbackPolicy
+platformOverrides
+#+end_example
+
+=modelPolicy= expresses the intended model class and any explicitly pinned
+identity.  A platform override maps that policy to a host model identifier; it
+does not create a second agent definition.
+
+Platform-specific templates may remain under =agents/*= as renderer assets,
+but they contain no authoritative model, roles, permissions, or lifecycle
+values.  The manager rejects a template that attempts to override canonical
+fields outside its declared platform override.
+
+* Manager boundaries
+
+The Subagent Manager has five internal boundaries.
+
+** Catalog loader
+
+The loader reads only the selected workspace =agents/*= catalog and its
+explicit imports.  It produces a catalog digest and rejects duplicate agent
+identities, missing renderer assets, undeclared profiles, invalid permission
+combinations, and cyclic imports.
+
+Installed state is not an input authority.  It may provide a previous receipt
+for drift comparison.
+
+** Projection compiler
+
+The compiler accepts an AgentSpec, a platform identifier, and declared host
+capabilities.  It returns bytes plus a typed projection manifest:
+
+#+begin_example
+agentId
+platform
+catalogDigest
+agentSpecDigest
+rendererDigest
+resolvedModel
+roles
+permissions
+lifecycle
+projectionDigest
+#+end_example
+
+Projection is pure and deterministic.  Rendering the same catalog and host
+capability generation produces the same bytes and digest.
+
+** Publisher
+
+The publisher validates rendered bytes using the host parser before mutating
+managed state.  It then publishes through a staged artifact and atomic rename
+or a content-addressed artifact plus canonical symlink.
+
+Publication writes two derived layers:
+
+- ASP state projections used for replay and audit;
+- host projections such as =~/.codex/agents/*.toml= or the Claude agent
+  directory.
+
+It records old and new digests, exact targets, parser validation, and rollback
+identity.  Partial multi-file publication is rejected.
+
+** Host adapter
+
+A host adapter translates a typed DispatchRequest into the host-native spawn,
+message, resume, interrupt, and retirement surfaces.  It never chooses the
+agent model independently.
+
+Codex and Claude adapters must refine the same AgentSpec.  Differences in host
+syntax or lifecycle primitives are explicit capability facts.
+
+** Lifecycle reconciler
+
+The reconciler joins projection receipts with resident-child observations and
+session registry state.  It distinguishes:
+
+- desired AgentSpec identity;
+- published projection identity;
+- physical host child identity;
+- logical AgentSession identity;
+- individual turn identity.
+
+A resident child is reusable only when its observed platform, model,
+projection digest, roles, sandbox policy, root session, and lifecycle
+generation refine the current DispatchRequest.
+
+* Dispatch contract
+
+A DispatchRequest contains:
+
+#+begin_example
+agentId
+requestedRoles
+rootSessionId
+logicalSessionName
+taskPayload
+requiredCapabilities
+catalogDigest
+projectionDigest
+lifecycleGeneration
+budget
+#+end_example
+
+The manager resolves exactly one of:
+
+- follow up a receipt-compatible configured Agent at its canonical path;
+- spawn one new Host Agent only when the path is explicitly absent;
+- return a typed capability or lifecycle blocker.
+
+It does not silently fall back to a generic child, historical child, inline
+execution, or a different model. Completion, failure, interruption, and wait
+timeout preserve the canonical path and never authorize another spawn.
+
+* Smoke and test boundary
+
+Smoke tests do not write hand-authored host agent fixtures.  They create an
+isolated destination root and invoke the same manager pipeline with the
+canonical catalog:
+
+#+begin_example
+CollaborationAgentManager.compile(catalog, platform)
+CollaborationAgentManager.publish(tempHostRoot)
+CollaborationAgentManager.dispatch(smokeRequest)
+#+end_example
+
+The smoke receipt must name the canonical catalog digest and projection digest.
+Changing =agents/*= therefore changes production and smoke behavior together.
+
+=agent_session_registry_commands.rs= may construct the isolated home and
+runtime provider fixtures needed by the scenario.  It must not construct an
+agent profile, select a model, or synthesize platform configuration.
+
+* Relationship to current owners
+
+The first implementation migrates current functions without retaining their
+authority in command modules:
+
+- =sync.rs= becomes a thin CLI adapter over catalog load, compile, validate,
+  publish, and receipt reporting;
+- =codex_agent_projection.rs= becomes the Codex renderer/parser adapter;
+- Claude profile projection becomes a peer renderer adapter;
+- switch-model becomes a catalog mutation or explicit session override with a
+  new AgentSpec digest, never an in-place host-only edit;
+- session registry commands consume projection and dispatch receipts;
+- smoke helpers call the manager with a temporary destination.
+
+The implementation may initially live in the existing config/protocol crates,
+but the public boundary is manager-owned rather than command-owned.
+
+* Required invariants
+
+1. Every published host profile names exactly one canonical AgentSpec digest.
+2. No installed or host profile can override canonical model or role policy.
+3. Codex and Claude projections for one agent share the same AgentSpec digest.
+4. Dispatch is denied when the live projection digest differs from the request.
+5. A resident child with a stale model or lifecycle generation is not reused.
+6. A smoke projection is byte-equivalent to production projection for the same
+   platform capability generation and destination-independent fields.
+7. Renderer-specific paths do not enter the semantic AgentSpec digest.
+8. Publication failure preserves the previously admitted projection.
+9. Unregistered platform profiles remain hidden.
+10. Session registry state cannot become projection authority.
+
+* Receipts
+
+The manager emits:
+
+- =agent-catalog-load.v1=;
+- =agent-projection-plan.v1=;
+- =agent-projection-publication.v1=;
+- =subagent-dispatch.v1=;
+- =subagent-lifecycle-reconciliation.v1=.
+
+Each receipt carries prior and next identities where a transition occurs.  A
+successful filesystem write or host spawn without its receipt is not
+publication or dispatch closure.
+
+* Delivery order
+
+#+begin_example
+RFC and AgentSpec schema
+  -> Lean authority and lifecycle refinement
+  -> pure catalog loader and projection compiler
+  -> Codex adapter migrated from current projection helpers
+  -> Claude adapter migrated from current profiles
+  -> atomic publisher and receipts
+  -> sync.rs thin adapter
+  -> session smoke uses manager
+  -> live Codex and Claude replay
+#+end_example
+
+The first vertical slice closes only when editing the canonical ASP explorer
+model once under =agents/*= produces validated Codex and Claude projections,
+the isolated smoke uses those same bytes, and a stale resident child is denied
+by projection identity rather than by a duplicated model constant.

@@ -915,15 +915,15 @@ prevent installation of the parser or routing fix that replaces it.
 :CUSTOM_ID: resident-runtime-rebind-control-intent
 :END:
 
-The canonical resident lifecycle and its release evidence are owned by
-[[file:10.15.02-codex-resident-agent-lifecycle-v1.org::#regression-gates][RFC 10.15.02 regression gates]].
+The canonical Collaboration V2 lifecycle is owned by
+[[file:10.15.02.06-codex-multi-agent-v2-state-lifecycle.org][RFC 10.15.02.06]].
 
-A resident-child runtime mismatch is repaired on the existing canonical child;
-it is never evidence that a replacement child should be created.  The repair
-owner is the main agent because a child cannot synchronously continue itself
-without locking its current turn.  The bootstrap pane therefore emits a
-structured host-control directive together with a concise natural-language
-instruction addressed to the main agent.
+An Agent runtime mismatch is repaired on the existing canonical path with
+=collaboration.followup_task=; it is never evidence that another Agent should
+be spawned. The repair owner is the main Agent because a child cannot
+synchronously continue itself without locking its current turn. The bootstrap
+pane therefore emits a structured Host-control directive together with a
+concise natural-language instruction addressed to the main Agent.
 
 The directive is declarative.  It identifies the canonical target, existing
 child session, managed profile, desired model and reasoning effort, and these

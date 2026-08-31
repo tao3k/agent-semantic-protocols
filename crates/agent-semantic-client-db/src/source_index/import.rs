@@ -213,7 +213,12 @@ fn build_source_index_import_inner(
             }
             selectors.push(selector.clone());
         }
-        relations.extend(file.relations.iter().cloned());
+        relations.extend(file.relations.iter().cloned().map(|relation| {
+            crate::ClientDbSourceIndexOwnedRelation {
+                owner_path: owner_path.clone(),
+                relation,
+            }
+        }));
     }
     let selector_owner_paths = selectors
         .iter()
@@ -223,25 +228,10 @@ fn build_source_index_import_inner(
         .iter()
         .map(|selector| selector.selector_id.as_str())
         .collect::<BTreeSet<_>>();
-    relations.retain(|relation| {
-        relation_endpoints_are_selector_bound(relation, &selector_owner_paths, &selector_ids)
+    relations.retain(|owned| {
+        relation_endpoints_are_selector_bound(&owned.relation, &selector_owner_paths, &selector_ids)
     });
-    relations.sort_by(|left, right| {
-        (
-            &left.from.kind,
-            &left.from.id,
-            &left.kind,
-            &left.to.kind,
-            &left.to.id,
-        )
-            .cmp(&(
-                &right.from.kind,
-                &right.from.id,
-                &right.kind,
-                &right.to.kind,
-                &right.to.id,
-            ))
-    });
+    relations.sort();
     relations.dedup();
     Ok(ClientDbSourceIndexImport {
         generation_id: request.generation_id,

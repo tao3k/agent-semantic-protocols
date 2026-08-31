@@ -9,6 +9,7 @@ pub struct ProjectContext {
     git_toplevel: Option<PathBuf>,
     project_home: Option<PathBuf>,
     state_layout: StateLayout,
+    binding: agent_semantic_artifacts::ProjectBinding,
 }
 
 /// Single interface for cache and client state locations.
@@ -21,18 +22,40 @@ pub struct StateLayout {
 }
 
 impl ProjectContext {
+    /// Resolve project and State Home paths without creating or updating state.
     pub fn resolve(cwd: impl AsRef<Path>) -> Result<Self, String> {
         let cwd = canonicalize_if_possible(cwd.as_ref());
         let resolved = crate::state_core::ResolvedState::resolve(&cwd)?;
+        Self::from_resolved_state(cwd, resolved)
+    }
+
+    /// Resolve and explicitly materialize the workspace state layout.
+    pub fn open(cwd: impl AsRef<Path>) -> Result<Self, String> {
+        let cwd = canonicalize_if_possible(cwd.as_ref());
+        let resolved = crate::state_core::ResolvedState::resolve(&cwd)?;
+        resolved.ensure_minimal_layout()?;
+        Self::from_resolved_state(cwd, resolved)
+    }
+
+    fn from_resolved_state(
+        cwd: PathBuf,
+        resolved: crate::state_core::ResolvedState,
+    ) -> Result<Self, String> {
         let git_toplevel = resolved.repo.git_toplevel.clone();
         let project_home = git_toplevel.clone();
-        let state_layout = StateLayout::from_resolved_state(resolved)?;
+        let binding = agent_semantic_artifacts::ProjectBinding::resolve(
+            None,
+            resolved.repo.identity_basis.clone(),
+            &resolved.workspace.root,
+        )?;
+        let state_layout = StateLayout::from_resolved_state(resolved);
 
         Ok(Self {
             cwd,
             git_toplevel,
             project_home,
             state_layout,
+            binding,
         })
     }
 
@@ -50,6 +73,10 @@ impl ProjectContext {
 
     pub fn state_layout(&self) -> &StateLayout {
         &self.state_layout
+    }
+
+    pub fn binding(&self) -> &agent_semantic_artifacts::ProjectBinding {
+        &self.binding
     }
 
     pub fn require_inside_workspace(&self, path: impl AsRef<Path>) -> Result<PathBuf, String> {
@@ -73,23 +100,32 @@ impl ProjectContext {
 }
 
 impl StateLayout {
+    /// Resolve State Home paths without materializing them.
     pub fn resolve(project_root: impl AsRef<Path>) -> Result<Self, String> {
-        Self::from_resolved_state(crate::state_core::ResolvedState::resolve(project_root)?)
+        Ok(Self::from_resolved_state(
+            crate::state_core::ResolvedState::resolve(project_root)?,
+        ))
     }
 
-    fn from_resolved_state(resolved: crate::state_core::ResolvedState) -> Result<Self, String> {
+    /// Resolve and explicitly materialize State Home paths.
+    pub fn open(project_root: impl AsRef<Path>) -> Result<Self, String> {
+        let resolved = crate::state_core::ResolvedState::resolve(project_root)?;
         resolved.ensure_minimal_layout()?;
+        Ok(Self::from_resolved_state(resolved))
+    }
+
+    fn from_resolved_state(resolved: crate::state_core::ResolvedState) -> Self {
         let state_root = resolved.state_home.clone();
         let client_cache_dir = resolved.paths.client_dir.clone();
         let artifacts_dir = resolved.paths.artifacts_dir.clone();
         let cache_manifest_path = resolved.paths.client_cache_manifest_path.clone();
 
-        Ok(Self {
+        Self {
             state_root,
             client_cache_dir,
             cache_manifest_path,
             artifacts_dir,
-        })
+        }
     }
 
     pub fn state_root(&self) -> &Path {

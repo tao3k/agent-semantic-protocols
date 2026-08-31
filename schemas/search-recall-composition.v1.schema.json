@@ -1,0 +1,139 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/search-recall-composition.v1.schema.json",
+  "title": "Search Recall Composition v1",
+  "description": "Generation-bound route decision joining indexed lexical candidates, Python graph reasoning, and bounded ripgrep verification without claiming benchmark-only recall.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "workspaceIdentity",
+    "generationDigest",
+    "sourceRootDigest",
+    "intent",
+    "calibrationState",
+    "stages",
+    "correlation",
+    "residualUncertainty"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.search-recall-composition"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "workspaceIdentity": {
+      "type": "string",
+      "minLength": 1
+    },
+    "generationDigest": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sourceRootDigest": {
+      "type": "string",
+      "minLength": 1
+    },
+    "intent": {
+      "enum": [
+        "exact-selector",
+        "conceptual",
+        "relationship",
+        "exact-literal",
+        "absence-proof"
+      ]
+    },
+    "calibrationState": {
+      "enum": [
+        "calibrated",
+        "uncalibrated"
+      ]
+    },
+    "stages": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 3,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/stage"
+      }
+    },
+    "correlation": {
+      "$ref": "#/$defs/correlation"
+    },
+    "residualUncertainty": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "uncalibrated-route-quality",
+          "indexed-owner-coverage-incomplete",
+          "indexed-lexical-unavailable",
+          "graph-frontier-open",
+          "graph-generation-stale",
+          "python-graph-unavailable",
+          "coverage-proof-incomplete",
+          "coverage-proof-unavailable",
+          "candidate-byte-verification-unavailable"
+        ]
+      }
+    }
+  },
+  "$defs": {
+    "stage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["family", "capabilityId"],
+      "properties": {
+        "family": {
+          "enum": ["direct", "acquire", "reason", "verify"]
+        },
+        "capabilityId": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*(\\.[a-z][a-z0-9-]*)+$"
+        }
+      }
+    },
+    "correlation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "lexicalGraphOverlapCount",
+        "lexicalVerifiedOverlapCount",
+        "graphVerifiedOverlapCount",
+        "lexicalGraphJaccardPermille",
+        "graphMarginalCandidateCount",
+        "verifiedUnionCandidateCount"
+      ],
+      "properties": {
+        "lexicalGraphOverlapCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "lexicalVerifiedOverlapCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "graphVerifiedOverlapCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "lexicalGraphJaccardPermille": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000
+        },
+        "graphMarginalCandidateCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "verifiedUnionCandidateCount": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    }
+  }
+}

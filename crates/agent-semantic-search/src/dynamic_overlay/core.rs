@@ -118,7 +118,27 @@ pub(crate) fn default_dynamic_overlay_search_backend() -> Box<dyn DynamicOverlay
 
 #[derive(Default)]
 pub(crate) struct InMemoryDynamicOverlaySearch {
-    documents: BTreeMap<DynamicOverlayNamespace, BTreeMap<String, DynamicOverlayDocument>>,
+    namespaces: BTreeMap<DynamicOverlayNamespace, DynamicOverlayIndex>,
+}
+
+#[cfg(test)]
+impl InMemoryDynamicOverlaySearch {
+    pub(crate) fn candidate_count_for_query(
+        &self,
+        namespace: &DynamicOverlayNamespace,
+        query: &str,
+    ) -> usize {
+        let terms = overlay_query_terms(query);
+        self.namespaces
+            .get(namespace)
+            .map_or(0, |index| candidate_entity_ids(index, &terms).len())
+    }
+}
+
+#[derive(Default)]
+struct DynamicOverlayIndex {
+    documents: BTreeMap<String, DynamicOverlayDocument>,
+    postings: BTreeMap<String, BTreeSet<String>>,
 }
 
 impl DynamicOverlaySearchBackend for InMemoryDynamicOverlaySearch {
@@ -127,9 +147,28 @@ impl DynamicOverlaySearchBackend for InMemoryDynamicOverlaySearch {
         namespace: DynamicOverlayNamespace,
         documents: Vec<DynamicOverlayDocument>,
     ) {
-        let namespace_documents = self.documents.entry(namespace).or_default();
+        let index = self.namespaces.entry(namespace).or_default();
         for document in documents {
-            namespace_documents.insert(document.entity_id.clone(), document);
+            let entity_id = document.entity_id.clone();
+            if let Some(previous) = index.documents.remove(&entity_id) {
+                for term in document_terms(&previous) {
+                    let remove_posting = index.postings.get_mut(&term).is_some_and(|owners| {
+                        owners.remove(&entity_id);
+                        owners.is_empty()
+                    });
+                    if remove_posting {
+                        index.postings.remove(&term);
+                    }
+                }
+            }
+            for term in document_terms(&document) {
+                index
+                    .postings
+                    .entry(term)
+                    .or_default()
+                    .insert(entity_id.clone());
+            }
+            index.documents.insert(entity_id, document);
         }
     }
 
@@ -139,11 +178,13 @@ impl DynamicOverlaySearchBackend for InMemoryDynamicOverlaySearch {
         query: &DynamicOverlayQuery,
     ) -> Vec<DynamicOverlaySearchHit> {
         let terms = overlay_query_terms(&query.text);
-        let mut hits = self
-            .documents
-            .get(namespace)
+        let Some(index) = self.namespaces.get(namespace) else {
+            return Vec::new();
+        };
+        let candidate_ids = candidate_entity_ids(index, &terms);
+        let mut hits = candidate_ids
             .into_iter()
-            .flat_map(BTreeMap::values)
+            .filter_map(|entity_id| index.documents.get(entity_id))
             .filter(|document| {
                 query
                     .owner_path
@@ -165,18 +206,45 @@ impl DynamicOverlaySearchBackend for InMemoryDynamicOverlaySearch {
     }
 }
 
-fn score_document(
-    document: &DynamicOverlayDocument,
-    terms: &[String],
-) -> Option<DynamicOverlaySearchHit> {
-    let haystack = expanded_identifier_text(&[
+fn candidate_entity_ids<'a>(index: &'a DynamicOverlayIndex, terms: &[String]) -> Vec<&'a String> {
+    if terms.is_empty() {
+        return index.documents.keys().collect();
+    }
+    let mut postings = Vec::with_capacity(terms.len());
+    for term in terms {
+        let Some(posting) = index.postings.get(term) else {
+            return Vec::new();
+        };
+        postings.push(posting);
+    }
+    postings.sort_unstable_by_key(|posting| posting.len());
+    let (first_posting, remaining) = postings
+        .split_first()
+        .expect("non-empty query terms have postings");
+    first_posting
+        .iter()
+        .filter(|entity_id| remaining.iter().all(|posting| posting.contains(*entity_id)))
+        .collect()
+}
+
+fn document_terms(document: &DynamicOverlayDocument) -> BTreeSet<String> {
+    expanded_identifier_text(&[
         &document.owner_path,
         &document.kind,
         &document.name,
         document.signature.as_deref().unwrap_or_default(),
         &document.search_text,
-    ]);
-    let haystack_terms = token_set(&haystack);
+    ])
+    .split_ascii_whitespace()
+    .map(ToOwned::to_owned)
+    .collect()
+}
+
+fn score_document(
+    document: &DynamicOverlayDocument,
+    terms: &[String],
+) -> Option<DynamicOverlaySearchHit> {
+    let haystack_terms = document_terms(document);
     let matched_terms = terms
         .iter()
         .filter(|term| haystack_terms.contains(term.as_str()))
@@ -196,10 +264,6 @@ fn score_document(
         score,
         matched_terms,
     })
-}
-
-fn token_set(text: &str) -> BTreeSet<&str> {
-    text.split_ascii_whitespace().collect()
 }
 
 fn overlay_query_terms(query: &str) -> Vec<String> {

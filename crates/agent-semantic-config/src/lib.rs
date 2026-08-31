@@ -6,13 +6,20 @@ pub mod agent_route_registry;
 mod codex_collaboration;
 mod codex_plugin_config;
 mod codex_plugin_payload;
+mod codex_threads;
 pub mod embedded_agent_assets;
 mod hook_client_config;
 pub mod runtime_dev;
 
 pub use codex_collaboration::{
-    COLLABORATION_LIVE_AGENT_SNAPSHOT_SCHEMA_ID, CollaborationDispatchState,
-    CollaborationLiveAgent, CollaborationLiveAgentSnapshot, CollaborationLiveAgents,
+    CODEX_COLLABORATION_NAMESPACE, CODEX_COLLABORATION_TOOL_CALL_SCHEMA_ID,
+    CODEX_COLLABORATION_TOOL_CALL_SCHEMA_VERSION, CodexCollaborationOperation,
+    CodexCollaborationToolCall, CodexMultiAgentV2Interface, CollaborationAgentStatus,
+    CollaborationDispatchAction, CollaborationDispatchState, CollaborationHostResultKind,
+    CollaborationInterruptResult, CollaborationLifecycleTool, CollaborationLiveAgent,
+    CollaborationLiveAgents, CollaborationRegistrationState, CollaborationSpawnResult,
+    CollaborationWaitResult, ListAgentsInput, MessageAgentInput, SpawnAgentInput, TargetAgentInput,
+    WaitAgentInput, state_after_interrupt,
 };
 pub use codex_plugin_config::codex_config_plugin_enabled;
 pub use codex_plugin_payload::{
@@ -20,6 +27,13 @@ pub use codex_plugin_payload::{
     CODEX_PLUGIN_MANIFEST_RELATIVE_PATH, CodexPluginPayloadIdentity, CodexPluginPayloadInspection,
     CodexPluginPayloadState, codex_plugin_cache_root, inspect_codex_plugin_payload,
     load_codex_plugin_payload_identity,
+};
+pub use codex_threads::{
+    CODEX_THREAD_NAMESPACE, CODEX_THREAD_REFERENCE_SCHEMA_ID,
+    CODEX_THREAD_REFERENCE_SCHEMA_VERSION, CODEX_THREAD_TOOL_CALL_SCHEMA_ID,
+    CODEX_THREAD_TOOL_CALL_SCHEMA_VERSION, CodexThreadOperation, CodexThreadReference,
+    CodexThreadToolCall, ReadThreadInput, SendMessageToThreadInput, ThreadTargetInput,
+    WaitThreadTarget, WaitThreadsInput,
 };
 
 pub use hook_client_config::hook_client_contract_fingerprint;

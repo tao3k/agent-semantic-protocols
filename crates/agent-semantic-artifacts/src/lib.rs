@@ -9,6 +9,10 @@ pub mod runtime_artifact_publication;
 pub mod runtime_artifact_quiescence;
 pub mod runtime_artifact_retention;
 mod schema_v1_digest;
+mod state_home_binding;
+mod state_home_catalog;
+mod state_home_layout;
+mod state_home_retention;
 
 pub use agent_semantic_content_identity::{
     ResolutionAuthority, ResolutionEvidence, ResolutionState, SOURCE_RESOLUTION_SCHEMA_ID,
@@ -33,3 +37,33 @@ pub use repair_chain::{
     RepairChainFrameIdentity, RepairChainFrameInput, RepairChainFrameKind, RepairChainParentRef,
     build_repair_chain_frame,
 };
+pub use state_home_binding::{
+    HostProjectReference, PROJECT_BINDING_SCHEMA_ID, PROJECT_BINDING_SCHEMA_VERSION,
+    ProjectBinding, RepoIdentity, WorkspaceIdentity,
+};
+pub use state_home_catalog::{
+    CatalogBatchReceipt, CatalogGeneration, CatalogObservation, CatalogObservationReceipt,
+    STATE_HOME_CATALOG_SCHEMA_ID, STATE_HOME_CATALOG_SCHEMA_VERSION, StateHomeCatalog,
+};
+pub use state_home_layout::{StateHomeLayout, WorkspaceStatePaths};
+pub use state_home_retention::{
+    CleanupDisposition, CleanupPlan, CleanupPlanEntry, RETENTION_PLAN_SCHEMA_ID,
+    RETENTION_PLAN_SCHEMA_VERSION, RetainedObject, RetentionLease, RetentionObjectKind,
+    RetentionPlanner,
+};
+
+#[cfg(test)]
+#[path = "../tests/unit/state_home_binding.rs"]
+mod state_home_binding_tests;
+
+#[cfg(test)]
+#[path = "../tests/unit/state_home_catalog.rs"]
+mod state_home_catalog_tests;
+
+#[cfg(test)]
+#[path = "../tests/unit/state_home_layout.rs"]
+mod state_home_layout_tests;
+
+#[cfg(test)]
+#[path = "../tests/unit/state_home_retention.rs"]
+mod state_home_retention_tests;

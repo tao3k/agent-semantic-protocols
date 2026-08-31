@@ -7,7 +7,7 @@ use super::{
 };
 
 pub const WORKSPACE_CANONICAL_MATERIALIZATION_SCHEMA_ID: &str =
-    "agent.semantic-protocols.runtime-server-workspace-canonical-materialization.v1";
+    "agent.semantic-protocols.runtime-server-workspace-canonical-materialization.v2";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -25,7 +25,7 @@ pub struct WorkspaceCanonicalMaterialization {
     pub projection_capability: crate::active_generation_projection_capability::ActiveGenerationProjectionCapabilityManifest,
     pub workspace_source_scope_generation: String,
     pub project_resolutions: Vec<agent_semantic_runtime::AdmittedProjectResolution>,
-    pub relations: Vec<agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelation>,
+    pub relations: Vec<crate::ClientDbSourceIndexOwnedRelation>,
     pub file_count: u32,
     pub root_depth: [u8; 2],
     pub owners: Vec<WorkspaceOwnerSnapshot>,
@@ -93,7 +93,7 @@ fn assemble_canonical_materialization(
 ) -> WorkspaceCanonicalMaterialization {
     WorkspaceCanonicalMaterialization {
         schema_id: WORKSPACE_CANONICAL_MATERIALIZATION_SCHEMA_ID.to_owned(),
-        schema_version: "1".to_owned(),
+        schema_version: "2".to_owned(),
         workspace_identity,
         project_root: derived.project_root,
         workspace_snapshot: derived.workspace_snapshot,
@@ -488,10 +488,18 @@ impl WorkspaceCanonicalMaterialization {
                     proof.structural_selector()
                 ));
             }
+            let mut query_keys = selector
+                .query_keys
+                .iter()
+                .map(|key| key.as_str().to_owned())
+                .collect::<Vec<_>>();
+            query_keys.sort();
+            query_keys.dedup();
             owner.selectors.push(WorkspaceSelectorSnapshot {
                 selector: proof.structural_selector().to_owned(),
                 byte_start,
                 byte_end,
+                query_keys,
                 derived_projections: selector.derived_projections.clone(),
             });
         }
@@ -648,7 +656,7 @@ impl WorkspaceCanonicalMaterialization {
     fn validate_persisted_inner(&self, workspace_identity: &str) -> Result<(), String> {
         self.workspace_snapshot.validate()?;
         if self.schema_id != WORKSPACE_CANONICAL_MATERIALIZATION_SCHEMA_ID
-            || self.schema_version != "1"
+            || self.schema_version != "2"
         {
             return Err("workspace canonical materialization schema identity mismatch".to_owned());
         }

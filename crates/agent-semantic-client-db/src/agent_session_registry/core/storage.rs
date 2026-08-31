@@ -10,11 +10,12 @@ use std::{
 
 use crate::engine::turso_statement::{execute_turso_operation, run_turso_operation};
 
-use super::storage_bootstrap::bootstrap_turso_agent_session_schema;
-pub(in crate::agent_session_registry) use super::storage_bootstrap::{
+use super::types::{AgentSessionRecord, AgentSessionRegisterRequest, AgentSessionToolEventRequest};
+use crate::agent_session_registry::publication;
+use crate::agent_session_registry::schema::bootstrap_turso_agent_session_schema;
+pub(in crate::agent_session_registry) use crate::agent_session_registry::schema::{
     block_on_agent_session_registry_async, connect_turso_agent_session_registry,
 };
-use super::types::{AgentSessionRecord, AgentSessionRegisterRequest, AgentSessionToolEventRequest};
 
 const AGENT_SESSION_EXPIRED_REFRESH_LOCK_STALE_AFTER: Duration = Duration::from_secs(60);
 static AGENT_SESSION_REGISTRY_RUNTIME_OWNER_PROCESS: AtomicBool = AtomicBool::new(false);
@@ -124,7 +125,7 @@ impl AgentSessionRegistry {
 
     #[must_use]
     pub fn db_path_for_state_root(state_root: impl AsRef<Path>) -> PathBuf {
-        super::publication::physical_current_db_path(state_root.as_ref())
+        publication::physical_current_db_path(state_root.as_ref())
     }
 
     pub async fn open_or_create_project(project_root: impl AsRef<Path>) -> Result<Self, String> {
@@ -188,7 +189,7 @@ impl AgentSessionRegistry {
             )
         })?;
         let db_path = block_on_agent_session_registry_async(
-            super::publication::ensure_current_registry_published(state_root.as_ref()),
+            publication::ensure_current_registry_published(state_root.as_ref()),
         )?;
         let registry = Self::open_path(&db_path).map_err(|error| {
             let caller = std::panic::Location::caller();
@@ -218,7 +219,7 @@ impl AgentSessionRegistry {
                 )
             })?;
         let registry = Self {
-            db_path: super::publication::ensure_current_registry_published(state_root).await?,
+            db_path: publication::ensure_current_registry_published(state_root).await?,
             runtime_project_root: None,
         };
         bootstrap_turso_agent_session_schema(&registry.db_path).await?;
@@ -228,8 +229,7 @@ impl AgentSessionRegistry {
     pub async fn open_existing_state_root(
         state_root: impl AsRef<Path>,
     ) -> Result<Option<Self>, String> {
-        let Some(db_path) = super::publication::read_current_registry_path(state_root.as_ref())?
-        else {
+        let Some(db_path) = publication::read_current_registry_path(state_root.as_ref())? else {
             return Ok(None);
         };
         let registry = Self::open_path(&db_path).map_err(|error| {
@@ -248,8 +248,7 @@ impl AgentSessionRegistry {
     pub fn open_existing_state_root_read_only(
         state_root: impl AsRef<Path>,
     ) -> Result<Option<Self>, String> {
-        let Some(db_path) = super::publication::read_current_registry_path(state_root.as_ref())?
-        else {
+        let Some(db_path) = publication::read_current_registry_path(state_root.as_ref())? else {
             return Ok(None);
         };
         Ok(Some(Self {

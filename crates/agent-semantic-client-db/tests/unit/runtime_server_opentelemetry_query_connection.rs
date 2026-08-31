@@ -61,3 +61,46 @@ async fn non_empty_malformed_frame_remains_failed_accounting() {
     assert_eq!(receipt.completed, 0);
     assert_eq!(receipt.failed, 1);
 }
+
+#[tokio::test]
+async fn non_empty_partial_frame_eof_is_one_typed_terminal_failure() {
+    let (mut client, server) = tokio::net::UnixStream::pair().expect("create query socket pair");
+    client
+        .write_all(br#"{\"requestId\":\"partial"#)
+        .await
+        .expect("write partial query frame");
+    client.shutdown().await.expect("terminate partial frame");
+
+    let scope = crate::runtime_server_runtime::RuntimeServerTaskScope::new(
+        "telemetry-query-partial-frame-test",
+    );
+    let permit = scope
+        .permit("runtime-server-telemetry-query-connection")
+        .expect("admit partial-frame connection");
+    let result = serve_query(
+        server,
+        std::sync::Arc::new(
+            crate::runtime_server_opentelemetry::live_store::RuntimePerformanceLiveStore::default(),
+        ),
+    )
+    .await;
+
+    let error = result.expect_err("a non-empty partial frame must not become a liveness probe");
+    let terminal: serde_json::Value =
+        serde_json::from_str(&error).expect("partial-frame EOF must be a typed terminal");
+    assert_eq!(
+        terminal["schemaId"],
+        "agent.semantic-protocols.client.frame",
+    );
+    assert_eq!(terminal["schemaVersion"], "1");
+    assert_eq!(terminal["reasonKind"], "frame-eof");
+
+    let terminal_result = Err(error);
+    record_query_connection_terminal(permit, &terminal_result);
+    let receipt = scope
+        .finish(0)
+        .expect("partial-frame terminal accounting must drain");
+    assert_eq!(receipt.started, 1);
+    assert_eq!(receipt.completed, 0);
+    assert_eq!(receipt.failed, 1);
+}

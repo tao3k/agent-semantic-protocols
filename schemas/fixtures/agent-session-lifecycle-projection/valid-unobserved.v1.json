@@ -15,12 +15,12 @@
     "phase": "unobserved",
     "childSessionId": null,
     "canonicalMessageTarget": null,
-    "terminationReceiptIndexed": false,
-    "pathReleaseReceiptIndexed": false
+    "pathObserved": null
   },
   "dispatch": {
     "generation": 7,
     "phase": "unobserved"
   },
+  "requiredDispatchAction": "unavailable",
   "durableDispatchAuthorized": false
 }

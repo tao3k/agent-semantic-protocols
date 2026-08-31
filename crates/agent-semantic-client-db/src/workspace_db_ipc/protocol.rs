@@ -11,8 +11,7 @@ mod session;
 #[path = "protocol_types.rs"]
 mod types;
 pub use client::{
-    cache_control_via_runtime_server, connect_runtime_server_workspace_session,
-    read_runtime_merkle_owner_via_runtime_server, read_source_index_via_runtime_server,
+    connect_runtime_server_workspace_session, read_runtime_merkle_owner_via_runtime_server,
 };
 pub use session::WorkspaceDbIpcSession;
 pub(super) use session::WorkspaceDbIpcSessionState;
@@ -52,7 +51,3 @@ pub(super) enum WorkspaceDbSessionProfile {
     Full,
     HookReadOnly,
 }
-
-#[cfg(test)]
-#[path = "../../tests/unit/workspace_db_ipc.rs"]
-mod tests;

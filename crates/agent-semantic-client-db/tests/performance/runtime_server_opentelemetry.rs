@@ -16,6 +16,121 @@ fn short_unix_socket_path(label: &str) -> std::path::PathBuf {
     ))
 }
 
+mod runtime_search_telemetry_red_contract {
+    use agent_semantic_client_db::runtime_server_opentelemetry::{
+        RuntimeSearchTelemetryCollector, RuntimeSearchTelemetryIdentity,
+    };
+
+    const CANONICAL_PHASES: [&str; 10] = [
+        "launcher",
+        "client-frame-encode",
+        "ipc-connect",
+        "server-admission-queue",
+        "snapshot-resolve",
+        "provider-dispatch",
+        "parse-index-query",
+        "projection-rank",
+        "schema-validate-serialize",
+        "terminal-egress",
+    ];
+
+    fn identity(runtime_artifact_digest: &str) -> RuntimeSearchTelemetryIdentity {
+        RuntimeSearchTelemetryIdentity::new(
+            "workspace-23cc5ba784c605ae",
+            "blake3-256:source-generation",
+            runtime_artifact_digest,
+            "asp-rust",
+            "request-1",
+        )
+        .expect("fixture identity must be canonical")
+    }
+
+    #[test]
+    fn canonical_search_phases_emit_exactly_one_terminal() {
+        let identity = identity("blake3-256:runtime-a");
+        let mut collector = RuntimeSearchTelemetryCollector::new(identity.clone(), 4_096)
+            .expect("bounded collector must initialize");
+
+        for (sequence, phase) in CANONICAL_PHASES.iter().enumerate() {
+            collector
+                .record_phase(&identity, phase, sequence as u64)
+                .expect("canonical phase must be admitted");
+        }
+        collector
+            .record_terminal(&identity, "accepted", 10)
+            .expect("first terminal must be admitted");
+
+        let duplicate = collector
+            .record_terminal(&identity, "accepted", 11)
+            .expect_err("a second terminal must be rejected");
+        assert_eq!(duplicate.reason_kind(), "runtime-search-terminal-duplicate");
+
+        let artifact = collector
+            .to_artifact()
+            .expect("complete telemetry must produce an artifact");
+        assert_eq!(artifact.phase_names(), CANONICAL_PHASES);
+        assert_eq!(artifact.terminal_count(), 1);
+    }
+
+    #[test]
+    fn observation_rejects_artifact_refresh_identity_mismatch() {
+        let admitted = identity("blake3-256:runtime-a");
+        let refreshed = identity("blake3-256:runtime-b");
+        let mut collector = RuntimeSearchTelemetryCollector::new(admitted.clone(), 4_096)
+            .expect("bounded collector must initialize");
+
+        collector
+            .record_phase(&admitted, CANONICAL_PHASES[0], 0)
+            .expect("admitted identity must be recorded");
+        let mismatch = collector
+            .record_phase(&refreshed, CANONICAL_PHASES[1], 1)
+            .expect_err("artifact refresh must not mutate an admitted request identity");
+        assert_eq!(
+            mismatch.reason_kind(),
+            "runtime-search-telemetry-identity-mismatch"
+        );
+    }
+
+    #[test]
+    fn metric_labels_are_bounded_and_reject_request_cardinality() {
+        let identity = identity("blake3-256:runtime-a");
+        let mut collector = RuntimeSearchTelemetryCollector::new(identity, 4_096)
+            .expect("bounded collector must initialize");
+
+        collector
+            .record_metric_label("language_id", "rust")
+            .expect("bounded language label must be admitted");
+        let high_cardinality = collector
+            .record_metric_label("request_id", "request-1")
+            .expect_err("request identity must never become a metric label");
+        assert_eq!(
+            high_cardinality.reason_kind(),
+            "runtime-search-metric-label-cardinality"
+        );
+    }
+
+    #[test]
+    fn bounded_collector_reserves_terminal_and_rejects_capacity_exhaustion() {
+        let identity = identity("blake3-256:runtime-a");
+        let mut collector = RuntimeSearchTelemetryCollector::new(identity.clone(), 2)
+            .expect("bounded collector must initialize");
+
+        collector
+            .record_phase(&identity, CANONICAL_PHASES[0], 0)
+            .expect("one phase must fit while reserving terminal capacity");
+        let exhausted = collector
+            .record_phase(&identity, CANONICAL_PHASES[1], 1)
+            .expect_err("non-terminal events must not consume reserved terminal capacity");
+        assert_eq!(
+            exhausted.reason_kind(),
+            "runtime-search-telemetry-capacity-exhausted"
+        );
+        collector
+            .record_terminal(&identity, "failed", 2)
+            .expect("terminal must remain observable under pressure");
+    }
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn repeated_runtime_telemetry_lifecycle_returns_to_task_and_socket_baseline() {
     let _performance = crate::test_support::performance_lock();

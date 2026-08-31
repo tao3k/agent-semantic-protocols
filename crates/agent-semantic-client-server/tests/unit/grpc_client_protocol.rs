@@ -9,13 +9,9 @@ use agent_semantic_client_protocol::{
 use agent_semantic_client_server::{
     AspClientCancelFuture, AspClientDispatchError, AspClientDispatchFuture,
     AspClientDispatchRequest, AspClientDispatcher, AspClientFrameService, AspClientGrpcTransport,
-    bind_asp_client_grpc_unix, serve_asp_client_grpc_unix, serve_asp_client_http_json,
+    bind_asp_client_grpc_unix, serve_asp_client_grpc_unix,
 };
 use serde_json::json;
-use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt},
-    net::{TcpListener, TcpStream},
-};
 
 struct ExactQueryDispatcher;
 
@@ -67,6 +63,25 @@ fn base() -> ClientFrameBase {
     }
 }
 
+fn exact_query_frame(request_id: String) -> ClientFrame {
+    ClientFrame::Dispatch {
+        base: base(),
+        request_id: ClientRequestId::new(request_id).expect("request id"),
+        project_root: "/workspace".to_owned(),
+        client_info: ClientInfo {
+            name: "thin-cli".to_owned(),
+            version: "1".to_owned(),
+        },
+        method: "rust.query".to_owned(),
+        params: json!({
+            "schemaId": "agent.semantic-protocols.asp-client-exact-query-request",
+            "schemaVersion": "1",
+            "selector": "rust://src/lib.rs#item/function/missing",
+            "projection": "source"
+        }),
+    }
+}
+
 fn catalog() -> ClientProtocolCatalog {
     ClientProtocolCatalog {
         schema_id: CLIENT_CATALOG_SCHEMA_ID.to_owned(),
@@ -86,7 +101,7 @@ fn catalog() -> ClientProtocolCatalog {
     }
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn grpc_unix_exact_query_returns_typed_terminal() {
     let temporary = tempfile::tempdir().expect("temporary socket root");
     let socket_path = temporary.path().join("asp-client.grpc.sock");
@@ -126,22 +141,7 @@ async fn grpc_unix_exact_query_returns_typed_terminal() {
     ));
 
     let terminal = client
-        .call(ClientFrame::Dispatch {
-            base: base(),
-            request_id: ClientRequestId::new("exact-query").expect("request id"),
-            project_root: "/workspace".to_owned(),
-            client_info: ClientInfo {
-                name: "thin-cli".to_owned(),
-                version: "1".to_owned(),
-            },
-            method: "rust.query".to_owned(),
-            params: json!({
-                "schemaId": "agent.semantic-protocols.asp-client-exact-query-request",
-                "schemaVersion": "1",
-                "selector": "rust://src/lib.rs#item/function/missing",
-                "projection": "source"
-            }),
-        })
+        .call(exact_query_frame("exact-query".to_owned()))
         .await
         .expect("typed exact-query terminal");
     let ClientFrame::Response {
@@ -161,6 +161,71 @@ async fn grpc_unix_exact_query_returns_typed_terminal() {
         "agent.semantic-protocols.asp-client-exact-query-failure"
     );
     assert_eq!(error["terminal"]["phase"], "resident-selector-read");
+
+    let mut sequential_nanos = Vec::with_capacity(10);
+    for index in 0..10 {
+        let started = std::time::Instant::now();
+        let response = client
+            .call(exact_query_frame(format!("warm-sequential-{index}")))
+            .await
+            .expect("warm typed terminal");
+        sequential_nanos.push(started.elapsed().as_nanos());
+        assert!(matches!(
+            response,
+            ClientFrame::Response {
+                outcome: ClientOutcome::Error,
+                error: Some(_),
+                ..
+            }
+        ));
+    }
+    sequential_nanos.sort_unstable();
+    let sequential_p95_nanos = sequential_nanos[9];
+
+    let mut concurrent = tokio::task::JoinSet::new();
+    for index in 0..32 {
+        let client = client.clone();
+        concurrent.spawn(async move {
+            let started = std::time::Instant::now();
+            let response = client
+                .call(exact_query_frame(format!("warm-concurrent-{index}")))
+                .await?;
+            Ok::<_, String>((started.elapsed().as_nanos(), response))
+        });
+    }
+    let mut concurrent_nanos = Vec::with_capacity(32);
+    while let Some(result) = concurrent.join_next().await {
+        let (elapsed_nanos, response) = result
+            .expect("join concurrent request")
+            .expect("concurrent typed terminal");
+        concurrent_nanos.push(elapsed_nanos);
+        assert!(matches!(
+            response,
+            ClientFrame::Response {
+                outcome: ClientOutcome::Error,
+                error: Some(_),
+                ..
+            }
+        ));
+    }
+    concurrent_nanos.sort_unstable();
+    let concurrent_p95_nanos = concurrent_nanos[30];
+    let latency_state = if sequential_p95_nanos < 1_000_000 && concurrent_p95_nanos < 1_000_000 {
+        "passed"
+    } else {
+        "failed"
+    };
+    println!(
+        "{{\"schemaId\":\"agent.semantic-protocols.grpc-warm-latency-receipt\",\"schemaVersion\":\"1\",\"state\":\"{latency_state}\",\"thresholdNanos\":1000000,\"sequentialCount\":10,\"sequentialTerminalCount\":10,\"sequentialP95Nanos\":{sequential_p95_nanos},\"concurrentCount\":32,\"concurrentTerminalCount\":32,\"concurrentP95Nanos\":{concurrent_p95_nanos}}}"
+    );
+    assert!(
+        sequential_p95_nanos < 1_000_000,
+        "warm sequential gRPC p95 must remain below 1ms: {sequential_p95_nanos}ns"
+    );
+    assert!(
+        concurrent_p95_nanos < 1_000_000,
+        "warm 32-concurrent gRPC p95 must remain below 1ms: {concurrent_p95_nanos}ns"
+    );
 
     let lazy_client = AspClientGrpcTransport::connect_unix(&socket_path)
         .await
@@ -218,72 +283,26 @@ async fn grpc_unix_exact_query_returns_typed_terminal() {
 }
 
 #[tokio::test]
-async fn http_json_initialize_uses_the_same_typed_frame_service() {
-    let listener = TcpListener::bind("127.0.0.1:0")
-        .await
-        .expect("bind public ASP Client Protocol HTTP endpoint");
-    let address = listener.local_addr().expect("HTTP endpoint address");
-    let service = Arc::new(AspClientFrameService::new(
-        Arc::new(ExactQueryDispatcher),
-        |_| Ok(catalog()),
-    ));
-    let (shutdown, shutdown_rx) = tokio::sync::watch::channel(false);
-    let server = tokio::spawn(serve_asp_client_http_json(listener, service, shutdown_rx));
+async fn stalled_unix_handshake_returns_one_bounded_typed_failure() {
+    let temporary = tempfile::tempdir().expect("temporary socket root");
+    let socket_path = temporary.path().join("stalled.sock");
+    let _listener = tokio::net::UnixListener::bind(&socket_path).expect("bind stalled listener");
+    let started = tokio::time::Instant::now();
 
-    let request = ClientFrame::Initialize {
-        base: base(),
-        request_id: ClientRequestId::new("http-initialize").expect("request id"),
-        project_root: "/workspace".to_owned(),
-        client_info: ClientInfo {
-            name: "http-test".to_owned(),
-            version: "1".to_owned(),
-        },
-        capabilities: json!({"requestCancellation": true}),
-    };
-    let body = serde_json::to_vec(&request).expect("encode HTTP frame");
-    let mut client = TcpStream::connect(address)
-        .await
-        .expect("connect HTTP JSON endpoint");
-    client
-        .write_all(
-            format!(
-                "POST /protocol/frame HTTP/1.1\r\nHost: {address}\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: {}\r\n\r\n",
-                body.len()
-            )
-            .as_bytes(),
-        )
-        .await
-        .expect("write HTTP JSON headers");
-    client.write_all(&body).await.expect("write HTTP JSON body");
-    let mut wire = Vec::new();
-    client
-        .read_to_end(&mut wire)
-        .await
-        .expect("read HTTP JSON response");
-    let separator = wire
-        .windows(4)
-        .position(|window| window == b"\r\n\r\n")
-        .expect("HTTP response headers");
-    let headers = String::from_utf8_lossy(&wire[..separator]);
+    let failure = tokio::time::timeout(
+        std::time::Duration::from_secs(4),
+        AspClientGrpcTransport::connect_unix(&socket_path),
+    )
+    .await
+    .expect("transport owns a shorter connect deadline")
+    .err()
+    .expect("stalled handshake must fail");
+
     assert!(
-        headers.starts_with("HTTP/1.1 200"),
-        "unexpected response: {headers}"
+        failure.contains("reasonKind=runtime-client-connect-deadline-exceeded")
+            || failure.contains("reasonKind=runtime-client-session-deadline-exceeded"),
+        "unexpected terminal: {failure}"
     );
-    let frame: ClientFrame =
-        serde_json::from_slice(&wire[separator + 4..]).expect("decode HTTP frame");
-    assert!(matches!(
-        frame,
-        ClientFrame::Response {
-            request_id,
-            outcome: ClientOutcome::Ready,
-            catalog: Some(_),
-            ..
-        } if request_id.as_str() == "http-initialize"
-    ));
-
-    shutdown.send(true).expect("signal HTTP server shutdown");
-    server
-        .await
-        .expect("join HTTP server")
-        .expect("HTTP server");
+    assert!(failure.contains("retryAdmitted=false"));
+    assert!(started.elapsed() < std::time::Duration::from_secs(4));
 }

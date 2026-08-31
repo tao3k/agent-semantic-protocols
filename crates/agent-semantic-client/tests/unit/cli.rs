@@ -40,6 +40,30 @@ fn unrelated_cli_errors_are_not_rewritten() {
 }
 
 #[test]
+fn runtime_connect_deadline_is_exactly_one_typed_non_retryable_terminal() {
+    let rendered = render_cli_error(
+        &["rust".to_owned(), "search".to_owned()],
+        "reasonKind=runtime-client-connect-deadline-exceeded budgetMs=2000 retryAdmitted=false"
+            .to_owned(),
+    );
+    let receipt: serde_json::Value = serde_json::from_str(&rendered).expect("typed receipt");
+    let schema: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../../schemas/runtime-client-terminal.schema.json"
+    ))
+    .expect("runtime client terminal schema");
+    jsonschema::validator_for(&schema)
+        .expect("compile runtime client terminal schema")
+        .validate(&receipt)
+        .expect("receipt satisfies runtime client terminal schema");
+    assert_eq!(receipt["state"], "failed");
+    assert_eq!(
+        receipt["reasonKind"],
+        "runtime-client-connect-deadline-exceeded"
+    );
+    assert_eq!(receipt["retryAdmitted"], false);
+}
+
+#[test]
 fn missing_generation_has_one_runtime_owned_non_recursive_action() {
     let rendered = render_cli_error(
         &["rust".to_owned(), "search".to_owned(), "owner.rs".to_owned()],

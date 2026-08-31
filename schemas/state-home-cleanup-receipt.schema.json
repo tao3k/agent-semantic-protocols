@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent.semantic.protocols/schemas/state-home-cleanup-receipt",
+  "title": "ASP State Home Cleanup Receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "state",
+    "retainedForDays",
+    "catalogGeneration",
+    "catalogPlan",
+    "temporaryWorkspaceReport",
+    "projectRegistryReport"
+  ],
+  "properties": {
+    "schemaId": { "const": "agent.semantic-protocols.state-home-cleanup-receipt" },
+    "schemaVersion": { "const": 1 },
+    "state": { "const": "applied" },
+    "retainedForDays": { "type": "integer", "minimum": 1 },
+    "catalogGeneration": { "type": "integer", "minimum": 0 },
+    "catalogPlan": {
+      "type": "object",
+      "required": [
+        "schemaId",
+        "schemaVersion",
+        "evaluatedAtMs",
+        "retainForMs",
+        "retainedCount",
+        "retiredCount",
+        "retainedBytes",
+        "retiredBytes",
+        "entries"
+      ],
+      "properties": {
+        "schemaId": { "const": "agent.semantic-protocols.state-home-retention-plan" },
+        "schemaVersion": { "const": 1 }
+      }
+    },
+    "temporaryWorkspaceReport": { "type": "object" },
+    "projectRegistryReport": { "type": "object" }
+  }
+}

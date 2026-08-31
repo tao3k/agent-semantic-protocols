@@ -44,6 +44,14 @@ pub async fn run_cli_args(
             )
             .await
         }
+        Some("clean") => {
+            crate::cache_cli::run_project_registry_clean(
+                &parsed.project_root,
+                &parsed.forwarded_args,
+                parsed.receipt_json,
+            )
+            .await
+        }
         Some("cloud") => run_cloud(parsed),
         Some("search") => {
             if language_id.is_none()

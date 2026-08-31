@@ -4,7 +4,7 @@ use serde_json::Value;
 use tokio::sync::{mpsc, oneshot};
 use tokio_stream::wrappers::ReceiverStream;
 
-use crate::runtime_server_workspace::WorkspaceOwnerSnapshot;
+use crate::runtime_server_workspace::WorkspaceOwnerProjection;
 
 const DEFAULT_QUEUE_CAPACITY: usize = 64;
 
@@ -67,7 +67,7 @@ pub enum RuntimeSearchServiceRequest {
         project_root: PathBuf,
         language_id: String,
         owner_path: String,
-        response: oneshot::Sender<Result<WorkspaceOwnerSnapshot, String>>,
+        response: oneshot::Sender<Result<WorkspaceOwnerProjection, String>>,
     },
 }
 
@@ -302,7 +302,7 @@ impl RuntimeSearchServiceHandle {
         project_root: PathBuf,
         language_id: String,
         owner_path: String,
-    ) -> Result<WorkspaceOwnerSnapshot, String> {
+    ) -> Result<WorkspaceOwnerProjection, String> {
         let (response, receipt) = oneshot::channel();
         self.sender
             .send(RuntimeSearchServiceRequest::ProviderOwner {

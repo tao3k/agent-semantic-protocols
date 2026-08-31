@@ -40,6 +40,8 @@ mod query_coverage;
 mod query_demand;
 #[path = "runtime_server_admission_registry.rs"]
 mod registry;
+#[path = "runtime_server_admission_terminal.rs"]
+mod terminal;
 
 use entry_authority::AdmissionEntryAuthority;
 use query_coverage::QueryTargetCoverage;
@@ -378,17 +380,35 @@ impl WorkspaceGenerationAdmission {
         project_root: PathBuf,
         candidate: WorkspaceGenerationCandidateIdentity,
     ) -> Result<WorkspaceGenerationAdmissionReceipt, String> {
-        self.admit_with_mode(
-            workspace_identity,
-            project_root,
-            candidate,
-            WorkspaceGenerationBuildMode::RestoreOrBuild,
-            WorkspaceGenerationAdmissionTrigger::QueryDemand,
-            WorkspaceGenerationAdmissionMode::ColdTargeted,
-            None,
-            Arc::default(),
-        )
-        .await
+        let expected_candidate = candidate.clone();
+        let receipt = self
+            .admit_with_mode(
+                workspace_identity,
+                project_root,
+                candidate,
+                WorkspaceGenerationBuildMode::RestoreOrBuild,
+                WorkspaceGenerationAdmissionTrigger::QueryDemand,
+                WorkspaceGenerationAdmissionMode::ColdTargeted,
+                None,
+                Arc::default(),
+            )
+            .await?;
+        if receipt.candidate_generation != expected_candidate.candidate_generation
+            || receipt.policy_overlay_digest != expected_candidate.policy_overlay_digest
+        {
+            return Err(serde_json::json!({
+                "schemaId": "agent.semantic-protocols.workspace-generation-admission-binding-mismatch",
+                "schemaVersion": "1",
+                "reasonKind": "workspace-generation-admission-binding-mismatch",
+                "workspaceIdentity": receipt.workspace_identity,
+                "expectedCandidateGeneration": expected_candidate.candidate_generation,
+                "observedCandidateGeneration": receipt.candidate_generation,
+                "expectedPolicyOverlayDigest": expected_candidate.policy_overlay_digest,
+                "observedPolicyOverlayDigest": receipt.policy_overlay_digest,
+            })
+            .to_string());
+        }
+        Ok(receipt)
     }
 
     async fn admit_with_mode(
@@ -677,7 +697,7 @@ impl WorkspaceGenerationAdmission {
                     .as_ref()
                     .map(|mutation| Arc::clone(&mutation.changed_paths))
                     .unwrap_or_else(|| Arc::clone(&cold_target_paths));
-                let completed = match crate::runtime_server_admission_builder_supervisor::run(
+                let build_result = crate::runtime_server_admission_builder_supervisor::run(
                     Arc::clone(&builder),
                     workspace_identity.clone(),
                     project_root.clone(),
@@ -687,45 +707,15 @@ impl WorkspaceGenerationAdmission {
                     provider_target.clone(),
                     cancellation.clone(),
                 )
-                .await
-                {
-                    Ok(completion) => WorkspaceGenerationAdmissionReceipt {
-                        commit: Some(completion.commit),
-                        schema_id: WORKSPACE_GENERATION_ADMISSION_RECEIPT_SCHEMA_ID.to_owned(),
-                        schema_version: "1".to_owned(),
-                        workspace_identity: workspace_identity.clone(),
-                        trigger,
-                        admission_mode,
-                        build_owner: "runtime-server".to_owned(),
-                        cancellation_authority: "runtime-server".to_owned(),
-                        request_lifetime_independent: true,
-                        candidate_generation: completion.candidate.candidate_generation,
-                        policy_overlay_digest: completion.candidate.policy_overlay_digest,
-                        state: WorkspaceGenerationAdmissionState::Ready,
-                        accepted: false,
-                        attempt,
-                        failure_stage: None,
-                        error: None,
-                    },
-                    Err(error) => WorkspaceGenerationAdmissionReceipt {
-                        schema_id: WORKSPACE_GENERATION_ADMISSION_RECEIPT_SCHEMA_ID.to_owned(),
-                        schema_version: "1".to_owned(),
-                        workspace_identity: workspace_identity.clone(),
-                        trigger,
-                        admission_mode,
-                        build_owner: "runtime-server".to_owned(),
-                        cancellation_authority: "runtime-server".to_owned(),
-                        request_lifetime_independent: true,
-                        candidate_generation: candidate.candidate_generation.clone(),
-                        policy_overlay_digest: candidate.policy_overlay_digest.clone(),
-                        state: WorkspaceGenerationAdmissionState::Failed,
-                        accepted: false,
-                        attempt,
-                        commit: None,
-                        failure_stage: Some(error.stage.clone()),
-                        error: Some(error.message.clone()),
-                    },
-                };
+                .await;
+                let completed = terminal::from_build_result(
+                    build_result,
+                    &workspace_identity,
+                    &candidate,
+                    trigger,
+                    admission_mode,
+                    attempt,
+                );
                 let _ = completed_entry.complete_query_targets(
                     completed.state == WorkspaceGenerationAdmissionState::Ready,
                 );

@@ -5,9 +5,11 @@ const ROOT_COMMANDS: &[(&str, &str)] = &[
     ("tools", "Inspect and run ASP support tools"),
     ("wrap", "Run a command through the ASP client runtime"),
     ("cache", "Inspect and maintain ASP caches"),
+    ("clean", "Apply typed State Home retention"),
     ("cloud", "Inspect optional cloud state"),
     ("hook", "Run and inspect host hook integration"),
     ("config", "Manage ASP-owned global configuration"),
+    ("session", "Manage ASP Agent session lifecycle"),
     (
         "install",
         "Install ASP binaries, hooks, plugins, or providers",
@@ -25,8 +27,6 @@ const ROOT_COMMANDS: &[(&str, &str)] = &[
     ),
     ("ast-patch", "Verify or render parser-owned AST patches"),
     ("graph", "Render ASP evidence graphs"),
-    ("fd", "Run the ASP fd compatibility surface"),
-    ("rg", "Run the ASP rg compatibility surface"),
     (
         "search",
         "Search with an explicit or inferred language facade",
@@ -123,14 +123,13 @@ fn cache_command() -> Command {
     command_with_subcommands(
         "cache",
         "asp cache",
-        "Inspect and maintain ASP caches",
+        "Maintain Runtime-owned workspace cache metadata",
         &[
-            ("status", "Show cache status"),
-            ("import", "Import cache state"),
-            ("source-index", "Maintain the source index"),
-            ("invalidate", "Invalidate cache state"),
-            ("flush", "Flush cache state"),
-            ("runtime-source", "Acquire runtime source"),
+            ("gc", "Collect expired project registry entries"),
+            (
+                "source-index",
+                "Use the language-scoped ClientFrame source-index lookup",
+            ),
         ],
     )
     .arg(
@@ -140,7 +139,6 @@ fn cache_command() -> Command {
             .help("Select the workspace"),
     )
     .subcommand(agent_semantic_client::project_registry_gc_clap_command())
-    .subcommand(agent_semantic_client::project_registry_clean_clap_command())
 }
 
 fn cloud_command() -> Command {
@@ -265,6 +263,31 @@ fn config_command() -> Command {
         .bin_name("asp config")
         .about("Manage ASP-owned global configuration")
         .subcommand(agent_config_command())
+}
+
+fn session_command() -> Command {
+    Command::new("session")
+        .bin_name("asp session")
+        .about("Manage ASP Agent session lifecycle")
+        .subcommand(session_register_child_command())
+}
+
+fn session_register_child_command() -> Command {
+    Command::new("register-child")
+        .bin_name("asp session register-child")
+        .about("Register the delivered Codex child under its explicit parent thread")
+        .arg(
+            Arg::new("parent-thread-id")
+                .long("parent-thread-id")
+                .value_name("PARENT_THREAD_ID")
+                .required(true),
+        )
+        .arg(
+            Arg::new("agent-name")
+                .long("agent-name")
+                .value_name("CONFIGURED_AGENT_NAME")
+                .required(true),
+        )
 }
 
 fn agent_config_command() -> Command {

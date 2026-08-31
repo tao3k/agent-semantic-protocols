@@ -878,6 +878,10 @@ fn publish_connection_completion(
     }
 }
 
+#[cfg(test)]
+#[path = "../../tests/unit/runtime_server_connection_completion.rs"]
+mod connection_completion_tests;
+
 #[cfg(unix)]
 pub(super) async fn runtime_server_shutdown_signal() -> Result<(), String> {
     let mut terminate = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())

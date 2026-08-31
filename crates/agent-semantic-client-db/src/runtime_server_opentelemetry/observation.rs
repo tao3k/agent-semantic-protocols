@@ -1,3 +1,197 @@
+pub const RUNTIME_SEARCH_TELEMETRY_PHASES: [&str; 10] = [
+    "launcher",
+    "client-frame-encode",
+    "ipc-connect",
+    "server-admission-queue",
+    "snapshot-resolve",
+    "provider-dispatch",
+    "parse-index-query",
+    "projection-rank",
+    "schema-validate-serialize",
+    "terminal-egress",
+];
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RuntimeSearchTelemetryIdentity {
+    pub workspace_identity: String,
+    pub source_generation_digest: String,
+    pub runtime_artifact_digest: String,
+    pub provider_id: String,
+    pub request_id: String,
+}
+
+impl RuntimeSearchTelemetryIdentity {
+    pub fn new(
+        workspace_identity: impl Into<String>,
+        source_generation_digest: impl Into<String>,
+        runtime_artifact_digest: impl Into<String>,
+        provider_id: impl Into<String>,
+        request_id: impl Into<String>,
+    ) -> Result<Self, RuntimeSearchTelemetryError> {
+        let identity = Self {
+            workspace_identity: workspace_identity.into(),
+            source_generation_digest: source_generation_digest.into(),
+            runtime_artifact_digest: runtime_artifact_digest.into(),
+            provider_id: provider_id.into(),
+            request_id: request_id.into(),
+        };
+        if identity.workspace_identity.is_empty()
+            || identity.source_generation_digest.is_empty()
+            || identity.runtime_artifact_digest.is_empty()
+            || identity.provider_id.is_empty()
+            || identity.request_id.is_empty()
+        {
+            return Err(RuntimeSearchTelemetryError::new(
+                "runtime-search-telemetry-identity-mismatch",
+            ));
+        }
+        Ok(identity)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RuntimeSearchTelemetryError {
+    reason_kind: &'static str,
+}
+
+impl RuntimeSearchTelemetryError {
+    fn new(reason_kind: &'static str) -> Self {
+        Self { reason_kind }
+    }
+
+    pub fn reason_kind(&self) -> &str {
+        self.reason_kind
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RuntimeSearchTelemetryArtifact {
+    phase_names: [&'static str; 10],
+    terminal_count: usize,
+}
+
+impl RuntimeSearchTelemetryArtifact {
+    pub fn phase_names(&self) -> [&'static str; 10] {
+        self.phase_names
+    }
+
+    pub fn terminal_count(&self) -> usize {
+        self.terminal_count
+    }
+}
+
+pub struct RuntimeSearchTelemetryCollector {
+    identity: RuntimeSearchTelemetryIdentity,
+    capacity: usize,
+    phase_index: usize,
+    terminal_count: usize,
+}
+
+impl RuntimeSearchTelemetryCollector {
+    pub fn new(
+        identity: RuntimeSearchTelemetryIdentity,
+        capacity: usize,
+    ) -> Result<Self, RuntimeSearchTelemetryError> {
+        if capacity == 0 {
+            return Err(RuntimeSearchTelemetryError::new(
+                "runtime-search-telemetry-capacity-exhausted",
+            ));
+        }
+        Ok(Self {
+            identity,
+            capacity,
+            phase_index: 0,
+            terminal_count: 0,
+        })
+    }
+
+    fn validate_identity(
+        &self,
+        identity: &RuntimeSearchTelemetryIdentity,
+    ) -> Result<(), RuntimeSearchTelemetryError> {
+        if identity != &self.identity {
+            return Err(RuntimeSearchTelemetryError::new(
+                "runtime-search-telemetry-identity-mismatch",
+            ));
+        }
+        Ok(())
+    }
+
+    pub fn record_phase(
+        &mut self,
+        identity: &RuntimeSearchTelemetryIdentity,
+        phase: &str,
+        _elapsed_micros: u64,
+    ) -> Result<(), RuntimeSearchTelemetryError> {
+        self.validate_identity(identity)?;
+        if self.phase_index >= RUNTIME_SEARCH_TELEMETRY_PHASES.len()
+            || RUNTIME_SEARCH_TELEMETRY_PHASES[self.phase_index] != phase
+        {
+            return Err(RuntimeSearchTelemetryError::new(
+                "runtime-search-telemetry-phase-order",
+            ));
+        }
+        if self.phase_index + 1 > self.capacity.saturating_sub(1) {
+            return Err(RuntimeSearchTelemetryError::new(
+                "runtime-search-telemetry-capacity-exhausted",
+            ));
+        }
+        self.phase_index += 1;
+        Ok(())
+    }
+
+    pub fn record_terminal(
+        &mut self,
+        identity: &RuntimeSearchTelemetryIdentity,
+        _state: &str,
+        _elapsed_micros: u64,
+    ) -> Result<(), RuntimeSearchTelemetryError> {
+        self.validate_identity(identity)?;
+        if self.terminal_count != 0 {
+            return Err(RuntimeSearchTelemetryError::new(
+                "runtime-search-terminal-duplicate",
+            ));
+        }
+        self.terminal_count = 1;
+        Ok(())
+    }
+
+    pub fn record_metric_label(
+        &mut self,
+        key: &str,
+        value: &str,
+    ) -> Result<(), RuntimeSearchTelemetryError> {
+        if !matches!(
+            key,
+            "language_id" | "operation" | "profile" | "phase" | "outcome" | "error_class"
+        ) {
+            return Err(RuntimeSearchTelemetryError::new(
+                "runtime-search-metric-label-cardinality",
+            ));
+        }
+        if value.is_empty() {
+            return Err(RuntimeSearchTelemetryError::new(
+                "runtime-search-metric-label-cardinality",
+            ));
+        }
+        Ok(())
+    }
+
+    pub fn to_artifact(
+        &self,
+    ) -> Result<RuntimeSearchTelemetryArtifact, RuntimeSearchTelemetryError> {
+        if self.phase_index != RUNTIME_SEARCH_TELEMETRY_PHASES.len() || self.terminal_count != 1 {
+            return Err(RuntimeSearchTelemetryError::new(
+                "runtime-search-telemetry-terminal-incomplete",
+            ));
+        }
+        Ok(RuntimeSearchTelemetryArtifact {
+            phase_names: RUNTIME_SEARCH_TELEMETRY_PHASES,
+            terminal_count: self.terminal_count,
+        })
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RuntimePerformanceObservation {

@@ -65,7 +65,7 @@ pub(crate) fn restored_generation_covers_demand(
 }
 
 enum MutationOwnerProjection {
-    Owner(crate::runtime_server_workspace::WorkspaceOwnerSnapshot),
+    Owner(crate::runtime_server_workspace::WorkspaceOwnerProjection),
     Tombstone(String),
 }
 
@@ -125,6 +125,7 @@ async fn project_mutation_owners(
     (
         Vec<crate::runtime_server_workspace::WorkspaceOwnerSnapshot>,
         Vec<String>,
+        Vec<crate::ClientDbSourceIndexOwnedRelation>,
     ),
     WorkspaceGenerationBuildFailure,
 > {
@@ -144,13 +145,19 @@ async fn project_mutation_owners(
         .collect::<Vec<_>>()
         .await
         .into_iter()
-        .try_fold((Vec::new(), Vec::new()), |mut projected, item| {
-            match item? {
-                MutationOwnerProjection::Owner(owner) => projected.0.push(owner),
-                MutationOwnerProjection::Tombstone(owner_path) => projected.1.push(owner_path),
-            }
-            Ok(projected)
-        })
+        .try_fold(
+            (Vec::new(), Vec::new(), Vec::new()),
+            |mut projected, item| {
+                match item? {
+                    MutationOwnerProjection::Owner(owner) => {
+                        projected.0.push(owner.owner);
+                        projected.2.extend(owner.relations);
+                    }
+                    MutationOwnerProjection::Tombstone(owner_path) => projected.1.push(owner_path),
+                }
+                Ok(projected)
+            },
+        )
 }
 
 pub(crate) async fn publish_mutation_generation(
@@ -168,7 +175,7 @@ pub(crate) async fn publish_mutation_generation(
     crate::runtime_server_admission::WorkspaceGenerationBuildCompletion,
     WorkspaceGenerationBuildFailure,
 > {
-    let (owners, tombstones) = project_mutation_owners(
+    let (owners, tombstones, relations) = project_mutation_owners(
         owner_projection_builder,
         workspace_identity,
         project_root,
@@ -192,10 +199,11 @@ pub(crate) async fn publish_mutation_generation(
             project_root,
             crate::runtime_server_workspace::WorkspaceGenerationDelta {
                 schema_id: crate::runtime_server_workspace::WORKSPACE_GENERATION_DELTA_SCHEMA_ID.to_owned(),
-                schema_version: "1".to_owned(),
+                schema_version: "2".to_owned(),
                 base_generation_digest,
                 owners,
                 tombstones,
+                relations,
             },
         )
         .await

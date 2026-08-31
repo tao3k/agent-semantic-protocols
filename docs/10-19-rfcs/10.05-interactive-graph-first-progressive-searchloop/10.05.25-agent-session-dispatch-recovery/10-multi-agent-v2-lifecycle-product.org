@@ -3,23 +3,21 @@
 
 * Status
 
-Normative ASP downstream control-plane model for Codex Multi-Agent V2 and a
-replacement for the authority model in =ASPLayeredAgentLifecycle=.  It is not a
-generic multi-agent runtime and not an alternative Codex scheduler.  The older
-model remains historical proof evidence; its =profileCurrent= field is not an
-input to control-plane authority.
+Normative ASP downstream control-plane model for Codex Multi-Agent V2. It is
+not a generic multi-agent runtime and not an alternative Codex scheduler. No
+legacy lifecycle model remains an authority input.
 
 * Ownership boundary
 
 Codex is the execution-plane authority.  It owns scheduling and live host
-operations: spawn, resume, send, interrupt, archive, and the visible host tree.
+operations: spawn, list, followup, queue-only send, interrupt, and wait.
 ASP is a downstream user of that execution plane and must use the Codex
 capabilities rather than reproduce them.
 
 ASP owns only the durable control-plane projection over facts returned by
 Codex: stable task and agent identity, parent/root topology, physical
-generation, delivered receipts, archive and path-release evidence, and the
-admission decision for the next downstream request.  ASP may request an
+generation, delivered receipts, path observation, and the admission decision
+for the next downstream request. ASP may request an
 operation through a Codex-provided capability; it cannot claim that the
 operation happened until Codex evidence is observed and indexed.
 
@@ -43,7 +41,7 @@ An agent node contains a root session id, an optional parent session id, a
 stable resident name and role, optional provider-owned agent type, and one
 typed AgentSession lifecycle projection.  Model name and reasoning effort are
 observations or spawn policy; neither participates in durable node identity,
-binding freshness, dispatch authority, archive authority, or replacement.
+binding freshness or dispatch authority.
 
 A well-formed graph requires:
 
@@ -81,9 +79,8 @@ late receipt from an older physical child is rejected.
 
 Workspace Server restart changes availability and epoch, but not root-task,
 agent, turn, or delegation identity.  Failure, quarantine, or stale binding of
-one child does not archive or retarget its siblings.  Replacement remains a
-leaf admission requiring archive/retire, indexed termination and path release,
-generation alignment, and a strictly newer physical generation.
+one child does not retarget its siblings. A present path always selects
+=followup_task=; only an explicitly absent path selects =spawn_agent=.
 
 Multi-Agent v2 graph validation is fail-closed.  Missing evidence is
 =unobserved=; it is not =idle=, =unbound=, =delivered=, or =completed=.

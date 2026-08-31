@@ -9,6 +9,9 @@ use agent_semantic_client_db::runtime_server_workspace::{
 use std::time::Instant;
 use tempfile::tempdir;
 
+#[path = "selector_query_keys.rs"]
+mod selector_query_keys;
+
 fn project_root(workspace_identity: &str) -> std::path::PathBuf {
     std::path::PathBuf::from("/runtime-server-workspace-fixture").join(workspace_identity)
 }
@@ -35,6 +38,7 @@ fn owner(path: &str, selector: &str, bytes: &[u8]) -> WorkspaceOwnerSnapshot {
             selector: selector.to_owned(),
             byte_start: 0,
             byte_end: bytes.len(),
+            query_keys: Vec::new(),
             derived_projections: Vec::new(),
         }],
     }
@@ -153,6 +157,7 @@ async fn process_cold_exact_projection_relocates_scoped_impl_and_method_identity
         selector: "rust://src/current.rs#item/method/parse/scope/implementation-owner/type/CliOptions/scope/trait-owner/trait/Parse".to_owned(),
         byte_start: 0,
         byte_end: source.len(),
+        query_keys: Vec::new(),
         derived_projections: Vec::new(),
     });
     registry
@@ -254,6 +259,7 @@ async fn warm_canonical_relocation_has_sub_250us_p95_and_bounded_p99() {
             selector: format!("rust://src/unrelated.rs#item/function/unrelated-{index:05}"),
             byte_start: 0,
             byte_end: unrelated_source.len(),
+            query_keys: Vec::new(),
             derived_projections: Vec::new(),
         })
         .collect();
@@ -805,6 +811,7 @@ async fn process_cold_exact_projection_has_sub_ms_p95_and_bounded_p99() {
             selector: format!("rust://src/lib.rs#item/function/target-{index:04}"),
             byte_start: 0,
             byte_end: source.len(),
+            query_keys: Vec::new(),
             derived_projections: Vec::new(),
         })
         .collect();
@@ -882,6 +889,7 @@ async fn process_cold_owner_snapshot_is_independent_of_unrelated_selector_volume
             selector: format!("rust://src/unrelated.rs#item/function/unrelated-{index:05}"),
             byte_start: 0,
             byte_end: unrelated_source.len(),
+            query_keys: Vec::new(),
             derived_projections: Vec::new(),
         })
         .collect();

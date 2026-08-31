@@ -28,6 +28,7 @@
         "hello",
         "open-generation",
         "evaluate",
+        "search-evidence",
         "timeline",
         "release-generation",
         "cancel",
@@ -51,7 +52,7 @@
       "if": {
         "properties": {
           "messageKind": {
-            "enum": ["open-generation", "evaluate", "release-generation"]
+            "enum": ["open-generation", "evaluate", "search-evidence", "release-generation"]
           }
         }
       },
@@ -68,6 +69,16 @@
     {
       "if": {"properties": {"messageKind": {"const": "cancel"}}},
       "then": {"required": ["cancellationId"]}
+    },
+    {
+      "if": {"properties": {"messageKind": {"const": "search-evidence"}}},
+      "then": {
+        "properties": {
+          "payloadSchemaId": {
+            "const": "agent.semantic-protocols.asp-python-graphs-search-evidence"
+          }
+        }
+      }
     }
   ],
   "$defs": {

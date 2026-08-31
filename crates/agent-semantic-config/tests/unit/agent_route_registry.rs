@@ -7,6 +7,66 @@ fn canonical_registry_path() -> std::path::PathBuf {
     std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../agents/config.toml")
 }
 
+fn canonical_agent_prompt(file_name: &str) -> String {
+    let path = canonical_registry_path()
+        .parent()
+        .expect("agent registry directory")
+        .join(file_name);
+    let source = std::fs::read_to_string(&path).expect("read canonical agent prompt");
+    if file_name.ends_with("_codex.toml") {
+        return toml::from_str::<toml::Value>(&source)
+            .expect("parse Codex agent projection")
+            .get("developer_instructions")
+            .and_then(toml::Value::as_str)
+            .expect("Codex developer instructions")
+            .to_owned();
+    }
+
+    source
+        .splitn(3, "---")
+        .nth(2)
+        .expect("Claude agent prompt body")
+        .trim()
+        .to_owned()
+}
+
+#[test]
+fn canonical_agent_prompts_contain_only_role_boundary_and_playbook_flow() {
+    const PROMPTS: [&str; 6] = [
+        "asp_explorer_codex.toml",
+        "asp_explorer_claude.md",
+        "asp_testing_codex.toml",
+        "asp_testing_claude.md",
+        "asp_coding_codex.toml",
+        "asp_coding_claude.md",
+    ];
+    const IMPLEMENTATION_LEAKS: [&str; 8] = [
+        "schemaVersion",
+        "schemaId",
+        "asp.search.playbook-receipt",
+        "seed products",
+        "hookMatcherGeneration",
+        "ASP_NO_AGENT",
+        "/root/",
+        "agent.semantic-protocols",
+    ];
+
+    for file_name in PROMPTS {
+        let prompt = canonical_agent_prompt(file_name);
+        assert!(prompt.contains("Role:"), "{file_name} requires a role");
+        assert!(
+            prompt.contains("Playbook:"),
+            "{file_name} requires a Playbook flow"
+        );
+        for leak in IMPLEMENTATION_LEAKS {
+            assert!(
+                !prompt.contains(leak),
+                "{file_name} leaks implementation detail `{leak}`"
+            );
+        }
+    }
+}
+
 #[test]
 fn codex_worker_and_default_roles_resolve_only_to_owner_scoped_coding() {
     let loaded =

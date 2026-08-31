@@ -2,6 +2,9 @@
   "$schema": "language-schema-profile-registry.schema.json",
   "schemaId": "agent.semantic-protocols.language-schema-profile-registry",
   "schemaVersion": "1",
+  "wireArtifacts": {
+    "asp-client-protocol-v1": "asp-client-protocol.v1.proto"
+  },
   "rootSets": {
     "provider-contract": [
       "provider-registration.schema.json",
@@ -22,13 +25,23 @@
       "asp-client-frame.schema.json",
       "asp-client-conformance.schema.json",
       "asp-client-search-request.schema.json",
+      "asp-client-source-index-lookup-request.schema.json",
+      "resident-search-result.v1.schema.json",
       "asp-client-exact-query-request.schema.json",
       "asp-client-exact-query-response.schema.json",
       "asp-client-exact-query-failure.schema.json",
+      "asp-client-query-readiness-failure.schema.json",
+      "asp-client-dispatch-failure.schema.json",
       "asp-client-work-counters.schema.json",
       "asp-client-schema-bundle-request.schema.json",
       "asp-client-schema-bundle-response.schema.json",
       "asp-client-owner-search-request.schema.json",
+      "asp-client-owner-search-response.schema.json",
+      "grpc-warm-latency-receipt.schema.json",
+      "owner-search-payload-reduction-receipt.schema.json",
+      "lexical-postings-work-reduction-receipt.schema.json",
+      "rg-coverage-receipt.schema.json",
+      "runtime-client-terminal.schema.json",
       "asp-client-workspace-source-mutation.schema.json",
       "asp-client-cancellation-probe-request.schema.json",
       "asp-client-cancellation-probe-response.schema.json",
@@ -49,6 +62,7 @@
       "semantic-exact-selector-receipt.v1.schema.json",
       "semantic-owner-item-evidence.v1.schema.json",
       "semantic-content-compaction.v1.schema.json",
+      "search-generation-change-set.v1.schema.json",
       "semantic-read-packet.v1.schema.json",
       "semantic-source-location.v1.schema.json",
       "semantic-tree-sitter-provenance.v1.schema.json",
@@ -344,11 +358,13 @@
           "agent-root-",
           "agent-session-",
           "multi-agent-",
-          "subagent-",
-          "host-agent-",
-          "agent-semantic-project-",
-          "codex-session-",
-          "codex-collaboration-"
+        "subagent-",
+        "host-agent-",
+        "host-session-",
+        "agent-semantic-project-",
+        "codex-session-",
+        "codex-child-",
+        "codex-collaboration-"
         ]
       },
       "membershipOverrides": {
@@ -420,6 +436,18 @@
       "namespace": {
         "filenamePrefixes": [
           "asp.live-corpus-"
+        ]
+      }
+    },
+    {
+      "familyId": "asp.schema-family.content-identity",
+      "owner": "crates/agent-semantic-content-identity",
+      "rationale": "Content identity owns the canonical binding between source bytes and their content-addressed identity.",
+      "priority": 260,
+      "parentFamilyId": "asp.schema-family.semantic",
+      "namespace": {
+        "filenamePrefixes": [
+          "content-binding"
         ]
       }
     },

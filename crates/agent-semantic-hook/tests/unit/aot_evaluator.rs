@@ -125,12 +125,31 @@ fn codex_configured_agent_type_makes_dispatch_idempotent() {
 }
 
 #[test]
+fn codex_child_identity_reaches_dispatch_fixed_point_on_first_pre_tool() {
+    let payload = serde_json::json!({
+        "tool_name": "Bash",
+        "tool_input": {"command": "cargo test -p fixture"},
+        "agent_id": "child-thread-id",
+        "agent_type": "asp_testing",
+        "session_id": "child-thread-id",
+        "transcript_path": "/rollouts/child.jsonl"
+    })
+    .to_string();
+    assert_eq!(
+        evaluate_pre_tool(TESTING_GENERATION, &payload, "Bash"),
+        Ok(None),
+        "the configured child role must terminate dispatch in the same PreTool call"
+    );
+}
+
+#[test]
 fn temporary_subagent_identity_cannot_satisfy_registered_agent_dispatch() {
     let payload = serde_json::json!({
         "tool_name": "Bash",
         "tool_input": {"command": "cargo test -p fixture"},
         "agent_id": "child-testing",
-        "agent_role": "temporary"
+        "agent_role": "temporary",
+        "session_id": "parent-session-1"
     })
     .to_string();
     let decision = evaluate_pre_tool(TESTING_GENERATION, &payload, "Bash")
@@ -139,6 +158,17 @@ fn temporary_subagent_identity_cannot_satisfy_registered_agent_dispatch() {
     assert_eq!(decision.reason_kind, "agent-choice-required");
     assert!(decision.message.contains("collaboration.spawn_agent({"));
     assert!(decision.message.contains("collaboration.list_agents({"));
+    assert!(decision.message.contains(
+        "asp session register-child --parent-thread-id parent-session-1 --agent-name asp_testing"
+    ));
+    assert!(decision.message.contains(
+        "Invoke Host tool `Bash` exactly once with input {\\\"command\\\":\\\"cargo test -p fixture\\\"}"
+    ));
+    assert!(
+        decision
+            .message
+            .contains("parent-authored task exactly as written")
+    );
     assert!(!decision.message.contains("`@asp_testing`"));
     assert!(!decision.message.contains("{{agentDispatchMessage}}"));
 }

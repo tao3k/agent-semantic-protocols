@@ -683,3 +683,8 @@ check-python-policy:
 
 report-python-policy:
     uv run --project {{python_harness_project}} --frozen asp-python check --full {{repo}} || true
+# Fast develop mode: build and atomically publish the debug asp binary.
+# Runtime configuration still owns the stable install slot; this is not a
+# second publication authority.
+agent-tools-install-asp-dev bin_dir="":
+    @just agent-tools-install-protocol-debug "{{bin_dir}}"

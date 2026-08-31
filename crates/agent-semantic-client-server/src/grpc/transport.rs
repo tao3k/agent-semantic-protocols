@@ -7,8 +7,10 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 
 use agent_semantic_client_protocol::{ClientFrame, ClientRequestId};
-use tokio::sync::{Mutex, mpsc, oneshot, watch};
-use tokio_stream::{Stream, StreamExt, wrappers::ReceiverStream};
+use futures_util::{StreamExt as FuturesStreamExt, stream::FuturesUnordered};
+use parking_lot::Mutex;
+use tokio::sync::{mpsc, oneshot, watch};
+use tokio_stream::{Stream, wrappers::ReceiverStream};
 use tonic::{Request, Response, Status, Streaming};
 
 use crate::{AspClientDispatcher, AspClientFrameService};
@@ -18,6 +20,11 @@ use super::generated::{
     asp_client_protocol_client::AspClientProtocolClient,
     asp_client_protocol_server::{AspClientProtocol, AspClientProtocolServer},
 };
+use super::wire::{decode_frame, encode_frame};
+
+const CLIENT_FRAME_RESPONSE_BUDGET: std::time::Duration = std::time::Duration::from_secs(10);
+const CLIENT_SESSION_CONNECT_BUDGET: std::time::Duration = std::time::Duration::from_secs(2);
+const CLIENT_FRAME_SESSION_CAPACITY: usize = 32;
 
 pub struct AspClientGrpcService<D> {
     frames: Arc<AspClientFrameService<D>>,
@@ -42,45 +49,59 @@ impl<D: AspClientDispatcher> AspClientProtocol for AspClientGrpcService<D> {
         let frames = Arc::clone(&self.frames);
         let (outbound, receiver) = mpsc::channel(32);
         let supervisor = tokio::spawn(async move {
-            let mut requests = tokio::task::JoinSet::new();
-            while let Some(envelope) = inbound.next().await {
-                let envelope = match envelope {
-                    Ok(envelope) => envelope,
-                    Err(error) => {
-                        let _ = outbound.send(Err(error)).await;
-                        break;
+            let mut inbound_open = true;
+            let mut requests = FuturesUnordered::new();
+            loop {
+                if !inbound_open && requests.is_empty() {
+                    break;
+                }
+                tokio::select! {
+                    envelope = inbound.next(), if inbound_open && requests.len() < CLIENT_FRAME_SESSION_CAPACITY => {
+                        match envelope {
+                            Some(Ok(envelope)) => match decode_frame(envelope) {
+                                Ok(frame) => requests.push(dispatch_client_frame(Arc::clone(&frames), frame)),
+                                Err(error) => {
+                                    if outbound.send(Err(Status::invalid_argument(format!(
+                                        "decode ASP ClientFrame: {error}"
+                                    )))).await.is_err() {
+                                        break;
+                                    }
+                                }
+                            },
+                            Some(Err(error)) => {
+                                let _ = outbound.send(Err(error)).await;
+                                break;
+                            }
+                            None => inbound_open = false,
+                        }
                     }
-                };
-                let frame: ClientFrame = match serde_json::from_slice(&envelope.client_frame_json) {
-                    Ok(frame) => frame,
-                    Err(error) => {
-                        let _ = outbound
-                            .send(Err(Status::invalid_argument(format!(
-                                "decode ASP ClientFrame: {error}"
-                            ))))
-                            .await;
-                        continue;
+                    completed = requests.next(), if !requests.is_empty() => {
+                        if let Some(Some(result)) = completed
+                            && outbound.send(result).await.is_err()
+                        {
+                            break;
+                        }
                     }
-                };
-                let frames = Arc::clone(&frames);
-                let outbound = outbound.clone();
-                requests.spawn(async move {
-                    let result = match frames.handle_frame(frame).await {
-                        Ok(Some(response)) => serde_json::to_vec(&response)
-                            .map(|client_frame_json| ClientFrameEnvelope { client_frame_json })
-                            .map_err(|error| Status::internal(error.to_string())),
-                        Ok(None) => return,
-                        Err(error) => Err(Status::failed_precondition(error)),
-                    };
-                    let _ = outbound.send(result).await;
-                });
+                }
             }
-            while requests.join_next().await.is_some() {}
         });
         Ok(Response::new(Box::pin(GrpcResponseStream {
             receiver: ReceiverStream::new(receiver),
             supervisor,
         })))
+    }
+}
+
+async fn dispatch_client_frame<D: AspClientDispatcher>(
+    frames: Arc<AspClientFrameService<D>>,
+    frame: ClientFrame,
+) -> Option<Result<ClientFrameEnvelope, Status>> {
+    match frames.handle_frame(frame).await {
+        Ok(Some(response)) => {
+            Some(encode_frame(response).map_err(|error| Status::internal(error.to_string())))
+        }
+        Ok(None) => None,
+        Err(error) => Some(Err(Status::failed_precondition(error))),
     }
 }
 
@@ -161,27 +182,33 @@ impl AspClientGrpcTransport {
         let channel = connect_unix_channel(socket_path.into()).await?;
         let mut client = AspClientProtocolClient::new(channel);
         let (outbound, receiver) = mpsc::channel(32);
-        let mut inbound = client
-            .session(Request::new(ReceiverStream::new(receiver)))
-            .await
-            .map_err(|error| error.to_string())?
-            .into_inner();
+        let mut inbound = tokio::time::timeout(
+            CLIENT_SESSION_CONNECT_BUDGET,
+            client.session(Request::new(ReceiverStream::new(receiver))),
+        )
+        .await
+        .map_err(|_| {
+            format!(
+                "reasonKind=runtime-client-session-deadline-exceeded budgetMs={} retryAdmitted=false",
+                CLIENT_SESSION_CONNECT_BUDGET.as_millis()
+            )
+        })?
+        .map_err(|error| error.to_string())?
+        .into_inner();
         let pending: Arc<Mutex<HashMap<ClientRequestId, PendingResponse>>> =
             Arc::new(Mutex::new(HashMap::new()));
         let response_pending = Arc::clone(&pending);
         let response_reader = tokio::spawn(async move {
             loop {
                 let response = match inbound.message().await {
-                    Ok(Some(envelope)) => {
-                        serde_json::from_slice::<ClientFrame>(&envelope.client_frame_json)
-                            .map_err(|error| format!("decode ASP ClientFrame response: {error}"))
-                    }
+                    Ok(Some(envelope)) => decode_frame(envelope)
+                        .map_err(|error| format!("decode ASP ClientFrame response: {error}")),
                     Ok(None) => Err("ASP Client Protocol gRPC stream closed".to_owned()),
                     Err(error) => Err(error.to_string()),
                 };
                 let request_id = response.as_ref().ok().and_then(frame_request_id).cloned();
                 if let Some(request_id) = request_id {
-                    if let Some(sender) = response_pending.lock().await.remove(&request_id) {
+                    if let Some(sender) = response_pending.lock().remove(&request_id) {
                         let _ = sender.send(response);
                     }
                     continue;
@@ -189,7 +216,7 @@ impl AspClientGrpcTransport {
                 let message = response
                     .err()
                     .unwrap_or_else(|| "ASP Client Protocol response has no requestId".to_owned());
-                let pending = std::mem::take(&mut *response_pending.lock().await);
+                let pending = std::mem::take(&mut *response_pending.lock());
                 for (_, sender) in pending {
                     let _ = sender.send(Err(message.clone()));
                 }
@@ -211,7 +238,6 @@ impl AspClientGrpcTransport {
         if self
             .pending
             .lock()
-            .await
             .insert(request_id.clone(), sender)
             .is_some()
         {
@@ -220,20 +246,25 @@ impl AspClientGrpcTransport {
                 request_id.as_str()
             ));
         }
-        let client_frame_json = serde_json::to_vec(&frame)
+        let envelope = encode_frame(frame)
             .map_err(|error| format!("encode ASP ClientFrame request: {error}"))?;
-        if self
-            .outbound
-            .send(ClientFrameEnvelope { client_frame_json })
-            .await
-            .is_err()
-        {
-            self.pending.lock().await.remove(&request_id);
+        if self.outbound.send(envelope).await.is_err() {
+            self.pending.lock().remove(&request_id);
             return Err("ASP Client Protocol gRPC stream is closed".to_owned());
         }
-        receiver
-            .await
-            .map_err(|_| "ASP Client Protocol response channel closed".to_owned())?
+        match tokio::time::timeout(CLIENT_FRAME_RESPONSE_BUDGET, receiver).await {
+            Ok(response) => {
+                response.map_err(|_| "ASP Client Protocol response channel closed".to_owned())?
+            }
+            Err(_) => {
+                self.pending.lock().remove(&request_id);
+                Err(format!(
+                    "reasonKind=runtime-client-response-deadline-exceeded requestId={} budgetMs={}",
+                    request_id.as_str(),
+                    CLIENT_FRAME_RESPONSE_BUDGET.as_millis(),
+                ))
+            }
+        }
     }
 }
 
@@ -250,16 +281,23 @@ fn frame_request_id(frame: &ClientFrame) -> Option<&ClientRequestId> {
 }
 
 async fn connect_unix_channel(socket_path: PathBuf) -> Result<tonic::transport::Channel, String> {
-    tonic::transport::Endpoint::try_from("http://[::]:50051")
-        .map_err(|error| error.to_string())?
-        .connect_with_connector(tower::service_fn(move |_| {
-            let socket_path = socket_path.clone();
-            async move {
-                tokio::net::UnixStream::connect(socket_path)
-                    .await
-                    .map(hyper_util::rt::TokioIo::new)
-            }
-        }))
+    let endpoint = tonic::transport::Endpoint::try_from("http://[::]:50051")
+        .map_err(|error| error.to_string())?;
+    let connection = endpoint.connect_with_connector(tower::service_fn(move |_| {
+        let socket_path = socket_path.clone();
+        async move {
+            tokio::net::UnixStream::connect(socket_path)
+                .await
+                .map(hyper_util::rt::TokioIo::new)
+        }
+    }));
+    tokio::time::timeout(CLIENT_SESSION_CONNECT_BUDGET, connection)
         .await
+        .map_err(|_| {
+            format!(
+                "reasonKind=runtime-client-connect-deadline-exceeded budgetMs={} retryAdmitted=false",
+                CLIENT_SESSION_CONNECT_BUDGET.as_millis()
+            )
+        })?
         .map_err(|error| error.to_string())
 }

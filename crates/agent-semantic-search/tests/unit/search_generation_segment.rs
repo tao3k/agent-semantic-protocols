@@ -1,4 +1,4 @@
-use crate::{
+use agent_semantic_search::{
     SearchGenerationSection, SearchGenerationSectionKind, SearchGenerationSectionRepresentation,
     ValidatedSearchGenerationSegment, encode_search_generation_segment,
 };
@@ -9,7 +9,6 @@ fn sections() -> Vec<SearchGenerationSection> {
         SearchGenerationSectionKind::ProjectResolutions,
         SearchGenerationSectionKind::OwnerDirectory,
         SearchGenerationSectionKind::OwnerBytes,
-        SearchGenerationSectionKind::LexicalIndex,
         SearchGenerationSectionKind::SelectorIndex,
         SearchGenerationSectionKind::GraphRelations,
         SearchGenerationSectionKind::MerkleOwnerIndex,
@@ -35,9 +34,9 @@ fn sections() -> Vec<SearchGenerationSection> {
 }
 
 #[test]
-fn v1_search_generation_segment_is_zero_copy_addressable() {
-    let bytes = encode_search_generation_segment(7, sections()).expect("encode v1 segment");
-    let segment = ValidatedSearchGenerationSegment::parse(&bytes).expect("validate v1 segment");
+fn v3_search_generation_segment_is_zero_copy_addressable() {
+    let bytes = encode_search_generation_segment(7, sections()).expect("encode v3 segment");
+    let segment = ValidatedSearchGenerationSegment::parse(&bytes).expect("validate v3 segment");
     assert_eq!(segment.epoch(), 7);
     let (owner_bytes, representation, records) =
         segment.section(SearchGenerationSectionKind::OwnerBytes);
@@ -50,8 +49,8 @@ fn v1_search_generation_segment_is_zero_copy_addressable() {
 }
 
 #[test]
-fn corrupt_or_truncated_v1_search_generation_is_rejected() {
-    let bytes = encode_search_generation_segment(1, sections()).expect("encode v1 segment");
+fn corrupt_or_truncated_v3_search_generation_is_rejected() {
+    let bytes = encode_search_generation_segment(1, sections()).expect("encode v3 segment");
     assert!(ValidatedSearchGenerationSegment::parse(&bytes[..bytes.len() - 1]).is_err());
     let mut corrupt = bytes;
     let last = corrupt.len() - 1;
@@ -63,7 +62,7 @@ fn corrupt_or_truncated_v1_search_generation_is_rejected() {
 }
 
 #[test]
-fn missing_or_duplicate_v1_sections_are_rejected_before_publication() {
+fn missing_or_duplicate_v3_sections_are_rejected_before_publication() {
     let mut missing = sections();
     missing.pop();
     assert!(encode_search_generation_segment(1, missing).is_err());

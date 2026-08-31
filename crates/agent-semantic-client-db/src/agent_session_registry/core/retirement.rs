@@ -1,61 +1,6 @@
 use std::path::Path;
 
-use turso::Connection;
-
 use super::storage::connect_turso_agent_session_registry;
-
-pub(super) async fn bootstrap_turso_agent_session_retirement_schema(
-    connection: &Connection,
-) -> Result<(), String> {
-    connection
-        .execute_batch(
-            "CREATE TABLE IF NOT EXISTS asp_agent_session_retirements (
-                project_id TEXT NOT NULL,
-                root_session_id TEXT NOT NULL,
-                name TEXT NOT NULL,
-                session_id TEXT NOT NULL UNIQUE,
-                physical_generation INTEGER NOT NULL,
-                retired_at INTEGER NOT NULL,
-                PRIMARY KEY(project_id, root_session_id, name, physical_generation)
-            );
-            CREATE INDEX IF NOT EXISTS idx_asp_agent_session_retirements_route
-                ON asp_agent_session_retirements(project_id, root_session_id, name);
-            CREATE TRIGGER IF NOT EXISTS asp_agent_sessions_reject_retired_session
-            BEFORE INSERT ON asp_agent_sessions
-            WHEN EXISTS (
-                SELECT 1 FROM asp_agent_session_retirements AS retired
-                WHERE retired.project_id = NEW.project_id
-                  AND retired.session_id = NEW.session_id
-            )
-            BEGIN
-                SELECT RAISE(ABORT, 'retired physical session generation cannot be registered again');
-            END;
-            CREATE TRIGGER IF NOT EXISTS asp_agent_sessions_advance_retired_generation
-            AFTER INSERT ON asp_agent_sessions
-            BEGIN
-                UPDATE asp_agent_sessions
-                SET physical_generation = MAX(
-                    NEW.physical_generation,
-                    COALESCE(
-                        (
-                            SELECT MAX(retired.physical_generation) + 1
-                            FROM asp_agent_session_retirements AS retired
-                            WHERE retired.project_id = NEW.project_id
-                              AND retired.root_session_id = NEW.root_session_id
-                              AND retired.name = NEW.name
-                        ),
-                        NEW.physical_generation
-                    )
-                )
-                WHERE project_id = NEW.project_id
-                  AND root_session_id = NEW.root_session_id
-                  AND name = NEW.name;
-            END;",
-        )
-        .await
-        .map_err(|error| format!("failed to initialize Turso session retirement schema: {error}"))?;
-    Ok(())
-}
 
 pub(super) async fn turso_retire_and_delete_session(
     db_path: &Path,

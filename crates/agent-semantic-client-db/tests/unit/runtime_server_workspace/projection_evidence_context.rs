@@ -119,6 +119,7 @@ fn owner_with_projection(
             selector: selector.to_owned(),
             byte_start: 0,
             byte_end: source.len(),
+            query_keys: Vec::new(),
             derived_projections: vec![projection],
         }],
     }

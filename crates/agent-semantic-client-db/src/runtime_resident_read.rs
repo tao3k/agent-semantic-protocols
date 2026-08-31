@@ -76,6 +76,37 @@ impl RuntimeResidentReadClient {
         })
     }
 
+    /// Read bounded owner-search inputs without copying source or projections.
+    pub fn read_runtime_owner_search(
+        &self,
+        owner_path: &str,
+        query_terms: &[String],
+        limit: usize,
+    ) -> Result<crate::runtime_server_workspace::WorkspaceRuntimeOwnerSearchRead, String> {
+        let generation_digest = self.generation_digest();
+        let root_digest = self.root_digest();
+        Ok(
+            match self
+                .exact_projection
+                .owner_search_snapshot(owner_path, query_terms, limit)?
+            {
+                Some(owner) => {
+                    crate::runtime_server_workspace::WorkspaceRuntimeOwnerSearchRead::Owner {
+                        generation_digest,
+                        root_digest,
+                        owner,
+                    }
+                }
+                None => {
+                    crate::runtime_server_workspace::WorkspaceRuntimeOwnerSearchRead::OwnerMissing {
+                        generation_digest,
+                        root_digest,
+                    }
+                }
+            },
+        )
+    }
+
     pub fn read_merkle_owner(
         &self,
         owner_path: &str,

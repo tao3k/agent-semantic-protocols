@@ -41,6 +41,7 @@ mod root_language_facade;
 mod runtime_server;
 mod schema;
 mod search_config;
+mod session;
 
 pub(crate) use dispatch::{run_protocol_command, run_protocol_command_started};
 pub(in crate::command) use protocol_binary::ProtocolBinaryInstallPlan;

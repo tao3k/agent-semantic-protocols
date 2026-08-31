@@ -19,5 +19,20 @@ fn main() {
         "asp-rust-project-harness-policy",
         config,
     );
-    rust_lang_project_harness::assert_rust_project_harness_downstream_policy_from_env(&policy);
+    let policy_bytes = serde_json::to_vec(policy.config())
+        .expect("serialize ASP Rust build-support harness policy");
+    let policy_digest = format!("blake3-256:{}", blake3::hash(&policy_bytes).to_hex());
+    let out_dir = std::env::var_os("OUT_DIR")
+        .map(std::path::PathBuf::from)
+        .expect("Cargo OUT_DIR is required; implicit cache fallback is forbidden");
+    let authority = rust_lang_project_harness::RustProjectHarnessBuildGateAuthority::new(
+        out_dir.join("rust-project-harness-self-policy-cache"),
+        policy_digest,
+    )
+    .expect("construct ASP Rust build-support harness authority");
+    rust_lang_project_harness::assert_rust_project_harness_downstream_policy_with_authority(
+        project_root,
+        &policy,
+        &authority,
+    );
 }

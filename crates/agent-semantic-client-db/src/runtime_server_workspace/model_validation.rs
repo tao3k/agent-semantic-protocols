@@ -44,9 +44,20 @@ impl WorkspaceMemoryGeneration {
         )
         .map_err(|error| format!("workspace generation evidence is incomplete: {error}"))?;
         let mut unique_relations = BTreeSet::new();
-        for relation in &self.relations {
-            relation.validate()?;
-            if !unique_relations.insert(relation) {
+        let owner_paths = self
+            .owners
+            .iter()
+            .map(|owner| owner.owner_path.as_str())
+            .collect::<BTreeSet<_>>();
+        for owned in &self.relations {
+            owned.relation.validate()?;
+            if !owner_paths.contains(owned.owner_path.as_str()) {
+                return Err(format!(
+                    "workspace generation relation owner is absent: {}",
+                    owned.owner_path.as_str()
+                ));
+            }
+            if !unique_relations.insert(owned) {
                 return Err(
                     "workspace generation contains a duplicate provider relation".to_owned(),
                 );
@@ -82,6 +93,7 @@ pub(crate) fn validate_owners(owners: &[WorkspaceOwnerSnapshot]) -> Result<(), S
         }
         for selector in &owner.selectors {
             validate_selector(owner, selector)?;
+            validate_selector_query_keys(selector)?;
             if selectors
                 .insert(selector.selector.as_str(), owner.owner_path.as_str())
                 .is_some()
@@ -92,6 +104,21 @@ pub(crate) fn validate_owners(owners: &[WorkspaceOwnerSnapshot]) -> Result<(), S
                 ));
             }
         }
+    }
+    Ok(())
+}
+
+fn validate_selector_query_keys(selector: &super::WorkspaceSelectorSnapshot) -> Result<(), String> {
+    if selector.query_keys.iter().any(|key| key.trim().is_empty())
+        || selector
+            .query_keys
+            .windows(2)
+            .any(|pair| pair[0] >= pair[1])
+    {
+        return Err(format!(
+            "workspace selector query keys are not canonical: selector={}",
+            selector.selector
+        ));
     }
     Ok(())
 }

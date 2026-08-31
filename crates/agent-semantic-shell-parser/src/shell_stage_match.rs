@@ -349,7 +349,7 @@ fn parse_bash_command_candidates_with_shell_operands(
     }
     let scripts = candidates
         .iter()
-        .filter_map(|candidate| shell_execution_operand(candidate.words()))
+        .flat_map(|candidate| shell_execution_operands(candidate.words()))
         .map(str::to_owned)
         .collect::<Vec<_>>();
     for script in scripts {
@@ -365,24 +365,60 @@ fn parse_bash_command_candidates_with_shell_operands(
     Ok(candidates)
 }
 
-fn shell_execution_operand(words: &[String]) -> Option<&str> {
+fn shell_execution_operands(words: &[String]) -> Vec<&str> {
+    let mut operands = Vec::new();
     let mut executable_index = 0usize;
-    let mut executable = words.first()?.rsplit('/').next()?;
+    let Some(mut executable) = words.first().map(|word| command_token_basename(word)) else {
+        return operands;
+    };
     if executable == "env" {
-        executable_index = words.iter().enumerate().skip(1).find_map(|(index, word)| {
+        let Some(index) = words.iter().enumerate().skip(1).find_map(|(index, word)| {
             (!word.starts_with('-') && !word.contains('=')).then_some(index)
-        })?;
-        executable = words[executable_index].rsplit('/').next()?;
+        }) else {
+            return operands;
+        };
+        executable_index = index;
+        executable = command_token_basename(&words[executable_index]);
     }
-    if !matches!(executable, "bash" | "sh" | "zsh") {
-        return None;
+    if matches!(executable, "bash" | "sh" | "zsh")
+        && let Some(script) = words[executable_index + 1..].windows(2).find_map(|pair| {
+            let option = pair[0].as_str();
+            let is_command_option = option == "--command"
+                || (option.starts_with('-') && option.trim_start_matches('-').contains('c'));
+            is_command_option.then_some(pair[1].as_str())
+        })
+    {
+        operands.push(script);
     }
-    words[executable_index + 1..].windows(2).find_map(|pair| {
-        let option = pair[0].as_str();
-        let is_command_option = option == "--command"
-            || (option.starts_with('-') && option.trim_start_matches('-').contains('c'));
-        is_command_option.then_some(pair[1].as_str())
-    })
+    if matches!(
+        executable,
+        "powershell" | "powershell.exe" | "pwsh" | "pwsh.exe"
+    ) && let Some(script) = words[executable_index + 1..].windows(2).find_map(|pair| {
+        matches!(
+            pair[0].to_ascii_lowercase().as_str(),
+            "-c" | "-command" | "-encodedcommand"
+        )
+        .then_some(pair[1].as_str())
+    }) {
+        operands.push(script);
+    }
+
+    // Generic command runners conventionally carry their shell program in the
+    // argv immediately following the `run` subcommand.  Recognize that shape,
+    // rather than wrapper executable names, so project-local launchers and
+    // future wrappers receive the same bounded recursive parse as `sh -c`.
+    // A program must contain whitespace or shell control syntax; a bare task
+    // label is not reinterpreted as another executable.
+    operands.extend(words.windows(2).filter_map(|pair| {
+        (pair[0] == "run"
+            && pair[1].chars().any(|character| {
+                character.is_ascii_whitespace() || ";|&<>\n\r".contains(character)
+            }))
+        .then_some(pair[1].as_str())
+    }));
+    operands.sort_unstable();
+    operands.dedup();
+    operands
 }
 
 fn simple_command_words(command: &str) -> Option<Vec<String>> {

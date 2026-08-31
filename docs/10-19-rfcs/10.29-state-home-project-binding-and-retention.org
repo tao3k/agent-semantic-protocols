@@ -1,0 +1,87 @@
+#+title: State Home Project Binding and Retention Authority
+#+author: ASP Architecture
+#+property: header-args :mkdirp yes
+
+* Status
+
+This RFC defines the current State Home identity, physical layout, and
+retention authority. Schema identity and schema version live in documents;
+physical namespaces never carry =v1=, =v2=, or =state-v*= suffixes.
+
+* First divergence
+
+The previous tree nested workspace state under a truncated repository token,
+materialized directories during resolution, and treated directory timestamps
+as activity. Tests consequently left hundreds of partial project/workspace
+trees, while reachability receipts protected only a small subset of artifact
+content. A 36 GiB retired database and whole-repository source snapshots were
+not bounded by one cleanup authority.
+
+* Identity product
+
+=ProjectBinding= is the product of three independent axes:
+
+1. an optional Host project reference used only for Host navigation;
+2. a repository content identity derived from repository facts;
+3. a workspace identity derived from repository identity and canonical root.
+
+The Host project id is never a storage key. Projectless work has no Host
+reference and remains fully valid. Full BLAKE3 identities are retained in
+receipts and physical workspace names; truncated hash tokens are forbidden.
+
+* Physical layout
+
+#+begin_example
+$ASP_STATE_HOME/
+  catalog/state.turso
+  workspaces/<workspace-digest>/facts.turso
+  blobs/blake3-256/<content-digest>
+  runtime/
+  receipts/
+  trash/
+#+end_example
+
+The catalog relates Host references, repositories, workspaces, observations,
+leases, and retained objects. Content is stored once in the global blob CAS.
+Workspace records reference content and never reproduce a source tree.
+
+* Mutation boundary
+
+Identity resolution is pure and performs no filesystem write. An explicit
+open/materialize transaction may create a workspace and publish an observation.
+Tests inject a State Home root and fail if the global root changes.
+
+* Retention
+
+Retention consumes typed observations and leases. Filesystem mtime is not
+lifecycle authority. Active workspace/session leases, Runtime
+active/healthy/pending references, and provider build leases protect objects.
+An unleased object becomes eligible only after the declared retention window.
+
+=asp clean --day N= evaluates one deterministic plan, validates that the
+lease/observation generation is unchanged, moves eligible objects to =trash=
+inside one mutation transaction, publishes a typed receipt, and only then
+reaps content. Failure preserves the previous catalog and live paths.
+
+Quarantine and rollback objects include owner, reason, creation time, expiry,
+and byte count. They obey both count and byte budgets. Runtime artifacts retain
+only active, healthy, pending, and one rollback reference. Provider source
+snapshots are manifests over the shared blob CAS rather than copied directory
+trees.
+
+* Required invariants
+
+- resolving identity cannot mutate State Home;
+- a live lease is never retired;
+- Host project, repository, and workspace axes cannot collapse;
+- concurrent open and cleanup cannot cross-delete;
+- cleanup failure preserves all admitted authority;
+- tests cannot write global State Home;
+- retained object count and bytes are bounded by policy.
+
+* Migration hard cut
+
+The legacy =projects/by-id= hierarchy is import-only. Migration validates each
+record, publishes the new catalog and references atomically, then retires the
+legacy subtree through the same cleanup planner. There is no runtime fallback,
+dual writer, compatibility facade, or mtime-based admission after commit.

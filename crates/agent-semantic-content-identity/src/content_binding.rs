@@ -285,6 +285,12 @@ impl ContentPublicationCommit {
         if self.mutation_id.is_empty() || self.lease_id.is_empty() {
             return Err(ContentBindingError::InvalidCommitFence);
         }
+        let fence_suffix = self.expected_digest.as_deref().unwrap_or("genesis");
+        let expected_mutation_id = format!("mutation:{}:{}", self.commit_digest, fence_suffix);
+        let expected_lease_id = format!("lease:{}:{}", self.commit_digest, fence_suffix);
+        if self.mutation_id != expected_mutation_id || self.lease_id != expected_lease_id {
+            return Err(ContentBindingError::InvalidCommitFence);
+        }
         if let Some(expected_digest) = self.expected_digest.as_deref() {
             validate_digest("expectedDigest", expected_digest)?;
         }

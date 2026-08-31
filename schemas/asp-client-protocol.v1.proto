@@ -1,0 +1,159 @@
+syntax = "proto3";
+
+package asp.client.protocol.v1;
+
+// Canonical ASP Client Protocol wire declaration. Schema Manager owns this
+// artifact; transport packages compile it but must not keep a private copy.
+message ClientFrameEnvelope {
+  ClientFrameBase base = 1;
+  oneof frame {
+    InitializeFrame initialize = 10;
+    DispatchFrame dispatch = 11;
+    RequestFrame request = 12;
+    CancelFrame cancel = 13;
+    ShutdownFrame shutdown = 14;
+    ExitFrame exit = 15;
+    ResponseFrame response = 16;
+    EventFrame event = 17;
+  }
+}
+
+message ClientFrameBase {
+  string schema_id = 1;
+  string schema_version = 2;
+  string protocol_id = 3;
+  string protocol_version = 4;
+  string session_id = 5;
+  string workspace_identity = 6;
+  TraceContext trace_context = 7;
+}
+
+message TraceContext {
+  string traceparent = 1;
+  optional string tracestate = 2;
+}
+
+message ClientInfo {
+  string name = 1;
+  string version = 2;
+}
+
+message InitializeFrame {
+  string request_id = 1;
+  string project_root = 2;
+  ClientInfo client_info = 3;
+  bytes capabilities_json = 4;
+}
+
+message DispatchFrame {
+  string request_id = 1;
+  string project_root = 2;
+  ClientInfo client_info = 3;
+  string method = 4;
+  bytes params_json = 5;
+}
+
+message RequestFrame {
+  string request_id = 1;
+  string catalog_generation = 2;
+  string workspace_generation = 3;
+  string method = 4;
+  bytes params_json = 5;
+}
+
+message CancelFrame { string request_id = 1; }
+message ShutdownFrame { string request_id = 1; }
+message ExitFrame {}
+
+enum ClientOutcome {
+  CLIENT_OUTCOME_UNSPECIFIED = 0;
+  CLIENT_OUTCOME_READY = 1;
+  CLIENT_OUTCOME_ERROR = 2;
+  CLIENT_OUTCOME_CANCELLED = 3;
+  CLIENT_OUTCOME_STALE_GENERATION = 4;
+}
+
+message ResponseFrame {
+  string request_id = 1;
+  ClientOutcome outcome = 2;
+  bytes result_json = 3;
+  bytes error_json = 4;
+  ClientProtocolCatalog catalog = 5;
+}
+
+message EventFrame {
+  string event_id = 1;
+  string event = 2;
+  bytes payload_json = 3;
+}
+
+message ClientProtocolCatalog {
+  string schema_id = 1;
+  string schema_version = 2;
+  string protocol_id = 3;
+  string protocol_version = 4;
+  string catalog_generation = 5;
+  string workspace_generation = 6;
+  repeated ClientTransport transports = 7;
+  ClientCapabilities capabilities = 8;
+  repeated ClientMethod methods = 9;
+}
+
+enum ClientTransport {
+  CLIENT_TRANSPORT_UNSPECIFIED = 0;
+  CLIENT_TRANSPORT_RUNTIME_IPC = 1;
+}
+
+message ClientCapabilities {
+  bool request_cancellation = 1;
+  bool events = 2;
+  bool streaming = 3;
+  bool trace_context = 4;
+}
+
+message ClientMethod {
+  string method = 1;
+  string route_id = 2;
+  string request_schema_id = 3;
+  string response_schema_id = 4;
+  repeated string error_schema_ids = 5;
+  repeated ClientParameter parameters = 6;
+  bool cancellable = 7;
+  bool streaming = 8;
+}
+
+message ClientParameter {
+  string name = 1;
+  ClientParameterType value_type = 2;
+  ClientParameterCardinality cardinality = 3;
+  ClientParameterSource source = 4;
+}
+
+enum ClientParameterType {
+  CLIENT_PARAMETER_TYPE_UNSPECIFIED = 0;
+  CLIENT_PARAMETER_TYPE_STRING = 1;
+  CLIENT_PARAMETER_TYPE_STRING_ARRAY = 2;
+  CLIENT_PARAMETER_TYPE_WORKSPACE_RELATIVE_PATH = 3;
+  CLIENT_PARAMETER_TYPE_STRUCTURAL_SELECTOR = 4;
+  CLIENT_PARAMETER_TYPE_PRESENTATION = 5;
+  CLIENT_PARAMETER_TYPE_BOOLEAN = 6;
+  CLIENT_PARAMETER_TYPE_UNSIGNED_INTEGER = 7;
+  CLIENT_PARAMETER_TYPE_JSON = 8;
+}
+
+enum ClientParameterCardinality {
+  CLIENT_PARAMETER_CARDINALITY_UNSPECIFIED = 0;
+  CLIENT_PARAMETER_CARDINALITY_REQUIRED = 1;
+  CLIENT_PARAMETER_CARDINALITY_OPTIONAL = 2;
+  CLIENT_PARAMETER_CARDINALITY_MANY = 3;
+}
+
+enum ClientParameterSource {
+  CLIENT_PARAMETER_SOURCE_UNSPECIFIED = 0;
+  CLIENT_PARAMETER_SOURCE_REQUEST = 1;
+  CLIENT_PARAMETER_SOURCE_RUNTIME_CONTEXT = 2;
+}
+
+service AspClientProtocol {
+  rpc Session(stream ClientFrameEnvelope) returns (stream ClientFrameEnvelope);
+}

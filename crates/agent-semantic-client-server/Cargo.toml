@@ -9,7 +9,6 @@ license = "MIT"
 agent-semantic-client-core = { path = "../agent-semantic-client-core" }
 agent-semantic-client-protocol = { path = "../agent-semantic-client-protocol" }
 agent-semantic-runtime = { path = "../agent-semantic-runtime" }
-agent-semantic-http-json = { path = "../agent-semantic-http-json" }
 bytes.workspace = true
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -20,6 +19,8 @@ tonic-prost.workspace = true
 prost.workspace = true
 tower.workspace = true
 hyper-util.workspace = true
+futures-util.workspace = true
+parking_lot.workspace = true
 
 
 [dev-dependencies]
@@ -27,5 +28,6 @@ asp-rust-project-harness-policy.workspace = true
 tempfile.workspace = true
 
 [build-dependencies]
+agent-semantic-schema-manager = { path = "../agent-semantic-schema-manager" }
 asp-rust-project-harness-policy.workspace = true
 tonic-prost-build.workspace = true

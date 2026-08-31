@@ -280,7 +280,8 @@ impl AgentSessionRecord {
 ///
 /// A persisted target id is identity data, not proof that the current host
 /// collaboration runtime can resolve it. The binding is trusted only when the
-/// same-root native `SubagentStart` hook recorded the target atomically.
+/// same-root Host lifecycle evidence or explicit child-environment registration
+/// recorded the target atomically.
 #[must_use]
 pub fn agent_session_message_target_is_live_bound(
     record: &AgentSessionRecord,
@@ -314,6 +315,7 @@ pub fn agent_session_message_target_is_live_bound(
             "codex.subagent-start"
                 | "native-collaboration-list-agents"
                 | "native-collaboration-followup-ack"
+                | "codex-child-registration-command"
                 | "codex-typed-subagent-start-plus-native-host-tree"
                 | "codex-rollout-session-meta-plus-native-host-tree"
                 | "codex-locked-generation-profile-plus-native-host-tree"

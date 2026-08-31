@@ -59,6 +59,7 @@ dependencies = [
  "serde_json",
  "tempfile",
  "tokio",
+ "turso",
 ]
 
 [[package]]
@@ -120,6 +121,7 @@ dependencies = [
 name = "agent-semantic-client-core"
 version = "0.1.0"
 dependencies = [
+ "agent-semantic-artifacts",
  "agent-semantic-config",
  "agent-semantic-hook",
  "agent-semantic-runtime",
@@ -178,6 +180,7 @@ name = "agent-semantic-client-protocol"
 version = "0.1.0"
 dependencies = [
  "agent-semantic-artifacts",
+ "agent-semantic-content-identity",
  "asp-rust-project-harness-policy",
  "blake3",
  "serde",
@@ -190,11 +193,13 @@ version = "0.1.0"
 dependencies = [
  "agent-semantic-client-core",
  "agent-semantic-client-protocol",
- "agent-semantic-http-json",
  "agent-semantic-runtime",
+ "agent-semantic-schema-manager",
  "asp-rust-project-harness-policy",
  "bytes",
+ "futures-util",
  "hyper-util",
+ "parking_lot",
  "prost",
  "serde",
  "serde_json",
@@ -701,6 +706,7 @@ dependencies = [
 name = "asp-rust-project-harness-policy"
 version = "0.1.0"
 dependencies = [
+ "blake3",
  "criterion",
  "rust-lang-project-harness 0.1.2",
  "serde",

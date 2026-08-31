@@ -70,10 +70,12 @@ pub(super) async fn publish_owner_delta(
     if delta.base_generation_digest != base.generation().generation_digest {
         return Err("workspace generation delta base generation digest mismatch".to_owned());
     }
-    let staged =
-        target
-            .overlays
-            .publish_owner_delta(base.generation(), delta.owners, delta.tombstones)?;
+    let staged = target.overlays.publish_owner_delta(
+        base.generation(),
+        delta.owners,
+        delta.tombstones,
+        delta.relations,
+    )?;
     publish_staged_overlay_generation(
         target,
         request_id,

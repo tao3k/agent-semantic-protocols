@@ -331,6 +331,7 @@ pub fn reader_probe_request(
         }
         for stage in stages
             .iter()
+            .rev()
             .filter(|stage| !stage.is_separator() && stage.executable().is_some())
         {
             let mut subjects = agent_semantic_shell_parser::command_stage_source_paths(stage)
@@ -449,19 +450,6 @@ pub fn evaluate_pre_tool<'a>(
         }
         let subject = confirmed_read.map(|read| read.subject.clone());
         let read_evidence = confirmed_read.map(|read| read.evidence);
-        let agent_dispatch_message = rule
-            .route
-            .map(|target| {
-                crate::agent_dispatch_message::render_collaboration_instruction(Some(target))
-            })
-            .unwrap_or_default();
-        let message = rule
-            .message
-            .replace(
-                "{{languageId}}",
-                rule.language.unwrap_or("registered-language"),
-            )
-            .replace("{{agentDispatchMessage}}", &agent_dispatch_message);
         let recovery_command = rule
             .language
             .zip(subject.as_deref())
@@ -471,6 +459,33 @@ pub fn evaluate_pre_tool<'a>(
                     payload.cwd.unwrap_or(".")
                 )
             });
+        let parent_task = recovery_command.as_deref().map_or_else(
+            || {
+                format!(
+                    "Invoke Host tool `{}` exactly once with input {}",
+                    payload.tool_name,
+                    payload.tool_input.get()
+                )
+            },
+            |command| format!("Run `{command}` exactly once"),
+        );
+        let agent_dispatch_message = rule
+            .route
+            .map(|target| {
+                crate::agent_dispatch_message::render_collaboration_instruction(
+                    Some(target),
+                    payload.session_id,
+                    &parent_task,
+                )
+            })
+            .unwrap_or_default();
+        let message = rule
+            .message
+            .replace(
+                "{{languageId}}",
+                rule.language.unwrap_or("registered-language"),
+            )
+            .replace("{{agentDispatchMessage}}", &agent_dispatch_message);
         return Ok(Some(AotHookDecision {
             schema_id: "agent.semantic-protocols.hook.decision",
             schema_version: 1,

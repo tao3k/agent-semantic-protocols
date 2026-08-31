@@ -401,8 +401,15 @@ fn relation_admission_failure_does_not_publish_a_partial_generation() {
         .expect("base materialization must exist");
 
     let mut invalid = request;
-    invalid.import.relations.push(
-        agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelation {
+    invalid
+        .import
+        .relations
+        .push(agent_semantic_client_db::ClientDbSourceIndexOwnedRelation {
+            owner_path: agent_semantic_client_db::ClientDbSourceIndexPath::new(
+                "src/missing.rs",
+            ),
+            relation:
+                agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelation {
             from: agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelationEndpoint {
                 kind: agent_semantic_content_identity::provider_projection_relation::PROVIDER_RELATION_ITEM_ENDPOINT_KIND.to_owned(),
                 id: "rust://src/missing.rs#item/function/missing".to_owned(),
@@ -412,13 +419,14 @@ fn relation_admission_failure_does_not_publish_a_partial_generation() {
                 kind: agent_semantic_content_identity::provider_projection_relation::PROVIDER_RELATION_ITEM_ENDPOINT_KIND.to_owned(),
                 id: "rust://src/materialized.rs#item/function/materialized".to_owned(),
             },
-        },
-    );
+                },
+        });
     let error = fixture
         .commit_source_index_generation(invalid, &source_blobs)
         .expect_err("unattributed relation must fail before generation publication");
     assert!(
-        error.contains("no parser-attributed owner"),
+        error.contains("outside changed owner membership")
+            || error.contains("not present in canonical workspace generation"),
         "unexpected relation admission error: {error}"
     );
 
@@ -441,17 +449,21 @@ fn relation_generation_transaction_preserves_replaces_and_deletes() {
         agent_semantic_client_db::fixture::SourceIndexFixture::for_client_dir(&client_dir);
     let (mut request, source_blobs) = generation_fixture(&project_root);
     let relation = |kind: &str| {
-        agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelation {
-            from: agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelationEndpoint {
-                kind: agent_semantic_content_identity::provider_projection_relation::PROVIDER_RELATION_ITEM_ENDPOINT_KIND.to_owned(),
-                id: "rust://src/materialized.rs#item/function/materialized".to_owned(),
+        agent_semantic_client_db::ClientDbSourceIndexOwnedRelation {
+        owner_path: agent_semantic_client_db::ClientDbSourceIndexPath::new("src/materialized.rs"),
+        relation:
+            agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelation {
+                from: agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelationEndpoint {
+                    kind: agent_semantic_content_identity::provider_projection_relation::PROVIDER_RELATION_ITEM_ENDPOINT_KIND.to_owned(),
+                    id: "rust://src/materialized.rs#item/function/materialized".to_owned(),
+                },
+                kind: kind.to_owned(),
+                to: agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelationEndpoint {
+                    kind: agent_semantic_content_identity::provider_projection_relation::PROVIDER_RELATION_ITEM_ENDPOINT_KIND.to_owned(),
+                    id: "rust://src/materialized.rs#item/function/materialized".to_owned(),
+                },
             },
-            kind: kind.to_owned(),
-            to: agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelationEndpoint {
-                kind: agent_semantic_content_identity::provider_projection_relation::PROVIDER_RELATION_ITEM_ENDPOINT_KIND.to_owned(),
-                id: "rust://src/materialized.rs#item/function/materialized".to_owned(),
-            },
-        }
+    }
     };
 
     let calls = relation("calls");

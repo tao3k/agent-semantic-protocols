@@ -5,6 +5,7 @@ description = "Lean, AXLE, and proof-receipt audit toolchain for Agent Semantic 
 requires-python = ">=3.13"
 dependencies = [
   "axiom-axle==1.4.0",
+  "blake3>=1.0.9",
   "jsonschema>=4.23,<5",
 ]
 

@@ -20,37 +20,37 @@ in one component MUST NOT manufacture evidence owned by another component.
 * Workspace Server
 
 The workspace ASP Server owns durable registry execution, checkpointing, and
-recovery.  Restarting the process changes only the server epoch and transport
-state.  It does not archive an AgentSession, invalidate a fresh Host binding,
-complete a dispatch, or authorize replacement.
+recovery. Restarting the process changes only the server epoch and transport
+state. It does not alter an Agent path, invalidate a fresh Host binding,
+complete a dispatch, or authorize =spawn_agent=.
 
 * Session lifecycle
 
-The ASP-owned session phases are =declared=, =active=,
-=archive-intent-durable=, =archived=, and =retired=.  These phases describe the
-logical route and its lifecycle intent.  They do not claim that a Host child
-exists or that its canonical path has been released.
+The ASP-owned session phases are =declared=, =active=, =interrupted=,
+=completed=, and =failed=. These phases describe turns on a configured Agent
+path. They do not create or release a Host Agent path.
 
 * Host binding
 
-The Host-owned binding phases are =unobserved=, =unbound=, =fresh=, =stale=,
-=host-terminated=, and =path-released=.  A fresh binding is established only by
-a typed Host lifecycle receipt bound to the current session generation,
-child identity, and canonical target.
+The Host-owned binding phases are =unobserved=, =unbound=, =fresh=, and
+=stale=. Path observation is a separate three-valued fact: =unobserved=,
+=absent=, or =present=. A fresh binding is established only by a typed Host
+receipt bound to the current session generation, child identity, and canonical
+target.
 
 Model, reasoning effort, sandbox, permissions, profile paths, and tool policy
 are not binding predicates.  They remain Host policy and are not represented
 in the ASP lifecycle product.
 
-A missing or expired observation changes =fresh= to =stale=.  It MUST NOT
-archive or delete the logical AgentSession.
+A missing or expired observation changes =fresh= to =stale=. It MUST NOT
+delete the logical Agent path or manufacture an =absent= observation.
 
 * Dispatch lifecycle
 
 The dispatch phases are =unobserved=, =idle=, =claimed=, =running=, =quarantined=,
 =completed=, and =rejected=.  Dispatch timeout or uncertain delivery enters
-=quarantined=.  Quarantine is neither negative Host evidence nor permission to
-archive, retarget, release a canonical path, or replace the AgentSession.
+=quarantined=. Quarantine is neither negative Host evidence nor permission to
+retarget or spawn another Agent at the canonical path.
 
 Every dispatch identity is fenced by the session generation.  A receipt from
 an earlier generation cannot complete a dispatch in a later generation.
@@ -59,19 +59,19 @@ an earlier generation cannot complete a dispatch in a later generation.
 absent Host observation or missing rollout activity report cannot manufacture
 either of those positive lifecycle facts.
 
-* Archive and replacement
+* V2 dispatch choice
 
-Archive intent immediately revokes new durable dispatch authority, but it does
-not prove Host termination or canonical-path release.  Replacement is admitted
-only when:
+Collaboration V2 has exactly one required-work action for each observed path
+state:
 
-- the session is archived or retired;
-- a Host termination receipt has been indexed;
-- canonical-path release has been indexed;
-- the next generation is strictly greater than the current generation.
+- =present= selects =collaboration.followup_task=;
+- =absent= selects =collaboration.spawn_agent=;
+- =unobserved= selects neither and remains typed unavailable.
 
-Runtime process identity, transport failure, visibility, timeout, and profile
-drift are not replacement evidence.
+=send_message= is queue-only context and cannot satisfy required work.
+=interrupt_agent= terminates the current turn but preserves the Agent path.
+Runtime process identity, transport failure, timeout, and profile drift cannot
+manufacture a path observation or authorize spawn.
 
 * Refinement obligations
 
@@ -87,10 +87,10 @@ Rust refinement MUST preserve these projections independently:
 The executable implementation MUST reject flattened states that claim any of
 the following:
 
-- server failure archived a session;
+- server failure changed an Agent path;
 - a Host acknowledgement established a delivered binding;
 - dispatch timeout proved target absence;
-- archive intent released the canonical path;
+- completion or interruption released the canonical path;
 - stale-generation receipt completed the current dispatch;
 - an ASP expected model authorized or rejected a Host binding.
 

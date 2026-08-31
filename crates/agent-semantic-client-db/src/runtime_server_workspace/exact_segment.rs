@@ -1,31 +1,35 @@
 use memmap2::{Mmap, MmapOptions};
 use std::cmp::Ordering;
 use std::path::{Path, PathBuf};
-use tokio::fs;
 
 use super::{
-    WorkspaceGenerationPointerReader, WorkspaceGenerationSnapshot, WorkspaceOwnerSnapshot,
-    WorkspaceRuntimeSelectorRead, WorkspaceSelectorSnapshot,
+    WorkspaceGenerationSnapshot, WorkspaceOwnerSnapshot, WorkspaceRuntimeSelectorRead,
+    WorkspaceSelectorSnapshot,
 };
+#[path = "exact_segment_client.rs"]
+mod client;
 #[path = "exact_segment_encoding.rs"]
 mod encoding;
 #[path = "exact_segment_evidence_context.rs"]
 mod evidence_context;
 #[path = "exact_segment_format.rs"]
 mod format;
+#[path = "exact_segment_owner_search.rs"]
+mod owner_search;
+pub use client::{WorkspaceExactProjectionDataPlaneClient, WorkspaceExactProjectionDataPlaneOpen};
 use format::{
     checked_entry_offset, decode_header, read_slice, read_text, read_usize, write_range_entry,
     write_range_header, write_u64, write_usize,
 };
 
 // This is an internal mmap layout identity, not a protocol schema version.
-// Layout 0002 adds the same-segment projection evidence-context catalog.
-// Keeping the old magic would make a 144-byte layout look structurally valid
-// to the 160-byte decoder and reinterpret owner-table bytes as context offsets.
-const MAGIC: &[u8; 16] = b"ASPEXACTMMAP0003";
+// Layout 0004 commits parser-owned selector query keys. Old segments fail
+// closed so the publisher rebuilds them through the sole CompleteGeneration
+// authority; there is deliberately no legacy decoder.
+const MAGIC: &[u8; 16] = b"ASPEXACTMMAP0004";
 const HEADER_LEN: usize = 160;
 const OWNER_ENTRY_LEN: usize = 144;
-const SELECTOR_ENTRY_LEN: usize = 104;
+const SELECTOR_ENTRY_LEN: usize = 120;
 const RELOCATION_ENTRY_LEN: usize = 40;
 
 const EPOCH_OFFSET: usize = 16;
@@ -46,173 +50,6 @@ const RELOCATION_TABLE_OFFSET: usize = 128;
 const RELOCATION_COUNT_OFFSET: usize = 136;
 const CONTEXT_TABLE_OFFSET: usize = 144;
 const CONTEXT_COUNT_OFFSET: usize = 152;
-
-#[derive(Clone, Debug)]
-pub struct WorkspaceExactProjectionDataPlaneClient {
-    inner: std::sync::Arc<WorkspaceExactProjectionDataPlaneClientInner>,
-}
-
-#[derive(Debug)]
-struct WorkspaceExactProjectionDataPlaneClientInner {
-    pointer: WorkspaceGenerationPointerReader,
-    current: parking_lot::RwLock<std::sync::Arc<MappedWorkspaceExactProjection>>,
-}
-
-#[derive(Debug, Default)]
-struct WorkspaceExactProjectionDataPlaneCell {
-    client: tokio::sync::OnceCell<WorkspaceExactProjectionDataPlaneClient>,
-}
-
-static EXACT_PROJECTION_DATA_PLANE_CELLS: std::sync::OnceLock<
-    parking_lot::RwLock<
-        std::collections::BTreeMap<
-            std::path::PathBuf,
-            std::sync::Arc<WorkspaceExactProjectionDataPlaneCell>,
-        >,
-    >,
-> = std::sync::OnceLock::new();
-
-fn exact_projection_data_plane_cell(
-    pointer_path: &Path,
-) -> std::sync::Arc<WorkspaceExactProjectionDataPlaneCell> {
-    let cells = EXACT_PROJECTION_DATA_PLANE_CELLS.get_or_init(Default::default);
-    if let Some(cell) = cells.read().get(pointer_path) {
-        return std::sync::Arc::clone(cell);
-    }
-    let mut cells = cells.write();
-    std::sync::Arc::clone(
-        cells.entry(pointer_path.to_path_buf()).or_insert_with(|| {
-            std::sync::Arc::new(WorkspaceExactProjectionDataPlaneCell::default())
-        }),
-    )
-}
-
-#[derive(Debug)]
-pub enum WorkspaceExactProjectionDataPlaneOpen {
-    Ready(WorkspaceExactProjectionDataPlaneClient),
-    Missing,
-    RecoveryRequired { reason: String },
-}
-
-impl WorkspaceExactProjectionDataPlaneClient {
-    pub async fn open_state(
-        pointer_path: &Path,
-    ) -> Result<WorkspaceExactProjectionDataPlaneOpen, String> {
-        if !fs::try_exists(pointer_path)
-            .await
-            .map_err(|error| format!("inspect workspace generation pointer: {error}"))?
-        {
-            return Ok(WorkspaceExactProjectionDataPlaneOpen::Missing);
-        }
-        match Self::open(pointer_path).await {
-            Ok(client) => Ok(WorkspaceExactProjectionDataPlaneOpen::Ready(client)),
-            Err(reason) => Ok(WorkspaceExactProjectionDataPlaneOpen::RecoveryRequired { reason }),
-        }
-    }
-
-    pub(crate) fn invalidate_committed_pointer(pointer_path: &Path) {
-        if let Some(cells) = EXACT_PROJECTION_DATA_PLANE_CELLS.get() {
-            cells.write().remove(pointer_path);
-        }
-    }
-
-    pub(crate) async fn prime_committed_pointer(pointer_path: &Path) -> Result<(), String> {
-        Self::invalidate_committed_pointer(pointer_path);
-        Self::open(pointer_path).await.map(|_| ())
-    }
-
-    pub async fn open(pointer_path: &Path) -> Result<Self, String> {
-        let cell = exact_projection_data_plane_cell(pointer_path);
-        let mut client = cell
-            .client
-            .get_or_try_init(|| async {
-                let pointer = WorkspaceGenerationPointerReader::open(pointer_path).await?;
-                let snapshot = pointer.read()?;
-                let mapped = MappedWorkspaceExactProjection::open(&snapshot).await?;
-                Ok::<_, String>(Self {
-                    inner: std::sync::Arc::new(WorkspaceExactProjectionDataPlaneClientInner {
-                        pointer,
-                        current: parking_lot::RwLock::new(std::sync::Arc::new(mapped)),
-                    }),
-                })
-            })
-            .await?
-            .clone();
-        client.refresh_if_changed().await?;
-        Ok(client)
-    }
-
-    pub fn read_runtime_selector(
-        &self,
-        projection_kind: super::model::ExactProjectionKind,
-        structural_selector: &str,
-    ) -> Result<WorkspaceRuntimeSelectorRead, String> {
-        self.inner
-            .current
-            .read()
-            .read_runtime_selector(projection_kind, structural_selector)
-    }
-
-    /// Resolve a projection evidence context from the same immutable mmap.
-    pub fn projection_evidence_context(
-        &self,
-        evidence_context_ref: &str,
-    ) -> Result<Option<Vec<u8>>, String> {
-        self.inner
-            .current
-            .read()
-            .projection_evidence_context(evidence_context_ref)
-    }
-
-    /// Return the resident content identity for one exact owner without
-    /// opening the workspace database or contacting the control plane.
-    pub fn owner_content_digest(&self, owner_path: &str) -> Result<Option<String>, String> {
-        self.inner.current.read().owner_content_digest(owner_path)
-    }
-
-    pub fn contains_owner(&self, owner: &WorkspaceOwnerSnapshot) -> Result<bool, String> {
-        self.inner.current.read().contains_owner(owner)
-    }
-
-    /// Resolve one owner directly from the immutable exact-generation index.
-    ///
-    /// This is the owner-search read lease: callers pay one hash lookup and
-    /// decode only the selected owner instead of rebuilding the complete
-    /// workspace memory backend for every CLI invocation.
-    pub fn owner_snapshot(
-        &self,
-        owner_path: &str,
-    ) -> Result<Option<WorkspaceOwnerSnapshot>, String> {
-        let mapped = self.inner.current.read();
-        let Some((owner_index, owner)) = mapped.find_owner(owner_path)? else {
-            return Ok(None);
-        };
-        mapped.owner_snapshot(owner_index, &owner).map(Some)
-    }
-
-    #[must_use]
-    pub fn generation_digest(&self) -> String {
-        self.inner.current.read().generation_digest.clone()
-    }
-
-    #[must_use]
-    pub fn root_digest(&self) -> String {
-        self.inner.current.read().root_digest.clone()
-    }
-
-    pub async fn refresh_if_changed(&mut self) -> Result<bool, String> {
-        let snapshot = self.inner.pointer.read()?;
-        let current = self.inner.current.read();
-        decode_header(&current.mapping)?;
-        if current.epoch == snapshot.active_epoch {
-            return Ok(false);
-        }
-        drop(current);
-        let mapped = MappedWorkspaceExactProjection::open(&snapshot).await?;
-        *self.inner.current.write() = std::sync::Arc::new(mapped);
-        Ok(true)
-    }
-}
 
 #[derive(Debug)]
 struct MappedWorkspaceExactProjection {
@@ -425,6 +262,7 @@ impl MappedWorkspaceExactProjection {
             String,
             (
                 Option<(usize, usize)>,
+                Option<Vec<String>>,
                 Vec<super::WorkspaceDerivedProjectionSnapshot>,
             ),
         > = std::collections::BTreeMap::new();
@@ -432,7 +270,17 @@ impl MappedWorkspaceExactProjection {
             let entry = self.selector_entry(index)?;
             let selector_text = self.selector_text(&entry)?.to_owned();
             let projection_kind = self.selector_kind(&entry)?;
+            let query_keys = self.selector_query_keys(&entry)?;
             let group = selector_groups.entry(selector_text.clone()).or_default();
+            if let Some(existing) = &group.1 {
+                if existing != &query_keys {
+                    return Err(format!(
+                        "workspace exact projection contains conflicting query keys for `{selector_text}`"
+                    ));
+                }
+            } else {
+                group.1 = Some(query_keys);
+            }
             if projection_kind == super::model::ExactProjectionKind::Source {
                 if group
                     .0
@@ -444,7 +292,7 @@ impl MappedWorkspaceExactProjection {
                     ));
                 }
             } else {
-                group.1.push(super::WorkspaceDerivedProjectionSnapshot {
+                group.2.push(super::WorkspaceDerivedProjectionSnapshot {
                     projection_kind,
                     bytes: read_slice(
                         &self.mapping,
@@ -459,7 +307,7 @@ impl MappedWorkspaceExactProjection {
         }
 
         let mut selectors = Vec::with_capacity(selector_groups.len());
-        for (selector, (source_range, mut derived_projections)) in selector_groups {
+        for (selector, (source_range, query_keys, mut derived_projections)) in selector_groups {
             let Some((byte_start, byte_end)) = source_range else {
                 continue;
             };
@@ -469,6 +317,7 @@ impl MappedWorkspaceExactProjection {
                 selector,
                 byte_start,
                 byte_end,
+                query_keys: query_keys.unwrap_or_default(),
                 derived_projections,
             });
         }
@@ -708,6 +557,8 @@ impl MappedWorkspaceExactProjection {
             byte_end: read_usize(bytes, 80, "selector byte end")?,
             projection_blob_offset: read_usize(bytes, 88, "projection blob offset")?,
             projection_blob_len: read_usize(bytes, 96, "projection blob length")?,
+            query_keys_offset: read_usize(bytes, 104, "selector query keys offset")?,
+            query_keys_len: read_usize(bytes, 112, "selector query keys length")?,
         })
     }
 
@@ -818,6 +669,8 @@ struct SelectorEntry {
     byte_end: usize,
     projection_blob_offset: usize,
     projection_blob_len: usize,
+    query_keys_offset: usize,
+    query_keys_len: usize,
 }
 
 #[derive(Clone, Copy)]
@@ -892,6 +745,24 @@ fn owner_projection_digest(owner: &WorkspaceOwnerSnapshot) -> [u8; 32] {
         hasher.update(authority.language_id.as_str().as_bytes());
         hasher.update(&[0]);
         hasher.update(authority.provider_id.as_str().as_bytes());
+        hasher.update(&[0]);
+    }
+    let mut query_key_rows = owner
+        .selectors
+        .iter()
+        .flat_map(|selector| {
+            selector
+                .query_keys
+                .iter()
+                .map(move |key| (selector.selector.as_str(), key.as_str()))
+        })
+        .collect::<Vec<_>>();
+    query_key_rows.sort_unstable();
+    for (selector, key) in query_key_rows {
+        hasher.update(b"query-key\0");
+        hasher.update(selector.as_bytes());
+        hasher.update(&[0]);
+        hasher.update(key.as_bytes());
         hasher.update(&[0]);
     }
     let mut rows = owner

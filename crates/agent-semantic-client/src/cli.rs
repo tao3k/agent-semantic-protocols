@@ -33,6 +33,25 @@ fn render_cli_error(args: &[String], error: String) -> String {
     let argv = std::iter::once("asp".to_owned())
         .chain(args.iter().cloned())
         .collect::<Vec<_>>();
+    if let Some(reason_kind) = [
+        "runtime-client-connect-deadline-exceeded",
+        "runtime-client-session-deadline-exceeded",
+        "runtime-client-response-deadline-exceeded",
+    ]
+    .into_iter()
+    .find(|reason_kind| error.contains(&format!("reasonKind={reason_kind}")))
+    {
+        return serde_json::json!({
+            "schemaId": "agent.semantic-protocols.runtime-client-terminal",
+            "schemaVersion": "1",
+            "state": "failed",
+            "reasonKind": reason_kind,
+            "retryAdmitted": false,
+            "argv": argv,
+            "cause": error,
+        })
+        .to_string();
+    }
     if error.contains("reasonKind=active-workspace-generation-required") {
         return serde_json::json!({
             "schemaId": "agent.semantic-protocols.workspace-generation-required",

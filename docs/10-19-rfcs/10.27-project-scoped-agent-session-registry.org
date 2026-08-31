@@ -311,33 +311,37 @@ one exists, behind the same project scope function.
 The command and hook behavior tests cover the failure modes and the full
 lifecycle. A declarative scenario-harness wrapper would make the same lifecycle
 easier to reuse for future lanes such as =asp-testing= and future host adapters.
-* Native lifecycle transport authority
-For Codex, generated native hook schemas are the source of truth. The
-=SubagentStart= adapter uses this fixed projection:
+* Collaboration V2 lifecycle transport authority
+For Codex, the typed =collaboration.spawn_agent= result and the configured
+Agent registry are the source of truth. The Host-parent registration adapter
+uses this fixed projection:
 
 | Registry field | Codex native field |
 | =root_session_id= | =session_id= |
 | =parent_session_id= | =session_id= |
-| child =session_id= | =agent_id= |
-| =message_target_id= | =agent_id= |
-| managed role/profile | =agent_type= |
+| child =session_id= | returned child identity |
+| =message_target_id= | returned canonical Agent path |
+| managed role/profile | configured =agent_type= |
 | observed model | =model= |
 
-=agent_id= is both the value returned by native =spawn_agent= and the address
-accepted by native =send_input=. A successful =SubagentStart= therefore closes
-the message-target handshake without a model-authored receipt or a second probe.
-=session_id= is the parent task and must never be registered as the child.
+The canonical path returned by =collaboration.spawn_agent= is the address used
+by =collaboration.followup_task=, =send_message=, and =interrupt_agent=. The
+Host parent persists the returned child identity and canonical path as one
+typed registration transaction. No model-authored receipt or lifecycle-log
+probe is registration authority. =session_id= is the parent task and must
+never be registered as the child.
 
-The adapter ignores non-ASP =agent_type= values so customer subagents remain
+The adapter ignores non-ASP =agent_type= values so customer Agents remain
 outside ASP lifecycle management. For the configured resident type, an atomic
-claim admits one resident. A duplicate or model-mismatched start is rejected
-through the native hook response while the existing valid resident remains
-authoritative. =SubagentStop= retires only the registry row whose child id equals
-the native =agent_id=.
+claim admits one canonical path. A duplicate or model-mismatched spawn is
+rejected while the existing valid Agent remains authoritative. V2 has no
+=close_agent= operation: =interrupt_agent= preserves the canonical path, and
+absence from =list_agents= is observation rather than replacement authority.
 
-The bootstrap pane does not accept child identity as normal-agent output. After
-native create or resume, the normal agent re-enters the same pane. =Ready= is
-derived only from the registry row written by the native lifecycle hook.
+The bootstrap pane does not accept child identity from natural-language Agent
+output. After =spawn_agent= or =followup_task=, the normal Agent re-enters the
+same pane. =Ready= is derived only from the registry row written by the typed
+Host-parent registration transaction.
 
 Codex currently does not expose effective reasoning effort in the generated
 =SubagentStart= input. ASP hard-validates =agent_type= and =model=. Reasoning

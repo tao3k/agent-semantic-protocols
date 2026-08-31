@@ -57,9 +57,10 @@ pub use model::{
     RuntimeProjectionScope, RuntimeServerShutdownReceipt, WORKSPACE_GENERATION_DELTA_SCHEMA_ID,
     WorkspaceDataPlanePerformanceReceipt, WorkspaceDerivedProjectionSnapshot,
     WorkspaceGenerationBuild, WorkspaceGenerationDelta, WorkspaceGenerationSnapshot,
-    WorkspaceGenerationState, WorkspaceMemoryGeneration, WorkspaceOwnerSnapshot,
+    WorkspaceGenerationState, WorkspaceMemoryGeneration, WorkspaceOwnerProjection,
+    WorkspaceOwnerSearchSeedSnapshot, WorkspaceOwnerSearchSnapshot, WorkspaceOwnerSnapshot,
     WorkspaceRecoveryReceipt, WorkspaceRecoverySource, WorkspaceRuntimeMerkleOwnerRead,
-    WorkspaceRuntimeOwnerRead, WorkspaceRuntimeSelectorOverlay,
+    WorkspaceRuntimeOwnerRead, WorkspaceRuntimeOwnerSearchRead, WorkspaceRuntimeSelectorOverlay,
     WorkspaceRuntimeSelectorOverlayReceipt, WorkspaceRuntimeSelectorRead,
     WorkspaceRuntimeSelectorRebind, WorkspaceSelectorSnapshot,
 };

@@ -10,7 +10,7 @@ use super::{
 };
 use crate::workspace_db_ipc::{
     MutationWorkspaceLane, read_frame, resident_state, runtime_server_data_connect_error,
-    workspace_db_ipc_read_lane_capacity, write_frame,
+    runtime_server_data_terminal_error, workspace_db_ipc_read_lane_capacity, write_frame,
 };
 use crate::{
     ProviderIncrementalScoped, ProviderOwnerInventoryWrite, ProviderOwnerInventoryWriteReceipt,
@@ -369,7 +369,13 @@ impl WorkspaceDbIpcSession {
                     Ok(response) => response,
                     Err(error) => {
                         *lane = None;
-                        return Err(error);
+                        return Err(runtime_server_data_terminal_error(
+                            &request_id,
+                            &self.endpoint.workspace_identity,
+                            &self.endpoint.transport_contract_digest,
+                            self.endpoint.owner_epoch,
+                            &error,
+                        ));
                     }
                 }
             }

@@ -141,12 +141,15 @@ async fn mutation_builder_projects_only_changed_owner_and_publishes_one_epoch() 
                     let bytes = tokio::fs::read(project_root.join(&owner_path))
                         .await
                         .map_err(|error| format!("read changed owner: {error}"))?;
-                    Ok(crate::runtime_server_workspace::WorkspaceOwnerSnapshot {
-                        authority: None,
-                        owner_path,
-                        content_digest: format!("blake3-256:{}", blake3::hash(&bytes).to_hex()),
-                        bytes,
-                        selectors: Vec::new(),
+                    Ok(crate::runtime_server_workspace::WorkspaceOwnerProjection {
+                        owner: crate::runtime_server_workspace::WorkspaceOwnerSnapshot {
+                            authority: None,
+                            owner_path,
+                            content_digest: format!("blake3-256:{}", blake3::hash(&bytes).to_hex()),
+                            bytes,
+                            selectors: Vec::new(),
+                        },
+                        relations: Vec::new(),
                     })
                 })
             }

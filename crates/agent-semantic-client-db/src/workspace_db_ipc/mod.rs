@@ -18,7 +18,7 @@ mod validation;
 use runtime_generation::MutationWorkspaceLane;
 use session_pool::resident_state;
 use transport::runtime_server_data_connect_error;
-pub(crate) use transport::{read_frame, write_frame};
+pub(crate) use transport::{read_frame, runtime_server_data_terminal_error, write_frame};
 use validation::{
     deserialize_changed_paths, deserialize_mutation_id, workspace_db_ipc_read_lane_capacity,
 };
@@ -40,8 +40,7 @@ pub use protocol::{
     WORKSPACE_DB_OWNER_SCHEMA_VERSION, WorkspaceDbIpcBindingToken, WorkspaceDbIpcOperation,
     WorkspaceDbIpcRequest, WorkspaceDbIpcRequestId, WorkspaceDbIpcResponse, WorkspaceDbIpcResult,
     WorkspaceDbIpcSchemaId, WorkspaceDbIpcSession, WorkspaceDbSourceIndexLookupRequest,
-    WorkspaceIpcResidentReadWorkCounters, cache_control_via_runtime_server,
-    connect_runtime_server_workspace_session, read_source_index_via_runtime_server,
+    WorkspaceIpcResidentReadWorkCounters, connect_runtime_server_workspace_session,
 };
 pub(crate) use protocol::{RuntimeResidentReadTerminalDigestInput, resident_read_terminal_digest};
 pub use transport::{

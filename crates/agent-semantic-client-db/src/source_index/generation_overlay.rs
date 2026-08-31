@@ -1,7 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use agent_semantic_client_core::{ClientCacheFileHash, LanguageId, ProviderId};
-use agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelation;
 
 use super::{
     ClientDbSourceIndexImport, ClientDbSourceIndexOwner, ClientDbSourceIndexPath,
@@ -10,6 +9,10 @@ use super::{
     ClientDbSourceIndexSourceBlobs,
 };
 use crate::{ClientDbActiveGenerationSourceBlobs, ClientDbSourceIndexGenerationSnapshot};
+
+fn file_hash_belongs_to_complete_generation(path: &str, owner_paths: &BTreeSet<String>) -> bool {
+    path.starts_with("@scope/") || owner_paths.contains(path)
+}
 
 fn validate_overlay_membership(
     changed_owner_paths: &BTreeSet<String>,
@@ -122,35 +125,11 @@ pub fn partial_source_index_import(
         .filter(|selector| changed_owner_paths.contains(selector.owner_path.as_str()))
         .cloned()
         .collect::<Vec<_>>();
-    let selector_owners = import
-        .selectors
-        .iter()
-        .map(|selector| {
-            (
-                selector.selector_id.as_str().to_string(),
-                selector.owner_path.as_str().to_string(),
-            )
-        })
-        .collect::<BTreeMap<_, _>>();
     let relations = import
         .relations
         .iter()
-        .map(|relation| {
-            let owner_path = selector_owners
-                .get(relation.from.id.as_str())
-                .ok_or_else(|| {
-                    format!(
-                        "source-index relation has no parser-owned source selector: selectorId={}",
-                        relation.from.id
-                    )
-                })?;
-            Ok(changed_owner_paths
-                .contains(owner_path)
-                .then(|| relation.clone()))
-        })
-        .collect::<Result<Vec<_>, String>>()?
-        .into_iter()
-        .flatten()
+        .filter(|relation| changed_owner_paths.contains(relation.owner_path.as_str()))
+        .cloned()
         .collect();
     let file_hashes = import
         .file_hashes
@@ -209,10 +188,19 @@ pub fn overlay_active_source_index_import(
         ));
     }
 
-    let file_hashes =
-        overlay_file_hashes(active, partial, changed_owner_paths, removed_owner_paths);
     let (owners, selectors) =
         overlay_owner_facts(active, partial, changed_owner_paths, removed_owner_paths)?;
+    let owner_paths = owners
+        .iter()
+        .map(|owner| owner.owner_path.as_str().to_owned())
+        .collect::<BTreeSet<_>>();
+    let file_hashes = overlay_file_hashes(
+        active,
+        partial,
+        changed_owner_paths,
+        removed_owner_paths,
+        &owner_paths,
+    );
     let relations = overlay_relations(active, partial, changed_owner_paths, removed_owner_paths);
     let source_blobs = overlay_source_blobs(
         active_blobs,
@@ -220,6 +208,20 @@ pub fn overlay_active_source_index_import(
         changed_owner_paths,
         removed_owner_paths,
     );
+    let source_membership = file_hashes
+        .iter()
+        .filter(|record| !record.path.starts_with("@scope/"))
+        .map(|record| record.path.as_str())
+        .collect::<BTreeSet<_>>();
+    let expected_membership = owner_paths
+        .iter()
+        .map(String::as_str)
+        .collect::<BTreeSet<_>>();
+    if source_membership != expected_membership {
+        return Err(format!(
+            "complete source-index successor membership drift: sourceMembership={source_membership:?} ownerMembership={expected_membership:?}"
+        ));
+    }
 
     Ok(ClientDbSourceIndexImport {
         generation_id: partial.generation_id.clone(),
@@ -239,6 +241,7 @@ fn overlay_file_hashes(
     partial: &ClientDbSourceIndexImport,
     changed_owner_paths: &BTreeSet<String>,
     removed_owner_paths: &BTreeSet<String>,
+    owner_paths: &BTreeSet<String>,
 ) -> Vec<ClientCacheFileHash> {
     let retired_selector_evidence_paths = changed_owner_paths
         .iter()
@@ -252,12 +255,15 @@ fn overlay_file_hashes(
             !changed_owner_paths.contains(record.path.as_str())
                 && !removed_owner_paths.contains(record.path.as_str())
                 && !retired_selector_evidence_paths.contains(record.path.as_str())
+                && file_hash_belongs_to_complete_generation(record.path.as_str(), owner_paths)
         })
         .cloned()
         .map(|record| (record.path.clone(), record))
         .collect::<BTreeMap<_, _>>();
     for record in &partial.file_hashes {
-        file_hashes.insert(record.path.clone(), record.clone());
+        if file_hash_belongs_to_complete_generation(record.path.as_str(), owner_paths) {
+            file_hashes.insert(record.path.clone(), record.clone());
+        }
     }
     file_hashes.into_values().collect()
 }
@@ -290,12 +296,16 @@ fn overlay_owner_facts(
     Ok((owners, selectors))
 }
 
+#[cfg(test)]
+#[path = "../../tests/unit/source_index_generation_overlay.rs"]
+mod tests;
+
 fn overlay_relations(
     active: &ClientDbSourceIndexGenerationSnapshot,
     partial: &ClientDbSourceIndexImport,
     changed_owner_paths: &BTreeSet<String>,
     removed_owner_paths: &BTreeSet<String>,
-) -> Vec<ProviderProjectedRelation> {
+) -> Vec<crate::ClientDbSourceIndexOwnedRelation> {
     let mut relations = active
         .relations
         .iter()
@@ -303,7 +313,10 @@ fn overlay_relations(
             !changed_owner_paths.contains(relation.owner_path.as_str())
                 && !removed_owner_paths.contains(relation.owner_path.as_str())
         })
-        .map(|relation| relation.relation.clone())
+        .map(|relation| crate::ClientDbSourceIndexOwnedRelation {
+            owner_path: ClientDbSourceIndexPath::new(relation.owner_path.clone()),
+            relation: relation.relation.clone(),
+        })
         .collect::<Vec<_>>();
     relations.extend(partial.relations.iter().cloned());
     relations.sort();

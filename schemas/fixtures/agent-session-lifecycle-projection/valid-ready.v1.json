@@ -15,12 +15,12 @@
     "phase": "fresh",
     "childSessionId": "child-example",
     "canonicalMessageTarget": "agent://child-example",
-    "terminationReceiptIndexed": false,
-    "pathReleaseReceiptIndexed": false
+    "pathObserved": true
   },
   "dispatch": {
     "generation": 7,
     "phase": "idle"
   },
+  "requiredDispatchAction": "followup-task",
   "durableDispatchAuthorized": true
 }

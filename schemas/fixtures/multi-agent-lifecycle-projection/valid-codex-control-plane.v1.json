@@ -12,6 +12,10 @@
     "health": "ready"
   },
   "rootSessionId": "root-session",
+  "rootTask": {
+    "sessionId": "root-session",
+    "evidenceRef": "codex-receipt://root-task-1"
+  },
   "agents": [
     {
       "rootSessionId": "root-session",
@@ -36,13 +40,13 @@
           "phase": "fresh",
           "childSessionId": "root-session",
           "canonicalMessageTarget": "agent://root-session",
-          "terminationReceiptIndexed": false,
-          "pathReleaseReceiptIndexed": false
+          "pathObserved": true
         },
         "dispatch": {
           "generation": 1,
           "phase": "running"
         },
+        "requiredDispatchAction": "followup-task",
         "durableDispatchAuthorized": true
       }
     },
@@ -69,13 +73,13 @@
           "phase": "fresh",
           "childSessionId": "child-session",
           "canonicalMessageTarget": "agent://child-session",
-          "terminationReceiptIndexed": false,
-          "pathReleaseReceiptIndexed": false
+          "pathObserved": true
         },
         "dispatch": {
           "generation": 1,
           "phase": "idle"
         },
+        "requiredDispatchAction": "followup-task",
         "durableDispatchAuthorized": true
       }
     }

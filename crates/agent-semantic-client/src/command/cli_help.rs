@@ -461,15 +461,15 @@ fn selected_command_default(args: &[String]) -> Command {
         (Some("hook"), _) => hook_command(),
         (Some("config"), Some("agents")) => agent_config_command(),
         (Some("config"), _) => config_command(),
+        (Some("session"), Some("register-child")) => session_register_child_command(),
+        (Some("session"), _) => session_command(),
         (Some("providers"), _) => providers_command(),
         (Some("tools"), _) => tools_command(),
         (Some("wrap"), _) => Command::new("wrap")
             .bin_name("asp wrap")
             .about("Run a command through the ASP client runtime"),
         (Some("cache"), Some("gc")) => agent_semantic_client::project_registry_gc_clap_command(),
-        (Some("cache"), Some("clean")) => {
-            agent_semantic_client::project_registry_clean_clap_command()
-        }
+        (Some("clean"), _) => agent_semantic_client::project_registry_clean_clap_command(),
         (Some("cache"), _) => cache_command(),
         (Some("cloud"), _) => cloud_command(),
         (Some("paths"), _) => paths_command(),
@@ -509,12 +509,6 @@ fn selected_command_default(args: &[String]) -> Command {
             facade_subcommand(language, command)
         }
         (Some(language), _) if is_language_facade(language) => root_facade_command(language),
-        (Some("fd"), _) => Command::new("fd")
-            .bin_name("asp fd")
-            .about("Run the ASP fd compatibility surface"),
-        (Some("rg"), _) => Command::new("rg")
-            .bin_name("asp rg")
-            .about("Run the ASP rg compatibility surface"),
         _ => root_command(),
     }
 }

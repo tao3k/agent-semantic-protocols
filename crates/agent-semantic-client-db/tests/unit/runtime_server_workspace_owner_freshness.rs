@@ -21,6 +21,7 @@ fn unchanged_owner_is_warm_after_selector_discovery_without_derived_projection()
             selector: "rust://src/lib.rs#item/function/run".to_owned(),
             byte_start: 0,
             byte_end: 11,
+            query_keys: Vec::new(),
             derived_projections: Vec::new(),
         },
     ])));
@@ -29,6 +30,7 @@ fn unchanged_owner_is_warm_after_selector_discovery_without_derived_projection()
             selector: "rust://src/lib.rs#item/function/run".to_owned(),
             byte_start: 0,
             byte_end: 11,
+            query_keys: Vec::new(),
             derived_projections: vec![WorkspaceDerivedProjectionSnapshot {
                 projection_kind: "callable-skeleton".to_owned(),
                 bytes: b"fn run()".to_vec(),

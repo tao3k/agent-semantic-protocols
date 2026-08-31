@@ -1,6 +1,9 @@
 mod aot_evaluator_contract;
 mod aot_evaluator_performance;
+mod child_session_registration_contract;
 mod codex_native_action_entries;
+mod codex_thread_management_contract;
+mod collaboration_lifecycle_contract;
 mod config_dsl_scenario_matrix;
 mod developer_hook_runtime;
 mod hook_binary_package_boundary;
@@ -8,6 +11,7 @@ mod hook_scenario_contract;
 mod host_native_handoff;
 mod native_host_action_policy;
 mod native_read_profile_matrix;
+mod nested_reader_profile_matrix;
 mod plugin_payload_lifecycle;
 mod reader_catalog_contract;
 mod scenario_runtime;

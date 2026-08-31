@@ -5,12 +5,16 @@ use serde_json::Value;
 
 const SEARCH_REQUEST: &str = "agent.semantic-protocols.runtime-provider-search-request";
 const CLIENT_SEARCH_REQUEST: &str = "agent.semantic-protocols.asp-client-search-request";
+const CLIENT_SOURCE_INDEX_LOOKUP_REQUEST: &str =
+    "agent.semantic-protocols.asp-client-source-index-lookup-request";
 const CLIENT_EXACT_QUERY_REQUEST: &str = "agent.semantic-protocols.asp-client-exact-query-request";
 const CLIENT_EXACT_QUERY_RESPONSE: &str =
     "agent.semantic-protocols.asp-client-exact-query-response";
 const CLIENT_EXACT_QUERY_FAILURE: &str = "agent.semantic-protocols.asp-client-exact-query-failure";
 const CLIENT_OWNER_SEARCH_REQUEST: &str =
     "agent.semantic-protocols.asp-client-owner-search-request";
+const CLIENT_OWNER_SEARCH_RESPONSE: &str =
+    "agent.semantic-protocols.asp-client-owner-search-response";
 const CLIENT_GRAPHS_TIMELINE_REQUEST: &str =
     "agent.semantic-protocols.asp-client-graphs-timeline-request";
 const EXACT_REQUEST: &str = "agent.semantic-protocols.provider-native-exact-request";
@@ -25,6 +29,16 @@ pub struct AspClientSearchRequest {
     pub schema_version: String,
     pub operation: String,
     pub query: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AspClientSourceIndexLookupRequest {
+    pub schema_id: String,
+    pub schema_version: String,
+    pub query: String,
+    pub index_root: String,
+    pub limit: u32,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -108,6 +122,34 @@ pub struct AspClientOwnerSearchRequest {
     pub owner_path: String,
     pub query: String,
     pub view: String,
+}
+
+/// Compact structural seed returned by owner-local search.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AspClientOwnerSearchSeed {
+    pub selector: String,
+    pub byte_start: usize,
+    pub byte_end: usize,
+}
+
+/// Versioned bounded owner-local search response.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AspClientOwnerSearchResponse {
+    pub schema_id: String,
+    pub schema_version: String,
+    pub state: String,
+    pub generation_digest: String,
+    pub root_digest: String,
+    pub owner_path: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content_digest: Option<String>,
+    pub query: String,
+    pub view: String,
+    pub candidate_count: usize,
+    pub returned_count: usize,
+    pub selectors: Vec<AspClientOwnerSearchSeed>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -244,8 +286,13 @@ macro_rules! validate_schema_identity {
 }
 validate_schema_identity!(RuntimeProviderSearchRequest, SEARCH_REQUEST);
 validate_schema_identity!(AspClientSearchRequest, CLIENT_SEARCH_REQUEST);
+validate_schema_identity!(
+    AspClientSourceIndexLookupRequest,
+    CLIENT_SOURCE_INDEX_LOOKUP_REQUEST
+);
 validate_schema_identity!(AspClientExactQueryRequest, CLIENT_EXACT_QUERY_REQUEST);
 validate_schema_identity!(AspClientOwnerSearchRequest, CLIENT_OWNER_SEARCH_REQUEST);
+validate_schema_identity!(AspClientOwnerSearchResponse, CLIENT_OWNER_SEARCH_RESPONSE);
 validate_schema_identity!(
     AspClientGraphsTimelineRequest,
     CLIENT_GRAPHS_TIMELINE_REQUEST
@@ -254,6 +301,45 @@ validate_schema_identity!(ProviderNativeExactRequest, EXACT_REQUEST);
 validate_schema_identity!(ProviderNativeExactProjection, EXACT_RESPONSE);
 validate_schema_identity!(ProviderNativeOwnerSearchRequest, OWNER_REQUEST);
 validate_schema_identity!(ProviderNativeOwnerSearchResponse, OWNER_RESPONSE);
+
+impl AspClientOwnerSearchResponse {
+    pub fn validate(&self) -> Result<(), String> {
+        self.validate_schema_identity()?;
+        if self.owner_path.trim().is_empty()
+            || self.generation_digest.trim().is_empty()
+            || self.root_digest.trim().is_empty()
+            || self.view != "seeds"
+        {
+            return Err("owner-search response identity is incomplete".to_owned());
+        }
+        if self.returned_count != self.selectors.len()
+            || self.returned_count > 100
+            || self.returned_count > self.candidate_count
+        {
+            return Err("owner-search response counts are inconsistent".to_owned());
+        }
+        match self.state.as_str() {
+            "owner" if self.content_digest.is_some() => {}
+            "owner-missing"
+                if self.content_digest.is_none()
+                    && self.candidate_count == 0
+                    && self.selectors.is_empty() => {}
+            _ => return Err("owner-search response state is inconsistent".to_owned()),
+        }
+        if self
+            .selectors
+            .iter()
+            .any(|seed| seed.selector.trim().is_empty() || seed.byte_end < seed.byte_start)
+            || self
+                .selectors
+                .windows(2)
+                .any(|pair| pair[0].selector >= pair[1].selector)
+        {
+            return Err("owner-search response selector seeds are not canonical".to_owned());
+        }
+        Ok(())
+    }
+}
 
 impl AspClientExactQueryResponse {
     pub fn validate(&self) -> Result<(), String> {

@@ -16,7 +16,10 @@ pub struct RuntimeQueryGeneration {
 #[derive(Clone)]
 pub enum RuntimeQueryGenerationState {
     Ready(Arc<RuntimeQueryGeneration>),
-    Failed(Arc<str>),
+    Failed {
+        expected_generation_digest: Arc<str>,
+        reason: Arc<str>,
+    },
 }
 
 #[derive(Clone)]
@@ -95,6 +98,7 @@ impl RuntimeQueryGenerationAuthority {
         &self,
         workspace_identity: String,
         publication_token: u64,
+        expected_generation_digest: impl Into<Arc<str>>,
         reason: impl Into<Arc<str>>,
     ) {
         let Ok(_publication_guard) = self.publication_lock.lock() else {
@@ -109,7 +113,10 @@ impl RuntimeQueryGenerationAuthority {
         let mut generations = self.sender.borrow().as_ref().clone();
         generations.insert(
             workspace_identity,
-            RuntimeQueryGenerationState::Failed(reason.into()),
+            RuntimeQueryGenerationState::Failed {
+                expected_generation_digest: expected_generation_digest.into(),
+                reason: reason.into(),
+            },
         );
         self.sender.send_replace(Arc::new(generations));
     }
@@ -173,12 +180,18 @@ impl RuntimeQueryGenerationAuthority {
                 self.publish_failed(
                     workspace_identity.to_owned(),
                     generation.generation_token(),
+                    expected_generation_digest.to_owned(),
                     error.clone(),
                 );
                 Err(error)
             }
             Err(error) => {
-                self.publish_failed(workspace_identity.to_owned(), 0, error.clone());
+                self.publish_failed(
+                    workspace_identity.to_owned(),
+                    0,
+                    expected_generation_digest.to_owned(),
+                    error.clone(),
+                );
                 Err(error)
             }
         }
@@ -196,6 +209,30 @@ mod tests {
         assert!(receiver.borrow().is_empty());
         authority.clear_all();
         assert!(receiver.borrow().is_empty());
+    }
+
+    #[test]
+    fn failed_publication_is_bound_to_the_expected_generation_digest() {
+        let authority = RuntimeQueryGenerationAuthority::new();
+        let receiver = authority.subscribe();
+
+        authority.publish_failed(
+            "workspace-test".to_owned(),
+            0,
+            "blake3-256:expected",
+            "resident open failed",
+        );
+
+        let observed = receiver.borrow();
+        let Some(RuntimeQueryGenerationState::Failed {
+            expected_generation_digest,
+            reason,
+        }) = observed.get("workspace-test")
+        else {
+            panic!("failed publication must retain generation identity");
+        };
+        assert_eq!(expected_generation_digest.as_ref(), "blake3-256:expected");
+        assert_eq!(reason.as_ref(), "resident open failed");
     }
 
     #[tokio::test]
@@ -219,7 +256,7 @@ mod tests {
         assert!(!error.is_empty());
         assert!(matches!(
             receiver.borrow().get("workspace-test"),
-            Some(RuntimeQueryGenerationState::Failed(_))
+            Some(RuntimeQueryGenerationState::Failed { .. })
         ));
     }
 

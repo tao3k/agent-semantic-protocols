@@ -1,0 +1,91 @@
+#+title: V1 Runtime Execution Binding
+#+status: design and additive implementation
+
+* Current state and first divergence
+
+The artifact publication owner allocates a monotonic activation generation
+under the publication guard and binds stale-actor rejection to generation,
+artifact digest, and publication nonce. Re-publishing identical content may
+therefore produce a new sequence without changing content identity.
+
+The first semantic divergence is the evaluator boundary: policy generation
+digest is not sufficient evidence of the executable ASP binary that produced
+the decision. An active artifact receipt can contain binary and activation
+leaves, but the evaluator decision must carry the exact executable binding.
+
+A Host permission failure is a separate boundary failure. A State Home or
+Runtime socket EPERM is not an activation, admission, or semantic-content
+failure, and must never cause an implicit restart, install, retry, or identity
+change.
+
+* V1 contract
+
+The existing =asp.content-binding= schemaVersion =1= remains the content
+identity primitive. Runtime execution adds a typed composition containing:
+
+- runtime artifact digest;
+- evaluator policy digest;
+- active artifact receipt digest; and
+- evaluator ABI/schema digest.
+
+The composition is immutable and exact. Same policy with a different binary,
+same binary with a different policy, and any cross-content composition are
+rejected before evaluator reuse or provider admission.
+
+The activation number is an internal publication sequence, stale-actor fence,
+and observability value only. It is not a product identity, ClientFrame
+identity, selector, cache key, provider input, workspace identity, or source
+generation identity.
+
+* Authority and data flow
+
+ASP Server owns artifact receipt validation, exact execution-binding admission,
+evaluator lifecycle, WorkspaceSnapshot, SourceGeneration, SourceIndex, and
+provider admission. Artifact publication has one durable CAS commit. Providers
+consume immutable typed snapshots and return parser-owned facts. Clients carry
+the exact binding and render typed terminal receipts.
+
+The additive implementation seam is in
+=crates/agent-semantic-content-identity/src/runtime_execution.rs= and
+=search_execution.rs=. It is not a second serving authority; public cutover
+remains gated on Runtime Server integration and protected producer evidence.
+
+* Design review
+
+** Candidate A: numeric generation authority
+
+It minimizes immediate migration but cannot distinguish equal labels with
+different binary or source content. It also leaves evaluator freshness coupled
+to implicit snapshots and environment equality. It is rejected as the product
+identity.
+
+** Candidate B: content address only
+
+It gives strong content equality but does not by itself specify actor ordering,
+ABA fencing, or crash-cut behavior. It also increases migration and digest
+materialization cost.
+
+** Candidate C: content identity plus internal monotonic fence
+
+This is the provisional candidate. Content digests determine reuse and
+admission; the monotonic sequence orders publication actors and stale writes.
+This preserves cheap fencing while preventing the sequence from overriding
+content mismatch. It remains provisional until source-level evaluator key and
+publication linearization gates pass.
+
+* Required gates
+
+- same content with a new sequence keeps the same content identity;
+- stale generation or nonce actor remains rejected;
+- same-policy/different-binary and same-binary/different-policy are rejected;
+- binary refresh invalidates the old evaluator binding;
+- publication crash cuts expose no mixed content;
+- cancellation does not commit;
+- 32 same-key requests single-flight and produce one terminal each; and
+- cold/warm measurements separate build, artifact lock, install, IPC, and
+  query phases.
+
+#+begin_comment
+Final public-route cutover requires a separate approval after the Host IPC
+permission boundary and protected evaluator producer evidence are available.
+#+end_comment

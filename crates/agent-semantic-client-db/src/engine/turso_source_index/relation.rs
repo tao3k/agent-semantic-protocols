@@ -1,41 +1,9 @@
 use agent_semantic_content_identity::provider_projection_relation::{
-    PROVIDER_RELATION_ITEM_ENDPOINT_KIND, PROVIDER_RELATION_OWNER_ENDPOINT_KIND,
     ProviderProjectedRelation, ProviderProjectedRelationEndpoint,
 };
 
 use crate::ClientDbSourceIndexImport;
 use crate::engine::turso_statement::execute_turso_operation;
-
-fn relation_owner_by_source_identity(
-    import: &ClientDbSourceIndexImport,
-) -> Result<std::collections::BTreeMap<(String, String), String>, String> {
-    let mut owners = std::collections::BTreeMap::new();
-    for owner in &import.owners {
-        let owner_path = owner.owner_path.as_str();
-        for identity in [owner_path.to_string(), format!("owner:{owner_path}")] {
-            owners.insert(
-                (PROVIDER_RELATION_OWNER_ENDPOINT_KIND.to_string(), identity),
-                owner_path.to_string(),
-            );
-        }
-    }
-    for selector in &import.selectors {
-        let identity = (
-            PROVIDER_RELATION_ITEM_ENDPOINT_KIND.to_string(),
-            selector.selector_id.as_str().to_string(),
-        );
-        if owners
-            .insert(identity.clone(), selector.owner_path.as_str().to_string())
-            .is_some()
-        {
-            return Err(format!(
-                "source-index relation source identity is ambiguous: kind={} id={}",
-                identity.0, identity.1,
-            ));
-        }
-    }
-    Ok(owners)
-}
 
 pub(super) async fn refresh_turso_source_index_relation_projection(
     connection: &turso::Connection,
@@ -79,24 +47,16 @@ pub(super) async fn refresh_turso_source_index_relation_projection(
     )
     .await?;
 
-    let owner_by_source_identity = relation_owner_by_source_identity(import)?;
     let changed_owner_paths = owner_paths
         .iter()
         .map(String::as_str)
         .collect::<std::collections::BTreeSet<_>>();
     let mut rows = Vec::with_capacity(import.relations.len());
-    for relation in &import.relations {
+    for owned in &import.relations {
+        let relation = &owned.relation;
         relation.validate()?;
-        let source_identity = (relation.from.kind.clone(), relation.from.id.clone());
-        let owner_path = owner_by_source_identity
-            .get(&source_identity)
-            .ok_or_else(|| {
-                format!(
-                    "source-index relation has no parser-attributed owner: kind={} id={}",
-                    relation.from.kind, relation.from.id
-                )
-            })?;
-        if !changed_owner_paths.contains(owner_path.as_str()) {
+        let owner_path = owned.owner_path.as_str();
+        if !changed_owner_paths.contains(owner_path) {
             return Err(format!(
                 "source-index relation belongs outside changed owner membership: ownerPath={owner_path}"
             ));
@@ -231,7 +191,10 @@ pub(super) async fn load_turso_source_index_relations(
     .map_err(|error| format!("failed to decode relation materialization: {error}"))?;
     let mut persisted_relations = relations
         .iter()
-        .map(|attributed| attributed.relation.clone())
+        .map(|attributed| crate::ClientDbSourceIndexOwnedRelation {
+            owner_path: crate::ClientDbSourceIndexPath::new(attributed.owner_path.clone()),
+            relation: attributed.relation.clone(),
+        })
         .collect::<Vec<_>>();
     persisted_relations.sort();
     let mut materialized_relations = materialization.relations;

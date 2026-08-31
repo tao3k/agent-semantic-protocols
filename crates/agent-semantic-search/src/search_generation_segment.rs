@@ -4,10 +4,10 @@ use std::collections::BTreeSet;
 
 pub const WORKSPACE_SEARCH_GENERATION_SEGMENT_SCHEMA_ID: &str =
     "agent.semantic-protocols.workspace-memory-generation-segment";
-const SEGMENT_MAGIC: &[u8; 16] = b"ASPWSSEARCHIDXV2";
+const SEGMENT_MAGIC: &[u8; 16] = b"ASPWSSEARCHIDXV3";
 const SEGMENT_HEADER_LEN: usize = 72;
 const SECTION_DESCRIPTOR_LEN: usize = 64;
-const REQUIRED_SECTION_COUNT: usize = 8;
+const REQUIRED_SECTION_COUNT: usize = 7;
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 #[repr(u8)]
@@ -16,7 +16,6 @@ pub enum SearchGenerationSectionKind {
     ProjectResolutions = 2,
     OwnerDirectory = 3,
     OwnerBytes = 4,
-    LexicalIndex = 5,
     SelectorIndex = 6,
     GraphRelations = 7,
     MerkleOwnerIndex = 8,
@@ -29,7 +28,6 @@ impl SearchGenerationSectionKind {
             2 => Ok(Self::ProjectResolutions),
             3 => Ok(Self::OwnerDirectory),
             4 => Ok(Self::OwnerBytes),
-            5 => Ok(Self::LexicalIndex),
             6 => Ok(Self::SelectorIndex),
             7 => Ok(Self::GraphRelations),
             8 => Ok(Self::MerkleOwnerIndex),
@@ -43,7 +41,6 @@ impl SearchGenerationSectionKind {
             Self::ProjectResolutions,
             Self::OwnerDirectory,
             Self::OwnerBytes,
-            Self::LexicalIndex,
             Self::SelectorIndex,
             Self::GraphRelations,
             Self::MerkleOwnerIndex,
@@ -114,7 +111,7 @@ fn canonical_search_generation_sections(
     sections.sort_unstable_by_key(|section| section.kind);
     let actual: Vec<_> = sections.iter().map(|section| section.kind).collect();
     if actual != SearchGenerationSectionKind::required() {
-        return Err("search generation must contain every v1 section exactly once".to_owned());
+        return Err("search generation must contain every v3 section exactly once".to_owned());
     }
     Ok(sections)
 }
@@ -312,11 +309,11 @@ impl<'a> ValidatedSearchGenerationSegment<'a> {
             .sections
             .iter()
             .find(|section| section.kind == kind)
-            .expect("validated v1 search generation contains every required section");
+            .expect("validated v3 search generation contains every required section");
         let bytes = self
             .bytes
             .get(descriptor.offset..descriptor.offset + descriptor.len)
-            .expect("validated v1 search generation section range is in bounds");
+            .expect("validated v3 search generation section range is in bounds");
         (
             bytes,
             descriptor.representation as u8,
@@ -329,7 +326,7 @@ impl<'a> ValidatedSearchGenerationSegment<'a> {
             .sections
             .iter()
             .find(|section| section.kind == kind)
-            .expect("validated v1 search generation contains every required section");
+            .expect("validated v3 search generation contains every required section");
         descriptor.offset..descriptor.offset + descriptor.len
     }
 }

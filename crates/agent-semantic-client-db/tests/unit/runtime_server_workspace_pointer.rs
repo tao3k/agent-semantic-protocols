@@ -14,7 +14,7 @@ fn snapshot(active_epoch: u64) -> WorkspaceGenerationSnapshot {
     let source_root_digest = format!("blake3-256:{}", workspace_snapshot.root_digest());
     WorkspaceGenerationSnapshot {
         schema_id: WORKSPACE_GENERATION_SCHEMA_ID.to_owned(),
-        schema_version: "1".to_owned(),
+        schema_version: "2".to_owned(),
         workspace_identity: "workspace-pointer-stress".to_owned(),
         state: WorkspaceGenerationState::Ready,
         active_epoch,

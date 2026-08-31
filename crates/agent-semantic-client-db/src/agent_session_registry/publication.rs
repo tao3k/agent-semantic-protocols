@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use fs2::FileExt as _;
 use serde::{Deserialize, Serialize};
 
-use super::core::bootstrap_turso_agent_session_schema;
+use super::schema::bootstrap_turso_agent_session_schema;
 use super::types::AGENT_SESSION_REGISTRY_DB_NAME;
 
 const RECEIPT_FILE: &str = "session-registry.current.v1.json";

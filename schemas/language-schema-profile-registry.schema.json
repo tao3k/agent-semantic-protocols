@@ -4,7 +4,7 @@
   "title": "ASP Language Schema Profile Registry",
   "type": "object",
   "additionalProperties": false,
-  "required": ["$schema", "schemaId", "schemaVersion", "families", "referenceDecisions", "rootSets", "profiles"],
+  "required": ["$schema", "schemaId", "schemaVersion", "families", "referenceDecisions", "wireArtifacts", "rootSets", "profiles"],
   "properties": {
     "$schema": { "const": "language-schema-profile-registry.schema.json" },
     "schemaId": { "const": "agent.semantic-protocols.language-schema-profile-registry" },
@@ -17,6 +17,11 @@
     "referenceDecisions": {
       "type": "array",
       "items": { "$ref": "asp-schema-reference-decision-registry.v1.schema.json#/$defs/entry" }
+    },
+    "wireArtifacts": {
+      "type": "object",
+      "propertyNames": { "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
+      "additionalProperties": { "type": "string", "pattern": "^[^/]+\\.proto$" }
     },
     "rootSets": {
       "type": "object",

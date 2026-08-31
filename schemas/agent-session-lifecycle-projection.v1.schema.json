@@ -11,6 +11,7 @@
     "session",
     "hostBinding",
     "dispatch",
+    "requiredDispatchAction",
     "durableDispatchAuthorized"
   ],
   "properties": {
@@ -41,9 +42,9 @@
             "unobserved",
             "declared",
             "active",
-            "archive-intent-durable",
-            "archived",
-            "retired"
+            "interrupted",
+            "completed",
+            "failed"
           ]
         }
       },
@@ -71,37 +72,31 @@
     "hostBinding": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "generation",
-        "phase",
-        "terminationReceiptIndexed",
-        "pathReleaseReceiptIndexed"
-      ],
+      "required": ["generation", "phase", "pathObserved"],
       "properties": {
         "generation": { "type": ["integer", "null"], "minimum": 0 },
-        "phase": {
-          "enum": [
-            "unobserved",
-            "unbound",
-            "fresh",
-            "stale",
-            "host-terminated",
-            "path-released"
-          ]
-        },
+        "phase": { "enum": ["unobserved", "unbound", "fresh", "stale"] },
         "childSessionId": { "type": ["string", "null"] },
         "canonicalMessageTarget": { "type": ["string", "null"] },
-        "terminationReceiptIndexed": { "type": "boolean" },
-        "pathReleaseReceiptIndexed": { "type": "boolean" }
+        "pathObserved": { "type": ["boolean", "null"] }
       },
       "allOf": [
         {
-          "if": { "properties": { "phase": { "const": "path-released" } } },
+          "if": {
+            "properties": { "phase": { "const": "fresh" } },
+            "required": ["phase"]
+          },
           "then": {
-            "properties": {
-              "terminationReceiptIndexed": { "const": true },
-              "pathReleaseReceiptIndexed": { "const": true }
-            }
+            "properties": { "pathObserved": { "const": true } }
+          }
+        },
+        {
+          "if": {
+            "properties": { "phase": { "const": "unobserved" } },
+            "required": ["phase"]
+          },
+          "then": {
+            "properties": { "pathObserved": { "type": "null" } }
           }
         }
       ]
@@ -133,13 +128,61 @@
             }
           },
           "then": {
-            "properties": {
-              "generation": { "type": "integer", "minimum": 0 }
-            }
+            "properties": { "generation": { "type": "integer", "minimum": 0 } }
           }
         }
       ]
     },
+    "requiredDispatchAction": {
+      "enum": ["unavailable", "spawn-agent", "followup-task"]
+    },
     "durableDispatchAuthorized": { "type": "boolean" }
-  }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "hostBinding": {
+            "properties": { "pathObserved": { "const": true } },
+            "required": ["pathObserved"]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "requiredDispatchAction": { "const": "followup-task" }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "hostBinding": {
+            "properties": { "pathObserved": { "const": false } },
+            "required": ["pathObserved"]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "requiredDispatchAction": { "const": "spawn-agent" }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "hostBinding": {
+            "properties": { "pathObserved": { "type": "null" } },
+            "required": ["pathObserved"]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "requiredDispatchAction": { "const": "unavailable" }
+        }
+      }
+    }
+  ]
 }

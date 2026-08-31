@@ -126,6 +126,14 @@ fn configured_testing_agent_is_allowed_without_child_registration() {
             .is_some_and(|context| context.contains("collaboration.spawn_agent")),
         "{unregistered}"
     );
+    assert!(
+        unregistered["hookSpecificOutput"]["additionalContext"]
+            .as_str()
+            .is_some_and(|context| context.contains(
+                "asp session register-child --parent-thread-id root-test --agent-name asp_testing"
+            )),
+        "{unregistered}"
+    );
     let route_key = blake3::hash(b"root-test").to_hex();
     let route_path = temp
         .path()

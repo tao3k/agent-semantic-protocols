@@ -124,7 +124,7 @@ fn delegation_hint_line(hint: &Value) -> Option<String> {
     let profile = safe_token(string_field(hint, "profile")?)?;
     let _mode = literal_or_default(hint, "mode", "resident", &["resident"])?;
     let _instances = literal_or_default(hint, "instances", "single", &["single", "targetActions"])?;
-    let _reuse = literal_or_default(hint, "reuse", "send_input", &["send_input"])?;
+    let _reuse = literal_or_default(hint, "reuse", "followup_task", &["followup_task"])?;
     let _spawn = literal_or_default(hint, "spawn", "if-missing", &["if-missing"])?;
     if bool_or_default(hint, "forkContext", false)? {
         return None;
@@ -142,7 +142,7 @@ fn delegation_hint_line(hint: &Value) -> Option<String> {
     let reason = safe_token(string_field(hint, "reason")?)?;
 
     Some(format!(
-        "subagentHint=profile={profile} mode=resident instances=single reuse=send_input spawn=if-missing forkContext=false branchPrompt={branch_prompt} stateOwner={state_owner} fanin={fanin} iterative={iterative} decision=advisory runtimeOwner=agent-client modelClass={model_class} readOnly=true noCode=true targetActions={} maxCommands={max_commands} maxTurns={max_turns} receipt=asp-search-subagent({}) reason={reason}",
+        "subagentHint=profile={profile} mode=resident instances=single reuse=followup_task spawn=if-missing forkContext=false branchPrompt={branch_prompt} stateOwner={state_owner} fanin={fanin} iterative={iterative} decision=advisory runtimeOwner=agent-client modelClass={model_class} readOnly=true noCode=true targetActions={} maxCommands={max_commands} maxTurns={max_turns} receipt=asp-search-subagent({}) reason={reason}",
         target_actions.join(","),
         required_fields.join(",")
     ))

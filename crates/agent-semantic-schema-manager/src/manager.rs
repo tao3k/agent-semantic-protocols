@@ -38,6 +38,7 @@ pub struct LanguageSchemaProfileRegistry {
     pub schema_version: String,
     pub families: Vec<SchemaFamily>,
     pub reference_decisions: Vec<SchemaReferenceDecision>,
+    pub wire_artifacts: BTreeMap<String, String>,
     pub root_sets: BTreeMap<String, Vec<String>>,
     pub profiles: Vec<LanguageSchemaProfile>,
 }
@@ -106,6 +107,27 @@ impl SchemaManager {
     /// Consumers must use this owner instead of maintaining a second language list.
     pub fn registered_language_profiles(&self) -> Result<Vec<LanguageSchemaProfile>, String> {
         Ok(self.load_registry()?.profiles)
+    }
+
+    /// Resolves a declaratively registered, Schema Manager-owned wire artifact.
+    /// Build scripts consume this path instead of maintaining package-local
+    /// protocol declarations.
+    pub fn canonical_wire_artifact_path(&self, artifact_id: &str) -> Result<PathBuf, String> {
+        validate_identity("wireArtifactId", artifact_id)?;
+        let registry = self.load_registry_document()?;
+        self.validate_wire_artifacts(&registry)?;
+        let name = registry
+            .wire_artifacts
+            .get(artifact_id)
+            .ok_or_else(|| format!("unknown canonical wire artifact: {artifact_id}"))?;
+        let path = self.workspace_root.join("schemas").join(name);
+        if !path.is_file() {
+            return Err(format!(
+                "canonical wire artifact is missing: {}",
+                path.display()
+            ));
+        }
+        Ok(path)
     }
 
     pub fn with_registry(
@@ -198,20 +220,9 @@ impl SchemaManager {
     }
 
     fn load_registry(&self) -> Result<LanguageSchemaProfileRegistry, String> {
-        let bytes = fs::read(&self.registry_path).map_err(|error| {
-            format!(
-                "read schema profile registry {}: {error}",
-                self.registry_path.display()
-            )
-        })?;
-        let registry: LanguageSchemaProfileRegistry = serde_json::from_slice(&bytes)
-            .map_err(|error| format!("decode schema profile registry: {error}"))?;
-        if registry.schema_id != PROFILE_REGISTRY_SCHEMA_ID
-            || registry.schema_version != SCHEMA_VERSION
-        {
-            return Err("schema profile registry identity is unsupported".to_owned());
-        }
+        let registry = self.load_registry_document()?;
         self.schema_responsibilities(&registry)?;
+        self.validate_wire_artifacts(&registry)?;
         let mut languages = BTreeSet::new();
         for profile in &registry.profiles {
             validate_identity("languageId", &profile.language_id)?;
@@ -239,6 +250,37 @@ impl SchemaManager {
             }
         }
         Ok(registry)
+    }
+
+    fn load_registry_document(&self) -> Result<LanguageSchemaProfileRegistry, String> {
+        let bytes = fs::read(&self.registry_path).map_err(|error| {
+            format!(
+                "read schema profile registry {}: {error}",
+                self.registry_path.display()
+            )
+        })?;
+        let registry: LanguageSchemaProfileRegistry = serde_json::from_slice(&bytes)
+            .map_err(|error| format!("decode schema profile registry: {error}"))?;
+        if registry.schema_id != PROFILE_REGISTRY_SCHEMA_ID
+            || registry.schema_version != SCHEMA_VERSION
+        {
+            return Err("schema profile registry identity is unsupported".to_owned());
+        }
+        Ok(registry)
+    }
+
+    fn validate_wire_artifacts(
+        &self,
+        registry: &LanguageSchemaProfileRegistry,
+    ) -> Result<(), String> {
+        for (artifact_id, name) in &registry.wire_artifacts {
+            validate_identity("wireArtifactId", artifact_id)?;
+            validate_relative_path("wireArtifact", name)?;
+            if !name.ends_with(".proto") || Path::new(name).components().count() != 1 {
+                return Err(format!("wire artifact must be a protobuf basename: {name}"));
+            }
+        }
+        Ok(())
     }
 
     fn schema_responsibilities(

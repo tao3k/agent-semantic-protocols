@@ -19,12 +19,30 @@
     },
     "agentStatus": {
       "oneOf": [
-        { "type": "string", "minLength": 1 },
+        {
+          "enum": [
+            "pending_init",
+            "running",
+            "interrupted",
+            "shutdown",
+            "not_found"
+          ]
+        },
         {
           "type": "object",
-          "minProperties": 1,
-          "maxProperties": 1,
-          "additionalProperties": { "type": "string" }
+          "additionalProperties": false,
+          "required": ["completed"],
+          "properties": {
+            "completed": { "type": ["string", "null"] }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["errored"],
+          "properties": {
+            "errored": { "type": "string" }
+          }
         }
       ]
     },

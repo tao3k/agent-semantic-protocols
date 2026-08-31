@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/runtime-server-search-generation-authority.v2.schema.json",
+  "title": "Runtime Server Search Generation Authority v2",
+  "description": "Compact resident generation identity binding source Merkle state, analyzer identity, provider schema, and the derived search projection manifest.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "workspaceIdentity",
+    "projectRoot",
+    "activeEpoch",
+    "generationDigest",
+    "ownerMerkleRootDigest",
+    "searchProjectionManifestDigest",
+    "searchProjectionAnalyzerDigest",
+    "providerSchemaDigest",
+    "sourceSnapshot",
+    "projectResolutions",
+    "workspaceGeneration"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.runtime-server-search-generation-authority.v2"
+    },
+    "schemaVersion": {
+      "const": "2"
+    },
+    "workspaceIdentity": {
+      "type": "string",
+      "minLength": 1
+    },
+    "projectRoot": {
+      "type": "string",
+      "minLength": 1
+    },
+    "activeEpoch": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "generationDigest": {
+      "$ref": "#/$defs/wireDigest"
+    },
+    "ownerMerkleRootDigest": {
+      "$ref": "#/$defs/wireDigest"
+    },
+    "searchProjectionManifestDigest": {
+      "$ref": "#/$defs/wireDigest"
+    },
+    "searchProjectionAnalyzerDigest": {
+      "$ref": "#/$defs/wireDigest"
+    },
+    "providerSchemaDigest": {
+      "$ref": "#/$defs/wireDigest"
+    },
+    "sourceSnapshot": {
+      "$ref": "source-snapshot-evidence.v1.schema.json#/$defs/sourceSnapshot"
+    },
+    "projectResolutions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["candidateBase", "scopeDigest", "scope"],
+        "properties": {
+          "candidateBase": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+          },
+          "scopeDigest": {
+            "$ref": "#/$defs/wireDigest"
+          },
+          "scope": {
+            "$ref": "https://schemas.agent-semantic-protocols.dev/project-resolution.schema.json"
+          }
+        }
+      }
+    },
+    "workspaceGeneration": {
+      "$ref": "workspace-generation-root-evidence.v1.schema.json"
+    }
+  },
+  "$defs": {
+    "wireDigest": {
+      "type": "string",
+      "pattern": "^blake3-256:[0-9a-f]{64}$"
+    }
+  }
+}

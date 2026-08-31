@@ -363,8 +363,9 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
     let query_generation_authority =
         agent_semantic_runtime_server::query_generation::RuntimeQueryGenerationAuthority::new();
     let mut generation_publications = server.workspace_generation_publication_subscribe();
-    let client_generation_admission = server.workspace_generation_admission().ok_or_else(|| {
-        "Runtime Server client activation requires generation admission".to_owned()
+    let generation_admission = server.workspace_generation_admission().ok_or_else(|| {
+        "Runtime ClientFrame service requires the server-owned workspace generation admission authority"
+            .to_owned()
     })?;
     let client_protocol_listener = agent_semantic_client_server::bind_asp_client_grpc_unix(
         std::path::Path::new(&endpoint.data_plane_socket_path),
@@ -376,11 +377,11 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
     .await?;
     let client_grpc_service = runtime_asp_client::build_frame_service(
         schema_bundles,
+        std::sync::Arc::clone(&agent_session_registry),
         runtime_search_service.clone(),
-        std::sync::Arc::clone(server.workspace_registry()),
+        generation_admission,
         runtime_provider_catalog.generation().to_owned(),
         std::sync::Arc::from(runtime_provider_catalog.installed_provider_targets()),
-        client_generation_admission,
         query_generation_authority.clone(),
         lifecycle_bus.sender.clone(),
     )?;
@@ -401,15 +402,6 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
         result
     })?;
     let (client_grpc_shutdown, client_grpc_shutdown_receiver) = tokio::sync::watch::channel(false);
-    let collaboration_shutdown = client_grpc_shutdown.subscribe();
-    let collaboration_task = task_scope.spawn(
-        "codex-collaboration-snapshot-inbox",
-        agent_semantic_client_db::run_collaboration_snapshot_inbox(
-            std::sync::Arc::clone(&agent_session_registry),
-            state_home.to_path_buf(),
-            collaboration_shutdown,
-        ),
-    )?;
     let mut generation_shutdown = client_grpc_shutdown.subscribe();
     let (client_grpc_done_sender, mut client_grpc_done_receiver) = tokio::sync::oneshot::channel();
     let client_grpc_task = task_scope.spawn("asp-client-grpc", async move {
@@ -711,13 +703,6 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
         .await
         .map_err(|error| format!("Runtime Server task failed: {error}"))?;
     let _ = generation_task.join().await;
-    let collaboration_result = collaboration_task
-        .join()
-        .await
-        .map_err(|error| format!("Codex Collaboration snapshot task failed: {error}"))?;
-    if let Err(error) = collaboration_result {
-        eprintln!("[codex-collaboration-snapshot] state=failed error={error}");
-    }
     query_generation_authority.clear_all();
     let identity_change = identity_change_receiver.try_recv().ok();
     let server_result = server_result.map(|_| ());

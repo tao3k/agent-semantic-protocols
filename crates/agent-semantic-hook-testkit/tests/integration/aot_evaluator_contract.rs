@@ -871,8 +871,16 @@ fn concurrent_dynamic_cache_hits_are_submillisecond_and_process_free() {
         )
         .expect("cold Reader observation");
         if cold.access == ReaderProbeAccess::Unknown {
-            assert_eq!(cold.terminal, "probe-deferred", "cold={cold:?}");
-            assert!(!cold.probe_process_launched);
+            assert!(
+                matches!(cold.terminal.as_str(), "probe-deferred" | "probe-timeout"),
+                "cold={cold:?}"
+            );
+            assert_eq!(
+                cold.probe_process_launched,
+                cold.terminal == "probe-timeout",
+                "cold={cold:?}"
+            );
+            assert!(cold.cleanup_verified, "cold={cold:?}");
             return;
         }
         assert_eq!(cold.access, ReaderProbeAccess::Read);

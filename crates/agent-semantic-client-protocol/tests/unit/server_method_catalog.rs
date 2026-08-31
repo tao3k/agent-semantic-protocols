@@ -18,9 +18,11 @@ fn server_catalog_exposes_northbound_search_query_and_schema_bundle_methods() {
             "asp.schema.bundle",
             "asp.session.children",
             "asp.session.host-event",
+            "asp.session.register-child",
             "rust.query",
             "rust.search",
-            "rust.search.owner"
+            "rust.search.owner",
+            "rust.source-index.lookup"
         ]
     );
     assert!(!names.contains(&"rust.projection-batch"));
@@ -147,6 +149,10 @@ fn method_resolution_is_independent_of_provider_runtime_routes() {
     assert_eq!(
         resolve_server_client_method("python.query", languages),
         Ok(("python".to_owned(), ServerClientRoute::ExactQuery))
+    );
+    assert_eq!(
+        resolve_server_client_method("rust.source-index.lookup", ["rust".to_owned()]),
+        Ok(("rust".to_owned(), ServerClientRoute::SourceIndexLookup))
     );
 }
 

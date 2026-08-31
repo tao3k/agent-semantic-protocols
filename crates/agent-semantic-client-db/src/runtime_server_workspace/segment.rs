@@ -324,7 +324,7 @@ impl WorkspaceGenerationPublisher {
         };
         let snapshot = WorkspaceGenerationSnapshot {
             schema_id: WORKSPACE_GENERATION_SCHEMA_ID.to_owned(),
-            schema_version: "1".to_owned(),
+            schema_version: "2".to_owned(),
             workspace_identity: generation.workspace_identity.clone(),
             state: WorkspaceGenerationState::Ready,
             active_epoch: generation.active_epoch,

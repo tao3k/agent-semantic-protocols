@@ -22,6 +22,17 @@ fn northbound_client_requests_are_distinct_from_provider_runtime_requests() {
     };
     search.validate_schema_identity().expect("search identity");
 
+    let source_index = crate::AspClientSourceIndexLookupRequest {
+        schema_id: "agent.semantic-protocols.asp-client-source-index-lookup-request".to_owned(),
+        schema_version: "1".to_owned(),
+        query: "RuntimeAspClient".to_owned(),
+        index_root: "/workspace".to_owned(),
+        limit: 8,
+    };
+    source_index
+        .validate_schema_identity()
+        .expect("source-index identity");
+
     let exact = crate::AspClientExactQueryRequest {
         schema_id: "agent.semantic-protocols.asp-client-exact-query-request".to_owned(),
         schema_version: "1".to_owned(),
@@ -38,6 +49,26 @@ fn northbound_client_requests_are_distinct_from_provider_runtime_requests() {
         view: "seeds".to_owned(),
     };
     owner.validate_schema_identity().expect("owner identity");
+
+    let owner_response = crate::AspClientOwnerSearchResponse {
+        schema_id: "agent.semantic-protocols.asp-client-owner-search-response".to_owned(),
+        schema_version: "1".to_owned(),
+        state: "owner".to_owned(),
+        generation_digest: "generation-1".to_owned(),
+        root_digest: "root-1".to_owned(),
+        owner_path: "src/lib.rs".to_owned(),
+        content_digest: Some("blake3-256:owner".to_owned()),
+        query: "example".to_owned(),
+        view: "seeds".to_owned(),
+        candidate_count: 1,
+        returned_count: 1,
+        selectors: vec![crate::AspClientOwnerSearchSeed {
+            selector: "rust://src/lib.rs#item/function/example".to_owned(),
+            byte_start: 0,
+            byte_end: 12,
+        }],
+    };
+    owner_response.validate().expect("owner response identity");
 
     assert_ne!(
         search.schema_id,
@@ -248,7 +279,7 @@ fn catalog() -> ClientProtocolCatalog {
         protocol_version: CLIENT_PROTOCOL_VERSION.to_owned(),
         catalog_generation: digest('a'),
         workspace_generation: digest('b'),
-        transports: vec![ClientTransport::HttpJson, ClientTransport::RuntimeIpc],
+        transports: vec![ClientTransport::RuntimeIpc],
         capabilities: ClientCapabilities {
             request_cancellation: true,
             events: true,

@@ -28,6 +28,49 @@ pub struct AspRustProjectHarnessMemberPolicy {
 }
 
 impl AspRustProjectHarnessMemberPolicy {
+    /// Return the content-addressed identity of the complete member policy.
+    #[must_use]
+    pub fn contract_digest(self) -> String {
+        let config = self.to_harness_config();
+        let severity_overrides = self
+            .rule_severity_overrides
+            .iter()
+            .map(|policy| {
+                serde_json::json!({
+                    "ruleCode": policy.rule_code,
+                    "severity": policy.severity,
+                })
+            })
+            .collect::<Vec<_>>();
+        let owner_projection = |owners: &[AspRustProjectHarnessOwnerPolicy]| {
+            owners
+                .iter()
+                .map(|owner| {
+                    serde_json::json!({
+                        "path": owner.path,
+                        "rationale": owner.rationale,
+                    })
+                })
+                .collect::<Vec<_>>()
+        };
+        let material = serde_json::json!({
+            "schemaId": "agent.semantic-protocols.rust-harness-member-policy",
+            "schemaVersion": "1",
+            "packageName": self.package_name,
+            "crateRoot": self.crate_root,
+            "verificationLabel": self.verification_label,
+            "harnessConfig": config,
+            "severityOverrides": severity_overrides,
+            "criterionPerformanceVerification": self.criterion_performance_verification,
+            "latencySensitivePerformanceOwners": owner_projection(
+                self.latency_sensitive_performance_owners,
+            ),
+            "availabilityStabilityOwners": owner_projection(self.availability_stability_owners),
+        });
+        let encoded = serde_json::to_vec(&material).expect("serialize static Rust harness policy");
+        format!("blake3-256:{}", blake3::hash(&encoded).to_hex())
+    }
+
     /// Builds the `rust-lang-project-harness` config for this member crate.
     pub fn to_harness_config(self) -> rust_lang_project_harness::RustHarnessConfig {
         let mut config = rust_lang_project_harness::RustHarnessConfig {

@@ -54,3 +54,11 @@ tempfile = { workspace = true }
 [[test]]
 name = "graph_owner_rank_report"
 path = "tests/integration/graph_owner_rank_report/mod.rs"
+
+[[test]]
+name = "merkle_search_generation"
+path = "tests/unit/merkle_search_generation.rs"
+
+[[test]]
+name = "search_generation_segment"
+path = "tests/unit/search_generation_segment.rs"

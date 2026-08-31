@@ -359,42 +359,34 @@ flowchart TD
     S --> T["Timeout receipt without orphan provider child"]
 #+end_src
 
-** Child Resume And Replacement Flow
+** Collaboration V2 Resume Flow
 
 #+begin_src mermaid
 flowchart TD
-    A["Main session needs asp-explore"] --> B["Run: asp agent session reuse/status"]
-    B --> C{"Routable registry row?"}
-    C -- "No row or invalid" --> D["Create configured asp_explorer child"]
-    D --> E["Register returned child id"]
-    E --> F["Verify status routable=true"]
+    A["Main Agent needs asp_explorer"] --> B["collaboration.list_agents({ path_prefix: /root })"]
+    B --> C{"Canonical /root/asp_explorer path present?"}
+    C -- "No" --> D["collaboration.spawn_agent with configured asp_explorer type"]
+    C -- "Yes" --> E["collaboration.followup_task on /root/asp_explorer"]
+    D --> F["Persist returned canonical path and child registration receipt"]
+    E --> G["Required work starts a turn on the existing Agent"]
+    F --> H["Enter event-driven wait flow"]
+    G --> H
+    H --> I["collaboration.wait_agent with bounded timeout"]
+    I --> J["Re-read collaboration.list_agents and typed task receipt"]
+    J --> K{"Completed or needs attention?"}
+    K -- "No" --> I
+    K -- "Yes" --> L["Consume typed result; do not infer completion from wake alone"]
 
-    C -- "Yes" --> G["Send task to existing child"]
-    F --> G
-    G --> H{"send_input accepted?"}
-    H -- "Yes" --> I["Enter rolloutActivity wait flow"]
-    H -- "No" --> J["resume_agent existing child"]
-
-    J --> K{"resume accepted?"}
-    K -- "Yes" --> L["Retry send_input with bounded attempt"]
-    L --> H
-    K -- "No" --> M["Run: asp agent session status --name asp-explore --json"]
-
-    M --> N{"Failure class"}
-    N -- "active-running heartbeat" --> O["Wait patiently; do not replace"]
-    O --> I
-    N -- "completed previous turn" --> P["Try send or resume again"]
-    P --> H
-    N -- "silent no progress" --> Q["Request bounded status or interrupt receipt"]
-    Q --> M
-    N -- "orphan-risk" --> R["Resolve process or orphan risk first"]
-    R --> M
-    N -- "host not found or validation failed" --> S["Mark old child non-routable"]
-    S --> D
-
-    H -. "wait_agent timeout only" .-> T["Not replacement evidence"]
-    T --> M
+    E -. "Target running or completed" .-> M["followup_task is the only required-work resume operation"]
+    I -. "Timeout" .-> N["Observation only; never respawn authority"]
 #+end_src
+
+Multi-Agent V2 has no =send_input=, =resume_agent=, or =close_agent=
+operation. Required work for an existing canonical Agent path always uses
+=collaboration.followup_task=. =collaboration.send_message= is queue-only
+context delivery and MUST NOT carry required work. =collaboration.interrupt_agent=
+stops the current turn while preserving the Agent path; the next required turn
+again uses =followup_task=.
 
 ** Lean Recovery Obligations
 
@@ -405,15 +397,14 @@ The proof obligations are intentionally focused on failure handling and
 multi-step trace safety:
 
 - parent wait deadline does not imply child replacement
-- active-running heartbeat does not imply child replacement
-- send failure resumes the existing child before replacement
-- resume failure queries session status before replacement
-- completed previous turn is read/reused, not replaced by itself
-- model abnormal close is distinct from completed turn and may replace
+- active-running status does not imply child replacement
+- required work always uses =followup_task= for an existing canonical path
+- queue-only =send_message= cannot satisfy required work
+- completed and interrupted turns preserve the canonical Agent path
 - provider timeout records an internal timeout receipt and process-group cleanup without replacing the agent child
-- replacement only follows host-not-found, validation failure, model abnormal close, or bounded no-progress exhaustion
-- any trace with no replacement evidence cannot contain a replace action
-- bounded retry preserves non-replacement while budget remains
+- =list_agents= absence is observation, not path-release or replacement authority
+- any trace without a typed successful =spawn_agent= result cannot introduce a new Agent path
+- a wait timeout never authorizes another spawn
 - an underspecified hook deny receipt permits raw fallback in the model; the sound receipt must include requiredAction, nextAction, completionReceipt, and a raw-fallback prohibition
 - the standalone recovery policy never emits raw fallback; every modeled failure maps to an ASP protocol action
 

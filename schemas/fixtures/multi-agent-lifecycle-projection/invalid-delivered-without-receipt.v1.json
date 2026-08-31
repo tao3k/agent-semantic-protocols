@@ -36,13 +36,13 @@
           "phase": "fresh",
           "childSessionId": "root-session",
           "canonicalMessageTarget": "agent://root-session",
-          "terminationReceiptIndexed": false,
-          "pathReleaseReceiptIndexed": false
+          "pathObserved": true
         },
         "dispatch": {
           "generation": 1,
           "phase": "idle"
         },
+        "requiredDispatchAction": "followup-task",
         "durableDispatchAuthorized": true
       }
     }

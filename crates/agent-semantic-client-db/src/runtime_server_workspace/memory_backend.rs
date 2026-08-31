@@ -29,7 +29,7 @@ impl WorkspaceMemoryBackend {
 
     pub(crate) fn prepare_index(
         owners: &[super::WorkspaceOwnerSnapshot],
-        _relations: &[agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelation],
+        _relations: &[crate::ClientDbSourceIndexOwnedRelation],
     ) -> Arc<WorkspaceMemoryIndex> {
         let mut selector_index = HashMap::new();
         for (owner_position, owner) in owners.iter().enumerate() {
@@ -126,7 +126,8 @@ impl WorkspaceMemoryBackend {
     > {
         let relation_index = self.index.relation_index.get_or_init(|| {
             let mut index = HashMap::<(String, String), Vec<usize>>::new();
-            for (relation_position, relation) in self.generation.relations.iter().enumerate() {
+            for (relation_position, owned) in self.generation.relations.iter().enumerate() {
+                let relation = &owned.relation;
                 index
                     .entry((relation.from.kind.clone(), relation.from.id.clone()))
                     .or_default()
@@ -138,7 +139,12 @@ impl WorkspaceMemoryBackend {
             .get(&(endpoint_kind.to_owned(), endpoint_id.to_owned()))
             .into_iter()
             .flatten()
-            .filter_map(|position| self.generation.relations.get(*position))
+            .filter_map(|position| {
+                self.generation
+                    .relations
+                    .get(*position)
+                    .map(|owned| &owned.relation)
+            })
             .collect()
     }
 }

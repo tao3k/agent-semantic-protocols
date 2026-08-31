@@ -51,10 +51,10 @@ root, child, and message target; records monotonic dispatch state; marks residen
 execution terminal and non-redispatchable; and requires completed receipts to
 carry a materialized owner selector plus a placeholder-free executable command.
 
-`semantic-agent-search-playbook-receipt.v1.schema.json` owns one bounded search
-exploration across evidence state, graph topology, open frontier, router trace,
-metrics, synthesis, and reflection. It rejects duplicate commands and unresolved
-next-command placeholders.
+`semantic-agent-search-playbook-receipt.v1.schema.json` owns the single public
+Search Playbook result. It composes indexed lexical candidates, resident Python
+graph reasoning, and bounded ripgrep verification into one route decision.
+Legacy seed products and multi-command route scripts are not admitted.
 
 `search-owner-missing-topology.v1.schema.json` owns the bounded graph returned
 when owner-items search cannot find a requested path in the active generation.

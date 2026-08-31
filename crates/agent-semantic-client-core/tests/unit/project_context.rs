@@ -15,6 +15,7 @@ fn project_context_resolves_git_toplevel_from_subdir() {
 
     assert_eq!(context.git_toplevel(), Some(root.as_path()));
     assert_eq!(context.project_home(), Some(root.as_path()));
+    context.binding().validate().expect("typed project binding");
     let _ = fs::remove_dir_all(root);
 }
 
@@ -43,6 +44,26 @@ fn state_layout_uses_single_client_cache_interface() {
         resolved.paths.artifacts_dir.as_path()
     );
     assert!(!root.join(".cache").join("agent-semantic-protocol").exists());
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn project_context_resolution_is_pure_and_open_is_explicit() {
+    let root = temp_root("pure-resolution");
+    let state_home = root.join(".agent-semantic-protocols-test-state");
+    let _isolated = IsolatedAspStateHome::activate(&root);
+    init_durable_repo(&root, "pure-resolution");
+
+    let context = ProjectContext::resolve(&root).expect("resolve project context");
+    assert_eq!(context.state_layout().state_root(), state_home.as_path());
+    assert!(
+        !state_home.exists(),
+        "pure resolution must not materialize State Home"
+    );
+
+    let opened = ProjectContext::open(&root).expect("open project context");
+    assert!(opened.state_layout().client_cache_dir().is_dir());
+    assert!(opened.state_layout().artifacts_dir().is_dir());
     let _ = fs::remove_dir_all(root);
 }
 

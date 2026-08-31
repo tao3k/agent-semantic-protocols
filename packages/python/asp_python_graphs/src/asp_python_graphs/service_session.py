@@ -18,6 +18,7 @@ from .service_protocol import (
     string_sequence,
     validate_service_envelope,
 )
+from .search_evidence_stream import SearchEvidenceAccumulator
 
 if TYPE_CHECKING:
     from .graph_model import TypedGraph
@@ -32,6 +33,9 @@ class AspPythonGraphsSession:
         default_factory=dict
     )
     generation_packets: dict[tuple[str, str, int], str] = field(
+        default_factory=dict
+    )
+    search_evidence: dict[tuple[str, str, int], SearchEvidenceAccumulator] = field(
         default_factory=dict
     )
     closed: bool = False
@@ -160,6 +164,8 @@ class AspPythonGraphsSession:
                 return self._open_generation(message, request_id)
             if kind == "release-generation":
                 return self._release_generation(message, request_id)
+            if kind == "search-evidence":
+                return self._observe_search_evidence(message, request_id)
             raise ServiceProtocolError(
                 "unsupported-message-kind", f"unsupported messageKind: {kind!r}"
             )
@@ -273,6 +279,7 @@ class AspPythonGraphsSession:
         self.closed = True
         self.loaded_generations.clear()
         self.generation_packets.clear()
+        self.search_evidence.clear()
         self._active_requests.clear()
         self._admitted_requests.clear()
         self._cancelled_requests.clear()
@@ -332,9 +339,34 @@ class AspPythonGraphsSession:
         load_key = (workspace, generation, token)
         released = self.loaded_generations.pop(load_key, None) is not None
         self.generation_packets.pop(load_key, None)
+        self.search_evidence.pop(load_key, None)
         receipt = self._receipt(request_id, "completed", workspace, generation, token,
                                 sequence=int(message["sequence"]))
         receipt["payload"] = {"released": released}
+        return receipt
+
+    def _observe_search_evidence(
+        self, message: Mapping[str, Any], request_id: str
+    ) -> dict[str, object]:
+        workspace, generation, token, payload = self._generation_identity(message)
+        load_key = (workspace, generation, token)
+        if load_key not in self.loaded_generations:
+            raise ServiceProtocolError(
+                "generation-not-loaded",
+                "search-evidence requires an ASP Server-owned open generation",
+            )
+        accumulator = self.search_evidence.setdefault(
+            load_key, SearchEvidenceAccumulator()
+        )
+        receipt = self._receipt(
+            request_id,
+            "completed",
+            workspace,
+            generation,
+            token,
+            sequence=int(message["sequence"]),
+        )
+        receipt["payload"] = accumulator.observe(payload)
         return receipt
 
     def _evaluate(

@@ -7,20 +7,28 @@
 use std::collections::BTreeSet;
 
 use crate::{
-    CLIENT_CATALOG_SCHEMA_ID, CLIENT_PROTOCOL_ID, CLIENT_PROTOCOL_VERSION, ClientCapabilities,
-    ClientMethod, ClientParameter, ClientParameterCardinality, ClientParameterSource,
-    ClientParameterType, ClientProtocolCatalog, ClientTransport, SCHEMA_BUNDLE_METHOD,
-    SCHEMA_BUNDLE_REQUEST_SCHEMA_ID, SCHEMA_BUNDLE_RESPONSE_SCHEMA_ID, SCHEMA_VERSION,
+    AGENT_SESSION_REGISTER_METHOD, AGENT_SESSION_REGISTER_REQUEST_SCHEMA_ID,
+    AGENT_SESSION_REGISTER_RESPONSE_SCHEMA_ID, CLIENT_CATALOG_SCHEMA_ID, CLIENT_PROTOCOL_ID,
+    CLIENT_PROTOCOL_VERSION, ClientCapabilities, ClientMethod, ClientParameter,
+    ClientParameterCardinality, ClientParameterSource, ClientParameterType, ClientProtocolCatalog,
+    ClientTransport, SCHEMA_BUNDLE_METHOD, SCHEMA_BUNDLE_REQUEST_SCHEMA_ID,
+    SCHEMA_BUNDLE_RESPONSE_SCHEMA_ID, SCHEMA_VERSION,
 };
 
 const ROUTE_FAILURE_SCHEMA_ID: &str = "agent.semantic-protocols.route-failure";
 const SEARCH_PACKET_SCHEMA_ID: &str = "agent.semantic-protocols.search-packet";
 const QUERY_RESULT_SCHEMA_ID: &str = "agent.semantic-protocols.query-result";
 const SEARCH_REQUEST_SCHEMA_ID: &str = "agent.semantic-protocols.asp-client-search-request";
+const SOURCE_INDEX_LOOKUP_REQUEST_SCHEMA_ID: &str =
+    "agent.semantic-protocols.asp-client-source-index-lookup-request";
+const SOURCE_INDEX_LOOKUP_RESPONSE_SCHEMA_ID: &str =
+    "agent.semantic-protocols.resident-search-result";
 const EXACT_QUERY_REQUEST_SCHEMA_ID: &str =
     "agent.semantic-protocols.asp-client-exact-query-request";
 const OWNER_SEARCH_REQUEST_SCHEMA_ID: &str =
     "agent.semantic-protocols.asp-client-owner-search-request";
+const OWNER_SEARCH_RESPONSE_SCHEMA_ID: &str =
+    "agent.semantic-protocols.asp-client-owner-search-response";
 
 pub const GRAPH_EVALUATE_METHOD: &str = "asp.graphs.evaluate";
 pub const GRAPH_EVALUATE_REQUEST_SCHEMA_ID: &str =
@@ -38,13 +46,19 @@ pub const CANCELLATION_PROBE_REQUEST_SCHEMA_ID: &str =
     "agent.semantic-protocols.asp-client-cancellation-probe-request";
 pub const CANCELLATION_PROBE_RESPONSE_SCHEMA_ID: &str =
     "agent.semantic-protocols.asp-client-cancellation-probe-response";
+pub const MULTI_AGENT_HOST_EVENT_METHOD: &str = "asp.session.host-event";
+pub const MULTI_AGENT_CHILDREN_METHOD: &str = "asp.session.children";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ServerClientRoute {
+    AgentSessionRegister,
+    MultiAgentHostEvent,
+    MultiAgentChildren,
     CancellationProbe,
     GraphsEvaluate,
     GraphsTimeline,
     Search,
+    SourceIndexLookup,
     ExactQuery,
     OwnerSearch,
 }
@@ -61,10 +75,14 @@ pub enum ResolvedServerClientMethod {
 impl ServerClientRoute {
     pub const fn operation(self) -> &'static str {
         match self {
+            Self::AgentSessionRegister => "session.register-child",
+            Self::MultiAgentHostEvent => "session.host-event",
+            Self::MultiAgentChildren => "session.children",
             Self::CancellationProbe => "lifecycle.cancellation",
             Self::GraphsEvaluate => "graphs.evaluate",
             Self::GraphsTimeline => "graphs.timeline",
             Self::Search => "search",
+            Self::SourceIndexLookup => "source-index.lookup",
             Self::ExactQuery => "query",
             Self::OwnerSearch => "search.owner",
         }
@@ -84,17 +102,71 @@ pub fn server_client_methods(
         }
         methods.extend([
             search_method(&language_id),
+            source_index_lookup_method(&language_id),
             exact_query_method(&language_id),
             owner_search_method(&language_id),
         ]);
     }
     methods.extend([
+        agent_session_register_method(),
+        multi_agent_host_event_method(),
+        multi_agent_children_method(),
         schema_bundle_method(),
         graphs_evaluate_method(),
         graphs_timeline_method(),
     ]);
     methods.sort_by(|left, right| left.method.cmp(&right.method));
     Ok(methods)
+}
+
+fn multi_agent_host_event_method() -> ClientMethod {
+    ClientMethod {
+        method: MULTI_AGENT_HOST_EVENT_METHOD.to_owned(),
+        route_id: MULTI_AGENT_HOST_EVENT_METHOD.to_owned(),
+        request_schema_id: "agent.semantic-protocols.codex-multi-agent-v2-host-lifecycle-event"
+            .to_owned(),
+        response_schema_id: "agent.semantic-protocols.agent-session-host-binding".to_owned(),
+        error_schema_ids: vec![ROUTE_FAILURE_SCHEMA_ID.to_owned()],
+        parameters: vec![required("event", ClientParameterType::Json)],
+        cancellable: false,
+        streaming: false,
+    }
+}
+
+fn multi_agent_children_method() -> ClientMethod {
+    ClientMethod {
+        method: MULTI_AGENT_CHILDREN_METHOD.to_owned(),
+        route_id: MULTI_AGENT_CHILDREN_METHOD.to_owned(),
+        request_schema_id: "agent.semantic-protocols.agent-session-lifecycle-projection".to_owned(),
+        response_schema_id:
+            "agent.semantic-protocols.codex-multi-agent-v2-control-plane-projection".to_owned(),
+        error_schema_ids: vec![ROUTE_FAILURE_SCHEMA_ID.to_owned()],
+        parameters: vec![required_string("rootSessionId")],
+        cancellable: false,
+        streaming: false,
+    }
+}
+
+fn agent_session_register_method() -> ClientMethod {
+    ClientMethod {
+        method: AGENT_SESSION_REGISTER_METHOD.to_owned(),
+        route_id: AGENT_SESSION_REGISTER_METHOD.to_owned(),
+        request_schema_id: AGENT_SESSION_REGISTER_REQUEST_SCHEMA_ID.to_owned(),
+        response_schema_id: AGENT_SESSION_REGISTER_RESPONSE_SCHEMA_ID.to_owned(),
+        error_schema_ids: vec![ROUTE_FAILURE_SCHEMA_ID.to_owned()],
+        parameters: vec![
+            required_string("schemaId"),
+            required_string("schemaVersion"),
+            required_string("rootSessionId"),
+            required_string("parentThreadId"),
+            required_string("childThreadId"),
+            required_string("agentName"),
+            required_string("agentPath"),
+            required_string("routeKey"),
+        ],
+        cancellable: false,
+        streaming: false,
+    }
 }
 
 fn schema_bundle_method() -> ClientMethod {
@@ -181,6 +253,21 @@ pub fn resolve_server_client_method_owner(
             ServerClientRoute::GraphsEvaluate,
         ));
     }
+    if method == AGENT_SESSION_REGISTER_METHOD {
+        return Ok(ResolvedServerClientMethod::Server(
+            ServerClientRoute::AgentSessionRegister,
+        ));
+    }
+    if method == MULTI_AGENT_HOST_EVENT_METHOD {
+        return Ok(ResolvedServerClientMethod::Server(
+            ServerClientRoute::MultiAgentHostEvent,
+        ));
+    }
+    if method == MULTI_AGENT_CHILDREN_METHOD {
+        return Ok(ResolvedServerClientMethod::Server(
+            ServerClientRoute::MultiAgentChildren,
+        ));
+    }
     if method == GRAPH_TIMELINE_METHOD {
         return Ok(ResolvedServerClientMethod::Server(
             ServerClientRoute::GraphsTimeline,
@@ -211,6 +298,7 @@ pub fn resolve_server_client_method_owner(
 fn route_from_suffix(suffix: &str) -> Option<ServerClientRoute> {
     match suffix {
         "search" => Some(ServerClientRoute::Search),
+        "source-index.lookup" => Some(ServerClientRoute::SourceIndexLookup),
         "query" => Some(ServerClientRoute::ExactQuery),
         "search.owner" => Some(ServerClientRoute::OwnerSearch),
         _ => None,
@@ -279,6 +367,22 @@ fn search_method(language_id: &str) -> ClientMethod {
     )
 }
 
+fn source_index_lookup_method(language_id: &str) -> ClientMethod {
+    method(
+        language_id,
+        ServerClientRoute::SourceIndexLookup,
+        SOURCE_INDEX_LOOKUP_REQUEST_SCHEMA_ID,
+        SOURCE_INDEX_LOOKUP_RESPONSE_SCHEMA_ID,
+        vec![
+            required_string("schemaId"),
+            required_string("schemaVersion"),
+            required_string("query"),
+            required("indexRoot", ClientParameterType::String),
+            required("limit", ClientParameterType::UnsignedInteger),
+        ],
+    )
+}
+
 fn exact_query_method(language_id: &str) -> ClientMethod {
     method(
         language_id,
@@ -299,7 +403,7 @@ fn owner_search_method(language_id: &str) -> ClientMethod {
         language_id,
         ServerClientRoute::OwnerSearch,
         OWNER_SEARCH_REQUEST_SCHEMA_ID,
-        SEARCH_PACKET_SCHEMA_ID,
+        OWNER_SEARCH_RESPONSE_SCHEMA_ID,
         vec![
             required_string("schemaId"),
             required_string("schemaVersion"),

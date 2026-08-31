@@ -31,8 +31,7 @@ fn projection(generation: u64) -> CodexMultiAgentV2ControlPlaneProjection {
             phase: BindingPhase::Fresh,
             child_session_id: Some("child-session".to_owned()),
             canonical_message_target: Some("agent://child-session".to_owned()),
-            termination_receipt_indexed: false,
-            path_release_receipt_indexed: false,
+            path_observed: Some(true),
         },
         DispatchLifecycleProjection {
             generation: Some(1),

@@ -29,6 +29,7 @@ fn selector_owner_validation_uses_the_shared_canonical_owner_codec() {
         selector: "gerbil-scheme://src/genport%23.scm#item/type/genport".to_owned(),
         byte_start: 0,
         byte_end: owner.bytes.len(),
+        query_keys: Vec::new(),
         derived_projections: Vec::new(),
     };
 
@@ -56,6 +57,7 @@ fn signature_text_cannot_masquerade_as_callable_skeleton_json() {
         selector: "rust://src/lib.rs#item/function/f".to_owned(),
         byte_start: 0,
         byte_end: owner.bytes.len(),
+        query_keys: Vec::new(),
         derived_projections: vec![WorkspaceDerivedProjectionSnapshot {
             projection_kind: ExactProjectionKind::CallableSkeleton,
             bytes: b"fn f()".to_vec(),
@@ -172,6 +174,7 @@ fn callable_fixture() -> (WorkspaceOwnerSnapshot, WorkspaceSelectorSnapshot) {
         selector: structural_selector.to_owned(),
         byte_start: 0,
         byte_end: bytes.len(),
+        query_keys: Vec::new(),
         derived_projections: vec![projection],
     };
     let owner = WorkspaceOwnerSnapshot {

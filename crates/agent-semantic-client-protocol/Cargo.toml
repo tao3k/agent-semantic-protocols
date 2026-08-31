@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+agent-semantic-content-identity = { path = "../agent-semantic-content-identity" }
 agent-semantic-artifacts.workspace = true
 blake3.workspace = true
 serde.workspace = true

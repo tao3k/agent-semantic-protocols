@@ -18,7 +18,11 @@ pub use runtime::try_record_to_active_runtime;
 mod semconv;
 
 pub use exporter::{ActiveSearchIncident, TursoOpenTelemetrySpanExporter};
-pub use observation::{RuntimeLifecycleEvent, RuntimePerformanceObservation};
+pub use observation::{
+    RUNTIME_SEARCH_TELEMETRY_PHASES, RuntimeLifecycleEvent, RuntimePerformanceObservation,
+    RuntimeSearchTelemetryArtifact, RuntimeSearchTelemetryCollector, RuntimeSearchTelemetryError,
+    RuntimeSearchTelemetryIdentity,
+};
 pub use query::{
     RuntimePerformanceQuery, RuntimePerformanceQueryReceipt, query_runtime_performance,
 };

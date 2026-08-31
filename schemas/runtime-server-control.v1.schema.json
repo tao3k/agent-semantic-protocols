@@ -154,6 +154,9 @@
         "activeEpoch",
         "generationDigest",
         "rootDepth",
+        "sourceKind",
+        "leafCount",
+        "ownerCount",
         "providerSchemaDigest",
         "sourceRootDigest",
         "baseRootDigest",
@@ -169,9 +172,9 @@
       ],
       "properties": {
         "schemaId": {
-          "const": "agent.semantic-protocols.runtime-server-workspace-generation-snapshot.v1"
+          "const": "agent.semantic-protocols.runtime-server-workspace-generation-snapshot.v2"
         },
-        "schemaVersion": { "const": "1" },
+        "schemaVersion": { "const": "2" },
         "workspaceIdentity": { "type": "string", "minLength": 1 },
         "state": {
           "enum": [
@@ -197,6 +200,11 @@
           "minItems": 2,
           "maxItems": 2
         },
+        "sourceKind": {
+          "enum": ["filesystem", "editor-buffer", "git-tree", "derived-overlay"]
+        },
+        "leafCount": { "type": "integer", "minimum": 1 },
+        "ownerCount": { "type": "integer", "minimum": 1 },
         "providerSchemaDigest": {
           "type": "string",
           "pattern": "^blake3-256:[0-9a-f]{64}$"

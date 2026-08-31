@@ -103,6 +103,157 @@ def test_one_service_session_reuses_one_loaded_generation() -> None:
     assert evaluated["generationDigest"] == DIGEST_A
 
 
+def test_search_evidence_frames_incrementally_guide_the_shared_search_route() -> None:
+    session = AspPythonGraphsSession()
+    session.handle(
+        message(
+            "hello",
+            "hello-1",
+            runtimeArtifactDigest=DIGEST_A,
+            executionArtifactDigest=DIGEST_B,
+        )
+    )
+    session.handle(
+        message(
+            "open-generation",
+            "open-1",
+            workspaceIdentity="workspace-a",
+            generationDigest=DIGEST_A,
+            payload={"graph": rank_payload()["graph"]},
+        )
+    )
+
+    lexical = session.handle(
+        message(
+            "search-evidence",
+            "search-lexical",
+            sequence=3,
+            payloadSchemaId="agent.semantic-protocols.asp-python-graphs-search-evidence",
+            workspaceIdentity="workspace-a",
+            generationDigest=DIGEST_A,
+            payload={
+                "frameId": "lexical-1",
+                "intent": "conceptual",
+                "lane": "indexed-lexical",
+                "ownerIds": ["owner-a", "owner-b"],
+                "complete": True,
+                "elapsedMicros": 80,
+            },
+        )
+    )
+    graph = session.handle(
+        message(
+            "search-evidence",
+            "search-graph",
+            sequence=4,
+            payloadSchemaId="agent.semantic-protocols.asp-python-graphs-search-evidence",
+            workspaceIdentity="workspace-a",
+            generationDigest=DIGEST_A,
+            payload={
+                "frameId": "graph-1",
+                "intent": "conceptual",
+                "lane": "python-graph",
+                "ownerIds": ["owner-a", "owner-c"],
+                "complete": True,
+                "elapsedMicros": 120,
+            },
+        )
+    )
+    verified = session.handle(
+        message(
+            "search-evidence",
+            "search-rg",
+            sequence=5,
+            payloadSchemaId="agent.semantic-protocols.asp-python-graphs-search-evidence",
+            workspaceIdentity="workspace-a",
+            generationDigest=DIGEST_A,
+            payload={
+                "frameId": "rg-1",
+                "intent": "conceptual",
+                "lane": "ripgrep",
+                "ownerIds": ["owner-a", "owner-c"],
+                "complete": True,
+                "elapsedMicros": 40,
+            },
+        )
+    )
+
+    assert lexical["payload"]["recommendedNext"] == "submit-python-graph"  # type: ignore[index]
+    assert graph["payload"]["recommendedNext"] == "verify-candidates"  # type: ignore[index]
+    assert verified["payload"]["recommendedNext"] == "stop-evidence-sufficient"  # type: ignore[index]
+    assert verified["payload"]["correlation"] == {  # type: ignore[index]
+        "lexicalGraphOverlapCount": 1,
+        "graphMarginalCandidateCount": 1,
+        "verifiedUnionCandidateCount": 2,
+    }
+
+
+def test_search_evidence_frame_is_idempotent_and_generation_bound() -> None:
+    session = AspPythonGraphsSession()
+    session.handle(
+        message(
+            "hello",
+            "hello-1",
+            runtimeArtifactDigest=DIGEST_A,
+            executionArtifactDigest=DIGEST_B,
+        )
+    )
+    session.handle(
+        message(
+            "open-generation",
+            "open-1",
+            workspaceIdentity="workspace-a",
+            generationDigest=DIGEST_A,
+            payload={"graph": rank_payload()["graph"]},
+        )
+    )
+    frame = {
+        "frameId": "lexical-1",
+        "intent": "conceptual",
+        "lane": "indexed-lexical",
+        "ownerIds": ["owner-a"],
+        "complete": True,
+        "elapsedMicros": 12,
+    }
+    session.handle(
+        message(
+            "search-evidence",
+            "search-1",
+            sequence=3,
+            payloadSchemaId="agent.semantic-protocols.asp-python-graphs-search-evidence",
+            workspaceIdentity="workspace-a",
+            generationDigest=DIGEST_A,
+            payload=frame,
+        )
+    )
+    duplicate = session.handle(
+        message(
+            "search-evidence",
+            "search-2",
+            sequence=4,
+            payloadSchemaId="agent.semantic-protocols.asp-python-graphs-search-evidence",
+            workspaceIdentity="workspace-a",
+            generationDigest=DIGEST_A,
+            payload=frame,
+        )
+    )
+    assert duplicate["payload"]["duplicate"] is True  # type: ignore[index]
+    assert duplicate["payload"]["frameCount"] == 1  # type: ignore[index]
+
+    with pytest.raises(ServiceProtocolError, match="open-generation"):
+        session.handle(
+            message(
+                "search-evidence",
+                "search-stale",
+                sequence=5,
+                payloadSchemaId="agent.semantic-protocols.asp-python-graphs-search-evidence",
+                workspaceIdentity="workspace-a",
+                generationDigest=DIGEST_B,
+                payload=frame,
+            )
+        )
+
+
 def test_cross_generation_evaluation_is_rejected() -> None:
     session = AspPythonGraphsSession()
     session.handle(

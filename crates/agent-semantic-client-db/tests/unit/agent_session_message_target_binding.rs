@@ -49,6 +49,13 @@ fn locked_generation_profile_plus_native_host_tree_is_live_bound() {
 }
 
 #[test]
+fn explicit_child_command_binding_is_live_bound() {
+    let record = record_with_binding_source("codex-child-registration-command");
+
+    assert!(agent_session_message_target_is_live_bound(&record, "root"));
+}
+
+#[test]
 fn unknown_binding_source_is_not_live_bound() {
     let record = record_with_binding_source("untrusted-host-observation");
 

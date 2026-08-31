@@ -75,23 +75,7 @@ pub fn main_entry() {
 }
 
 fn emit_observational_event(event: &str) {
-    #[cfg(feature = "compiler")]
-    if event == "post-tool" {
-        let mut payload_json = String::new();
-        let observation = std::io::stdin()
-            .read_to_string(&mut payload_json)
-            .map_err(|error| format!("read PostToolUse payload: {error}"))
-            .and_then(|_| {
-                serde_json::from_str(&payload_json)
-                    .map_err(|error| format!("decode PostToolUse payload: {error}"))
-            })
-            .and_then(|payload| {
-                crate::collaboration_snapshot_inbox::observe_post_tool_payload(&payload)
-            });
-        if let Err(error) = observation {
-            eprintln!("ASP Hook collaboration heartbeat observation failed: {error}");
-        }
-    }
+    let _ = event;
     println!("{{}}");
 }
 

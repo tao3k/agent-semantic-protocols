@@ -185,6 +185,13 @@ The active generation is the sole membership authority.  Provider fingerprint
 storage and retained bytes are caches, not membership truth.  Concurrent
 generation demand is single-flight and attempt-bound.
 
+Before a language Search or Query reads =Ready= state, Runtime discovers the
+current workspace candidate and submits or coalesces that exact candidate at
+the server-owned admission authority.  A previously =Ready= resident whose
+candidate or policy identity differs is never read.  =Queued=, =Building=, or
+publication lag returns typed =query-not-ready= evidence; the transport does
+not wait for construction and does not retry.
+
 Memory ownership and capability-lazy indexes are owned by
 [[file:10.05.11.09-runtime-generation-memory-authority.org][10.05.11.09 Runtime Generation Memory Authority]].
 Generation publication and readiness are indexed by
@@ -226,6 +233,12 @@ Candidate generation, source root, provider/schema identity, projection
 capability, and resident locator advance as one validated publication.  Readers
 observe either the previous complete generation or the successor complete
 generation.
+
+For a complete source-index successor, every non-=@scope/= file-hash record
+belongs to exactly one admitted owner.  Overlay construction derives that
+membership from the successor owner set and removes orphan hashes from the
+active base before computing the content Merkle root.  Projection evidence may
+remain under =@scope/=, but it is never a workspace source leaf.
 
 No install client, provider, request handler, or cache command may repair or
 advance persisted Runtime authority directly.  Publication and serving
@@ -299,6 +312,224 @@ agent-facing projection semantics are owned exclusively by
 RFC 10.05 does not duplicate projection syntax or cost formulas.  A compact
 renderer consumes typed topology and cannot parse selectors again, invent
 owner facts, or choose an action independently.
+
+* Resident lexical recall and explicit coverage
+
+Warm lexical recall MUST use the immutable generation's parser-produced query
+keys through a resident inverted index.  A query MUST NOT walk workspace
+directories, reread owner source, rebuild token sets for every document, or
+launch a subprocess.  Updating an overlay owner atomically replaces that
+owner's postings so stale terms cannot remain searchable.
+
+Ripgrep is an explicit bounded coverage lane, not a recall fallback or a cache
+authority.  Runtime MUST NOT spawn =rg=, =fd=, or =exa= from the query path.
+The lane consumes output supplied by an admitted executor only when every
+record is proven against a committed owner blob: workspace membership, owner
+content digest, and exact line bytes MUST all agree with the immutable source
+generation.  A missing owner, stale blob, or stale line fails the complete
+coverage request; partial candidates are never returned.
+
+The request declares byte, record, result, and deadline budgets.  Its receipt
+is bound to the same workspace root, provider digest, generation, and index
+artifact digest as the resident query and includes the digest of the admitted
+coverage input.  Lexical postings and query-cache keys include that Merkle
+identity; changing any bound digest creates a different immutable index rather
+than mutating or aliasing the prior one.  Timeout, truncation, or executor
+failure is a typed coverage-lane terminal and never mutates or supplants
+resident search authority.  There is no independently persisted =rg= cache,
+implicit whole-workspace invocation, or silent retry from lexical or structural
+search.
+
+** Resident recall and byte verification composition
+
+The resident lexical index and ripgrep are composed through a typed plan, not
+through a shell pipeline and not by concatenating two result lists.  The
+resident index first evaluates normalized lexical terms, language, owner-path,
+kind, and generation fields and emits an ordered immutable owner set.  Every
+owner entry carries its workspace-relative path and committed content digest.
+The executor may then run one or more bounded ripgrep shards against exactly
+that owner set.  Sharding is deterministic and constrained by owner count,
+argument bytes, input bytes, record count, result count, and deadline.
+
+The composition has two distinct modes:
+
+1. =verify-candidates= verifies byte-level matches inside a resident Top-K owner
+   set.  It improves precision and context extraction, but an empty result is
+   only =no-match-in-candidates= and MUST NOT be rendered as workspace-wide
+   absence.
+2. =prove-coverage= covers the complete committed owner set for the selected
+   language and generation.  Only this mode may emit a complete absence or
+   coverage claim, and only when every shard terminates successfully and the
+   union receipt proves that every admitted owner was covered exactly once.
+
+The typed plan binds query digest, mode, source root, provider, generation,
+index artifact, ordered owner identities, shard boundaries, and budgets.  The
+result binds the plan digest plus each shard input/output digest.  Duplicate,
+missing, stale, or cross-generation owners fail the whole result.  A timeout or
+truncated shard cannot degrade into a successful empty result.
+
+Ripgrep JSON is the preferred executor wire format because file paths and match
+text may contain delimiter bytes.  The existing vimgrep-compatible coverage
+input remains a versioned contract; changing its record grammar requires a new
+schema version rather than an in-place decoder change.
+
+The resident index owns recall ranking and incremental per-owner postings.
+Ripgrep owns byte-level verification only.  Parser providers own structural
+identity and selector projection.  The Runtime owns generation admission,
+plan caching, cancellation, and result coalescing.  No layer may rebuild or
+persist a second workspace index under the name of ripgrep coverage.
+
+** Indexed lexical, Python graph, and ripgrep route composition
+
+The production search route is one evidence product with three typed lanes,
+not three independent search commands:
+
+#+begin_src text
+Turso/Tantivy-derived indexed lexical candidates
+  -> Python EvidenceGraph expansion, contraction, and route ranking
+  -> bounded ripgrep byte verification
+  -> agent-facing route choice plus residual uncertainty
+#+end_src
+
+The indexed lexical lane owns broad candidate recall for identifiers, qualified
+names, documentation, package paths, dependency names, and error text.  The
+durable backend remains Turso FTS/BM25; a Tantivy-derived hot backend may serve
+generation-bound overlays only through the same analyzer, field, identity, and
+scoring contract.  Direct product code MUST NOT create an unrelated Tantivy
+workspace authority.
+
+The resident Python graphs service consumes lexical candidate owners and admitted
+parser/provider graph facts.  It owns bounded relation closure, topology
+membership, path ranking, diversity, and a compact explanation of why each
+owner was added, retained, or removed.  It MUST return graph frontier and
+closure state explicitly.  An incomplete or stale graph is evidence for a
+different route; it is never silently treated as a complete negative result.
+
+Ripgrep receives only a generation-bound ordered owner set from the planner.
+It verifies exact bytes, extracts bounded match context, or proves coverage in
+the separately admitted =prove-coverage= mode.  It does not rank semantic
+owners, infer graph relations, or scan the workspace implicitly.
+
+Every lane uses the same workspace, source root, provider generation, and owner
+content identities.  The composition receipt records:
+
+- the lexical, graph, and verified owner sets and their pairwise overlap;
+- indexed-owner coverage, graph frontier/closure state, and ripgrep shard
+  coverage;
+- the marginal verified-owner gain contributed by each additional lane;
+- elapsed time and budgets per lane;
+- the chosen ordered route and alternatives that were rejected; and
+- residual uncertainty, including unindexed owners, unresolved graph edges,
+  unverified candidates, truncation, and stale evidence.
+
+Runtime receipts MUST NOT label these online observations as true recall.
+True =recall@k=, MRR, nDCG, and precision require a golden answer set and belong
+to qualification/replay.  Online routing consumes calibrated evidence such as
+owner coverage, set overlap, graph closure, marginal verified gain, and prior
+benchmark calibration bound to the planner digest.  A missing calibration is
+typed =uncalibrated=; it does not prevent deterministic routing, but the agent
+must see the remaining uncertainty.
+
+The default route policy is intent-sensitive:
+
+| Intent/evidence | Ordered route | Stop condition |
+|-
+| exact selector with current identity | parser/source direct | selector resolves uniquely; no lexical or ripgrep work |
+| conceptual or API query | indexed lexical -> Python graph -> ripgrep =verify-candidates= | verified owner/selector evidence satisfies requested axes |
+| relation, impact, dependency, or ownership query | Python graph -> indexed lexical gap fill -> ripgrep =verify-candidates= | required relation witnesses and cited bytes are verified |
+| exact literal or diagnostic text | indexed path/profile restriction -> ripgrep =verify-candidates= -> Python graph context | byte match is verified and graph context is sufficient |
+| complete absence claim | complete admitted owner set -> ripgrep =prove-coverage= | every owner covered exactly once and every shard succeeds |
+
+The planner may skip a lane only with a typed reason.  It may also fan out the
+lexical and graph lanes when both consume the same immutable generation, then
+join them deterministically before ripgrep verification.  Candidate union is
+used to preserve recall; intersection and graph distance are ranking evidence,
+not filters that may discard the only supported owner.  The agent-facing result
+therefore explains the query path it selected, the evidence gained at each
+step, and the cheapest next path that can reduce the remaining uncertainty.
+
+*** Resident graph evidence stream
+
+=asp_python_graphs= uses its existing bidirectional gRPC =Session= as the
+resident graph stream; the architecture MUST NOT add an =asp-serve= sidecar or
+a second graph daemon.  ASP Server opens one graph generation, then sends
+ordered, bounded =search-evidence= frames as indexed lexical, Python graph, and
+ripgrep work reaches a terminal.  Each frame binds the existing workspace,
+generation digest/token, request sequence, lane, stable frame id, owner ids,
+completion state, and lane elapsed time.
+
+The Python actor incrementally retains only the compact candidate correlation
+state for that generation.  It emits a route delta after every frame:
+
+#+begin_src text
+submit-python-graph
+verify-candidates
+prove-coverage
+stop-evidence-sufficient
+#+end_src
+
+Duplicate frame ids are idempotent.  Intent drift, generation drift, unknown
+fields, invalid owner identities, release, cancellation, stream closure, and
+capacity exhaustion are typed terminals.  Release-generation removes both the
+loaded graph and its accumulated search evidence.  The existing bounded gRPC
+queue owns backpressure; the Python service never opens source files, launches
+ripgrep, or owns Runtime lifecycle.
+
+The route delta is graph-algorithm evidence, not the final command authority.
+The Rust search planner joins it with indexed coverage and ripgrep receipts and
+emits the final Search Playbook decision.  This keeps Python useful to the LLM
+as a continuously updated reasoning surface while preserving one Runtime,
+generation, cancellation, and publication authority.
+
+*** Search Playbook public surface
+
+The agent-facing discovery command converges on one public surface:
+
+#+begin_src shell
+asp <language> search playbook '<query>' \
+  [--intent conceptual|relationship|exact-literal|absence-proof] \
+  [--scope workspace|owner:<path>] \
+  [--coverage candidates|complete] \
+  [--max-owners <N>] [--deadline-ms <N>] \
+  [--explain compact|full]
+#+end_src
+
+Defaults are =--intent conceptual=, =--scope workspace=, =--coverage
+candidates=, and =--explain compact=.  =--coverage complete= is admitted only
+for an absence-proof request or another policy-authorized complete scan.
+=--selector <exact-selector>= is a direct identity route and bypasses lexical,
+graph, and ripgrep planning when current.
+
+=seeds= is removed rather than hidden.  =--view seeds=, =--seeds=,
+=searchSynthesis.seeds=, and seed-frontier output are not part of the new
+contract.  Indexed lexical search emits =candidateOwnerIds=; Python graph
+traversal receives =entryOwnerIds= and =entryNodeIds=; the planner emits route
+stages and verified evidence.  These names describe identities at a boundary
+instead of preserving the old seed product.
+
+=prime=, =pipe=, =lexical=, standalone =rg=, query packs, and provider
+frontiers cease to be public agent workflow.  Where an implementation still
+needs one of those algorithms during migration, it is invoked through the
+playbook planner and cannot appear as a public =recommendedNext= command.  The
+playbook receipt contains one chosen stage sequence, compact evidence
+correlation, residual uncertainty, and at most one executable next command.
+Flags select semantic constraints; they never select a storage backend or
+graph algorithm implementation.
+
+Route stages use the stable families =direct=, =acquire=, =reason=, and
+=verify= plus a catalog-bound =capabilityId=.  The initial reason capability is
+=search.python-graph=.  The future logical lane is owned externally by the
+=meta-relational-reasoning= facade: GQL/PGL are language adapters and bounded
+Ascent evaluation is a backend, not an ASP-owned duplicate relation engine.
+Those adapters register additional =reason= capabilities; they do not add
+another public search command or change the Playbook receipt shape.  A planner
+may select Python graph, logical reasoning, or a hybrid from declared intent,
+admitted facts, calibrated quality, and budget.  Capability-specific
+input/output remains behind its typed adapter while =candidateOwnerIds=,
+=entryNodeIds=, verified identities, relation witnesses, closure status, and
+residual uncertainty remain the common boundary.  This is the migration seam
+from graph ranking to relational logical reasoning without another CLI or
+another source-of-truth graph.
 
 * Qualification gates
 

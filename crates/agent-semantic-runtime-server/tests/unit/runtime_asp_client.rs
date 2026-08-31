@@ -1,17 +1,14 @@
 use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use agent_semantic_client_protocol::{
     CLIENT_FRAME_SCHEMA_ID, CLIENT_PROTOCOL_ID, CLIENT_PROTOCOL_VERSION, ClientFrame,
     ClientFrameBase, ClientInfo, ClientRequestId, ClientSessionId, ClientWorkspaceIdentity,
-    SCHEMA_BUNDLE_REQUEST_SCHEMA_ID,
-    SCHEMA_VERSION, SchemaBundleRequest, SchemaBundleResponse,
+    SCHEMA_BUNDLE_REQUEST_SCHEMA_ID, SCHEMA_VERSION, SchemaBundleRequest, SchemaBundleResponse,
 };
 use agent_semantic_client_server::{
     AspClientGrpcTransport, bind_asp_client_grpc_unix, serve_asp_client_grpc_unix,
 };
 use agent_semantic_schema_manager::SchemaManager;
-use tokio::sync::Notify;
 
 fn digest(character: char) -> String {
     format!("blake3-256:{}", character.to_string().repeat(64))
@@ -30,13 +27,32 @@ fn registered_language_provider_pairs() -> Vec<(String, String)> {
         .collect()
 }
 
-fn assert_exact_admission_terminal(
-    response_frame: &ClientFrame,
-    params: &serde_json::Value,
-    expected_reason_kind: &str,
-    expected_admission_state: &str,
-    expected_recommended_action: &str,
-) {
+fn test_generation_admission()
+-> Arc<agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmission> {
+    use agent_semantic_client_db::runtime_server_admission::{
+        WorkspaceGenerationAdmission, WorkspaceGenerationBuildFailure,
+        WorkspaceGenerationFailureStage,
+    };
+
+    Arc::new(WorkspaceGenerationAdmission::new(Arc::new(
+        |_workspace_identity,
+         _project_root,
+         _candidate,
+         _build_mode,
+         _changed_paths,
+         _provider_target,
+         _cancellation| {
+            Box::pin(async {
+                Err(WorkspaceGenerationBuildFailure::new(
+                    WorkspaceGenerationFailureStage::GenerationBuilder,
+                    "test generation builder is intentionally unavailable",
+                ))
+            })
+        },
+    )))
+}
+
+fn assert_exact_query_not_ready_terminal(response_frame: &ClientFrame, params: &serde_json::Value) {
     let ClientFrame::Response {
         outcome: agent_semantic_client_protocol::ClientOutcome::Error,
         result: None,
@@ -47,50 +63,34 @@ fn assert_exact_admission_terminal(
         panic!("exact query generation failure must be typed: {response_frame:?}");
     };
     let terminal = &error["terminal"];
-    assert_eq!(error["reasonKind"], expected_reason_kind);
+    assert_eq!(error["reasonKind"], "query-not-ready");
     assert_eq!(
         terminal["schemaId"],
         "agent.semantic-protocols.asp-client-exact-query-failure"
     );
-    assert_eq!(terminal["phase"], "workspace-generation-admission");
+    assert_eq!(terminal["phase"], "runtime-generation-authority");
     assert_eq!(terminal["generationDigest"], serde_json::Value::Null);
     assert_eq!(terminal["rootDigest"], serde_json::Value::Null);
     assert_eq!(terminal["requestedSelector"], params["selector"]);
-    assert_eq!(
-        terminal["details"]["admissionState"],
-        expected_admission_state
-    );
-    assert_eq!(terminal["details"]["attempt"], 1);
-    assert!(
-        terminal["details"]["candidateGenerationDigest"]
-            .as_str()
-            .is_some_and(|digest| {
-                digest.starts_with("blake3-256:") && digest.len() == "blake3-256:".len() + 64
-            }),
-        "admission terminal must carry its bound candidate identity: {terminal}"
-    );
-    assert_eq!(terminal["details"]["failureStage"], serde_json::Value::Null);
+    assert_eq!(terminal["details"]["generationState"], "admission-pending");
     assert_eq!(
         terminal["recommendedNext"]["action"],
-        expected_recommended_action
+        "publish-complete-workspace-generation"
     );
     assert_eq!(
         terminal["elapsedMicros"],
         terminal["residentReadElapsedMicros"].as_u64().unwrap()
             + terminal["serviceElapsedMicros"].as_u64().unwrap()
     );
-    assert!(
-        terminal["serviceElapsedMicros"].as_u64().unwrap() < 1_000,
-        "admission state must terminalize within the sub-millisecond service gate: {terminal}"
-    );
+    assert_eq!(terminal["workCounters"]["filesystemReadCount"], 0);
+    assert_eq!(terminal["workCounters"]["databaseReadCount"], 0);
+    assert_eq!(terminal["workCounters"]["providerProcessCount"], 0);
 }
 
-async fn dispatch_without_initialize_admits_the_pinned_provider_candidate(
+async fn dispatch_with_pending_generation_admission_returns_query_not_ready(
     request_id: &str,
     method: &str,
     params: serde_json::Value,
-    language_id: &str,
-    provider_id: &str,
 ) {
     let directory = tempfile::tempdir().expect("temporary workspace");
     let project_root = directory.path().join("project");
@@ -100,31 +100,6 @@ async fn dispatch_without_initialize_admits_the_pinned_provider_candidate(
     let workspace_identity =
         agent_semantic_client_db::AgentSessionRegistry::workspace_id(&project_root)
             .expect("workspace identity");
-    let builds = Arc::new(AtomicUsize::new(0));
-    let builder_started = Arc::new(Notify::new());
-    let observed = Arc::new(std::sync::Mutex::new(None));
-    let admission = Arc::new(
-        agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmission::new(
-            Arc::new({
-                let builds = Arc::clone(&builds);
-                let builder_started = Arc::clone(&builder_started);
-                let observed = Arc::clone(&observed);
-                move |_, _, candidate, _, _, provider_target, _| {
-                    builder_started.notify_one();
-                    builds.fetch_add(1, Ordering::AcqRel);
-                    *observed.lock().expect("generation observation lock") =
-                        Some((candidate.candidate_generation.digest, provider_target));
-                    Box::pin(std::future::pending())
-                }
-            }),
-        ),
-    );
-    let registry = Arc::new(
-        agent_semantic_client_db::runtime_server_workspace::RuntimeServerWorkspaceRegistry::new(
-            directory.path().join("runtime"),
-        )
-        .expect("workspace registry"),
-    );
     let (runtime_search_service, _runtime_search_requests) =
         agent_semantic_client_db::runtime_search_service::runtime_search_service_channel();
     let telemetry = agent_semantic_client_db::runtime_telemetry_bus::RuntimeTelemetryBus::new();
@@ -133,13 +108,21 @@ async fn dispatch_without_initialize_admits_the_pinned_provider_candidate(
     )
     .await
     .expect("verified schema bundle catalog");
+    agent_semantic_client_db::AgentSessionRegistry::mark_runtime_server_owner_process();
+    let agent_session_registry = Arc::new(
+        agent_semantic_client_db::AgentSessionRegistry::open_or_create_state_root_async(
+            directory.path().join("agent-sessions"),
+        )
+        .await
+        .expect("agent session registry"),
+    );
     let service = agent_semantic_runtime_server::build_frame_service(
         schema_bundles,
+        agent_session_registry,
         runtime_search_service,
-        registry,
+        test_generation_admission(),
         digest('a'),
         Arc::from(registered_language_provider_pairs()),
-        admission,
         agent_semantic_runtime_server::query_generation::RuntimeQueryGenerationAuthority::new(),
         telemetry.sender,
     )
@@ -184,37 +167,23 @@ async fn dispatch_without_initialize_admits_the_pinned_provider_candidate(
     let response_frame = response;
 
     if method.ends_with(".query") {
-        assert_exact_admission_terminal(
-            &response_frame,
-            &params,
-            "runtime-generation-queued",
-            "Queued",
-            "observe-runtime-dispatch",
-        );
+        assert_exact_query_not_ready_terminal(&response_frame, &params);
     }
 
     assert!(
         matches!(response_frame, ClientFrame::Response { error: Some(_), .. }),
         "generation failure must be a typed client response: {response_frame:?}"
     );
-    assert_eq!(builds.load(Ordering::Acquire), 1);
-    let (candidate_digest, provider_target) = observed
-        .lock()
-        .expect("generation observation lock")
-        .clone()
-        .expect("dispatch generation observation");
-    let normalized_candidate_digest = candidate_digest.replacen("blake3:", "blake3-256:", 1);
-    assert!(normalized_candidate_digest.starts_with("blake3-256:"));
-    assert_eq!(normalized_candidate_digest.len(), "blake3-256:".len() + 64);
-    assert_eq!(
-        provider_target,
-        Some(
-            agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationProviderTarget {
-                language_id: language_id.to_owned(),
-                provider_id: Some(provider_id.to_owned()),
-            }
-        )
-    );
+    let ClientFrame::Response {
+        error: Some(error), ..
+    } = &response_frame
+    else {
+        unreachable!("typed error response was asserted above")
+    };
+    assert_eq!(error["reasonKind"], "query-not-ready");
+    assert_eq!(error["terminal"]["phase"], "runtime-generation-authority");
+    assert_eq!(error["terminal"]["workCounters"]["filesystemReadCount"], 0);
+    assert_eq!(error["terminal"]["workCounters"]["providerProcessCount"], 0);
     drop(client);
     client_shutdown.send(true).expect("shutdown gRPC service");
     client_server
@@ -224,8 +193,8 @@ async fn dispatch_without_initialize_admits_the_pinned_provider_candidate(
 }
 
 #[tokio::test]
-async fn search_dispatch_admits_the_pinned_provider_candidate() {
-    dispatch_without_initialize_admits_the_pinned_provider_candidate(
+async fn search_dispatch_requires_a_committed_generation_admission() {
+    dispatch_with_pending_generation_admission_returns_query_not_ready(
         "request-search",
         "rust.search",
         serde_json::json!({
@@ -233,15 +202,13 @@ async fn search_dispatch_admits_the_pinned_provider_candidate() {
             "schemaVersion": "1",
             "operation": "pipe"
         }),
-        "rust",
-        "asp-rust",
     )
     .await;
 }
 
 #[tokio::test]
-async fn exact_query_dispatch_admits_the_pinned_provider_candidate() {
-    dispatch_without_initialize_admits_the_pinned_provider_candidate(
+async fn exact_query_dispatch_requires_a_committed_generation_admission() {
+    dispatch_with_pending_generation_admission_returns_query_not_ready(
         "request-query",
         "rust.query",
         serde_json::json!({
@@ -250,16 +217,14 @@ async fn exact_query_dispatch_admits_the_pinned_provider_candidate() {
             "selector": "rust://src/lib.rs#item/function/ready",
             "projection": "source"
         }),
-        "rust",
-        "asp-rust",
     )
     .await;
 }
 
 #[tokio::test]
-async fn registered_language_search_routes_share_runtime_admission() {
-    for (language_id, provider_id) in registered_language_provider_pairs() {
-        dispatch_without_initialize_admits_the_pinned_provider_candidate(
+async fn registered_language_search_routes_share_query_readiness_gate() {
+    for (language_id, _) in registered_language_provider_pairs() {
+        dispatch_with_pending_generation_admission_returns_query_not_ready(
             &format!("request-{language_id}-search"),
             &format!("{language_id}.search"),
             serde_json::json!({
@@ -267,17 +232,15 @@ async fn registered_language_search_routes_share_runtime_admission() {
                 "schemaVersion": "1",
                 "operation": "pipe"
             }),
-            &language_id,
-            &provider_id,
         )
         .await;
     }
 }
 
 #[tokio::test]
-async fn registered_language_exact_query_routes_share_typed_runtime_terminal() {
-    for (language_id, provider_id) in registered_language_provider_pairs() {
-        dispatch_without_initialize_admits_the_pinned_provider_candidate(
+async fn registered_language_exact_query_routes_share_typed_query_readiness_terminal() {
+    for (language_id, _) in registered_language_provider_pairs() {
+        dispatch_with_pending_generation_admission_returns_query_not_ready(
             &format!("request-{language_id}-query"),
             &format!("{language_id}.query"),
             serde_json::json!({
@@ -286,8 +249,6 @@ async fn registered_language_exact_query_routes_share_typed_runtime_terminal() {
                 "selector": format!("{language_id}://source#item/function/missing"),
                 "projection": "source"
             }),
-            &language_id,
-            &provider_id,
         )
         .await;
     }
@@ -411,24 +372,6 @@ async fn host_uds_schema_bundle_route_bypasses_workspace_generation() {
     let workspace_identity =
         agent_semantic_client_db::AgentSessionRegistry::workspace_id(&project_root)
             .expect("workspace identity");
-    let builds = Arc::new(AtomicUsize::new(0));
-    let admission = Arc::new(
-        agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmission::new(
-            Arc::new({
-                let builds = Arc::clone(&builds);
-                move |_, _, _, _, _, _, _| {
-                    builds.fetch_add(1, Ordering::AcqRel);
-                    Box::pin(std::future::pending())
-                }
-            }),
-        ),
-    );
-    let registry = Arc::new(
-        agent_semantic_client_db::runtime_server_workspace::RuntimeServerWorkspaceRegistry::new(
-            directory.path().join("runtime"),
-        )
-        .expect("workspace registry"),
-    );
     let (runtime_search_service, _requests) =
         agent_semantic_client_db::runtime_search_service::runtime_search_service_channel();
     let telemetry = agent_semantic_client_db::runtime_telemetry_bus::RuntimeTelemetryBus::new();
@@ -439,15 +382,24 @@ async fn host_uds_schema_bundle_route_bypasses_workspace_generation() {
         .into_iter()
         .next()
         .expect("at least one registered profile");
+    agent_semantic_client_db::AgentSessionRegistry::mark_runtime_server_owner_process();
+    let agent_session_root = tempfile::tempdir().expect("agent session root");
+    let agent_session_registry = Arc::new(
+        agent_semantic_client_db::AgentSessionRegistry::open_or_create_state_root_async(
+            agent_session_root.path(),
+        )
+        .await
+        .expect("agent session registry"),
+    );
     let service = agent_semantic_runtime_server::build_frame_service(
         agent_semantic_runtime_server::RuntimeSchemaBundleCatalog::load(&workspace_root)
             .await
             .expect("verified schema bundle catalog"),
+        agent_session_registry,
         runtime_search_service,
-        registry,
+        test_generation_admission(),
         digest('a'),
         Arc::from(registered_language_provider_pairs()),
-        admission,
         agent_semantic_runtime_server::query_generation::RuntimeQueryGenerationAuthority::new(),
         telemetry.sender,
     )
@@ -507,8 +459,6 @@ async fn host_uds_schema_bundle_route_bypasses_workspace_generation() {
     let response: SchemaBundleResponse = serde_json::from_value(result).expect("typed response");
     response.validate().expect("valid response");
     assert!(matches!(response, SchemaBundleResponse::Ready { .. }));
-    assert_eq!(builds.load(Ordering::Acquire), 0);
-
     drop(client);
     shutdown.send(true).expect("shutdown UDS");
     server.await.expect("join UDS").expect("serve UDS");

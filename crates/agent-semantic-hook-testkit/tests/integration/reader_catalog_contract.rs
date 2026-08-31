@@ -19,13 +19,50 @@ fn every_declared_reader_pattern_accepts_minimal_and_extended_argv() {
     }
 }
 
+#[test]
+fn codex_ui_read_families_are_a_subset_of_pre_tool_reader_routes() {
+    let generation = canonical_generation();
+    let config = agent_semantic_config::default_hook_client_config_file()
+        .expect("load canonical Hook Config V1");
+    let source = "crates/agent-semantic-hook/src/lib.rs";
+    for command in [
+        format!("cat -- {source}"),
+        format!("bat --plain {source}"),
+        format!("batcat --style plain {source}"),
+        format!("less -p TODO {source}"),
+        format!("more {source}"),
+        format!("head -n 4 {source}"),
+        format!("tail -n +4 {source}"),
+        format!("awk '{{print $1}}' {source}"),
+        format!("nl -ba {source}"),
+        format!("sed -n '1,4p' {source}"),
+        format!("pwsh -NoProfile -Command 'Get-Content {source}'"),
+    ] {
+        let stages = agent_semantic_shell_parser::parse_bash_command_candidates(&command)
+            .unwrap_or_else(|error| panic!("command={command:?}: {error}"));
+        let stage = stages
+            .iter()
+            .rev()
+            .find(|stage| stage.words().iter().any(|word| word == source))
+            .unwrap_or_else(|| panic!("command={command:?}: no source-bearing stage"));
+        assert_reader_route(
+            &generation,
+            &config,
+            &["codex-ui-read".to_owned()],
+            stage.words().to_vec(),
+        );
+    }
+}
+
 fn assert_reader_route(
     generation: &str,
     config: &agent_semantic_config::HookClientConfigFile,
     pattern: &[String],
     tokens: Vec<String>,
 ) {
-    let command = tokens.join(" ");
+    let command = agent_semantic_shell_parser::render_bash_command_stage(
+        &agent_semantic_shell_parser::CommandStage::new(tokens),
+    );
     let mut payload = serde_json::json!({
         "session_id": "testkit-canonical-reader-catalog",
         "cwd": ".",
@@ -98,13 +135,37 @@ fn assert_reader_route(
     assert!(decision.message.contains("collaboration.spawn_agent({"));
     assert!(decision.message.contains("collaboration.list_agents({"));
     assert!(decision.message.contains("standardized JSON"));
-    assert!(decision.message.contains("diagnostic live-Agent snapshot"));
+    assert!(decision.message.contains("current lifecycle authority"));
+    assert!(decision.message.contains("existing AgentSession Registry"));
+    assert!(decision.message.contains("asp session register-child"));
+    assert!(decision.message.contains("Host-native authority"));
     assert!(
         decision
             .message
-            .contains("start a new turn on that same canonical Agent path")
+            .contains("sandbox_permissions: \"require_escalated\"")
     );
-    assert!(decision.message.contains("without starting a second turn"));
+    assert!(
+        decision
+            .message
+            .contains("reads the child session id from the Codex process environment")
+    );
+    assert!(
+        decision
+            .message
+            .contains("does not create a second filesystem mirror")
+    );
+    assert!(decision.message.contains("`asp clean --day` owns expiry"));
+    assert!(decision.message.contains("collaboration.followup_task({"));
+    assert!(
+        decision
+            .message
+            .contains("dispatch the required operation with =followup_task=")
+    );
+    assert!(
+        decision
+            .message
+            .contains("It never starts a turn, so it is not a dispatch path")
+    );
     for internal_field in ["testProcessLaunched", "failureLayer", "reasonKind"] {
         assert!(
             !decision.message.contains(internal_field),

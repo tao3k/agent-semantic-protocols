@@ -310,8 +310,9 @@ pub type WorkspaceGenerationCandidateBuilder = Arc<
 
 pub type WorkspaceOwnerProjectionBuildFuture = Pin<
     Box<
-        dyn Future<Output = Result<crate::runtime_server_workspace::WorkspaceOwnerSnapshot, String>>
-            + Send
+        dyn Future<
+                Output = Result<crate::runtime_server_workspace::WorkspaceOwnerProjection, String>,
+            > + Send
             + 'static,
     >,
 >;

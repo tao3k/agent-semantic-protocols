@@ -144,6 +144,19 @@ source_index_value_type!(
 /// Project-relative path retained by the ASP Server source index.
     ClientDbSourceIndexPath
 );
+
+/// One parser-projected graph edge permanently attributed to its source owner.
+///
+/// Keeping ownership beside the edge lets Merkle tombstones invalidate lexical postings and
+/// graph facts with the same change set. Runtime code must not reconstruct ownership from an
+/// endpoint string.
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ClientDbSourceIndexOwnedRelation {
+    pub owner_path: ClientDbSourceIndexPath,
+    pub relation:
+        agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelation,
+}
 source_index_value_type!(
     /// Query key used for index-first owner recall.
     ClientDbSourceIndexQueryKey
@@ -177,9 +190,7 @@ pub struct ClientDbSourceIndexImport {
     pub source_blobs: ClientDbSourceIndexSourceBlobs,
     pub owners: Vec<ClientDbSourceIndexOwner>,
     pub selectors: Vec<ClientDbSourceIndexSelector>,
-    pub relations: Vec<
-        agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelation,
-    >,
+    pub relations: Vec<ClientDbSourceIndexOwnedRelation>,
 }
 
 /// Immutable source bytes captured by the same pass that produced snapshot evidence.

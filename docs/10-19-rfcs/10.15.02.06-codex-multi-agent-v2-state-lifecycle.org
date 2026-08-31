@@ -181,6 +181,32 @@ Server health is external to this state machine. Closing an AgentSession must
 not stop the ASP server, and restarting the server must not synthesize an
 AgentSession binding.
 
+* Executable proof bundle authority
+
+The Collaboration V2 lifecycle is admitted only when the following Lean
+artifacts compile together and the proof-bundle audit binds them to this RFC:
+
+- =packages/proofs/ASPProof/AgentSessionLifecycleProduct.lean=
+- =packages/proofs/ASPProof/AgentSessionLifecycleExecutableRefinement.lean=
+- =packages/proofs/ASPProof/HookAgentIdentityDeadlockFreedom.lean=
+- =packages/proofs/ASPProof/CodexMultiAgentV2ControlPlane.lean=
+- =packages/proofs/ASPProof/MultiAgentV2CollaborationAuthority.lean=
+- =packages/proofs/ASPProof/CollaborationAgentProjectionDispatch.lean=
+
+These proofs define one V2 authority: Host path observation chooses
+=spawn_agent= or =followup_task=; durable binding admits follow-up only for the
+same canonical path and generation. They do not restore the removed V1
+=send_input=, =resume_agent=, =close_agent=, replacement, or path-release
+operations.
+
+The executable interface owner is
+=agent_semantic_config::CodexCollaborationToolCall=. It is a tagged union of
+the six V2 operations and validates the same stable schema-version-1 fixtures
+used by TestKit. There is no durable-namespace create/resume reducer beside
+this model: Host path presence comes only from =collaboration.list_agents=;
+the AgentSession Registry can validate or repair the exact parent-child
+binding but cannot synthesize path presence or select =spawn_agent=.
+
 * Durable binding phase
 
 #+name: durable-binding-state-machine
@@ -1053,87 +1079,65 @@ is idempotent. Receipt indexing before durable rebind intent is rejected. The
 single Session Portal may render progress, but these steps remain internal and
 must not become three agent-facing commands.
 
-** Archive acceptance is not canonical path release
+** Canonical Agent paths are durable in Collaboration V2
 
-The Codex host experiment exposes another state dimension that must not be
-collapsed into registry visibility. Archiving the two resident child rollouts
-successfully removed both children from the native =list_agents= projection,
-but immediate typed creation under the same =/root/asp_explorer= and
-=/root/asp_testing= paths still returned =agent path ... already exists=.
-Therefore archive acceptance proves neither canonical path release nor
-replacement authority.
+Collaboration V2 exposes no =close_agent= or path-release operation. A canonical
+path returned by =spawn_agent= therefore remains the identity of that configured
+Agent for the current root. =interrupt_agent= interrupts only the active turn;
+it does not delete the Agent or authorize another spawn. =list_agents= is an
+observation of current Host state, not a release ledger.
 
 The lifecycle model MUST distinguish these facts:
 
-- =hostTreeVisible=: whether the current host-tree projection renders the child;
-- =archiveReceipt=: whether Codex accepted the archive action for the child rollout;
-- =closeReceipt=: whether =close_agent= durably closed the parent-child spawn
-  edge and initiated native shutdown;
-- =pathReleaseReceipt=: whether shutdown completion released the exact canonical
-  path from the live collaboration registry;
-- =replacementAuthorized=: true only after both close and path-release receipts
-  are durable and refer to the same child generation and path.
+- =hostTreeVisible=: whether the current =list_agents= snapshot renders the path;
+- =turnInterrupted=: whether =interrupt_agent= returned a previous status;
+- =followupAccepted=: whether =followup_task= accepted required work for the path;
+- =spawnAccepted=: the only Host receipt that introduces a previously absent path.
 
-Host-tree absence after archive is a presentation observation. It MUST NOT be
-promoted to a path-release receipt. A duplicate archive is idempotent and
-orthogonal to retirement. A path release observed before =close_agent= is
-rejected, while =close_agent= MAY precede archive. Replacement creation is a
-fenced CAS after the release receipt, not a retry loop driven by =list_agents=
-absence.
+Snapshot absence, wait timeout, interruption, completion, error, or shutdown
+MUST NOT be promoted into replacement authority. If a configured Agent path is
+present, required work uses =followup_task=. If it is absent, one typed
+=spawn_agent= attempt may introduce it; a concurrent loser re-reads
+=list_agents= and follows up the winner rather than retrying spawn.
 
-#+name: agent-lifesession-archive-release-model
+#+name: agent-lifesession-v2-path-model
 #+begin_src typst
-#let replacement-authorized(close-receipt, path-release-receipt) = close-receipt and path-release-receipt
+#let may-introduce-path(path-present, spawn-accepted) = not path-present and spawn-accepted
+#let may-followup(path-present) = path-present
 
-#assert(not replacement-authorized(true, false))
-#assert(replacement-authorized(true, true))
-
-#let archived-hidden = $ A = 1, V = 0, C = 0, R = 0, P = 0 $
-#let released-without-archive = $ A = 0, V = 1, C = 1, R = 1, P = 1 $
+#assert(not may-introduce-path(true, true))
+#assert(not may-introduce-path(false, false))
+#assert(may-introduce-path(false, true))
+#assert(may-followup(true))
 
 (
-  archived-hidden: archived-hidden,
-  released-without-archive: released-without-archive,
-  invariant: "P = C and R; A and V are presentation facts",
+  invariant: "only spawn_agent introduces an absent path; all existing paths use followup_task",
 )
 #+end_src
 
-#+name: agent-lifesession-archive-release-state-machine
+#+name: agent-lifesession-v2-path-state-machine
 #+begin_src mermaid
 stateDiagram-v2
-  [*] --> Live
-  state "Live<br/>visible=yes<br/>archive=no<br/>close=no<br/>release=no" as Live
-  state "ArchiveHidden<br/>visible=no<br/>archive=yes<br/>close=no<br/>release=no" as ArchiveHidden
-  state "CloseRequested<br/>close=yes<br/>release=no" as CloseRequested
-  state "CloseRequestedHidden<br/>archive=yes<br/>close=yes<br/>release=no" as CloseRequestedHidden
-  state "PathReleased<br/>close=yes<br/>release=yes" as PathReleased
-  state "ReplacementAuthorized<br/>fenced create permitted" as ReplacementAuthorized
-  state "Rejected<br/>release cannot precede close" as Rejected
+  [*] --> Absent
+  state "Absent<br/>canonical path not observed" as Absent
+  state "PresentIdle<br/>path reusable" as PresentIdle
+  state "PresentRunning<br/>turn active" as PresentRunning
+  state "PresentInterrupted<br/>path preserved" as PresentInterrupted
 
-  Live --> ArchiveHidden: Host archive accepted
-  Live --> CloseRequested: close_agent accepted
-  Live --> Rejected: Premature path-release event
-  ArchiveHidden --> ArchiveHidden: Duplicate archive
-  ArchiveHidden --> CloseRequestedHidden: close_agent accepted
-  CloseRequested --> CloseRequestedHidden: Optional archive
-  CloseRequested --> PathReleased: Shutdown + canonical release
-  CloseRequestedHidden --> PathReleased: Shutdown + canonical release
-  PathReleased --> PathReleased: Duplicate release
-  PathReleased --> ReplacementAuthorized: Replacement-generation CAS
+  Absent --> PresentRunning: spawn_agent accepted
+  PresentIdle --> PresentRunning: followup_task accepted
+  PresentRunning --> PresentRunning: followup_task queues next turn
+  PresentRunning --> PresentInterrupted: interrupt_agent accepted
+  PresentInterrupted --> PresentRunning: followup_task accepted
+  PresentRunning --> PresentIdle: completed or errored terminal
 #+end_src
 
-The corresponding Lean model is
-=ASPProof.ASPAgentLifeSessionClose.CloseState=.  Its normative state machine
-and direct audit are owned by
-[[file:10.15.02.06-codex-multi-agent-v2-state-lifecycle/01-close-release-protocol.org][the modular close and canonical path-release protocol]].
-
-- archive acceptance may hide the child without releasing its path;
-- archive alone and host-tree absence do not authorize replacement;
-- release before =close_agent= is rejected;
-- =close_agent= may precede archive and archive is not required for release;
-- duplicate archive acceptance is idempotent;
-- an indexed close plus path-release receipt authorizes the fenced replacement
-  step.
+The corresponding Lean obligations are owned by
+=ASPProof.HookAgentIdentityDeadlockFreedom= and
+=ASPProof.CodexMultiAgentV2ControlPlane=. They prove that required work on a
+present path uses =followup_task= independently of the sampled Running or
+reusable status, while only a successful =spawn_agent= receipt introduces an
+absent path.
 
 #+name: agent-lifesession-rebind-cost
 #+begin_src typst
@@ -1161,9 +1165,8 @@ require additional model decisions. The Portal projection remains four compact
 fields regardless of repair history length.
 
 The executable proof family is split across
-=ASPAgentLifeSessionRefinement.lean=, =ASPAgentLifeSessionClose.lean=, and
-=ASPAgentLifeSessionAggregate.lean=, with one direct audit per module.  The
-audits contain 24, 17, and 6 axiom-free theorem declarations respectively.
+=HookAgentIdentityDeadlockFreedom.lean=,
+=CodexMultiAgentV2ControlPlane.lean=, and their direct audits.
 Detailed ownership and AXLE correspondence are maintained in
 [[file:10.15.02.06-codex-multi-agent-v2-state-lifecycle/03-proof-correspondence.org][the modular proof correspondence]].
 
@@ -1173,12 +1176,12 @@ The detailed Rust-readiness contract is intentionally split from this Host
 lifecycle RFC:
 
 - [[file:10.15.02.06-codex-multi-agent-v2-state-lifecycle/00-overview.org][module map]];
-- [[file:10.15.02.06-codex-multi-agent-v2-state-lifecycle/01-close-release-protocol.org][close, termination, and canonical path release]];
 - [[file:10.15.02.06-codex-multi-agent-v2-state-lifecycle/02-rust-lifesession-aggregate.org][Rust LifeSession aggregate and recovery boundary]]; and
 - [[file:10.15.02.06-codex-multi-agent-v2-state-lifecycle/03-proof-correspondence.org][Lean, Typst, Mermaid, and AXLE correspondence]].
 
-The parent retains only the cross-module invariant: presentation visibility,
-binding authority, close authority, and replacement authority are distinct.
+The parent retains only the cross-module invariant: Host-tree visibility is
+observation, =spawn_agent= is the sole absent-path constructor, and required
+work on an existing path uses =followup_task=.
 
 * Proof completion boundary
 

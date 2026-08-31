@@ -64,6 +64,8 @@ pub(super) fn resolve_dispatch_decision(
     let agent_role = payload
         .get("agent_role")
         .or_else(|| payload.get("agentRole"))
+        .or_else(|| payload.get("agent_type"))
+        .or_else(|| payload.get("agentType"))
         .and_then(serde_json::Value::as_str)
         .filter(|value| !value.trim().is_empty());
     let target_agent = dispatch_target_field(&decision, "targetAgent");
@@ -101,7 +103,36 @@ pub(super) fn resolve_dispatch_decision(
         .fields
         .get("targetAgent")
         .and_then(serde_json::Value::as_str);
-    let dispatch_instruction = render_collaboration_instruction(target_agent);
+    let parent_session_id = payload
+        .get("session_id")
+        .or_else(|| payload.get("sessionId"))
+        .and_then(serde_json::Value::as_str);
+    let parent_task = decision.routes.first().map_or_else(
+        || {
+            let tool_name = payload
+                .get("tool_name")
+                .or_else(|| payload.get("toolName"))
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("unknown-host-tool");
+            let tool_input = payload
+                .get("tool_input")
+                .or_else(|| payload.get("toolInput"))
+                .cloned()
+                .unwrap_or(serde_json::Value::Null);
+            format!(
+                "Invoke Host tool `{tool_name}` exactly once with input {}",
+                serde_json::to_string(&tool_input).expect("encode parent Host tool input")
+            )
+        },
+        |route| {
+            format!(
+                "Execute this exact argv once: {}",
+                serde_json::to_string(&route.argv).expect("encode parent route argv")
+            )
+        },
+    );
+    let dispatch_instruction =
+        render_collaboration_instruction(target_agent, parent_session_id, &parent_task);
     if decision.message.trim().is_empty() {
         decision.message = dispatch_instruction;
     } else if !decision.message.contains(&dispatch_instruction) {
@@ -110,6 +141,10 @@ pub(super) fn resolve_dispatch_decision(
     decision.fields.insert(
         "dispatchGuidance".to_owned(),
         serde_json::Value::String("delegate-exact-command-to-typed-agent".to_owned()),
+    );
+    decision.fields.insert(
+        "parentDispatchTask".to_owned(),
+        serde_json::Value::String(parent_task),
     );
     decision
 }

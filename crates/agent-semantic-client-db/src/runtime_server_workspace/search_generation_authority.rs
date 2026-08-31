@@ -6,7 +6,7 @@ use std::sync::Arc;
 use super::WorkspaceGenerationLease;
 
 pub const WORKSPACE_SEARCH_GENERATION_AUTHORITY_SCHEMA_ID: &str =
-    "agent.semantic-protocols.runtime-server-search-generation-authority";
+    "agent.semantic-protocols.runtime-server-search-generation-authority.v2";
 const MAX_WORKSPACE_SEARCH_GENERATION_AUTHORITY_BYTES: usize = 4 * 1024 * 1024;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -19,6 +19,9 @@ pub struct WorkspaceSearchGenerationAuthority {
     pub active_epoch: u64,
     pub generation_digest: String,
     pub owner_merkle_root_digest: String,
+    pub search_projection_manifest_digest: String,
+    pub search_projection_analyzer_digest: String,
+    pub provider_schema_digest: String,
     pub source_snapshot: agent_semantic_content_identity::SourceSnapshotEvidence,
     pub project_resolutions: Vec<agent_semantic_runtime::AdmittedProjectResolution>,
     pub workspace_generation: agent_semantic_content_identity::workspace_generation_evidence::WorkspaceGenerationEvidenceV1,
@@ -29,11 +32,11 @@ impl WorkspaceSearchGenerationAuthority {
     ///
     /// Complete generation validation belongs to publication. Repeating it on
     /// this read path would turn every search into an O(workspace) operation.
-    pub fn from_lease(lease: &WorkspaceGenerationLease) -> Self {
+    pub fn from_lease(lease: &WorkspaceGenerationLease) -> Result<Self, String> {
         Self::from_generation(lease.generation())
     }
 
-    pub fn from_generation(generation: &super::WorkspaceMemoryGeneration) -> Self {
+    pub fn from_generation(generation: &super::WorkspaceMemoryGeneration) -> Result<Self, String> {
         let mut owners = generation.owners.iter().collect::<Vec<_>>();
         owners.sort_by(|left, right| left.owner_path.cmp(&right.owner_path));
         let owner_merkle_root_digest = agent_semantic_content_identity::workspace_merkle_v1::WorkspacePathMerkleTreeV1::from_file_digests(
@@ -43,22 +46,33 @@ impl WorkspaceSearchGenerationAuthority {
             )),
         )
         .map(|tree| format!("blake3-256:{}", tree.root_digest().as_str()))
-        .unwrap_or_default();
-        Self::from_generation_with_owner_merkle_root_digest(generation, owner_merkle_root_digest)
+        .map_err(|error| format!("build compact search authority owner Merkle tree: {error}"))?;
+        let search_projection_manifest =
+            super::search_index_projection::build_merkle_search_generation(generation)?;
+        Ok(Self::from_generation_with_projection_digests(
+            generation,
+            owner_merkle_root_digest,
+            search_projection_manifest.manifest_digest().to_owned(),
+        ))
     }
 
-    pub(super) fn from_generation_with_owner_merkle_root_digest(
+    pub(super) fn from_generation_with_projection_digests(
         generation: &super::WorkspaceMemoryGeneration,
         owner_merkle_root_digest: String,
+        search_projection_manifest_digest: String,
     ) -> Self {
         Self {
             schema_id: WORKSPACE_SEARCH_GENERATION_AUTHORITY_SCHEMA_ID.to_owned(),
-            schema_version: "1".to_owned(),
+            schema_version: "2".to_owned(),
             workspace_identity: generation.workspace_identity.clone(),
             project_root: generation.project_root.clone(),
             active_epoch: generation.active_epoch,
             generation_digest: generation.generation_digest.clone(),
             owner_merkle_root_digest,
+            search_projection_manifest_digest,
+            search_projection_analyzer_digest:
+                agent_semantic_search::search_projection_analyzer_digest(),
+            provider_schema_digest: generation.provider_schema_digest.clone(),
             source_snapshot: generation.source_snapshot.clone(),
             project_resolutions: generation.project_resolutions.clone(),
             workspace_generation: generation.workspace_generation.clone(),
@@ -71,12 +85,18 @@ impl WorkspaceSearchGenerationAuthority {
         project_root: &str,
     ) -> Result<(), String> {
         if self.schema_id != WORKSPACE_SEARCH_GENERATION_AUTHORITY_SCHEMA_ID
-            || self.schema_version != "1"
+            || self.schema_version != "2"
             || self.workspace_identity != workspace_identity
             || self.project_root != project_root
             || self.active_epoch == 0
             || !self.generation_digest.starts_with("blake3-256:")
             || !self.owner_merkle_root_digest.starts_with("blake3-256:")
+            || !self
+                .search_projection_manifest_digest
+                .starts_with("blake3-256:")
+            || self.search_projection_analyzer_digest
+                != agent_semantic_search::search_projection_analyzer_digest()
+            || self.provider_schema_digest.trim().is_empty()
         {
             return Err(format!(
                 "Runtime Server search generation authority binding mismatch: expectedWorkspace={} actualWorkspace={} expectedProjectRoot={} actualProjectRoot={}",
@@ -326,7 +346,7 @@ pub(crate) async fn publish_search_generation_authority_segment(
     generation_pointer_path: &Path,
     generation: &super::WorkspaceMemoryGeneration,
 ) -> Result<Arc<WorkspaceSearchGenerationAuthority>, String> {
-    let authority = WorkspaceSearchGenerationAuthority::from_generation(generation);
+    let authority = WorkspaceSearchGenerationAuthority::from_generation(generation)?;
     authority.validate_binding(&generation.workspace_identity, &generation.project_root)?;
     let bytes = serde_json::to_vec(&authority)
         .map_err(|error| format!("encode compact search generation authority: {error}"))?;

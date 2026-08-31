@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/owner-search-payload-reduction-receipt.schema.json",
+  "title": "ASP Owner Search Payload Reduction Receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "fullBytes",
+    "compactBytes",
+    "reductionFactor"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.owner-search-payload-reduction-receipt"
+    },
+    "schemaVersion": { "const": "1" },
+    "fullBytes": { "type": "integer", "minimum": 1 },
+    "compactBytes": { "type": "integer", "minimum": 1 },
+    "reductionFactor": { "type": "integer", "minimum": 100 }
+  }
+}

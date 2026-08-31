@@ -26,6 +26,39 @@ pub fn is_host_local_ipc_permission_denied(error: &str) -> bool {
         .any(|field| field == expected)
 }
 
+/// Normalize a data-plane read failure into one typed terminal receipt.
+///
+/// A transport failure is already terminal for the submitted request. The
+/// client must not retry it because the Runtime may have accepted the request
+/// before the response lane failed.
+pub(crate) fn runtime_server_data_terminal_error(
+    request_id: &str,
+    workspace_identity: &str,
+    transport_contract_digest: &str,
+    owner_epoch: u64,
+    error: &str,
+) -> String {
+    let reason_kind =
+        if error.contains("early eof") || error.contains("closed before a frame was received") {
+            "runtime-data-frame-early-eof"
+        } else {
+            "runtime-data-frame-read-failed"
+        };
+    serde_json::to_string(&super::protocol::WorkspaceDbIpcResponse {
+        schema_id: super::protocol::WORKSPACE_DB_OWNER_RESPONSE_SCHEMA_ID.into(),
+        schema_version: super::protocol::WORKSPACE_DB_OWNER_SCHEMA_VERSION.to_owned(),
+        workspace_identity: workspace_identity.to_owned(),
+        transport_contract_digest: transport_contract_digest.to_owned(),
+        owner_epoch,
+        request_id: request_id.to_owned().into(),
+        result: super::protocol::WorkspaceDbIpcResult::Failed {
+            code: reason_kind.to_owned(),
+            message: format!("{error}; retryAdmitted=false"),
+        },
+    })
+    .expect("workspace IPC terminal response must serialize")
+}
+
 pub(crate) async fn read_frame<T: for<'de> Deserialize<'de>>(
     stream: &mut (impl AsyncRead + Unpin),
 ) -> Result<T, String> {

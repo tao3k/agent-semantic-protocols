@@ -2,10 +2,14 @@ fn main() {
     asp_rust_project_harness_policy::build_gate::assert_asp_rust_project_harness_member_policy_from_env(
         env!("CARGO_PKG_NAME"),
     );
-    println!("cargo:rerun-if-changed=proto/asp-client-protocol.proto");
+    let workspace_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let canonical_proto = agent_semantic_schema_manager::SchemaManager::new(&workspace_root)
+        .canonical_wire_artifact_path("asp-client-protocol-v1")
+        .expect("resolve Schema Manager-owned ASP Client Protocol wire artifact");
+    println!("cargo:rerun-if-changed={}", canonical_proto.display());
     tonic_prost_build::configure()
         .build_server(true)
         .build_client(true)
-        .compile_protos(&["proto/asp-client-protocol.proto"], &["proto"])
-        .expect("compile public ASP Client Protocol gRPC transport");
+        .compile_protos(&[canonical_proto], &[workspace_root.join("schemas")])
+        .expect("compile Schema Manager-owned ASP Client Protocol gRPC transport");
 }

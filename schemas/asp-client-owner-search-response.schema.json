@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/asp-client-owner-search-response.schema.json",
+  "title": "ASP Client Owner Search Response",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "state",
+    "generationDigest",
+    "rootDigest",
+    "ownerPath",
+    "query",
+    "view",
+    "candidateCount",
+    "returnedCount",
+    "selectors"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.asp-client-owner-search-response"
+    },
+    "schemaVersion": { "const": "1" },
+    "state": { "enum": ["owner", "owner-missing"] },
+    "generationDigest": { "type": "string", "minLength": 1 },
+    "rootDigest": { "type": "string", "minLength": 1 },
+    "ownerPath": { "type": "string", "minLength": 1 },
+    "contentDigest": { "type": "string", "minLength": 1 },
+    "query": { "type": "string" },
+    "view": { "const": "seeds" },
+    "candidateCount": { "type": "integer", "minimum": 0 },
+    "returnedCount": { "type": "integer", "minimum": 0, "maximum": 100 },
+    "selectors": {
+      "type": "array",
+      "maxItems": 100,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["selector", "byteStart", "byteEnd"],
+        "properties": {
+          "selector": { "type": "string", "minLength": 1 },
+          "byteStart": { "type": "integer", "minimum": 0 },
+          "byteEnd": { "type": "integer", "minimum": 0 }
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "state": { "const": "owner" } } },
+      "then": { "required": ["contentDigest"] },
+      "else": {
+        "not": { "required": ["contentDigest"] }
+      }
+    }
+  ]
+}

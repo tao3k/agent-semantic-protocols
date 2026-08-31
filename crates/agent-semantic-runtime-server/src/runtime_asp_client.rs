@@ -5,12 +5,17 @@ use std::sync::{Arc, Mutex};
 
 use crate::query_generation::{RuntimeQueryGenerationAuthority, RuntimeQueryGenerationState};
 use agent_semantic_client_db::runtime_search_service::RuntimeSearchServiceHandle;
-use agent_semantic_client_db::runtime_server_workspace::RuntimeServerWorkspaceRegistry;
+use agent_semantic_client_db::runtime_server_admission::{
+    WorkspaceGenerationAdmission, WorkspaceGenerationAdmissionState,
+    WorkspaceGenerationProviderTarget, discover_workspace_generation_candidate,
+};
 use agent_semantic_client_protocol::{
-    AspClientExactQueryFailure, AspClientExactQueryRequest, AspClientExactQueryResponse,
-    AspClientOwnerSearchRequest, AspClientRuntimeWorkCounters, AspClientSearchRequest,
-    ClientRequestId, ClientSessionId, ClientWorkspaceIdentity, GRAPH_TIMELINE_METHOD,
-    SCHEMA_BUNDLE_METHOD, SchemaBundleRequest, ServerClientRoute,
+    AGENT_SESSION_REGISTER_METHOD, AGENT_SESSION_REGISTER_RESPONSE_SCHEMA_ID,
+    AgentSessionRegisterReceipt, AgentSessionRegisterRequest, AspClientExactQueryFailure,
+    AspClientExactQueryRequest, AspClientExactQueryResponse, AspClientOwnerSearchRequest,
+    AspClientOwnerSearchResponse, AspClientOwnerSearchSeed, AspClientRuntimeWorkCounters,
+    AspClientSearchRequest, ClientRequestId, ClientSessionId, ClientWorkspaceIdentity,
+    GRAPH_TIMELINE_METHOD, SCHEMA_BUNDLE_METHOD, SchemaBundleRequest, ServerClientRoute,
 };
 use agent_semantic_client_server::{
     AspClientDispatchError, AspClientDispatchFuture, AspClientDispatchRequest, AspClientDispatcher,
@@ -27,6 +32,73 @@ impl From<String> for AspClientOperationError {
     fn from(message: String) -> Self {
         Self::Message(message)
     }
+}
+
+const OWNER_SEARCH_SEED_LIMIT: usize = 100;
+const RUNTIME_CLIENT_DISPATCH_BUDGET: std::time::Duration = std::time::Duration::from_secs(5);
+
+fn bounded_owner_search_response(
+    request: &AspClientOwnerSearchRequest,
+    read: agent_semantic_client_db::runtime_server_workspace::WorkspaceRuntimeOwnerSearchRead,
+) -> Result<AspClientOwnerSearchResponse, String> {
+    if request.view != "seeds" {
+        return Err(format!(
+            "owner search view is not supported by the active schema: view={}",
+            request.view
+        ));
+    }
+    let (generation_digest, root_digest, owner) = match read {
+        agent_semantic_client_db::runtime_server_workspace::WorkspaceRuntimeOwnerSearchRead::Owner {
+            generation_digest,
+            root_digest,
+            owner,
+        } => (generation_digest, root_digest, Some(owner)),
+        agent_semantic_client_db::runtime_server_workspace::WorkspaceRuntimeOwnerSearchRead::OwnerMissing {
+            generation_digest,
+            root_digest,
+        } => (generation_digest, root_digest, None),
+    };
+    let Some(owner) = owner else {
+        return Ok(AspClientOwnerSearchResponse {
+            schema_id: "agent.semantic-protocols.asp-client-owner-search-response".to_owned(),
+            schema_version: "1".to_owned(),
+            state: "owner-missing".to_owned(),
+            generation_digest,
+            root_digest,
+            owner_path: request.owner_path.clone(),
+            content_digest: None,
+            query: request.query.clone(),
+            view: request.view.clone(),
+            candidate_count: 0,
+            returned_count: 0,
+            selectors: Vec::new(),
+        });
+    };
+
+    let matching = owner
+        .selectors
+        .into_iter()
+        .map(|selector| AspClientOwnerSearchSeed {
+            selector: selector.selector,
+            byte_start: selector.byte_start,
+            byte_end: selector.byte_end,
+        })
+        .collect::<Vec<_>>();
+    let returned_count = matching.len();
+    Ok(AspClientOwnerSearchResponse {
+        schema_id: "agent.semantic-protocols.asp-client-owner-search-response".to_owned(),
+        schema_version: "1".to_owned(),
+        state: "owner".to_owned(),
+        generation_digest,
+        root_digest,
+        owner_path: owner.owner_path,
+        content_digest: Some(owner.content_digest),
+        query: request.query.clone(),
+        view: request.view.clone(),
+        candidate_count: owner.candidate_count,
+        returned_count,
+        selectors: matching,
+    })
 }
 
 struct ExactQueryFailure {
@@ -93,37 +165,121 @@ fn classify_exact_query_failure(
     }
 }
 
-fn generation_admission_reason_kind(
-    stage: Option<
-        &agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationFailureStage,
-    >,
-) -> &'static str {
-    use agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationFailureStage;
+#[cfg(test)]
+mod owner_search_tests {
+    use super::*;
+    use agent_semantic_client_db::runtime_server_workspace::{
+        WorkspaceOwnerSearchSeedSnapshot, WorkspaceOwnerSearchSnapshot, WorkspaceOwnerSnapshot,
+        WorkspaceRuntimeOwnerSearchRead, WorkspaceSelectorSnapshot,
+    };
 
-    match stage {
-        Some(WorkspaceGenerationFailureStage::GenerationBuilder) => {
-            "runtime-generation-builder-failed"
+    fn request(query: &str) -> AspClientOwnerSearchRequest {
+        AspClientOwnerSearchRequest {
+            schema_id: "agent.semantic-protocols.asp-client-owner-search-request".to_owned(),
+            schema_version: "1".to_owned(),
+            owner_path: "src/lib.rs".to_owned(),
+            query: query.to_owned(),
+            view: "seeds".to_owned(),
         }
-        Some(WorkspaceGenerationFailureStage::GenerationBuilderSupervision) => {
-            "runtime-generation-builder-supervision-failed"
-        }
-        Some(WorkspaceGenerationFailureStage::WorkspaceBootstrap) => {
-            "runtime-workspace-bootstrap-failed"
-        }
-        Some(WorkspaceGenerationFailureStage::DurableRestore) => {
-            "runtime-generation-restore-failed"
-        }
-        Some(WorkspaceGenerationFailureStage::SourceBuilder) => "runtime-source-builder-failed",
-        Some(WorkspaceGenerationFailureStage::SourceIndexCommit) => {
-            "runtime-source-index-commit-failed"
-        }
-        Some(WorkspaceGenerationFailureStage::CanonicalGenerationPublication) => {
-            "runtime-generation-publication-failed"
-        }
-        Some(WorkspaceGenerationFailureStage::AdmissionValidation) => {
-            "runtime-generation-admission-validation-failed"
-        }
-        None => "runtime-generation-admission-failed",
+    }
+
+    #[test]
+    fn owner_search_returns_committed_bounded_seeds_and_omits_owner_payloads() {
+        let read = WorkspaceRuntimeOwnerSearchRead::Owner {
+            generation_digest: "generation-1".to_owned(),
+            root_digest: "root-1".to_owned(),
+            owner: WorkspaceOwnerSearchSnapshot {
+                owner_path: "src/lib.rs".to_owned(),
+                content_digest: "blake3-256:owner".to_owned(),
+                candidate_count: 1,
+                selectors: vec![WorkspaceOwnerSearchSeedSnapshot {
+                    selector: "rust://src/lib.rs#item/function/compare".to_owned(),
+                    byte_start: 0,
+                    byte_end: 15,
+                }],
+            },
+        };
+
+        let response = bounded_owner_search_response(&request("compare"), read)
+            .expect("bounded owner response");
+        assert_eq!(response.state, "owner");
+        assert_eq!(response.candidate_count, 1);
+        assert_eq!(response.returned_count, 1);
+        assert_eq!(
+            response.selectors[0].selector,
+            "rust://src/lib.rs#item/function/compare"
+        );
+        let encoded = serde_json::to_value(response).expect("encode owner response");
+        assert!(encoded.get("bytes").is_none());
+        assert!(encoded.get("derivedProjections").is_none());
+        assert!(encoded["selectors"][0].get("queryKeys").is_none());
+    }
+
+    #[test]
+    fn owner_search_does_not_treat_selector_text_as_a_query_key() {
+        let read = WorkspaceRuntimeOwnerSearchRead::Owner {
+            generation_digest: "generation-1".to_owned(),
+            root_digest: "root-1".to_owned(),
+            owner: WorkspaceOwnerSearchSnapshot {
+                owner_path: "src/lib.rs".to_owned(),
+                content_digest: "blake3-256:owner".to_owned(),
+                candidate_count: 0,
+                selectors: Vec::new(),
+            },
+        };
+
+        let response = bounded_owner_search_response(&request("compare"), read)
+            .expect("bounded owner response");
+        assert_eq!(response.candidate_count, 0);
+        assert!(response.selectors.is_empty());
+    }
+
+    #[test]
+    fn compact_owner_search_removes_at_least_two_orders_of_payload_amplification() {
+        let selector = "rust://src/lib.rs#item/function/compare";
+        let full_owner = WorkspaceOwnerSnapshot {
+            owner_path: "src/lib.rs".to_owned(),
+            authority: None,
+            content_digest: "blake3-256:owner".to_owned(),
+            bytes: vec![b'x'; 128 * 1024],
+            selectors: vec![WorkspaceSelectorSnapshot {
+                selector: selector.to_owned(),
+                byte_start: 0,
+                byte_end: 15,
+                query_keys: vec!["compare".to_owned()],
+                derived_projections: Vec::new(),
+            }],
+        };
+        let compact = bounded_owner_search_response(
+            &request("compare"),
+            WorkspaceRuntimeOwnerSearchRead::Owner {
+                generation_digest: "generation-1".to_owned(),
+                root_digest: "root-1".to_owned(),
+                owner: WorkspaceOwnerSearchSnapshot {
+                    owner_path: "src/lib.rs".to_owned(),
+                    content_digest: "blake3-256:owner".to_owned(),
+                    candidate_count: 1,
+                    selectors: vec![WorkspaceOwnerSearchSeedSnapshot {
+                        selector: selector.to_owned(),
+                        byte_start: 0,
+                        byte_end: 15,
+                    }],
+                },
+            },
+        )
+        .expect("compact owner response");
+        let full_bytes = serde_json::to_vec(&full_owner).expect("encode full owner snapshot");
+        let compact_bytes = serde_json::to_vec(&compact).expect("encode compact owner response");
+        let reduction = full_bytes.len() / compact_bytes.len();
+        println!(
+            "{{\"schemaId\":\"agent.semantic-protocols.owner-search-payload-reduction-receipt\",\"schemaVersion\":\"1\",\"fullBytes\":{},\"compactBytes\":{},\"reductionFactor\":{reduction}}}",
+            full_bytes.len(),
+            compact_bytes.len(),
+        );
+        assert!(
+            reduction >= 100,
+            "compact owner-search response must remove at least 100x payload amplification: {reduction}x"
+        );
     }
 }
 
@@ -163,6 +319,122 @@ mod exact_query_terminal_tests {
         };
         assert!(classify_exact_query_failure(&ready).is_none());
     }
+
+    #[test]
+    fn unpublished_generation_returns_typed_query_not_ready_without_admission() {
+        let request = AspClientExactQueryRequest {
+            schema_id: "agent.semantic-protocols.asp-client-exact-query-request".to_owned(),
+            schema_version: "1".to_owned(),
+            selector: "rust://src/lib.rs#item/function/ready".to_owned(),
+            projection: "source".to_owned(),
+        };
+        let error = query_generation_not_ready_error(QueryNotReadyContext {
+            operation_id: "request-1",
+            workspace_identity: "workspace-1",
+            language_id: "rust",
+            provider_id: "asp-rust",
+            exact_query: Some(&request),
+            generation_state: "unpublished",
+            publication_error: None,
+            elapsed_micros: 7,
+        })
+        .expect("typed query readiness terminal");
+
+        assert_eq!(error.reason_kind, "query-not-ready");
+        let terminal = error.details.expect("typed exact-query terminal");
+        assert_eq!(terminal["state"], "failed");
+        assert_eq!(terminal["phase"], "runtime-generation-authority");
+        assert_eq!(terminal["reasonKind"], "query-not-ready");
+        assert_eq!(terminal["workCounters"]["filesystemReadCount"], 0);
+        assert_eq!(terminal["workCounters"]["databaseReadCount"], 0);
+        assert_eq!(terminal["workCounters"]["providerProcessCount"], 0);
+        assert_eq!(
+            terminal["recommendedNext"]["action"],
+            "publish-complete-workspace-generation"
+        );
+    }
+}
+
+struct QueryNotReadyContext<'a> {
+    operation_id: &'a str,
+    workspace_identity: &'a str,
+    language_id: &'a str,
+    provider_id: &'a str,
+    exact_query: Option<&'a AspClientExactQueryRequest>,
+    generation_state: &'a str,
+    publication_error: Option<&'a str>,
+    elapsed_micros: u64,
+}
+
+fn query_generation_not_ready_error(
+    context: QueryNotReadyContext<'_>,
+) -> Result<AspClientDispatchError, String> {
+    let QueryNotReadyContext {
+        operation_id,
+        workspace_identity,
+        language_id,
+        provider_id,
+        exact_query,
+        generation_state,
+        publication_error,
+        elapsed_micros,
+    } = context;
+    let reason_kind = "query-not-ready";
+    let recommended_next = serde_json::json!({
+        "action": "publish-complete-workspace-generation",
+        "workspaceIdentity": workspace_identity,
+    });
+    if let Some(exact_query) = exact_query {
+        let failure = AspClientExactQueryFailure {
+            schema_id: "agent.semantic-protocols.asp-client-exact-query-failure".to_owned(),
+            schema_version: "1".to_owned(),
+            state: "failed".to_owned(),
+            operation_id: operation_id.to_owned(),
+            language_id: language_id.to_owned(),
+            provider_id: provider_id.to_owned(),
+            requested_selector: Some(exact_query.selector.clone()),
+            resolved_selector: None,
+            projection_kind: Some(exact_query.projection.clone()),
+            phase: "runtime-generation-authority".to_owned(),
+            reason_kind: reason_kind.to_owned(),
+            generation_digest: None,
+            root_digest: None,
+            recommended_next,
+            resident_read_elapsed_micros: 0,
+            service_elapsed_micros: elapsed_micros,
+            elapsed_micros,
+            work_counters: AspClientRuntimeWorkCounters::default(),
+            details: serde_json::json!({
+                "generationState": generation_state,
+                "publicationError": publication_error,
+            }),
+        };
+        failure.validate()?;
+        return Ok(AspClientDispatchError {
+            reason_kind: reason_kind.to_owned(),
+            message: "no immutable CompleteGeneration is published for this workspace".to_owned(),
+            details: Some(serde_json::to_value(failure).map_err(|error| error.to_string())?),
+        });
+    }
+    Ok(AspClientDispatchError {
+        reason_kind: reason_kind.to_owned(),
+        message: "no immutable CompleteGeneration is published for this workspace".to_owned(),
+        details: Some(serde_json::json!({
+            "schemaId": "agent.semantic-protocols.asp-client-query-readiness-failure",
+            "schemaVersion": "1",
+            "state": "failed",
+            "phase": "runtime-generation-authority",
+            "reasonKind": reason_kind,
+            "workspaceIdentity": workspace_identity,
+            "languageId": language_id,
+            "providerId": provider_id,
+            "generationState": generation_state,
+            "publicationError": publication_error,
+            "recommendedNext": recommended_next,
+            "elapsedMicros": elapsed_micros,
+            "workCounters": AspClientRuntimeWorkCounters::default(),
+        })),
+    })
 }
 
 type ClientRequestKey = (ClientWorkspaceIdentity, ClientSessionId, ClientRequestId);
@@ -176,13 +448,11 @@ struct InitializedWorkspace {
 #[derive(Clone)]
 pub struct RuntimeAspClientDispatcher {
     schema_bundles: crate::schema_bundle::RuntimeSchemaBundleCatalog,
-    workspace_registry: Arc<RuntimeServerWorkspaceRegistry>,
+    agent_session_registry: Arc<agent_semantic_client_db::AgentSessionRegistry>,
     initialized_workspaces: Arc<Mutex<HashMap<ClientWorkspaceKey, InitializedWorkspace>>>,
     runtime_search_service: RuntimeSearchServiceHandle,
+    generation_admission: Arc<WorkspaceGenerationAdmission>,
     installed_provider_targets: Arc<[(String, String)]>,
-    generation_admission:
-        Arc<agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmission>,
-    query_generation_authority: RuntimeQueryGenerationAuthority,
     query_generation:
         tokio::sync::watch::Receiver<Arc<HashMap<String, RuntimeQueryGenerationState>>>,
     telemetry_sender: agent_semantic_client_db::runtime_telemetry_bus::RuntimeTelemetryBusSender,
@@ -193,14 +463,11 @@ pub struct RuntimeAspClientDispatcher {
 impl RuntimeAspClientDispatcher {
     fn new(
         schema_bundles: crate::schema_bundle::RuntimeSchemaBundleCatalog,
+        agent_session_registry: Arc<agent_semantic_client_db::AgentSessionRegistry>,
         runtime_search_service: RuntimeSearchServiceHandle,
-        workspace_registry: Arc<RuntimeServerWorkspaceRegistry>,
+        generation_admission: Arc<WorkspaceGenerationAdmission>,
         initialized_workspaces: Arc<Mutex<HashMap<ClientWorkspaceKey, InitializedWorkspace>>>,
         installed_provider_targets: Arc<[(String, String)]>,
-        generation_admission: Arc<
-            agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmission,
-        >,
-        query_generation_authority: RuntimeQueryGenerationAuthority,
         query_generation: tokio::sync::watch::Receiver<
             Arc<HashMap<String, RuntimeQueryGenerationState>>,
         >,
@@ -208,12 +475,11 @@ impl RuntimeAspClientDispatcher {
     ) -> Self {
         Self {
             schema_bundles,
+            agent_session_registry,
             runtime_search_service,
-            workspace_registry,
+            generation_admission,
             initialized_workspaces,
             installed_provider_targets,
-            generation_admission,
-            query_generation_authority,
             query_generation,
             telemetry_sender,
             cancellations: Arc::new(Mutex::new(HashMap::new())),
@@ -226,13 +492,11 @@ impl RuntimeAspClientDispatcher {
 /// gRPC bindings both mount this same admission/dispatch owner.
 pub fn build_frame_service(
     schema_bundles: crate::schema_bundle::RuntimeSchemaBundleCatalog,
+    agent_session_registry: Arc<agent_semantic_client_db::AgentSessionRegistry>,
     runtime_search_service: RuntimeSearchServiceHandle,
-    workspace_registry: Arc<RuntimeServerWorkspaceRegistry>,
+    generation_admission: Arc<WorkspaceGenerationAdmission>,
     client_catalog_generation: String,
     installed_provider_targets: Arc<[(String, String)]>,
-    generation_admission: Arc<
-        agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmission,
-    >,
     query_generation_authority: RuntimeQueryGenerationAuthority,
     telemetry_sender: agent_semantic_client_db::runtime_telemetry_bus::RuntimeTelemetryBusSender,
 ) -> Result<Arc<AspClientFrameService<RuntimeAspClientDispatcher>>, String> {
@@ -242,12 +506,11 @@ pub fn build_frame_service(
     let catalog_provider_targets = Arc::clone(&installed_provider_targets);
     let dispatcher = Arc::new(RuntimeAspClientDispatcher::new(
         schema_bundles,
+        agent_session_registry,
         runtime_search_service,
-        workspace_registry,
+        generation_admission,
         Arc::clone(&initialized_workspaces),
         installed_provider_targets,
-        generation_admission,
-        query_generation_authority,
         query_generation,
         telemetry_sender,
     ));
@@ -292,10 +555,7 @@ pub fn build_frame_service(
                 agent_semantic_client_protocol::server_client_catalog(
                     catalog_generation,
                     workspace_generation,
-                    vec![
-                        agent_semantic_client_protocol::ClientTransport::HttpJson,
-                        agent_semantic_client_protocol::ClientTransport::RuntimeIpc,
-                    ],
+                    vec![agent_semantic_client_protocol::ClientTransport::RuntimeIpc],
                     provider_targets
                         .iter()
                         .map(|(language_id, _)| language_id.clone()),
@@ -303,21 +563,6 @@ pub fn build_frame_service(
             }
         },
     )))
-}
-
-fn client_generation_digest(candidate_digest: &str) -> Result<String, String> {
-    let hex = candidate_digest
-        .strip_prefix("blake3:")
-        .or_else(|| candidate_digest.strip_prefix("blake3-256:"))
-        .ok_or_else(|| "workspace candidate uses an unsupported digest".to_owned())?;
-    if hex.len() != 64
-        || !hex
-            .bytes()
-            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
-    {
-        return Err("workspace candidate digest is invalid".to_owned());
-    }
-    Ok(format!("blake3-256:{hex}"))
 }
 
 impl AspClientDispatcher for RuntimeAspClientDispatcher {
@@ -352,13 +597,12 @@ impl AspClientDispatcher for RuntimeAspClientDispatcher {
         }
         self.cancellation_admitted.notify_waiters();
 
-        let workspace_registry = Arc::clone(&self.workspace_registry);
         let schema_bundles = self.schema_bundles.clone();
+        let agent_session_registry = Arc::clone(&self.agent_session_registry);
         let initialized_workspaces = Arc::clone(&self.initialized_workspaces);
         let runtime_search_service = self.runtime_search_service.clone();
-        let installed_provider_targets = Arc::clone(&self.installed_provider_targets);
         let generation_admission = Arc::clone(&self.generation_admission);
-        let query_generation_authority = self.query_generation_authority.clone();
+        let installed_provider_targets = Arc::clone(&self.installed_provider_targets);
         let query_generation = self.query_generation.clone();
         let telemetry_sender = self.telemetry_sender.clone();
         let cancellations = Arc::clone(&self.cancellations);
@@ -369,6 +613,93 @@ impl AspClientDispatcher for RuntimeAspClientDispatcher {
                         Result<serde_json::Value, AspClientOperationError>,
                     >()
                     .await;
+                }
+                if request.method == AGENT_SESSION_REGISTER_METHOD {
+                    let params: AgentSessionRegisterRequest =
+                        serde_json::from_value(request.params).map_err(|error| {
+                            format!("decode child registration request: {error}")
+                        })?;
+                    params.validate()?;
+                    let initialized = initialized_workspaces
+                        .lock()
+                        .map_err(|_| "ASP client workspace-root registry poisoned".to_owned())?
+                        .get(&(
+                            request.workspace_identity.as_str().to_owned(),
+                            request.session_id.as_str().to_owned(),
+                        ))
+                        .cloned()
+                        .ok_or_else(|| {
+                            "ASP client request requires an initialized workspace root".to_owned()
+                        })?;
+                    let project_id = agent_semantic_client_db::AgentSessionRegistry::workspace_id(
+                        &initialized.project_root,
+                    )?;
+                    if project_id != request.workspace_identity.as_str() {
+                        return Err(AspClientOperationError::Message(
+                            "child registration workspace identity mismatch".to_owned(),
+                        ));
+                    }
+                    let now = agent_semantic_client_db::agent_session_unix_timestamp()?;
+                    let metadata = serde_json::json!({
+                        "event": "child-registration-command",
+                        "schemaId": AGENT_SESSION_REGISTER_RESPONSE_SCHEMA_ID,
+                        "schemaVersion": 1,
+                        "platform": "codex",
+                        "nativeEnvironment": true,
+                        "rootSessionId": params.root_session_id,
+                        "parentThreadId": params.parent_thread_id,
+                        "childThreadId": params.child_thread_id,
+                        "agentType": params.agent_name,
+                        "configuredRoute": params.route_key,
+                        "messageTargetBinding": {
+                            "source": "codex-child-registration-command",
+                            "boundRootSessionId": params.root_session_id,
+                            "childThreadId": params.child_thread_id,
+                            "messageTargetId": params.agent_path
+                        }
+                    });
+                    let registered = agent_session_registry
+                        .register_session_from_runtime_owner(
+                            agent_semantic_client_db::agent_session_registry::AgentSessionRegisterRequest {
+                                project_id: project_id.as_str().into(),
+                                root_session_id: params.root_session_id.as_str().into(),
+                                session_id: params.child_thread_id.as_str().into(),
+                                message_target_id: Some(params.agent_path.as_str().into()),
+                                parent_session_id: Some(params.parent_thread_id.as_str().into()),
+                                name: params.route_key.as_str().into(),
+                                role: params.route_key.as_str().into(),
+                                model_observation: None,
+                                status: "active".into(),
+                                expires_at: None,
+                                metadata_json: metadata.to_string().into(),
+                                now,
+                            },
+                        )
+                        .await?;
+                    let physical_generation =
+                        registered.physical_generation.try_into().map_err(|_| {
+                            "child registration physical generation is invalid".to_owned()
+                        })?;
+                    let receipt = AgentSessionRegisterReceipt {
+                        schema_id: AGENT_SESSION_REGISTER_RESPONSE_SCHEMA_ID.to_owned(),
+                        schema_version: 1,
+                        state: "registered".to_owned(),
+                        platform: "codex".to_owned(),
+                        project_id,
+                        root_session_id: params.root_session_id,
+                        parent_thread_id: params.parent_thread_id,
+                        child_thread_id: params.child_thread_id,
+                        agent_name: params.agent_name,
+                        agent_path: params.agent_path,
+                        route_key: params.route_key,
+                        physical_generation,
+                        registry_owner: "runtime-server-agent-session-registry".to_owned(),
+                        transport: "grpc-client-frame".to_owned(),
+                    };
+                    receipt.validate()?;
+                    return serde_json::to_value(receipt)
+                        .map_err(|error| error.to_string())
+                        .map_err(AspClientOperationError::Message);
                 }
                 if request.method == SCHEMA_BUNDLE_METHOD {
                     let params: SchemaBundleRequest = serde_json::from_value(request.params)
@@ -497,273 +828,172 @@ impl AspClientDispatcher for RuntimeAspClientDispatcher {
                 } else {
                     None
                 };
-                let admission_started = tokio::time::Instant::now();
-                let initialized = initialized_workspaces
+                let dispatch_started = tokio::time::Instant::now();
+                let project_root = initialized_workspaces
                     .lock()
                     .map_err(|_| "ASP client workspace-root registry poisoned".to_owned())?
                     .get(&(
                         request.workspace_identity.as_str().to_owned(),
                         request.session_id.as_str().to_owned(),
                     ))
-                    .cloned()
                     .ok_or_else(|| {
                         "ASP client request requires an initialized workspace root".to_owned()
-                    })?;
-                let project_root = initialized.project_root;
-                let query_generation_ready = query_generation
-                    .borrow()
-                    .get(request.workspace_identity.as_str())
-                    .is_some_and(|state| matches!(state, RuntimeQueryGenerationState::Ready(_)));
-                let terminal = if !query_generation_ready {
-                    let candidate = agent_semantic_client_db::runtime_server_admission::discover_workspace_generation_candidate(&project_root).await?;
-                    let queued_receipt = generation_admission
+                    })?
+                    .project_root
+                    .clone();
+                let params = request.params;
+                let expected_candidate = discover_workspace_generation_candidate(&project_root)
+                    .await
+                    .map_err(AspClientOperationError::Message)?;
+                let admission_receipt = generation_admission
                     .enqueue_query_demand_for_candidate(
                         request.workspace_identity.as_str().to_owned(),
                         project_root.clone(),
-                        candidate,
+                        expected_candidate.clone(),
                         Vec::new(),
-                        Some(
-                            agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationProviderTarget {
-                                language_id: language_id.clone(),
-                                provider_id: Some(provider_id.clone()),
-                            },
-                        ),
-                    )
-                    .await?;
-                    generation_admission
-                        .wait_terminal_attempt(
-                            request.workspace_identity.as_str(),
-                            &project_root,
-                            queued_receipt.attempt,
-                        )
-                        .await
-                        .map_err(AspClientOperationError::Message)?
-                } else {
-                    generation_admission
-                        .status(request.workspace_identity.as_str(), &project_root)
-                        .ok_or_else(|| {
-                            AspClientOperationError::Message(
-                                "workspace generation admission has no current receipt".to_owned(),
-                            )
-                        })?
-                };
-                if terminal.state
-                    != agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmissionState::Ready
-                {
-                    if let Some(params) = exact_query_params.as_ref() {
-                        let elapsed_micros = elapsed_micros(admission_started);
-                        let candidate_generation_digest = client_generation_digest(
-                            terminal.candidate_generation.digest.as_str(),
-                        )?;
-                        let message = terminal.error.unwrap_or_else(|| {
-                            format!(
-                                "workspace generation admission reached terminal state {:?}",
-                                terminal.state
-                            )
-                        });
-                        let reason_kind = match terminal.state {
-                            agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmissionState::Queued => {
-                                "runtime-generation-queued"
-                            }
-                            agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmissionState::Building => {
-                                "runtime-generation-building"
-                            }
-                            agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmissionState::Cancelled => {
-                                "runtime-generation-admission-cancelled"
-                            }
-                            agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmissionState::Failed => {
-                                generation_admission_reason_kind(terminal.failure_stage.as_ref())
-                            }
-                            agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmissionState::Ready => {
-                                unreachable!("Ready admission bypasses failure terminal")
-                            }
-                        };
-                        let recommended_action = match terminal.state {
-                            agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmissionState::Queued => {
-                                "observe-runtime-dispatch"
-                            }
-                            agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmissionState::Building => {
-                                "observe-runtime-generation"
-                            }
-                            agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmissionState::Failed
-                            | agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmissionState::Cancelled => {
-                                "inspect-runtime-generation-admission"
-                            }
-                            agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmissionState::Ready => {
-                                unreachable!("Ready admission bypasses failure terminal")
-                            }
-                        };
-                        let failure = AspClientExactQueryFailure {
-                            schema_id:
-                                "agent.semantic-protocols.asp-client-exact-query-failure"
-                                    .to_owned(),
-                            schema_version: "1".to_owned(),
-                            state: "failed".to_owned(),
-                            operation_id: request.request_id.as_str().to_owned(),
+                        Some(WorkspaceGenerationProviderTarget {
                             language_id: language_id.clone(),
-                            provider_id: provider_id.clone(),
-                            requested_selector: Some(params.selector.clone()),
-                            resolved_selector: None,
-                            projection_kind: Some(params.projection.clone()),
-                            phase: "workspace-generation-admission".to_owned(),
-                            reason_kind: reason_kind.to_owned(),
-                            generation_digest: None,
-                            root_digest: None,
-                            recommended_next: serde_json::json!({
-                                "action": recommended_action,
-                                "workspaceIdentity": request.workspace_identity.as_str(),
+                            provider_id: Some(provider_id.clone()),
+                        }),
+                    )
+                    .await
+                    .map_err(|error| {
+                        AspClientOperationError::Terminal(
+                            query_generation_not_ready_error(QueryNotReadyContext {
+                                operation_id: request.request_id.as_str(),
+                                workspace_identity: request.workspace_identity.as_str(),
+                                language_id: &language_id,
+                                provider_id: &provider_id,
+                                exact_query: exact_query_params.as_ref(),
+                                generation_state: "admission-failed",
+                                publication_error: Some(&error),
+                                elapsed_micros: elapsed_micros(dispatch_started),
+                            })
+                            .unwrap_or_else(|render_error| {
+                                AspClientDispatchError {
+                                    reason_kind: "query-not-ready".to_owned(),
+                                    message: render_error,
+                                    details: None,
+                                }
                             }),
-                            resident_read_elapsed_micros: 0,
-                            service_elapsed_micros: elapsed_micros,
-                            elapsed_micros,
-                            work_counters: AspClientRuntimeWorkCounters::default(),
-                            details: serde_json::json!({
-                                "admissionState": format!("{:?}", terminal.state),
-                                "attempt": terminal.attempt,
-                                "candidateGenerationDigest": candidate_generation_digest,
-                                "failureStage": terminal.failure_stage,
-                                "languageId": language_id,
-                                "providerId": provider_id,
-                            }),
-                        };
-                        failure.validate()?;
-                        return Err(AspClientOperationError::Terminal(AspClientDispatchError {
-                            reason_kind: failure.reason_kind.clone(),
-                            message,
-                            details: Some(
-                                serde_json::to_value(failure)
-                                    .map_err(|error| error.to_string())?,
-                            ),
-                        }));
-                    }
-                    let reason_kind = match terminal.state {
-                        agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmissionState::Queued => {
-                            "runtime-generation-queued"
-                        }
-                        agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmissionState::Building => {
-                            "runtime-generation-building"
-                        }
-                        agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmissionState::Cancelled => {
-                            "runtime-generation-admission-cancelled"
-                        }
-                        agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmissionState::Failed => {
-                            generation_admission_reason_kind(terminal.failure_stage.as_ref())
-                        }
-                        agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmissionState::Ready => {
-                            unreachable!("Ready admission bypasses failure terminal")
-                        }
-                    };
-                    let message = terminal.error.unwrap_or_else(|| {
-                        format!(
-                            "workspace generation admission reached terminal state {:?}",
-                            terminal.state
                         )
-                    });
-                    return Err(AspClientOperationError::Terminal(AspClientDispatchError {
-                        reason_kind: reason_kind.to_owned(),
-                        message,
-                        details: Some(serde_json::json!({
-                            "admissionState": format!("{:?}", terminal.state),
-                            "attempt": terminal.attempt,
-                            "failureStage": terminal.failure_stage,
-                            "languageId": language_id,
-                            "providerId": provider_id,
-                        })),
-                    }));
+                    })?;
+                let admission_ready = admission_receipt.accepted
+                    && admission_receipt.state == WorkspaceGenerationAdmissionState::Ready
+                    && admission_receipt.candidate_generation
+                        == expected_candidate.candidate_generation
+                    && admission_receipt.policy_overlay_digest
+                        == expected_candidate.policy_overlay_digest;
+                if !admission_ready {
+                    let admission_error = admission_receipt
+                        .error
+                        .as_deref()
+                        .unwrap_or("workspace generation admission is pending");
+                    return Err(AspClientOperationError::Terminal(
+                        query_generation_not_ready_error(QueryNotReadyContext {
+                            operation_id: request.request_id.as_str(),
+                            workspace_identity: request.workspace_identity.as_str(),
+                            language_id: &language_id,
+                            provider_id: &provider_id,
+                            exact_query: exact_query_params.as_ref(),
+                            generation_state: if matches!(
+                                admission_receipt.state,
+                                WorkspaceGenerationAdmissionState::Failed
+                                    | WorkspaceGenerationAdmissionState::Cancelled
+                            ) {
+                                "admission-failed"
+                            } else {
+                                "admission-pending"
+                            },
+                            publication_error: Some(admission_error),
+                            elapsed_micros: elapsed_micros(dispatch_started),
+                        })?,
+                    ));
                 }
-                let commit = terminal.commit.ok_or_else(|| {
-                    "workspace generation admission reached Ready without a commit".to_owned()
-                })?;
-                let pointer_path = agent_semantic_client_db::runtime_server_workspace::workspace_generation_pointer_path(
-                    workspace_registry.root(),
-                    request.workspace_identity.as_str(),
-                    &project_root,
-                )?;
-                let query_generation_is_current = query_generation
+                let committed_generation_digest = admission_receipt
+                    .commit
+                    .as_ref()
+                    .ok_or_else(|| {
+                        AspClientOperationError::Message(
+                            "accepted query admission terminal is missing its commit".to_owned(),
+                        )
+                    })?
+                    .generation_digest
+                    .clone();
+                let resident_matches_commit = query_generation
                     .borrow()
                     .get(request.workspace_identity.as_str())
                     .is_some_and(|state| {
                         matches!(
                             state,
                             RuntimeQueryGenerationState::Ready(generation)
-                                if generation.generation_digest() == commit.generation_digest
+                                if generation.generation_digest()
+                                    == committed_generation_digest
                         )
                     });
-                if !query_generation_is_current {
-                    query_generation_authority.clear_workspace(request.workspace_identity.as_str());
-                    query_generation_authority
-                        .ensure_ready(
-                            request.workspace_identity.as_str(),
-                            &pointer_path,
-                            &project_root,
-                            &commit.generation_digest,
-                        )
-                        .await
-                        .map_err(|error| format!(
-                            "state=generation-failed reasonKind=runtime-query-generation-publication-failed message={error}"
-                        ))?;
+                if !resident_matches_commit {
+                    return Err(AspClientOperationError::Terminal(
+                        query_generation_not_ready_error(QueryNotReadyContext {
+                            operation_id: request.request_id.as_str(),
+                            workspace_identity: request.workspace_identity.as_str(),
+                            language_id: &language_id,
+                            provider_id: &provider_id,
+                            exact_query: exact_query_params.as_ref(),
+                            generation_state: "publication-pending",
+                            publication_error: None,
+                            elapsed_micros: elapsed_micros(dispatch_started),
+                        })?,
+                    ));
                 }
-                let params = request.params;
-                let generation = query_generation
+                let generation_state = query_generation
                     .borrow()
                     .get(request.workspace_identity.as_str())
-                    .cloned()
-                    .ok_or_else(|| {
-                        "active-workspace-generation-required schemaVersion=1 state=Building"
-                            .to_owned()
-                    })?;
-                let RuntimeQueryGenerationState::Ready(generation) = generation else {
-                    if let Some(params) = exact_query_params.as_ref() {
-                        let elapsed_micros = elapsed_micros(admission_started);
-                        let failure = AspClientExactQueryFailure {
-                            schema_id: "agent.semantic-protocols.asp-client-exact-query-failure"
-                                .to_owned(),
-                            schema_version: "1".to_owned(),
-                            state: "failed".to_owned(),
-                            operation_id: request.request_id.as_str().to_owned(),
-                            language_id: language_id.clone(),
-                            provider_id: provider_id.clone(),
-                            requested_selector: Some(params.selector.clone()),
-                            resolved_selector: None,
-                            projection_kind: Some(params.projection.clone()),
-                            phase: "runtime-generation-authority".to_owned(),
-                            reason_kind: "active-workspace-generation-required".to_owned(),
-                            generation_digest: None,
-                            root_digest: None,
-                            recommended_next: serde_json::json!({
-                                "action": "inspect-runtime-generation-authority",
-                                "workspaceIdentity": request.workspace_identity.as_str(),
-                            }),
-                            resident_read_elapsed_micros: 0,
-                            service_elapsed_micros: elapsed_micros,
-                            elapsed_micros,
-                            work_counters: AspClientRuntimeWorkCounters::default(),
-                            details: serde_json::json!({
-                                "generationState": "not-ready",
-                            }),
-                        };
-                        failure.validate()?;
-                        return Err(AspClientOperationError::Terminal(AspClientDispatchError {
-                            reason_kind: failure.reason_kind.clone(),
-                            message: "active workspace generation is not Ready".to_owned(),
-                            details: Some(
-                                serde_json::to_value(failure).map_err(|error| error.to_string())?,
-                            ),
-                        }));
+                    .cloned();
+                let generation = match generation_state {
+                    Some(RuntimeQueryGenerationState::Ready(generation)) => generation,
+                    Some(RuntimeQueryGenerationState::Failed { reason, .. }) => {
+                        return Err(AspClientOperationError::Terminal(
+                            query_generation_not_ready_error(QueryNotReadyContext {
+                                operation_id: request.request_id.as_str(),
+                                workspace_identity: request.workspace_identity.as_str(),
+                                language_id: &language_id,
+                                provider_id: &provider_id,
+                                exact_query: exact_query_params.as_ref(),
+                                generation_state: "failed",
+                                publication_error: Some(reason.as_ref()),
+                                elapsed_micros: elapsed_micros(dispatch_started),
+                            })?,
+                        ));
                     }
-                    return Err(AspClientOperationError::Terminal(AspClientDispatchError {
-                        reason_kind: "active-workspace-generation-required".to_owned(),
-                        message:
-                            "active-workspace-generation-required schemaVersion=1 state=Failed"
-                                .to_owned(),
-                        details: Some(serde_json::json!({
-                            "generationState": "not-ready",
-                            "languageId": language_id,
-                            "providerId": provider_id,
-                        })),
-                    }));
+                    None => {
+                        return Err(AspClientOperationError::Terminal(
+                            query_generation_not_ready_error(QueryNotReadyContext {
+                                operation_id: request.request_id.as_str(),
+                                workspace_identity: request.workspace_identity.as_str(),
+                                language_id: &language_id,
+                                provider_id: &provider_id,
+                                exact_query: exact_query_params.as_ref(),
+                                generation_state: "unpublished",
+                                publication_error: None,
+                                elapsed_micros: elapsed_micros(dispatch_started),
+                            })?,
+                        ));
+                    }
                 };
                 match route {
+                    agent_semantic_client_protocol::ServerClientRoute::AgentSessionRegister => {
+                        unreachable!(
+                            "server-owned AgentSession route is handled before language dispatch"
+                        )
+                    }
+                    agent_semantic_client_protocol::ServerClientRoute::MultiAgentHostEvent => {
+                        unreachable!("server-owned Host event route requires its typed dispatcher")
+                    }
+                    agent_semantic_client_protocol::ServerClientRoute::MultiAgentChildren => {
+                        unreachable!(
+                            "server-owned child projection route requires its typed dispatcher"
+                        )
+                    }
                     agent_semantic_client_protocol::ServerClientRoute::GraphsEvaluate => {
                         unreachable!("server-owned graph route is handled before language dispatch")
                     }
@@ -830,6 +1060,67 @@ impl AspClientDispatcher for RuntimeAspClientDispatcher {
                         Ok(serde_json::to_value(receipt)
                             .map_err(|error| format!("encode search receipt: {error}"))?)
                     }
+                    agent_semantic_client_protocol::ServerClientRoute::SourceIndexLookup => {
+                        let started = tokio::time::Instant::now();
+                        let params: agent_semantic_client_protocol::AspClientSourceIndexLookupRequest =
+                            serde_json::from_value(params).map_err(|error| {
+                                format!("decode ASP client source-index lookup request: {error}")
+                            })?;
+                        params.validate_schema_identity()?;
+                        if params.query.trim().is_empty() || !(1..=100).contains(&params.limit) {
+                            return Err(AspClientOperationError::Message(
+                                "source-index lookup requires a non-empty query and limit in 1..=100"
+                                    .to_owned(),
+                            ));
+                        }
+                        let requested_root = std::path::PathBuf::from(&params.index_root)
+                            .canonicalize()
+                            .map_err(|error| {
+                                format!("canonicalize source-index indexRoot: {error}")
+                            })?;
+                        let admitted_root = project_root.canonicalize().map_err(|error| {
+                            format!("canonicalize admitted workspace root: {error}")
+                        })?;
+                        if requested_root != admitted_root {
+                            return Err(AspClientOperationError::Terminal(
+                                AspClientDispatchError {
+                                    reason_kind: "source-index-workspace-mismatch".to_owned(),
+                                    message:
+                                        "source-index indexRoot is not the initialized workspace"
+                                            .to_owned(),
+                                    details: Some(serde_json::json!({
+                                        "requestedIndexRoot": requested_root,
+                                        "admittedWorkspaceRoot": admitted_root,
+                                    })),
+                                },
+                            ));
+                        }
+                        let language =
+                            agent_semantic_client_core::LanguageId::try_from(language_id.as_str())
+                                .map_err(|error| format!("decode language id: {error}"))?;
+                        let authority = agent_semantic_search::ResidentSearchAuthority {
+                            language_id: language,
+                            provider_id: provider_id.as_str().into(),
+                        };
+                        let lookup = generation.resident().read_source_index(
+                            &params.query,
+                            Some(&authority),
+                            params.limit,
+                        )?;
+                        record_runtime_route_performance(
+                            &telemetry_sender,
+                            request.workspace_identity.as_str(),
+                            &language_id,
+                            generation.generation_digest(),
+                            request.request_id.as_str(),
+                            "source-index",
+                            "runtime-source-index-read",
+                            "lookup",
+                            elapsed_micros(started),
+                        )?;
+                        Ok(serde_json::to_value(lookup)
+                            .map_err(|error| format!("encode source-index lookup: {error}"))?)
+                    }
                     agent_semantic_client_protocol::ServerClientRoute::OwnerSearch => {
                         let started = tokio::time::Instant::now();
                         let params: AspClientOwnerSearchRequest = serde_json::from_value(params)
@@ -837,9 +1128,15 @@ impl AspClientDispatcher for RuntimeAspClientDispatcher {
                                 format!("decode ASP client owner-search request: {error}")
                             })?;
                         params.validate_schema_identity()?;
-                        let read = generation
-                            .resident()
-                            .read_runtime_owner(&params.owner_path)?;
+                        let query_terms =
+                            agent_semantic_search::source_index_lookup_terms(&params.query);
+                        let read = generation.resident().read_runtime_owner_search(
+                            &params.owner_path,
+                            &query_terms,
+                            OWNER_SEARCH_SEED_LIMIT,
+                        )?;
+                        let response = bounded_owner_search_response(&params, read)?;
+                        response.validate()?;
                         record_runtime_route_performance(
                             &telemetry_sender,
                             request.workspace_identity.as_str(),
@@ -851,7 +1148,7 @@ impl AspClientDispatcher for RuntimeAspClientDispatcher {
                             &params.view,
                             elapsed_micros(started),
                         )?;
-                        Ok(serde_json::to_value(read)
+                        Ok(serde_json::to_value(response)
                             .map_err(|error| format!("encode owner response: {error}"))?)
                     }
                     agent_semantic_client_protocol::ServerClientRoute::ExactQuery => {
@@ -963,6 +1260,23 @@ impl AspClientDispatcher for RuntimeAspClientDispatcher {
                                 },
                                 AspClientOperationError::Terminal(error) => error,
                             }),
+                            _ = tokio::time::sleep(RUNTIME_CLIENT_DISPATCH_BUDGET) => {
+            Err(AspClientDispatchError {
+                reason_kind: "client-request-deadline-exceeded".to_owned(),
+                message: format!(
+                    "Runtime ClientFrame dispatch exceeded its {}ms interactive deadline",
+                    RUNTIME_CLIENT_DISPATCH_BUDGET.as_millis(),
+                ),
+                details: Some(serde_json::json!({
+                    "schemaId": "agent.semantic-protocols.asp-client-dispatch-failure",
+                    "schemaVersion": "1",
+                    "state": "failed",
+                    "phase": "runtime-client-dispatch",
+                    "reasonKind": "client-request-deadline-exceeded",
+                    "budgetMs": RUNTIME_CLIENT_DISPATCH_BUDGET.as_millis(),
+                })),
+            })
+                            }
                             changed = cancelled.changed() => {
                                 let _ = changed;
             Err(AspClientDispatchError {

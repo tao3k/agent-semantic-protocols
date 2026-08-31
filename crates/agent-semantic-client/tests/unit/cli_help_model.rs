@@ -30,8 +30,6 @@ fn root_and_first_level_paths_select_their_own_commands() {
         "healthcheck",
         "ast-patch",
         "graph",
-        "fd",
-        "rg",
         "search",
         "query",
         "gerbil-scheme",
@@ -59,8 +57,18 @@ fn root_and_first_level_paths_select_their_own_commands() {
     );
     let mut session = help_model::selected_command(&owned_args(&["session", "--help"]));
     let session_help = session.render_long_help().to_string();
-    assert!(session_help.contains("--children"));
-    assert!(session_help.contains("--agents"));
+    assert!(session_help.contains("register-child"));
+    assert_selected(
+        &["session", "register-child", "--help"],
+        "register-child",
+        "asp session register-child",
+    );
+    let mut register_child =
+        help_model::selected_command(&owned_args(&["session", "register-child", "--help"]));
+    let register_child_help = register_child.render_long_help().to_string();
+    assert!(register_child_help.contains("--parent-thread-id"));
+    assert!(!register_child_help.contains("--parent-session-id"));
+    assert!(register_child_help.contains("--agent-name"));
 }
 
 #[test]

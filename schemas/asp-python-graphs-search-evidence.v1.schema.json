@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/asp-python-graphs-search-evidence.v1.schema.json",
+  "title": "ASP Python Graphs Search Evidence Frame v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["frameId", "intent", "lane", "ownerIds", "complete", "elapsedMicros"],
+  "properties": {
+    "frameId": {"type": "string", "minLength": 1},
+    "intent": {
+      "enum": ["conceptual", "relationship", "exact-literal", "absence-proof"]
+    },
+    "lane": {
+      "enum": ["indexed-lexical", "python-graph", "ripgrep"]
+    },
+    "ownerIds": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "complete": {"type": "boolean"},
+    "elapsedMicros": {"type": "integer", "minimum": 0}
+  }
+}

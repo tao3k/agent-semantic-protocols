@@ -23,10 +23,10 @@ def test_unobserved_projection_matches_schema() -> None:
     jsonschema.validate(load_fixture("valid-unobserved.v1.json"), SCHEMA)
 
 
-def test_path_release_requires_both_indexed_receipts() -> None:
+def test_present_path_cannot_select_spawn_agent() -> None:
     with __import__("pytest").raises(jsonschema.ValidationError):
         jsonschema.validate(
-            load_fixture("invalid-released-without-receipts.v1.json"), SCHEMA
+            load_fixture("invalid-present-path-spawn-action.v1.json"), SCHEMA
         )
 
 

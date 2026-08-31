@@ -53,3 +53,23 @@ fn central_policy_preserves_member_specific_verification_owners() {
             .any(|owner| owner.path == "src/cli.rs")
     );
 }
+
+#[test]
+fn member_policy_digest_is_stable_and_distinguishes_declarations() {
+    let policies = asp_workspace_member_policies();
+    let client_db = policies
+        .iter()
+        .find(|policy| policy.package_name == "agent-semantic-client-db")
+        .copied()
+        .expect("client-db policy");
+    let search = policies
+        .iter()
+        .find(|policy| policy.package_name == "agent-semantic-search")
+        .copied()
+        .expect("search policy");
+
+    let first = client_db.contract_digest();
+    assert_eq!(first, client_db.contract_digest());
+    assert!(first.starts_with("blake3-256:"));
+    assert_ne!(first, search.contract_digest());
+}

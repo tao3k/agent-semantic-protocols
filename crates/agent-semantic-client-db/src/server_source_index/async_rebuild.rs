@@ -20,7 +20,7 @@ pub async fn prepare_runtime_server_owner_projection_with_resident_runtime_async
     workspace_identity: String,
     owner_path: String,
     snapshot: RuntimeProviderProjection,
-) -> Result<crate::runtime_server_workspace::WorkspaceOwnerSnapshot, String> {
+) -> Result<crate::runtime_server_workspace::WorkspaceOwnerProjection, String> {
     prepare_runtime_server_owner_projection_async(
         RuntimeOwnerProjectionExecutor::Resident(runtime),
         project_root,
@@ -37,7 +37,7 @@ async fn prepare_runtime_server_owner_projection_async(
     workspace_identity: String,
     owner_path: String,
     snapshot: RuntimeProviderProjection,
-) -> Result<crate::runtime_server_workspace::WorkspaceOwnerSnapshot, String> {
+) -> Result<crate::runtime_server_workspace::WorkspaceOwnerProjection, String> {
     let mut providers = snapshot.providers.iter().filter(|provider| {
         provider.runtime_operation("projection-batch").is_some()
             && provider
@@ -131,21 +131,41 @@ async fn prepare_runtime_server_owner_projection_async(
                     proof.structural_selector()
                 ));
             }
+            let structural_selector = proof.structural_selector().to_owned();
+            let mut query_keys = selector
+                .query_keys
+                .into_iter()
+                .map(|key| key.as_str().to_owned())
+                .collect::<Vec<_>>();
+            query_keys.sort();
+            query_keys.dedup();
             Ok(crate::runtime_server_workspace::WorkspaceSelectorSnapshot {
-                selector: proof.structural_selector().to_owned(),
+                selector: structural_selector,
                 byte_start,
                 byte_end,
+                query_keys,
                 derived_projections: selector.derived_projections,
             })
         })
         .collect::<Result<Vec<_>, String>>()?;
     selectors.sort_by(|left, right| left.selector.cmp(&right.selector));
-    Ok(crate::runtime_server_workspace::WorkspaceOwnerSnapshot {
-        owner_path,
-        authority: Some(authority),
-        content_digest: format!("blake3-256:{}", blake3::hash(&bytes).to_hex()),
-        bytes,
-        selectors,
+    let relations = projected
+        .relations
+        .into_iter()
+        .map(|relation| crate::ClientDbSourceIndexOwnedRelation {
+            owner_path: crate::ClientDbSourceIndexPath::new(owner_path.clone()),
+            relation,
+        })
+        .collect();
+    Ok(crate::runtime_server_workspace::WorkspaceOwnerProjection {
+        owner: crate::runtime_server_workspace::WorkspaceOwnerSnapshot {
+            owner_path,
+            authority: Some(authority),
+            content_digest: format!("blake3-256:{}", blake3::hash(&bytes).to_hex()),
+            bytes,
+            selectors,
+        },
+        relations,
     })
 }
 

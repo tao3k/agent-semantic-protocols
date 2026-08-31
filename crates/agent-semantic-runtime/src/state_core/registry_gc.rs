@@ -8,6 +8,10 @@ use std::{
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use agent_semantic_artifacts::{
+    CleanupDisposition, RetainedObject, RetentionLease, RetentionObjectKind, RetentionPlanner,
+};
+
 use super::{ResolvedState, WorkspaceId, WorkspaceLifecycle, is_temporary_checkout_path};
 
 const LAST_SEEN_FILE: &str = ".last-seen-ms";
@@ -33,6 +37,8 @@ pub struct TemporaryWorkspaceCacheGcCandidate {
     protected: bool,
     eligible: bool,
     cache_present: bool,
+    byte_count: u64,
+    retention_reason: String,
     retired: bool,
 }
 
@@ -57,6 +63,10 @@ impl TemporaryWorkspaceCacheGcCandidate {
         self.age_ms
     }
 
+    pub const fn last_seen_ms(&self) -> Option<u64> {
+        self.last_seen_ms
+    }
+
     /// Whether this is the workspace from which GC is running.
     pub const fn protected(&self) -> bool {
         self.protected
@@ -70,6 +80,14 @@ impl TemporaryWorkspaceCacheGcCandidate {
     /// Whether path-bound cache was present when this candidate was evaluated.
     pub const fn cache_present(&self) -> bool {
         self.cache_present
+    }
+
+    pub const fn byte_count(&self) -> u64 {
+        self.byte_count
+    }
+
+    pub fn retention_reason(&self) -> &str {
+        &self.retention_reason
     }
 
     /// Whether this apply pass retired the path-bound cache.
@@ -191,6 +209,8 @@ pub struct ProjectRegistryGcCandidate {
     reason: ProjectRegistryGcReason,
     eligibility: ProjectRegistryGcEligibility,
     disposition: ProjectRegistryGcDisposition,
+    byte_count: u64,
+    retention_reason: String,
 }
 
 impl ProjectRegistryGcCandidate {
@@ -236,6 +256,14 @@ impl ProjectRegistryGcCandidate {
 
     pub const fn removed(&self) -> bool {
         matches!(self.disposition, ProjectRegistryGcDisposition::Removed)
+    }
+
+    pub const fn byte_count(&self) -> u64 {
+        self.byte_count
+    }
+
+    pub fn retention_reason(&self) -> &str {
+        &self.retention_reason
     }
 }
 
@@ -326,11 +354,24 @@ impl ResolvedState {
             let all_roots_missing = roots.iter().all(|root| !root.exists());
             let non_canonical_identity =
                 recorded_identity_is_noncanonical(&self.state_home, &roots, &repo_id);
+            if !all_roots_missing && !non_canonical_identity {
+                continue;
+            }
             let last_seen_ms = last_seen_ms(&project_dir);
             let age_ms = last_seen_ms.map(|last_seen| now_ms.saturating_sub(last_seen));
-            let old_enough = age_ms.is_some_and(|age| age >= options.grace_period_ms);
+            let byte_count = directory_size(&project_dir)?;
+            let (retention_eligible, retention_reason) = retention_decision(
+                format!("legacy-project:{}", repo_id.as_str()),
+                RetentionObjectKind::Project,
+                last_seen_ms,
+                byte_count,
+                protected,
+                now_ms,
+                options.grace_period_ms,
+            )?;
+            let old_enough = retention_eligible;
             let eligible =
-                !protected && old_enough && (all_roots_missing || non_canonical_identity);
+                !protected && retention_eligible && (all_roots_missing || non_canonical_identity);
             let reason = if protected {
                 ProjectRegistryGcReason::CurrentRepository
             } else if non_canonical_identity && !old_enough {
@@ -354,18 +395,18 @@ impl ResolvedState {
                 ProjectRegistryGcEligibility::Ineligible
             };
 
-            if all_roots_missing || non_canonical_identity {
-                candidates.push(ProjectRegistryGcCandidate {
-                    repo_id,
-                    project_dir,
-                    recorded_checkout_roots: roots,
-                    last_seen_ms: last_seen_ms.map(ProjectRegistryGcMillis),
-                    age_ms: age_ms.map(ProjectRegistryGcMillis),
-                    reason,
-                    eligibility,
-                    disposition: ProjectRegistryGcDisposition::Retained,
-                });
-            }
+            candidates.push(ProjectRegistryGcCandidate {
+                repo_id,
+                project_dir,
+                recorded_checkout_roots: roots,
+                last_seen_ms: last_seen_ms.map(ProjectRegistryGcMillis),
+                age_ms: age_ms.map(ProjectRegistryGcMillis),
+                reason,
+                eligibility,
+                disposition: ProjectRegistryGcDisposition::Retained,
+                byte_count,
+                retention_reason,
+            });
         }
 
         if options.apply {
@@ -480,6 +521,20 @@ impl ResolvedState {
                 let age_ms = last_seen_ms.map(|last_seen| now_ms.saturating_sub(last_seen));
                 let old_enough = age_ms.is_some_and(|age| age >= options.grace_period_ms);
                 let cache_present = temporary_workspace_cache_present(&workspace_dir);
+                let byte_count = directory_size(&workspace_dir)?;
+                let (retention_eligible, retention_reason) = retention_decision(
+                    format!(
+                        "legacy-workspace:{}:{}",
+                        repo_id.as_str(),
+                        workspace_id.as_str()
+                    ),
+                    RetentionObjectKind::Workspace,
+                    last_seen_ms,
+                    byte_count,
+                    protected,
+                    now_ms,
+                    options.grace_period_ms,
+                )?;
                 candidates.push(TemporaryWorkspaceCacheGcCandidate {
                     repo_id: repo_id.clone(),
                     workspace_id,
@@ -488,8 +543,14 @@ impl ResolvedState {
                     last_seen_ms,
                     age_ms,
                     protected,
-                    eligible: !protected && !root.exists() && old_enough && cache_present,
+                    eligible: !protected
+                        && !root.exists()
+                        && old_enough
+                        && retention_eligible
+                        && cache_present,
                     cache_present,
+                    byte_count,
+                    retention_reason,
                     retired: false,
                 });
             }
@@ -537,6 +598,59 @@ impl ResolvedState {
             candidates,
         })
     }
+}
+
+fn retention_decision(
+    object_id: String,
+    kind: RetentionObjectKind,
+    last_observed_at_ms: Option<u64>,
+    byte_count: u64,
+    protected: bool,
+    evaluated_at_ms: u64,
+    retain_for_ms: u64,
+) -> Result<(bool, String), String> {
+    let object = RetainedObject {
+        object_id: object_id.clone(),
+        kind,
+        last_observed_at_ms: last_observed_at_ms.unwrap_or(evaluated_at_ms),
+        byte_count,
+    };
+    let leases = protected.then(|| RetentionLease {
+        lease_id: "current-workspace".to_string(),
+        object_id,
+        owner: "state-home-resolution".to_string(),
+        expires_at_ms: None,
+    });
+    let plan = RetentionPlanner::new(evaluated_at_ms, retain_for_ms)
+        .plan(vec![object], leases.as_slice())?;
+    let entry = plan
+        .entries
+        .into_iter()
+        .next()
+        .ok_or_else(|| "retention planner returned no entry".to_string())?;
+    match entry.disposition {
+        CleanupDisposition::Keep { reason } => Ok((false, reason)),
+        CleanupDisposition::Retire { reason } => Ok((true, reason)),
+    }
+}
+
+fn directory_size(root: &Path) -> Result<u64, String> {
+    let metadata = fs::symlink_metadata(root)
+        .map_err(|error| format!("inspect retained object {}: {error}", root.display()))?;
+    if metadata.file_type().is_symlink() {
+        return Ok(0);
+    }
+    if metadata.is_file() {
+        return Ok(metadata.len());
+    }
+    let mut bytes = 0u64;
+    for entry in fs::read_dir(root)
+        .map_err(|error| format!("read retained object {}: {error}", root.display()))?
+    {
+        let entry = entry.map_err(|error| format!("read retained object entry: {error}"))?;
+        bytes = bytes.saturating_add(directory_size(&entry.path())?);
+    }
+    Ok(bytes)
 }
 
 fn recorded_workspace_identity(

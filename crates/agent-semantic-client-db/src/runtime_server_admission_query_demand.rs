@@ -89,15 +89,77 @@ impl WorkspaceGenerationAdmission {
         target_paths: Vec<PathBuf>,
         provider_target: Option<super::WorkspaceGenerationProviderTarget>,
     ) -> Result<bool, String> {
-        let candidate = discover_workspace_generation_candidate(&project_root).await?;
-        self.submit_query_demand_for_candidate(
+        self.admit_query_demand_with_provider(
             workspace_identity,
             project_root,
-            candidate,
             target_paths,
             provider_target,
         )
         .await
+        .map(|(submitted, _terminal)| submitted)
+    }
+
+    /// Admits the current workspace candidate and returns its exact terminal.
+    ///
+    /// Search and Query routes must consume this API rather than treating a
+    /// previously resident generation as current.  The terminal binds the
+    /// candidate and policy identities to the single server-owned commit.
+    pub async fn admit_query_demand_with_provider(
+        &self,
+        workspace_identity: String,
+        project_root: PathBuf,
+        target_paths: Vec<PathBuf>,
+        provider_target: Option<super::WorkspaceGenerationProviderTarget>,
+    ) -> Result<(bool, super::WorkspaceGenerationAdmissionReceipt), String> {
+        let candidate = discover_workspace_generation_candidate(&project_root).await?;
+        let expected_candidate = candidate.clone();
+        let submitted = self
+            .submit_query_demand_for_candidate(
+                workspace_identity.clone(),
+                project_root.clone(),
+                candidate,
+                target_paths,
+                provider_target,
+            )
+            .await?;
+        let terminal = self
+            .wait_terminal(&workspace_identity, &project_root)
+            .await?;
+        if !terminal.accepted || terminal.commit.is_none() {
+            return Err(serde_json::json!({
+                "schemaId": "agent.semantic-protocols.query-not-ready",
+                "schemaVersion": "1",
+                "reasonKind": "query-not-ready",
+                "workspaceIdentity": workspace_identity,
+                "accepted": terminal.accepted,
+                "state": terminal.state,
+                "expectedCandidateGeneration": expected_candidate.candidate_generation,
+                "observedCandidateGeneration": terminal.candidate_generation,
+                "expectedPolicyOverlayDigest": expected_candidate.policy_overlay_digest,
+                "observedPolicyOverlayDigest": terminal.policy_overlay_digest,
+                "commitDigest": serde_json::Value::Null,
+            })
+            .to_string());
+        }
+        if terminal.candidate_generation != expected_candidate.candidate_generation
+            || terminal.policy_overlay_digest != expected_candidate.policy_overlay_digest
+        {
+            return Err(serde_json::json!({
+                "schemaId": "agent.semantic-protocols.query-demand-generation-terminal-mismatch",
+                "schemaVersion": "1",
+                "reasonKind": "query-demand-generation-terminal-mismatch",
+                "workspaceIdentity": workspace_identity,
+                "accepted": terminal.accepted,
+                "state": terminal.state,
+                "expectedCandidateGeneration": expected_candidate.candidate_generation,
+                "observedCandidateGeneration": terminal.candidate_generation,
+                "expectedPolicyOverlayDigest": expected_candidate.policy_overlay_digest,
+                "observedPolicyOverlayDigest": terminal.policy_overlay_digest,
+                "commit": terminal.commit,
+            })
+            .to_string());
+        }
+        Ok((submitted, terminal))
     }
 
     /// Enqueues query demand against the candidate pinned by client

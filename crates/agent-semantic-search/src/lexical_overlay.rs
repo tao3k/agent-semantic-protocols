@@ -201,28 +201,12 @@ impl LexicalOverlayCandidateHit {
 /// Run lexical overlay search without writing dirty evidence to durable DB.
 #[must_use]
 pub fn search_lexical_overlay(request: LexicalOverlaySearchRequest) -> LexicalOverlaySearchResult {
+    let namespace = lexical_overlay_namespace(&request.source_snapshot);
     let source_snapshot = request.source_snapshot;
-    let namespace = DynamicOverlayNamespace::new(
-        "lexical-overlay",
-        "workspace",
-        "worktree",
-        "session",
-        "dirty",
-    );
     let documents = request
         .documents
         .into_iter()
-        .map(|document| DynamicOverlayDocument {
-            owner_path: document.owner_path,
-            entity_id: document.selector.clone(),
-            selector: document.selector,
-            kind: document.kind,
-            name: document.name,
-            signature: None,
-            display_range: None,
-            source_hash: document.source_hash,
-            search_text: document.search_text,
-        })
+        .map(dynamic_overlay_document)
         .collect::<Vec<_>>();
     let mut overlay = default_dynamic_overlay_search_backend();
     overlay.upsert_documents(namespace.clone(), documents);
@@ -232,15 +216,7 @@ pub fn search_lexical_overlay(request: LexicalOverlaySearchRequest) -> LexicalOv
             &DynamicOverlayQuery::new(request.query).limit(request.limit),
         )
         .into_iter()
-        .map(|hit| LexicalOverlaySearchHit {
-            owner_path: hit.document.owner_path,
-            selector: hit.document.selector,
-            kind: hit.document.kind,
-            name: hit.document.name,
-            search_text: hit.document.search_text,
-            score: hit.score,
-            matched_terms: hit.matched_terms,
-        })
+        .map(lexical_overlay_hit)
         .collect();
     LexicalOverlaySearchResult {
         source_snapshot,
@@ -259,22 +235,32 @@ pub fn search_lexical_overlay_candidates(
 ) -> LexicalOverlayCandidateSearchResult {
     let mut remaining = total_limit;
     let mut candidates = Vec::new();
+    let namespace = lexical_overlay_namespace(source_snapshot);
+    let mut overlay = default_dynamic_overlay_search_backend();
+    overlay.upsert_documents(
+        namespace.clone(),
+        documents
+            .iter()
+            .cloned()
+            .map(dynamic_overlay_document)
+            .collect(),
+    );
     for term in terms {
         if remaining == 0 {
             break;
         }
-        let result = search_lexical_overlay(documents.iter().cloned().fold(
-            LexicalOverlaySearchRequest::new(term, source_snapshot.clone()).limit(per_term_limit),
-            LexicalOverlaySearchRequest::document,
-        ));
-        for hit in result.hits {
+        let hits = overlay.search(
+            &namespace,
+            &DynamicOverlayQuery::new(term).limit(per_term_limit),
+        );
+        for hit in hits {
             if remaining == 0 {
                 break;
             }
             candidates.push(LexicalOverlayCandidateHit {
-                owner_path: hit.owner_path,
+                owner_path: hit.document.owner_path,
                 symbol: term.clone(),
-                text: hit.search_text,
+                text: hit.document.search_text,
             });
             remaining -= 1;
         }
@@ -282,5 +268,45 @@ pub fn search_lexical_overlay_candidates(
     LexicalOverlayCandidateSearchResult {
         source_snapshot: source_snapshot.clone(),
         candidates,
+    }
+}
+
+fn lexical_overlay_namespace(
+    source_snapshot: &agent_semantic_artifacts::SourceSnapshotEvidence,
+) -> DynamicOverlayNamespace {
+    DynamicOverlayNamespace::new(
+        "lexical-overlay",
+        "workspace",
+        "worktree",
+        source_snapshot.provider_digest.clone(),
+        source_snapshot.root_digest.clone(),
+    )
+}
+
+fn dynamic_overlay_document(document: LexicalOverlayDocument) -> DynamicOverlayDocument {
+    DynamicOverlayDocument {
+        owner_path: document.owner_path,
+        entity_id: document.selector.clone(),
+        selector: document.selector,
+        kind: document.kind,
+        name: document.name,
+        signature: None,
+        display_range: None,
+        source_hash: document.source_hash,
+        search_text: document.search_text,
+    }
+}
+
+fn lexical_overlay_hit(
+    hit: crate::dynamic_overlay::DynamicOverlaySearchHit,
+) -> LexicalOverlaySearchHit {
+    LexicalOverlaySearchHit {
+        owner_path: hit.document.owner_path,
+        selector: hit.document.selector,
+        kind: hit.document.kind,
+        name: hit.document.name,
+        search_text: hit.document.search_text,
+        score: hit.score,
+        matched_terms: hit.matched_terms,
     }
 }

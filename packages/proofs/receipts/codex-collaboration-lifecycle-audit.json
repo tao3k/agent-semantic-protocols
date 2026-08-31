@@ -1,0 +1,51 @@
+{
+  "admissionLevel": "structural",
+  "bundleCount": 5,
+  "bundles": [
+    {
+      "bundleId": "collaboration-v2-lifecycle-product",
+      "leanPath": "packages/proofs/ASPProof/AgentSessionLifecycleProduct.lean",
+      "leanSha256": "ee855305d784ee9b32b59cf7e56b1b5e1f2fab011d56218a7538a353905f9444",
+      "orgPath": "docs/10-19-rfcs/10.15.02.06-codex-multi-agent-v2-state-lifecycle.org",
+      "orgSha256": "295e27ba7f8fa371508584d30ec3fd3bef457520233097fa44ee45ebe6b0127c",
+      "typstBlockCount": 14
+    },
+    {
+      "bundleId": "collaboration-v2-executable-refinement",
+      "leanPath": "packages/proofs/ASPProof/AgentSessionLifecycleExecutableRefinement.lean",
+      "leanSha256": "655489e34890adb78585e3582214c05a55110d7f453e89a2a44608bf47be4e60",
+      "orgPath": "docs/10-19-rfcs/10.15.02.06-codex-multi-agent-v2-state-lifecycle.org",
+      "orgSha256": "295e27ba7f8fa371508584d30ec3fd3bef457520233097fa44ee45ebe6b0127c",
+      "typstBlockCount": 14
+    },
+    {
+      "bundleId": "collaboration-v2-hook-deadlock-freedom",
+      "leanPath": "packages/proofs/ASPProof/HookAgentIdentityDeadlockFreedom.lean",
+      "leanSha256": "ce472c62d93849635f3dc64a085df01ad1d5e800bfaa2d0e88c8b7775c5eba7d",
+      "orgPath": "docs/10-19-rfcs/10.15.02.06-codex-multi-agent-v2-state-lifecycle.org",
+      "orgSha256": "295e27ba7f8fa371508584d30ec3fd3bef457520233097fa44ee45ebe6b0127c",
+      "typstBlockCount": 14
+    },
+    {
+      "bundleId": "collaboration-v2-control-plane",
+      "leanPath": "packages/proofs/ASPProof/CodexMultiAgentV2ControlPlane.lean",
+      "leanSha256": "bc5a30735e6ce2153539a1a7172061005c0167fdabd5aff25ba96e627aadb432",
+      "orgPath": "docs/10-19-rfcs/10.15.02.06-codex-multi-agent-v2-state-lifecycle.org",
+      "orgSha256": "295e27ba7f8fa371508584d30ec3fd3bef457520233097fa44ee45ebe6b0127c",
+      "typstBlockCount": 14
+    },
+    {
+      "bundleId": "collaboration-v2-projection-dispatch",
+      "leanPath": "packages/proofs/ASPProof/CollaborationAgentProjectionDispatch.lean",
+      "leanSha256": "a0fb320888de80fb93f4a1d53902ccb7ee13506393745b3e0590832e12ade336",
+      "orgPath": "docs/10-19-rfcs/10.15.02.06-codex-multi-agent-v2-state-lifecycle.org",
+      "orgSha256": "295e27ba7f8fa371508584d30ec3fd3bef457520233097fa44ee45ebe6b0127c",
+      "typstBlockCount": 14
+    }
+  ],
+  "coveredLeanCount": 5,
+  "indexSha256": "fe99e08bfbef00a4aa7fbffd9df3ef262ed34ae644c90b2fde6ec04c8818722e",
+  "orgizeLifecycleState": "command-executor-unavailable",
+  "schemaId": "asp.axle-proof-bundle-audit-receipt.v1",
+  "schemaVersion": "1"
+}

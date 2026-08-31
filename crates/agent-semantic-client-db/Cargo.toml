@@ -47,6 +47,10 @@ libc.workspace = true
 name = "runtime_server_opentelemetry_test"
 path = "tests/performance/runtime_server_opentelemetry_harness.rs"
 
+[[test]]
+name = "runtime_search_invalidation"
+path = "tests/unit/runtime_server_overlay_admission/search_invalidation.rs"
+
 [[bench]]
 name = "turso_mvcc_concurrent_write"
 harness = false

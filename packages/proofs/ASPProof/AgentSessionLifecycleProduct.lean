@@ -16,9 +16,9 @@ inductive SessionPhase where
   | unobserved
   | declared
   | active
-  | archiveIntentDurable
-  | archived
-  | retired
+  | interrupted
+  | completed
+  | failed
   deriving DecidableEq, Repr
 
 structure SessionLifecycle where
@@ -31,8 +31,12 @@ inductive BindingPhase where
   | unbound
   | fresh
   | stale
-  | hostTerminated
-  | pathReleased
+  deriving DecidableEq, Repr
+
+inductive PathObservation where
+  | unobserved
+  | absent
+  | present
   deriving DecidableEq, Repr
 
 structure HostBinding where
@@ -40,8 +44,7 @@ structure HostBinding where
   childId : Nat
   canonicalTarget : Nat
   phase : BindingPhase
-  terminationReceiptIndexed : Bool
-  pathReleaseReceiptIndexed : Bool
+  pathObservation : PathObservation
   deriving DecidableEq, Repr
 
 inductive DispatchPhase where
@@ -75,6 +78,12 @@ structure HostBindingReceipt where
   bindingFresh : Bool
   deriving DecidableEq, Repr
 
+inductive RequiredDispatchAction where
+  | unavailable
+  | spawnAgent
+  | followupTask
+  deriving DecidableEq, Repr
+
 def receiptMatches
     (session : SessionLifecycle)
     (receipt : HostBindingReceipt) : Prop :=
@@ -82,15 +91,27 @@ def receiptMatches
     receipt.typedRoleMatches = true ∧
     receipt.bindingFresh = true
 
+def followupTaskAdmitted (state : LifecycleProduct) : Bool :=
+  state.binding.pathObservation == .present &&
+    state.binding.phase == .fresh &&
+    state.binding.generation == state.session.generation
+
+def spawnAgentAdmitted (state : LifecycleProduct) : Bool :=
+  state.binding.pathObservation == .absent
+
+def requiredDispatchAction (state : LifecycleProduct) : RequiredDispatchAction :=
+  match state.binding.pathObservation with
+  | .present => .followupTask
+  | .absent => .spawnAgent
+  | .unobserved => .unavailable
+
 def durableDispatchAuthorized (state : LifecycleProduct) : Bool :=
   state.session.phase == .active &&
-    state.binding.phase == .fresh &&
-    state.binding.generation == state.session.generation &&
+    followupTaskAdmitted state &&
     state.dispatch.generation == state.session.generation
 
 def restartServer (state : LifecycleProduct) : LifecycleProduct :=
-  { state with
-    server := { epoch := state.server.epoch + 1, health := .ready } }
+  { state with server := { epoch := state.server.epoch + 1, health := .ready } }
 
 def loseServerTransport (state : LifecycleProduct) : LifecycleProduct :=
   { state with server := { state.server with health := .unavailable } }
@@ -101,32 +122,15 @@ def observeBindingStale (state : LifecycleProduct) : LifecycleProduct :=
 def quarantineDispatch (state : LifecycleProduct) : LifecycleProduct :=
   { state with dispatch := { state.dispatch with phase := .quarantined } }
 
-def persistArchiveIntent (state : LifecycleProduct) : LifecycleProduct :=
-  { state with session := { state.session with phase := .archiveIntentDurable } }
-
-def indexArchived (state : LifecycleProduct) : LifecycleProduct :=
-  { state with session := { state.session with phase := .archived } }
-
-def indexHostTerminated (state : LifecycleProduct) : LifecycleProduct :=
+def interruptTurn (state : LifecycleProduct) : LifecycleProduct :=
   { state with
-    binding := {
-      state.binding with
-      phase := .hostTerminated
-      terminationReceiptIndexed := true } }
+    session := { state.session with phase := .interrupted }
+    dispatch := { state.dispatch with phase := .completed } }
 
-def indexPathReleased (state : LifecycleProduct) : LifecycleProduct :=
+def completeTurn (state : LifecycleProduct) : LifecycleProduct :=
   { state with
-    binding := {
-      state.binding with
-      phase := .pathReleased
-      pathReleaseReceiptIndexed := true } }
-
-def replacementAdmitted (state : LifecycleProduct) (nextGeneration : Nat) : Prop :=
-  (state.session.phase = .archived ∨ state.session.phase = .retired) ∧
-    state.binding.phase = .pathReleased ∧
-    state.binding.terminationReceiptIndexed = true ∧
-    state.binding.pathReleaseReceiptIndexed = true ∧
-    state.session.generation < nextGeneration
+    session := { state.session with phase := .completed }
+    dispatch := { state.dispatch with phase := .completed } }
 
 theorem server_restart_preserves_non_server_layers
     (state : LifecycleProduct) :
@@ -135,7 +139,7 @@ theorem server_restart_preserves_non_server_layers
       (restartServer state).dispatch = state.dispatch := by
   exact ⟨rfl, rfl, rfl⟩
 
-theorem transport_failure_cannot_archive_session
+theorem transport_failure_cannot_change_session
     (state : LifecycleProduct) :
     (loseServerTransport state).session = state.session := by
   rfl
@@ -151,56 +155,45 @@ theorem dispatch_quarantine_does_not_change_session_or_binding
       (quarantineDispatch state).binding = state.binding := by
   exact ⟨rfl, rfl⟩
 
-theorem archive_intent_does_not_release_canonical_path
+theorem interrupt_preserves_canonical_agent_path
     (state : LifecycleProduct) :
-    (persistArchiveIntent state).binding = state.binding := by
+    (interruptTurn state).binding = state.binding := by
   rfl
 
-theorem archive_intent_revokes_durable_dispatch
+theorem completion_preserves_canonical_agent_path
     (state : LifecycleProduct) :
-    durableDispatchAuthorized (persistArchiveIntent state) = false := by
-  simp [durableDispatchAuthorized, persistArchiveIntent]
+    (completeTurn state).binding = state.binding := by
+  rfl
 
-theorem replacement_requires_archived_or_retired_session
+theorem present_path_requires_followup
     (state : LifecycleProduct)
-    (nextGeneration : Nat)
-    (admitted : replacementAdmitted state nextGeneration) :
-    state.session.phase = .archived ∨ state.session.phase = .retired :=
-  admitted.1
+    (present : state.binding.pathObservation = .present) :
+    requiredDispatchAction state = .followupTask := by
+  simp [requiredDispatchAction, present]
 
-theorem replacement_requires_path_release
+theorem absent_path_requires_spawn
     (state : LifecycleProduct)
-    (nextGeneration : Nat)
-    (admitted : replacementAdmitted state nextGeneration) :
-    state.binding.phase = .pathReleased :=
-  admitted.2.1
+    (absent : state.binding.pathObservation = .absent) :
+    requiredDispatchAction state = .spawnAgent := by
+  simp [requiredDispatchAction, absent]
 
-theorem replacement_requires_host_termination_receipt
+theorem present_path_rejects_spawn
     (state : LifecycleProduct)
-    (nextGeneration : Nat)
-    (admitted : replacementAdmitted state nextGeneration) :
-    state.binding.terminationReceiptIndexed = true :=
-  admitted.2.2.1
+    (present : state.binding.pathObservation = .present) :
+    spawnAgentAdmitted state = false := by
+  simp [spawnAgentAdmitted, present]
 
-theorem replacement_requires_path_release_receipt
+theorem absent_path_rejects_followup
     (state : LifecycleProduct)
-    (nextGeneration : Nat)
-    (admitted : replacementAdmitted state nextGeneration) :
-    state.binding.pathReleaseReceiptIndexed = true :=
-  admitted.2.2.2.1
+    (absent : state.binding.pathObservation = .absent) :
+    followupTaskAdmitted state = false := by
+  simp [followupTaskAdmitted, absent]
 
-theorem replacement_requires_strictly_newer_generation
+theorem stale_generation_rejects_followup
     (state : LifecycleProduct)
-    (nextGeneration : Nat)
-    (admitted : replacementAdmitted state nextGeneration) :
-    state.session.generation < nextGeneration :=
-  admitted.2.2.2.2
-
-theorem same_generation_replacement_is_rejected
-    (state : LifecycleProduct) :
-    ¬ replacementAdmitted state state.session.generation := by
-  intro admitted
-  exact Nat.lt_irrefl state.session.generation admitted.2.2.2.2
+    (stale : state.binding.generation ≠ state.session.generation) :
+    followupTaskAdmitted state = false := by
+  simp [followupTaskAdmitted, stale]
 
 theorem stale_generation_receipt_cannot_bind
     (session : SessionLifecycle)

@@ -271,5 +271,3 @@ pub use crate::provider_registry::{
 use agent_semantic_shell_parser as shell_parser;
 #[cfg(feature = "compiler")]
 mod agent_dispatch_message;
-#[cfg(feature = "compiler")]
-mod collaboration_snapshot_inbox;

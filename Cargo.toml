@@ -55,6 +55,7 @@ tokio = { version = "1", features = ["full"] }
 tokio-stream = { version = "0.1", features = ["net"] }
 tower = { version = "0.5", features = ["util"] }
 hyper-util = { version = "0.1", features = ["tokio"] }
+futures-util = "0.3"
 parking_lot = "0.12.5"
 opentelemetry = { version = "0.32", features = ["trace"] }
 opentelemetry_sdk = { version = "0.32", features = [
@@ -152,7 +153,7 @@ opt-level = 2
 
 [profile.dev.package.agent-semantic-client]
 opt-level = 1
-codegen-units = 256
+codegen-units = 16
 
 # Hook microsecond SLO tests must execute representative optimized policy code;
 # an unoptimized test artifact turns allocator/decoder debug overhead into a
@@ -165,7 +166,7 @@ opt-level = 2
 # The Client now owns the broad CLI composition surface. It must not inherit
 # the removed Protocol crate's single-unit test linkage, which serialized every
 # Hook composition fixture behind a 160MB binary link.
-codegen-units = 256
+codegen-units = 16
 
 [profile.dev-build]
 inherits = "dev"

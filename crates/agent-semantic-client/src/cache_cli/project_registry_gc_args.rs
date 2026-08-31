@@ -45,7 +45,7 @@ struct ProjectRegistryGcCli {
 #[derive(Clone, Debug, Eq, PartialEq, clap::Parser)]
 #[command(
     name = "clean",
-    bin_name = "asp cache clean",
+    bin_name = "asp clean",
     about = "Retire cache for disappeared temporary workspaces after the retention window",
     disable_version_flag = true
 )]
@@ -92,7 +92,7 @@ pub(crate) fn parse_project_registry_gc_args(
 pub(crate) fn parse_project_registry_clean_args(
     args: &[String],
 ) -> Result<Option<ProjectRegistryCleanArgs>, String> {
-    let argv = std::iter::once("asp cache clean").chain(args.iter().map(String::as_str));
+    let argv = std::iter::once("asp clean").chain(args.iter().map(String::as_str));
     match project_registry_clean_clap_command().try_get_matches_from(argv) {
         Ok(matches) => {
             let parsed =

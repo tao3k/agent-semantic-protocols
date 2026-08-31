@@ -1,11 +1,9 @@
 //! Dynamic search candidate projection.
 
-use std::collections::HashSet;
-use std::fs;
+use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use agent_semantic_provider_transport::byte_text;
-use ignore::{DirEntry, WalkBuilder};
 
 use crate::{
     LexicalOverlayDocument, dynamic_overlay::SEARCH_OVERLAY_ROUTE_SOURCE,
@@ -63,13 +61,13 @@ pub struct IngestSearchCandidate {
 }
 
 /// Request for projecting lexical overlay candidates from selected roots.
-pub struct DynamicSearchCandidateRequest<'a> {
+struct DynamicSearchCandidateRequest<'a> {
     /// Root used for display path normalization.
     pub locator_root: &'a Path,
     /// Query terms normalized by the command/parser layer.
     pub terms: &'a [String],
     /// Search roots whose paths were selected by the caller.
-    pub search_roots: &'a [Vec<PathBuf>],
+    pub search_roots: &'a [Vec<CommittedDynamicOwner>],
     /// Canonical workspace snapshot selected before language candidate filtering.
     pub source_snapshot: &'a agent_semantic_artifacts::SourceSnapshotEvidence,
     /// Maximum candidates returned.
@@ -100,27 +98,211 @@ pub struct DynamicSearchRootCandidateRequest<'a> {
     pub limit: usize,
 }
 
-/// Project newline/NUL-delimited pipe ingest records into compact candidates.
-#[must_use]
-pub fn collect_ingest_search_candidates(
-    project_root: &Path,
-    locator_root: &Path,
-    stdin: &[u8],
-    limit: usize,
-) -> Vec<IngestSearchCandidate> {
-    if limit == 0 {
-        return Vec::new();
+const RG_COVERAGE_MAX_INPUT_BYTES: usize = 8 * 1024 * 1024;
+const RG_COVERAGE_MAX_RECORDS: usize = 4_096;
+const RG_COVERAGE_MAX_CANDIDATES: usize = 256;
+
+/// Explicit resource budget for a caller-supplied ripgrep coverage stream.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct RgCoverageBudget {
+    pub max_input_bytes: usize,
+    pub max_records: usize,
+    pub max_candidates: usize,
+}
+
+impl RgCoverageBudget {
+    pub fn new(
+        max_input_bytes: usize,
+        max_records: usize,
+        max_candidates: usize,
+    ) -> Result<Self, String> {
+        if max_input_bytes == 0
+            || max_input_bytes > RG_COVERAGE_MAX_INPUT_BYTES
+            || max_records == 0
+            || max_records > RG_COVERAGE_MAX_RECORDS
+            || max_candidates == 0
+            || max_candidates > RG_COVERAGE_MAX_CANDIDATES
+        {
+            return Err("ripgrep coverage budget is outside the bounded v1 envelope".to_owned());
+        }
+        Ok(Self {
+            max_input_bytes,
+            max_records,
+            max_candidates,
+        })
     }
-    byte_text::split_lf_or_nul_records(stdin)
-        .filter_map(|line| parse_ingest_candidate_line(project_root, locator_root, line))
-        .take(limit)
-        .collect()
+}
+
+/// Ripgrep coverage output bound to one admitted source generation.
+pub struct RgCoverageRequest<'a> {
+    pub locator_root: &'a Path,
+    pub output: &'a [u8],
+    pub generation_digest: &'a str,
+    pub source_snapshot: &'a agent_semantic_artifacts::SourceSnapshotEvidence,
+    pub workspace_snapshot: &'a agent_semantic_artifacts::WorkspaceSnapshot,
+    pub owners: &'a [RgCoverageOwner<'a>],
+    pub budget: RgCoverageBudget,
+}
+
+/// One immutable owner blob admitted by the workspace generation authority.
+pub struct RgCoverageOwner<'a> {
+    pub owner_path: &'a str,
+    pub content_digest: &'a str,
+    pub source: &'a [u8],
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RgCoverageReceipt {
+    pub schema_id: &'static str,
+    pub schema_version: &'static str,
+    pub state: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason_kind: Option<&'static str>,
+    pub generation_digest: String,
+    pub source_root_digest: String,
+    pub provider_digest: String,
+    pub index_artifact_digest: String,
+    pub coverage_input_digest: String,
+    pub committed_owner_count: usize,
+    pub input_bytes: usize,
+    pub record_count: usize,
+    pub candidate_count: usize,
+}
+
+#[derive(Clone, Debug)]
+pub struct RgCoverageResult {
+    pub receipt: RgCoverageReceipt,
+    pub candidates: Vec<IngestSearchCandidate>,
+}
+
+/// Consume explicit `rg --vimgrep --null`-compatible output without spawning a
+/// process or falling back from resident lexical search.
+pub fn collect_rg_coverage_candidates(
+    request: RgCoverageRequest<'_>,
+) -> Result<RgCoverageResult, RgCoverageReceipt> {
+    let coverage_input_digest = rg_coverage_input_digest(&request);
+    let make_receipt = |state: &'static str,
+                        reason_kind: Option<&'static str>,
+                        record_count,
+                        candidate_count| RgCoverageReceipt {
+        schema_id: "agent.semantic-protocols.rg-coverage-receipt",
+        schema_version: "1",
+        state,
+        reason_kind,
+        generation_digest: request.generation_digest.to_owned(),
+        source_root_digest: request.source_snapshot.root_digest.clone(),
+        provider_digest: request.source_snapshot.provider_digest.clone(),
+        index_artifact_digest: agent_semantic_search_projection::source_index_artifact_digest(
+            request.source_snapshot,
+        ),
+        coverage_input_digest: coverage_input_digest.clone(),
+        committed_owner_count: request.owners.len(),
+        input_bytes: request.output.len(),
+        record_count,
+        candidate_count,
+    };
+    if request.output.len() > request.budget.max_input_bytes {
+        return Err(make_receipt("failed", Some("input-budget-exceeded"), 0, 0));
+    }
+    let records = byte_text::split_lf_or_nul_records(request.output).collect::<Vec<_>>();
+    if records.len() > request.budget.max_records {
+        return Err(make_receipt(
+            "failed",
+            Some("record-budget-exceeded"),
+            records.len(),
+            0,
+        ));
+    }
+    if request.generation_digest.is_empty()
+        || request.owners.is_empty()
+        || request.source_snapshot.root_digest != request.workspace_snapshot.root_digest()
+    {
+        return Err(make_receipt(
+            "failed",
+            Some("owner-set-invalid"),
+            records.len(),
+            0,
+        ));
+    }
+    let mut committed = BTreeMap::new();
+    for owner in request.owners {
+        if owner.owner_path.is_empty() || committed.contains_key(owner.owner_path) {
+            return Err(make_receipt(
+                "failed",
+                Some("owner-set-invalid"),
+                records.len(),
+                0,
+            ));
+        }
+        let Some(expected) = request.workspace_snapshot.file_digest(owner.owner_path) else {
+            return Err(make_receipt(
+                "failed",
+                Some("owner-not-admitted"),
+                records.len(),
+                0,
+            ));
+        };
+        let observed =
+            agent_semantic_content_identity::exact_selector_merkle::blake3_content_digest_v1(
+                owner.source,
+            );
+        if expected != owner.content_digest || observed.as_str() != owner.content_digest {
+            return Err(make_receipt(
+                "failed",
+                Some("owner-content-mismatch"),
+                records.len(),
+                0,
+            ));
+        }
+        committed.insert(owner.owner_path, owner);
+    }
+    let mut candidates = Vec::new();
+    for line in records.iter().filter(|line| !line.is_empty()) {
+        let Some(parsed) = parse_rg_candidate_line(request.locator_root, line) else {
+            return Err(make_receipt(
+                "failed",
+                Some("record-content-mismatch"),
+                records.len(),
+                0,
+            ));
+        };
+        let Some(owner) = committed.get(parsed.candidate.path.as_str()) else {
+            return Err(make_receipt(
+                "failed",
+                Some("owner-not-admitted"),
+                records.len(),
+                0,
+            ));
+        };
+        if !owner_line_matches(owner.source, parsed.candidate.line, &parsed.text) {
+            return Err(make_receipt(
+                "failed",
+                Some("record-content-mismatch"),
+                records.len(),
+                0,
+            ));
+        }
+        if candidates.len() == request.budget.max_candidates {
+            return Err(make_receipt(
+                "failed",
+                Some("candidate-budget-exceeded"),
+                records.len(),
+                0,
+            ));
+        }
+        candidates.push(parsed.candidate);
+    }
+    Ok(RgCoverageResult {
+        receipt: make_receipt("ready", None, records.len(), candidates.len()),
+        candidates,
+    })
 }
 
 /// Collect dynamic overlay candidates from owner roots.
 ///
-/// This keeps the expensive workspace walk and overlay projection in the
-/// search core while letting language providers own file matching.
+/// The caller supplies explicit owner files. Every file is read once and its
+/// bytes must match the canonical workspace snapshot before projection.
 pub fn collect_dynamic_lexical_overlay_candidates_from_roots(
     request: DynamicSearchRootCandidateRequest<'_>,
 ) -> Result<DynamicSearchCandidateCollection, String> {
@@ -145,39 +327,12 @@ pub fn collect_dynamic_lexical_overlay_candidates_from_roots(
     ))
 }
 
-fn parse_ingest_candidate_line(
-    project_root: &Path,
-    locator_root: &Path,
-    line: &[u8],
-) -> Option<IngestSearchCandidate> {
-    if line.is_empty() {
-        return None;
-    }
-    if let Some(candidate) = parse_line_candidate(project_root, locator_root, line) {
-        return Some(candidate);
-    }
-    let path = PathBuf::from(byte_text::lossy_string(line));
-    let absolute = resolve_candidate_path(project_root, locator_root, path);
-    if !absolute.exists() {
-        return None;
-    }
-    let display = display_path(locator_root, &absolute);
-    Some(IngestSearchCandidate {
-        symbol: symbol_from_text(&display),
-        path: display,
-        line: 1,
-        end_line: 1,
-        text: String::new(),
-        source: "ingest".to_string(),
-        confidence: "likely".to_string(),
-    })
+struct ParsedRgCandidate {
+    candidate: IngestSearchCandidate,
+    text: Vec<u8>,
 }
 
-fn parse_line_candidate(
-    project_root: &Path,
-    locator_root: &Path,
-    line: &[u8],
-) -> Option<IngestSearchCandidate> {
+fn parse_rg_candidate_line(locator_root: &Path, line: &[u8]) -> Option<ParsedRgCandidate> {
     let path_end = byte_text::find_byte(b':', line)?;
     let raw_path = &line[..path_end];
     let rest = &line[path_end + 1..];
@@ -194,21 +349,28 @@ fn parse_line_candidate(
         rest
     };
     let path = PathBuf::from(byte_text::lossy_string(raw_path));
-    let absolute = resolve_candidate_path(project_root, locator_root, path);
-    Some(IngestSearchCandidate {
-        path: display_path(locator_root, &absolute),
-        line: line_number,
-        end_line: line_number,
-        symbol: symbol_from_bytes(text),
-        text: byte_text::lossy_string(text),
-        source: "ingest".to_string(),
-        confidence: "likely".to_string(),
+    let absolute = if path.is_absolute() {
+        path
+    } else {
+        locator_root.join(path)
+    };
+    Some(ParsedRgCandidate {
+        text: text.to_vec(),
+        candidate: IngestSearchCandidate {
+            path: display_path(locator_root, &absolute),
+            line: line_number,
+            end_line: line_number,
+            symbol: symbol_from_bytes(text),
+            text: byte_text::lossy_string(text),
+            source: "rg-query".to_string(),
+            confidence: "likely".to_string(),
+        },
     })
 }
 
 /// Project path and file-content lexical overlay evidence into compact candidates.
 #[must_use]
-pub fn collect_dynamic_lexical_overlay_candidates(
+fn collect_dynamic_lexical_overlay_candidates(
     request: DynamicSearchCandidateRequest<'_>,
 ) -> DynamicSearchCandidateCollection {
     let mut candidates = Vec::new();
@@ -216,14 +378,14 @@ pub fn collect_dynamic_lexical_overlay_candidates(
     let documents = request
         .search_roots
         .iter()
-        .flat_map(|paths| paths.iter())
+        .flat_map(|owners| owners.iter())
         .take(DYNAMIC_LEXICAL_OVERLAY_DOCUMENT_SCAN_LIMIT)
-        .filter_map(|path| lexical_overlay_document(request.locator_root, path))
+        .map(|owner| lexical_overlay_document(request.locator_root, owner))
         .collect::<Vec<_>>();
 
     let mut remaining = request.limit;
     let per_term_limit = per_term_candidate_limit(request.terms.len(), request.limit);
-    for paths in request.search_roots {
+    for owners in request.search_roots {
         if remaining == 0 {
             break;
         }
@@ -231,7 +393,7 @@ pub fn collect_dynamic_lexical_overlay_candidates(
             request.locator_root,
             request.terms,
             per_term_limit,
-            paths,
+            owners,
             &mut remaining,
             &mut seen,
             &mut candidates,
@@ -283,156 +445,71 @@ fn resolved_owner_roots(project_root: &Path, owners: &[PathBuf]) -> Vec<PathBuf>
         .collect()
 }
 
+struct CommittedDynamicOwner {
+    path: PathBuf,
+    source: Vec<u8>,
+}
+
 fn sorted_search_root_files(
     root: &Path,
     request: &DynamicSearchRootCandidateRequest<'_>,
-) -> Result<Vec<PathBuf>, String> {
+) -> Result<Vec<CommittedDynamicOwner>, String> {
     if !root.exists() {
         return Ok(Vec::new());
     }
-    let metadata = fs::metadata(root).map_err(|error| {
+    let metadata = std::fs::metadata(root).map_err(|error| {
         format!(
             "failed to inspect search pipe root {}: {error}",
             root.display()
         )
     })?;
     if metadata.is_file() {
-        return Ok(vec![root.to_path_buf()]);
-    }
-    sorted_search_files(root, request)
-}
-
-fn sorted_search_files(
-    root: &Path,
-    request: &DynamicSearchRootCandidateRequest<'_>,
-) -> Result<Vec<PathBuf>, String> {
-    let mut builder = WalkBuilder::new(root);
-    builder.hidden(false);
-    builder.filter_entry(search_entry_filter(
-        request.ignore_dirs.to_vec(),
-        request.include_hidden_dirs.to_vec(),
-    ));
-    let mut paths = Vec::new();
-    for result in builder.build() {
-        let entry = result.map_err(|error| {
-            format!(
-                "failed to walk search pipe root {}: {error}",
-                root.display()
-            )
+        if !(request.file_matches)(root) {
+            return Ok(Vec::new());
+        }
+        let owner_path = display_path(request.project_root, root);
+        let expected = request
+            .base_snapshot
+            .file_digest(&owner_path)
+            .ok_or_else(|| {
+                format!("dynamic lexical owner is absent from committed snapshot: {owner_path}")
+            })?;
+        let source = std::fs::read(root).map_err(|error| {
+            format!("failed to read committed search owner {owner_path}: {error}")
         })?;
-        if entry.depth() == 0 {
-            continue;
+        let observed =
+            agent_semantic_content_identity::exact_selector_merkle::blake3_content_digest_v1(
+                &source,
+            );
+        if observed.as_str() != expected {
+            return Err(format!("dynamic lexical owner content drift: {owner_path}"));
         }
-        let Some(file_type) = entry.file_type() else {
-            continue;
-        };
-        if file_type.is_file() && (request.file_matches)(entry.path()) {
-            paths.push(entry.into_path());
-        }
+        return Ok(vec![CommittedDynamicOwner {
+            path: root.to_path_buf(),
+            source,
+        }]);
     }
-    paths.sort_by_key(|path| path_search_priority(path, request.terms));
-    Ok(paths)
-}
-
-fn search_entry_filter(
-    ignore_dirs: Vec<String>,
-    include_hidden_dirs: Vec<String>,
-) -> impl Fn(&DirEntry) -> bool + Send + Sync + 'static {
-    move |entry| {
-        if entry
-            .file_type()
-            .is_some_and(|file_type| file_type.is_file())
-        {
-            return true;
-        }
-        !should_skip_walk_dir(entry, &ignore_dirs, &include_hidden_dirs)
-    }
-}
-
-fn should_skip_walk_dir(
-    entry: &DirEntry,
-    ignore_dirs: &[String],
-    include_hidden_dirs: &[String],
-) -> bool {
-    if entry.depth() == 0
-        || !entry
-            .file_type()
-            .is_some_and(|file_type| file_type.is_dir())
-    {
-        return false;
-    }
-    should_skip_dir_name(entry.path(), ignore_dirs, include_hidden_dirs)
-}
-
-fn should_skip_dir_name(
-    path: &Path,
-    ignore_dirs: &[String],
-    include_hidden_dirs: &[String],
-) -> bool {
-    let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
-        return false;
-    };
-    if name.starts_with('.') && !include_hidden_dirs.iter().any(|dir| dir == name) {
-        return true;
-    }
-    ignore_dirs.iter().any(|dir| dir == name)
-}
-
-fn path_search_priority(path: &Path, terms: &[String]) -> (u8, u8, String) {
-    let display = path.to_string_lossy().replace('\\', "/");
-    let lower = display.to_ascii_lowercase();
-    let query_priority = if terms.iter().any(|term| path_basename_matches(&lower, term)) {
-        0
-    } else if terms.iter().any(|term| lower.contains(term)) {
-        1
-    } else {
-        2
-    };
-    let layout_priority = if display.ends_with("/src") || display.contains("/src/") {
-        0
-    } else if display.contains("/tests/")
-        || display.ends_with("/tests")
-        || display.contains("/benches/")
-        || display.ends_with("/benches")
-        || display.contains("/examples/")
-        || display.ends_with("/examples")
-    {
-        2
-    } else {
-        1
-    };
-    (query_priority, layout_priority, display)
-}
-
-fn path_basename_matches(lower_path: &str, term: &str) -> bool {
-    lower_path
-        .rsplit('/')
-        .next()
-        .map(|name| {
-            name == term
-                || name
-                    .rsplit_once('.')
-                    .map(|(stem, _)| stem == term)
-                    .unwrap_or(false)
-        })
-        .unwrap_or(false)
+    Err(format!(
+        "dynamic lexical overlay directory scan is removed; provide explicit Merkle-admitted owner files: {}",
+        root.display()
+    ))
 }
 
 fn append_overlay_path_candidates(
     locator_root: &Path,
     terms: &[String],
     per_term_limit: usize,
-    paths: &[PathBuf],
+    owners: &[CommittedDynamicOwner],
     remaining: &mut usize,
     seen: &mut HashSet<String>,
     candidates: &mut Vec<DynamicSearchCandidate>,
 ) {
     let mut term_counts = vec![0usize; terms.len()];
-    for path in paths {
+    for owner in owners {
         if *remaining == 0 {
             break;
         }
-        let display = display_path(locator_root, path);
+        let display = display_path(locator_root, &owner.path);
         let lower = display.to_ascii_lowercase();
         for (index, term) in terms.iter().enumerate() {
             if term_counts[index] >= per_term_limit || !lower.contains(term) {
@@ -456,17 +533,52 @@ fn append_overlay_path_candidates(
     }
 }
 
-fn lexical_overlay_document(locator_root: &Path, path: &Path) -> Option<LexicalOverlayDocument> {
-    let display = display_path(locator_root, path);
-    let bytes = fs::read(path).ok()?;
-    let source_hash = blake3::hash(&bytes).to_hex().to_string();
-    let source_text = String::from_utf8_lossy(&bytes).into_owned();
-    Some(
-        LexicalOverlayDocument::new(display.clone(), display.clone(), symbol_from_text(&display))
-            .kind("owner")
-            .source_hash(source_hash)
-            .search_text(source_text),
-    )
+fn lexical_overlay_document(
+    locator_root: &Path,
+    owner: &CommittedDynamicOwner,
+) -> LexicalOverlayDocument {
+    let display = display_path(locator_root, &owner.path);
+    let source_hash = blake3::hash(&owner.source).to_hex().to_string();
+    let source_text = String::from_utf8_lossy(&owner.source).into_owned();
+    LexicalOverlayDocument::new(display.clone(), display.clone(), symbol_from_text(&display))
+        .kind("owner")
+        .source_hash(source_hash)
+        .search_text(source_text)
+}
+
+fn owner_line_matches(source: &[u8], line_number: usize, expected: &[u8]) -> bool {
+    if line_number == 0 {
+        return false;
+    }
+    source
+        .split(|byte| *byte == b'\n')
+        .nth(line_number - 1)
+        .map(|line| line.strip_suffix(b"\r").unwrap_or(line) == expected)
+        .unwrap_or(false)
+}
+
+fn rg_coverage_input_digest(request: &RgCoverageRequest<'_>) -> String {
+    let mut hasher = blake3::Hasher::new();
+    for value in [
+        "agent.semantic-protocols.rg-coverage-input.v1",
+        request.generation_digest,
+        request.source_snapshot.root_digest.as_str(),
+        request.source_snapshot.provider_digest.as_str(),
+    ] {
+        hasher.update(&(value.len() as u64).to_le_bytes());
+        hasher.update(value.as_bytes());
+    }
+    let mut owners = request.owners.iter().collect::<Vec<_>>();
+    owners.sort_by_key(|owner| owner.owner_path);
+    for owner in owners {
+        for value in [owner.owner_path, owner.content_digest] {
+            hasher.update(&(value.len() as u64).to_le_bytes());
+            hasher.update(value.as_bytes());
+        }
+    }
+    hasher.update(&(request.output.len() as u64).to_le_bytes());
+    hasher.update(request.output);
+    format!("blake3-256:{}", hasher.finalize().to_hex())
 }
 
 fn push_candidate(
@@ -514,15 +626,4 @@ fn symbol_from_bytes(bytes: &[u8]) -> String {
 
 fn parse_usize_ascii(bytes: &[u8]) -> Option<usize> {
     std::str::from_utf8(bytes).ok()?.parse::<usize>().ok()
-}
-
-fn resolve_candidate_path(project_root: &Path, locator_root: &Path, path: PathBuf) -> PathBuf {
-    if path.is_absolute() {
-        return path;
-    }
-    let locator_relative = locator_root.join(&path);
-    if locator_relative.exists() {
-        return locator_relative;
-    }
-    project_root.join(path)
 }

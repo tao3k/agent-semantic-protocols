@@ -18,6 +18,7 @@ fn owner(path: &str, selector: &str, bytes: &[u8]) -> WorkspaceOwnerSnapshot {
             selector: selector.to_owned(),
             byte_start: 0,
             byte_end: bytes.len(),
+            query_keys: Vec::new(),
             derived_projections: Vec::new(),
         }],
     }
@@ -107,7 +108,8 @@ async fn search_generation_authority_wire_size_is_constant_in_owner_count() {
     let lease = registry
         .lease("workspace-authority-wire-size", &project_root)
         .expect("large generation lease");
-    let authority = WorkspaceSearchGenerationAuthority::from_lease(&lease);
+    let authority = WorkspaceSearchGenerationAuthority::from_lease(&lease)
+        .expect("derive compact search authority");
     let wire = serde_json::to_vec(&authority).expect("encode compact authority");
     assert!(
         wire.len() < 2_048,

@@ -1,0 +1,103 @@
+{
+  "schema": {
+    "id": "asp.live-corpus-search-query-qualification-plan",
+    "version": 1
+  },
+  "schemaId": "asp.live-corpus-search-query-qualification-plan",
+  "schemaVersion": 1,
+  "state": "source-only-validation-plan",
+  "authority": "asp-server",
+  "protocolVersion": 1,
+  "resourcePolicy": {
+    "requiredImmutableResources": ["julia.dataframes"],
+    "missingResourceOutcome": "data-unavailable",
+    "allowSync": false,
+    "allowMaterialize": false,
+    "allowFallback": false
+  },
+  "profiles": ["cold", "resident-warm"],
+  "samples": {
+    "sequential": 10,
+    "concurrent": 32,
+    "failureInjectionRounds": [
+      "provider-error",
+      "cancellation-before-commit",
+      "stale-or-torn-content-binding"
+    ],
+    "repeatWorkload": 2
+  },
+  "phases": [
+    "launcher",
+    "client-frame-encode",
+    "ipc-connect",
+    "server-admission-queue",
+    "snapshot-resolve",
+    "provider-dispatch",
+    "parse-index-query",
+    "projection-rank",
+    "schema-validate-serialize",
+    "terminal-egress"
+  ],
+  "assertions": {
+    "phaseCount": 10,
+    "profileCount": 2,
+    "sequentialSampleCount": 10,
+    "concurrentSampleCount": 32,
+    "failureInjectionRoundCount": 3,
+    "repeatWorkloadCount": 2
+  },
+  "requiredIdentityFields": [
+    "schemaRef",
+    "requestId",
+    "sessionId",
+    "runtimeArtifactDigest",
+    "workspaceSnapshotDigest",
+    "sourceGenerationDigest",
+    "sourceIndexDigest",
+    "providerCatalogDigest",
+    "sourceSnapshotDigest"
+  ],
+  "requiredMeasurements": [
+    "durationNsByPhase",
+    "p50",
+    "p95",
+    "p99",
+    "max",
+    "throughput",
+    "errors",
+    "timeouts",
+    "queueDepth",
+    "rssBytes",
+    "providerProcessCount",
+    "providerTaskCount",
+    "packetBytes",
+    "commandCount",
+    "singleFlightBuildCount"
+  ],
+  "deterministicRules": [
+    "normalized-repeat-receipts-zero-diff",
+    "same-content-one-single-flight-build",
+    "different-content-no-key-sharing",
+    "cancelled-before-commit-no-publication",
+    "backpressure-releases-permit",
+    "stale-content-fails-closed",
+    "missing-resource-never-syncs-or-falls-back",
+    "exactly-one-terminal-per-request"
+  ],
+  "telemetrySchema": "runtime-server-opentelemetry-performance-event",
+  "receiptSchema": "asp.live-corpus-search-query-qualification-receipt",
+  "artifactPolicy": {
+    "pathsMustBeRepoRelative": true,
+    "absolutePathsAllowed": false,
+    "activationSequenceIsIdentity": false,
+    "clientOwnedCache": false,
+    "providerOwnedLifecycle": false
+  },
+  "currentBlocker": {
+    "kind": "missing-immutable-resource",
+    "resource": "julia.dataframes",
+    "pointer": "artifacts/live-corpus/by-resource/julia.dataframes/current",
+    "acceptanceBlocked": true,
+    "nextAction": "prepublish-exact-resource-through-approved-owner"
+  }
+}

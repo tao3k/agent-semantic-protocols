@@ -7,18 +7,21 @@ open ASPProof.AgentSessionLifecycleExecutableRefinement
 
 example
     (state : LifecycleProduct)
-    (nextGeneration : Nat)
     (lateReceipt : state.binding.generation ≠ state.session.generation) :
-    ¬ executableReplacementAdmitted state nextGeneration := by
-  exact stale_binding_generation_rejects_replacement lateReceipt
+    ¬ executableFollowupAdmitted state := by
+  exact stale_binding_generation_rejects_followup lateReceipt
 
 example
     (state : LifecycleProduct)
-    (nextGeneration : Nat)
-    (admitted : executableReplacementAdmitted state nextGeneration) :
-    replacementAdmitted state nextGeneration ∧
-      state.binding.generation = state.session.generation := by
-  exact admitted
+    (admitted : executableFollowupAdmitted state) :
+    followupTaskAdmitted state = true := by
+  exact executable_followup_refines_product admitted
+
+example
+    (state : LifecycleProduct)
+    (absent : state.binding.pathObservation = .absent) :
+    ¬ executableFollowupAdmitted state := by
+  exact absent_path_rejects_executable_followup absent
 
 example : SessionPhase.unobserved ≠ SessionPhase.declared := by
   decide

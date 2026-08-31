@@ -1,6 +1,6 @@
 //! Typed northbound helpers that connect only to the published Runtime Server endpoint.
 
-use super::{WorkspaceDbIpcSession, WorkspaceDbSourceIndexLookupRequest};
+use super::WorkspaceDbIpcSession;
 use std::path::{Path, PathBuf};
 
 /// Connect a typed client session to the published Runtime Server workspace endpoint.
@@ -43,23 +43,6 @@ pub async fn connect_runtime_server_workspace_session(
                 )
             })?,
     ))
-}
-
-/// Read the already-published resident source index without local repair or fallback.
-pub async fn read_source_index_via_runtime_server(
-    request: WorkspaceDbSourceIndexLookupRequest,
-) -> Result<agent_semantic_search_projection::ResidentSearchReadyResult, String> {
-    let session = connect_runtime_server_workspace_session(&request.project_root).await?;
-    session.read_source_index(&request).await
-}
-
-/// Execute one cache-control request through the resident Runtime Server.
-pub async fn cache_control_via_runtime_server(
-    request: super::RuntimeCacheControlRequest,
-) -> Result<super::RuntimeCacheControlReceipt, String> {
-    let project_root = PathBuf::from(request.project_root());
-    let session = connect_runtime_server_workspace_session(&project_root).await?;
-    session.cache_control(request).await
 }
 
 /// Read one owner-bound Merkle proof from the immutable Runtime search segment.

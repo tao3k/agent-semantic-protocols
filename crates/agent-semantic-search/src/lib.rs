@@ -26,6 +26,7 @@ mod graph_selector_seed_projection;
 mod graph_topology_projection;
 mod lexical_overlay;
 pub mod memory_search;
+mod merkle_search_generation;
 pub use memory_search::{
     MemorySearchGeneration, MemorySearchGenerationReceipt, MemorySearchItem,
     MemorySearchPerformanceReceipt, MemorySearchRequest, MemorySearchResolution,
@@ -42,13 +43,13 @@ mod pipe_source_lexical_frame;
 mod prompt_output_replay;
 mod provider_candidate_annotations;
 pub mod provider_relation_memory;
+pub mod recall_route_planner;
 mod resident_source_index;
 mod runtime_search_receipt;
 mod search_candidate;
 mod search_generation_segment;
 mod search_language_files;
 mod search_lexical_replay;
-mod search_overlay;
 mod search_packet_replay;
 mod search_pipe_evidence;
 pub mod search_pipe_quality;
@@ -77,10 +78,10 @@ pub use document_candidates::{
     collect_document_search_candidates,
 };
 pub use dynamic_candidates::{
-    DynamicSearchCandidate, DynamicSearchCandidateCollection, DynamicSearchCandidateRequest,
-    DynamicSearchRootCandidateRequest, IngestSearchCandidate,
-    collect_dynamic_lexical_overlay_candidates,
-    collect_dynamic_lexical_overlay_candidates_from_roots, collect_ingest_search_candidates,
+    DynamicSearchCandidate, DynamicSearchCandidateCollection, DynamicSearchRootCandidateRequest,
+    IngestSearchCandidate, RgCoverageBudget, RgCoverageOwner, RgCoverageReceipt, RgCoverageRequest,
+    RgCoverageResult, collect_dynamic_lexical_overlay_candidates_from_roots,
+    collect_rg_coverage_candidates,
 };
 pub use dynamic_overlay::{
     DynamicOverlayLane, QUERY_OVERLAY_ROUTE_SOURCE, SEARCH_OVERLAY_ROUTE_SOURCE,
@@ -124,6 +125,10 @@ pub use lexical_search_frame::{
     LexicalAcquisitionRoute, LexicalEvidenceState, LexicalQueryRelation,
     LexicalSearchFrameCandidate, LexicalSearchFrameRequest, LexicalSearchFrameRoute,
     plan_lexical_search_frame,
+};
+pub use merkle_search_generation::{
+    MerkleSearchGeneration, SearchOwnerChange, SearchOwnerFragment, SearchProjectionIdentity,
+    search_owner_graph_fragment_digest, search_projection_analyzer_digest,
 };
 pub use pipe_candidates::{
     SearchPipeCandidate, SearchPipeCandidateCollection, SearchPipeCandidateRequest,
@@ -176,11 +181,6 @@ pub use search_language_files::{
 pub use search_lexical_replay::{
     SearchLexicalReplayRequest, search_lexical_packet_matches_request,
 };
-pub use search_overlay::{
-    SearchOverlayCandidate, SearchOverlayCandidates, SearchOverlayCollectionRequest,
-    SearchOverlayConfig, SearchOverlayProvenance, SearchOverlaySurface,
-    collect_search_overlay_candidates,
-};
 pub use search_packet_replay::{
     output_with_delegation_hint_lines, search_output_artifact_replay_safe,
 };
@@ -228,6 +228,9 @@ pub use syntax_query_replay::{
 #[path = "../tests/unit/document_auto_lexical_overlay_scenario.rs"]
 mod document_auto_lexical_overlay_scenario_tests;
 #[cfg(test)]
+#[path = "../tests/unit/dynamic_overlay_index.rs"]
+mod dynamic_overlay_index_tests;
+#[cfg(test)]
 #[path = "../tests/unit/dynamic_search_candidates.rs"]
 mod dynamic_search_candidates_tests;
 pub mod file_locator;
@@ -256,6 +259,9 @@ mod graph_seed_decision_tests;
 #[path = "../tests/unit/graph_topology_projection.rs"]
 mod graph_topology_projection_tests;
 #[cfg(test)]
+#[path = "../tests/unit/merkle_search_generation.rs"]
+mod merkle_search_generation_tests;
+#[cfg(test)]
 #[path = "../tests/unit/pipe_candidates.rs"]
 mod pipe_candidates_tests;
 #[cfg(test)]
@@ -264,6 +270,9 @@ mod prompt_output_replay_tests;
 #[cfg(test)]
 #[path = "../tests/unit/provider_candidate_annotations.rs"]
 mod provider_candidate_annotations_tests;
+#[cfg(test)]
+#[path = "../tests/unit/recall_route_planner.rs"]
+mod recall_route_planner_tests;
 #[cfg(test)]
 #[path = "../tests/unit/search_candidate.rs"]
 mod search_candidate_tests;

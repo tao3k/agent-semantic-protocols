@@ -56,6 +56,34 @@ projection records are decoded only for demanded owners and retained in a
 bounded cache owned by that generation, which is discarded atomically when the
 generation changes.
 
+Cache reuse is Merkle structural sharing, never age- or path-based freshness.
+The immutable projection key is the tuple =workspaceIdentity, sourceRootDigest,
+providerDigest, schemaDigest, analyzerDigest=.  Each owner path maps to a
+content digest leaf.  Admission computes the sorted Merkle difference between
+the active and candidate roots and classifies leaves as added, changed,
+removed, or unchanged.  Added/changed owners produce new content-addressed
+fragments, removed owners produce explicit tombstones, and unchanged owners
+reuse their prior fragment digest.  The generation manifest and all fragments
+become readable at one CAS publication point; no reader may combine fragments
+from two roots.
+
+Lexical postings and Python graph fragments consume the same change set.
+Lexical postings are keyed by owner content digest and contain only
+parser-produced query keys.  Python graph computation is keyed by owner
+content digest plus Python grammar, schema, and analyzer digests; it recomputes
+only changed owner fragments and then deterministically fan-ins cross-owner
+edges against the candidate manifest.  A deleted owner invalidates both its
+postings and every outgoing or incoming graph edge through the tombstone set.
+mtime, directory path, activation generation, process lifetime, and TTL are
+not freshness evidence.
+
+Dirty editor overlays create a new overlay root whose evidence includes the
+base root and dirty-path digest.  Overlay lexical and graph fragments live in
+that root's namespace and cannot update the durable base generation.  Query
+caches are generation-local and may reuse a result only when the complete
+projection key and query digest are equal.  A root mismatch is a cache miss;
+there is no stale-while-revalidate or silent fallback for source reasoning.
+
 Lean owns the architecture-level counterexample model for this boundary.  The
 model MUST prove that two admitted operations cannot observe one another's
 overlay or cancellation state, that a cache hit implies equality of every
@@ -241,6 +269,16 @@ generation admission, process execution, cache publication, timeout and
 OpenTelemetry terminal events belong to one Tokio task owned by the Runtime
 Server.
 
+A language provider executable is a server artifact, not a second public CLI.
+The Runtime launches it only with the catalog-declared server entrypoint and
+communicates through the declared HTTP/JSON or gRPC contract.  Provider-local
+=search=, =query=, =check=, stdin, argv-forwarding, cache, and agent commands
+are removed from the admitted runtime surface.  Parser and projection
+implementations remain provider-owned library operations behind the server
+handler; they cannot be invoked as an alternate command-line authority.  A
+provider artifact that accepts an undeclared business command is
+contract-invalid even if that command happens to return compatible JSON.
+
 The provider-search request and receipt use disjoint versioned schemas.  The
 request carries a typed query plan rather than forwarded argv.  The receipt
 carries provider, catalog, generation and root identities plus the validated
@@ -371,6 +409,16 @@ Runtime lifecycle, and renderer policy MUST NOT migrate into Protocol command
 code.  OpenTelemetry spans and Live Corpus assertions consume the same terminal
 receipt, so every public exact query is either payload-bearing Ready or a
 diagnosable typed failure with no empty-success third state.
+
+The Runtime-owned dispatch task MUST also own a finite interactive deadline.
+Deadline expiry is a typed =client-request-deadline-exceeded= terminal emitted
+through the same ~ClientFrame~ response path, after which the request's
+cancellation-registry entry is removed.  A client transport MAY enforce a
+strictly longer response deadline to contain a broken connection, but that
+boundary is a transport failure and MUST NOT retry, rebuild, republish, or
+invent a successful Search/Query result.  Raw EOF, an indefinitely pending
+response, and process interruption as the first observable terminal are
+protocol violations.
 *** RuntimeServer-centered cache authority
 Fallback release transfer MUST be one-shot. Before =Drop= schedules a Tokio
 cleanup task, it MUST mark the transferred guard so cancellation during runtime
@@ -504,6 +552,12 @@ the requested =languageId=.  The wire-level index owner is always
 =asp-server=; provider registration supplies the language/provider scope and
 provenance, not a second index authority.  It MUST NOT fall back to an
 unscoped source-index snapshot or accept a client-supplied =index-owner=.
+The public client MUST use the catalogued =<languageId>.source-index.lookup=
+ClientFrame method on the same HTTP/JSON or gRPC service as =search= and
+=query=.  A private length-framed Unix stream on the Runtime data socket is
+not a conforming client transport.  The Runtime MUST reject an =indexRoot=
+that differs from the initialized workspace root; cross-workspace lookup is a
+new workspace admission, not a path override.
 The admitted generation and its receipt MUST remain bound to that
 =languageId=, =providerId=, and =providerWorkspaceIdentityDigest=;
 =providerProcessCount= and provider command receipts MUST exclude every
@@ -4477,3 +4531,28 @@ Python graph ranking consumes only admitted nodes and returns rank/explanation;
 it does not own workspace recovery, language correction, or replay suppression.
 Those are deterministic admission and router responsibilities shared across
 providers.
+
+* Bounded owner-local seed projection
+Owner-local search is a compact discovery operation over one owner in the
+active =CompleteGeneration=.  It is not a source materialization operation.
+The ASP Server persists every provider-emitted, parser-owned selector query key
+at the same publication linearization point as the selector byte range.  A
+=search owner ... --view seeds= request normalizes its terms through the shared
+search query-key contract and matches only those persisted keys.  It MUST NOT
+infer matches from structural-selector URL text, reread source, invoke a
+provider, or publish a generation while serving the request.
+
+The response is the versioned
+=agent.semantic-protocols.asp-client-owner-search-response= contract.  It binds
+the result to the active generation/root and owner content digest, reports the
+total matching candidate count, and returns at most 100 deterministic selector
+seeds containing only selector identity and byte range.  Owner bytes and
+derived projection payloads are forbidden in this response; exact source or
+callable materialization remains exclusively owned by the =query= route.
+
+The immutable exact-projection mmap stores canonical sorted/deduplicated query
+keys with every selector.  A layout that predates this field fails closed and
+requires normal CompleteGeneration recovery; there is no legacy decoder or
+runtime string fallback.  Empty owner-local results are typed =owner= responses
+with zero candidates.  A missing owner is a typed =owner-missing= response, not
+a successful empty source snapshot.

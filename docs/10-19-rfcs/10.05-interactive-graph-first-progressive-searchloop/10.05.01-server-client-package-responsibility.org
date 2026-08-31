@@ -57,6 +57,26 @@ data socket.  Before allocating an endpoint, Runtime MUST audit whether that
 data socket already carries the client plane.  The bounded UDS published as
 =client_endpoint= is Runtime-owned; a fourth socket is forbidden.
 
+The gRPC wire is a native protobuf projection of =ClientFrame=.  A protobuf
+message MUST carry the frame discriminant, base identity, request identity,
+outcome, and fixed lifecycle fields directly.  Only method-specific dynamic
+=params=/=result=/=error= documents remain length-delimited JSON values.  A
+=bytes client_frame_json= envelope, JSON serialization of the complete frame,
+or a second package-local proto declaration is forbidden: each introduces a
+second codec and forces every warm request through duplicate encode/decode.
+SchemaManager owns the versioned wire declaration and distributes the same
+descriptor/profile binding to Rust, Python, Gerbil Scheme, and subsequent
+language clients; transport packages consume generated bindings and do not
+copy the declaration.
+
+Package build scripts resolve one declared wire artifact from the registry.
+That lookup validates registry identity, artifact identity, normalized path,
+and the selected file only.  It MUST NOT run the complete schema-family,
+reference-closure, or language-bundle audit as an implicit dependency of every
+consumer build.  Full responsibility verification remains an explicit
+SchemaManager gate.  This keeps declaration authority centralized without
+turning one package build into an O(all schemas + all language bundles) scan.
+
 The previous v1 =client_http_endpoint= may be accepted only as authoritative
 input to a one-way endpoint-record migration.  It is never served, never used
 as fallback, and never projected as a second current endpoint.  Production
@@ -197,11 +217,26 @@ are reported separately from service latency.  They never authorize a larger
 Search/Query deadline.
 
 The resident in-memory exact-query and projection core has a hard P99 gate below
-1 ms.  The public client/server path reports service time, transport time, and
-whole wall separately; it MUST remain stably subsecond under the full
-cross-language Live Corpus and is optimized toward the same millisecond regime.
-No cumulative 30-second, 800/900-millisecond, sleep, retry, or polling wrapper is
-a performance gate.
+1 ms.  After the Runtime gRPC service is Ready, the warm public ClientFrame UDS
+round trip has a hard P95 gate below 1 ms for both ten sequential requests and
+thirty-two concurrent requests.  The qualification receipt records nanoseconds,
+request counts, terminal counts, service time, transport time, and whole wall
+separately.  Compilation, Runtime startup, channel establishment, and the first
+session initialization are cold phases and MUST NOT be folded into that warm
+receipt; conversely, excluding them does not authorize a query-side build,
+admission wait, filesystem/database access, retry, polling, or per-request
+provider activation.  No cumulative 30-second, 800/900-millisecond, sleep,
+retry, or polling wrapper is a performance gate.
+
+Owner search MUST execute parser-owned query-key filtering inside the resident
+mmap segment and materialize only bounded matching seeds.  Transporting a full
+owner projection and filtering it in Runtime or the client is forbidden.  The
+current executable payload gate constructs the same owner population through
+both shapes and requires at least 100x reduction; the accepted receipt is
+=fullBytes:524503=, =compactBytes:390=, =reductionFactor:1344=.  This payload
+elimination, together with removal of query-side build/admission/DB/FS work, is
+the orders-of-magnitude optimization boundary; sub-millisecond gRPC tuning is
+reported separately and MUST NOT be presented as a 10x or 100x transport win.
 
 OpenTelemetry spans MUST cover admission, generation lease, provider/client
 activation, stream enqueue/dequeue, search/projection execution, payload

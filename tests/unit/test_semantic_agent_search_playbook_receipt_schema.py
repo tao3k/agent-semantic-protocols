@@ -15,72 +15,119 @@ def receipt():
     return {
         "schemaId": "asp.search.playbook-receipt",
         "schemaVersion": "1",
-        "workspace": ".",
-        "intent": "find graph router owner",
+        "workspaceIdentity": "workspace-a",
+        "generationDigest": "blake3-256:generation",
+        "sourceRootDigest": "blake3-256:root",
+        "query": "find graph router owner",
+        "intent": "conceptual",
         "state": "completed",
-        "route": [{"command": "asp rust search owner src/router.rs items", "kind": "owner", "status": "hit"}],
-        "evidence": ["owner:src/router.rs"],
-        "topology": {"nodes": ["query:q", "owner:router"], "edges": ["q->router"], "frontier": []},
-        "next": "asp rust query --selector rust://src/router.rs#item/function/route --workspace . --code",
-        "metrics": {"commands": 1, "rounds": 1, "latencyMs": 10, "packetBytes": 120, "repeatedTriggers": 0, "missingEdges": []},
-        "reflection": "owner materialized without restarting discovery",
+        "plan": {
+            "stages": [
+                {"family": "acquire", "capabilityId": "search.indexed-lexical"},
+                {"family": "reason", "capabilityId": "search.python-graph"},
+                {
+                    "family": "verify",
+                    "capabilityId": "search.ripgrep-verify-candidates",
+                },
+            ],
+            "coverage": "candidates",
+            "maxOwners": 32,
+            "deadlineMs": 500,
+        },
+        "evidence": {
+            "indexedLexical": {
+                "backend": "tantivy-hot-overlay",
+                "candidateOwnerIds": ["owner:router", "owner:runtime"],
+                "indexedOwnerCount": 100,
+                "admittedOwnerCount": 100,
+                "complete": True,
+            },
+            "pythonGraph": {
+                "entryOwnerIds": ["owner:router", "owner:runtime"],
+                "entryNodeIds": ["item:route"],
+                "candidateOwnerIds": ["owner:router", "owner:test"],
+                "closureState": "complete",
+                "unresolvedFrontierCount": 0,
+            },
+            "ripgrep": {
+                "mode": "verify-candidates",
+                "verifiedOwnerIds": ["owner:router", "owner:test"],
+                "matchedOwnerIds": ["owner:router"],
+                "coveredOwnerCount": 2,
+                "admittedOwnerCount": 100,
+                "complete": True,
+            },
+            "correlation": {
+                "lexicalGraphOverlapCount": 1,
+                "lexicalGraphJaccardPermille": 333,
+                "graphMarginalCandidateCount": 1,
+                "verifiedUnionCandidateCount": 2,
+            },
+        },
+        "decision": {
+            "chosenPath": "owner:router",
+            "explanation": "lexical identity, graph ownership, and source bytes agree",
+            "residualUncertainty": [],
+            "nextCommand": "asp rust query --selector rust://src/router.rs#item/function/route",
+        },
+        "metrics": {
+            "totalElapsedMicros": 240,
+            "laneElapsedMicros": {
+                "indexedLexical": 80,
+                "pythonGraph": 120,
+                "ripgrep": 40,
+            },
+            "commandCount": 1,
+        },
     }
 
 
 class SearchPlaybookReceiptSchemaTests(unittest.TestCase):
-    def test_valid_receipt(self):
+    def test_valid_tri_lane_receipt(self):
         Draft202012Validator(SCHEMA).validate(receipt())
 
-    def test_rejects_duplicate_route(self):
+    def test_seed_products_are_not_admitted(self):
         value = receipt()
-        value["route"] = value["route"] * 2
+        value["evidence"]["pythonGraph"]["seeds"] = ["owner:router"]
         self.assertTrue(list(Draft202012Validator(SCHEMA).iter_errors(value)))
 
-    def test_rejects_placeholder_next(self):
+    def test_reason_capability_is_extensible_without_changing_schema(self):
         value = receipt()
-        value["next"] = "asp rust query --selector <selector> --code"
-        self.assertTrue(list(Draft202012Validator(SCHEMA).iter_errors(value)))
-
-    def test_rejects_faceless_prime_next(self):
-        value = receipt()
-        value["next"] = "asp search prime --workspace . --view seeds"
-        self.assertTrue(list(Draft202012Validator(SCHEMA).iter_errors(value)))
-
-    def test_failed_receipt_requires_typed_failure_and_null_next(self):
-        value = receipt()
-        value["state"] = "failed"
-        value["next"] = None
-        value["failure"] = {
-            "reasonKind": "provider-unavailable",
-            "languageId": "c",
-            "detail": "no registered ASP provider for this workspace language",
+        value["plan"]["stages"][1] = {
+            "family": "reason",
+            "capabilityId": "reasoning.meta-relational",
         }
         Draft202012Validator(SCHEMA).validate(value)
 
+    def test_rejects_manual_multi_command_route(self):
+        value = receipt()
+        value["route"] = ["asp rust search prime", "asp rg -query router"]
+        self.assertTrue(list(Draft202012Validator(SCHEMA).iter_errors(value)))
+
+    def test_rejects_placeholder_next_command(self):
+        value = receipt()
+        value["decision"]["nextCommand"] = (
+            "asp rust query --selector <selector> --workspace ."
+        )
+        self.assertTrue(list(Draft202012Validator(SCHEMA).iter_errors(value)))
+
+    def test_absence_proof_requires_complete_coverage(self):
+        value = receipt()
+        value["intent"] = "absence-proof"
+        self.assertTrue(list(Draft202012Validator(SCHEMA).iter_errors(value)))
+        value["plan"]["coverage"] = "complete"
+        Draft202012Validator(SCHEMA).validate(value)
+
+    def test_failed_receipt_requires_typed_failure(self):
+        value = receipt()
+        value["state"] = "failed"
+        value["failure"] = {
+            "reasonKind": "generation-unavailable",
+            "detail": "no admitted source generation",
+        }
+        Draft202012Validator(SCHEMA).validate(value)
         del value["failure"]
         self.assertTrue(list(Draft202012Validator(SCHEMA).iter_errors(value)))
-
-    def test_route_kind_must_match_facade(self):
-        value = receipt()
-        value["route"][0] = {
-            "command": "asp fd -query router .",
-            "kind": "prime",
-            "status": "hit",
-        }
-        self.assertTrue(list(Draft202012Validator(SCHEMA).iter_errors(value)))
-
-        value["route"][0]["kind"] = "fd"
-        Draft202012Validator(SCHEMA).validate(value)
-
-    def test_accepts_provider_ambiguity_closure(self):
-        value = receipt()
-        value["state"] = "failed"
-        value["next"] = None
-        value["failure"] = {
-            "reasonKind": "candidate-provider-ambiguous",
-            "detail": "two language harnesses claimed the same candidate",
-        }
-        Draft202012Validator(SCHEMA).validate(value)
 
 
 if __name__ == "__main__":

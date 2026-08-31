@@ -36,6 +36,7 @@ type SelectorRow = (
     usize,
     usize,
     usize,
+    ByteRange,
 );
 type EvidenceContexts = std::collections::BTreeMap<String, Vec<u8>>;
 
@@ -207,6 +208,7 @@ pub(crate) fn encode_exact_projection_segment(
             byte_end,
             projection_blob_offset,
             projection_blob_len,
+            query_keys,
         ),
     ) in selector_rows.into_iter().enumerate()
     {
@@ -228,6 +230,7 @@ pub(crate) fn encode_exact_projection_segment(
             blob_offset + projection_blob_offset,
         )?;
         write_usize(&mut segment, start + 96, projection_blob_len)?;
+        write_range_entry(&mut segment, start + 104, string_table_offset, query_keys)?;
     }
     for (index, (hash, selector_index)) in relocation_rows.into_iter().enumerate() {
         let start = relocation_table_offset + index * RELOCATION_ENTRY_LEN;
@@ -307,6 +310,9 @@ fn append_selector_projection_rows(
     sink: &mut ProjectionRowSink<'_>,
 ) -> Result<(), String> {
     let text = push_bytes(sink.strings, selector.selector.as_bytes());
+    let query_keys = serde_json::to_vec(&selector.query_keys)
+        .map_err(|error| format!("encode selector query keys: {error}"))?;
+    let query_keys = push_bytes(sink.strings, &query_keys);
     let source_kind = push_bytes(sink.strings, b"source");
     sink.selector_rows.push((
         projection_key_hash("source", &selector.selector),
@@ -317,9 +323,10 @@ fn append_selector_projection_rows(
         selector.byte_end,
         0,
         0,
+        query_keys,
     ));
     for projection in &selector.derived_projections {
-        append_derived_projection_row(owner_index, selector, projection, text, sink)?;
+        append_derived_projection_row(owner_index, selector, projection, text, query_keys, sink)?;
     }
     Ok(())
 }
@@ -329,6 +336,7 @@ fn append_derived_projection_row(
     selector: &WorkspaceSelectorSnapshot,
     projection: &WorkspaceDerivedProjectionSnapshot,
     text: ByteRange,
+    query_keys: ByteRange,
     sink: &mut ProjectionRowSink<'_>,
 ) -> Result<(), String> {
     let projection_kind = push_bytes(sink.strings, projection.projection_kind.as_bytes());
@@ -357,6 +365,7 @@ fn append_derived_projection_row(
         selector.byte_end,
         projection_blob_offset,
         projection_bytes.len(),
+        query_keys,
     ));
     Ok(())
 }

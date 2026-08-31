@@ -110,12 +110,13 @@ source directories. When that evidence is unchanged, refresh may reuse the
 digest-bound =ProjectResolution= and latest owner rows without reinvoking the
 provider package-manager resolver. Recursive source-root discovery is forbidden. Agent-
 facing receipts must expose whether the source-index generation was reused.
-=asp cache source-index lookup= is a typed Runtime Server read adapter for this
-index. It must read from the admitted server DB while
-accepting an explicit =--index-root= for external/runtime scopes. The root
-command is unfiltered; language-scoped lookup must use the existing facade form
-=asp <language> cache source-index lookup= rather than an inner
-=--language-id= cache flag. A hit prints
+=asp <language> cache source-index lookup= is a typed ASP Client Protocol read
+adapter for this index.  It dispatches the catalogued
+=<languageId>.source-index.lookup= ClientFrame method and MUST NOT open a
+second private Unix-stream protocol or a client-owned database.  The admitted
+workspace root is the only v1 =indexRoot=; an external root requires its own
+workspace initialization and generation admission.  The unscoped root command
+and the inner =--language-id= flag are not public routes. A hit prints
 compact candidate rows with path, language, provider, source kind, line count,
 and query keys. A miss prints a compact =noOutput= line with the miss state,
 query, and index root instead of emitting explanatory prose.

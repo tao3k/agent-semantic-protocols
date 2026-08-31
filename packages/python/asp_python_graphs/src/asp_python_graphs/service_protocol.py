@@ -40,6 +40,7 @@ def validate_service_envelope(message: Mapping[str, Any]) -> None:
         "hello",
         "open-generation",
         "evaluate",
+        "search-evidence",
         "timeline",
         "release-generation",
         "cancel",
@@ -75,6 +76,15 @@ def validate_service_envelope(message: Mapping[str, Any]) -> None:
         )
     if kind == "cancel":
         required_string(message, "cancellationId")
+    if (
+        kind == "search-evidence"
+        and message.get("payloadSchemaId")
+        != "agent.semantic-protocols.asp-python-graphs-search-evidence"
+    ):
+        raise ServiceProtocolError(
+            "invalid-search-evidence-schema",
+            "search-evidence requires the canonical search evidence payload schema",
+        )
     sequence = message.get("sequence")
     if not isinstance(sequence, int) or isinstance(sequence, bool) or sequence < 1:
         raise ServiceProtocolError(

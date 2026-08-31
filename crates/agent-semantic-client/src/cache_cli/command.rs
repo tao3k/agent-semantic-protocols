@@ -3,9 +3,8 @@
 use std::path::{Path, PathBuf};
 
 use agent_semantic_client_core::LanguageId;
-use agent_semantic_client_db::workspace_db_ipc::{
-    RuntimeCacheControlRequest, RuntimeCacheInvalidationScope, WorkspaceDbSourceIndexLookupRequest,
-    cache_control_via_runtime_server, read_source_index_via_runtime_server,
+use agent_semantic_client_protocol::{
+    AspClientSourceIndexLookupRequest, ClientFrame, ClientOutcome,
 };
 use serde_json::json;
 
@@ -73,62 +72,58 @@ fn parse_source_index_lookup_args(
     })
 }
 
-fn runtime_cache_mutation_id(action: &str) -> Result<String, String> {
-    let timestamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_err(|error| format!("system clock is before the Unix epoch: {error}"))?
-        .as_nanos();
-    Ok(format!("cache:{action}:{}:{timestamp}", std::process::id()))
-}
-
-async fn run_runtime_cache_control(
-    request: RuntimeCacheControlRequest,
-    receipt_json: bool,
-) -> Result<(), String> {
-    let receipt = cache_control_via_runtime_server(request).await?;
-    println!(
-        "[asp-cache] status={:?} route=runtime-server action={} authority={} generation={} databaseOpensByClient={} writerQueueOwner={}",
-        receipt.generation_state,
-        receipt.action,
-        receipt.authority,
-        receipt.generation_digest.as_deref().unwrap_or("-"),
-        receipt.database_opens_by_client,
-        receipt.writer_queue_owner
-    );
-    if let Some(mutation_id) = &receipt.mutation_id {
-        println!("|cache mutationId={mutation_id}");
-    }
-    if let Some(failure) = &receipt.failure {
-        println!("|cache failure={failure}");
-    }
-    if receipt_json {
-        let encoded = serde_json::to_string(&receipt)
-            .map_err(|error| format!("failed to serialize cache-control receipt: {error}"))?;
-        eprintln!("{encoded}");
-    }
-    Ok(())
-}
-
 async fn run_source_index_lookup(
     project_root: &Path,
     facade_language_id: Option<&LanguageId>,
     args: &[String],
     receipt_json: bool,
 ) -> Result<(), String> {
+    let language_id = facade_language_id.ok_or_else(|| {
+        "source-index lookup requires a language facade: use `asp <language> cache source-index lookup ...`"
+            .to_owned()
+    })?;
     let spec = parse_source_index_lookup_args(project_root, args)?;
     if let Some(index_owner) = &spec.index_owner {
         return Err(format!(
             "--index-owner `{index_owner}` is not a v1 RuntimeServer lookup field; select the provider through the language facade"
         ));
     }
-    let result = read_source_index_via_runtime_server(WorkspaceDbSourceIndexLookupRequest {
-        project_root: project_root.to_path_buf(),
-        indexed_project_root: spec.index_root.clone(),
+    let request = AspClientSourceIndexLookupRequest {
+        schema_id: "agent.semantic-protocols.asp-client-source-index-lookup-request".to_owned(),
+        schema_version: "1".to_owned(),
         query: spec.query.clone(),
-        language_id: facade_language_id.cloned(),
+        index_root: spec.index_root.display().to_string(),
         limit: spec.limit,
-    })
-    .await?;
+    };
+    request.validate_schema_identity()?;
+    let params = serde_json::to_value(request)
+        .map_err(|error| format!("encode source-index lookup request: {error}"))?;
+    let state_home = agent_semantic_runtime::state_core::resolve_state_home()?;
+    let frame = crate::AspClient::new(state_home, project_root)
+        .dispatch(language_id.as_str(), "source-index.lookup", params)
+        .await?;
+    let payload = match frame {
+        ClientFrame::Response {
+            outcome: ClientOutcome::Ready,
+            result: Some(result),
+            error: None,
+            ..
+        } => result,
+        ClientFrame::Response { outcome, error, .. } => {
+            return Err(format!(
+                "source-index lookup failed: outcome={outcome:?} error={error:?}"
+            ));
+        }
+        frame => {
+            return Err(format!(
+                "source-index lookup returned a non-response frame: {frame:?}"
+            ));
+        }
+    };
+    let result: agent_semantic_search_projection::ResidentSearchReadyResult =
+        serde_json::from_value(payload)
+            .map_err(|error| format!("decode source-index lookup response: {error}"))?;
+    result.validate()?;
     if result.hits.is_empty() {
         println!(
             "noOutput reason=source-index-{} query={} indexRoot={} route=runtime-server",
@@ -196,7 +191,6 @@ pub(crate) async fn run_cache(
     forwarded_args: &[String],
     receipt_json: bool,
 ) -> Result<(), String> {
-    let project_root_text = project_root.display().to_string();
     match forwarded_args {
         [subcommand, rest @ ..] if subcommand == "gc" => {
             super::project_registry_gc_command::run_project_registry_gc(
@@ -205,38 +199,13 @@ pub(crate) async fn run_cache(
                 receipt_json,
             )
         }
-        [subcommand, rest @ ..] if subcommand == "clean" => {
-            super::project_registry_gc_command::run_project_registry_clean(
-                project_root,
-                rest,
-                receipt_json,
-            )
-        }
-        [subcommand] if subcommand == "status" => run_runtime_cache_control(
-            RuntimeCacheControlRequest::Status {
-                project_root: project_root_text,
-            },
-            receipt_json,
-        )
-        .await,
         [subcommand, action, rest @ ..]
             if subcommand == "source-index" && action == "lookup" =>
         {
             run_source_index_lookup(project_root, facade_language_id, rest, receipt_json).await
         }
-        [subcommand] if subcommand == "invalidate" => {
-            run_runtime_cache_control(
-                RuntimeCacheControlRequest::Invalidate {
-                    project_root: project_root_text,
-                    mutation_id: runtime_cache_mutation_id("invalidate-workspace-generation")?,
-                    scope: RuntimeCacheInvalidationScope::WorkspaceGeneration,
-                },
-                receipt_json,
-            )
-            .await
-        }
         _ => Err(
-            "usage: asp cache <status|gc [--grace-days <n>] [--apply]|clean --day[=<days>]|source-index lookup --query <term> [--index-root <path>] [--limit <n>]|invalidate>; use asp <language> cache source-index lookup ... for language-scoped lookup"
+            "usage: asp cache gc [--grace-days <n>] [--apply] or asp <language> cache source-index lookup --query <term> [--index-root <workspace>] [--limit <n>]; use `asp clean --day[=<days>]` for State Home retention"
                 .to_owned(),
         ),
     }

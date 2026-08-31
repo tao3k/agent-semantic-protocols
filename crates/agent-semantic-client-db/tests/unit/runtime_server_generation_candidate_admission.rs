@@ -92,6 +92,53 @@ async fn ensure_rebuilds_when_repository_candidate_generation_advances() {
 }
 
 #[tokio::test]
+async fn stale_query_demand_is_typed_not_ready_and_never_admits_a_ready_binding() {
+    let stale = candidate_identity_for(
+        "blake3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    );
+    let admission = WorkspaceGenerationAdmission::new(Arc::new(
+        move |_workspace_identity,
+              _project_root,
+              _candidate,
+              _build_mode,
+              _changed_paths,
+              _provider_target,
+              _cancellation| {
+            let stale = stale.clone();
+            Box::pin(async move { completed_generation(stale) })
+        },
+    ));
+    let project_root = std::env::current_dir().expect("resolve current repository");
+
+    let error = admission
+        .submit_query_demand_with_provider(
+            "workspace-stale-query-not-ready".to_owned(),
+            project_root.clone(),
+            Vec::new(),
+            None,
+        )
+        .await
+        .expect_err("a stale candidate must never become query-ready");
+    let terminal: serde_json::Value =
+        serde_json::from_str(&error).expect("not-ready failure must be typed");
+    assert_eq!(
+        terminal["schemaId"],
+        "agent.semantic-protocols.query-not-ready",
+    );
+    assert_eq!(terminal["schemaVersion"], "1");
+    assert_eq!(terminal["reasonKind"], "query-not-ready");
+    assert_eq!(terminal["commitDigest"], serde_json::Value::Null);
+
+    let receipt = admission
+        .wait_terminal("workspace-stale-query-not-ready", &project_root)
+        .await
+        .expect("stale demand must still yield one terminal receipt");
+    assert_ne!(receipt.state, WorkspaceGenerationAdmissionState::Ready);
+    assert!(receipt.commit.is_none());
+    admission.shutdown().await.expect("drain admission lane");
+}
+
+#[tokio::test]
 async fn ready_receipt_uses_the_candidate_captured_by_the_builder() {
     let captured = candidate_identity_for(
         "blake3:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
@@ -397,5 +444,44 @@ async fn ensure_coalesces_an_advanced_candidate_behind_an_inflight_build() {
             "blake3:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
         ]
     );
+    admission.shutdown().await.expect("drain admission lane");
+}
+
+#[tokio::test]
+async fn admit_rejects_a_stale_candidate_receipt_before_query_readiness() {
+    let stale = candidate_identity_for(
+        "blake3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    );
+    let admission = WorkspaceGenerationAdmission::new(Arc::new(
+        move |_workspace_identity,
+              _project_root,
+              _candidate,
+              _build_mode,
+              _changed_paths,
+              _provider_target,
+              _cancellation| {
+            let stale = stale.clone();
+            Box::pin(async move { completed_generation(stale) })
+        },
+    ));
+    let project_root = std::env::current_dir().expect("resolve current repository");
+
+    let error = admission
+        .submit_query_demand_with_provider(
+            "workspace-stale-candidate-binding".to_owned(),
+            project_root,
+            Vec::new(),
+            None,
+        )
+        .await
+        .expect_err("stale candidate receipt must not become query-ready");
+    let terminal: serde_json::Value =
+        serde_json::from_str(&error).expect("stale candidate failure must be typed");
+    assert_eq!(
+        terminal["schemaId"],
+        "agent.semantic-protocols.query-not-ready",
+    );
+    assert_eq!(terminal["reasonKind"], "query-not-ready");
+    assert_eq!(terminal["commitDigest"], serde_json::Value::Null);
     admission.shutdown().await.expect("drain admission lane");
 }

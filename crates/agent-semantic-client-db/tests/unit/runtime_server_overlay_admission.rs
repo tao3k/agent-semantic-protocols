@@ -140,6 +140,7 @@ fn canonical_materialization_binds_snapshot_import_and_complete_owner_count() {
                     selector: "rust://src/lib.rs#item/function/fixture".to_owned(),
                     byte_start: 0,
                     byte_end: b"source".len(),
+                    query_keys: Vec::new(),
                     derived_projections: Vec::new(),
                 },
             ],
@@ -294,6 +295,7 @@ async fn selector_overlay_atomically_rebinds_a_stale_generation_owner() {
                 selector: selector.to_owned(),
                 byte_start: 0,
                 byte_end: bytes.len(),
+                query_keys: Vec::new(),
                 derived_projections: Vec::new(),
             },
         ],
@@ -432,7 +434,7 @@ async fn multi_owner_delta_publishes_one_atomic_generation_epoch() {
             &root,
             WorkspaceGenerationDelta {
                 schema_id: WORKSPACE_GENERATION_DELTA_SCHEMA_ID.to_owned(),
-                schema_version: "1".to_owned(),
+                schema_version: "2".to_owned(),
                 base_generation_digest: old_lease.generation().generation_digest.clone(),
                 owners: vec![
                     WorkspaceOwnerSnapshot {
@@ -451,6 +453,7 @@ async fn multi_owner_delta_publishes_one_atomic_generation_epoch() {
                     },
                 ],
                 tombstones: vec!["src/lib.rs".to_owned()],
+                relations: Vec::new(),
             },
         )
         .await
@@ -530,12 +533,13 @@ async fn stale_owner_delta_is_rejected_before_pointer_or_epoch_change() {
             &root,
             WorkspaceGenerationDelta {
                 schema_id: WORKSPACE_GENERATION_DELTA_SCHEMA_ID.to_owned(),
-                schema_version: "1".to_owned(),
+                schema_version: "2".to_owned(),
                 base_generation_digest:
                     "blake3-256:0000000000000000000000000000000000000000000000000000000000000000"
                         .to_owned(),
                 owners: vec![owner.clone()],
                 tombstones: Vec::new(),
+                relations: Vec::new(),
             },
         )
         .await
@@ -559,10 +563,11 @@ async fn stale_owner_delta_is_rejected_before_pointer_or_epoch_change() {
             &root,
             WorkspaceGenerationDelta {
                 schema_id: WORKSPACE_GENERATION_DELTA_SCHEMA_ID.to_owned(),
-                schema_version: "1".to_owned(),
+                schema_version: "2".to_owned(),
                 base_generation_digest: baseline_digest.clone(),
                 owners: vec![owner],
                 tombstones: Vec::new(),
+                relations: Vec::new(),
             },
         )
         .await

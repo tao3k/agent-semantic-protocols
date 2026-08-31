@@ -275,6 +275,7 @@ ruleComposition = [
 ]
 positiveCommands = [
   "/Users/example/project/.devenv/devenv-profile-exec rtk read -n --max-lines 110 crates/agent-semantic-client/src/client_cli.rs",
+  "/Users/example/project/.devenv/devenv-profile-exec rtk run 'rg -n . crates/agent-semantic-content-identity/src/content_binding.rs | sed -n \"238,300p\"; rg -n . crates/agent-semantic-client-db/src/runtime_server_workspace/content_binding.rs | head -n 90'",
 ]
 negativeCommands = [
   "future-source-producer > generated.rs",

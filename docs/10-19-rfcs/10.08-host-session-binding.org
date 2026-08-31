@@ -1,0 +1,43 @@
+#+title: Codex MultiAgentV2 Host Thread Binding
+#+status: current
+
+* Problem
+
+Codex injects two distinct identities. =CODEX_THREAD_ID= is the current,
+routable task identity. =CODEX_SESSION_ID= is the root-session identity shared
+by the entire Agent tree. The root commonly observes equal values; a child
+observes different values. Coalescing them destroys nested parentage and can
+route a message to the root instead of the intended child.
+
+* Boundary adapter
+
+One Host edge adapter reads the environment exactly once and creates an
+immutable =HostSessionBinding= with =platform=, =rootSessionId=,
+=parentThreadId=, and =childThreadId=. Registration receives the caller's
+current thread as =parentThreadId=, reads the delivered child's
+=CODEX_THREAD_ID= as =childThreadId=, and reads =CODEX_SESSION_ID= only as
+=rootSessionId=. Runtime
+status, evaluator admission, and session registry consume the admitted typed
+binding rather than reading environment variables again.
+
+Missing fields and parent/child thread aliasing fail closed. Environment mutation
+after binding has no effect. Host permission errors are typed
+=HostPermissionFailure= and remain outside Runtime semantic state.
+
+* Owner boundary
+
+The allowed Runtime, client, Artifact, ASP Server, and shared-schema owners
+may introduce and admit this binding. Hook producers remain protected and
+audit-only in this phase; their environment-derived context cannot become
+Runtime or evaluator admission authority.
+
+* Mapping
+
+- Rust tests cover root/parent/child identity, nested parents, missing fields, and post-binding
+  environment mutation.
+- Lean proves immutable binding and no root/thread identity collapse.
+- Live tests must include registration deferred permission denial separately
+  from semantic admission failure.
+
+There is no compatibility path that interprets =CODEX_SESSION_ID= as an
+immediate parent thread.

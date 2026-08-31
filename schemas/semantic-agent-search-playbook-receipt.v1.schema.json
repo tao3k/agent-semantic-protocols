@@ -2,81 +2,189 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://agent-semantic-protocols.dev/schemas/semantic-agent-search-playbook-receipt.v1.schema.json",
   "title": "ASP Search Playbook Receipt v1",
+  "description": "One agent-facing query plan over indexed lexical recall, resident Python graph reasoning, and bounded ripgrep verification. Seed products are not admitted.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaId", "schemaVersion", "workspace", "intent", "state", "route", "evidence", "topology", "metrics", "reflection"],
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "workspaceIdentity",
+    "generationDigest",
+    "sourceRootDigest",
+    "query",
+    "intent",
+    "state",
+    "plan",
+    "evidence",
+    "decision",
+    "metrics"
+  ],
   "properties": {
     "schemaId": {"const": "asp.search.playbook-receipt"},
     "schemaVersion": {"const": "1"},
-    "workspace": {"type": "string", "minLength": 1},
-    "intent": {"type": "string", "minLength": 1},
-    "state": {"enum": ["completed", "refine", "failed"]},
-    "route": {
-      "type": "array",
-      "maxItems": 3,
-      "uniqueItems": true,
-      "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": ["command", "kind", "status"],
-        "properties": {
-          "command": {"type": "string", "minLength": 1},
-          "kind": {"enum": ["prime", "lexical", "dependency", "owner", "selector", "test", "policy", "pipe", "fd", "rg"]},
-          "status": {"enum": ["hit", "miss", "failed"]}
-        },
-        "allOf": [
-          {"if": {"properties": {"kind": {"const": "fd"}}}, "then": {"properties": {"command": {"pattern": "^asp\\s+fd\\s"}}}},
-          {"if": {"properties": {"kind": {"const": "rg"}}}, "then": {"properties": {"command": {"pattern": "^asp\\s+rg\\s"}}}},
-          {"if": {"properties": {"kind": {"const": "prime"}}}, "then": {"properties": {"command": {"pattern": "^asp\\s+[^\\s]+\\s+search\\s+prime\\b"}}}},
-          {"if": {"properties": {"kind": {"const": "pipe"}}}, "then": {"properties": {"command": {"pattern": "^asp\\s+[^\\s]+\\s+search\\s+pipe\\b"}}}}
-        ]
-      }
+    "workspaceIdentity": {"type": "string", "minLength": 1},
+    "generationDigest": {"type": "string", "minLength": 1},
+    "sourceRootDigest": {"type": "string", "minLength": 1},
+    "query": {"type": "string", "minLength": 1},
+    "intent": {
+      "enum": ["exact-selector", "conceptual", "relationship", "exact-literal", "absence-proof"]
     },
-    "evidence": {"type": "array", "items": {"type": "string", "minLength": 1}},
-    "topology": {
+    "state": {"enum": ["completed", "refine", "failed"]},
+    "plan": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["nodes", "edges", "frontier"],
+      "required": ["stages", "coverage", "maxOwners", "deadlineMs"],
       "properties": {
-        "nodes": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
-        "edges": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
-        "frontier": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true}
+        "stages": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 3,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/stage"
+          }
+        },
+        "coverage": {"enum": ["candidates", "complete"]},
+        "maxOwners": {"type": "integer", "minimum": 1},
+        "deadlineMs": {"type": "integer", "minimum": 1}
       }
     },
-    "next": {
-      "type": ["string", "null"],
-      "pattern": "^(?!asp\\s+search\\s)(?!.*<[^>]+>).+$"
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["indexedLexical", "pythonGraph", "ripgrep", "correlation"],
+      "properties": {
+        "indexedLexical": {"$ref": "#/$defs/indexedLexical"},
+        "pythonGraph": {"$ref": "#/$defs/pythonGraph"},
+        "ripgrep": {"$ref": "#/$defs/ripgrep"},
+        "correlation": {"$ref": "#/$defs/correlation"}
+      }
+    },
+    "decision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["chosenPath", "explanation", "residualUncertainty"],
+      "properties": {
+        "chosenPath": {"type": "string", "minLength": 1},
+        "explanation": {"type": "string", "minLength": 1},
+        "residualUncertainty": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "nextCommand": {
+          "type": ["string", "null"],
+          "pattern": "^asp\\s+[^\\s]+\\s+(search\\s+playbook|query)\\b(?!.*<[^>]+>).*$"
+        }
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["totalElapsedMicros", "laneElapsedMicros", "commandCount"],
+      "properties": {
+        "totalElapsedMicros": {"type": "integer", "minimum": 0},
+        "laneElapsedMicros": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["indexedLexical", "pythonGraph", "ripgrep"],
+          "properties": {
+            "indexedLexical": {"type": "integer", "minimum": 0},
+            "pythonGraph": {"type": "integer", "minimum": 0},
+            "ripgrep": {"type": "integer", "minimum": 0}
+          }
+        },
+        "commandCount": {"type": "integer", "minimum": 1, "maximum": 1}
+      }
     },
     "failure": {
       "type": "object",
       "additionalProperties": false,
       "required": ["reasonKind", "detail"],
       "properties": {
-          "reasonKind": {"enum": ["provider-unavailable", "selector-anchor-unavailable", "budget-exhausted", "candidate-out-of-scope", "candidate-language-mismatch", "candidate-provider-ambiguous"]},
-        "languageId": {"type": "string", "minLength": 1},
+        "reasonKind": {
+          "enum": ["provider-unavailable", "generation-unavailable", "budget-exhausted", "coverage-incomplete", "graph-unavailable", "verification-unavailable"]
+        },
         "detail": {"type": "string", "minLength": 1}
       }
-    },
-    "metrics": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["commands", "rounds", "latencyMs", "packetBytes", "repeatedTriggers", "missingEdges"],
-      "properties": {
-        "commands": {"type": "integer", "minimum": 0, "maximum": 3},
-        "rounds": {"type": "integer", "minimum": 1},
-        "latencyMs": {"type": "integer", "minimum": 0},
-        "packetBytes": {"type": "integer", "minimum": 0},
-        "repeatedTriggers": {"type": "integer", "minimum": 0},
-        "missingEdges": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true}
-      }
-    },
-    "reflection": {"type": "string", "minLength": 1}
+    }
   },
   "allOf": [
     {
       "if": {"properties": {"state": {"const": "failed"}}, "required": ["state"]},
-      "then": {"required": ["failure"], "properties": {"next": {"type": "null"}}},
+      "then": {"required": ["failure"]},
       "else": {"not": {"required": ["failure"]}}
+    },
+    {
+      "if": {"properties": {"intent": {"const": "absence-proof"}}, "required": ["intent"]},
+      "then": {"properties": {"plan": {"properties": {"coverage": {"const": "complete"}}}}}
     }
-  ]
+  ],
+  "$defs": {
+    "stage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["family", "capabilityId"],
+      "properties": {
+        "family": {"enum": ["direct", "acquire", "reason", "verify"]},
+        "capabilityId": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*(\\.[a-z][a-z0-9-]*)+$"
+        }
+      }
+    },
+    "ownerIds": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "indexedLexical": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["backend", "candidateOwnerIds", "indexedOwnerCount", "admittedOwnerCount", "complete"],
+      "properties": {
+        "backend": {"enum": ["turso-fts", "tantivy-hot-overlay", "unavailable"]},
+        "candidateOwnerIds": {"$ref": "#/$defs/ownerIds"},
+        "indexedOwnerCount": {"type": "integer", "minimum": 0},
+        "admittedOwnerCount": {"type": "integer", "minimum": 0},
+        "complete": {"type": "boolean"}
+      }
+    },
+    "pythonGraph": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["entryOwnerIds", "entryNodeIds", "candidateOwnerIds", "closureState", "unresolvedFrontierCount"],
+      "properties": {
+        "entryOwnerIds": {"$ref": "#/$defs/ownerIds"},
+        "entryNodeIds": {"$ref": "#/$defs/ownerIds"},
+        "candidateOwnerIds": {"$ref": "#/$defs/ownerIds"},
+        "closureState": {"enum": ["complete", "frontier-open", "stale", "unavailable"]},
+        "unresolvedFrontierCount": {"type": "integer", "minimum": 0}
+      }
+    },
+    "ripgrep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "verifiedOwnerIds", "matchedOwnerIds", "coveredOwnerCount", "admittedOwnerCount", "complete"],
+      "properties": {
+        "mode": {"enum": ["verify-candidates", "prove-coverage", "unavailable"]},
+        "verifiedOwnerIds": {"$ref": "#/$defs/ownerIds"},
+        "matchedOwnerIds": {"$ref": "#/$defs/ownerIds"},
+        "coveredOwnerCount": {"type": "integer", "minimum": 0},
+        "admittedOwnerCount": {"type": "integer", "minimum": 0},
+        "complete": {"type": "boolean"}
+      }
+    },
+    "correlation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["lexicalGraphOverlapCount", "lexicalGraphJaccardPermille", "graphMarginalCandidateCount", "verifiedUnionCandidateCount"],
+      "properties": {
+        "lexicalGraphOverlapCount": {"type": "integer", "minimum": 0},
+        "lexicalGraphJaccardPermille": {"type": "integer", "minimum": 0, "maximum": 1000},
+        "graphMarginalCandidateCount": {"type": "integer", "minimum": 0},
+        "verifiedUnionCandidateCount": {"type": "integer", "minimum": 0}
+      }
+    }
+  }
 }

@@ -3,6 +3,7 @@ use std::collections::BTreeSet;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+mod agent_session;
 mod routes;
 mod schema_bundle;
 mod server_method_catalog;
@@ -15,8 +16,9 @@ pub mod workspace_source_mutation;
 mod workspace_source_mutation_tests;
 pub use routes::{
     AspClientExactQueryFailure, AspClientExactQueryRequest, AspClientExactQueryResponse,
-    AspClientGraphsTimelineRequest, AspClientOwnerSearchRequest, AspClientRuntimeWorkCounters,
-    AspClientSearchRequest, ProviderNativeExactProjection, ProviderNativeExactRequest,
+    AspClientGraphsTimelineRequest, AspClientOwnerSearchRequest, AspClientOwnerSearchResponse,
+    AspClientOwnerSearchSeed, AspClientRuntimeWorkCounters, AspClientSearchRequest,
+    AspClientSourceIndexLookupRequest, ProviderNativeExactProjection, ProviderNativeExactRequest,
     ProviderNativeOwnerSearchRequest, ProviderNativeOwnerSearchResponse,
     RuntimeProviderSearchRequest,
 };
@@ -29,9 +31,9 @@ pub use server_method_catalog::{
     CANCELLATION_PROBE_METHOD, CANCELLATION_PROBE_REQUEST_SCHEMA_ID,
     CANCELLATION_PROBE_RESPONSE_SCHEMA_ID, GRAPH_EVALUATE_METHOD, GRAPH_EVALUATE_REQUEST_SCHEMA_ID,
     GRAPH_EVALUATE_RESPONSE_SCHEMA_ID, GRAPH_TIMELINE_METHOD, GRAPH_TIMELINE_REQUEST_SCHEMA_ID,
-    GRAPH_TIMELINE_RESPONSE_SCHEMA_ID, ResolvedServerClientMethod, ServerClientRoute,
-    resolve_server_client_method, resolve_server_client_method_owner, server_client_catalog,
-    server_client_methods,
+    GRAPH_TIMELINE_RESPONSE_SCHEMA_ID, MULTI_AGENT_CHILDREN_METHOD, MULTI_AGENT_HOST_EVENT_METHOD,
+    ResolvedServerClientMethod, ServerClientRoute, resolve_server_client_method,
+    resolve_server_client_method_owner, server_client_catalog, server_client_methods,
 };
 
 pub const CLIENT_PROTOCOL_ID: &str = "agent.semantic-protocols.client";
@@ -94,7 +96,6 @@ pub struct ClientProtocolCatalog {
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum ClientTransport {
-    HttpJson,
     RuntimeIpc,
 }
 
@@ -752,3 +753,8 @@ fn error(reason_kind: &'static str, message: impl Into<String>) -> ClientAdmissi
 
 #[cfg(test)]
 mod tests;
+pub use agent_session::{
+    AGENT_SESSION_REGISTER_METHOD, AGENT_SESSION_REGISTER_REQUEST_SCHEMA_ID,
+    AGENT_SESSION_REGISTER_RESPONSE_SCHEMA_ID, AgentSessionRegisterReceipt,
+    AgentSessionRegisterRequest,
+};
