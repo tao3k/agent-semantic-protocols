@@ -257,7 +257,7 @@
         "receiptId": "agent-semantic-protocols.rfc014.frontier-receipt-runtime",
         "receiptKind": "frontier",
         "taskFingerprint": "real-project:agent-semantic-protocols:rfc014-runtime-capture",
-        "commandFingerprint": "method:asp.graphs.evaluate:rfc014",
+        "commandFingerprint": "method:asp.graph.evaluate:rfc014",
         "selector": "src/cli.py:10:20",
         "owner": "src/cli.py",
         "symbol": "collect_actions",
@@ -373,7 +373,7 @@
         },
         "fields": {
           "project": "agent-semantic-protocols",
-          "entrypoint": "asp.graphs.evaluate",
+          "entrypoint": "asp.graph.evaluate",
           "packetSource": "unit._asp_graph_turbo_common.sample_request"
         }
       }
@@ -620,13 +620,13 @@
             }
           },
           {
-            "nodeId": "item:languages/python-lang-project-harness/src/python_lang_project_harness/pytest_plugin.py-ppr-82",
+            "nodeId": "item:languages/asp-python/src/asp_python/pytest_plugin.py-ppr-82",
             "action": "syntax",
-            "selector": "languages/python-lang-project-harness/src/python_lang_project_harness/pytest_plugin.py:82:82",
-            "owner": "languages/python-lang-project-harness/src/python_lang_project_harness/pytest_plugin.py",
+            "selector": "languages/asp-python/src/asp_python/pytest_plugin.py:82:82",
+            "owner": "languages/asp-python/src/asp_python/pytest_plugin.py",
             "symbol": "ppr",
             "range": {
-              "path": "languages/python-lang-project-harness/src/python_lang_project_harness/pytest_plugin.py",
+              "path": "languages/asp-python/src/asp_python/pytest_plugin.py",
               "startLine": 82,
               "endLine": 82
             }
@@ -1124,26 +1124,26 @@
           },
           {
             "action": "syntax",
-            "nodeId": "item:languages/python-lang-project-harness/src/python_lang_project_harness/_agent_snapshot_tree.py-relation-295",
-            "owner": "languages/python-lang-project-harness/src/python_lang_project_harness/_agent_snapshot_tree.py",
+            "nodeId": "item:languages/asp-python/src/asp_python/_agent_snapshot_tree.py-relation-295",
+            "owner": "languages/asp-python/src/asp_python/_agent_snapshot_tree.py",
             "range": {
               "endLine": 295,
-              "path": "languages/python-lang-project-harness/src/python_lang_project_harness/_agent_snapshot_tree.py",
+              "path": "languages/asp-python/src/asp_python/_agent_snapshot_tree.py",
               "startLine": 295
             },
-            "selector": "languages/python-lang-project-harness/src/python_lang_project_harness/_agent_snapshot_tree.py:295:295",
+            "selector": "languages/asp-python/src/asp_python/_agent_snapshot_tree.py:295:295",
             "symbol": "relation"
           },
           {
             "action": "syntax",
-            "nodeId": "item:languages/python-lang-project-harness/src/python_lang_parser/_class_shape.py-typed-43",
-            "owner": "languages/python-lang-project-harness/src/python_lang_parser/_class_shape.py",
+            "nodeId": "item:languages/asp-python/src/python_lang_parser/_class_shape.py-typed-43",
+            "owner": "languages/asp-python/src/python_lang_parser/_class_shape.py",
             "range": {
               "endLine": 43,
-              "path": "languages/python-lang-project-harness/src/python_lang_parser/_class_shape.py",
+              "path": "languages/asp-python/src/python_lang_parser/_class_shape.py",
               "startLine": 43
             },
-            "selector": "languages/python-lang-project-harness/src/python_lang_parser/_class_shape.py:43:43",
+            "selector": "languages/asp-python/src/python_lang_parser/_class_shape.py:43:43",
             "symbol": "typed"
           },
           {

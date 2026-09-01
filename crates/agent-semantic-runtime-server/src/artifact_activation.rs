@@ -15,6 +15,12 @@ pub struct RuntimeArtifactActivationReceipt {
     pub reason: Option<String>,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RuntimeArtifactActivationDisposition {
+    Committed,
+    SuccessorRequired,
+}
+
 pub struct RuntimeArtifactActivationActor {
     endpoint: PathBuf,
     shutdown: Option<oneshot::Sender<()>>,
@@ -58,7 +64,7 @@ pub async fn spawn_runtime_artifact_activation_actor<F, Fut>(
 ) -> Result<RuntimeArtifactActivationActor, String>
 where
     F: Fn(RuntimeArtifactActivationEvent) -> Fut + Send + Sync + 'static,
-    Fut: Future<Output = Result<(), String>> + Send + 'static,
+    Fut: Future<Output = Result<RuntimeArtifactActivationDisposition, String>> + Send + 'static,
 {
     let endpoint = runtime_artifact_activation_socket_path(&state_home);
     let parent = endpoint.parent().ok_or_else(|| {
@@ -139,7 +145,7 @@ pub async fn mount_runtime_daemon_artifact_activation<F, Fut>(
 ) -> Result<RuntimeArtifactActivationActor, String>
 where
     F: Fn(RuntimeArtifactActivationEvent) -> Fut + Send + Sync + 'static,
-    Fut: Future<Output = Result<(), String>> + Send + 'static,
+    Fut: Future<Output = Result<RuntimeArtifactActivationDisposition, String>> + Send + 'static,
 {
     spawn_runtime_artifact_activation_actor(state_home, activate).await
 }
@@ -151,15 +157,22 @@ async fn activate_and_acknowledge<F, Fut>(
 ) -> Result<RuntimeArtifactActivationReceipt, String>
 where
     F: Fn(RuntimeArtifactActivationEvent) -> Fut,
-    Fut: Future<Output = Result<(), String>>,
+    Fut: Future<Output = Result<RuntimeArtifactActivationDisposition, String>>,
 {
     let artifact_digest = event.artifact_digest.clone();
     match activate(event.clone()).await {
-        Ok(()) => {
+        Ok(RuntimeArtifactActivationDisposition::Committed) => {
             acknowledge_runtime_artifact_activation(state_home, &artifact_digest).await?;
             Ok(RuntimeArtifactActivationReceipt {
                 artifact_digest,
                 state: "ready",
+                reason: None,
+            })
+        }
+        Ok(RuntimeArtifactActivationDisposition::SuccessorRequired) => {
+            Ok(RuntimeArtifactActivationReceipt {
+                artifact_digest,
+                state: "successor-required",
                 reason: None,
             })
         }
@@ -180,7 +193,7 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn daemon_composition_consumes_startup_receipt_and_online_datagram() {
+    async fn daemon_activation_transaction_consumes_startup_and_online_publications() {
         let temporary = tempfile::tempdir().expect("temporary state");
         let state_home = temporary.path().join("state");
         let source = temporary.path().join("asp");
@@ -194,17 +207,17 @@ mod tests {
         let startup_publication = publish_runtime_artifact(&state_home, &source, &target, "dev")
             .await
             .expect("publication succeeds without Runtime actor");
-        let actor =
-            mount_runtime_daemon_artifact_activation(state_home.clone(), |_event| async { Ok(()) })
-                .await
-                .expect("mount daemon activation composition");
-
-        let mut receipts = actor.receipts();
-        receipts
-            .changed()
+        let startup_event = read_runtime_artifact_activation_event(&state_home)
             .await
-            .expect("startup activation receipt");
-        let startup_terminal = receipts.borrow().clone().expect("typed startup receipt");
+            .expect("read startup activation")
+            .expect("startup activation exists");
+        let startup_terminal = activate_and_acknowledge(
+            &state_home,
+            &|_event| async { Ok(RuntimeArtifactActivationDisposition::Committed) },
+            startup_event,
+        )
+        .await
+        .expect("commit startup activation");
         assert_eq!(startup_terminal.state, "ready");
         assert_eq!(
             startup_terminal.artifact_digest,
@@ -217,8 +230,17 @@ mod tests {
         let online_publication = publish_runtime_artifact(&state_home, &source, &target, "dev")
             .await
             .expect("online publication");
-        receipts.changed().await.expect("online activation receipt");
-        let online_terminal = receipts.borrow().clone().expect("typed online receipt");
+        let online_event = read_runtime_artifact_activation_event(&state_home)
+            .await
+            .expect("read online activation")
+            .expect("online activation exists");
+        let online_terminal = activate_and_acknowledge(
+            &state_home,
+            &|_event| async { Ok(RuntimeArtifactActivationDisposition::Committed) },
+            online_event,
+        )
+        .await
+        .expect("commit online activation");
         assert_eq!(online_terminal.state, "ready");
         assert_eq!(
             online_terminal.artifact_digest,
@@ -230,7 +252,50 @@ mod tests {
                 .unwrap()
                 .is_none()
         );
-        actor.shutdown().await.expect("shutdown activation actor");
+    }
+
+    #[tokio::test]
+    async fn successor_required_preserves_pending_without_acknowledge_or_rollback() {
+        let temporary = tempfile::tempdir().expect("temporary state");
+        let state_home = temporary.path().join("state");
+        let source = temporary.path().join("asp");
+        let target = temporary.path().join("bin/asp");
+        tokio::fs::write(&source, b"successor")
+            .await
+            .expect("write successor artifact");
+        std::fs::set_permissions(&source, std::fs::Permissions::from_mode(0o755))
+            .expect("successor permissions");
+        let publication = publish_runtime_artifact(&state_home, &source, &target, "dev")
+            .await
+            .expect("publish pending successor");
+        let event = read_runtime_artifact_activation_event(&state_home)
+            .await
+            .expect("read pending successor")
+            .expect("pending successor exists");
+
+        let receipt = activate_and_acknowledge(
+            &state_home,
+            &|_event| async { Ok(RuntimeArtifactActivationDisposition::SuccessorRequired) },
+            event.clone(),
+        )
+        .await
+        .expect("successor-required is a typed non-mutating terminal");
+
+        assert_eq!(receipt.state, "successor-required");
+        assert_eq!(receipt.artifact_digest, publication.artifact_digest);
+        let pending = read_runtime_artifact_activation_event(&state_home)
+            .await
+            .expect("read preserved pending successor")
+            .expect("successor-required preserves pending");
+        assert_eq!(pending.publication_nonce, event.publication_nonce);
+        assert!(
+            agent_semantic_artifacts::runtime_artifact_activation::
+                read_applied_runtime_artifact_activation_event(&state_home)
+                .await
+                .expect("read applied activation")
+                .is_none(),
+            "successor-required must not forge an applied activation"
+        );
     }
 
     #[tokio::test]
@@ -309,29 +374,29 @@ mod tests {
                 .await
                 .expect("materialize newer same-digest event-bound candidate");
         let expected_digest = publication.artifact_digest.clone();
-        let actor = mount_runtime_daemon_artifact_activation(state_home.clone(), move |event| {
-            let expected_digest = expected_digest.clone();
-            async move {
-                assert_eq!(event.artifact_digest, expected_digest);
-                let metadata = tokio::fs::symlink_metadata(&event.artifact_path)
-                    .await
-                    .expect("candidate metadata");
-                assert!(metadata.file_type().is_file());
-                assert!(!metadata.file_type().is_symlink());
-                Err("candidate-server-start-failed".to_owned())
-            }
-        })
-        .await
-        .expect("mount production activation composition");
-
-        let mut receipts = actor.receipts();
-        receipts
-            .changed()
+        let event = read_runtime_artifact_activation_event(&state_home)
             .await
-            .expect("failed activation terminal");
-        let terminal = receipts.borrow().clone().expect("typed failed terminal");
-        assert_eq!(terminal.state, "failed");
-        assert_eq!(terminal.artifact_digest, publication.artifact_digest);
+            .expect("read failed activation")
+            .expect("failed activation exists");
+        let failure = activate_and_acknowledge(
+            &state_home,
+            &move |event| {
+                let expected_digest = expected_digest.clone();
+                async move {
+                    assert_eq!(event.artifact_digest, expected_digest);
+                    let metadata = tokio::fs::symlink_metadata(&event.artifact_path)
+                        .await
+                        .expect("candidate metadata");
+                    assert!(metadata.file_type().is_file());
+                    assert!(!metadata.file_type().is_symlink());
+                    Err("candidate-server-start-failed".to_owned())
+                }
+            },
+            event,
+        )
+        .await
+        .expect_err("failed activation is typed and rolls back");
+        assert!(failure.contains("candidate-server-start-failed"));
         assert_eq!(
             tokio::fs::read_link(profiles.join("active"))
                 .await
@@ -353,6 +418,5 @@ mod tests {
         assert_eq!(pending.artifact_digest, publication.artifact_digest);
         assert_ne!(pending.publication_nonce, first_event.publication_nonce);
         assert!(pending.artifact_path.is_file());
-        actor.shutdown().await.expect("shutdown activation actor");
     }
 }

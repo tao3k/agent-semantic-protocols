@@ -1,5 +1,6 @@
 //! Runtime bootstrap artifacts admitted by immutable provider install receipts.
 
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -94,7 +95,9 @@ fn empty_document() -> Result<InstalledProviderArtifactsDocument, String> {
     })
 }
 
-fn validate_document(document: &InstalledProviderArtifactsDocument) -> Result<(), String> {
+fn validate_serialized_document(
+    document: &InstalledProviderArtifactsDocument,
+) -> Result<(), String> {
     if document.schema_id != SCHEMA_ID || document.schema_version != SCHEMA_VERSION {
         return Err("installed provider artifact schema identity mismatch".to_owned());
     }
@@ -104,15 +107,6 @@ fn validate_document(document: &InstalledProviderArtifactsDocument) -> Result<()
     let mut languages = std::collections::BTreeSet::new();
     let mut providers = std::collections::BTreeSet::new();
     for provider in &document.providers {
-        let registered = super::super::provider_install_registry::provider_install_registration(
-            &provider.language_id,
-        )?;
-        if registered.provider_id != provider.provider_id {
-            return Err(format!(
-                "installed provider identity drift: languageId={} expectedProviderId={} actualProviderId={}",
-                provider.language_id, registered.provider_id, provider.provider_id
-            ));
-        }
         if !languages.insert(provider.language_id.as_str())
             || !providers.insert(provider.provider_id.as_str())
         {
@@ -127,6 +121,48 @@ fn validate_document(document: &InstalledProviderArtifactsDocument) -> Result<()
             if value.is_empty() {
                 return Err(format!("installed provider artifact {field} is empty"));
             }
+        }
+    }
+    Ok(())
+}
+
+fn project_registered_provider_artifacts(
+    mut document: InstalledProviderArtifactsDocument,
+) -> Result<InstalledProviderArtifactsDocument, String> {
+    validate_serialized_document(&document)?;
+    let registrations = super::super::provider_install_registry::provider_install_registrations()?
+        .into_iter()
+        .map(|registration| (registration.language_id, registration.provider_id))
+        .collect::<std::collections::BTreeMap<_, _>>();
+    for provider in &document.providers {
+        if let Some(expected_provider_id) = registrations.get(&provider.language_id)
+            && expected_provider_id != &provider.provider_id
+        {
+            return Err(format!(
+                "installed provider identity drift: languageId={} expectedProviderId={} actualProviderId={}",
+                provider.language_id, expected_provider_id, provider.provider_id
+            ));
+        }
+    }
+    document
+        .providers
+        .retain(|provider| registrations.contains_key(&provider.language_id));
+    document.generation = generation(&document.providers)?;
+    validate_serialized_document(&document)?;
+    Ok(document)
+}
+
+fn validate_document(document: &InstalledProviderArtifactsDocument) -> Result<(), String> {
+    validate_serialized_document(document)?;
+    for provider in &document.providers {
+        let registered = super::super::provider_install_registry::provider_install_registration(
+            &provider.language_id,
+        )?;
+        if registered.provider_id != provider.provider_id {
+            return Err(format!(
+                "installed provider identity drift: languageId={} expectedProviderId={} actualProviderId={}",
+                provider.language_id, registered.provider_id, provider.provider_id
+            ));
         }
     }
     Ok(())
@@ -246,7 +282,7 @@ pub(crate) async fn load_runtime_provider_artifacts(
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => empty_document()?,
         Err(error) => return Err(format!("read {}: {error}", path.display())),
     };
-    validate_document(&document)?;
+    let document = project_registered_provider_artifacts(document)?;
     Ok(RuntimeProviderArtifacts {
         document: Arc::new(document),
     })
@@ -452,31 +488,7 @@ pub(crate) fn publish_current_installed_provider_artifacts(
 pub(crate) fn runtime_source_index_provider_projection(
     artifacts: &RuntimeProviderArtifacts,
     register: &agent_semantic_client_db::runtime_provider_register::RuntimeProviderRegister,
-) -> Result<
-    (
-        agent_semantic_client_core::RuntimeProviderProjection,
-        String,
-    ),
-    String,
-> {
-    runtime_source_index_provider_projection_for_registrations(
-        artifacts,
-        register.installed_capabilities(),
-    )
-}
-
-/// Project only the provider explicitly admitted for a targeted generation.
-///
-/// A cold Rust search must not fail because an unrelated installed capability
-/// (for example Julia) has no artifact. The Runtime Server still validates the
-/// selected provider against the single immutable provider artifact document;
-/// it simply does not widen a targeted source-index build into a complete
-/// provider projection.
-pub(crate) fn runtime_source_index_provider_projection_for_target(
-    artifacts: &RuntimeProviderArtifacts,
-    register: &agent_semantic_client_db::runtime_provider_register::RuntimeProviderRegister,
-    language_id: &str,
-    provider_id: &str,
+    required_languages: &BTreeSet<String>,
 ) -> Result<
     (
         agent_semantic_client_core::RuntimeProviderProjection,
@@ -487,16 +499,90 @@ pub(crate) fn runtime_source_index_provider_projection_for_target(
     let registrations = register
         .installed_capabilities()
         .into_iter()
-        .filter(|registration| {
-            registration.language_id == language_id && registration.provider_id == provider_id
-        })
+        .filter(|registration| required_languages.contains(&registration.language_id))
         .collect::<Vec<_>>();
-    if registrations.is_empty() {
-        return Err(format!(
-            "query-demand provider target has no registered provider: languageId={language_id} providerId={provider_id}"
-        ));
+    for language_id in required_languages {
+        if !registrations
+            .iter()
+            .any(|registration| &registration.language_id == language_id)
+        {
+            return Err(format!(
+                "state=provider-missing reasonKind=workspace-required-provider-capability-missing languageId={language_id}"
+            ));
+        }
     }
     runtime_source_index_provider_projection_for_registrations(artifacts, registrations)
+}
+
+pub(crate) fn workspace_required_provider_languages(
+    register: &agent_semantic_client_db::runtime_provider_register::RuntimeProviderRegister,
+    candidates: &agent_semantic_runtime::git::RepositoryCandidateSnapshot,
+) -> Result<BTreeSet<String>, String> {
+    workspace_required_provider_languages_for_paths(
+        register,
+        candidates
+            .candidates
+            .iter()
+            .map(|candidate| candidate.path.as_path()),
+    )
+}
+
+pub(crate) fn provider_language_for_owner_path(
+    register: &agent_semantic_client_db::runtime_provider_register::RuntimeProviderRegister,
+    owner_path: &Path,
+) -> Result<String, String> {
+    let owner_path = owner_path.to_string_lossy();
+    let mut matches = register
+        .installed_capabilities()
+        .into_iter()
+        .filter_map(|registration| {
+            let inventory = registration.source_inventory().ok()?;
+            inventory
+                .source_extensions
+                .iter()
+                .any(|extension| owner_path.ends_with(extension))
+                .then_some(registration.language_id)
+        });
+    let language_id = matches.next().ok_or_else(|| {
+        format!("runtime owner projection has no registered provider: ownerPath={owner_path}")
+    })?;
+    if matches.next().is_some() {
+        return Err(format!(
+            "runtime owner projection provider is ambiguous: ownerPath={owner_path}"
+        ));
+    }
+    Ok(language_id)
+}
+
+fn workspace_required_provider_languages_for_paths<'a>(
+    register: &agent_semantic_client_db::runtime_provider_register::RuntimeProviderRegister,
+    paths: impl IntoIterator<Item = &'a Path>,
+) -> Result<BTreeSet<String>, String> {
+    let paths = paths.into_iter().collect::<Vec<_>>();
+    let mut required = BTreeSet::new();
+    for registration in register.installed_capabilities() {
+        let inventory = registration.source_inventory()?;
+        let has_entry_marker = inventory
+            .project_resolution
+            .as_ref()
+            .is_some_and(|project| {
+                project
+                    .entry_markers
+                    .iter()
+                    .any(|marker| paths.iter().any(|path| *path == Path::new(marker)))
+            });
+        let has_source = paths.iter().any(|path| {
+            let path = path.to_string_lossy();
+            inventory
+                .source_extensions
+                .iter()
+                .any(|extension| path.ends_with(extension))
+        });
+        if has_entry_marker || has_source {
+            required.insert(registration.language_id);
+        }
+    }
+    Ok(required)
 }
 
 fn runtime_source_index_provider_projection_for_registrations(
@@ -604,14 +690,26 @@ fn runtime_source_index_provider_projection_for_registrations(
             })
         })
         .collect::<Result<Vec<_>, String>>()?;
+    let closure_bytes = serde_json::to_vec(
+        &providers
+            .iter()
+            .map(|provider| {
+                (
+                    provider.language_id.as_str(),
+                    provider.provider_id.as_str(),
+                    provider.registration_digest.as_str(),
+                    provider.binary.as_str(),
+                )
+            })
+            .collect::<Vec<_>>(),
+    )
+    .map_err(|error| format!("encode workspace provider closure: {error}"))?;
+    let closure_digest = format!("sha256:{:x}", Sha256::digest(&closure_bytes));
     let snapshot = agent_semantic_client_core::RuntimeProviderProjection {
-        authority_ref: format!(
-            "runtime-provider-register:{}",
-            artifacts.document.generation
-        ),
+        authority_ref: format!("runtime-provider-register:{closure_digest}"),
         providers,
     };
-    Ok((snapshot, artifacts.document.generation.clone()))
+    Ok((snapshot, closure_digest))
 }
 
 #[cfg(test)]

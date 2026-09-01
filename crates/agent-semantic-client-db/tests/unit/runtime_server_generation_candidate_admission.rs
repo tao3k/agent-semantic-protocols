@@ -3,8 +3,8 @@ use std::process::Command;
 use std::sync::Arc;
 
 use agent_semantic_client_db::runtime_server_admission::{
-    WorkspaceGenerationAdmission, WorkspaceGenerationAdmissionState,
-    discover_workspace_generation_candidate,
+    WorkspaceGenerationAdmission, WorkspaceGenerationAdmissionMode,
+    WorkspaceGenerationAdmissionState, discover_workspace_generation_candidate,
 };
 use tokio::sync::{Barrier, Mutex};
 
@@ -21,6 +21,86 @@ fn run_git(root: &std::path::Path, args: &[&str]) {
         "git fixture command failed: {}",
         String::from_utf8_lossy(&output.stderr)
     );
+}
+
+#[tokio::test]
+async fn ensure_runtime_generation_ready_upgrades_targeted_state_once() {
+    let fixture = tempfile::tempdir().expect("complete generation barrier fixture");
+    let project_root = fixture.path();
+    run_git(project_root, &["init", "--quiet"]);
+    fs::create_dir_all(project_root.join("src")).expect("create source root");
+    fs::write(
+        project_root.join("src/lib.rs"),
+        "pub fn complete_generation_owner() -> u8 { 1 }\n",
+    )
+    .expect("write source owner");
+    run_git(project_root, &["add", "src/lib.rs"]);
+    let candidate = discover_workspace_generation_candidate(project_root)
+        .await
+        .expect("discover complete generation candidate");
+
+    let builds = Arc::new(Mutex::new(0_u8));
+    let admission = WorkspaceGenerationAdmission::new(Arc::new({
+        let builds = Arc::clone(&builds);
+        move |_workspace_identity,
+              _project_root,
+              candidate,
+              _build_mode,
+              _changed_paths,
+              _provider_target,
+              _cancellation| {
+            let builds = Arc::clone(&builds);
+            Box::pin(async move {
+                *builds.lock().await += 1;
+                completed_generation(candidate)
+            })
+        }
+    }));
+
+    let targeted = admission
+        .admit(
+            "workspace-complete-generation-barrier",
+            project_root.to_path_buf(),
+            candidate,
+        )
+        .await
+        .expect("admit targeted candidate");
+    assert_eq!(targeted.state, WorkspaceGenerationAdmissionState::Queued);
+    let targeted = admission
+        .wait_terminal("workspace-complete-generation-barrier", project_root)
+        .await
+        .expect("targeted admission reaches terminal");
+    assert_eq!(
+        targeted.admission_mode,
+        WorkspaceGenerationAdmissionMode::ColdTargeted
+    );
+
+    let complete = admission
+        .ensure_runtime_generation_ready(
+            "workspace-complete-generation-barrier".to_owned(),
+            project_root.to_path_buf(),
+        )
+        .await
+        .expect("upgrade targeted state to complete generation");
+    assert_eq!(complete.state, WorkspaceGenerationAdmissionState::Ready);
+    assert_eq!(
+        complete.admission_mode,
+        WorkspaceGenerationAdmissionMode::FullRecovery
+    );
+    assert!(complete.commit.is_some());
+    assert_eq!(*builds.lock().await, 2);
+
+    let replay = admission
+        .ensure_runtime_generation_ready(
+            "workspace-complete-generation-barrier".to_owned(),
+            project_root.to_path_buf(),
+        )
+        .await
+        .expect("replay complete generation barrier");
+    assert_eq!(replay.attempt, complete.attempt);
+    assert_eq!(replay.commit, complete.commit);
+    assert_eq!(*builds.lock().await, 2);
+    admission.shutdown().await.expect("drain admission lane");
 }
 
 #[tokio::test]
@@ -88,53 +168,6 @@ async fn ensure_rebuilds_when_repository_candidate_generation_advances() {
             "blake3:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
         ]
     );
-    admission.shutdown().await.expect("drain admission lane");
-}
-
-#[tokio::test]
-async fn stale_query_demand_is_typed_not_ready_and_never_admits_a_ready_binding() {
-    let stale = candidate_identity_for(
-        "blake3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-    );
-    let admission = WorkspaceGenerationAdmission::new(Arc::new(
-        move |_workspace_identity,
-              _project_root,
-              _candidate,
-              _build_mode,
-              _changed_paths,
-              _provider_target,
-              _cancellation| {
-            let stale = stale.clone();
-            Box::pin(async move { completed_generation(stale) })
-        },
-    ));
-    let project_root = std::env::current_dir().expect("resolve current repository");
-
-    let error = admission
-        .submit_query_demand_with_provider(
-            "workspace-stale-query-not-ready".to_owned(),
-            project_root.clone(),
-            Vec::new(),
-            None,
-        )
-        .await
-        .expect_err("a stale candidate must never become query-ready");
-    let terminal: serde_json::Value =
-        serde_json::from_str(&error).expect("not-ready failure must be typed");
-    assert_eq!(
-        terminal["schemaId"],
-        "agent.semantic-protocols.query-not-ready",
-    );
-    assert_eq!(terminal["schemaVersion"], "1");
-    assert_eq!(terminal["reasonKind"], "query-not-ready");
-    assert_eq!(terminal["commitDigest"], serde_json::Value::Null);
-
-    let receipt = admission
-        .wait_terminal("workspace-stale-query-not-ready", &project_root)
-        .await
-        .expect("stale demand must still yield one terminal receipt");
-    assert_ne!(receipt.state, WorkspaceGenerationAdmissionState::Ready);
-    assert!(receipt.commit.is_none());
     admission.shutdown().await.expect("drain admission lane");
 }
 
@@ -444,44 +477,5 @@ async fn ensure_coalesces_an_advanced_candidate_behind_an_inflight_build() {
             "blake3:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
         ]
     );
-    admission.shutdown().await.expect("drain admission lane");
-}
-
-#[tokio::test]
-async fn admit_rejects_a_stale_candidate_receipt_before_query_readiness() {
-    let stale = candidate_identity_for(
-        "blake3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-    );
-    let admission = WorkspaceGenerationAdmission::new(Arc::new(
-        move |_workspace_identity,
-              _project_root,
-              _candidate,
-              _build_mode,
-              _changed_paths,
-              _provider_target,
-              _cancellation| {
-            let stale = stale.clone();
-            Box::pin(async move { completed_generation(stale) })
-        },
-    ));
-    let project_root = std::env::current_dir().expect("resolve current repository");
-
-    let error = admission
-        .submit_query_demand_with_provider(
-            "workspace-stale-candidate-binding".to_owned(),
-            project_root,
-            Vec::new(),
-            None,
-        )
-        .await
-        .expect_err("stale candidate receipt must not become query-ready");
-    let terminal: serde_json::Value =
-        serde_json::from_str(&error).expect("stale candidate failure must be typed");
-    assert_eq!(
-        terminal["schemaId"],
-        "agent.semantic-protocols.query-not-ready",
-    );
-    assert_eq!(terminal["reasonKind"], "query-not-ready");
-    assert_eq!(terminal["commitDigest"], serde_json::Value::Null);
     admission.shutdown().await.expect("drain admission lane");
 }

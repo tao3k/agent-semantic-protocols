@@ -95,14 +95,13 @@ impl AspRustProjectHarnessMemberPolicy {
     /// Downstream `build.rs` consumers intentionally compile without this
     /// feature: package builds publish policy identity but never compile or run
     /// the full repository scanner.
-    #[cfg(feature = "harness-runtime")]
-    pub fn to_harness_config(self) -> asp_rust::RustHarnessConfig {
-        let mut config = asp_rust::RustHarnessConfig {
-            cargo_check_advice_allow_explanation: Some(
-                self.cargo_check_advice_allow_explanation.to_string(),
-            ),
-            ..Default::default()
-        };
+    #[cfg(feature = "workspace-policy")]
+    pub fn apply_to_asp_rust_config(
+        self,
+        config: asp_rust::AspRustConfig,
+    ) -> asp_rust::AspRustConfig {
+        let mut config = config
+            .with_cargo_check_advice_allow_explanation(self.cargo_check_advice_allow_explanation);
         if self.criterion_performance_verification {
             config = config.with_criterion_performance_verification();
         }

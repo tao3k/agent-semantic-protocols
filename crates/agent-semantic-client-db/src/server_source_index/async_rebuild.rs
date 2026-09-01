@@ -174,6 +174,7 @@ pub async fn prepare_runtime_server_workspace_generation_with_runtime_service_as
     project_root: PathBuf,
     snapshot: RuntimeProviderProjection,
     collection_scope: SourceIndexCollectionScope,
+    repository_candidates: agent_semantic_runtime::git::RepositoryCandidateSnapshot,
     cancellation: crate::runtime_generation_cancellation::GenerationCancellation,
 ) -> Result<crate::runtime_server_admission::WorkspaceGenerationCandidateBuild, String> {
     let trace_started = Instant::now();
@@ -182,11 +183,12 @@ pub async fn prepare_runtime_server_workspace_generation_with_runtime_service_as
     trace("provider-registry-admitted", trace_started);
     let registry = snapshot.evidence(&project_root);
     let collection =
-        crate::server_source_index::collect::collect_source_index_scope_with_runtime_service_async(
+        crate::server_source_index::collect::collect_source_index_scope_from_candidate_snapshot_with_runtime_service_async(
             &runtime,
             &project_root,
             &snapshot,
             &collection_scope,
+            repository_candidates,
             cancellation.clone(),
         )
         .await?;

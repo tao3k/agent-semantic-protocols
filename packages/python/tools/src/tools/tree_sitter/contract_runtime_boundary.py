@@ -11,7 +11,7 @@ from .contract_support import ContractFailure, ROOT, root_relative
 MANIFESTS_WITHOUT_TREE_SITTER_RUNTIME = (
     ROOT / "languages/asp-rust/Cargo.toml",
     ROOT / "languages/typescript-lang-project-harness/package.json",
-    ROOT / "languages/python-lang-project-harness/pyproject.toml",
+    ROOT / "languages/asp-python/pyproject.toml",
 )
 TREE_SITTER_DEPENDENCY_RE = re.compile(
     r'(^|["\s])(@?tree-sitter[^"\s]*|tree_sitter[^"\s]*)(["\s]*:|\s*=)',

@@ -68,11 +68,14 @@ impl SearchProjectionRenderer for RankedFrontierSearchProjectionRenderer {
             )));
         }
         let value = packet.as_value();
-        if value.get("schemaId").and_then(serde_json::Value::as_str)
-            != Some(crate::source::SEMANTIC_GRAPH_TURBO_RESULT_SCHEMA_ID)
-        {
+        let schema_id = value.get("schemaId").and_then(serde_json::Value::as_str);
+        if !matches!(
+            schema_id,
+            Some(crate::source::SEMANTIC_GRAPH_TURBO_RESULT_SCHEMA_ID)
+                | Some(crate::source::SEMANTIC_GRAPH_RESIDENT_EVALUATION_RESULT_SCHEMA_ID)
+        ) {
             return Err(SearchProjectionError::InvalidPacket(
-                "ranked-frontier projection requires a semantic graph-turbo result".to_string(),
+                "ranked-frontier projection requires a semantic graph result".to_string(),
             ));
         }
         let ranked_nodes = value
@@ -85,7 +88,10 @@ impl SearchProjectionRenderer for RankedFrontierSearchProjectionRenderer {
             })?;
         let row_limit = request.max_rows.unwrap_or(ranked_nodes.len());
         let profile = scalar(value.get("profile"));
-        let algorithm = scalar(value.get("algorithm"));
+        let algorithm = value
+            .get("algorithm")
+            .map(|value| scalar(Some(value)))
+            .unwrap_or_else(|| "bounded-resident-bfs-v1".to_owned());
         let mut lines = vec![format!(
             "[search-frontier] projection=ranked-frontier density={} profile={} algorithm={} nodes={}",
             density_name(request.density),
@@ -97,8 +103,15 @@ impl SearchProjectionRenderer for RankedFrontierSearchProjectionRenderer {
         for node in ranked_nodes.iter().take(row_limit) {
             let id = scalar(node.get("id"));
             let kind = scalar(node.get("kind"));
-            let action = scalar(node.get("action"));
-            let node_value = scalar(node.get("value"));
+            let action = node
+                .get("action")
+                .map(|value| scalar(Some(value)))
+                .unwrap_or_else(|| kind.clone());
+            let node_value = node
+                .get("value")
+                .or_else(|| node.get("ownerPath"))
+                .map(|value| scalar(Some(value)))
+                .unwrap_or_else(|| id.clone());
             let mut line = format!("I={id} kind={kind} action={action} value={node_value}");
             if !matches!(request.density, SearchProjectionDensityV1::Terse) {
                 let role = scalar(node.get("role"));

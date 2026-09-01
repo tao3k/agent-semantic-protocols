@@ -54,6 +54,39 @@ theorem policy_and_lifecycle_share_one_hook_binary
       binaryDigestForPlane bundle .lifecycle := by
   rfl
 
+/-- The publication probe projects identity from immutable bytes already linked
+into the candidate.  It has no Config parse, policy compilation, filesystem, or
+Runtime edge, so its work is independent of the number of policy rules. -/
+structure HookIdentityProbe where
+  policyContentDigest : Nat
+  configParse : Bool := false
+  policyCompile : Bool := false
+  filesystemAccess : Bool := false
+  runtimeAccess : Bool := false
+
+def projectHookIdentity (policyContentDigest : Nat) : HookIdentityProbe :=
+  { policyContentDigest }
+
+def hookIdentityProbeWork (_policyRuleCount : Nat) : Nat := 1
+
+theorem hook_identity_probe_is_effect_free (policyContentDigest : Nat) :
+    let identity := projectHookIdentity policyContentDigest
+    identity.configParse = false ∧
+      identity.policyCompile = false ∧
+      identity.filesystemAccess = false ∧
+      identity.runtimeAccess = false := by
+  simp [projectHookIdentity]
+
+theorem hook_identity_probe_work_is_rule_count_independent
+    (leftRuleCount rightRuleCount : Nat) :
+    hookIdentityProbeWork leftRuleCount = hookIdentityProbeWork rightRuleCount := by
+  rfl
+
+theorem hook_identity_probe_preserves_embedded_content_identity
+    (policyContentDigest : Nat) :
+    (projectHookIdentity policyContentDigest).policyContentDigest = policyContentDigest := by
+  rfl
+
 /-- Mutable Config source is candidate input, never serving state. -/
 def editConfigSource (active : MatcherBundle Projection) (_newSourceDigest : Nat) :
     MatcherBundle Projection := active

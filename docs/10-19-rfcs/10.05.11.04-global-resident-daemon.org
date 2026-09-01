@@ -185,6 +185,14 @@ This boundary is deliberately separate from programming-language providers:
   workspace admission, graph/evidence interfaces, and performance receipts;
 - document matching never manufactures a language activation.
 
+Consequently, =org= and =md= MUST NOT appear in the Provider Register, provider
+install register, installed-provider artifact set, provider process catalog, or
+=CompleteGeneration= provider-membership proof.  Their public =asp org= and
+=asp md= facades are ClientFrame surfaces over parsers linked into the canonical
+ASP bundle; they do not imply =asp-org= or =asp-md= binaries.  An embedded parser
+dependency becoming separately installable is legacy authority drift and MUST
+fail contract validation rather than trigger artifact recovery.
+
 * Tokio ownership
 
 The daemon creates one Tokio runtime for its entire process lifetime.  All

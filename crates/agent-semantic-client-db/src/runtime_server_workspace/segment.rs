@@ -170,15 +170,15 @@ impl WorkspaceGenerationPublisher {
                     )
                     .await?;
                 let pointer_reader = WorkspaceGenerationPointerReader::open(pointer.path()).await?;
-                let active = tokio::task::spawn_blocking(move || {
+                let persisted = tokio::task::spawn_blocking(move || {
                     pointer_reader.read_previous_valid_optional()
                 })
                 .await
                 .map_err(|error| {
                     format!("read workspace generation pointer task failed: {error}")
                 })?;
+                let active = current_schema_active_snapshot(persisted)?;
                 if let Some(active) = &active {
-                    active.validate()?;
                     owner_identity_journal
                         .rebase(&active.workspace_identity, &active.generation_digest)
                         .await?;
@@ -414,6 +414,19 @@ impl WorkspaceGenerationPublisher {
     pub fn pointer_path(&self) -> &Path {
         &self.pointer_path
     }
+}
+
+fn current_schema_active_snapshot(
+    persisted: Option<WorkspaceGenerationSnapshot>,
+) -> Result<Option<WorkspaceGenerationSnapshot>, String> {
+    let Some(snapshot) = persisted else {
+        return Ok(None);
+    };
+    if snapshot.schema_id != WORKSPACE_GENERATION_SCHEMA_ID || snapshot.schema_version != "2" {
+        return Ok(None);
+    }
+    snapshot.validate()?;
+    Ok(Some(snapshot))
 }
 
 fn record_generation_stage(

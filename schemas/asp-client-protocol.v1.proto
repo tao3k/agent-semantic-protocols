@@ -15,6 +15,7 @@ message ClientFrameEnvelope {
     ExitFrame exit = 15;
     ResponseFrame response = 16;
     EventFrame event = 17;
+    ResponsePartitionFrame response_partition = 18;
   }
 }
 
@@ -85,6 +86,14 @@ message EventFrame {
   string event_id = 1;
   string event = 2;
   bytes payload_json = 3;
+}
+
+message ResponsePartitionFrame {
+  string request_id = 1;
+  uint32 partition_index = 2;
+  uint32 partition_count = 3;
+  string response_digest = 4;
+  bytes encoded_response = 5;
 }
 
 message ClientProtocolCatalog {

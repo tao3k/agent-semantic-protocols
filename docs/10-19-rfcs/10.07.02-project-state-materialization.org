@@ -261,6 +261,17 @@ only when two artifacts resolve to the same full storage identity yet differ
 semantically.
 
 Repository/workspace identity migration is canonical-targeted and idempotent.
+The Runtime admission catalog participates only by replacing a stale derived
+workspace-ID projection for the same canonical root.  It does not own identity
+derivation.  Replacement is admitted only when the incoming ID exactly equals
+the current State Core derivation; a noncanonical incoming ID or a root
+collision preserves the previous catalog bytes and fails closed.
+The admission catalog returns a typed mutation outcome.  For a stale
+same-root projection, the outcome carries the canonical root, previous/current
+workspace IDs, and exactly one catalog revision transition.  A plain boolean
+is insufficient because it erases whether the writer inserted a new root,
+replayed an unchanged binding, or retired a legacy projection.  Rejection has
+no migration receipt and cannot advance the catalog revision.
 When the canonical workspace is already populated, migration moves legacy CAS
 objects and digest-qualified envelopes into the canonical immutable trees.  It
 MUST NOT move canonical data back beneath the legacy identity or require the

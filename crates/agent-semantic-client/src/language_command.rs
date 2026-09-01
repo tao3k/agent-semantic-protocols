@@ -89,6 +89,9 @@ impl LanguageCommandClient for RuntimeLanguageCommandClient {
     fn dispatch(&self, request: LanguageCommandRequest) -> LanguageCommandDispatchFuture<'_> {
         Box::pin(async move {
             let state_home = agent_semantic_runtime::state_core::resolve_state_home()?;
+            #[cfg(unix)]
+            let client = AspClient::new_from_host_capability(state_home, &request.project_root)?;
+            #[cfg(not(unix))]
             let client = AspClient::new(state_home, &request.project_root);
             let (route, params) = request.operation.into_route_and_params()?;
             let frame = client

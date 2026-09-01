@@ -98,6 +98,7 @@ impl WorkspaceGenerationDataPlaneClient {
     async fn open_uncached(pointer_path: &Path) -> Result<Self, String> {
         let pointer = WorkspaceGenerationPointerReader::open(pointer_path).await?;
         let snapshot = pointer.read()?;
+        snapshot.validate()?;
         let mapped =
             MappedWorkspaceGeneration::open(Path::new(&snapshot.mmap_segment_path)).await?;
         let backend = mapped.backend();
@@ -125,6 +126,7 @@ impl WorkspaceGenerationDataPlaneClient {
         cell: &WorkspaceGenerationDataPlaneCell,
     ) -> Result<bool, String> {
         let snapshot = self.inner.pointer.read()?;
+        snapshot.validate()?;
         if self.inner.current.read().generation().active_epoch == snapshot.active_epoch {
             return Ok(false);
         }

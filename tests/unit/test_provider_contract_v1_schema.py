@@ -200,8 +200,8 @@ def test_python_harness_has_no_direct_source_read_compatibility_surface() -> Non
         "query/direct-source-read",
     )
     scan_roots = (
-        repo_root / "languages/python-lang-project-harness/src",
-        repo_root / "languages/python-lang-project-harness/tests/unit/harness",
+        repo_root / "languages/asp-python/src",
+        repo_root / "languages/asp-python/tests/unit/harness",
     )
     offenders: list[str] = []
     for root in scan_roots:

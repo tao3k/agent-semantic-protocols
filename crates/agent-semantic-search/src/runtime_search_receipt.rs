@@ -1,10 +1,11 @@
 //! Bounded Tokio-stream fan-in for the Runtime search data plane.
 
-use std::{collections::BTreeSet, pin::Pin};
+use std::{collections::BTreeSet, pin::Pin, sync::Arc};
 
 use agent_semantic_search_projection::{
     RUNTIME_PROVIDER_SEARCH_RECEIPT_SCHEMA_ID, RUNTIME_PROVIDER_SEARCH_RECEIPT_SCHEMA_VERSION,
-    ResidentSearchReadyResult, ResidentSearchWorkCounters, RuntimeProviderSearchReceipt,
+    ResidentSearchHit, ResidentSearchReadyResult, ResidentSearchWorkCounters,
+    RuntimeProviderSearchReceipt,
 };
 use tokio::sync::mpsc;
 use tokio_stream::{Stream, StreamExt, StreamMap, wrappers::ReceiverStream};
@@ -12,7 +13,7 @@ use tokio_stream::{Stream, StreamExt, StreamMap, wrappers::ReceiverStream};
 pub const RUNTIME_SEARCH_SOURCE_CAPACITY: usize = 32;
 pub const RUNTIME_SEARCH_SOURCE_LIMIT: usize = 64;
 
-pub type RuntimeSearchResult = Result<ResidentSearchReadyResult, String>;
+pub type RuntimeSearchResult = Result<Arc<ResidentSearchReadyResult>, String>;
 type RuntimeSearchResultStream = Pin<Box<dyn Stream<Item = RuntimeSearchResult> + Send>>;
 
 pub struct RuntimeSearchSource {
@@ -22,6 +23,13 @@ pub struct RuntimeSearchSource {
 
 impl RuntimeSearchSource {
     pub fn once(source_id: impl Into<String>, result: ResidentSearchReadyResult) -> Self {
+        Self {
+            source_id: source_id.into(),
+            stream: Box::pin(tokio_stream::once(Ok(Arc::new(result)))),
+        }
+    }
+
+    pub fn shared(source_id: impl Into<String>, result: Arc<ResidentSearchReadyResult>) -> Self {
         Self {
             source_id: source_id.into(),
             stream: Box::pin(tokio_stream::once(Ok(result))),
@@ -69,6 +77,16 @@ pub async fn build_runtime_provider_search_receipt_with_graph(
     graph_stage: Option<crate::ResidentGraphSearchStage>,
 ) -> Result<RuntimeProviderSearchReceipt, String> {
     let started = std::time::Instant::now();
+    let projected_owner_count = parser_owned_selector_pairs
+        .iter()
+        .map(|(_, owner_path)| owner_path.as_str())
+        .collect::<BTreeSet<_>>()
+        .len();
+    if projected_owner_count > RUNTIME_SEARCH_SELECTOR_OWNER_LIMIT {
+        return Err(format!(
+            "parser-owned selector projection exceeded owner budget: projected={projected_owner_count} budget={RUNTIME_SEARCH_SELECTOR_OWNER_LIMIT}"
+        ));
+    }
     let mut fan_in = admitted_source_map(sources)?;
     let mut authority: Option<SearchAuthority> = None;
     let mut candidate_count = 0usize;
@@ -79,7 +97,7 @@ pub async fn build_runtime_provider_search_receipt_with_graph(
     while let Some((source_id, result)) = fan_in.next().await {
         let result = result.map_err(|error| format!("search source `{source_id}`: {error}"))?;
         result.validate()?;
-        let result_authority = SearchAuthority::from(&result);
+        let result_authority = SearchAuthority::from(result.as_ref());
         match &authority {
             Some(current) if current != &result_authority => {
                 return Err(format!(
@@ -90,9 +108,9 @@ pub async fn build_runtime_provider_search_receipt_with_graph(
             _ => {}
         }
         candidate_count = candidate_count.saturating_add(result.hits.len());
-        for hit in result.hits {
-            selectors.extend(hit.selector);
-            owner_paths.insert(hit.owner_path);
+        for hit in &result.hits {
+            selectors.extend(hit.selector.iter().cloned());
+            owner_paths.insert(hit.owner_path.clone());
         }
         accumulate_work_counters(&mut work_counters, result.work_counters);
     }
@@ -142,6 +160,8 @@ pub async fn build_runtime_provider_search_receipt_with_graph(
         provider_digest: authority.provider_digest,
         index_artifact_digest: authority.index_artifact_digest,
         candidate_count,
+        selector_projection_budget: RUNTIME_SEARCH_SELECTOR_OWNER_LIMIT,
+        projected_owner_count,
         selectors: selectors.into_iter().collect(),
         owner_paths,
         resident_read_elapsed_micros,
@@ -151,6 +171,39 @@ pub async fn build_runtime_provider_search_receipt_with_graph(
     };
     receipt.validate()?;
     Ok(receipt)
+}
+
+/// Parser-owned selector projection is the expensive part of warm Search
+/// fan-in. Preserve complete lexical candidate evidence while projecting only
+/// the graph-ranked owner frontier under this shared protocol budget.
+pub const RUNTIME_SEARCH_SELECTOR_OWNER_LIMIT: usize = 16;
+
+pub fn bounded_ranked_selector_owner_paths(
+    lexical_hits: &[ResidentSearchHit],
+    graph_stage: Option<&crate::ResidentGraphSearchStage>,
+) -> Vec<String> {
+    let mut admitted = BTreeSet::new();
+    let mut owners = Vec::with_capacity(RUNTIME_SEARCH_SELECTOR_OWNER_LIMIT);
+    let mut admit = |owner_path: &str| {
+        if admitted.insert(owner_path.to_owned()) {
+            owners.push(owner_path.to_owned());
+        }
+        owners.len() == RUNTIME_SEARCH_SELECTOR_OWNER_LIMIT
+    };
+    if let Some(graph_stage) = graph_stage {
+        for owner_path in &graph_stage.ranked_owner_paths {
+            if admit(owner_path) {
+                break;
+            }
+        }
+    } else {
+        for hit in lexical_hits {
+            if admit(&hit.owner_path) {
+                break;
+            }
+        }
+    }
+    owners
 }
 
 fn admitted_source_map(

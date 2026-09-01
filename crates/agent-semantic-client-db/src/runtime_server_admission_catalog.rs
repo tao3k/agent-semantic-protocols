@@ -81,6 +81,31 @@ pub struct RuntimeWorkspaceAdmissionCatalogEntry {
     pub project_root: PathBuf,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum RuntimeWorkspaceAdmissionCatalogMutation {
+    Unchanged {
+        resident_revision: u64,
+    },
+    Inserted {
+        entry: RuntimeWorkspaceAdmissionCatalogEntry,
+        previous_revision: u64,
+        current_revision: u64,
+    },
+    ReplacedIdentityProjection {
+        canonical_root: PathBuf,
+        previous_workspace_identity: String,
+        current_workspace_identity: String,
+        previous_revision: u64,
+        current_revision: u64,
+    },
+}
+
+impl RuntimeWorkspaceAdmissionCatalogMutation {
+    pub fn changed(&self) -> bool {
+        !matches!(self, Self::Unchanged { .. })
+    }
+}
+
 impl RuntimeWorkspaceAdmissionCatalogEntry {
     pub fn validate(&self) -> Result<(), String> {
         if self.workspace_identity.trim().is_empty() {
@@ -164,34 +189,70 @@ impl RuntimeWorkspaceAdmissionCatalog {
     pub async fn record(
         &self,
         entry: RuntimeWorkspaceAdmissionCatalogEntry,
-    ) -> Result<bool, String> {
-        let inserted = self.record_resident(entry)?;
-        if inserted {
+    ) -> Result<RuntimeWorkspaceAdmissionCatalogMutation, String> {
+        let mutation = self.record_resident(entry)?;
+        if mutation.changed() {
             self.publish_resident_snapshot().await?;
         }
-        Ok(inserted)
+        Ok(mutation)
     }
 
     pub fn record_resident(
         &self,
         entry: RuntimeWorkspaceAdmissionCatalogEntry,
-    ) -> Result<bool, String> {
+    ) -> Result<RuntimeWorkspaceAdmissionCatalogMutation, String> {
         entry.validate()?;
         let _resident_writer = self.resident_writer.lock();
         if self.entries.borrow().contains(&entry) {
-            return Ok(false);
+            return Ok(RuntimeWorkspaceAdmissionCatalogMutation::Unchanged {
+                resident_revision: self.resident_revision.load(Ordering::Acquire),
+            });
         }
         let mut entries = self.entries.borrow().as_ref().clone();
-        if let Some(existing) = entries.iter().find(|existing| {
-            existing.project_root == entry.project_root
-                && existing.workspace_identity != entry.workspace_identity
-        }) {
-            return Err(format!(
-                "workspace admission catalog root identity conflict: projectRoot={} existingWorkspaceIdentity={} requestedWorkspaceIdentity={}",
-                entry.project_root.display(),
-                existing.workspace_identity,
-                entry.workspace_identity
-            ));
+        if let Some(existing) = entries
+            .iter()
+            .find(|existing| {
+                existing.project_root == entry.project_root
+                    && existing.workspace_identity != entry.workspace_identity
+            })
+            .cloned()
+        {
+            let current_identity = crate::AgentSessionRegistry::workspace_id(&entry.project_root)?;
+            if entry.workspace_identity != current_identity {
+                return Err(format!(
+                    "workspace admission catalog rejected a noncanonical identity projection: projectRoot={} currentWorkspaceIdentity={} requestedWorkspaceIdentity={}",
+                    entry.project_root.display(),
+                    current_identity,
+                    entry.workspace_identity
+                ));
+            }
+            if entries.iter().any(|candidate| {
+                candidate.workspace_identity == current_identity
+                    && candidate.project_root != entry.project_root
+            }) {
+                return Err(format!(
+                    "workspace admission catalog canonical identity already owns another root: workspaceIdentity={} requestedProjectRoot={}",
+                    current_identity,
+                    entry.project_root.display()
+                ));
+            }
+            if !entries.remove(&existing) || !entries.insert(entry.clone()) {
+                return Err(
+                    "workspace admission catalog failed to replace one stale identity projection"
+                        .to_owned(),
+                );
+            }
+            self.entries.send_replace(Arc::new(entries));
+            let previous_revision = self.resident_revision.fetch_add(1, Ordering::Release);
+            return Ok(
+                RuntimeWorkspaceAdmissionCatalogMutation::ReplacedIdentityProjection {
+                    canonical_root: entry.project_root,
+                    previous_workspace_identity: existing.workspace_identity,
+                    current_workspace_identity: entry.workspace_identity,
+                    previous_revision,
+                    current_revision: previous_revision + 1,
+                },
+            );
         }
         if let Some(existing) = entries.iter().find(|existing| {
             existing.workspace_identity == entry.workspace_identity
@@ -204,12 +265,18 @@ impl RuntimeWorkspaceAdmissionCatalog {
                 entry.project_root.display()
             ));
         }
-        if !entries.insert(entry) {
-            return Ok(false);
+        if !entries.insert(entry.clone()) {
+            return Ok(RuntimeWorkspaceAdmissionCatalogMutation::Unchanged {
+                resident_revision: self.resident_revision.load(Ordering::Acquire),
+            });
         }
         self.entries.send_replace(Arc::new(entries));
-        self.resident_revision.fetch_add(1, Ordering::Release);
-        Ok(true)
+        let previous_revision = self.resident_revision.fetch_add(1, Ordering::Release);
+        Ok(RuntimeWorkspaceAdmissionCatalogMutation::Inserted {
+            entry,
+            previous_revision,
+            current_revision: previous_revision + 1,
+        })
     }
 
     pub async fn publish_resident_snapshot(&self) -> Result<(), String> {

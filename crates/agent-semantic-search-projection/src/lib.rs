@@ -44,7 +44,8 @@ pub use topology::{SEARCH_ROOT_ID, TERSE_GRAPH_MICRO_LEGEND, TopologyProjectionO
 pub mod source;
 pub use renderer::RankedFrontierSearchProjectionRenderer;
 pub use source::{
-    GraphTurboEvaluationRequest, GraphTurboResultPacketV1, SEMANTIC_GRAPH_TURBO_REQUEST_SCHEMA_ID,
-    SEMANTIC_GRAPH_TURBO_RESULT_SCHEMA_ID, SEMANTIC_GRAPH_TURBO_RESULT_SCHEMA_VERSION,
-    SearchProjectionSource,
+    GraphTurboResultPacketV1, ResidentGraphEvaluationRequestV1, ResidentGraphEvaluationResultV1,
+    SEMANTIC_GRAPH_RESIDENT_EVALUATION_REQUEST_SCHEMA_ID,
+    SEMANTIC_GRAPH_RESIDENT_EVALUATION_RESULT_SCHEMA_ID, SEMANTIC_GRAPH_TURBO_RESULT_SCHEMA_ID,
+    SEMANTIC_GRAPH_TURBO_RESULT_SCHEMA_VERSION, SearchProjectionSource,
 };

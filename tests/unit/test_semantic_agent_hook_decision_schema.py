@@ -191,7 +191,7 @@ class SemanticAgentHookDecisionSchemaTests(unittest.TestCase):
             / "semantic-agent-hook-decision.v1.schema.json",
             _REPO_ROOT
             / "languages"
-            / "python-lang-project-harness"
+            / "asp-python"
             / "schemas"
             / "semantic-agent-hook-decision.v1.schema.json",
         ):

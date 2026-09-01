@@ -86,16 +86,17 @@ sandtable alignment -> real-project evidence -> optimization loop
 
 ## Python Policy Checks
 
-Use the Python harness CLI as the owner for Python policy checks in this
-repository. Do not copy Python policy logic into the sandtable runner. Run the
-direct CLI form when you need the actual policy gate:
+Use the Python harness dependency API as the owner for Python policy checks in
+this repository. Do not copy Python policy logic into the sandtable runner and
+do not add a second provider policy command surface. Invoke the public API
+from build/test ownership when you need the actual policy gate:
 
 ```sh
-uv run --project languages/python-lang-project-harness --frozen asp-python check --full .
+uv run --project languages/asp-python --frozen python -c 'from asp_python import assert_python_project_harness_clean; assert_python_project_harness_clean(".")'
 ```
 
 If `just` is available in the active shell, `just check-python-policy` is the
-same gate and `just report-python-policy` prints the report without making the
-shell step fail. These commands delegate to `languages/python-lang-project-harness`
-through its own project environment so the current repository can consume the
-policy without depending on any stale root `.venv` installation.
+same API gate and `just report-python-policy` prints the API report without
+making the shell step fail. These recipes import
+`languages/asp-python` through its own project environment so
+the current repository consumes one policy authority without a provider CLI.

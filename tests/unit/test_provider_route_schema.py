@@ -73,8 +73,8 @@ def test_all_seven_provider_registrations_have_canonical_inventory_and_root_iden
     registrations = {
         "rust": ROOT / "languages/asp-rust/provider/asp-provider-registration.json",
         "typescript": ROOT / "languages/typescript-lang-project-harness/provider/asp-provider-registration.json",
-        "python": ROOT / "languages/python-lang-project-harness/provider/asp-provider-registration.json",
-        "julia": ROOT / "languages/JuliaLangProjectHarness.jl/juliac/asp-provider-registration.json",
+        "python": ROOT / "languages/asp-python/provider/asp-provider-registration.json",
+        "julia": ROOT / "languages/AspJulia.jl/juliac/asp-provider-registration.json",
         "gerbil-scheme": ROOT / "languages/gerbil-scheme-language-project-harness/provider/asp-provider-registration.json",
         "org": ROOT / "languages/orgize/provider/asp-provider-registration.json",
         "md": ROOT / "languages/orgize/provider/asp-md-provider-registration.json",

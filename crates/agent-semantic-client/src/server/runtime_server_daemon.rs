@@ -15,6 +15,37 @@ use agent_semantic_runtime_server as runtime_asp_client;
 use runtime_server_identity_handoff::RuntimeIdentityHandoffCoordinator;
 use runtime_server_search_service::serve_runtime_search_requests;
 
+pub(super) fn workspace_generation_collection_scope(
+    project_root: &std::path::Path,
+    changed_paths: &std::collections::BTreeSet<std::path::PathBuf>,
+    provider_target_present: bool,
+) -> Result<agent_semantic_client_db::server_source_index::SourceIndexCollectionScope, String> {
+    if provider_target_present || changed_paths.is_empty() {
+        return Ok(
+            agent_semantic_client_db::server_source_index::SourceIndexCollectionScope::CompleteGeneration,
+        );
+    }
+    let owner_paths = changed_paths
+        .iter()
+        .map(|path| {
+            path.strip_prefix(project_root)
+                .map_err(|_| {
+                    format!(
+                        "changed owner is outside Runtime workspace: workspace={} owner={}",
+                        project_root.display(),
+                        path.display()
+                    )
+                })
+                .map(|relative| relative.to_string_lossy().into_owned())
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    Ok(
+        agent_semantic_client_db::server_source_index::SourceIndexCollectionScope::ExplicitOwners {
+            owner_paths,
+        },
+    )
+}
+
 pub(super) async fn run_daemon() -> Result<(), String> {
     agent_semantic_client_db::AgentSessionRegistry::mark_runtime_server_owner_process();
     let state_home = state_home()?;
@@ -191,72 +222,68 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
                     return Err("generation build cancelled before provider admission".to_owned());
                 }
                     let changed_path_count = changed_paths.len();
+                    let candidate_project_root = project_root.clone();
+                    let repository_candidates = tokio::task::spawn_blocking(move || {
+                        agent_semantic_runtime::git::discover_repository_candidate_snapshot(
+                            &candidate_project_root,
+                        )
+                    })
+                    .await
+                    .map_err(|error| format!("workspace candidate task failed: {error}"))?
+                    .map_err(|error| format!("discover workspace candidates: {error}"))?
+                    .ok_or_else(|| {
+                        format!(
+                            "workspace provider closure requires a Git candidate snapshot: workspace={}",
+                            project_root.display()
+                        )
+                    })?;
                     let runtime_provider_catalog = crate::command::installed_provider_artifacts::
                         load_runtime_provider_artifacts(&state_home)
                         .await?;
-                    let (registry, current_catalog_generation) = if let Some(provider_target) =
-                        provider_target.as_ref()
-                    {
+                    let mut required_languages = crate::command::installed_provider_artifacts::
+                        workspace_required_provider_languages(
+                            &provider_register,
+                            &repository_candidates,
+                        )?;
+                    if let Some(provider_target) = provider_target.as_ref() {
+                        required_languages.insert(provider_target.language_id.clone());
+                    }
+                    let (registry, current_catalog_generation) =
+                        crate::command::installed_provider_artifacts::runtime_source_index_provider_projection(
+                            &runtime_provider_catalog,
+                            &provider_register,
+                            &required_languages,
+                        )?;
+                    if let Some(provider_target) = provider_target.as_ref() {
                         let provider_id = provider_target.provider_id.as_deref().ok_or_else(|| {
                             format!(
                                 "query-demand provider target requires resolved providerId: languageId={}",
                                 provider_target.language_id
                             )
                         })?;
-                        crate::command::installed_provider_artifacts::runtime_source_index_provider_projection_for_target(
-                            &runtime_provider_catalog,
-                            &provider_register,
-                            &provider_target.language_id,
-                            provider_id,
-                        )?
-                    } else {
-                        crate::command::installed_provider_artifacts::runtime_source_index_provider_projection(
-                            &runtime_provider_catalog,
-                            &provider_register,
-                        )?
-                    };
-                    let collection_scope = if let Some(provider_target) = provider_target {
-                        let provider_id = provider_target.provider_id.ok_or_else(|| {
-                            format!(
-                                "query-demand provider target requires resolved providerId: languageId={}",
+                        let target_is_registered = registry.providers.iter().any(|provider| {
+                            provider.language_id.as_str() == provider_target.language_id
+                                && provider.provider_id.as_str() == provider_id
+                        });
+                        if !target_is_registered {
+                            return Err(format!(
+                                "query-demand provider target is absent from the complete Runtime registry: languageId={} providerId={provider_id}",
                                 provider_target.language_id
-                            )
-                        })?;
-                        agent_semantic_client_db::server_source_index::SourceIndexCollectionScope::TargetProvider {
-                            language_id: agent_semantic_client_core::LanguageId::try_new(
-                                provider_target.language_id,
-                            )?,
-                            provider_id: agent_semantic_client_core::ProviderId::try_new(
-                                provider_id,
-                            )?,
+                            ));
                         }
-                    } else if changed_paths.is_empty() {
-                        agent_semantic_client_db::server_source_index::SourceIndexCollectionScope::CompleteGeneration
-                    } else {
-                        let owner_paths = changed_paths
-                            .iter()
-                            .map(|path| {
-                                path.strip_prefix(&project_root)
-                                    .map_err(|_| {
-                                        format!(
-                                            "changed owner is outside Runtime workspace: workspace={} owner={}",
-                                            project_root.display(),
-                                            path.display()
-                                        )
-                                    })
-                                    .map(|relative| relative.to_string_lossy().into_owned())
-                            })
-                            .collect::<Result<Vec<_>, String>>()?;
-                        agent_semantic_client_db::server_source_index::SourceIndexCollectionScope::ExplicitOwners {
-                            owner_paths,
-                        }
-                    };
+                    }
+                    let collection_scope = workspace_generation_collection_scope(
+                        &project_root,
+                        &changed_paths,
+                        provider_target.is_some(),
+                    )?;
                     let mut build = agent_semantic_client_db::server_source_index::
                         prepare_runtime_server_workspace_generation_with_runtime_service_async(
                     runtime_search_service,
                     project_root,
                     registry,
                     collection_scope,
+                    repository_candidates,
                     cancellation,
                 )
                         .await
@@ -270,38 +297,18 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
                 })
             },
         );
-    let owner_builder_state_home = state_home.to_path_buf();
     let owner_builder_provider_register = std::sync::Arc::clone(&provider_register);
     let owner_builder_runtime_search = runtime_search_service.clone();
     let owner_projection_builder: agent_semantic_client_db::runtime_server_admission::WorkspaceOwnerProjectionBuilder =
     std::sync::Arc::new(move |workspace_identity, project_root, owner_path, cancellation| {
-            let state_home = owner_builder_state_home.clone();
             let provider_register = std::sync::Arc::clone(&owner_builder_provider_register);
             let runtime_search_service = owner_builder_runtime_search.clone();
             Box::pin(async move {
-                let runtime_provider_catalog = crate::command::installed_provider_artifacts::
-                    load_runtime_provider_artifacts(&state_home).await?;
-                let (registry, _) = crate::command::installed_provider_artifacts::
-                    runtime_source_index_provider_projection(
-                        &runtime_provider_catalog,
+                let language_id = crate::command::installed_provider_artifacts::
+                    provider_language_for_owner_path(
                         &provider_register,
+                        std::path::Path::new(&owner_path),
                     )?;
-                let language_id = registry
-                    .providers
-                    .iter()
-                    .find(|provider| {
-                        provider.runtime_operation("projection-batch").is_some()
-                            && provider
-                                .source_extensions
-                                .iter()
-                                .any(|extension| owner_path.ends_with(extension.as_str()))
-                    })
-                    .map(|provider| provider.language_id.as_str().to_owned())
-                    .ok_or_else(|| {
-                        format!(
-                            "runtime owner projection has no registered provider: ownerPath={owner_path}"
-                        )
-                    })?;
                 runtime_search_service
                     .provider_runtime(project_root.clone(), language_id.clone())
                     .await?;
@@ -534,15 +541,17 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
         );
     }
     let activation_state_home = state_home.to_path_buf();
-    let activation_endpoint = endpoint.clone();
     let activation_running_artifact_digest = running_artifact_digest.clone();
+    let activation_shutdown = monitor_shutdown.clone();
+    let (successor_sender, mut successor_receiver) = tokio::sync::mpsc::channel(1);
     let activation_actor =
         runtime_asp_client::artifact_activation::mount_runtime_daemon_artifact_activation(
             activation_state_home.clone(),
             move |event| {
                 let state_home = activation_state_home.clone();
-                let endpoint = activation_endpoint.clone();
                 let running_artifact_digest = activation_running_artifact_digest.clone();
+                let activation_shutdown = activation_shutdown.clone();
+                let successor_sender = successor_sender.clone();
                 async move {
                     if running_artifact_digest == event.artifact_digest {
                         agent_semantic_artifacts::runtime_artifact_activation::
@@ -591,11 +600,16 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
                                 )
                                 .await?;
                         }
-                        return Ok(());
+                        return Ok(runtime_asp_client::artifact_activation::
+                            RuntimeArtifactActivationDisposition::Committed);
                     }
-                    RuntimeIdentityHandoffCoordinator::new(&state_home, &endpoint)
-                        .admit_successor(&event, Some(&running_artifact_digest))
+                    successor_sender
+                        .send(event)
                         .await
+                        .map_err(|_| "Runtime successor observation receiver closed".to_owned())?;
+                    activation_shutdown.shutdown();
+                    Ok(runtime_asp_client::artifact_activation::
+                        RuntimeArtifactActivationDisposition::SuccessorRequired)
                 }
             },
         )
@@ -707,6 +721,8 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
     let _ = generation_task.join().await;
     query_generation_authority.clear_all();
     let identity_change = identity_change_receiver.try_recv().ok();
+    let successor_required = successor_receiver.try_recv().ok();
+    let identity_handoff_requested = identity_change.is_some() || successor_required.is_some();
     let server_result = server_result.map(|_| ());
     let service_result = match (winner.0, grpc_result, provider_stream_result, server_result) {
         ("client-grpc", Ok(()), Ok(()), Ok(())) => {
@@ -722,7 +738,7 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
         (_, _, _, result) => result,
     };
     let server_result =
-        normalize_server_shutdown_for_identity_handoff(identity_change.is_some(), service_result);
+        normalize_server_shutdown_for_identity_handoff(identity_handoff_requested, service_result);
     monitor.abort();
     // Once the accept loop has stopped, all independent resident services are
     // drained concurrently. Serial draining made stop latency additive and
@@ -817,7 +833,7 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
     if let Err(error) = drain_receipt_result {
         shutdown_errors.push(format!("drainReceipt={error}"));
     }
-    let mut identity_handoff = identity_change.is_some()
+    let mut identity_handoff = identity_handoff_requested
         && !agent_semantic_client_db::runtime_server_lifecycle::operator_stopped(&state_home)
             .await?;
     if identity_handoff {

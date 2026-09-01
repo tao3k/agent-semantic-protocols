@@ -1,0 +1,40 @@
+#+title: Retired Provider Artifacts Cannot Block Runtime Admission
+#+status: accepted
+
+* Problem
+
+The installed-provider artifact document is a derived cache.  A provider may be
+removed from the canonical provider registry while an older State Home still
+contains its artifact leaf.  Treating that historical leaf as current authority
+makes an unrelated workspace fail before the Runtime can publish its endpoint.
+This was observed after =md= became an embedded Orgize document surface: the
+daemon rejected the stale =md= artifact even though Markdown is not an
+installable language provider.
+
+* Decision
+
+The canonical provider registry is the only membership authority.  Loading the
+derived installed-artifact document first verifies its schema, digest, unique
+keys, and non-empty identities.  Runtime then projects it onto the current
+registry.  A stored leaf whose language has no canonical registration is
+retired and is absent from the in-memory generation.  A stored leaf that claims
+a current language with the wrong provider identity remains a typed failure.
+
+The projected generation digest is recomputed from the retained leaves.  The
+loader does not mutate State Home, start a provider, or create a compatibility
+alias.  The next canonical artifact publication may replace the derived file.
+
+Workspace admission is evaluated only over the workspace-required provider
+closure.  Therefore an unrequired or retired provider cannot block endpoint
+publication, while a missing artifact for a required current provider still
+fails closed.
+
+* Consequences
+
+- =org= and =md= remain embedded document parser surfaces and never appear in
+  =asp install language=.
+- Runtime startup does not eagerly validate or launch every historically
+  installed provider.
+- provider-id drift for a still-registered language is never ignored.
+- acceptance must prove a stale retired leaf is projected out and a current
+  identity mismatch is rejected.

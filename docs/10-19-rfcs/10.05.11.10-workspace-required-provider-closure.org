@@ -1,0 +1,84 @@
+#+title: 10.05.11.10 Workspace-required provider closure
+#+startup: content
+
+* Decision
+
+An ASP Server workspace generation is complete over the programming languages
+required by that workspace, not over every provider known to the global
+registry.  The immutable commit remains one =CompleteGeneration= transaction;
+only its provider membership becomes workspace-scoped.
+
+The Runtime derives =requiredLanguages= from one immutable repository candidate
+snapshot and the canonical Provider Register source inventories:
+
+- a project provider is required when a declared entry marker is present;
+- a document provider is required when the same snapshot contains a path with
+  one of its declared source extensions; and
+- an explicit query demand adds its requested language to the required set and
+  therefore fails closed if that provider artifact is unavailable.
+
+The same candidate snapshot MUST be passed into provider selection and source
+collection.  Re-scanning between those phases creates a time-of-check/time-of-
+use generation split and is forbidden.
+
+* Lazy isolation
+
+For a workspace-required provider, ASP validates the registration and immutable
+artifact before starting its bounded Runtime actor.  A provider that is not in
+the required set:
+
+- is not required to be installed;
+- contributes no provider/artifact digest to the workspace generation;
+- starts no process and opens no socket;
+- owns no cache or hidden fallback; and
+- cannot block Search or Query readiness.
+
+Provider actors are keyed by workspace identity, language identity, provider
+identity, artifact digest, and registration digest.  Warm reuse is permitted
+only for an exact key.  Idle release and drain remain ASP Server lifecycle
+operations.
+
+* Identity and publication
+
+The provider closure digest commits the ordered required registrations and
+their exact artifact identities.  It is part of the generation candidate and
+therefore differs when the workspace language closure differs.  Source files,
+provider selection, parser facts, graph facts, and publication all refer to the
+same repository candidate generation.
+
+=TargetProvider= and =ExplicitOwners= remain preparation scopes; neither may
+publish a second active generation.  The sole linearization point is the
+existing =CompleteGeneration= commit for the workspace-required closure.
+
+* Failure semantics
+
+A missing artifact blocks only when its language belongs to
+=requiredLanguages= or is explicitly demanded.  The terminal is typed
+=provider-capability-artifact-missing= with workspace, language, provider, and
+candidate-generation identity.  A globally registered but unused Julia,
+Python, TypeScript, Gerbil Scheme, or Rust provider cannot make another
+workspace =query-not-ready=.
+
+Document surfaces embedded in ASP, including Org and Markdown through Orgize,
+never enter =requiredLanguages= because they are not Language Providers.
+
+* Performance contract
+
+Provider selection is one bounded pass over the immutable candidate paths and
+the small canonical registration set: =O(files + providers)= time and
+=O(required providers)= retained state.  It performs no provider launch, IPC,
+parse, graph evaluation, or schema materialization.  Warm Search/Query reads
+the committed closure without repeating this pass.
+
+* Required executable evidence
+
+- an all-Rust workspace succeeds with only =asp-rust= installed even when other
+  registrations exist;
+- adding an uninstalled =.jl= owner changes the required closure and fails
+  closed on =asp-julia= without mutating the active generation;
+- an explicit Julia query in a Julia workspace has the same failure boundary;
+- the selected providers and collection consume the same candidate-generation
+  digest;
+- replay of the same closure is single-flight and publishes one commit; and
+- cold/warm, ten sequential, and 32-concurrent receipts report provider starts,
+  candidate-snapshot work, and exact generation identity.

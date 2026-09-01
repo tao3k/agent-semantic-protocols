@@ -16,10 +16,10 @@ providers.  It still does not promote any signal to blocking severity.
 * Evidence record
 
 #+begin_example
-[software-criterion-repair-evidence] language=python provider=asp-python project=languages/python-lang-project-harness
+[software-criterion-repair-evidence] language=python provider=asp-python project=languages/asp-python
 start=compact-signal-line
 signal=control-flow.broad-linear-phase
-target=src/python_lang_project_harness/_cli_protocol.py run_protocol_cli
+target=src/asp_python/_cli_protocol.py run_protocol_cli
 repair=split the broad protocol dispatcher into ast-patch, fast-path, and harness fallback helpers
 before=compactPacketBytes=499,jsonPacketBytes=28591243,findingCount=1,qualityFindingCount=1,control-flow.broad-linear-phase=1
 after=compactPacketBytes=46,jsonPacketBytes=28608883,findingCount=0,qualityFindingCount=0
@@ -47,7 +47,7 @@ The compact output exposed:
 #+end_example
 
 Following that signal led to =run_protocol_cli= in
-=src/python_lang_project_harness/_cli_protocol.py=.  The function mixed top-level
+=src/asp_python/_cli_protocol.py=.  The function mixed top-level
 command routing, fast semantic search paths, harness fallback execution, and
 error handling in one broad linear body.  The repair introduced named helpers
 for =ast-patch=, fast protocol rendering, and harness fallback routing.  The

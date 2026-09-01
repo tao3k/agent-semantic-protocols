@@ -6,6 +6,7 @@ mod manager;
 mod manager_validation;
 mod receipt;
 mod responsibility;
+mod search_architecture_inventory;
 
 pub use agent_semantic_content_identity::{SchemaContractIdentity, schema_contract_identities};
 pub use cli::run_cli;
@@ -19,6 +20,11 @@ pub use responsibility::{
     SchemaFamily, SchemaFamilyMembershipOverrides, SchemaFamilyNamespace, SchemaReferenceDecision,
     SchemaResponsibility,
 };
+pub use search_architecture_inventory::{
+    SEARCH_ARCHITECTURE_INVENTORY_SCHEMA_ID, SEARCH_ARCHITECTURE_INVENTORY_SCHEMA_VERSION,
+    SearchArchitectureEdgeKind, SearchArchitectureFactEdge, SearchArchitectureFactInventory,
+    SearchArchitectureFactNode, SearchArchitectureInventoryError,
+};
 
 #[cfg(test)]
 #[path = "../tests/unit/provider_registry.rs"]
@@ -27,3 +33,7 @@ mod provider_registry_tests;
 #[cfg(test)]
 #[path = "../tests/unit/schema_manager.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "../tests/unit/search_architecture_inventory.rs"]
+mod search_architecture_inventory_tests;

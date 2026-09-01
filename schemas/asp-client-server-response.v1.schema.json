@@ -147,18 +147,6 @@
     },
     {
       "properties": {
-        "languageId": {"const": "md"},
-        "providerId": {"const": "asp-md"}
-      }
-    },
-    {
-      "properties": {
-        "languageId": {"const": "org"},
-        "providerId": {"const": "asp-org"}
-      }
-    },
-    {
-      "properties": {
         "languageId": {"const": "python"},
         "providerId": {"const": "asp-python"}
       }

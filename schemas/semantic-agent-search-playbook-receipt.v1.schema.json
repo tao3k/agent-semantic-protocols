@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://agent-semantic-protocols.dev/schemas/semantic-agent-search-playbook-receipt.v1.schema.json",
   "title": "ASP Search Playbook Receipt v1",
-  "description": "One agent-facing query plan over indexed lexical recall, resident Python graph reasoning, and bounded ripgrep verification. Seed products are not admitted.",
+  "description": "One agent-facing query plan over indexed lexical recall, generation-bound resident Rust graph reasoning, and bounded ripgrep verification. Python graph computation is an offline calibration producer and is not a Ready query lane. Seed products are not admitted.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -52,10 +52,10 @@
     "evidence": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["indexedLexical", "pythonGraph", "ripgrep", "correlation"],
+      "required": ["indexedLexical", "residentGraph", "ripgrep", "correlation"],
       "properties": {
         "indexedLexical": {"$ref": "#/$defs/indexedLexical"},
-        "pythonGraph": {"$ref": "#/$defs/pythonGraph"},
+        "residentGraph": {"$ref": "#/$defs/residentGraph"},
         "ripgrep": {"$ref": "#/$defs/ripgrep"},
         "correlation": {"$ref": "#/$defs/correlation"}
       }
@@ -87,10 +87,10 @@
         "laneElapsedMicros": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["indexedLexical", "pythonGraph", "ripgrep"],
+          "required": ["indexedLexical", "residentGraph", "ripgrep"],
           "properties": {
             "indexedLexical": {"type": "integer", "minimum": 0},
-            "pythonGraph": {"type": "integer", "minimum": 0},
+            "residentGraph": {"type": "integer", "minimum": 0},
             "ripgrep": {"type": "integer", "minimum": 0}
           }
         },
@@ -150,7 +150,7 @@
         "complete": {"type": "boolean"}
       }
     },
-    "pythonGraph": {
+    "residentGraph": {
       "type": "object",
       "additionalProperties": false,
       "required": ["entryOwnerIds", "entryNodeIds", "candidateOwnerIds", "closureState", "unresolvedFrontierCount"],

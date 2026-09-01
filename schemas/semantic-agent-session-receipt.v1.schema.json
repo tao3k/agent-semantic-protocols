@@ -135,7 +135,6 @@
         "searchPipeCommands": {"type": "integer", "minimum": 0},
         "queryCommands": {"type": "integer", "minimum": 0},
         "querySelectorCommands": {"type": "integer", "minimum": 0},
-        "checkCommands": {"type": "integer", "minimum": 0},
         "guideCommands": {"type": "integer", "minimum": 0},
         "directReadCommands": {"type": "integer", "minimum": 0},
         "deniedCommands": {"type": "integer", "minimum": 0},
@@ -174,7 +173,7 @@
       "properties": {
         "id": {"type": "string", "minLength": 1},
         "kind": {
-          "enum": ["search", "hook-deny", "subagent", "external-ingest", "check", "query", "guide", "other"]
+          "enum": ["search", "hook-deny", "subagent", "external-ingest", "query", "guide", "other"]
         },
         "argv": {
           "type": "array",

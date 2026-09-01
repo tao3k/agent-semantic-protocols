@@ -234,6 +234,23 @@ capability, and resident locator advance as one validated publication.  Readers
 observe either the previous complete generation or the successor complete
 generation.
 
+A request's language/provider target is a readiness constraint only.  It MUST
+NOT narrow the registry or collection scope used to build a workspace
+generation.  When a targeted Search or Query discovers that no current
+generation is admitted, the single-flight builder validates that the requested
+provider is present, then constructs =CompleteGeneration= from every applicable
+registered provider.  Publishing =TargetProvider= or a target-only registry as
+the active workspace generation is forbidden: it would let whichever language
+queries first erase every other language from the shared membership authority.
+Targeted projection remains valid only as non-active diagnostic evidence.
+
+Provider coverage ranges only over programming-language registrations.  Org
+and Markdown are embedded document surfaces and therefore contribute document
+owners to the workspace generation without contributing provider identities,
+provider artifacts, or provider processes.  A missing =asp-org= or =asp-md=
+artifact can never be a legal =query-not-ready= cause because those artifact
+authorities do not exist in the server-first architecture.
+
 For a complete source-index successor, every non-=@scope/= file-hash record
 belongs to exactly one admitted owner.  Overlay construction derives that
 membership from the successor owner set and removes orphan hashes from the
@@ -321,6 +338,25 @@ directories, reread owner source, rebuild token sets for every document, or
 launch a subprocess.  Updating an overlay owner atomically replaces that
 owner's postings so stale terms cannot remain searchable.
 
+Generation admission compiles owner paths to dense generation-local
+=OwnerId= values and compiles every normalized term to a sorted, duplicate-free
+posting list of those IDs.  The string path and full parser-produced owner
+vocabulary remain immutable generation data; they MUST NOT be copied into a
+request-local score map.  A non-exact query intersects or counts integer
+postings, maintains a deterministic bounded Top-K frontier, and materializes
+paths/digests only for the final frontier.  Full candidate-set sorting,
+per-request =HashMap<&str, score>= construction, and cloning every owner's full
+=queryKeys= vocabulary are not admitted Ready-path effects.
+
+The hit's existing =queryKeys= field carries only the bounded normalized terms
+that contributed to that hit in this query.  It is not a copy of the owner's
+complete lexical vocabulary.  The complete vocabulary remains behind the
+generation authority for graph/ripgrep planning.  This is a v1 semantic
+clarification with the existing field shape, not a second result schema.
+Correctness and the sub-millisecond Ready budget MUST hold on a cache miss;
+generation-local query memoization may accelerate exact replay but cannot be a
+latency prerequisite or freshness authority.
+
 Ripgrep is an explicit bounded coverage lane, not a recall fallback or a cache
 authority.  Runtime MUST NOT spawn =rg=, =fd=, or =exa= from the query path.
 The lane consumes output supplied by an admitted executor only when every
@@ -404,6 +440,16 @@ membership, path ranking, diversity, and a compact explanation of why each
 owner was added, retained, or removed.  It MUST return graph frontier and
 closure state explicitly.  An incomplete or stale graph is evidence for a
 different route; it is never silently treated as a complete negative result.
+
+Python graph and schema tooling runs from an exact lock-derived environment.
+Frozen resolution alone is insufficient because it may leave an extraneous
+editable distribution and its pytest/plugin entry points installed.  Every
+repository-owned Python command MUST exact-sync the declared project before
+execution.  A removed harness distribution or old module namespace is a
+Legacy authority conflict and is removed from the environment; no forwarding
+module, duplicate entry point, or compatibility import is admitted.  Python
+remains a bounded graph algorithm worker, while schema, generation, admission,
+and terminal authority stay in the Rust Runtime.
 
 Ripgrep receives only a generation-bound ordered owner set from the planner.
 It verifies exact bytes, extracts bounded match context, or proves coverage in

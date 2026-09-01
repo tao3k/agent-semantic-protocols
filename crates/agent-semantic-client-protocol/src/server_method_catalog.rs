@@ -30,11 +30,11 @@ const OWNER_SEARCH_REQUEST_SCHEMA_ID: &str =
 const OWNER_SEARCH_RESPONSE_SCHEMA_ID: &str =
     "agent.semantic-protocols.asp-client-owner-search-response";
 
-pub const GRAPH_EVALUATE_METHOD: &str = "asp.graphs.evaluate";
+pub const GRAPH_EVALUATE_METHOD: &str = "asp.graph.evaluate";
 pub const GRAPH_EVALUATE_REQUEST_SCHEMA_ID: &str =
-    "agent.semantic-protocols.semantic-graph-turbo-request";
+    "agent.semantic-protocols.semantic-graph-resident-evaluation-request";
 pub const GRAPH_EVALUATE_RESPONSE_SCHEMA_ID: &str =
-    "agent.semantic-protocols.semantic-graph-turbo-result";
+    "agent.semantic-protocols.semantic-graph-resident-evaluation-result";
 pub const GRAPH_TIMELINE_METHOD: &str = "asp.graphs.timeline";
 pub const GRAPH_TIMELINE_REQUEST_SCHEMA_ID: &str =
     "agent.semantic-protocols.asp-client-graphs-timeline-request";
@@ -46,6 +46,29 @@ pub const CANCELLATION_PROBE_REQUEST_SCHEMA_ID: &str =
     "agent.semantic-protocols.asp-client-cancellation-probe-request";
 pub const CANCELLATION_PROBE_RESPONSE_SCHEMA_ID: &str =
     "agent.semantic-protocols.asp-client-cancellation-probe-response";
+pub const WORKSPACE_GENERATION_ENSURE_READY_METHOD: &str = "asp.workspace.generation.ensure-ready";
+pub const WORKSPACE_GENERATION_ENSURE_READY_REQUEST_SCHEMA_ID: &str =
+    "agent.semantic-protocols.asp-client-workspace-generation-ensure-ready-request";
+pub const WORKSPACE_GENERATION_ENSURE_READY_RESPONSE_SCHEMA_ID: &str =
+    "agent.semantic-protocols.runtime-server-workspace-generation-admission";
+
+/// Method-derived lifecycle class shared by every ClientFrame adapter.
+/// Concrete interactive durations remain layer-local, but an adapter cannot
+/// reinterpret cold generation admission as an interactive read.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ClientDispatchClass {
+    InteractiveRead,
+    ColdGenerationAdmission,
+}
+
+#[must_use]
+pub fn classify_client_dispatch(method: &str) -> ClientDispatchClass {
+    if method == WORKSPACE_GENERATION_ENSURE_READY_METHOD {
+        ClientDispatchClass::ColdGenerationAdmission
+    } else {
+        ClientDispatchClass::InteractiveRead
+    }
+}
 pub const MULTI_AGENT_HOST_EVENT_METHOD: &str = "asp.session.host-event";
 pub const MULTI_AGENT_CHILDREN_METHOD: &str = "asp.session.children";
 pub const LIVE_CORPUS_CACHE_STATE_METHOD: &str = "asp.live-corpus.cache-state";
@@ -57,7 +80,8 @@ pub enum ServerClientRoute {
     MultiAgentChildren,
     CancellationProbe,
     LiveCorpusCacheState,
-    GraphsEvaluate,
+    WorkspaceGenerationEnsureReady,
+    GraphEvaluate,
     GraphsTimeline,
     Search,
     SourceIndexLookup,
@@ -82,7 +106,8 @@ impl ServerClientRoute {
             Self::MultiAgentChildren => "session.children",
             Self::CancellationProbe => "lifecycle.cancellation",
             Self::LiveCorpusCacheState => "live-corpus.cache-state",
-            Self::GraphsEvaluate => "graphs.evaluate",
+            Self::WorkspaceGenerationEnsureReady => "workspace.generation.ensure-ready",
+            Self::GraphEvaluate => "graph.evaluate",
             Self::GraphsTimeline => "graphs.timeline",
             Self::Search => "search",
             Self::SourceIndexLookup => "source-index.lookup",
@@ -116,8 +141,9 @@ pub fn server_client_methods(
         multi_agent_children_method(),
         cancellation_probe_method(),
         live_corpus_cache_state_method(),
+        workspace_generation_ensure_ready_method(),
         schema_bundle_method(),
-        graphs_evaluate_method(),
+        graph_evaluate_method(),
         graphs_timeline_method(),
     ]);
     methods.sort_by(|left, right| left.method.cmp(&right.method));
@@ -232,14 +258,30 @@ fn cancellation_probe_method() -> ClientMethod {
     }
 }
 
+fn workspace_generation_ensure_ready_method() -> ClientMethod {
+    ClientMethod {
+        method: WORKSPACE_GENERATION_ENSURE_READY_METHOD.to_owned(),
+        route_id: WORKSPACE_GENERATION_ENSURE_READY_METHOD.to_owned(),
+        request_schema_id: WORKSPACE_GENERATION_ENSURE_READY_REQUEST_SCHEMA_ID.to_owned(),
+        response_schema_id: WORKSPACE_GENERATION_ENSURE_READY_RESPONSE_SCHEMA_ID.to_owned(),
+        error_schema_ids: vec![ROUTE_FAILURE_SCHEMA_ID.to_owned()],
+        parameters: Vec::new(),
+        cancellable: true,
+        streaming: false,
+    }
+}
+
 pub fn server_client_catalog(
     catalog_generation: String,
     workspace_generation: String,
     transports: Vec<ClientTransport>,
     language_ids: impl IntoIterator<Item = String>,
 ) -> Result<ClientProtocolCatalog, String> {
+    // `server_client_methods` is the single authority for both language routes
+    // and shared Runtime routes.  Do not append shared methods here: doing so
+    // makes catalog construction order-dependent and turns an exact replay of
+    // the cancellation route into a duplicate declaration.
     let mut methods = server_client_methods(language_ids)?;
-    methods.push(cancellation_probe_method());
     methods.sort_by(|left, right| left.method.cmp(&right.method));
     let catalog = ClientProtocolCatalog {
         schema_id: CLIENT_CATALOG_SCHEMA_ID.to_owned(),
@@ -281,7 +323,7 @@ pub fn resolve_server_client_method_owner(
 ) -> Result<ResolvedServerClientMethod, String> {
     if method == GRAPH_EVALUATE_METHOD {
         return Ok(ResolvedServerClientMethod::Server(
-            ServerClientRoute::GraphsEvaluate,
+            ServerClientRoute::GraphEvaluate,
         ));
     }
     if method == AGENT_SESSION_REGISTER_METHOD {
@@ -302,6 +344,11 @@ pub fn resolve_server_client_method_owner(
     if method == LIVE_CORPUS_CACHE_STATE_METHOD {
         return Ok(ResolvedServerClientMethod::Server(
             ServerClientRoute::LiveCorpusCacheState,
+        ));
+    }
+    if method == WORKSPACE_GENERATION_ENSURE_READY_METHOD {
+        return Ok(ResolvedServerClientMethod::Server(
+            ServerClientRoute::WorkspaceGenerationEnsureReady,
         ));
     }
     if method == GRAPH_TIMELINE_METHOD {
@@ -341,7 +388,7 @@ fn route_from_suffix(suffix: &str) -> Option<ServerClientRoute> {
     }
 }
 
-fn graphs_evaluate_method() -> ClientMethod {
+fn graph_evaluate_method() -> ClientMethod {
     ClientMethod {
         method: GRAPH_EVALUATE_METHOD.to_owned(),
         route_id: GRAPH_EVALUATE_METHOD.to_owned(),
@@ -354,18 +401,12 @@ fn graphs_evaluate_method() -> ClientMethod {
             required_string("protocolId"),
             required_string("protocolVersion"),
             required_string("packetKind"),
+            required_string("languageId"),
             required_string("surface"),
-            required("sourceSnapshot", ClientParameterType::Json),
-            required("workspaceGeneration", ClientParameterType::Json),
             required("queryTerms", ClientParameterType::StringArray),
             required_string("profile"),
-            required_string("algorithm"),
             required("seedIds", ClientParameterType::StringArray),
-            required("budget", ClientParameterType::UnsignedInteger),
-            // The shared schema's anyOf(graph, graphs) constraint remains the
-            // payload authority; catalog metadata advertises both branches.
-            optional("graph", ClientParameterType::Json),
-            optional("graphs", ClientParameterType::Json),
+            required("budget", ClientParameterType::Json),
         ],
         cancellable: true,
         streaming: false,

@@ -13,14 +13,14 @@ The repository already has a Gerbil Scheme provider with extension, parser,
 search, and schema surfaces. The current POO support is useful but still mostly
 provider-local:
 
-- `languages/gerbil-scheme-language-project-harness/src/extensions/poo.ss`
+- `languages/asp-gerbil-scheme/src/extensions/poo.ss`
   owns POO extension activation, direct pattern evidence, and several large
   hand-written pattern specs.
-- `languages/gerbil-scheme-language-project-harness/src/parser/poo.ss`
+- `languages/asp-gerbil-scheme/src/parser/poo.ss`
   extracts parser-owned facts for `defclass`, `.defclass`, `defmethod`,
   `.defmethod`, `defgeneric`, `.defgeneric`, `defprotocol`, `.defprotocol`,
   and `.def`.
-- `languages/gerbil-scheme-language-project-harness/src/extensions/model.ss`
+- `languages/asp-gerbil-scheme/src/extensions/model.ss`
   defines the current package extension fact model.
 - `schemas/semantic-extension-pattern-mapping.v1.schema.json` and
   `schemas/semantic-search-packet.v1.schema.json` already provide shared

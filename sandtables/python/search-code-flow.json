@@ -16,7 +16,7 @@
     "real-trigger"
   ],
   "workdir": {
-    "relative": "languages/python-lang-project-harness"
+    "relative": "languages/asp-python"
   },
   "budgets": {
     "maxCommands": 10,
@@ -182,7 +182,7 @@
         "owner",
         "tests",
         "--owner",
-        "src/python_lang_project_harness/__init__.py",
+        "src/asp_python/__init__.py",
         "--workspace",
         "."
       ],
@@ -195,10 +195,10 @@
           "[search-lexical]",
           "querySet=2",
           "selector=lexical-set",
-          "scopeOwner=src/python_lang_project_harness/__init__.py",
+          "scopeOwner=src/asp_python/__init__.py",
           "pipes=owner,tests",
           "source=parser-visible-source",
-          "tests:src/python_lang_project_harness/__init__.py"
+          "tests:src/asp_python/__init__.py"
         ],
         "maxStdoutLinesWarn": 24,
         "maxStdoutBytesWarn": 12000,
@@ -245,7 +245,7 @@
         "stdoutContains": [
           "[search-lexical]",
           "querySet=11",
-          "owner:path(src/python_lang_project_harness/_project_policy_layout.py)",
+          "owner:path(src/asp_python/_project_policy_layout.py)",
           "legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next",
           "G>{",
           "rank=",
@@ -291,7 +291,7 @@
           "querySet.0.value": "_src_layout_findings",
           "querySet.1.value": "scope.source_paths",
           "queryCoverage.0.value": "_src_layout_findings",
-          "searchSynthesis.seeds.0.target": "src/python_lang_project_harness/_project_policy_layout.py"
+          "searchSynthesis.seeds.0.target": "src/asp_python/_project_policy_layout.py"
         },
         "maxStdoutLinesWarn": 12,
         "maxStdoutBytesWarn": 20000,

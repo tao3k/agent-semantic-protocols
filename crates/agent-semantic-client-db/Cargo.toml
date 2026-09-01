@@ -92,7 +92,6 @@ required-features = ["turso-sync-server-e2e"]
 [dev-dependencies]
 criterion = { workspace = true }
 gix = { workspace = true }
-asp-rust-project-harness-policy.workspace = true
 tempfile.workspace = true
 tokio = { workspace = true }
 

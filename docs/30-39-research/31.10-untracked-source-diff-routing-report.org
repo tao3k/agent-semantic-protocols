@@ -20,21 +20,21 @@ provider, not through a raw patch dump.
 The provider query was already sufficient for the target class:
 
 #+begin_src shell
-asp-python query src/python_lang_project_harness/_python_compact.py --term CompactPythonProjectionNode --code languages/python-lang-project-harness
+asp-python query src/asp_python/_python_compact.py --term CompactPythonProjectionNode --code languages/asp-python
 #+end_src
 
 It returned compact code for the class and its method body.  The owner search
 also produced a useful seed packet:
 
 #+begin_src shell
-asp-python search owner src/python_lang_project_harness/_python_compact.py items --view seeds languages/python-lang-project-harness
+asp-python search owner src/asp_python/_python_compact.py items --view seeds languages/asp-python
 #+end_src
 
 The risky follow-up was the agent reasoning that a full no-index diff was needed
 because the file was untracked:
 
 #+begin_src shell
-git diff --no-index /dev/null languages/python-lang-project-harness/src/python_lang_project_harness/_python_compact.py
+git diff --no-index /dev/null languages/asp-python/src/asp_python/_python_compact.py
 #+end_src
 
 That command would emit the full source content as a patch.  For hook policy it
@@ -96,7 +96,7 @@ Owner packets should distinguish parser-visible untracked files from tracked
 modules without changing the route:
 
 #+begin_example
-|owner src/python_lang_project_harness/_python_compact.py role=source source=parser-visible-untracked
+|owner src/asp_python/_python_compact.py role=source source=parser-visible-untracked
 #+end_example
 
 This helps the agent understand why Git diff is not the semantic source of

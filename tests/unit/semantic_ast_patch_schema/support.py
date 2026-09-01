@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from jsonschema import Draft202012Validator
+from referencing import Registry, Resource
 
 
 _ROOT = Path(__file__).resolve().parents[3]
@@ -14,6 +15,16 @@ _ROOT = Path(__file__).resolve().parents[3]
 
 def _load_schema(name: str) -> dict[str, Any]:
     return json.loads((_ROOT / "schemas" / name).read_text(encoding="utf-8"))
+
+
+def _local_schema_registry() -> Registry[Any]:
+    registry: Registry[Any] = Registry()
+    for path in sorted((_ROOT / "schemas").glob("*.schema.json")):
+        schema = json.loads(path.read_text(encoding="utf-8"))
+        schema_id = schema.get("$id")
+        if isinstance(schema_id, str):
+            registry = registry.with_resource(schema_id, Resource.from_contents(schema))
+    return registry
 
 
 def minimal_ast_patch_request() -> dict[str, Any]:
@@ -88,11 +99,14 @@ def minimal_ast_patch_receipt() -> dict[str, Any]:
             "--from-hook direct-source-read --selector src/render.ts:10:43 "
             "--code .; fallback: Codex apply_patch only when "
             "mutationSource=codex-text-fallback or receipt.requiresCodexApplyPatch=true; "
-            "check: asp typescript check --changed ."
+            "consume the dependency-owned TypeScript policy receipt"
         ),
     }
 
 
 def schema_errors(schema_name: str, packet: dict[str, Any]) -> list[str]:
-    validator = Draft202012Validator(_load_schema(schema_name))
+    validator = Draft202012Validator(
+        _load_schema(schema_name),
+        registry=_local_schema_registry(),
+    )
     return [error.message for error in validator.iter_errors(packet)]

@@ -71,8 +71,8 @@ def _receipt_for(language: str) -> dict[str, object]:
     roots = {
         "rust": ROOT / "languages/asp-rust/schemas",
         "typescript": ROOT / "languages/typescript-lang-project-harness/schemas",
-        "python": ROOT / "languages/python-lang-project-harness/schemas",
-        "julia": ROOT / "languages/JuliaLangProjectHarness.jl/schemas",
+        "python": ROOT / "languages/asp-python/schemas",
+        "julia": ROOT / "languages/AspJulia.jl/schemas",
         "gerbil-scheme": ROOT / "languages/gerbil-scheme-language-project-harness/schemas",
         "org": ROOT / "languages/orgize/provider/org/schemas",
         "md": ROOT / "languages/orgize/provider/md/schemas",

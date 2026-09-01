@@ -21,7 +21,7 @@ LANGUAGE_RELEASE_WORKFLOWS = {
             "aarch64-apple-darwin",
         },
     },
-    "languages/python-lang-project-harness": {
+    "languages/asp-python": {
         "binary": "asp-python",
         "darwin_os": "macos-latest",
         "targets": {
@@ -29,7 +29,7 @@ LANGUAGE_RELEASE_WORKFLOWS = {
             "aarch64-apple-darwin",
         },
     },
-    "languages/JuliaLangProjectHarness.jl": {
+    "languages/AspJulia.jl": {
         "binary": "asp-julia",
         "darwin_os": "macos-14",
         "targets": {

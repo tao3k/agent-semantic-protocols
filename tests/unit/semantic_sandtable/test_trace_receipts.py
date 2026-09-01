@@ -19,7 +19,6 @@ def test_build_receipt_from_jsonl_and_text_trace(tmp_path: Path) -> None:
     trace_path.write_text(
         "\n".join(
             [
-                json.dumps(_frontier_event()),
                 json.dumps(_query_event()),
                 (
                     "$ asp rust query --from-hook direct-source-read "
@@ -48,12 +47,10 @@ def test_build_receipt_from_jsonl_and_text_trace(tmp_path: Path) -> None:
     assert receipt["summary"] == _summary()
     commands = receipt["commands"]
     assert isinstance(commands, list)
-    assert commands[0]["kind"] == "check"
-    assert commands[0]["next"] == [TEST_BLOCK]
-    assert commands[1]["id"] == "query-writeback"
-    assert commands[1]["argv"] == _query_argv()
-    assert commands[2]["id"] == "command-3"
-    assert commands[2]["metrics"] == _zero_metrics()
+    assert commands[0]["id"] == "query-writeback"
+    assert commands[0]["argv"] == _query_argv()
+    assert commands[1]["id"] == "command-2"
+    assert commands[1]["metrics"] == _zero_metrics()
 
 
 def test_sandtable_receipt_accepts_agent_session_link() -> None:
@@ -101,16 +98,6 @@ def test_sandtable_receipt_accepts_agent_session_link() -> None:
     validate_receipt_consistency(receipt)
 
 
-def _frontier_event() -> dict[str, object]:
-    return {
-        "id": "failure-frontier",
-        "kind": "check",
-        "argv": ["asp", "rust", "check", "changed", "--view", "seeds", "."],
-        "next": [TEST_BLOCK],
-        "metrics": {"elapsedMs": 5, "stdoutBytes": 180, "stderrBytes": 0},
-    }
-
-
 def _query_event() -> dict[str, object]:
     return {
         "eventId": "query/writeback",
@@ -141,11 +128,11 @@ def _query_argv() -> list[str]:
 
 def _summary() -> dict[str, int]:
     return {
-        "commandCount": 3,
-        "stdoutBytes": 300,
+        "commandCount": 2,
+        "stdoutBytes": 120,
         "stderrBytes": 0,
-        "elapsedMs": 8,
-        "aspCommands": 3,
+        "elapsedMs": 3,
+        "aspCommands": 2,
         "searchCommands": 0,
         "queryCommands": 2,
         "directReadCommands": 2,

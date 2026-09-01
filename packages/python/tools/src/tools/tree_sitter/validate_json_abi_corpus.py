@@ -44,7 +44,7 @@ CORPUS_CONFIGS = (
     CorpusConfig(
         language="python",
         corpus_dir=REPO_ROOT
-        / "languages/python-lang-project-harness/tree-sitter/tree-sitter-python/query-corpus",
+        / "languages/asp-python/tree-sitter/tree-sitter-python/query-corpus",
         extension="py",
     ),
 )

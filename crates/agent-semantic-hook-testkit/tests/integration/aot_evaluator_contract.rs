@@ -608,7 +608,7 @@ fn git_subcommands_without_a_declared_reader_argument_do_not_inherit_read() {
 #[test]
 fn static_reader_catalog_routes_wrapped_gerbil_sed_to_asp() {
     let generation = canonical_generation();
-    let command = ".devenv/devenv-profile-exec sed -n '130,180p;250,275p;318,365p' languages/gerbil-scheme-language-project-harness/src/language/evidence.ss";
+    let command = ".devenv/devenv-profile-exec sed -n '130,180p;250,275p;318,365p' languages/asp-gerbil-scheme/src/language/evidence.ss";
     let payload = serde_json::json!({
         "session_id": "testkit-static-gerbil-sed",
         "cwd": ".",

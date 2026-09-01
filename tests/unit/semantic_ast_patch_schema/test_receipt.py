@@ -98,7 +98,7 @@ def test_ast_patch_receipt_schema_accepts_provider_ast_apply_receipt() -> None:
         "changedRanges": ["src/lib.rs:1:3"],
         "notes": ["Rust provider reparsed and formatted the replacement"],
     }
-    receipt["next"] = "provider apply completed; check: asp rust check --changed ."
+    receipt["next"] = "provider apply completed; consume the dependency-owned Rust policy receipt"
 
     assert schema_errors("semantic-ast-patch-receipt.v1.schema.json", receipt) == []
 
@@ -149,6 +149,6 @@ def test_ast_patch_receipt_schema_accepts_provider_native_owner_split() -> None:
         "changedRanges": ["src/lib.rs:7:15", "src/split.rs:1:9"],
         "notes": ["provider moved parser-selected Rust items without source hunks"],
     }
-    receipt["next"] = "provider apply completed; check: asp rust check --changed ."
+    receipt["next"] = "provider apply completed; consume the dependency-owned Rust policy receipt"
 
     assert schema_errors("semantic-ast-patch-receipt.v1.schema.json", receipt) == []

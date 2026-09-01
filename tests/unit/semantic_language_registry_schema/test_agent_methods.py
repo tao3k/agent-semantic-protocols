@@ -37,8 +37,8 @@ def test_language_registration_accepts_provider_command_prefix() -> None:
     language["binary"] = "asp-julia"
     language["providerCommandPrefix"] = [
         "julia",
-        "--project=languages/JuliaLangProjectHarness.jl",
-        "languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl",
+        "--project=languages/AspJulia.jl",
+        "languages/AspJulia.jl/bin/asp-julia.jl",
     ]
     language["namespace"] = "agent.semantic-protocols.languages.julia.asp-julia"
 

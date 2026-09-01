@@ -6,7 +6,8 @@ use std::path::{Path, PathBuf};
 
 use serde_json::Value;
 
-const GRAPH_TURBO_REQUEST_SCHEMA_ID: &str = "agent.semantic-protocols.semantic-graph-turbo-request";
+const RESIDENT_GRAPH_EVALUATION_REQUEST_SCHEMA_ID: &str =
+    "agent.semantic-protocols.semantic-graph-resident-evaluation-request";
 
 pub(crate) async fn run_graph_command(args: &[String]) -> Result<(), String> {
     let Some(command) = args.first().map(String::as_str) else {
@@ -64,10 +65,10 @@ async fn run_graph_render_command(args: &[String]) -> Result<(), String> {
     }
     let packet_bytes = read_packet_bytes(&request.packet_path)?;
     let packet = parse_packet(&packet_bytes)?;
-    if is_graph_turbo_request(&packet) {
+    if is_resident_graph_evaluation_request(&packet) {
         let project_root = std::env::current_dir()
             .map_err(|error| format!("failed to resolve graph project root: {error}"))?;
-        let ranked_packet = rank_graph_turbo_packet(&project_root, &packet_bytes).await?;
+        let ranked_packet = evaluate_resident_graph_packet(&project_root, &packet_bytes).await?;
         let mut projection_request =
             agent_semantic_search_projection::SearchProjectionRequestV1::new(
                 "ranked-frontier",
@@ -143,33 +144,35 @@ fn parse_packet(contents: &[u8]) -> Result<Value, String> {
     serde_json::from_slice(contents).map_err(|error| format!("invalid graph packet JSON: {error}"))
 }
 
-fn is_graph_turbo_request(packet: &Value) -> bool {
-    packet.get("schemaId").and_then(Value::as_str) == Some(GRAPH_TURBO_REQUEST_SCHEMA_ID)
-        || packet.get("packetKind").and_then(Value::as_str) == Some("graph-turbo-request")
+fn is_resident_graph_evaluation_request(packet: &Value) -> bool {
+    packet.get("schemaId").and_then(Value::as_str)
+        == Some(RESIDENT_GRAPH_EVALUATION_REQUEST_SCHEMA_ID)
+        || packet.get("packetKind").and_then(Value::as_str)
+            == Some("resident-graph-evaluation-request")
 }
 
-pub(super) async fn rank_graph_turbo_packet(
+pub(super) async fn evaluate_resident_graph_packet(
     project_root: &Path,
     packet_bytes: &[u8],
-) -> Result<agent_semantic_search_projection::GraphTurboResultPacketV1, String> {
+) -> Result<agent_semantic_search_projection::ResidentGraphEvaluationResultV1, String> {
     let state_home = agent_semantic_runtime::state_core::resolve_state_home()?;
     let client = crate::AspClient::new(state_home, project_root);
-    let request = decode_graph_turbo_request(packet_bytes)?;
-    client.graphs_evaluate(request.into_value()).await
+    let request = decode_resident_graph_evaluation_request(packet_bytes)?;
+    client.graph_evaluate(request.into_value()).await
 }
 
-fn decode_graph_turbo_request(
+fn decode_resident_graph_evaluation_request(
     packet_bytes: &[u8],
-) -> Result<agent_semantic_search_projection::GraphTurboEvaluationRequest, String> {
+) -> Result<agent_semantic_search_projection::ResidentGraphEvaluationRequestV1, String> {
     let message = serde_json::from_slice::<serde_json::Value>(packet_bytes)
-        .map_err(|error| format!("failed to decode typed Graph Turbo request: {error}"))?;
-    agent_semantic_search_projection::GraphTurboEvaluationRequest::from_value(message)
-        .map_err(|error| format!("invalid Graph Turbo rank intent: {error}"))
+        .map_err(|error| format!("failed to decode resident graph request: {error}"))?;
+    agent_semantic_search_projection::ResidentGraphEvaluationRequestV1::from_value(message)
+        .map_err(|error| format!("invalid resident graph evaluation intent: {error}"))
 }
 
 #[cfg(test)]
-#[path = "../../tests/unit/command/graph_turbo_request.rs"]
-mod graph_turbo_request_tests;
+#[path = "../../tests/unit/command/resident_graph_evaluation_request.rs"]
+mod resident_graph_evaluation_request_tests;
 
 fn flag_value(args: &[String], flag: &str) -> Option<String> {
     args.windows(2)

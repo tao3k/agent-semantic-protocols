@@ -46,18 +46,6 @@ pub enum RuntimeSearchServiceRequest {
         cancellation: crate::runtime_generation_cancellation::GenerationCancellation,
         response: oneshot::Sender<Result<Vec<u8>, String>>,
     },
-    GraphsEvaluate {
-        project_root: PathBuf,
-        workspace_identity: String,
-        generation_digest: String,
-        source_root_digest: String,
-        generation_token: u64,
-        graph_generation_digest: String,
-        graph_open_payload: std::sync::Arc<Value>,
-        request_id: String,
-        payload: Value,
-        response: oneshot::Sender<Result<Value, String>>,
-    },
     GraphsTimeline {
         project_root: PathBuf,
         request_id: String,
@@ -223,49 +211,9 @@ impl RuntimeSearchServiceHandle {
         .await
     }
 
-    /// Evaluate through the one Runtime Server-owned ASP Python Graphs
-    /// process/session. The request is deliberately generation-bound; callers
-    /// cannot provide a second transport or process authority.
-    pub async fn graphs_evaluate(
-        &self,
-        project_root: PathBuf,
-        workspace_identity: String,
-        generation_digest: String,
-        source_root_digest: String,
-        generation_token: u64,
-        graph_generation_digest: String,
-        graph_open_payload: std::sync::Arc<Value>,
-        request_id: String,
-        payload: Value,
-    ) -> Result<Value, String> {
-        let (response, receipt) = oneshot::channel();
-        self.sender
-            .send(RuntimeSearchServiceRequest::GraphsEvaluate {
-                project_root,
-                workspace_identity,
-                generation_digest,
-                source_root_digest,
-                generation_token,
-                graph_generation_digest,
-                graph_open_payload,
-                request_id,
-                payload,
-                response,
-            })
-            .await
-            .map_err(|_| {
-                "Runtime search service is not accepting graph evaluation requests".to_owned()
-            })?;
-        self.await_receipt(
-            receipt,
-            "graphs-evaluate",
-            "Runtime search service dropped the graph evaluation response",
-        )
-        .await
-    }
-
-    /// Submit a history/timeline packet through the same ASP Server-owned
-    /// `asp-python-graphs` process as graph evaluation.
+    /// Submit an explicitly requested offline history/timeline packet through
+    /// the ASP Server-owned `asp-python-graphs` process. Ready Search/Query
+    /// graph evaluation never enters this service.
     pub async fn graphs_timeline(
         &self,
         project_root: PathBuf,

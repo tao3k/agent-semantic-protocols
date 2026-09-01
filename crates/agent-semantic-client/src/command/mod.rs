@@ -48,4 +48,3 @@ pub(in crate::command) use protocol_binary::ProtocolBinaryInstallPlan;
 pub(in crate::command) use protocol_version::{
     protocol_version_line, run_protocol_version_command,
 };
-pub mod search_router_graph_state;

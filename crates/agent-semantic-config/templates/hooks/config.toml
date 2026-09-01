@@ -56,19 +56,19 @@ sourceRootAny = ["languages/typescript-lang-project-harness"]
 languageId = "python"
 providerId = "asp-python"
 extensionAny = ["py", "pyi"]
-sourceRootAny = ["languages/python-lang-project-harness"]
+sourceRootAny = ["languages/asp-python"]
 
 [profiles.julia]
 languageId = "julia"
 providerId = "asp-julia"
 extensionAny = ["jl"]
-sourceRootAny = ["languages/JuliaLangProjectHarness.jl"]
+sourceRootAny = ["languages/AspJulia.jl"]
 
 [profiles.gerbil-scheme]
 languageId = "gerbil-scheme"
 providerId = "asp-gerbil-scheme"
 extensionAny = ["ss", "ssi", "scm", "sld"]
-sourceRootAny = ["languages/gerbil-scheme-language-project-harness"]
+sourceRootAny = ["languages/asp-gerbil-scheme"]
 
 [profiles.org]
 languageId = "org"

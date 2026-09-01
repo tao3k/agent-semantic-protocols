@@ -6,6 +6,27 @@ inductive ProjectionMode where
   | seeds
   deriving DecidableEq, Repr
 
+inductive CollectionScope where
+  | completeGeneration
+  | targeted
+  deriving DecidableEq, Repr
+
+inductive AdmissionPhase where
+  | queued
+  | building
+  | ready
+  | failed
+  | cancelled
+  deriving DecidableEq, Repr
+
+structure AdmissionReceipt where
+  attempt : Nat
+  phase : AdmissionPhase
+  scope : CollectionScope
+  commitGeneration : Option Nat
+  enqueueAccepted : Bool
+  deriving DecidableEq, Repr
+
 structure RuntimeServer where
   healthy : Bool
   runtimeGeneration : Nat
@@ -48,6 +69,21 @@ def exactQueryAdmitted
     workspace.activeGeneration = some generation ∧
     workspace.activeRootDigest = some workspace.currentRootDigest ∧
     projectionAvailable workspace mode = true
+
+def attemptTerminalFor (receipt : AdmissionReceipt) (expectedAttempt : Nat) : Prop :=
+  receipt.attempt = expectedAttempt ∧
+    (receipt.phase = .ready ∨ receipt.phase = .failed ∨ receipt.phase = .cancelled)
+
+def queryAttemptAdmitted
+    (workspace : WorkspacePublication)
+    (mode : ProjectionMode)
+    (expectedAttempt : Nat)
+    (receipt : AdmissionReceipt) : Prop :=
+  attemptTerminalFor receipt expectedAttempt ∧
+    receipt.phase = .ready ∧
+    receipt.scope = .completeGeneration ∧
+    receipt.commitGeneration = workspace.activeGeneration ∧
+    exactQueryAdmitted workspace mode
 
 def publishCanonicalGeneration
     (workspace : WorkspacePublication) (generation : Nat) : WorkspacePublication :=
@@ -125,6 +161,49 @@ theorem canonicalPublicationAdmitsEveryProjection
     exactQueryAdmitted (publishCanonicalGeneration workspace generation) mode := by
   refine ⟨generation, rfl, rfl, ?_⟩
   cases mode <;> rfl
+
+theorem queuedSnapshotIsNotReadBarrier
+    (workspace : WorkspacePublication) (mode : ProjectionMode)
+    (attempt : Nat) (accepted : Bool) :
+    ¬ queryAttemptAdmitted workspace mode attempt {
+      attempt := attempt
+      phase := .queued
+      scope := .completeGeneration
+      commitGeneration := none
+      enqueueAccepted := accepted
+    } := by
+  intro admitted
+  exact AdmissionPhase.noConfusion admitted.2.1
+
+theorem targetedPublicationCannotAdmitRead
+    (workspace : WorkspacePublication) (mode : ProjectionMode)
+    (attempt generation : Nat) (accepted : Bool) :
+    ¬ queryAttemptAdmitted workspace mode attempt {
+      attempt := attempt
+      phase := .ready
+      scope := .targeted
+      commitGeneration := some generation
+      enqueueAccepted := accepted
+    } := by
+  intro admitted
+  exact CollectionScope.noConfusion admitted.2.2.1
+
+theorem replayedReadyTerminalDoesNotRequireEnqueueAccepted
+    (workspace : WorkspacePublication) (mode : ProjectionMode)
+    (attempt generation : Nat) :
+    queryAttemptAdmitted
+      (publishCanonicalGeneration workspace generation)
+      mode
+      attempt
+      {
+        attempt := attempt
+        phase := .ready
+        scope := .completeGeneration
+        commitGeneration := some generation
+        enqueueAccepted := false
+      } := by
+  refine ⟨⟨rfl, Or.inl rfl⟩, rfl, rfl, rfl, ?_⟩
+  exact canonicalPublicationAdmitsEveryProjection workspace generation mode
 
 theorem workspaceRepairPreservesAgentAuthority
     (state : SystemState) (generation : Nat) :

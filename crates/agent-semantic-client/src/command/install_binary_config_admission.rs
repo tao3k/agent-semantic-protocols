@@ -84,15 +84,7 @@ pub(super) fn retire_legacy_hook_generation_pointer(
 }
 
 async fn validate_hook_binary_candidate_identity(candidate: &Path) -> Result<(), String> {
-    let expected = agent_semantic_hook::aot_compiler::compile_embedded_hook_policy_bundle()
-        .and_then(|bundle| {
-            serde_json::from_slice::<serde_json::Value>(&bundle)
-                .map_err(|error| format!("decode embedded Hook policy identity: {error}"))
-        })?
-        .get("generationDigest")
-        .and_then(serde_json::Value::as_str)
-        .map(str::to_owned)
-        .ok_or_else(|| "embedded Hook policy identity is missing its digest".to_owned())?;
+    let expected = agent_semantic_hook::aot_compiler::embedded_hook_policy_content_digest()?;
     let mut command = tokio::process::Command::new(candidate);
     command
         .arg("--identity")

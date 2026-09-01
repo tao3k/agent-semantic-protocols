@@ -1,5 +1,7 @@
 use asp_rust_project_harness_policy::{
-    asp_workspace_member_policies, validate_asp_rust_project_harness_member_manifest,
+    ASP_RUST_WORKSPACE_BUILD_PACKAGE_COUNT, ASP_RUST_WORKSPACE_BUILD_RECEIPT_DIGEST,
+    ASP_RUST_WORKSPACE_POLICY_CATALOG_DIGEST, asp_workspace_member_policies,
+    validate_asp_rust_project_harness_member_manifest,
 };
 
 #[test]
@@ -31,7 +33,7 @@ fn central_policy_registry_contains_migrated_member_crates() {
 }
 
 #[test]
-fn every_member_uses_the_constant_time_build_contract() {
+fn every_member_policy_has_a_constant_time_manifest_contract() {
     let repository_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     for policy in asp_workspace_member_policies() {
         let receipt = validate_asp_rust_project_harness_member_manifest(
@@ -42,6 +44,48 @@ fn every_member_uses_the_constant_time_build_contract() {
         assert_eq!(receipt.package_name, policy.package_name);
         assert_eq!(receipt.policy_digest, policy.contract_digest());
     }
+}
+
+#[test]
+fn real_asp_workspace_uses_one_shared_cargo_build_entrypoint() {
+    let repository_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    for policy in asp_workspace_member_policies()
+        .iter()
+        .filter(|policy| policy.package_name != "orgize")
+    {
+        let manifest =
+            std::fs::read_to_string(repository_root.join(policy.crate_root).join("Cargo.toml"))
+                .unwrap_or_else(|error| panic!("{} manifest: {error}", policy.package_name));
+        assert!(
+            manifest.contains("[build-dependencies]")
+                && manifest.contains("asp-rust-project-harness-policy"),
+            "{} must share the Cargo Build Support unit",
+            policy.package_name
+        );
+        let conventional_build = repository_root.join(policy.crate_root).join("build.rs");
+        if conventional_build.is_file() {
+            let source = std::fs::read_to_string(&conventional_build)
+                .unwrap_or_else(|error| panic!("read {}: {error}", conventional_build.display()));
+            assert!(
+                !source.contains("assert_asp_rust_project_harness_member_policy_from_env"),
+                "{} kept a package-local policy entrypoint",
+                policy.package_name
+            );
+        }
+    }
+    let hook_build = std::fs::read_to_string(
+        repository_root.join("crates/agent-semantic-hook/build-support/main.rs"),
+    )
+    .expect("read Hook build support");
+    assert!(!hook_build.contains("assert_asp_rust_project_harness_member_policy_from_env"));
+    assert!(ASP_RUST_WORKSPACE_BUILD_RECEIPT_DIGEST.starts_with("blake3-256:"));
+    assert!(ASP_RUST_WORKSPACE_POLICY_CATALOG_DIGEST.starts_with("blake3-256:"));
+    assert!(
+        ASP_RUST_WORKSPACE_BUILD_PACKAGE_COUNT
+            .parse::<usize>()
+            .expect("workspace package count")
+            >= asp_workspace_member_policies().len() - 1
+    );
 }
 
 #[test]

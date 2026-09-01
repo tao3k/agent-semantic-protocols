@@ -530,7 +530,7 @@ languages/asp-rust/
         declarations.txt
         imports-macros-cfg.txt
 
-languages/python-lang-project-harness/
+languages/asp-python/
   tree-sitter/
     tree-sitter-python/
       grammar-profile.json

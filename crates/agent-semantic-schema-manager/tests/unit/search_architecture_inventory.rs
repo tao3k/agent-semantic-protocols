@@ -21,15 +21,19 @@ fn neutral_fact_inventory_is_canonical_and_content_addressed() {
         vec!["client/default".to_owned(), "client/default".to_owned()],
         vec!["generated-client".to_owned()],
         vec![
-            node("old-fallback", "legacy-client-fallback", &["retry-policy"]),
+            node(
+                "retired-fallback",
+                "retired-client-fallback",
+                &["retry-policy"],
+            ),
             node("generated-client", "generated-client", &["frame-codec"]),
         ],
         vec![SearchArchitectureFactEdge {
             source_node_id: "generated-client".to_owned(),
-            target_node_id: "old-fallback".to_owned(),
+            target_node_id: "retired-fallback".to_owned(),
             kind: SearchArchitectureEdgeKind::RustReexport,
             enabled: true,
-            evidence_selector: "rust://fixture#item/reexport/old-fallback".to_owned(),
+            evidence_selector: "rust://fixture#item/reexport/retired-fallback".to_owned(),
         }],
     )
     .expect("canonical inventory");
@@ -44,17 +48,17 @@ fn neutral_fact_inventory_is_canonical_and_content_addressed() {
     assert_eq!(first, second);
     assert!(first.inventory_digest.starts_with("blake3-256:"));
     assert_eq!(first.nodes[0].node_id, "generated-client");
-    assert_eq!(first.nodes[1].declared_owner, "legacy-client-fallback");
+    assert_eq!(first.nodes[1].declared_owner, "retired-client-fallback");
 }
 
 #[test]
-fn neutral_fact_inventory_does_not_decide_whether_an_owner_is_legacy() {
+fn neutral_fact_inventory_does_not_classify_owner_lifecycle() {
     let inventory = SearchArchitectureFactInventory::from_facts(
         vec![],
         vec!["old-path".to_owned()],
         vec![node(
             "old-path",
-            "legacy-graph-turbo-executable",
+            "retired-executable-fixture",
             &["generation-authority"],
         )],
         vec![],
@@ -63,7 +67,7 @@ fn neutral_fact_inventory_does_not_decide_whether_an_owner_is_legacy() {
 
     assert_eq!(
         inventory.nodes[0].declared_owner,
-        "legacy-graph-turbo-executable"
+        "retired-executable-fixture"
     );
     assert_eq!(
         inventory.nodes[0].capability_claims,

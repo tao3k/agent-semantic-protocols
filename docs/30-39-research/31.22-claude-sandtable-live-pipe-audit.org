@@ -1117,13 +1117,13 @@ maps existing JuliaSyntax-derived =JuliaTypeSyntax.field_facts= into =field=,
 =Dict= as =map=, =Set= as =set=, =Tuple= as =tuple=, and =NamedTuple= as
 =record=.  After rebuilding the compiled =asp-julia= target used by
 the local =.bin= facade, the real command =asp julia search pipe 'Vector
-collection fields' --view seeds languages/JuliaLangProjectHarness.jl= surfaced
+collection fields' --view seeds languages/AspJulia.jl= surfaced
 parser-owned field nodes before lexical item matches, including
 =F=field:mutable-struct-field(tags: Vector{String})=,
 =C=collection:family(array)=, and =Y=type:field-type(Vector{JuliaBindingSyntax})=.
 The same smoke verified workspace-aware command projection: provider-local
 selectors such as =src/cli.jl:1:17= are emitted with
-=--code languages/JuliaLangProjectHarness.jl=, while workspace-relative
+=--code languages/AspJulia.jl=, while workspace-relative
 selectors continue to use =--code .=.
 
 The 2026-06-07 validation boundary is explicit.  Rust provider tests pass

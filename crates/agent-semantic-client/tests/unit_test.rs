@@ -14,12 +14,8 @@ mod ast_patch;
 mod codex;
 #[path = "unit/codex_plugin_install.rs"]
 mod codex_plugin_install;
-#[path = "unit/command/ascent_search_router_graph_state.rs"]
-mod command_ascent_search_router_graph_state;
 #[path = "unit/command/dispatch_agent_session_policy.rs"]
 mod command_dispatch_agent_session_policy;
-#[path = "unit/command/search_router_graph_state.rs"]
-mod command_search_router_graph_state;
 #[path = "unit/context_product_state.rs"]
 mod context_product_state;
 #[path = "unit/document_owner_items_hot_path.rs"]

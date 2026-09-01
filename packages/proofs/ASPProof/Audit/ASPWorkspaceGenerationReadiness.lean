@@ -9,5 +9,7 @@ open ASPProof.ASPWorkspaceGenerationReadiness
 #print axioms digestMismatchRejectsExactProjection
 #print axioms missingProjectionRejectsExactQuery
 #print axioms canonicalPublicationAdmitsEveryProjection
+#print axioms queuedSnapshotIsNotReadBarrier
+#print axioms targetedPublicationCannotAdmitRead
+#print axioms replayedReadyTerminalDoesNotRequireEnqueueAccepted
 #print axioms workspaceRepairPreservesAgentAuthority
-

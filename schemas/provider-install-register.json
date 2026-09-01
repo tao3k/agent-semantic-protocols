@@ -25,7 +25,7 @@
       "languageId": "python",
       "providerId": "asp-python",
       "binary": "asp-python",
-      "sourceRoot": "languages/python-lang-project-harness",
+      "sourceRoot": "languages/asp-python",
       "workspaceInstall": "provider/asp-provider-workspace-install.json",
       "buildBinding": "provider-workspace-install",
       "artifactDomain": "checkout"
@@ -34,7 +34,7 @@
       "languageId": "julia",
       "providerId": "asp-julia",
       "binary": "asp-julia",
-      "sourceRoot": "languages/JuliaLangProjectHarness.jl",
+      "sourceRoot": "languages/AspJulia.jl",
       "workspaceInstall": "juliac/asp-provider-workspace-install.json",
       "buildBinding": "provider-workspace-install",
       "artifactDomain": "checkout"
@@ -43,26 +43,8 @@
       "languageId": "gerbil-scheme",
       "providerId": "asp-gerbil-scheme",
       "binary": "asp-gerbil-scheme",
-      "sourceRoot": "languages/gerbil-scheme-language-project-harness",
+      "sourceRoot": "languages/asp-gerbil-scheme",
       "workspaceInstall": "provider/asp-provider-workspace-install.json",
-      "buildBinding": "provider-workspace-install",
-      "artifactDomain": "checkout"
-    },
-    {
-      "languageId": "org",
-      "providerId": "asp-org",
-      "binary": "asp-org",
-      "sourceRoot": "languages/orgize",
-      "workspaceInstall": "provider/asp-org-provider-workspace-install.json",
-      "buildBinding": "provider-workspace-install",
-      "artifactDomain": "checkout"
-    },
-    {
-      "languageId": "md",
-      "providerId": "asp-md",
-      "binary": "asp-md",
-      "sourceRoot": "languages/orgize",
-      "workspaceInstall": "provider/asp-md-provider-workspace-install.json",
       "buildBinding": "provider-workspace-install",
       "artifactDomain": "checkout"
     }

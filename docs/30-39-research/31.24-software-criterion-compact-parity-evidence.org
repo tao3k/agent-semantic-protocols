@@ -23,7 +23,7 @@ signals=control-flow.decision-stack:5,control-flow.traversal-knot:4,native-idiom
 samples=runProtocolCli:control-flow.decision-stack,sourceTextHits:control-flow.traversal-knot,ownersForHits:native-idiom.manual-transform-loop
 claim=compact-signal-id-visible
 
-[software-criterion-compact-parity] language=python provider=asp-python project=languages/python-lang-project-harness
+[software-criterion-compact-parity] language=python provider=asp-python project=languages/asp-python
 command=uv run asp-python check --full .
 metrics=exitCode=0,packetBytes=499
 signals=control-flow.broad-linear-phase:1

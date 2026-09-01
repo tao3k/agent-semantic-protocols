@@ -156,18 +156,21 @@ pub use provider_candidate_annotations::{
     provider_facts_envelope_from_value,
 };
 pub use resident_graph_search::{
-    ResidentGraphGeneration, ResidentGraphSearchRequest, ResidentGraphSearchStage,
-    build_resident_graph_generation, build_resident_graph_search_request,
-    project_resident_graph_search_result,
+    ResidentGraphEvaluatedEdge, ResidentGraphEvaluation, ResidentGraphEvaluationBudget,
+    ResidentGraphEvaluationRequest, ResidentGraphGeneration, ResidentGraphRankedNode,
+    ResidentGraphSearchBudget, ResidentGraphSearchRequest, ResidentGraphSearchStage,
+    ResidentGraphSearchWork, build_resident_graph_generation, evaluate_resident_graph_generation,
+    rank_resident_graph_generation,
 };
 pub use resident_source_index::{
     ResidentSearchAuthority, ResidentSourceIndex, ResidentSourceIndexSeed,
     resident_lexical_coverage_keys, resident_navigation_keys,
 };
 pub use runtime_search_receipt::{
-    RUNTIME_SEARCH_SOURCE_CAPACITY, RUNTIME_SEARCH_SOURCE_LIMIT, RuntimeSearchResult,
-    RuntimeSearchSource, bounded_runtime_search_source, build_runtime_provider_search_receipt,
-    build_runtime_provider_search_receipt_with_graph,
+    RUNTIME_SEARCH_SELECTOR_OWNER_LIMIT, RUNTIME_SEARCH_SOURCE_CAPACITY,
+    RUNTIME_SEARCH_SOURCE_LIMIT, RuntimeSearchResult, RuntimeSearchSource,
+    bounded_ranked_selector_owner_paths, bounded_runtime_search_source,
+    build_runtime_provider_search_receipt, build_runtime_provider_search_receipt_with_graph,
 };
 pub use search_candidate::{
     FieldHit, RankFeature, RankedSearchCandidate, SearchCandidate, SearchCandidateMergeReceipt,

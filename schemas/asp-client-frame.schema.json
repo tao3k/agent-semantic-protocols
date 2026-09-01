@@ -13,7 +13,15 @@
     { "$ref": "#/$defs/event" }
   ],
   "$defs": {
-        "clientInfo": { "$ref": "#/$defs/clientInfo" },
+    "clientInfo": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "version": { "type": "string", "minLength": 1 }
+      }
+    },
     "base": {
       "type": "object",
       "required": ["schemaId", "schemaVersion", "protocolId", "protocolVersion", "kind", "sessionId", "workspaceIdentity"],
@@ -48,12 +56,7 @@
             "kind": { "const": "initialize" }, "sessionId": {}, "workspaceIdentity": {}, "traceContext": {},
             "requestId": { "type": "string", "minLength": 1 },
             "projectRoot": { "type": "string", "minLength": 1 },
-            "clientInfo": {
-              "type": "object",
-              "additionalProperties": false,
-              "required": ["name", "version"],
-              "properties": { "name": { "type": "string", "minLength": 1 }, "version": { "type": "string", "minLength": 1 } }
-            },
+            "clientInfo": { "$ref": "#/$defs/clientInfo" },
             "capabilities": { "type": "object" }
           }
         }
@@ -90,7 +93,7 @@
             "kind": { "const": "dispatch" }, "sessionId": {}, "workspaceIdentity": {}, "traceContext": {},
             "requestId": { "type": "string", "minLength": 1 },
             "projectRoot": { "type": "string", "minLength": 1 },
-        "clientInfo": { "$ref": "#/$defs/clientInfo" },
+            "clientInfo": { "$ref": "#/$defs/clientInfo" },
             "method": { "type": "string", "minLength": 1 },
             "params": {}
           }

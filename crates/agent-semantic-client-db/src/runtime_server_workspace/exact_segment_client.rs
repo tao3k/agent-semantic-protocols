@@ -91,6 +91,7 @@ impl WorkspaceExactProjectionDataPlaneClient {
             .get_or_try_init(|| async {
                 let pointer = WorkspaceGenerationPointerReader::open(pointer_path).await?;
                 let snapshot = pointer.read()?;
+                snapshot.validate()?;
                 let mapped = MappedWorkspaceExactProjection::open(&snapshot).await?;
                 Ok::<_, String>(Self {
                     inner: std::sync::Arc::new(WorkspaceExactProjectionDataPlaneClientInner {
@@ -182,6 +183,7 @@ impl WorkspaceExactProjectionDataPlaneClient {
 
     pub async fn refresh_if_changed(&mut self) -> Result<bool, String> {
         let snapshot = self.inner.pointer.read()?;
+        snapshot.validate()?;
         let current = self.inner.current.read();
         decode_header(&current.mapping)?;
         if current.epoch == snapshot.active_epoch {

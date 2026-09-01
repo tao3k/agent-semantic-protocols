@@ -10,7 +10,6 @@ pub mod cli;
 mod cli_args;
 mod client_cli;
 mod command;
-pub use command::search_router_graph_state;
 mod hook_break_glass;
 pub(crate) mod server;
 pub use agent_semantic_context_product as context_product_state;
@@ -37,7 +36,9 @@ pub use language_command::{
     LanguageCommandResponse, RuntimeLanguageCommandApplication, RuntimeLanguageCommandClient,
     execute_language_command,
 };
-pub use runtime_language_client::{AspClient, ClientBackpressureProbeReceipt};
+pub use runtime_language_client::{
+    AspClient, ClientBackpressureProbeReceipt, host_runtime_transport_capability_declared,
+};
 
 pub mod cli_failure;
 pub use command::protocol_binary::{

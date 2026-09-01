@@ -164,6 +164,9 @@ pub(super) fn decode_frame(envelope: wire::ClientFrameEnvelope) -> Result<Client
             event: required(frame.event, "event")?,
             payload: decode_json(&frame.payload_json, "payload")?,
         }),
+        Frame::ResponsePartition(_) => {
+            Err("response partitions must be reassembled by the gRPC transport".to_owned())
+        }
     }
 }
 

@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-PY_HARNESS_SRC = REPO_ROOT / "languages/python-lang-project-harness/src"
+PY_HARNESS_SRC = REPO_ROOT / "languages/asp-python/src"
 SEARCH_TERM = "compute_value"
 DEPENDENCY = "requests"
 WARM_ASP_BUDGET_MS = 1000.0

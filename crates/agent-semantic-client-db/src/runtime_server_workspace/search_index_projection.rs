@@ -563,7 +563,7 @@ impl WorkspaceSearchGenerationDataPlaneClient {
         query: &str,
         authority: Option<&agent_semantic_search::ResidentSearchAuthority>,
         limit: u32,
-    ) -> Result<agent_semantic_search_projection::ResidentSearchReadyResult, String> {
+    ) -> Result<Arc<agent_semantic_search_projection::ResidentSearchReadyResult>, String> {
         self.resident_source_index.query(query, authority, limit)
     }
 
@@ -572,7 +572,7 @@ impl WorkspaceSearchGenerationDataPlaneClient {
         query: &str,
         language_id: &agent_semantic_client_core::LanguageId,
         limit: u32,
-    ) -> Result<agent_semantic_search_projection::ResidentSearchReadyResult, String> {
+    ) -> Result<Arc<agent_semantic_search_projection::ResidentSearchReadyResult>, String> {
         self.resident_source_index
             .query_language(query, language_id, limit)
     }

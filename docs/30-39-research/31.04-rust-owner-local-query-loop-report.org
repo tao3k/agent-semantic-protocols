@@ -352,7 +352,7 @@ asp-typescript query src/cli/semantic-language.ts \
   --term semanticLanguageRegistryDocument \
   --names-only .
 
-asp-python query src/python_lang_project_harness/_semantic_language.py \
+asp-python query src/asp_python/_semantic_language.py \
   --term semantic_language_registry_document \
   --names-only .
 #+end_src
@@ -373,7 +373,7 @@ npm --prefix languages/typescript-lang-project-harness run test:implementation
 # 250 passed
 
 uv run --project . --frozen pytest -q
-# 274 passed, run from languages/python-lang-project-harness
+# 274 passed, run from languages/asp-python
 
 DIRENV_SILENCE=1 direnv exec . pytest -q \
   tests/unit/test_semantic_language_registry_schema.py \
@@ -383,7 +383,7 @@ DIRENV_SILENCE=1 direnv exec . pytest -q \
 # 12 passed
 
 DIRENV_SILENCE=1 direnv exec . \
-  uv run --project languages/python-lang-project-harness --frozen \
+  uv run --project languages/asp-python --frozen \
   asp-python check --full .
 # exit 0; non-blocking policy advice may still be printed
 

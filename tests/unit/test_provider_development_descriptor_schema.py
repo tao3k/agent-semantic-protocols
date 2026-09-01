@@ -10,10 +10,10 @@ SCHEMA_PATH = ROOT / "schemas" / "provider-manifest.schema.json"
 MANIFESTS = (
     ROOT / "languages/asp-rust/schemas/asp-provider.json",
     ROOT / "languages/typescript-lang-project-harness/schemas/asp-provider.json",
-    ROOT / "languages/python-lang-project-harness/schemas/asp-provider.json",
+    ROOT / "languages/asp-python/schemas/asp-provider.json",
     ROOT
     / "languages/gerbil-scheme-language-project-harness/schemas/asp-provider.json",
-    ROOT / "languages/JuliaLangProjectHarness.jl/schemas/asp-provider.json",
+    ROOT / "languages/AspJulia.jl/schemas/asp-provider.json",
     ROOT / "languages/orgize/schemas/asp-org-provider.json",
     ROOT / "languages/orgize/schemas/asp-md-provider.json",
 )

@@ -86,7 +86,7 @@ def test_language_workspace_search_contract_runs_expected_matrix(tmp_path: Path)
         "agent",
         "doctor",
         "--json",
-        "languages/python-lang-project-harness",
+        "languages/asp-python",
     ) in seen
     assert (
         "julia",
@@ -96,7 +96,7 @@ def test_language_workspace_search_contract_runs_expected_matrix(tmp_path: Path)
         "tests",
         "--view",
         "seeds",
-        "languages/JuliaLangProjectHarness.jl",
+        "languages/AspJulia.jl",
         ".",
     ) in seen
     python_case = next(case for case in CONTRACT_CASES if case.language == "python")

@@ -51,6 +51,94 @@ theorem host_reference_does_not_change_workspace_identity
       (resolveBinding rightHost repoIdentity workspaceIdentity).workspaceIdentity := by
   rfl
 
+structure WorkspaceCatalogProjection where
+  canonicalRoot : String
+  derivedIdentity : String
+  deriving DecidableEq, Repr
+
+inductive WorkspaceCatalogReconcile where
+  | unchanged (projection : WorkspaceCatalogProjection)
+  | replaced (projection : WorkspaceCatalogProjection)
+  | rejected
+  deriving DecidableEq, Repr
+
+structure WorkspaceCatalogReconcileReceipt where
+  canonicalRoot : String
+  previousDerivedIdentity : String
+  currentDerivedIdentity : String
+  previousRevision : Nat
+  currentRevision : Nat
+  deriving DecidableEq, Repr
+
+def reconcileWorkspaceCatalogProjection
+    (currentDerivedIdentity requestedIdentity : String)
+    (existing : WorkspaceCatalogProjection) : WorkspaceCatalogReconcile :=
+  if requestedIdentity != currentDerivedIdentity then
+    .rejected
+  else if existing.derivedIdentity = currentDerivedIdentity then
+    .unchanged existing
+  else
+    .replaced
+      { canonicalRoot := existing.canonicalRoot
+        derivedIdentity := currentDerivedIdentity }
+
+theorem noncanonical_workspace_request_preserves_catalog
+    (currentDerivedIdentity requestedIdentity : String)
+    (existing : WorkspaceCatalogProjection)
+    (mismatch : requestedIdentity ≠ currentDerivedIdentity) :
+    reconcileWorkspaceCatalogProjection currentDerivedIdentity requestedIdentity existing =
+      .rejected := by
+  simp [reconcileWorkspaceCatalogProjection, mismatch]
+
+theorem stale_projection_is_replaced_by_current_derivation
+    (currentDerivedIdentity : String)
+    (existing : WorkspaceCatalogProjection)
+    (stale : existing.derivedIdentity ≠ currentDerivedIdentity) :
+    reconcileWorkspaceCatalogProjection currentDerivedIdentity currentDerivedIdentity existing =
+      .replaced
+        { canonicalRoot := existing.canonicalRoot
+          derivedIdentity := currentDerivedIdentity } := by
+  simp [reconcileWorkspaceCatalogProjection, stale]
+
+theorem reconciled_projection_replay_is_idempotent
+    (currentDerivedIdentity canonicalRoot : String) :
+    reconcileWorkspaceCatalogProjection currentDerivedIdentity currentDerivedIdentity
+        { canonicalRoot, derivedIdentity := currentDerivedIdentity } =
+      .unchanged { canonicalRoot, derivedIdentity := currentDerivedIdentity } := by
+  simp [reconcileWorkspaceCatalogProjection]
+
+def reconcileWorkspaceCatalogReceipt
+    (previousRevision : Nat)
+    (previous : WorkspaceCatalogProjection)
+    (result : WorkspaceCatalogReconcile) : Option WorkspaceCatalogReconcileReceipt :=
+  match result with
+  | .replaced current =>
+      some
+        { canonicalRoot := current.canonicalRoot
+          previousDerivedIdentity := previous.derivedIdentity
+          currentDerivedIdentity := current.derivedIdentity
+          previousRevision
+          currentRevision := previousRevision + 1 }
+  | .unchanged _ | .rejected => none
+
+theorem replaced_projection_emits_one_identity_bound_revision
+    (previousRevision : Nat)
+    (previous current : WorkspaceCatalogProjection) :
+    reconcileWorkspaceCatalogReceipt previousRevision previous (.replaced current) =
+      some
+        { canonicalRoot := current.canonicalRoot
+          previousDerivedIdentity := previous.derivedIdentity
+          currentDerivedIdentity := current.derivedIdentity
+          previousRevision
+          currentRevision := previousRevision + 1 } := by
+  rfl
+
+theorem rejected_projection_emits_no_migration_receipt
+    (previousRevision : Nat)
+    (previous : WorkspaceCatalogProjection) :
+    reconcileWorkspaceCatalogReceipt previousRevision previous .rejected = none := by
+  rfl
+
 inductive CleanupCommit where
   | unchanged
   | committed

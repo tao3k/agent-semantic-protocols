@@ -177,7 +177,8 @@ impl RuntimeServerWorkspaceRegistry {
         query: &str,
         authority: Option<&agent_semantic_search::ResidentSearchAuthority>,
         limit: u32,
-    ) -> Result<agent_semantic_search_projection::ResidentSearchReadyResult, String> {
+    ) -> Result<std::sync::Arc<agent_semantic_search_projection::ResidentSearchReadyResult>, String>
+    {
         self.resident_search_projection_client(workspace_identity, project_root)?
             .read_source_index(query, authority, limit)
     }
@@ -189,7 +190,8 @@ impl RuntimeServerWorkspaceRegistry {
         query: &str,
         language_id: &agent_semantic_client_core::LanguageId,
         limit: u32,
-    ) -> Result<agent_semantic_search_projection::ResidentSearchReadyResult, String> {
+    ) -> Result<std::sync::Arc<agent_semantic_search_projection::ResidentSearchReadyResult>, String>
+    {
         self.resident_search_projection_client(workspace_identity, project_root)?
             .read_source_index_for_language(query, language_id, limit)
     }

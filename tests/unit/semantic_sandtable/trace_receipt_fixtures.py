@@ -69,7 +69,6 @@ def write_failure_frontier_dev_log_root(
             )
             for index in range(1, 11)
         ],
-        _frontier_event(candidate_session),
         _session_event(
             candidate_session,
             trace_event("test", TEST_BLOCK, stdout_bytes=120),
@@ -90,19 +89,6 @@ def write_failure_frontier_dev_log_root(
     (command_dir / "commands.jsonl").write_text(
         "\n".join(json.dumps(line) for line in command_lines) + "\n",
         encoding="utf-8",
-    )
-
-
-def _frontier_event(session_id: str) -> dict[str, object]:
-    return _session_event(
-        session_id,
-        {
-            "id": "failure-frontier",
-            "kind": "check",
-            "argv": ["asp", "rust", "check", "changed", "--view", "seeds", "."],
-            "next": HOT_BLOCKS,
-            "metrics": {"elapsedMs": 5, "stdoutBytes": 180, "stderrBytes": 0},
-        },
     )
 
 

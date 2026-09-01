@@ -92,7 +92,7 @@ url="$4"
 case "$url" in
   https://github.com/tao3k/rust-lang-project-harness/releases/download/v0.1.2/*)
     ;;
-  https://github.com/tao3k/gerbil-scheme-language-project-harness/releases/download/v0.1.0/*)
+  https://github.com/tao3k/asp-gerbil-scheme/releases/download/v0.1.0/*)
     ;;
   *)
     echo "unexpected release url: $url" >&2

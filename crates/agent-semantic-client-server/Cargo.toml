@@ -25,7 +25,6 @@ parking_lot.workspace = true
 
 
 [dev-dependencies]
-asp-rust-project-harness-policy.workspace = true
 tempfile.workspace = true
 
 [build-dependencies]

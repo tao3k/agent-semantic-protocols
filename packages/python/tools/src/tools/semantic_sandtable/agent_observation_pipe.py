@@ -46,7 +46,6 @@ def _initial_pipe_flow_stats(
         "aspCommands": len(commands),
         "searchCommands": 0,
         "queryCommands": 0,
-        "checkCommands": 0,
         "guideCommands": 0,
         "directReadCommands": 0,
         "directReadBoundedCommands": 0,
@@ -298,8 +297,6 @@ def _classify_asp_command(command: str, stats: dict[str, Any]) -> None:
             else:
                 stats["directReadUnboundedCommands"] += 1
                 stats["directReadRiskCommands"] += 1
-    elif surface == "check":
-        stats["checkCommands"] += 1
     elif surface == "guide":
         stats["guideCommands"] += 1
 

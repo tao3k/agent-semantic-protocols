@@ -44,8 +44,8 @@ jobs:
             languages/org \
             languages/orgize \
             languages/typescript-lang-project-harness \
-            languages/python-lang-project-harness \
-            languages/JuliaLangProjectHarness.jl
+            languages/asp-python \
+            languages/AspJulia.jl
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -127,7 +127,7 @@ jobs:
           npm --prefix languages/typescript-lang-project-harness run build
           cat > .bin/asp-python <<EOF
           #!/usr/bin/env bash
-          exec uv run --project "$repo_root/languages/python-lang-project-harness" --frozen asp-python "\$@"
+          exec uv run --project "$repo_root/languages/asp-python" --frozen asp-python "\$@"
           EOF
           cat > .bin/asp-typescript <<EOF
           #!/usr/bin/env bash
@@ -190,8 +190,8 @@ jobs:
             languages/org \
             languages/orgize \
             languages/typescript-lang-project-harness \
-            languages/python-lang-project-harness \
-            languages/JuliaLangProjectHarness.jl
+            languages/asp-python \
+            languages/AspJulia.jl
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5
@@ -257,8 +257,8 @@ jobs:
           cargo test -p agent-semantic-runtime-server \
             host_uds_schema_bundle_route_bypasses_workspace_generation \
             --quiet
-          uv run --project languages/python-lang-project-harness --frozen --with pytest pytest \
-            languages/python-lang-project-harness/tests/unit/harness/test_semantic_language_schemas.py \
+          uv run --project languages/asp-python --frozen --with pytest pytest \
+            languages/asp-python/tests/unit/harness/test_semantic_language_schemas.py \
             -q
 
       - name: Gerbil central schema profile gates
@@ -271,7 +271,7 @@ jobs:
             --quiet
 
       - name: Python provider policy gate
-        run: uv run --project languages/python-lang-project-harness --frozen asp-python check --full .
+        run: uv run --project languages/asp-python --frozen asp-python check --full .
 
       - name: Build asp binary
         run: cargo build --bin asp
@@ -319,7 +319,7 @@ jobs:
           install -m 755 languages/asp-rust/target/debug/asp-rust "$HOME/.local/bin/asp-rust"
           printf '#!/usr/bin/env bash\nexec node "%s/languages/typescript-lang-project-harness/dist/src/cli/main.js" "$@"\n' "$PWD" > "$HOME/.local/bin/asp-typescript"
           chmod 755 "$HOME/.local/bin/asp-typescript"
-          printf '#!/usr/bin/env bash\nexec uv run --project "%s/languages/python-lang-project-harness" --frozen asp-python "$@"\n' "$PWD" > "$HOME/.local/bin/asp-python"
+          printf '#!/usr/bin/env bash\nexec uv run --project "%s/languages/asp-python" --frozen asp-python "$@"\n' "$PWD" > "$HOME/.local/bin/asp-python"
           chmod 755 "$HOME/.local/bin/asp-python"
           cp .agents/asp.toml .agents/asp.toml.ci-full-provider
           restore_asp_toml() {

@@ -113,10 +113,6 @@
           "type": "integer",
           "minimum": 0
         },
-        "checkCommands": {
-          "type": "integer",
-          "minimum": 0
-        },
         "guideCommands": {
           "type": "integer",
           "minimum": 0

@@ -35,6 +35,32 @@ absolute project root, a read-side caller MUST:
    not a read barrier;
 5. open the read-only workspace session using the admitted identity.
 
+The public ClientFrame spelling of step 3 is
+=asp.workspace.generation.ensure-ready=.  It is a server-owned cold-preflight
+method, not a language-provider method.  Its first request may discover and
+publish one =CompleteGeneration=; an already-Ready request reads the resident
+admission receipt and MUST NOT discover Git state, scan owners, open Turso, or
+start a provider.  A client connection executes this preflight at most once
+before its first language =search=, =query=, =source-index.lookup=, or
+=search.owner= dispatch.  Control-plane methods do not execute it.
+
+=accepted= on an admission receipt is edge-triggered enqueue evidence.  It says
+whether that call inserted new work; it is deliberately false on an observed
+or replayed terminal and MUST NOT be used as generation readiness.  Readiness
+requires all of: the same =attempt= terminal, =state=Ready=, a non-null commit,
+a =CompleteGeneration= scope, and exact generation/root identity equality with
+the resident read binding.  A queued or Building snapshot is never a read
+barrier, and client retry is never a substitute for waiting on the daemon-owned
+completion watch.
+
+Language dispatch is the warm phase after this barrier.  It MUST NOT discover a
+repository candidate, enqueue generation work, await a provider, or mutate a
+generation.  Missing resident readiness produces one immediate typed
+=query-not-ready= terminal.  Dispatcher semantic tests invoke the
+transport-neutral frame service directly; AF_UNIX/HTTP2 listener creation is
+owned only by dedicated transport integration tests and is not a prerequisite
+for semantic unit coverage.
+
 Malformed catalogs, permission failures, identity mismatches, failed builds,
 and cancelled builds remain typed failures.  They MUST NOT be converted into a
 new catalog or hidden by a fallback.
@@ -60,6 +86,11 @@ daemon-owned admission transition, producing =C=; readiness then produces
 - Issue concurrent exact/search/session requests for one canonical workspace.
 - Observe one workspace identity, one admitted generation, and no duplicate
   resident service.
+- Prove one cold =ensure-ready= terminal followed by warm language dispatches
+  with zero candidate discovery, generation mutation, or provider process
+  starts.
+- Prove a replayed Ready terminal remains readable when =accepted=false=, while
+  a queued snapshot and a targeted-only publication remain unreadable.
 - Require a nonzero generation before typed Agent call/resume.
 - Verify catalog corruption and permission failure stay typed and bounded.
 - Verify ordinary Hook black/white matrices have no Runtime dependency and

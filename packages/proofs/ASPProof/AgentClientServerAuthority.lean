@@ -14,21 +14,154 @@ structure AuthorityKey where
   overlayIdentity : Option String
 deriving DecidableEq
 
-def canonicalProviderId (languageId : String) : String :=
-  "asp-" ++ languageId
+inductive LanguageSurfaceKind where
+  | programmingLanguage
+  | embeddedDocument
+deriving DecidableEq
+
+def languageSurfaceKind (languageId : String) : LanguageSurfaceKind :=
+  if languageId = "org" ∨ languageId = "md" then
+    .embeddedDocument
+  else
+    .programmingLanguage
+
+def canonicalProviderId (languageId : String) : Option String :=
+  match languageSurfaceKind languageId with
+  | .programmingLanguage => some ("asp-" ++ languageId)
+  | .embeddedDocument => none
 
 def ProviderIdentityValid (authority : AuthorityKey) : Prop :=
-  authority.providerId = canonicalProviderId authority.languageId
+  canonicalProviderId authority.languageId = some authority.providerId
 
 theorem validProviderIdentityIsLanguageDerived
     (authority : AuthorityKey)
     (valid : ProviderIdentityValid authority) :
-    authority.providerId = "asp-" ++ authority.languageId :=
-  valid
+    authority.providerId = "asp-" ++ authority.languageId := by
+  by_cases document : authority.languageId = "org" ∨ authority.languageId = "md"
+  · simp [ProviderIdentityValid, canonicalProviderId, languageSurfaceKind, document] at valid
+  · simpa [ProviderIdentityValid, canonicalProviderId, languageSurfaceKind, document] using valid.symm
 
-example : canonicalProviderId "rust" = "asp-rust" := rfl
-example : canonicalProviderId "org" = "asp-org" := rfl
-example : canonicalProviderId "md" = "asp-md" := rfl
+example : canonicalProviderId "rust" = some "asp-rust" := by decide
+example : canonicalProviderId "org" = none := by decide
+example : canonicalProviderId "md" = none := by decide
+
+def providerContractEligible (languageId : String) : Prop :=
+  languageSurfaceKind languageId = .programmingLanguage
+
+theorem embedded_document_cannot_inherit_provider_contract
+    (languageId : String)
+    (document : languageSurfaceKind languageId = .embeddedDocument) :
+    ¬ providerContractEligible languageId := by
+  simp [providerContractEligible, document]
+
+structure CanonicalSchemaRoot where
+  name : String
+  digest : String
+  deriving DecidableEq
+
+structure PackageSchemaProjection where
+  name : String
+  sourceDigest : String
+  deriving DecidableEq
+
+def PackageSchemaProjection.isCurrent
+    (root : CanonicalSchemaRoot)
+    (projection : PackageSchemaProjection) : Prop :=
+  projection.name = root.name ∧ projection.sourceDigest = root.digest
+
+theorem stale_package_schema_projection_is_not_current
+    (root : CanonicalSchemaRoot)
+    (projection : PackageSchemaProjection)
+    (digestDrift : projection.sourceDigest ≠ root.digest) :
+    ¬ projection.isCurrent root := by
+  intro current
+  exact digestDrift current.2
+
+theorem current_package_schema_projection_has_root_digest
+    (root : CanonicalSchemaRoot)
+    (projection : PackageSchemaProjection)
+    (current : projection.isCurrent root) :
+    projection.sourceDigest = root.digest :=
+  current.2
+
+structure WorkspaceProviderClosure where
+  requiredLanguages : List String
+  admittedLanguages : List String
+
+def WorkspaceProviderClosure.ready (closure : WorkspaceProviderClosure) : Prop :=
+  ∀ languageId, languageId ∈ closure.requiredLanguages →
+    languageId ∈ closure.admittedLanguages
+
+theorem missing_unrequired_provider_does_not_block_workspace
+    (closure : WorkspaceProviderClosure)
+    (languageId : String)
+    (ready : closure.ready)
+    (unrequired : languageId ∉ closure.requiredLanguages) :
+    closure.ready ∧ languageId ∉ closure.requiredLanguages := by
+  exact ⟨ready, unrequired⟩
+
+theorem missing_required_provider_blocks_workspace
+    (closure : WorkspaceProviderClosure)
+    (languageId : String)
+    (required : languageId ∈ closure.requiredLanguages)
+    (missing : languageId ∉ closure.admittedLanguages) :
+    ¬ closure.ready := by
+  intro ready
+  exact missing (ready languageId required)
+
+def RuntimeProviderArtifactProjection.ready
+    (canonicalProviders storedArtifacts requiredLanguages : List String) : Prop :=
+  ∀ languageId, languageId ∈ requiredLanguages →
+    languageId ∈ canonicalProviders ∧ languageId ∈ storedArtifacts
+
+theorem retired_artifact_cannot_block_unrelated_workspace
+    (canonicalProviders storedArtifacts requiredLanguages : List String)
+    (retiredLanguage : String)
+    (ready : RuntimeProviderArtifactProjection.ready
+      canonicalProviders storedArtifacts requiredLanguages)
+    (retired : retiredLanguage ∉ canonicalProviders) :
+    RuntimeProviderArtifactProjection.ready
+      canonicalProviders storedArtifacts requiredLanguages ∧
+      retiredLanguage ∉ requiredLanguages := by
+  constructor
+  · exact ready
+  · intro required
+    exact retired (ready retiredLanguage required).1
+
+structure ProviderSchemaReference where
+  schemaId : String
+  schemaVersion : String
+
+structure ProviderRuntimeOperation where
+  operation : String
+  requestSchema : ProviderSchemaReference
+  responseSchema : ProviderSchemaReference
+
+def ProviderRuntimeOperation.valid (operation : ProviderRuntimeOperation) : Prop :=
+  operation.operation ≠ "" ∧
+  operation.requestSchema.schemaId ≠ "" ∧
+  operation.requestSchema.schemaVersion = "1" ∧
+  operation.responseSchema.schemaId ≠ "" ∧
+  operation.responseSchema.schemaVersion = "1"
+
+theorem provider_runtime_operation_requires_structured_schema_references
+    (operation : ProviderRuntimeOperation)
+    (valid : operation.valid) :
+    operation.requestSchema.schemaVersion = "1" ∧
+    operation.responseSchema.schemaVersion = "1" := by
+  exact ⟨valid.2.2.1, valid.2.2.2.2⟩
+
+theorem embedded_document_surface_has_no_provider_authority
+    (languageId : String)
+    (document : languageSurfaceKind languageId = .embeddedDocument) :
+    canonicalProviderId languageId = none := by
+  simp [canonicalProviderId, document]
+
+theorem embedded_document_surface_cannot_enter_provider_generation
+    (authority : AuthorityKey)
+    (document : languageSurfaceKind authority.languageId = .embeddedDocument) :
+    ¬ ProviderIdentityValid authority := by
+  simp [ProviderIdentityValid, canonicalProviderId, document]
 
 inductive TerminalStatus where
   | completed

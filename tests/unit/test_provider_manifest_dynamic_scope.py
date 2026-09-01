@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 
+from jsonschema import Draft202012Validator
+
 from tests.unit.schema_validator_support import local_schema_validator
 
 
@@ -32,3 +34,12 @@ def test_static_path_scope_is_rejected_instead_of_ignored() -> None:
         and "source" in error.message
         for error in errors
     )
+
+
+def test_provider_method_ids_reject_policy_cli_commands() -> None:
+    provider_schema = load_json(ROOT / "schemas" / "provider-manifest.schema.json")
+    validator = Draft202012Validator(provider_schema["$defs"]["methodId"])
+
+    assert list(validator.iter_errors("search/owner")) == []
+    assert list(validator.iter_errors("check/changed"))
+    assert list(validator.iter_errors("verification/run"))

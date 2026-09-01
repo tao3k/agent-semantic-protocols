@@ -95,13 +95,84 @@ async fn catalog_persists_unique_workspace_source_scopes_atomically() {
         workspace_identity: "workspace-a".to_owned(),
         project_root: root.join("checkout-a"),
     };
-    assert!(catalog.record(entry.clone()).await.unwrap());
-    assert!(!catalog.record(entry.clone()).await.unwrap());
+    assert!(catalog.record(entry.clone()).await.unwrap().changed());
+    assert!(!catalog.record(entry.clone()).await.unwrap().changed());
 
     let restored = RuntimeWorkspaceAdmissionCatalog::load(path).await.unwrap();
     assert_eq!(
         restored.snapshot().iter().cloned().collect::<Vec<_>>(),
         vec![entry]
+    );
+    tokio::fs::remove_dir_all(root).await.unwrap();
+}
+
+#[tokio::test]
+async fn stale_workspace_identity_projection_is_replaced_once_by_current_derivation() {
+    let root = fixture_root();
+    let project_root = root.join("checkout");
+    initialize_candidate_checkout(&project_root);
+    let path = root.join("workspace-admissions.v1.json");
+    let catalog = RuntimeWorkspaceAdmissionCatalog::load(path.clone())
+        .await
+        .unwrap();
+    let stale = RuntimeWorkspaceAdmissionCatalogEntry {
+        workspace_identity: "workspace-legacy-derived-id".to_owned(),
+        project_root: project_root.clone(),
+    };
+    let initial_mutation = catalog.record(stale.clone()).await.unwrap();
+    assert!(matches!(
+        initial_mutation,
+        agent_semantic_client_db::runtime_server_admission_catalog::RuntimeWorkspaceAdmissionCatalogMutation::Inserted {
+            previous_revision: 0,
+            current_revision: 1,
+            ..
+        }
+    ));
+
+    let current = RuntimeWorkspaceAdmissionCatalogEntry {
+        workspace_identity: agent_semantic_client_db::AgentSessionRegistry::workspace_id(
+            &project_root,
+        )
+        .unwrap(),
+        project_root: project_root.clone(),
+    };
+    let replacement = catalog.record(current.clone()).await.unwrap();
+    match replacement {
+        agent_semantic_client_db::runtime_server_admission_catalog::RuntimeWorkspaceAdmissionCatalogMutation::ReplacedIdentityProjection {
+            canonical_root,
+            previous_workspace_identity,
+            current_workspace_identity,
+            previous_revision,
+            current_revision,
+        } => {
+            assert_eq!(canonical_root, project_root);
+            assert_eq!(previous_workspace_identity, stale.workspace_identity);
+            assert_eq!(current_workspace_identity, current.workspace_identity);
+            assert_eq!(previous_revision, 1);
+            assert_eq!(current_revision, 2);
+        }
+        mutation => panic!("expected typed identity replacement, got {mutation:?}"),
+    }
+    assert_eq!(
+        catalog.snapshot().iter().cloned().collect::<Vec<_>>(),
+        vec![current.clone()]
+    );
+    assert!(matches!(
+        catalog.record(current.clone()).await.unwrap(),
+        agent_semantic_client_db::runtime_server_admission_catalog::RuntimeWorkspaceAdmissionCatalogMutation::Unchanged {
+            resident_revision: 2
+        }
+    ));
+
+    let before_rejected_replay = catalog.snapshot();
+    let error = catalog.record(stale).await.unwrap_err();
+    assert!(error.contains("rejected a noncanonical identity projection"));
+    assert_eq!(catalog.snapshot().as_ref(), before_rejected_replay.as_ref());
+
+    let restored = RuntimeWorkspaceAdmissionCatalog::load(path).await.unwrap();
+    assert_eq!(
+        restored.snapshot().iter().cloned().collect::<Vec<_>>(),
+        vec![current]
     );
     tokio::fs::remove_dir_all(root).await.unwrap();
 }
@@ -117,7 +188,7 @@ async fn repeated_admission_is_silent_and_cannot_retrigger_materialization() {
         project_root: root.join("checkout"),
     };
 
-    assert!(catalog.record(entry.clone()).await.unwrap());
+    assert!(catalog.record(entry.clone()).await.unwrap().changed());
     publications.changed().await.unwrap();
     assert_eq!(
         publications.borrow_and_update().as_ref(),
@@ -128,7 +199,7 @@ async fn repeated_admission_is_silent_and_cannot_retrigger_materialization() {
     let mut latencies = Vec::with_capacity(SAMPLE_COUNT);
     for _ in 0..SAMPLE_COUNT {
         let started = std::time::Instant::now();
-        assert!(!catalog.record(entry.clone()).await.unwrap());
+        assert!(!catalog.record(entry.clone()).await.unwrap().changed());
         latencies.push(started.elapsed());
     }
     latencies.sort_unstable();
@@ -161,7 +232,7 @@ async fn two_sessions_cannot_amplify_one_workspace_admission_into_io() {
         workspace_identity: "workspace-two-session-pressure".to_owned(),
         project_root: root.join("checkout"),
     };
-    assert!(catalog.record(entry.clone()).await.unwrap());
+    assert!(catalog.record(entry.clone()).await.unwrap().changed());
     publications.changed().await.unwrap();
     let _ = publications.borrow_and_update();
 
@@ -176,7 +247,7 @@ async fn two_sessions_cannot_amplify_one_workspace_admission_into_io() {
             let mut latencies = Vec::with_capacity(ADMISSIONS_PER_SESSION);
             for _ in 0..ADMISSIONS_PER_SESSION {
                 let started = std::time::Instant::now();
-                assert!(!catalog.record(entry.clone()).await.unwrap());
+                assert!(!catalog.record(entry.clone()).await.unwrap().changed());
                 latencies.push(started.elapsed());
             }
             latencies

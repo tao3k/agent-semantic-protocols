@@ -66,38 +66,6 @@ fn workspace_install_v1_accepts_the_canonical_language_identity() {
     assert_eq!(descriptor.provider_id, "asp-julia");
 }
 
-#[test]
-fn document_provider_workspace_descriptors_have_independent_schema_receipts() {
-    for (source, language_id, provider_id, binary) in [
-        (
-            include_str!(
-                "../../../../languages/orgize/provider/asp-org-provider-workspace-install.json"
-            ),
-            "org",
-            "asp-org",
-            "asp-org",
-        ),
-        (
-            include_str!(
-                "../../../../languages/orgize/provider/asp-md-provider-workspace-install.json"
-            ),
-            "md",
-            "asp-md",
-            "asp-md",
-        ),
-    ] {
-        let descriptor: ProviderWorkspaceInstallDescriptor =
-            serde_json::from_str(source).expect("decode document provider workspace descriptor");
-        descriptor
-            .validate()
-            .expect("validate document provider workspace descriptor");
-        descriptor
-            .validate_registration_identity(language_id, provider_id, binary)
-            .expect("document provider workspace identity");
-        assert!(descriptor.schema_bundle_receipt.starts_with(language_id));
-    }
-}
-
 #[cfg(unix)]
 #[test]
 fn external_launch_runtime_dependency_is_materialized_into_the_immutable_artifact() {

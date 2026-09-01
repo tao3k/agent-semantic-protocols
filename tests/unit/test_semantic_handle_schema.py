@@ -21,12 +21,12 @@ def minimal_policy_handle() -> dict[str, object]:
         "aliases": ["src-layout", "packaged-project-layout"],
         "labels": ["layout", "project-policy"],
         "status": "active",
-        "ownerPath": "src/python_lang_project_harness/_project_policy_catalog.py",
-        "implementationOwnerPath": "src/python_lang_project_harness/_project_policy_layout.py",
+        "ownerPath": "src/asp_python/_project_policy_catalog.py",
+        "implementationOwnerPath": "src/asp_python/_project_policy_layout.py",
         "testPaths": ["tests/unit/harness/project_policy/test_layout.py"],
         "locations": [
             {
-                "path": "src/python_lang_project_harness/_project_policy_catalog.py",
+                "path": "src/asp_python/_project_policy_catalog.py",
                 "lineRange": "14:14",
             }
         ],
@@ -34,7 +34,7 @@ def minimal_policy_handle() -> dict[str, object]:
         "relations": [
             {
                 "kind": "implements",
-                "target": "src/python_lang_project_harness/_project_policy_layout.py",
+                "target": "src/asp_python/_project_policy_layout.py",
             }
         ],
         "fields": {"pack": "project", "severity": "warning"},

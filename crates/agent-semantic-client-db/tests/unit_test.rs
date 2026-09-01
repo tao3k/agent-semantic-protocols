@@ -27,8 +27,6 @@ mod db_engine_source_index;
 mod db_gerbil_dependency_index;
 #[path = "unit/env.rs"]
 mod env;
-#[path = "unit/graph_turbo_cache.rs"]
-mod graph_turbo_cache;
 #[path = "unit/db/live_source_index_memory.rs"]
 mod live_source_index_memory;
 #[path = "unit/db/project_scoped_turso_performance.rs"]
@@ -51,8 +49,6 @@ mod runtime_search_authority_fixture;
 mod runtime_search_service_cancellation;
 #[path = "unit/runtime_server_admission_catalog.rs"]
 mod runtime_server_admission_catalog;
-#[path = "unit/runtime_server_admission_query_demand.rs"]
-mod runtime_server_admission_query_demand;
 #[path = "unit/runtime_server_control.rs"]
 mod runtime_server_control;
 #[path = "unit/runtime_server_control_authority.rs"]

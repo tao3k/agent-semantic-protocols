@@ -15,6 +15,8 @@
     "providerDigest",
     "indexArtifactDigest",
     "candidateCount",
+    "selectorProjectionBudget",
+    "projectedOwnerCount",
     "selectors",
     "ownerPaths",
     "residentReadElapsedMicros",
@@ -38,6 +40,8 @@
     "providerDigest": { "type": "string", "minLength": 1 },
     "indexArtifactDigest": { "type": "string", "minLength": 1 },
     "candidateCount": { "type": "integer", "minimum": 0 },
+    "selectorProjectionBudget": { "type": "integer", "minimum": 1 },
+    "projectedOwnerCount": { "type": "integer", "minimum": 0, "maximum": 16 },
     "selectors": {
       "type": "array",
       "uniqueItems": true,

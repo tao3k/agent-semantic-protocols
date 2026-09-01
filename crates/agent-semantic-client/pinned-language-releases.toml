@@ -18,29 +18,29 @@ supportedTargets = [
 ]
 
 [languages.python]
-repo = "tao3k/python-lang-project-harness"
+repo = "tao3k/asp-python"
 version = "v0.1.0"
-downloadBaseUrl = "https://github.com/tao3k/python-lang-project-harness/releases/download/v0.1.0"
+downloadBaseUrl = "https://github.com/tao3k/asp-python/releases/download/v0.1.0"
 supportedTargets = [
   "x86_64-unknown-linux-gnu",
   "aarch64-apple-darwin",
 ]
 
 [languages.julia]
-repo = "JuliaCN/JuliaLangProjectHarness.jl"
+repo = "JuliaCN/AspJulia.jl"
 version = "v0.1.0"
 archivePrefix = "asp-julia"
 archiveBinary = "asp-julia"
-downloadBaseUrl = "https://github.com/JuliaCN/JuliaLangProjectHarness.jl/releases/download/v0.1.0"
+downloadBaseUrl = "https://github.com/JuliaCN/AspJulia.jl/releases/download/v0.1.0"
 supportedTargets = [
   "x86_64-unknown-linux-gnu",
   "aarch64-apple-darwin",
 ]
 
 [languages.gerbil-scheme]
-repo = "tao3k/gerbil-scheme-language-project-harness"
+repo = "tao3k/asp-gerbil-scheme"
 version = "v0.1.0"
-downloadBaseUrl = "https://github.com/tao3k/gerbil-scheme-language-project-harness/releases/download/v0.1.0"
+downloadBaseUrl = "https://github.com/tao3k/asp-gerbil-scheme/releases/download/v0.1.0"
 archivePrefix = "asp-gerbil-scheme"
 archiveBinary = "asp-gerbil-scheme"
 requireNativeBinary = true
@@ -48,20 +48,3 @@ supportedTargets = [
   "x86_64-unknown-linux-gnu",
   "aarch64-apple-darwin",
 ]
-
-[languages.org]
-repo = "tao3k/orgize"
-version = "v0.10.0-alpha.10"
-archivePrefix = "orgize"
-archiveBinary = "orgize"
-downloadBaseUrl = "https://github.com/tao3k/orgize/releases/download/v0.10.0-alpha.10"
-supportedTargets = [
-  "x86_64-unknown-linux-gnu",
-  "aarch64-apple-darwin",
-  "x86_64-pc-windows-msvc",
-]
-
-[languages.org.sha256ByTarget]
-"aarch64-apple-darwin" = "bf29b471d01529f5a98364dddac8aa24d5d57f31ba794e3b94e591d8527f9cf8"
-"x86_64-pc-windows-msvc" = "96e100bb0fa08395c356b4f4b0a8b95c6771d82f1d94fbb8745f20c5076f061e"
-"x86_64-unknown-linux-gnu" = "ec27ef143b3d38f2dd742fec1096947c28a4f595e9549eae6fbb8b88eb8db096"

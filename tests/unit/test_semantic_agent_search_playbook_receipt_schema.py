@@ -24,7 +24,7 @@ def receipt():
         "plan": {
             "stages": [
                 {"family": "acquire", "capabilityId": "search.indexed-lexical"},
-                {"family": "reason", "capabilityId": "search.python-graph"},
+                {"family": "reason", "capabilityId": "search.resident-graph"},
                 {
                     "family": "verify",
                     "capabilityId": "search.ripgrep-verify-candidates",
@@ -42,7 +42,7 @@ def receipt():
                 "admittedOwnerCount": 100,
                 "complete": True,
             },
-            "pythonGraph": {
+            "residentGraph": {
                 "entryOwnerIds": ["owner:router", "owner:runtime"],
                 "entryNodeIds": ["item:route"],
                 "candidateOwnerIds": ["owner:router", "owner:test"],
@@ -74,7 +74,7 @@ def receipt():
             "totalElapsedMicros": 240,
             "laneElapsedMicros": {
                 "indexedLexical": 80,
-                "pythonGraph": 120,
+                "residentGraph": 120,
                 "ripgrep": 40,
             },
             "commandCount": 1,
@@ -88,7 +88,7 @@ class SearchPlaybookReceiptSchemaTests(unittest.TestCase):
 
     def test_seed_products_are_not_admitted(self):
         value = receipt()
-        value["evidence"]["pythonGraph"]["seeds"] = ["owner:router"]
+        value["evidence"]["residentGraph"]["seeds"] = ["owner:router"]
         self.assertTrue(list(Draft202012Validator(SCHEMA).iter_errors(value)))
 
     def test_reason_capability_is_extensible_without_changing_schema(self):

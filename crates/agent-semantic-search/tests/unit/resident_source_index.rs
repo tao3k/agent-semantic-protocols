@@ -53,9 +53,11 @@ fn exact_and_ranked_queries_use_only_the_resident_generation() {
     );
     assert_eq!(exact.hits[0].owner_path, "crates/runtime.rs");
     assert_eq!(exact.hits[0].language_id.as_deref(), Some("rust"));
+    assert_eq!(exact.hits[0].query_keys, vec!["runtime-server"]);
 
     let ranked = index.query("runtime", Some(&rust), 10).unwrap();
     assert_eq!(ranked.hits[0].owner_path, "crates/runtime.rs");
+    assert_eq!(ranked.hits[0].query_keys, vec!["runtime"]);
 }
 
 #[test]
@@ -119,6 +121,112 @@ fn a_published_empty_generation_is_a_miss_not_a_cold_or_db_state() {
         agent_semantic_search_projection::ResidentSearchReadyState::Ready
     );
     assert!(result.hits.is_empty());
+}
+
+#[test]
+fn query_limit_is_fail_closed_at_the_shared_top_k_boundary() {
+    let index = ResidentSourceIndex::new(
+        BTreeMap::new(),
+        BTreeMap::new(),
+        source_snapshot(),
+        "blake3-256:1111111111111111111111111111111111111111111111111111111111111111".to_owned(),
+    );
+
+    assert_eq!(
+        index.query("runtime", None, 0).unwrap_err(),
+        "resident source-index query limit must be in 1..=100: limit=0"
+    );
+    assert_eq!(
+        index.query("runtime", None, 101).unwrap_err(),
+        "resident source-index query limit must be in 1..=100: limit=101"
+    );
+}
+
+#[test]
+fn warm_query_cache_reuses_the_generation_bound_result_without_payload_clone() {
+    let rust = authority("rust", "asp-rust");
+    let index = ResidentSourceIndex::new(
+        BTreeMap::from([("runtime".to_owned(), vec!["crates/runtime.rs".to_owned()])]),
+        BTreeMap::from([(
+            "crates/runtime.rs".to_owned(),
+            ResidentSourceIndexSeed {
+                owner_path: "crates/runtime.rs".to_owned(),
+                owner_content_digest: hash_blob(b"runtime").value,
+                line_count: 42,
+                query_keys: vec!["runtime".to_owned()],
+                authority: Some(rust.clone()),
+            },
+        )]),
+        source_snapshot(),
+        "blake3-256:1111111111111111111111111111111111111111111111111111111111111111".to_owned(),
+    );
+
+    let cold = index.query("runtime", Some(&rust), 100).unwrap();
+    let warm = index.query("runtime", Some(&rust), 100).unwrap();
+
+    assert!(std::sync::Arc::ptr_eq(&cold, &warm));
+    assert_eq!(cold.generation_digest, warm.generation_digest);
+}
+
+#[test]
+fn novel_dense_posting_queries_stay_bounded_without_full_vocabulary_clones() {
+    const OWNER_COUNT: usize = 2_048;
+    const QUERY_COUNT: usize = 16;
+    const LIMIT: u32 = 100;
+    let rust = authority("rust", "asp-rust");
+    let mut candidate_seeds = BTreeMap::new();
+    let owner_paths = (0..OWNER_COUNT)
+        .map(|index| format!("src/owner_{index:04}.rs"))
+        .collect::<Vec<_>>();
+    for owner_path in &owner_paths {
+        candidate_seeds.insert(
+            owner_path.clone(),
+            ResidentSourceIndexSeed {
+                owner_path: owner_path.clone(),
+                owner_content_digest: hash_blob(owner_path.as_bytes()).value,
+                line_count: 1,
+                query_keys: (0..128).map(|key| format!("owner-key-{key}")).collect(),
+                authority: Some(rust.clone()),
+            },
+        );
+    }
+    let mut lexical_index = BTreeMap::from([("common".to_owned(), owner_paths.clone())]);
+    for query in 0..QUERY_COUNT {
+        lexical_index.insert(format!("term{query}"), owner_paths.clone());
+    }
+    let index = ResidentSourceIndex::new(
+        lexical_index,
+        candidate_seeds,
+        source_snapshot(),
+        "blake3-256:1111111111111111111111111111111111111111111111111111111111111111".to_owned(),
+    );
+
+    let mut elapsed = Vec::with_capacity(QUERY_COUNT);
+    for query in 0..QUERY_COUNT {
+        let started = std::time::Instant::now();
+        let result = index
+            .query(&format!("term{query} common"), Some(&rust), LIMIT)
+            .unwrap();
+        elapsed.push(started.elapsed());
+        assert_eq!(result.hits.len(), LIMIT as usize);
+        assert_eq!(result.hits[0].owner_path, "src/owner_0000.rs");
+        assert_eq!(
+            result.hits[0].query_keys,
+            vec!["common".to_owned(), format!("term{query}")]
+        );
+        assert!(result.hits.iter().all(|hit| hit.query_keys.len() == 2));
+    }
+    elapsed.sort_unstable();
+    let p99 = elapsed[elapsed.len() - 1];
+    eprintln!(
+        "[resident-dense-postings] owners={OWNER_COUNT} novelQueries={QUERY_COUNT} postingVisits={} topK={LIMIT} p99Nanos={} budgetNanos=1000000",
+        OWNER_COUNT * 2,
+        p99.as_nanos()
+    );
+    assert!(
+        p99 < std::time::Duration::from_millis(1),
+        "novel dense-posting query exceeded one millisecond: {p99:?}"
+    );
 }
 
 #[test]

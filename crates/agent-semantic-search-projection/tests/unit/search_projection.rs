@@ -101,7 +101,7 @@ fn ranked_graph_packet_uses_shared_projection_renderer() {
                 "source": "query:parser",
                 "sink": "owner:cli",
                 "pathKind": "constrained-shortest"
-            }
+        }
         ]
     });
     let first =

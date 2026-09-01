@@ -74,17 +74,17 @@ pub(super) const LANGUAGE_SCENARIO_BENCHMARK_REQUIREMENTS:
     },
     LanguageScenarioBenchmarkRequirement {
         language: "python",
-        root: "languages/python-lang-project-harness/tests/unit/harness/scenarios/software_criteria",
+        root: "languages/asp-python/tests/unit/harness/scenarios/software_criteria",
         syntax: ScenarioBenchmarkSyntax::TomlPair,
     },
     LanguageScenarioBenchmarkRequirement {
         language: "julia",
-        root: "languages/JuliaLangProjectHarness.jl/test/unit/scenarios/software_criteria",
+        root: "languages/AspJulia.jl/test/unit/scenarios/software_criteria",
         syntax: ScenarioBenchmarkSyntax::TomlPair,
     },
     LanguageScenarioBenchmarkRequirement {
         language: "gerbil-scheme",
-        root: "languages/gerbil-scheme-language-project-harness/t/scenarios/policy",
+        root: "languages/asp-gerbil-scheme/t/scenarios/policy",
         syntax: ScenarioBenchmarkSyntax::GerbilBenchmarkSs,
     },
     LanguageScenarioBenchmarkRequirement {

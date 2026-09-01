@@ -126,18 +126,6 @@
         },
         {
           "properties": {
-            "languageId": {"const": "md"},
-            "providerId": {"const": "asp-md"}
-          }
-        },
-        {
-          "properties": {
-            "languageId": {"const": "org"},
-            "providerId": {"const": "asp-org"}
-          }
-        },
-        {
-          "properties": {
             "languageId": {"const": "python"},
             "providerId": {"const": "asp-python"}
           }
@@ -408,7 +396,7 @@
     },
     "methodId": {
       "type": "string",
-      "pattern": "^(?:guide|query|(search|query|check|proof|review|verification|evidence|ast-patch|agent)/[a-z][a-z0-9_-]*)$"
+      "pattern": "^(?:guide|query|(search|query|proof|review|evidence|ast-patch|agent)/[a-z][a-z0-9_-]*)$"
     },
     "hookRouteBindings": {
       "type": "object",
@@ -417,8 +405,7 @@
         "prime",
         "owner",
         "lexical",
-        "ingest",
-        "checkChanged"
+        "ingest"
       ],
       "properties": {
         "prime": {
@@ -437,9 +424,6 @@
           "$ref": "#/$defs/methodId"
         },
         "ingest": {
-          "$ref": "#/$defs/methodId"
-        },
-        "checkChanged": {
           "$ref": "#/$defs/methodId"
         },
         "dependencyTopology": {

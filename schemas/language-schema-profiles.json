@@ -8,6 +8,7 @@
   "rootSets": {
     "provider-contract": [
       "provider-registration.schema.json",
+      "provider-manifest.schema.json",
       "provider-route.schema.json",
       "provider-query-pack-descriptor.schema.json",
       "provider-runtime-contract-descriptor.schema.json",
@@ -45,6 +46,7 @@
       "asp-client-workspace-source-mutation.schema.json",
       "asp-client-cancellation-probe-request.schema.json",
       "asp-client-cancellation-probe-response.schema.json",
+      "asp-client-workspace-generation-ensure-ready-request.schema.json",
       "asp-client-graphs-timeline-request.v1.schema.json"
     ],
     "project-resolution": [
@@ -91,6 +93,8 @@
       "semantic-formal-proof-pilot.v1.schema.json",
       "semantic-review-packet.v1.schema.json",
       "semantic-evidence-graph.v1.schema.json",
+      "semantic-graph-resident-evaluation-request.v1.schema.json",
+      "semantic-graph-resident-evaluation-result.v1.schema.json",
       "semantic-graph-turbo-request.v1.schema.json",
       "semantic-assurance-case.v1.schema.json",
       "semantic-ast-patch.v1.schema.json",
@@ -138,8 +142,8 @@
     },
     {
       "languageId": "python",
-      "packageRoot": "languages/python-lang-project-harness",
-      "bundleRoot": "languages/python-lang-project-harness/schemas",
+      "packageRoot": "languages/asp-python",
+      "bundleRoot": "languages/asp-python/schemas",
       "rootSets": [
         "provider-contract",
         "client-protocol",
@@ -154,8 +158,8 @@
     },
     {
       "languageId": "julia",
-      "packageRoot": "languages/JuliaLangProjectHarness.jl",
-      "bundleRoot": "languages/JuliaLangProjectHarness.jl/schemas",
+      "packageRoot": "languages/AspJulia.jl",
+      "bundleRoot": "languages/AspJulia.jl/schemas",
       "rootSets": [
         "provider-contract",
         "client-protocol",
@@ -168,12 +172,14 @@
     },
     {
       "languageId": "gerbil-scheme",
-      "packageRoot": "languages/gerbil-scheme-language-project-harness",
-      "bundleRoot": "languages/gerbil-scheme-language-project-harness/schemas",
+      "packageRoot": "languages/asp-gerbil-scheme",
+      "bundleRoot": "languages/asp-gerbil-scheme/schemas",
       "rootSets": [
         "provider-contract",
         "client-protocol",
-        "project-resolution"
+        "project-resolution",
+        "core-query",
+        "agent-reasoning"
       ],
       "roots": [
         "callable-skeleton.schema.json",
@@ -189,7 +195,7 @@
         "semantic-type-proof.v1.schema.json"
       ],
       "providerOwned": [
-        "semantic-gerbil-scheme-harness-info.v1.schema.json"
+        "semantic-asp-gerbil-scheme-info.v1.schema.json"
       ]
     },
     {
@@ -197,7 +203,6 @@
       "packageRoot": "languages/orgize",
       "bundleRoot": "languages/orgize/provider/org/schemas",
       "rootSets": [
-        "provider-contract",
         "client-protocol",
         "project-resolution",
         "core-query",
@@ -211,7 +216,6 @@
       "packageRoot": "languages/orgize",
       "bundleRoot": "languages/orgize/provider/md/schemas",
       "rootSets": [
-        "provider-contract",
         "client-protocol",
         "project-resolution",
         "core-query",
@@ -364,7 +368,8 @@
         "agent-semantic-project-",
         "codex-session-",
         "codex-child-",
-        "codex-collaboration-"
+        "codex-collaboration-",
+        "codex-thread-"
         ]
       },
       "membershipOverrides": {
@@ -519,7 +524,10 @@
         "includeSchemaPaths": [
           "schemas/asp-python-graphs-search-evidence.v1.schema.json",
           "schemas/asp.exact-selector-execution-receipt.v1.schema.json",
-          "schemas/projection-evidence-context.v1.schema.json"
+          "schemas/projection-evidence-context.v1.schema.json",
+          "schemas/lexical-postings-work-reduction-receipt.schema.json",
+          "schemas/owner-search-payload-reduction-receipt.schema.json",
+          "schemas/rg-coverage-receipt.schema.json"
         ]
       }
     },
@@ -672,7 +680,8 @@
         "includeSchemaPaths": [
           "schemas/asp.active-workspace-generation.v1.schema.json",
           "schemas/active-generation-projection-capability.v1.schema.json",
-          "schemas/active-search-generation.schema.json"
+          "schemas/active-search-generation.schema.json",
+          "schemas/state-home-project-binding.schema.json"
         ]
       },
       "definitionSchemaPath": "schemas/workspace-definitions.v1.schema.json",
@@ -715,6 +724,11 @@
         "filenamePrefixes": [
           "runtime-server-"
         ]
+      },
+      "membershipOverrides": {
+        "includeSchemaPaths": [
+          "schemas/grpc-warm-latency-receipt.schema.json"
+        ]
       }
     },
     {
@@ -725,6 +739,12 @@
       "namespace": {
         "filenamePrefixes": [
           "runtime-"
+        ]
+      },
+      "membershipOverrides": {
+        "includeSchemaPaths": [
+          "schemas/state-home-cleanup-receipt.schema.json",
+          "schemas/state-home-retention-plan.schema.json"
         ]
       }
     },

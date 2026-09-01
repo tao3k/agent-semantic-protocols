@@ -3,11 +3,11 @@ set shell := ["bash", "-cu"]
 repo := "."
 rust_harness_project := "languages/asp-rust"
 typescript_harness_project := "languages/typescript-lang-project-harness"
-python_harness_project := "languages/python-lang-project-harness"
-julia_harness_project := "languages/JuliaLangProjectHarness.jl"
-julia_harness := "julia --project=languages/JuliaLangProjectHarness.jl languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl"
-julia_compiled_harness := "languages/JuliaLangProjectHarness.jl/build/juliac-asp-local/asp-julia"
-gerbil_harness_project := "languages/gerbil-scheme-language-project-harness"
+python_harness_project := "languages/asp-python"
+julia_harness_project := "languages/AspJulia.jl"
+julia_harness := "julia --project=languages/AspJulia.jl languages/AspJulia.jl/bin/asp-julia.jl"
+julia_compiled_harness := "languages/AspJulia.jl/build/juliac-asp-local/asp-julia"
+gerbil_harness_project := "languages/asp-gerbil-scheme"
 asp_state_home := env_var_or_default("ASP_STATE_HOME", home_directory() / ".agent-semantic-protocols")
 asp_runtime_bin := asp_state_home / "runtime" / "bin"
 
@@ -273,10 +273,10 @@ check-sandtables:
     uv run --project packages/python python -m tools sandtable
 
 benchmark-large-library-search-runtime:
-    test -n "${ASP_STATE_HOME:-}"; direnv exec . env ASP_BENCHMARK_BIN="$PWD/target/release/asp" uv run --project packages/python --frozen python -m tools.semantic_sandtable --repo-root . --large-library-runtime-benchmark --large-library-runtime-asp-bin target/release/asp --large-library-runtime-state-home "$ASP_STATE_HOME"
+    test -n "${ASP_STATE_HOME:-}"; direnv exec . env ASP_BENCHMARK_BIN="$PWD/target/release/asp" uv run --project packages/python --frozen --exact python -m tools.semantic_sandtable --repo-root . --large-library-runtime-benchmark --large-library-runtime-asp-bin target/release/asp --large-library-runtime-state-home "$ASP_STATE_HOME"
 
 benchmark-large-library-search-runtime-baseline:
-    test -n "${ASP_STATE_HOME:-}"; receipt="$PWD/.cache/large-library-runtime-search.v1.receipt.json"; mkdir -p "$(dirname "$receipt")"; set +e; direnv exec . env ASP_BENCHMARK_BIN="$PWD/target/release/asp" uv run --project packages/python --frozen python -m tools.semantic_sandtable --repo-root . --json --large-library-runtime-benchmark --large-library-runtime-asp-bin target/release/asp --large-library-runtime-state-home "$ASP_STATE_HOME" > "$receipt"; runtime_status=$?; set -e; direnv exec . env ASP_BENCHMARK_BIN="$PWD/target/release/asp" uv run --project packages/python --frozen python -m tools.semantic_sandtable.large_library_runtime_baseline --baseline benchmarks/large-library-runtime-search.v1.baseline.json --receipt "$receipt"; baseline_status=$?; test "$runtime_status" -eq 0; test "$baseline_status" -eq 0
+    test -n "${ASP_STATE_HOME:-}"; receipt="$PWD/.cache/large-library-runtime-search.v1.receipt.json"; mkdir -p "$(dirname "$receipt")"; set +e; direnv exec . env ASP_BENCHMARK_BIN="$PWD/target/release/asp" uv run --project packages/python --frozen --exact python -m tools.semantic_sandtable --repo-root . --json --large-library-runtime-benchmark --large-library-runtime-asp-bin target/release/asp --large-library-runtime-state-home "$ASP_STATE_HOME" > "$receipt"; runtime_status=$?; set -e; direnv exec . env ASP_BENCHMARK_BIN="$PWD/target/release/asp" uv run --project packages/python --frozen --exact python -m tools.semantic_sandtable.large_library_runtime_baseline --baseline benchmarks/large-library-runtime-search.v1.baseline.json --receipt "$receipt"; baseline_status=$?; test "$runtime_status" -eq 0; test "$baseline_status" -eq 0
 
 check-graph-turbo-focused:
     uv run --project packages/python/asp_python_graphs --frozen pytest \
@@ -344,25 +344,25 @@ check-rust-warnings:
     env RUSTFLAGS="-D warnings" cargo check -q --manifest-path {{rust_harness_project}}/Cargo.toml --features cli,search
 
 check-schema-profiles:
-    uv run --project packages/python --frozen python -m tools schema profiles validate
+    rtk cargo run --quiet -p agent-semantic-schema-manager -- verify --workspace .
 
 check-schema-manager: check-schema-proof-plan
-	uv run --project packages/python --frozen asp-schema-manager check --workspace-root . --fail-on-family-local-refs --fail-on-unclassified-schemas --fail-on-mixed-family-refs --fail-on-reference-decision-drift
+	uv run --project packages/python --frozen --exact asp-schema-manager check --workspace-root . --fail-on-family-local-refs --fail-on-unclassified-schemas --fail-on-mixed-family-refs --fail-on-reference-decision-drift
 
 check-schema-proof-plan:
-    uv run --project packages/python --frozen pytest packages/python/asp_schema_manager/tests/unit/test_logical_projection.py packages/python/asp_schema_manager/tests/unit/test_proof_plan_cli.py -q
+    uv run --project packages/python --frozen --exact pytest packages/python/asp_schema_manager/tests/unit/test_logical_projection.py packages/python/asp_schema_manager/tests/unit/test_proof_plan_cli.py -q
 
 report-schema-manager:
-    uv run --project packages/python --frozen asp-schema-manager audit --workspace-root .
+    uv run --project packages/python --frozen --exact asp-schema-manager audit --workspace-root .
 
 check-tree-sitter-query-contracts:
-    uv run --project packages/python --frozen python -m tools tree-sitter validate contracts
+    uv run --project packages/python --frozen --exact python -m tools tree-sitter validate contracts
 
 check-language-workspace-search-contracts:
-    uv run --project packages/python --frozen python -m tools validate language-workspace-search-contract
+    uv run --project packages/python --frozen --exact python -m tools validate language-workspace-search-contract
 
 check-rfc-docs:
-    uv run --project packages/python --frozen pytest \
+    uv run --project packages/python --frozen --exact pytest \
       tests/unit/test_*rfc.py \
       tests/unit/test_docs_rfc_skill_contracts.py \
       -q
@@ -370,7 +370,7 @@ check-rfc-docs:
 provider-gate-root: check-language-evidence-smoke
     just check-gerbil-owner-items-fast-path
     cargo test -p agent-semantic-hook
-    uv run --project packages/python --frozen python -m pytest \
+    uv run --project packages/python --frozen --exact python -m pytest \
       tests/unit/test_semantic_*_schema.py \
       tests/unit/semantic_tree_sitter_query_rfc \
       tests/unit/test_asp_server_first_architecture_rfc.py \
@@ -482,7 +482,7 @@ provider-gate-typescript:
 provider-gate-python:
     uv run --project {{python_harness_project}} --frozen asp-python search policy PY-PROJ-R001 owner tests --workspace {{python_harness_project}} --view seeds
     uv run --project {{python_harness_project}} --frozen asp-python search policy PY-AGENT-R008 owner tests --workspace {{python_harness_project}} --view seeds
-    uv run --project {{python_harness_project}} --frozen asp-python search owner src/python_lang_project_harness/_semantic_language.py items --query semantic_language_registry_document --workspace {{python_harness_project}} --view seeds
+    uv run --project {{python_harness_project}} --frozen asp-python search owner src/asp_python/_semantic_language.py items --query semantic_language_registry_document --workspace {{python_harness_project}} --view seeds
     uv run --project {{python_harness_project}} --frozen python -m pytest \
       {{python_harness_project}}/tests/unit/harness/test_semantic_cli_query_set.py \
       {{python_harness_project}}/tests/unit/harness/test_semantic_cli_owner_items.py \
@@ -645,13 +645,13 @@ perf-calibrate-julia-cache:
 	  "${asp_bin}" cache invalidate --root {{julia_harness_project}} >/dev/null; \
 	  "${asp_bin}" julia search prime --view seeds {{julia_harness_project}} --receipt-json >"${tmp}/miss.out" 2>"${tmp}/miss.receipt.json"; \
 	  "${asp_bin}" julia search prime --view seeds {{julia_harness_project}} --receipt-json >"${tmp}/hit.out" 2>"${tmp}/hit.receipt.json"; \
-	  uv run --project packages/python --frozen python -m tools cache validate julia-performance "${tmp}"
+	  uv run --project packages/python --frozen --exact python -m tools cache validate julia-performance "${tmp}"
 
 check-python-policy:
-    uv run --project {{python_harness_project}} --frozen asp-python check --full {{repo}}
+    uv run --project {{python_harness_project}} --frozen python -c 'from asp_python import assert_python_project_harness_clean; assert_python_project_harness_clean("{{repo}}")'
 
 report-python-policy:
-    uv run --project {{python_harness_project}} --frozen asp-python check --full {{repo}} || true
+    uv run --project {{python_harness_project}} --frozen python -c 'from asp_python import render_python_lang_harness, run_python_project_harness; print(render_python_lang_harness(run_python_project_harness("{{repo}}")), end="")'
 # Develop mode: build and install the debug asp binary from this checkout.
 agent-tools-install-asp-dev:
     @just agent-tools-install-protocol-debug

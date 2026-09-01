@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/semantic-graph-resident-evaluation-request.v1.schema.json",
+  "title": "Resident graph evaluation request V1",
+  "type": "object",
+  "required": [
+    "schemaId", "schemaVersion", "protocolId", "protocolVersion",
+    "packetKind", "languageId", "surface", "queryTerms", "profile",
+    "seedIds", "budget"
+  ],
+  "properties": {
+    "schemaId": {"const": "agent.semantic-protocols.semantic-graph-resident-evaluation-request"},
+    "schemaVersion": {"const": "1"},
+    "protocolId": {"const": "agent.semantic-protocols.search"},
+    "protocolVersion": {"const": "1"},
+    "packetKind": {"const": "resident-graph-evaluation-request"},
+    "languageId": {"type": "string", "pattern": "^[a-z][a-z0-9-]*$"},
+    "surface": {
+      "enum": ["search-pipe", "search-rg", "search-lexical", "search-owner", "query"]
+    },
+    "queryTerms": {
+      "type": "array", "maxItems": 32, "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1, "maxLength": 256}
+    },
+    "profile": {"enum": ["balanced", "structural", "dependency"]},
+    "seedIds": {
+      "type": "array", "maxItems": 128, "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1, "maxLength": 1024}
+    },
+    "budget": {
+      "type": "object",
+      "required": ["maxDepth", "maxNodes", "maxEdges", "maxResults"],
+      "properties": {
+        "maxDepth": {"type": "integer", "minimum": 0, "maximum": 16},
+        "maxNodes": {"type": "integer", "minimum": 1, "maximum": 256},
+        "maxEdges": {"type": "integer", "minimum": 0, "maximum": 1024},
+        "maxResults": {"type": "integer", "minimum": 1, "maximum": 100}
+      },
+      "additionalProperties": false
+    }
+  },
+  "anyOf": [
+    {"properties": {"queryTerms": {"minItems": 1}}},
+    {"properties": {"seedIds": {"minItems": 1}}}
+  ],
+  "additionalProperties": false
+}

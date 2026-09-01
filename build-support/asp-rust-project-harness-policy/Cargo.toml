@@ -6,16 +6,22 @@ publish = false
 
 [features]
 default = []
-harness-runtime = ["dep:asp-rust"]
+workspace-policy = ["dep:asp-rust"]
 
 [dependencies]
 blake3.workspace = true
 asp-rust = { workspace = true, optional = true }
+asp-rust-build-support.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 
 [dev-dependencies]
 criterion = { workspace = true }
+
+[build-dependencies]
+asp-rust.workspace = true
+blake3.workspace = true
+serde_json.workspace = true
 
 [[bench]]
 name = "performance_verification"

@@ -13,6 +13,28 @@ fn cancellation_probe_has_a_language_neutral_route_operation() {
 }
 
 #[test]
+fn server_catalog_declares_each_shared_method_exactly_once() {
+    let digest = format!("blake3-256:{}", "0".repeat(64));
+    let catalog = crate::server_method_catalog::server_client_catalog(
+        digest.clone(),
+        digest,
+        vec![crate::ClientTransport::RuntimeIpc],
+        Vec::new(),
+    )
+    .expect("shared Runtime methods form a valid catalog");
+
+    assert_eq!(
+        catalog
+            .methods
+            .iter()
+            .filter(|method| method.method == crate::CANCELLATION_PROBE_METHOD)
+            .count(),
+        1,
+        "the shared cancellation route must have one catalog authority"
+    );
+}
+
+#[test]
 fn server_catalog_publishes_the_cancellation_probe() {
     let methods = crate::server_method_catalog::server_client_methods(Vec::new())
         .expect("server method catalog");

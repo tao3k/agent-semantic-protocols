@@ -297,19 +297,19 @@ alignment must stay workspace-managed: do not design, require, or install a
 standalone Julia provider bin. Julia's LLVM/JIT warm-up cost makes a short-lived
 global binary a poor agent protocol surface; use the checked-in project command
 instead:
-=julia --project=languages/JuliaLangProjectHarness.jl
-languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl=.
+=julia --project=languages/AspJulia.jl
+languages/AspJulia.jl/bin/asp-julia.jl=.
 
 Provider alignment evidence:
 
 #+begin_src shell
 direnv exec . cargo test --manifest-path languages/asp-rust/Cargo.toml --features cli,search cli_search_views_render_rfc_line_protocol -- --nocapture
-direnv exec . uv run --project languages/python-lang-project-harness --frozen python -m pytest languages/python-lang-project-harness/tests/unit/harness/test_semantic_cli_query_set.py
+direnv exec . uv run --project languages/asp-python --frozen python -m pytest languages/asp-python/tests/unit/harness/test_semantic_cli_query_set.py
 direnv exec . npm --prefix languages/typescript-lang-project-harness run check:implementation
 direnv exec . node --test \
   languages/typescript-lang-project-harness/dist/tests/unit/cli_semantic_search.test.js \
   languages/typescript-lang-project-harness/dist/tests/unit/semantic_search_schema.test.js
-direnv exec . julia --project=languages/JuliaLangProjectHarness.jl -e 'using JuliaLangProjectHarness; using Test; include("languages/JuliaLangProjectHarness.jl/test/unit/cli.jl")'
+direnv exec . julia --project=languages/AspJulia.jl -e 'using AspJulia; using Test; include("languages/AspJulia.jl/test/unit/cli.jl")'
 #+end_src
 
 The real compact-provider smoke checks now emit:

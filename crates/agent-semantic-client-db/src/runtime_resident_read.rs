@@ -119,7 +119,8 @@ impl RuntimeResidentReadClient {
         query: &str,
         authority: Option<&agent_semantic_search::ResidentSearchAuthority>,
         limit: u32,
-    ) -> Result<agent_semantic_search_projection::ResidentSearchReadyResult, String> {
+    ) -> Result<std::sync::Arc<agent_semantic_search_projection::ResidentSearchReadyResult>, String>
+    {
         self.search_projection
             .read_source_index(query, authority, limit)
     }

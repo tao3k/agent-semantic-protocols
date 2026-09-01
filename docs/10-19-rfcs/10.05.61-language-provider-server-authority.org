@@ -1,5 +1,5 @@
 #+TITLE: ASP Client Server Authority
-#+STATUS: accepted
+#+STATUS: proposed
 
 Parent architecture: [[file:10.05-interactive-graph-first-progressive-searchloop.org][RFC 10.05 SearchLoop]].
 
@@ -10,6 +10,738 @@ as commands on the query path. Process creation, VM initialization, package
 loading, and provider warm-up are lifecycle work. Treating them as query work
 produces multi-second cold latency and makes health, cancellation, and shutdown
 unobservable.
+
+The same category error also appears when a long-lived server copies the shape
+of an editor protocol without preserving the stronger invariants required by a
+semantic search runtime.  A persistent process alone does not create a fast or
+correct data plane.  The following observed failures are architectural, not
+isolated implementation bugs:
+
+- a language request discovers a repository candidate, enqueues generation
+  work, waits for publication, or opens durable state before reading;
+- a queued admission snapshot is returned as if it were a terminal, forcing
+  the client to retry and making exactly-once behavior unknowable;
+- the edge-triggered =accepted= bit is treated as readiness even though a
+  replayed Ready terminal correctly has =accepted=false=;
+- a targeted provider projection is reused as a complete workspace generation;
+- client initialization, provider activation, generation admission, and query
+  execution share one latency and failure domain;
+- semantic unit tests bind private sockets, so an AF_UNIX sandbox policy is
+  mistaken for a search failure;
+- a transport closes without one typed terminal and exposes raw =early eof=;
+- mutable labels, activation counters, paths, or process observations are used
+  as freshness evidence instead of content identity;
+- lexical matching, native-finder behavior, graph reasoning, cache population,
+  and rendering form an implicit fallback chain rather than an admitted plan.
+
+These failures recreate weaknesses commonly seen around LSP deployments:
+mutable per-client document replicas, workspace-scale rescans, best-effort
+cancellation, stale responses without generation identity, dynamic capability
+drift, and opaque progress.  ASP keeps the useful LSP lesson--one long-lived
+server and a typed request lifecycle--but rejects those mutable and
+client-authoritative semantics.
+
+* Beyond LSP: normative architecture
+
+** What ASP keeps and what ASP rejects
+
+ASP keeps five proven server-protocol ideas:
+
+1. a long-lived server rather than one subprocess per request;
+2. explicit initialize, request, cancellation, shutdown, and exit phases;
+3. method discovery through one negotiated catalog;
+4. request identity and exactly one terminal response;
+5. incremental change ingestion instead of mandatory full rescans.
+
+ASP strengthens them with invariants an editor protocol normally does not
+provide:
+
+- the server reads an immutable, content-addressed =WorkspaceGeneration=;
+- every result binds workspace, source root, generation, schema catalog, and
+  algorithm identity;
+- the client never owns a mutable shadow workspace, index, cache, provider, or
+  publication pointer;
+- cold lifecycle work and warm semantic reads are different methods on
+  different scheduling lanes;
+- all queues are bounded, cancellation has reserved control capacity, and a
+  connection produces exactly one typed Ready, Error, or Cancelled terminal;
+- Rust, Gerbil Scheme, Python, TypeScript, Julia, Org, Markdown, and future
+  languages publish facts into the same language-neutral search algebra;
+- a cache hit is a proof of exact content identity, not evidence inferred from
+  a timestamp, path, label, process, or activation counter.
+
+** Four authority planes
+
+The Runtime is one process authority with four non-interchangeable planes:
+
+#+begin_example
+control plane     initialize, catalog, health, cancel, drain, ensure-ready
+write plane       source mutation, parser projection, generation publication
+resident read     exact selector, lexical postings, owner graph, bounded merge
+provider stream   activation, parser facts, diagnostics, graph preparation
+#+end_example
+
+The control plane has reserved capacity and never waits behind data requests.
+The write plane is single-writer per workspace generation.  The resident read
+plane is read-only and lock-free after it acquires one immutable generation
+lease.  The provider stream may prepare facts for the next generation but
+cannot mutate the generation visible to a request.
+
+No public language method crosses planes.  In particular, =search=, =query=,
+=source-index.lookup=, and =search.owner= never invoke candidate discovery,
+Git, a database, a provider process, generation admission, publication, health
+polling, or endpoint discovery.
+
+** Cold lifecycle and warm request state machines
+
+*** Bootstrap is a bounded observation, not a lifecycle loop
+
+The public client performs exactly one observation of the Runtime authority
+tuple =(artifact digest, publication nonce, owner epoch, endpoint binding)=.
+That observation MUST return one typed =Ready=, =Starting=, =Failed=, or
+=Cancelled= terminal without polling, sleeping, retrying, or waiting for a
+filesystem endpoint to appear.  A non-ready observation is a control-plane
+receipt; it is not permission for the query path to discover, spawn, install,
+or rebuild anything.
+
+The normative decision table is:
+
+| cancellation observed | owner alive | endpoint bound | terminal |
+|-----------------------+-------------+----------------+----------|
+| yes                   | any         | any            | =Cancelled= |
+| no                    | yes         | yes            | =Ready= |
+| no                    | yes         | no             | =Failed(endpoint-authority-diverged)= |
+| no                    | no          | no             | =Starting(supervisor-scheduled)= |
+| no                    | no          | yes            | =Failed(stale-endpoint-authority)= |
+
+A process is never Runtime authority by itself.  Therefore a live daemon with
+a missing or non-matching endpoint is not =Starting= and cannot be repaired by
+client polling: it is a fail-closed identity divergence owned by the Runtime
+supervisor.  Conversely, an absent owner and endpoint may schedule one
+single-flight supervisor recovery, but the initiating client still returns the
+typed =Starting= receipt immediately.
+
+Cancellation is transitive across the complete client process tree.  When the
+CLI receives cancellation, it closes the request scope, signals the spawned
+client child if one exists, waits for that exact child to terminate, and emits
+one =Cancelled= terminal.  A cancelled client with a live orphan query process
+is a protocol violation.  Cancellation never terminates the resident Runtime
+owner and never mutates a published generation.
+
+The resident daemon MUST NOT acquire the supervisor transaction, invoke its
+own successor handoff, or wait for its own exit receipt.  On observing a newer
+content-bound publication, the daemon has exactly one authority: publish a
+typed =successor-required= activation observation, preserve the pending
+candidate without acknowledging or rolling it back, drain every owned service,
+publish its own exit receipt, release the owner election, and exit.  Only an
+external supervisor may then acquire the supervisor transaction and admit the
+pending successor.  This ordering prevents the self-deadlock
+=owner-election + supervisor-transaction + await-own-exit=.
+
+Client connection lifecycle:
+
+#+begin_example
+Disconnected
+  -> Connected(endpoint binding verified once)
+  -> Initialized(identity and immutable catalog bound once)
+  -> GenerationReady(ensure-ready terminal bound once)
+  -> ReadyRequests*
+  -> Draining
+  -> Closed
+#+end_example
+
+Workspace generation lifecycle:
+
+#+begin_example
+Absent -> Restoring -> Ready
+   \        \-> Failed
+    -> Building -> Publishing -> Ready
+          \-> Cancelled | Failed
+Ready -> BuildingSuccessor -> PublishingSuccessor -> Ready'
+#+end_example
+
+=Initialize= binds identity and the immutable method catalog only.  It does
+not scan a workspace or activate a provider.  The server-owned
+=asp.workspace.generation.ensure-ready= cold method restores or builds one
+=CompleteGeneration=, joins the same attempt when another caller owns it, and
+waits for the same attempt's terminal.  A queued or Building receipt is
+progress, never a read barrier.  =accepted= reports only whether that call
+inserted work and is not part of Ready identity.
+
+After one Ready terminal, language methods are pure resident reads.  If a
+caller bypasses preflight, a language method returns immediate typed
+=query-not-ready= without attempting recovery.  A client retry never supplies
+missing server progress semantics.
+
+** One protocol, two persistent stream directions
+
+The public northbound transport is the canonical Tonic gRPC =ClientFrame=
+service over persistent HTTP/2.  The southbound transport is the canonical
+Tonic bidirectional =ProviderSession= stream.  They are two directions of one
+Runtime protocol architecture, not parallel authorities.  JSON is an optional
+CLI/debug rendering of a typed terminal; it is not the hot wire format and is
+never reparsed inside the resident search engine.
+
+Northbound gRPC carries initialize/catalog, ensure-ready, language requests,
+cancellation, terminal responses, events, shutdown, and exit.  Southbound gRPC
+carries provider registration, activation, parser deltas, generation-bound
+facts, diagnostics, cancellation, and drain.  Ready search/query is
+Runtime-local and does not make a southbound hop.
+
+One response stream reader demultiplexes request IDs.  A bounded data semaphore
+admits at most 32 concurrent calls per session; at least one independent
+control slot remains available for cancellation, health, and drain.  Per-key
+single-flight is used only for cold readiness and publication, never to
+serialize independent Ready reads.
+
+Every admitted request produces exactly one terminal.  Handler error, task
+panic, peer closure, decode failure, cancellation race, and drain race are
+mapped at the frame owner.  Raw EOF, an empty response, and success-without-
+terminal are protocol violations, not retry signals.
+
+** Sandbox-safe endpoint contract
+
+The Runtime Server is the only listener owner.  A CLI, test, provider, or agent
+sandbox never binds a Runtime socket.  Production clients only connect to the
+binding named by the validated endpoint receipt.  Semantic unit tests invoke
+the transport-neutral frame service directly; dedicated transport integration
+tests alone bind a listener.
+
+An endpoint receipt binds transport kind, canonical address, owner epoch,
+binding token, Runtime binary content digest, protocol catalog digest, and
+maximum frame size.  Endpoint files are bootstrap evidence read once per
+connection, never per request.  A permission failure before gRPC handshake is
+typed =transport-unreachable= with the exact OS error and endpoint identity; it
+does not start, restart, install, or replace the Runtime.
+
+Supported Host environments MUST provide one admitted northbound binding that
+their sandboxes can connect to.  The default is a short Unix-domain socket in a
+UID-scoped shared Runtime directory.  A Host may provide an inherited connected
+descriptor or a loopback HTTP/2 binding, but it must carry the identical
+=ClientFrame= protocol and endpoint identity.  There is no client-side
+transport fallback chain: binding selection is an atomic Runtime publication.
+
+Acceptance includes real connect-only probes from every supported Host sandbox
+profile.  Bind permission and connect permission are tested separately.  An
+=EPERM= from an unauthorized test listener is not evidence that the production
+client path is broken; an =EPERM= connecting to the published production
+binding is a release-blocking endpoint-contract failure.
+
+The endpoint descriptor therefore publishes a *transport capability*, not a
+bare socket pathname.  A capability is usable only when the Runtime has bound
+the endpoint identity and =ClientFrame= protocol identity and the Host has
+declared that the selected binding is reachable from the caller's sandbox
+profile.  Socket existence, server health, matching artifact bytes, and a
+successful out-of-sandbox probe do not establish caller reachability.
+
+The language-neutral metadata contract is
+=schemas/runtime-client-transport-capability.v1.schema.json=.  An inherited
+descriptor is deliberately out of band and never serialized into that schema:
+the metadata binds the endpoint, protocol, Host sandbox profile, and real
+reachability receipt, while the Host transfers the connected handle directly
+to the client process.
+
+Transport selection is atomic and fail-closed.  The client selects the one
+published capability before opening a socket.  An absent or unreachable
+capability returns one typed =transport-unavailable= terminal before I/O; it
+does not first attempt a global =/tmp= socket, translate =EPERM= into lifecycle
+state, retry under a different transport, spawn another Runtime, or use
+=ASP_NO_AGENT=.  A Host may publish exactly one of the UID-scoped Unix binding,
+an inherited connected descriptor, or loopback HTTP/2.  All three mount the
+same Runtime-owned =ClientFrame= service and carry the same endpoint identity;
+none is a second admission, generation, cache, or provider authority.
+
+The sandbox matrix is part of publication acceptance.  Each supported Host
+profile runs a real connect-only probe against the candidate capability before
+it becomes Active/Healthy.  Publication fails when any required profile cannot
+reach the binding.  This makes a repeated production =EPERM= impossible for an
+accepted profile by construction, rather than recoverable by client policy.
+
+The selected capability also owns client bootstrap admission.  A sandboxed
+client carrying an inherited connected descriptor MUST NOT first probe the
+published control socket, infer lifecycle state from a failed connect, or
+become a Runtime supervisor.  It reads the endpoint identity snapshot, then
+performs initialization and request dispatch on the inherited =ClientFrame=
+channel.  Runtime observation, recovery, and replacement remain Host
+supervisor operations.  A sandboxed client without a complete usable
+capability returns typed =transport-unavailable= before socket I/O; it never
+falls through to pathname bootstrap, spawn, retry, or =ASP_NO_AGENT=.
+
+This rule is necessary even when the data request itself already supports an
+inherited descriptor.  A pathname-based control preflight in front of that
+request recreates the same Host =EPERM= bug one layer earlier and can
+misclassify a healthy Runtime as stopped.  Control-plane preflight and
+data-plane dispatch are therefore one atomic transport selection, not two
+independently selected routes.
+
+** Unified rg, lexical, and graph search plan
+
+=rg=, lexical search, and graph reasoning are not sequential fallbacks.  The
+shared planner compiles a =SearchPlan= with independent, bounded clauses:
+
+#+begin_example
+SearchIntent
+  -> ExactClause?             O(1) selector map lookup
+  -> LiteralRegexClauses*     in-process rg-compatible matcher over candidates
+  -> LexicalClauses*          postings intersection / bounded top-k
+  -> StructuralFilters*       provider-published owner/item/test facts
+  -> GraphEscalation?         bounded evidence-graph route
+  -> DeterministicMerge       one ranked typed packet
+#+end_example
+
+The production hot path never spawns the =rg= executable.  Ripgrep is a Live
+Corpus oracle for coverage and ranking comparison.  Production uses
+in-process =regex-automata=, =aho-corasick=, =memchr=-class matching and the
+generation's literal/trigram/postings accelerators, preserving declared
+rg-compatible semantics without process startup or a workspace walk.
+
+Lexical clauses preserve each query seed and relation mode; they are not one
+concatenated string.  Posting lists are immutable, generation-local, and
+ordered by stable owner/selector identity.  Intersection, WAND/top-k pruning,
+and rank features are deterministic for the same plan and generation.
+
+=asp-python-graphs= owns graph algorithms and offline calibration, not the
+core query lifecycle.  Provider/graph facts required by the sub-millisecond
+path are published into the immutable generation and evaluated by the resident
+bounded router.  An explicitly requested Python graph escalation uses its
+already-warm gRPC stream under a separate compute budget and returns facts for
+a future generation or a separately typed graph result; it never blocks or
+mutates the core =search/query= transaction.  Python process startup, imports,
+NumPy/SciPy allocation, and graph cache construction are cold preparation.
+
+Exact =query= does not enter lexical or graph ranking.  It hashes the parser-
+owned structural selector and owner identity, reads the exact map, validates
+the bound content digest and byte proof, and returns the requested projection.
+
+** Cross-language amortization and shared Rust compute core
+
+The language dimension is an input fact vocabulary, not an execution topology.
+All languages share one Runtime listener, connection/session pool, bounded
+scheduler, generation authority, Merkle owner tree, exact map, lexical engine,
+graph router, ranking implementation, memo policy, telemetry model, and
+terminal encoder.  There is no Rust-query server, Scheme-query server,
+Python-query server, or language-specific cache on the northbound path.
+
+The heavy online computation is implemented once in the shared Rust service
+core:
+
+#+begin_example
+agent-semantic-runtime-server
+  -> agent-semantic-search
+  -> agent-semantic-search-projection resident segments
+  -> shared Merkle/content identity
+#+end_example
+
+This shared Rust core is not the =asp-rust= language provider.  =asp-rust= owns
+Rust syntax and project facts just as =asp-gerbil-scheme= owns Scheme facts.
+Making another language call the Rust provider for ranking or indexing would
+create a cross-language provider authority and is forbidden.  Providers
+perform parser-native work on the write/provider plane and publish the same
+language-neutral owner, selector, lexical, relation, and diagnostic facts into
+the next immutable generation.
+
+Consequently the Ready cost for any language =L= is:
+
+#+begin_example
+T_ready(L) = T_frame
+           + T_session_generation_lease
+           + T_shared_plan
+           + T_shared_resident_index
+           + T_shared_merge_encode
+#+end_example
+
+There is no =T_provider_start(L)=, =T_provider_rpc(L)=,
+=T_language_binding(L)=, =T_db(L)=, or =T_workspace_scan(L)= term.  Language
+differences may change the number of admitted facts visited under the same
+explicit budget, but not the sequence of services or authorities.
+
+Generation preparation is amortized independently:
+
+#+begin_example
+C_successor = C_shared_manifest_and_merkle
+            + sum(C_changed_owner_parse(L))
+            + C_changed_shared_segments
+
+amortized_cost_per_read = C_successor / Ready_reads_before_successor
+#+end_example
+
+Unchanged owner arenas and postings segments are content-addressed and reused
+across successor generations.  Multiple clients and sessions share the same
+immutable resident segments.  They never duplicate a parser projection or
+graph cache merely because their generated client language differs.
+
+Generated Rust, Python, Gerbil Scheme, TypeScript, or Julia client bindings are
+thin =ClientFrame= codecs.  They do not contain ranking, cache, generation, or
+fallback behavior.  Their conformance budget measures the same server receipt;
+language binding startup is reported separately from Runtime service time.
+
+Cross-language comparison therefore uses normalized work units rather than
+language-specific wall time alone:
+
+| phase | normalized denominator | required receipt |
+|-
+| parser publication | changed source bytes and changed owners | bytes/second, owners/second, facts/owner |
+| immutable storage | admitted source KLoC and relation count | segment bytes/KLoC, bytes/relation, reused bytes |
+| cold successor | changed owner count | parse, segment-build, Merkle, commit microseconds |
+| cold load | immutable segment bytes | validation and mmap/load microseconds |
+| warm exact | one selector | visited entries, service-core and transport nanoseconds |
+| warm lexical | postings actually visited | postings, blocks skipped, merge nanoseconds |
+| warm graph | nodes and edges actually visited | nodes, edges, frontier peak, merge nanoseconds |
+
+The provider receipt ends at canonical fact publication.  The Ready receipt
+starts at the shared Rust planner.  This boundary prevents a fast parser from
+hiding an expensive shared query, and prevents a slower parser from making the
+resident query appear language-dependent.  No generated binding, FFI shim,
+language VM, provider RPC, or provider-private database is admitted between
+those two receipts.
+
+The shared fact ABI is declarative data, not executable language callbacks.
+Its minimum projections are owner identity, exact selector, lexical tokens,
+structural facts, relations, source ranges, and diagnostics, each bound to the
+same owner content digest.  Adding a language means implementing this
+publication contract and its conformance corpus; it does not add a search
+engine implementation.
+
+=asp-python-graphs= is a cold/write-side graph construction, algorithm
+calibration, and executable-oracle service.  It may build generation-bound
+CSR/adjacency, embeddings, or other graph artifacts through its persistent
+gRPC stream.  The shared Rust service validates and publishes those immutable
+artifacts.  Ready graph routing uses the resident Rust router over the
+published artifact; it does not call Python.  A separately requested
+Python-native analysis is a different typed method with its own compute SLA and
+cannot be included in or block the sub-millisecond core Search/Query budget.
+
+** Transport ablation instead of transport-owned semantics
+
+Transport overhead is measurable and removable because transport adapters call
+the same transport-neutral frame service.  The required ablation matrix is:
+
+| lane | purpose | owns semantics |
+|-
+| direct service-core | algorithm and state baseline | yes |
+| persistent local gRPC/HTTP2 | canonical production northbound path | no |
+| optional HTTP/JSON adapter | debug/interoperability comparison only | no |
+
+The HTTP adapter, when built, owns only codec and connection adaptation.  It
+cannot own a session registry, generation watch, provider lifecycle, cache, or
+different error mapping.  Removing it changes no method, schema, state
+transition, or test oracle.  Production acceptance compares direct service-core
+and gRPC receipts to quantify =T_transport=; an HTTP adapter may be measured as
+an explicit ablation but cannot set the cross-language budget or silently
+replace gRPC.
+
+One warm connection amortizes endpoint discovery, handshake, initialize,
+catalog validation, and ensure-ready.  Benchmarks therefore report at least:
+
+#+begin_example
+T_cli_process_start
+T_connect_once
+T_initialize_once
+T_ensure_ready_once
+T_service_core_per_request
+T_grpc_codec_and_roundtrip_per_request
+T_optional_http_adapter_per_request
+#+end_example
+
+Only the last three are transport ablation evidence; only service-core plus the
+canonical gRPC roundtrip participate in the Ready SLA.  Combining cold setup
+with a one-shot command and reporting the result as server latency is invalid.
+
+The executable receipt is
+=schemas/semantic-ready-search-ablation-receipt.v1.schema.json=.  It binds the
+workspace/source/generation/schema/algorithm/plan identities, normalized plan
+budget and observed work, zero forbidden Ready effects, transport timing
+segments, exactly one terminal, and result digest.  JSON Schema owns the wire
+shape; the shared Rust validator owns cross-field arithmetic such as observed
+work not exceeding its budget and timing segments reconciling with the total.
+
+Cross-language qualification uses the same plan shapes and budgets against one
+real large repository per language.  It compares exact lookup, multi-seed
+lexical, rg-compatible literal/regex, owner/test routing, and resident graph
+routing.  A language passes only if its receipts show the same zero provider
+RPC, zero DB, zero source-scan, zero generation-mutation effects and the same
+p50/p99/max thresholds.  Slower native parsing is charged to successor build,
+not hidden in Ready latency.
+
+** Lean architecture inventory and legacy-impact closure
+
+Lean is not used to claim that wall-clock nanoseconds are mathematically true.
+It proves the closed authority/effect/cost structure that makes the executable
+measurement meaningful.  =ASPInteractiveSearchLatency.lean= defines the only
+admitted Runtime owners, capabilities, Ready effects, plan budgets, terminal
+cardinality, and transport projection.  In particular it proves that:
+
+- a language provider cannot own Search planning;
+- a generated client cannot own generation publication;
+- gRPC and HTTP adapters cannot own terminal or resident-cache semantics;
+- provider RPC, workspace scan, durable DB access, generation mutation,
+  endpoint discovery, and client retry are forbidden Ready effects;
+- transport projection preserves the complete semantic receipt;
+- duplicate terminals and the previous 10 millisecond warm budget are rejected.
+
+The code audit MUST generate an =ArchitectureInventory= from Cargo
+features/dependencies, method catalogs, Runtime route registrations, provider
+descriptors, Rust call/re-export edges, and exported client APIs.  The inventory
+contains both owner/capability surfaces and enabled directed edges classified as
+=cargoFeature=, =cargoDependency=, =rustReexport=, =runtimeRoute=, or =rustCall=.
+Every surface must satisfy =architectureInventoryAdmitted=.
+
+Lean applies two different legacy gates because treating them as one hides
+impact:
+
+1. =sourceInventoryHardCut= rejects any legacy owner that remains in the
+   production inventory, even if no current route reaches it;
+2. =architectureImpactClosed= computes transitive reachability and rejects
+   both a production entry that can reach a legacy owner and a legacy owner
+   that can reach the shared Runtime authority.
+
+Therefore removing a command name or direct call is not closure.  A deprecated
+helper that remains behind an enabled Cargo feature, dependency, re-export,
+route registration, or intermediate call remains a constructive Lean
+counterexample.  CI MUST generate the inventory rather than maintain a hand
+written allow-list, validate it with
+=schemas/search-architecture-inventory.v1.schema.json=, feed its normalized
+digest into Lean, and validate Lean's result with
+=schemas/search-architecture-proof-receipt.v1.schema.json=.  A rejected proof
+receipt retains the exact unknown nodes, capability violations, legacy owners,
+and reachability paths; an admitted receipt is schema-constrained to empty
+impact and an empty axiom list.
+Removal is complete only when the source inventory contains no legacy row and
+every production feature set is impact-closed.
+
+Rust, the provider harness, and Schema Manager are fact producers only.  They
+emit source selectors, declared ownership/capability claims, the actual
+=server_client_methods= catalog, and Cargo/parser edges; they do not classify a
+node as legacy, decide =ownerMayHold=, compute reachability, or emit an
+=admitted= decision.  Those judgments exist exactly once in Lean.  Unknown
+inventory nodes fail closed instead of being silently omitted.  The Lean
+checker emits stable shortest counterexample paths and its proof receipt is the
+only architecture-admission result consumed by CI and the Rust refactor loop.
+
+The producer side MUST NOT rescan an entire crate merely to apply a Harness
+policy.  Cargo resolution, the language parser, the Runtime method catalog, and
+the provider descriptor each emit their already-observed package-local fact
+fragment.  Schema Manager performs only canonical sort, duplicate elimination,
+reference closure, and content addressing over those fragments.  Its
+=SearchArchitectureFactInventory::from_facts= API deliberately accepts a
+declared owner such as =legacy-client-fallback= without deciding whether that
+owner is valid.  Incremental cost is proportional to the changed fact fragment
+plus Merkle-path repair, not to total source bytes.
+
+The refactor loop is therefore directional and non-circular:
+
+#+begin_example
+RFC taxonomy
+  -> Cargo/parser/Runtime neutral facts
+  -> Schema Manager immutable inventory digest
+  -> Lean owner/capability/reachability proof
+  -> shortest counterexample report
+  -> Rust deletes or rewires exactly those reported edges
+  -> regenerate until Lean admits an empty impact set
+#+end_example
+
+Rust MUST NOT contain a second evaluator equivalent to the Lean predicates.
+Rust tests assert faithful fact production and removal of a reported edge;
+Lean tests assert that the resulting graph has no legacy row, no capability
+violation, no production-to-legacy path, and no legacy-to-authority path.
+
+** Merkle identity and cache architecture
+
+The Merkle tree is the invalidation authority, not merely an audit checksum.
+The admitted generation commits:
+
+#+begin_example
+workspace root
+  -> owner path + owner content digest
+    -> parser projection digest
+    -> exact selector segment digest
+    -> lexical postings segment digest
+    -> relation/graph segment digest
+#+end_example
+
+Cache layers are explicit and never hidden:
+
+1. =L0 SessionBinding=: endpoint, catalog, route table, and Ready generation;
+2. =L1 ResidentGeneration=: atomic workspace pointer and immutable segment
+   handles;
+3. =L2 OwnerArena=: exact, lexical, structural, and relation data keyed by
+   owner content digest;
+4. =L3 DurableCAS=: validated immutable segments and publication journal used
+   only by restore/build, never queried by the Ready path;
+5. =L4 QueryMemo=: optional bounded result memo keyed by exact generation,
+   normalized plan digest, ranking version, and output budget.
+
+Positive and negative memo entries are safe only inside the exact immutable
+generation.  They have no wall-clock freshness claim and are discarded by
+generation pointer replacement.  A source change recomputes the affected
+owner leaves and O(log N) Merkle path, reuses byte-identical owner arenas, and
+publishes one successor generation.  Removed owners create tombstones.  No
+request clears a global cache or scans for freshness.
+
+Python graph artifacts additionally bind graph algorithm/version, numeric
+backend identity, source generation, node/edge schema digests, and seed-plan
+digest.  They cannot be reused across a changed source root or algorithm even
+when a label or path is unchanged.
+
+Live Corpus exposes cache state deliberately: =cold-build= begins without a
+resident or durable generation for the run-scoped workspace; =cold-load=
+opens a validated durable generation into Memory; =warm-read= reuses the exact
+resident binding; =released= removes only that run-scoped resident lease.
+Each operation reports what it loaded, reused, wrote, or evicted.
+
+** Complexity and latency budgets
+
+The sub-millisecond contract applies to resident service time on an existing
+gRPC connection, not shell startup, executable loading, Runtime bootstrap,
+provider startup, generation build, or terminal rendering in a new CLI
+process.  Those phases have separate receipts.
+
+For bounded result size =K= and query clauses =Q=:
+
+- exact selector lookup: expected O(1), no allocation proportional to workspace;
+- literal/regex candidate filtering: O(candidate bytes), after postings/trigram
+  pruning, never O(workspace bytes) on the Ready path;
+- lexical retrieval: O(sum of visited postings + K log K), with a declared
+  visited-postings budget;
+- graph routing: O(V_b + E_b) inside an explicit bounded frontier;
+- owner mutation: O(changed owner bytes + changed facts + log owner count);
+- generation publication: O(changed segments + manifest), independent of
+  unchanged source bytes.
+
+Required Ready service budgets:
+
+| segment | p99 budget |
+|-
+| gRPC decode + catalog/session gate | 120 microseconds |
+| generation lease + plan admission | 80 microseconds |
+| exact or bounded lexical/rg-compatible read | 300 microseconds |
+| deterministic merge + typed encode | 150 microseconds |
+| reserved headroom | 50 microseconds |
+
+The end-to-end Ready target remains p50 <= 250 microseconds, p99 <= 700
+microseconds, and hard max < 1000 microseconds for bounded exact and lexical
+requests.  The same hard maximum applies at 32 concurrent calls without
+starving cancellation.  A benchmark reports every segment; no timeout is used
+to manufacture compliance.
+
+The interactive deadline applies only to Ready, read-only dispatch.  Cold
+=asp.workspace.generation.ensure-ready= is a control-plane admission wait and
+MUST NOT inherit that deadline.  It remains bounded by deterministic input,
+single-flight capacity, cancellation and exactly-one terminal semantics, but a
+five-second read budget cannot convert valid Building progress into failure.
+The client keeps the same request open until Ready, Failed or Cancelled; it
+does not abandon a builder and retry with a second request.  Cold elapsed time
+is measured and qualified independently from the sub-millisecond warm-read
+budget.
+
+The method catalog owns this dispatch classification exactly once.  The
+service dispatcher, gRPC pending-call transport, and CLI session wrapper MUST
+preserve it unchanged.  An adapter MUST NOT replace the method-derived class
+with a process-global response deadline.  In particular, the gRPC response
+wait for =asp.workspace.generation.ensure-ready= remains open for its typed
+Ready, Failed, or Cancelled terminal; only explicit protocol cancellation may
+end valid Building progress.  Ready read methods retain the bounded interactive
+deadline at every layer.
+
+** Backpressure, cancellation, and scheduling
+
+Capacity is admitted before semantic work.  Saturation returns typed
+=resource-exhausted= immediately with capacity and retry class; the server does
+not create an unbounded task or queue.  Cancellation is keyed by session and
+request ID, travels over reserved control capacity, and causes exactly one
+Cancelled terminal.  Dropping the client receiver cancels queued work but does
+not roll back an already committed generation.
+
+Cold workspace readiness is single-flight by workspace and candidate identity.
+Provider activation is single-flight by provider artifact and manifest
+identity.  Query memo fill may be single-flight by generation and plan digest.
+These keys never share a global mutex.  Immutable generations allow unrelated
+queries to run concurrently without a write lock.
+
+** Provider relevance is artifact-bound
+
+A registered provider capability is declarative evidence, not execution
+authority.  The active provider set for a =CompleteGeneration= is the exact
+intersection of the Runtime provider register and the immutable installed-
+artifact document.  Registration rows without a content-proven artifact are
+inactive and MUST NOT enter source discovery, parser scheduling, generation
+identity, or the public language method catalog.
+
+Consequently, an inactive Julia capability cannot prevent a Rust workspace
+generation from becoming Ready.  This is not best-effort fallback: the Julia
+provider has no authority in that Runtime generation, while the Rust provider
+remains fail-closed against its exact selected artifact.  If a request targets
+an inactive provider, it returns typed =provider-artifact-missing= before
+generation admission.  If two active artifacts claim the same language and
+operation, admission returns typed =provider-ambiguous=.
+
+The Runtime computes the intersection once per immutable provider artifact
+catalog generation.  Ready reads do not scan registration rows or the
+filesystem.  Adding or replacing an artifact creates a successor provider
+catalog generation; it never mutates the active set behind an existing Ready
+workspace generation.
+
+** Incompatible persisted generations are inert inputs
+
+A structurally complete pointer from an older workspace-generation schema is
+not current generation authority.  Cold admission MUST classify it as
+=incompatible-schema=, exclude it from active-base, epoch, owner-journal and
+cache identity decisions, and build a current-schema =CompleteGeneration= via
+the sole Runtime publisher.  The old bytes remain untouched as rollback
+evidence until the atomic current publication commits; clients neither delete
+nor migrate them.  Therefore an incompatible but decodable pointer cannot
+block a current rebuild, and it can never be reused merely because its atomic
+slot checksum is valid.  Malformed current-schema bytes still fail closed as
+corruption rather than being silently reclassified as absent.
+
+** Failure containment
+
+Failures stay in the plane that owns them:
+
+- endpoint permission or handshake -> =transport-unreachable=;
+- catalog/schema mismatch -> =protocol-catalog-mismatch=;
+- no Ready generation -> =query-not-ready=;
+- failed generation attempt -> typed admission terminal with stage and attempt;
+- stale selector -> =selector-generation-mismatch=;
+- selected provider unavailable -> provider capability failure, not workspace
+  loss; an unrelated inactive capability cannot block the selected provider;
+- graph service unavailable -> typed graph-escalation failure, core lexical
+  generation remains readable;
+- malformed/closed stream -> exactly one frame-level failure, never raw EOF.
+
+No failure authorizes client retry, provider-private cache use, targeted-scope
+promotion, local file scanning, Runtime restart, installation, or an alternate
+transport.
+
+** Required evidence and implementation order
+
+The implementation order is normative:
+
+#+begin_example
+RFC and cost model
+  -> shared schemas and ClientFrame catalog
+  -> Lean state machine and countermodels
+  -> Runtime/admission/read-path RED tests
+  -> Rust implementation
+  -> language-provider conformance
+  -> real Live Corpus cold/load/warm/concurrent/failure qualification
+#+end_example
+
+The Lean model MUST prove: queued progress is not a read barrier; targeted
+publication cannot admit a complete read; replayed Ready does not require
+=accepted=true=; a Ready request has no write/provider/process/DB effects;
+generation replacement preserves old-reader snapshot isolation; cancellation
+has exactly one terminal; bounded capacity preserves a control lane; and cache
+reuse implies exact generation and algorithm identity.
+
+Runtime tests MUST demonstrate one cold readiness attempt, same-attempt wait,
+one CompleteGeneration commit, one resident publication, warm dispatch with
+zero candidate discovery/build/provider/DB/filesystem work, 32-call bounded
+concurrency, cancellation under saturation, EOF injection, stale/cross-content
+rejection, and deterministic replay.  Live Corpus runs those gates on a real
+large repository for every language, with explicit =cold-build=, =cold-load=,
+=warm-read=, ten sequential, 32 concurrent, and at least three failure-
+injection rounds.
 
 * Decision
 
@@ -27,10 +759,10 @@ alias parser, argument-shape guard, or command-specific diagnostic for removed
 commands.  This paragraph supersedes any older command spelling in this
 section.
 
-Rust follows the same HTTP-first =asp-client-server= contract as Julia.  The
-provider manifest declares =http-json= transport and the
-=asp-client-server serve= lifecycle command.  ASP Runtime Server is the only
-owner allowed to start, warm, health-check, drain, or stop the Rust client.
+Rust follows the same server-first =ProviderSession= stream contract as every
+language.  The provider manifest declares the canonical gRPC stream capability;
+it does not publish a private HTTP listener.  ASP Runtime Server is the only
+owner allowed to start, warm, health-check, drain, or stop the Rust provider.
 
 The public =asp rust ...= command is a typed Runtime IPC facade only.  It never
 starts the Rust provider, resolves a workspace, opens a provider cache, or owns
@@ -49,9 +781,9 @@ required by native Scenario and Live Corpus qualification.
 
 ** ASP Client Server contract and catalog routes
 
-The Runtime-published loopback HTTP endpoint is the single client authority.
+The Runtime-published Tonic gRPC endpoint is the single client authority.
 Each client performs =Initialize -> catalog -> Request -> Cancel/Cancelled ->
-Shutdown= over =POST /protocol/frame=.  The immutable catalog uses structured
+Shutdown -> Exit= over the persistent =ClientFrame= stream.  The immutable catalog uses structured
 =schemaId= and =schemaVersion= "1" references.  Canonical provider routes are
 =<language>.search=, =<language>.query=, and =<language>.search.owner=; their
 request and response schema IDs are respectively the runtime search,
@@ -60,7 +792,7 @@ performs the workspace-generation Tokio watch barrier before dispatch.  A
 =Building=, =Failed=, or =Cancelled= generation is a typed admission response;
 the client never reads an older generation.
 
-CLI language commands are facades over this HTTP catalog.  They MUST NOT call
+CLI language commands are facades over this gRPC catalog.  They MUST NOT call
 provider transport, resident projections, provider caches, or local workspace
 generation/session APIs directly.  Provider lifecycle and cancellation remain
 owned by the server's bounded =mpsc=, =oneshot=, and =watch= tasks; no second
@@ -86,12 +818,12 @@ The central Schema Manager owns
 language packages MUST materialize this schema and MUST NOT copy or redefine
 it.
 
-For every Ready HTTP =search=, =query=, and =search.owner= request, the
+For every Ready gRPC =search=, =query=, and =search.owner= request, the
 acceptance gate is warm p50 <= 250 microseconds, p99 <= 700 microseconds, and
 hard max < 1000 microseconds.  A non-Ready typed admission response has the
 same hard max.  Startup, provider build, and generation admission are separate
 measurements and MUST NOT block or count as query latency.  Receipts record
-HTTP codec, catalog/generation gate, Tokio mpsc/oneshot, resident provider,
+gRPC codec, catalog/generation gate, Tokio mpsc/oneshot, resident engine,
 and response-serialization segments; the 300 microsecond headroom is part of
 the contract.  No timeout is used to implement this SLA.
 
@@ -110,20 +842,20 @@ plan or treating build time as Runtime latency is not a repair.
 
 =agent-semantic-client-protocol= owns only version-one typed frames, catalog,
 and route bindings.  =agent-semantic-client-server= owns the transport-neutral
-HTTP/JSON session and cancellation protocol and MUST NOT depend on
+frame service, session, and cancellation protocol and MUST NOT depend on
 =agent-semantic-client-db=.  =agent-semantic-client-db= owns Runtime state,
 workspace admission, durable registry, and generation receipts.  The public
-=agent-semantic-client= owns the Runtime HTTP client facade and agent-facing
-client composition.  =agent-semantic-provider-transport= owns provider process
-transport and resident provider actors.  A future
-=agent-semantic-runtime-server= package owns daemon assembly, Runtime HTTP
-dispatcher, resident search service, and identity handoff; it MUST NOT depend
-on =agent-semantic-client=.
+=agent-semantic-client= owns thin gRPC client composition and agent-facing
+rendering.  =agent-semantic-provider-transport= owns provider process transport
+and resident provider actors.  =agent-semantic-runtime-server= owns daemon
+assembly, the Tonic dispatcher, the shared Rust Search compute core, resident
+generation service, and identity handoff; it MUST NOT depend on
+=agent-semantic-client= or on any language harness.
 
 The =agent-semantic-client= package is only CLI composition, parser, command
-facade, and renderer ownership.  It MUST NOT own the Runtime daemon, HTTP
-session, durable workspace database, provider transport, or a second Runtime
-HTTP client facade.  Until the runtime-server package extraction is complete,
+facade, and renderer ownership.  It MUST NOT own the Runtime daemon, transport
+session, durable workspace database, provider transport, Search compute, or a
+second Runtime client facade.  Until the runtime-server package extraction is complete,
 the existing server modules remain a tracked Batch gate; each extraction batch
 must move the module and strengthen the authority test before deleting its
 protocol wrapper.
@@ -177,8 +909,8 @@ schema family.
 
 * ASP Client Protocol ecosystem
 
-Provider HTTP is an internal transport between ASP Server and one admitted
-language provider.  Downstream tools use the separate
+The southbound =ProviderSession= stream is an internal fact-publication
+transport between ASP Server and one admitted language provider.  Downstream tools use the separate
 =agent.semantic-protocols.client= protocol and never connect to provider
 endpoints.  The client protocol is schema-first and transport-neutral.  Its
 published catalog declares protocol identity, server capabilities, admitted
@@ -216,13 +948,15 @@ mutate installed capability identity and they never run in client
 "live provider register" as both capability catalog and process-liveness
 registry.
 
-The canonical HTTP/JSON binding uses one ASP Server loopback origin and typed
-request, response, event, and cancellation frames.  A local Runtime IPC binding
-MAY encode the same frames, but it is not a second protocol authority.  Both
-bindings validate the same schema identities and produce the same terminal
-receipt.  Client libraries in Rust, TypeScript, Python, Julia, Gerbil, DSLs, or
-future languages can therefore be generated from the catalog without knowing
-ASP implementation details.  The language-neutral conformance suite is an
+The canonical northbound binding is one persistent Tonic gRPC =ClientFrame=
+stream.  An optional loopback HTTP/JSON adapter MAY encode the same frames for
+debugging and interoperability, but it is stateless, is not a second protocol
+authority, and is excluded from the production Ready path.  Direct service-core,
+gRPC, and optional HTTP projections validate the same schema identities and
+produce byte-equivalent semantic payloads and the same terminal receipt.
+Generated Rust, TypeScript, Python, Julia, Gerbil, DSL, or future-language
+clients contain only codecs and session calls; they do not contain Search,
+Merkle, cache, graph, ranking, or admission logic.  The language-neutral conformance suite is an
 executable protocol asset: every client implementation runs the same lifecycle,
 generation, unknown-method, parameter, cancellation, and isolation vectors.
 
@@ -262,27 +996,35 @@ Python, Gerbil Scheme, and every future client consume the shared route/API;
 adding a language requires one profile declaration and conformance fixtures,
 not a language-specific parser, copier, verifier, or ASP Server branch.
 
-* HTTP transport
+* gRPC transport and transport ablation
 
-ASP Client Servers use loopback HTTP/JSON with a persistent Tokio connection pool.
-One shared =agent-semantic-http-json= runtime owns Tokio/Hyper accept, connection,
-body-limit, drain, and JSON response behavior.  Provider transport and the
-public ASP Client Protocol compose that runtime; neither carries a private HTTP
-server implementation.  Public clients send the shared client frame to
-=POST /protocol/frame= and use =GET /health= only for transport health.
-
-The ASP authority allocates the endpoint, starts the installed server artifact,
-polls its health route outside the query path, validates the returned contract,
-and atomically publishes =Ready=. Requests are admitted only when their operation
-is present in that exact receipt.
-
-HTTP session state is keyed by =(workspaceIdentity, sessionId)=.  The session
-admission lock is released before semantic dispatch, so cancellation and other
+ASP clients use one persistent, multiplexed Tonic gRPC connection to the
+Runtime-owned =ClientFrame= service.  The Runtime is the only listener owner;
+clients connect and never bind a socket.  The connection carries initialize,
+ensure-ready, request, cancellation, shutdown, and exactly-one terminal frames.
+Session state is keyed by =(workspaceIdentity, sessionId)=, and the session
+admission lock is released before semantic dispatch so cancellation and other
 isolated sessions remain routable while a request is running.
 
-Julia uses HTTP.jl and is server-only. It does not expose a framed-stdio runtime
-or one-shot provider command. Julia package loading and cache construction finish
-before its health response becomes Ready.
+The service-core API below Tonic is the semantic baseline.  Removing gRPC in an
+in-process benchmark, or adding the optional HTTP/JSON debug adapter, MUST NOT
+change planning, generation selection, cache keys, result ordering, or terminal
+state.  The ablation receipt reports =serviceCoreNs=, =grpcCodecNs=,
+=grpcTransportNs=, and optional =httpAdapterNs= separately.  A transport may
+encode/decode frames and enforce body or message limits; it may not discover a
+provider, build an index, select a cache, retry a request, or synthesize a
+terminal.
+
+The ASP authority allocates and publishes the endpoint only after the installed
+artifact, catalog, and health identities agree.  Queries consume that immutable
+binding.  Transport health is observed outside the query path and is not
+workspace-generation readiness.
+
+Julia, Python, Gerbil Scheme, TypeScript, and future languages do not implement
+private request servers.  Their managed ProviderSession clients publish typed
+facts during cold/write phases; package loading and fact construction complete
+before readiness.  No framed-stdio or one-shot provider command is a production
+route.
 
 * OpenTelemetry
 
@@ -335,8 +1077,8 @@ checks do not require re-reading the binary contents.
   discovery.
 - cancellation, closed channel, repeated publication epoch, clean shutdown, and
   zero residual task behavior are deterministic Tokio tests.
-- Julia HTTP health, request, malformed JSON, unknown operation, and shutdown are
-  exercised against the native artifact.
+- Julia ProviderSession registration, fact publication, malformed frame,
+  cancellation, drain, and shutdown are exercised against the native artifact.
 - warm request p99 is measured independently from server startup and warm-up.
 - Rust Schema Manager materialize followed by verify is deterministic, offline,
   atomic, and leaves provider-owned schemas untouched.
@@ -347,8 +1089,8 @@ checks do not require re-reading the binary contents.
 ** Hot Path Architecture and proof obligations
 
 The ASP Client data plane has one transport architecture: a persistent,
-multiplexed Hyper/Tokio connection (HTTP/2 where negotiated).  HTTP/2
-multiplexing is a transport property, not a second client/server authority.
+multiplexed Tonic/Tokio gRPC connection over HTTP/2.  HTTP/2 multiplexing is a
+transport property, not a second client/server authority.
 Initialize and catalog validation happen once per workspace/session; the
 validated immutable catalog, route bindings, endpoint binding, and Ready
 generation are retained by that session.
@@ -356,7 +1098,12 @@ generation are retained by that session.
 Each warm =search=, =query=, or =search.owner= request then performs exactly
 one typed request on that connection.  It MUST NOT read the endpoint file,
 discover a candidate, build or admit a generation, activate or await a
-provider, perform a second HTTP hop, or revalidate the immutable catalog.
+provider, perform a second transport hop, or revalidate the immutable catalog.
+=asp.workspace.generation.ensure-ready= is the distinct server-owned cold
+preflight that establishes this invariant once per client connection.  It may
+join one in-flight complete-generation attempt; it is not part of the warm
+Search/Query latency distribution and is never implemented by retrying the
+language request.
 Bounded =mpsc=, =oneshot=, and typed cancellation remain the only request
 coordination primitives.  Non-Ready admission returns immediately with its
 typed state and the same hard latency bound; startup, provider activation, and
@@ -365,7 +1112,7 @@ query latency.
 
 The warm acceptance budget is p50 <= 250 microseconds, p99 <= 700
 microseconds, and hard max < 1000 microseconds.  Telemetry records separate
-HTTP codec, catalog/generation gate, Tokio mpsc/oneshot, resident provider, and
+gRPC codec, catalog/generation gate, Tokio mpsc/oneshot, resident engine, and
 response serialization segments, preserving at least 300 microseconds of
 headroom.  No timeout implements this SLA.
 
@@ -392,7 +1139,9 @@ or invent a provider-specific marker merely to satisfy auto-discovery.
 
 ** Southbound ProviderSession stream contract
 
-The public northbound HTTP/JSON catalog is an adapter only.  The sole
+The public northbound Tonic gRPC =ClientFrame= service is the production
+transport.  An HTTP/JSON catalog surface, when built, is a stateless debug
+adapter only.  The sole
 southbound business authority is =RuntimeStreamService=, whose admitted
 provider session is a bidirectional Tokio stream represented by the canonical
 =ProviderSession= contract in =crates/agent-semantic-runtime-server/proto/asp-provider-stream.proto=.  Its
@@ -416,6 +1165,60 @@ The provider-plane socket path published by the Runtime endpoint is the sole
 local authority; a second TCP listener, provider HTTP listener, or CLI process
 route is forbidden.
 
+** Rank before parser-owned selector projection
+
+The resident Search route MUST preserve the complete bounded lexical candidate
+count as receipt evidence while applying expensive parser-owned selector
+projection only after the immutable generation graph has ranked the frontier.
+The v1 ranked-owner projection budget is 16 owners per request.  The receipt's
+=candidateCount= remains the full lexical candidate count; it MUST NOT be
+rewritten to the projection count.
+
+When graph ranking is available, the Runtime projects the first 16 distinct
+ranked owner paths.  When the operation does not admit graph ranking, it uses
+the first 16 distinct lexical owners in deterministic resident order.  Both
+paths remain bound to the same workspace generation.  This ordering prevents a
+100-candidate lexical read from forcing 100 owner-catalog walks before ranking.
+
+The projection budget is protocol-visible work control, not a hidden cache and
+not a provider-private heuristic.  It does not authorize filesystem reads,
+provider RPC, database reopen, client retry, or a second search authority.
+Changing the lexical candidate budget, ranked projection budget, or fallback
+ordering requires the RFC/schema/Lean path before provider implementation.
+
+The generation-bound resident query cache stores one immutable shared result.
+A warm hit clones only the shared handle; it MUST NOT deep-clone the bounded
+hit payload or its lexical query-key vectors.  The shared value cannot outlive
+or cross its resident generation because the generation owns both the cache and
+the mmap authority.  Publication creates a new generation and therefore a new
+cache; no invalidation heuristic or background cache clearing participates in
+request-time correctness.
+
+** Bounded northbound response partitions
+
+The bidirectional gRPC session is a stream of bounded envelopes.  It is not a
+license to encode an arbitrarily large logical response in one protobuf
+message.  Every encoded =ClientFrame= that exceeds the fixed envelope budget
+MUST be split into ordered response partitions on the existing session.  Each
+partition carries the original request identity, zero-based index, total
+partition count, the digest of the complete encoded response, and bounded
+bytes.  The client admits one terminal only after all partitions are present,
+ordered, within the declared count and byte budgets, and the reconstructed
+digest matches.  Duplicate, missing, conflicting, cross-request, oversized,
+or digest-mismatched partitions fail closed and never mutate the Ready
+generation.
+
+The envelope budget is a protocol constant shared by server and client; it is
+not a global flag.  Increasing Tonic's process-wide decoding limit is rejected
+because it merely moves the failure threshold, permits unbounded per-session
+memory, and gives different clients different acceptance semantics.  The
+partition accumulator has both a per-response encoded-byte ceiling and the
+existing session cap of 32, and is removed on terminal, cancellation, stream
+failure, or disconnect.  Small warm responses remain one envelope and do not
+pay partition allocation or hashing costs.  Large cold/source projections use
+the same multiplexed Tokio stream and remain outside warm Search/Query latency
+budgets.
+
 ** Northbound route intent contract
 
 Northbound =search=, =query=, and =search.owner= requests carry user intent
@@ -437,6 +1240,34 @@ it is not a cross-language Rust or Python service contract.  Graph-Turbo
 algorithm packets use their separate =asp-python-graphs= service contract.
 No structural-index field may infer a Graph-Turbo service dependency from the
 fact that both paths use the ASP Server.
+
+** Resident graph evaluation hard cut
+
+The legacy northbound =asp.graphs.evaluate= method is rejected architecture.
+It accepts client-supplied graph, source-snapshot, workspace-generation, and
+algorithm identities and may open an =asp-python-graphs= generation during a
+Ready Search request.  That design creates a second generation authority,
+makes client input authoritative over Runtime state, and adds provider RPC,
+Python scheduling, and lease mutation to the sub-millisecond read path.
+
+The replacement method is =asp.graph.evaluate=.  Its V1 request carries only
+intent: language identity, Search surface, normalized query terms, optional
+seed identifiers, and a bounded traversal budget.  It never carries graph
+bytes, source-snapshot identity, workspace-generation identity, provider
+identity, or an algorithm selector.  The Runtime Server resolves the exact
+workspace/generation binding from the admitted session and evaluates the
+immutable resident graph through the shared Rust Search compute core.  Its
+Ready result returns that resolved binding and bounded work counters.  In
+particular, =providerRpcCount=, =durableReadCount=, and
+=generationMutationCount= are exactly zero.
+
+=asp-python-graphs= remains a cold-plane artifact producer and an explicitly
+requested offline-analysis service.  It may compute graph artifacts before a
+CompleteGeneration publication, but it cannot serve =search=, =query=,
+=search.owner=, or =asp.graph.evaluate=, and it cannot own a resident cache.
+There is no alias or compatibility route from =asp.graphs.evaluate= to
+=asp.graph.evaluate=; old callers fail as an unknown method and must migrate to
+the intent-only contract.
 
 Runtime-source acquisition is a separate ASP Runtime cache contract.  Its
 wire-level =indexOwner= is =asp-server=: the Runtime Server owns source-index

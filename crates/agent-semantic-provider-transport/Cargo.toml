@@ -30,6 +30,7 @@ tonic-prost.workspace = true
 tracing = "0.1"
 
 [build-dependencies]
+asp-rust-project-harness-policy.workspace = true
 tonic-prost-build.workspace = true
 
 [dev-dependencies]

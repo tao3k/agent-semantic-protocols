@@ -130,7 +130,7 @@ Valid command shapes:
 <lang-harness> search prime --workspace . --view seeds
 
 <lang-harness> search reasoning owner-query \
-  --owner src/python_lang_project_harness/verification/model.py \
+  --owner src/asp_python/verification/model.py \
   --query Path \
   --dependency pytest \
   --view facts \
@@ -183,7 +183,7 @@ The prime output should be graph-rendered with RFC 006 line protocol:
 [search-prime] root=. alg=budgeted-frontier-v1 budget=handles:10
 legend: aliases ID:kind; node ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next
 aliases=G:search,O:owner,Q:query,D:dependency,T:test,F:finding
-O=owner:path(src/python_lang_project_harness/verification/model.py)!owner
+O=owner:path(src/asp_python/verification/model.py)!owner
 Q=query:term(Path)!lexical
 D=dependency:pkg(pytest)!deps
 T=test:path(tests/verification/test_model.py)!tests

@@ -3,6 +3,34 @@
 from .support import language_registry_errors, registry_with_descriptor
 
 
+def test_policy_check_is_not_a_provider_command() -> None:
+    registry = registry_with_descriptor(
+        {
+            "method": "check/changed",
+            "command": "check",
+            "input": "workspace",
+        }
+    )
+
+    errors = language_registry_errors(registry)
+    assert any("check/changed" in error for error in errors)
+    assert any("'check' is not one of" in error for error in errors)
+
+
+def test_verification_is_not_a_provider_command() -> None:
+    registry = registry_with_descriptor(
+        {
+            "method": "verification/run",
+            "command": "verification",
+            "input": "workspace",
+        }
+    )
+
+    errors = language_registry_errors(registry)
+    assert any("verification/run" in error for error in errors)
+    assert any("'verification' is not one of" in error for error in errors)
+
+
 def test_query_method_rejects_unknown_execution_backend() -> None:
     registry = registry_with_descriptor(
         {

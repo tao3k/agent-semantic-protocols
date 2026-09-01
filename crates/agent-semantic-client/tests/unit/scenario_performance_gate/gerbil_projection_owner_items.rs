@@ -182,7 +182,7 @@ fn projection_json() -> &'static str {
       "protocolId":"agent.semantic-protocols.language-projection",
       "protocolVersion":"1",
       "languageId":"gerbil-scheme",
-      "harness":{"harnessId":"gerbil-scheme-language-project-harness","parserAbi":"gerbil-parser-v1","selectorDialect":"gerbil-scheme"},
+      "harness":{"harnessId":"asp-gerbil-scheme","parserAbi":"gerbil-parser-v1","selectorDialect":"gerbil-scheme"},
       "sources":[{"sourceId":"source:src/model.ss","path":"src/model.ss","sourceKind":"source"}],
       "owners":[{"ownerId":"owner:src/model.ss","sourceId":"source:src/model.ss","kind":"module","name":"model"}],
       "items":[{"itemId":"item:dynamic-owner-item-index","ownerId":"owner:src/model.ss","kind":"function","name":"dynamic-owner-item-index","selector":"gerbil-scheme://src/model.ss#item/function/dynamic-owner-item-index"}],

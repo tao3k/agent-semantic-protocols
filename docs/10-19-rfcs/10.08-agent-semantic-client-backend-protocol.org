@@ -462,7 +462,7 @@ Protocol admission requires all of the following:
 | Component | Owns |
 |-----------+------|
 | =asp-typescript=, =asp-rust=, =asp-python= | native parser facts, provider commands, schema-valid search/query/check packets and provider-native receipts |
-| =asp-julia= | JuliaSyntax-native facts, facade-aligned provider commands, index exports for cache refresh, source-provider fallback via =julia-project-harness.jl= |
+| =asp-julia= | JuliaSyntax-native facts, facade-aligned provider commands, index exports for cache refresh, source-provider fallback via =asp-julia.jl= |
 | =agent-semantic-client= | shared schemas/receipts, compact graph render algorithm, graph render validation, provider shell-out =graph render= CLI |
 | =agent-semantic-hook= | agent platform event classification and provider route guidance |
 | =agent-semantic-client= | cross-language routing, execution-route choice, cache, renderer invocation, artifacts |
@@ -1683,7 +1683,7 @@ processes on the hit.
 - Do not replace language harness parser authority with text heuristics in the
   client.
 - Do not expose full JSON, AST, or source as the default prompt surface.
-- Do not require a bare =julia-project-harness= command or Rust-owned Julia
+- Do not require a bare =asp-julia= command or Rust-owned Julia
   parser facts; Julia provider identity is =asp-julia= behind
   =asp julia=.
 - Do not turn the protocol into MCP or a dynamic tool-discovery layer.

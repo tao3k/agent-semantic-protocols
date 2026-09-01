@@ -35,7 +35,7 @@ CONTRACT_CASES: tuple[SearchContractCase, ...] = (
     ),
     SearchContractCase(
         language="python",
-        project_root="languages/python-lang-project-harness",
+        project_root="languages/asp-python",
         ingest_pipes=("items", "tests"),
         accepted_pipes_json='"acceptedPipes":["items","tests"]',
         workspace_needles=("O=owner:path(.)!owner",),
@@ -43,7 +43,7 @@ CONTRACT_CASES: tuple[SearchContractCase, ...] = (
     ),
     SearchContractCase(
         language="julia",
-        project_root="languages/JuliaLangProjectHarness.jl",
+        project_root="languages/AspJulia.jl",
         ingest_pipes=("owner", "tests"),
         accepted_pipes_json='"acceptedPipes":["owner","tests"]',
         workspace_needles=("aliases: graph:{G=search,O=owner}",),

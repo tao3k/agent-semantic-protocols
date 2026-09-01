@@ -22,14 +22,6 @@
     {
       "languageId": "gerbil-scheme",
       "providerId": "asp-gerbil-scheme"
-    },
-    {
-      "languageId": "org",
-      "providerId": "asp-org"
-    },
-    {
-      "languageId": "md",
-      "providerId": "asp-md"
     }
   ]
 }

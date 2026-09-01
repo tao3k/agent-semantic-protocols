@@ -270,7 +270,7 @@ tests are the best source for adapter and real-project search examples.
 * Quality Dimensions
 
 This report and the harness-local
-~languages/gerbil-scheme-language-project-harness/docs/10-19-research/11.08-gerbil-poo-io-quality-consolidation.org~
+~languages/asp-gerbil-scheme/docs/10-19-research/11.08-gerbil-poo-io-quality-consolidation.org~
 must stay synchronized on the quality bar.  The bar is not just "short code" or
 "few warnings"; it is a set of parser-visible design dimensions.
 

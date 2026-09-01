@@ -307,7 +307,7 @@ impl WorkspaceGenerationAdmission {
         let Some(catalog) = &self.catalog else {
             return Ok(());
         };
-        if !catalog.record_resident(entry.clone())? {
+        if !catalog.record_resident(entry.clone())?.changed() {
             return Ok(());
         }
         let catalog = catalog.clone();

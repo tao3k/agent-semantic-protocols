@@ -8,4 +8,7 @@ open ASPProof.SearchArchitectureImpactReport
 #print axioms orphanLegacyProviderCacheIsReportedEvenWhenUnreachable
 #print axioms generatedClientSearchPlannerIsRejected
 #print axioms generatedClientSearchPlannerReportsBothCapabilities
+#print axioms legacyGraphEvaluateReadyRouteIsRejected
+#print axioms legacyGraphEvaluateReadyRoutePreservesShortestCounterexample
+#print axioms legacyGraphEvaluateReadyRouteReportsPythonExecutable
 #print axioms proofReportNeverInventsAxioms

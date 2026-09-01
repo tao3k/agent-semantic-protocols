@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/semantic-graph-resident-evaluation-result.v1.schema.json",
+  "title": "Resident graph evaluation result V1",
+  "type": "object",
+  "required": [
+    "schemaId", "schemaVersion", "protocolId", "protocolVersion",
+    "packetKind", "state", "surface", "workspaceIdentity",
+    "generationDigest", "rootDigest", "profile", "seedIds",
+    "rankedNodes", "edges", "workCounters"
+  ],
+  "properties": {
+    "schemaId": {"const": "agent.semantic-protocols.semantic-graph-resident-evaluation-result"},
+    "schemaVersion": {"const": "1"},
+    "protocolId": {"const": "agent.semantic-protocols.search"},
+    "protocolVersion": {"const": "1"},
+    "packetKind": {"const": "resident-graph-evaluation-result"},
+    "state": {"const": "Ready"},
+    "surface": {
+      "enum": ["search-pipe", "search-rg", "search-lexical", "search-owner", "query"]
+    },
+    "workspaceIdentity": {"type": "string", "minLength": 1},
+    "generationDigest": {"type": "string", "pattern": "^blake3-256:[0-9a-f]{64}$"},
+    "rootDigest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "profile": {"enum": ["balanced", "structural", "dependency"]},
+    "seedIds": {
+      "type": "array", "maxItems": 128, "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "rankedNodes": {
+      "type": "array", "maxItems": 100,
+      "items": {"$ref": "#/$defs/rankedNode"}
+    },
+    "edges": {
+      "type": "array", "maxItems": 1024,
+      "items": {"$ref": "#/$defs/edge"}
+    },
+    "workCounters": {"$ref": "#/$defs/workCounters"}
+  },
+  "$defs": {
+    "rankedNode": {
+      "type": "object",
+      "required": ["id", "kind", "score", "distance"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "kind": {"type": "string", "minLength": 1},
+        "ownerPath": {"type": ["string", "null"]},
+        "score": {"type": "integer", "minimum": 0},
+        "distance": {"type": "integer", "minimum": 0, "maximum": 16}
+      },
+      "additionalProperties": false
+    },
+    "edge": {
+      "type": "object",
+      "required": ["source", "target", "relation"],
+      "properties": {
+        "source": {"type": "string", "minLength": 1},
+        "target": {"type": "string", "minLength": 1},
+        "relation": {"type": "string", "minLength": 1}
+      },
+      "additionalProperties": false
+    },
+    "workCounters": {
+      "type": "object",
+      "required": [
+        "graphNodesVisited", "graphEdgesVisited", "providerRpcCount",
+        "durableReadCount", "generationMutationCount"
+      ],
+      "properties": {
+        "graphNodesVisited": {"type": "integer", "minimum": 0, "maximum": 256},
+        "graphEdgesVisited": {"type": "integer", "minimum": 0, "maximum": 1024},
+        "providerRpcCount": {"const": 0},
+        "durableReadCount": {"const": 0},
+        "generationMutationCount": {"const": 0}
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

@@ -30,3 +30,6 @@ uuid = "1.23.4"
 
 [dev-dependencies]
 tempfile.workspace = true
+
+[build-dependencies]
+asp-rust-project-harness-policy.workspace = true

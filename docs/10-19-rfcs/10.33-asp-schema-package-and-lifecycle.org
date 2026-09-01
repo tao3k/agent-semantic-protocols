@@ -154,6 +154,27 @@ The manifest may declare =active=, =deprecated=, =retired=, or
 Contradictions are reported: a retired/removal candidate that remains directly
 used by Rust or referenced by another schema cannot pass the management gate.
 
+* Canonical root projection authority
+
+The repository =schemas/= tree is the sole byte authority for shared schemas.
+Language packages contain materialized projections only.  A projection is
+current exactly when its schema name and content digest equal the canonical
+root entry selected by the Rust Schema Manager registry.  Package-local bytes
+MUST NOT be used as a source when constructing or refreshing another bundle.
+
+The =provider-contract= root set includes
+=provider-manifest.schema.json=.  Every programming-language profile that
+inherits that root set therefore receives the same provider identity domain.
+Document surfaces such as Org and Markdown remain parser/schema consumers
+inside ASP and do not become provider registry entries, installable artifacts,
+processes, or CompleteGeneration participants.
+
+Materialization MUST replace a stale managed package copy atomically, update
+the bundle receipt and membership digest in the same operation, and make
+=verify= fail closed until all three agree.  Python tools may validate or
+render the Rust-produced receipt, but they do not implement a second Schema
+Manager or choose an alternate root closure.
+
 * CLI
 
 #+begin_src sh

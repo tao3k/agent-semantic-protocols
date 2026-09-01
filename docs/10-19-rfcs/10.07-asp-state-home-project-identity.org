@@ -91,6 +91,29 @@ workspace identity and advances its generation.  HEAD, index, worktree, and
 package-manager entry changes MUST invalidate the generation-bound source scope
 without allocating another workspace artifacts directory.
 
+The textual =workspace-id= is a deterministic projection of that canonical
+basis, not an independently persisted authority.  Runtime catalogs persist it
+only as a checked projection beside the canonical project root.  On admission,
+the Runtime recomputes the current identity from the root and Git worktree
+metadata.  A request whose identity differs from that derivation fails closed.
+If the request is current but the catalog contains an older derived identity
+for the same canonical root, the sole catalog writer atomically replaces the
+old projection before publication.  The old identity is never an alias, lookup
+fallback, cache key, or second resident workspace.
+
+Identity-algorithm upgrades therefore have one deterministic transition:
+=old-derived(root) -> current-derived(root)= under the catalog writer.  The
+transition publishes one revision and is idempotent on replay.  It MUST NOT
+delete caches blindly, accept two identities for one root, migrate data back to
+the old identity, or infer equivalence between different canonical roots.
+The catalog API MUST expose this transition as a typed mutation result rather
+than a boolean.  A replacement receipt binds the canonical root, previous and
+current derived identities, and the adjacent previous/current catalog
+revisions.  Insert and unchanged outcomes remain distinct typed states.  A
+rejected request emits no migration receipt and preserves the previous
+revision.  This receipt is observation of the sole writer's commit; it is not
+an alias table or a second identity authority.
+
 * Ephemeral State
 
 Tests, benchmarks, sandtables, and temporary repositories MUST use an explicit

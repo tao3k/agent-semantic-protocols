@@ -62,8 +62,8 @@ jobs:
             languages/org \
             languages/orgize \
             languages/typescript-lang-project-harness \
-            languages/python-lang-project-harness \
-            languages/JuliaLangProjectHarness.jl
+            languages/asp-python \
+            languages/AspJulia.jl
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable

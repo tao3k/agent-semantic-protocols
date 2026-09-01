@@ -1,4 +1,3 @@
-use asp_rust_project_harness_policy::assert_asp_rust_project_harness_member_policy_from_env;
 use std::path::PathBuf;
 
 fn main() {
@@ -33,5 +32,4 @@ fn main() {
     let output_dir = PathBuf::from(std::env::var_os("OUT_DIR").expect("out dir"));
     std::fs::write(output_dir.join("codex-explore-default-model.txt"), model)
         .expect("write compiled Codex explore model");
-    assert_asp_rust_project_harness_member_policy_from_env(env!("CARGO_PKG_NAME"));
 }

@@ -14,6 +14,36 @@ def endpointPublicationAuthorized (readiness : EndpointReadiness) : Bool :=
 def runtimeHealthy (endpointPublished transportsReady : Bool) : Bool :=
   endpointPublished && transportsReady
 
+inductive PublicTransportBinding
+  | uidSharedUnix
+  | inheritedConnectedDescriptor
+  | loopbackHttp2
+  deriving DecidableEq
+
+structure PublishedTransportCapability where
+  binding : PublicTransportBinding
+  endpointIdentityBound : Bool
+  clientFrameProtocolBound : Bool
+  callerSandboxReachable : Bool
+  deriving DecidableEq
+
+def transportCapabilityUsable (capability : PublishedTransportCapability) : Bool :=
+  capability.endpointIdentityBound &&
+    capability.clientFrameProtocolBound &&
+      capability.callerSandboxReachable
+
+inductive ClientConnectDecision
+  | connect (binding : PublicTransportBinding)
+  | rejectTransportUnavailable
+  deriving DecidableEq
+
+def selectPublishedTransport
+    (capability : PublishedTransportCapability) : ClientConnectDecision :=
+  if transportCapabilityUsable capability then
+    .connect capability.binding
+  else
+    .rejectTransportUnavailable
+
 theorem optionalTelemetryCannotBlockEndpoint
     (readiness : EndpointReadiness)
     (_telemetryReady : Bool) :
@@ -42,6 +72,80 @@ theorem endpointPublicationRequiresStatusSnapshot
           dataSocketReady
           statusSnapshotReady := false } = false := by
   simp [endpointPublicationAuthorized]
+
+theorem unreachablePublishedSocketIsNotAClientCapability
+    (binding : PublicTransportBinding)
+    (endpointIdentityBound clientFrameProtocolBound : Bool) :
+    selectPublishedTransport
+        { binding
+          endpointIdentityBound
+          clientFrameProtocolBound
+          callerSandboxReachable := false } =
+      .rejectTransportUnavailable := by
+  simp [selectPublishedTransport, transportCapabilityUsable]
+
+theorem clientConnectRequiresIdentityProtocolAndReachability
+    (capability : PublishedTransportCapability)
+    (h : selectPublishedTransport capability = .connect capability.binding) :
+    capability.endpointIdentityBound = true ∧
+      capability.clientFrameProtocolBound = true ∧
+        capability.callerSandboxReachable = true := by
+  simp [selectPublishedTransport, transportCapabilityUsable] at h
+  exact h
+
+theorem transportSelectionHasNoFallbackChain
+    (capability : PublishedTransportCapability) :
+    selectPublishedTransport capability = .connect capability.binding ∨
+      selectPublishedTransport capability = .rejectTransportUnavailable := by
+  simp [selectPublishedTransport]
+
+inductive ClientBootstrapAuthority
+  | hostSupervisor
+  | sandboxClient
+  deriving DecidableEq
+
+inductive BootstrapAdmission
+  | observeOrRecoverRuntime
+  | useInheritedCapability
+  | rejectTransportUnavailable
+  deriving DecidableEq
+
+def admitClientBootstrap
+    (authority : ClientBootstrapAuthority)
+    (capability : PublishedTransportCapability) : BootstrapAdmission :=
+  match authority with
+  | .hostSupervisor => .observeOrRecoverRuntime
+  | .sandboxClient =>
+      if capability.binding = .inheritedConnectedDescriptor &&
+          transportCapabilityUsable capability then
+        .useInheritedCapability
+      else
+        .rejectTransportUnavailable
+
+theorem sandboxInheritedCapabilitySkipsPathBootstrap
+    (capability : PublishedTransportCapability)
+    (binding : capability.binding = .inheritedConnectedDescriptor)
+    (usable : transportCapabilityUsable capability = true) :
+    admitClientBootstrap .sandboxClient capability = .useInheritedCapability := by
+  simp [admitClientBootstrap, binding, usable]
+
+theorem sandboxClientNeverOwnsRuntimeRecovery
+    (capability : PublishedTransportCapability) :
+    admitClientBootstrap .sandboxClient capability ≠ .observeOrRecoverRuntime := by
+  change
+    (if capability.binding = .inheritedConnectedDescriptor &&
+          transportCapabilityUsable capability then
+        BootstrapAdmission.useInheritedCapability
+      else
+        BootstrapAdmission.rejectTransportUnavailable) ≠
+      BootstrapAdmission.observeOrRecoverRuntime
+  split <;> decide
+
+theorem sandboxWithoutUsableCapabilityFailsBeforeSocketIo
+    (capability : PublishedTransportCapability)
+    (unusable : transportCapabilityUsable capability = false) :
+    admitClientBootstrap .sandboxClient capability = .rejectTransportUnavailable := by
+  simp [admitClientBootstrap, unusable]
 
 def publicStartSucceeds (endpointPublished endpointHealthy : Bool) : Bool :=
   endpointPublished && endpointHealthy

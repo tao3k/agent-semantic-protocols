@@ -319,7 +319,7 @@ extension is default off and default experimental:
 `extensions.codeql.mode="disabled"`. Enabling it changes only explicit
 extension/evidence paths unless a cache-only artifact is already available; the
 schema keeps `extensions.codeql.allowHotPath=false` so ordinary search, query,
-hook recovery, and `check --changed` cannot be configured to create CodeQL
+hook recovery, and dependency-owned policy evaluation cannot be configured to create CodeQL
 databases or run CodeQL queries.
 
 `semantic-type-surface.v1.schema.json` is the shared vocabulary for
@@ -829,7 +829,7 @@ The TypeScript provider registers as:
   "providerId": "asp-typescript",
   "binary": "asp-typescript",
   "namespace": "agent.semantic-protocols.languages.typescript.asp-typescript",
-  "methods": ["search/workspace", "search/prime", "check/full", "agent/doctor", "guide"],
+  "methods": ["search/workspace", "search/prime", "agent/doctor", "guide"],
   "methodDescriptors": [
     {
       "method": "search/workspace",
@@ -1013,8 +1013,18 @@ projection: the view-native `[search-<view>]` header, the micro-legend,
 Providers should not render seed or synthesis as a second independent prompt
 protocol.
 
+`semantic-graph-resident-evaluation-request.v1.schema.json` is the intent-only
+northbound graph request for `asp.graph.evaluate`. It contains no graph,
+source-snapshot, workspace-generation, provider, cache, or algorithm identity.
+The Runtime resolves those identities from the admitted Ready session.
+`semantic-graph-resident-evaluation-result.v1.schema.json` binds the returned
+ranked nodes and traversed edges to that exact resident generation and proves
+query-time provider RPC, durable reads, and generation mutation are zero.
+
 `semantic-graph-turbo-request.v1.schema.json` is the schema-owned algorithm
-input packet for the `asp-python-graphs` Python service project. It carries
+input packet for the cold/offline `asp-python-graphs` service project. It never
+serves the Ready `search`, `query`, `search.owner`, or `asp.graph.evaluate`
+routes. It carries
 the requested reasoning profile, algorithm id, seed node ids, ranking budget,
 optional per-kind budgets, optional window-merge controls, and typed graph
 facts under `graph.nodes[]` and `graph.edges[]`. Fast-search request nodes may
@@ -1195,15 +1205,15 @@ The current Python slice emits conforming packets from:
 
 ```shell
 asp-python search prime --json .
-asp-python search owner src/python_lang_project_harness/_cli.py --json .
+asp-python search owner src/asp_python/_cli.py --json .
 asp-python search dependency pytest --json .
 asp-python search deps pytest::fixture --json .
 asp-python search api PythonHarnessReport --json .
 asp-python search public-external-types pytest --json .
 asp-python search symbol PythonHarnessReport --json .
 asp-python search callsite PythonHarnessReport --json .
-asp-python search import python_lang_project_harness --json .
-asp-python search tests src/python_lang_project_harness/_cli.py --json .
+asp-python search import asp_python --json .
+asp-python search tests src/asp_python/_cli.py --json .
 asp-python search lexical PythonHarnessReport --json .
 rg -n "PythonHarnessReport" src tests | asp-python search ingest --json .
 ```

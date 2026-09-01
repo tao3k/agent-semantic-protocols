@@ -159,7 +159,7 @@ project-root argument.  That should be fixed after the hook route is stable.
 The real Python hook recovery case exposed a design defect:
 
 #+begin_src shell
-asp-python query --from-hook direct-source-read --selector src/python_lang_project_harness/_semantic_search_item_direct_read.py:115:240 languages/python-lang-project-harness
+asp-python query --from-hook direct-source-read --selector src/asp_python/_semantic_search_item_direct_read.py:115:240 languages/asp-python
 #+end_src
 
 The old provider behavior treated the selector as a symbol-overlap request and
@@ -301,9 +301,9 @@ transport.
 Python had the more dangerous fallback form:
 
 #+begin_src shell
-asp-python search owner src/python_lang_project_harness/_semantic_search_item_direct_read.py items \
+asp-python search owner src/asp_python/_semantic_search_item_direct_read.py items \
   --query 'render_semantic_query_json|projection_from_code_line|projection_node|expandActions' \
-  languages/python-lang-project-harness
+  languages/asp-python
 #+end_src
 
 It now keeps fallback top-items names-only:
@@ -318,7 +318,7 @@ step is parser-owned normalized-name scoring, not text search.
 
 Julia is intentionally skipped in this owner-items/bin parity audit.  The
 current Julia provider is workspace-managed only and must not be treated as a
-standalone =julia-project-harness= bin target.  Do not add =query/owner-items=
+standalone =asp-julia= bin target.  Do not add =query/owner-items=
 or compact item parity requirements to Julia in this slice; reopen a separate
 Julia-specific lane if that provider becomes active again.
 
@@ -335,9 +335,9 @@ Cross-language rule:
 The Python catalog query exposed a separate AST compact failure:
 
 #+begin_src shell
-asp-python query src/python_lang_project_harness/_semantic_language_catalog.py \
+asp-python query src/asp_python/_semantic_language_catalog.py \
   --term 'python_search_view_descriptors|owner|acceptedPipes|requiresQuery' \
-  --code languages/python-lang-project-harness
+  --code languages/asp-python
 #+end_src
 
 The item spans more than the previous raw code window, so the provider sliced
@@ -366,18 +366,18 @@ The provider read-plan gate only helps if the hook preserves the selector range.
 The real =functions.exec_command= case showed a separate extractor defect:
 
 #+begin_src shell
-sed -n '115,240p' languages/python-lang-project-harness/src/python_lang_project_harness/_semantic_search_item_direct_read.py
+sed -n '115,240p' languages/asp-python/src/asp_python/_semantic_search_item_direct_read.py
 #+end_src
 
 Before the fix, the hook decision routed only the project path and forced the
-provider to recover from =src/python_lang_project_harness/_semantic_search_item_direct_read.py=.
+provider to recover from =src/asp_python/_semantic_search_item_direct_read.py=.
 After the fix, the same command produces a denied =bulk-source-dump= decision
 with a provider route that preserves the local range:
 
 #+begin_example
 asp-python query --from-hook direct-source-read \
-  --selector src/python_lang_project_harness/_semantic_search_item_direct_read.py:115:240 \
-  --code languages/python-lang-project-harness
+  --selector src/asp_python/_semantic_search_item_direct_read.py:115:240 \
+  --code languages/asp-python
 #+end_example
 
 The routed provider command now returns =read-plan mode=range-outline
@@ -436,8 +436,8 @@ queries, while broad TypeScript source globs route to provider prime:
 Read languages/typescript-lang-project-harness/src/cli/protocol.ts
   -> asp-typescript query --selector src/cli/protocol.ts --code languages/typescript-lang-project-harness
 
-Read languages/python-lang-project-harness/src/python_lang_project_harness/_semantic_search_item_direct_read.py
-  -> asp-python query --selector src/python_lang_project_harness/_semantic_search_item_direct_read.py --code languages/python-lang-project-harness
+Read languages/asp-python/src/asp_python/_semantic_search_item_direct_read.py
+  -> asp-python query --selector src/asp_python/_semantic_search_item_direct_read.py --code languages/asp-python
 
 Read languages/typescript-lang-project-harness/src/**/*.ts
   -> asp-typescript search prime --view seeds languages/typescript-lang-project-harness
@@ -454,11 +454,11 @@ head -n 80 languages/typescript-lang-project-harness/src/cli/protocol.ts
 awk 'NR>=10 && NR<=30' languages/typescript-lang-project-harness/src/cli/protocol.ts
   -> asp-typescript query --selector src/cli/protocol.ts:10:30 --code languages/typescript-lang-project-harness
 
-tail -n +115 languages/python-lang-project-harness/src/python_lang_project_harness/_semantic_search_item_direct_read.py | head -n 126
-  -> asp-python query --selector src/python_lang_project_harness/_semantic_search_item_direct_read.py:115:240 --code languages/python-lang-project-harness
+tail -n +115 languages/asp-python/src/asp_python/_semantic_search_item_direct_read.py | head -n 126
+  -> asp-python query --selector src/asp_python/_semantic_search_item_direct_read.py:115:240 --code languages/asp-python
 
-nl -ba languages/python-lang-project-harness/src/python_lang_project_harness/_semantic_search_item_direct_read.py | sed -n '115,240p'
-  -> asp-python query --selector src/python_lang_project_harness/_semantic_search_item_direct_read.py:115:240 --code languages/python-lang-project-harness
+nl -ba languages/asp-python/src/asp_python/_semantic_search_item_direct_read.py | sed -n '115,240p'
+  -> asp-python query --selector src/asp_python/_semantic_search_item_direct_read.py:115:240 --code languages/asp-python
 #+end_example
 
 Both routed provider commands then return =read-plan code=false= for wide

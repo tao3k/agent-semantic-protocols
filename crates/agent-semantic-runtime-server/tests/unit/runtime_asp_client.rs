@@ -72,7 +72,11 @@ fn assert_exact_query_not_ready_terminal(response_frame: &ClientFrame, params: &
     assert_eq!(terminal["generationDigest"], serde_json::Value::Null);
     assert_eq!(terminal["rootDigest"], serde_json::Value::Null);
     assert_eq!(terminal["requestedSelector"], params["selector"]);
-    assert_eq!(terminal["details"]["generationState"], "admission-pending");
+    assert_eq!(terminal["details"]["generationState"], "unpublished");
+    assert_eq!(
+        terminal["details"]["publicationError"],
+        serde_json::Value::Null
+    );
     assert_eq!(
         terminal["recommendedNext"]["action"],
         "publish-complete-workspace-generation"
@@ -87,7 +91,7 @@ fn assert_exact_query_not_ready_terminal(response_frame: &ClientFrame, params: &
     assert_eq!(terminal["workCounters"]["providerProcessCount"], 0);
 }
 
-async fn dispatch_with_pending_generation_admission_returns_query_not_ready(
+async fn warm_dispatch_without_resident_generation_returns_query_not_ready(
     request_id: &str,
     method: &str,
     params: serde_json::Value,
@@ -128,20 +132,6 @@ async fn dispatch_with_pending_generation_admission_returns_query_not_ready(
         telemetry.sender,
     )
     .expect("frame service");
-    let client_socket_dir = tempfile::tempdir().expect("client socket directory");
-    let client_socket_path = client_socket_dir.path().join("asp-client.sock");
-    let listener = bind_asp_client_grpc_unix(&client_socket_path)
-        .await
-        .expect("bind ASP Client gRPC socket");
-    let (client_shutdown, client_shutdown_receiver) = tokio::sync::watch::channel(false);
-    let client_server = tokio::spawn(serve_asp_client_grpc_unix(
-        listener,
-        service,
-        client_shutdown_receiver,
-    ));
-    let client = AspClientGrpcTransport::connect_unix(&client_socket_path)
-        .await
-        .expect("connect ASP Client gRPC transport");
     let base = ClientFrameBase {
         schema_id: CLIENT_FRAME_SCHEMA_ID.to_owned(),
         schema_version: SCHEMA_VERSION.to_owned(),
@@ -163,9 +153,15 @@ async fn dispatch_with_pending_generation_admission_returns_query_not_ready(
         method: method.to_owned(),
         params: params.clone(),
     };
-    let response = client.call(request).await.expect("dispatch response");
-
-    let response_frame = response;
+    // This is a dispatcher contract test, not a transport test. Exercise the
+    // frame service directly so semantic coverage does not require the test
+    // process to bind an AF_UNIX listener that a caller sandbox may forbid.
+    // The dedicated client-server integration suite owns real UDS/gRPC I/O.
+    let response_frame = service
+        .handle_frame(request)
+        .await
+        .expect("dispatch frame")
+        .expect("dispatch response");
 
     if method.ends_with(".query") {
         assert_exact_query_not_ready_terminal(&response_frame, &params);
@@ -185,17 +181,11 @@ async fn dispatch_with_pending_generation_admission_returns_query_not_ready(
     assert_eq!(error["terminal"]["phase"], "runtime-generation-authority");
     assert_eq!(error["terminal"]["workCounters"]["filesystemReadCount"], 0);
     assert_eq!(error["terminal"]["workCounters"]["providerProcessCount"], 0);
-    drop(client);
-    client_shutdown.send(true).expect("shutdown gRPC service");
-    client_server
-        .await
-        .expect("join gRPC service")
-        .expect("serve gRPC service");
 }
 
 #[tokio::test]
 async fn search_dispatch_requires_a_committed_generation_admission() {
-    dispatch_with_pending_generation_admission_returns_query_not_ready(
+    warm_dispatch_without_resident_generation_returns_query_not_ready(
         "request-search",
         "rust.search",
         serde_json::json!({
@@ -209,7 +199,7 @@ async fn search_dispatch_requires_a_committed_generation_admission() {
 
 #[tokio::test]
 async fn exact_query_dispatch_requires_a_committed_generation_admission() {
-    dispatch_with_pending_generation_admission_returns_query_not_ready(
+    warm_dispatch_without_resident_generation_returns_query_not_ready(
         "request-query",
         "rust.query",
         serde_json::json!({
@@ -223,9 +213,31 @@ async fn exact_query_dispatch_requires_a_committed_generation_admission() {
 }
 
 #[tokio::test]
+async fn resident_graph_evaluation_requires_a_committed_generation_without_provider_work() {
+    warm_dispatch_without_resident_generation_returns_query_not_ready(
+        "request-resident-graph",
+        "asp.graph.evaluate",
+        serde_json::json!({
+            "schemaId": "agent.semantic-protocols.semantic-graph-resident-evaluation-request",
+            "schemaVersion": "1",
+            "protocolId": "agent.semantic-protocols.search",
+            "protocolVersion": "1",
+            "packetKind": "resident-graph-evaluation-request",
+            "languageId": "rust",
+            "surface": "search-pipe",
+            "queryTerms": ["ready"],
+            "profile": "structural",
+            "seedIds": [],
+            "budget": {"maxDepth": 4, "maxNodes": 64, "maxEdges": 128, "maxResults": 32}
+        }),
+    )
+    .await;
+}
+
+#[tokio::test]
 async fn registered_language_search_routes_share_query_readiness_gate() {
     for (language_id, _) in registered_language_provider_pairs() {
-        dispatch_with_pending_generation_admission_returns_query_not_ready(
+        warm_dispatch_without_resident_generation_returns_query_not_ready(
             &format!("request-{language_id}-search"),
             &format!("{language_id}.search"),
             serde_json::json!({
@@ -241,7 +253,7 @@ async fn registered_language_search_routes_share_query_readiness_gate() {
 #[tokio::test]
 async fn registered_language_exact_query_routes_share_typed_query_readiness_terminal() {
     for (language_id, _) in registered_language_provider_pairs() {
-        dispatch_with_pending_generation_admission_returns_query_not_ready(
+        warm_dispatch_without_resident_generation_returns_query_not_ready(
             &format!("request-{language_id}-query"),
             &format!("{language_id}.query"),
             serde_json::json!({

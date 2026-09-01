@@ -24,9 +24,9 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 _EVIDENCE_GRAPH_SCHEMA = _REPO_ROOT / "schemas/semantic-evidence-graph.v1.schema.json"
 _LANGUAGE_CASES = [
     ("rust", "languages/asp-rust"),
-    ("python", "languages/python-lang-project-harness"),
+    ("python", "languages/asp-python"),
     ("typescript", "languages/typescript-lang-project-harness"),
-    ("julia", "languages/JuliaLangProjectHarness.jl"),
+    ("julia", "languages/AspJulia.jl"),
     ("gerbil-scheme", "languages/gerbil-scheme-language-project-harness"),
 ]
 _CORE_FAST_LANGUAGES = ("rust", "python", "typescript")

@@ -161,11 +161,44 @@ pub(crate) async fn collect_source_index_scope_with_runtime_service_async(
     scope: &SourceIndexCollectionScope,
     cancellation: crate::runtime_generation_cancellation::GenerationCancellation,
 ) -> Result<SourceIndexCollectionReceipt, String> {
+    let project_root_owned = project_root.to_path_buf();
+    let repository_candidates = tokio::task::spawn_blocking(move || {
+        agent_semantic_runtime::git::discover_repository_candidate_snapshot(&project_root_owned)
+    })
+    .await
+    .map_err(|error| format!("workspace Git candidate task failed: {error}"))?
+    .map_err(|error| format!("discover workspace repository candidates: {error}"))?
+    .ok_or_else(|| {
+        format!(
+            "source-index generation requires a Git candidate snapshot: workspace={}",
+            project_root.display()
+        )
+    })?;
+    collect_source_index_scope_from_candidate_snapshot_with_runtime_service_async(
+        runtime,
+        project_root,
+        provider_registry,
+        scope,
+        repository_candidates,
+        cancellation,
+    )
+    .await
+}
+
+pub(crate) async fn collect_source_index_scope_from_candidate_snapshot_with_runtime_service_async(
+    runtime: &crate::runtime_search_service::RuntimeSearchServiceHandle,
+    project_root: &std::path::Path,
+    provider_registry: &agent_semantic_client_core::RuntimeProviderProjection,
+    scope: &SourceIndexCollectionScope,
+    repository_candidates: agent_semantic_runtime::git::RepositoryCandidateSnapshot,
+    cancellation: crate::runtime_generation_cancellation::GenerationCancellation,
+) -> Result<SourceIndexCollectionReceipt, String> {
     collect_source_index_scope_with_executor_async(
         ProviderScopeExecutor::RuntimeService(runtime.clone(), cancellation),
         project_root,
         provider_registry,
         scope,
+        repository_candidates,
     )
     .await
 }
@@ -183,20 +216,8 @@ async fn collect_source_index_scope_with_executor_async(
     project_root: &std::path::Path,
     provider_registry: &agent_semantic_client_core::RuntimeProviderProjection,
     scope: &SourceIndexCollectionScope,
+    repository_candidates: agent_semantic_runtime::git::RepositoryCandidateSnapshot,
 ) -> Result<SourceIndexCollectionReceipt, String> {
-    let project_root_owned = project_root.to_path_buf();
-    let repository_candidates = tokio::task::spawn_blocking(move || {
-        agent_semantic_runtime::git::discover_repository_candidate_snapshot(&project_root_owned)
-    })
-    .await
-    .map_err(|error| format!("workspace Git candidate task failed: {error}"))?
-    .map_err(|error| format!("discover workspace repository candidates: {error}"))?
-    .ok_or_else(|| {
-        format!(
-            "source-index generation requires a Git candidate snapshot: workspace={}",
-            project_root.display()
-        )
-    })?;
     let mut providers = tokio::task::JoinSet::new();
     for provider in &provider_registry.providers {
         let selected = match scope {

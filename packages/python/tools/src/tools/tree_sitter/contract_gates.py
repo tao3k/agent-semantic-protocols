@@ -157,7 +157,7 @@ class _runtime_env:
             )
             _write_shim(
                 shim_dir / "asp-python",
-                f'exec uv run --project "{ROOT}/languages/python-lang-project-harness" --frozen asp-python "$@"\n',
+                f'exec uv run --project "{ROOT}/languages/asp-python" --frozen asp-python "$@"\n',
             )
             env = os.environ.copy()
             env["PATH"] = f"{shim_dir}{os.pathsep}{env.get('PATH', '')}"

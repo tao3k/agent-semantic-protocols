@@ -16,8 +16,6 @@
       "enum": [
         "gerbil-scheme",
         "julia",
-        "md",
-        "org",
         "python",
         "rust",
         "typescript"
@@ -38,18 +36,6 @@
       "properties": {
         "languageId": {"const": "julia"},
         "providerId": {"const": "asp-julia"}
-      }
-    },
-    {
-      "properties": {
-        "languageId": {"const": "md"},
-        "providerId": {"const": "asp-md"}
-      }
-    },
-    {
-      "properties": {
-        "languageId": {"const": "org"},
-        "providerId": {"const": "asp-org"}
       }
     },
     {

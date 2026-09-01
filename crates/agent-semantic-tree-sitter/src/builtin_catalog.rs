@@ -97,19 +97,19 @@ fn typescript_catalog_source(catalog_id: &str) -> Option<&'static str> {
 fn python_catalog_source(catalog_id: &str) -> Option<&'static str> {
     match catalog_id {
         "calls" => Some(include_str!(
-            "../../../languages/python-lang-project-harness/tree-sitter/tree-sitter-python/queries/calls.scm"
+            "../../../languages/asp-python/tree-sitter/tree-sitter-python/queries/calls.scm"
         )),
         "control-flow" => Some(include_str!(
-            "../../../languages/python-lang-project-harness/tree-sitter/tree-sitter-python/queries/control-flow.scm"
+            "../../../languages/asp-python/tree-sitter/tree-sitter-python/queries/control-flow.scm"
         )),
         "declarations" => Some(include_str!(
-            "../../../languages/python-lang-project-harness/tree-sitter/tree-sitter-python/queries/declarations.scm"
+            "../../../languages/asp-python/tree-sitter/tree-sitter-python/queries/declarations.scm"
         )),
         "decorators" => Some(include_str!(
-            "../../../languages/python-lang-project-harness/tree-sitter/tree-sitter-python/queries/decorators.scm"
+            "../../../languages/asp-python/tree-sitter/tree-sitter-python/queries/decorators.scm"
         )),
         "imports" => Some(include_str!(
-            "../../../languages/python-lang-project-harness/tree-sitter/tree-sitter-python/queries/imports.scm"
+            "../../../languages/asp-python/tree-sitter/tree-sitter-python/queries/imports.scm"
         )),
         _ => None,
     }
@@ -118,13 +118,13 @@ fn python_catalog_source(catalog_id: &str) -> Option<&'static str> {
 fn julia_catalog_source(catalog_id: &str) -> Option<&'static str> {
     match catalog_id {
         "calls" => Some(include_str!(
-            "../../../languages/JuliaLangProjectHarness.jl/tree-sitter/tree-sitter-julia/queries/calls.scm"
+            "../../../languages/AspJulia.jl/tree-sitter/tree-sitter-julia/queries/calls.scm"
         )),
         "declarations" => Some(include_str!(
-            "../../../languages/JuliaLangProjectHarness.jl/tree-sitter/tree-sitter-julia/queries/declarations.scm"
+            "../../../languages/AspJulia.jl/tree-sitter/tree-sitter-julia/queries/declarations.scm"
         )),
         "imports" => Some(include_str!(
-            "../../../languages/JuliaLangProjectHarness.jl/tree-sitter/tree-sitter-julia/queries/imports.scm"
+            "../../../languages/AspJulia.jl/tree-sitter/tree-sitter-julia/queries/imports.scm"
         )),
         _ => None,
     }

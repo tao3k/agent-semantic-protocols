@@ -109,6 +109,34 @@ async fn materialize_resolves_closure_and_verify_is_read_only() {
 }
 
 #[tokio::test]
+async fn materialize_replaces_a_stale_package_copy_from_the_canonical_root() {
+    let (root, manager) = fixture();
+    manager.materialize(&[]).await.expect("initial materialize");
+
+    let canonical_path = root.path().join("schemas/root.schema.json");
+    let package_path = root
+        .path()
+        .join("languages/fixture/schemas/root.schema.json");
+    write_json(
+        &canonical_path,
+        &json!({
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "$id": "https://example.invalid/root.schema.json",
+            "title": "Updated Canonical Root",
+            "$ref": "dependency.schema.json"
+        }),
+    );
+
+    let reports = manager.materialize(&[]).await.expect("refresh materialize");
+    assert_eq!(reports[0].changed_count, 3);
+    assert_eq!(
+        fs::read(&package_path).expect("read package projection"),
+        fs::read(&canonical_path).expect("read canonical root")
+    );
+    manager.verify(&[]).await.expect("verify refreshed bundle");
+}
+
+#[tokio::test]
 async fn verify_rejects_legacy_bundle_receipt_shape() {
     let (root, manager) = fixture();
     manager.materialize(&[]).await.expect("materialize");
@@ -320,6 +348,41 @@ fn canonical_client_profile_publishes_the_shared_schema_bundle_route() {
                 .as_array()
                 .is_some_and(|root_sets| root_sets.iter().any(|root| root == "client-protocol"))),
         "every registered language profile must consume the shared client-protocol root set"
+    );
+}
+
+#[test]
+fn every_language_profile_receives_the_resident_graph_contract_declaratively() {
+    let workspace = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(Path::parent)
+        .expect("workspace root");
+    let registry: serde_json::Value = serde_json::from_slice(
+        &fs::read(workspace.join("schemas/language-schema-profiles.json"))
+            .expect("read canonical schema profile registry"),
+    )
+    .expect("decode canonical schema profile registry");
+    let reasoning_roots = registry["rootSets"]["agent-reasoning"]
+        .as_array()
+        .expect("agent-reasoning root set");
+    for schema in [
+        "semantic-graph-resident-evaluation-request.v1.schema.json",
+        "semantic-graph-resident-evaluation-result.v1.schema.json",
+    ] {
+        assert!(
+            reasoning_roots.iter().any(|entry| entry == schema),
+            "missing {schema}"
+        );
+    }
+    assert!(
+        registry["profiles"]
+            .as_array()
+            .expect("registered profiles")
+            .iter()
+            .all(|profile| profile["rootSets"]
+                .as_array()
+                .is_some_and(|roots| roots.iter().any(|root| root == "agent-reasoning"))),
+        "every language must consume the shared resident graph contract"
     );
 }
 

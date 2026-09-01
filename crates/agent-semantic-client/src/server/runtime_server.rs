@@ -9,6 +9,9 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 #[path = "runtime_server_daemon.rs"]
 mod runtime_server_daemon;
+#[cfg(test)]
+#[path = "../../tests/unit/server/runtime_server_generation_collection_scope.rs"]
+mod runtime_server_generation_collection_scope_tests;
 #[path = "runtime_server_identity_handoff.rs"]
 mod runtime_server_identity_handoff;
 #[path = "runtime_server_search_service.rs"]

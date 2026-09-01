@@ -1,42 +1,50 @@
 //! ASP downstream policy crate for Rust project harness evidence graphs.
 
-#[cfg(feature = "harness-runtime")]
-pub use asp_rust::{
-    RustHarnessConfig, RustHarnessRunScope, RustOwnerResponsibility,
-    RustProjectHarnessBuildGateAuthority, RustProjectHarnessDownstreamPolicy,
-    RustProjectHarnessWorkspaceEvidenceGraphMemberInput,
-    RustProjectHarnessWorkspaceMemberRunReport, RustProjectHarnessWorkspaceRunReport,
-    RustVerificationProfileHint, RustVerificationStabilityPictureConfig, RustVerificationTaskKind,
-    assert_rust_project_harness_clean_with_config,
-    assert_rust_project_harness_downstream_policy_from_env,
-    assert_rust_project_harness_downstream_policy_with_authority,
-    assert_rust_project_harness_verification_from_env_with_config,
-    assert_rust_workspace_harness_clean_with_config,
-    assert_rust_workspace_harness_downstream_policies, default_rust_harness_config,
-    run_rust_project_harness_with_config_for_scope, rust_harness_config_for_project,
-};
+/// Digest of the Cargo-derived workspace Build Support receipt.
+pub const ASP_RUST_WORKSPACE_BUILD_RECEIPT_DIGEST: &str =
+    env!("ASP_RUST_WORKSPACE_BUILD_RECEIPT_DIGEST");
+
+/// Number of Cargo workspace packages observed by the shared build unit.
+pub const ASP_RUST_WORKSPACE_BUILD_PACKAGE_COUNT: &str =
+    env!("ASP_RUST_WORKSPACE_BUILD_PACKAGE_COUNT");
+
+/// Digest of the declarative package policy catalog bound to the Build DAG.
+pub const ASP_RUST_WORKSPACE_POLICY_CATALOG_DIGEST: &str =
+    env!("ASP_RUST_WORKSPACE_POLICY_CATALOG_DIGEST");
+
+#[cfg(feature = "workspace-policy")]
+pub use asp_rust;
 
 pub mod build_gate;
 pub use build_gate::{
-    AspRustProjectHarnessMemberBuildReceipt,
-    assert_asp_rust_project_harness_member_policy_from_env,
-    validate_asp_rust_project_harness_member_manifest,
+    AspRustProjectHarnessMemberPolicyReceipt, validate_asp_rust_project_harness_member_manifest,
 };
 pub mod evidence;
 /// Reusable hook scenarios for Rust project harness policy checks.
 pub mod member_policy;
 pub mod package_evidence_graph;
-pub mod scenario;
 pub mod search_scenarios;
 pub mod workspace_evidence_graph;
+#[cfg(feature = "workspace-policy")]
+pub mod workspace_policy;
 
+pub use asp_rust_build_support::{
+    AspRustScenario as AspRustProjectHarnessScenario,
+    AspRustScenarioBenchmarkSpec as AspRustProjectHarnessScenarioBenchmark,
+    AspRustScenarioCommand as AspRustProjectHarnessScenarioCommand,
+    AspRustScenarioMeasurement as AspRustProjectHarnessScenarioMeasurement,
+    AspRustScenarioMetricKind as AspRustProjectHarnessScenarioMetricKind,
+    AspRustScenarioMetricSpec as AspRustProjectHarnessScenarioMetric,
+    AspRustScenarioObservation as AspRustProjectHarnessScenarioObservation,
+    AspRustScenarioPackage as AspRustProjectHarnessScenarioPackage,
+    asp_rust_scenario as asp_rust_project_harness_scenario,
+    asp_rust_scenario_package as asp_rust_project_harness_scenario_package,
+    measure_asp_rust_scenario, render_asp_rust_scenario_benchmark_toml,
+    write_asp_rust_scenario_benchmark_toml,
+};
 pub use member_policy::{
     AspRustProjectHarnessMemberPolicy, AspRustProjectHarnessOwnerPolicy,
     asp_workspace_member_forbidden_normal_dependencies, asp_workspace_member_policies,
-};
-pub use scenario::{
-    AspRustProjectHarnessScenario, AspRustProjectHarnessScenarioCommand,
-    AspRustProjectHarnessScenarioPackage,
 };
 pub use search_scenarios::{
     ASP_SEARCH_SCENARIO_PACKAGE_NAME, LEXICAL_SEARCH_FRAME_GRAPH_ROUTER_WARM_PATH_SCENARIO_ID,
@@ -55,6 +63,11 @@ pub use workspace_evidence_graph::{
     AspRustProjectHarnessWorkspaceEvidenceGraphRequest,
     AspRustProjectHarnessWorkspaceEvidenceGraphSummaryReceipt,
     build_asp_workspace_evidence_graph_receipt, build_workspace_evidence_graph_receipt,
+};
+#[cfg(feature = "workspace-policy")]
+pub use workspace_policy::{
+    assert_asp_workspace_build_identity_from_env, assert_asp_workspace_policy,
+    assert_asp_workspace_policy_from_env,
 };
 
 pub use evidence::{

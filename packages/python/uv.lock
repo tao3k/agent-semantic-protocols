@@ -25,7 +25,7 @@ dependencies = [
 [package.dev-dependencies]
 dev = [
     { name = "pytest" },
-    { name = "python-lang-project-harness" },
+    { name = "asp-python" },
 ]
 
 [package.metadata]
@@ -39,7 +39,7 @@ requires-dist = [
 [package.metadata.requires-dev]
 dev = [
     { name = "pytest", specifier = ">=9,<10" },
-    { name = "python-lang-project-harness", editable = "../../languages/python-lang-project-harness" },
+    { name = "asp-python", editable = "../../languages/asp-python" },
 ]
 
 [[package]]
@@ -845,9 +845,9 @@ wheels = [
 ]
 
 [[package]]
-name = "python-lang-project-harness"
+name = "asp-python"
 version = "0.1.0"
-source = { editable = "../../languages/python-lang-project-harness" }
+source = { editable = "../../languages/asp-python" }
 dependencies = [
     { name = "blake3" },
 ]

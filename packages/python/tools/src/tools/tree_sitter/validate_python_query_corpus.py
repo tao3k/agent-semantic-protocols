@@ -14,7 +14,7 @@ REPO_ROOT = repo_root()
 GRAMMAR_ROOT = (
     REPO_ROOT
     / "languages"
-    / "python-lang-project-harness"
+    / "asp-python"
     / "tree-sitter"
     / "tree-sitter-python"
 )

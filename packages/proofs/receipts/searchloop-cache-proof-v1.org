@@ -175,7 +175,7 @@ Typst stdin.
 uv run --project packages/python/tools --frozen \
   pytest packages/python/tools/tests/test_axle_lean_audit.py -q
 
-uv run --project languages/python-lang-project-harness --frozen \
+uv run --project languages/asp-python --frozen \
   asp-python check --full .
 
 git diff --check

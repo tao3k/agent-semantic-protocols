@@ -176,16 +176,16 @@ compatible compact command shapes for policy and hook-routed search:
 
 #+begin_src shell
 asp-rust search policy RUST-PROJ-R001 owner tests --view seeds languages/asp-rust
-asp-python search policy PY-AGENT-R008 owner tests --view seeds languages/python-lang-project-harness
+asp-python search policy PY-AGENT-R008 owner tests --view seeds languages/asp-python
 asp-typescript search policy TS-AGENT-R001 owner tests --view seeds languages/typescript-lang-project-harness
-julia --project=languages/JuliaLangProjectHarness.jl languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl search policy JULIA-PROJ-R001 owner tests --view seeds languages/JuliaLangProjectHarness.jl
-julia --project=languages/JuliaLangProjectHarness.jl languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl search owner src/cli.jl --view seeds languages/JuliaLangProjectHarness.jl
-julia --project=languages/JuliaLangProjectHarness.jl languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl search lexical run_julia_project_harness_cli owner tests --view seeds languages/JuliaLangProjectHarness.jl
-printf 'src/cli.jl:1\n' | julia --project=languages/JuliaLangProjectHarness.jl languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl search ingest owner tests --view seeds languages/JuliaLangProjectHarness.jl
+julia --project=languages/AspJulia.jl languages/AspJulia.jl/bin/asp-julia.jl search policy JULIA-PROJ-R001 owner tests --view seeds languages/AspJulia.jl
+julia --project=languages/AspJulia.jl languages/AspJulia.jl/bin/asp-julia.jl search owner src/cli.jl --view seeds languages/AspJulia.jl
+julia --project=languages/AspJulia.jl languages/AspJulia.jl/bin/asp-julia.jl search lexical run_julia_project_harness_cli owner tests --view seeds languages/AspJulia.jl
+printf 'src/cli.jl:1\n' | julia --project=languages/AspJulia.jl languages/AspJulia.jl/bin/asp-julia.jl search ingest owner tests --view seeds languages/AspJulia.jl
 #+end_src
 
 The Julia command is intentionally written in full.  Do not shorten this to a
-bare =julia-project-harness= binary in docs, tests, or profile descriptors.
+bare =asp-julia= binary in docs, tests, or profile descriptors.
 
 The important runtime finding was not a missing Python implementation.  A stale
 =asp-python= on =PATH= can still be discovered by =semantic-agent-protocol install hook=
@@ -210,18 +210,18 @@ The doctor output now reports four profiles: =rust=, =typescript=, =python=,
 and =julia=.  Julia is discovered through the workspace-managed command:
 
 #+begin_src shell
-julia --project=languages/JuliaLangProjectHarness.jl languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl agent guide .
+julia --project=languages/AspJulia.jl languages/AspJulia.jl/bin/asp-julia.jl agent guide .
 #+end_src
 
 The hook profile and language registry contracts now have optional
 =providerCommandPrefix=.  This is the critical safety boundary for
 workspace-managed providers: Julia commands are routed through
-=julia ... bin/julia-project-harness.jl= without treating any arbitrary
+=julia ... bin/asp-julia.jl= without treating any arbitrary
 =julia= command as provider output.  Live hook smoke tests validated both
 sides:
 
 - direct =sed= reads of =*.jl= are denied and routed to the Julia owner command
-- =julia --project=... bin/julia-project-harness.jl agent guide . | rg ...= is
+- =julia --project=... bin/asp-julia.jl agent guide . | rg ...= is
   allowed as provider-output filtering
 - =julia -e ... | rg ...= remains denied as raw broad search
 

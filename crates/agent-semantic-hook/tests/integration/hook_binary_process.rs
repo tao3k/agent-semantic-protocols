@@ -253,11 +253,13 @@ fn binary_identity_is_owned_by_the_hook_package() {
 
 #[test]
 fn binary_projects_its_embedded_policy_content_identity() {
+    let started = std::time::Instant::now();
     let output = hook_command()
         .arg("--identity")
         .env_remove("ASP_NO_AGENT")
         .output()
         .expect("run Hook binary identity");
+    let elapsed = started.elapsed();
     assert_eq!(output.status.code(), Some(0));
     let identity: serde_json::Value =
         serde_json::from_slice(&output.stdout).expect("typed Hook binary identity JSON");
@@ -266,12 +268,16 @@ fn binary_projects_its_embedded_policy_content_identity() {
         "agent.semantic-protocols.hook-runtime-identity"
     );
     assert_eq!(identity["schemaVersion"], 1);
-    assert!(
-        identity["policyContentDigest"]
-            .as_str()
-            .is_some_and(|digest| digest.starts_with("blake3-256:"))
+    assert_eq!(
+        identity["policyContentDigest"],
+        agent_semantic_hook::aot_compiler::embedded_hook_policy_content_digest()
+            .expect("project embedded Hook policy content identity")
     );
     assert!(output.stderr.is_empty());
+    assert!(
+        elapsed < std::time::Duration::from_secs(1),
+        "identity probe must remain compiler-free and bounded: {elapsed:?}"
+    );
 }
 
 #[test]

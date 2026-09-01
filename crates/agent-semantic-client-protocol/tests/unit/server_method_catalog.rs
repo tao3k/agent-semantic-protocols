@@ -1,6 +1,6 @@
 use crate::{
-    ResolvedServerClientMethod, ServerClientRoute, resolve_server_client_method,
-    resolve_server_client_method_owner, server_client_methods,
+    ClientDispatchClass, ResolvedServerClientMethod, ServerClientRoute, classify_client_dispatch,
+    resolve_server_client_method, resolve_server_client_method_owner, server_client_methods,
 };
 
 #[test]
@@ -13,12 +13,15 @@ fn server_catalog_exposes_northbound_search_query_and_schema_bundle_methods() {
     assert_eq!(
         names,
         [
-            "asp.graphs.evaluate",
+            "asp.graph.evaluate",
             "asp.graphs.timeline",
+            "asp.lifecycle.cancellation",
+            "asp.live-corpus.cache-state",
             "asp.schema.bundle",
             "asp.session.children",
             "asp.session.host-event",
             "asp.session.register-child",
+            "asp.workspace.generation.ensure-ready",
             "rust.query",
             "rust.search",
             "rust.search.owner",
@@ -29,12 +32,45 @@ fn server_catalog_exposes_northbound_search_query_and_schema_bundle_methods() {
     assert!(
         methods
             .iter()
-            .filter(|method| method.method != "asp.graphs.evaluate")
+            .filter(|method| method.method != "asp.graph.evaluate")
             .all(|method| {
                 method
                     .request_schema_id
                     .starts_with("agent.semantic-protocols.")
             })
+    );
+}
+
+#[test]
+fn workspace_generation_preflight_is_server_owned_and_language_independent() {
+    let languages = ["rust".to_owned(), "python".to_owned()];
+    assert_eq!(
+        resolve_server_client_method_owner(
+            crate::WORKSPACE_GENERATION_ENSURE_READY_METHOD,
+            languages,
+        ),
+        Ok(ResolvedServerClientMethod::Server(
+            ServerClientRoute::WorkspaceGenerationEnsureReady,
+        ))
+    );
+    let method = server_client_methods(["rust".to_owned()])
+        .expect("server method catalog")
+        .into_iter()
+        .find(|method| method.method == crate::WORKSPACE_GENERATION_ENSURE_READY_METHOD)
+        .expect("workspace generation ensure-ready method");
+    assert!(method.parameters.is_empty());
+    assert!(method.cancellable);
+}
+
+#[test]
+fn dispatch_class_is_catalog_owned_and_preserved_by_transports() {
+    assert_eq!(
+        classify_client_dispatch(crate::WORKSPACE_GENERATION_ENSURE_READY_METHOD),
+        ClientDispatchClass::ColdGenerationAdmission,
+    );
+    assert_eq!(
+        classify_client_dispatch("rust.query"),
+        ClientDispatchClass::InteractiveRead,
     );
 }
 
@@ -56,20 +92,20 @@ fn multi_agent_v2_methods_are_server_owned_and_language_independent() {
 }
 
 #[test]
-fn server_catalog_exposes_the_runtime_owned_graph_evaluation_method() {
+fn server_catalog_exposes_the_resident_runtime_graph_evaluation_method() {
     let methods = server_client_methods(["rust".to_owned()]).expect("Rust method catalog");
     let method = methods
         .iter()
-        .find(|method| method.method == "asp.graphs.evaluate")
+        .find(|method| method.method == "asp.graph.evaluate")
         .expect("graph evaluation method");
-    assert_eq!(method.route_id, "asp.graphs.evaluate");
+    assert_eq!(method.route_id, "asp.graph.evaluate");
     assert_eq!(
         method.request_schema_id,
-        "agent.semantic-protocols.semantic-graph-turbo-request"
+        "agent.semantic-protocols.semantic-graph-resident-evaluation-request"
     );
     assert_eq!(
         method.response_schema_id,
-        "agent.semantic-protocols.semantic-graph-turbo-result"
+        "agent.semantic-protocols.semantic-graph-resident-evaluation-result"
     );
     assert_eq!(
         method
@@ -83,23 +119,22 @@ fn server_catalog_exposes_the_runtime_owned_graph_evaluation_method() {
             "protocolId",
             "protocolVersion",
             "packetKind",
+            "languageId",
             "surface",
-            "sourceSnapshot",
-            "workspaceGeneration",
             "queryTerms",
             "profile",
-            "algorithm",
             "seedIds",
-            "budget",
-            "graph",
-            "graphs"
+            "budget"
         ]
     );
     assert_eq!(
-        resolve_server_client_method_owner("asp.graphs.evaluate", ["rust".to_owned()]),
+        resolve_server_client_method_owner("asp.graph.evaluate", ["rust".to_owned()]),
         Ok(ResolvedServerClientMethod::Server(
-            ServerClientRoute::GraphsEvaluate
+            ServerClientRoute::GraphEvaluate
         ))
+    );
+    assert!(
+        resolve_server_client_method_owner("asp.graphs.evaluate", ["rust".to_owned()]).is_err()
     );
     assert!(method.cancellable);
     assert!(!method.streaming);

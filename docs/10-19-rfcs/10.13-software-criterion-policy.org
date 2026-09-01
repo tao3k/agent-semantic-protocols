@@ -434,10 +434,10 @@ Current repository evidence shows uneven readiness.
 Python is ready for Phase 2 control-flow mapping.  The provider exposes
 agent-policy catalog and readability surfaces, including:
 
-- =languages/python-lang-project-harness/src/python_lang_project_harness/_agent_policy_catalog.py=
-- =languages/python-lang-project-harness/src/python_lang_project_harness/agent_readability/algorithm_shape.py=
-- =languages/python-lang-project-harness/src/python_lang_parser/_control_flow.py=
-- =languages/python-lang-project-harness/src/python_lang_parser/_native_collection_loops.py=
+- =languages/asp-python/src/asp_python/_agent_policy_catalog.py=
+- =languages/asp-python/src/asp_python/agent_readability/algorithm_shape.py=
+- =languages/asp-python/src/python_lang_parser/_control_flow.py=
+- =languages/asp-python/src/python_lang_parser/_native_collection_loops.py=
 
 The existing =PY-AGENT-R009= and =PythonFunctionControlFlow= surfaces are the
 seed for =control-flow.decision-stack=, =control-flow.traversal-knot=,
@@ -481,8 +481,8 @@ the mapping only after those facts are provider-owned.
 Julia is planned, not ready for the same Phase 2 scope.  The provider has
 registry and snapshot surfaces:
 
-- =languages/JuliaLangProjectHarness.jl/src/agent_registry.jl=
-- =languages/JuliaLangProjectHarness.jl/src/agent_snapshot.jl=
+- =languages/AspJulia.jl/src/agent_registry.jl=
+- =languages/AspJulia.jl/src/agent_snapshot.jl=
 
 The first Julia work should add JuliaSyntax-derived facts for setup/kernel
 separation, type-stable returns, variable type changes, mutation contracts

@@ -28,15 +28,13 @@ fn default_template_round_trips_through_config_parser() {
     assert!(config.recovery_prompt.codex_agent_flow.is_none());
     assert!(config.recovery_prompt.claude_agent_flow.is_none());
     assert!(config.recovery_prompt.default_agent_flow.is_none());
-    assert_eq!(config.provider_routes.len(), 7);
-    for (language_id, provider_id) in [("org", "asp-org"), ("md", "asp-md")] {
-        assert!(
-            config.provider_routes.iter().any(|route| {
-                route.language_id == language_id && route.provider_id == provider_id
-            }),
-            "canonical Provider Register route missing from Hook projection: {language_id}/{provider_id}"
-        );
-    }
+    assert_eq!(config.provider_routes.len(), 5);
+    assert!(
+        config
+            .provider_routes
+            .iter()
+            .all(|route| !matches!(route.language_id.as_str(), "org" | "md"))
+    );
     let rendered = canonical_default_template();
     for legacy in [
         "choice pane",
@@ -215,17 +213,12 @@ protocolVersion = "1"
     let config = load_hook_client_config_file(&config_path)
         .expect("canonical Provider Register must be admitted without copied route tables");
 
+    assert_eq!(config.provider_routes.len(), 5);
     assert!(
         config
             .provider_routes
             .iter()
-            .any(|route| { route.language_id == "org" && route.provider_id == "asp-org" })
-    );
-    assert!(
-        config
-            .provider_routes
-            .iter()
-            .any(|route| { route.language_id == "md" && route.provider_id == "asp-md" })
+            .all(|route| !matches!(route.language_id.as_str(), "org" | "md"))
     );
     let _ = fs::remove_dir_all(root);
 }

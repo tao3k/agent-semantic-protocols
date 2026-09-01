@@ -1,8 +1,8 @@
 use std::collections::BTreeSet;
 
 use crate::recall_route_planner::{
-    GraphClosureState, IndexedLexicalObservation, LexicalBackendKind, PythonGraphObservation,
-    RecallCalibrationState, RecallCompositionRequest, RecallQueryIntent,
+    GraphClosureState, IndexedLexicalObservation, LexicalBackendKind, RecallCalibrationState,
+    RecallCompositionRequest, RecallQueryIntent, ResidentGraphObservation,
     RipgrepVerificationObservation, plan_recall_composition,
 };
 
@@ -24,7 +24,7 @@ fn request(intent: RecallQueryIntent) -> RecallCompositionRequest {
             indexed_owner_count: 4,
             candidate_owner_ids: owners(&["owner-a", "owner-b"]),
         }),
-        graph: Some(PythonGraphObservation {
+        graph: Some(ResidentGraphObservation {
             closure_state: GraphClosureState::Complete,
             seed_owner_ids: owners(&["owner-a"]),
             candidate_owner_ids: owners(&["owner-a", "owner-c"]),
@@ -52,7 +52,7 @@ fn conceptual_route_preserves_lexical_recall_then_graph_context_then_bytes() {
             .collect::<Vec<_>>(),
         [
             "search.indexed-lexical",
-            "search.python-graph",
+            "search.resident-graph",
             "search.ripgrep-verify-candidates",
         ]
     );
@@ -64,11 +64,11 @@ fn conceptual_route_preserves_lexical_recall_then_graph_context_then_bytes() {
 }
 
 #[test]
-fn relationship_route_uses_python_graph_before_lexical_gap_fill() {
+fn relationship_route_uses_resident_graph_before_lexical_gap_fill() {
     let decision = plan_recall_composition(request(RecallQueryIntent::Relationship))
         .expect("relationship route");
 
-    assert_eq!(decision.stages[0].capability_id, "search.python-graph");
+    assert_eq!(decision.stages[0].capability_id, "search.resident-graph");
     assert_eq!(decision.stages[1].capability_id, "search.indexed-lexical");
     assert_eq!(
         decision.stages[2].capability_id,

@@ -47,7 +47,6 @@ fs2.workspace = true
 libc.workspace = true
 globset.workspace = true
 base64 = "0.22"
-ascent = "0.8"
 tracing = "0.1.44"
 
 [[bin]]
@@ -58,7 +57,6 @@ test = false
 [dev-dependencies]
 jsonschema = { workspace = true }
 criterion = { workspace = true }
-asp-rust-project-harness-policy.workspace = true
 gix.workspace = true
 gix-config.workspace = true
 insta.workspace = true

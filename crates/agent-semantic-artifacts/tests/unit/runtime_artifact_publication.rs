@@ -244,6 +244,12 @@ async fn activation_failure_restores_active_from_healthy_without_moving_healthy(
         .expect("restore previous healthy bundle");
     assert_eq!(slots.active_target().await.unwrap(), healthy_before);
     assert_eq!(slots.healthy_target().await.unwrap(), healthy_before);
+
+    rollback_runtime_artifact_activation(&state_home, &candidate)
+        .await
+        .expect("replaying the same rollback is an idempotent no-op");
+    assert_eq!(slots.active_target().await.unwrap(), healthy_before);
+    assert_eq!(slots.healthy_target().await.unwrap(), healthy_before);
     assert_eq!(
         std::fs::canonicalize(&target).unwrap(),
         std::fs::canonicalize(

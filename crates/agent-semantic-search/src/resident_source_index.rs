@@ -3,8 +3,9 @@
 //! Construction belongs to generation admission. Query methods perform no
 //! filesystem, database, provider, socket, or scheduler work.
 
-use std::collections::{BTreeMap, BTreeSet, HashMap};
-use std::sync::Mutex;
+use std::cmp::Reverse;
+use std::collections::{BTreeMap, BTreeSet, BinaryHeap, HashMap};
+use std::sync::{Arc, Mutex};
 
 use agent_semantic_content_identity::SourceSnapshotEvidence;
 
@@ -134,8 +135,8 @@ struct QueryCacheKey {
 
 #[derive(Debug)]
 pub struct ResidentSourceIndex {
-    lexical_index: BTreeMap<String, Vec<String>>,
-    candidate_seeds: BTreeMap<String, ResidentSourceIndexSeed>,
+    lexical_index: BTreeMap<String, Vec<usize>>,
+    candidate_seeds: Vec<ResidentSourceIndexSeed>,
     source_snapshot: SourceSnapshotEvidence,
     generation_digest: String,
     index_artifact_digest: String,
@@ -143,7 +144,7 @@ pub struct ResidentSourceIndex {
         Mutex<
             Option<(
                 QueryCacheKey,
-                agent_semantic_search_projection::ResidentSearchReadyResult,
+                Arc<agent_semantic_search_projection::ResidentSearchReadyResult>,
             )>,
         >,
     >,
@@ -159,9 +160,26 @@ impl ResidentSourceIndex {
     ) -> Self {
         let index_artifact_digest =
             agent_semantic_search_projection::source_index_artifact_digest(&source_snapshot);
+        let owner_ids = candidate_seeds
+            .keys()
+            .enumerate()
+            .map(|(owner_id, owner_path)| (owner_path.clone(), owner_id))
+            .collect::<BTreeMap<_, _>>();
+        let lexical_index = lexical_index
+            .into_iter()
+            .map(|(term, owner_paths)| {
+                let mut postings = owner_paths
+                    .into_iter()
+                    .map(|owner_path| owner_ids.get(&owner_path).copied().unwrap_or(usize::MAX))
+                    .collect::<Vec<_>>();
+                postings.sort_unstable();
+                postings.dedup();
+                (term, postings)
+            })
+            .collect();
         Self {
             lexical_index,
-            candidate_seeds,
+            candidate_seeds: candidate_seeds.into_values().collect(),
             source_snapshot,
             generation_digest,
             index_artifact_digest,
@@ -174,7 +192,12 @@ impl ResidentSourceIndex {
         query: &str,
         authority: Option<&ResidentSearchAuthority>,
         limit: u32,
-    ) -> Result<agent_semantic_search_projection::ResidentSearchReadyResult, String> {
+    ) -> Result<Arc<agent_semantic_search_projection::ResidentSearchReadyResult>, String> {
+        if !(1..=100).contains(&limit) {
+            return Err(format!(
+                "resident source-index query limit must be in 1..=100: limit={limit}"
+            ));
+        }
         let cache_key = QueryCacheKey {
             query: query.trim().to_ascii_lowercase(),
             authority: authority.cloned(),
@@ -185,20 +208,22 @@ impl ResidentSourceIndex {
             return Ok(result);
         }
         let hits = self
-            .owner_paths(query, authority, limit)
+            .owner_matches(query, authority, limit)
             .into_iter()
-            .map(|owner_path| self.candidate(&owner_path))
+            .map(|(owner_id, matched_terms)| self.candidate(owner_id, matched_terms))
             .collect::<Result<Vec<_>, String>>()?;
-        let result = agent_semantic_search_projection::ResidentSearchReadyResult::new(
-            self.generation_digest.clone(),
-            &self.source_snapshot,
-            self.index_artifact_digest.clone(),
-            hits,
-        )?;
+        let result = Arc::new(
+            agent_semantic_search_projection::ResidentSearchReadyResult::new(
+                self.generation_digest.clone(),
+                &self.source_snapshot,
+                self.index_artifact_digest.clone(),
+                hits,
+            )?,
+        );
         self.query_cache[cache_slot]
             .lock()
             .map_err(|_| "resident source-index query cache is poisoned".to_owned())?
-            .replace((cache_key, result.clone()));
+            .replace((cache_key, Arc::clone(&result)));
         Ok(result)
     }
 
@@ -207,10 +232,10 @@ impl ResidentSourceIndex {
         query: &str,
         language_id: &agent_semantic_config::LanguageId,
         limit: u32,
-    ) -> Result<agent_semantic_search_projection::ResidentSearchReadyResult, String> {
+    ) -> Result<Arc<agent_semantic_search_projection::ResidentSearchReadyResult>, String> {
         let mut authorities = self
             .candidate_seeds
-            .values()
+            .iter()
             .filter_map(|seed| seed.authority.as_ref())
             .filter(|authority| &authority.language_id == language_id);
         let authority = authorities.next().cloned().ok_or_else(|| {
@@ -256,21 +281,22 @@ impl ResidentSourceIndex {
         &self,
         cache_slot: usize,
         cache_key: &QueryCacheKey,
-    ) -> Result<Option<agent_semantic_search_projection::ResidentSearchReadyResult>, String> {
+    ) -> Result<Option<Arc<agent_semantic_search_projection::ResidentSearchReadyResult>>, String>
+    {
         Ok(self.query_cache[cache_slot]
             .lock()
             .map_err(|_| "resident source-index query cache is poisoned".to_owned())?
             .as_ref()
             .filter(|(stored_key, _)| stored_key == cache_key)
-            .map(|(_, result)| result.clone()))
+            .map(|(_, result)| Arc::clone(result)))
     }
 
-    fn owner_paths(
+    fn owner_matches(
         &self,
         query: &str,
         authority: Option<&ResidentSearchAuthority>,
         limit: u32,
-    ) -> Vec<String> {
+    ) -> Vec<(usize, Vec<String>)> {
         let normalized = query.trim().to_ascii_lowercase();
         if is_exact_lexical_query(&normalized) {
             return self
@@ -278,38 +304,74 @@ impl ResidentSourceIndex {
                 .get(&normalized)
                 .into_iter()
                 .flatten()
-                .filter(|path| self.matches_authority(path, authority))
+                .copied()
+                .filter(|owner_id| self.matches_authority(*owner_id, authority))
                 .take(limit as usize)
-                .cloned()
+                .map(|owner_id| (owner_id, vec![normalized.clone()]))
                 .collect();
         }
-        let scores = source_index_lookup_terms(query)
+        let query_terms = source_index_lookup_terms(query)
             .into_iter()
-            .filter_map(|term| self.lexical_index.get(&term))
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .take(64)
+            .collect::<Vec<_>>();
+        let mut scores = HashMap::<usize, u16>::new();
+        for owner_id in query_terms
+            .iter()
+            .filter_map(|term| self.lexical_index.get(term))
             .flatten()
-            .filter(|path| self.matches_authority(path, authority))
-            .fold(HashMap::<&str, usize>::new(), |mut scores, path| {
-                *scores.entry(path.as_str()).or_default() += 1;
-                scores
-            });
-        let mut ranked = scores.into_iter().collect::<Vec<_>>();
-        ranked
-            .sort_unstable_by(|left, right| right.1.cmp(&left.1).then_with(|| left.0.cmp(right.0)));
-        ranked.truncate(limit as usize);
+            .copied()
+            .filter(|owner_id| self.matches_authority(*owner_id, authority))
+        {
+            let score = scores.entry(owner_id).or_default();
+            *score = score.saturating_add(1);
+        }
+        let frontier_limit = limit as usize;
+        if frontier_limit == 0 {
+            return Vec::new();
+        }
+        let mut frontier = BinaryHeap::<(Reverse<u16>, usize)>::with_capacity(frontier_limit);
+        for (owner_id, score) in scores {
+            let ranked_owner = (Reverse(score), owner_id);
+            if frontier.len() < frontier_limit {
+                frontier.push(ranked_owner);
+                continue;
+            }
+            if frontier.peek().is_some_and(|worst| ranked_owner < *worst) {
+                frontier.pop();
+                frontier.push(ranked_owner);
+            }
+        }
+        let mut ranked = frontier.into_vec();
+        ranked.sort_unstable_by(|left, right| {
+            right.0.0.cmp(&left.0.0).then_with(|| left.1.cmp(&right.1))
+        });
         ranked
             .into_iter()
-            .map(|(path, _)| path.to_owned())
+            .map(|(_, owner_id)| {
+                let matched_terms = query_terms
+                    .iter()
+                    .filter(|term| {
+                        self.lexical_index
+                            .get(*term)
+                            .is_some_and(|postings| postings.binary_search(&owner_id).is_ok())
+                    })
+                    .cloned()
+                    .collect();
+                (owner_id, matched_terms)
+            })
             .collect()
     }
 
     fn matches_authority(
         &self,
-        owner_path: &str,
+        owner_id: usize,
         requested: Option<&ResidentSearchAuthority>,
     ) -> bool {
         requested.is_none_or(|requested| {
             self.candidate_seeds
-                .get(owner_path)
+                .get(owner_id)
                 .and_then(|seed| seed.authority.as_ref())
                 == Some(requested)
         })
@@ -317,9 +379,10 @@ impl ResidentSourceIndex {
 
     fn candidate(
         &self,
-        owner_path: &str,
+        owner_id: usize,
+        matched_terms: Vec<String>,
     ) -> Result<agent_semantic_search_projection::ResidentSearchHit, String> {
-        let seed = self.candidate_seeds.get(owner_path).ok_or_else(|| {
+        let seed = self.candidate_seeds.get(owner_id).ok_or_else(|| {
             "resident source-index lexical index references a missing owner".to_owned()
         })?;
         Ok(agent_semantic_search_projection::ResidentSearchHit {
@@ -332,7 +395,7 @@ impl ResidentSourceIndex {
             projection_tier:
                 agent_semantic_search_projection::ResidentSearchProjectionTier::ShallowNavigation,
             line_count: seed.line_count,
-            query_keys: seed.query_keys.clone(),
+            query_keys: matched_terms,
             selector: None,
             score: None,
         })

@@ -32,38 +32,18 @@ impl AdmissionRegistry {
         let entries = std::collections::HashMap::with_capacity(capacity);
         let (snapshot_sender, snapshot) = tokio::sync::watch::channel(Arc::new(entries));
         let server_entries = Arc::new(dashmap::DashMap::with_capacity(capacity));
-        // Admission is single-owner, but it is not single-request.  A one-slot
-        // mailbox serialized a concurrent cold burst *before* the owner could
-        // coalesce it, inflating the request-path p99 even though only one
-        // generation was ever built.  Size the mailbox from the Runtime
-        // Server's host-adaptive control-plane capacity and publish one
-        // immutable snapshot per drained batch.
+        // The actor owns shutdown ordering; admission entries are maintained in
+        // the concurrent map and do not pass through a second command authority.
         let (commands, mut receiver) = tokio::sync::mpsc::channel(capacity.max(1));
         let server_entries_for_actor = Arc::clone(&server_entries);
         let task_scope =
             crate::runtime_server_runtime::RuntimeServerTaskScope::new("generation-registry");
         let task = task_scope
             .spawn("generation-registry-actor", async move {
-                while let Some(command) = receiver.recv().await {
-                    let mut batch = vec![command];
-                    while let Ok(command) = receiver.try_recv() {
-                        batch.push(command);
-                    }
-                    let mut shutdown = None;
-                    for command in batch {
-                        match command {
-                            AdmissionRegistryCommand::Shutdown(completed) => {
-                                receiver.close();
-                                shutdown = Some(completed);
-                                break;
-                            }
-                        }
-                    }
-                    if let Some(completed) = shutdown {
-                        let entry_count = server_entries_for_actor.len();
-                        let _ = completed.send(entry_count);
-                        break;
-                    }
+                if let Some(AdmissionRegistryCommand::Shutdown(completed)) = receiver.recv().await {
+                    receiver.close();
+                    let entry_count = server_entries_for_actor.len();
+                    let _ = completed.send(entry_count);
                 }
             })
             .expect("new generation-registry task scope accepts its owner task");

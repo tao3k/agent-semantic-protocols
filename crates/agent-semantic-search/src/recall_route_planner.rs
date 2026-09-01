@@ -62,8 +62,8 @@ impl RecallRouteStage {
         Self::new(SearchRouteStageFamily::Acquire, "search.indexed-lexical")
     }
 
-    fn python_graph() -> Self {
-        Self::new(SearchRouteStageFamily::Reason, "search.python-graph")
+    fn resident_graph() -> Self {
+        Self::new(SearchRouteStageFamily::Reason, "search.resident-graph")
     }
 
     fn ripgrep_verify_candidates() -> Self {
@@ -99,7 +99,7 @@ pub struct IndexedLexicalObservation {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct PythonGraphObservation {
+pub struct ResidentGraphObservation {
     pub closure_state: GraphClosureState,
     pub seed_owner_ids: BTreeSet<String>,
     pub candidate_owner_ids: BTreeSet<String>,
@@ -124,7 +124,7 @@ pub struct RecallCompositionRequest {
     pub exact_selector_current: bool,
     pub calibration_state: RecallCalibrationState,
     pub lexical: Option<IndexedLexicalObservation>,
-    pub graph: Option<PythonGraphObservation>,
+    pub graph: Option<ResidentGraphObservation>,
     pub ripgrep: Option<RipgrepVerificationObservation>,
 }
 
@@ -191,7 +191,7 @@ fn route_stages(request: &RecallCompositionRequest) -> Result<Vec<RecallRouteSta
             push_if(
                 &mut stages,
                 request.graph.is_some(),
-                RecallRouteStage::python_graph(),
+                RecallRouteStage::resident_graph(),
             );
             push_if(
                 &mut stages,
@@ -218,7 +218,7 @@ fn route_stages(request: &RecallCompositionRequest) -> Result<Vec<RecallRouteSta
             push_if(
                 &mut stages,
                 request.graph.is_some(),
-                RecallRouteStage::python_graph(),
+                RecallRouteStage::resident_graph(),
             );
         }
         RecallQueryIntent::AbsenceProof => push_if(
@@ -235,7 +235,7 @@ fn route_stages(request: &RecallCompositionRequest) -> Result<Vec<RecallRouteSta
             push_if(
                 &mut stages,
                 request.graph.is_some(),
-                RecallRouteStage::python_graph(),
+                RecallRouteStage::resident_graph(),
             );
             push_if(
                 &mut stages,
@@ -321,7 +321,7 @@ fn residual_uncertainty(
             residual.insert("graph-generation-stale");
         }
         None if request.intent == RecallQueryIntent::Relationship => {
-            residual.insert("python-graph-unavailable");
+            residual.insert("resident-graph-unavailable");
         }
         _ => {}
     }

@@ -73,7 +73,7 @@
           "indexed-lexical-unavailable",
           "graph-frontier-open",
           "graph-generation-stale",
-          "python-graph-unavailable",
+          "resident-graph-unavailable",
           "coverage-proof-incomplete",
           "coverage-proof-unavailable",
           "candidate-byte-verification-unavailable"

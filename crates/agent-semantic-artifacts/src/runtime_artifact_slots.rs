@@ -171,18 +171,23 @@ impl RuntimeArtifactSlotAuthority {
         publish_runtime_artifact_slot(candidate, &self.healthy_path()).await
     }
 
-    /// Roll back only the candidate that is still active. A stale actor may not
-    /// move either selector after a newer install has already won the slot.
+    /// Roll back only the candidate that is still active. Replaying the same
+    /// rollback after the healthy selector has already been restored is an
+    /// idempotent no-op. A stale actor may not move either selector after a
+    /// newer install has already won the slot.
     pub async fn restore_active_from_healthy(&self, candidate: &Path) -> Result<(), String> {
         let active = self.active_target().await?;
-        if active.as_deref() != Some(candidate) {
-            return Err(format!(
-                "Runtime artifact rollback candidate is not active: active={active:?} candidate={}",
-                candidate.display()
-            ));
-        }
         let healthy = self.healthy_target().await?;
-        restore_runtime_artifact_slot(healthy.as_deref(), &self.active_path()).await
+        if active.as_deref() == Some(candidate) {
+            return restore_runtime_artifact_slot(healthy.as_deref(), &self.active_path()).await;
+        }
+        if active.is_some() && active == healthy {
+            return Ok(());
+        }
+        Err(format!(
+            "Runtime artifact rollback candidate is neither active nor already restored: active={active:?} healthy={healthy:?} candidate={}",
+            candidate.display()
+        ))
     }
 
     pub(crate) async fn validate_candidate(&self, candidate: &Path) -> Result<(), String> {

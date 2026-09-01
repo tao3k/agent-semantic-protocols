@@ -1,37 +1,18 @@
-//! Build-time activation helpers for ASP Rust member harness policy.
+//! Explicit validation helpers for ASP Rust member harness policy.
 
 use crate::member_policy::{
     asp_workspace_member_forbidden_normal_dependencies, asp_workspace_member_policy_for,
 };
 
-/// Constant-time receipt emitted by a member build script.
+/// Constant-time receipt for one registered member policy.
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct AspRustProjectHarnessMemberBuildReceipt {
+pub struct AspRustProjectHarnessMemberPolicyReceipt {
     pub schema_id: &'static str,
     pub schema_version: &'static str,
     pub package_name: String,
     pub crate_root: String,
     pub policy_digest: String,
-}
-
-/// Validate and publish the registered member policy identity from `build.rs`.
-///
-/// This boundary is deliberately constant-time in source size. Full harness
-/// execution belongs to an explicit verification command; making every
-/// downstream build compile and run the scanner destroys focused-build reuse.
-pub fn assert_asp_rust_project_harness_member_policy_from_env(package_name: &str) {
-    let project_root = std::env::var_os("CARGO_MANIFEST_DIR")
-        .map(std::path::PathBuf::from)
-        .unwrap_or_else(|| panic!("CARGO_MANIFEST_DIR is required for {package_name}"));
-    let receipt = validate_asp_rust_project_harness_member_manifest(package_name, &project_root)
-        .unwrap_or_else(|error| panic!("{error}"));
-    println!("cargo:rerun-if-changed=build.rs");
-    println!("cargo:rerun-if-changed=Cargo.toml");
-    println!(
-        "cargo:rustc-env=ASP_RUST_PROJECT_HARNESS_MEMBER_POLICY_DIGEST={}",
-        receipt.policy_digest,
-    );
 }
 
 /// Validate one downstream member without loading or running the full Harness.
@@ -42,7 +23,7 @@ pub fn assert_asp_rust_project_harness_member_policy_from_env(package_name: &str
 pub fn validate_asp_rust_project_harness_member_manifest(
     package_name: &str,
     project_root: &std::path::Path,
-) -> Result<AspRustProjectHarnessMemberBuildReceipt, String> {
+) -> Result<AspRustProjectHarnessMemberPolicyReceipt, String> {
     let member_policy = asp_workspace_member_policy_for(package_name).ok_or_else(|| {
         format!("no ASP Rust project harness member policy registered for {package_name}")
     })?;
@@ -73,10 +54,10 @@ pub fn validate_asp_rust_project_harness_member_manifest(
         &["dependencies", "build-dependencies"],
     ) {
         return Err(format!(
-            "ASP Rust harness member {package_name} must not compile the full rust-lang-project-harness from normal or build dependencies; use the O(1) member build API and run full verification once from the workspace gate",
+            "ASP Rust harness member {package_name} must not compile the full ASP Rust scanner from normal or build dependencies; use the shared Build Support dependency and run full verification once from the workspace gate",
         ));
     }
-    Ok(AspRustProjectHarnessMemberBuildReceipt {
+    Ok(AspRustProjectHarnessMemberPolicyReceipt {
         schema_id: "agent.semantic-protocols.rust-harness-member-build-receipt",
         schema_version: "1",
         package_name: package_name.to_owned(),

@@ -343,11 +343,12 @@ instead of being omitted.  This keeps benchmark conversion able to distinguish
 "not applicable" from "not recorded".
 =schemas/semantic-fact-frontier-receipt.fixtures.v1.json= records the first
 real-project task-session fixture for this contract plus runtime capture
-fixtures for the ASP Server graph receipt method and the public =asp <language> search
+fixtures for the ASP Server resident graph receipt method and the public =asp <language> search
 --frontier-receipt-out= facade.
-The graph-turbo runtime exposes this capture path through the ASP Server
-=asp.graphs.evaluate= method, which ranks a graph-turbo request and emits the
-receipt schema using explicit followed/read/test facts from the caller.
+The Runtime exposes this capture path through the intent-only ASP Server
+=asp.graph.evaluate= method, which ranks the immutable resident generation in
+Rust and emits the receipt schema using explicit followed/read/test facts from
+the caller.  The Ready route never invokes the offline Graph-Turbo service.
 The ASP search runtime exposes a receipt trigger through
 =--frontier-receipt-out <path>= on graph-turbo frontier search commands, with
 optional =--frontier-receipt-follow-node=, =--frontier-receipt-read-selector=,
@@ -585,7 +586,7 @@ P1 audit should answer:
   =cargo run --quiet --features search,cli -- search semantic-facts "cargo test dependency" --json .=
   produces schema-valid =semantic-fact-graph.v1= output with
   =builds=/=depends_on=/=tests=/=belongs_to= edges.
-- =languages/python-lang-project-harness/src/python_lang_project_harness/_semantic_graph_facts.py=
+- =languages/asp-python/src/asp_python/_semantic_graph_facts.py=
   now merges parser-owned Python field facts with project-level =package=,
   =build=, =dependency=, and =test= facts from =pyproject.toml= and AST-based
   test discovery. Runtime evidence through =run_cli(["search", "semantic-facts",
@@ -598,11 +599,11 @@ P1 audit should answer:
   =node dist/src/cli/main.js search semantic-facts "npm test dependency" --json .=
   produces schema-valid =semantic-fact-graph.v1= output with the same
   =builds=/=depends_on=/=tests=/=belongs_to= edges.
-- =languages/JuliaLangProjectHarness.jl/src/semantic_graph_facts.jl= now
+- =languages/AspJulia.jl/src/semantic_graph_facts.jl= now
   merges JuliaSyntax-owned field facts with project-level =package=, =build=,
   =dependency=, and =test= facts from =Project.toml= and JuliaSyntax test
   discovery. Runtime evidence:
-  =julia --project=. -e 'using JuliaLangProjectHarness; print(render_julia_semantic_graph_facts_json(pwd(), "Pkg test dependency", ""))'=
+  =julia --project=. -e 'using AspJulia; print(render_julia_semantic_graph_facts_json(pwd(), "Pkg test dependency", ""))'=
   produces schema-valid =semantic-fact-graph.v1= output with the same
   =builds=/=depends_on=/=tests=/=belongs_to= edges.
 - Provider packets must expose a visible source-to-package bridge instead of

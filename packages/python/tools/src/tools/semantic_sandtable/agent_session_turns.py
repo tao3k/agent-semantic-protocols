@@ -330,8 +330,6 @@ def _command_signals(
         signals.append("search-followup")
     elif kind == "query":
         signals.append("query-selector")
-    elif kind == "check":
-        signals.append("check-command")
     elif kind == "guide":
         signals.append("guide-command")
     if command.get("denied") or kind == "hook-deny":
@@ -411,7 +409,7 @@ def _command_kind(command: dict[str, Any], argv: list[str]) -> str:
     kind = command.get("kind")
     if isinstance(kind, str) and kind:
         return kind
-    for surface in ("search", "query", "check", "guide"):
+    for surface in ("search", "query", "guide"):
         if surface in argv:
             return surface
     if command.get("denied"):

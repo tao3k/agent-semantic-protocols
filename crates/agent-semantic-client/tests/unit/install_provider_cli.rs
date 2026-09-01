@@ -20,31 +20,19 @@ fn install_language_pinned_release_writes_runtime_bin_package_and_lock() {
 }
 
 #[test]
-fn document_languages_resolve_independent_workspace_install_descriptors() {
+fn document_surfaces_are_not_installable_provider_artifacts() {
     let register = agent_semantic_provider_protocol::parse_provider_install_register(
         include_bytes!("../../../../schemas/provider-install-register.json"),
     )
     .expect("provider install register");
-    for (language_id, provider_id, descriptor) in [
-        (
-            "org",
-            "asp-org",
-            "provider/asp-org-provider-workspace-install.json",
-        ),
-        (
-            "md",
-            "asp-md",
-            "provider/asp-md-provider-workspace-install.json",
-        ),
-    ] {
-        let registration = register
-            .providers
-            .iter()
-            .find(|registration| registration.language_id == language_id)
-            .expect("document language install registration");
-        assert_eq!(registration.provider_id, provider_id);
-        assert_eq!(registration.workspace_install, descriptor);
-        assert_eq!(registration.binary, provider_id);
+    for language_id in ["org", "md"] {
+        assert!(
+            register
+                .providers
+                .iter()
+                .all(|registration| registration.language_id != language_id),
+            "embedded document surface must not own an installable provider: {language_id}"
+        );
     }
 }
 
@@ -346,7 +334,7 @@ url="$4"
 case "$url" in
   https://github.com/tao3k/rust-lang-project-harness/releases/download/v0.1.2/*)
     ;;
-  https://github.com/tao3k/gerbil-scheme-language-project-harness/releases/download/v0.1.0/*)
+  https://github.com/tao3k/asp-gerbil-scheme/releases/download/v0.1.0/*)
     ;;
   *)
     echo "unexpected release url: $url" >&2

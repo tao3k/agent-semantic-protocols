@@ -85,7 +85,7 @@ ID=<nodeKind>:<targetRole>(<target>)!<nextAction>
 Examples:
 
 #+begin_src text
-O=owner:path(src/python_lang_project_harness/verification/model.py)!owner
+O=owner:path(src/asp_python/verification/model.py)!owner
 Q=query:term(Path)!lexical
 D=dependency:pkg(pytest)!deps
 T=test:path(tests/verification/test_model.py)!tests

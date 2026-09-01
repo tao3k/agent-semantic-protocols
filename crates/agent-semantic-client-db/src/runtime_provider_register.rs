@@ -149,7 +149,9 @@ impl RuntimeProviderRegister {
         let mut providers = state.snapshot.providers.iter().filter(|provider| {
             provider.language_id == language_id && state.routes.contains_key(&provider.provider_id)
         });
-        let provider = providers.next().ok_or_else(|| rejected_or_missing(&state, language_id))?;
+        let provider = providers
+            .next()
+            .ok_or_else(|| rejected_or_missing(&state, language_id))?;
         if providers.next().is_some() {
             return Err(format!(
                 "state=provider-ambiguous reasonKind=multiple-installed-language-capabilities languageId={language_id}"

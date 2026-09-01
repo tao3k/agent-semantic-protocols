@@ -487,6 +487,11 @@ mod tests {
                 .iter()
                 .any(|provider| provider.provider_id == "asp-python")
         );
-        assert_eq!(providers.len(), 7);
+        assert_eq!(providers.len(), 5);
+        assert!(
+            providers
+                .iter()
+                .all(|provider| !matches!(provider.language_id.as_str(), "org" | "md"))
+        );
     }
 }

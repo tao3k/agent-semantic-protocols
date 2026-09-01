@@ -5,9 +5,37 @@ use serde_json::json;
 
 use super::{
     InstalledProviderArtifact, InstalledProviderArtifactsDocument, RuntimeProviderArtifacts,
-    SCHEMA_ID, SCHEMA_VERSION, document_path, generation,
+    SCHEMA_ID, SCHEMA_VERSION, document_path, generation, project_registered_provider_artifacts,
     publish_current_installed_provider_artifacts, runtime_source_index_provider_projection,
+    workspace_required_provider_languages_for_paths,
 };
+
+#[test]
+fn retired_document_artifact_is_not_runtime_provider_authority() {
+    let providers = vec![InstalledProviderArtifact {
+        language_id: "md".to_owned(),
+        provider_id: "asp-md".to_owned(),
+        materialized_path: "/retired/asp-md".to_owned(),
+        artifact_digest: format!("blake3-256:{}", "a".repeat(64)),
+        artifact_metadata_digest: format!("blake3-256:{}", "b".repeat(64)),
+        execution_command_digest: format!("sha256:{}", "c".repeat(64)),
+    }];
+    let stored_generation = generation(&providers).expect("stored generation");
+    let projected = project_registered_provider_artifacts(InstalledProviderArtifactsDocument {
+        schema_id: SCHEMA_ID.to_owned(),
+        schema_version: SCHEMA_VERSION.to_owned(),
+        generation: stored_generation.clone(),
+        providers,
+    })
+    .expect("retired document surface must be projected out");
+
+    assert!(projected.providers.is_empty());
+    assert_ne!(projected.generation, stored_generation);
+    assert_eq!(
+        projected.generation,
+        generation(&[]).expect("empty generation")
+    );
+}
 
 #[test]
 fn runtime_source_index_projection_is_derived_from_live_register() {
@@ -98,9 +126,39 @@ fn runtime_source_index_projection_is_derived_from_live_register() {
             }]
         }),
     };
-    let register =
+    let mut inactive_julia_registration = registration.clone();
+    inactive_julia_registration.language_id = "julia".to_owned();
+    inactive_julia_registration.provider_id = "asp-julia".to_owned();
+    inactive_julia_registration.registration["languageId"] = json!("julia");
+    inactive_julia_registration.registration["providerId"] = json!("asp-julia");
+    inactive_julia_registration.registration["namespace"] =
+        json!("agent.semantic-protocols.languages.julia");
+    inactive_julia_registration.registration["sourceInventory"]["sourceExtensions"] =
+        json!([".jl"]);
+    inactive_julia_registration.registration["sourceInventory"]["projectResolution"]["entryMarkers"] =
+        json!(["Project.toml"]);
+    inactive_julia_registration.registration["queryPackDescriptor"]["languageId"] = json!("julia");
+    inactive_julia_registration.registration["routes"][0]["routeId"] = json!("julia.search.owner");
+    inactive_julia_registration.registration["routes"][0]["target"]["languageId"] = json!("julia");
+    inactive_julia_registration.registration["routes"][0]["target"]["providerId"] =
+        json!("asp-julia");
+    let closure_register =
         agent_semantic_client_db::runtime_provider_register::RuntimeProviderRegister::from_seed(
-            vec![registration],
+            vec![registration.clone(), inactive_julia_registration.clone()],
+        )
+        .expect("closure register");
+    let required = workspace_required_provider_languages_for_paths(
+        &closure_register,
+        [Path::new("Cargo.toml"), Path::new("src/lib.rs")],
+    )
+    .expect("workspace provider closure");
+    assert_eq!(
+        required,
+        std::collections::BTreeSet::from(["rust".to_owned()])
+    );
+    let incomplete_register =
+        agent_semantic_client_db::runtime_provider_register::RuntimeProviderRegister::from_seed(
+            vec![registration.clone(), inactive_julia_registration],
         )
         .expect("live register");
     let providers = vec![InstalledProviderArtifact {
@@ -120,8 +178,32 @@ fn runtime_source_index_projection_is_derived_from_live_register() {
         }),
     };
 
-    let (projection, generation) = runtime_source_index_provider_projection(&artifacts, &register)
-        .expect("Runtime source-index provider projection");
+    let rust_only = std::collections::BTreeSet::from(["rust".to_owned()]);
+    let (rust_projection, _) =
+        runtime_source_index_provider_projection(&artifacts, &incomplete_register, &rust_only)
+            .expect("an unused Julia provider must not block a Rust workspace");
+    assert_eq!(rust_projection.providers.len(), 1);
+    assert_eq!(rust_projection.providers[0].language_id.as_str(), "rust");
+
+    let rust_and_julia = std::collections::BTreeSet::from(["julia".to_owned(), "rust".to_owned()]);
+    let incomplete_error =
+        runtime_source_index_provider_projection(&artifacts, &incomplete_register, &rust_and_julia)
+            .expect_err("a required Julia provider must reject a missing artifact");
+    assert!(
+        incomplete_error.contains(
+            "installed provider capability has no artifact: languageId=julia providerId=asp-julia"
+        ),
+        "{incomplete_error}"
+    );
+
+    let register =
+        agent_semantic_client_db::runtime_provider_register::RuntimeProviderRegister::from_seed(
+            vec![registration],
+        )
+        .expect("complete live register");
+    let (projection, generation) =
+        runtime_source_index_provider_projection(&artifacts, &register, &rust_only)
+            .expect("complete Runtime source-index provider projection");
     assert!(
         projection
             .authority_ref
@@ -133,7 +215,7 @@ fn runtime_source_index_projection_is_derived_from_live_register() {
     assert_eq!(provider.binary, "/runtime/artifacts/asp-rust");
     assert_eq!(provider.source_extensions, [".rs"]);
     assert!(provider.registration_digest.starts_with("sha256:"));
-    assert_eq!(generation, artifacts.document.generation);
+    assert!(generation.starts_with("sha256:"));
 
     let launch = artifacts
         .runtime_launch(Path::new("/workspace"), "rust", &register)

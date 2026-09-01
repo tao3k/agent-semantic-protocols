@@ -5,10 +5,7 @@ use std::sync::{Arc, Mutex};
 
 use crate::query_generation::{RuntimeQueryGenerationAuthority, RuntimeQueryGenerationState};
 use agent_semantic_client_db::runtime_search_service::RuntimeSearchServiceHandle;
-use agent_semantic_client_db::runtime_server_admission::{
-    WorkspaceGenerationAdmission, WorkspaceGenerationAdmissionState,
-    WorkspaceGenerationProviderTarget, discover_workspace_generation_candidate,
-};
+use agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmission;
 use agent_semantic_client_protocol::{
     AGENT_SESSION_REGISTER_METHOD, AGENT_SESSION_REGISTER_RESPONSE_SCHEMA_ID,
     AgentSessionRegisterReceipt, AgentSessionRegisterRequest, AspClientExactQueryFailure,
@@ -22,7 +19,7 @@ use agent_semantic_client_server::{
     AspClientDispatchError, AspClientDispatchFuture, AspClientDispatchRequest, AspClientDispatcher,
     AspClientFrameService,
 };
-use agent_semantic_search_projection::GraphTurboEvaluationRequest;
+use agent_semantic_search_projection::ResidentGraphEvaluationRequestV1;
 
 enum AspClientOperationError {
     Message(String),
@@ -37,6 +34,12 @@ impl From<String> for AspClientOperationError {
 
 const OWNER_SEARCH_SEED_LIMIT: usize = 100;
 const RUNTIME_CLIENT_DISPATCH_BUDGET: std::time::Duration = std::time::Duration::from_secs(5);
+
+fn dispatch_budget_for_method(method: &str) -> Option<std::time::Duration> {
+    (agent_semantic_client_protocol::classify_client_dispatch(method)
+        == agent_semantic_client_protocol::ClientDispatchClass::InteractiveRead)
+        .then_some(RUNTIME_CLIENT_DISPATCH_BUDGET)
+}
 
 fn bounded_owner_search_response(
     request: &AspClientOwnerSearchRequest,
@@ -354,6 +357,20 @@ mod exact_query_terminal_tests {
             "publish-complete-workspace-generation"
         );
     }
+
+    #[test]
+    fn cold_generation_admission_has_no_interactive_dispatch_deadline() {
+        assert_eq!(
+            dispatch_budget_for_method(
+                agent_semantic_client_protocol::WORKSPACE_GENERATION_ENSURE_READY_METHOD
+            ),
+            None
+        );
+        assert_eq!(
+            dispatch_budget_for_method("rust.query"),
+            Some(RUNTIME_CLIENT_DISPATCH_BUDGET)
+        );
+    }
 }
 
 struct QueryNotReadyContext<'a> {
@@ -610,6 +627,7 @@ impl AspClientDispatcher for RuntimeAspClientDispatcher {
         let query_generation = query_generation_authority.subscribe();
         let telemetry_sender = self.telemetry_sender.clone();
         let cancellations = Arc::clone(&self.cancellations);
+        let dispatch_budget = dispatch_budget_for_method(&request.method);
         Box::pin(async move {
             let operation = async {
                 if request.method == agent_semantic_client_protocol::CANCELLATION_PROBE_METHOD {
@@ -880,23 +898,19 @@ impl AspClientDispatcher for RuntimeAspClientDispatcher {
                         .await
                         .map_err(AspClientOperationError::Message);
                 }
-                let resolved = agent_semantic_client_protocol::resolve_server_client_method_owner(
-                    &request.method,
-                    installed_provider_targets
-                        .iter()
-                        .map(|(language_id, _)| language_id.clone()),
-                )?;
-                if let agent_semantic_client_protocol::ResolvedServerClientMethod::Server(
-                    ServerClientRoute::GraphsEvaluate,
-                ) = resolved
+                if request.method
+                    == agent_semantic_client_protocol::WORKSPACE_GENERATION_ENSURE_READY_METHOD
                 {
-                    let validated_params = GraphTurboEvaluationRequest::from_value(request.params)
-                        .map_err(|error| {
-                            AspClientOperationError::Message(format!(
-                                "invalid graph evaluation request: {error}"
-                            ))
-                        })?
-                        .into_value();
+                    if !request
+                        .params
+                        .as_object()
+                        .is_some_and(serde_json::Map::is_empty)
+                    {
+                        return Err(AspClientOperationError::Message(
+                            "workspace generation ensure-ready parameters must be an empty object"
+                                .to_owned(),
+                        ));
+                    }
                     let initialized = initialized_workspaces
                         .lock()
                         .map_err(|_| "ASP client workspace-root registry poisoned".to_owned())?
@@ -906,40 +920,139 @@ impl AspClientDispatcher for RuntimeAspClientDispatcher {
                         ))
                         .cloned()
                         .ok_or_else(|| {
-                            "ASP client request requires an initialized workspace root".to_owned()
+                            "workspace generation ensure-ready requires an initialized workspace root"
+                                .to_owned()
                         })?;
-                    let (generation_digest, source_root_digest, generation_token) =
-                        query_generation
-                            .borrow()
-                            .get(request.workspace_identity.as_str())
-                            .and_then(|state| match state {
-                                RuntimeQueryGenerationState::Ready(generation) => Some((
-                                    generation.generation_digest().to_owned(),
-                                    generation.resident().root_digest(),
-                                    generation.generation_token(),
-                                )),
-                                _ => None,
-                            })
-                            .ok_or_else(|| {
-                                "graph evaluation requires an active Ready workspace generation"
-                                    .to_owned()
-                            })?;
-                    let (graph_generation_digest, graph_open_payload) =
-                        graph_open_payload(&validated_params)?;
-                    let receipt = runtime_search_service
-                        .graphs_evaluate(
-                            initialized.project_root,
+                    let terminal = generation_admission
+                        .ensure_runtime_generation_ready(
                             request.workspace_identity.as_str().to_owned(),
-                            generation_digest,
-                            source_root_digest,
-                            generation_token,
-                            graph_generation_digest,
-                            graph_open_payload,
-                            request.request_id.as_str().to_owned(),
-                            validated_params,
+                            initialized.project_root.clone(),
                         )
                         .await?;
-                    return Ok(receipt);
+                    let commit = terminal.commit.as_ref().ok_or_else(|| {
+                        "workspace generation ensure-ready terminal is missing its commit"
+                            .to_owned()
+                    })?;
+                    let pointer_path = agent_semantic_client_db::runtime_server_workspace::workspace_generation_pointer_path(
+                        &workspace_store_root,
+                        request.workspace_identity.as_str(),
+                        &initialized.project_root,
+                    )?;
+                    let resident = query_generation_authority
+                        .ensure_ready(
+                            request.workspace_identity.as_str(),
+                            &pointer_path,
+                            &initialized.project_root,
+                            &commit.generation_digest,
+                        )
+                        .await?;
+                    if resident.resident().root_digest() != commit.source_root_digest {
+                        return Err(AspClientOperationError::Message(
+                            "workspace generation ensure-ready resident root does not match commit"
+                                .to_owned(),
+                        ));
+                    }
+                    return serde_json::to_value(terminal)
+                        .map_err(|error| error.to_string())
+                        .map_err(AspClientOperationError::Message);
+                }
+                let resolved = agent_semantic_client_protocol::resolve_server_client_method_owner(
+                    &request.method,
+                    installed_provider_targets
+                        .iter()
+                        .map(|(language_id, _)| language_id.clone()),
+                )?;
+                if let agent_semantic_client_protocol::ResolvedServerClientMethod::Server(
+                    ServerClientRoute::GraphEvaluate,
+                ) = resolved
+                {
+                    let validated_params = ResidentGraphEvaluationRequestV1::from_value(
+                        request.params,
+                    )
+                    .map_err(|error| {
+                        AspClientOperationError::Message(format!(
+                            "invalid resident graph evaluation request: {error}"
+                        ))
+                    })?;
+                    let language_id = validated_params.as_value()["languageId"]
+                        .as_str()
+                        .expect("validated languageId");
+                    let provider_id = installed_provider_targets
+                        .iter()
+                        .find_map(|(installed_language_id, provider_id)| {
+                            (installed_language_id == language_id).then_some(provider_id.as_str())
+                        })
+                        .ok_or_else(|| {
+                            format!(
+                                "installed provider target missing for languageId={language_id}"
+                            )
+                        })?;
+                    let dispatch_started = tokio::time::Instant::now();
+                    let generation_state = query_generation
+                        .borrow()
+                        .get(request.workspace_identity.as_str())
+                        .cloned();
+                    let generation = match generation_state {
+                        Some(RuntimeQueryGenerationState::Ready(generation)) => generation,
+                        Some(RuntimeQueryGenerationState::Failed { reason, .. }) => {
+                            return Err(AspClientOperationError::Terminal(
+                                query_generation_not_ready_error(QueryNotReadyContext {
+                                    operation_id: request.request_id.as_str(),
+                                    workspace_identity: request.workspace_identity.as_str(),
+                                    language_id,
+                                    provider_id,
+                                    exact_query: None,
+                                    generation_state: "failed",
+                                    publication_error: Some(reason.as_ref()),
+                                    elapsed_micros: elapsed_micros(dispatch_started),
+                                })?,
+                            ));
+                        }
+                        None => {
+                            return Err(AspClientOperationError::Terminal(
+                                query_generation_not_ready_error(QueryNotReadyContext {
+                                    operation_id: request.request_id.as_str(),
+                                    workspace_identity: request.workspace_identity.as_str(),
+                                    language_id,
+                                    provider_id,
+                                    exact_query: None,
+                                    generation_state: "unpublished",
+                                    publication_error: None,
+                                    elapsed_micros: elapsed_micros(dispatch_started),
+                                })?,
+                            ));
+                        }
+                    };
+                    let result = crate::runtime_search_graph::evaluate_resident_search_graph(
+                        request.request_id.as_str(),
+                        request.workspace_identity.as_str(),
+                        language_id,
+                        provider_id,
+                        generation.generation_digest(),
+                        generation.resident(),
+                        validated_params.as_value(),
+                    )
+                    .map_err(|error| {
+                        AspClientOperationError::Terminal(AspClientDispatchError {
+                            reason_kind: error.reason_kind.to_owned(),
+                            message: error.message,
+                            details: error.details,
+                        })
+                    })?;
+                    record_runtime_route_performance(
+                        &telemetry_sender,
+                        request.workspace_identity.as_str(),
+                        language_id,
+                        generation.generation_digest(),
+                        request.request_id.as_str(),
+                        "graph.evaluate",
+                        "runtime-resident-graph-evaluate",
+                        validated_params.as_value()["profile"]
+                            .as_str()
+                            .expect("validated profile"),
+                        elapsed_micros(dispatch_started),
+                    )?;
+                    return Ok(result);
                 }
                 let agent_semantic_client_protocol::ResolvedServerClientMethod::Language {
                     language_id,
@@ -981,109 +1094,6 @@ impl AspClientDispatcher for RuntimeAspClientDispatcher {
                     .project_root
                     .clone();
                 let params = request.params;
-                let expected_candidate = discover_workspace_generation_candidate(&project_root)
-                    .await
-                    .map_err(AspClientOperationError::Message)?;
-                let admission_receipt = generation_admission
-                    .enqueue_query_demand_for_candidate(
-                        request.workspace_identity.as_str().to_owned(),
-                        project_root.clone(),
-                        expected_candidate.clone(),
-                        Vec::new(),
-                        Some(WorkspaceGenerationProviderTarget {
-                            language_id: language_id.clone(),
-                            provider_id: Some(provider_id.clone()),
-                        }),
-                    )
-                    .await
-                    .map_err(|error| {
-                        AspClientOperationError::Terminal(
-                            query_generation_not_ready_error(QueryNotReadyContext {
-                                operation_id: request.request_id.as_str(),
-                                workspace_identity: request.workspace_identity.as_str(),
-                                language_id: &language_id,
-                                provider_id: &provider_id,
-                                exact_query: exact_query_params.as_ref(),
-                                generation_state: "admission-failed",
-                                publication_error: Some(&error),
-                                elapsed_micros: elapsed_micros(dispatch_started),
-                            })
-                            .unwrap_or_else(|render_error| {
-                                AspClientDispatchError {
-                                    reason_kind: "query-not-ready".to_owned(),
-                                    message: render_error,
-                                    details: None,
-                                }
-                            }),
-                        )
-                    })?;
-                let admission_ready = admission_receipt.accepted
-                    && admission_receipt.state == WorkspaceGenerationAdmissionState::Ready
-                    && admission_receipt.candidate_generation
-                        == expected_candidate.candidate_generation
-                    && admission_receipt.policy_overlay_digest
-                        == expected_candidate.policy_overlay_digest;
-                if !admission_ready {
-                    let admission_error = admission_receipt
-                        .error
-                        .as_deref()
-                        .unwrap_or("workspace generation admission is pending");
-                    return Err(AspClientOperationError::Terminal(
-                        query_generation_not_ready_error(QueryNotReadyContext {
-                            operation_id: request.request_id.as_str(),
-                            workspace_identity: request.workspace_identity.as_str(),
-                            language_id: &language_id,
-                            provider_id: &provider_id,
-                            exact_query: exact_query_params.as_ref(),
-                            generation_state: if matches!(
-                                admission_receipt.state,
-                                WorkspaceGenerationAdmissionState::Failed
-                                    | WorkspaceGenerationAdmissionState::Cancelled
-                            ) {
-                                "admission-failed"
-                            } else {
-                                "admission-pending"
-                            },
-                            publication_error: Some(admission_error),
-                            elapsed_micros: elapsed_micros(dispatch_started),
-                        })?,
-                    ));
-                }
-                let committed_generation_digest = admission_receipt
-                    .commit
-                    .as_ref()
-                    .ok_or_else(|| {
-                        AspClientOperationError::Message(
-                            "accepted query admission terminal is missing its commit".to_owned(),
-                        )
-                    })?
-                    .generation_digest
-                    .clone();
-                let resident_matches_commit = query_generation
-                    .borrow()
-                    .get(request.workspace_identity.as_str())
-                    .is_some_and(|state| {
-                        matches!(
-                            state,
-                            RuntimeQueryGenerationState::Ready(generation)
-                                if generation.generation_digest()
-                                    == committed_generation_digest
-                        )
-                    });
-                if !resident_matches_commit {
-                    return Err(AspClientOperationError::Terminal(
-                        query_generation_not_ready_error(QueryNotReadyContext {
-                            operation_id: request.request_id.as_str(),
-                            workspace_identity: request.workspace_identity.as_str(),
-                            language_id: &language_id,
-                            provider_id: &provider_id,
-                            exact_query: exact_query_params.as_ref(),
-                            generation_state: "publication-pending",
-                            publication_error: None,
-                            elapsed_micros: elapsed_micros(dispatch_started),
-                        })?,
-                    ));
-                }
                 let generation_state = query_generation
                     .borrow()
                     .get(request.workspace_identity.as_str())
@@ -1133,7 +1143,7 @@ impl AspClientDispatcher for RuntimeAspClientDispatcher {
                             "server-owned child projection route requires its typed dispatcher"
                         )
                     }
-                    agent_semantic_client_protocol::ServerClientRoute::GraphsEvaluate => {
+                    agent_semantic_client_protocol::ServerClientRoute::GraphEvaluate => {
                         unreachable!("server-owned graph route is handled before language dispatch")
                     }
                     agent_semantic_client_protocol::ServerClientRoute::GraphsTimeline => {
@@ -1144,6 +1154,11 @@ impl AspClientDispatcher for RuntimeAspClientDispatcher {
                     }
                     agent_semantic_client_protocol::ServerClientRoute::LiveCorpusCacheState => {
                         unreachable!("Live Corpus cache state is handled before language dispatch")
+                    }
+                    agent_semantic_client_protocol::ServerClientRoute::WorkspaceGenerationEnsureReady => {
+                        unreachable!(
+                            "workspace generation ensure-ready is handled before language dispatch"
+                        )
                     }
                     agent_semantic_client_protocol::ServerClientRoute::Search => {
                         let params: AspClientSearchRequest = serde_json::from_value(params)
@@ -1170,30 +1185,17 @@ impl AspClientDispatcher for RuntimeAspClientDispatcher {
                             100,
                         )?;
                         let resident_read_elapsed_micros = elapsed_micros(resident_started);
-                        let owner_paths = lookup
-                            .hits
-                            .iter()
-                            .map(|hit| hit.owner_path.clone())
-                            .collect::<Vec<_>>();
-                        let parser_owned_selector_pairs = generation
-                            .resident()
-                            .parser_owned_callable_selector_pairs(&owner_paths)?;
                         let graph_stage =
                             crate::runtime_search_graph::rank_resident_search_frontier(
-                                &runtime_search_service,
-                                &project_root,
-                                request.workspace_identity.as_str(),
                                 request.request_id.as_str(),
                                 &params.operation,
                                 &params.query,
                                 &language_id,
                                 &provider_id,
                                 generation.generation_digest(),
-                                generation.generation_token(),
                                 generation.resident(),
                                 &lookup.hits,
                             )
-                            .await
                             .map_err(|error| {
                                 AspClientOperationError::Terminal(AspClientDispatchError {
                                     reason_kind: error.reason_kind.to_owned(),
@@ -1201,6 +1203,14 @@ impl AspClientDispatcher for RuntimeAspClientDispatcher {
                                     details: error.details,
                                 })
                             })?;
+                        let selector_owner_paths =
+                            agent_semantic_search::bounded_ranked_selector_owner_paths(
+                                &lookup.hits,
+                                graph_stage.as_ref(),
+                            );
+                        let parser_owned_selector_pairs = generation
+                            .resident()
+                            .parser_owned_callable_selector_pairs(&selector_owner_paths)?;
                         if let Some(graph_stage) = graph_stage.as_ref() {
                             record_runtime_route_performance(
                                 &telemetry_sender,
@@ -1228,8 +1238,8 @@ impl AspClientDispatcher for RuntimeAspClientDispatcher {
                         let receipt = agent_semantic_search::build_runtime_provider_search_receipt_with_graph(
                             request.request_id.as_str().to_owned(),
                             language,
-                            vec![agent_semantic_search::RuntimeSearchSource::once(
-                                "resident", lookup,
+                            vec![agent_semantic_search::RuntimeSearchSource::shared(
+                                "resident", std::sync::Arc::clone(&lookup),
                             )],
                             resident_read_elapsed_micros,
                             parser_owned_selector_pairs,
@@ -1297,7 +1307,7 @@ impl AspClientDispatcher for RuntimeAspClientDispatcher {
                             "lookup",
                             elapsed_micros(started),
                         )?;
-                        Ok(serde_json::to_value(lookup)
+                        Ok(serde_json::to_value(lookup.as_ref())
                             .map_err(|error| format!("encode source-index lookup: {error}"))?)
                     }
                     agent_semantic_client_protocol::ServerClientRoute::OwnerSearch => {
@@ -1439,12 +1449,18 @@ impl AspClientDispatcher for RuntimeAspClientDispatcher {
                                 },
                                 AspClientOperationError::Terminal(error) => error,
                             }),
-                            _ = tokio::time::sleep(RUNTIME_CLIENT_DISPATCH_BUDGET) => {
+                            _ = async {
+                                match dispatch_budget {
+                                    Some(budget) => tokio::time::sleep(budget).await,
+                                    None => std::future::pending::<()>().await,
+                                }
+                            } => {
+            let budget = dispatch_budget.expect("deadline branch requires an interactive budget");
             Err(AspClientDispatchError {
                 reason_kind: "client-request-deadline-exceeded".to_owned(),
                 message: format!(
                     "Runtime ClientFrame dispatch exceeded its {}ms interactive deadline",
-                    RUNTIME_CLIENT_DISPATCH_BUDGET.as_millis(),
+                    budget.as_millis(),
                 ),
                 details: Some(serde_json::json!({
                     "schemaId": "agent.semantic-protocols.asp-client-dispatch-failure",
@@ -1452,7 +1468,7 @@ impl AspClientDispatcher for RuntimeAspClientDispatcher {
                     "state": "failed",
                     "phase": "runtime-client-dispatch",
                     "reasonKind": "client-request-deadline-exceeded",
-                    "budgetMs": RUNTIME_CLIENT_DISPATCH_BUDGET.as_millis(),
+                    "budgetMs": budget.as_millis(),
                 })),
             })
                             }
@@ -1500,27 +1516,6 @@ impl AspClientDispatcher for RuntimeAspClientDispatcher {
             }
         })
     }
-}
-
-fn graph_open_payload(
-    request: &serde_json::Value,
-) -> Result<(String, Arc<serde_json::Value>), String> {
-    let graph = request
-        .get("graph")
-        .cloned()
-        .ok_or_else(|| "graph evaluation requires graph".to_owned())?;
-    let payload = serde_json::json!({
-        "graph": graph,
-        "sourceSnapshot": request.get("sourceSnapshot").cloned().unwrap_or(serde_json::Value::Null),
-        "workspaceGeneration": request.get("workspaceGeneration").cloned().unwrap_or(serde_json::Value::Null),
-    });
-    let artifact = agent_semantic_content_identity::ArtifactJson::from_serializable(&payload)
-        .map_err(|error| format!("canonicalize graph generation: {error}"))?;
-    let digest = format!(
-        "blake3-256:{}",
-        agent_semantic_content_identity::hash_normalized_json(&artifact).value
-    );
-    Ok((digest, Arc::new(payload)))
 }
 
 fn elapsed_micros(started: tokio::time::Instant) -> u64 {

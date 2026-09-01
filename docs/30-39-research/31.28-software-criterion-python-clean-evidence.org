@@ -37,12 +37,12 @@ behind configuration.
 * Evidence
 
 #+begin_example
-uv run --project languages/python-lang-project-harness --frozen asp-python check --full .
+uv run --project languages/asp-python --frozen asp-python check --full .
 # [ok] . python
 # Files: 616 Parsed: 616
 
 PYTHONPATH=packages/python/tools/src \
-uv run --project languages/python-lang-project-harness --frozen pytest -q \
+uv run --project languages/asp-python --frozen pytest -q \
   tests/unit/semantic_sandtable/test_agent_observation_pipe.py \
   tests/unit/semantic_sandtable/test_agent_observation_read_loop.py \
   tests/unit/semantic_sandtable/test_discovery_git_workdir.py \

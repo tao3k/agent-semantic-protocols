@@ -59,7 +59,7 @@ def _infer_failure_kind(scenario: dict[str, Any], steps: list[dict[str, Any]]) -
     text = "\n".join(_string_values({"scenario": scenario, "steps": steps})).lower()
     if "libjulia" in text or "library not loaded" in text:
         return "dynamic-library-rpath"
-    if "no module named" in text and "python_lang_project_harness" in text:
+    if "no module named" in text and "asp_python" in text:
         return "python-provider-module-missing"
     if "absolute path" in text:
         return "absolute-path-contract"

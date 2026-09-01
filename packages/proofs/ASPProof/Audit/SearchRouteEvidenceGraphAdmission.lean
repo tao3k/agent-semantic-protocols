@@ -159,19 +159,19 @@ def targets : List Target :=
         "ASP-RFC-10.05-EGA-DELETION"
       ] },
     { name :=
-        ``SearchRouteEvidenceGraphAdmission.missing_progressive_identity_is_blocked
+        ``SearchRouteEvidenceGraphAdmission.missing_shared_core_identity_is_blocked
       theoremFamily := "candidate-engine-admission"
       rfcClauseIds := ["ASP-RFC-10.05-EGA-CANDIDATE-ADMISSION"] },
     { name :=
-        ``SearchRouteEvidenceGraphAdmission.invalid_progressive_identity_is_blocked
+        ``SearchRouteEvidenceGraphAdmission.invalid_shared_core_identity_is_blocked
       theoremFamily := "candidate-engine-admission"
       rfcClauseIds := ["ASP-RFC-10.05-EGA-CANDIDATE-ADMISSION"] },
     { name :=
-        ``SearchRouteEvidenceGraphAdmission.blocked_candidate_admission_selects_no_engine
+        ``SearchRouteEvidenceGraphAdmission.blocked_shared_core_admission_is_not_ready
       theoremFamily := "candidate-engine-fail-closed"
       rfcClauseIds := ["ASP-RFC-10.05-EGA-CANDIDATE-ADMISSION"] },
     { name :=
-        ``SearchRouteEvidenceGraphAdmission.progressive_identity_failure_cannot_fallback_to_legacy
+        ``SearchRouteEvidenceGraphAdmission.identity_failure_cannot_admit_shared_core
       theoremFamily := "candidate-engine-no-fallback"
       rfcClauseIds := ["ASP-RFC-10.05-EGA-CANDIDATE-ADMISSION"] }
   ]

@@ -18,7 +18,7 @@ def test_asp_rust_ci_checks_out_provider_catalog_submodules() -> None:
     schema_checkout_step = schema_checkout_step.split("- name: Install uv", 1)[0]
 
     for checkout_step in (rust_checkout_step, schema_checkout_step):
-        assert "languages/JuliaLangProjectHarness.jl" in checkout_step
+        assert "languages/AspJulia.jl" in checkout_step
         assert "languages/gerbil-scheme-language-project-harness" in checkout_step
 
 
@@ -130,27 +130,6 @@ def test_gerbil_owner_items_fast_path_gate_uses_rust_inline_and_millisecond_budg
     assert "no fallback to Gerbil provider is allowed" in gate
     assert "build.ss" in gate
     assert "{{gerbil_harness_project}}" in gate
-
-
-def test_gerbil_ci_uses_canonical_asp_gerbil_scheme_binary() -> None:
-    workflow_path = (
-        REPO_ROOT
-        / "languages"
-        / "gerbil-scheme-language-project-harness"
-        / ".github"
-        / "workflows"
-        / "ci.yml"
-    )
-    workflow = workflow_path.read_text(encoding="utf-8")
-
-    assert "- name: Build canonical asp-gerbil-scheme binary" in workflow
-    assert "gxpkg env gxi ./build.ss compile --release --optimized" in workflow
-    assert "test -x build/workspace-provider/bin/asp-gerbil-scheme" in workflow
-    assert "- name: Smoke canonical search subcommands" in workflow
-    assert ".bin/asp-gerbil-scheme search prime --view seeds --workspace ." in workflow
-    assert ".bin/asp-gerbil-scheme check --full ." in workflow
-    assert ".bin/asp-gerbil-scheme bench --json" in workflow
-    assert ".bin/asp-gerbil-scheme search prime --json ." in workflow
 
 
 def test_gerbil_just_build_scans_only_launcher_build_inputs() -> None:

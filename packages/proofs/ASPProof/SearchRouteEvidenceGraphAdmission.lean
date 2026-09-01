@@ -646,11 +646,6 @@ theorem expired_silent_feature_requires_causal_closure_erasure
       policy authorizedRenewal expired
   · rfl
 
-inductive CandidateSearchEngine where
-  | legacyGraphTurbo
-  | progressiveGqlLogic
-deriving DecidableEq, Repr
-
 structure CandidateArtifactIdentity where
   providerDigestValid : Bool
   runtimeDigestValid : Bool
@@ -668,95 +663,68 @@ inductive CandidateAdmissionReason where
   | invalidCandidateArtifactIdentity
 deriving DecidableEq, Repr
 
-inductive CandidateEngineAdmission where
-  | ready
-      (requested selected : CandidateSearchEngine)
-      (identity : Option CandidateArtifactIdentity)
-  | blocked
-      (requested : CandidateSearchEngine)
-      (reason : CandidateAdmissionReason)
+inductive SharedSearchCoreAdmission where
+  | ready (identity : CandidateArtifactIdentity)
+  | blocked (reason : CandidateAdmissionReason)
 deriving DecidableEq, Repr
 
-def admitCandidateSearchEngine
-    (requested : CandidateSearchEngine)
+def admitSharedRustSearchCore
     (identity : Option CandidateArtifactIdentity) :
-    CandidateEngineAdmission :=
-  match requested with
-  | .legacyGraphTurbo =>
-      .ready .legacyGraphTurbo .legacyGraphTurbo none
-  | .progressiveGqlLogic =>
-      match identity with
-      | none =>
-          .blocked .progressiveGqlLogic
-            .missingCandidateArtifactIdentity
-      | some candidateIdentity =>
-          if candidateIdentity.complete then
-            .ready .progressiveGqlLogic .progressiveGqlLogic
-              (some candidateIdentity)
-          else
-            .blocked .progressiveGqlLogic
-              .invalidCandidateArtifactIdentity
+    SharedSearchCoreAdmission :=
+  match identity with
+  | none => .blocked .missingCandidateArtifactIdentity
+  | some candidateIdentity =>
+      if candidateIdentity.complete then
+        .ready candidateIdentity
+      else
+        .blocked .invalidCandidateArtifactIdentity
 
-def SelectsCandidateEngine
-    (engine : CandidateSearchEngine) : CandidateEngineAdmission → Prop
-  | .ready _ selected _ => selected = engine
-  | .blocked _ _ => False
+def sharedSearchCoreReady : SharedSearchCoreAdmission → Bool
+  | .ready _ => true
+  | .blocked _ => false
 
-theorem missing_progressive_identity_is_blocked :
-    admitCandidateSearchEngine .progressiveGqlLogic none =
-      .blocked .progressiveGqlLogic
+theorem missing_shared_core_identity_is_blocked :
+    admitSharedRustSearchCore none =
+      .blocked
         .missingCandidateArtifactIdentity := by
   rfl
 
-theorem invalid_progressive_identity_is_blocked
+theorem invalid_shared_core_identity_is_blocked
     (identity : CandidateArtifactIdentity)
     (incomplete : identity.complete = false) :
-    admitCandidateSearchEngine .progressiveGqlLogic (some identity) =
-      .blocked .progressiveGqlLogic
-        .invalidCandidateArtifactIdentity := by
+    admitSharedRustSearchCore (some identity) =
+      .blocked .invalidCandidateArtifactIdentity := by
   change
     (if identity.complete then
-      CandidateEngineAdmission.ready
-        .progressiveGqlLogic .progressiveGqlLogic (some identity)
+      SharedSearchCoreAdmission.ready identity
     else
-      CandidateEngineAdmission.blocked
-        .progressiveGqlLogic .invalidCandidateArtifactIdentity) =
-      CandidateEngineAdmission.blocked
-        .progressiveGqlLogic .invalidCandidateArtifactIdentity
+      SharedSearchCoreAdmission.blocked .invalidCandidateArtifactIdentity) =
+      SharedSearchCoreAdmission.blocked .invalidCandidateArtifactIdentity
   rw [incomplete]
   rfl
 
-theorem blocked_candidate_admission_selects_no_engine
-    (requested : CandidateSearchEngine)
-    (reason : CandidateAdmissionReason)
-    (engine : CandidateSearchEngine) :
-    ¬ SelectsCandidateEngine engine (.blocked requested reason) := by
-  intro contradiction
-  exact contradiction
+theorem blocked_shared_core_admission_is_not_ready
+    (reason : CandidateAdmissionReason) :
+    sharedSearchCoreReady (.blocked reason) = false := by
+  rfl
 
-theorem progressive_identity_failure_cannot_fallback_to_legacy
+theorem identity_failure_cannot_admit_shared_core
     (identity : Option CandidateArtifactIdentity)
     (identityFailure :
       identity = none ∨
       ∃ candidateIdentity,
         identity = some candidateIdentity ∧
         candidateIdentity.complete = false) :
-    ¬ SelectsCandidateEngine .legacyGraphTurbo
-      (admitCandidateSearchEngine .progressiveGqlLogic identity) := by
+    sharedSearchCoreReady (admitSharedRustSearchCore identity) = false := by
   rcases identityFailure with rfl | ⟨candidateIdentity, rfl, incomplete⟩
-  · intro contradiction
-    exact contradiction
+  · rfl
   · change
-      ¬ SelectsCandidateEngine .legacyGraphTurbo
+      sharedSearchCoreReady
         (if candidateIdentity.complete then
-          CandidateEngineAdmission.ready
-            .progressiveGqlLogic .progressiveGqlLogic
-              (some candidateIdentity)
+          SharedSearchCoreAdmission.ready candidateIdentity
         else
-          CandidateEngineAdmission.blocked
-            .progressiveGqlLogic .invalidCandidateArtifactIdentity)
+          SharedSearchCoreAdmission.blocked .invalidCandidateArtifactIdentity) = false
     rw [incomplete]
-    intro contradiction
-    exact contradiction
+    rfl
 
 end SearchRouteEvidenceGraphAdmission

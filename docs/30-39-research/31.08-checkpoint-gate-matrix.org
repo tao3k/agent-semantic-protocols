@@ -135,14 +135,14 @@ direnv exec . just provider-gate-python
 Expanded commands:
 
 #+begin_src shell
-direnv exec . uv run --project languages/python-lang-project-harness --frozen asp-python search policy PY-PROJ-R001 owner tests --view seeds languages/python-lang-project-harness
-direnv exec . uv run --project languages/python-lang-project-harness --frozen asp-python search policy PY-AGENT-R008 owner tests --view seeds languages/python-lang-project-harness
-direnv exec . uv run --project languages/python-lang-project-harness --frozen asp-python query src/python_lang_project_harness/_semantic_language.py --term semantic_language_registry_document --names-only languages/python-lang-project-harness
-direnv exec . uv run --project languages/python-lang-project-harness --frozen python -m pytest \
-  languages/python-lang-project-harness/tests/unit/harness/test_semantic_cli_query_set.py \
-  languages/python-lang-project-harness/tests/unit/harness/test_semantic_cli_owner_items.py \
-  languages/python-lang-project-harness/tests/unit/harness/test_semantic_cli_policy.py \
-  languages/python-lang-project-harness/tests/unit/harness/test_semantic_schema_registry.py
+direnv exec . uv run --project languages/asp-python --frozen asp-python search policy PY-PROJ-R001 owner tests --view seeds languages/asp-python
+direnv exec . uv run --project languages/asp-python --frozen asp-python search policy PY-AGENT-R008 owner tests --view seeds languages/asp-python
+direnv exec . uv run --project languages/asp-python --frozen asp-python query src/asp_python/_semantic_language.py --term semantic_language_registry_document --names-only languages/asp-python
+direnv exec . uv run --project languages/asp-python --frozen python -m pytest \
+  languages/asp-python/tests/unit/harness/test_semantic_cli_query_set.py \
+  languages/asp-python/tests/unit/harness/test_semantic_cli_owner_items.py \
+  languages/asp-python/tests/unit/harness/test_semantic_cli_policy.py \
+  languages/asp-python/tests/unit/harness/test_semantic_schema_registry.py
 #+end_src
 
 Required evidence:
@@ -154,7 +154,7 @@ Required evidence:
 ** Julia Provider
 
 Julia is workspace-managed and is not a bin parity target.  Do not add,
-document, or validate a bare global =julia-project-harness= executable.
+document, or validate a bare global =asp-julia= executable.
 
 #+begin_src shell
 direnv exec . just provider-gate-julia
@@ -163,13 +163,13 @@ direnv exec . just provider-gate-julia
 Expanded commands:
 
 #+begin_src shell
-direnv exec . julia --project=languages/JuliaLangProjectHarness.jl -e 'using Pkg; Pkg.test()'
-direnv exec . julia --project=languages/JuliaLangProjectHarness.jl languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl agent guide languages/JuliaLangProjectHarness.jl
-direnv exec . julia --project=languages/JuliaLangProjectHarness.jl languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl search prime --view seeds languages/JuliaLangProjectHarness.jl
-direnv exec . julia --project=languages/JuliaLangProjectHarness.jl languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl search owner src/cli.jl --view seeds languages/JuliaLangProjectHarness.jl
-direnv exec . julia --project=languages/JuliaLangProjectHarness.jl languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl search lexical run_julia_project_harness_cli owner tests --view seeds languages/JuliaLangProjectHarness.jl
-printf 'src/cli.jl:1\n' | direnv exec . julia --project=languages/JuliaLangProjectHarness.jl languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl search ingest owner tests --view seeds languages/JuliaLangProjectHarness.jl
-direnv exec . julia --project=languages/JuliaLangProjectHarness.jl languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl check --changed languages/JuliaLangProjectHarness.jl
+direnv exec . julia --project=languages/AspJulia.jl -e 'using Pkg; Pkg.test()'
+direnv exec . julia --project=languages/AspJulia.jl languages/AspJulia.jl/bin/asp-julia.jl agent guide languages/AspJulia.jl
+direnv exec . julia --project=languages/AspJulia.jl languages/AspJulia.jl/bin/asp-julia.jl search prime --view seeds languages/AspJulia.jl
+direnv exec . julia --project=languages/AspJulia.jl languages/AspJulia.jl/bin/asp-julia.jl search owner src/cli.jl --view seeds languages/AspJulia.jl
+direnv exec . julia --project=languages/AspJulia.jl languages/AspJulia.jl/bin/asp-julia.jl search lexical run_julia_project_harness_cli owner tests --view seeds languages/AspJulia.jl
+printf 'src/cli.jl:1\n' | direnv exec . julia --project=languages/AspJulia.jl languages/AspJulia.jl/bin/asp-julia.jl search ingest owner tests --view seeds languages/AspJulia.jl
+direnv exec . julia --project=languages/AspJulia.jl languages/AspJulia.jl/bin/asp-julia.jl check --changed languages/AspJulia.jl
 #+end_src
 
 Required evidence:

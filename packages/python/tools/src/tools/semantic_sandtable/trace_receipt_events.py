@@ -17,7 +17,6 @@ _COMMAND_KINDS = {
     "hook-deny",
     "subagent",
     "external-ingest",
-    "check",
     "other",
 }
 _OUTPUT_MODES = {"compact", "json", "unknown"}
@@ -364,7 +363,7 @@ class TraceCommandParser:
         if "search" in argv:
             return "search"
         if "check" in argv:
-            return "check"
+            return "other"
         return "other"
 
     def infer_output_mode(self, argv: list[str]) -> str:

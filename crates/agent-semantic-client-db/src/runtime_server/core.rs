@@ -63,17 +63,6 @@ pub struct RuntimeServer {
     pub(super) telemetry_sender: Option<crate::runtime_telemetry_bus::RuntimeTelemetryBusSender>,
 }
 
-pub type GraphTurboEvaluationBuilder = std::sync::Arc<
-    dyn Fn(
-            String,
-            std::path::PathBuf,
-            serde_json::Value,
-        ) -> std::pin::Pin<
-            Box<dyn std::future::Future<Output = Result<serde_json::Value, String>> + Send>,
-        > + Send
-        + Sync,
->;
-
 impl RuntimeServer {
     /// Use one Runtime-owned provider register for provider-plane mutations
     /// and data-plane route resolution.

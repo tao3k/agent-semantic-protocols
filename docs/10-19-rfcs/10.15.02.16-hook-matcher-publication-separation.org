@@ -56,6 +56,17 @@ typed =hook-runtime-identity= projection.  Schema identity and policy content
 digest must match.  An executable sibling with a stale policy is not a valid
 candidate merely because it occupies the expected filename.
 
+The =--identity= projection is a bounded publication probe, not a compiler
+entrypoint.  It MUST derive the shared BLAKE3 content identity directly from
+the immutable Config and Agent Registry bytes linked into the executable.  It
+MUST NOT parse Config, construct policy rules, compile an AOT bundle, access the
+filesystem, contact Runtime Server, or acquire lifecycle state.  Its work is
+independent of policy-rule cardinality.  Full policy compilation remains a
+single installer-side candidate validation step; the installer compares that
+compiled bundle's generation digest with the same shared embedded-content
+identity before it invokes the candidate probe.  Raising the probe timeout or
+retrying a slow probe is not recovery and is forbidden.
+
 The old =hooks/current= selector is not an alternate read path.  A successful
 canonical installation retires that file or symlink and reports the retirement
 in its receipt; immutable historical bytes remain retention input for

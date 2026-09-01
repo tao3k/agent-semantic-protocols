@@ -738,6 +738,14 @@ async fn concurrent_cold_restore_publishes_one_canonical_epoch() {
             &root,
         )
         .expect("resolve active generation pointer");
+    let current_snapshot =
+        agent_semantic_client_db::runtime_server_workspace::WorkspaceGenerationPointerReader::open(
+            &pointer_path,
+        )
+        .await
+        .expect("open current generation pointer")
+        .read()
+        .expect("read current generation snapshot");
     tokio::fs::remove_file(&pointer_path)
         .await
         .expect("remove the published pointer while resident memory remains warm");
@@ -764,19 +772,26 @@ async fn concurrent_cold_restore_publishes_one_canonical_epoch() {
             || error.contains("canonical generation"),
         "missing pointer failure must remain typed: {error}"
     );
-    let legacy_payload = serde_json::to_vec(&serde_json::json!({
-        "schemaId": "agent.semantic-protocols.runtime-server-workspace-generation.v1",
-        "schemaVersion": "1",
-        "workspaceIdentity": workspace_identity
-    }))
-    .expect("encode legacy pointer fixture");
-    let mut legacy_pointer = vec![0_u8; 4_096];
-    legacy_pointer[..8].copy_from_slice(&2_u64.to_ne_bytes());
-    legacy_pointer[8..16].copy_from_slice(&(legacy_payload.len() as u64).to_ne_bytes());
-    legacy_pointer[16..16 + legacy_payload.len()].copy_from_slice(&legacy_payload);
-    tokio::fs::write(&pointer_path, legacy_pointer)
+    let mut incompatible_snapshot =
+        serde_json::to_value(current_snapshot).expect("encode current generation snapshot");
+    let incompatible_object = incompatible_snapshot
+        .as_object_mut()
+        .expect("generation snapshot object");
+    incompatible_object.insert(
+        "schemaId".to_owned(),
+        serde_json::json!("agent.semantic-protocols.runtime-server-workspace-generation.v1"),
+    );
+    incompatible_object.insert("schemaVersion".to_owned(), serde_json::json!("1"));
+    let incompatible_payload = serde_json::to_vec(&incompatible_snapshot)
+        .expect("encode complete incompatible pointer fixture");
+    let mut incompatible_pointer = vec![0_u8; 4_096];
+    incompatible_pointer[..8].copy_from_slice(&2_u64.to_ne_bytes());
+    incompatible_pointer[8..16].copy_from_slice(&(incompatible_payload.len() as u64).to_ne_bytes());
+    incompatible_pointer[16..16 + incompatible_payload.len()]
+        .copy_from_slice(&incompatible_payload);
+    tokio::fs::write(&pointer_path, incompatible_pointer)
         .await
-        .expect("publish an incompatible legacy generation pointer");
+        .expect("publish an incompatible generation pointer");
 
     // The resident data plane deliberately does not poll the pointer on every
     // warm query. Model a real process-cold repair boundary: the old resident

@@ -70,7 +70,7 @@ fn install_language_gerbil_uses_provider_identity_for_release_and_install() {
     );
     assert!(lock.contains("binary = \"asp-gerbil-scheme\""), "{lock}");
     assert!(lock.contains(
-        "source = \"https://github.com/tao3k/gerbil-scheme-language-project-harness/releases/download/v0.1.0/asp-gerbil-scheme-x86_64-unknown-linux-gnu.tar.gz\""
+        "source = \"https://github.com/tao3k/asp-gerbil-scheme/releases/download/v0.1.0/asp-gerbil-scheme-x86_64-unknown-linux-gnu.tar.gz\""
     ), "{lock}");
 }
 

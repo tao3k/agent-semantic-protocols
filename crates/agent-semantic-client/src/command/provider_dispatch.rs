@@ -43,14 +43,17 @@ async fn forward_runtime_language_command(
     project_root: std::path::PathBuf,
     machine_readable: bool,
 ) -> Result<(), String> {
-    let bootstrap = if std::env::var_os("ASP_NO_AGENT").is_some_and(|value| value == "1") {
-        crate::server::runtime_server::reconcile_runtime_activation_for_no_agent_client().await?
-    } else {
-        crate::server::runtime_server::reconcile_pending_runtime_activation_for_client_bootstrap()
-            .await?
-    };
-    if !crate::server::runtime_server::runtime_server_client_bootstrap_continues(bootstrap) {
-        return Ok(());
+    if !agent_semantic_client::host_runtime_transport_capability_declared() {
+        let bootstrap = if std::env::var_os("ASP_NO_AGENT").is_some_and(|value| value == "1") {
+            crate::server::runtime_server::reconcile_runtime_activation_for_no_agent_client()
+                .await?
+        } else {
+            crate::server::runtime_server::reconcile_pending_runtime_activation_for_client_bootstrap()
+                .await?
+        };
+        if !crate::server::runtime_server::runtime_server_client_bootstrap_continues(bootstrap) {
+            return Ok(());
+        }
     }
     forward_language_command(
         &agent_semantic_client::RuntimeLanguageCommandApplication,

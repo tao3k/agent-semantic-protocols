@@ -18,7 +18,7 @@ _RUST_PROFILE_PATH = (
 )
 _PYTHON_PROFILE_PATH = (
     _REPO_ROOT
-    / "languages/python-lang-project-harness/tree-sitter/tree-sitter-python/grammar-profile.json"
+    / "languages/asp-python/tree-sitter/tree-sitter-python/grammar-profile.json"
 )
 _TYPESCRIPT_PROFILE_PATH = (
     _REPO_ROOT
@@ -26,7 +26,7 @@ _TYPESCRIPT_PROFILE_PATH = (
 )
 _JULIA_PROFILE_PATH = (
     _REPO_ROOT
-    / "languages/JuliaLangProjectHarness.jl/tree-sitter/tree-sitter-julia/grammar-profile.json"
+    / "languages/AspJulia.jl/tree-sitter/tree-sitter-julia/grammar-profile.json"
 )
 
 

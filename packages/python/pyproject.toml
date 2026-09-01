@@ -12,7 +12,7 @@ dependencies = [
 
 [dependency-groups]
 dev = [
-    "python-lang-project-harness",
+    "asp-python",
     "pytest>=9,<10",
 ]
 
@@ -22,7 +22,7 @@ package = false
 [tool.uv.sources]
 agent-semantic-protocols-tools = { workspace = true }
 asp-python-graphs = { workspace = true }
-python-lang-project-harness = { path = "../../languages/python-lang-project-harness", editable = true }
+asp-python = { path = "../../languages/asp-python", editable = true }
 asp-memory-engine = { workspace = true }
 asp-schema-manager = { workspace = true }
 

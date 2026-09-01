@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/runtime-client-transport-capability.v1.schema.json",
+  "title": "Runtime Client Transport Capability V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "bindingKind",
+    "endpointIdentityDigest",
+    "clientFrameProtocolDigest",
+    "callerSandboxProfile",
+    "reachabilityReceiptDigest"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.runtime-client-transport-capability"
+    },
+    "schemaVersion": { "const": "1" },
+    "bindingKind": {
+      "enum": [
+        "uid-shared-unix",
+        "inherited-connected-descriptor",
+        "loopback-http2"
+      ]
+    },
+    "endpointIdentityDigest": {
+      "type": "string",
+      "pattern": "^blake3-256:[0-9a-f]{64}$"
+    },
+    "clientFrameProtocolDigest": {
+      "type": "string",
+      "pattern": "^blake3-256:[0-9a-f]{64}$"
+    },
+    "callerSandboxProfile": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9._:-]+$"
+    },
+    "reachabilityReceiptDigest": {
+      "type": "string",
+      "pattern": "^blake3-256:[0-9a-f]{64}$"
+    }
+  }
+}

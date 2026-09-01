@@ -166,8 +166,6 @@ def _receipt_summary(
         or _surface_count(commands, "search"),
         "queryCommands": optional_int(pipe_flow.get("queryCommands"))
         or _surface_count(commands, "query"),
-        "checkCommands": optional_int(pipe_flow.get("checkCommands"))
-        or _surface_count(commands, "check"),
         "guideCommands": optional_int(pipe_flow.get("guideCommands"))
         or _surface_count(commands, "guide"),
         "deniedCommands": optional_int(pipe_flow.get("deniedAspCommands"))
@@ -228,7 +226,13 @@ def _sandtable_command(command: Any) -> dict[str, Any]:
     if not isinstance(command, dict):
         return {"id": "command", "kind": "other", "argv": ["unknown"], "metrics": _zero_metrics()}
     item = dict(command)
-    supported = {"search", "hook-deny", "subagent", "external-ingest", "check", "other"}
+    supported = {
+        "search",
+        "hook-deny",
+        "subagent",
+        "external-ingest",
+        "other",
+    }
     if item.get("kind") not in supported:
         item["kind"] = "other"
     return item
@@ -287,7 +291,7 @@ def _grounding_status(present: bool, evidence_refs: list[str]) -> str:
 def _command_kind(argv: list[str], denied: bool) -> str:
     if denied:
         return "hook-deny"
-    for kind in ("search", "query", "check", "guide"):
+    for kind in ("search", "query", "guide"):
         if kind in argv:
             return kind
     return "other"

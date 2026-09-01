@@ -272,85 +272,6 @@ pub(super) async fn serve_runtime_search_requests(
                     let _ = response.send(result);
                 });
             }
-            RuntimeSearchServiceRequest::GraphsEvaluate {
-                project_root: _project_root,
-                workspace_identity,
-                generation_digest,
-                source_root_digest,
-                generation_token,
-                graph_generation_digest,
-                graph_open_payload,
-                request_id,
-                payload,
-                mut response,
-            } => {
-                // The lifecycle multiplexes one bounded stream. A bounded
-                // semaphore keeps the JoinSet from becoming a second mailbox:
-                // saturation is a typed immediate terminal, not an unbounded
-                // task backlog.
-                let permit = match graph_slots.clone().try_acquire_owned() {
-                    Ok(permit) => permit,
-                    Err(_) => {
-                        let _ = response.send(Err(
-                            "state=busy reasonKind=asp-python-graphs-capacity-exhausted".to_owned(),
-                        ));
-                        continue;
-                    }
-                };
-                let graph_server = graph_server.clone();
-                tasks.spawn(async move {
-                    let _permit = permit;
-                    let cancellation = agent_semantic_client_db::runtime_generation_cancellation::GenerationCancellation::new();
-                    let mut operation = Box::pin(async {
-                        let identity = agent_semantic_runtime_server::asp_python_graphs_transport::GraphGenerationIdentity::new(
-                            workspace_identity,
-                            generation_digest,
-                        )?;
-                        agent_semantic_search_projection::validate_graph_source_root(
-                            &payload,
-                            &source_root_digest,
-                        )?;
-                        agent_semantic_search_projection::validate_graph_source_root(
-                            graph_open_payload.as_ref(),
-                            &source_root_digest,
-                        )?;
-                        let lease = graph_server
-                            .open_generation_shared_with_token(
-                                identity,
-                                generation_token,
-                                graph_generation_digest,
-                                graph_open_payload,
-                                cancellation.clone(),
-                            )
-                            .await?;
-                        let evaluate_payload =
-                            agent_semantic_search_projection::adapt_graph_evaluate_payload(
-                                &payload,
-                            )?;
-                        let result = lease
-                            .evaluate_with_request_id(evaluate_payload, request_id, cancellation.clone())
-                            .await;
-                        let release = lease.release().await;
-                        match (result, release) {
-                            (Ok(value), Ok(())) => Ok(value),
-                            (Err(primary), Ok(())) => Err(primary),
-                            (Ok(_), Err(release_error)) => Err(format!(
-                                "asp-python-graphs release failed: {release_error}"
-                            )),
-                            (Err(primary), Err(release_error)) => Err(format!(
-                                "{primary}; asp-python-graphs release failed: {release_error}"
-                            )),
-                        }
-                    });
-                    tokio::select! {
-                        result = &mut operation => { let _ = response.send(result); }
-                        _ = response.closed() => {
-                            cancellation.cancel();
-                            let _ = operation.await;
-                        }
-                    }
-                });
-            }
             RuntimeSearchServiceRequest::GraphsTimeline {
                 project_root: _project_root,
                 request_id,
@@ -438,6 +359,7 @@ pub(super) async fn serve_runtime_search_requests(
                         runtime_source_index_provider_projection(
                             &runtime_provider_catalog,
                             &provider_register,
+                            &std::collections::BTreeSet::from([language_id.clone()]),
                         )?;
                     Ok((runtime.authority.client(), registry))
                 })();

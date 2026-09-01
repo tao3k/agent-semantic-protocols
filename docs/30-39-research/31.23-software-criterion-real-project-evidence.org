@@ -30,12 +30,12 @@ sample=src/cli/semantic-search/source-text.ts:15 TS-AGENT-R007 control-flow.trav
 sample=src/cli/semantic-search/owners.ts:10 TS-AGENT-R008 native-idiom.manual-transform-loop ownersForHits
 claim=real-project-localization
 
-[software-criterion-real-evidence] language=python provider=asp-python project=languages/python-lang-project-harness
+[software-criterion-real-evidence] language=python provider=asp-python project=languages/asp-python
 commands=policy-json-check
 metrics=commandCount=1,providerProcessCount=1,packetBytes=28584406,coldElapsedMs=1768,warmElapsedMs=1467
 metrics=findingCount=1,qualityFindingCount=1,exitCode=0,repeatedTriggerDelta=0
 signals=control-flow.broad-linear-phase:1
-sample=src/python_lang_project_harness/_cli_protocol.py:17 PY-AGENT-R010 control-flow.broad-linear-phase run_protocol_cli
+sample=src/asp_python/_cli_protocol.py:17 PY-AGENT-R010 control-flow.broad-linear-phase run_protocol_cli
 claim=real-project-localization
 
 [software-criterion-real-evidence] language=rust provider=asp-rust project=languages/asp-rust
@@ -58,7 +58,7 @@ unchanged between the two runs.
 cd languages/typescript-lang-project-harness
 node dist/src/cli/main.js check --full --json .
 
-cd languages/python-lang-project-harness
+cd languages/asp-python
 uv run asp-python check --full --json .
 
 cd languages/asp-rust

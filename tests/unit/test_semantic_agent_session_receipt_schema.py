@@ -180,7 +180,6 @@ def _receipt() -> dict[str, object]:
             "searchCommands": 1,
             "searchPrimeCommands": 1,
             "queryCommands": 0,
-            "checkCommands": 0,
             "guideCommands": 0,
             "deniedCommands": 0,
             "repeatedCommands": 0,

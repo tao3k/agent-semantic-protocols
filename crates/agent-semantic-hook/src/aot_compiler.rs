@@ -72,9 +72,19 @@ pub fn compile_aot_hook_policy_bundle(
 /// inputs; there is no separately published evaluator binary or
 /// standalone `runtime/bin/asp-hook` executable.
 pub fn compile_embedded_hook_policy_bundle() -> Result<Vec<u8>, String> {
-    let config_source = agent_semantic_config::default_hook_client_config_template();
+    let generation_digest = embedded_hook_policy_content_digest()?;
     let config = agent_semantic_config::default_hook_client_config_file()
         .map_err(|error| format!("load embedded Hook config: {error}"))?;
+    compile_aot_hook_policy_bundle(&config, generation_digest)
+}
+
+/// Project the identity of the immutable Hook inputs linked into this build.
+///
+/// This is deliberately separate from AOT compilation: publication probes
+/// must not parse Config or construct matcher rules merely to identify the
+/// candidate executable.
+pub fn embedded_hook_policy_content_digest() -> Result<String, String> {
+    let config_source = agent_semantic_config::default_hook_client_config_template();
     let registry = agent_semantic_config::embedded_agent_assets::embedded_agent_assets()
         .iter()
         .find(|asset| asset.file_name == "config.toml")
@@ -85,10 +95,7 @@ pub fn compile_embedded_hook_policy_bundle() -> Result<Vec<u8>, String> {
     identity.update(config_source.as_bytes());
     identity.update(b"\0");
     identity.update(registry);
-    compile_aot_hook_policy_bundle(
-        &config,
-        format!("blake3-256:{}", identity.finalize().to_hex()),
-    )
+    Ok(format!("blake3-256:{}", identity.finalize().to_hex()))
 }
 
 fn compile_aot_hook_policy_bundle_projection(

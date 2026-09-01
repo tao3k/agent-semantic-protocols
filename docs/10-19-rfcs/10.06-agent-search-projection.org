@@ -56,6 +56,14 @@ projection records are decoded only for demanded owners and retained in a
 bounded cache owned by that generation, which is discarded atomically when the
 generation changes.
 
+The resident lexical table uses dense generation-local owner IDs.  Posting
+visits are bounded by the normalized query plan, ranking uses a bounded
+deterministic Top-K frontier, and only winning owners are expanded back to
+paths, digests, and matched query terms.  The request path performs no
+whole-owner scan, full candidate sort, or full-vocabulary clone.  These bounds
+apply independently of the generation-local result cache, so a novel query has
+the same external-I/O-free authority and latency class as an exact replay.
+
 Cache reuse is Merkle structural sharing, never age- or path-based freshness.
 The immutable projection key is the tuple =workspaceIdentity, sourceRootDigest,
 providerDigest, schemaDigest, analyzerDigest=.  Each owner path maps to a
@@ -946,6 +954,17 @@ exact-selector projection-record set alongside =generation_identity= and
 =artifact_root=.  A source snapshot by itself is insufficient because it does
 not preserve selector projection mode, parser-fact identity, or source byte
 range.
+
+The word =complete= covers provider membership as well as file membership.
+The builder MUST use the full admitted Runtime provider registry and collect
+every applicable provider before publication.  A language/provider target on a
+query-demand request proves which readiness capability the caller requires; it
+does not authorize =TargetProvider= publication, target-only registry
+projection, or replacement of the active generation with one language.  If the
+target is absent from the full registry, admission fails before building.  If
+another provider is unavailable, the generation remains not-ready or fails as
+typed evidence; it is never silently omitted from a published workspace
+generation.
 
 The source-index generation and exact-selector fixture MAY be written in
 separate durability operations, but they MUST become visible through one active
@@ -3960,7 +3979,7 @@ Completed:
   778 inferred microbursts, 353 fanout bursts, 951 inferred subagent starts,
   0 soft-overrun microbursts, and 98 repeated searches.  The current top repeat
   group is Rust =search/prime= over =src/lib.rs=, followed by Python =search/lexical=
-  over =src/python_lang_project_harness/__init__.py= and Rust owner searches
+  over =src/asp_python/__init__.py= and Rust owner searches
   for classifier/provider owners.
 - [X] Timeline output now classifies repeat and fanout evidence into balanced
   =optimizationTargets=.  Repeat-prime targets point to agent guidance/cache
@@ -4028,11 +4047,11 @@ Completed:
   and the target =owner-query= profile so recurring fuzzy searches can be
   converted into typed owner/item/test frontier work.  Current local artifacts
   show 53 promotable fuzzy searches; top groups include Python
-  =src/python_lang_project_harness/__init__.py= with 7 calls / 6 repeats,
+  =src/asp_python/__init__.py= with 7 calls / 6 repeats,
   Rust =cache= with 5 calls / 4 repeats, TypeScript
   =languages/typescript-lang-project-harness/src/parser/index.ts= with
   5 calls / 4 repeats, and Python
-  =languages/python-lang-project-harness/src/python_lang_parser/_ast_names.py=
+  =languages/asp-python/src/python_lang_parser/_ast_names.py=
   with 5 calls / 4 repeats.
 - [X] The local client cache probe now performs safe fresh-lexical reuse for
   repeated =search lexical <query> --workspace . --view seeds= requests.  Exact

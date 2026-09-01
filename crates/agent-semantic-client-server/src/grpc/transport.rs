@@ -6,9 +6,12 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 
-use agent_semantic_client_protocol::{ClientFrame, ClientRequestId};
+use agent_semantic_client_protocol::{
+    ClientDispatchClass, ClientFrame, ClientRequestId, classify_client_dispatch,
+};
 use futures_util::{StreamExt as FuturesStreamExt, stream::FuturesUnordered};
 use parking_lot::Mutex;
+use prost::Message;
 use tokio::sync::{mpsc, oneshot, watch};
 use tokio_stream::{Stream, wrappers::ReceiverStream};
 use tonic::{Request, Response, Status, Streaming};
@@ -28,6 +31,55 @@ pub const CLIENT_FRAME_SESSION_CAPACITY: usize = 32;
 pub const CLIENT_FRAME_SESSION_CONTROL_RESERVE: usize = 1;
 const CLIENT_FRAME_TRANSPORT_CAPACITY: usize =
     CLIENT_FRAME_SESSION_CAPACITY + CLIENT_FRAME_SESSION_CONTROL_RESERVE;
+pub const CLIENT_FRAME_PARTITION_BYTES: usize = 256 * 1024;
+pub const CLIENT_FRAME_LOGICAL_RESPONSE_BYTES: usize = 16 * 1024 * 1024;
+
+/// Connect tonic to a Host-granted, already-connected Runtime descriptor.
+///
+/// Sandboxed clients must not discover a global socket path and call
+/// `connect(2)`: the Host opens the Runtime-owned endpoint outside the sandbox
+/// and transfers ownership of the connected descriptor. The normal
+/// ClientFrame initialize/catalog exchange still validates endpoint and
+/// protocol identity after the transport is established.
+#[cfg(unix)]
+pub fn admit_asp_client_grpc_inherited_descriptor(
+    descriptor: std::os::fd::OwnedFd,
+) -> Result<tokio::net::UnixStream, String> {
+    let stream: std::os::unix::net::UnixStream = descriptor.into();
+    stream
+        .set_nonblocking(true)
+        .map_err(|error| format!("prepare inherited Runtime descriptor: {error}"))?;
+    tokio::net::UnixStream::from_std(stream)
+        .map_err(|error| format!("admit inherited Runtime descriptor: {error}"))
+}
+
+#[cfg(unix)]
+pub async fn connect_asp_client_grpc_inherited_descriptor(
+    descriptor: std::os::fd::OwnedFd,
+) -> Result<tonic::transport::Channel, String> {
+    let stream = admit_asp_client_grpc_inherited_descriptor(descriptor)?;
+    let stream = Arc::new(Mutex::new(Some(stream)));
+
+    tonic::transport::Endpoint::try_from("http://[::]:50051")
+        .map_err(|error| error.to_string())?
+        .connect_with_connector(tower::service_fn(move |_| {
+            let stream = Arc::clone(&stream);
+            async move {
+                stream
+                    .lock()
+                    .take()
+                    .map(hyper_util::rt::TokioIo::new)
+                    .ok_or_else(|| {
+                        std::io::Error::new(
+                            std::io::ErrorKind::NotConnected,
+                            "inherited Runtime descriptor was already consumed",
+                        )
+                    })
+            }
+        }))
+        .await
+        .map_err(|error| format!("connect inherited Runtime descriptor: {error}"))
+}
 
 pub struct AspClientGrpcService<D> {
     frames: Arc<AspClientFrameService<D>>,
@@ -79,10 +131,21 @@ impl<D: AspClientDispatcher> AspClientProtocol for AspClientGrpcService<D> {
                         }
                     }
                     completed = requests.next(), if !requests.is_empty() => {
-                        if let Some(Some(result)) = completed
-                            && outbound.send(result).await.is_err()
-                        {
-                            break;
+                        if let Some(Some(result)) = completed {
+                            match result {
+                                Ok(envelopes) => {
+                                    for envelope in envelopes {
+                                        if outbound.send(Ok(envelope)).await.is_err() {
+                                            return;
+                                        }
+                                    }
+                                }
+                                Err(error) => {
+                                    if outbound.send(Err(error)).await.is_err() {
+                                        break;
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -98,14 +161,68 @@ impl<D: AspClientDispatcher> AspClientProtocol for AspClientGrpcService<D> {
 async fn dispatch_client_frame<D: AspClientDispatcher>(
     frames: Arc<AspClientFrameService<D>>,
     frame: ClientFrame,
-) -> Option<Result<ClientFrameEnvelope, Status>> {
+) -> Option<Result<Vec<ClientFrameEnvelope>, Status>> {
     match frames.handle_frame(frame).await {
-        Ok(Some(response)) => {
-            Some(encode_frame(response).map_err(|error| Status::internal(error.to_string())))
-        }
+        Ok(Some(response)) => Some(
+            encode_response_partitions(response)
+                .map_err(|error| Status::resource_exhausted(error.to_string())),
+        ),
         Ok(None) => None,
         Err(error) => Some(Err(Status::failed_precondition(error))),
     }
+}
+
+fn encode_response_partitions(frame: ClientFrame) -> Result<Vec<ClientFrameEnvelope>, String> {
+    let request_id = frame_request_id(&frame)
+        .ok_or_else(|| "partitioned ClientFrame response requires requestId".to_owned())?
+        .as_str()
+        .to_owned();
+    let envelope = encode_frame(frame)?;
+    let encoded = envelope.encode_to_vec();
+    if encoded.len() <= CLIENT_FRAME_PARTITION_BYTES {
+        return Ok(vec![envelope]);
+    }
+    if encoded.len() > CLIENT_FRAME_LOGICAL_RESPONSE_BYTES {
+        return Err(format!(
+            "reasonKind=client-frame-logical-response-too-large encodedBytes={} limitBytes={}",
+            encoded.len(),
+            CLIENT_FRAME_LOGICAL_RESPONSE_BYTES,
+        ));
+    }
+    let base = envelope
+        .base
+        .clone()
+        .ok_or_else(|| "partitioned ClientFrame response requires base".to_owned())?;
+    let response_digest = format!(
+        "blake3-256:{}",
+        agent_semantic_content_identity::exact_selector_merkle::blake3_content_digest_v1(&encoded)
+            .as_str()
+    );
+    let partition_count = encoded.len().div_ceil(CLIENT_FRAME_PARTITION_BYTES);
+    let partition_count = u32::try_from(partition_count)
+        .map_err(|_| "ClientFrame response partition count exceeds u32".to_owned())?;
+    encoded
+        .chunks(CLIENT_FRAME_PARTITION_BYTES)
+        .enumerate()
+        .map(|(partition_index, bytes)| {
+            Ok(ClientFrameEnvelope {
+                base: Some(base.clone()),
+                frame: Some(
+                    super::generated::client_frame_envelope::Frame::ResponsePartition(
+                        super::generated::ResponsePartitionFrame {
+                            request_id: request_id.clone(),
+                            partition_index: u32::try_from(partition_index).map_err(|_| {
+                                "ClientFrame response partition index exceeds u32".to_owned()
+                            })?,
+                            partition_count,
+                            response_digest: response_digest.clone(),
+                            encoded_response: bytes.to_vec(),
+                        },
+                    ),
+                ),
+            })
+        })
+        .collect()
 }
 
 pub async fn bind_asp_client_grpc_unix(
@@ -152,6 +269,7 @@ pub struct AspClientPendingCall {
     request_id: ClientRequestId,
     receiver: Option<oneshot::Receiver<Result<ClientFrame, String>>>,
     pending: Arc<Mutex<HashMap<ClientRequestId, PendingResponse>>>,
+    response_budget: Option<std::time::Duration>,
 }
 
 impl AspClientPendingCall {
@@ -160,24 +278,42 @@ impl AspClientPendingCall {
         &self.request_id
     }
 
+    #[must_use]
+    pub fn has_response_deadline(&self) -> bool {
+        self.response_budget.is_some()
+    }
+
     pub async fn wait(mut self) -> Result<ClientFrame, String> {
         let receiver = self
             .receiver
             .take()
             .expect("pending ClientFrame call receiver must exist");
-        match tokio::time::timeout(CLIENT_FRAME_RESPONSE_BUDGET, receiver).await {
-            Ok(response) => {
-                response.map_err(|_| "ASP Client Protocol response channel closed".to_owned())?
-            }
-            Err(_) => {
-                self.pending.lock().remove(&self.request_id);
-                Err(format!(
-                    "reasonKind=runtime-client-response-deadline-exceeded requestId={} budgetMs={}",
-                    self.request_id.as_str(),
-                    CLIENT_FRAME_RESPONSE_BUDGET.as_millis(),
-                ))
-            }
+        let response = match self.response_budget {
+            Some(budget) => match tokio::time::timeout(budget, receiver).await {
+                Ok(response) => response,
+                Err(_) => {
+                    self.pending.lock().remove(&self.request_id);
+                    return Err(format!(
+                        "reasonKind=runtime-client-response-deadline-exceeded requestId={} budgetMs={}",
+                        self.request_id.as_str(),
+                        budget.as_millis(),
+                    ));
+                }
+            },
+            None => receiver.await,
+        };
+        response.map_err(|_| "ASP Client Protocol response channel closed".to_owned())?
+    }
+}
+
+fn response_budget_for_frame(frame: &ClientFrame) -> Option<std::time::Duration> {
+    match frame {
+        ClientFrame::Dispatch { method, .. }
+            if classify_client_dispatch(method) == ClientDispatchClass::ColdGenerationAdmission =>
+        {
+            None
         }
+        _ => Some(CLIENT_FRAME_RESPONSE_BUDGET),
     }
 }
 
@@ -216,6 +352,90 @@ impl Drop for ClientResponseReader {
     }
 }
 
+struct ResponsePartitionAssembly {
+    partition_count: u32,
+    response_digest: String,
+    encoded_response: Vec<u8>,
+    next_partition_index: u32,
+}
+
+impl ResponsePartitionAssembly {
+    fn new(partition: &super::generated::ResponsePartitionFrame) -> Result<Self, String> {
+        if partition.partition_count == 0 {
+            return Err("ClientFrame response partition_count must be nonzero".to_owned());
+        }
+        if partition.partition_index != 0 {
+            return Err("ClientFrame response partitions must begin at index zero".to_owned());
+        }
+        Ok(Self {
+            partition_count: partition.partition_count,
+            response_digest: partition.response_digest.clone(),
+            encoded_response: Vec::new(),
+            next_partition_index: 0,
+        })
+    }
+
+    fn push(
+        &mut self,
+        partition: super::generated::ResponsePartitionFrame,
+    ) -> Result<Option<ClientFrame>, String> {
+        if partition.partition_count != self.partition_count
+            || partition.response_digest != self.response_digest
+        {
+            return Err("ClientFrame response partition identity changed".to_owned());
+        }
+        if partition.partition_index != self.next_partition_index {
+            return Err(format!(
+                "ClientFrame response partition out of order: expected={} actual={}",
+                self.next_partition_index, partition.partition_index,
+            ));
+        }
+        if partition.encoded_response.is_empty()
+            || partition.encoded_response.len() > CLIENT_FRAME_PARTITION_BYTES
+        {
+            return Err(format!(
+                "ClientFrame response partition byte budget violated: bytes={} limit={}",
+                partition.encoded_response.len(),
+                CLIENT_FRAME_PARTITION_BYTES,
+            ));
+        }
+        let next_len = self
+            .encoded_response
+            .len()
+            .checked_add(partition.encoded_response.len())
+            .ok_or_else(|| "ClientFrame response byte count overflow".to_owned())?;
+        if next_len > CLIENT_FRAME_LOGICAL_RESPONSE_BYTES {
+            return Err(format!(
+                "ClientFrame logical response byte budget violated: bytes={next_len} limit={CLIENT_FRAME_LOGICAL_RESPONSE_BYTES}"
+            ));
+        }
+        self.encoded_response
+            .extend_from_slice(&partition.encoded_response);
+        self.next_partition_index += 1;
+        if self.next_partition_index != self.partition_count {
+            return Ok(None);
+        }
+        let actual_digest = format!(
+            "blake3-256:{}",
+            agent_semantic_content_identity::exact_selector_merkle::blake3_content_digest_v1(
+                &self.encoded_response,
+            )
+            .as_str()
+        );
+        if actual_digest != self.response_digest {
+            return Err(format!(
+                "ClientFrame response digest mismatch: expected={} actual={actual_digest}",
+                self.response_digest,
+            ));
+        }
+        let envelope = ClientFrameEnvelope::decode(self.encoded_response.as_slice())
+            .map_err(|error| format!("decode partitioned ASP ClientFrame response: {error}"))?;
+        decode_frame(envelope)
+            .map(Some)
+            .map_err(|error| format!("decode partitioned ASP ClientFrame response: {error}"))
+    }
+}
+
 /// Cloneable, bounded, request-id multiplexed transport for one public ASP
 /// Client Protocol bidirectional stream.
 #[derive(Clone)]
@@ -233,6 +453,18 @@ impl AspClientGrpcTransport {
 
     pub async fn connect_unix(socket_path: impl Into<PathBuf>) -> Result<Self, String> {
         let channel = connect_unix_channel(socket_path.into()).await?;
+        Self::connect_channel(channel).await
+    }
+
+    #[cfg(unix)]
+    pub async fn connect_inherited_descriptor(
+        descriptor: std::os::fd::OwnedFd,
+    ) -> Result<Self, String> {
+        let channel = connect_asp_client_grpc_inherited_descriptor(descriptor).await?;
+        Self::connect_channel(channel).await
+    }
+
+    async fn connect_channel(channel: tonic::transport::Channel) -> Result<Self, String> {
         let mut client = AspClientProtocolClient::new(channel);
         let (outbound, receiver) = mpsc::channel(CLIENT_FRAME_TRANSPORT_CAPACITY);
         let mut inbound = tokio::time::timeout(
@@ -252,14 +484,68 @@ impl AspClientGrpcTransport {
             Arc::new(Mutex::new(HashMap::new()));
         let response_pending = Arc::clone(&pending);
         let response_reader = tokio::spawn(async move {
+            let mut assemblies: HashMap<ClientRequestId, ResponsePartitionAssembly> =
+                HashMap::new();
             loop {
-                let response = match inbound.message().await {
-                    Ok(Some(envelope)) => decode_frame(envelope)
-                        .map_err(|error| format!("decode ASP ClientFrame response: {error}")),
-                    Ok(None) => Err("ASP Client Protocol gRPC stream closed".to_owned()),
-                    Err(error) => Err(error.to_string()),
+                let (request_id, response) = match inbound.message().await {
+                    Ok(Some(envelope)) => match envelope.frame {
+                        Some(
+                            super::generated::client_frame_envelope::Frame::ResponsePartition(
+                                partition,
+                            ),
+                        ) => {
+                            let request_id = match ClientRequestId::new(&partition.request_id) {
+                                Ok(request_id) => request_id,
+                                Err(error) => {
+                                    let message = format!(
+                                        "decode ASP ClientFrame response partition requestId: {error}"
+                                    );
+                                    let pending = std::mem::take(&mut *response_pending.lock());
+                                    for (_, sender) in pending {
+                                        let _ = sender.send(Err(message.clone()));
+                                    }
+                                    break;
+                                }
+                            };
+                            let result = if let Some(assembly) = assemblies.get_mut(&request_id) {
+                                assembly.push(partition)
+                            } else {
+                                match ResponsePartitionAssembly::new(&partition) {
+                                    Ok(mut assembly) => {
+                                        let result = assembly.push(partition);
+                                        assemblies.insert(request_id.clone(), assembly);
+                                        result
+                                    }
+                                    Err(error) => Err(error),
+                                }
+                            };
+                            match result {
+                                Ok(Some(frame)) => {
+                                    assemblies.remove(&request_id);
+                                    (Some(request_id), Ok(frame))
+                                }
+                                Ok(None) => continue,
+                                Err(error) => {
+                                    assemblies.remove(&request_id);
+                                    (Some(request_id), Err(error))
+                                }
+                            }
+                        }
+                        _ => {
+                            let response = decode_frame(envelope).map_err(|error| {
+                                format!("decode ASP ClientFrame response: {error}")
+                            });
+                            let request_id =
+                                response.as_ref().ok().and_then(frame_request_id).cloned();
+                            (request_id, response)
+                        }
+                    },
+                    Ok(None) => (
+                        None,
+                        Err("ASP Client Protocol gRPC stream closed".to_owned()),
+                    ),
+                    Err(error) => (None, Err(error.to_string())),
                 };
-                let request_id = response.as_ref().ok().and_then(frame_request_id).cloned();
                 if let Some(request_id) = request_id {
                     if let Some(sender) = response_pending.lock().remove(&request_id) {
                         let _ = sender.send(response);
@@ -291,6 +577,7 @@ impl AspClientGrpcTransport {
     /// This is the sole supported way to retain a request while a correlated
     /// cancellation frame is sent on the same bounded gRPC session.
     pub async fn begin_call(&self, frame: ClientFrame) -> Result<AspClientPendingCall, String> {
+        let response_budget = response_budget_for_frame(&frame);
         let request_id = frame_request_id(&frame)
             .cloned()
             .ok_or_else(|| "ASP Client Protocol call frame requires requestId".to_owned())?;
@@ -327,6 +614,7 @@ impl AspClientGrpcTransport {
             request_id,
             receiver: Some(receiver),
             pending: Arc::clone(&self.pending),
+            response_budget,
         })
     }
 
@@ -404,3 +692,7 @@ async fn connect_unix_channel(socket_path: PathBuf) -> Result<tonic::transport::
         })?
         .map_err(|error| error.to_string())
 }
+
+#[cfg(test)]
+#[path = "../../tests/unit/grpc_transport.rs"]
+mod tests;

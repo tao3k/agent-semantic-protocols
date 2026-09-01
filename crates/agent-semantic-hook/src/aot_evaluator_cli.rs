@@ -79,18 +79,7 @@ pub fn main_entry() {
 }
 
 fn emit_runtime_identity() {
-    let result = crate::aot_compiler::compile_embedded_hook_policy_bundle()
-        .and_then(|bundle| {
-            serde_json::from_slice::<serde_json::Value>(&bundle)
-                .map_err(|error| format!("decode embedded Hook policy identity: {error}"))
-        })
-        .and_then(|bundle| {
-            bundle
-                .get("generationDigest")
-                .and_then(serde_json::Value::as_str)
-                .map(str::to_owned)
-                .ok_or_else(|| "embedded Hook policy identity is missing its digest".to_owned())
-        });
+    let result = crate::aot_compiler::embedded_hook_policy_content_digest();
     match result {
         Ok(policy_content_digest) => println!(
             "{}",

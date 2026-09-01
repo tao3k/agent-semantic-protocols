@@ -101,6 +101,8 @@ pub struct RuntimeProviderSearchReceipt {
     pub provider_digest: String,
     pub index_artifact_digest: String,
     pub candidate_count: usize,
+    pub selector_projection_budget: usize,
+    pub projected_owner_count: usize,
     pub selectors: Vec<String>,
     pub owner_paths: Vec<String>,
     pub resident_read_elapsed_micros: u64,
@@ -120,6 +122,8 @@ impl RuntimeProviderSearchReceipt {
             || self.root_digest.is_empty()
             || self.provider_digest.is_empty()
             || self.index_artifact_digest.is_empty()
+            || self.selector_projection_budget == 0
+            || self.projected_owner_count > self.selector_projection_budget
             || self.elapsed_micros
                 != self
                     .resident_read_elapsed_micros

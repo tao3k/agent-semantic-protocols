@@ -349,5 +349,5 @@ same compact capability.  The root runner remains a command wrapper and
 snapshot/token comparator; language providers own all parser compact
 implementation.  Provider commands may use manifest placeholders such as
 ={repoRoot}= to avoid PATH drift, as the Python variant does with
-=uv run --project {repoRoot}/languages/python-lang-project-harness --frozen
+=uv run --project {repoRoot}/languages/asp-python --frozen
 asp-python=.

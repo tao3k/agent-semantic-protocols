@@ -10,8 +10,7 @@ use agent_semantic_client_protocol::{
 use agent_semantic_client_server::{
     AspClientCancelFuture, AspClientDispatchError, AspClientDispatchFuture,
     AspClientDispatchRequest, AspClientDispatcher, AspClientFrameService, AspClientGrpcTransport,
-    CLIENT_FRAME_SESSION_CAPACITY, CLIENT_FRAME_SESSION_CONTROL_RESERVE, bind_asp_client_grpc_unix,
-    serve_asp_client_grpc_unix,
+    CLIENT_FRAME_SESSION_CAPACITY, bind_asp_client_grpc_unix, serve_asp_client_grpc_unix,
 };
 use serde_json::json;
 
@@ -21,6 +20,15 @@ struct ExactQueryDispatcher {
 
 impl AspClientDispatcher for ExactQueryDispatcher {
     fn dispatch(&self, request: AspClientDispatchRequest) -> AspClientDispatchFuture {
+        if request.method == "test.large-response" {
+            return Box::pin(async move {
+                Ok(json!({
+                    "schemaId": "agent.semantic-protocols.test-large-response",
+                    "schemaVersion": "1",
+                    "source": "x".repeat(4 * 1024 * 1024 + 64 * 1024),
+                }))
+            });
+        }
         if request.method == "test.cancellation-probe" {
             let cancelled = Arc::new(tokio::sync::Notify::new());
             self.cancellation_by_request
@@ -117,6 +125,20 @@ fn exact_query_frame(request_id: String) -> ClientFrame {
     }
 }
 
+fn large_response_frame() -> ClientFrame {
+    ClientFrame::Dispatch {
+        base: base(),
+        request_id: ClientRequestId::new("large-response").expect("request id"),
+        project_root: "/workspace".to_owned(),
+        client_info: ClientInfo {
+            name: "thin-cli".to_owned(),
+            version: "1".to_owned(),
+        },
+        method: "test.large-response".to_owned(),
+        params: json!({}),
+    }
+}
+
 fn catalog() -> ClientProtocolCatalog {
     ClientProtocolCatalog {
         schema_id: CLIENT_CATALOG_SCHEMA_ID.to_owned(),
@@ -198,6 +220,20 @@ async fn grpc_unix_exact_query_returns_typed_terminal() {
         "agent.semantic-protocols.asp-client-exact-query-failure"
     );
     assert_eq!(error["terminal"]["phase"], "resident-selector-read");
+
+    let large_terminal = client
+        .call(large_response_frame())
+        .await
+        .expect("partitioned response terminal");
+    let ClientFrame::Response {
+        outcome: ClientOutcome::Ready,
+        result: Some(result),
+        ..
+    } = large_terminal
+    else {
+        panic!("expected typed large response terminal");
+    };
+    assert!(result["source"].as_str().expect("source").len() > 4 * 1024 * 1024);
 
     let mut sequential_nanos = Vec::with_capacity(10);
     for index in 0..10 {

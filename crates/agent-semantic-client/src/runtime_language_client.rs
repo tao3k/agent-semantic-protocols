@@ -12,7 +12,7 @@ use agent_semantic_client_protocol::{
     ClientWorkspaceIdentity, GRAPH_EVALUATE_METHOD, GRAPH_TIMELINE_METHOD,
     LIVE_CORPUS_CACHE_STATE_METHOD, LiveCorpusCacheStateReceipt, LiveCorpusCacheStateRequest,
     SCHEMA_BUNDLE_METHOD, SCHEMA_BUNDLE_REQUEST_SCHEMA_ID, SCHEMA_VERSION, SchemaBundleRequest,
-    SchemaBundleResponse,
+    SchemaBundleResponse, WORKSPACE_GENERATION_ENSURE_READY_METHOD,
 };
 use agent_semantic_client_server::{
     AspClientGrpcTransport, CLIENT_FRAME_SESSION_CAPACITY, CLIENT_FRAME_SESSION_CONTROL_RESERVE,
@@ -20,6 +20,18 @@ use agent_semantic_client_server::{
 
 /// Monotonic request identity shared by all warm client sessions in a process.
 static REQUEST_SEQUENCE: AtomicU64 = AtomicU64::new(1);
+#[cfg(unix)]
+static HOST_RUNTIME_DESCRIPTOR_CONSUMED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+#[cfg(unix)]
+pub const ASP_RUNTIME_CLIENT_FD_ENV: &str = "ASP_RUNTIME_CLIENT_FD";
+
+/// Whether the Host transferred a connected Runtime capability to this
+/// process. The CLI uses this only to bypass pathname lifecycle probes;
+/// `new_from_host_capability` still validates and consumes the descriptor.
+pub fn host_runtime_transport_capability_declared() -> bool {
+    std::env::var_os(ASP_RUNTIME_CLIENT_FD_ENV).is_some()
+}
 
 /// A multiplexed gRPC session pinned to one published Runtime endpoint.
 ///
@@ -30,13 +42,13 @@ struct CachedClientSession {
     transport: Arc<AspClientGrpcTransport>,
     session_id: ClientSessionId,
     initialized: tokio::sync::OnceCell<()>,
+    generation_ready: tokio::sync::OnceCell<()>,
 }
 
 const SESSION_REGISTRY_CAPACITY: usize = 32;
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub(crate) struct SessionKey {
-    socket_path: PathBuf,
     workspace_identity: String,
     owner_epoch: u64,
     binding_token: String,
@@ -55,7 +67,6 @@ pub struct ClientBackpressureProbeReceipt {
 impl SessionKey {
     fn from_endpoint(endpoint: &RuntimeServerEndpoint, workspace_identity: String) -> Self {
         Self {
-            socket_path: PathBuf::from(&endpoint.data_plane_socket_path),
             workspace_identity,
             owner_epoch: endpoint.owner_epoch,
             binding_token: endpoint.binding_token.clone(),
@@ -67,7 +78,6 @@ impl SessionKey {
     #[cfg(test)]
     pub(crate) fn fixture(identity: u64) -> Self {
         Self {
-            socket_path: PathBuf::from(format!("/tmp/asp-runtime-language-{identity}.sock")),
             workspace_identity: format!("workspace-{identity}"),
             owner_epoch: identity + 1,
             binding_token: format!("binding-{identity}"),
@@ -237,6 +247,8 @@ where
 
 async fn session_for_endpoint(
     key: &SessionKey,
+    published_socket_path: &std::path::Path,
+    transport_capability: &AspClientTransportCapability,
 ) -> Result<
     (
         Arc<CachedClientSession>,
@@ -244,8 +256,25 @@ async fn session_for_endpoint(
     ),
     String,
 > {
+    let published_socket_path = published_socket_path.to_path_buf();
     session_for_key(session_registry(), key, || async {
-        let transport = Arc::new(AspClientGrpcTransport::connect_unix(&key.socket_path).await?);
+        let transport = Arc::new(match transport_capability {
+            AspClientTransportCapability::PublishedUnix => {
+                AspClientGrpcTransport::connect_unix(published_socket_path).await?
+            }
+            #[cfg(unix)]
+            AspClientTransportCapability::InheritedDescriptor(descriptor) => {
+                let descriptor = descriptor
+                    .lock()
+                    .map_err(|_| "inherited Runtime descriptor capability poisoned".to_owned())?
+                    .take()
+                    .ok_or_else(|| {
+                        "reasonKind=transport-unavailable inherited Runtime descriptor capability was already consumed"
+                            .to_owned()
+                    })?;
+                AspClientGrpcTransport::connect_inherited_descriptor(descriptor).await?
+            }
+        });
         Ok::<_, String>(Arc::new(CachedClientSession {
             transport,
             session_id: ClientSessionId::new(format!(
@@ -254,6 +283,7 @@ async fn session_for_endpoint(
                 REQUEST_SEQUENCE.fetch_add(1, Ordering::Relaxed)
             ))?,
             initialized: tokio::sync::OnceCell::new(),
+            generation_ready: tokio::sync::OnceCell::new(),
         }))
     })
     .await
@@ -267,9 +297,16 @@ async fn evict_session(
 }
 
 /// ASP Client command transport to an already-published ASP Server endpoint.
+enum AspClientTransportCapability {
+    PublishedUnix,
+    #[cfg(unix)]
+    InheritedDescriptor(std::sync::Mutex<Option<std::os::fd::OwnedFd>>),
+}
+
 pub struct AspClient {
     state_home: PathBuf,
     project_root: PathBuf,
+    transport_capability: AspClientTransportCapability,
 }
 
 impl AspClient {
@@ -278,6 +315,74 @@ impl AspClient {
         Self {
             state_home: state_home.into(),
             project_root: project_root.into(),
+            transport_capability: AspClientTransportCapability::PublishedUnix,
+        }
+    }
+
+    /// Select the Host-published transport capability exactly once.
+    ///
+    /// Outside a sandbox the absence of `ASP_RUNTIME_CLIENT_FD` selects the
+    /// endpoint's published Unix binding. A sandbox Host transfers an already
+    /// connected descriptor and sets the variable to that descriptor number;
+    /// malformed, closed, or replayed capabilities fail before socket I/O.
+    #[cfg(unix)]
+    pub fn new_from_host_capability(
+        state_home: impl Into<PathBuf>,
+        project_root: impl Into<PathBuf>,
+    ) -> Result<Self, String> {
+        let Ok(raw_descriptor) = std::env::var(ASP_RUNTIME_CLIENT_FD_ENV) else {
+            return Ok(Self::new(state_home, project_root));
+        };
+        let raw_descriptor = raw_descriptor.parse::<std::os::fd::RawFd>().map_err(|_| {
+            format!(
+                "reasonKind=transport-unavailable {ASP_RUNTIME_CLIENT_FD_ENV} must be an open descriptor number"
+            )
+        })?;
+        if raw_descriptor < 3 {
+            return Err(format!(
+                "reasonKind=transport-unavailable {ASP_RUNTIME_CLIENT_FD_ENV} must not alias stdin/stdout/stderr"
+            ));
+        }
+        if HOST_RUNTIME_DESCRIPTOR_CONSUMED.swap(true, Ordering::AcqRel) {
+            return Err(
+                "reasonKind=transport-unavailable inherited Runtime descriptor capability was replayed"
+                    .to_owned(),
+            );
+        }
+        // SAFETY: the Host capability contract transfers sole ownership of an
+        // open descriptor >= 3 to this process. F_GETFD verifies it is open
+        // before OwnedFd assumes responsibility for closing it.
+        if unsafe { libc::fcntl(raw_descriptor, libc::F_GETFD) } < 0 {
+            return Err(format!(
+                "reasonKind=transport-unavailable inherited Runtime descriptor is not open: {}",
+                std::io::Error::last_os_error()
+            ));
+        }
+        use std::os::fd::FromRawFd;
+        // SAFETY: validated above and guarded against a second ownership claim.
+        let descriptor = unsafe { std::os::fd::OwnedFd::from_raw_fd(raw_descriptor) };
+        Ok(Self::new_with_inherited_descriptor(
+            state_home,
+            project_root,
+            descriptor,
+        ))
+    }
+
+    /// Create a sandbox-safe client from a Host-granted connected Runtime
+    /// descriptor. The descriptor is consumed exactly once when the bounded
+    /// gRPC session is created; failure never falls back to a pathname.
+    #[cfg(unix)]
+    pub fn new_with_inherited_descriptor(
+        state_home: impl Into<PathBuf>,
+        project_root: impl Into<PathBuf>,
+        descriptor: std::os::fd::OwnedFd,
+    ) -> Self {
+        Self {
+            state_home: state_home.into(),
+            project_root: project_root.into(),
+            transport_capability: AspClientTransportCapability::InheritedDescriptor(
+                std::sync::Mutex::new(Some(descriptor)),
+            ),
         }
     }
 
@@ -344,14 +449,28 @@ impl AspClient {
         route: &str,
         params: serde_json::Value,
     ) -> Result<ClientFrame, String> {
-        self.dispatch_method(format!("{language_id}.{route}"), params)
-            .await
+        self.dispatch_method_with_generation_preflight(
+            format!("{language_id}.{route}"),
+            params,
+            true,
+        )
+        .await
     }
 
     pub(crate) async fn dispatch_method(
         &self,
         method: String,
         params: serde_json::Value,
+    ) -> Result<ClientFrame, String> {
+        self.dispatch_method_with_generation_preflight(method, params, false)
+            .await
+    }
+
+    async fn dispatch_method_with_generation_preflight(
+        &self,
+        method: String,
+        params: serde_json::Value,
+        require_generation: bool,
     ) -> Result<ClientFrame, String> {
         let endpoint =
             match agent_semantic_client_db::read_runtime_server_endpoint(&self.state_home).await? {
@@ -365,7 +484,12 @@ impl AspClient {
         let workspace_identity =
             agent_semantic_client_db::AgentSessionRegistry::workspace_id(&self.project_root)?;
         let session_key = SessionKey::from_endpoint(&endpoint, workspace_identity.clone());
-        let (session, session_cell) = session_for_endpoint(&session_key).await?;
+        let (session, session_cell) = session_for_endpoint(
+            &session_key,
+            std::path::Path::new(&endpoint.data_plane_socket_path),
+            &self.transport_capability,
+        )
+        .await?;
         let project_root = self.project_root.display().to_string();
         let client_info = ClientInfo {
             name: "asp-client".to_owned(),
@@ -391,6 +515,58 @@ impl AspClient {
         if let Err(error) = initialize_result {
             evict_session(&session_key, &session_cell).await;
             return Err(error);
+        }
+        if require_generation {
+            let generation_ready = session
+                .generation_ready
+                .get_or_try_init(|| async {
+                    let base =
+                        frame_base(session.session_id.clone(), workspace_identity.clone())?;
+                    let terminal = session
+                        .transport
+                        .call(ClientFrame::Dispatch {
+                            base,
+                            request_id: request_id("ensure-generation-ready")?,
+                            project_root: project_root.clone(),
+                            client_info: client_info.clone(),
+                            method: WORKSPACE_GENERATION_ENSURE_READY_METHOD.to_owned(),
+                            params: serde_json::json!({}),
+                        })
+                        .await?;
+                    let ClientFrame::Response {
+                        outcome: agent_semantic_client_protocol::ClientOutcome::Ready,
+                        result: Some(payload),
+                        error: None,
+                        ..
+                    } = terminal
+                    else {
+                        return Err(format!(
+                            "workspace generation ensure-ready did not return one Ready terminal: {terminal:?}"
+                        ));
+                    };
+                    let receipt = serde_json::from_value::<
+                        agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmissionReceipt,
+                    >(payload)
+                    .map_err(|error| {
+                        format!("decode workspace generation ensure-ready receipt: {error}")
+                    })?;
+                    receipt.validate()?;
+                    if receipt.state
+                        != agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmissionState::Ready
+                        || receipt.commit.is_none()
+                    {
+                        return Err(format!(
+                            "workspace generation ensure-ready returned a non-ready admission: state={:?} attempt={}",
+                            receipt.state, receipt.attempt
+                        ));
+                    }
+                    Ok::<(), String>(())
+                })
+                .await;
+            if let Err(error) = generation_ready {
+                evict_session(&session_key, &session_cell).await;
+                return Err(error.clone());
+            }
         }
         let base = frame_base(session.session_id.clone(), workspace_identity)?;
         let result = session
@@ -687,14 +863,11 @@ impl AspClient {
         )
     }
 
-    /// Evaluate a graph request through the server-owned ClientFrame route.
-    ///
-    /// Graph algorithms are an internal Runtime Server service; the client
-    /// only submits the versioned JSON payload and decodes the typed result.
-    pub async fn graphs_evaluate(
+    /// Evaluate intent over the immutable resident graph bound by the Runtime.
+    pub async fn graph_evaluate(
         &self,
         params: serde_json::Value,
-    ) -> Result<agent_semantic_search_projection::GraphTurboResultPacketV1, String> {
+    ) -> Result<agent_semantic_search_projection::ResidentGraphEvaluationResultV1, String> {
         decode_graph_evaluation_response(
             self.dispatch_method(GRAPH_EVALUATE_METHOD.to_owned(), params)
                 .await?,
@@ -730,15 +903,15 @@ impl AspClient {
 
 pub(crate) fn decode_graph_evaluation_response(
     frame: ClientFrame,
-) -> Result<agent_semantic_search_projection::GraphTurboResultPacketV1, String> {
+) -> Result<agent_semantic_search_projection::ResidentGraphEvaluationResultV1, String> {
     match frame {
         ClientFrame::Response {
             outcome: agent_semantic_client_protocol::ClientOutcome::Ready,
             result: Some(result),
             error: None,
             ..
-        } => agent_semantic_search_projection::GraphTurboResultPacketV1::from_value(result)
-            .map_err(|error| format!("decode graph evaluation response: {error}")),
+        } => agent_semantic_search_projection::ResidentGraphEvaluationResultV1::from_value(result)
+            .map_err(|error| format!("decode resident graph evaluation response: {error}")),
         ClientFrame::Response { outcome, error, .. } => Err(format!(
             "graph evaluation dispatch failed: outcome={outcome:?} error={}",
             error.unwrap_or(serde_json::Value::Null)

@@ -540,7 +540,7 @@ import organization, or semantic cleanups must be separate capabilities.
 
 Julia AST patch support should use JuliaSyntax-derived facts and the same
 facade/provider contract as search and query.  The compiled =asp-julia=
-owns provider identity; =julia-project-harness.jl= is only a source-provider
+owns provider identity; =asp-julia.jl= is only a source-provider
 development fallback.
 
 * Interaction with RFC 003 mutation boundary

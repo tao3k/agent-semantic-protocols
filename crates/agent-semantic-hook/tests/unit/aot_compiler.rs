@@ -123,3 +123,14 @@ fn canonical_config_rules_are_all_projected_into_the_aot_generation() {
         ])
     );
 }
+
+#[test]
+fn embedded_identity_projection_matches_the_compiled_generation() {
+    let expected = super::embedded_hook_policy_content_digest()
+        .expect("project embedded Hook policy content identity");
+    let bundle =
+        super::compile_embedded_hook_policy_bundle().expect("compile embedded Hook policy bundle");
+    let bundle: serde_json::Value =
+        serde_json::from_slice(&bundle).expect("decode embedded Hook policy bundle");
+    assert_eq!(bundle["generationDigest"], expected);
+}
