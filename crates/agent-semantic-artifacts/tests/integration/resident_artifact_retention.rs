@@ -58,10 +58,9 @@ async fn resident_publication_slots_retain_at_most_active_and_healthy() {
         std::fs::create_dir_all(publication).expect("publication directory");
         std::fs::write(publication.join("asp"), b"runtime").expect("publication artifact");
     }
-    let slots =
-        agent_semantic_artifacts::runtime_artifact_catalog::RuntimeArtifactSlotAuthority::new(
-            &resident_root,
-        );
+    let slots = agent_semantic_artifacts::runtime_artifact_slots::RuntimeArtifactSlotAuthority::new(
+        &resident_root,
+    );
 
     slots.commit_ready(&first).await.expect("initial commit");
     assert_eq!(slots.active_target().await.unwrap().unwrap(), first);

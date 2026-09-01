@@ -194,10 +194,14 @@ theorem distinct_child_claims_preserve_generation_and_subject_uniqueness
   simp [claim, hDistinct, hLeftPositive, hRightPositive]
 
 structure ResidentAuthority where
-  activationGeneration : Nat
-  appliedGeneration : Nat
-  launcherGeneration : Nat
-  endpointGeneration : Nat
+  artifactDigest : Nat
+  publicationNonce : Nat
+  appliedArtifactDigest : Nat
+  appliedPublicationNonce : Nat
+  launcherArtifactDigest : Nat
+  launcherPublicationNonce : Nat
+  endpointArtifactDigest : Nat
+  endpointPublicationNonce : Nat
   launcherAbsolute : Bool
   spawnArgvPresent : Bool
   endpointsSameTransaction : Bool
@@ -214,10 +218,14 @@ def legacyRuntimeStatusAccepts (status : RuntimeStatusAuthority) : Bool :=
   status.healthy && status.runtimeDigestMatches
 
 def residentAuthorityValid (authority : ResidentAuthority) : Bool :=
-  authority.activationGeneration > 0 &&
-    authority.activationGeneration == authority.appliedGeneration &&
-    authority.activationGeneration == authority.launcherGeneration &&
-    authority.activationGeneration == authority.endpointGeneration &&
+  authority.artifactDigest > 0 &&
+    authority.publicationNonce > 0 &&
+    authority.artifactDigest == authority.appliedArtifactDigest &&
+    authority.publicationNonce == authority.appliedPublicationNonce &&
+    authority.artifactDigest == authority.launcherArtifactDigest &&
+    authority.publicationNonce == authority.launcherPublicationNonce &&
+    authority.artifactDigest == authority.endpointArtifactDigest &&
+    authority.publicationNonce == authority.endpointPublicationNonce &&
     authority.launcherAbsolute &&
     authority.spawnArgvPresent &&
     authority.endpointsSameTransaction &&
@@ -239,15 +247,19 @@ theorem old_healthy_matching_digest_without_transaction_is_false_positive :
       currentV1RuntimeStatusAccepts status = false := by
   decide
 
-theorem old_healthy_matching_digest_cross_generation_is_false_positive :
+theorem old_healthy_matching_digest_cross_publication_is_false_positive :
     let status : RuntimeStatusAuthority := {
       healthy := true
       runtimeDigestMatches := true
       residentTransaction := some {
-        activationGeneration := 2
-        appliedGeneration := 2
-        launcherGeneration := 1
-        endpointGeneration := 2
+        artifactDigest := 2
+        publicationNonce := 2
+        appliedArtifactDigest := 2
+        appliedPublicationNonce := 2
+        launcherArtifactDigest := 2
+        launcherPublicationNonce := 1
+        endpointArtifactDigest := 2
+        endpointPublicationNonce := 2
         launcherAbsolute := true
         spawnArgvPresent := true
         endpointsSameTransaction := true

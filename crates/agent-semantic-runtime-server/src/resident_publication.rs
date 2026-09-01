@@ -67,7 +67,7 @@ impl ResidentPublicationPaths {
 #[derive(Clone, Debug)]
 pub struct AtomicResidentPublisher {
     paths: ResidentPublicationPaths,
-    slots: agent_semantic_artifacts::runtime_artifact_catalog::RuntimeArtifactSlotAuthority,
+    slots: agent_semantic_artifacts::runtime_artifact_slots::RuntimeArtifactSlotAuthority,
 }
 
 impl AtomicResidentPublisher {
@@ -76,7 +76,7 @@ impl AtomicResidentPublisher {
         Self {
             paths: ResidentPublicationPaths::new(root.clone()),
             slots:
-                agent_semantic_artifacts::runtime_artifact_catalog::RuntimeArtifactSlotAuthority::new(
+                agent_semantic_artifacts::runtime_artifact_slots::RuntimeArtifactSlotAuthority::new(
                     root,
                 ),
         }

@@ -657,7 +657,7 @@ asp graph render --packet - --view seeds
 All providers under =languages/= use that shell-out boundary when they need the
 shared prompt-facing renderer.  They must not add a compile-time dependency on
 =agent-semantic-client= for graph rendering, including
-=languages/rust-lang-project-harness=.  In local-cache and cloud-cache hit
+=languages/asp-rust=.  In local-cache and cloud-cache hit
 paths, =agent-semantic-client= may call the Rust graph-render library directly over
 validated packet artifacts or cache rows.  That makes provider process startup
 and renderer process startup avoidable on repeated searches without coupling
@@ -1573,7 +1573,7 @@ local-cache path:
   graph rendering algorithms as fallback.  Their renderer code is limited to a
   shell-out adapter plus tests for command shape, stdin packet forwarding, and
   missing-binary failure.
-- =languages/rust-lang-project-harness= does not depend on the
+- =languages/asp-rust= does not depend on the
   =agent-semantic-client= crate for graph rendering; it uses the same process
   boundary as TypeScript and Python.
 - =asp <rust|typescript|python> <search|query|check|agent

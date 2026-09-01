@@ -9,7 +9,7 @@ async fn built_asp_install_canonicalizes_pending_identity_and_publishes_a_new_ge
     let first = install(state_home.path());
     assert_success(&first, "seed isolated production state");
 
-    let activation = agent_semantic_artifacts::runtime_artifact_publication::
+    let activation = agent_semantic_artifacts::runtime_artifact_activation::
         runtime_artifact_activation_event_path(state_home.path());
     let mut event: serde_json::Value =
         serde_json::from_slice(&fs::read(&activation).expect("seed activation receipt"))
@@ -31,7 +31,7 @@ async fn built_asp_install_canonicalizes_pending_identity_and_publishes_a_new_ge
     }
     fs::write(&activation, serde_json::to_vec_pretty(&event).unwrap())
         .expect("seed raw activation identity");
-    let migrated_event = agent_semantic_artifacts::runtime_artifact_publication::read_runtime_artifact_activation_event(
+    let migrated_event = agent_semantic_artifacts::runtime_artifact_activation::read_runtime_artifact_activation_event(
         state_home.path(),
     )
     .await
@@ -54,15 +54,14 @@ async fn built_asp_install_canonicalizes_pending_identity_and_publishes_a_new_ge
             .as_str()
             .is_some_and(|value| value.starts_with("blake3-256:"))
     );
-    assert!(
-        committed["activationGeneration"]
-            .as_u64()
-            .is_some_and(|generation| generation > migrated_event.activation_generation)
+    assert_ne!(
+        committed["publicationNonce"].as_str(),
+        Some(migrated_event.publication_nonce.as_str())
     );
     assert_eq!(
         committed["artifactPath"].as_str(),
         Some(migrated_event.artifact_path.to_string_lossy().as_ref()),
-        "same content must reuse one immutable artifact while publishing a newer generation"
+        "same content must reuse one immutable artifact while publishing a distinct publication"
     );
     assert!(!state_home.path().join("runtime/resident/active").exists());
     assert!(!state_home.path().join("runtime/resident/healthy").exists());
@@ -77,7 +76,7 @@ async fn built_asp_install_canonicalizes_pending_identity_and_publishes_a_new_ge
     malformed["artifactDigest"] = serde_json::Value::String("NOT-A-DIGEST".to_owned());
     fs::write(&activation, serde_json::to_vec_pretty(&malformed).unwrap())
         .expect("seed malformed activation identity");
-    let error = agent_semantic_artifacts::runtime_artifact_publication::read_runtime_artifact_activation_event(
+    let error = agent_semantic_artifacts::runtime_artifact_activation::read_runtime_artifact_activation_event(
         state_home.path(),
     )
     .await

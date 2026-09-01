@@ -15,7 +15,7 @@ fn provider_lock_serializes_canonical_artifact_digest_without_legacy_generation_
         &path,
         &ProviderInstallLock {
             schema_id: "asp.provider-install-lock.v1",
-            scope: "global",
+            scope: "state-home",
             language_id: "python",
             provider_id: "asp-python",
             source_kind: "develop-workspace-tree",
@@ -149,61 +149,15 @@ fn external_register_fixture_resolves_identity_without_caller_supplied_binary() 
         .expect("external provider identity");
     assert_eq!(provider_id, "external-provider");
 }
-fn install_scope_args(values: &[&str]) -> Vec<String> {
-    values.iter().map(|value| (*value).to_string()).collect()
-}
-
 #[test]
-fn install_language_defaults_to_global_scope() {
-    let parsed = super::parse_install_args(&[]).expect("default global install scope");
-    assert_eq!(parsed.scope, super::InstallScope::Global);
-}
-
-#[test]
-fn install_language_accepts_explicit_global_scope() {
-    let parsed =
-        super::parse_install_args(&install_scope_args(&["--global"])).expect("global scope");
-    assert_eq!(parsed.scope, super::InstallScope::Global);
-}
-
-#[test]
-fn install_language_requires_explicit_canonical_project_resolution() {
-    let current = std::env::current_dir()
-        .expect("current directory")
-        .canonicalize()
-        .expect("canonical current directory");
-    let parsed = super::parse_install_args(&install_scope_args(&[
-        "--project",
-        current.to_str().expect("UTF-8 project root"),
-    ]))
-    .expect("project scope");
-    assert_eq!(
-        parsed.scope,
-        super::InstallScope::Project {
-            root: current.clone()
-        }
-    );
-
-    let conflict = super::parse_install_args(&install_scope_args(&["--global", "--project", "."]))
-        .expect_err("global and project must conflict");
-    assert!(conflict.contains("cannot be used with"));
-}
-
-#[test]
-fn install_language_rejects_positional_and_workspace_legacy_scope() {
-    assert!(super::parse_install_args(&install_scope_args(&["."])).is_err());
-    assert!(super::parse_install_args(&install_scope_args(&["--workspace", "."])).is_err());
-}
-
-#[test]
-fn global_provider_state_is_separate_from_runtime_bin_and_project_state() {
+fn provider_state_home_is_separate_from_runtime_bin() {
     let state_home = std::env::temp_dir().join(format!(
         "asp-install-scope-{}-{}",
         std::process::id(),
         std::thread::current().name().unwrap_or("unnamed")
     ));
-    let provider_root = super::canonical_global_provider_state_root_from(&state_home)
-        .expect("global provider root");
+    let provider_root =
+        super::canonical_provider_state_root_from(&state_home).expect("State Home provider root");
     assert_eq!(
         provider_root,
         state_home

@@ -32,7 +32,7 @@ CORPUS_CONFIGS = (
     CorpusConfig(
         language="rust",
         corpus_dir=REPO_ROOT
-        / "languages/rust-lang-project-harness/tree-sitter/tree-sitter-rust/query-corpus",
+        / "languages/asp-rust/tree-sitter/tree-sitter-rust/query-corpus",
         extension="rs",
     ),
     CorpusConfig(

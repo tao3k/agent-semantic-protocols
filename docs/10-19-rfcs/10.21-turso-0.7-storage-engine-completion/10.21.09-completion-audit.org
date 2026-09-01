@@ -7,7 +7,7 @@
 |-----------+----------+-------|
 | Sole storage owner | Cargo metadata resolves the implementation at =crates/agent-semantic-client-db/Cargo.toml= | complete |
 | No competing crate | Cargo metadata contains no =agent-semantic-client-store= package | complete |
-| No Rust language-harness domain dependency | =languages/rust-lang-project-harness= metadata contains none of =agent-semantic-content-identity=, =agent-semantic-client-db=, or =agent-semantic-client-store= | complete |
+| No Rust language-harness domain dependency | =languages/asp-rust= metadata contains none of =agent-semantic-content-identity=, =agent-semantic-client-db=, or =agent-semantic-client-store= | complete |
 | Stable client DB schema | Both schema constants are exactly =1=; complete v1 is a no-op, incomplete v1 stabilizes transactionally, and future versions fail closed | complete |
 | Stable Turso line | direct dependency is =turso ^0.7.0=, lockfile resolves v0.7.0, default features are disabled, and only =fts= plus =sync= are enabled | complete |
 

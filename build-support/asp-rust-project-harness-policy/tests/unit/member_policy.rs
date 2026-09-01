@@ -1,4 +1,6 @@
-use asp_rust_project_harness_policy::asp_workspace_member_policies;
+use asp_rust_project_harness_policy::{
+    asp_workspace_member_policies, validate_asp_rust_project_harness_member_manifest,
+};
 
 #[test]
 fn central_policy_registry_contains_migrated_member_crates() {
@@ -23,8 +25,23 @@ fn central_policy_registry_contains_migrated_member_crates() {
             "agent-semantic-schema-manager",
             "agent-semantic-tree-sitter",
             "agent-semantic-runtime",
+            "orgize",
         ]
     );
+}
+
+#[test]
+fn every_member_uses_the_constant_time_build_contract() {
+    let repository_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    for policy in asp_workspace_member_policies() {
+        let receipt = validate_asp_rust_project_harness_member_manifest(
+            policy.package_name,
+            &repository_root.join(policy.crate_root),
+        )
+        .unwrap_or_else(|error| panic!("{}: {error}", policy.package_name));
+        assert_eq!(receipt.package_name, policy.package_name);
+        assert_eq!(receipt.policy_digest, policy.contract_digest());
+    }
 }
 
 #[test]

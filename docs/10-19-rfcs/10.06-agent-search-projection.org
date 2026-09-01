@@ -744,6 +744,34 @@ or lifecycle safety.  Both are required for qualification.
 Qualification consumes that receipt without mutation.  Any attempt to build,
 restore an unqualified materialization, invoke a provider, or repair a missing
 projection while measuring search/query latency is a typed terminal failure.
+A benchmark case MUST run in a distinct Runtime workspace identity materialized
+from the immutable locked checkout.  On filesystems that support copy-on-write,
+the runner uses a clone; elsewhere it uses an immutable hard-link tree and only
+copies an individual file when the filesystem cannot link it.  The canonical
+State Home checkout is never the cache-mutation target.
+
+The cache matrix is explicit and ordered: =cold-build= admits a new isolated
+workspace generation once; =cold-load= evicts only that exact resident
+generation and client session before reopening the same immutable generation;
+=warm-read= reuses the exact admitted generation without mutation; and
+=released= evicts the exact benchmark generation and client session before the
+isolated workspace is removed.  Global cache deletion, source-workspace
+mutation, provider restart, and label-only cache keys are forbidden.  Every
+cache transition is bound to resource, provider, language, artifact,
+generation, and root identity and fails closed on drift.
+
+Each gRPC ClientFrame session has capacity 32 with one slot reserved for
+control.  At 31 outstanding data calls, the next data admission returns typed
+=client-session-backpressure= with =retryAdmitted=false=; it never waits behind
+an unbounded sender.  The reserved slot lets all 31 admitted calls receive
+correlated cancellation terminals, so saturation cannot deadlock cancellation.
+
+The qualification receipt carries the actual public ClientFrame operation IDs,
+typed terminal states, Runtime Merkle owner proof, and zero-work resident read
+counters.  It MUST NOT synthesize telemetry digests that have no Runtime event
+producer.  Correlation is proved by the real operation/terminal identity and
+the content-bound generation/root/selector tuple; a fabricated digest is not
+qualification evidence.
 A Live Corpus qualification is complete only when the qualification plan and
 the canonical corpus lock have identical resource sets and matching
 =languageId=/=providerId= identities. Every case MUST publish one admitted
@@ -2830,7 +2858,7 @@ asp graph render --packet - --view seeds
 
 That shell-out is the provider integration boundary, not a temporary escape
 hatch.  Provider crates and packages must not link or vendor the renderer
-library, including =languages/rust-lang-project-harness=.  The target hot path
+library, including =languages/asp-rust=.  The target hot path
 described by RFC 008 is ASP's Rust-side cache/query/render path over validated
 provider packet artifacts or native index rows.
 
@@ -4556,3 +4584,27 @@ requires normal CompleteGeneration recovery; there is no legacy decoder or
 runtime string fallback.  Empty owner-local results are typed =owner= responses
 with zero candidates.  A missing owner is a typed =owner-missing= response, not
 a successful empty source snapshot.
+
+* Runtime-owned exact selector references
+The public =query --selector= operand is a selector reference, not a client-side
+route capability test.  It admits exactly two language-neutral forms:
+
+- a canonical item selector naming one parser-owned item or descendant; or
+- a normalized workspace-relative owner path naming the complete source owner.
+
+The ASP Client validates only that =query= carries one selector reference and a
+supported projection.  It MUST forward both forms through the same typed
+Runtime ExactQuery route.  The client MUST NOT parse a canonical item URI to
+decide whether the provider is allowed to query, and it MUST NOT dispatch an
+owner path directly to a provider process.
+
+ASP Server is the sole selector parser and generation authority.  Against one
+admitted immutable CompleteGeneration it parses canonical item selectors, or
+validates owner paths as normalized relative paths.  A =source= projection of
+an owner path returns the exact committed owner bytes with the same
+generation/root identity as an item projection.  Missing owners and malformed
+references return exactly one typed failure terminal.  Derived projections such
+as =callable-skeleton= remain parser-owned item projections and fail closed when
+an owner-level derived projection is unavailable.  No language-specific path
+heuristic, provider fallback, retry, source reread, or second cache authority is
+permitted.

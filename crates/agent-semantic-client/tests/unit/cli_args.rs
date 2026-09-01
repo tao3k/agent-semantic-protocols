@@ -245,7 +245,7 @@ fn frontier_receipt_out_is_owned_by_client_runtime() {
 #[test]
 fn positional_marker_path_stays_provider_arg_without_workspace_flag() {
     let cwd = temp_dir("positional-root-activation");
-    let provider_root = cwd.join("languages/rust-lang-project-harness");
+    let provider_root = cwd.join("languages/asp-rust");
     fs::create_dir_all(&provider_root).expect("create provider root");
     fs::write(
         provider_root.join("Cargo.toml"),

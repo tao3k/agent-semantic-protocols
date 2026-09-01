@@ -130,6 +130,79 @@ impl RuntimeQueryGenerationAuthority {
         self.sender.send_replace(Arc::new(generations));
     }
 
+    /// Admit a cold-build benchmark only when the run-scoped workspace has no
+    /// resident generation.  This does not clear or mutate another workspace.
+    pub fn require_workspace_absent(&self, workspace_identity: &str) -> Result<(), String> {
+        let _publication_guard = self
+            .publication_lock
+            .lock()
+            .map_err(|_| "query generation publication lock poisoned".to_owned())?;
+        if self.sender.borrow().contains_key(workspace_identity) {
+            return Err(format!(
+                "state=cache-state-conflict reasonKind=cold-build-workspace-already-published workspaceIdentity={workspace_identity}"
+            ));
+        }
+        Ok(())
+    }
+
+    /// Verify a warm benchmark against the exact resident content identity.
+    pub fn verify_ready_exact(
+        &self,
+        workspace_identity: &str,
+        expected_generation_digest: &str,
+        expected_root_digest: &str,
+    ) -> Result<(), String> {
+        let _publication_guard = self
+            .publication_lock
+            .lock()
+            .map_err(|_| "query generation publication lock poisoned".to_owned())?;
+        let generations = self.sender.borrow();
+        let Some(RuntimeQueryGenerationState::Ready(generation)) =
+            generations.get(workspace_identity)
+        else {
+            return Err(format!(
+                "state=query-not-ready reasonKind=resident-generation-missing workspaceIdentity={workspace_identity}"
+            ));
+        };
+        validate_ready_identity(
+            workspace_identity,
+            generation,
+            expected_generation_digest,
+            expected_root_digest,
+        )
+    }
+
+    /// Evict exactly one resident workspace generation after comparing both
+    /// generation and source-root identities under the publication lock.
+    pub fn evict_ready_exact(
+        &self,
+        workspace_identity: &str,
+        expected_generation_digest: &str,
+        expected_root_digest: &str,
+    ) -> Result<bool, String> {
+        let _publication_guard = self
+            .publication_lock
+            .lock()
+            .map_err(|_| "query generation publication lock poisoned".to_owned())?;
+        let mut generations = self.sender.borrow().as_ref().clone();
+        let Some(RuntimeQueryGenerationState::Ready(generation)) =
+            generations.get(workspace_identity)
+        else {
+            return Err(format!(
+                "state=query-not-ready reasonKind=resident-generation-missing workspaceIdentity={workspace_identity}"
+            ));
+        };
+        validate_ready_identity(
+            workspace_identity,
+            generation,
+            expected_generation_digest,
+            expected_root_digest,
+        )?;
+        generations.remove(workspace_identity);
+        self.sender.send_replace(Arc::new(generations));
+        Ok(true)
+    }
+
     pub fn clear_all(&self) {
         let Ok(_publication_guard) = self.publication_lock.lock() else {
             return;
@@ -198,6 +271,24 @@ impl RuntimeQueryGenerationAuthority {
     }
 }
 
+fn validate_ready_identity(
+    workspace_identity: &str,
+    generation: &RuntimeQueryGeneration,
+    expected_generation_digest: &str,
+    expected_root_digest: &str,
+) -> Result<(), String> {
+    let actual_root_digest = generation.resident().root_digest();
+    if generation.generation_digest() != expected_generation_digest
+        || actual_root_digest != expected_root_digest
+    {
+        return Err(format!(
+            "state=stale-generation reasonKind=cache-state-content-binding-mismatch workspaceIdentity={workspace_identity} expectedGenerationDigest={expected_generation_digest} actualGenerationDigest={} expectedRootDigest={expected_root_digest} actualRootDigest={actual_root_digest}",
+            generation.generation_digest()
+        ));
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::{RuntimeQueryGenerationAuthority, RuntimeQueryGenerationState};
@@ -209,6 +300,27 @@ mod tests {
         assert!(receiver.borrow().is_empty());
         authority.clear_all();
         assert!(receiver.borrow().is_empty());
+    }
+
+    #[test]
+    fn cold_build_admission_is_scoped_to_an_absent_workspace() {
+        let authority = RuntimeQueryGenerationAuthority::new();
+        authority
+            .require_workspace_absent("workspace-live-corpus-rust")
+            .expect("fresh benchmark workspace");
+        authority.publish_failed(
+            "workspace-live-corpus-rust".to_owned(),
+            1,
+            format!("blake3-256:{}", "a".repeat(64)),
+            "fixture failure",
+        );
+        let error = authority
+            .require_workspace_absent("workspace-live-corpus-rust")
+            .expect_err("published benchmark workspace must not be reused as cold-build");
+        assert!(error.contains("cold-build-workspace-already-published"));
+        authority
+            .require_workspace_absent("workspace-live-corpus-python")
+            .expect("another language workspace is unaffected");
     }
 
     #[test]

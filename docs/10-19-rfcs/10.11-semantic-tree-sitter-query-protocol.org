@@ -512,7 +512,7 @@ languages/typescript-lang-project-harness/
         control-flow.scm
         tests.scm
 
-languages/rust-lang-project-harness/
+languages/asp-rust/
   tree-sitter/
     tree-sitter-rust/
       grammar-profile.json

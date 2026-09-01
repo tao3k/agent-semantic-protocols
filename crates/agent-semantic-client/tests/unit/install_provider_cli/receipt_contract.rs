@@ -16,7 +16,7 @@ fn root_justfile_develop_install_is_only_a_registry_driven_adapter() {
         "--record-installed-receipt",
         "provider_source=",
         r#"case "{{ language }}" in"#,
-        "languages/rust-lang-project-harness/target/release/asp-rust",
+        "languages/asp-rust/target/release/asp-rust",
         "runtime/provider-artifacts/asp-gerbil-scheme/develop",
     ] {
         assert!(

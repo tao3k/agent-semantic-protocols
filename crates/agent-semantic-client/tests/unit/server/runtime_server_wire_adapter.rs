@@ -1,13 +1,16 @@
 use super::validate_activation_ready_binding;
 
-fn event() -> agent_semantic_artifacts::runtime_artifact_publication::RuntimeArtifactActivationEvent
+fn event() -> agent_semantic_artifacts::runtime_artifact_activation::RuntimeArtifactActivationEvent
 {
     let artifact_digest =
         agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest::from_bytes(
             b"ready binding artifact",
         );
     let artifact_path = std::path::PathBuf::from("/runtime/artifacts/digest/asp");
-    agent_semantic_artifacts::runtime_artifact_publication::RuntimeArtifactActivationEvent {
+    agent_semantic_artifacts::runtime_artifact_activation::RuntimeArtifactActivationEvent {
+        schema_id: "agent.semantic-protocols.runtime-artifact-activation".to_owned(),
+        schema_version: 1,
+        bundle_digest: artifact_digest.clone(),
         artifact_digest: artifact_digest.clone(),
         artifact_path: artifact_path.clone(),
         candidate_slot_path: std::path::PathBuf::from("/runtime/resident/candidate"),
@@ -15,9 +18,8 @@ fn event() -> agent_semantic_artifacts::runtime_artifact_publication::RuntimeArt
         artifact_mode: "dev".to_owned(),
         published_at_unix_millis: 1,
         publication_nonce: "ready-binding".to_owned(),
-        activation_generation: 7,
         candidate_identity:
-            agent_semantic_artifacts::runtime_artifact_publication::
+            agent_semantic_artifacts::runtime_artifact_activation::
                 RuntimeArtifactCandidateIdentityReceipt {
                 artifact_digest,
                 artifact_path,
@@ -29,7 +31,7 @@ fn event() -> agent_semantic_artifacts::runtime_artifact_publication::RuntimeArt
 }
 
 fn spawn(
-    event: &agent_semantic_artifacts::runtime_artifact_publication::RuntimeArtifactActivationEvent,
+    event: &agent_semantic_artifacts::runtime_artifact_activation::RuntimeArtifactActivationEvent,
 ) -> agent_semantic_client_db::RuntimeServerSpawnReceipt {
     agent_semantic_client_db::RuntimeServerSpawnReceipt {
         schema_id: agent_semantic_client_db::RUNTIME_SERVER_OWNER_SPAWN_SCHEMA_ID.to_owned(),
@@ -38,7 +40,7 @@ fn spawn(
         process_id: 41,
         nonce: "owner-41".to_owned(),
         state_home: "/runtime-state".to_owned(),
-        activation_generation: event.activation_generation,
+        publication_nonce: event.publication_nonce.clone(),
         launcher_artifact_path: event.artifact_path.display().to_string(),
         launcher_artifact_digest: event.artifact_digest.clone(),
         spawn_argv: vec!["server".to_owned(), "daemon".to_owned()],
@@ -48,14 +50,14 @@ fn spawn(
 }
 
 fn ready(
-    event: &agent_semantic_artifacts::runtime_artifact_publication::RuntimeArtifactActivationEvent,
+    event: &agent_semantic_artifacts::runtime_artifact_activation::RuntimeArtifactActivationEvent,
     spawn: &agent_semantic_client_db::RuntimeServerSpawnReceipt,
 ) -> agent_semantic_client_db::RuntimeServerActivationReadyReceipt {
     agent_semantic_client_db::RuntimeServerActivationReadyReceipt {
         schema_id: "agent.semantic-protocols.runtime-activation-ready-receipt".to_owned(),
         schema_version: "1".to_owned(),
         state: "ready".to_owned(),
-        activation_generation: event.activation_generation,
+        publication_nonce: event.publication_nonce.clone(),
         artifact_digest: event.artifact_digest.clone(),
         owner_epoch: 41,
         launcher_receipt_digest:
@@ -65,16 +67,16 @@ fn ready(
 }
 
 #[test]
-fn ready_receipt_requires_exact_generation_digest_and_launcher_binding() {
+fn ready_receipt_requires_exact_nonce_digest_and_launcher_binding() {
     let event = event();
     let spawn = spawn(&event);
     let receipt = ready(&event, &spawn);
     validate_activation_ready_binding(&receipt, &event, &spawn).expect("matching ready authority");
 
-    let mut wrong_generation = receipt.clone();
-    wrong_generation.activation_generation += 1;
+    let mut wrong_nonce = receipt.clone();
+    wrong_nonce.publication_nonce = "wrong-publication".to_owned();
     assert!(
-        validate_activation_ready_binding(&wrong_generation, &event, &spawn)
+        validate_activation_ready_binding(&wrong_nonce, &event, &spawn)
             .unwrap_err()
             .contains("ready-authority-binding-mismatch")
     );
@@ -117,7 +119,6 @@ async fn ready_channel_cannot_replace_the_canonical_applied_transaction() {
     let mut listener =
         agent_semantic_client_db::runtime_server_lifecycle::bind_activation_ready_listener(
             temporary.path(),
-            event.activation_generation,
             &event.publication_nonce,
         )
         .await

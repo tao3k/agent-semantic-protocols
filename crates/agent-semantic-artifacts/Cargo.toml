@@ -10,12 +10,21 @@ agent-semantic-config = { path = "../agent-semantic-config" }
 agent-semantic-content-identity.workspace = true
 blake3.workspace = true
 fs2.workspace = true
+libc.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tokio.workspace = true
-turso.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
 
 [build-dependencies]
+asp-rust-project-harness-policy.workspace = true
+
+[[test]]
+name = "resident_artifact_retention"
+path = "tests/integration/resident_artifact_retention.rs"
+
+[[test]]
+name = "runtime_artifact_publication_performance"
+path = "tests/integration/runtime_artifact_publication_performance.rs"

@@ -146,7 +146,7 @@ async fn explicit_mutation_admission_returns_the_exact_attempt_terminal_receipt(
 async fn changed_paths_fan_out_to_each_workspace_resident_without_git_rediscovery() {
     let temp = tempfile::tempdir().expect("temporary resident catalog");
     let parent_root = temp.path().join("repository");
-    let nested_root = parent_root.join("languages/rust-lang-project-harness");
+    let nested_root = parent_root.join("languages/asp-rust");
     tokio::fs::create_dir_all(&nested_root)
         .await
         .expect("nested workspace root");

@@ -12,11 +12,11 @@ listed below require explicit destructive approval.
 
 * First divergence
 
-The current model exposes =activationGeneration= together with
-=direct-link=, =project-entry=, and =active-candidate= records. These values
-mix activation ordering with product identity and make a mutable activation
-epoch look like a stable workspace/source binding. The corrected V1 model
-uses the ASP Server ArtifactCatalog and exact content digests as authority.
+The removed model mixed numeric activation ordering with =direct-link=,
+=project-entry=, and =active-candidate= records, making a mutable epoch look
+like stable workspace/source identity. The corrected V1 model uses the ASP
+Server ArtifactCatalog, the Active/Healthy bundle selectors, exact content
+digests, and a content-bound publication nonce as authority.
 
 * Stable V1 target
 

@@ -26,7 +26,7 @@ fn committed_lexical_overlay_projects_path_and_content_without_executable_ranges
 
     let terms = vec!["dynamic".to_string()];
     let owner_bytes = fs::read(&owner).expect("read owner fixture");
-    let snapshot = agent_semantic_artifacts::WorkspaceSnapshot::from_file_bytes([(
+    let snapshot = agent_semantic_content_identity::WorkspaceSnapshot::from_file_bytes([(
         "src/dynamic_overlay_owner.rs",
         owner_bytes,
     )]);
@@ -98,7 +98,7 @@ fn explicit_owner_candidates_apply_language_filter_without_workspace_walk() {
     let owners = vec![std::path::PathBuf::from("src/dynamic_overlay_owner.rs")];
     let fixture = crate::source_snapshot_fixture::canonical_test_snapshot();
     let owner_bytes = fs::read(src.join("dynamic_overlay_owner.rs")).expect("read owner fixture");
-    let snapshot = agent_semantic_artifacts::WorkspaceSnapshot::from_file_bytes([(
+    let snapshot = agent_semantic_content_identity::WorkspaceSnapshot::from_file_bytes([(
         "src/dynamic_overlay_owner.rs",
         owner_bytes,
     )]);
@@ -167,7 +167,7 @@ fn dynamic_overlay_rejects_owner_bytes_that_drift_from_merkle_snapshot() {
     let owner = root.path().join("src/owner.rs");
     fs::create_dir_all(owner.parent().expect("owner parent")).expect("source directory");
     fs::write(&owner, "pub fn committed_owner() {}\n").expect("committed owner");
-    let snapshot = agent_semantic_artifacts::WorkspaceSnapshot::from_file_bytes([(
+    let snapshot = agent_semantic_content_identity::WorkspaceSnapshot::from_file_bytes([(
         "src/owner.rs",
         b"pub fn committed_owner() {}\n",
     )]);
@@ -210,7 +210,7 @@ fn rg_coverage_candidates_are_explicit_bounded_and_generation_bound() {
     let owner_source = b"\n\n\n\n\n\n\n\n\n\n\npub fn owner_symbol() {}\n";
     let stdin = b"src/owner.rs:12:7:pub fn owner_symbol() {}\0";
     let fixture = crate::source_snapshot_fixture::canonical_test_snapshot();
-    let snapshot = agent_semantic_artifacts::WorkspaceSnapshot::from_file_bytes([(
+    let snapshot = agent_semantic_content_identity::WorkspaceSnapshot::from_file_bytes([(
         "src/owner.rs",
         owner_source,
     )]);
@@ -219,7 +219,7 @@ fn rg_coverage_candidates_are_explicit_bounded_and_generation_bound() {
         .expect("committed owner digest")
         .to_owned();
     let evidence = snapshot.evidence(
-        agent_semantic_artifacts::SourceSnapshotKind::Filesystem,
+        agent_semantic_content_identity::SourceSnapshotKind::Filesystem,
         fixture.provider_digest.clone(),
     );
     let owners = [RgCoverageOwner {
@@ -269,13 +269,13 @@ fn rg_coverage_budget_failure_is_typed_and_returns_no_partial_candidates() {
     let fixture = crate::source_snapshot_fixture::canonical_test_snapshot();
     let source = b"a\nb\n";
     let snapshot =
-        agent_semantic_artifacts::WorkspaceSnapshot::from_file_bytes([("src/a.rs", source)]);
+        agent_semantic_content_identity::WorkspaceSnapshot::from_file_bytes([("src/a.rs", source)]);
     let digest = snapshot
         .file_digest("src/a.rs")
         .expect("owner digest")
         .to_owned();
     let evidence = snapshot.evidence(
-        agent_semantic_artifacts::SourceSnapshotKind::Filesystem,
+        agent_semantic_content_identity::SourceSnapshotKind::Filesystem,
         fixture.provider_digest.clone(),
     );
     let owners = [RgCoverageOwner {
@@ -304,14 +304,16 @@ fn rg_coverage_budget_failure_is_typed_and_returns_no_partial_candidates() {
 fn rg_coverage_rejects_stale_lines_without_partial_candidates() {
     let fixture = crate::source_snapshot_fixture::canonical_test_snapshot();
     let source = b"pub fn current_owner() {}\n";
-    let snapshot =
-        agent_semantic_artifacts::WorkspaceSnapshot::from_file_bytes([("src/owner.rs", source)]);
+    let snapshot = agent_semantic_content_identity::WorkspaceSnapshot::from_file_bytes([(
+        "src/owner.rs",
+        source,
+    )]);
     let digest = snapshot
         .file_digest("src/owner.rs")
         .expect("owner digest")
         .to_owned();
     let evidence = snapshot.evidence(
-        agent_semantic_artifacts::SourceSnapshotKind::Filesystem,
+        agent_semantic_content_identity::SourceSnapshotKind::Filesystem,
         fixture.provider_digest.clone(),
     );
     let owners = [RgCoverageOwner {
@@ -339,14 +341,16 @@ fn rg_coverage_rejects_stale_lines_without_partial_candidates() {
 fn rg_coverage_candidate_overflow_fails_without_truncated_success() {
     let fixture = crate::source_snapshot_fixture::canonical_test_snapshot();
     let source = b"first\nsecond\n";
-    let snapshot =
-        agent_semantic_artifacts::WorkspaceSnapshot::from_file_bytes([("src/owner.rs", source)]);
+    let snapshot = agent_semantic_content_identity::WorkspaceSnapshot::from_file_bytes([(
+        "src/owner.rs",
+        source,
+    )]);
     let digest = snapshot
         .file_digest("src/owner.rs")
         .expect("owner digest")
         .to_owned();
     let evidence = snapshot.evidence(
-        agent_semantic_artifacts::SourceSnapshotKind::Filesystem,
+        agent_semantic_content_identity::SourceSnapshotKind::Filesystem,
         fixture.provider_digest.clone(),
     );
     let owners = [RgCoverageOwner {

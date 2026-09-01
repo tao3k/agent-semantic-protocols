@@ -90,6 +90,55 @@ non-pass result with its first divergence and recovery action.
 - A stale or torn resource pointer fails closed before provider execution.
 - A missing corpus resource never invokes sync/materialize or a fallback.
 
+** Executed-sample accounting
+
+=residentSampleCount= is an executable workload count, not plan metadata.  A
+qualification receipt is invalid unless the runner dispatched and validated
+exactly that many warm Search, exact-source Query, and callable-skeleton Query
+operations for every admitted case and derived each reported distribution from
+those terminal receipts.  Reading the field only during plan validation is a
+false-green qualification and MUST fail the contract gate.
+
+The ten-sample sequential run and the thirty-two-sample concurrent run are
+separate workloads.  Their terminals retain the same workspace, source-root,
+provider, generation, selector, and schema identities as the warm sample set.
+The concurrent run uses the public bounded client/session transport; a harness
+thread pool, subprocess fan-out, or direct provider call is not equivalent.
+Every named failure-injection round emits exactly one typed terminal and is
+counted separately from successful latency samples.  No failed, cancelled, or
+non-Ready sample may be omitted from the machine-readable receipt.
+
+** Explicit cache-state matrix
+
+Every language/corpus case executes three distinct cache states.  The receipt
+MUST name the state and the exact Runtime-owned preparation action; elapsed
+times from different states are never pooled into one distribution.
+
+1. =cold-build= uses a run-scoped benchmark workspace identity with no active
+   generation binding.  It measures source snapshot, provider projection,
+   CompleteGeneration publication, and first admission.  This phase does not
+   carry the sub-millisecond resident-read budget.
+2. =cold-load= retains the immutable published generation but evicts only that
+   benchmark workspace/generation from resident mmap and client-session state.
+   The next public Search/Query must load the exact content-bound generation.
+3. =warm-read= reuses that exact resident generation and records the 128-sample,
+   ten sequential, and thirty-two concurrent workloads under the one
+   millisecond terminal budget.
+
+The cache preparation API is owned by ASP Server and requires workspace,
+resource, artifact, source-root, generation, and provider identities.  A global
+cache clear, directory deletion, hidden provider cache, label-only invalidation,
+or client-local fallback is forbidden.  Preparation and observation receipts
+MUST prove the same content identity before timing begins.  This makes a
+single-language/single-corpus run reproducible without perturbing another
+language, project, or live coding generation.
+
+The language-neutral request and receipt contracts are
+=asp.live-corpus-cache-state-request.v1.schema.json= and
+=asp.live-corpus-cache-state-receipt.v1.schema.json=.  The receipt reports the
+scoped resident eviction explicitly and proves that source-workspace, global
+cache, and filesystem mutation counts remain zero.
+
 * Design review
 
 ** Candidate A: qualification-owned ad hoc timers and local corpus discovery

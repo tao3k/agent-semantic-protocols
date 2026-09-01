@@ -31,24 +31,24 @@ fn hook_binary(root: &Path, label: &str) -> PathBuf {
 }
 
 async fn publish(state_home: &Path, sources: &Path, label: &str) -> String {
-    let source = hook_binary(sources, label);
-    let target = state_home.join("runtime/bin/asp-hook");
-    agent_semantic_artifacts::runtime_artifact_publication::publish_runtime_tool_artifact(
-        state_home, &source, &target, "asp-hook",
+    let hook_source = hook_binary(sources, label);
+    let runtime_source = hook_binary(sources, &format!("runtime-{label}"));
+    let target = state_home.join("runtime/bin/asp");
+    agent_semantic_artifacts::runtime_artifact_publication::publish_runtime_artifact_bundle(
+        state_home,
+        &runtime_source,
+        &target,
+        "dev",
+        &hook_source,
     )
     .await
-    .expect("publish canonical Runtime Hook binary")
-    .artifact_digest
+    .expect("publish canonical Runtime binary bundle")
+    .bundle_digest
     .to_string()
 }
 
 async fn invoke(state_home: &Path) -> serde_json::Value {
-    invoke_with_concurrency(state_home, false).await
-}
-
-async fn invoke_with_concurrency(state_home: &Path, unbounded_parallel: bool) -> serde_json::Value {
     let mut spec = HookProcessSpec::new(launcher(), state_home);
-    spec.unbounded_parallel = unbounded_parallel;
     spec.args = vec![
         "pre-tool".to_owned(),
         "--client".to_owned(),
@@ -99,7 +99,7 @@ async fn thirty_two_real_launcher_calls_crossing_switch_observe_only_old_or_new(
         let barrier = Arc::clone(&barrier);
         calls.push(tokio::spawn(async move {
             barrier.wait().await;
-            invoke_with_concurrency(&state_home, true).await
+            invoke(&state_home).await
         }));
     }
     barrier.wait().await;
@@ -129,12 +129,20 @@ async fn mutable_config_source_edit_does_not_change_runtime_hook_binary() {
     .expect("edit mutable config source");
     let receipt = invoke(&state_home).await;
     assert_eq!(receipt["runtimeHookBinary"], "active");
-    let installed = std::fs::canonicalize(state_home.join("runtime/bin/asp-hook"))
-        .expect("canonical Runtime Hook evaluator");
-    assert!(
-        installed
-            .to_string_lossy()
-            .contains(digest.trim_start_matches("blake3-256:"))
+    let active = std::fs::read_link(state_home.join("runtime/resident/active"))
+        .expect("active Runtime bundle");
+    let active_digest =
+        agent_semantic_artifacts::runtime_artifact_slots::runtime_artifact_candidate_bundle_digest(
+            &active,
+        )
+        .await
+        .expect("active Runtime bundle digest")
+        .to_string();
+    assert_eq!(active_digest, digest);
+    assert_eq!(
+        std::fs::read_link(state_home.join("runtime/bin/asp-hook"))
+            .expect("fixed Runtime Hook launcher"),
+        state_home.join("runtime/resident/active/asp-hook")
     );
     assert!(!state_home.join("hooks/current").exists());
 }
@@ -185,6 +193,7 @@ async fn inherited_escape_precedes_missing_or_corrupt_runtime_hook_binary() {
 
 #[tokio::test]
 async fn publication_failure_preserves_previous_runtime_hook_binary() {
+    let _serial = DEVELOPER_LAUNCHER_TEST_SERIAL.lock().await;
     let temp = tempfile::tempdir().expect("temp state");
     let state_home = temp.path().join("state");
     let sources = temp.path().join("sources");
@@ -199,16 +208,18 @@ async fn publication_failure_preserves_previous_runtime_hook_binary() {
         .open(lock_path)
         .expect("publication lock");
     lock.try_lock_exclusive().expect("hold publication lock");
-    let next = hook_binary(&sources, "next");
+    let next_hook = hook_binary(&sources, "next");
+    let next_runtime = hook_binary(&sources, "runtime-next");
     let error =
-        agent_semantic_artifacts::runtime_artifact_publication::publish_runtime_tool_artifact(
+        agent_semantic_artifacts::runtime_artifact_publication::publish_runtime_artifact_bundle(
             &state_home,
-            &next,
-            &state_home.join("runtime/bin/asp-hook"),
-            "asp-hook",
+            &next_runtime,
+            &state_home.join("runtime/bin/asp"),
+            "dev",
+            &next_hook,
         )
         .await
-        .expect_err("concurrent Runtime tool publication must fail closed");
+        .expect_err("concurrent Runtime bundle publication must fail closed");
     assert!(error.contains("artifact-publication-conflict"), "{error}");
     FileExt::unlock(&lock).expect("release publication lock");
     assert_eq!(invoke(&state_home).await["runtimeHookBinary"], "previous");

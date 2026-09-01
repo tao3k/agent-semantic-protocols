@@ -12,7 +12,7 @@ pub struct RuntimeServerSpawnReceipt {
     pub process_id: u32,
     pub nonce: String,
     pub state_home: String,
-    pub activation_generation: u64,
+    pub publication_nonce: String,
     pub launcher_artifact_path: String,
     pub launcher_artifact_digest:
         agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest,
@@ -35,6 +35,25 @@ struct LegacyRuntimeServerSpawnReceiptV1 {
     nonce: String,
     state_home: String,
     runtime_artifact_path: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct LegacyGenerationBoundSpawnObservation {
+    schema_id: String,
+    schema_version: String,
+    process_id: u32,
+    nonce: String,
+    state_home: String,
+    launcher_artifact_path: String,
+    #[serde(rename = "launcherArtifactDigest")]
+    _launcher_artifact_digest: agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest,
+    spawn_argv: Vec<String>,
+    #[serde(rename = "previousServingDigest")]
+    _previous_serving_digest:
+        Option<agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest>,
+    #[serde(default, rename = "previousOwnerEpoch")]
+    _previous_owner_epoch: Option<u64>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -90,7 +109,7 @@ pub fn decode_runtime_server_spawn_receipt(
     }
 
     const LAUNCHER_AUTHORITY_FIELDS: [&str; 5] = [
-        "activationGeneration",
+        "publicationNonce",
         "launcherArtifactPath",
         "launcherArtifactDigest",
         "spawnArgv",
@@ -129,6 +148,61 @@ pub fn decode_runtime_server_spawn_receipt(
         ));
     }
     if present != LAUNCHER_AUTHORITY_FIELDS.len() {
+        const LEGACY_GENERATION_BOUND_KEYS: [&str; 11] = [
+            "activationGeneration",
+            "launcherArtifactDigest",
+            "launcherArtifactPath",
+            "nonce",
+            "previousOwnerEpoch",
+            "previousServingDigest",
+            "processId",
+            "schemaId",
+            "schemaVersion",
+            "spawnArgv",
+            "stateHome",
+        ];
+        let observed = object
+            .keys()
+            .map(String::as_str)
+            .collect::<std::collections::BTreeSet<_>>();
+        let expected = LEGACY_GENERATION_BOUND_KEYS
+            .into_iter()
+            .collect::<std::collections::BTreeSet<_>>();
+        if observed == expected {
+            let mut discarded = value.clone();
+            discarded
+                .as_object_mut()
+                .expect("validated owner-spawn object")
+                .remove("activationGeneration");
+            let legacy: LegacyGenerationBoundSpawnObservation = serde_json::from_value(discarded)
+                .map_err(|error| {
+                owner_spawn_decode_error(
+                    "runtime-server-owner-spawn-malformed-generation-bound-observation",
+                    error.to_string(),
+                )
+            })?;
+            if legacy.schema_id != RUNTIME_SERVER_OWNER_SPAWN_SCHEMA_ID
+                || legacy.schema_version != RUNTIME_SERVER_OWNER_SPAWN_SCHEMA_VERSION
+                || legacy.process_id == 0
+                || legacy.nonce.is_empty()
+                || !std::path::Path::new(&legacy.state_home).is_absolute()
+                || !std::path::Path::new(&legacy.launcher_artifact_path).is_absolute()
+                || legacy.spawn_argv.is_empty()
+            {
+                return Err(owner_spawn_decode_error(
+                    "runtime-server-owner-spawn-invalid-generation-bound-observation",
+                    "generation-bound owner-spawn observation is incomplete or non-canonical",
+                ));
+            }
+            return Ok(RuntimeServerSpawnReceiptRead::Stale(
+                StaleRuntimeServerSpawnReceipt {
+                    schema_id: schema_id.to_owned(),
+                    schema_version: schema_version.to_owned(),
+                    reason_kind: "runtime-server-owner-spawn-activation-generation-discarded"
+                        .to_owned(),
+                },
+            ));
+        }
         return Err(owner_spawn_decode_error(
             "runtime-server-owner-spawn-partial-launcher-authority",
             "owner-spawn receipt has a partial launcher authority",
@@ -138,10 +212,10 @@ pub fn decode_runtime_server_spawn_receipt(
     let receipt: RuntimeServerSpawnReceipt = serde_json::from_value(value).map_err(|error| {
         owner_spawn_decode_error("runtime-server-owner-spawn-malformed", error.to_string())
     })?;
-    if receipt.activation_generation == 0 {
+    if receipt.publication_nonce.is_empty() {
         return Err(owner_spawn_decode_error(
             "runtime-server-owner-spawn-invalid-launcher-authority",
-            "activationGeneration must be positive",
+            "publicationNonce must be non-empty",
         ));
     }
     if !std::path::Path::new(&receipt.launcher_artifact_path).is_absolute()
@@ -194,14 +268,14 @@ pub struct RuntimeServerResidentTransactionReceipt {
     pub schema_id: String,
     pub schema_version: String,
     pub state: String,
-    pub activation_generation: u64,
+    pub publication_nonce: String,
     pub launcher_artifact_path: String,
     pub launcher_artifact_digest:
         agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest,
     pub spawn_argv: Vec<String>,
     pub applied_artifact_digest:
         agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest,
-    pub applied_activation_generation: u64,
+    pub applied_publication_nonce: String,
     pub endpoint_owner_epoch: u64,
     pub endpoint_binary_content_digest:
         agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest,
@@ -221,7 +295,7 @@ pub struct RuntimeServerActivationReadyReceipt {
     pub schema_id: String,
     pub schema_version: String,
     pub state: String,
-    pub activation_generation: u64,
+    pub publication_nonce: String,
     pub artifact_digest: agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest,
     pub owner_epoch: u64,
     pub launcher_receipt_digest:

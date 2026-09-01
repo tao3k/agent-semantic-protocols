@@ -28,7 +28,7 @@ class ProviderPackage:
 
 
 PROVIDERS = (
-    ProviderPackage("rust", REPOSITORY_ROOT / "languages/rust-lang-project-harness", Path("provider")),
+    ProviderPackage("rust", REPOSITORY_ROOT / "languages/asp-rust", Path("provider")),
     ProviderPackage("typescript", REPOSITORY_ROOT / "languages/typescript-lang-project-harness", Path("provider")),
     ProviderPackage("python", REPOSITORY_ROOT / "languages/python-lang-project-harness", Path("provider")),
     ProviderPackage("julia", REPOSITORY_ROOT / "languages/JuliaLangProjectHarness.jl", Path("juliac")),

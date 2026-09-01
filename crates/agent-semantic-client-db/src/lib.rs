@@ -62,6 +62,7 @@ pub mod search_incident;
 pub mod seqlock_json_memory;
 pub mod server_source_index;
 mod source_index;
+mod state_home_catalog;
 pub mod storage_contract;
 pub mod storage_performance_receipt;
 mod syntax_query;
@@ -89,6 +90,7 @@ pub mod turso_mvcc_store;
 pub mod turso_sync_storage;
 mod types;
 pub mod workspace_db_ipc;
+pub use state_home_catalog::StateHomeCatalog;
 pub use types::ClientDbProviderCommandSelectionInput;
 pub use workspace_db_ipc::WorkspaceDbIpcSession;
 

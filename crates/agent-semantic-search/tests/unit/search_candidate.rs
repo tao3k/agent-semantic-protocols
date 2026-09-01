@@ -39,7 +39,7 @@ fn lexical_overlay_hit_projects_selector_and_overlay_namespace() {
         .workspace
         .with_overlay([("src/lib.rs", fixture.evidence.root_digest.as_str())])
         .evidence(
-            agent_semantic_artifacts::SourceSnapshotKind::EditorBuffer,
+            agent_semantic_content_identity::SourceSnapshotKind::EditorBuffer,
             fixture.provider_digest.clone(),
         );
     let result = search_lexical_overlay(
@@ -54,7 +54,7 @@ fn lexical_overlay_hit_projects_selector_and_overlay_namespace() {
     );
     assert_eq!(
         result.source_snapshot.source_kind,
-        agent_semantic_artifacts::SourceSnapshotKind::EditorBuffer
+        agent_semantic_content_identity::SourceSnapshotKind::EditorBuffer
     );
     assert_eq!(
         result.source_snapshot.provider_digest,
@@ -147,7 +147,7 @@ fn merge_search_candidates_prefers_overlay_then_resident_structural_index_then_s
         .workspace
         .with_overlay([("src/lib.rs", fixture.evidence.root_digest.as_str())])
         .evidence(
-            agent_semantic_artifacts::SourceSnapshotKind::EditorBuffer,
+            agent_semantic_content_identity::SourceSnapshotKind::EditorBuffer,
             fixture.provider_digest.clone(),
         );
     let terms = source_index_lookup_terms("overlay fixture");
@@ -182,7 +182,7 @@ fn merge_search_candidates_prefers_overlay_then_resident_structural_index_then_s
     );
     assert_eq!(
         overlay_result.source_snapshot.source_kind,
-        agent_semantic_artifacts::SourceSnapshotKind::EditorBuffer
+        agent_semantic_content_identity::SourceSnapshotKind::EditorBuffer
     );
     assert_eq!(
         overlay_result.source_snapshot.provider_digest,
@@ -216,7 +216,7 @@ fn merge_search_candidates_prefers_overlay_selector_then_stable_source_index() {
         .workspace
         .with_overlay([("src/lib.rs", fixture.evidence.root_digest.as_str())])
         .evidence(
-            agent_semantic_artifacts::SourceSnapshotKind::EditorBuffer,
+            agent_semantic_content_identity::SourceSnapshotKind::EditorBuffer,
             fixture.provider_digest.clone(),
         );
     let terms = source_index_lookup_terms("overlay fixture");
@@ -240,7 +240,7 @@ fn merge_search_candidates_prefers_overlay_selector_then_stable_source_index() {
     );
     assert_eq!(
         overlay_result.source_snapshot.source_kind,
-        agent_semantic_artifacts::SourceSnapshotKind::EditorBuffer
+        agent_semantic_content_identity::SourceSnapshotKind::EditorBuffer
     );
     assert_eq!(
         overlay_result.source_snapshot.provider_digest,

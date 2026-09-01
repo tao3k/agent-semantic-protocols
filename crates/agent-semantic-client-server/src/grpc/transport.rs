@@ -24,7 +24,10 @@ use super::wire::{decode_frame, encode_frame};
 
 const CLIENT_FRAME_RESPONSE_BUDGET: std::time::Duration = std::time::Duration::from_secs(10);
 const CLIENT_SESSION_CONNECT_BUDGET: std::time::Duration = std::time::Duration::from_secs(2);
-const CLIENT_FRAME_SESSION_CAPACITY: usize = 32;
+pub const CLIENT_FRAME_SESSION_CAPACITY: usize = 32;
+pub const CLIENT_FRAME_SESSION_CONTROL_RESERVE: usize = 1;
+const CLIENT_FRAME_TRANSPORT_CAPACITY: usize =
+    CLIENT_FRAME_SESSION_CAPACITY + CLIENT_FRAME_SESSION_CONTROL_RESERVE;
 
 pub struct AspClientGrpcService<D> {
     frames: Arc<AspClientFrameService<D>>,
@@ -47,7 +50,7 @@ impl<D: AspClientDispatcher> AspClientProtocol for AspClientGrpcService<D> {
     ) -> Result<Response<Self::SessionStream>, Status> {
         let mut inbound = request.into_inner();
         let frames = Arc::clone(&self.frames);
-        let (outbound, receiver) = mpsc::channel(32);
+        let (outbound, receiver) = mpsc::channel(CLIENT_FRAME_TRANSPORT_CAPACITY);
         let supervisor = tokio::spawn(async move {
             let mut inbound_open = true;
             let mut requests = FuturesUnordered::new();
@@ -56,7 +59,7 @@ impl<D: AspClientDispatcher> AspClientProtocol for AspClientGrpcService<D> {
                     break;
                 }
                 tokio::select! {
-                    envelope = inbound.next(), if inbound_open && requests.len() < CLIENT_FRAME_SESSION_CAPACITY => {
+                    envelope = inbound.next(), if inbound_open && requests.len() < CLIENT_FRAME_TRANSPORT_CAPACITY => {
                         match envelope {
                             Some(Ok(envelope)) => match decode_frame(envelope) {
                                 Ok(frame) => requests.push(dispatch_client_frame(Arc::clone(&frames), frame)),
@@ -141,6 +144,51 @@ pub async fn serve_asp_client_grpc_unix<D: AspClientDispatcher>(
 
 type PendingResponse = oneshot::Sender<Result<ClientFrame, String>>;
 
+/// One in-flight ClientFrame call whose request identity remains registered
+/// until a typed terminal arrives, the bounded wait expires, or the handle is
+/// dropped.  Keeping registration separate from waiting lets callers send the
+/// protocol `Cancel` frame without creating a second response authority.
+pub struct AspClientPendingCall {
+    request_id: ClientRequestId,
+    receiver: Option<oneshot::Receiver<Result<ClientFrame, String>>>,
+    pending: Arc<Mutex<HashMap<ClientRequestId, PendingResponse>>>,
+}
+
+impl AspClientPendingCall {
+    #[must_use]
+    pub fn request_id(&self) -> &ClientRequestId {
+        &self.request_id
+    }
+
+    pub async fn wait(mut self) -> Result<ClientFrame, String> {
+        let receiver = self
+            .receiver
+            .take()
+            .expect("pending ClientFrame call receiver must exist");
+        match tokio::time::timeout(CLIENT_FRAME_RESPONSE_BUDGET, receiver).await {
+            Ok(response) => {
+                response.map_err(|_| "ASP Client Protocol response channel closed".to_owned())?
+            }
+            Err(_) => {
+                self.pending.lock().remove(&self.request_id);
+                Err(format!(
+                    "reasonKind=runtime-client-response-deadline-exceeded requestId={} budgetMs={}",
+                    self.request_id.as_str(),
+                    CLIENT_FRAME_RESPONSE_BUDGET.as_millis(),
+                ))
+            }
+        }
+    }
+}
+
+impl Drop for AspClientPendingCall {
+    fn drop(&mut self) {
+        if self.receiver.is_some() {
+            self.pending.lock().remove(&self.request_id);
+        }
+    }
+}
+
 struct GrpcResponseStream {
     receiver: ReceiverStream<Result<ClientFrameEnvelope, Status>>,
     supervisor: tokio::task::JoinHandle<()>,
@@ -178,10 +226,15 @@ pub struct AspClientGrpcTransport {
 }
 
 impl AspClientGrpcTransport {
+    #[must_use]
+    pub fn pending_call_count(&self) -> usize {
+        self.pending.lock().len()
+    }
+
     pub async fn connect_unix(socket_path: impl Into<PathBuf>) -> Result<Self, String> {
         let channel = connect_unix_channel(socket_path.into()).await?;
         let mut client = AspClientProtocolClient::new(channel);
-        let (outbound, receiver) = mpsc::channel(32);
+        let (outbound, receiver) = mpsc::channel(CLIENT_FRAME_TRANSPORT_CAPACITY);
         let mut inbound = tokio::time::timeout(
             CLIENT_SESSION_CONNECT_BUDGET,
             client.session(Request::new(ReceiverStream::new(receiver))),
@@ -231,40 +284,90 @@ impl AspClientGrpcTransport {
     }
 
     pub async fn call(&self, frame: ClientFrame) -> Result<ClientFrame, String> {
+        self.begin_call(frame).await?.wait().await
+    }
+
+    /// Register and send one call without waiting for its terminal response.
+    /// This is the sole supported way to retain a request while a correlated
+    /// cancellation frame is sent on the same bounded gRPC session.
+    pub async fn begin_call(&self, frame: ClientFrame) -> Result<AspClientPendingCall, String> {
         let request_id = frame_request_id(&frame)
             .cloned()
             .ok_or_else(|| "ASP Client Protocol call frame requires requestId".to_owned())?;
-        let (sender, receiver) = oneshot::channel();
-        if self
-            .pending
-            .lock()
-            .insert(request_id.clone(), sender)
-            .is_some()
-        {
-            return Err(format!(
-                "ASP Client Protocol requestId is already pending: {}",
-                request_id.as_str()
-            ));
-        }
         let envelope = encode_frame(frame)
             .map_err(|error| format!("encode ASP ClientFrame request: {error}"))?;
+        let (sender, receiver) = oneshot::channel();
+        {
+            let mut pending = self.pending.lock();
+            if pending.len() >= CLIENT_FRAME_SESSION_CAPACITY {
+                return Err(format!(
+                    "reasonKind=client-session-backpressure capacity={} pending={} reservedControlSlots={} retryAdmitted=false",
+                    CLIENT_FRAME_SESSION_CAPACITY,
+                    pending.len(),
+                    CLIENT_FRAME_SESSION_CONTROL_RESERVE,
+                ));
+            }
+            match pending.entry(request_id.clone()) {
+                std::collections::hash_map::Entry::Vacant(entry) => {
+                    entry.insert(sender);
+                }
+                std::collections::hash_map::Entry::Occupied(_) => {
+                    return Err(format!(
+                        "ASP Client Protocol requestId is already pending: {}",
+                        request_id.as_str()
+                    ));
+                }
+            }
+        }
         if self.outbound.send(envelope).await.is_err() {
             self.pending.lock().remove(&request_id);
             return Err("ASP Client Protocol gRPC stream is closed".to_owned());
         }
-        match tokio::time::timeout(CLIENT_FRAME_RESPONSE_BUDGET, receiver).await {
-            Ok(response) => {
-                response.map_err(|_| "ASP Client Protocol response channel closed".to_owned())?
-            }
-            Err(_) => {
-                self.pending.lock().remove(&request_id);
-                Err(format!(
-                    "reasonKind=runtime-client-response-deadline-exceeded requestId={} budgetMs={}",
-                    request_id.as_str(),
-                    CLIENT_FRAME_RESPONSE_BUDGET.as_millis(),
-                ))
-            }
+        Ok(AspClientPendingCall {
+            request_id,
+            receiver: Some(receiver),
+            pending: Arc::clone(&self.pending),
+        })
+    }
+
+    /// Send a correlated cancellation frame for an already registered call.
+    /// Its typed `Cancelled` response completes the original pending handle;
+    /// no second pending entry or retry is created.
+    pub async fn cancel_pending(
+        &self,
+        base: agent_semantic_client_protocol::ClientFrameBase,
+        request_id: ClientRequestId,
+    ) -> Result<(), String> {
+        if !self.pending.lock().contains_key(&request_id) {
+            return Err(format!(
+                "ASP Client Protocol cancellation requires a pending requestId: {}",
+                request_id.as_str()
+            ));
         }
+        let envelope = encode_frame(ClientFrame::Cancel { base, request_id })
+            .map_err(|error| format!("encode ASP ClientFrame cancellation: {error}"))?;
+        self.outbound
+            .send(envelope)
+            .await
+            .map_err(|_| "ASP Client Protocol gRPC stream is closed".to_owned())
+    }
+
+    /// Send a protocol frame that intentionally has no terminal response.
+    /// Correlated frames must use `call`, `begin_call`, or `cancel_pending` so
+    /// their exactly-one response ownership cannot be lost.
+    pub async fn send_oneway(&self, frame: ClientFrame) -> Result<(), String> {
+        if let Some(request_id) = frame_request_id(&frame) {
+            return Err(format!(
+                "ASP Client Protocol one-way frame cannot carry requestId: {}",
+                request_id.as_str()
+            ));
+        }
+        let envelope = encode_frame(frame)
+            .map_err(|error| format!("encode ASP ClientFrame one-way request: {error}"))?;
+        self.outbound
+            .send(envelope)
+            .await
+            .map_err(|_| "ASP Client Protocol gRPC stream is closed".to_owned())
     }
 }
 

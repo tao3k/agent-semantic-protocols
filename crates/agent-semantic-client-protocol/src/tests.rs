@@ -13,6 +13,67 @@ fn cancellation_probe_has_a_language_neutral_route_operation() {
 }
 
 #[test]
+fn server_catalog_publishes_the_cancellation_probe() {
+    let methods = crate::server_method_catalog::server_client_methods(Vec::new())
+        .expect("server method catalog");
+    let method = methods
+        .iter()
+        .find(|method| method.method == crate::server_method_catalog::CANCELLATION_PROBE_METHOD)
+        .expect("cancellation probe method");
+    assert_eq!(
+        method.route_id,
+        crate::server_method_catalog::CANCELLATION_PROBE_METHOD
+    );
+    assert!(method.cancellable);
+    assert!(!method.streaming);
+}
+
+#[test]
+fn server_catalog_publishes_the_live_corpus_cache_state_authority() {
+    let methods = crate::server_method_catalog::server_client_methods(Vec::new())
+        .expect("server method catalog");
+    let method = methods
+        .iter()
+        .find(|method| method.method == crate::LIVE_CORPUS_CACHE_STATE_METHOD)
+        .expect("Live Corpus cache-state method");
+    assert_eq!(method.route_id, crate::LIVE_CORPUS_CACHE_STATE_METHOD);
+    assert!(!method.cancellable);
+    assert!(!method.streaming);
+}
+
+#[test]
+fn live_corpus_cache_state_matrix_is_content_bound_and_fail_closed() {
+    let warm = crate::LiveCorpusCacheStateRequest {
+        schema_id: crate::LIVE_CORPUS_CACHE_STATE_REQUEST_SCHEMA_ID.to_owned(),
+        schema_version: "1".to_owned(),
+        operation_id: "warm-rust-tokio".to_owned(),
+        resource_id: "rust.tokio".to_owned(),
+        language_id: "rust".to_owned(),
+        provider_id: "asp-rust".to_owned(),
+        artifact_digest: "a".repeat(64),
+        cache_state: "warm-read".to_owned(),
+        prepare_action: "reuse-exact-resident-generation".to_owned(),
+        mutation_scope: "none".to_owned(),
+        expected_generation_digest: Some(format!("blake3-256:{}", "b".repeat(64))),
+        expected_root_digest: Some("c".repeat(64)),
+    };
+    warm.validate().expect("exact warm cache identity");
+    let mut stale = warm.clone();
+    stale.expected_root_digest = None;
+    assert!(stale.validate().is_err());
+    let mut released = warm.clone();
+    released.cache_state = "released".to_owned();
+    released.prepare_action = "release-exact-benchmark-generation".to_owned();
+    released.mutation_scope = "benchmark-workspace-generation".to_owned();
+    released
+        .validate()
+        .expect("exact benchmark generation release");
+    let mut global = warm;
+    global.mutation_scope = "global".to_owned();
+    assert!(global.validate().is_err());
+}
+
+#[test]
 fn northbound_client_requests_are_distinct_from_provider_runtime_requests() {
     let search = crate::AspClientSearchRequest {
         schema_id: "agent.semantic-protocols.asp-client-search-request".to_owned(),

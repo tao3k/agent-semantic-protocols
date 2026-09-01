@@ -181,7 +181,8 @@ pub(super) struct SourceIndexGenerationRefresh<'a> {
     pub(super) changed_owner_paths: Option<&'a [String]>,
     pub(super) index_root: &'a Path,
     pub(super) files: &'a [SourceIndexScopeFile],
-    pub(super) project_resolutions: &'a [agent_semantic_runtime::AdmittedProjectResolution],
+    pub(super) project_resolutions:
+        &'a [agent_semantic_content_identity::AdmittedProjectResolution],
     pub(super) candidate: &'a crate::runtime_server_admission::WorkspaceGenerationCandidateIdentity,
     pub(super) registry: &'a RuntimeProviderProjectionEvidence,
     pub(super) provider_registry: &'a agent_semantic_client_core::RuntimeProviderProjection,

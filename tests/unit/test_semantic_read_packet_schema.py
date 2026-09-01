@@ -60,7 +60,7 @@ class SemanticReadPacketSchemaTests(unittest.TestCase):
 
     def test_read_packet_accepts_git_source_version_metadata(self) -> None:
         packet = semantic_read_minimal_packet()
-        packet["repositoryRoot"] = "/workspace/project/languages/rust-lang-project-harness"
+        packet["repositoryRoot"] = "/workspace/project/languages/asp-rust"
         packet["sourceVersion"] = "index"
         packet["gitBlobOid"] = "a" * 40
 

@@ -4,7 +4,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 LANGUAGE_RELEASE_WORKFLOWS = {
-    "languages/rust-lang-project-harness": {
+    "languages/asp-rust": {
         "binary": "asp-rust",
         "darwin_os": "macos-14",
         "targets": {

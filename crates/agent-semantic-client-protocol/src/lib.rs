@@ -18,7 +18,9 @@ pub use routes::{
     AspClientExactQueryFailure, AspClientExactQueryRequest, AspClientExactQueryResponse,
     AspClientGraphsTimelineRequest, AspClientOwnerSearchRequest, AspClientOwnerSearchResponse,
     AspClientOwnerSearchSeed, AspClientRuntimeWorkCounters, AspClientSearchRequest,
-    AspClientSourceIndexLookupRequest, ProviderNativeExactProjection, ProviderNativeExactRequest,
+    AspClientSourceIndexLookupRequest, LIVE_CORPUS_CACHE_STATE_RECEIPT_SCHEMA_ID,
+    LIVE_CORPUS_CACHE_STATE_REQUEST_SCHEMA_ID, LiveCorpusCacheStateReceipt,
+    LiveCorpusCacheStateRequest, ProviderNativeExactProjection, ProviderNativeExactRequest,
     ProviderNativeOwnerSearchRequest, ProviderNativeOwnerSearchResponse,
     RuntimeProviderSearchRequest,
 };
@@ -31,9 +33,10 @@ pub use server_method_catalog::{
     CANCELLATION_PROBE_METHOD, CANCELLATION_PROBE_REQUEST_SCHEMA_ID,
     CANCELLATION_PROBE_RESPONSE_SCHEMA_ID, GRAPH_EVALUATE_METHOD, GRAPH_EVALUATE_REQUEST_SCHEMA_ID,
     GRAPH_EVALUATE_RESPONSE_SCHEMA_ID, GRAPH_TIMELINE_METHOD, GRAPH_TIMELINE_REQUEST_SCHEMA_ID,
-    GRAPH_TIMELINE_RESPONSE_SCHEMA_ID, MULTI_AGENT_CHILDREN_METHOD, MULTI_AGENT_HOST_EVENT_METHOD,
-    ResolvedServerClientMethod, ServerClientRoute, resolve_server_client_method,
-    resolve_server_client_method_owner, server_client_catalog, server_client_methods,
+    GRAPH_TIMELINE_RESPONSE_SCHEMA_ID, LIVE_CORPUS_CACHE_STATE_METHOD, MULTI_AGENT_CHILDREN_METHOD,
+    MULTI_AGENT_HOST_EVENT_METHOD, ResolvedServerClientMethod, ServerClientRoute,
+    resolve_server_client_method, resolve_server_client_method_owner, server_client_catalog,
+    server_client_methods,
 };
 
 pub const CLIENT_PROTOCOL_ID: &str = "agent.semantic-protocols.client";

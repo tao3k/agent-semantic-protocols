@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.agent-semantic-protocols.dev/asp.live-corpus-cache-state-receipt.v1.schema.json",
+  "title": "ASP Live Corpus Cache State Receipt v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId", "schemaVersion", "operationId", "state", "cacheState",
+    "workspaceIdentity", "generationDigest", "rootDigest",
+    "residentGenerationEvicted", "clientSessionEvicted", "sourceWorkspaceMutationCount",
+    "globalCacheMutationCount", "filesystemDeleteCount", "elapsedMicros"
+  ],
+  "properties": {
+    "schemaId": { "const": "agent.semantic-protocols.live-corpus-cache-state-receipt" },
+    "schemaVersion": { "const": "1" },
+    "operationId": { "type": "string", "minLength": 1 },
+    "state": { "const": "ready" },
+    "cacheState": { "enum": ["cold-build", "cold-load", "warm-read", "released"] },
+    "workspaceIdentity": { "type": "string", "minLength": 1 },
+    "generationDigest": {
+      "oneOf": [
+        { "type": "string", "pattern": "^blake3-256:[0-9a-f]{64}$" },
+        { "type": "null" }
+      ]
+    },
+    "rootDigest": {
+      "oneOf": [
+        { "$ref": "asp.live-corpus-artifact.v1.schema.json#/$defs/blake3Digest" },
+        { "type": "null" }
+      ]
+    },
+    "residentGenerationEvicted": { "type": "boolean" },
+    "clientSessionEvicted": { "type": "boolean" },
+    "sourceWorkspaceMutationCount": { "const": 0 },
+    "globalCacheMutationCount": { "const": 0 },
+    "filesystemDeleteCount": { "const": 0 },
+    "elapsedMicros": { "type": "integer", "minimum": 0 }
+  }
+}

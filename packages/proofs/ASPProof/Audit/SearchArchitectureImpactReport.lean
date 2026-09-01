@@ -1,0 +1,11 @@
+import ASPProof.SearchArchitectureImpactReport
+
+open ASPProof.SearchArchitectureImpactReport
+
+#print axioms directFallbackProducesRejectedReport
+#print axioms directFallbackPreservesShortestCounterexample
+#print axioms orphanLegacyProviderCacheBreaksSourceHardCut
+#print axioms orphanLegacyProviderCacheIsReportedEvenWhenUnreachable
+#print axioms generatedClientSearchPlannerIsRejected
+#print axioms generatedClientSearchPlannerReportsBothCapabilities
+#print axioms proofReportNeverInventsAxioms

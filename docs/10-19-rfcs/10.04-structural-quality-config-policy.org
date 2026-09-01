@@ -532,11 +532,11 @@ engineering structure."
 
 * References
 
-- [[file:../../languages/rust-lang-project-harness/docs/01_core/101_harness_boundary.md][Harness Boundary]] — file role contracts, parser boundary, self-apply policy
-- [[file:../../languages/rust-lang-project-harness/docs/03_features/201_rule_catalog.md][Rule Catalog]] — existing structural rules
-- [[file:../../languages/rust-lang-project-harness/docs/03_features/202_runner_modes.md][Runner Modes]] — config model, cargo-test embedding, scope policy
-- [[file:../../languages/rust-lang-project-harness/docs/03_features/204_verification_policy.md][Verification Policy]] — configurable verification surface
-- [[file:../../languages/rust-lang-project-harness/src/model.rs][model.rs]] — =RustHarnessConfig=, =RustRulePack=, builder API
-- [[file:../../languages/rust-lang-project-harness/src/rules/project_policy/source_scope.rs][source_scope.rs]] — =RUST-PROJ-R013=, =RUST-PROJ-R014=
-- [[file:../../languages/rust-lang-project-harness/src/rules/project_policy/verification_integration.rs][verification_integration.rs]] — =RUST-PROJ-R015=
-- [[file:../../languages/rust-lang-project-harness/src/rules/project_policy/build_gate.rs][build_gate.rs]] — =RUST-PROJ-R012=
+- [[file:../../languages/asp-rust/docs/01_core/101_harness_boundary.md][Harness Boundary]] — file role contracts, parser boundary, self-apply policy
+- [[file:../../languages/asp-rust/docs/03_features/201_rule_catalog.md][Rule Catalog]] — existing structural rules
+- [[file:../../languages/asp-rust/docs/03_features/202_runner_modes.md][Runner Modes]] — config model, cargo-test embedding, scope policy
+- [[file:../../languages/asp-rust/docs/03_features/204_verification_policy.md][Verification Policy]] — configurable verification surface
+- [[file:../../languages/asp-rust/src/model.rs][model.rs]] — =RustHarnessConfig=, =RustRulePack=, builder API
+- [[file:../../languages/asp-rust/src/rules/project_policy/source_scope.rs][source_scope.rs]] — =RUST-PROJ-R013=, =RUST-PROJ-R014=
+- [[file:../../languages/asp-rust/src/rules/project_policy/verification_integration.rs][verification_integration.rs]] — =RUST-PROJ-R015=
+- [[file:../../languages/asp-rust/src/rules/project_policy/build_gate.rs][build_gate.rs]] — =RUST-PROJ-R012=

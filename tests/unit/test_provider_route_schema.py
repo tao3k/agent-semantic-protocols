@@ -71,7 +71,7 @@ def test_provider_registration_requires_route_dsl_and_has_no_method_legacy() -> 
 
 def test_all_seven_provider_registrations_have_canonical_inventory_and_root_identity() -> None:
     registrations = {
-        "rust": ROOT / "languages/rust-lang-project-harness/provider/asp-provider-registration.json",
+        "rust": ROOT / "languages/asp-rust/provider/asp-provider-registration.json",
         "typescript": ROOT / "languages/typescript-lang-project-harness/provider/asp-provider-registration.json",
         "python": ROOT / "languages/python-lang-project-harness/provider/asp-provider-registration.json",
         "julia": ROOT / "languages/JuliaLangProjectHarness.jl/juliac/asp-provider-registration.json",
@@ -119,7 +119,7 @@ def test_rust_registration_routes_use_structured_output_schema_references() -> N
     registration = json.loads(
         (
             ROOT
-            / "languages/rust-lang-project-harness/provider/asp-provider-registration.json"
+            / "languages/asp-rust/provider/asp-provider-registration.json"
         ).read_text()
     )
     routes = registration["routes"]

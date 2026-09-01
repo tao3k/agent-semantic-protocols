@@ -57,12 +57,12 @@ fn fixture_resident_transaction(
             .to_owned(),
         schema_version: "1".to_owned(),
         state: "ready".to_owned(),
-        activation_generation: 7,
+        publication_nonce: "publication-status-memory".to_owned(),
         launcher_artifact_path: endpoint.runtime_artifact_path.clone(),
         launcher_artifact_digest: digest.clone(),
         spawn_argv: vec![endpoint.runtime_artifact_path.clone(), "serve".to_owned()],
         applied_artifact_digest: digest.clone(),
-        applied_activation_generation: 7,
+        applied_publication_nonce: "publication-status-memory".to_owned(),
         endpoint_owner_epoch: endpoint.owner_epoch,
         endpoint_binary_content_digest: digest,
         endpoint_runtime_generation_digest: endpoint.runtime_generation_digest.clone(),
@@ -120,13 +120,13 @@ fn resident_transaction_validator_accepts_one_v1_applied_generation() {
 }
 
 #[test]
-fn resident_transaction_validator_rejects_cross_generation_and_endpoint_authority() {
+fn resident_transaction_validator_rejects_cross_publication_and_endpoint_authority() {
     let root = tempfile::tempdir().expect("status memory fixture");
     let endpoint = fixture_endpoint(root.path(), 13);
 
-    let mut cross_generation = fixture_resident_transaction(&endpoint);
-    cross_generation.applied_activation_generation += 1;
-    assert!(validate_resident_transaction(&endpoint, cross_generation).is_err());
+    let mut cross_publication = fixture_resident_transaction(&endpoint);
+    cross_publication.applied_publication_nonce = "publication-other".to_owned();
+    assert!(validate_resident_transaction(&endpoint, cross_publication).is_err());
 
     let mut cross_endpoint = fixture_resident_transaction(&endpoint);
     cross_endpoint.endpoint_runtime_generation_digest = format!("blake3-256:{}", "f".repeat(64));

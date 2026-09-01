@@ -17,6 +17,10 @@ const CLIENT_OWNER_SEARCH_RESPONSE: &str =
     "agent.semantic-protocols.asp-client-owner-search-response";
 const CLIENT_GRAPHS_TIMELINE_REQUEST: &str =
     "agent.semantic-protocols.asp-client-graphs-timeline-request";
+pub const LIVE_CORPUS_CACHE_STATE_REQUEST_SCHEMA_ID: &str =
+    "agent.semantic-protocols.live-corpus-cache-state-request";
+pub const LIVE_CORPUS_CACHE_STATE_RECEIPT_SCHEMA_ID: &str =
+    "agent.semantic-protocols.live-corpus-cache-state-receipt";
 const EXACT_REQUEST: &str = "agent.semantic-protocols.provider-native-exact-request";
 const EXACT_RESPONSE: &str = "agent.semantic-protocols.provider-native-exact-projection";
 const OWNER_REQUEST: &str = "agent.semantic-protocols.provider-native-owner-search-request";
@@ -61,6 +65,149 @@ pub struct AspClientGraphsTimelineRequest {
     pub schema_version: String,
     pub event_packet: Value,
     pub arguments: Vec<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct LiveCorpusCacheStateRequest {
+    pub schema_id: String,
+    pub schema_version: String,
+    pub operation_id: String,
+    pub resource_id: String,
+    pub language_id: String,
+    pub provider_id: String,
+    pub artifact_digest: String,
+    pub cache_state: String,
+    pub prepare_action: String,
+    pub mutation_scope: String,
+    pub expected_generation_digest: Option<String>,
+    pub expected_root_digest: Option<String>,
+}
+
+impl LiveCorpusCacheStateRequest {
+    pub fn validate(&self) -> Result<(), String> {
+        if self.schema_id != LIVE_CORPUS_CACHE_STATE_REQUEST_SCHEMA_ID
+            || self.schema_version != "1"
+            || self.operation_id.is_empty()
+            || self.resource_id.is_empty()
+            || self.language_id.is_empty()
+            || self.provider_id.is_empty()
+            || !valid_hex_digest(&self.artifact_digest)
+        {
+            return Err("Live Corpus cache-state request identity is invalid".to_owned());
+        }
+        let exact_generation = self
+            .expected_generation_digest
+            .as_deref()
+            .is_some_and(valid_blake3_digest);
+        let exact_root = self
+            .expected_root_digest
+            .as_deref()
+            .is_some_and(valid_hex_digest);
+        match self.cache_state.as_str() {
+            "cold-build" => {
+                if self.prepare_action != "new-isolated-workspace-generation"
+                    || self.mutation_scope != "benchmark-workspace-generation"
+                    || self.expected_generation_digest.is_some()
+                    || self.expected_root_digest.is_some()
+                {
+                    return Err("Live Corpus cold-build request is not isolated".to_owned());
+                }
+            }
+            "cold-load" => {
+                if self.prepare_action != "evict-resident-generation-only"
+                    || self.mutation_scope != "benchmark-workspace-generation"
+                    || !exact_generation
+                    || !exact_root
+                {
+                    return Err("Live Corpus cold-load request is not content-bound".to_owned());
+                }
+            }
+            "warm-read" => {
+                if self.prepare_action != "reuse-exact-resident-generation"
+                    || self.mutation_scope != "none"
+                    || !exact_generation
+                    || !exact_root
+                {
+                    return Err("Live Corpus warm-read request is not content-bound".to_owned());
+                }
+            }
+            "released" => {
+                if self.prepare_action != "release-exact-benchmark-generation"
+                    || self.mutation_scope != "benchmark-workspace-generation"
+                    || !exact_generation
+                    || !exact_root
+                {
+                    return Err("Live Corpus release request is not content-bound".to_owned());
+                }
+            }
+            _ => return Err("Live Corpus cache state is unsupported".to_owned()),
+        }
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct LiveCorpusCacheStateReceipt {
+    pub schema_id: String,
+    pub schema_version: String,
+    pub operation_id: String,
+    pub state: String,
+    pub cache_state: String,
+    pub workspace_identity: String,
+    pub generation_digest: Option<String>,
+    pub root_digest: Option<String>,
+    pub resident_generation_evicted: bool,
+    pub client_session_evicted: bool,
+    pub source_workspace_mutation_count: u64,
+    pub global_cache_mutation_count: u64,
+    pub filesystem_delete_count: u64,
+    pub elapsed_micros: u64,
+}
+
+impl LiveCorpusCacheStateReceipt {
+    pub fn validate(&self) -> Result<(), String> {
+        if self.schema_id != LIVE_CORPUS_CACHE_STATE_RECEIPT_SCHEMA_ID
+            || self.schema_version != "1"
+            || self.operation_id.is_empty()
+            || self.state != "ready"
+            || self.workspace_identity.is_empty()
+            || !matches!(
+                self.cache_state.as_str(),
+                "cold-build" | "cold-load" | "warm-read" | "released"
+            )
+            || self.source_workspace_mutation_count != 0
+            || self.global_cache_mutation_count != 0
+            || self.filesystem_delete_count != 0
+        {
+            return Err("Live Corpus cache-state receipt is invalid".to_owned());
+        }
+        if let Some(digest) = self.generation_digest.as_deref()
+            && !valid_blake3_digest(digest)
+        {
+            return Err("Live Corpus cache-state generation digest is invalid".to_owned());
+        }
+        if let Some(digest) = self.root_digest.as_deref()
+            && !valid_hex_digest(digest)
+        {
+            return Err("Live Corpus cache-state root digest is invalid".to_owned());
+        }
+        Ok(())
+    }
+}
+
+fn valid_blake3_digest(value: &str) -> bool {
+    value
+        .strip_prefix("blake3-256:")
+        .is_some_and(valid_hex_digest)
+}
+
+fn valid_hex_digest(digest: &str) -> bool {
+    digest.len() == 64
+        && digest
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]

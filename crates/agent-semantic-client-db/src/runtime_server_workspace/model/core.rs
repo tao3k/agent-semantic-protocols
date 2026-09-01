@@ -437,7 +437,7 @@ pub struct WorkspaceGenerationBuild {
     pub workspace_snapshot: agent_semantic_content_identity::WorkspaceSnapshot,
     pub source_snapshot: agent_semantic_content_identity::SourceSnapshotEvidence,
     pub module_graph_digest: String,
-    pub project_resolutions: Vec<agent_semantic_runtime::AdmittedProjectResolution>,
+    pub project_resolutions: Vec<agent_semantic_content_identity::AdmittedProjectResolution>,
     pub owners: Vec<WorkspaceOwnerSnapshot>,
     pub relations: Vec<crate::ClientDbSourceIndexOwnedRelation>,
 }
@@ -460,7 +460,7 @@ pub struct WorkspaceMemoryGeneration {
     pub projection_capability: crate::active_generation_projection_capability::ActiveGenerationProjectionCapabilityManifest,
     pub memory_backend_digest: String,
     pub workspace_source_scope_generation: String,
-    pub project_resolutions: Vec<agent_semantic_runtime::AdmittedProjectResolution>,
+    pub project_resolutions: Vec<agent_semantic_content_identity::AdmittedProjectResolution>,
     pub owners: Vec<WorkspaceOwnerSnapshot>,
     pub relations: Vec<crate::ClientDbSourceIndexOwnedRelation>,
 }
@@ -491,9 +491,10 @@ impl WorkspaceMemoryGeneration {
                 owner_count: u64::try_from(input.owners.len())
                     .map_err(|_| "workspace generation owner count overflow".to_owned())?,
             };
-        let provider_schema_digest = agent_semantic_runtime::project_resolution_schema_digest();
+        let provider_schema_digest =
+            agent_semantic_content_identity::project_resolution_schema_digest();
         let workspace_source_scope_generation =
-            agent_semantic_runtime::workspace_source_scope_generation_digest(
+            agent_semantic_content_identity::workspace_source_scope_generation_digest(
                 &input.project_resolutions,
             )?;
         let selector_set_digest = typed_digest(

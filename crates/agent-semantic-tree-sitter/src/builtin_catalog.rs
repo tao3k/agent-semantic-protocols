@@ -61,19 +61,19 @@ pub fn builtin_catalog_source(
 fn rust_catalog_source(catalog_id: &str) -> Option<&'static str> {
     match catalog_id {
         "calls" => Some(include_str!(
-            "../../../languages/rust-lang-project-harness/tree-sitter/tree-sitter-rust/queries/calls.scm"
+            "../../../languages/asp-rust/tree-sitter/tree-sitter-rust/queries/calls.scm"
         )),
         "cfg" => Some(include_str!(
-            "../../../languages/rust-lang-project-harness/tree-sitter/tree-sitter-rust/queries/cfg.scm"
+            "../../../languages/asp-rust/tree-sitter/tree-sitter-rust/queries/cfg.scm"
         )),
         "declarations" => Some(include_str!(
-            "../../../languages/rust-lang-project-harness/tree-sitter/tree-sitter-rust/queries/declarations.scm"
+            "../../../languages/asp-rust/tree-sitter/tree-sitter-rust/queries/declarations.scm"
         )),
         "imports" => Some(include_str!(
-            "../../../languages/rust-lang-project-harness/tree-sitter/tree-sitter-rust/queries/imports.scm"
+            "../../../languages/asp-rust/tree-sitter/tree-sitter-rust/queries/imports.scm"
         )),
         "macros" => Some(include_str!(
-            "../../../languages/rust-lang-project-harness/tree-sitter/tree-sitter-rust/queries/macros.scm"
+            "../../../languages/asp-rust/tree-sitter/tree-sitter-rust/queries/macros.scm"
         )),
         _ => None,
     }

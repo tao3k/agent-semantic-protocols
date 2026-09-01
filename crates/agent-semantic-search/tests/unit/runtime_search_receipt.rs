@@ -4,7 +4,10 @@ use agent_semantic_search_projection::{
     ResidentSearchWorkCounters,
 };
 
-use crate::{bounded_runtime_search_source, build_runtime_provider_search_receipt};
+use crate::{
+    ResidentGraphSearchStage, bounded_runtime_search_source, build_runtime_provider_search_receipt,
+    build_runtime_provider_search_receipt_with_graph,
+};
 
 fn ready_result(generation: &str, owner_path: &str, selector: &str) -> ResidentSearchReadyResult {
     ResidentSearchReadyResult {
@@ -46,7 +49,7 @@ async fn bounded_sources_fan_in_with_deterministic_identity_order() {
 
     let receipt = build_runtime_provider_search_receipt(
         "operation".to_owned(),
-        agent_semantic_client_core::LanguageId::new("rust"),
+        agent_semantic_config::LanguageId::new("rust"),
         vec![source_a, source_b],
         7,
         Vec::new(),
@@ -66,7 +69,7 @@ async fn fan_in_rejects_cross_generation_results() {
     let second = format!("blake3-256:{}", "b".repeat(64));
     let error = build_runtime_provider_search_receipt(
         "operation".to_owned(),
-        agent_semantic_client_core::LanguageId::new("rust"),
+        agent_semantic_config::LanguageId::new("rust"),
         vec![
             crate::RuntimeSearchSource::once("resident", ready_result(&first, "a.rs", "a")),
             crate::RuntimeSearchSource::once("provider", ready_result(&second, "b.rs", "b")),
@@ -78,4 +81,36 @@ async fn fan_in_rejects_cross_generation_results() {
     .expect_err("cross-generation fan-in must fail closed");
 
     assert!(error.contains("crossed Runtime generation authority"));
+}
+
+#[tokio::test]
+async fn graph_stage_reorders_only_the_same_generation_frontier() {
+    let generation = format!("blake3-256:{}", "a".repeat(64));
+    let receipt = build_runtime_provider_search_receipt_with_graph(
+        "operation".to_owned(),
+        agent_semantic_config::LanguageId::new("rust"),
+        vec![
+            crate::RuntimeSearchSource::once(
+                "resident-a",
+                ready_result(&generation, "src/a.rs", "a"),
+            ),
+            crate::RuntimeSearchSource::once(
+                "resident-z",
+                ready_result(&generation, "src/z.rs", "z"),
+            ),
+        ],
+        7,
+        Vec::new(),
+        Some(ResidentGraphSearchStage {
+            generation_digest: generation,
+            result_digest: format!("blake3-256:{}", "b".repeat(64)),
+            ranked_owner_paths: vec!["src/z.rs".to_owned(), "src/a.rs".to_owned()],
+            elapsed_micros: 5,
+        }),
+    )
+    .await
+    .expect("same-generation graph stage is admitted");
+
+    assert_eq!(receipt.owner_paths, ["src/z.rs", "src/a.rs"]);
+    assert!(receipt.service_elapsed_micros >= 5);
 }

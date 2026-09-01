@@ -39,7 +39,7 @@ jobs:
         shell: bash
         run: |
           git submodule update --init --depth 1 \
-            languages/rust-lang-project-harness \
+            languages/asp-rust \
             languages/gerbil-scheme-language-project-harness \
             languages/org \
             languages/orgize \
@@ -121,8 +121,8 @@ jobs:
           mkdir -p .bin
           cargo build --bin asp
           install -m 755 target/debug/asp .bin/asp
-          cargo build --manifest-path languages/rust-lang-project-harness/Cargo.toml --features cli --bin asp-rust
-          install -m 755 languages/rust-lang-project-harness/target/debug/asp-rust .bin/asp-rust
+          cargo build --manifest-path languages/asp-rust/Cargo.toml --features cli --bin asp-rust
+          install -m 755 languages/asp-rust/target/debug/asp-rust .bin/asp-rust
           npm --prefix languages/typescript-lang-project-harness ci
           npm --prefix languages/typescript-lang-project-harness run build
           cat > .bin/asp-python <<EOF
@@ -185,7 +185,7 @@ jobs:
       - name: Checkout provider submodules
         run: |
           git submodule update --init --depth 1 \
-            languages/rust-lang-project-harness \
+            languages/asp-rust \
             languages/gerbil-scheme-language-project-harness \
             languages/org \
             languages/orgize \
@@ -220,14 +220,14 @@ jobs:
         with:
           workspaces: |
             . -> target
-            languages/rust-lang-project-harness -> languages/rust-lang-project-harness/target
+            languages/asp-rust -> languages/asp-rust/target
           shared-key: asp-rust-ci-${{ runner.os }}
           cache-on-failure: true
 
       - name: Fetch Rust dependencies
         run: |
           cargo fetch
-          cargo fetch --manifest-path languages/rust-lang-project-harness/Cargo.toml
+          cargo fetch --manifest-path languages/asp-rust/Cargo.toml
 
       - name: Root schema gates
         run: |
@@ -279,11 +279,11 @@ jobs:
       - name: Rust provider graph-render smoke gates
         run: |
           SEMANTIC_AGENT_PROTOCOL_BIN="$PWD/target/debug/asp" \
-            cargo test --manifest-path languages/rust-lang-project-harness/Cargo.toml \
+            cargo test --manifest-path languages/asp-rust/Cargo.toml \
               --workspace --all-targets --all-features --quiet \
               cli_search_graph_profiles_filter_to_rendered_aliases
           SEMANTIC_AGENT_PROTOCOL_BIN="$PWD/target/debug/asp" \
-            cargo test --manifest-path languages/rust-lang-project-harness/Cargo.toml \
+            cargo test --manifest-path languages/asp-rust/Cargo.toml \
               --workspace --all-targets --all-features --quiet \
               cli_search_policy_renders_semantic_handles
 
@@ -294,8 +294,8 @@ jobs:
           cargo run --quiet --bin asp -- schema publish-client \
             --workspace . \
             --language rust \
-            --output languages/rust-lang-project-harness/schemas
-          cargo test --manifest-path languages/rust-lang-project-harness/Cargo.toml schema --features cli --quiet
+            --output languages/asp-rust/schemas
+          cargo test --manifest-path languages/asp-rust/Cargo.toml schema --features cli --quiet
 
       - name: TypeScript provider schema gates
         run: |
@@ -315,8 +315,8 @@ jobs:
           mkdir -p "$HOME/.local/bin"
           install -m 755 target/debug/asp "$HOME/.local/bin/asp"
           export PATH="$HOME/.local/bin:$PATH"
-          cargo build --manifest-path languages/rust-lang-project-harness/Cargo.toml --features cli --bin asp-rust
-          install -m 755 languages/rust-lang-project-harness/target/debug/asp-rust "$HOME/.local/bin/asp-rust"
+          cargo build --manifest-path languages/asp-rust/Cargo.toml --features cli --bin asp-rust
+          install -m 755 languages/asp-rust/target/debug/asp-rust "$HOME/.local/bin/asp-rust"
           printf '#!/usr/bin/env bash\nexec node "%s/languages/typescript-lang-project-harness/dist/src/cli/main.js" "$@"\n' "$PWD" > "$HOME/.local/bin/asp-typescript"
           chmod 755 "$HOME/.local/bin/asp-typescript"
           printf '#!/usr/bin/env bash\nexec uv run --project "%s/languages/python-lang-project-harness" --frozen asp-python "$@"\n' "$PWD" > "$HOME/.local/bin/asp-python"

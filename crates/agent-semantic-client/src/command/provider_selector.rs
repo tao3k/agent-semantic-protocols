@@ -90,10 +90,7 @@ fn suggested_language_facade_for_request(
     None
 }
 
-pub(super) fn is_provider_owned_structural_selector_query(
-    language_id: &str,
-    args: &[String],
-) -> bool {
+pub(super) fn is_runtime_exact_query(args: &[String]) -> bool {
     if !matches!(args.first().map(String::as_str), Some("query"))
         || args
             .iter()
@@ -101,11 +98,7 @@ pub(super) fn is_provider_owned_structural_selector_query(
     {
         return false;
     }
-    let Some(selector) = exact_query_selector_argument(args) else {
-        return false;
-    };
-    agent_semantic_content_identity::CanonicalItemSelector::parse_root_or_exact_descendant(selector)
-        .is_ok_and(|selector| selector.language_id.as_str() == language_id)
+    exact_query_selector_argument(args).is_some()
 }
 
 pub(super) fn exact_query_selector_argument(args: &[String]) -> Option<&str> {

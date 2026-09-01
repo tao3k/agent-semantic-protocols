@@ -281,7 +281,7 @@ fn asp_search_scenario_package_exposes_search_performance_gates() {
         .expect("canonical Tree-sitter QueryCursor scenario is registered");
     assert_eq!(
         tree_sitter.fixture_root,
-        "languages/rust-lang-project-harness/tests/unit/cli/query/catalog"
+        "languages/asp-rust/tests/unit/cli/query/catalog"
     );
     assert!(tree_sitter.tags.contains(&"tree-sitter"));
     assert!(tree_sitter.tags.contains(&"native-runtime"));

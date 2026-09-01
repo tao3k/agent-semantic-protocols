@@ -53,13 +53,14 @@ version = "0.1.0"
 dependencies = [
  "agent-semantic-config",
  "agent-semantic-content-identity",
+ "asp-rust-project-harness-policy",
  "blake3",
  "fs2",
+ "libc",
  "serde",
  "serde_json",
  "tempfile",
  "tokio",
- "turso",
 ]
 
 [[package]]
@@ -87,6 +88,7 @@ dependencies = [
  "agent-semantic-tree-sitter",
  "aho-corasick",
  "ascent",
+ "asp-rust",
  "asp-rust-project-harness-policy",
  "base64 0.22.1",
  "blake3",
@@ -104,7 +106,6 @@ dependencies = [
  "orgize",
  "proc-macro2",
  "referencing",
- "rust-lang-project-harness 0.1.2",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -193,6 +194,7 @@ version = "0.1.0"
 dependencies = [
  "agent-semantic-client-core",
  "agent-semantic-client-protocol",
+ "agent-semantic-content-identity",
  "agent-semantic-runtime",
  "agent-semantic-schema-manager",
  "asp-rust-project-harness-policy",
@@ -285,6 +287,7 @@ dependencies = [
  "agent-semantic-artifacts",
  "agent-semantic-config",
  "agent-semantic-hook",
+ "agent-semantic-shell-parser",
  "asp-rust-project-harness-policy",
  "fs2",
  "globset",
@@ -427,23 +430,17 @@ dependencies = [
 name = "agent-semantic-search"
 version = "0.1.0"
 dependencies = [
- "agent-semantic-artifacts",
- "agent-semantic-client-core",
+ "agent-semantic-config",
  "agent-semantic-content-identity",
- "agent-semantic-hook",
  "agent-semantic-provider-protocol",
- "agent-semantic-provider-transport",
- "agent-semantic-runtime",
  "agent-semantic-search-projection",
  "asp-rust-project-harness-policy",
  "blake3",
  "bytes",
  "globset",
  "ignore",
- "jsonschema",
+ "memchr",
  "memmap2",
- "orgize",
- "rust-lang-project-harness 0.1.2",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -461,7 +458,6 @@ dependencies = [
  "agent-semantic-content-identity",
  "asp-rust-project-harness-policy",
  "jsonschema",
- "referencing",
  "serde",
  "serde_json",
 ]
@@ -481,8 +477,8 @@ name = "agent-semantic-tree-sitter"
 version = "0.1.0"
 dependencies = [
  "agent-semantic-provider-protocol",
+ "asp-rust",
  "asp-rust-project-harness-policy",
- "rust-lang-project-harness 0.1.2",
 ]
 
 [[package]]
@@ -703,12 +699,39 @@ dependencies = [
 ]
 
 [[package]]
-name = "asp-rust-project-harness-policy"
+name = "asp-rust"
+version = "0.1.2"
+dependencies = [
+ "asp-rust-build-support",
+ "blake3",
+ "cargo-lock",
+ "cargo_toml",
+ "libc",
+ "proc-macro2",
+ "quote",
+ "regex",
+ "semver",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "syn 3.0.4",
+ "toml 1.1.2+spec-1.1.0",
+]
+
+[[package]]
+name = "asp-rust-build-support"
 version = "0.1.0"
 dependencies = [
  "blake3",
+]
+
+[[package]]
+name = "asp-rust-project-harness-policy"
+version = "0.1.0"
+dependencies = [
+ "asp-rust",
+ "blake3",
  "criterion",
- "rust-lang-project-harness 0.1.2",
  "serde",
  "serde_json",
 ]
@@ -4221,6 +4244,7 @@ dependencies = [
 name = "orgize"
 version = "0.10.0-alpha.10"
 dependencies = [
+ "asp-rust-project-harness-policy",
  "bytecount",
  "cfg-if",
  "comrak",
@@ -4230,7 +4254,6 @@ dependencies = [
  "nom 8.0.0",
  "orgize-build-support",
  "rowan",
- "rust-lang-project-harness 0.1.2 (git+https://github.com/tao3k/rust-lang-project-harness?rev=8f23f6cd211c02f4b0146d842025f3c639fcf1cc)",
  "serde_json",
  "sha2 0.10.9",
 ]
@@ -4854,7 +4877,7 @@ checksum = "2c9283685feec7d69af75fb0e858d5e7378f33fe4fc699383b2916ab9273e03c"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 3.0.0",
+ "syn 3.0.4",
 ]
 
 [[package]]
@@ -4977,44 +5000,6 @@ dependencies = [
  "hashbrown 0.14.5",
  "rustc-hash 1.1.0",
  "text-size",
-]
-
-[[package]]
-name = "rust-lang-project-harness"
-version = "0.1.2"
-dependencies = [
- "agent-semantic-content-identity",
- "blake3",
- "cargo-lock",
- "cargo_toml",
- "libc",
- "proc-macro2",
- "quote",
- "regex",
- "semver",
- "serde",
- "serde_json",
- "sha2 0.11.0",
- "syn 2.0.118",
- "toml 1.1.2+spec-1.1.0",
-]
-
-[[package]]
-name = "rust-lang-project-harness"
-version = "0.1.2"
-source = "git+https://github.com/tao3k/rust-lang-project-harness?rev=8f23f6cd211c02f4b0146d842025f3c639fcf1cc#8f23f6cd211c02f4b0146d842025f3c639fcf1cc"
-dependencies = [
- "cargo-lock",
- "cargo_toml",
- "proc-macro2",
- "quote",
- "regex",
- "semver",
- "serde",
- "serde_json",
- "sha2 0.11.0",
- "syn 2.0.118",
- "toml 1.1.2+spec-1.1.0",
 ]
 
 [[package]]
@@ -5557,9 +5542,9 @@ dependencies = [
 
 [[package]]
 name = "syn"
-version = "3.0.0"
+version = "3.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f2fac314a64dc9a36e61a9eb4261a5e9bbfbc922b27e518af97bc32b926cf967"
+checksum = "e6275cddf4610d1775e6d1fe9469b2e77d0f39fd98fb7450901b821e0c53649f"
 dependencies = [
  "proc-macro2",
  "quote",

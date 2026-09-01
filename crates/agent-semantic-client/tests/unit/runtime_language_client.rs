@@ -102,6 +102,18 @@ async fn generation_identity_change_cannot_reuse_the_previous_session() {
     assert_eq!(registry.len(), 2);
 }
 
+#[tokio::test]
+async fn exact_workspace_session_eviction_does_not_drain_another_workspace() {
+    let mut registry = SessionRegistry::<usize>::new(2);
+    let rust = SessionKey::fixture(30);
+    let python = SessionKey::fixture(31);
+    registry.reserve(rust.clone()).expect("Rust session");
+    registry.reserve(python).expect("Python session");
+    assert!(registry.remove_key(&rust));
+    assert_eq!(registry.len(), 1);
+    assert!(!registry.remove_key(&rust));
+}
+
 #[test]
 fn typed_schema_bundle_decoder_preserves_failed_terminal() {
     let response = SchemaBundleResponse::Failed {

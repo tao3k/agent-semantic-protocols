@@ -114,7 +114,7 @@ pub(crate) async fn run_language_command(
     if try_run_gerbil_deps_index_command(language_id, &command_args)? {
         return Ok(());
     }
-    if is_provider_owned_structural_selector_query(language_id, &command_args) {
+    if is_runtime_exact_query(&command_args) {
         if let Some(diagnostics) = command_diagnostics.as_mut() {
             diagnostics.mark_stage("exact-query-resident-dispatch");
         }
@@ -310,7 +310,7 @@ fn runtime_search_intent(args: &[String]) -> Result<AspClientSearchRequest, Stri
         query: queries.join(" "),
     })
 }
-use super::provider_selector::is_provider_owned_structural_selector_query;
+use super::provider_selector::is_runtime_exact_query;
 
 #[cfg(test)]
 #[path = "../../tests/unit/command/provider_route_intent.rs"]

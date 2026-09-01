@@ -549,8 +549,8 @@ pub(super) fn validate_resident_transaction(
     );
     if transaction.schema_version != "1"
         || transaction.state != "ready"
-        || transaction.activation_generation == 0
-        || transaction.activation_generation != transaction.applied_activation_generation
+        || transaction.publication_nonce.is_empty()
+        || transaction.publication_nonce != transaction.applied_publication_nonce
         || transaction.launcher_artifact_digest != transaction.applied_artifact_digest
         || transaction.endpoint_binary_content_digest != transaction.applied_artifact_digest
         || transaction.endpoint_owner_epoch != endpoint.owner_epoch
@@ -565,9 +565,9 @@ pub(super) fn validate_resident_transaction(
         || !valid_drain
     {
         return Err(format!(
-            "runtime-server-resident-transaction-not-current: activationGeneration={} appliedActivationGeneration={} endpointOwnerEpoch={} observedOwnerEpoch={} launcherPath={} endpointArtifactPath={} drainState={}",
-            transaction.activation_generation,
-            transaction.applied_activation_generation,
+            "runtime-server-resident-transaction-not-current: publicationNonce={} appliedPublicationNonce={} endpointOwnerEpoch={} observedOwnerEpoch={} launcherPath={} endpointArtifactPath={} drainState={}",
+            transaction.publication_nonce,
+            transaction.applied_publication_nonce,
             endpoint.owner_epoch,
             transaction.endpoint_owner_epoch,
             transaction.launcher_artifact_path,

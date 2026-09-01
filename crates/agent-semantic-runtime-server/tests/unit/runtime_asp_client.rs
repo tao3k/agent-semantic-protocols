@@ -123,6 +123,7 @@ async fn dispatch_with_pending_generation_admission_returns_query_not_ready(
         test_generation_admission(),
         digest('a'),
         Arc::from(registered_language_provider_pairs()),
+        directory.path().join("workspace-store"),
         agent_semantic_runtime_server::query_generation::RuntimeQueryGenerationAuthority::new(),
         telemetry.sender,
     )
@@ -400,6 +401,7 @@ async fn host_uds_schema_bundle_route_bypasses_workspace_generation() {
         test_generation_admission(),
         digest('a'),
         Arc::from(registered_language_provider_pairs()),
+        directory.path().join("workspace-store"),
         agent_semantic_runtime_server::query_generation::RuntimeQueryGenerationAuthority::new(),
         telemetry.sender,
     )

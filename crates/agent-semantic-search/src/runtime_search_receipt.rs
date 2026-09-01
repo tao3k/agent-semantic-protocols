@@ -44,10 +44,29 @@ pub fn bounded_runtime_search_source(
 
 pub async fn build_runtime_provider_search_receipt(
     operation_id: String,
-    language_id: agent_semantic_client_core::LanguageId,
+    language_id: agent_semantic_config::LanguageId,
     sources: Vec<RuntimeSearchSource>,
     resident_read_elapsed_micros: u64,
     parser_owned_selector_pairs: Vec<(String, String)>,
+) -> Result<RuntimeProviderSearchReceipt, String> {
+    build_runtime_provider_search_receipt_with_graph(
+        operation_id,
+        language_id,
+        sources,
+        resident_read_elapsed_micros,
+        parser_owned_selector_pairs,
+        None,
+    )
+    .await
+}
+
+pub async fn build_runtime_provider_search_receipt_with_graph(
+    operation_id: String,
+    language_id: agent_semantic_config::LanguageId,
+    sources: Vec<RuntimeSearchSource>,
+    resident_read_elapsed_micros: u64,
+    parser_owned_selector_pairs: Vec<(String, String)>,
+    graph_stage: Option<crate::ResidentGraphSearchStage>,
 ) -> Result<RuntimeProviderSearchReceipt, String> {
     let started = std::time::Instant::now();
     let mut fan_in = admitted_source_map(sources)?;
@@ -80,11 +99,34 @@ pub async fn build_runtime_provider_search_receipt(
 
     let authority =
         authority.ok_or_else(|| "runtime search requires one source result".to_owned())?;
+    if let Some(graph) = &graph_stage
+        && graph.generation_digest != authority.generation_digest
+    {
+        return Err("graph search stage crossed Runtime generation authority".to_owned());
+    }
     for (selector, owner_path) in parser_owned_selector_pairs {
         selectors.insert(selector);
         owner_paths.insert(owner_path);
     }
-    let service_elapsed_micros = u64::try_from(started.elapsed().as_micros()).unwrap_or(u64::MAX);
+    let mut owner_paths = owner_paths.into_iter().collect::<Vec<_>>();
+    if let Some(graph) = &graph_stage {
+        let rank = graph
+            .ranked_owner_paths
+            .iter()
+            .enumerate()
+            .map(|(index, path)| (path.as_str(), index))
+            .collect::<std::collections::BTreeMap<_, _>>();
+        owner_paths.sort_by_key(|path| {
+            (
+                rank.get(path.as_str()).copied().unwrap_or(usize::MAX),
+                path.clone(),
+            )
+        });
+    }
+    let graph_elapsed_micros = graph_stage.as_ref().map(|graph| graph.elapsed_micros);
+    let service_elapsed_micros = graph_elapsed_micros
+        .unwrap_or_default()
+        .saturating_add(u64::try_from(started.elapsed().as_micros()).unwrap_or(u64::MAX));
     let receipt = RuntimeProviderSearchReceipt {
         schema_id: RUNTIME_PROVIDER_SEARCH_RECEIPT_SCHEMA_ID.to_owned(),
         schema_version: RUNTIME_PROVIDER_SEARCH_RECEIPT_SCHEMA_VERSION.to_owned(),
@@ -101,7 +143,7 @@ pub async fn build_runtime_provider_search_receipt(
         index_artifact_digest: authority.index_artifact_digest,
         candidate_count,
         selectors: selectors.into_iter().collect(),
-        owner_paths: owner_paths.into_iter().collect(),
+        owner_paths,
         resident_read_elapsed_micros,
         service_elapsed_micros,
         elapsed_micros: resident_read_elapsed_micros.saturating_add(service_elapsed_micros),

@@ -75,6 +75,8 @@ mod runtime_server_lifecycle_coordinator;
 mod runtime_server_operator_stop;
 #[path = "unit/runtime_server_overlay_admission.rs"]
 mod runtime_server_overlay_admission;
+#[path = "unit/runtime_server_owner_receipt.rs"]
+mod runtime_server_owner_receipt;
 #[path = "unit/runtime_server_runtime.rs"]
 mod runtime_server_runtime;
 #[path = "unit/runtime_server_state_home_isolation.rs"]

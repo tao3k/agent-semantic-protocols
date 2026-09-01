@@ -232,7 +232,7 @@ The same fixture with 12 added Rust files (1.0 percent dirty) recorded 54 millis
 The active 499-owner Rust harness workspace produced 21,152 normalized semantic
 tokens. A fresh-state =direnv exec . env ASP_SOURCE_INDEX_TRACE=1
 target/release/asp cache source-index rebuild --workspace
-languages/rust-lang-project-harness= wrote 2,486 token dictionary rows in 75
+languages/asp-rust= wrote 2,486 token dictionary rows in 75
 milliseconds and completed the Turso import phase in 120 milliseconds. The
 preceding one-token-per-owner-pair projection wrote the same scope in about 502
 milliseconds. A fresh rebuild followed by a dirty refresh of the unchanged

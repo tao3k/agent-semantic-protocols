@@ -56,6 +56,7 @@ path = "tests/integration/hook_binary_process.rs"
 
 [build-dependencies]
 agent-semantic-schema-manager = { workspace = true, optional = true }
+asp-rust-project-harness-policy.workspace = true
 
 [dependencies]
 arc-swap = { workspace = true, optional = true }
@@ -82,7 +83,6 @@ tokio = { workspace = true, optional = true, features = ["io-util", "macros", "p
 which = { workspace = true, optional = true }
 
 [dev-dependencies]
-asp-rust-project-harness-policy = { path = "../../build-support/asp-rust-project-harness-policy" }
 gix.workspace = true
 gix-config.workspace = true
 jsonschema.workspace = true

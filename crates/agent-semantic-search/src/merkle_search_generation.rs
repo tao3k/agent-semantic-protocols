@@ -6,7 +6,7 @@ use std::sync::Arc;
 use crate::{ResidentSearchAuthority, ResidentSourceIndex, ResidentSourceIndexSeed};
 
 const SEARCH_PROJECTION_ANALYZER_ID: &str =
-    "agent.semantic-protocols.search-projection-analyzer.lexical-graph.v1";
+    "agent.semantic-protocols.search-projection-analyzer.rg-lexical-graph.v1";
 
 /// Digest of the parser-owned derivation algorithm shared by lexical and graph projections.
 ///
@@ -207,7 +207,7 @@ impl MerkleSearchGeneration {
 
     pub fn resident_source_index_from_seeds(
         &self,
-        source_snapshot: agent_semantic_artifacts::SourceSnapshotEvidence,
+        source_snapshot: agent_semantic_content_identity::SourceSnapshotEvidence,
         generation_digest: String,
         candidate_seeds: BTreeMap<String, ResidentSourceIndexSeed>,
     ) -> Result<ResidentSourceIndex, String> {
@@ -261,9 +261,9 @@ impl MerkleSearchGeneration {
 
     pub fn resident_source_index(
         &self,
-        source_snapshot: agent_semantic_artifacts::SourceSnapshotEvidence,
-        language_id: agent_semantic_client_core::LanguageId,
-        provider_id: agent_semantic_client_core::ProviderId,
+        source_snapshot: agent_semantic_content_identity::SourceSnapshotEvidence,
+        language_id: agent_semantic_config::LanguageId,
+        provider_id: agent_semantic_config::ProviderId,
     ) -> Result<ResidentSourceIndex, String> {
         if source_snapshot.root_digest != self.identity.source_root_digest
             || source_snapshot.provider_digest != self.identity.provider_digest

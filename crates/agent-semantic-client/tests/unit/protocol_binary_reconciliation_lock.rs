@@ -120,7 +120,7 @@ async fn runtime_artifact_transaction_switches_client_launcher_without_switching
         .parent()
         .and_then(std::path::Path::parent)
         .expect("Runtime artifact root belongs to State Home");
-    let activation = agent_semantic_artifacts::runtime_artifact_publication::read_runtime_artifact_activation_event(state_home)
+    let activation = agent_semantic_artifacts::runtime_artifact_activation::read_runtime_artifact_activation_event(state_home)
         .await
         .expect("read Runtime artifact activation")
         .expect("pending Runtime artifact activation");
@@ -139,7 +139,7 @@ async fn runtime_artifact_transaction_switches_client_launcher_without_switching
             .expect("canonical pending activation artifact"),
         "normal client bootstrap must execute the pending immutable candidate"
     );
-    assert!(activation.activation_generation > 0);
+    assert!(!activation.publication_nonce.is_empty());
     assert_eq!(
         std::fs::read(unrelated).expect("read unrelated binary"),
         b"unrelated"

@@ -139,8 +139,8 @@ pub(super) fn validate_toml_scenario_benchmark(
 
 pub(super) fn asp_unit_scenarios_have_rust_harness_benchmark_toml_gates() {
     let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    rust_lang_project_harness::assert_rule_fixture_scenario_benchmarks(crate_root);
-    let receipt = rust_lang_project_harness::validate_required_rust_scenario_benchmarks(crate_root)
+    asp_rust::assert_rule_fixture_scenario_benchmarks(crate_root);
+    let receipt = asp_rust::validate_required_rust_scenario_benchmarks(crate_root)
         .expect("validate ASP unit scenario benchmark gates");
 
     assert!(
@@ -149,7 +149,7 @@ pub(super) fn asp_unit_scenarios_have_rust_harness_benchmark_toml_gates() {
     );
     assert_eq!(
         receipt.status,
-        rust_lang_project_harness::RustScenarioBenchmarkStatus::Pass,
+        asp_rust::RustScenarioBenchmarkStatus::Pass,
         "{receipt:#?}"
     );
     assert!(receipt.receipts.iter().all(|receipt| {

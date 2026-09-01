@@ -111,7 +111,7 @@ def _build_runtime(asp_bin: Path) -> None:
             "build",
             "-q",
             "--manifest-path",
-            "languages/rust-lang-project-harness/Cargo.toml",
+            "languages/asp-rust/Cargo.toml",
             "--features",
             "cli,search",
             "--bin",
@@ -149,7 +149,7 @@ class _runtime_env:
             (ROOT / ".agents/asp.toml").write_text(_CORE_FAST_ASP_TOML, encoding="utf-8")
             _write_shim(
                 shim_dir / "asp-rust",
-                f'exec "{ROOT}/languages/rust-lang-project-harness/target/debug/asp-rust" "$@"\n',
+                f'exec "{ROOT}/languages/asp-rust/target/debug/asp-rust" "$@"\n',
             )
             _write_shim(
                 shim_dir / "asp-typescript",

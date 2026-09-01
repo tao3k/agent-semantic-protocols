@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/runtime-binary-bundle.schema.json",
+  "title": "Runtime Binary Bundle",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaId", "schemaVersion", "bundleDigest", "members"],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.runtime-binary-bundle"
+    },
+    "schemaVersion": {
+      "const": 1
+    },
+    "bundleDigest": {
+      "$ref": "#/$defs/digest"
+    },
+    "members": {
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": {
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/digest"
+      }
+    }
+  },
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^blake3-256:[0-9a-f]{64}$"
+    }
+  }
+}

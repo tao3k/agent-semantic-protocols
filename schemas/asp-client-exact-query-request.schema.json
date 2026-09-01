@@ -10,7 +10,11 @@
       "const": "agent.semantic-protocols.asp-client-exact-query-request"
     },
     "schemaVersion": { "const": "1" },
-    "selector": { "type": "string", "minLength": 1 },
+    "selector": {
+      "type": "string",
+      "minLength": 1,
+      "description": "A canonical item selector or normalized workspace-relative owner path. ASP Server owns parsing and resolution against the admitted CompleteGeneration."
+    },
     "projection": { "enum": ["source", "callable-skeleton"] }
   }
 }

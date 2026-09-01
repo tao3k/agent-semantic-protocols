@@ -3,10 +3,11 @@
 
 * Current state and first divergence
 
-The artifact publication owner allocates a monotonic activation generation
-under the publication guard and binds stale-actor rejection to generation,
-artifact digest, and publication nonce. Re-publishing identical content may
-therefore produce a new sequence without changing content identity.
+The artifact publication owner commits one content-addressed Runtime bundle
+under the publication guard. Active and healthy selectors, the activation
+receipt, the artifact digest, the bundle digest, and the publication nonce are
+validated as one transaction. Re-publishing identical bytes produces a fresh
+nonce without creating a second numeric lifecycle authority.
 
 The first semantic divergence is the evaluator boundary: policy generation
 digest is not sufficient evidence of the executable ASP binary that produced
@@ -32,10 +33,9 @@ The composition is immutable and exact. Same policy with a different binary,
 same binary with a different policy, and any cross-content composition are
 rejected before evaluator reuse or provider admission.
 
-The activation number is an internal publication sequence, stale-actor fence,
-and observability value only. It is not a product identity, ClientFrame
-identity, selector, cache key, provider input, workspace identity, or source
-generation identity.
+Runtime artifact activation has no numeric generation. Publication nonce plus
+content identity fences stale actors. Neither is a source generation,
+ClientFrame product identity, workspace identity, provider input, or cache key.
 
 * Authority and data flow
 
@@ -52,31 +52,30 @@ remains gated on Runtime Server integration and protected producer evidence.
 
 * Design review
 
-** Candidate A: numeric generation authority
+** Rejected: numeric generation authority
 
 It minimizes immediate migration but cannot distinguish equal labels with
 different binary or source content. It also leaves evaluator freshness coupled
 to implicit snapshots and environment equality. It is rejected as the product
 identity.
 
-** Candidate B: content address only
+** Rejected: content address without publication nonce
 
 It gives strong content equality but does not by itself specify actor ordering,
 ABA fencing, or crash-cut behavior. It also increases migration and digest
 materialization cost.
 
-** Candidate C: content identity plus internal monotonic fence
+** Selected: content identity plus publication nonce
 
-This is the provisional candidate. Content digests determine reuse and
-admission; the monotonic sequence orders publication actors and stale writes.
-This preserves cheap fencing while preventing the sequence from overriding
-content mismatch. It remains provisional until source-level evaluator key and
-publication linearization gates pass.
+Content digests determine reuse and admission. A transaction-owned nonce binds
+the candidate, pending/applied receipt, and actor acknowledgement, preventing
+stale writes without exposing a second counter. Active and healthy selectors
+remain the only serving state.
 
 * Required gates
 
-- same content with a new sequence keeps the same content identity;
-- stale generation or nonce actor remains rejected;
+- same content with a new nonce keeps the same content identity;
+- a stale nonce actor remains rejected;
 - same-policy/different-binary and same-binary/different-policy are rejected;
 - binary refresh invalidates the old evaluator binding;
 - publication crash cuts expose no mixed content;

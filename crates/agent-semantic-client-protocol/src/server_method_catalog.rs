@@ -48,6 +48,7 @@ pub const CANCELLATION_PROBE_RESPONSE_SCHEMA_ID: &str =
     "agent.semantic-protocols.asp-client-cancellation-probe-response";
 pub const MULTI_AGENT_HOST_EVENT_METHOD: &str = "asp.session.host-event";
 pub const MULTI_AGENT_CHILDREN_METHOD: &str = "asp.session.children";
+pub const LIVE_CORPUS_CACHE_STATE_METHOD: &str = "asp.live-corpus.cache-state";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ServerClientRoute {
@@ -55,6 +56,7 @@ pub enum ServerClientRoute {
     MultiAgentHostEvent,
     MultiAgentChildren,
     CancellationProbe,
+    LiveCorpusCacheState,
     GraphsEvaluate,
     GraphsTimeline,
     Search,
@@ -79,6 +81,7 @@ impl ServerClientRoute {
             Self::MultiAgentHostEvent => "session.host-event",
             Self::MultiAgentChildren => "session.children",
             Self::CancellationProbe => "lifecycle.cancellation",
+            Self::LiveCorpusCacheState => "live-corpus.cache-state",
             Self::GraphsEvaluate => "graphs.evaluate",
             Self::GraphsTimeline => "graphs.timeline",
             Self::Search => "search",
@@ -111,6 +114,8 @@ pub fn server_client_methods(
         agent_session_register_method(),
         multi_agent_host_event_method(),
         multi_agent_children_method(),
+        cancellation_probe_method(),
+        live_corpus_cache_state_method(),
         schema_bundle_method(),
         graphs_evaluate_method(),
         graphs_timeline_method(),
@@ -163,6 +168,32 @@ fn agent_session_register_method() -> ClientMethod {
             required_string("agentName"),
             required_string("agentPath"),
             required_string("routeKey"),
+        ],
+        cancellable: false,
+        streaming: false,
+    }
+}
+
+fn live_corpus_cache_state_method() -> ClientMethod {
+    ClientMethod {
+        method: LIVE_CORPUS_CACHE_STATE_METHOD.to_owned(),
+        route_id: LIVE_CORPUS_CACHE_STATE_METHOD.to_owned(),
+        request_schema_id: crate::LIVE_CORPUS_CACHE_STATE_REQUEST_SCHEMA_ID.to_owned(),
+        response_schema_id: crate::LIVE_CORPUS_CACHE_STATE_RECEIPT_SCHEMA_ID.to_owned(),
+        error_schema_ids: vec![ROUTE_FAILURE_SCHEMA_ID.to_owned()],
+        parameters: vec![
+            required_string("schemaId"),
+            required_string("schemaVersion"),
+            required_string("operationId"),
+            required_string("resourceId"),
+            required_string("languageId"),
+            required_string("providerId"),
+            required_string("artifactDigest"),
+            required_string("cacheState"),
+            required_string("prepareAction"),
+            required_string("mutationScope"),
+            optional("expectedGenerationDigest", ClientParameterType::Json),
+            optional("expectedRootDigest", ClientParameterType::Json),
         ],
         cancellable: false,
         streaming: false,
@@ -266,6 +297,11 @@ pub fn resolve_server_client_method_owner(
     if method == MULTI_AGENT_CHILDREN_METHOD {
         return Ok(ResolvedServerClientMethod::Server(
             ServerClientRoute::MultiAgentChildren,
+        ));
+    }
+    if method == LIVE_CORPUS_CACHE_STATE_METHOD {
+        return Ok(ResolvedServerClientMethod::Server(
+            ServerClientRoute::LiveCorpusCacheState,
         ));
     }
     if method == GRAPH_TIMELINE_METHOD {

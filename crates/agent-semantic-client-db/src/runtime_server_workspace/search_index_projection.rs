@@ -50,6 +50,7 @@ pub struct WorkspaceSearchGenerationDataPlaneClient {
         (String, String),
         Vec<agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelation>,
     >,
+    graph_generation: agent_semantic_search::ResidentGraphGeneration,
 }
 
 pub fn workspace_search_generation_segment_path(generation_path: &Path) -> PathBuf {
@@ -92,7 +93,14 @@ pub(super) fn build_merkle_search_generation(
                     owner.owner_path.clone(),
                     owner.content_digest.clone(),
                     text.lines().count().max(1).min(u32::MAX as usize) as u32,
-                    agent_semantic_search::resident_navigation_keys(&owner.owner_path),
+                    agent_semantic_search::resident_lexical_coverage_keys(
+                        &owner.owner_path,
+                        &owner.bytes,
+                        owner
+                            .selectors
+                            .iter()
+                            .flat_map(|selector| selector.query_keys.iter().cloned()),
+                    ),
                     Some(graph_fragment_digest),
                 )?,
             })
@@ -225,7 +233,14 @@ fn encode_workspace_search_generation_segment_inner(
     let mut selectors = Vec::<(Vec<u8>, Vec<u8>)>::new();
     for owner in owners {
         let text = std::str::from_utf8(&owner.bytes).unwrap_or_default();
-        let query_keys = agent_semantic_search::resident_navigation_keys(&owner.owner_path);
+        let query_keys = agent_semantic_search::resident_lexical_coverage_keys(
+            &owner.owner_path,
+            &owner.bytes,
+            owner
+                .selectors
+                .iter()
+                .flat_map(|selector| selector.query_keys.iter().cloned()),
+        );
         for (position, selector) in owner.selectors.iter().enumerate() {
             selectors.push((
                 selector.selector.as_bytes().to_vec(),
@@ -515,6 +530,12 @@ impl WorkspaceSearchGenerationDataPlaneClient {
         }
         let (resident_source_index, callable_selector_by_owner) =
             build_owner_search_indexes(&owner_directory_records, &graph_relations, &authority)?;
+        let graph_generation = agent_semantic_search::build_resident_graph_generation(
+            &authority.source_snapshot,
+            &authority.workspace_generation,
+            owner_directory_records.keys().cloned(),
+            graph_relations.iter().map(|owned| owned.relation.clone()),
+        )?;
         Ok(Self {
             mapping,
             authority,
@@ -525,11 +546,16 @@ impl WorkspaceSearchGenerationDataPlaneClient {
             owner_bytes_range,
             merkle_owner_records,
             graph_relation_records,
+            graph_generation,
         })
     }
 
     pub fn authority(&self) -> &WorkspaceSearchGenerationAuthority {
         &self.authority
+    }
+
+    pub fn graph_generation(&self) -> &agent_semantic_search::ResidentGraphGeneration {
+        &self.graph_generation
     }
 
     pub fn read_source_index(

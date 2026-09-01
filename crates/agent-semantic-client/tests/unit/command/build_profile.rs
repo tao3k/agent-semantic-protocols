@@ -52,7 +52,7 @@ fn require_release_fails_closed_for_debug_artifacts() {
 }
 
 #[test]
-fn global_install_checks_release_profile_before_and_after_copy() {
+fn release_install_checks_release_profile_before_and_after_copy() {
     let justfile = fs::read_to_string(workspace_root().join("justfile")).expect("read justfile");
     let recipe = justfile
         .split("agent-tools-install-protocol bin_dir=\"\":")
@@ -74,18 +74,19 @@ fn global_install_checks_release_profile_before_and_after_copy() {
 fn debug_install_never_publishes_a_stale_target_after_build_failure() {
     let justfile = fs::read_to_string(workspace_root().join("justfile")).expect("read justfile");
     let recipe = justfile
-        .split("agent-tools-install-protocol-debug bin_dir=\"\":")
+        .split("agent-tools-install-protocol-debug:")
         .nth(1)
         .and_then(|tail| tail.split("agent-tools-install-hook").next())
         .expect("debug protocol install recipe");
 
     assert!(
         recipe.contains(
-            "cargo build --manifest-path Cargo.toml --package agent-semantic-client --bin asp || exit $?"
+            "cargo build --manifest-path Cargo.toml --package agent-semantic-client --bin asp --package agent-semantic-hook --bin asp-hook || exit $?"
         ),
         "a failed debug build must stop before an older target/debug/asp can be published"
     );
-    assert!(recipe.contains("asp_artifact=\"${cargo_target_dir}/debug/asp\""));
+    assert!(recipe.contains("asp_artifact=\"target/debug/asp\""));
+    assert!(!recipe.contains("CARGO_TARGET_DIR"));
     assert!(recipe.contains("\"${asp_artifact}\" install binary"));
 }
 

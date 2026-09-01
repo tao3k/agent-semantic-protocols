@@ -9,7 +9,7 @@ from .contract_support import ContractFailure, ROOT, root_relative
 
 
 MANIFESTS_WITHOUT_TREE_SITTER_RUNTIME = (
-    ROOT / "languages/rust-lang-project-harness/Cargo.toml",
+    ROOT / "languages/asp-rust/Cargo.toml",
     ROOT / "languages/typescript-lang-project-harness/package.json",
     ROOT / "languages/python-lang-project-harness/pyproject.toml",
 )

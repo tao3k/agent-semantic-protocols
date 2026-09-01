@@ -24,12 +24,16 @@ fn structural_item_source_query_does_not_use_cli_breaker() {
         ])
         .current_dir(workspace_root())
         .env("ASP_STATE_HOME", state_home.path())
+        .env_remove("ASP_NO_AGENT")
         .output()
         .expect("run public exact-query facade");
 
-    assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success(),
+        "public exact query failed: stdout={stdout} stderr={stderr}"
+    );
     assert!(
         !stderr.contains("provider command must be admitted as a Runtime Server route"),
         "public query must cross Runtime admission instead of the removed CLI breaker: {stderr}"
@@ -38,6 +42,43 @@ fn structural_item_source_query_does_not_use_cli_breaker() {
     assert!(
         stdout.contains("\"reasonKind\":\"runtime-server-activation-unavailable\""),
         "public query must stop at the exact isolated Runtime authority terminal: {stdout}"
+    );
+}
+
+#[test]
+fn gerbil_owner_source_query_enters_runtime_instead_of_the_cli_breaker() {
+    let state_home = tempfile::tempdir().expect("isolated Runtime State Home");
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_asp"))
+        .args([
+            "gerbil-scheme",
+            "query",
+            "--selector",
+            "scheme/reasoning/core.ss",
+            "--workspace",
+            ".",
+            "--projection",
+            "source",
+        ])
+        .current_dir(workspace_root())
+        .env("ASP_STATE_HOME", state_home.path())
+        .env_remove("ASP_NO_AGENT")
+        .output()
+        .expect("run public Gerbil owner-source query");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success(),
+        "Gerbil owner-source query failed: stdout={stdout} stderr={stderr}"
+    );
+    assert!(
+        !stderr.contains("provider command must be admitted as a Runtime Server route"),
+        "Gerbil owner query was rejected before Runtime admission: {stderr}"
+    );
+    assert!(stderr.is_empty(), "unexpected stderr: {stderr}");
+    assert!(
+        stdout.contains("\"reasonKind\":\"runtime-server-activation-unavailable\""),
+        "owner query must stop at the isolated Runtime authority: {stdout}"
     );
 }
 
@@ -264,34 +305,30 @@ async fn production_language_query_spawn_acceptance_terminalizes_before_endpoint
             && install_stdout.contains("installScope=global")
             && install_stdout.contains(&format!(
                 "pendingActivationPath={}",
-                agent_semantic_artifacts::runtime_artifact_publication::runtime_artifact_activation_event_path(&state_home).display()
+                agent_semantic_artifacts::runtime_artifact_activation::runtime_artifact_activation_event_path(&state_home).display()
             )),
         "install did not project the canonical State Home authority: {install_stdout}"
     );
     let activation =
-        agent_semantic_artifacts::runtime_artifact_publication::read_runtime_artifact_activation_event(
+        agent_semantic_artifacts::runtime_artifact_activation::read_runtime_artifact_activation_event(
             &state_home,
         )
         .await
         .expect("read production activation event")
-        .expect("install binary must leave a consumable activation generation");
-    assert!(activation.activation_generation > 0);
+        .expect("install binary must leave a consumable activation publication");
+    assert!(!activation.publication_nonce.is_empty());
     assert!(activation.artifact_path.is_file());
     let applied =
-        agent_semantic_artifacts::runtime_artifact_publication::commit_runtime_artifact_activation(
+        agent_semantic_artifacts::runtime_artifact_activation::commit_runtime_artifact_activation(
             &state_home,
             &activation,
             None,
         )
         .await
-        .expect("commit the first production activation generation");
-    assert_eq!(
-        applied.activation_generation,
-        activation.activation_generation
-    );
+        .expect("commit the first production activation publication");
     assert_eq!(applied.artifact_digest, activation.artifact_digest);
     assert!(
-        agent_semantic_artifacts::runtime_artifact_publication::read_runtime_artifact_activation_event(
+        agent_semantic_artifacts::runtime_artifact_activation::read_runtime_artifact_activation_event(
             &state_home,
         )
         .await
@@ -308,19 +345,19 @@ async fn production_language_query_spawn_acceptance_terminalizes_before_endpoint
         .expect("repeat production install binary command");
     assert!(
         reinstall.status.success(),
-        "repeated install must publish a newer pending generation: stdout={} stderr={}",
+        "repeated install must publish a distinct pending publication: stdout={} stderr={}",
         String::from_utf8_lossy(&reinstall.stdout),
         String::from_utf8_lossy(&reinstall.stderr)
     );
     let republished =
-        agent_semantic_artifacts::runtime_artifact_publication::read_runtime_artifact_activation_event(
+        agent_semantic_artifacts::runtime_artifact_activation::read_runtime_artifact_activation_event(
             &state_home,
         )
         .await
         .expect("read repeated production activation")
-        .expect("stale applied generation must not hide the repeated install");
+        .expect("stale applied publication must not hide the repeated install");
     assert_eq!(republished.artifact_digest, activation.artifact_digest);
-    assert!(republished.activation_generation > activation.activation_generation);
+    assert_ne!(republished.publication_nonce, activation.publication_nonce);
     let legacy_owner_path = state_home.join("runtime/server/owner-spawn.v1.json");
     std::fs::create_dir_all(
         legacy_owner_path
@@ -386,8 +423,8 @@ async fn production_language_query_spawn_acceptance_terminalizes_before_endpoint
             .expect("read claimed owner receipt")
             .expect("pending activation must publish a current owner receipt");
     assert_eq!(
-        claimed_owner.activation_generation,
-        republished.activation_generation
+        claimed_owner.publication_nonce,
+        republished.publication_nonce
     );
     assert_eq!(
         claimed_owner.launcher_artifact_digest,

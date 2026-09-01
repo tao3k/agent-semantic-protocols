@@ -1,5 +1,6 @@
 //! Process-safe scenario execution and typed acceptance helpers for ASP Hooks.
 
+#[cfg(feature = "compiler")]
 pub mod hook_scenarios;
 #[cfg(feature = "compiler")]
 pub mod installed_publication;

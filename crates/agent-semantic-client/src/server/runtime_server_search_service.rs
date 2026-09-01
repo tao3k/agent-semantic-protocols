@@ -276,7 +276,10 @@ pub(super) async fn serve_runtime_search_requests(
                 project_root: _project_root,
                 workspace_identity,
                 generation_digest,
+                source_root_digest,
                 generation_token,
+                graph_generation_digest,
+                graph_open_payload,
                 request_id,
                 payload,
                 mut response,
@@ -303,19 +306,27 @@ pub(super) async fn serve_runtime_search_requests(
                             workspace_identity,
                             generation_digest,
                         )?;
-                        validate_graph_generation(&payload, &identity.generation_digest)?;
-                        let graph_payload = payload.get("graph").cloned().ok_or_else(|| {
-                            "asp-python-graphs graph evaluation requires payload.graph".to_owned()
-                        })?;
-                        let open_payload = serde_json::json!({
-                            "graph": graph_payload,
-                            "sourceSnapshot": payload.get("sourceSnapshot").cloned().unwrap_or(serde_json::Value::Null),
-                            "workspaceGeneration": payload.get("workspaceGeneration").cloned().unwrap_or(serde_json::Value::Null),
-                        });
+                        agent_semantic_search_projection::validate_graph_source_root(
+                            &payload,
+                            &source_root_digest,
+                        )?;
+                        agent_semantic_search_projection::validate_graph_source_root(
+                            graph_open_payload.as_ref(),
+                            &source_root_digest,
+                        )?;
                         let lease = graph_server
-                            .open_generation_with_token(identity, generation_token, open_payload, cancellation.clone())
+                            .open_generation_shared_with_token(
+                                identity,
+                                generation_token,
+                                graph_generation_digest,
+                                graph_open_payload,
+                                cancellation.clone(),
+                            )
                             .await?;
-                        let evaluate_payload = adapt_graph_evaluate_payload(&payload)?;
+                        let evaluate_payload =
+                            agent_semantic_search_projection::adapt_graph_evaluate_payload(
+                                &payload,
+                            )?;
                         let result = lease
                             .evaluate_with_request_id(evaluate_payload, request_id, cancellation.clone())
                             .await;
@@ -456,57 +467,4 @@ pub(super) async fn serve_runtime_search_requests(
     }
     let _ = graph_server.shutdown().await;
     while tasks.join_next().await.is_some() {}
-}
-
-fn adapt_graph_evaluate_payload(payload: &serde_json::Value) -> Result<serde_json::Value, String> {
-    let object = payload
-        .as_object()
-        .ok_or_else(|| "asp-python-graphs graph request must be an object".to_owned())?;
-    let terms = object
-        .get("queryTerms")
-        .cloned()
-        .ok_or_else(|| "asp-python-graphs graph request requires queryTerms".to_owned())?;
-    let mut rank_payload = serde_json::Map::new();
-    for (source, target) in [
-        ("seedIds", "seedIds"),
-        ("kindBudgets", "kindBudgets"),
-        ("windowMerge", "windowMerge"),
-        ("pathBudget", "pathBudget"),
-        ("pathMaxHops", "pathMaxHops"),
-        ("cache", "cache"),
-        ("queryClauses", "queryClauses"),
-    ] {
-        if let Some(value) = object.get(source) {
-            rank_payload.insert(target.to_owned(), value.clone());
-        }
-    }
-    Ok(serde_json::json!({
-        "terms": terms,
-        "profile": object.get("profile").cloned().unwrap_or_else(|| serde_json::Value::String("owner-query".to_owned())),
-        "budget": object.get("budget").cloned().unwrap_or(serde_json::Value::from(8)),
-        "rankPayload": rank_payload,
-    }))
-}
-
-fn validate_graph_generation(
-    payload: &serde_json::Value,
-    generation_digest: &str,
-) -> Result<(), String> {
-    let root = payload
-        .get("workspaceGeneration")
-        .and_then(|generation| generation.get("rootDigest"))
-        .and_then(serde_json::Value::as_str)
-        .ok_or_else(|| {
-            "asp-python-graphs graph request requires workspaceGeneration.rootDigest".to_owned()
-        })?;
-    let matches = root == generation_digest
-        || generation_digest
-            .strip_prefix("blake3-256:")
-            .is_some_and(|digest| digest == root);
-    if !matches {
-        return Err(format!(
-            "state=stale-generation reasonKind=graph-generation-root-mismatch expected={generation_digest} observed={root}"
-        ));
-    }
-    Ok(())
 }

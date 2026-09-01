@@ -14,7 +14,7 @@ from asp_proofs.exact_selector_generation_trace import (
 
 
 WORKSPACE = "workspace-23cc5ba784c605ae"
-OWNER = "languages/rust-lang-project-harness/src/exact_source_projection.rs"
+OWNER = "languages/asp-rust/src/exact_source_projection.rs"
 
 
 def mutation(workspace_id: str = WORKSPACE) -> Transition:

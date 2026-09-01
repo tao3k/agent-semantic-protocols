@@ -3,7 +3,7 @@
 //! Construction belongs to generation admission. Query methods perform no
 //! filesystem, database, provider, socket, or scheduler work.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::Mutex;
 
 use agent_semantic_content_identity::SourceSnapshotEvidence;
@@ -13,8 +13,8 @@ use crate::source_index_lookup_terms;
 #[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ResidentSearchAuthority {
-    pub language_id: agent_semantic_client_core::LanguageId,
-    pub provider_id: agent_semantic_client_core::ProviderId,
+    pub language_id: agent_semantic_config::LanguageId,
+    pub provider_id: agent_semantic_config::ProviderId,
 }
 
 /// Stable navigation keys admitted to the durable shallow search projection.
@@ -24,6 +24,96 @@ pub struct ResidentSearchAuthority {
 #[must_use]
 pub fn resident_navigation_keys(owner_path: &str) -> Vec<String> {
     source_index_lookup_terms(owner_path)
+}
+
+const RESIDENT_LEXICAL_COVERAGE_KEY_LIMIT: usize = 4_096;
+const RESIDENT_LEXICAL_TOKEN_BYTES_LIMIT: usize = 128;
+
+/// Build the immutable lexical coverage for one admitted owner.
+///
+/// Generation construction calls this once for added or changed owner bytes.
+/// It is the in-process equivalent of ripgrep's fast lexical coverage stage:
+/// warm queries consume only the resulting mmap keys and never spawn `rg` or
+/// read source. Parser-owned selector keys are folded into the same set so the
+/// resident index has one lexical authority.
+#[must_use]
+pub fn resident_lexical_coverage_keys(
+    owner_path: &str,
+    source: &[u8],
+    parser_query_keys: impl IntoIterator<Item = String>,
+) -> Vec<String> {
+    let mut priority_keys = resident_navigation_keys(owner_path)
+        .into_iter()
+        .collect::<BTreeSet<_>>();
+    for key in parser_query_keys {
+        priority_keys.extend(source_index_lookup_terms(&key));
+    }
+    let mut source_keys = BTreeSet::new();
+    let mut start = None;
+    for (index, byte) in source
+        .iter()
+        .copied()
+        .chain(std::iter::once(b' '))
+        .enumerate()
+    {
+        let lexical = byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-' | b':');
+        match (start, lexical) {
+            (None, true) => start = Some(index),
+            (Some(begin), false) => {
+                let token = &source[begin..index];
+                if (2..=RESIDENT_LEXICAL_TOKEN_BYTES_LIMIT).contains(&token.len())
+                    && token.iter().any(u8::is_ascii_alphabetic)
+                {
+                    insert_identifier_terms(&mut source_keys, &String::from_utf8_lossy(token));
+                }
+                start = None;
+            }
+            _ => {}
+        }
+    }
+    source_keys.retain(|key| !priority_keys.contains(key));
+    let mut keys = priority_keys.into_iter().collect::<Vec<_>>();
+    if keys.len() < RESIDENT_LEXICAL_COVERAGE_KEY_LIMIT {
+        keys.extend(
+            source_keys
+                .into_iter()
+                .take(RESIDENT_LEXICAL_COVERAGE_KEY_LIMIT - keys.len()),
+        );
+    }
+    keys.truncate(RESIDENT_LEXICAL_COVERAGE_KEY_LIMIT);
+    keys
+}
+
+fn insert_identifier_terms(keys: &mut BTreeSet<String>, identifier: &str) {
+    keys.insert(identifier.to_ascii_lowercase());
+    for segment in identifier
+        .split(['_', '-', ':'])
+        .filter(|part| !part.is_empty())
+    {
+        let chars = segment.chars().collect::<Vec<_>>();
+        let mut start = 0;
+        for index in 1..chars.len() {
+            let previous = chars[index - 1];
+            let current = chars[index];
+            let next = chars.get(index + 1).copied();
+            let boundary = (previous.is_ascii_lowercase() || previous.is_ascii_digit())
+                && current.is_ascii_uppercase()
+                || previous.is_ascii_uppercase()
+                    && current.is_ascii_uppercase()
+                    && next.is_some_and(|next| next.is_ascii_lowercase());
+            if boundary {
+                insert_identifier_part(keys, &chars[start..index]);
+                start = index;
+            }
+        }
+        insert_identifier_part(keys, &chars[start..]);
+    }
+}
+
+fn insert_identifier_part(keys: &mut BTreeSet<String>, chars: &[char]) {
+    if chars.len() >= 2 {
+        keys.insert(chars.iter().collect::<String>().to_ascii_lowercase());
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -115,7 +205,7 @@ impl ResidentSourceIndex {
     pub fn query_language(
         &self,
         query: &str,
-        language_id: &agent_semantic_client_core::LanguageId,
+        language_id: &agent_semantic_config::LanguageId,
         limit: u32,
     ) -> Result<agent_semantic_search_projection::ResidentSearchReadyResult, String> {
         let mut authorities = self

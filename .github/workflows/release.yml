@@ -57,7 +57,7 @@ jobs:
         run: |
           set -euo pipefail
           git submodule update --init --depth 1 \
-            languages/rust-lang-project-harness \
+            languages/asp-rust \
             languages/gerbil-scheme-language-project-harness \
             languages/org \
             languages/orgize \

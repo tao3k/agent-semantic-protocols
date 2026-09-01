@@ -10,7 +10,7 @@ use tempfile::tempdir;
 fn activation_request(
     state_home: &std::path::Path,
     executable: std::path::PathBuf,
-    activation_generation: u64,
+    publication_nonce: &str,
 ) -> agent_semantic_client_db::runtime_server_supervisor::SupervisorRequest {
     let artifact_digest =
         agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest::from_bytes(
@@ -19,7 +19,7 @@ fn activation_request(
     agent_semantic_client_db::runtime_server_supervisor::SupervisorRequest::for_activation(
         state_home.to_path_buf(),
         executable.clone(),
-        activation_generation,
+        publication_nonce.to_owned(),
         artifact_digest,
         None,
         executable,
@@ -71,7 +71,7 @@ async fn owner_receipt_roundtrip_is_atomic_and_schema_stable() {
         process_id: 7,
         nonce: "n".into(),
         state_home: dir.path().display().to_string(),
-        activation_generation: 1,
+        publication_nonce: "publication-owner-roundtrip".to_owned(),
         launcher_artifact_path: "/bin/asp".into(),
         launcher_artifact_digest:
             agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest::from_bytes(
@@ -155,7 +155,11 @@ async fn validated_activation_classifies_legacy_owner_as_not_current() {
         .unwrap(),
     )
     .unwrap();
-    let request = activation_request(dir.path(), std::env::current_exe().unwrap(), 2);
+    let request = activation_request(
+        dir.path(),
+        std::env::current_exe().unwrap(),
+        "publication-missing-owner",
+    );
     assert_eq!(
         agent_semantic_client_db::runtime_server_supervisor::RuntimeServerSupervisor
             .classify_owner(&request)
@@ -171,7 +175,11 @@ async fn malformed_owner_cannot_be_hidden_by_a_validated_activation() {
     let path = dir.path().join("runtime/server/owner-spawn.v1.json");
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     std::fs::write(&path, b"{").unwrap();
-    let request = activation_request(dir.path(), std::env::current_exe().unwrap(), 2);
+    let request = activation_request(
+        dir.path(),
+        std::env::current_exe().unwrap(),
+        "publication-malformed-owner",
+    );
     let error = agent_semantic_client_db::runtime_server_supervisor::RuntimeServerSupervisor
         .classify_owner(&request)
         .await
@@ -180,17 +188,17 @@ async fn malformed_owner_cannot_be_hidden_by_a_validated_activation() {
 }
 
 #[tokio::test]
-async fn current_owner_and_pending_activation_use_one_generation_digest_comparator() {
+async fn current_owner_and_pending_activation_use_one_nonce_digest_comparator() {
     let dir = tempdir().unwrap();
     let executable = std::env::current_exe().unwrap();
-    let request = activation_request(dir.path(), executable.clone(), 2);
+    let request = activation_request(dir.path(), executable.clone(), "publication-current");
     let mut receipt = RuntimeServerSpawnReceipt {
         schema_id: agent_semantic_client_db::RUNTIME_SERVER_OWNER_SPAWN_SCHEMA_ID.into(),
         schema_version: "1".into(),
         process_id: agent_semantic_runtime::runtime_process_lifecycle::current_process_id(),
         nonce: "current-owner".into(),
         state_home: dir.path().display().to_string(),
-        activation_generation: 1,
+        publication_nonce: "publication-stale".to_owned(),
         launcher_artifact_path: executable.display().to_string(),
         launcher_artifact_digest: request.artifact_digest.clone(),
         spawn_argv: vec!["server".into(), "daemon".into()],
@@ -208,19 +216,19 @@ async fn current_owner_and_pending_activation_use_one_generation_digest_comparat
         agent_semantic_client_db::runtime_server_supervisor::SupervisorOutcome::OwnerStale
     );
 
-    receipt.activation_generation = 3;
+    receipt.publication_nonce = "publication-other".to_owned();
     agent_semantic_client_db::runtime_server_lifecycle::write_owner_receipt(dir.path(), &receipt)
         .await
         .unwrap();
-    assert!(
+    assert_eq!(
         agent_semantic_client_db::runtime_server_supervisor::RuntimeServerSupervisor
             .classify_owner(&request)
             .await
-            .unwrap_err()
-            .contains("runtime-server-owner-generation-ahead-of-activation")
+            .unwrap(),
+        agent_semantic_client_db::runtime_server_supervisor::SupervisorOutcome::OwnerStale
     );
 
-    receipt.activation_generation = 2;
+    receipt.publication_nonce = request.publication_nonce.clone();
     receipt.launcher_artifact_digest =
         agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest::from_bytes(
             b"different artifact",
@@ -272,7 +280,7 @@ async fn malformed_partial_and_unknown_owner_receipts_fail_closed() {
             "processId": 7,
             "nonce": "partial",
             "stateHome": dir.path(),
-            "activationGeneration": 1,
+            "publicationNonce": "publication-partial",
         }),
         serde_json::json!({
             "schemaId": "agent.semantic-protocols.runtime-server-owner-spawn.unknown",
@@ -443,14 +451,14 @@ async fn resident_transaction_requires_the_matching_previous_owner_drain() {
     )
     .await
     .expect("publish previous serving artifact");
-    let previous_activation = agent_semantic_artifacts::runtime_artifact_publication::read_runtime_artifact_activation_event(
+    let previous_activation = agent_semantic_artifacts::runtime_artifact_activation::read_runtime_artifact_activation_event(
         &state_home,
     )
     .await
     .expect("read previous activation")
     .expect("previous activation");
     assert_eq!(previous_activation.artifact_digest, previous_serving_digest);
-    agent_semantic_artifacts::runtime_artifact_publication::commit_runtime_artifact_activation(
+    agent_semantic_artifacts::runtime_artifact_activation::commit_runtime_artifact_activation(
         &state_home,
         &previous_activation,
         None,
@@ -466,13 +474,13 @@ async fn resident_transaction_requires_the_matching_previous_owner_drain() {
     )
     .await
     .expect("publish activation candidate");
-    let activation = agent_semantic_artifacts::runtime_artifact_publication::read_runtime_artifact_activation_event(
+    let activation = agent_semantic_artifacts::runtime_artifact_activation::read_runtime_artifact_activation_event(
         &state_home,
     )
     .await
     .expect("read pending activation")
     .expect("pending activation");
-    agent_semantic_artifacts::runtime_artifact_publication::commit_runtime_artifact_activation(
+    agent_semantic_artifacts::runtime_artifact_activation::commit_runtime_artifact_activation(
         &state_home,
         &activation,
         Some(&previous_serving_digest),
@@ -543,7 +551,7 @@ async fn resident_transaction_requires_the_matching_previous_owner_drain() {
             process_id: endpoint.owner_process_id,
             nonce: "resident-transaction".to_owned(),
             state_home: state_home.display().to_string(),
-            activation_generation: activation.activation_generation,
+            publication_nonce: activation.publication_nonce.clone(),
             launcher_artifact_path: activation.artifact_path.display().to_string(),
             launcher_artifact_digest: activation.artifact_digest.clone(),
             spawn_argv: vec![
@@ -727,7 +735,7 @@ async fn live_owner_receipt_is_the_supervisor_admission_authority() {
             process_id,
             nonce: "live-owner".to_owned(),
             state_home: state_home.path().display().to_string(),
-            activation_generation: 1,
+            publication_nonce: "publication-live-owner".to_owned(),
             launcher_artifact_path: executable.display().to_string(),
             launcher_artifact_digest: executable_digest.clone(),
             spawn_argv: vec![executable.display().to_string()],
@@ -740,7 +748,7 @@ async fn live_owner_receipt_is_the_supervisor_admission_authority() {
     let request = agent_semantic_client_db::runtime_server_supervisor::SupervisorRequest {
         state_home: state_home.path().to_path_buf(),
         expected_executable: executable,
-        activation_generation: 1,
+        publication_nonce: "publication-live-owner".to_owned(),
         artifact_digest: executable_digest,
         previous_artifact_digest: None,
         previous_owner_epoch: None,

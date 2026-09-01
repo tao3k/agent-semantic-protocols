@@ -3,7 +3,6 @@
 //! Search orchestration services for ASP agent-facing queries.
 
 pub mod command_diagnostics;
-mod document_candidates;
 mod dynamic_candidates;
 mod dynamic_overlay;
 mod evidence_graph_rank;
@@ -36,7 +35,6 @@ pub use memory_search::{
 mod lexical_search_frame;
 mod pipe_candidates;
 mod pipe_source;
-mod pipe_source_document_acquisition;
 mod pipe_source_index_acquisition;
 mod pipe_source_index_projection;
 mod pipe_source_lexical_frame;
@@ -44,6 +42,7 @@ mod prompt_output_replay;
 mod provider_candidate_annotations;
 pub mod provider_relation_memory;
 pub mod recall_route_planner;
+mod resident_graph_search;
 mod resident_source_index;
 mod runtime_search_receipt;
 mod search_candidate;
@@ -67,16 +66,15 @@ pub use source_index_rank::{
 pub mod syntax_query_replay;
 
 #[cfg(test)]
+#[path = "../tests/unit/resident_graph_search.rs"]
+mod resident_graph_search_tests;
+#[cfg(test)]
 #[path = "../tests/unit/resident_source_index.rs"]
 mod resident_source_index_tests;
 #[cfg(test)]
 #[path = "../tests/unit/runtime_search_receipt.rs"]
 mod runtime_search_receipt_tests;
 
-pub use document_candidates::{
-    DocumentSearchCandidate, DocumentSearchCandidateCollection, DocumentSearchCandidateRequest,
-    collect_document_search_candidates,
-};
 pub use dynamic_candidates::{
     DynamicSearchCandidate, DynamicSearchCandidateCollection, DynamicSearchRootCandidateRequest,
     IngestSearchCandidate, RgCoverageBudget, RgCoverageOwner, RgCoverageReceipt, RgCoverageRequest,
@@ -135,12 +133,12 @@ pub use pipe_candidates::{
     collect_search_pipe_candidates,
 };
 pub use pipe_source::{
-    SearchPipeAutoAcquisitionRequest, SearchPipeDocumentAcquisitionRequest,
-    SearchPipeFailureAcquisitionRequest, SearchPipeSearchOverlayAcquisition,
-    SearchPipeSearchOverlayAcquisitionRequest, SearchPipeSourceAcquisition,
-    SearchPipeSourceAcquisitionTrace, SearchPipeSourceMode, collect_search_pipe_auto_acquisition,
-    collect_search_pipe_document_acquisition, collect_search_pipe_failure_acquisition,
-    collect_search_pipe_search_overlay_acquisition, failure_candidate_query,
+    SearchPipeAutoAcquisitionRequest, SearchPipeFailureAcquisitionRequest,
+    SearchPipeSearchOverlayAcquisition, SearchPipeSearchOverlayAcquisitionRequest,
+    SearchPipeSourceAcquisition, SearchPipeSourceAcquisitionTrace, SearchPipeSourceArtifactDigest,
+    SearchPipeSourceTraceSource, SearchPipeSourceTraceStatus, collect_search_pipe_auto_acquisition,
+    collect_search_pipe_failure_acquisition, collect_search_pipe_search_overlay_acquisition,
+    failure_candidate_query,
 };
 pub use pipe_source_index_acquisition::{
     SearchPipeSourceIndexAcquisition, SearchPipeSourceIndexAcquisitionRequest,
@@ -157,12 +155,19 @@ pub use provider_candidate_annotations::{
     provider_candidate_annotation_nodes, provider_facts_envelope_from_stdout,
     provider_facts_envelope_from_value,
 };
+pub use resident_graph_search::{
+    ResidentGraphGeneration, ResidentGraphSearchRequest, ResidentGraphSearchStage,
+    build_resident_graph_generation, build_resident_graph_search_request,
+    project_resident_graph_search_result,
+};
 pub use resident_source_index::{
-    ResidentSearchAuthority, ResidentSourceIndex, ResidentSourceIndexSeed, resident_navigation_keys,
+    ResidentSearchAuthority, ResidentSourceIndex, ResidentSourceIndexSeed,
+    resident_lexical_coverage_keys, resident_navigation_keys,
 };
 pub use runtime_search_receipt::{
     RUNTIME_SEARCH_SOURCE_CAPACITY, RUNTIME_SEARCH_SOURCE_LIMIT, RuntimeSearchResult,
     RuntimeSearchSource, bounded_runtime_search_source, build_runtime_provider_search_receipt,
+    build_runtime_provider_search_receipt_with_graph,
 };
 pub use search_candidate::{
     FieldHit, RankFeature, RankedSearchCandidate, SearchCandidate, SearchCandidateMergeReceipt,
@@ -224,9 +229,6 @@ pub use syntax_query_replay::{
     render_semantic_tree_sitter_query_stdout,
 };
 
-#[cfg(test)]
-#[path = "../tests/unit/document_auto_lexical_overlay_scenario.rs"]
-mod document_auto_lexical_overlay_scenario_tests;
 #[cfg(test)]
 #[path = "../tests/unit/dynamic_overlay_index.rs"]
 mod dynamic_overlay_index_tests;

@@ -1009,7 +1009,9 @@ Classify the tool call into one or more intents:
 #+begin_src text
 direct-read       structured Read/read_file/namespaced read_file/MCP read of a source path
 directory-read    structured listFiles/list_files directory enumeration action
-content-dump      Bash content reader: cat, sed, nl, bat, head, tail, awk, less
+content-dump      Shell content reader: cat, bat/batcat, less, more, head, tail,
+                  awk data-file, nl file, sed read-only, PowerShell Get-Content
+                  (including gc/type aliases only inside a proven PowerShell command)
 raw-search        rg, grep, ag, fd, find, git grep, git ls-files, ast-grep
 semantic-search   <provider-binary> search ...
 search-json       <provider-binary> search ... --json during agent exploration
@@ -1025,6 +1027,15 @@ substrings.  The tokenizer does not need to evaluate shell expansion, but it
 must detect pipelines, command separators, and content-reader stages.  If a
 compound command cannot be parsed safely, treat it as broad when it touches a
 known source root, source glob, or project root.
+
+Codex renders shell invocations from its parser-owned
+=ParsedCommand::Read= projection, while the PreToolUse payload still carries
+the canonical =Bash= tool name.  Therefore every command family that Codex can
+project as =Read= MUST be a subset of the Hook's pre-execution Reader route.
+PowerShell reader aliases MUST be normalized only after the wrapper has proved
+the PowerShell shell family; global =type= matching would incorrectly classify
+the POSIX shell builtin.  TestKit owns the executable parity matrix so upstream
+UI additions cannot silently become Hook bypasses.
 
 Structured direct-read tool names must be normalized before classification.
 Bare names such as =Read= and =read_file=, namespaced deferred tools such as

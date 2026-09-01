@@ -84,8 +84,8 @@ fn merkle_change_set_reuses_unchanged_fragments_and_tombstones_deletions() {
     let resident = candidate
         .resident_source_index(
             fixture.evidence.clone(),
-            agent_semantic_client_core::LanguageId::new("python"),
-            agent_semantic_client_core::ProviderId::new("asp-python"),
+            agent_semantic_config::LanguageId::new("python"),
+            agent_semantic_config::ProviderId::new("asp-python"),
         )
         .expect("resident index from the exact candidate manifest");
     assert_eq!(

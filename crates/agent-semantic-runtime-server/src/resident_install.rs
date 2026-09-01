@@ -5,6 +5,7 @@ pub struct ResidentRuntimeInstallReceipt {
     pub path: PathBuf,
     pub status: &'static str,
     pub artifact_digest: agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest,
+    pub bundle_digest: agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest,
     pub lock_acquisition_count: u8,
     pub quiescence_operation: String,
     pub quiescence_lease_nonce: String,
@@ -44,6 +45,46 @@ pub async fn install_resident_runtime(
         path: receipt.path,
         status: receipt.status,
         artifact_digest: receipt.artifact_digest,
+        bundle_digest: receipt.bundle_digest,
+        lock_acquisition_count: receipt.lock_acquisition_count,
+        quiescence_operation: receipt.quiescence_operation,
+        quiescence_lease_nonce: receipt.quiescence_lease_nonce,
+        lease_producer_process_id: receipt.lease_producer_process_id,
+        lease_consumer_process_id: receipt.lease_consumer_process_id,
+    })
+}
+
+/// Publishes the ASP client and Hook evaluator into one candidate directory.
+/// The Runtime activation actor switches the shared active/healthy directory
+/// authority, so both executables become visible as one build cohort.
+pub async fn install_resident_runtime_bundle(
+    state_home: &Path,
+    source: &Path,
+    target: &Path,
+    hook_source: &Path,
+    artifact_mode: &str,
+    qualified_source: Option<
+        agent_semantic_artifacts::runtime_artifact_catalog::QualifiedRuntimeArtifactSource,
+    >,
+) -> Result<ResidentRuntimeInstallReceipt, String> {
+    if let Some(authority) = qualified_source.as_ref() {
+        authority.validate_source(state_home, source, "asp")?;
+        authority.validate_source(state_home, hook_source, "asp-hook")?;
+    }
+    let receipt =
+        agent_semantic_artifacts::runtime_artifact_publication::publish_runtime_artifact_bundle(
+            state_home,
+            source,
+            target,
+            artifact_mode,
+            hook_source,
+        )
+        .await?;
+    Ok(ResidentRuntimeInstallReceipt {
+        path: receipt.path,
+        status: receipt.status,
+        artifact_digest: receipt.artifact_digest,
+        bundle_digest: receipt.bundle_digest,
         lock_acquisition_count: receipt.lock_acquisition_count,
         quiescence_operation: receipt.quiescence_operation,
         quiescence_lease_nonce: receipt.quiescence_lease_nonce,
@@ -76,7 +117,7 @@ mod tests {
             .await
             .expect("publication must not depend on candidate readiness");
 
-        assert_eq!(receipt.status, "published-activation-pending");
+        assert_eq!(receipt.status, "published-active-awaiting-health");
         let artifact_root = state_home.join("runtime/artifacts");
         let guard = RuntimeArtifactMutationGuard::try_acquire(&artifact_root)
             .expect("publication must release the artifact lock before return");

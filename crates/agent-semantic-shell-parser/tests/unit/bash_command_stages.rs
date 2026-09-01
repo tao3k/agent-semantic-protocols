@@ -64,18 +64,19 @@ fn generic_run_wrapper_expands_compound_shell_program_into_inner_stages() {
 
 #[test]
 fn powershell_command_wrapper_exposes_reader_stage() {
-    let stages = agent_semantic_shell_parser::parse_bash_command_candidates(
-        "pwsh -NoProfile -Command 'Get-Content crates/example/src/lib.rs'",
-    )
-    .expect("parse PowerShell command wrapper");
+    for reader in ["Get-Content", "gc", "type"] {
+        let command = format!("pwsh -NoProfile -Command '{reader} crates/example/src/lib.rs'");
+        let stages = agent_semantic_shell_parser::parse_bash_command_candidates(&command)
+            .expect("parse PowerShell command wrapper");
 
-    assert!(stages.iter().any(|stage| {
-        stage.words()
-            == [
-                "Get-Content".to_owned(),
-                "crates/example/src/lib.rs".to_owned(),
-            ]
-    }));
+        assert!(stages.iter().any(|stage| {
+            stage.words()
+                == [
+                    "Get-Content".to_owned(),
+                    "crates/example/src/lib.rs".to_owned(),
+                ]
+        }));
+    }
 }
 
 #[test]

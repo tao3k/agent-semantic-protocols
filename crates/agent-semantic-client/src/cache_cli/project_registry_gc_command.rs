@@ -6,8 +6,9 @@ use std::{
 
 use agent_semantic_artifacts::{
     CatalogObservation, CleanupDisposition, CleanupPlan, ProjectBinding, RetainedObject,
-    RetentionLease, RetentionObjectKind, StateHomeCatalog, StateHomeLayout,
+    RetentionLease, RetentionObjectKind, StateHomeLayout,
 };
+use agent_semantic_client_db::StateHomeCatalog;
 
 use agent_semantic_runtime::state_core::{
     ProjectRegistryGcCandidate, ProjectRegistryGcOptions, ProjectRegistryGcReport, ResolvedState,

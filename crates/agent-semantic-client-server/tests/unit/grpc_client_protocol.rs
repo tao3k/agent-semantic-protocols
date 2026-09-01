@@ -1,4 +1,5 @@
-use std::sync::Arc;
+use std::collections::BTreeMap;
+use std::sync::{Arc, Mutex};
 
 use agent_semantic_client_protocol::{
     CLIENT_CATALOG_SCHEMA_ID, CLIENT_FRAME_SCHEMA_ID, CLIENT_PROTOCOL_ID, CLIENT_PROTOCOL_VERSION,
@@ -9,14 +10,35 @@ use agent_semantic_client_protocol::{
 use agent_semantic_client_server::{
     AspClientCancelFuture, AspClientDispatchError, AspClientDispatchFuture,
     AspClientDispatchRequest, AspClientDispatcher, AspClientFrameService, AspClientGrpcTransport,
-    bind_asp_client_grpc_unix, serve_asp_client_grpc_unix,
+    CLIENT_FRAME_SESSION_CAPACITY, CLIENT_FRAME_SESSION_CONTROL_RESERVE, bind_asp_client_grpc_unix,
+    serve_asp_client_grpc_unix,
 };
 use serde_json::json;
 
-struct ExactQueryDispatcher;
+struct ExactQueryDispatcher {
+    cancellation_by_request: Arc<Mutex<BTreeMap<String, Arc<tokio::sync::Notify>>>>,
+}
 
 impl AspClientDispatcher for ExactQueryDispatcher {
     fn dispatch(&self, request: AspClientDispatchRequest) -> AspClientDispatchFuture {
+        if request.method == "test.cancellation-probe" {
+            let cancelled = Arc::new(tokio::sync::Notify::new());
+            self.cancellation_by_request
+                .lock()
+                .expect("cancellation registry")
+                .insert(
+                    request.request_id.as_str().to_owned(),
+                    Arc::clone(&cancelled),
+                );
+            return Box::pin(async move {
+                cancelled.notified().await;
+                Err(AspClientDispatchError {
+                    reason_kind: "client-request-cancelled".to_owned(),
+                    message: "client request was cancelled".to_owned(),
+                    details: None,
+                })
+            });
+        }
         Box::pin(async move {
             assert_eq!(request.method, "rust.query");
             Err(AspClientDispatchError {
@@ -44,9 +66,22 @@ impl AspClientDispatcher for ExactQueryDispatcher {
         &self,
         _: &ClientWorkspaceIdentity,
         _: &ClientSessionId,
-        _: &ClientRequestId,
+        request_id: &ClientRequestId,
     ) -> AspClientCancelFuture {
-        Box::pin(async { true })
+        let cancelled = self
+            .cancellation_by_request
+            .lock()
+            .expect("cancellation registry")
+            .get(request_id.as_str())
+            .cloned();
+        Box::pin(async move {
+            if let Some(cancelled) = cancelled {
+                cancelled.notify_one();
+                true
+            } else {
+                false
+            }
+        })
     }
 }
 
@@ -109,7 +144,9 @@ async fn grpc_unix_exact_query_returns_typed_terminal() {
         .await
         .expect("bind public ASP Client Protocol socket");
     let service = Arc::new(AspClientFrameService::new(
-        Arc::new(ExactQueryDispatcher),
+        Arc::new(ExactQueryDispatcher {
+            cancellation_by_request: Arc::new(Mutex::new(BTreeMap::new())),
+        }),
         |_| Ok(catalog()),
     ));
     let (shutdown, shutdown_rx) = tokio::sync::watch::channel(false);
@@ -254,26 +291,140 @@ async fn grpc_unix_exact_query_returns_typed_terminal() {
         }
     ));
 
-    let cancelled = client
-        .call(ClientFrame::Cancel {
+    let cancellation_request_id = ClientRequestId::new("cancel-request").expect("request id");
+    let pending = client
+        .begin_call(ClientFrame::Dispatch {
             base: base(),
-            request_id: ClientRequestId::new("cancel-request").expect("request id"),
+            request_id: cancellation_request_id.clone(),
+            project_root: "/workspace".to_owned(),
+            client_info: ClientInfo {
+                name: "grpc-test".to_owned(),
+                version: "1".to_owned(),
+            },
+            method: "test.cancellation-probe".to_owned(),
+            params: json!({}),
         })
         .await
-        .expect("typed cancellation terminal");
+        .expect("begin cancellable request");
+    client
+        .cancel_pending(base(), cancellation_request_id)
+        .await
+        .expect("send correlated cancellation");
+    let cancelled = pending.wait().await.expect("typed cancellation terminal");
     let ClientFrame::Response {
         request_id,
         outcome: ClientOutcome::Cancelled,
         result: None,
-        error: None,
+        error: Some(error),
         ..
     } = cancelled
     else {
         panic!("expected typed cancellation terminal");
     };
     assert_eq!(request_id.as_str(), "cancel-request");
+    assert_eq!(error["reasonKind"], "client-request-cancelled");
 
     drop(lazy_client);
+    drop(client);
+    shutdown.send(true).expect("signal server shutdown");
+    server
+        .await
+        .expect("join gRPC server")
+        .expect("gRPC server");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn full_session_rejects_one_excess_data_call_and_preserves_cancellation_lane() {
+    let temporary = tempfile::tempdir().expect("temporary socket root");
+    let socket_path = temporary.path().join("asp-client-backpressure.grpc.sock");
+    let listener = bind_asp_client_grpc_unix(&socket_path)
+        .await
+        .expect("bind public ASP Client Protocol socket");
+    let service = Arc::new(AspClientFrameService::new(
+        Arc::new(ExactQueryDispatcher {
+            cancellation_by_request: Arc::new(Mutex::new(BTreeMap::new())),
+        }),
+        |_| Ok(catalog()),
+    ));
+    let (shutdown, shutdown_rx) = tokio::sync::watch::channel(false);
+    let server = tokio::spawn(serve_asp_client_grpc_unix(listener, service, shutdown_rx));
+    let client = AspClientGrpcTransport::connect_unix(&socket_path)
+        .await
+        .expect("connect public ASP Client Protocol stream");
+    client
+        .call(ClientFrame::Initialize {
+            base: base(),
+            request_id: ClientRequestId::new("backpressure-initialize").expect("request id"),
+            project_root: "/workspace".to_owned(),
+            client_info: ClientInfo {
+                name: "grpc-test".to_owned(),
+                version: "1".to_owned(),
+            },
+            capabilities: json!({"requestCancellation": true}),
+        })
+        .await
+        .expect("initialize typed session");
+
+    let held_count = CLIENT_FRAME_SESSION_CAPACITY;
+    let mut held = Vec::with_capacity(held_count);
+    for index in 0..held_count {
+        let request_id =
+            ClientRequestId::new(format!("backpressure-held-{index}")).expect("request id");
+        let pending = client
+            .begin_call(ClientFrame::Dispatch {
+                base: base(),
+                request_id: request_id.clone(),
+                project_root: "/workspace".to_owned(),
+                client_info: ClientInfo {
+                    name: "grpc-test".to_owned(),
+                    version: "1".to_owned(),
+                },
+                method: "test.cancellation-probe".to_owned(),
+                params: json!({}),
+            })
+            .await
+            .expect("admit bounded data call");
+        held.push((request_id, pending));
+    }
+    let rejected = match client
+        .begin_call(exact_query_frame("backpressure-rejected".to_owned()))
+        .await
+    {
+        Ok(_) => panic!("full session admitted an excess data call"),
+        Err(error) => error,
+    };
+    assert!(rejected.contains("reasonKind=client-session-backpressure"));
+    assert!(rejected.contains("capacity=32"));
+    assert!(rejected.contains("pending=32"));
+    assert!(rejected.contains("reservedControlSlots=1"));
+    assert!(rejected.contains("retryAdmitted=false"));
+
+    for (request_id, _) in &held {
+        client
+            .cancel_pending(base(), request_id.clone())
+            .await
+            .expect("reserved control lane admits cancellation");
+    }
+    for (request_id, pending) in held {
+        let terminal = pending.wait().await.expect("typed cancellation terminal");
+        let ClientFrame::Response {
+            request_id: terminal_request_id,
+            outcome: ClientOutcome::Cancelled,
+            result: None,
+            error: Some(error),
+            ..
+        } = terminal
+        else {
+            panic!("unexpected cancellation terminal for {request_id:?}");
+        };
+        assert_eq!(terminal_request_id, request_id);
+        assert_eq!(
+            error.get("reasonKind").and_then(serde_json::Value::as_str),
+            Some("client-request-cancelled")
+        );
+    }
+    assert_eq!(client.pending_call_count(), 0);
+
     drop(client);
     shutdown.send(true).expect("signal server shutdown");
     server

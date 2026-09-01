@@ -152,6 +152,63 @@ Warm queries read only the immutable mmap generation.  They perform zero
 client-side database opens, zero provider invocations, zero publication locks, and
 zero filesystem discovery.
 
+* Unified coverage, lexical, and graph pipeline
+
+The v1 search generation has three execution roles, not three cache
+authorities:
+
+1. =rg= coverage is a bounded cold-path/change-path accelerator.  Runtime may
+   consume an =rg --vimgrep --null= stream only after every record is verified
+   against the admitted owner path, owner content digest, workspace Merkle
+   root, provider digest, and generation digest.  It never runs as a warm-query
+   fallback and it never publishes a generation.  The durable lexical key
+   projection uses the same byte-oriented identifier coverage in-process over
+   already-admitted owner bytes, so generation construction does not require a
+   subprocess merely to tokenize content.  External =rg= output remains
+   coverage evidence, not a second index.
+2. lexical retrieval is the resident first-stage query owner.  Its immutable
+   token/path table is published in the generation mmap and returns a bounded
+   candidate frontier without a process, socket, filesystem, or database read.
+3. =asp-python-graphs= is the Runtime-owned graph computation service.  It may
+   rank or expand only the relation projection published in the same
+   generation as the lexical frontier.  Its long-lived gRPC session is a
+   computation transport, not a graph cache or publication authority.
+
+All three roles bind the same workspace identity, source root, provider
+digest, schema digest, analyzer digest, and generation digest.  A mismatched
+coverage receipt, lexical projection, relation set, or graph result fails
+closed as =stale-generation=; it is never merged by label, activation counter,
+path heuristic, or retry.
+
+Generation construction derives the lexical keys and graph relation fragment
+for each changed owner once.  Unchanged owner fragments are structurally
+shared by content digest.  A removed owner publishes one tombstone that removes
+its lexical keys, relations, exact selectors, and coverage evidence in the
+same successor commit.  Query execution therefore does not serially launch
+=rg=, a language parser, and Python.  It reads the resident lexical frontier
+first and invokes the already-resident graph service only for an operation
+whose shared search contract requests graph ranking.
+
+The complete immutable generation graph is opened in =asp-python-graphs= once
+per workspace generation and retained after a query lease reaches zero
+references.  Its canonical graph payload digest is compared on every later
+lease; a different payload under the same generation identity is rejected.
+Warm requests do not clone, hash, serialize, or resend that graph.  They send
+only the bounded lexical-owner seed set and ranking parameters.  A
+generation-admission index owns the canonical owner-node membership set, so a
+warm query validates only its bounded seed frontier; it never traverses all
+graph nodes to rediscover membership.  The membership index is bound to the
+same source root, leaf count, and owner count as the open graph payload.  A
+graph-required operation fails with one typed terminal when the graph service
+is unavailable or returns a different generation.  It must not silently
+degrade to lexical-only output.  A lexical-only operation remains a zero-I/O
+mmap read.  Both forms preserve one ASP Server publication authority and one
+ClientFrame terminal.
+
+The existing =agent.semantic-protocols.rg-coverage-receipt= schemaVersion =1=
+and graph-turbo v1 request/result contracts remain authoritative.  This
+architecture does not introduce an =rg-coverage-receipt.v2= shadow contract.
+
 * Cache CLI boundary
 
 =asp cache status= is a diagnostic projection of the resident atomic bundle.

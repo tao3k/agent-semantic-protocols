@@ -49,7 +49,27 @@ async fn built_asp_install_binary_publishes_runtime_hook_independent_of_runtime_
     let asp = build_fixture.path().join("asp");
     let hook = build_fixture.path().join("asp-hook");
     std::fs::copy(built_asp, &asp).expect("copy ASP binary fixture");
-    std::fs::copy(built_asp, &hook).expect("copy Hook binary fixture");
+    let embedded = agent_semantic_hook::aot_compiler::compile_embedded_hook_policy_bundle()
+        .expect("compile embedded policy identity");
+    let embedded: serde_json::Value =
+        serde_json::from_slice(&embedded).expect("decode embedded policy identity");
+    let policy_digest = embedded["generationDigest"]
+        .as_str()
+        .expect("embedded policy digest");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+        std::fs::write(
+            &hook,
+            format!(
+                "#!/bin/sh\nprintf '%s\\n' '{{\"schemaId\":\"agent.semantic-protocols.hook-runtime-identity\",\"schemaVersion\":1,\"policyContentDigest\":\"{policy_digest}\"}}'\n"
+            ),
+        )
+        .expect("write Hook identity fixture");
+        let mut permissions = std::fs::metadata(&hook).unwrap().permissions();
+        permissions.set_mode(0o755);
+        std::fs::set_permissions(&hook, permissions).expect("Hook identity fixture mode");
+    }
     let codex_home = state_home.path().join("codex-home");
     let plugin_cache = codex_home.join("plugins/cache/asp-project/asp-codex-plugin/current");
     std::fs::create_dir_all(&plugin_cache).expect("create isolated plugin cache");
@@ -61,6 +81,16 @@ async fn built_asp_install_binary_publishes_runtime_hook_independent_of_runtime_
     let plugin_cache_before = directory_identity(&plugin_cache);
     let plugin_source = workspace_root.join("asp-codex-plugin");
     let plugin_source_before = directory_identity(&plugin_source);
+    let legacy_generation = state_home
+        .path()
+        .join("hooks/generations/blake3-256/legacy-policy");
+    std::fs::create_dir_all(&legacy_generation).expect("legacy Hook generation fixture");
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(
+        "generations/blake3-256/legacy-policy",
+        state_home.path().join("hooks/current"),
+    )
+    .expect("legacy Hook current fixture");
 
     let output = Command::new(&asp)
         .args(["install", "binary"])
@@ -80,8 +110,10 @@ async fn built_asp_install_binary_publishes_runtime_hook_independent_of_runtime_
     let install_stdout = String::from_utf8(output.stdout).expect("install receipt UTF-8");
     assert!(install_stdout.contains("hookBinaryPath="));
     assert!(install_stdout.contains("hookBinaryDigest=blake3-256:"));
-    assert!(install_stdout.contains("hookBinarySwitch=atomic"));
+    assert!(install_stdout.contains("hookBinarySwitch=active-healthy-bundle"));
     assert!(install_stdout.contains("runtimeServerLifecycle=resident-owner-independent"));
+    assert!(install_stdout.contains("legacyHookGeneration=retired"));
+    assert!(install_stdout.contains("hookAuthority=runtime-bin-content-digest"));
     assert_eq!(
         directory_identity(&plugin_source),
         plugin_source_before,
@@ -99,25 +131,22 @@ async fn built_asp_install_binary_publishes_runtime_hook_independent_of_runtime_
         "canonical Hook evaluator publication"
     );
     assert!(!state_home.path().join("hooks/current").exists());
-    let embedded = agent_semantic_hook::aot_compiler::compile_embedded_hook_policy_bundle()
-        .expect("compile embedded policy identity");
-    let embedded: serde_json::Value =
-        serde_json::from_slice(&embedded).expect("decode embedded policy identity");
-    let policy_digest = embedded["generationDigest"]
-        .as_str()
-        .expect("embedded policy digest");
+    assert!(
+        legacy_generation.exists(),
+        "install retires only the obsolete selector; clean owns history retention"
+    );
 
-    let pending_path = agent_semantic_artifacts::runtime_artifact_publication::
+    let pending_path = agent_semantic_artifacts::runtime_artifact_activation::
         runtime_artifact_activation_event_path(state_home.path());
     let activation = serde_json::from_slice::<
-        agent_semantic_artifacts::runtime_artifact_publication::RuntimeArtifactActivationEvent,
+        agent_semantic_artifacts::runtime_artifact_activation::RuntimeArtifactActivationEvent,
     >(&std::fs::read(&pending_path).expect("read pending activation receipt"))
     .expect("decode pending activation receipt");
     let expected_digest =
         agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest::from_bytes(
             &std::fs::read(&asp).expect("read Cargo-built asp binary"),
         );
-    assert!(activation.activation_generation > 0);
+    assert!(!activation.publication_nonce.is_empty());
     assert_eq!(activation.artifact_digest, expected_digest);
     assert!(activation.artifact_path.is_file());
     assert!(activation.artifact_path.components().any(|component| {

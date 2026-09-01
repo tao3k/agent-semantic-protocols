@@ -7,12 +7,16 @@ use std::sync::{Arc, OnceLock};
 
 use agent_semantic_client_db::runtime_server_control::RuntimeServerEndpoint;
 use agent_semantic_client_protocol::{
-    CLIENT_FRAME_SCHEMA_ID, CLIENT_PROTOCOL_ID, CLIENT_PROTOCOL_VERSION, ClientFrame,
-    ClientFrameBase, ClientInfo, ClientRequestId, ClientSessionId, ClientWorkspaceIdentity,
-    GRAPH_EVALUATE_METHOD, GRAPH_TIMELINE_METHOD, SCHEMA_BUNDLE_METHOD,
-    SCHEMA_BUNDLE_REQUEST_SCHEMA_ID, SCHEMA_VERSION, SchemaBundleRequest, SchemaBundleResponse,
+    CANCELLATION_PROBE_METHOD, CLIENT_FRAME_SCHEMA_ID, CLIENT_PROTOCOL_ID, CLIENT_PROTOCOL_VERSION,
+    ClientFrame, ClientFrameBase, ClientInfo, ClientRequestId, ClientSessionId,
+    ClientWorkspaceIdentity, GRAPH_EVALUATE_METHOD, GRAPH_TIMELINE_METHOD,
+    LIVE_CORPUS_CACHE_STATE_METHOD, LiveCorpusCacheStateReceipt, LiveCorpusCacheStateRequest,
+    SCHEMA_BUNDLE_METHOD, SCHEMA_BUNDLE_REQUEST_SCHEMA_ID, SCHEMA_VERSION, SchemaBundleRequest,
+    SchemaBundleResponse,
 };
-use agent_semantic_client_server::AspClientGrpcTransport;
+use agent_semantic_client_server::{
+    AspClientGrpcTransport, CLIENT_FRAME_SESSION_CAPACITY, CLIENT_FRAME_SESSION_CONTROL_RESERVE,
+};
 
 /// Monotonic request identity shared by all warm client sessions in a process.
 static REQUEST_SEQUENCE: AtomicU64 = AtomicU64::new(1);
@@ -38,6 +42,14 @@ pub(crate) struct SessionKey {
     binding_token: String,
     runtime_generation_digest: String,
     binary_content_digest: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ClientBackpressureProbeReceipt {
+    pub capacity: usize,
+    pub held_call_count: usize,
+    pub rejected_call_count: usize,
+    pub elapsed_micros: u64,
 }
 
 impl SessionKey {
@@ -148,6 +160,14 @@ impl<T> SessionRegistry<T> {
                 self.lru.remove(index);
             }
         }
+    }
+
+    pub(crate) fn remove_key(&mut self, key: &SessionKey) -> bool {
+        let removed = self.entries.remove(key).is_some();
+        if let Some(index) = self.lru.iter().position(|candidate| candidate == key) {
+            self.lru.remove(index);
+        }
+        removed
     }
 
     #[cfg(test)]
@@ -267,6 +287,56 @@ impl AspClient {
         session_registry().lock().await.drain_idle()
     }
 
+    /// Prepare one explicit Live Corpus cache state through the Runtime-owned
+    /// cache authority.  Cold-load additionally evicts only this workspace's
+    /// client session after the server confirms the exact generation/root.
+    pub async fn prepare_live_corpus_cache_state(
+        &self,
+        request: LiveCorpusCacheStateRequest,
+    ) -> Result<LiveCorpusCacheStateReceipt, String> {
+        request.validate()?;
+        let endpoint = agent_semantic_client_db::read_runtime_server_endpoint(&self.state_home)
+            .await?
+            .ok_or_else(|| "ASP Server endpoint is unavailable".to_owned())?;
+        endpoint.validate()?;
+        let workspace_identity =
+            agent_semantic_client_db::AgentSessionRegistry::workspace_id(&self.project_root)?;
+        let session_key = SessionKey::from_endpoint(&endpoint, workspace_identity);
+        let cache_state = request.cache_state.clone();
+        let frame = self
+            .dispatch_method(
+                LIVE_CORPUS_CACHE_STATE_METHOD.to_owned(),
+                serde_json::to_value(request)
+                    .map_err(|error| format!("encode Live Corpus cache-state request: {error}"))?,
+            )
+            .await?;
+        let ClientFrame::Response {
+            outcome: agent_semantic_client_protocol::ClientOutcome::Ready,
+            result: Some(payload),
+            error: None,
+            ..
+        } = frame
+        else {
+            return Err(format!(
+                "Live Corpus cache-state request did not return Ready: {frame:?}"
+            ));
+        };
+        let mut receipt = serde_json::from_value::<LiveCorpusCacheStateReceipt>(payload)
+            .map_err(|error| format!("decode Live Corpus cache-state receipt: {error}"))?;
+        receipt.validate()?;
+        if matches!(cache_state.as_str(), "cold-load" | "released") {
+            receipt.client_session_evicted =
+                session_registry().lock().await.remove_key(&session_key);
+            if !receipt.client_session_evicted {
+                return Err(format!(
+                    "Live Corpus {cache_state} did not evict its exact client session"
+                ));
+            }
+        }
+        receipt.validate()?;
+        Ok(receipt)
+    }
+
     /// Dispatch one typed method to the resident ASP Server.
     pub async fn dispatch(
         &self,
@@ -338,6 +408,260 @@ impl AspClient {
             evict_session(&session_key, &session_cell).await;
         }
         result
+    }
+
+    /// Exercise the real request-cancellation path on the cached public gRPC
+    /// session.  The probe dispatch remains pending until the correlated
+    /// `Cancel` frame reaches the Runtime-owned cancellation registry.
+    pub async fn cancellation_probe(&self) -> Result<u64, String> {
+        let endpoint = agent_semantic_client_db::read_runtime_server_endpoint(&self.state_home)
+            .await?
+            .ok_or_else(|| "ASP Server endpoint is unavailable".to_owned())?;
+        endpoint.validate()?;
+        let workspace_identity =
+            agent_semantic_client_db::AgentSessionRegistry::workspace_id(&self.project_root)?;
+        let transport =
+            AspClientGrpcTransport::connect_unix(&endpoint.data_plane_socket_path).await?;
+        let session_id = ClientSessionId::new(format!(
+            "asp-client-probe-{}-{}",
+            std::process::id(),
+            REQUEST_SEQUENCE.fetch_add(1, Ordering::Relaxed)
+        ))?;
+        let project_root = self.project_root.display().to_string();
+        let client_info = ClientInfo {
+            name: "asp-client".to_owned(),
+            version: "1".to_owned(),
+        };
+        let base = frame_base(session_id, workspace_identity)?;
+        let initialized = transport
+            .call(ClientFrame::Initialize {
+                base: base.clone(),
+                request_id: request_id("initialize")?,
+                project_root: project_root.clone(),
+                client_info: client_info.clone(),
+                capabilities: serde_json::json!({"requestCancellation": true}),
+            })
+            .await?;
+        let ClientFrame::Response {
+            outcome: agent_semantic_client_protocol::ClientOutcome::Ready,
+            catalog: Some(catalog),
+            result: None,
+            error: None,
+            ..
+        } = initialized
+        else {
+            return Err(format!(
+                "ASP Client cancellation probe initialization did not return Ready with catalog: {initialized:?}"
+            ));
+        };
+        if !catalog.admits_method(CANCELLATION_PROBE_METHOD) {
+            return Err("ASP Client catalog omitted the cancellation probe".to_owned());
+        }
+        let cancellation_request_id = request_id("cancellation-probe")?;
+        let started = tokio::time::Instant::now();
+        let pending = transport
+            .begin_call(ClientFrame::Dispatch {
+                base: base.clone(),
+                request_id: cancellation_request_id.clone(),
+                project_root,
+                client_info,
+                method: CANCELLATION_PROBE_METHOD.to_owned(),
+                params: serde_json::json!({}),
+            })
+            .await?;
+        transport
+            .cancel_pending(base.clone(), cancellation_request_id.clone())
+            .await?;
+        let terminal = pending.wait().await?;
+        let elapsed_micros = match terminal {
+            ClientFrame::Response {
+                request_id: terminal_request_id,
+                outcome: agent_semantic_client_protocol::ClientOutcome::Cancelled,
+                result: None,
+                error: None,
+                ..
+            } if terminal_request_id == cancellation_request_id => {
+                started.elapsed().as_micros().min(u128::from(u64::MAX)) as u64
+            }
+            frame => {
+                return Err(format!(
+                    "ASP Client cancellation probe did not return exactly one typed Cancelled terminal: {frame:?}"
+                ));
+            }
+        };
+        let residual = transport.pending_call_count();
+        if residual != 0 {
+            return Err(format!(
+                "ASP Client cancellation left residual pending calls: {residual}"
+            ));
+        }
+        let shutdown = transport
+            .call(ClientFrame::Shutdown {
+                base: base.clone(),
+                request_id: request_id("shutdown")?,
+            })
+            .await?;
+        if !matches!(
+            shutdown,
+            ClientFrame::Response {
+                outcome: agent_semantic_client_protocol::ClientOutcome::Ready,
+                result: None,
+                error: None,
+                ..
+            }
+        ) {
+            return Err(format!(
+                "ASP Client cancellation probe shutdown did not return Ready: {shutdown:?}"
+            ));
+        }
+        transport.send_oneway(ClientFrame::Exit { base }).await?;
+        Ok(elapsed_micros)
+    }
+
+    /// Fill one real public gRPC session to its bounded data-call limit while
+    /// retaining the reserved control slot, then prove that the next call is
+    /// rejected deterministically and every admitted call can still receive a
+    /// correlated Cancelled terminal.
+    pub async fn backpressure_probe(&self) -> Result<ClientBackpressureProbeReceipt, String> {
+        let endpoint = agent_semantic_client_db::read_runtime_server_endpoint(&self.state_home)
+            .await?
+            .ok_or_else(|| "ASP Server endpoint is unavailable".to_owned())?;
+        endpoint.validate()?;
+        let workspace_identity =
+            agent_semantic_client_db::AgentSessionRegistry::workspace_id(&self.project_root)?;
+        let transport =
+            AspClientGrpcTransport::connect_unix(&endpoint.data_plane_socket_path).await?;
+        let session_id = ClientSessionId::new(format!(
+            "asp-client-backpressure-probe-{}-{}",
+            std::process::id(),
+            REQUEST_SEQUENCE.fetch_add(1, Ordering::Relaxed)
+        ))?;
+        let project_root = self.project_root.display().to_string();
+        let client_info = ClientInfo {
+            name: "asp-client".to_owned(),
+            version: "1".to_owned(),
+        };
+        let base = frame_base(session_id, workspace_identity)?;
+        let initialized = transport
+            .call(ClientFrame::Initialize {
+                base: base.clone(),
+                request_id: request_id("initialize")?,
+                project_root: project_root.clone(),
+                client_info: client_info.clone(),
+                capabilities: serde_json::json!({"requestCancellation": true}),
+            })
+            .await?;
+        let ClientFrame::Response {
+            outcome: agent_semantic_client_protocol::ClientOutcome::Ready,
+            catalog: Some(catalog),
+            result: None,
+            error: None,
+            ..
+        } = initialized
+        else {
+            return Err(format!(
+                "ASP Client backpressure probe initialization did not return Ready with catalog: {initialized:?}"
+            ));
+        };
+        if !catalog.admits_method(CANCELLATION_PROBE_METHOD) {
+            return Err("ASP Client catalog omitted the cancellation probe".to_owned());
+        }
+
+        let started = tokio::time::Instant::now();
+        let held_call_count = CLIENT_FRAME_SESSION_CAPACITY - CLIENT_FRAME_SESSION_CONTROL_RESERVE;
+        let mut pending = Vec::with_capacity(held_call_count);
+        for index in 0..held_call_count {
+            let request_id = request_id(&format!("backpressure-held-{index}"))?;
+            let call = transport
+                .begin_call(ClientFrame::Dispatch {
+                    base: base.clone(),
+                    request_id: request_id.clone(),
+                    project_root: project_root.clone(),
+                    client_info: client_info.clone(),
+                    method: CANCELLATION_PROBE_METHOD.to_owned(),
+                    params: serde_json::json!({}),
+                })
+                .await?;
+            pending.push((request_id, call));
+        }
+        let rejected_request_id = request_id("backpressure-rejected")?;
+        let rejected = match transport
+            .begin_call(ClientFrame::Dispatch {
+                base: base.clone(),
+                request_id: rejected_request_id,
+                project_root: project_root.clone(),
+                client_info: client_info.clone(),
+                method: CANCELLATION_PROBE_METHOD.to_owned(),
+                params: serde_json::json!({}),
+            })
+            .await
+        {
+            Ok(_) => {
+                return Err(
+                    "full client session admitted one excess data call without backpressure"
+                        .to_owned(),
+                );
+            }
+            Err(error) => error,
+        };
+        if !rejected.contains("reasonKind=client-session-backpressure")
+            || !rejected.contains("retryAdmitted=false")
+        {
+            return Err(format!(
+                "ASP Client backpressure probe returned an untyped rejection: {rejected}"
+            ));
+        }
+
+        for (request_id, _) in &pending {
+            transport
+                .cancel_pending(base.clone(), request_id.clone())
+                .await?;
+        }
+        for (request_id, call) in pending {
+            match call.wait().await? {
+                ClientFrame::Response {
+                    request_id: terminal_request_id,
+                    outcome: agent_semantic_client_protocol::ClientOutcome::Cancelled,
+                    result: None,
+                    error: None,
+                    ..
+                } if terminal_request_id == request_id => {}
+                frame => {
+                    return Err(format!(
+                        "ASP Client backpressure probe did not return a correlated Cancelled terminal: {frame:?}"
+                    ));
+                }
+            }
+        }
+        if transport.pending_call_count() != 0 {
+            return Err("ASP Client backpressure probe left residual pending calls".to_owned());
+        }
+        let shutdown = transport
+            .call(ClientFrame::Shutdown {
+                base: base.clone(),
+                request_id: request_id("shutdown")?,
+            })
+            .await?;
+        if !matches!(
+            shutdown,
+            ClientFrame::Response {
+                outcome: agent_semantic_client_protocol::ClientOutcome::Ready,
+                result: None,
+                error: None,
+                ..
+            }
+        ) {
+            return Err(format!(
+                "ASP Client backpressure probe shutdown did not return Ready: {shutdown:?}"
+            ));
+        }
+        transport.send_oneway(ClientFrame::Exit { base }).await?;
+        Ok(ClientBackpressureProbeReceipt {
+            capacity: CLIENT_FRAME_SESSION_CAPACITY,
+            held_call_count,
+            rejected_call_count: 1,
+            elapsed_micros: started.elapsed().as_micros().min(u128::from(u64::MAX)) as u64,
+        })
     }
 
     /// Fetch one canonical, Runtime-verified schema profile.

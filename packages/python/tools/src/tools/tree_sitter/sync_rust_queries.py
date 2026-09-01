@@ -10,7 +10,7 @@ from tools.tree_sitter.sync_query_snapshots import main as sync_query_snapshots_
 
 
 DEFAULT_PROVIDER_DIR = (
-    repo_root() / "languages/rust-lang-project-harness/tree-sitter/tree-sitter-rust"
+    repo_root() / "languages/asp-rust/tree-sitter/tree-sitter-rust"
 )
 
 

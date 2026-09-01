@@ -165,7 +165,7 @@ async fn developer_publication_rejects_a_source_outside_the_configured_checkout(
     )
     .expect("write runtime configuration");
 
-    let error = agent_semantic_artifacts::runtime_artifact_catalog::publish_runtime_artifact(
+    let error = agent_semantic_artifacts::runtime_artifact_store::publish_runtime_artifact(
         &state_home,
         &source,
         &target,
@@ -204,7 +204,7 @@ async fn cross_process_publication_conflict_fails_without_waiting_or_moving_slot
         .expect("open publication lock");
     fs2::FileExt::try_lock_exclusive(&lock).expect("hold publication lock");
 
-    let error = agent_semantic_artifacts::runtime_artifact_catalog::publish_runtime_artifact(
+    let error = agent_semantic_artifacts::runtime_artifact_store::publish_runtime_artifact(
         &state_home,
         &source,
         &target,
@@ -246,7 +246,7 @@ async fn developer_publication_is_tokio_owned_and_survives_checkout_cleanup() {
     )
     .expect("write runtime configuration");
 
-    let publication = agent_semantic_artifacts::runtime_artifact_catalog::publish_runtime_artifact(
+    let publication = agent_semantic_artifacts::runtime_artifact_store::publish_runtime_artifact(
         &state_home,
         &source,
         &target,
@@ -287,7 +287,7 @@ async fn developer_publication_is_tokio_owned_and_survives_checkout_cleanup() {
     assert_eq!(std::fs::read(&publication.path).unwrap(), b"developer-v1");
     std::fs::create_dir_all(source.parent().expect("source parent")).expect("recreate build dir");
     std::fs::write(&source, b"developer-v2").expect("replace developer artifact");
-    let second = agent_semantic_artifacts::runtime_artifact_catalog::publish_runtime_artifact(
+    let second = agent_semantic_artifacts::runtime_artifact_store::publish_runtime_artifact(
         &state_home,
         &source,
         &target,
@@ -323,7 +323,7 @@ async fn release_publication_retains_active_and_healthy_generations() {
         .expect("create release build directory");
     std::fs::write(&source, b"release-v1").expect("write first release artifact");
 
-    let first = agent_semantic_artifacts::runtime_artifact_catalog::publish_runtime_artifact(
+    let first = agent_semantic_artifacts::runtime_artifact_store::publish_runtime_artifact(
         &state_home,
         &source,
         &target,
@@ -333,7 +333,7 @@ async fn release_publication_retains_active_and_healthy_generations() {
     .await
     .expect("publish first release artifact");
     std::fs::write(&source, b"release-v2").expect("write second release artifact");
-    let second = agent_semantic_artifacts::runtime_artifact_catalog::publish_runtime_artifact(
+    let second = agent_semantic_artifacts::runtime_artifact_store::publish_runtime_artifact(
         &state_home,
         &source,
         &target,
@@ -370,7 +370,7 @@ async fn health_promotion_moves_only_the_healthy_slot_and_prunes_the_old_baselin
     let artifact_root = runtime_root.join("artifacts");
     std::fs::create_dir_all(source.parent().expect("source parent")).expect("create build dir");
     std::fs::write(&source, b"release-v1").expect("write first artifact");
-    let first = agent_semantic_artifacts::runtime_artifact_catalog::publish_runtime_artifact(
+    let first = agent_semantic_artifacts::runtime_artifact_store::publish_runtime_artifact(
         &state_home,
         &source,
         &target,
@@ -380,7 +380,7 @@ async fn health_promotion_moves_only_the_healthy_slot_and_prunes_the_old_baselin
     .await
     .expect("publish baseline");
     std::fs::write(&source, b"release-v2").expect("write active artifact");
-    let second = agent_semantic_artifacts::runtime_artifact_catalog::publish_runtime_artifact(
+    let second = agent_semantic_artifacts::runtime_artifact_store::publish_runtime_artifact(
         &state_home,
         &source,
         &target,
@@ -390,14 +390,14 @@ async fn health_promotion_moves_only_the_healthy_slot_and_prunes_the_old_baselin
     .await
     .expect("publish candidate");
 
-    let stale_health = agent_semantic_artifacts::runtime_artifact_catalog::promote_active_runtime_artifact_to_healthy(
+    let stale_health = agent_semantic_artifacts::runtime_artifact_store::promote_active_runtime_artifact_to_healthy(
         &state_home, "asp", &first.artifact_digest,
     )
     .await
     .expect_err("stale Runtime health must not qualify a newer active artifact");
     assert!(stale_health.contains("does not qualify active artifact"));
 
-    let promoted = agent_semantic_artifacts::runtime_artifact_catalog::promote_active_runtime_artifact_to_healthy(
+    let promoted = agent_semantic_artifacts::runtime_artifact_store::promote_active_runtime_artifact_to_healthy(
         &state_home, "asp", &second.artifact_digest,
     )
     .await

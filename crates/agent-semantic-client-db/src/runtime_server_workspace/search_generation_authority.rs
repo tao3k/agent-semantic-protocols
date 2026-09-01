@@ -23,7 +23,7 @@ pub struct WorkspaceSearchGenerationAuthority {
     pub search_projection_analyzer_digest: String,
     pub provider_schema_digest: String,
     pub source_snapshot: agent_semantic_content_identity::SourceSnapshotEvidence,
-    pub project_resolutions: Vec<agent_semantic_runtime::AdmittedProjectResolution>,
+    pub project_resolutions: Vec<agent_semantic_content_identity::AdmittedProjectResolution>,
     pub workspace_generation: agent_semantic_content_identity::workspace_generation_evidence::WorkspaceGenerationEvidenceV1,
 }
 

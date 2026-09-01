@@ -26,7 +26,7 @@ after=compactPacketBytes=46,jsonPacketBytes=28608883,findingCount=0,qualityFindi
 tests=asp-python-check-changed,pytest-software-criterion-policy-snapshots
 claim=signal-improved-localization-and-edit-choice
 
-[software-criterion-repair-evidence] language=rust provider=asp-rust project=languages/rust-lang-project-harness
+[software-criterion-repair-evidence] language=rust provider=asp-rust project=languages/asp-rust
 start=compact-signal-line
 signal=native-idiom.manual-transform-loop
 target=src/search/semantic_facts.rs semantic_fact_owners

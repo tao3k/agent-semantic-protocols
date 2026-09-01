@@ -134,7 +134,7 @@ fn stop_fallback_requires_epoch_process_and_executable_binding() {
         process_id: endpoint.owner_process_id,
         nonce: format!("owner-{}", endpoint.owner_process_id),
         state_home: "/runtime".to_owned(),
-        activation_generation: 1,
+        publication_nonce: "publication-control-model".to_owned(),
         launcher_artifact_path: endpoint.runtime_artifact_path.clone(),
         launcher_artifact_digest:
             agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest::from_bytes(
@@ -209,7 +209,7 @@ async fn identity_handoff_retires_only_the_bound_runtime_server_owner() {
         process_id: endpoint.owner_process_id,
         nonce: format!("owner-{}", endpoint.owner_process_id),
         state_home: state_home.path().to_string_lossy().into_owned(),
-        activation_generation: 1,
+        publication_nonce: "publication-control-model".to_owned(),
         launcher_artifact_path: endpoint.runtime_artifact_path.clone(),
         launcher_artifact_digest:
             agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest::from_bytes(

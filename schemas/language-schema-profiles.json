@@ -100,8 +100,8 @@
   "profiles": [
     {
       "languageId": "rust",
-      "packageRoot": "languages/rust-lang-project-harness",
-      "bundleRoot": "languages/rust-lang-project-harness/schemas",
+      "packageRoot": "languages/asp-rust",
+      "bundleRoot": "languages/asp-rust/schemas",
       "rootSets": [
         "provider-contract",
         "client-protocol",
@@ -517,6 +517,7 @@
       },
       "membershipOverrides": {
         "includeSchemaPaths": [
+          "schemas/asp-python-graphs-search-evidence.v1.schema.json",
           "schemas/asp.exact-selector-execution-receipt.v1.schema.json",
           "schemas/projection-evidence-context.v1.schema.json"
         ]
@@ -605,7 +606,7 @@
     },
     {
       "familyId": "asp.schema-family.rust-project-harness",
-      "owner": "languages/rust-lang-project-harness",
+      "owner": "languages/asp-rust",
       "rationale": "Rust project harness build gates and dependency policy contracts.",
       "priority": 200,
       "parentFamilyId": "asp.schema-family.provider",

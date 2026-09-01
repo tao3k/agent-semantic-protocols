@@ -11,14 +11,14 @@ pub struct LexicalOverlaySearchRequest {
     query: String,
     limit: usize,
     documents: Vec<LexicalOverlayDocument>,
-    source_snapshot: agent_semantic_artifacts::SourceSnapshotEvidence,
+    source_snapshot: agent_semantic_content_identity::SourceSnapshotEvidence,
 }
 
 /// Lexical overlay hits bound to the Merkle snapshot that was searched.
 #[derive(Debug, Clone)]
 pub struct LexicalOverlaySearchResult {
     /// Snapshot evidence for the base plus editor-buffer delta.
-    pub source_snapshot: agent_semantic_artifacts::SourceSnapshotEvidence,
+    pub source_snapshot: agent_semantic_content_identity::SourceSnapshotEvidence,
     /// Ranked lexical hits from that snapshot.
     pub hits: Vec<LexicalOverlaySearchHit>,
 }
@@ -27,7 +27,7 @@ pub struct LexicalOverlaySearchResult {
 #[derive(Debug, Clone)]
 pub struct LexicalOverlayCandidateSearchResult {
     /// Snapshot evidence for the base plus editor-buffer delta.
-    pub source_snapshot: agent_semantic_artifacts::SourceSnapshotEvidence,
+    pub source_snapshot: agent_semantic_content_identity::SourceSnapshotEvidence,
     /// File-level candidates projected from the lexical hits.
     pub candidates: Vec<LexicalOverlayCandidateHit>,
 }
@@ -37,7 +37,7 @@ impl LexicalOverlaySearchRequest {
     #[must_use]
     pub fn new(
         query: impl Into<String>,
-        source_snapshot: agent_semantic_artifacts::SourceSnapshotEvidence,
+        source_snapshot: agent_semantic_content_identity::SourceSnapshotEvidence,
     ) -> Self {
         Self {
             query: query.into(),
@@ -229,7 +229,7 @@ pub fn search_lexical_overlay(request: LexicalOverlaySearchRequest) -> LexicalOv
 pub fn search_lexical_overlay_candidates(
     terms: &[String],
     documents: &[LexicalOverlayDocument],
-    source_snapshot: &agent_semantic_artifacts::SourceSnapshotEvidence,
+    source_snapshot: &agent_semantic_content_identity::SourceSnapshotEvidence,
     per_term_limit: usize,
     total_limit: usize,
 ) -> LexicalOverlayCandidateSearchResult {
@@ -272,7 +272,7 @@ pub fn search_lexical_overlay_candidates(
 }
 
 fn lexical_overlay_namespace(
-    source_snapshot: &agent_semantic_artifacts::SourceSnapshotEvidence,
+    source_snapshot: &agent_semantic_content_identity::SourceSnapshotEvidence,
 ) -> DynamicOverlayNamespace {
     DynamicOverlayNamespace::new(
         "lexical-overlay",

@@ -5,19 +5,76 @@ use std::time::{Duration, Instant};
 
 use crate::{SearchPipeCandidate, SearchPipeCandidateRequest, collect_search_pipe_candidates};
 
+macro_rules! search_pipe_source_text {
+    ($name:ident) => {
+        #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+        pub struct $name(String);
+
+        impl $name {
+            pub fn as_str(&self) -> &str {
+                &self.0
+            }
+        }
+
+        impl From<String> for $name {
+            fn from(value: String) -> Self {
+                Self(value)
+            }
+        }
+
+        impl From<&str> for $name {
+            fn from(value: &str) -> Self {
+                Self(value.to_owned())
+            }
+        }
+
+        impl AsRef<str> for $name {
+            fn as_ref(&self) -> &str {
+                self.as_str()
+            }
+        }
+
+        impl std::fmt::Display for $name {
+            fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str(self.as_str())
+            }
+        }
+    };
+}
+
+search_pipe_source_text!(SearchPipeSourceTraceSource);
+search_pipe_source_text!(SearchPipeSourceTraceStatus);
+search_pipe_source_text!(SearchPipeSourceArtifactDigest);
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SearchPipeSourceAcquisitionTrace {
+    pub source: SearchPipeSourceTraceSource,
+    pub status: SearchPipeSourceTraceStatus,
+    pub matched: usize,
+    pub missing: usize,
+    pub normalized: usize,
+    pub elapsed: Option<Duration>,
+    pub source_snapshot: Option<agent_semantic_content_identity::SourceSnapshotEvidence>,
+    pub artifact_digest: Option<SearchPipeSourceArtifactDigest>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SearchPipeSourceAcquisition {
+    pub candidates: Vec<SearchPipeCandidate>,
+    pub candidate_sources: Vec<String>,
+    pub source_trace: Vec<SearchPipeSourceAcquisitionTrace>,
+    pub source_snapshot: Option<agent_semantic_content_identity::SourceSnapshotEvidence>,
+    pub artifact_digest: Option<String>,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SearchPipeSearchOverlayAcquisition {
-    pub base_source_snapshot: agent_semantic_artifacts::SourceSnapshotEvidence,
-    pub result_source_snapshot: agent_semantic_artifacts::SourceSnapshotEvidence,
+    pub base_source_snapshot: agent_semantic_content_identity::SourceSnapshotEvidence,
+    pub result_source_snapshot: agent_semantic_content_identity::SourceSnapshotEvidence,
     pub candidates: Vec<SearchPipeCandidate>,
     pub elapsed: Duration,
 }
 
-pub use crate::pipe_source_document_acquisition::{
-    SearchPipeDocumentAcquisitionRequest, SearchPipeSourceAcquisition,
-    SearchPipeSourceAcquisitionTrace, SearchPipeSourceMode,
-    collect_search_pipe_document_acquisition,
-};
 pub use crate::pipe_source_index_acquisition::{
     SearchPipeSourceIndexAcquisition, SearchPipeSourceIndexAcquisitionRequest,
     SearchPipeSourceIndexDecision, SearchPipeSourceIndexLookup,
@@ -25,14 +82,14 @@ pub use crate::pipe_source_index_acquisition::{
 };
 
 pub struct SearchPipeSearchOverlayAcquisitionRequest<'a> {
-    pub language_id: &'a str,
+    pub file_spec: &'a crate::LanguageFileSpec,
     pub project_root: &'a Path,
     pub locator_root: &'a Path,
     pub query: &'a str,
     pub owners: &'a [PathBuf],
     pub ignore_dirs: &'a [String],
     pub include_hidden_dirs: &'a [String],
-    pub base_snapshot: &'a agent_semantic_artifacts::WorkspaceSnapshot,
+    pub base_snapshot: &'a agent_semantic_content_identity::WorkspaceSnapshot,
     pub provider_digest: &'a str,
     pub require_multi_clause: bool,
     pub limit: usize,
@@ -50,8 +107,8 @@ pub struct SearchPipeAutoAcquisitionRequest<'a> {
     /// Full path authority is needed only by the filesystem overlay. A
     /// resident/source-index terminal route omits it so a CLI process never
     /// receives the complete workspace path map.
-    pub base_snapshot: Option<&'a agent_semantic_artifacts::WorkspaceSnapshot>,
-    pub base_source_snapshot: &'a agent_semantic_artifacts::SourceSnapshotEvidence,
+    pub base_snapshot: Option<&'a agent_semantic_content_identity::WorkspaceSnapshot>,
+    pub base_source_snapshot: &'a agent_semantic_content_identity::SourceSnapshotEvidence,
     pub provider_digest: &'a str,
     pub require_multi_clause: bool,
     pub limit: usize,
@@ -127,7 +184,7 @@ pub fn collect_search_pipe_search_overlay_acquisition(
 ) -> Result<SearchPipeSearchOverlayAcquisition, String> {
     let started_at = Instant::now();
     let collection = collect_search_pipe_candidates(SearchPipeCandidateRequest {
-        language_id: request.language_id,
+        file_spec: request.file_spec,
         project_root: request.project_root,
         locator_root: request.locator_root,
         query: request.query,
@@ -152,7 +209,7 @@ pub fn collect_search_pipe_search_overlay_acquisition(
 }
 
 pub struct SearchPipeFailureAcquisitionRequest<'a> {
-    pub language_id: &'a str,
+    pub file_spec: &'a crate::LanguageFileSpec,
     pub project_root: &'a Path,
     pub locator_root: &'a Path,
     pub message: &'a str,
@@ -169,7 +226,7 @@ pub fn collect_search_pipe_failure_acquisition(
     let query = failure_candidate_query(request.message);
     collect_search_pipe_search_overlay_acquisition(SearchPipeSearchOverlayAcquisitionRequest {
         require_multi_clause: false,
-        language_id: request.language_id,
+        file_spec: request.file_spec,
         project_root: request.project_root,
         locator_root: request.locator_root,
         query: &query,

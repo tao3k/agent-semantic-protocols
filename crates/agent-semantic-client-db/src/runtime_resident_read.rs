@@ -132,6 +132,16 @@ impl RuntimeResidentReadClient {
             .parser_owned_callable_selector_pairs(owner_paths)
     }
 
+    pub fn search_generation_authority(
+        &self,
+    ) -> &crate::runtime_server_workspace::WorkspaceSearchGenerationAuthority {
+        self.search_projection.authority()
+    }
+
+    pub fn graph_generation(&self) -> &agent_semantic_search::ResidentGraphGeneration {
+        self.search_projection.graph_generation()
+    }
+
     pub fn generation_digest(&self) -> String {
         self.exact_projection.generation_digest().to_owned()
     }

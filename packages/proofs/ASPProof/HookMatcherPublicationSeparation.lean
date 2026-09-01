@@ -408,4 +408,109 @@ theorem hook_event_plane_constructs_no_runtime :
     isRuntimeIndependent canonicalHookProcessRuntime := by
   simp [isRuntimeIndependent, canonicalHookProcessRuntime]
 
+/-- The client installer and Hook candidate must carry the same embedded
+policy content identity. Executable path adjacency is not admission. -/
+structure HookInstallCohort where
+  installerPolicyDigest : Nat
+  candidatePolicyDigest : Nat
+
+def hookCandidateAdmitted (cohort : HookInstallCohort) : Bool :=
+  cohort.installerPolicyDigest == cohort.candidatePolicyDigest
+
+def publishVerifiedHookCandidate
+    (current candidate : MatcherBundle Projection) (cohort : HookInstallCohort) :
+    MatcherBundle Projection :=
+  if hookCandidateAdmitted cohort then candidate else current
+
+theorem stale_sibling_policy_identity_preserves_current
+    (current candidate : MatcherBundle Projection)
+    (expected stale : Nat) (different : expected ≠ stale) :
+    publishVerifiedHookCandidate current candidate
+      { installerPolicyDigest := expected, candidatePolicyDigest := stale } = current := by
+  simp [publishVerifiedHookCandidate, hookCandidateAdmitted, different]
+
+/-- Runtime readiness only moves the Healthy observation; launchers remain on Active. -/
+def hookDigestAfterHealthyObservation
+    (active : MatcherBundle Projection) (_healthyBundleDigest : Nat) : Nat :=
+  active.runtimeHookBinaryDigest
+
+theorem healthy_observation_cannot_change_active_hook_authority
+    (active : MatcherBundle Projection) (left right : Nat) :
+    hookDigestAfterHealthyObservation active left =
+      hookDigestAfterHealthyObservation active right := by
+  rfl
+
+/-- Active and Healthy carry one content-addressed bundle identity. The nonce
+fences two publications of otherwise identical content without introducing a
+second lifecycle generation. -/
+structure RuntimeBinaryBundleIdentity where
+  bundleDigest : Nat
+  publicationNonce : Nat
+  deriving DecidableEq
+
+/-- Artifacts owns exactly two slots: launchers resolve Active, while Healthy is
+the last bundle whose Runtime readiness completed. -/
+structure ActiveHealthyBundleState where
+  active : RuntimeBinaryBundleIdentity
+  healthy : RuntimeBinaryBundleIdentity
+  deriving DecidableEq
+
+def installActiveBundle
+    (state : ActiveHealthyBundleState) (candidate : RuntimeBinaryBundleIdentity) :
+    ActiveHealthyBundleState :=
+  { state with active := candidate }
+
+def commitHealthyBundle
+    (state : ActiveHealthyBundleState) (candidate : RuntimeBinaryBundleIdentity) :
+    ActiveHealthyBundleState :=
+  if candidate = state.active then { state with healthy := state.active } else state
+
+def rollbackActiveBundle
+    (state : ActiveHealthyBundleState) (candidate : RuntimeBinaryBundleIdentity) :
+    ActiveHealthyBundleState :=
+  if candidate = state.active then { state with active := state.healthy } else state
+
+def launcherBundleIdentity (state : ActiveHealthyBundleState) : RuntimeBinaryBundleIdentity :=
+  state.active
+
+theorem install_switches_only_active
+    (state : ActiveHealthyBundleState) (candidate : RuntimeBinaryBundleIdentity) :
+    (installActiveBundle state candidate).active = candidate ∧
+      (installActiveBundle state candidate).healthy = state.healthy := by
+  constructor <;> rfl
+
+theorem ready_candidate_moves_only_healthy
+    (state : ActiveHealthyBundleState) :
+    (commitHealthyBundle state state.active).active = state.active ∧
+      (commitHealthyBundle state state.active).healthy = state.active := by
+  simp [commitHealthyBundle]
+
+theorem failed_current_candidate_restores_active_from_healthy
+    (state : ActiveHealthyBundleState) :
+    (rollbackActiveBundle state state.active).active = state.healthy ∧
+      (rollbackActiveBundle state state.active).healthy = state.healthy := by
+  simp [rollbackActiveBundle]
+
+theorem stale_candidate_cannot_commit_or_rollback
+    (state : ActiveHealthyBundleState) (stale : RuntimeBinaryBundleIdentity)
+    (different : stale ≠ state.active) :
+    commitHealthyBundle state stale = state ∧
+      rollbackActiveBundle state stale = state := by
+  simp [commitHealthyBundle, rollbackActiveBundle, different]
+
+theorem launcher_reads_active_not_healthy
+    (state : ActiveHealthyBundleState) (observedHealthy : RuntimeBinaryBundleIdentity) :
+    launcherBundleIdentity { state with healthy := observedHealthy } = state.active := by
+  rfl
+
+/-- The retired selector is observational garbage, not a serving authority. -/
+def hookDigestWithLegacySelector
+    (active : MatcherBundle Projection) (_legacySelector : Option Nat) : Nat :=
+  active.runtimeHookBinaryDigest
+
+theorem legacy_hook_selector_cannot_override_runtime_bin
+    (active : MatcherBundle Projection) (legacy : Option Nat) :
+    hookDigestWithLegacySelector active legacy = active.runtimeHookBinaryDigest := by
+  rfl
+
 end ASPProof.HookMatcherPublicationSeparation

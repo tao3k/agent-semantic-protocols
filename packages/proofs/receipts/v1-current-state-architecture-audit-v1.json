@@ -263,7 +263,7 @@
       "stage": "workspace-source-provider-terminal",
       "owners": [
         "crates/agent-semantic-client-db/src/server_source_index",
-        "languages/rust-lang-project-harness/src/search",
+        "languages/asp-rust/src/search",
         "crates/agent-semantic-runtime-server/src"
       ],
       "status": "known path families; exact frame propagation and terminal ownership blocked",

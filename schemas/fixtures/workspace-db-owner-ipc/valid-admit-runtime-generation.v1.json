@@ -12,7 +12,7 @@
     "projectRoot": "/workspace/root",
     "changedPaths": [
       "/workspace/root/src/lib.rs",
-      "/workspace/root/languages/rust-lang-project-harness/src/exact_source.rs"
+      "/workspace/root/languages/asp-rust/src/exact_source.rs"
     ]
   }
 }

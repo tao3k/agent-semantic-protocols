@@ -88,7 +88,7 @@ pub struct ContentPublicationCommit {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ActivationObservation {
-    pub activation_generation: u64,
+    pub publication_nonce: String,
     pub commit_digest: String,
 }
 
@@ -381,7 +381,7 @@ mod tests {
         let commit =
             ContentPublicationCommit::linearize(content.clone(), authority(&content)).unwrap();
         let observation = ActivationObservation {
-            activation_generation: 73,
+            publication_nonce: "publication-observation".to_owned(),
             commit_digest: commit.commit_digest.clone(),
         };
         let mut different = identity('b');

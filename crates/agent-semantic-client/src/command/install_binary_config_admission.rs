@@ -26,41 +26,130 @@ pub(super) fn publish_embedded_hook_config(protocol_home: &Path) -> Result<&'sta
     Ok(status.as_str())
 }
 
-pub(super) struct HookRuntimeInstallReceipt {
-    pub path: PathBuf,
+pub(super) struct HookRuntimeBundleCandidate {
+    pub source: PathBuf,
     pub artifact_digest: String,
-    pub lock_elapsed_micros: u128,
-    pub config_source_status: &'static str,
 }
 
-/// Publish the dedicated Rust Hook evaluator into the canonical Runtime bin.
-///
-/// The plugin launcher is a fixed shell entrypoint. It never owns a binary
-/// generation and always resolves this stable Runtime path.
-pub(super) async fn publish_embedded_hook_runtime(
-    protocol_home: &Path,
+pub(super) async fn admit_embedded_hook_runtime_candidate(
     installing_asp_binary: &Path,
-) -> Result<HookRuntimeInstallReceipt, String> {
+) -> Result<HookRuntimeBundleCandidate, String> {
     admit_embedded_hook_config()?;
     agent_semantic_hook::aot_compiler::compile_embedded_hook_policy_bundle()
         .map_err(|error| format!("validate embedded Hook policy: {error}"))?;
-    let hook_binary = resolve_hook_binary_candidate(installing_asp_binary)?;
-    let target = protocol_home.join("runtime/bin/asp-hook");
-    let publication =
-        agent_semantic_artifacts::runtime_artifact_publication::publish_runtime_tool_artifact(
-            protocol_home,
-            &hook_binary,
-            &target,
-            "asp-hook",
+    let source = resolve_hook_binary_candidate(installing_asp_binary)?;
+    validate_hook_binary_candidate_identity(&source).await?;
+    let artifact_digest =
+        agent_semantic_artifacts::runtime_artifact_slots::runtime_artifact_candidate_digest(
+            &source,
         )
-        .await?;
-    let config_source_status = publish_embedded_hook_config(protocol_home)?;
-    Ok(HookRuntimeInstallReceipt {
-        path: publication.path,
-        artifact_digest: publication.artifact_digest.to_string(),
-        lock_elapsed_micros: publication.lock_elapsed_micros,
-        config_source_status,
+        .await?
+        .to_string();
+    Ok(HookRuntimeBundleCandidate {
+        source,
+        artifact_digest,
     })
+}
+
+/// Retire the pre-Runtime Hook selector after the canonical evaluator is live.
+///
+/// `hooks/current` is never a serving authority.  Removing the legacy file or
+/// symlink prevents operators and diagnostics from mistaking an abandoned
+/// policy generation for the evaluator selected by the fixed plugin launcher.
+/// A directory at this path is not an old selector and is preserved fail-closed.
+pub(super) fn retire_legacy_hook_generation_pointer(
+    protocol_home: &Path,
+) -> Result<&'static str, String> {
+    let legacy = protocol_home.join("hooks/current");
+    match std::fs::symlink_metadata(&legacy) {
+        Ok(metadata) if metadata.file_type().is_symlink() || metadata.is_file() => {
+            std::fs::remove_file(&legacy).map_err(|error| {
+                format!(
+                    "failed to retire legacy Hook generation pointer {}: {error}",
+                    legacy.display()
+                )
+            })?;
+            Ok("retired")
+        }
+        Ok(_) => Err(format!(
+            "legacy-hook-generation-path-conflict: {} is not a file or symlink",
+            legacy.display()
+        )),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok("absent"),
+        Err(error) => Err(format!(
+            "failed to inspect legacy Hook generation pointer {}: {error}",
+            legacy.display()
+        )),
+    }
+}
+
+async fn validate_hook_binary_candidate_identity(candidate: &Path) -> Result<(), String> {
+    let expected = agent_semantic_hook::aot_compiler::compile_embedded_hook_policy_bundle()
+        .and_then(|bundle| {
+            serde_json::from_slice::<serde_json::Value>(&bundle)
+                .map_err(|error| format!("decode embedded Hook policy identity: {error}"))
+        })?
+        .get("generationDigest")
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_owned)
+        .ok_or_else(|| "embedded Hook policy identity is missing its digest".to_owned())?;
+    let mut command = tokio::process::Command::new(candidate);
+    command
+        .arg("--identity")
+        .env_remove("ASP_NO_AGENT")
+        .kill_on_drop(true);
+    let output = tokio::time::timeout(std::time::Duration::from_secs(1), command.output())
+        .await
+        .map_err(|_| {
+            format!(
+                "Hook binary candidate {} exceeded 1000ms identity timeout",
+                candidate.display()
+            )
+        })?
+        .map_err(|error| {
+            format!(
+                "failed to execute Hook binary candidate identity {}: {error}",
+                candidate.display()
+            )
+        })?;
+    if !output.status.success() {
+        return Err(format!(
+            "Hook binary candidate identity failed for {}: status={}",
+            candidate.display(),
+            output.status
+        ));
+    }
+    let identity =
+        serde_json::from_slice::<serde_json::Value>(&output.stdout).map_err(|error| {
+            format!(
+                "Hook binary candidate identity returned invalid JSON for {}: {error}",
+                candidate.display()
+            )
+        })?;
+    let actual = identity
+        .get("policyContentDigest")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| {
+            format!(
+                "Hook binary candidate identity is incomplete for {}",
+                candidate.display()
+            )
+        })?;
+    if identity.get("schemaId").and_then(serde_json::Value::as_str)
+        != Some("agent.semantic-protocols.hook-runtime-identity")
+        || identity
+            .get("schemaVersion")
+            .and_then(serde_json::Value::as_u64)
+            != Some(1)
+        || actual != expected
+    {
+        return Err(format!(
+            "Hook binary candidate policy identity mismatch: candidate={} expected={} actual={actual}",
+            candidate.display(),
+            expected
+        ));
+    }
+    Ok(())
 }
 
 fn resolve_hook_binary_candidate(

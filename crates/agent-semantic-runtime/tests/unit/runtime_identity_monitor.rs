@@ -3,8 +3,7 @@ use std::time::Duration;
 
 use crate::runtime_identity_monitor::{
     MonitorAction, ResidentActivationIdentity, RuntimeIdentityMonitor,
-    applied_identity_precedes_running_owner, runtime_identity_poll_interval,
-    spawn_runtime_identity_monitor_with_intervals,
+    runtime_identity_poll_interval, spawn_runtime_identity_monitor_with_intervals,
 };
 
 #[test]
@@ -36,7 +35,7 @@ fn latest_identity_wins_during_drain() {
     assert_eq!(monitor.drain_completed(), MonitorAction::SpawnLatest);
 }
 
-async fn write_applied_activation(state_home: &Path, value: &str, generation: u64) {
+async fn write_applied_activation(state_home: &Path, value: &str, publication_nonce: &str) {
     let digest = agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest::from_bytes(
         value.as_bytes(),
     );
@@ -57,14 +56,13 @@ async fn write_applied_activation(state_home: &Path, value: &str, generation: u6
             "previousArtifactDigest": null,
             "artifactMode": "dev",
             "publishedAtUnixMillis": 1,
-            "publicationNonce": format!("generation-{generation}"),
-            "activationGeneration": generation,
+            "publicationNonce": publication_nonce,
             "candidateIdentity": {
                 "artifactDigest": digest,
                 "artifactPath": artifact_path,
                 "stablePath": state_home.join("runtime/bin/asp"),
                 "artifactMode": "dev",
-                "publicationNonce": format!("generation-{generation}"),
+                "publicationNonce": publication_nonce,
             }
         }))
         .expect("encode identity"),
@@ -97,7 +95,7 @@ async fn write_legacy_identity_receipt(state_home: &Path, value: &str) {
 #[tokio::test]
 async fn identity_change_emits_once_without_waiting_for_owner_exit() {
     let root = tempfile::tempdir().expect("tempdir");
-    write_applied_activation(root.path(), "generation-a", 1).await;
+    write_applied_activation(root.path(), "generation-a", "publication-a").await;
     let mut monitor = spawn_runtime_identity_monitor_with_intervals(
         root.path().to_path_buf(),
         7,
@@ -106,21 +104,23 @@ async fn identity_change_emits_once_without_waiting_for_owner_exit() {
         Duration::from_secs(1),
     );
     tokio::time::sleep(Duration::from_millis(15)).await;
-    write_applied_activation(root.path(), "generation-b", 2).await;
+    write_applied_activation(root.path(), "generation-b", "publication-b").await;
     let event = tokio::time::timeout(Duration::from_millis(100), monitor.next_event())
         .await
         .expect("identity event deadline")
         .expect("identity event");
+    assert!(event.previous_identity.starts_with("digest:blake3-256:"));
     assert!(
         event
             .previous_identity
-            .starts_with("generation:1 digest:blake3-256:")
+            .contains("publicationNonce:publication-a")
     );
     assert!(event.previous_identity.ends_with(" ownerEpoch:7"));
+    assert!(event.observed_identity.starts_with("digest:blake3-256:"));
     assert!(
         event
             .observed_identity
-            .starts_with("generation:2 digest:blake3-256:")
+            .contains("publicationNonce:publication-b")
     );
     assert!(event.observed_identity.ends_with(" ownerEpoch:7"));
     monitor.shutdown().await;
@@ -129,7 +129,7 @@ async fn identity_change_emits_once_without_waiting_for_owner_exit() {
 #[tokio::test]
 async fn unchanged_identity_does_not_emit_or_hot_write() {
     let root = tempfile::tempdir().expect("tempdir");
-    write_applied_activation(root.path(), "generation-a", 1).await;
+    write_applied_activation(root.path(), "generation-a", "publication-a").await;
     let mut monitor = spawn_runtime_identity_monitor_with_intervals(
         root.path().to_path_buf(),
         8,
@@ -203,7 +203,7 @@ async fn startup_overwrites_stale_receipt_with_current_starting_owner() {
 #[tokio::test]
 async fn first_identity_tick_transitions_current_owner_to_watching() {
     let root = tempfile::tempdir().expect("tempdir");
-    write_applied_activation(root.path(), "generation-a", 1).await;
+    write_applied_activation(root.path(), "generation-a", "publication-a").await;
     let monitor = spawn_runtime_identity_monitor_with_intervals(
         root.path().to_path_buf(),
         55,
@@ -224,13 +224,13 @@ async fn first_identity_tick_transitions_current_owner_to_watching() {
 #[tokio::test]
 async fn change_before_first_tick_is_compared_with_the_running_owner_identity() {
     let root = tempfile::tempdir().expect("tempdir");
-    write_applied_activation(root.path(), "generation-a", 1).await;
+    write_applied_activation(root.path(), "generation-a", "publication-a").await;
     let running_digest =
         agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest::from_bytes(
             b"generation-a",
         );
     let running = ResidentActivationIdentity {
-        activation_generation: 1,
+        publication_nonce: "publication-a".to_owned(),
         artifact_digest: running_digest,
         owner_epoch: 56,
     };
@@ -241,7 +241,7 @@ async fn change_before_first_tick_is_compared_with_the_running_owner_identity() 
         Duration::from_millis(25),
         Duration::from_secs(5),
     );
-    write_applied_activation(root.path(), "generation-b", 2).await;
+    write_applied_activation(root.path(), "generation-b", "publication-b").await;
     let event = tokio::time::timeout(Duration::from_millis(100), monitor.next_event())
         .await
         .expect("identity event deadline")
@@ -249,8 +249,8 @@ async fn change_before_first_tick_is_compared_with_the_running_owner_identity() 
     assert_eq!(
         event.previous_identity,
         format!(
-            "generation:{} digest:{} ownerEpoch:{}",
-            running.activation_generation, running.artifact_digest, running.owner_epoch
+            "digest:{} publicationNonce:{} ownerEpoch:{}",
+            running.artifact_digest, running.publication_nonce, running.owner_epoch
         )
     );
     assert_ne!(event.observed_identity, event.previous_identity);
@@ -258,11 +258,11 @@ async fn change_before_first_tick_is_compared_with_the_running_owner_identity() 
 }
 
 #[tokio::test]
-async fn previous_applied_generation_cannot_retire_a_starting_newer_owner() {
+async fn previous_healthy_publication_cannot_retire_a_starting_active_owner() {
     let root = tempfile::tempdir().expect("tempdir");
-    write_applied_activation(root.path(), "previous", 7).await;
+    write_applied_activation(root.path(), "previous", "publication-previous").await;
     let running = ResidentActivationIdentity {
-        activation_generation: 8,
+        publication_nonce: "publication-candidate".to_owned(),
         artifact_digest:
             agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest::from_bytes(
                 b"candidate",
@@ -270,14 +270,14 @@ async fn previous_applied_generation_cannot_retire_a_starting_newer_owner() {
         owner_epoch: 57,
     };
     let applied = ResidentActivationIdentity {
-        activation_generation: 7,
+        publication_nonce: "publication-previous".to_owned(),
         artifact_digest:
             agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest::from_bytes(
                 b"previous",
             ),
         owner_epoch: 57,
     };
-    assert!(applied_identity_precedes_running_owner(&running, &applied));
+    assert_ne!(running, applied);
     let mut monitor = spawn_runtime_identity_monitor_with_intervals(
         root.path().to_path_buf(),
         57,
@@ -289,7 +289,7 @@ async fn previous_applied_generation_cannot_retire_a_starting_newer_owner() {
         tokio::time::timeout(Duration::from_millis(40), monitor.next_event())
             .await
             .is_err(),
-        "a previous applied generation is startup convergence lag, not replacement authority"
+        "previous Healthy publication is startup convergence lag, not replacement authority"
     );
     monitor.shutdown().await;
 }
@@ -297,7 +297,7 @@ async fn previous_applied_generation_cannot_retire_a_starting_newer_owner() {
 #[tokio::test]
 async fn legacy_developer_identity_drift_cannot_retire_the_applied_resident() {
     let root = tempfile::tempdir().expect("tempdir");
-    write_applied_activation(root.path(), "resident", 7).await;
+    write_applied_activation(root.path(), "resident", "publication-resident").await;
     write_legacy_identity_receipt(root.path(), "developer-source-drift").await;
     let digest = agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest::from_bytes(
         b"resident",
@@ -306,7 +306,7 @@ async fn legacy_developer_identity_drift_cannot_retire_the_applied_resident() {
         root.path().to_path_buf(),
         70,
         Some(ResidentActivationIdentity {
-            activation_generation: 7,
+            publication_nonce: "publication-resident".to_owned(),
             artifact_digest: digest,
             owner_epoch: 70,
         }),
@@ -323,9 +323,9 @@ async fn legacy_developer_identity_drift_cannot_retire_the_applied_resident() {
 }
 
 #[tokio::test]
-async fn same_digest_new_applied_generation_emits_one_replacement() {
+async fn same_digest_distinct_applied_publication_emits_one_replacement() {
     let root = tempfile::tempdir().expect("tempdir");
-    write_applied_activation(root.path(), "resident", 7).await;
+    write_applied_activation(root.path(), "resident", "publication-a").await;
     let digest = agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest::from_bytes(
         b"resident",
     );
@@ -333,23 +333,31 @@ async fn same_digest_new_applied_generation_emits_one_replacement() {
         root.path().to_path_buf(),
         71,
         Some(ResidentActivationIdentity {
-            activation_generation: 7,
+            publication_nonce: "publication-a".to_owned(),
             artifact_digest: digest,
             owner_epoch: 71,
         }),
         Duration::from_millis(5),
         Duration::from_secs(5),
     );
-    write_applied_activation(root.path(), "resident", 8).await;
+    write_applied_activation(root.path(), "resident", "publication-b").await;
     let event = tokio::time::timeout(Duration::from_millis(100), monitor.next_event())
         .await
-        .expect("generation replacement deadline")
-        .expect("generation replacement event");
-    assert!(event.previous_identity.contains("generation:7"));
-    assert!(event.observed_identity.contains("generation:8"));
+        .expect("publication replacement deadline")
+        .expect("publication replacement event");
+    assert!(
+        event
+            .previous_identity
+            .contains("publicationNonce:publication-a")
+    );
+    assert!(
+        event
+            .observed_identity
+            .contains("publicationNonce:publication-b")
+    );
     assert!(
         monitor.next_event().await.is_none(),
-        "one applied generation change must emit exactly once"
+        "one applied publication change must emit exactly once"
     );
     monitor.shutdown().await;
 }
@@ -371,7 +379,7 @@ async fn absent_or_malformed_applied_authority_never_drains_the_running_owner() 
             root.path().to_path_buf(),
             72,
             Some(ResidentActivationIdentity {
-                activation_generation: 7,
+                publication_nonce: "publication-resident".to_owned(),
                 artifact_digest:
                     agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest::from_bytes(
                         b"resident",
@@ -401,7 +409,7 @@ async fn absent_or_malformed_applied_authority_never_drains_the_running_owner() 
 #[tokio::test]
 async fn pending_activation_is_not_an_observed_serving_identity() {
     let root = tempfile::tempdir().expect("tempdir");
-    write_applied_activation(root.path(), "candidate", 8).await;
+    write_applied_activation(root.path(), "candidate", "publication-candidate").await;
     tokio::fs::rename(
         root.path().join("runtime/activation/applied.json"),
         root.path().join("runtime/activation/pending.json"),
@@ -412,7 +420,7 @@ async fn pending_activation_is_not_an_observed_serving_identity() {
         root.path().to_path_buf(),
         73,
         Some(ResidentActivationIdentity {
-            activation_generation: 7,
+            publication_nonce: "publication-resident".to_owned(),
             artifact_digest:
                 agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest::from_bytes(
                     b"resident",

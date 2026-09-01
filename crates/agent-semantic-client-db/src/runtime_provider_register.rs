@@ -29,6 +29,13 @@ pub struct RuntimeProviderRegister {
 struct RuntimeProviderRegisterState {
     snapshot: Arc<ProviderRegisterSnapshot>,
     routes: BTreeMap<String, Arc<[CompiledProviderRoute]>>,
+    rejected_capabilities: BTreeMap<String, RejectedProviderCapability>,
+}
+
+#[derive(Clone, Eq, PartialEq)]
+struct RejectedProviderCapability {
+    language_id: String,
+    reason: Arc<str>,
 }
 
 impl Default for RuntimeProviderRegister {
@@ -85,15 +92,29 @@ impl RuntimeProviderRegister {
             .cloned()
             .map(|provider| (provider.provider_id.clone(), provider))
             .collect::<BTreeMap<_, _>>();
-        providers.extend(
-            installed_capabilities
-                .into_iter()
-                .map(|provider| (provider.provider_id.clone(), provider)),
-        );
+        let mut rejected_capabilities = BTreeMap::new();
+        for provider in installed_capabilities {
+            match provider.compiled_routes() {
+                Ok(_) => {
+                    providers.insert(provider.provider_id.clone(), provider);
+                }
+                Err(reason) => {
+                    rejected_capabilities.insert(
+                        provider.provider_id.clone(),
+                        RejectedProviderCapability {
+                            language_id: provider.language_id,
+                            reason: Arc::from(reason),
+                        },
+                    );
+                }
+            }
+        }
         let mut providers = providers.into_values().collect::<Vec<_>>();
         providers.sort_by(|left, right| left.provider_id.cmp(&right.provider_id));
         validate_provider_set(&providers)?;
-        register.state = ArcSwap::from_pointee(build_state(1, providers)?);
+        let mut state = build_state(1, providers)?;
+        state.rejected_capabilities = rejected_capabilities;
+        register.state = ArcSwap::from_pointee(state);
         register.store_path = Some(store_path);
         Ok(register)
     }
@@ -106,6 +127,18 @@ impl RuntimeProviderRegister {
         self.state.load().routes.get(provider_id).map(Arc::clone)
     }
 
+    /// Return the fail-closed admission reason for an installed capability
+    /// whose descriptor could not be compiled. Rejected capabilities never
+    /// enter the executable route map and never prevent the Runtime core from
+    /// becoming healthy.
+    pub fn rejected_capability(&self, provider_id: &str) -> Option<String> {
+        self.state
+            .load()
+            .rejected_capabilities
+            .get(provider_id)
+            .map(|rejected| rejected.reason.to_string())
+    }
+
     /// Return the unique installed capability descriptor for one language.
     /// Identity-only seeds are excluded because they are not executable.
     pub fn installed_capability(
@@ -116,11 +149,7 @@ impl RuntimeProviderRegister {
         let mut providers = state.snapshot.providers.iter().filter(|provider| {
             provider.language_id == language_id && state.routes.contains_key(&provider.provider_id)
         });
-        let provider = providers.next().ok_or_else(|| {
-            format!(
-                "state=provider-missing reasonKind=language-capability-not-installed languageId={language_id}"
-            )
-        })?;
+        let provider = providers.next().ok_or_else(|| rejected_or_missing(&state, language_id))?;
         if providers.next().is_some() {
             return Err(format!(
                 "state=provider-ambiguous reasonKind=multiple-installed-language-capabilities languageId={language_id}"
@@ -167,9 +196,14 @@ impl RuntimeProviderRegister {
                     .map(move |route| (provider_id.to_owned(), route.clone()))
             });
         let resolved = matches.next().ok_or_else(|| {
-            format!(
-                "state=route-missing reasonKind=operation-not-in-installed-capability languageId={language_id} operation={operation}"
-            )
+            let rejected = rejected_or_missing(&state, language_id);
+            if rejected.contains("reasonKind=installed-capability-invalid") {
+                rejected
+            } else {
+                format!(
+                    "state=route-missing reasonKind=operation-not-in-installed-capability languageId={language_id} operation={operation}"
+                )
+            }
         })?;
         if matches.next().is_some() {
             return Err(format!(
@@ -224,6 +258,7 @@ impl RuntimeProviderRegister {
             .cloned()
             .map(|provider| (provider.provider_id.clone(), provider))
             .collect::<BTreeMap<_, _>>();
+        let mut rejected_capabilities = current.rejected_capabilities.clone();
         match request.request {
             ProviderRegisterOperation::Initialize { providers: initial } => {
                 if current.snapshot.generation != 0 {
@@ -233,6 +268,7 @@ impl RuntimeProviderRegister {
                     .into_iter()
                     .map(|provider| (provider.provider_id.clone(), provider))
                     .collect();
+                rejected_capabilities.clear();
             }
             ProviderRegisterOperation::Register { provider } => {
                 if let Some(identity) = self.identity_constraints.get(&provider.provider_id)
@@ -246,9 +282,11 @@ impl RuntimeProviderRegister {
                         ),
                     ));
                 }
+                rejected_capabilities.remove(&provider.provider_id);
                 providers.insert(provider.provider_id.clone(), provider);
             }
             ProviderRegisterOperation::Unregister { provider_id } => {
+                rejected_capabilities.remove(&provider_id);
                 if let Some(identity) = self.identity_constraints.get(&provider_id) {
                     providers.insert(provider_id, identity.clone());
                 } else {
@@ -261,7 +299,9 @@ impl RuntimeProviderRegister {
         }
 
         let providers = providers.into_values().collect::<Vec<_>>();
-        if providers == current.snapshot.providers {
+        if providers == current.snapshot.providers
+            && rejected_capabilities == current.rejected_capabilities
+        {
             return Ok(snapshot_response(Arc::clone(&current.snapshot)));
         }
         let generation = current
@@ -269,7 +309,9 @@ impl RuntimeProviderRegister {
             .generation
             .checked_add(1)
             .ok_or_else(|| "provider register generation overflow".to_owned())?;
-        let next = Arc::new(build_state(generation, providers)?);
+        let mut next = build_state(generation, providers)?;
+        next.rejected_capabilities = rejected_capabilities;
+        let next = Arc::new(next);
         if let Some(store_path) = &self.store_path {
             persist_external_providers(
                 store_path,
@@ -331,7 +373,29 @@ fn build_state(
             );
         }
     }
-    Ok(RuntimeProviderRegisterState { snapshot, routes })
+    Ok(RuntimeProviderRegisterState {
+        snapshot,
+        routes,
+        rejected_capabilities: BTreeMap::new(),
+    })
+}
+
+fn rejected_or_missing(state: &RuntimeProviderRegisterState, language_id: &str) -> String {
+    let mut rejected = state
+        .rejected_capabilities
+        .iter()
+        .filter(|(_, rejected)| rejected.language_id == language_id);
+    if let Some((provider_id, rejection)) = rejected.next()
+        && rejected.next().is_none()
+    {
+        return format!(
+            "state=provider-rejected reasonKind=installed-capability-invalid languageId={language_id} providerId={provider_id} error={}",
+            rejection.reason
+        );
+    }
+    format!(
+        "state=provider-missing reasonKind=language-capability-not-installed languageId={language_id}"
+    )
 }
 
 fn validate_provider_set(providers: &[ProviderRegistrationDocument]) -> Result<(), String> {

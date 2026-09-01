@@ -8,10 +8,19 @@ pub struct AspRustProjectHarnessOwnerPolicy {
 }
 
 /// One centralized diagnostic severity override for a workspace member.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, serde::Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum AspRustProjectHarnessDiagnosticSeverity {
+    Info,
+    Warning,
+    Error,
+}
+
+/// One centralized diagnostic severity override for a workspace member.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AspRustProjectHarnessSeverityPolicy {
     pub rule_code: &'static str,
-    pub severity: rust_lang_project_harness::RustDiagnosticSeverity,
+    pub severity: AspRustProjectHarnessDiagnosticSeverity,
 }
 
 /// Declarative Rust harness policy for one ASP workspace member crate.
@@ -27,11 +36,21 @@ pub struct AspRustProjectHarnessMemberPolicy {
     pub availability_stability_owners: &'static [AspRustProjectHarnessOwnerPolicy],
 }
 
+/// Direct normal dependencies forbidden by a member's owner boundary.
+#[must_use]
+pub fn asp_workspace_member_forbidden_normal_dependencies(
+    package_name: &str,
+) -> &'static [&'static str] {
+    match package_name {
+        "agent-semantic-artifacts" => &["turso"],
+        _ => &[],
+    }
+}
+
 impl AspRustProjectHarnessMemberPolicy {
     /// Return the content-addressed identity of the complete member policy.
     #[must_use]
     pub fn contract_digest(self) -> String {
-        let config = self.to_harness_config();
         let severity_overrides = self
             .rule_severity_overrides
             .iter()
@@ -58,8 +77,8 @@ impl AspRustProjectHarnessMemberPolicy {
             "schemaVersion": "1",
             "packageName": self.package_name,
             "crateRoot": self.crate_root,
+            "cargoCheckAdviceAllowExplanation": self.cargo_check_advice_allow_explanation,
             "verificationLabel": self.verification_label,
-            "harnessConfig": config,
             "severityOverrides": severity_overrides,
             "criterionPerformanceVerification": self.criterion_performance_verification,
             "latencySensitivePerformanceOwners": owner_projection(
@@ -71,9 +90,14 @@ impl AspRustProjectHarnessMemberPolicy {
         format!("blake3-256:{}", blake3::hash(&encoded).to_hex())
     }
 
-    /// Builds the `rust-lang-project-harness` config for this member crate.
-    pub fn to_harness_config(self) -> rust_lang_project_harness::RustHarnessConfig {
-        let mut config = rust_lang_project_harness::RustHarnessConfig {
+    /// Builds the explicit `rust-lang-project-harness` execution config.
+    ///
+    /// Downstream `build.rs` consumers intentionally compile without this
+    /// feature: package builds publish policy identity but never compile or run
+    /// the full repository scanner.
+    #[cfg(feature = "harness-runtime")]
+    pub fn to_harness_config(self) -> asp_rust::RustHarnessConfig {
+        let mut config = asp_rust::RustHarnessConfig {
             cargo_check_advice_allow_explanation: Some(
                 self.cargo_check_advice_allow_explanation.to_string(),
             ),
@@ -89,8 +113,18 @@ impl AspRustProjectHarnessMemberPolicy {
             config = config.with_availability_stability_owner(owner.path, owner.rationale);
         }
         for severity_override in self.rule_severity_overrides {
-            config =
-                config.with_rule_severity(severity_override.rule_code, severity_override.severity);
+            let severity = match severity_override.severity {
+                AspRustProjectHarnessDiagnosticSeverity::Info => {
+                    asp_rust::RustDiagnosticSeverity::Info
+                }
+                AspRustProjectHarnessDiagnosticSeverity::Warning => {
+                    asp_rust::RustDiagnosticSeverity::Warning
+                }
+                AspRustProjectHarnessDiagnosticSeverity::Error => {
+                    asp_rust::RustDiagnosticSeverity::Error
+                }
+            };
+            config = config.with_rule_severity(severity_override.rule_code, severity);
         }
         config
     }
@@ -303,6 +337,19 @@ const ASP_WORKSPACE_MEMBER_POLICIES: &[AspRustProjectHarnessMemberPolicy] = &[
         cargo_check_advice_allow_explanation: "scope=agent-semantic-runtime cargo-check advice; owner=agent-semantic-runtime build gate; finding_category=advisory policy findings; why_safe_now=runtime state materialization keeps filesystem side effects in a focused crate while warning and error findings still fail the build; cleanup_trigger=clear the crate advisory backlog and remove this allowance",
         verification_label: None,
         rule_severity_overrides: &[],
+        criterion_performance_verification: false,
+        latency_sensitive_performance_owners: &[],
+        availability_stability_owners: &[],
+    },
+    AspRustProjectHarnessMemberPolicy {
+        package_name: "orgize",
+        crate_root: "languages/orgize",
+        cargo_check_advice_allow_explanation: "scope=orgize explicit verification; owner=orgize parser build gate; finding_category=advisory policy findings; why_safe_now=ordinary downstream builds consume only the content-addressed member policy while the explicit Orgize verification gate runs the full harness; cleanup_trigger=clear the parser advisory backlog before tightening the explicit verification profile",
+        verification_label: Some("Orgize parser"),
+        rule_severity_overrides: &[AspRustProjectHarnessSeverityPolicy {
+            rule_code: "RUST-MOD-R002",
+            severity: AspRustProjectHarnessDiagnosticSeverity::Info,
+        }],
         criterion_performance_verification: false,
         latency_sensitive_performance_owners: &[],
         availability_stability_owners: &[],

@@ -13,6 +13,12 @@ PLAN_SCHEMA_PATH = (
 RECEIPT_SCHEMA_PATH = (
     ROOT / "schemas/asp.live-corpus-search-query-qualification-receipt.schema.json"
 )
+CACHE_STATE_REQUEST_SCHEMA_PATH = (
+    ROOT / "schemas/asp.live-corpus-cache-state-request.v1.schema.json"
+)
+CACHE_STATE_RECEIPT_SCHEMA_PATH = (
+    ROOT / "schemas/asp.live-corpus-cache-state-receipt.v1.schema.json"
+)
 
 
 def load_json(path: Path) -> dict:
@@ -95,6 +101,39 @@ def test_live_corpus_search_query_plan_covers_the_complete_locked_matrix() -> No
 def test_every_locked_corpus_has_fixed_search_query_and_telemetry_budgets() -> None:
     plan = load_json(PLAN_PATH)
     assert plan["residentSampleCount"] >= 128
+    assert plan["sequentialSampleCount"] == 10
+    assert plan["concurrentSampleCount"] == 32
+    assert plan["cacheStates"] == [
+        {
+            "state": "cold-build",
+            "prepareAction": "new-isolated-workspace-generation",
+            "mutationScope": "benchmark-workspace-generation",
+            "sampleCount": 1,
+        },
+        {
+            "state": "cold-load",
+            "prepareAction": "evict-resident-generation-only",
+            "mutationScope": "benchmark-workspace-generation",
+            "sampleCount": 10,
+        },
+        {
+            "state": "warm-read",
+            "prepareAction": "reuse-exact-resident-generation",
+            "mutationScope": "none",
+            "sampleCount": 128,
+        },
+        {
+            "state": "released",
+            "prepareAction": "release-exact-benchmark-generation",
+            "mutationScope": "benchmark-workspace-generation",
+            "sampleCount": 1,
+        },
+    ]
+    assert set(plan["failureInjections"]) == {
+        "cancel-before-terminal",
+        "bounded-mailbox-saturation",
+        "stale-content-binding",
+    }
     case_ids = [entry["caseId"] for entry in plan["cases"]]
     assert len(case_ids) == len(set(case_ids))
 
@@ -139,8 +178,50 @@ def test_receipt_requires_complete_sub_millisecond_latency_distributions() -> No
         "searchServiceLatencyMicros",
         "searchTotalLatencyMicros",
         "exactSourceLatencyMicros",
+        "callableSkeletonOperationId",
+        "callableSkeletonElapsedMicros",
         "callableSkeletonLatencyMicros",
+        "coldBuildSampleCount",
+        "coldBuildSearchQueryLatencyMicros",
+        "coldLoadSampleCount",
+        "coldLoadPrepareLatencyMicros",
+        "coldLoadSearchQueryLatencyMicros",
+        "warmReadPrepareElapsedMicros",
+        "cancellationProbeElapsedMicros",
+        "backpressureCapacity",
+        "backpressureHeldCallCount",
+        "backpressureRejectedCallCount",
+        "backpressureProbeElapsedMicros",
+        "staleContentBindingRejected",
+        "staleContentBindingProbeElapsedMicros",
+        "sequentialSampleCount",
+        "sequentialSearchQueryLatencyMicros",
+        "concurrentSampleCount",
+        "concurrentSearchQueryLatencyMicros",
+        "route",
+        "searchTerminal",
+        "queryTerminal",
+        "callableSkeletonTerminal",
+        "zeroMatchTerminal",
     } <= required
+
+    assert not {
+        "sourceIndexTelemetryDigest",
+        "sourceExactTelemetryDigest",
+        "callableSkeletonTelemetryDigest",
+        "merkleTelemetryDigest",
+    } & required
+    assert case_schema["properties"]["route"]["const"] == "public-typed-asp-client"
+    assert case_schema["properties"]["backpressureCapacity"]["const"] == 32
+    assert case_schema["properties"]["backpressureHeldCallCount"]["const"] == 31
+    assert case_schema["properties"]["backpressureRejectedCallCount"]["const"] == 1
+    assert case_schema["properties"]["staleContentBindingRejected"]["const"] is True
+
+    assert case_schema["properties"]["sequentialSampleCount"]["const"] == 10
+    assert case_schema["properties"]["concurrentSampleCount"]["const"] == 32
+    executed_distribution = receipt_schema["$defs"]["executedLatencyDistribution"]
+    assert executed_distribution["additionalProperties"] is False
+    assert executed_distribution["properties"]["sampleCount"]["minimum"] == 1
 
     distribution = receipt_schema["$defs"]["latencyDistribution"]
     assert distribution["additionalProperties"] is False
@@ -155,3 +236,27 @@ def test_receipt_requires_complete_sub_millisecond_latency_distributions() -> No
     assert distribution["properties"]["sampleCount"]["minimum"] == 128
     for field in ("minMicros", "p50Micros", "p95Micros", "p99Micros", "maxMicros"):
         assert distribution["properties"][field]["maximum"] == 1_000
+
+
+def test_cache_state_contract_is_scoped_and_content_bound() -> None:
+    request_schema = load_json(CACHE_STATE_REQUEST_SCHEMA_PATH)
+    receipt_schema = load_json(CACHE_STATE_RECEIPT_SCHEMA_PATH)
+    Draft202012Validator.check_schema(request_schema)
+    Draft202012Validator.check_schema(receipt_schema)
+
+    required = set(request_schema["required"])
+    assert {
+        "resourceId",
+        "languageId",
+        "providerId",
+        "artifactDigest",
+        "cacheState",
+        "prepareAction",
+        "mutationScope",
+        "expectedGenerationDigest",
+        "expectedRootDigest",
+    } <= required
+    receipt_properties = receipt_schema["properties"]
+    assert receipt_properties["sourceWorkspaceMutationCount"]["const"] == 0
+    assert receipt_properties["globalCacheMutationCount"]["const"] == 0
+    assert receipt_properties["filesystemDeleteCount"]["const"] == 0

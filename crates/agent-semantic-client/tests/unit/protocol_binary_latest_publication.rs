@@ -71,13 +71,13 @@ fn fixture_source(root: &Path, name: &str, bytes: &[u8]) -> PathBuf {
 
 async fn commit_pending_runtime_activation(state_home: &Path) {
     let event =
-        agent_semantic_artifacts::runtime_artifact_publication::read_runtime_artifact_activation_event(
+        agent_semantic_artifacts::runtime_artifact_activation::read_runtime_artifact_activation_event(
             state_home,
         )
         .await
         .expect("read pending Runtime activation")
         .expect("pending Runtime activation event");
-    agent_semantic_artifacts::runtime_artifact_publication::commit_runtime_artifact_activation(
+    agent_semantic_artifacts::runtime_artifact_activation::commit_runtime_artifact_activation(
         state_home, &event, None,
     )
     .await
@@ -236,7 +236,7 @@ async fn registered_scheme_and_python_dangling_entries_are_atomically_republishe
             .await
             .unwrap_or_else(|error| panic!("publish `{language_id}` / `{provider_id}`: {error}"));
         assert_eq!(
-            installed.status, "published-activation-pending",
+            installed.status, "published-active-awaiting-health",
             "{provider_id}"
         );
         commit_pending_runtime_activation(&root).await;
@@ -392,8 +392,8 @@ async fn developer_publication_uses_the_immutable_activation_transaction() {
     )
     .await
     .expect("publish first developer binary");
-    assert_eq!(first.status, "published-activation-pending");
-    let first_event = agent_semantic_artifacts::runtime_artifact_publication::read_runtime_artifact_activation_event(&state_home)
+    assert_eq!(first.status, "published-active-awaiting-health");
+    let first_event = agent_semantic_artifacts::runtime_artifact_activation::read_runtime_artifact_activation_event(&state_home)
         .await
         .expect("read first Developer activation")
         .expect("first Developer pending generation");
@@ -433,12 +433,15 @@ async fn developer_publication_uses_the_immutable_activation_transaction() {
     )
     .await
     .expect("publish second developer binary");
-    assert_eq!(second.status, "published-activation-pending");
-    let second_event = agent_semantic_artifacts::runtime_artifact_publication::read_runtime_artifact_activation_event(&state_home)
+    assert_eq!(second.status, "published-active-awaiting-health");
+    let second_event = agent_semantic_artifacts::runtime_artifact_activation::read_runtime_artifact_activation_event(&state_home)
         .await
         .expect("read second Developer activation")
         .expect("second Developer pending generation");
-    assert!(second_event.activation_generation > first_event.activation_generation);
+    assert_ne!(
+        second_event.publication_nonce,
+        first_event.publication_nonce
+    );
     assert_ne!(second_event.artifact_digest, first_event.artifact_digest);
     assert_eq!(
         fs::read(&second_event.artifact_path).unwrap(),
@@ -457,13 +460,16 @@ async fn developer_publication_uses_the_immutable_activation_transaction() {
     )
     .await
     .expect("republish unchanged Developer binary");
-    assert_eq!(repeated.status, "published-activation-pending");
-    let repeated_event = agent_semantic_artifacts::runtime_artifact_publication::read_runtime_artifact_activation_event(&state_home)
+    assert_eq!(repeated.status, "published-active-awaiting-health");
+    let repeated_event = agent_semantic_artifacts::runtime_artifact_activation::read_runtime_artifact_activation_event(&state_home)
         .await
         .expect("read repeated Developer activation")
         .expect("repeated Developer pending generation");
     assert_eq!(repeated_event.artifact_digest, second_event.artifact_digest);
-    assert!(repeated_event.activation_generation > second_event.activation_generation);
+    assert_ne!(
+        repeated_event.publication_nonce,
+        second_event.publication_nonce
+    );
 
     fs::remove_dir_all(root).expect("remove developer publication fixture");
 }
@@ -488,8 +494,8 @@ async fn release_publication_uses_the_same_immutable_activation_transaction() {
     )
     .await
     .expect("publish first Release activation");
-    assert_eq!(first.status, "published-activation-pending");
-    let first_event = agent_semantic_artifacts::runtime_artifact_publication::read_runtime_artifact_activation_event(&state_home)
+    assert_eq!(first.status, "published-active-awaiting-health");
+    let first_event = agent_semantic_artifacts::runtime_artifact_activation::read_runtime_artifact_activation_event(&state_home)
         .await
         .expect("read first Release activation")
         .expect("first Release pending generation");
@@ -515,13 +521,16 @@ async fn release_publication_uses_the_same_immutable_activation_transaction() {
     )
     .await
     .expect("republish unchanged Release binary");
-    assert_eq!(repeated.status, "published-activation-pending");
-    let repeated_event = agent_semantic_artifacts::runtime_artifact_publication::read_runtime_artifact_activation_event(&state_home)
+    assert_eq!(repeated.status, "published-active-awaiting-health");
+    let repeated_event = agent_semantic_artifacts::runtime_artifact_activation::read_runtime_artifact_activation_event(&state_home)
         .await
         .expect("read repeated Release activation")
         .expect("repeated Release pending generation");
     assert_eq!(repeated_event.artifact_digest, first_event.artifact_digest);
-    assert!(repeated_event.activation_generation > first_event.activation_generation);
+    assert_ne!(
+        repeated_event.publication_nonce,
+        first_event.publication_nonce
+    );
 
     fs::remove_dir_all(root).expect("remove release publication fixture");
 }

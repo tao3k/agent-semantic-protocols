@@ -32,9 +32,7 @@ class AspPythonGraphsSession:
     loaded_generations: dict[tuple[str, str, int], "TypedGraph"] = field(
         default_factory=dict
     )
-    generation_packets: dict[tuple[str, str, int], str] = field(
-        default_factory=dict
-    )
+    generation_packets: dict[tuple[str, str, int], str] = field(default_factory=dict)
     search_evidence: dict[tuple[str, str, int], SearchEvidenceAccumulator] = field(
         default_factory=dict
     )
@@ -68,7 +66,8 @@ class AspPythonGraphsSession:
         with self._generation_lock:
             if sequence <= self._last_sequence:
                 raise ServiceProtocolError(
-                    "non-monotonic-sequence", "session sequence must increase monotonically"
+                    "non-monotonic-sequence",
+                    "session sequence must increase monotonically",
                 )
             if (
                 validate_service_epoch
@@ -115,7 +114,9 @@ class AspPythonGraphsSession:
                         "cancellation registry is saturated",
                     )
                 self._cancelled_requests.add(cancellation_id)
-            return self._receipt(request_id, "cancelled", sequence=int(message["sequence"]))
+            return self._receipt(
+                request_id, "cancelled", sequence=int(message["sequence"])
+            )
         if kind in {"evaluate", "timeline"}:
             with self._generation_lock:
                 if request_id in self._active_requests:
@@ -125,7 +126,9 @@ class AspPythonGraphsSession:
                 self._admitted_requests.discard(request_id)
                 if request_id in self._cancelled_requests:
                     self._cancelled_requests.discard(request_id)
-                    return self._receipt(request_id, "cancelled", sequence=int(message["sequence"]))
+                    return self._receipt(
+                        request_id, "cancelled", sequence=int(message["sequence"])
+                    )
                 if self.closed or self.runtime_artifact_digest is None:
                     raise ServiceProtocolError(
                         "process-not-open", "hello is required before evaluate"
@@ -148,7 +151,9 @@ class AspPythonGraphsSession:
                 )
                 with self._generation_lock:
                     if request_id in self._cancelled_requests:
-                        return self._receipt(request_id, "cancelled", sequence=int(message["sequence"]))
+                        return self._receipt(
+                            request_id, "cancelled", sequence=int(message["sequence"])
+                        )
                 return result
             finally:
                 with self._generation_lock:
@@ -200,7 +205,8 @@ class AspPythonGraphsSession:
             not isinstance(argument, str) for argument in arguments
         ):
             raise ServiceProtocolError(
-                "invalid-timeline-arguments", "timeline payload.arguments must be strings"
+                "invalid-timeline-arguments",
+                "timeline payload.arguments must be strings",
             )
         try:
             parsed = parse_timeline_args(["--format", "json", *arguments])
@@ -239,17 +245,13 @@ class AspPythonGraphsSession:
         receipt["payload"] = {"result": report}
         return receipt
 
-    def _hello(
-        self, message: Mapping[str, Any], request_id: str
-    ) -> dict[str, object]:
+    def _hello(self, message: Mapping[str, Any], request_id: str) -> dict[str, object]:
         if self.closed:
             raise ServiceProtocolError(
                 "process-closed", "shutdown is terminal for this service session"
             )
         runtime_artifact_digest = required_digest(message, "runtimeArtifactDigest")
-        execution_artifact_digest = required_digest(
-            message, "executionArtifactDigest"
-        )
+        execution_artifact_digest = required_digest(message, "executionArtifactDigest")
         service_epoch = required_string(message, "serviceEpoch")
         if self.runtime_artifact_digest is not None:
             if (
@@ -283,9 +285,7 @@ class AspPythonGraphsSession:
         self._active_requests.clear()
         self._admitted_requests.clear()
         self._cancelled_requests.clear()
-        return self._receipt(
-            request_id, "cancelled", sequence=int(message["sequence"])
-        )
+        return self._receipt(request_id, "cancelled", sequence=int(message["sequence"]))
 
     def _health(self, message: Mapping[str, Any], request_id: str) -> dict[str, object]:
         if self.closed or self.runtime_artifact_digest is None:
@@ -324,8 +324,14 @@ class AspPythonGraphsSession:
         if newly_loaded:
             self.loaded_generations[load_key] = TypedGraph.from_packet(graph_packet)
             self.generation_packets[load_key] = packet_digest
-        receipt = self._receipt(request_id, "ready", workspace, generation, token,
-                                sequence=int(message["sequence"]))
+        receipt = self._receipt(
+            request_id,
+            "ready",
+            workspace,
+            generation,
+            token,
+            sequence=int(message["sequence"]),
+        )
         receipt["payload"] = {
             "generationLoads": int(newly_loaded),
             "loadedGenerationCount": len(self.loaded_generations),
@@ -340,8 +346,14 @@ class AspPythonGraphsSession:
         released = self.loaded_generations.pop(load_key, None) is not None
         self.generation_packets.pop(load_key, None)
         self.search_evidence.pop(load_key, None)
-        receipt = self._receipt(request_id, "completed", workspace, generation, token,
-                                sequence=int(message["sequence"]))
+        receipt = self._receipt(
+            request_id,
+            "completed",
+            workspace,
+            generation,
+            token,
+            sequence=int(message["sequence"]),
+        )
         receipt["payload"] = {"released": released}
         return receipt
 
@@ -353,7 +365,7 @@ class AspPythonGraphsSession:
         if load_key not in self.loaded_generations:
             raise ServiceProtocolError(
                 "generation-not-loaded",
-                "search-evidence requires an ASP Server-owned open generation",
+                "search-evidence requires an ASP Server-owned open-generation receipt",
             )
         accumulator = self.search_evidence.setdefault(
             load_key, SearchEvidenceAccumulator()
@@ -396,8 +408,14 @@ class AspPythonGraphsSession:
             controls,
             profile=str(payload.get("profile", "owner-query")),
         )
-        receipt = self._receipt(request_id, "completed", workspace, generation, token,
-                                sequence=int(message["sequence"]))
+        receipt = self._receipt(
+            request_id,
+            "completed",
+            workspace,
+            generation,
+            token,
+            sequence=int(message["sequence"]),
+        )
         receipt["payload"] = {
             "generationLoads": 0,
             "result": result_to_packet(result),
@@ -411,9 +429,16 @@ class AspPythonGraphsSession:
     def register_request(self, request_id: str) -> None:
         with self._generation_lock:
             if not request_id:
-                raise ServiceProtocolError("invalid-identity", "requestId must be non-empty")
-            if request_id in self._active_requests or request_id in self._admitted_requests:
-                raise ServiceProtocolError("duplicate-request-id", "requestId is already in flight")
+                raise ServiceProtocolError(
+                    "invalid-identity", "requestId must be non-empty"
+                )
+            if (
+                request_id in self._active_requests
+                or request_id in self._admitted_requests
+            ):
+                raise ServiceProtocolError(
+                    "duplicate-request-id", "requestId is already in flight"
+                )
             self._admitted_requests.add(request_id)
 
     def complete_request(self, request_id: str) -> None:

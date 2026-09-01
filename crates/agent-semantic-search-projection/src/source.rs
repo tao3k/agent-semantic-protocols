@@ -1,5 +1,4 @@
 use agent_semantic_content_identity::{ArtifactJson, hash_normalized_json};
-use referencing::{Retrieve, Uri};
 use serde_json::Value;
 
 use crate::{SearchProjectionError, SemanticSearchPacketV1};
@@ -20,68 +19,41 @@ impl GraphTurboEvaluationRequest {
         let object = value.as_object().ok_or_else(|| {
             SearchProjectionError::InvalidPacket("graph-turbo request must be an object".to_owned())
         })?;
+        reject_unknown_request_fields(object)?;
         require_exact_string(object, "schemaId", SEMANTIC_GRAPH_TURBO_REQUEST_SCHEMA_ID)?;
         require_exact_string(object, "schemaVersion", "1")?;
-        let schema: Value = serde_json::from_str(include_str!(
-            "../../../schemas/semantic-graph-turbo-request.v1.schema.json"
-        ))
-        .map_err(|error| {
-            SearchProjectionError::InvalidPacket(format!(
-                "graph-turbo request schema decode failed: {error}"
-            ))
-        })?;
-        let validator = jsonschema::options()
-            .with_retriever(EmbeddedSchemaRetriever)
-            .build(&schema)
-            .map_err(|error| {
-                SearchProjectionError::InvalidPacket(format!(
-                    "graph-turbo request schema compile failed: {error}"
-                ))
-            })?;
-        validator.validate(&value).map_err(|error| {
-            SearchProjectionError::InvalidPacket(format!(
-                "graph-turbo request schema validation failed: {error}"
-            ))
-        })?;
+        require_exact_string(
+            object,
+            "protocolId",
+            "agent.semantic-protocols.semantic-language",
+        )?;
+        require_exact_string(object, "protocolVersion", "1")?;
+        require_exact_string(object, "packetKind", "graph-turbo-request")?;
+        require_allowed_string(
+            object,
+            "surface",
+            &[
+                "search-pipe",
+                "search-rg",
+                "search-fd",
+                "search-lexical",
+                "search-ingest",
+                "evidence-analyze",
+            ],
+        )?;
+        require_object(object, "sourceSnapshot")?;
+        require_object(object, "workspaceGeneration")?;
+        require_unique_string_array(object, "queryTerms")?;
+        require_non_empty_string(object, "profile")?;
+        require_exact_string(object, "algorithm", "typed-ppr-diverse")?;
+        require_unique_string_array(object, "seedIds")?;
+        require_positive_integer(object, "budget")?;
+        validate_optional_request_fields(object)?;
         Ok(Self { value })
     }
 
     pub fn into_value(self) -> Value {
         self.value
-    }
-}
-
-struct EmbeddedSchemaRetriever;
-
-impl Retrieve for EmbeddedSchemaRetriever {
-    fn retrieve(
-        &self,
-        uri: &Uri<String>,
-    ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
-        let schema = if uri
-            .as_str()
-            .ends_with("semantic-graph-turbo-definitions.v1.schema.json")
-        {
-            include_str!("../../../schemas/semantic-graph-turbo-definitions.v1.schema.json")
-        } else if uri
-            .as_str()
-            .ends_with("semantic-source-location.v1.schema.json")
-        {
-            include_str!("../../../schemas/semantic-source-location.v1.schema.json")
-        } else if uri
-            .as_str()
-            .ends_with("source-snapshot-evidence.v1.schema.json")
-        {
-            include_str!("../../../schemas/source-snapshot-evidence.v1.schema.json")
-        } else if uri
-            .as_str()
-            .ends_with("semantic-definitions.v1.schema.json")
-        {
-            include_str!("../../../schemas/semantic-definitions.v1.schema.json")
-        } else {
-            return Err(format!("unsupported graph-turbo schema resource: {uri}").into());
-        };
-        serde_json::from_str(schema).map_err(|error| error.into())
     }
 }
 
@@ -184,6 +156,183 @@ fn require_non_empty_string(
     Err(SearchProjectionError::InvalidPacket(format!(
         "{field} must not be empty"
     )))
+}
+
+fn require_allowed_string(
+    object: &serde_json::Map<String, Value>,
+    field: &str,
+    allowed: &[&str],
+) -> Result<(), SearchProjectionError> {
+    if object
+        .get(field)
+        .and_then(Value::as_str)
+        .is_some_and(|value| allowed.contains(&value))
+    {
+        return Ok(());
+    }
+    Err(SearchProjectionError::InvalidPacket(format!(
+        "{field} is not an admitted v1 value"
+    )))
+}
+
+fn require_object(
+    object: &serde_json::Map<String, Value>,
+    field: &str,
+) -> Result<(), SearchProjectionError> {
+    if object.get(field).is_some_and(Value::is_object) {
+        return Ok(());
+    }
+    Err(SearchProjectionError::InvalidPacket(format!(
+        "{field} must be an object"
+    )))
+}
+
+fn require_positive_integer(
+    object: &serde_json::Map<String, Value>,
+    field: &str,
+) -> Result<(), SearchProjectionError> {
+    if object
+        .get(field)
+        .and_then(Value::as_u64)
+        .is_some_and(|value| value > 0)
+    {
+        return Ok(());
+    }
+    Err(SearchProjectionError::InvalidPacket(format!(
+        "{field} must be a positive integer"
+    )))
+}
+
+fn require_unique_string_array(
+    object: &serde_json::Map<String, Value>,
+    field: &str,
+) -> Result<(), SearchProjectionError> {
+    let items = object
+        .get(field)
+        .and_then(Value::as_array)
+        .ok_or_else(|| SearchProjectionError::InvalidPacket(format!("{field} must be an array")))?;
+    let mut unique = std::collections::HashSet::with_capacity(items.len());
+    if items.iter().all(|item| {
+        item.as_str()
+            .is_some_and(|value| !value.is_empty() && unique.insert(value))
+    }) {
+        return Ok(());
+    }
+    Err(SearchProjectionError::InvalidPacket(format!(
+        "{field} must contain unique non-empty strings"
+    )))
+}
+
+fn reject_unknown_request_fields(
+    object: &serde_json::Map<String, Value>,
+) -> Result<(), SearchProjectionError> {
+    const FIELDS: &[&str] = &[
+        "schemaId",
+        "schemaVersion",
+        "protocolId",
+        "protocolVersion",
+        "packetKind",
+        "surface",
+        "queryTerms",
+        "queryClauses",
+        "queryAdjustmentPolicy",
+        "profile",
+        "algorithm",
+        "surfaces",
+        "source",
+        "sourceSnapshot",
+        "workspaceGeneration",
+        "candidateSources",
+        "sourceTrace",
+        "seedIds",
+        "seedPlan",
+        "budget",
+        "kindBudgets",
+        "windowMerge",
+        "pathBudget",
+        "pathMaxHops",
+        "cache",
+        "readMemory",
+        "delegationHints",
+        "actionFrontier",
+        "route",
+        "requestId",
+        "producer",
+        "project",
+        "summary",
+        "fields",
+        "graph",
+        "graphs",
+    ];
+    if let Some(field) = object
+        .keys()
+        .find(|field| !FIELDS.contains(&field.as_str()))
+    {
+        return Err(SearchProjectionError::InvalidPacket(format!(
+            "unknown graph-turbo request field: {field}"
+        )));
+    }
+    Ok(())
+}
+
+fn validate_optional_request_fields(
+    object: &serde_json::Map<String, Value>,
+) -> Result<(), SearchProjectionError> {
+    for field in [
+        "queryClauses",
+        "surfaces",
+        "candidateSources",
+        "sourceTrace",
+        "delegationHints",
+        "actionFrontier",
+        "graphs",
+    ] {
+        if object.get(field).is_some_and(|value| !value.is_array()) {
+            return Err(SearchProjectionError::InvalidPacket(format!(
+                "{field} must be an array"
+            )));
+        }
+    }
+    for field in [
+        "queryAdjustmentPolicy",
+        "seedPlan",
+        "kindBudgets",
+        "windowMerge",
+        "cache",
+        "readMemory",
+        "producer",
+        "project",
+        "summary",
+        "fields",
+        "graph",
+    ] {
+        if object.get(field).is_some_and(|value| !value.is_object()) {
+            return Err(SearchProjectionError::InvalidPacket(format!(
+                "{field} must be an object"
+            )));
+        }
+    }
+    for field in ["pathBudget", "pathMaxHops"] {
+        if object.contains_key(field) {
+            require_positive_integer(object, field)?;
+        }
+    }
+    if object.contains_key("source") {
+        require_allowed_string(
+            object,
+            "source",
+            &["auto", "provider", "finder", "search-overlay", "ingest"],
+        )?;
+    }
+    if object
+        .get("requestId")
+        .is_some_and(|value| !value.is_string())
+    {
+        return Err(SearchProjectionError::InvalidPacket(
+            "requestId must be a string".to_owned(),
+        ));
+    }
+    Ok(())
 }
 
 fn require_string_array(

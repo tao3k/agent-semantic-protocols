@@ -1,6 +1,6 @@
-[submodule "languages/rust-lang-project-harness"]
-	path = languages/rust-lang-project-harness
-	url = https://github.com/tao3k/rust-lang-project-harness
+[submodule "languages/asp-rust"]
+	path = languages/asp-rust
+	url = https://github.com/tao3k/asp-rust
 [submodule "languages/typescript-lang-project-harness"]
 	path = languages/typescript-lang-project-harness
 	url = https://github.com/tao3k/typescript-lang-project-harness

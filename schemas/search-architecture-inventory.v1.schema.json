@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tao3k.dev/schemas/search-architecture-inventory.v1.schema.json",
+  "title": "Search Architecture Fact Inventory V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "inventoryDigest",
+    "productionFeatureSet",
+    "productionEntries",
+    "nodes",
+    "edges"
+  ],
+  "properties": {
+    "schemaId": { "const": "agent.semantic-protocols.search-architecture-inventory" },
+    "schemaVersion": { "const": "1" },
+    "inventoryDigest": { "$ref": "#/$defs/digest" },
+    "productionFeatureSet": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/identifier" },
+      "uniqueItems": true
+    },
+    "productionEntries": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/identifier" },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "nodes": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/node" },
+      "minItems": 1
+    },
+    "edges": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/edge" }
+    }
+  },
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^blake3-256:[0-9a-f]{64}$"
+    },
+    "node": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["nodeId", "sourceSelector", "declaredOwner", "capabilityClaims"],
+      "properties": {
+        "nodeId": { "$ref": "#/$defs/identifier" },
+        "sourceSelector": { "type": "string", "minLength": 1 },
+        "declaredOwner": { "$ref": "#/$defs/identifier" },
+        "capabilityClaims": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/identifier" },
+          "uniqueItems": true
+        }
+      }
+    },
+    "edge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sourceNodeId", "targetNodeId", "kind", "enabled", "evidenceSelector"],
+      "properties": {
+        "sourceNodeId": { "$ref": "#/$defs/identifier" },
+        "targetNodeId": { "$ref": "#/$defs/identifier" },
+        "kind": {
+          "enum": ["cargo-feature", "cargo-dependency", "rust-reexport", "runtime-route", "rust-call"]
+        },
+        "enabled": { "type": "boolean" },
+        "evidenceSelector": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

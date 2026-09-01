@@ -49,7 +49,6 @@ impl Drop for RuntimeServerActivationReadyListener {
 
 pub async fn bind_activation_ready_listener(
     state_home: &Path,
-    activation_generation: u64,
     publication_nonce: &str,
 ) -> Result<RuntimeServerActivationReadyListener, String> {
     use std::os::unix::ffi::OsStrExt as _;
@@ -65,7 +64,6 @@ pub async fn bind_activation_ready_listener(
     let mut identity = blake3::Hasher::new();
     identity.update(b"agent.semantic-protocols.runtime-activation-ready.v1\0");
     identity.update(canonical_state_home.as_os_str().as_bytes());
-    identity.update(&activation_generation.to_le_bytes());
     identity.update(publication_nonce.as_bytes());
     identity.update(&std::process::id().to_le_bytes());
     identity.update(
@@ -208,7 +206,9 @@ pub struct RuntimeServerOperatorStopReceipt {
     pub schema_id: String,
     pub schema_version: String,
     pub state: String,
-    pub stopped_through_activation_generation: u64,
+    pub stopped_artifact_digest:
+        Option<agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest>,
+    pub stopped_publication_nonce: Option<String>,
 }
 
 pub async fn mark_operator_stopped(home: &Path) -> Result<(), String> {
@@ -227,13 +227,19 @@ pub async fn mark_operator_stopped(home: &Path) -> Result<(), String> {
         "stage-{}",
         agent_semantic_runtime::runtime_process_lifecycle::current_process_id()
     ));
+    let stopped_publication =
+        agent_semantic_artifacts::runtime_artifact_activation::read_runtime_artifact_activation_event(
+            home,
+        )
+        .await?;
     let bytes = serde_json::to_vec(&RuntimeServerOperatorStopReceipt {
         schema_id: "agent.semantic-protocols.runtime-server-operator-stop".to_owned(),
         schema_version: "1".to_owned(),
         state: "stopped".to_owned(),
-        stopped_through_activation_generation:
-            agent_semantic_artifacts::runtime_artifact_publication::current_runtime_artifact_activation_generation(home)
-                .await?,
+        stopped_artifact_digest: stopped_publication
+            .as_ref()
+            .map(|event| event.artifact_digest.clone()),
+        stopped_publication_nonce: stopped_publication.map(|event| event.publication_nonce),
     })
     .map_err(|e| e.to_string())?;
     tokio::fs::write(&staged, bytes)
@@ -285,10 +291,12 @@ async fn read_operator_stop_receipt_locked(
         .get("schemaVersion")
         .and_then(serde_json::Value::as_str)
     {
-        Some("1") if object.contains_key("stoppedThroughActivationGeneration") => {}
+        Some("1")
+            if object.contains_key("stoppedArtifactDigest")
+                && object.contains_key("stoppedPublicationNonce") => {}
         Some("1") => {
             return Err(
-                "Runtime Server operator-stop v1 receipt is missing stoppedThroughActivationGeneration"
+                "Runtime Server operator-stop v1 receipt is missing active bundle identity"
                     .to_owned(),
             );
         }
@@ -319,7 +327,8 @@ async fn read_operator_stop_receipt_locked(
 
 pub async fn admit_activation_after_operator_stop(
     home: &Path,
-    activation_generation: u64,
+    artifact_digest: &agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest,
+    publication_nonce: &str,
 ) -> Result<bool, String> {
     if !tokio::fs::try_exists(marker(home, "operator-stop.v1.json"))
         .await
@@ -334,7 +343,9 @@ pub async fn admit_activation_after_operator_stop(
     let Some(receipt) = read_operator_stop_receipt_locked(home).await? else {
         return Ok(true);
     };
-    if activation_generation <= receipt.stopped_through_activation_generation {
+    if receipt.stopped_artifact_digest.as_ref() == Some(artifact_digest)
+        && receipt.stopped_publication_nonce.as_deref() == Some(publication_nonce)
+    {
         return Ok(false);
     }
     remove_if_present(&marker(home, "operator-stop.v1.json")).await?;
@@ -448,7 +459,7 @@ pub async fn observe_resident_transaction(
     let spawn = read_owner_receipt(home)
         .await?
         .ok_or_else(|| "Runtime resident transaction requires an owner-spawn receipt".to_owned())?;
-    let applied = agent_semantic_artifacts::runtime_artifact_publication::
+    let applied = agent_semantic_artifacts::runtime_artifact_activation::
         read_applied_runtime_artifact_activation_event(home)
         .await?
         .ok_or_else(|| "Runtime resident transaction requires an applied activation".to_owned())?;
@@ -457,7 +468,7 @@ pub async fn observe_resident_transaction(
         .ok_or_else(|| "Runtime resident transaction requires a published endpoint".to_owned())?;
     endpoint.validate_service_reachability().await?;
 
-    if spawn.activation_generation != applied.activation_generation
+    if spawn.publication_nonce != applied.publication_nonce
         || spawn.launcher_artifact_digest != applied.artifact_digest
         || spawn.launcher_artifact_path != applied.artifact_path.display().to_string()
     {
@@ -511,12 +522,12 @@ pub async fn observe_resident_transaction(
             .to_owned(),
         schema_version: "1".to_owned(),
         state: "ready".to_owned(),
-        activation_generation: spawn.activation_generation,
+        publication_nonce: spawn.publication_nonce,
         launcher_artifact_path: spawn.launcher_artifact_path,
         launcher_artifact_digest: spawn.launcher_artifact_digest,
         spawn_argv: spawn.spawn_argv,
         applied_artifact_digest: applied.artifact_digest,
-        applied_activation_generation: applied.activation_generation,
+        applied_publication_nonce: applied.publication_nonce,
         endpoint_owner_epoch: endpoint.owner_epoch,
         endpoint_binary_content_digest,
         endpoint_runtime_generation_digest: endpoint.runtime_generation_digest,

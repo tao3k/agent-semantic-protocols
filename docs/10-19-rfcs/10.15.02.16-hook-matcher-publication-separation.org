@@ -29,11 +29,13 @@ Only canonical =asp install binary= may:
 - publish the dedicated Rust =asp-hook= binary.
 
 Matcher, policy, Reader catalog, and Agent registry inputs are compiled into
-that binary. Artifacts materializes the executable under the shared immutable
-=ASP_STATE_HOME/runtime/artifacts= catalog and atomically switches the sole
-=ASP_STATE_HOME/runtime/bin/asp-hook= launcher. There is no =hooks/current=,
-no copied evaluator under =hooks/generations=, and no second executable
-retention policy.
+that binary. Artifacts materializes =asp= and =asp-hook= as one immutable bundle
+under the shared =ASP_STATE_HOME/runtime/artifacts= catalog and atomically
+switches the sole =runtime/resident/active= selector. The fixed
+=ASP_STATE_HOME/runtime/bin/asp-hook= launcher always traverses
+=../resident/active/asp-hook=; repeated developer installs do not rewrite it.
+There is no =hooks/current=, no copied evaluator under =hooks/generations=, no
+per-tool publication API, and no second executable retention policy.
 
 The Codex plugin owns only the stable shell entrypoint =bin/asp-hook-exec=.
 It checks inherited =ASP_NO_AGENT=1= and otherwise executes
@@ -46,6 +48,21 @@ same Policy Kernel that produces the complete matcher.  Runtime selection is a
 normalized argv-prefix lookup followed by exact Host-envelope rebinding; it
 must not encode language, toolchain, =cargo test=, or wrapper literals in the
 Hook data-plane implementation.
+
+The installing =asp= and its sibling =asp-hook= MUST prove one build cohort
+before publication.  The installer derives the expected embedded policy
+content digest from its own linked Hook library and obtains the candidate's
+typed =hook-runtime-identity= projection.  Schema identity and policy content
+digest must match.  An executable sibling with a stale policy is not a valid
+candidate merely because it occupies the expected filename.
+
+The old =hooks/current= selector is not an alternate read path.  A successful
+canonical installation retires that file or symlink and reports the retirement
+in its receipt; immutable historical bytes remain retention input for
+=asp clean --day=. Runtime activation carries no parallel numeric generation.
+The generic Artifacts =active=/=healthy= bundle plus its content digest and
+publication nonce is the sole lifecycle authority. Hook serving identity is the
+=asp-hook= member digest reachable through the =active= bundle selector.
 
 * Host-action data plane
 :PROPERTIES:

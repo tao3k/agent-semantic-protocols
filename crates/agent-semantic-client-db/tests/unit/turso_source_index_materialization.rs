@@ -156,7 +156,7 @@ fn generation_fixture(
 
 fn admitted_project_resolution(
     dependency_name: &str,
-) -> agent_semantic_runtime::AdmittedProjectResolution {
+) -> agent_semantic_content_identity::AdmittedProjectResolution {
     let scope = serde_json::from_value(serde_json::json!({
         "schemaId": "agent.semantic-protocols.project-resolution",
         "schemaVersion": "1",
@@ -198,7 +198,7 @@ fn admitted_project_resolution(
         }
     }))
     .expect("typed ProjectResolution fixture");
-    agent_semantic_runtime::AdmittedProjectResolution::new(".", scope)
+    agent_semantic_content_identity::AdmittedProjectResolution::new(".", scope)
         .expect("admit ProjectResolution fixture")
 }
 

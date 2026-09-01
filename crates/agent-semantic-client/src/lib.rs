@@ -37,7 +37,7 @@ pub use language_command::{
     LanguageCommandResponse, RuntimeLanguageCommandApplication, RuntimeLanguageCommandClient,
     execute_language_command,
 };
-pub use runtime_language_client::AspClient;
+pub use runtime_language_client::{AspClient, ClientBackpressureProbeReceipt};
 
 pub mod cli_failure;
 pub use command::protocol_binary::{

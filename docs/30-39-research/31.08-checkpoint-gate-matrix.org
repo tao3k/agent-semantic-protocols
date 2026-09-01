@@ -50,7 +50,7 @@ runtime, shared schema tests, and root sandtable fixtures are coherent.
 
 The root gate was replayed after the checkpoint documentation updates and after
 fixing the Rust provider dev-dependency compile break in
-=languages/rust-lang-project-harness/src/verification/review_packet/model.rs=.
+=languages/asp-rust/src/verification/review_packet/model.rs=.
 The break was caused by crate-internal tuple newtypes whose fields were too
 private for the sibling packet builder module.
 
@@ -66,8 +66,8 @@ python -m pytest tests/unit/test_semantic_agent_hook_decision_schema.py \
 git diff --check -- docs/30-39-research/31.02-hook-read-window-trigger-report.org \
   docs/30-39-research/31.06-cross-language-semantic-handle-plan.org \
   docs/30-39-research/31.08-checkpoint-gate-matrix.org \
-  languages/rust-lang-project-harness/src/verification/review_packet/model.rs \
-  languages/rust-lang-project-harness/src/verification/review_packet/mod.rs
+  languages/asp-rust/src/verification/review_packet/model.rs \
+  languages/asp-rust/src/verification/review_packet/mod.rs
   result: pass
 #+end_src
 
@@ -82,9 +82,9 @@ direnv exec . just provider-gate-rust
 Expanded commands:
 
 #+begin_src shell
-direnv exec . cargo test --manifest-path languages/rust-lang-project-harness/Cargo.toml --features cli,search search
-direnv exec . cargo test --manifest-path languages/rust-lang-project-harness/Cargo.toml --features cli,search query
-direnv exec . cargo test --manifest-path languages/rust-lang-project-harness/Cargo.toml --features cli,search policy
+direnv exec . cargo test --manifest-path languages/asp-rust/Cargo.toml --features cli,search search
+direnv exec . cargo test --manifest-path languages/asp-rust/Cargo.toml --features cli,search query
+direnv exec . cargo test --manifest-path languages/asp-rust/Cargo.toml --features cli,search policy
 #+end_src
 
 Required evidence:

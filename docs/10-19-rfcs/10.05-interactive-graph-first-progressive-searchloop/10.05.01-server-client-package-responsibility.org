@@ -120,7 +120,7 @@ Package ownership for these methods is exact:
 
 Endpoint publication is a single precommit barrier.  The control listener,
 ClientFrame gRPC listener, provider listener, and status memory for one
-activation generation MUST all be bound and validated before =endpoint.v1=
+active bundle digest and publication nonce MUST all be bound and validated before =endpoint.v1=
 becomes visible.  Validation or publication failure removes every candidate
 artifact and preserves the previously applied generation.  No state may claim
 Healthy while the pending activation is absent and the gRPC data plane is

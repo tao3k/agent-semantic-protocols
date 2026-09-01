@@ -19,6 +19,7 @@ serde_json.workspace = true
 serde.workspace = true
 tokio.workspace = true
 agent-semantic-provider-protocol.workspace = true
+agent-semantic-provider-transport.workspace = true
 prost.workspace = true
 tonic.workspace = true
 tonic-prost.workspace = true
@@ -31,4 +32,3 @@ tonic-prost-build.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
-agent-semantic-provider-transport.workspace = true

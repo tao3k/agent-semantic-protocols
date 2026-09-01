@@ -147,37 +147,67 @@ impl MappedWorkspaceExactProjection {
         if let Some(selector) = self.find_selector(projection_kind, structural_selector)? {
             return self.project_selector(projection_kind, selector);
         }
-        let relocated = self.find_relocated_selectors(structural_selector)?;
-        if relocated.len() == 1 {
-            let resolved_selector = &relocated[0];
-            if let Some(selector) = self.find_selector(projection_kind, resolved_selector)? {
-                return self.project_selector(projection_kind, selector);
-            }
-            return Ok(WorkspaceRuntimeSelectorRead::ProjectionMissing {
-                generation_digest: self.generation_digest.clone(),
-                root_digest: self.root_digest.clone(),
-                resolved_selector: resolved_selector.clone(),
-            });
-        }
-        if relocated.len() > 1 {
-            return Ok(WorkspaceRuntimeSelectorRead::RelocationAmbiguous {
-                generation_digest: self.generation_digest.clone(),
-                root_digest: self.root_digest.clone(),
-                candidates: relocated,
-            });
-        }
-        let owner_path =
+        let canonical_selector =
             agent_semantic_content_identity::CanonicalItemSelector::parse_root_or_exact_descendant(
                 structural_selector,
-            )
-            .map_err(|error| format!("exact structural selector is not canonical: {error}"))?
-            .owner_path()?;
+            );
+        if canonical_selector.is_ok() {
+            let relocated = self.find_relocated_selectors(structural_selector)?;
+            if relocated.len() == 1 {
+                let resolved_selector = &relocated[0];
+                if let Some(selector) = self.find_selector(projection_kind, resolved_selector)? {
+                    return self.project_selector(projection_kind, selector);
+                }
+                return Ok(WorkspaceRuntimeSelectorRead::ProjectionMissing {
+                    generation_digest: self.generation_digest.clone(),
+                    root_digest: self.root_digest.clone(),
+                    resolved_selector: resolved_selector.clone(),
+                });
+            }
+            if relocated.len() > 1 {
+                return Ok(WorkspaceRuntimeSelectorRead::RelocationAmbiguous {
+                    generation_digest: self.generation_digest.clone(),
+                    root_digest: self.root_digest.clone(),
+                    candidates: relocated,
+                });
+            }
+        }
+        let (owner_path, owner_reference) = match canonical_selector {
+            Ok(selector) => (selector.owner_path()?, false),
+            Err(canonical_error) => {
+                let owner_path =
+                    agent_semantic_client_protocol::workspace_source_mutation::SourceOwnerPath::new(
+                        structural_selector.to_owned(),
+                    )
+                .map_err(|owner_error| {
+                    format!(
+                        "exact selector reference is neither canonical nor a normalized owner path: canonical={canonical_error}; owner={owner_error}"
+                    )
+                })?;
+                (owner_path.as_str().to_owned(), true)
+            }
+        };
         let Some((owner_index, owner)) = self.find_owner(&owner_path)? else {
             return Ok(WorkspaceRuntimeSelectorRead::OwnerMissing {
                 generation_digest: self.generation_digest.clone(),
                 root_digest: self.root_digest.clone(),
             });
         };
+        if owner_reference {
+            if projection_kind == super::model::ExactProjectionKind::Source {
+                return Ok(WorkspaceRuntimeSelectorRead::Projection {
+                    generation_digest: self.generation_digest.clone(),
+                    root_digest: self.root_digest.clone(),
+                    resolved_selector: owner_path,
+                    bytes: self.owner_bytes(&owner)?.to_vec(),
+                });
+            }
+            return Ok(WorkspaceRuntimeSelectorRead::ProjectionMissing {
+                generation_digest: self.generation_digest.clone(),
+                root_digest: self.root_digest.clone(),
+                resolved_selector: owner_path,
+            });
+        }
         Ok(WorkspaceRuntimeSelectorRead::OwnerForRepair {
             generation_digest: self.generation_digest.clone(),
             root_digest: self.root_digest.clone(),

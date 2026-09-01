@@ -303,7 +303,7 @@ languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl=.
 Provider alignment evidence:
 
 #+begin_src shell
-direnv exec . cargo test --manifest-path languages/rust-lang-project-harness/Cargo.toml --features cli,search cli_search_views_render_rfc_line_protocol -- --nocapture
+direnv exec . cargo test --manifest-path languages/asp-rust/Cargo.toml --features cli,search cli_search_views_render_rfc_line_protocol -- --nocapture
 direnv exec . uv run --project languages/python-lang-project-harness --frozen python -m pytest languages/python-lang-project-harness/tests/unit/harness/test_semantic_cli_query_set.py
 direnv exec . npm --prefix languages/typescript-lang-project-harness run check:implementation
 direnv exec . node --test \

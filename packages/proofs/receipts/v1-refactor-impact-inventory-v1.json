@@ -114,7 +114,7 @@
   ],
   "providerConsumers": [
     {
-      "paths": ["crates/agent-semantic-client-db/src/server_source_index/provider_envelope.rs", "crates/agent-semantic-client-db/src/server_source_index/collect.rs", "crates/agent-semantic-client-db/src/server_source_index/generation_build.rs", "languages/rust-lang-project-harness"],
+      "paths": ["crates/agent-semantic-client-db/src/server_source_index/provider_envelope.rs", "crates/agent-semantic-client-db/src/server_source_index/collect.rs", "crates/agent-semantic-client-db/src/server_source_index/generation_build.rs", "languages/asp-rust"],
       "contract": "Rust parser/project resolution facts and source-index materialization",
       "plannedV1Change": "Rust produces stateless cargo_metadata DescribeProject facts, including virtual workspaces; Server canonicalizes and commits"
     },

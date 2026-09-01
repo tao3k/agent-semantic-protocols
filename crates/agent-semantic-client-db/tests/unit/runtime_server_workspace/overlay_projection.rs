@@ -143,6 +143,60 @@ async fn process_cold_exact_projection_relocates_by_canonical_item_identity() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn normalized_owner_path_projects_complete_source_from_the_admitted_generation() {
+    let temporary = tempdir().expect("temporary runtime root");
+    let registry =
+        RuntimeServerWorkspaceRegistry::new(temporary.path().to_path_buf()).expect("registry");
+    let source = b"(package: gerbil/reasoning/core)\n(export reason)";
+    let owner_path = "scheme/reasoning/core.ss";
+    registry
+        .publish(
+            "owner-path-source",
+            agent_semantic_client_db::runtime_server_workspace::WorkspaceRecoverySource::TursoGeneration,
+            generation(
+                "workspace-owner-path-source",
+                1,
+                owner(
+                    owner_path,
+                    "gerbil-scheme://scheme/reasoning/core.ss#item/function/reason",
+                    source,
+                ),
+            ),
+        )
+        .await
+        .expect("publish Gerbil owner generation");
+    let pointer = resident_pointer(temporary.path(), "workspace-owner-path-source");
+    let client = WorkspaceExactProjectionDataPlaneClient::open(&pointer)
+        .await
+        .expect("open exact generation");
+
+    match client
+        .read_runtime_selector(ExactProjectionKind::Source, owner_path)
+        .expect("project owner source")
+    {
+        WorkspaceRuntimeSelectorRead::Projection {
+            resolved_selector,
+            bytes,
+            ..
+        } => {
+            assert_eq!(resolved_selector, owner_path);
+            assert_eq!(bytes, source);
+        }
+        read => panic!("owner path must project complete committed source: {read:?}"),
+    }
+
+    match client
+        .read_runtime_selector(ExactProjectionKind::CallableSkeleton, owner_path)
+        .expect("fail closed for owner-level derived projection")
+    {
+        WorkspaceRuntimeSelectorRead::ProjectionMissing {
+            resolved_selector, ..
+        } => assert_eq!(resolved_selector, owner_path),
+        read => panic!("owner-level derived projection must fail closed: {read:?}"),
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn process_cold_exact_projection_relocates_scoped_impl_and_method_identity() {
     let temporary = tempdir().expect("temporary runtime root");
     let registry =

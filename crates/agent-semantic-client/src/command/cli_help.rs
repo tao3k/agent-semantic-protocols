@@ -103,6 +103,16 @@ pub(crate) fn live_corpus_command() -> Command {
                     "Measure resident search and exact-query projections for every locked corpus",
                 )
                 .arg(Arg::new("plan").long("plan").value_name("PLAN_JSON"))
+                .arg(
+                    Arg::new("language")
+                        .long("language")
+                        .value_name("LANGUAGE_ID"),
+                )
+                .arg(
+                    Arg::new("resource")
+                        .long("resource")
+                        .value_name("RESOURCE_ID"),
+                )
                 .arg(Arg::new("json").long("json").action(ArgAction::SetTrue)),
         )
 }
@@ -299,23 +309,9 @@ mod cli_help_tests;
 fn install_language_command() -> Command {
     Command::new("language")
         .bin_name("asp install language")
-        .about("Install a language provider globally by default or for one project")
+        .about("Publish a language provider through ASP State Home")
         .arg(Arg::new("language").value_name("LANGUAGE").required(true))
-        .arg(
-            Arg::new("global")
-                .long("global")
-                .action(ArgAction::SetTrue)
-                .conflicts_with("project")
-                .help("Install globally (the default scope)"),
-        )
         .arg(Arg::new("target").long("target").value_name("TARGET"))
-        .arg(
-            Arg::new("project")
-                .long("project")
-                .value_name("PATH")
-                .conflicts_with("global")
-                .help("Install only for the project rooted at PATH"),
-        )
 }
 
 fn graph_render_command() -> Command {

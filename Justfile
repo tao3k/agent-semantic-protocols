@@ -1,7 +1,7 @@
 set shell := ["bash", "-cu"]
 
 repo := "."
-rust_harness_project := "languages/rust-lang-project-harness"
+rust_harness_project := "languages/asp-rust"
 typescript_harness_project := "languages/typescript-lang-project-harness"
 python_harness_project := "languages/python-lang-project-harness"
 julia_harness_project := "languages/JuliaLangProjectHarness.jl"
@@ -144,22 +144,16 @@ agent-tools-install-protocol bin_dir="":
       cargo build --release --manifest-path Cargo.toml --package agent-semantic-client --bin asp || exit $?; \
       "${asp_artifact}" --version --require-release >/dev/null; \
       destination="$("${asp_artifact}" paths --get runtimeBinDir)/asp"; \
-      "${asp_artifact}" install binary; \
+      "${asp_artifact}" install binary || exit $?; \
       test -x "${destination}"; \
       "${destination}" --version --require-release >/dev/null
 
-# Install the debug protocol binary into the canonical Global runtime.
-agent-tools-install-protocol-debug bin_dir="":
-    @bin_dir="{{bin_dir}}"; \
-      if [ -n "${bin_dir}" ]; then \
-        echo "agent-tools-install-protocol-debug no longer accepts a custom bin_dir; Runtime configuration owns the stable install slot" >&2; \
-        exit 2; \
-      fi; \
-      cargo_target_dir="${CARGO_TARGET_DIR:-target}"; \
-      asp_artifact="${cargo_target_dir}/debug/asp"; \
-      cargo build --manifest-path Cargo.toml --package agent-semantic-client --bin asp || exit $?; \
+# Install the debug protocol binary into the canonical State Home runtime.
+agent-tools-install-protocol-debug:
+    @asp_artifact="target/debug/asp"; \
+      cargo build --manifest-path Cargo.toml --package agent-semantic-client --bin asp --package agent-semantic-hook --bin asp-hook || exit $?; \
       destination="$("${asp_artifact}" paths --get runtimeBinDir)/asp"; \
-      "${asp_artifact}" install binary; \
+      "${asp_artifact}" install binary || exit $?; \
       test -x "${destination}"
 
 # Install the shared protocol binary used by hook runtime commands.
@@ -168,37 +162,13 @@ agent-tools-install-hook bin_dir="":
 
 # Install a language provider through ASP's registered workspace-install contract.
 # The root Justfile is only an adapter; provider-owned descriptors own builds and artifacts.
-agent-tools-install-language language target="" scope="global" project="":
+agent-tools-install-language language target="":
     #!/usr/bin/env bash
     set -euo pipefail
     state_home="{{asp_state_home}}"
     target="{{ target }}"
-    scope="{{ scope }}"
-    project="{{ project }}"
-    case "${scope}" in
-      global)
-        if [[ -n "${project}" ]]; then
-          echo "project must be empty for global provider installation" >&2
-          exit 2
-        fi
-        scope_args=()
-        ;;
-      project)
-        if [[ -z "${project}" ]]; then
-          echo "project is required for project provider installation" >&2
-          exit 2
-        fi
-        project_root="$(cd "${project}" && pwd -P)"
-        scope_args=(--project "${project_root}")
-        ;;
-      *)
-        echo "unsupported provider install scope: ${scope}; expected global or project" >&2
-        exit 2
-        ;;
-    esac
     install_args=(
       install language "{{ language }}"
-      "${scope_args[@]}"
     )
     if [[ -n "${target}" ]]; then
       install_args+=(--target "${target}")
@@ -250,7 +220,7 @@ agent-tools-install-jl bin_dir="":
 
 # Develop mode: build and install the Gerbil Scheme provider from this checkout.
 agent-tools-install-gerbil:
-    @env -u CC -u SDKROOT just agent-tools-install-language gerbil-scheme
+    @just agent-tools-install-language gerbil-scheme
 
 agent-tools-build-gerbil bin_dir="":
     @set -e; \
@@ -258,8 +228,7 @@ agent-tools-build-gerbil bin_dir="":
       package_dir="${repo_root}/{{gerbil_harness_project}}"; \
       artifact_root="${package_dir}/build/workspace-provider"; \
       cd "${package_dir}"; \
-      env -u CC -u SDKROOT \
-        ASP_PROVIDER_ARTIFACT_ROOT="${artifact_root}" \
+      ASP_PROVIDER_ARTIFACT_ROOT="${artifact_root}" \
         GERBIL_PATH="${package_dir}/.gerbil" \
         GERBIL_LOADPATH="${package_dir}/.gerbil/lib" \
         gxi build.ss; \
@@ -276,11 +245,11 @@ test-gerbil-provider-http-json: agent-tools-build-gerbil
       repo_root="$PWD"; \
       package_dir="${repo_root}/{{gerbil_harness_project}}"; \
       cd "${package_dir}"; \
-      env -u CC -u SDKROOT GERBIL_PATH="${package_dir}/.gerbil" \
+      GERBIL_PATH="${package_dir}/.gerbil" \
         gxc -O src/runtime/provider-operation.ss; \
-      env -u CC -u SDKROOT GERBIL_PATH="${package_dir}/.gerbil" \
+      GERBIL_PATH="${package_dir}/.gerbil" \
         gxtest t/projection-batch-test.ss; \
-      env -u CC -u SDKROOT GERBIL_PATH="${package_dir}/.gerbil" \
+      GERBIL_PATH="${package_dir}/.gerbil" \
         gxtest t/provider-http-json-server-test.ss
 
 agent-tools-install-gx bin_dir="":
@@ -683,8 +652,6 @@ check-python-policy:
 
 report-python-policy:
     uv run --project {{python_harness_project}} --frozen asp-python check --full {{repo}} || true
-# Fast develop mode: build and atomically publish the debug asp binary.
-# Runtime configuration still owns the stable install slot; this is not a
-# second publication authority.
-agent-tools-install-asp-dev bin_dir="":
-    @just agent-tools-install-protocol-debug "{{bin_dir}}"
+# Develop mode: build and install the debug asp binary from this checkout.
+agent-tools-install-asp-dev:
+    @just agent-tools-install-protocol-debug

@@ -8,9 +8,9 @@ reference_repositories = ["tao3k/agent-semantic-protocols"]
 monitored_surfaces = ["runtime_search_receipt"]
 reference_patterns = [
   "command_diagnostics",
-  "document_auto_lexical_overlay_scenario",
   "dynamic_owner_items",
   "dynamic_overlay",
+  "dynamic_overlay_index",
   "dynamic_search_candidates",
   "evidence_graph_rank",
   "file_locator",
@@ -36,6 +36,9 @@ reference_patterns = [
   "query_packet_replay",
   "query_wrapper_candidates",
   "resident_source_index",
+  "resident_graph_search",
+  "recall_route_planner",
+  "merkle_search_generation",
   "scope_topology_candidates",
   "search_candidate",
   "search_flow_scenarios",

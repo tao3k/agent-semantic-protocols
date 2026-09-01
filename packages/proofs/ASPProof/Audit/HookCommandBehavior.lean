@@ -47,6 +47,8 @@ example : decideShard (.verifiedRead batKey) batKey = .consume := by
 #check non_read_candidates_cannot_create_reader_authority
 #check argv_many_accepts_zero_tokens
 #check argv_many_accepts_arbitrary_tokens
+#check powershell_reader_aliases_share_one_reader_identity
+#check posix_type_is_not_a_powershell_reader_alias
 #check equal_permission_terminals_remain_unknown
 #check distinct_permission_terminals_prove_read
 #check same_key_observer_forces_follower_wait

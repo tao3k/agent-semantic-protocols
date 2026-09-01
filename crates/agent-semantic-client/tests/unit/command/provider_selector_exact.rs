@@ -1,4 +1,4 @@
-use super::is_provider_owned_structural_selector_query;
+use super::is_runtime_exact_query;
 
 #[test]
 fn every_registered_programming_language_exact_selector_enters_the_shared_exact_route() {
@@ -31,7 +31,7 @@ fn every_registered_programming_language_exact_selector_enters_the_shared_exact_
             ],
         ] {
             assert!(
-                is_provider_owned_structural_selector_query(language_id, &args),
+                is_runtime_exact_query(&args),
                 "registered programming-language provider {language_id} escaped the shared exact route for {args:?}"
             );
         }
@@ -45,7 +45,13 @@ fn every_registered_programming_language_exact_selector_enters_the_shared_exact_
 }
 
 #[test]
-fn non_selector_positional_query_does_not_enter_the_exact_route() {
-    let args = vec!["query".to_string(), "not-a-selector".to_string()];
-    assert!(!is_provider_owned_structural_selector_query("rust", &args));
+fn normalized_owner_path_enters_the_runtime_exact_route_without_client_parsing() {
+    let args = vec![
+        "query".to_string(),
+        "--selector".to_string(),
+        "scheme/reasoning/core.ss".to_string(),
+        "--projection".to_string(),
+        "source".to_string(),
+    ];
+    assert!(is_runtime_exact_query(&args));
 }

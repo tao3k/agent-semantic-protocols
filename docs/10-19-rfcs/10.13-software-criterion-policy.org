@@ -448,8 +448,8 @@ seed for =control-flow.decision-stack=, =control-flow.traversal-knot=,
 Rust is ready for Phase 2 control-flow mapping.  The provider exposes
 agent-policy algorithm shape and native syntax control-flow surfaces:
 
-- =languages/rust-lang-project-harness/src/rules/agent_policy/algorithm_shape.rs=
-- =languages/rust-lang-project-harness/src/parser/native_syntax/control_flow.rs=
+- =languages/asp-rust/src/rules/agent_policy/algorithm_shape.rs=
+- =languages/asp-rust/src/parser/native_syntax/control_flow.rs=
 
 The first Rust mapping should prefer enum/match, iterator pipelines, typed
 errors, domain newtypes, type-state, and explicit async boundaries.  RFC 004

@@ -23,7 +23,7 @@ from unit._asp_graph_turbo_common import (
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _EVIDENCE_GRAPH_SCHEMA = _REPO_ROOT / "schemas/semantic-evidence-graph.v1.schema.json"
 _LANGUAGE_CASES = [
-    ("rust", "languages/rust-lang-project-harness"),
+    ("rust", "languages/asp-rust"),
     ("python", "languages/python-lang-project-harness"),
     ("typescript", "languages/typescript-lang-project-harness"),
     ("julia", "languages/JuliaLangProjectHarness.jl"),

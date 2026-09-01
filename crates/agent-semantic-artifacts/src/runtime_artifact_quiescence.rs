@@ -4,6 +4,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use serde::{Deserialize, Serialize};
 
 use crate::blake3_content_digest::Blake3ContentDigest;
+use crate::runtime_artifact_retention::RuntimeArtifactMutationGuard;
 
 const QUIESCENCE_SCHEMA_ID: &str = "agent.semantic-protocols.runtime-artifact-quiescence";
 const SCHEMA_VERSION: &str = "1";
@@ -24,10 +25,15 @@ pub struct RuntimeArtifactQuiescenceLease {
 pub struct PreparedRuntimeArtifactQuiescenceLease {
     pub lease: RuntimeArtifactQuiescenceLease,
     path: PathBuf,
+    artifact_root: PathBuf,
 }
 
 impl PreparedRuntimeArtifactQuiescenceLease {
-    pub fn consume_under_artifact_guard(&self) -> Result<PathBuf, String> {
+    pub fn consume_under_artifact_guard(
+        &self,
+        guard: &RuntimeArtifactMutationGuard,
+    ) -> Result<PathBuf, String> {
+        self.require_guard(guard)?;
         let consumed = self.path.with_file_name(format!(
             "quiescence-consumed-{}-{}.json",
             std::process::id(),
@@ -42,7 +48,12 @@ impl PreparedRuntimeArtifactQuiescenceLease {
         Ok(consumed)
     }
 
-    pub fn restore_after_failed_commit(&self, consumed: &Path) -> Result<(), String> {
+    pub fn restore_after_failed_commit(
+        &self,
+        consumed: &Path,
+        guard: &RuntimeArtifactMutationGuard,
+    ) -> Result<(), String> {
+        self.require_guard(guard)?;
         std::fs::rename(consumed, &self.path).map_err(|error| {
             format!(
                 "reasonKind=runtime-artifact-quiescence-restore-failed operation={} lease={} error={error}",
@@ -51,13 +62,29 @@ impl PreparedRuntimeArtifactQuiescenceLease {
         })
     }
 
-    pub fn finish_consumption(&self, consumed: &Path) -> Result<(), String> {
+    pub fn finish_consumption(
+        &self,
+        consumed: &Path,
+        guard: &RuntimeArtifactMutationGuard,
+    ) -> Result<(), String> {
+        self.require_guard(guard)?;
         std::fs::remove_file(consumed).map_err(|error| {
             format!(
                 "reasonKind=runtime-artifact-quiescence-finalize-failed operation={} lease={} error={error}",
                 self.lease.operation, self.lease.lease_nonce
             )
         })
+    }
+
+    fn require_guard(&self, guard: &RuntimeArtifactMutationGuard) -> Result<(), String> {
+        if guard.admits(&self.artifact_root) {
+            Ok(())
+        } else {
+            Err(
+                "reasonKind=runtime-artifact-quiescence-guard-mismatch operation must use the preparing Artifact mutation guard"
+                    .to_owned(),
+            )
+        }
     }
 }
 
@@ -68,10 +95,11 @@ pub fn runtime_artifact_quiescence_lease_path(state_home: &Path) -> PathBuf {
         .join("artifact-publication.v1.json")
 }
 
-pub async fn prepare_runtime_artifact_quiescence_lease(
+pub(crate) fn prepare_runtime_artifact_quiescence_lease(
     state_home: &Path,
     operation: &str,
     artifact_digest: &Blake3ContentDigest,
+    guard: &RuntimeArtifactMutationGuard,
 ) -> Result<PreparedRuntimeArtifactQuiescenceLease, String> {
     if operation.is_empty() {
         return Err(
@@ -79,12 +107,43 @@ pub async fn prepare_runtime_artifact_quiescence_lease(
                 .to_owned(),
         );
     }
+    let artifact_root = state_home.join("runtime/artifacts");
+    if !guard.admits(&artifact_root) {
+        return Err(
+            "reasonKind=runtime-artifact-quiescence-guard-mismatch lease recovery requires the canonical Artifact mutation guard"
+                .to_owned(),
+        );
+    }
     let path = runtime_artifact_quiescence_lease_path(state_home);
-    if let Ok(bytes) = tokio::fs::read(&path).await {
+    let parent = path
+        .parent()
+        .ok_or_else(|| "Runtime artifact quiescence lease has no parent".to_owned())?;
+    std::fs::create_dir_all(parent)
+        .map_err(|error| format!("create Runtime artifact lease directory: {error}"))?;
+    if let Ok(bytes) = std::fs::read(&path) {
         let lease: RuntimeArtifactQuiescenceLease = serde_json::from_slice(&bytes)
             .map_err(|error| format!("decode Runtime artifact quiescence lease: {error}"))?;
-        validate_lease(&lease, operation, artifact_digest)?;
-        return Ok(PreparedRuntimeArtifactQuiescenceLease { lease, path });
+        validate_lease_shape(&lease)?;
+        let same_identity =
+            lease.operation == operation && lease.artifact_digest == *artifact_digest;
+        let same_producer = lease.producer_process_id == std::process::id();
+        if producer_process_is_live_lease_owner(
+            lease.producer_process_id,
+            lease.created_at_unix_millis,
+        ) && !(same_identity && same_producer)
+        {
+            return Err(format!(
+                "reasonKind=runtime-artifact-quiescence-live-owner-conflict expectedOperation={operation} actualOperation={} expectedArtifactDigest={artifact_digest} actualArtifactDigest={} producerProcessId={}",
+                lease.operation, lease.artifact_digest, lease.producer_process_id
+            ));
+        }
+        if same_identity && same_producer {
+            return Ok(PreparedRuntimeArtifactQuiescenceLease {
+                lease,
+                path,
+                artifact_root,
+            });
+        }
     }
 
     let created_at_unix_millis = SystemTime::now()
@@ -103,27 +162,24 @@ pub async fn prepare_runtime_artifact_quiescence_lease(
         artifact_digest: artifact_digest.clone(),
         created_at_unix_millis,
     };
-    let parent = path
-        .parent()
-        .ok_or_else(|| "Runtime artifact quiescence lease has no parent".to_owned())?;
-    tokio::fs::create_dir_all(parent)
-        .await
-        .map_err(|error| format!("create Runtime artifact lease directory: {error}"))?;
     let temporary = path.with_file_name(format!(
         ".artifact-publication-{}-{}.tmp",
         producer_process_id, lease.lease_nonce
     ));
-    tokio::fs::write(
+    std::fs::write(
         &temporary,
         serde_json::to_vec_pretty(&lease)
             .map_err(|error| format!("encode Runtime artifact quiescence lease: {error}"))?,
     )
-    .await
     .map_err(|error| format!("stage Runtime artifact quiescence lease: {error}"))?;
-    match tokio::fs::rename(&temporary, &path).await {
-        Ok(()) => Ok(PreparedRuntimeArtifactQuiescenceLease { lease, path }),
+    match std::fs::rename(&temporary, &path) {
+        Ok(()) => Ok(PreparedRuntimeArtifactQuiescenceLease {
+            lease,
+            path,
+            artifact_root,
+        }),
         Err(error) => {
-            let _ = tokio::fs::remove_file(&temporary).await;
+            let _ = std::fs::remove_file(&temporary);
             Err(format!(
                 "reasonKind=runtime-artifact-quiescence-publication-failed operation={operation} error={error}"
             ))
@@ -131,65 +187,106 @@ pub async fn prepare_runtime_artifact_quiescence_lease(
     }
 }
 
-fn validate_lease(
-    lease: &RuntimeArtifactQuiescenceLease,
-    operation: &str,
-    artifact_digest: &Blake3ContentDigest,
-) -> Result<(), String> {
+#[cfg(unix)]
+fn producer_process_exists(process_id: u32) -> bool {
+    let Ok(process_id) = i32::try_from(process_id) else {
+        return false;
+    };
+    if unsafe { libc::kill(process_id, 0) } == 0 {
+        return true;
+    }
+    std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM)
+}
+
+#[cfg(not(unix))]
+fn producer_process_exists(process_id: u32) -> bool {
+    // Non-Unix targets lack a portable PID probe. Conservatively preserve any
+    // other producer and only admit an exact replay by this process.
+    process_id != 0
+}
+
+fn producer_process_is_live_lease_owner(
+    process_id: u32,
+    lease_created_at_unix_millis: u128,
+) -> bool {
+    if !producer_process_exists(process_id) {
+        return false;
+    }
+    match producer_process_started_at_unix_millis(process_id) {
+        Some(started_at) => started_at <= lease_created_at_unix_millis,
+        None => true,
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn producer_process_started_at_unix_millis(process_id: u32) -> Option<u128> {
+    let process_id = i32::try_from(process_id).ok()?;
+    let mut info = std::mem::MaybeUninit::<libc::proc_bsdinfo>::zeroed();
+    let expected = std::mem::size_of::<libc::proc_bsdinfo>();
+    let expected_i32 = i32::try_from(expected).ok()?;
+    let read = unsafe {
+        libc::proc_pidinfo(
+            process_id,
+            libc::PROC_PIDTBSDINFO,
+            0,
+            info.as_mut_ptr().cast(),
+            expected_i32,
+        )
+    };
+    if usize::try_from(read).ok()? != expected {
+        return None;
+    }
+    let info = unsafe { info.assume_init() };
+    Some(
+        u128::from(info.pbi_start_tvsec)
+            .saturating_mul(1_000)
+            .saturating_add(u128::from(info.pbi_start_tvusec) / 1_000),
+    )
+}
+
+#[cfg(target_os = "linux")]
+fn producer_process_started_at_unix_millis(process_id: u32) -> Option<u128> {
+    let stat = std::fs::read_to_string(format!("/proc/{process_id}/stat")).ok()?;
+    let after_command = stat.rsplit_once(") ")?.1;
+    let start_ticks = after_command
+        .split_whitespace()
+        .nth(19)?
+        .parse::<u128>()
+        .ok()?;
+    let boot_time_seconds = std::fs::read_to_string("/proc/stat")?
+        .lines()
+        .find_map(|line| line.strip_prefix("btime "))?
+        .parse::<u128>()
+        .ok()?;
+    let ticks_per_second = unsafe { libc::sysconf(libc::_SC_CLK_TCK) };
+    let ticks_per_second = u128::try_from(ticks_per_second).ok()?;
+    (ticks_per_second > 0).then(|| {
+        boot_time_seconds
+            .saturating_mul(1_000)
+            .saturating_add(start_ticks.saturating_mul(1_000) / ticks_per_second)
+    })
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
+fn producer_process_started_at_unix_millis(_: u32) -> Option<u128> {
+    None
+}
+
+fn validate_lease_shape(lease: &RuntimeArtifactQuiescenceLease) -> Result<(), String> {
     if lease.schema_id != QUIESCENCE_SCHEMA_ID
         || lease.schema_version != SCHEMA_VERSION
-        || lease.operation != operation
-        || &lease.artifact_digest != artifact_digest
+        || lease.operation.is_empty()
         || lease.producer_process_id == 0
         || lease.lease_nonce.is_empty()
     {
-        return Err(format!(
-            "reasonKind=runtime-artifact-quiescence-identity-mismatch expectedOperation={operation} actualOperation={} expectedArtifactDigest={artifact_digest} actualArtifactDigest={}",
-            lease.operation, lease.artifact_digest
-        ));
+        return Err(
+            "reasonKind=runtime-artifact-quiescence-receipt-invalid stale lease is malformed"
+                .to_owned(),
+        );
     }
     Ok(())
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[tokio::test]
-    async fn lease_is_consumed_once_by_the_artifact_transaction() {
-        let temporary = tempfile::tempdir().expect("temporary state");
-        let digest = Blake3ContentDigest::parse(
-            "blake3-256:9313893f2985088dc3e5b14fdfd4877b0ed37c8dc8d5ef60bd6531ab5678abe1",
-        )
-        .expect("typed digest");
-        let prepared =
-            prepare_runtime_artifact_quiescence_lease(temporary.path(), "publish:asp", &digest)
-                .await
-                .expect("prepare lease");
-        let consumed = prepared
-            .consume_under_artifact_guard()
-            .expect("consume lease");
-        prepared
-            .finish_consumption(&consumed)
-            .expect("finish consumption");
-        assert!(!runtime_artifact_quiescence_lease_path(temporary.path()).exists());
-        assert!(prepared.consume_under_artifact_guard().is_err());
-    }
-
-    #[tokio::test]
-    async fn mismatched_operation_cannot_consume_existing_lease() {
-        let temporary = tempfile::tempdir().expect("temporary state");
-        let digest = Blake3ContentDigest::parse(
-            "blake3-256:9313893f2985088dc3e5b14fdfd4877b0ed37c8dc8d5ef60bd6531ab5678abe1",
-        )
-        .expect("typed digest");
-        prepare_runtime_artifact_quiescence_lease(temporary.path(), "publish:asp", &digest)
-            .await
-            .expect("prepare lease");
-        let error =
-            prepare_runtime_artifact_quiescence_lease(temporary.path(), "publish:other", &digest)
-                .await
-                .expect_err("mismatched operation must fail");
-        assert!(error.contains("reasonKind=runtime-artifact-quiescence-identity-mismatch"));
-    }
-}
+#[path = "../tests/unit/runtime_artifact_quiescence.rs"]
+mod tests;

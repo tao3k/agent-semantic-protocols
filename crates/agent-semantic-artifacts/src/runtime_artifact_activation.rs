@@ -1,0 +1,1014 @@
+//! Runtime artifact activation event validation, commit, acknowledgement, and rollback.
+
+use std::path::{Path, PathBuf};
+
+use serde::{Deserialize, Serialize};
+
+use crate::blake3_content_digest::Blake3ContentDigest;
+use crate::runtime_artifact_retention::RuntimeArtifactMutationGuard;
+use crate::runtime_artifact_slots::{
+    RuntimeArtifactSlotAuthority, runtime_artifact_bundle_digest,
+    runtime_artifact_candidate_bundle_digest, runtime_artifact_candidate_digest,
+};
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RuntimeArtifactCandidateIdentityReceipt {
+    pub artifact_digest: Blake3ContentDigest,
+    pub artifact_path: PathBuf,
+    pub stable_path: PathBuf,
+    pub artifact_mode: String,
+    pub publication_nonce: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RuntimeArtifactActivationEvent {
+    pub schema_id: String,
+    pub schema_version: u64,
+    pub bundle_digest: Blake3ContentDigest,
+    pub artifact_digest: Blake3ContentDigest,
+    pub artifact_path: PathBuf,
+    pub candidate_slot_path: PathBuf,
+    pub previous_artifact_digest: Option<Blake3ContentDigest>,
+    pub artifact_mode: String,
+    pub published_at_unix_millis: u128,
+    pub publication_nonce: String,
+    pub candidate_identity: RuntimeArtifactCandidateIdentityReceipt,
+}
+
+/// Pre-candidate-slot receipt accepted only by the artifact mutation owner while
+/// replacing an already proven healthy slot with a current activation event.
+/// `deny_unknown_fields` prevents this recovery shape from becoming a generic
+/// compatibility decoder for partially written current receipts.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct PreCandidateSlotActivationReceipt {
+    artifact_digest: Blake3ContentDigest,
+    artifact_path: PathBuf,
+    previous_artifact_digest: Option<Blake3ContentDigest>,
+    artifact_mode: String,
+    published_at_unix_millis: u128,
+}
+
+/// Exact pre-bundle receipt emitted before the current activation schema added
+/// schema and bundle identity fields. The removed activation counter is never
+/// represented here: the canonicalizer discards that historical input key
+/// before deserializing this content identity projection.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct LegacyCandidateSlotActivationReceipt {
+    artifact_digest: Blake3ContentDigest,
+    artifact_path: PathBuf,
+    candidate_slot_path: PathBuf,
+    previous_artifact_digest: Option<Blake3ContentDigest>,
+    artifact_mode: String,
+    published_at_unix_millis: u128,
+    publication_nonce: String,
+    candidate_identity: RuntimeArtifactCandidateIdentityReceipt,
+}
+
+pub fn runtime_artifact_activation_event_path(state_home: &Path) -> PathBuf {
+    state_home.join("runtime/activation/pending.json")
+}
+
+pub(crate) fn publish_pending_runtime_artifact_activation(
+    path: &Path,
+    bytes: &[u8],
+    publication_nonce: &str,
+) -> Result<(), String> {
+    let staged = stage_pending_runtime_artifact_activation(path, bytes, publication_nonce)?;
+    commit_staged_pending_runtime_artifact_activation(&staged, path)
+}
+
+pub(crate) fn stage_pending_runtime_artifact_activation(
+    path: &Path,
+    bytes: &[u8],
+    publication_nonce: &str,
+) -> Result<PathBuf, String> {
+    let parent = path
+        .parent()
+        .ok_or_else(|| "Runtime artifact activation path has no parent".to_owned())?;
+    std::fs::create_dir_all(parent)
+        .map_err(|error| format!("create Runtime artifact activation directory: {error}"))?;
+    let staged = parent.join(format!(".pending-{publication_nonce}.json.tmp"));
+    std::fs::write(&staged, bytes)
+        .map_err(|error| format!("stage Runtime artifact activation event: {error}"))?;
+    Ok(staged)
+}
+
+pub(crate) fn commit_staged_pending_runtime_artifact_activation(
+    staged: &Path,
+    path: &Path,
+) -> Result<(), String> {
+    std::fs::rename(staged, path)
+        .map_err(|error| format!("publish Runtime artifact activation event: {error}"))
+}
+
+pub fn runtime_artifact_activation_socket_path(state_home: &Path) -> PathBuf {
+    let digest = blake3::hash(state_home.to_string_lossy().as_bytes())
+        .to_hex()
+        .to_string();
+    std::env::temp_dir()
+        .join("asp-activation")
+        .join(format!("{}.sock", &digest[..32]))
+}
+
+pub async fn read_runtime_artifact_activation_event(
+    state_home: &Path,
+) -> Result<Option<RuntimeArtifactActivationEvent>, String> {
+    let path = runtime_artifact_activation_event_path(state_home);
+    match tokio::fs::read(&path).await {
+        Ok(bytes) => {
+            let event = decode_runtime_artifact_activation_event(
+                &bytes,
+                "Runtime artifact activation event",
+            )?;
+            if let Some(applied_event) =
+                read_applied_runtime_artifact_activation_event(state_home).await?
+            {
+                if runtime_artifact_activation_is_applied(&event, &applied_event) {
+                    return Ok(None);
+                }
+            }
+            Ok(Some(event))
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(format!(
+            "read Runtime artifact activation event {}: {error}",
+            path.display()
+        )),
+    }
+}
+
+fn runtime_artifact_activation_is_applied(
+    pending: &RuntimeArtifactActivationEvent,
+    applied: &RuntimeArtifactActivationEvent,
+) -> bool {
+    pending.bundle_digest == applied.bundle_digest
+        && pending.artifact_digest == applied.artifact_digest
+        && pending.publication_nonce == applied.publication_nonce
+}
+
+pub async fn read_applied_runtime_artifact_activation_event(
+    state_home: &Path,
+) -> Result<Option<RuntimeArtifactActivationEvent>, String> {
+    let path = state_home.join("runtime/activation/applied.json");
+    match tokio::fs::read(&path).await {
+        Ok(bytes) => decode_runtime_artifact_activation_event(
+            &bytes,
+            "applied Runtime artifact activation event",
+        )
+        .map(Some),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(format!(
+            "read applied Runtime artifact activation event {}: {error}",
+            path.display()
+        )),
+    }
+}
+
+pub(crate) fn decode_runtime_artifact_activation_event(
+    bytes: &[u8],
+    context: &str,
+) -> Result<RuntimeArtifactActivationEvent, String> {
+    let event: RuntimeArtifactActivationEvent =
+        serde_json::from_slice(bytes).map_err(|error| format!("decode {context}: {error}"))?;
+    validate_runtime_artifact_activation_event(&event, context)?;
+    Ok(event)
+}
+
+pub(crate) async fn canonicalize_legacy_activation_receipts_under_guard(
+    state_home: &Path,
+    guard: &RuntimeArtifactMutationGuard,
+) -> Result<(), String> {
+    let artifact_root = state_home.join("runtime/artifacts");
+    if !guard.admits(&artifact_root) {
+        return Err(
+            "state=runtime-artifact-publication-failed reasonKind=activation-canonicalizer-guard-mismatch"
+                .to_owned(),
+        );
+    }
+    let paths = [
+        runtime_artifact_activation_event_path(state_home),
+        state_home.join("runtime/activation/applied.json"),
+    ];
+    let mut staged = Vec::new();
+    for path in paths {
+        let bytes = match std::fs::read(&path) {
+            Ok(bytes) => bytes,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(error) => {
+                return Err(format!(
+                    "state=runtime-artifact-publication-failed reasonKind=activation-canonicalizer-read-failed path={} error={error}",
+                    path.display()
+                ));
+            }
+        };
+        if let Ok(current) = decode_runtime_artifact_activation_event(
+            &bytes,
+            "current Runtime artifact activation receipt",
+        ) {
+            validate_current_activation_content(&current).await?;
+            continue;
+        }
+        let legacy = parse_legacy_activation_receipt(&bytes, &path)?;
+        let current = canonicalize_legacy_activation_receipt(&legacy).await?;
+        let current_bytes = serde_json::to_vec_pretty(&current)
+            .map_err(|error| format!("encode canonical Runtime activation receipt: {error}"))?;
+        let file_name = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .ok_or_else(|| "Runtime activation receipt path has no file name".to_owned())?;
+        let staged_path = path.with_file_name(format!(
+            ".{file_name}.canonicalize-{}.tmp",
+            current.publication_nonce
+        ));
+        std::fs::write(&staged_path, current_bytes).map_err(|error| {
+            format!(
+                "state=runtime-artifact-publication-failed reasonKind=activation-canonicalizer-stage-failed path={} error={error}",
+                staged_path.display()
+            )
+        })?;
+        staged.push((path, staged_path, bytes));
+    }
+
+    let mut committed = 0_usize;
+    for (path, staged_path, _) in &staged {
+        if let Err(error) = std::fs::rename(staged_path, path) {
+            for (restore_path, _, previous) in staged.iter().take(committed) {
+                let _ = std::fs::write(restore_path, previous);
+            }
+            for (_, remaining, _) in staged.iter().skip(committed) {
+                let _ = std::fs::remove_file(remaining);
+            }
+            return Err(format!(
+                "state=runtime-artifact-publication-failed reasonKind=activation-canonicalizer-commit-failed path={} error={error}",
+                path.display()
+            ));
+        }
+        committed += 1;
+    }
+    Ok(())
+}
+
+fn parse_legacy_activation_receipt(
+    bytes: &[u8],
+    path: &Path,
+) -> Result<LegacyCandidateSlotActivationReceipt, String> {
+    const LEGACY_KEYS: [&str; 9] = [
+        "activationGeneration",
+        "artifactDigest",
+        "artifactMode",
+        "artifactPath",
+        "candidateIdentity",
+        "candidateSlotPath",
+        "previousArtifactDigest",
+        "publicationNonce",
+        "publishedAtUnixMillis",
+    ];
+    let mut value: serde_json::Value = serde_json::from_slice(bytes).map_err(|error| {
+        format!(
+            "state=runtime-artifact-publication-failed reasonKind=legacy-activation-receipt-invalid path={} error={error}",
+            path.display()
+        )
+    })?;
+    let object = value.as_object_mut().ok_or_else(|| {
+        "state=runtime-artifact-publication-failed reasonKind=legacy-activation-receipt-invalid"
+            .to_owned()
+    })?;
+    let observed = object
+        .keys()
+        .map(String::as_str)
+        .collect::<std::collections::BTreeSet<_>>();
+    let expected = LEGACY_KEYS
+        .into_iter()
+        .collect::<std::collections::BTreeSet<_>>();
+    if observed != expected || object.remove("activationGeneration").is_none() {
+        return Err(
+            "state=runtime-artifact-publication-failed reasonKind=legacy-activation-receipt-invalid"
+                .to_owned(),
+        );
+    }
+    serde_json::from_value(value).map_err(|error| {
+        format!(
+            "state=runtime-artifact-publication-failed reasonKind=legacy-activation-receipt-invalid path={} error={error}",
+            path.display()
+        )
+    })
+}
+
+async fn canonicalize_legacy_activation_receipt(
+    receipt: &LegacyCandidateSlotActivationReceipt,
+) -> Result<RuntimeArtifactActivationEvent, String> {
+    let artifact_kind = receipt
+        .candidate_identity
+        .stable_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| {
+            "state=runtime-artifact-publication-failed reasonKind=legacy-activation-receipt-invalid"
+                .to_owned()
+        })?;
+    validate_legacy_candidate_receipt(receipt, artifact_kind).await?;
+    let bundle_digest =
+        derive_candidate_bundle_digest(&receipt.candidate_slot_path, artifact_kind).await?;
+    Ok(RuntimeArtifactActivationEvent {
+        schema_id: "agent.semantic-protocols.runtime-artifact-activation".to_owned(),
+        schema_version: 1,
+        bundle_digest,
+        artifact_digest: receipt.artifact_digest.clone(),
+        artifact_path: receipt.artifact_path.clone(),
+        candidate_slot_path: receipt.candidate_slot_path.clone(),
+        previous_artifact_digest: receipt.previous_artifact_digest.clone(),
+        artifact_mode: receipt.artifact_mode.clone(),
+        published_at_unix_millis: receipt.published_at_unix_millis,
+        publication_nonce: receipt.publication_nonce.clone(),
+        candidate_identity: receipt.candidate_identity.clone(),
+    })
+}
+
+async fn validate_current_activation_content(
+    event: &RuntimeArtifactActivationEvent,
+) -> Result<(), String> {
+    let artifact_kind = event
+        .candidate_identity
+        .stable_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| {
+            "state=runtime-artifact-publication-failed reasonKind=activation-receipt-identity-invalid"
+                .to_owned()
+        })?;
+    let member = event.candidate_slot_path.join(artifact_kind);
+    let member_target = std::fs::read_link(&member).map_err(|error| {
+        format!(
+            "state=runtime-artifact-publication-failed reasonKind=activation-candidate-member-invalid path={} error={error}",
+            member.display()
+        )
+    })?;
+    let actual_digest = runtime_artifact_candidate_digest(&member_target).await?;
+    let actual_bundle =
+        derive_candidate_bundle_digest(&event.candidate_slot_path, artifact_kind).await?;
+    if member_target != event.artifact_path
+        || actual_digest != event.artifact_digest
+        || actual_bundle != event.bundle_digest
+    {
+        return Err(format!(
+            "state=runtime-artifact-publication-failed reasonKind=activation-receipt-content-drift expectedArtifactDigest={} actualArtifactDigest={actual_digest} expectedBundleDigest={} actualBundleDigest={actual_bundle}",
+            event.artifact_digest, event.bundle_digest
+        ));
+    }
+    Ok(())
+}
+
+async fn derive_candidate_bundle_digest(
+    candidate_slot: &Path,
+    artifact_kind: &str,
+) -> Result<Blake3ContentDigest, String> {
+    if candidate_slot.join("bundle.json").is_file() {
+        return runtime_artifact_candidate_bundle_digest(candidate_slot).await;
+    }
+    let mut member_count = 0_usize;
+    for entry in std::fs::read_dir(candidate_slot).map_err(|error| {
+        format!(
+            "state=runtime-artifact-publication-failed reasonKind=candidate-bundle-unreadable path={} error={error}",
+            candidate_slot.display()
+        )
+    })? {
+        let entry = entry.map_err(|error| format!("read candidate bundle entry: {error}"))?;
+        let name = entry.file_name();
+        if name == std::ffi::OsStr::new("activation.json") {
+            continue;
+        }
+        if name != std::ffi::OsStr::new(artifact_kind) {
+            return Err(format!(
+                "state=runtime-artifact-publication-failed reasonKind=candidate-bundle-identity-invalid unexpectedMember={}",
+                name.to_string_lossy()
+            ));
+        }
+        member_count += 1;
+    }
+    if member_count != 1 {
+        return Err(
+            "state=runtime-artifact-publication-failed reasonKind=candidate-bundle-identity-invalid"
+                .to_owned(),
+        );
+    }
+    let member_target = std::fs::read_link(candidate_slot.join(artifact_kind))
+        .map_err(|error| format!("read legacy candidate bundle member: {error}"))?;
+    let digest = runtime_artifact_candidate_digest(&member_target).await?;
+    Ok(runtime_artifact_bundle_digest(
+        &std::collections::BTreeMap::from([(artifact_kind.to_owned(), digest)]),
+    ))
+}
+
+fn validate_runtime_artifact_activation_event(
+    event: &RuntimeArtifactActivationEvent,
+    context: &str,
+) -> Result<(), String> {
+    let identity = &event.candidate_identity;
+    if event.schema_id != "agent.semantic-protocols.runtime-artifact-activation"
+        || event.schema_version != 1
+        || event.publication_nonce.trim().is_empty()
+        || event.artifact_mode.trim().is_empty()
+        || !event.artifact_path.is_absolute()
+        || !event.candidate_slot_path.is_absolute()
+        || !identity.stable_path.is_absolute()
+        || event.artifact_digest != identity.artifact_digest
+        || event.artifact_path != identity.artifact_path
+        || event.artifact_mode != identity.artifact_mode
+        || event.publication_nonce != identity.publication_nonce
+    {
+        return Err(format!(
+            "state=runtime-artifact-activation-failed reasonKind=activation-receipt-identity-invalid context={context}"
+        ));
+    }
+    Ok(())
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct RuntimeArtifactServingSnapshot {
+    pub healthy_target: Option<PathBuf>,
+    pub artifact_target: Option<PathBuf>,
+    pub artifact_digest: Option<Blake3ContentDigest>,
+}
+
+pub(crate) async fn prepare_runtime_artifact_serving_snapshot(
+    slots: &RuntimeArtifactSlotAuthority,
+    artifact_kind: &str,
+) -> Result<RuntimeArtifactServingSnapshot, String> {
+    let healthy_path = slots.healthy_path();
+    let healthy_exists = match std::fs::symlink_metadata(&healthy_path) {
+        Ok(_) => true,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => false,
+        Err(error) => {
+            return Err(format!(
+                "state=runtime-artifact-publication-failed reasonKind=healthy-slot-unreadable path={} error={error}",
+                healthy_path.display()
+            ));
+        }
+    };
+    match healthy_exists {
+        false => Ok(RuntimeArtifactServingSnapshot {
+            healthy_target: None,
+            artifact_target: None,
+            artifact_digest: None,
+        }),
+        true => {
+            let healthy = slots.healthy_target().await.map_err(|error| {
+                format!(
+                    "state=runtime-artifact-publication-failed reasonKind=healthy-slot-dangling error={error}"
+                )
+            })?;
+            let healthy = healthy.ok_or_else(|| {
+                "state=runtime-artifact-publication-failed reasonKind=healthy-slot-dangling"
+                    .to_owned()
+            })?;
+            let receipt_path = healthy.join("activation.json");
+            let receipt_bytes = std::fs::read(&receipt_path).map_err(|error| {
+                format!(
+                    "state=runtime-artifact-publication-failed reasonKind=active-receipt-unreadable path={} error={error}",
+                    receipt_path.display()
+                )
+            })?;
+            let expected = healthy.join(artifact_kind);
+            let candidate_target = std::fs::read_link(&expected).map_err(|error| {
+                format!(
+                    "state=runtime-artifact-publication-failed reasonKind=applied-candidate-slot-dangling path={} error={error}",
+                    expected.display()
+                )
+            })?;
+            match decode_runtime_artifact_activation_event(
+                &receipt_bytes,
+                "active Runtime artifact activation receipt",
+            ) {
+                Ok(applied) => {
+                    if healthy != applied.candidate_slot_path {
+                        return Err(format!(
+                            "state=runtime-artifact-publication-failed reasonKind=healthy-applied-identity-mismatch healthy={} applied={}",
+                            healthy.display(),
+                            applied.candidate_slot_path.display()
+                        ));
+                    }
+                    if candidate_target != applied.artifact_path {
+                        return Err(format!(
+                            "state=runtime-artifact-publication-failed reasonKind=applied-artifact-identity-mismatch candidate={} applied={}",
+                            candidate_target.display(),
+                            applied.artifact_path.display()
+                        ));
+                    }
+                    Ok(RuntimeArtifactServingSnapshot {
+                        healthy_target: Some(healthy),
+                        artifact_target: Some(candidate_target),
+                        artifact_digest: Some(applied.artifact_digest),
+                    })
+                }
+                Err(current_error) => {
+                    let legacy: PreCandidateSlotActivationReceipt =
+                        serde_json::from_slice(&receipt_bytes).map_err(|legacy_error| {
+                            format!(
+                                "{current_error}; decode pre-candidate-slot Runtime artifact activation receipt: {legacy_error}"
+                            )
+                        })?;
+                    if !legacy.artifact_path.is_absolute() {
+                        return Err(
+                            "state=runtime-artifact-publication-failed reasonKind=pre-candidate-slot-identity-invalid"
+                                .to_owned(),
+                        );
+                    }
+                    let actual_digest = if candidate_target == legacy.artifact_path {
+                        let actual_digest =
+                            runtime_artifact_candidate_digest(&candidate_target).await?;
+                        if actual_digest != legacy.artifact_digest {
+                            return Err(format!(
+                                "state=runtime-artifact-publication-failed reasonKind=pre-candidate-slot-content-drift expected={} actual={}",
+                                legacy.artifact_digest, actual_digest
+                            ));
+                        }
+                        actual_digest
+                    } else {
+                        content_proven_legacy_candidate(&candidate_target, artifact_kind).await?
+                    };
+                    let _ = legacy.previous_artifact_digest;
+                    let _ = legacy.artifact_mode;
+                    let _ = legacy.published_at_unix_millis;
+                    Ok(RuntimeArtifactServingSnapshot {
+                        healthy_target: Some(healthy),
+                        artifact_target: Some(candidate_target),
+                        artifact_digest: Some(actual_digest),
+                    })
+                }
+            }
+        }
+    }
+}
+
+async fn content_proven_legacy_candidate(
+    candidate_member: &Path,
+    artifact_kind: &str,
+) -> Result<Blake3ContentDigest, String> {
+    let candidate_slot = candidate_member.parent().ok_or_else(|| {
+        "state=runtime-artifact-publication-failed reasonKind=pre-candidate-slot-identity-invalid"
+            .to_owned()
+    })?;
+    if candidate_member != candidate_slot.join(artifact_kind) {
+        return Err(
+            "state=runtime-artifact-publication-failed reasonKind=pre-candidate-slot-identity-invalid"
+                .to_owned(),
+        );
+    }
+    let receipt_path = candidate_slot.join("activation.json");
+    let receipt_bytes = std::fs::read(&receipt_path).map_err(|error| {
+        format!(
+            "state=runtime-artifact-publication-failed reasonKind=pre-candidate-slot-identity-invalid path={} error={error}",
+            receipt_path.display()
+        )
+    })?;
+    let receipt = parse_legacy_activation_receipt(&receipt_bytes, &receipt_path)?;
+    if receipt.candidate_slot_path != candidate_slot {
+        return Err(
+            "state=runtime-artifact-publication-failed reasonKind=legacy-candidate-identity-invalid"
+                .to_owned(),
+        );
+    }
+    validate_legacy_candidate_receipt(&receipt, artifact_kind).await
+}
+
+async fn validate_legacy_candidate_receipt(
+    receipt: &LegacyCandidateSlotActivationReceipt,
+    artifact_kind: &str,
+) -> Result<Blake3ContentDigest, String> {
+    let candidate_slot = &receipt.candidate_slot_path;
+    let identity = &receipt.candidate_identity;
+    if receipt.publication_nonce.trim().is_empty()
+        || receipt.artifact_mode.trim().is_empty()
+        || receipt.published_at_unix_millis == 0
+        || !receipt.artifact_path.is_absolute()
+        || !identity.stable_path.is_absolute()
+        || identity.stable_path.file_name() != Some(std::ffi::OsStr::new(artifact_kind))
+        || receipt.artifact_digest != identity.artifact_digest
+        || receipt.artifact_path != identity.artifact_path
+        || receipt.artifact_mode != identity.artifact_mode
+        || receipt.publication_nonce != identity.publication_nonce
+    {
+        return Err(
+            "state=runtime-artifact-publication-failed reasonKind=legacy-candidate-identity-invalid"
+                .to_owned(),
+        );
+    }
+    let candidate_member = candidate_slot.join(artifact_kind);
+    let artifact_target = std::fs::read_link(&candidate_member).map_err(|error| {
+        format!(
+            "state=runtime-artifact-publication-failed reasonKind=legacy-candidate-member-invalid path={} error={error}",
+            candidate_member.display()
+        )
+    })?;
+    if artifact_target != receipt.artifact_path {
+        return Err(
+            "state=runtime-artifact-publication-failed reasonKind=legacy-candidate-member-invalid"
+                .to_owned(),
+        );
+    }
+    let actual_digest = runtime_artifact_candidate_digest(&artifact_target).await?;
+    if actual_digest != receipt.artifact_digest {
+        return Err(format!(
+            "state=runtime-artifact-publication-failed reasonKind=legacy-candidate-content-drift expected={} actual={actual_digest}",
+            receipt.artifact_digest
+        ));
+    }
+    let _ = receipt.previous_artifact_digest;
+    Ok(actual_digest)
+}
+
+pub(crate) async fn previous_serving_digest_under_guard(
+    slots: &RuntimeArtifactSlotAuthority,
+    artifact_kind: &str,
+) -> Result<Option<Blake3ContentDigest>, String> {
+    Ok(
+        prepare_runtime_artifact_serving_snapshot(slots, artifact_kind)
+            .await?
+            .artifact_digest,
+    )
+}
+
+pub(crate) async fn prepare_active_slot_snapshot(
+    slots: &RuntimeArtifactSlotAuthority,
+    artifact_kind: &str,
+) -> Result<Option<PathBuf>, String> {
+    let slots = slots.clone();
+    let artifact_kind = artifact_kind.to_owned();
+    tokio::task::spawn_blocking(move || {
+        prepare_active_slot_snapshot_blocking(&slots, &artifact_kind)
+    })
+    .await
+    .map_err(|error| format!("prepare active Runtime slot snapshot task failed: {error}"))?
+}
+
+fn prepare_active_slot_snapshot_blocking(
+    slots: &RuntimeArtifactSlotAuthority,
+    artifact_kind: &str,
+) -> Result<Option<PathBuf>, String> {
+    let active_path = slots.active_path();
+    let active = match std::fs::read_link(&active_path) {
+        Ok(target) => target,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => {
+            return Err(format!(
+                "state=runtime-artifact-publication-failed reasonKind=active-slot-unreadable path={} error={error}",
+                active_path.display()
+            ));
+        }
+    };
+    std::fs::symlink_metadata(&active).map_err(|error| {
+        format!(
+            "state=runtime-artifact-publication-failed reasonKind=active-slot-dangling path={} error={error}",
+            active.display()
+        )
+    })?;
+    let member_path = active.join(artifact_kind);
+    let member_target = std::fs::read_link(&member_path).map_err(|error| {
+        format!(
+            "state=runtime-artifact-publication-failed reasonKind=active-member-dangling path={} error={error}",
+            member_path.display()
+        )
+    })?;
+    std::fs::symlink_metadata(&member_target).map_err(|error| {
+        format!(
+            "state=runtime-artifact-publication-failed reasonKind=active-member-dangling path={} error={error}",
+            member_target.display()
+        )
+    })?;
+    Ok(Some(active))
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RuntimeArtifactActivationCommitReceipt {
+    pub bundle_digest: Blake3ContentDigest,
+    pub artifact_digest: Blake3ContentDigest,
+    pub previous_serving_digest: Option<Blake3ContentDigest>,
+    pub state: String,
+}
+
+pub async fn commit_runtime_artifact_activation(
+    state_home: &Path,
+    event: &RuntimeArtifactActivationEvent,
+    serving_digest: Option<&Blake3ContentDigest>,
+) -> Result<RuntimeArtifactActivationCommitReceipt, String> {
+    validate_runtime_artifact_activation_event(event, "Runtime artifact activation event")?;
+    let artifact_root = state_home.join("runtime/artifacts");
+    let resident_root = state_home.join("runtime/resident");
+    let artifact_kind = event
+        .candidate_identity
+        .stable_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| "Runtime activation target has no artifact kind".to_owned())?;
+    let slots = RuntimeArtifactSlotAuthority::for_artifact(&resident_root, artifact_kind);
+    // Content validation is deliberately outside the mutation guard. The candidate is
+    // immutable and the guard later binds the already-validated event to the canonical
+    // applied receipt and active slot identity.
+    let event_artifact_digest = runtime_artifact_candidate_digest(&event.artifact_path).await?;
+    if event_artifact_digest != event.artifact_digest {
+        return Err(format!(
+            "state=runtime-artifact-activation-failed reasonKind=artifact-bytes-digest-mismatch expected={} observed={event_artifact_digest}",
+            event.artifact_digest
+        ));
+    }
+    let candidate_artifact = event.candidate_slot_path.join(artifact_kind);
+    let candidate_bundle_digest =
+        runtime_artifact_candidate_bundle_digest(&event.candidate_slot_path).await?;
+    if candidate_bundle_digest != event.bundle_digest {
+        return Err(format!(
+            "state=runtime-artifact-activation-failed reasonKind=candidate-bundle-digest-mismatch expected={} observed={candidate_bundle_digest}",
+            event.bundle_digest
+        ));
+    }
+    let candidate_artifact_digest = runtime_artifact_candidate_digest(&candidate_artifact).await?;
+    if candidate_artifact_digest != event.artifact_digest {
+        return Err(format!(
+            "state=runtime-artifact-activation-failed reasonKind=candidate-slot-digest-mismatch expected={} observed={candidate_artifact_digest}",
+            event.artifact_digest
+        ));
+    }
+    let guard = RuntimeArtifactMutationGuard::try_acquire(&artifact_root)?;
+    let derived_serving_digest = previous_serving_digest_under_guard(&slots, artifact_kind).await?;
+    if event.previous_artifact_digest.as_ref() != derived_serving_digest.as_ref() {
+        return Err(format!(
+            "state=runtime-artifact-activation-failed reasonKind=serving-artifact-identity-mismatch expected={:?} observed={:?}",
+            event.previous_artifact_digest, derived_serving_digest
+        ));
+    }
+    if let Some(caller_digest) = serving_digest
+        && Some(caller_digest) != derived_serving_digest.as_ref()
+    {
+        return Err(format!(
+            "state=runtime-artifact-activation-failed reasonKind=serving-artifact-caller-drift expected={:?} observed={caller_digest}",
+            derived_serving_digest
+        ));
+    }
+    let pending_path = runtime_artifact_activation_event_path(state_home);
+    let pending_bytes = std::fs::read(&pending_path).map_err(|error| {
+        format!(
+            "state=runtime-artifact-activation-failed reasonKind=pending-activation-unavailable path={} error={error}",
+            pending_path.display()
+        )
+    })?;
+    let current_pending = decode_runtime_artifact_activation_event(
+        &pending_bytes,
+        "current pending Runtime artifact activation event",
+    )?;
+    if current_pending.artifact_digest != event.artifact_digest
+        || current_pending.bundle_digest != event.bundle_digest
+        || current_pending.publication_nonce != event.publication_nonce
+    {
+        return Err(format!(
+            "state=runtime-artifact-activation-failed reasonKind=stale-active-bundle attempted={} current={}",
+            event.artifact_digest, current_pending.artifact_digest
+        ));
+    }
+    let active_before = slots.active_target().await?;
+    let healthy_before = slots.healthy_target().await?;
+    let applied_path = state_home.join("runtime/activation/applied.json");
+    let applied_before = match std::fs::read(&applied_path) {
+        Ok(bytes) => Some(bytes),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+        Err(error) => {
+            return Err(format!(
+                "state=runtime-artifact-activation-failed reasonKind=applied-receipt-unreadable path={} error={error}",
+                applied_path.display()
+            ));
+        }
+    };
+    let commit = async {
+        slots
+            .mark_active_healthy(&event.candidate_slot_path)
+            .await?;
+        publish_applied_runtime_artifact_activation(state_home, event)
+    }
+    .await;
+    if let Err(error) = commit {
+        let slot_restore = slots
+            .restore_targets(active_before.as_deref(), healthy_before.as_deref())
+            .await;
+        let applied_restore = restore_applied_runtime_artifact_activation(
+            &applied_path,
+            applied_before.as_deref(),
+            &event.publication_nonce,
+        );
+        if let Err(restore_error) = slot_restore.and(applied_restore) {
+            return Err(format!(
+                "{error}; state=runtime-artifact-activation-failed reasonKind=rollback-failed error={restore_error}"
+            ));
+        }
+        return Err(error);
+    }
+    drop(guard);
+
+    slots.prune_unreachable_publications().await?;
+    Ok(RuntimeArtifactActivationCommitReceipt {
+        bundle_digest: event.bundle_digest.clone(),
+        artifact_digest: event.artifact_digest.clone(),
+        previous_serving_digest: derived_serving_digest,
+        state: "applied".to_owned(),
+    })
+}
+
+/// Restore the previously healthy bundle when Runtime cannot activate the
+/// currently pending candidate. The event identity and current active slot are
+/// both checked under the sole artifact mutation guard, so a stale actor cannot
+/// roll back a newer installation.
+pub async fn rollback_runtime_artifact_activation(
+    state_home: &Path,
+    event: &RuntimeArtifactActivationEvent,
+) -> Result<(), String> {
+    validate_runtime_artifact_activation_event(event, "Runtime artifact rollback event")?;
+    let artifact_root = state_home.join("runtime/artifacts");
+    let resident_root = state_home.join("runtime/resident");
+    let artifact_kind = event
+        .candidate_identity
+        .stable_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| "Runtime rollback target has no artifact kind".to_owned())?;
+    let slots = RuntimeArtifactSlotAuthority::for_artifact(&resident_root, artifact_kind);
+    let guard = RuntimeArtifactMutationGuard::try_acquire(&artifact_root)?;
+    let current = read_runtime_artifact_activation_event(state_home)
+        .await?
+        .ok_or_else(|| "Runtime rollback has no pending activation event".to_owned())?;
+    if current.artifact_digest != event.artifact_digest
+        || current.bundle_digest != event.bundle_digest
+        || current.publication_nonce != event.publication_nonce
+    {
+        return Err(format!(
+            "state=runtime-artifact-activation-failed reasonKind=stale-active-bundle-rollback attempted={} current={}",
+            event.artifact_digest, current.artifact_digest
+        ));
+    }
+    slots
+        .restore_active_from_healthy(&event.candidate_slot_path)
+        .await?;
+    drop(guard);
+    Ok(())
+}
+
+pub(crate) fn read_optional_symlink(path: &Path) -> Result<Option<PathBuf>, String> {
+    match std::fs::read_link(path) {
+        Ok(target) => Ok(Some(target)),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(format!(
+            "read Runtime artifact launcher {}: {error}",
+            path.display()
+        )),
+    }
+}
+
+pub(crate) fn restore_runtime_artifact_symlink(
+    path: &Path,
+    target: Option<&Path>,
+    publication_nonce: &str,
+) -> Result<(), String> {
+    match target {
+        Some(target) => {
+            let parent = path.parent().ok_or_else(|| {
+                format!("Runtime artifact alias has no parent: {}", path.display())
+            })?;
+            std::fs::create_dir_all(parent)
+                .map_err(|error| format!("create Runtime artifact alias parent: {error}"))?;
+            let staged = parent.join(format!(".rollback-{publication_nonce}.tmp"));
+            let _ = std::fs::remove_file(&staged);
+            #[cfg(unix)]
+            std::os::unix::fs::symlink(target, &staged)
+                .map_err(|error| format!("stage Runtime artifact alias rollback: {error}"))?;
+            #[cfg(not(unix))]
+            return Err("Runtime artifact alias rollback requires symlink support".to_owned());
+            std::fs::rename(&staged, path)
+                .map_err(|error| format!("publish Runtime artifact alias rollback: {error}"))
+        }
+        None => match std::fs::remove_file(path) {
+            Ok(()) => Ok(()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(error) => Err(format!(
+                "remove Runtime artifact alias during rollback: {error}"
+            )),
+        },
+    }
+}
+
+fn restore_applied_runtime_artifact_activation(
+    path: &Path,
+    previous: Option<&[u8]>,
+    publication_nonce: &str,
+) -> Result<(), String> {
+    match previous {
+        Some(bytes) => {
+            let parent = path.parent().ok_or_else(|| {
+                format!("Runtime applied receipt has no parent: {}", path.display())
+            })?;
+            let staged = parent.join(format!(".applied-rollback-{publication_nonce}.tmp"));
+            std::fs::write(&staged, bytes)
+                .map_err(|error| format!("stage Runtime applied receipt rollback: {error}"))?;
+            std::fs::rename(&staged, path)
+                .map_err(|error| format!("publish Runtime applied receipt rollback: {error}"))
+        }
+        None => match std::fs::remove_file(path) {
+            Ok(()) => Ok(()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(error) => Err(format!(
+                "remove Runtime applied receipt during rollback: {error}"
+            )),
+        },
+    }
+}
+
+pub(crate) fn publish_applied_runtime_artifact_activation(
+    state_home: &Path,
+    event: &RuntimeArtifactActivationEvent,
+) -> Result<(), String> {
+    let applied = state_home.join("runtime/activation/applied.json");
+    let applied_parent = applied.parent().ok_or_else(|| {
+        format!(
+            "Runtime activation acknowledgement has no parent: {}",
+            applied.display()
+        )
+    })?;
+    std::fs::create_dir_all(applied_parent)
+        .map_err(|error| format!("create Runtime activation acknowledgement directory: {error}"))?;
+    let bytes = serde_json::to_vec_pretty(event)
+        .map_err(|error| format!("encode applied Runtime artifact activation event: {error}"))?;
+    let staged = applied_parent.join(format!(".applied-{}.json.tmp", event.publication_nonce));
+    let mut staged_file = std::fs::OpenOptions::new()
+        .create_new(true)
+        .write(true)
+        .open(&staged)
+        .map_err(|error| format!("create Runtime activation acknowledgement stage: {error}"))?;
+    std::io::Write::write_all(&mut staged_file, &bytes)
+        .map_err(|error| format!("stage Runtime activation acknowledgement: {error}"))?;
+    staged_file
+        .sync_all()
+        .map_err(|error| format!("sync Runtime activation acknowledgement stage: {error}"))?;
+    std::fs::rename(&staged, &applied)
+        .map_err(|error| format!("publish Runtime activation acknowledgement: {error}"))?;
+    std::fs::File::open(applied_parent)
+        .and_then(|directory| directory.sync_all())
+        .map_err(|error| format!("sync Runtime activation acknowledgement directory: {error}"))?;
+    let pending = runtime_artifact_activation_event_path(state_home);
+    match std::fs::remove_file(pending) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(format!("retire Runtime activation pending event: {error}")),
+    }
+}
+
+pub async fn acknowledge_runtime_artifact_activation(
+    state_home: &Path,
+    artifact_digest: &Blake3ContentDigest,
+) -> Result<(), String> {
+    let Some(event) = read_runtime_artifact_activation_event(state_home).await? else {
+        return Ok(());
+    };
+    if &event.artifact_digest != artifact_digest {
+        return Err(format!(
+            "Runtime artifact activation acknowledgement mismatch: expected={} observed={}",
+            event.artifact_digest, artifact_digest
+        ));
+    }
+    let applied = state_home.join("runtime/activation/applied.json");
+    let applied_parent = applied.parent().ok_or_else(|| {
+        format!(
+            "Runtime activation acknowledgement has no parent: {}",
+            applied.display()
+        )
+    })?;
+    tokio::fs::create_dir_all(applied_parent)
+        .await
+        .map_err(|error| format!("create Runtime activation acknowledgement directory: {error}"))?;
+    let bytes = serde_json::to_vec_pretty(&event)
+        .map_err(|error| format!("encode applied Runtime artifact activation event: {error}"))?;
+    let staged = applied_parent.join(".applied.json.tmp");
+    tokio::fs::write(&staged, bytes)
+        .await
+        .map_err(|error| format!("stage Runtime activation acknowledgement: {error}"))?;
+    tokio::fs::rename(&staged, &applied)
+        .await
+        .map_err(|error| format!("publish Runtime activation acknowledgement: {error}"))
+}
+
+pub(crate) fn restore_pending_runtime_artifact_activation(
+    path: &Path,
+    previous: Option<&[u8]>,
+    publication_nonce: &str,
+) -> Result<(), String> {
+    match previous {
+        Some(bytes) => publish_pending_runtime_artifact_activation(path, bytes, publication_nonce),
+        None => match std::fs::remove_file(path) {
+            Ok(()) => Ok(()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(error) => Err(format!(
+                "rollback Runtime artifact activation event {}: {error}",
+                path.display()
+            )),
+        },
+    }
+}

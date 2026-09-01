@@ -350,7 +350,6 @@ fn parse_bash_command_candidates_with_shell_operands(
     let scripts = candidates
         .iter()
         .flat_map(|candidate| shell_execution_operands(candidate.words()))
-        .map(str::to_owned)
         .collect::<Vec<_>>();
     for script in scripts {
         for nested in parse_bash_command_candidates_with_shell_operands(&script, depth + 1)? {
@@ -365,7 +364,7 @@ fn parse_bash_command_candidates_with_shell_operands(
     Ok(candidates)
 }
 
-fn shell_execution_operands(words: &[String]) -> Vec<&str> {
+fn shell_execution_operands(words: &[String]) -> Vec<String> {
     let mut operands = Vec::new();
     let mut executable_index = 0usize;
     let Some(mut executable) = words.first().map(|word| command_token_basename(word)) else {
@@ -388,7 +387,7 @@ fn shell_execution_operands(words: &[String]) -> Vec<&str> {
             is_command_option.then_some(pair[1].as_str())
         })
     {
-        operands.push(script);
+        operands.push(script.to_owned());
     }
     if matches!(
         executable,
@@ -400,7 +399,7 @@ fn shell_execution_operands(words: &[String]) -> Vec<&str> {
         )
         .then_some(pair[1].as_str())
     }) {
-        operands.push(script);
+        operands.push(normalize_powershell_reader_alias(script));
     }
 
     // Generic command runners conventionally carry their shell program in the
@@ -414,11 +413,29 @@ fn shell_execution_operands(words: &[String]) -> Vec<&str> {
             && pair[1].chars().any(|character| {
                 character.is_ascii_whitespace() || ";|&<>\n\r".contains(character)
             }))
-        .then_some(pair[1].as_str())
+        .then_some(pair[1].to_owned())
     }));
     operands.sort_unstable();
     operands.dedup();
     operands
+}
+
+fn normalize_powershell_reader_alias(script: &str) -> String {
+    let leading_whitespace = script.len() - script.trim_start().len();
+    let trimmed = &script[leading_whitespace..];
+    let executable_end = trimmed.find(char::is_whitespace).unwrap_or(trimmed.len());
+    let executable = &trimmed[..executable_end];
+    if !matches!(
+        executable.to_ascii_lowercase().as_str(),
+        "gc" | "type" | "get-content"
+    ) {
+        return script.to_owned();
+    }
+    format!(
+        "{}Get-Content{}",
+        &script[..leading_whitespace],
+        &trimmed[executable_end..]
+    )
 }
 
 fn simple_command_words(command: &str) -> Option<Vec<String>> {

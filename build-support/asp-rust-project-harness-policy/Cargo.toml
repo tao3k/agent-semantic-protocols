@@ -3,17 +3,15 @@ name = "asp-rust-project-harness-policy"
 version = "0.1.0"
 edition.workspace = true
 publish = false
-build = "build.rs"
+
+[features]
+default = []
+harness-runtime = ["dep:asp-rust"]
 
 [dependencies]
 blake3.workspace = true
-rust-lang-project-harness = { workspace = true }
+asp-rust = { workspace = true, optional = true }
 serde.workspace = true
-serde_json.workspace = true
-
-[build-dependencies]
-blake3.workspace = true
-rust-lang-project-harness = { workspace = true }
 serde_json.workspace = true
 
 [dev-dependencies]

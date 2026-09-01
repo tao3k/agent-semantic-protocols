@@ -16,6 +16,10 @@ pub fn main_entry() {
         println!("asp-hook schema=1");
         return;
     }
+    if std::env::args_os().any(|argument| argument == "--identity") {
+        emit_runtime_identity();
+        return;
+    }
     let mut invocation = std::env::args_os().skip(1);
     let first = invocation
         .next()
@@ -71,6 +75,41 @@ pub fn main_entry() {
             .and_then(serde_json::Value::as_str)
             .unwrap_or("ASP Hook denied the operation.");
         println!("{}", crate::render_codex_pre_tool_deny(&typed, message));
+    }
+}
+
+fn emit_runtime_identity() {
+    let result = crate::aot_compiler::compile_embedded_hook_policy_bundle()
+        .and_then(|bundle| {
+            serde_json::from_slice::<serde_json::Value>(&bundle)
+                .map_err(|error| format!("decode embedded Hook policy identity: {error}"))
+        })
+        .and_then(|bundle| {
+            bundle
+                .get("generationDigest")
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_owned)
+                .ok_or_else(|| "embedded Hook policy identity is missing its digest".to_owned())
+        });
+    match result {
+        Ok(policy_content_digest) => println!(
+            "{}",
+            serde_json::json!({
+                "schemaId": "agent.semantic-protocols.hook-runtime-identity",
+                "schemaVersion": 1,
+                "policyContentDigest": policy_content_digest,
+            })
+        ),
+        Err(error) => println!(
+            "{}",
+            serde_json::json!({
+                "schemaId": "agent.semantic-protocols.hook-runtime-identity",
+                "schemaVersion": 1,
+                "state": "failed",
+                "reasonKind": "embedded-hook-policy-identity-invalid",
+                "message": error,
+            })
+        ),
     }
 }
 

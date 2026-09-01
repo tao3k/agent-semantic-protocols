@@ -52,6 +52,7 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
         )
         .await
         .map_err(|error| format!("failed to prepare Runtime Server workspace store: {error}"))?;
+    let workspace_store_root = workspace_store.root().to_path_buf();
     let runtime_artifact_path = std::env::current_exe()
         .map_err(|error| format!("failed to resolve running ASP artifact: {error}"))?;
     let runtime_binary_identity = if let Some(expected_digest) =
@@ -382,6 +383,7 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
         generation_admission,
         runtime_provider_catalog.generation().to_owned(),
         std::sync::Arc::from(runtime_provider_catalog.installed_provider_targets()),
+        workspace_store_root,
         query_generation_authority.clone(),
         lifecycle_bus.sender.clone(),
     )?;
@@ -512,17 +514,17 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
                     .to_owned()
             })?,
         )?;
-    let pending_startup_activation = agent_semantic_artifacts::runtime_artifact_publication::
+    let pending_startup_activation = agent_semantic_artifacts::runtime_artifact_activation::
         read_runtime_artifact_activation_event(state_home)
         .await?;
     let startup_requires_actor_commit = pending_startup_activation.is_some();
     let startup_activation = match pending_startup_activation {
         Some(event) => event,
-        None => agent_semantic_artifacts::runtime_artifact_publication::
+        None => agent_semantic_artifacts::runtime_artifact_activation::
             read_applied_runtime_artifact_activation_event(state_home)
             .await?
             .ok_or_else(|| {
-                "Runtime daemon requires a pending or applied activation generation before owner admission"
+                "Runtime daemon requires a pending or applied content-bound publication before owner admission"
                     .to_owned()
             })?,
     };
@@ -543,7 +545,7 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
                 let running_artifact_digest = activation_running_artifact_digest.clone();
                 async move {
                     if running_artifact_digest == event.artifact_digest {
-                        agent_semantic_artifacts::runtime_artifact_publication::
+                        agent_semantic_artifacts::runtime_artifact_activation::
                             commit_runtime_artifact_activation(
                                 &state_home,
                                 &event,
@@ -581,7 +583,7 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
                                             .to_owned(),
                                         schema_version: "1".to_owned(),
                                         state: "ready".to_owned(),
-                                        activation_generation: transaction.activation_generation,
+                                        publication_nonce: transaction.applied_publication_nonce,
                                         artifact_digest: transaction.applied_artifact_digest,
                                         owner_epoch: transaction.endpoint_owner_epoch,
                                         launcher_receipt_digest,
@@ -649,7 +651,7 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
                         .to_owned(),
                     schema_version: "1".to_owned(),
                     state: "ready".to_owned(),
-                    activation_generation: transaction.activation_generation,
+                    publication_nonce: transaction.applied_publication_nonce,
                     artifact_digest: transaction.applied_artifact_digest,
                     owner_epoch: transaction.endpoint_owner_epoch,
                     launcher_receipt_digest,
@@ -666,7 +668,7 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
     let mut identity_monitor = spawn_runtime_identity_monitor(
         monitor_state_home.clone(),
         owner_epoch,
-        startup_activation.activation_generation,
+        startup_activation.publication_nonce.clone(),
         running_artifact_digest.clone(),
         endpoint.artifact_mode.as_str(),
     );

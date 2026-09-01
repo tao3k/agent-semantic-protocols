@@ -19,7 +19,7 @@ from .rust_query_corpus_cases import _parse_cases, _validate_case
 
 _REPO_ROOT = repo_root()
 _PROVIDER_DIR = (
-    _REPO_ROOT / "languages/rust-lang-project-harness/tree-sitter/tree-sitter-rust"
+    _REPO_ROOT / "languages/asp-rust/tree-sitter/tree-sitter-rust"
 )
 _GIT_REV_RE = re.compile(r"^[0-9a-f]{40}$")
 

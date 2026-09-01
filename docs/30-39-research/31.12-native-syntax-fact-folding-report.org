@@ -13,7 +13,7 @@ parser-owned =--code=: compact =|fact= line folding.
 The motivating trace is:
 
 #+begin_src shell
-asp-rust search query 'pub use rules' owner --view seeds languages/rust-lang-project-harness
+asp-rust search query 'pub use rules' owner --view seeds languages/asp-rust
 #+end_src
 
 Current output repeats several values per fact:
@@ -84,12 +84,12 @@ This is a useful self-apply signal: =semantic-agent-hook= did not need a local
 policy waiver or a hidden module layout exception.  The language provider's
 parser-owned module tree needed to model Rust's native layout more accurately.
 
-The fix was applied in =languages/rust-lang-project-harness= and verified by
+The fix was applied in =languages/asp-rust= and verified by
 both the consuming hook crate and the provider itself:
 
 #+begin_src shell
 direnv exec . cargo test -p semantic-agent-hook --no-fail-fast
-(cd languages/rust-lang-project-harness && direnv exec ../.. cargo test --no-fail-fast)
+(cd languages/asp-rust && direnv exec ../.. cargo test --no-fail-fast)
 #+end_src
 
 The first command passed 83 hook tests and exercised the build-script
@@ -100,7 +100,7 @@ self-apply gate.  The second passed the Rust harness lib/unit suites.
 1. Add provider local-window query:
 
    #+begin_src shell
-   asp-rust query --from-hook direct-source-read --selector tests/unit/cli/search_query.rs:20-28 --code languages/rust-lang-project-harness
+   asp-rust query --from-hook direct-source-read --selector tests/unit/cli/search_query.rs:20-28 --code languages/asp-rust
    #+end_src
 
    It should return bounded compact source/projection for the selected range,
@@ -242,9 +242,9 @@ single query summary plus twelve item locators.
 The next real case exposed a different failure mode:
 
 #+begin_src shell
-asp-rust search owner languages/rust-lang-project-harness/src/cli/semantic_query_json.rs items \
+asp-rust search owner languages/asp-rust/src/cli/semantic_query_json.rs items \
   --query 'render_semantic_query_json|projection_from_code_line|projection_node|expandActions' \
-  languages/rust-lang-project-harness
+  languages/asp-rust
 #+end_src
 
 This is not just broad; it mixes stale names, schema/camelCase terms, and one

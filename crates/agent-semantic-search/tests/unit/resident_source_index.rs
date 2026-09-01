@@ -5,7 +5,8 @@ use agent_semantic_content_identity::{
 };
 
 use crate::{
-    ResidentSearchAuthority, ResidentSourceIndex, ResidentSourceIndexSeed, resident_navigation_keys,
+    ResidentSearchAuthority, ResidentSourceIndex, ResidentSourceIndexSeed,
+    resident_lexical_coverage_keys, resident_navigation_keys,
 };
 
 fn authority(language_id: &str, provider_id: &str) -> ResidentSearchAuthority {
@@ -130,4 +131,39 @@ fn durable_navigation_keys_are_path_shallow_and_never_source_text() {
             .any(|key| key == "packages/runtime/search/src/router.rs")
     );
     assert!(!keys.iter().any(|key| key == "DynamicOverlaySearch"));
+}
+
+#[test]
+fn admitted_owner_bytes_and_parser_keys_share_one_lexical_coverage() {
+    let keys = resident_lexical_coverage_keys(
+        "src/runtime_server_admission.rs",
+        b"impl WorkspaceGenerationAdmission { fn compare_candidate(&self) {} }",
+        ["rust://src/runtime_server_admission.rs#item/method/compare_candidate".to_owned()],
+    );
+
+    assert!(keys.contains(&"workspacegenerationadmission".to_owned()));
+    assert!(keys.contains(&"compare_candidate".to_owned()));
+    assert!(keys.contains(&"workspace".to_owned()));
+    assert!(keys.contains(&"generation".to_owned()));
+    assert!(keys.contains(&"admission".to_owned()));
+    assert!(keys.contains(&"compare".to_owned()));
+    assert!(keys.contains(&"candidate".to_owned()));
+    assert!(keys.contains(&"runtime_server_admission".to_owned()));
+}
+
+#[test]
+fn parser_keys_survive_a_saturated_source_coverage_budget() {
+    let source = (0..5_000)
+        .map(|index| format!("identifier_{index}"))
+        .collect::<Vec<_>>()
+        .join(" ");
+    let keys = resident_lexical_coverage_keys(
+        "src/large.rs",
+        source.as_bytes(),
+        ["zzzz_parser_authority".to_owned()],
+    );
+
+    assert_eq!(keys.len(), 4_096);
+    assert!(keys.contains(&"zzzz_parser_authority".to_owned()));
+    assert!(keys.contains(&"large".to_owned()));
 }

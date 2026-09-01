@@ -1,9 +1,10 @@
 use std::future::Future;
 use std::path::{Path, PathBuf};
 
-use agent_semantic_artifacts::runtime_artifact_publication::{
+use agent_semantic_artifacts::runtime_artifact_activation::{
     RuntimeArtifactActivationEvent, acknowledge_runtime_artifact_activation,
-    read_runtime_artifact_activation_event, runtime_artifact_activation_socket_path,
+    read_runtime_artifact_activation_event, rollback_runtime_artifact_activation,
+    runtime_artifact_activation_socket_path,
 };
 use tokio::sync::{oneshot, watch};
 
@@ -153,7 +154,7 @@ where
     Fut: Future<Output = Result<(), String>>,
 {
     let artifact_digest = event.artifact_digest.clone();
-    match activate(event).await {
+    match activate(event.clone()).await {
         Ok(()) => {
             acknowledge_runtime_artifact_activation(state_home, &artifact_digest).await?;
             Ok(RuntimeArtifactActivationReceipt {
@@ -162,9 +163,12 @@ where
                 reason: None,
             })
         }
-        Err(error) => Err(format!(
-            "Runtime artifact activation failed: artifactDigest={artifact_digest} reasonKind=runtime-artifact-activation-failed error={error}"
-        )),
+        Err(error) => {
+            rollback_runtime_artifact_activation(state_home, &event).await?;
+            Err(format!(
+                "Runtime artifact activation failed: artifactDigest={artifact_digest} reasonKind=runtime-artifact-activation-failed activeRestoredFromHealthy=true error={error}"
+            ))
+        }
     }
 }
 
@@ -276,23 +280,23 @@ mod tests {
                 .await
                 .expect("materialize first immutable event-bound candidate");
         let first_event =
-            agent_semantic_artifacts::runtime_artifact_publication::read_runtime_artifact_activation_event(
+            agent_semantic_artifacts::runtime_artifact_activation::read_runtime_artifact_activation_event(
                 &state_home,
             )
             .await
             .expect("read first pending activation")
-            .expect("first pending activation generation");
+            .expect("first pending content-bound publication");
         assert_eq!(
             first_event.artifact_digest,
             first_publication.artifact_digest
         );
-        agent_semantic_artifacts::runtime_artifact_publication::commit_runtime_artifact_activation(
+        agent_semantic_artifacts::runtime_artifact_activation::commit_runtime_artifact_activation(
             &state_home,
             &first_event,
             None,
         )
         .await
-        .expect("commit first activation generation");
+        .expect("commit first content-bound publication");
         let active_before = tokio::fs::read_link(profiles.join("active"))
             .await
             .expect("read active before failed newer claim");
@@ -340,14 +344,14 @@ mod tests {
                 .expect("read healthy after"),
             healthy_before
         );
-        let pending = agent_semantic_artifacts::runtime_artifact_publication::read_runtime_artifact_activation_event(
+        let pending = agent_semantic_artifacts::runtime_artifact_activation::read_runtime_artifact_activation_event(
             &state_home,
         )
         .await
         .expect("read pending activation after failed claim")
-        .expect("failed activation must preserve its pending generation");
+        .expect("failed activation must preserve its pending publication");
         assert_eq!(pending.artifact_digest, publication.artifact_digest);
-        assert!(pending.activation_generation > first_event.activation_generation);
+        assert_ne!(pending.publication_nonce, first_event.publication_nonce);
         assert!(pending.artifact_path.is_file());
         actor.shutdown().await.expect("shutdown activation actor");
     }

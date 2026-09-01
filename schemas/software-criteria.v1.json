@@ -272,8 +272,8 @@
         "native-idiom.manual-transform-loop"
       ],
       "sourceOwners": [
-        "languages/rust-lang-project-harness/src/rules/agent_policy/algorithm_shape.rs",
-        "languages/rust-lang-project-harness/src/parser/native_syntax/control_flow.rs"
+        "languages/asp-rust/src/rules/agent_policy/algorithm_shape.rs",
+        "languages/asp-rust/src/parser/native_syntax/control_flow.rs"
       ],
       "factKeys": [
         "agent_policy.algorithm_shape",

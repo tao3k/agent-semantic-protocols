@@ -63,7 +63,7 @@ asp rust check --changed .
 # [ok] rust
 
 direnv exec . cargo test \
-  --manifest-path languages/rust-lang-project-harness/Cargo.toml \
+  --manifest-path languages/asp-rust/Cargo.toml \
   --features 'search cli' software_criterion_snapshot
 # 5 passed
 

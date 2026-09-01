@@ -10,6 +10,7 @@ pub mod schema_bundle;
 
 #[path = "runtime_asp_client.rs"]
 mod runtime_asp_client;
+mod runtime_search_graph;
 
 pub use agent_semantic_client_server::{
     AspClientGrpcTransport, bind_asp_client_grpc_unix, serve_asp_client_grpc_unix,

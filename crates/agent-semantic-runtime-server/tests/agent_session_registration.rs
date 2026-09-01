@@ -83,6 +83,7 @@ async fn child_registration_uses_the_grpc_client_frame_and_runtime_registry_owne
         test_generation_admission(),
         digest('a'),
         Arc::from(registered_language_provider_pairs()),
+        directory.path().join("workspace-store"),
         agent_semantic_runtime_server::query_generation::RuntimeQueryGenerationAuthority::new(),
         telemetry.sender,
     )

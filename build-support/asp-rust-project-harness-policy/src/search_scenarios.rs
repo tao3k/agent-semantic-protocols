@@ -306,7 +306,7 @@ pub fn asp_search_scenario_package() -> AspRustProjectHarnessScenarioPackage {
                 name: "tree-sitter-querycursor-native-hot-path",
                 package: ASP_SEARCH_SCENARIO_PACKAGE_NAME,
                 description: "Canonical Tree-sitter QueryCursor execution keeps predicate semantics and bounded native hot-path metrics visible.",
-                fixture_root: "languages/rust-lang-project-harness/tests/unit/cli/query/catalog",
+                fixture_root: "languages/asp-rust/tests/unit/cli/query/catalog",
                 tags: ["search", "query", "tree-sitter", "performance", "native-runtime"],
                 commands: [
                     {
@@ -315,7 +315,7 @@ pub fn asp_search_scenario_package() -> AspRustProjectHarnessScenarioPackage {
                             "cargo",
                             "test",
                             "--manifest-path",
-                            "languages/rust-lang-project-harness/Cargo.toml",
+                            "languages/asp-rust/Cargo.toml",
                             "--features",
                             "cli",
                             "--test",
@@ -331,7 +331,7 @@ pub fn asp_search_scenario_package() -> AspRustProjectHarnessScenarioPackage {
                             "cargo",
                             "test",
                             "--manifest-path",
-                            "languages/rust-lang-project-harness/Cargo.toml",
+                            "languages/asp-rust/Cargo.toml",
                             "--features",
                             "cli",
                             "--test",

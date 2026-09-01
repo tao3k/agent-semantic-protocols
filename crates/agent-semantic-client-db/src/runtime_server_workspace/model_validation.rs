@@ -17,13 +17,14 @@ impl WorkspaceMemoryGeneration {
             &self.workspace_source_scope_generation,
         )?;
         if self.workspace_source_scope_generation
-            != agent_semantic_runtime::workspace_source_scope_generation_digest(
+            != agent_semantic_content_identity::workspace_source_scope_generation_digest(
                 &self.project_resolutions,
             )?
         {
             return Err("workspace generation ProjectResolution evidence drift".to_owned());
         }
-        if self.provider_schema_digest != agent_semantic_runtime::project_resolution_schema_digest()
+        if self.provider_schema_digest
+            != agent_semantic_content_identity::project_resolution_schema_digest()
         {
             return Err("workspace generation provider schema authority drift".to_owned());
         }

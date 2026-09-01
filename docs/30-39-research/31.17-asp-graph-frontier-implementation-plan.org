@@ -43,16 +43,16 @@ The current repository state exposes four implementation facts:
 
 #+begin_example
 readPlan:
-  languages/rust-lang-project-harness/src/cli/query.rs
-  languages/rust-lang-project-harness/src/cli/semantic_read_json.rs
-  languages/rust-lang-project-harness/tests/unit/cli/query/hook/range.rs
+  languages/asp-rust/src/cli/query.rs
+  languages/asp-rust/src/cli/semantic_read_json.rs
+  languages/asp-rust/tests/unit/cli/query/hook/range.rs
 
 guide:
-  languages/rust-lang-project-harness/src/search/guide.rs
-  languages/rust-lang-project-harness/tests/unit/cli/search/guide.rs
+  languages/asp-rust/src/search/guide.rs
+  languages/asp-rust/tests/unit/cli/search/guide.rs
 
 reasoningProfiles:
-  languages/rust-lang-project-harness/src/cli/semantic_search_json.rs
+  languages/asp-rust/src/cli/semantic_search_json.rs
   schemas/semantic-search-packet.v1.schema.json
 #+end_example
 
@@ -110,7 +110,7 @@ Code owners:
 
 - =crates/agent-semantic-hook/src/classifier.rs=
 - =crates/agent-semantic-hook/src/protocol_activation.rs=
-- =languages/rust-lang-project-harness/src/search/guide.rs=
+- =languages/asp-rust/src/search/guide.rs=
 - sandtable guide-quality tests
 
 Tasks:
@@ -142,9 +142,9 @@ frontier, not a single =local-window= range that encourages manual scanning.
 
 Code owners:
 
-- =languages/rust-lang-project-harness/src/cli/query.rs=
-- =languages/rust-lang-project-harness/src/cli/semantic_read_json.rs=
-- =languages/rust-lang-project-harness/tests/unit/cli/query/hook/range.rs=
+- =languages/asp-rust/src/cli/query.rs=
+- =languages/asp-rust/src/cli/semantic_read_json.rs=
+- =languages/asp-rust/tests/unit/cli/query/hook/range.rs=
 
 Tasks:
 
@@ -299,9 +299,9 @@ that can be assembled from existing Rust provider search facts:
 Acceptance:
 
 #+begin_src shell
-asp rust search reasoning owner-tests --owner src/search/api.rs --view seeds languages/rust-lang-project-harness
-asp rust search reasoning owner-query --owner src/search/api.rs --query render --view seeds languages/rust-lang-project-harness
-asp rust search reasoning query-deps --query serde --dependency serde --view seeds languages/rust-lang-project-harness
+asp rust search reasoning owner-tests --owner src/search/api.rs --view seeds languages/asp-rust
+asp rust search reasoning owner-query --owner src/search/api.rs --query render --view seeds languages/asp-rust
+asp rust search reasoning query-deps --query serde --dependency serde --view seeds languages/asp-rust
 #+end_src
 
 Each command must return =[search-reasoning]= compact graph output with
@@ -316,7 +316,7 @@ intent fields, or emit raw source/code snippets.
 | ASP facade | =cargo test -p agent-semantic-client= plus fresh no-activation doctor tests |
 | hook guide | black-box deny replay tests |
 | shared schema | root schema validation for read/search packets |
-| Rust provider | =direnv exec . cargo test -q --features cli,search= in =languages/rust-lang-project-harness= |
+| Rust provider | =direnv exec . cargo test -q --features cli,search= in =languages/asp-rust= |
 | TypeScript provider | focused implementation tests for wide read-frontier |
 | Python provider | focused AST read-frontier/schema tests |
 | compact snapshots | =parser-compact-snapshots --check-provider= |

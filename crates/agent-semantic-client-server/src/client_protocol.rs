@@ -128,14 +128,11 @@ async fn execute_admitted<D: AspClientDispatcher>(
             let _ = dispatcher
                 .cancel(&base.workspace_identity, &base.session_id, &request_id)
                 .await;
-            Some(response(
-                base,
-                request_id,
-                ClientOutcome::Cancelled,
-                None,
-                None,
-                None,
-            ))
+            // The correlated in-flight dispatch owns the exactly-one terminal.
+            // Returning a second response here races that terminal and can hide
+            // a still-running server task behind an apparently successful
+            // cancellation receipt.
+            None
         }
         ClientFrame::Shutdown { request_id, .. } => Some(response(
             base,

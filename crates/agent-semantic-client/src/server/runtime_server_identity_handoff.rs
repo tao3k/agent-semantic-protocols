@@ -74,7 +74,7 @@ impl<'a> RuntimeIdentityHandoffCoordinator<'a> {
 
     pub(super) async fn admit_successor(
         &self,
-        event: &agent_semantic_artifacts::runtime_artifact_publication::RuntimeArtifactActivationEvent,
+        event: &agent_semantic_artifacts::runtime_artifact_activation::RuntimeArtifactActivationEvent,
         serving_digest: Option<
             &agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest,
         >,

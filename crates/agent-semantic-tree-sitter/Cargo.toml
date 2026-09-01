@@ -10,4 +10,4 @@ agent-semantic-provider-protocol.workspace = true
 asp-rust-project-harness-policy = { workspace = true }
 
 [dev-dependencies]
-rust-lang-project-harness = { workspace = true }
+asp-rust = { workspace = true }

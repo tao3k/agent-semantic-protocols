@@ -3,12 +3,38 @@
 use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
 
-use agent_semantic_provider_transport::byte_text;
-
 use crate::{
     LexicalOverlayDocument, dynamic_overlay::SEARCH_OVERLAY_ROUTE_SOURCE,
     search_lexical_overlay_candidates,
 };
+
+mod byte_text {
+    pub(super) fn find_byte(needle: u8, haystack: &[u8]) -> Option<usize> {
+        memchr::memchr(needle, haystack)
+    }
+
+    pub(super) fn lossy_string(bytes: &[u8]) -> String {
+        String::from_utf8_lossy(bytes).into_owned()
+    }
+
+    pub(super) fn split_lf_or_nul_records(bytes: &[u8]) -> impl Iterator<Item = &[u8]> {
+        bytes
+            .split(|byte| matches!(*byte, b'\n' | b'\0'))
+            .map(trim_ascii)
+    }
+
+    fn trim_ascii(bytes: &[u8]) -> &[u8] {
+        let start = bytes
+            .iter()
+            .position(|byte| !byte.is_ascii_whitespace())
+            .unwrap_or(bytes.len());
+        let end = bytes
+            .iter()
+            .rposition(|byte| !byte.is_ascii_whitespace())
+            .map_or(start, |index| index + 1);
+        &bytes[start..end]
+    }
+}
 
 const DYNAMIC_LEXICAL_OVERLAY_DOCUMENT_SCAN_LIMIT: usize = 256;
 
@@ -36,7 +62,7 @@ pub struct DynamicSearchCandidate {
 #[derive(Debug, Clone)]
 pub struct DynamicSearchCandidateCollection {
     /// Snapshot evidence retained from lexical overlay projection.
-    pub source_snapshot: agent_semantic_artifacts::SourceSnapshotEvidence,
+    pub source_snapshot: agent_semantic_content_identity::SourceSnapshotEvidence,
     /// Compact candidates projected from the same snapshot.
     pub candidates: Vec<DynamicSearchCandidate>,
 }
@@ -69,7 +95,7 @@ struct DynamicSearchCandidateRequest<'a> {
     /// Search roots whose paths were selected by the caller.
     pub search_roots: &'a [Vec<CommittedDynamicOwner>],
     /// Canonical workspace snapshot selected before language candidate filtering.
-    pub source_snapshot: &'a agent_semantic_artifacts::SourceSnapshotEvidence,
+    pub source_snapshot: &'a agent_semantic_content_identity::SourceSnapshotEvidence,
     /// Maximum candidates returned.
     pub limit: usize,
 }
@@ -89,7 +115,7 @@ pub struct DynamicSearchRootCandidateRequest<'a> {
     /// Hidden directory names that should still be walked.
     pub include_hidden_dirs: &'a [String],
     /// Canonical workspace snapshot selected by the caller.
-    pub base_snapshot: &'a agent_semantic_artifacts::WorkspaceSnapshot,
+    pub base_snapshot: &'a agent_semantic_content_identity::WorkspaceSnapshot,
     /// Digest of the selected provider that owns this projection.
     pub provider_digest: &'a str,
     /// Language/provider-owned file predicate.
@@ -138,8 +164,8 @@ pub struct RgCoverageRequest<'a> {
     pub locator_root: &'a Path,
     pub output: &'a [u8],
     pub generation_digest: &'a str,
-    pub source_snapshot: &'a agent_semantic_artifacts::SourceSnapshotEvidence,
-    pub workspace_snapshot: &'a agent_semantic_artifacts::WorkspaceSnapshot,
+    pub source_snapshot: &'a agent_semantic_content_identity::SourceSnapshotEvidence,
+    pub workspace_snapshot: &'a agent_semantic_content_identity::WorkspaceSnapshot,
     pub owners: &'a [RgCoverageOwner<'a>],
     pub budget: RgCoverageBudget,
 }
@@ -307,7 +333,7 @@ pub fn collect_dynamic_lexical_overlay_candidates_from_roots(
     request: DynamicSearchRootCandidateRequest<'_>,
 ) -> Result<DynamicSearchCandidateCollection, String> {
     let source_snapshot = request.base_snapshot.evidence(
-        agent_semantic_artifacts::SourceSnapshotKind::Filesystem,
+        agent_semantic_content_identity::SourceSnapshotKind::Filesystem,
         request.provider_digest,
     );
     let roots = resolved_owner_roots(request.project_root, request.owners);

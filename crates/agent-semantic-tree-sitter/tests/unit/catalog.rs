@@ -101,9 +101,7 @@ fn loads_real_rust_provider_calls_catalog() {
     let workspace_root = workspace_root();
     let descriptor = SyntaxCatalogDescriptor {
         id: "calls".to_string(),
-        path: PathBuf::from(
-            "languages/rust-lang-project-harness/tree-sitter/tree-sitter-rust/queries/calls.scm",
-        ),
+        path: PathBuf::from("languages/asp-rust/tree-sitter/tree-sitter-rust/queries/calls.scm"),
         declared_captures: vec![
             "call.expression".to_string(),
             "call.target".to_string(),
@@ -128,9 +126,8 @@ fn loads_real_rust_provider_calls_catalog() {
 #[test]
 fn loads_real_rust_provider_grammar_profile() {
     let workspace_root = workspace_root();
-    let profile_path = PathBuf::from(
-        "languages/rust-lang-project-harness/tree-sitter/tree-sitter-rust/grammar-profile.json",
-    );
+    let profile_path =
+        PathBuf::from("languages/asp-rust/tree-sitter/tree-sitter-rust/grammar-profile.json");
 
     let profile = load_grammar_profile(&workspace_root, profile_path.clone()).expect("profile");
 

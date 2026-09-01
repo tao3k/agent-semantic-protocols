@@ -229,8 +229,9 @@ fn graph_topology_submodule_paths_are_normalized_and_relative() {
     ));
 }
 
-fn admitted_rust_project_resolution() -> agent_semantic_runtime::AdmittedProjectResolution {
-    let resolution = agent_semantic_runtime::ProjectResolutionReceipt {
+fn admitted_rust_project_resolution() -> agent_semantic_content_identity::AdmittedProjectResolution
+{
+    let resolution = agent_semantic_content_identity::ProjectResolutionReceipt {
         schema_id: "agent.semantic-protocols.project-resolution".to_owned(),
         schema_version: "1".to_owned(),
         state: "resolved".to_owned(),
@@ -240,31 +241,31 @@ fn admitted_rust_project_resolution() -> agent_semantic_runtime::AdmittedProject
         parser_id: "cargo-project-resolution-v1".to_owned(),
         candidate_generation_digest: "candidate-generation".to_owned(),
         project_entry: "Cargo.toml".to_owned(),
-        package_graph: agent_semantic_runtime::LanguagePackageGraph {
+        package_graph: agent_semantic_content_identity::LanguagePackageGraph {
             schema_id: "agent.semantic-protocols.language-package-graph".to_owned(),
             schema_version: "1".to_owned(),
             language_id: "rust".to_owned(),
             provider_id: "asp-rust".to_owned(),
             project_entry: "Cargo.toml".to_owned(),
             parser_id: "cargo-project-resolution-v1".to_owned(),
-            manifests: vec![agent_semantic_runtime::ProjectFile {
+            manifests: vec![agent_semantic_content_identity::ProjectFile {
                 path: "Cargo.toml".to_owned(),
                 kind: "cargo-manifest".to_owned(),
                 digest: "manifest-digest".to_owned(),
             }],
-            lockfiles: vec![agent_semantic_runtime::ProjectFile {
+            lockfiles: vec![agent_semantic_content_identity::ProjectFile {
                 path: "Cargo.lock".to_owned(),
                 kind: "cargo-lockfile".to_owned(),
                 digest: "lock-digest".to_owned(),
             }],
-            packages: vec![agent_semantic_runtime::LanguagePackage {
+            packages: vec![agent_semantic_content_identity::LanguagePackage {
                 package_id: "demo".to_owned(),
                 name: "demo".to_owned(),
                 version: Some("0.1.0".to_owned()),
                 manifest_path: "Cargo.toml".to_owned(),
                 root: ".".to_owned(),
                 workspace_member: true,
-                targets: vec![agent_semantic_runtime::LanguageTarget {
+                targets: vec![agent_semantic_content_identity::LanguageTarget {
                     target_id: "demo-lib".to_owned(),
                     kind: "lib".to_owned(),
                     name: "demo".to_owned(),
@@ -278,7 +279,7 @@ fn admitted_rust_project_resolution() -> agent_semantic_runtime::AdmittedProject
             external_dependencies: Vec::new(),
             unresolved: Vec::new(),
         },
-        source_scopes: vec![agent_semantic_runtime::ResolvedSourceScope {
+        source_scopes: vec![agent_semantic_content_identity::ResolvedSourceScope {
             schema_id: None,
             schema_version: None,
             scope_id: "demo-lib-scope".to_owned(),
@@ -296,7 +297,7 @@ fn admitted_rust_project_resolution() -> agent_semantic_runtime::AdmittedProject
             scope_digest: Some("scope-digest".to_owned()),
         }],
         conflicts: Vec::new(),
-        metrics: agent_semantic_runtime::ProjectResolutionMetrics {
+        metrics: agent_semantic_content_identity::ProjectResolutionMetrics {
             parsed_manifest_count: 1,
             parsed_lockfile_count: 1,
             affected_package_count: 1,
@@ -306,6 +307,6 @@ fn admitted_rust_project_resolution() -> agent_semantic_runtime::AdmittedProject
             elapsed_micros: 1,
         },
     };
-    agent_semantic_runtime::AdmittedProjectResolution::new("crates/demo", resolution)
+    agent_semantic_content_identity::AdmittedProjectResolution::new("crates/demo", resolution)
         .expect("admit project resolution")
 }

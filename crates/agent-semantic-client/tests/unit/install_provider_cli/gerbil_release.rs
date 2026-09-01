@@ -22,8 +22,6 @@ fn install_language_gerbil_uses_provider_identity_for_release_and_install() {
             "--target",
             "x86_64-unknown-linux-gnu",
         ])
-        .arg("--project")
-        .arg(&root)
         .env("HOME", &home)
         .env("PATH", prepend_path(&fake_bin))
         .env("ASP_TEST_RELEASE_DIR", &release_dir)
@@ -92,8 +90,6 @@ fn install_language_gerbil_rejects_script_release_payload() {
             "--target",
             "x86_64-unknown-linux-gnu",
         ])
-        .arg("--project")
-        .arg(&root)
         .env("HOME", &home)
         .env("PATH", prepend_path(&fake_bin))
         .env("ASP_TEST_RELEASE_DIR", &release_dir)

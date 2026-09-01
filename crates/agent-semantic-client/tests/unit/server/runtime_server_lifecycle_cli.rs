@@ -50,7 +50,7 @@ fn activation_authority_separates_operator_start_from_client_bootstrap() {
 #[tokio::test]
 async fn operator_start_recovers_the_durable_applied_activation_without_pending_state() {
     use agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest;
-    use agent_semantic_artifacts::runtime_artifact_publication::{
+    use agent_semantic_artifacts::runtime_artifact_activation::{
         RuntimeArtifactActivationEvent, RuntimeArtifactCandidateIdentityReceipt,
     };
 
@@ -59,6 +59,9 @@ async fn operator_start_recovers_the_durable_applied_activation_without_pending_
     let stable_path = state_home.path().join("runtime/bin/asp");
     let digest = Blake3ContentDigest::from_bytes(b"operator-start-applied-activation");
     let event = RuntimeArtifactActivationEvent {
+        schema_id: "agent.semantic-protocols.runtime-artifact-activation".to_owned(),
+        schema_version: 1,
+        bundle_digest: digest.clone(),
         artifact_digest: digest.clone(),
         artifact_path: artifact_path.clone(),
         candidate_slot_path: artifact_path
@@ -69,7 +72,6 @@ async fn operator_start_recovers_the_durable_applied_activation_without_pending_
         artifact_mode: "dev".to_owned(),
         published_at_unix_millis: 1,
         publication_nonce: "operator-start-applied".to_owned(),
-        activation_generation: 19,
         candidate_identity: RuntimeArtifactCandidateIdentityReceipt {
             artifact_digest: digest,
             artifact_path,
@@ -123,7 +125,7 @@ fn client_bootstrap_continues_only_for_an_already_resident_runtime() {
     assert_eq!(
         super::runtime_server_client_bootstrap_receipt(
             SupervisorOutcome::AlreadyResident,
-            7,
+            "publication-bootstrap".to_owned(),
             "blake3-256:test".to_owned(),
             &authority,
         ),
@@ -148,14 +150,17 @@ fn client_bootstrap_continues_only_for_an_already_resident_runtime() {
     ] {
         let terminal = super::runtime_server_client_bootstrap_receipt(
             outcome,
-            7,
+            "publication-bootstrap".to_owned(),
             "blake3-256:test".to_owned(),
             &authority,
         )
         .expect("non-resident supervisor outcome must terminalize the client bootstrap");
         assert_eq!(terminal.state, state);
         assert_eq!(terminal.reason_kind, reason_kind);
-        assert_eq!(terminal.activation_generation, Some(7));
+        assert_eq!(
+            terminal.publication_nonce,
+            Some("publication-bootstrap".to_owned())
+        );
         assert_eq!(terminal.artifact_digest, Some("blake3-256:test".to_owned()));
         assert!(!terminal.recommended_next.is_empty());
         assert_eq!(terminal.authority, authority);

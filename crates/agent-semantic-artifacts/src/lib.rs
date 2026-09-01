@@ -4,10 +4,13 @@ pub mod blake3_content_digest;
 mod edge;
 mod identity;
 mod repair_chain;
+pub mod runtime_artifact_activation;
 pub mod runtime_artifact_catalog;
 pub mod runtime_artifact_publication;
 pub mod runtime_artifact_quiescence;
 pub mod runtime_artifact_retention;
+pub mod runtime_artifact_slots;
+pub mod runtime_artifact_store;
 mod schema_v1_digest;
 mod state_home_binding;
 mod state_home_catalog;
@@ -43,7 +46,8 @@ pub use state_home_binding::{
 };
 pub use state_home_catalog::{
     CatalogBatchReceipt, CatalogGeneration, CatalogObservation, CatalogObservationReceipt,
-    STATE_HOME_CATALOG_SCHEMA_ID, STATE_HOME_CATALOG_SCHEMA_VERSION, StateHomeCatalog,
+    STATE_HOME_CATALOG_SCHEMA_ID, STATE_HOME_CATALOG_SCHEMA_VERSION,
+    admit_state_home_catalog_batch, validate_state_home_catalog_observations,
 };
 pub use state_home_layout::{StateHomeLayout, WorkspaceStatePaths};
 pub use state_home_retention::{

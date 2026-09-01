@@ -11,6 +11,10 @@
     "requiredLanguages",
     "clientProtocol",
     "residentSampleCount",
+    "sequentialSampleCount",
+    "concurrentSampleCount",
+    "failureInjections",
+    "cacheStates",
     "cases"
   ],
   "properties": {
@@ -27,6 +31,53 @@
     },
     "clientProtocol": { "$ref": "#/$defs/clientProtocolContract" },
     "residentSampleCount": { "type": "integer", "minimum": 128 },
+    "sequentialSampleCount": { "const": 10 },
+    "concurrentSampleCount": { "const": 32 },
+    "failureInjections": {
+      "type": "array",
+      "minItems": 3,
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "cancel-before-terminal",
+          "bounded-mailbox-saturation",
+          "stale-content-binding"
+        ]
+      },
+      "contains": { "const": "cancel-before-terminal" },
+      "allOf": [
+        { "contains": { "const": "bounded-mailbox-saturation" } },
+        { "contains": { "const": "stale-content-binding" } }
+      ]
+    },
+    "cacheStates": {
+      "const": [
+        {
+          "state": "cold-build",
+          "prepareAction": "new-isolated-workspace-generation",
+          "mutationScope": "benchmark-workspace-generation",
+          "sampleCount": 1
+        },
+        {
+          "state": "cold-load",
+          "prepareAction": "evict-resident-generation-only",
+          "mutationScope": "benchmark-workspace-generation",
+          "sampleCount": 10
+        },
+        {
+          "state": "warm-read",
+          "prepareAction": "reuse-exact-resident-generation",
+          "mutationScope": "none",
+          "sampleCount": 128
+        },
+        {
+          "state": "released",
+          "prepareAction": "release-exact-benchmark-generation",
+          "mutationScope": "benchmark-workspace-generation",
+          "sampleCount": 1
+        }
+      ]
+    },
     "cases": {
       "type": "array",
       "minItems": 1,
@@ -44,7 +95,7 @@
       "properties": {
         "protocolId": { "const": "agent.semantic-protocols.client" },
         "protocolVersion": { "const": "1" },
-        "transport": { "const": "http-json" },
+        "transport": { "const": "grpc-tokio-streams" },
         "phases": { "const": ["initialize", "catalog", "request", "cancel", "cancelled", "shutdown"] },
         "requiredTelemetryEvents": { "$ref": "#/$defs/requiredClientProtocolTelemetryEvents" },
         "appliesToCaseCount": { "const": 17 },

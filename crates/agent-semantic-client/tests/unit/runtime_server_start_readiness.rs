@@ -3,9 +3,8 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use std::thread;
 
-use agent_semantic_artifacts::runtime_artifact_publication::{
-    publish_runtime_artifact, read_runtime_artifact_activation_event,
-};
+use agent_semantic_artifacts::runtime_artifact_activation::read_runtime_artifact_activation_event;
+use agent_semantic_artifacts::runtime_artifact_publication::publish_runtime_artifact;
 
 const RUNTIME_CLIENT_QUERY_ARGS: &[&str] = &[
     "rust",
@@ -108,10 +107,10 @@ async fn explicit_activation_waits_for_one_bound_resident_transaction_without_po
         .await
         .expect("observe one bound Runtime resident transaction");
     assert_eq!(transaction.state, "ready");
-    assert!(transaction.activation_generation > 0);
+    assert!(!transaction.publication_nonce.is_empty());
     assert_eq!(
-        transaction.activation_generation,
-        transaction.applied_activation_generation
+        transaction.publication_nonce,
+        transaction.applied_publication_nonce
     );
     assert_eq!(
         transaction.launcher_artifact_digest,
@@ -139,7 +138,7 @@ async fn restart_replaces_owner_from_applied_generation_in_one_typed_transaction
 
     let start = run_asp(&state_home, &["server", "start"]);
     assert_success(&start, "initial Runtime activation");
-    let applied_before = agent_semantic_artifacts::runtime_artifact_publication::
+    let applied_before = agent_semantic_artifacts::runtime_artifact_activation::
         read_applied_runtime_artifact_activation_event(&state_home)
         .await
         .expect("read initial applied activation")
@@ -169,8 +168,8 @@ async fn restart_replaces_owner_from_applied_generation_in_one_typed_transaction
     assert_eq!(receipt["schemaVersion"], "1");
     assert_eq!(receipt["state"], "healthy");
     assert_eq!(
-        receipt["activationGeneration"],
-        applied_before.activation_generation
+        receipt["publicationNonce"],
+        applied_before.publication_nonce
     );
     assert_eq!(
         receipt["artifactDigest"],
@@ -193,8 +192,8 @@ async fn restart_replaces_owner_from_applied_generation_in_one_typed_transaction
     assert_eq!(endpoint_after.owner_process_id, owner_after.process_id);
     assert_eq!(receipt["ownerEpoch"], endpoint_after.owner_epoch);
     assert_eq!(
-        owner_after.activation_generation,
-        applied_before.activation_generation
+        owner_after.publication_nonce,
+        applied_before.publication_nonce
     );
     assert_eq!(
         owner_after.launcher_artifact_digest,
@@ -205,7 +204,7 @@ async fn restart_replaces_owner_from_applied_generation_in_one_typed_transaction
             .await
             .expect("read pending after restart")
             .is_none(),
-        "restart must not mint or republish a pending generation"
+        "restart must not mint or republish a pending publication"
     );
 
     stop_isolated_runtime(&state_home);
@@ -219,7 +218,7 @@ async fn no_agent_client_recovers_one_dead_applied_owner_and_respects_operator_s
 
     let start = run_asp(&state_home, &["server", "start"]);
     assert_success(&start, "initial Runtime activation");
-    let applied = agent_semantic_artifacts::runtime_artifact_publication::
+    let applied = agent_semantic_artifacts::runtime_artifact_activation::
         read_applied_runtime_artifact_activation_event(&state_home)
         .await
         .expect("read applied activation")
@@ -287,10 +286,7 @@ async fn no_agent_client_recovers_one_dead_applied_owner_and_respects_operator_s
     );
     assert_ne!(endpoint_after.owner_epoch, endpoint_before.owner_epoch);
     assert_eq!(endpoint_after.owner_process_id, owner_after.process_id);
-    assert_eq!(
-        owner_after.activation_generation,
-        applied.activation_generation
-    );
+    assert_eq!(owner_after.publication_nonce, applied.publication_nonce);
     assert_eq!(
         owner_after.launcher_artifact_digest,
         applied.artifact_digest
@@ -302,10 +298,7 @@ async fn no_agent_client_recovers_one_dead_applied_owner_and_respects_operator_s
         .await
         .expect("observe recovered resident transaction");
     assert_eq!(transaction.state, "ready");
-    assert_eq!(
-        transaction.activation_generation,
-        applied.activation_generation
-    );
+    assert_eq!(transaction.publication_nonce, applied.publication_nonce);
     assert_eq!(
         transaction.launcher_artifact_digest,
         applied.artifact_digest
@@ -370,7 +363,7 @@ async fn activation_child_exit_terminalizes_and_preserves_pending_without_pollin
         "child exit before ready must preserve the pending activation"
     );
     assert!(
-        agent_semantic_artifacts::runtime_artifact_publication::
+        agent_semantic_artifacts::runtime_artifact_activation::
             read_applied_runtime_artifact_activation_event(&state_home)
             .await
             .expect("read applied activation after child exit")
@@ -439,8 +432,12 @@ async fn operator_stop_suppresses_old_activation_until_a_newer_publication() {
             .expect("read operator-stop receipt")
             .expect("operator-stop receipt");
     assert_eq!(
-        tombstone.stopped_through_activation_generation,
-        stopped_event.activation_generation
+        tombstone.stopped_artifact_digest,
+        Some(stopped_event.artifact_digest.clone())
+    );
+    assert_eq!(
+        tombstone.stopped_publication_nonce,
+        Some(stopped_event.publication_nonce.clone())
     );
 
     publish_pending_runtime(&state_home).await;
@@ -448,7 +445,10 @@ async fn operator_stop_suppresses_old_activation_until_a_newer_publication() {
         .await
         .expect("read newer activation")
         .expect("newer pending activation");
-    assert!(newer_event.activation_generation > stopped_event.activation_generation);
+    assert_ne!(
+        newer_event.publication_nonce,
+        stopped_event.publication_nonce
+    );
 
     let resumed = run_asp(&state_home, RUNTIME_CLIENT_QUERY_ARGS);
     assert_success(&resumed, "newer activation bootstrap");
@@ -456,7 +456,7 @@ async fn operator_stop_suppresses_old_activation_until_a_newer_publication() {
         state_home
             .join("runtime/server/owner-spawn.v1.json")
             .is_file(),
-        "strictly newer activation must reacquire supervisor authority"
+        "distinct content-bound publication must reacquire supervisor authority"
     );
 
     stop_isolated_runtime(&state_home);
@@ -480,7 +480,8 @@ async fn current_schema_v1_operator_stop_suppresses_covered_activation() {
             "schemaId": "agent.semantic-protocols.runtime-server-operator-stop",
             "schemaVersion": "1",
             "state": "stopped",
-            "stoppedThroughActivationGeneration": stopped_event.activation_generation,
+            "stoppedArtifactDigest": stopped_event.artifact_digest.clone(),
+            "stoppedPublicationNonce": stopped_event.publication_nonce.clone(),
         }))
         .expect("encode current schema v1 operator stop"),
     )
@@ -499,8 +500,12 @@ async fn current_schema_v1_operator_stop_suppresses_covered_activation() {
             .expect("read current operator stop")
             .expect("current operator stop");
     assert_eq!(
-        canonical.stopped_through_activation_generation,
-        stopped_event.activation_generation
+        canonical.stopped_artifact_digest,
+        Some(stopped_event.artifact_digest.clone())
+    );
+    assert_eq!(
+        canonical.stopped_publication_nonce,
+        Some(stopped_event.publication_nonce.clone())
     );
 
     publish_pending_runtime(&state_home).await;
@@ -579,7 +584,8 @@ async fn concurrent_current_schema_v1_reads_are_idempotent() {
             "schemaId": "agent.semantic-protocols.runtime-server-operator-stop",
             "schemaVersion": "1",
             "state": "stopped",
-            "stoppedThroughActivationGeneration": stopped_event.activation_generation,
+            "stoppedArtifactDigest": stopped_event.artifact_digest.clone(),
+            "stoppedPublicationNonce": stopped_event.publication_nonce.clone(),
         }))
         .expect("encode current schema v1 operator stop"),
     )
@@ -604,8 +610,12 @@ async fn concurrent_current_schema_v1_reads_are_idempotent() {
             .expect("current receipt");
     assert_eq!(current_receipt.schema_version, "1");
     assert_eq!(
-        current_receipt.stopped_through_activation_generation,
-        stopped_event.activation_generation
+        current_receipt.stopped_artifact_digest,
+        Some(stopped_event.artifact_digest.clone())
+    );
+    assert_eq!(
+        current_receipt.stopped_publication_nonce,
+        Some(stopped_event.publication_nonce.clone())
     );
     assert!(stop_path.is_file());
     assert!(

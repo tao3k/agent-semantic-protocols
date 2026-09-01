@@ -148,7 +148,7 @@ The P0 ontology contract is schema-first:
 - =tests/unit/test_semantic_fact_protocol_vocabulary.py= validates RFC number
   uniqueness, relation boundary closure, graph-turbo profile-internal
   relations, and confidence/freshness mapping coverage.
-- =languages/rust-lang-project-harness/src/search/semantic_facts.rs= emits
+- =languages/asp-rust/src/search/semantic_facts.rs= emits
   ontology-shaped Rust =field=/=type=/=collection= graph facts from =syn=
   parser facts while preserving the existing provider metadata fields used by
   compact rendering.
@@ -579,7 +579,7 @@ P1 audit should answer:
   =search/semantic-facts= for Rust, Python, TypeScript, and Julia with
   =semantic-fact-graph.v1= packet metadata, so agents can discover the fact
   graph surface from the provider registry instead of hard-coding it.
-- =languages/rust-lang-project-harness/src/search/semantic_facts.rs= now emits
+- =languages/asp-rust/src/search/semantic_facts.rs= now emits
   parser-owned Cargo =package=, =build=, =dependency=, and =test= graph facts
   from manifest dependency facts and Cargo test target parsing. Runtime evidence:
   =cargo run --quiet --features search,cli -- search semantic-facts "cargo test dependency" --json .=

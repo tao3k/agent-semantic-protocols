@@ -7,7 +7,7 @@ use serde::Serialize;
 pub struct SupervisorRequest {
     pub state_home: PathBuf,
     pub expected_executable: PathBuf,
-    pub activation_generation: u64,
+    pub publication_nonce: String,
     pub artifact_digest: agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest,
     pub previous_artifact_digest:
         Option<agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest>,
@@ -156,11 +156,10 @@ async fn retire_undecodable_endpoint_owner(request: &SupervisorRequest) -> Resul
     let owner = match owner_state {
         crate::RuntimeServerSpawnReceiptRead::Current(owner) => owner,
         crate::RuntimeServerSpawnReceiptRead::Stale(_) => {
-            // A caller reaches this path only after supplying a validated,
-            // positive activation generation.  A legacy observation cannot
-            // authorize termination, but it also cannot veto the newer
-            // activation claim.  Malformed and unknown receipts still fail in
-            // read_owner_receipt_state before this branch.
+            // A stale owner receipt cannot authorize termination. The caller's
+            // current content-bound publication remains independent, while
+            // malformed and unknown receipts fail in read_owner_receipt_state
+            // before this branch.
             return Ok(false);
         }
     };
@@ -214,7 +213,7 @@ impl SupervisorRequest {
     pub fn for_activation(
         state_home: std::path::PathBuf,
         expected_executable: std::path::PathBuf,
-        activation_generation: u64,
+        publication_nonce: String,
         artifact_digest: agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest,
         previous_artifact_digest: Option<
             agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest,
@@ -228,7 +227,7 @@ impl SupervisorRequest {
         Self {
             state_home,
             expected_executable,
-            activation_generation,
+            publication_nonce,
             artifact_digest,
             previous_artifact_digest,
             previous_owner_epoch: None,
@@ -418,17 +417,9 @@ impl RuntimeServerSupervisor {
         Ok(match receipt {
             Some(crate::RuntimeServerSpawnReceiptRead::Stale(_)) => SupervisorOutcome::OwnerStale,
             Some(crate::RuntimeServerSpawnReceiptRead::Current(receipt))
-                if receipt.activation_generation < request.activation_generation =>
+                if receipt.publication_nonce != request.publication_nonce =>
             {
                 SupervisorOutcome::OwnerStale
-            }
-            Some(crate::RuntimeServerSpawnReceiptRead::Current(receipt))
-                if receipt.activation_generation > request.activation_generation =>
-            {
-                return Err(format!(
-                    "reasonKind=runtime-server-owner-generation-ahead-of-activation ownerGeneration={} activationGeneration={}",
-                    receipt.activation_generation, request.activation_generation
-                ));
             }
             Some(crate::RuntimeServerSpawnReceiptRead::Current(receipt))
                 if receipt.launcher_artifact_digest != request.artifact_digest
@@ -530,7 +521,7 @@ impl RuntimeServerSupervisor {
             process_id,
             nonce: format!("owner-{process_id}"),
             state_home: request.state_home.display().to_string(),
-            activation_generation: request.activation_generation,
+            publication_nonce: request.publication_nonce,
             launcher_artifact_path: launcher_artifact_path.display().to_string(),
             launcher_artifact_digest: launcher_digest,
             spawn_argv,

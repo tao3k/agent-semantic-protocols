@@ -6,8 +6,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use serde::{Deserialize, Serialize};
 
 use agent_semantic_artifacts::runtime_artifact_catalog::{
-    RuntimeArtifactPublication, RuntimeBinaryIdentity, runtime_artifact_source_generation,
+    RuntimeBinaryIdentity, runtime_artifact_source_generation,
 };
+use agent_semantic_artifacts::runtime_artifact_store::RuntimeArtifactPublication;
 
 const SCHEMA_ID: &str = "agent.semantic-protocols.runtime-artifact-identity";
 const SCHEMA_VERSION: &str = "1";

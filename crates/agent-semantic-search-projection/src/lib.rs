@@ -11,6 +11,7 @@ mod model;
 mod packet;
 mod renderer;
 mod resident_search_result;
+mod runtime_graph_request;
 mod storage_route;
 mod topology;
 
@@ -32,6 +33,7 @@ pub use resident_search_result::{
     ResidentSearchHit, ResidentSearchProjectionTier, ResidentSearchReadyResult,
     ResidentSearchReadyState, ResidentSearchWorkCounters, RuntimeProviderSearchReceipt,
 };
+pub use runtime_graph_request::{adapt_graph_evaluate_payload, validate_graph_source_root};
 pub use storage_route::{
     ProviderGraphEvidence, SEMANTIC_SEARCH_STORAGE_ROUTE_SCHEMA_ID,
     SEMANTIC_SEARCH_STORAGE_ROUTE_SCHEMA_VERSION, SemanticMutationClass,

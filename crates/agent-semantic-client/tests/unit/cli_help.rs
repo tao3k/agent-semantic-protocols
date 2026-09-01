@@ -58,26 +58,16 @@ fn cache_clean_legacy_surface_is_rejected() {
 }
 
 #[test]
-fn install_language_scope_is_global_by_default_or_explicitly_project_local() {
+fn install_language_scope_is_owned_only_by_state_home_runtime() {
     install_command()
         .try_get_matches_from(["install", "language", "rust"])
-        .expect("global must be the default install scope");
+        .expect("State Home is the only provider artifact scope");
     install_command()
         .try_get_matches_from(["install", "language", "rust", "--global"])
-        .expect("--global must explicitly select the default install scope");
+        .expect_err("the legacy global scope flag must be removed");
     install_command()
         .try_get_matches_from(["install", "language", "rust", "--project", "/tmp/project"])
-        .expect("--project PATH must select project-local install scope");
-    install_command()
-        .try_get_matches_from([
-            "install",
-            "language",
-            "rust",
-            "--global",
-            "--project",
-            "/tmp/project",
-        ])
-        .expect_err("--global and --project must be mutually exclusive");
+        .expect_err("Runtime workspace admission, not installation, owns project activation");
     install_command()
         .try_get_matches_from(["install", "language", "rust", "/tmp/project"])
         .expect_err("positional project roots must not remain accepted");
@@ -92,12 +82,12 @@ fn install_language_scope_is_global_by_default_or_explicitly_project_local() {
         .expect("render install language help");
     let help = String::from_utf8(help).expect("utf-8 install help");
     assert!(
-        help.contains("--global"),
-        "help must expose --global: {help}"
+        !help.contains("--global"),
+        "help must not expose the removed global scope: {help}"
     );
     assert!(
-        help.contains("--project <PATH>"),
-        "help must expose explicit project scope: {help}"
+        !help.contains("--project <PATH>"),
+        "help must not expose project-local artifact publication: {help}"
     );
     assert!(
         !help.contains("[PROJECT_ROOT]"),

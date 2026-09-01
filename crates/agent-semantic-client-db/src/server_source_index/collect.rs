@@ -102,7 +102,7 @@ fn provider_applicability_is_required(scope: &SourceIndexCollectionScope) -> boo
 
 pub(crate) struct SourceIndexCollectionReceipt {
     pub(crate) files: Vec<crate::ClientDbSourceIndexScopeFile>,
-    pub(crate) project_resolutions: Vec<agent_semantic_runtime::AdmittedProjectResolution>,
+    pub(crate) project_resolutions: Vec<agent_semantic_content_identity::AdmittedProjectResolution>,
     pub(crate) candidate: crate::runtime_server_admission::WorkspaceGenerationCandidateIdentity,
 }
 
@@ -287,7 +287,7 @@ ProviderScopeExecutor::RuntimeService(runtime, cancellation) => {
                             None,
                         ));
                     };
-                    let admitted = agent_semantic_runtime::AdmittedProjectResolution::new(
+                    let admitted = agent_semantic_content_identity::AdmittedProjectResolution::new(
                         ".",
                         packet.resolution.clone(),
                     )?;

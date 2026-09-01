@@ -44,7 +44,7 @@ claude = "@agent-{name-kebab}"
 languageId = "rust"
 providerId = "asp-rust"
 extensionAny = ["rs", "rsx"]
-sourceRootAny = ["crates", "languages/rust-lang-project-harness"]
+sourceRootAny = ["crates", "languages/asp-rust"]
 
 [profiles.typescript]
 languageId = "typescript"

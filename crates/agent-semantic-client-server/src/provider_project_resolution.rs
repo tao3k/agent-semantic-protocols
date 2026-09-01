@@ -19,7 +19,7 @@ pub enum ProviderProjectResolution {
 pub struct ProviderProjectResolutionPacket {
     pub language_id: LanguageId,
     pub provider_id: ProviderId,
-    pub resolution: agent_semantic_runtime::ProjectResolutionReceipt,
+    pub resolution: agent_semantic_content_identity::ProjectResolutionReceipt,
     pub files: Vec<ProviderProjectResolutionFile>,
 }
 
@@ -438,7 +438,7 @@ struct RawProviderProjectResolutionResponse {
     language_id: LanguageId,
     provider_id: ProviderId,
     state: String,
-    scope: Option<agent_semantic_runtime::ProjectResolutionReceipt>,
+    scope: Option<agent_semantic_content_identity::ProjectResolutionReceipt>,
     failure: Option<RawProviderProjectResolutionFailure>,
 }
 

@@ -439,11 +439,6 @@ pub fn parse_payload(input: &str) -> Result<Value, AgentHookError> {
 }
 
 /// Render the only Codex PreToolUse deny wire shape emitted by ASP.
-///
-/// The typed decision is persisted in ASP's event ledger. The Host envelope
-/// deliberately exposes only the configured natural-language instruction:
-/// models should use the native collaboration operation, not parse an
-/// internal receipt.
 pub fn render_codex_pre_tool_deny(_decision_value: &Value, message: &str) -> Value {
     json!({
         "hookSpecificOutput": {
@@ -456,8 +451,7 @@ pub fn render_codex_pre_tool_deny(_decision_value: &Value, message: &str) -> Val
     })
 }
 
-/// Render a Codex PermissionRequest decision without leaking ASP receipt
-/// fields into the Host schema.
+/// Render a Codex PermissionRequest decision without leaking ASP receipt fields.
 pub fn render_codex_permission_request(behavior: &str, message: Option<&str>) -> Value {
     let mut decision = json!({ "behavior": behavior });
     if let Some(message) = message {

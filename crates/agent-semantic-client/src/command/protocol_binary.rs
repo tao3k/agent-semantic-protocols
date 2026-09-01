@@ -80,6 +80,7 @@ pub(crate) struct ProtocolBinaryInstall {
     pub(crate) path: PathBuf,
     pub(crate) status: &'static str,
     pub(crate) artifact_digest: String,
+    pub(crate) bundle_digest: Option<String>,
     pub(crate) lock_acquisition_count: u8,
     pub(crate) quiescence_operation: Option<String>,
     pub(crate) quiescence_lease_nonce: Option<String>,
@@ -212,7 +213,7 @@ pub(crate) async fn ensure_protocol_binary_installed(
         &plan.binary_identity,
     )
     .await?;
-    if install.status != "published-activation-pending" {
+    if install.status != "published-active-awaiting-health" {
         for alias in &plan.managed_path_aliases {
             install_protocol_binary_alias(alias, &plan.target, &plan.artifact_root)?;
         }
@@ -220,20 +221,23 @@ pub(crate) async fn ensure_protocol_binary_installed(
     Ok(install)
 }
 
-pub(crate) async fn ensure_protocol_binary_installed_transaction(
+pub(crate) async fn ensure_protocol_binary_bundle_installed_transaction(
     plan: &ProtocolBinaryInstallPlan,
+    hook_source: &Path,
 ) -> Result<ProtocolBinaryInstall, String> {
     for alias in &plan.managed_path_aliases {
         validate_protocol_entry_for_repair(alias, &plan.artifact_root)?;
     }
-    let install = install_protocol_binary_target(
+    let install = install_protocol_binary_target_transaction(
         plan.candidate_source(),
         &plan.target,
         &plan.artifact_root,
         &plan.binary_identity,
+        None,
+        Some(hook_source),
     )
     .await?;
-    if install.status != "published-activation-pending" {
+    if install.status != "published-active-awaiting-health" {
         for alias in &plan.managed_path_aliases {
             install_protocol_binary_alias(alias, &plan.target, &plan.artifact_root)?;
         }
@@ -392,8 +396,15 @@ pub(crate) async fn install_protocol_binary_target(
     artifact_root: &Path,
     binary_identity: &RuntimeBinaryIdentityV1,
 ) -> Result<ProtocolBinaryInstall, String> {
-    install_protocol_binary_target_transaction(source, target, artifact_root, binary_identity, None)
-        .await
+    install_protocol_binary_target_transaction(
+        source,
+        target,
+        artifact_root,
+        binary_identity,
+        None,
+        None,
+    )
+    .await
 }
 
 pub(crate) async fn install_qualified_provider_staging_target(
@@ -439,7 +450,7 @@ pub(crate) async fn install_qualified_provider_staging_target(
             artifact_root,
         )?;
     let publication =
-        agent_semantic_artifacts::runtime_artifact_catalog::publish_qualified_runtime_artifact_under_guard(
+        agent_semantic_artifacts::runtime_artifact_store::publish_qualified_runtime_artifact_under_guard(
             state_home,
             source,
             target,
@@ -457,6 +468,7 @@ pub(crate) async fn install_qualified_provider_staging_target(
         // so there is no Runtime activation/quiescence receipt to validate.
         status: "current",
         artifact_digest: publication.artifact_digest.to_string(),
+        bundle_digest: None,
         lock_acquisition_count: 0,
         quiescence_operation: None,
         quiescence_lease_nonce: None,
@@ -473,6 +485,7 @@ async fn install_protocol_binary_target_transaction(
     qualified_source: Option<
         agent_semantic_artifacts::runtime_artifact_catalog::QualifiedRuntimeArtifactSource,
     >,
+    hook_source: Option<&Path>,
 ) -> Result<ProtocolBinaryInstall, String> {
     let binary_name = binary_identity.name();
     if target.file_name() != Some(binary_name) {
@@ -525,18 +538,34 @@ async fn install_protocol_binary_target_transaction(
         validate_protocol_entry_for_repair(target, artifact_root)?;
     }
     let artifact_mode = if developer_source { "dev" } else { "release" };
-    let receipt = agent_semantic_runtime_server::resident_install::install_resident_runtime(
-        state_home,
-        source,
-        target,
-        artifact_mode,
-        qualified_source,
-    )
-    .await?;
+    let receipt = match hook_source {
+        Some(hook_source) => {
+            agent_semantic_runtime_server::resident_install::install_resident_runtime_bundle(
+                state_home,
+                source,
+                target,
+                hook_source,
+                artifact_mode,
+                qualified_source,
+            )
+            .await?
+        }
+        None => {
+            agent_semantic_runtime_server::resident_install::install_resident_runtime(
+                state_home,
+                source,
+                target,
+                artifact_mode,
+                qualified_source,
+            )
+            .await?
+        }
+    };
     let install = ProtocolBinaryInstall {
         path: receipt.path,
         status: receipt.status,
         artifact_digest: receipt.artifact_digest.to_string(),
+        bundle_digest: Some(receipt.bundle_digest.to_string()),
         lock_acquisition_count: receipt.lock_acquisition_count,
         quiescence_operation: Some(receipt.quiescence_operation),
         quiescence_lease_nonce: Some(receipt.quiescence_lease_nonce),

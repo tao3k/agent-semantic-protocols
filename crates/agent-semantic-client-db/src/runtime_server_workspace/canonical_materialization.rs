@@ -24,7 +24,7 @@ pub struct WorkspaceCanonicalMaterialization {
     pub selector_set_digest: String,
     pub projection_capability: crate::active_generation_projection_capability::ActiveGenerationProjectionCapabilityManifest,
     pub workspace_source_scope_generation: String,
-    pub project_resolutions: Vec<agent_semantic_runtime::AdmittedProjectResolution>,
+    pub project_resolutions: Vec<agent_semantic_content_identity::AdmittedProjectResolution>,
     pub relations: Vec<crate::ClientDbSourceIndexOwnedRelation>,
     pub file_count: u32,
     pub root_depth: [u8; 2],
@@ -49,7 +49,7 @@ fn derive_canonical_materialization(
     import: &crate::ClientDbSourceIndexImport,
     root_depth: [u8; 2],
     owners: &[WorkspaceOwnerSnapshot],
-    project_resolutions: &[agent_semantic_runtime::AdmittedProjectResolution],
+    project_resolutions: &[agent_semantic_content_identity::AdmittedProjectResolution],
 ) -> Result<CanonicalMaterializationDerived, String> {
     let file_count = u32::try_from(owners.len())
         .map_err(|_| "workspace canonical materialization file count overflow".to_owned())?;
@@ -69,7 +69,7 @@ fn derive_canonical_materialization(
             root_depth,
             owners.len(),
         )?,
-        provider_schema_digest: agent_semantic_runtime::project_resolution_schema_digest(),
+        provider_schema_digest: agent_semantic_content_identity::project_resolution_schema_digest(),
         import_digest: WorkspaceCanonicalMaterialization::canonical_import_digest(import)?,
         selector_set_digest: WorkspaceCanonicalMaterialization::typed_digest(&selector_rows)?,
         projection_capability: crate::active_generation_projection_capability::ActiveGenerationProjectionCapabilityManifest::from_source_index(
@@ -77,7 +77,7 @@ fn derive_canonical_materialization(
             &import.selectors,
         )?,
         workspace_source_scope_generation:
-            agent_semantic_runtime::workspace_source_scope_generation_digest(project_resolutions)?,
+            agent_semantic_content_identity::workspace_source_scope_generation_digest(project_resolutions)?,
         file_count,
     })
 }
@@ -88,7 +88,7 @@ fn assemble_canonical_materialization(
     import: &crate::ClientDbSourceIndexImport,
     root_depth: [u8; 2],
     owners: Vec<WorkspaceOwnerSnapshot>,
-    project_resolutions: Vec<agent_semantic_runtime::AdmittedProjectResolution>,
+    project_resolutions: Vec<agent_semantic_content_identity::AdmittedProjectResolution>,
     derived: CanonicalMaterializationDerived,
 ) -> WorkspaceCanonicalMaterialization {
     WorkspaceCanonicalMaterialization {
@@ -326,7 +326,7 @@ impl WorkspaceCanonicalMaterialization {
             import_digest: &'a str,
             selector_set_digest: &'a str,
             workspace_source_scope_generation: &'a str,
-            project_resolutions: &'a [agent_semantic_runtime::AdmittedProjectResolution],
+            project_resolutions: &'a [agent_semantic_content_identity::AdmittedProjectResolution],
             file_count: u32,
             root_depth: [u8; 2],
             owners: &'a [WorkspaceOwnerSnapshot],
@@ -380,7 +380,7 @@ impl WorkspaceCanonicalMaterialization {
         source_snapshot: &agent_semantic_content_identity::SourceSnapshotEvidence,
         import: &crate::ClientDbSourceIndexImport,
         source_blobs: &crate::ClientDbSourceIndexSourceBlobs,
-        project_resolutions: Vec<agent_semantic_runtime::AdmittedProjectResolution>,
+        project_resolutions: Vec<agent_semantic_content_identity::AdmittedProjectResolution>,
     ) -> Result<Self, String> {
         Self::from_source_index_inner(
             workspace_identity.into(),
@@ -398,7 +398,7 @@ impl WorkspaceCanonicalMaterialization {
         source_snapshot: &agent_semantic_content_identity::SourceSnapshotEvidence,
         import: &crate::ClientDbSourceIndexImport,
         source_blobs: &crate::ClientDbSourceIndexSourceBlobs,
-        project_resolutions: Vec<agent_semantic_runtime::AdmittedProjectResolution>,
+        project_resolutions: Vec<agent_semantic_content_identity::AdmittedProjectResolution>,
     ) -> Result<Self, String> {
         let owner_authorities = import
             .owners
@@ -526,7 +526,7 @@ impl WorkspaceCanonicalMaterialization {
         import: &crate::ClientDbSourceIndexImport,
         root_depth: [u8; 2],
         owners: Vec<WorkspaceOwnerSnapshot>,
-        project_resolutions: Vec<agent_semantic_runtime::AdmittedProjectResolution>,
+        project_resolutions: Vec<agent_semantic_content_identity::AdmittedProjectResolution>,
     ) -> Result<Self, String> {
         let workspace_snapshot =
             agent_semantic_content_identity::WorkspaceSnapshot::from_file_bytes(
@@ -552,7 +552,7 @@ impl WorkspaceCanonicalMaterialization {
         import: &crate::ClientDbSourceIndexImport,
         root_depth: [u8; 2],
         owners: Vec<WorkspaceOwnerSnapshot>,
-        project_resolutions: Vec<agent_semantic_runtime::AdmittedProjectResolution>,
+        project_resolutions: Vec<agent_semantic_content_identity::AdmittedProjectResolution>,
     ) -> Result<Self, String> {
         let derived = derive_canonical_materialization(
             workspace_snapshot,
@@ -724,7 +724,7 @@ impl WorkspaceCanonicalMaterialization {
             return Err("workspace canonical materialization import digest is invalid".to_owned());
         }
         if self.workspace_source_scope_generation
-            != agent_semantic_runtime::workspace_source_scope_generation_digest(
+            != agent_semantic_content_identity::workspace_source_scope_generation_digest(
                 &self.project_resolutions,
             )?
         {

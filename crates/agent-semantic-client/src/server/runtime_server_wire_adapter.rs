@@ -29,7 +29,7 @@ impl RuntimeServerActivationAuthority {
 
 pub(crate) fn validate_activation_ready_binding(
     receipt: &agent_semantic_client_db::RuntimeServerActivationReadyReceipt,
-    event: &agent_semantic_artifacts::runtime_artifact_publication::RuntimeArtifactActivationEvent,
+    event: &agent_semantic_artifacts::runtime_artifact_activation::RuntimeArtifactActivationEvent,
     spawn: &agent_semantic_client_db::RuntimeServerSpawnReceipt,
 ) -> Result<(), String> {
     let spawn_receipt_digest =
@@ -37,7 +37,7 @@ pub(crate) fn validate_activation_ready_binding(
     if receipt.schema_id != "agent.semantic-protocols.runtime-activation-ready-receipt"
         || receipt.schema_version != "1"
         || receipt.state != "ready"
-        || receipt.activation_generation != event.activation_generation
+        || receipt.publication_nonce != event.publication_nonce
         || receipt.artifact_digest != event.artifact_digest
         || receipt.owner_epoch == 0
         || receipt.launcher_receipt_digest != spawn_receipt_digest
@@ -52,7 +52,7 @@ pub(crate) fn validate_activation_ready_binding(
 
 pub(crate) async fn ensure_healthy_runtime_server_for_activation_event(
     state_home: &Path,
-    event: &agent_semantic_artifacts::runtime_artifact_publication::RuntimeArtifactActivationEvent,
+    event: &agent_semantic_artifacts::runtime_artifact_activation::RuntimeArtifactActivationEvent,
     serving_digest: Option<&agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest>,
 ) -> Result<agent_semantic_client_db::runtime_server_control::RuntimeServerControlReceipt, String> {
     match reconcile_runtime_server_activation_event(
@@ -74,7 +74,7 @@ pub(crate) async fn ensure_healthy_runtime_server_for_activation_event(
 
 pub(crate) async fn restart_healthy_runtime_server_for_activation_event(
     state_home: &Path,
-    event: &agent_semantic_artifacts::runtime_artifact_publication::RuntimeArtifactActivationEvent,
+    event: &agent_semantic_artifacts::runtime_artifact_activation::RuntimeArtifactActivationEvent,
 ) -> Result<agent_semantic_client_db::runtime_server_control::RuntimeServerControlReceipt, String> {
     match reconcile_runtime_server_activation_event(
         state_home,
@@ -95,7 +95,7 @@ pub(crate) async fn restart_healthy_runtime_server_for_activation_event(
 
 pub(crate) async fn ensure_runtime_server_for_activation_event(
     state_home: &Path,
-    event: &agent_semantic_artifacts::runtime_artifact_publication::RuntimeArtifactActivationEvent,
+    event: &agent_semantic_artifacts::runtime_artifact_activation::RuntimeArtifactActivationEvent,
     serving_digest: Option<&agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest>,
 ) -> Result<agent_semantic_client_db::runtime_server_supervisor::SupervisorOutcome, String> {
     match reconcile_runtime_server_activation_event(
@@ -117,7 +117,7 @@ pub(crate) async fn ensure_runtime_server_for_activation_event(
 
 pub(crate) async fn ensure_healthy_runtime_server_for_client_recovery(
     state_home: &Path,
-    event: &agent_semantic_artifacts::runtime_artifact_publication::RuntimeArtifactActivationEvent,
+    event: &agent_semantic_artifacts::runtime_artifact_activation::RuntimeArtifactActivationEvent,
 ) -> Result<agent_semantic_client_db::runtime_server_control::RuntimeServerControlReceipt, String> {
     match reconcile_runtime_server_activation_event(
         state_home,
@@ -138,7 +138,7 @@ pub(crate) async fn ensure_healthy_runtime_server_for_client_recovery(
 
 pub(crate) async fn reconcile_runtime_server_activation_event(
     state_home: &Path,
-    event: &agent_semantic_artifacts::runtime_artifact_publication::RuntimeArtifactActivationEvent,
+    event: &agent_semantic_artifacts::runtime_artifact_activation::RuntimeArtifactActivationEvent,
     serving_digest: Option<&agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest>,
     wait_for_healthy: bool,
     authority: RuntimeServerActivationAuthority,
@@ -169,7 +169,6 @@ pub(crate) async fn reconcile_runtime_server_activation_event(
         Some(
             agent_semantic_client_db::runtime_server_lifecycle::bind_activation_ready_listener(
                 state_home,
-                event.activation_generation,
                 &event.publication_nonce,
             )
             .await?,
@@ -198,7 +197,7 @@ pub(crate) async fn reconcile_runtime_server_activation_event(
         agent_semantic_client_db::runtime_server_supervisor::SupervisorRequest::for_activation(
             state_home.to_owned(),
             event.artifact_path.clone(),
-            event.activation_generation,
+            event.publication_nonce.clone(),
             event.artifact_digest.clone(),
             event.previous_artifact_digest.clone(),
             event.artifact_path.clone(),
@@ -248,7 +247,7 @@ pub(crate) async fn reconcile_runtime_server_activation_event(
                     "reasonKind": "runtime-owner-exited-before-ready",
                     "exitStatus": exit.to_string(),
                     "daemonStderr": daemon_stderr,
-                    "activationGeneration": event.activation_generation,
+                    "publicationNonce": event.publication_nonce,
                     "artifactDigest": event.artifact_digest,
                 }).to_string());
             }
@@ -267,7 +266,7 @@ pub(crate) async fn reconcile_runtime_server_activation_event(
                 "state": "failed",
                 "reasonKind": "runtime-owner-exited-after-ready",
                 "exitStatus": exit.to_string(),
-                "activationGeneration": event.activation_generation,
+                "publicationNonce": event.publication_nonce,
                 "artifactDigest": event.artifact_digest,
             })
             .to_string());
@@ -284,7 +283,7 @@ pub(crate) async fn reconcile_runtime_server_activation_event(
         serde_json::to_string(&transaction)
             .map_err(|error| format!("encode Runtime resident transaction receipt: {error}"))?
     );
-    if transaction.activation_generation != event.activation_generation
+    if transaction.publication_nonce != event.publication_nonce
         || transaction.applied_artifact_digest != event.artifact_digest
     {
         return Err(

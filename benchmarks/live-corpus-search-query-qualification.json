@@ -2,6 +2,13 @@
   "schemaId": "agent.semantic-protocols.live-corpus-search-query-qualification-plan",
   "schemaVersion": "1",
   "residentSampleCount": 128,
+  "sequentialSampleCount": 10,
+  "concurrentSampleCount": 32,
+  "failureInjections": [
+    "cancel-before-terminal",
+    "bounded-mailbox-saturation",
+    "stale-content-binding"
+  ],
   "lockPath": "benchmarks/large-library-runtime-corpora.json",
   "requiredLanguages": [
     "gerbil-scheme",
@@ -15,7 +22,7 @@
   "clientProtocol": {
     "protocolId": "agent.semantic-protocols.client",
     "protocolVersion": "1",
-    "transport": "http-json",
+    "transport": "grpc-tokio-streams",
     "phases": ["initialize", "catalog", "request", "cancel", "cancelled", "shutdown"],
     "sessionPolicy": "one-initialize-per-session",
     "readyEffects": ["mpsc", "oneshot", "cancel", "response"],
@@ -29,6 +36,32 @@
     "p99MaximumMicros": 700,
     "maxMaximumMicros": 1000
   },
+  "cacheStates": [
+    {
+      "state": "cold-build",
+      "prepareAction": "new-isolated-workspace-generation",
+      "mutationScope": "benchmark-workspace-generation",
+      "sampleCount": 1
+    },
+    {
+      "state": "cold-load",
+      "prepareAction": "evict-resident-generation-only",
+      "mutationScope": "benchmark-workspace-generation",
+      "sampleCount": 10
+    },
+    {
+      "state": "warm-read",
+      "prepareAction": "reuse-exact-resident-generation",
+      "mutationScope": "none",
+      "sampleCount": 128
+    },
+    {
+      "state": "released",
+      "prepareAction": "release-exact-benchmark-generation",
+      "mutationScope": "benchmark-workspace-generation",
+      "sampleCount": 1
+    }
+  ],
   "cases": [
     {
       "caseId": "gerbil-scheme.gerbil.core",

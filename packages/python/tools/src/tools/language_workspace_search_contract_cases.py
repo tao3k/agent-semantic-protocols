@@ -18,7 +18,7 @@ class SearchContractCase:
 CONTRACT_CASES: tuple[SearchContractCase, ...] = (
     SearchContractCase(
         language="rust",
-        project_root="languages/rust-lang-project-harness",
+        project_root="languages/asp-rust",
         ingest_pipes=("items", "tests"),
         accepted_pipes_json='"acceptedPipes":["items","tests"]',
         workspace_needles=(

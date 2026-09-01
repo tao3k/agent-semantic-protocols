@@ -14,7 +14,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 _SCHEMA_PATH = _REPO_ROOT / "schemas/semantic-tree-sitter-grammar-profile.v1.schema.json"
 _RUST_PROFILE_PATH = (
     _REPO_ROOT
-    / "languages/rust-lang-project-harness/tree-sitter/tree-sitter-rust/grammar-profile.json"
+    / "languages/asp-rust/tree-sitter/tree-sitter-rust/grammar-profile.json"
 )
 _PYTHON_PROFILE_PATH = (
     _REPO_ROOT

@@ -1,6 +1,7 @@
 //! ASP downstream policy crate for Rust project harness evidence graphs.
 
-pub use rust_lang_project_harness::{
+#[cfg(feature = "harness-runtime")]
+pub use asp_rust::{
     RustHarnessConfig, RustHarnessRunScope, RustOwnerResponsibility,
     RustProjectHarnessBuildGateAuthority, RustProjectHarnessDownstreamPolicy,
     RustProjectHarnessWorkspaceEvidenceGraphMemberInput,
@@ -16,7 +17,11 @@ pub use rust_lang_project_harness::{
 };
 
 pub mod build_gate;
-pub use build_gate::assert_asp_rust_project_harness_member_policy_from_env;
+pub use build_gate::{
+    AspRustProjectHarnessMemberBuildReceipt,
+    assert_asp_rust_project_harness_member_policy_from_env,
+    validate_asp_rust_project_harness_member_manifest,
+};
 pub mod evidence;
 /// Reusable hook scenarios for Rust project harness policy checks.
 pub mod member_policy;
@@ -27,7 +32,7 @@ pub mod workspace_evidence_graph;
 
 pub use member_policy::{
     AspRustProjectHarnessMemberPolicy, AspRustProjectHarnessOwnerPolicy,
-    asp_workspace_member_policies,
+    asp_workspace_member_forbidden_normal_dependencies, asp_workspace_member_policies,
 };
 pub use scenario::{
     AspRustProjectHarnessScenario, AspRustProjectHarnessScenarioCommand,

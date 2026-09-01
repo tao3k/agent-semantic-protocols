@@ -1,38 +1,33 @@
 fn main() {
-    let project_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-    let mut config = rust_lang_project_harness::rust_harness_config_for_project(project_root);
-    config.verification_policy.profile_hints.push(
-        rust_lang_project_harness::RustVerificationProfileHint::new(
-            std::path::PathBuf::from("src/lib.rs"),
-            [rust_lang_project_harness::RustOwnerResponsibility::AvailabilityCritical],
-        )
-        .with_task_kinds([rust_lang_project_harness::RustVerificationTaskKind::Stability])
-        .with_rationale(
-            "asp-rust-project-harness-policy owns build-support evidence graph policy for ASP",
-        ),
-    );
-    if config.verification_policy.stability_picture.is_none() {
-        config.verification_policy.stability_picture =
-            Some(rust_lang_project_harness::RustVerificationStabilityPictureConfig::default());
+    let config = asp_rust::default_asp_rust_config();
+    let build_dag = asp_rust::asp_rust_workspace_build_dag_from_env(&config)
+        .unwrap_or_else(|error| panic!("derive ASP Cargo workspace Build DAG: {error}"));
+    let policy_catalog = std::fs::read("src/member_policy.rs")
+        .expect("read ASP Rust workspace member policy catalog");
+    for package in &build_dag.packages {
+        println!(
+            "cargo:rerun-if-changed={}",
+            package.package_root.join("Cargo.toml").display()
+        );
     }
-    let policy = rust_lang_project_harness::RustProjectHarnessDownstreamPolicy::new(
-        "asp-rust-project-harness-policy",
-        config,
+    let policy_catalog_digest = format!("blake3-256:{}", blake3::hash(&policy_catalog).to_hex());
+    let material = serde_json::json!({
+        "schemaId": "agent.semantic-protocols.asp-rust-workspace-build-receipt",
+        "schemaVersion": "1",
+        "buildDagSchemaId": build_dag.schema_id,
+        "buildDagSchemaVersion": build_dag.schema_version,
+        "workspaceRoot": build_dag.workspace_root,
+        "packageCount": build_dag.packages.len(),
+        "policyCatalogDigest": policy_catalog_digest,
+    });
+    let encoded = serde_json::to_vec(&material).expect("serialize ASP workspace build receipt");
+    let digest = format!("blake3-256:{}", blake3::hash(&encoded).to_hex());
+    println!("cargo:rerun-if-changed=build.rs");
+    println!("cargo:rerun-if-changed=src/member_policy.rs");
+    println!("cargo:rustc-env=ASP_RUST_WORKSPACE_BUILD_RECEIPT_DIGEST={digest}");
+    println!(
+        "cargo:rustc-env=ASP_RUST_WORKSPACE_BUILD_PACKAGE_COUNT={}",
+        build_dag.packages.len()
     );
-    let policy_bytes = serde_json::to_vec(policy.config())
-        .expect("serialize ASP Rust build-support harness policy");
-    let policy_digest = format!("blake3-256:{}", blake3::hash(&policy_bytes).to_hex());
-    let out_dir = std::env::var_os("OUT_DIR")
-        .map(std::path::PathBuf::from)
-        .expect("Cargo OUT_DIR is required; implicit cache fallback is forbidden");
-    let authority = rust_lang_project_harness::RustProjectHarnessBuildGateAuthority::new(
-        out_dir.join("rust-project-harness-self-policy-cache"),
-        policy_digest,
-    )
-    .expect("construct ASP Rust build-support harness authority");
-    rust_lang_project_harness::assert_rust_project_harness_downstream_policy_with_authority(
-        project_root,
-        &policy,
-        &authority,
-    );
+    println!("cargo:rustc-env=ASP_RUST_WORKSPACE_POLICY_CATALOG_DIGEST={policy_catalog_digest}");
 }

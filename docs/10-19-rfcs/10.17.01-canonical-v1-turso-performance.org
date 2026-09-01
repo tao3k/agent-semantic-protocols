@@ -4,13 +4,11 @@
 * V1 identity refactor hold
 
 This active V1 performance contract is retained without a serving cutover.
-The eventual key is the ASP Server's exact content-addressed artifact,
-provider-contract, workspace, and source binding; =activationGeneration= is
-not product identity. MutationId, leaseId, and expected-digest CAS remain
-transaction controls. No existing generation, direct-link, project-entry, or
-active-candidate record is changed by this RFC update. The exact in-place
-replacement and its performance gates are listed in RFC 10.05 and require
-separate approval.
+The key is the ASP Server's exact content-addressed artifact,
+provider-contract, workspace, and source binding. Runtime publication uses the
+Active/Healthy bundle identity and its publication nonce; it has no parallel
+numeric activation authority. MutationId, leaseId, and expected-digest CAS
+remain transaction controls.
 
 * Decision
 

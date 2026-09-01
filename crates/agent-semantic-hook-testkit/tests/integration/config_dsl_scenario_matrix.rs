@@ -180,10 +180,25 @@ fn canonical_config_document_sections_are_owned_by_testkit_and_aot_projection() 
         "@agent-asp-testing"
     );
 
-    let expected_readers = ["cat", "head", "tail", "bat", "grep", "rg", "sed", "git"]
-        .into_iter()
-        .map(str::to_owned)
-        .collect::<BTreeSet<_>>();
+    let expected_readers = [
+        "Get-Content",
+        "awk",
+        "bat",
+        "batcat",
+        "cat",
+        "git",
+        "grep",
+        "head",
+        "less",
+        "more",
+        "nl",
+        "rg",
+        "sed",
+        "tail",
+    ]
+    .into_iter()
+    .map(str::to_owned)
+    .collect::<BTreeSet<_>>();
     assert_eq!(
         config
             .reader_behavior_patterns
@@ -424,12 +439,16 @@ fn canonical_dsl_positive_negative_and_wrapper_witnesses_select_only_the_declare
         let capability_available = projection_binary.is_none_or(executable_is_available);
 
         if capability_available {
-            for command in witness
+            let positive_subjects = witness
+                .get("positiveSubjects")
+                .and_then(toml::Value::as_array);
+            for (positive_index, command) in witness
                 .get("positiveCommands")
                 .and_then(toml::Value::as_array)
                 .into_iter()
                 .flatten()
                 .map(|command| command.as_str().expect("positive command"))
+                .enumerate()
             {
                 let command = if expected_rule == "route-read-to-asp-languages" {
                     command.replace("/Users/example/project", &runtime.project_root)
@@ -457,10 +476,11 @@ fn canonical_dsl_positive_negative_and_wrapper_witnesses_select_only_the_declare
                     .expect("project Reader request")
                     .expect("registered source Reader request");
                     assert!(request.wrapped_command);
-                    assert_eq!(
-                        request.subject,
-                        "crates/agent-semantic-client/src/client_cli.rs"
-                    );
+                    let expected_subject = positive_subjects
+                        .and_then(|subjects| subjects.get(positive_index))
+                        .and_then(toml::Value::as_str)
+                        .expect("Reader witness positiveSubjects must align with positiveCommands");
+                    assert_eq!(request.subject, expected_subject, "command={command}");
                     assert_ne!(
                         rule_id(&classify_command(&runtime, &config, &command)),
                         Some(expected_rule),

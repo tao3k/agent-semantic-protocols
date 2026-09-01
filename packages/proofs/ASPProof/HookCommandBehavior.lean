@@ -12,6 +12,18 @@ inductive ReaderFactOrigin where
   | coldPermissionProbe
   deriving BEq, DecidableEq, Repr
 
+inductive ShellFamily where
+  | posix
+  | powershell
+  deriving BEq, DecidableEq, Repr
+
+def normalizeReaderExecutable (shell : ShellFamily) (executable : String) : String :=
+  match shell, executable with
+  | .powershell, "gc" => "Get-Content"
+  | .powershell, "type" => "Get-Content"
+  | .powershell, "get-content" => "Get-Content"
+  | _, executable => executable
+
 structure BehaviorKey where
   executableIdentity : String
   argumentShape : List String
@@ -189,5 +201,15 @@ theorem argv_many_accepts_arbitrary_tokens (tail : List String) :
     ArgvPatternMatches [.one "reader", .many]
       ("reader" :: "--flag" :: "value" :: tail) := by
   exact .one rfl (.manyNext (.manyNext (.manyZero (.prefix tail))))
+
+theorem powershell_reader_aliases_share_one_reader_identity :
+    ["gc", "type", "get-content"].map
+      (normalizeReaderExecutable .powershell) =
+        ["Get-Content", "Get-Content", "Get-Content"] := by
+  rfl
+
+theorem posix_type_is_not_a_powershell_reader_alias :
+    normalizeReaderExecutable .posix "type" = "type" := by
+  rfl
 
 end ASPProof.HookCommandBehavior

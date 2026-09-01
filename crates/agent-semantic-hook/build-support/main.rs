@@ -6,6 +6,7 @@ mod reader_probe;
 
 #[cfg(feature = "compiler")]
 fn main() {
+    assert_member_policy();
     reader_probe::compile_reader_probe_artifacts();
     let manifest_dir = PathBuf::from(std::env::var_os("CARGO_MANIFEST_DIR").expect("manifest dir"));
     let resolved =
@@ -20,8 +21,17 @@ fn main() {
 
 #[cfg(all(feature = "evaluator", not(feature = "compiler")))]
 fn main() {
+    assert_member_policy();
     reader_probe::compile_reader_probe_artifacts();
 }
 
 #[cfg(not(any(feature = "compiler", feature = "evaluator")))]
-fn main() {}
+fn main() {
+    assert_member_policy();
+}
+
+fn assert_member_policy() {
+    asp_rust_project_harness_policy::assert_asp_rust_project_harness_member_policy_from_env(env!(
+        "CARGO_PKG_NAME"
+    ));
+}

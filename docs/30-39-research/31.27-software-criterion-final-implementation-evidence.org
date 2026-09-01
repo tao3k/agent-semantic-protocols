@@ -26,7 +26,7 @@ metadata keeps the raw =signalId= values for schema-visible matching.
 Changed compact surfaces:
 
 - Python renderer: =languages/python-lang-project-harness/src/python_lang_project_harness/_render.py=
-- Rust algorithm-shape policy: =languages/rust-lang-project-harness/src/rules/agent_policy/algorithm_shape.rs=
+- Rust algorithm-shape policy: =languages/asp-rust/src/rules/agent_policy/algorithm_shape.rs=
 - TypeScript agent-policy summaries: =languages/typescript-lang-project-harness/src/rules/agent_policy/pack.ts=
 
 Snapshot coverage now fixes both sides:
@@ -79,7 +79,7 @@ node --test \
 # 14 passed
 
 direnv exec . cargo test \
-  --manifest-path languages/rust-lang-project-harness/Cargo.toml \
+  --manifest-path languages/asp-rust/Cargo.toml \
   --features 'search cli' software_criterion_snapshot
 # 5 passed
 

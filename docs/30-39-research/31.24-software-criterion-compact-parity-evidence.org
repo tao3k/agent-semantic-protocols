@@ -30,7 +30,7 @@ signals=control-flow.broad-linear-phase:1
 samples=run_protocol_cli:control-flow.broad-linear-phase
 claim=compact-signal-id-visible
 
-[software-criterion-compact-parity] language=rust provider=asp-rust project=languages/rust-lang-project-harness
+[software-criterion-compact-parity] language=rust provider=asp-rust project=languages/asp-rust
 command=target/debug/asp-rust check --full .
 metrics=exitCode=1,packetBytes=5256
 signals=control-flow.traversal-knot:1,native-idiom.manual-transform-loop:3

@@ -1,6 +1,7 @@
 //! Install command routing and pinned language provider installer.
 
-use agent_semantic_runtime::{ensure_project_provider_lock_dir, project_runtime_state};
+use agent_semantic_runtime::project_runtime_state;
+use clap::Parser;
 use serde::Deserialize;
 use std::collections::BTreeMap;
 use std::env;
@@ -17,7 +18,7 @@ use super::target::resolve_provider_binary_install_target;
 use super::workspace as install_provider_workspace;
 
 use super::cli_support as install_provider_cli_support;
-use install_provider_cli_support::{absolute_project_root, usage};
+use install_provider_cli_support::usage;
 
 #[cfg(test)]
 use super::archive::{checksum_name, parse_sha256_checksum};
@@ -43,25 +44,29 @@ struct PinnedLanguageReleaseEntry {
     sha256_by_target: BTreeMap<String, String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub(super) enum InstallScope {
-    #[default]
-    Global,
-    Project {
-        root: PathBuf,
-    },
-}
-
-#[derive(Debug, Default)]
-struct InstallArgs {
-    scope: InstallScope,
-    target: Option<String>,
-}
-
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum ProviderArtifactAuthority<'a> {
     DevelopBuild { root: &'a Path },
     LockedRelease,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Parser)]
+#[command(
+    name = "asp install language",
+    disable_help_subcommand = true,
+    disable_version_flag = true,
+    about = "Publish a pinned language provider through ASP State Home"
+)]
+struct InstallLanguageOptions {
+    #[arg(long, value_name = "TARGET")]
+    target: Option<String>,
+}
+
+fn parse_install_language_options(args: &[String]) -> Result<InstallLanguageOptions, String> {
+    InstallLanguageOptions::try_parse_from(
+        std::iter::once("asp install language").chain(args.iter().map(String::as_str)),
+    )
+    .map_err(|error| error.to_string())
 }
 
 fn provider_artifact_authority<'a>(
@@ -101,7 +106,7 @@ async fn run_install_provider(args: &[String]) -> Result<(), String> {
     if matches!(language_id, "help" | "--help" | "-h") {
         return Err(usage());
     }
-    let install_args = parse_install_args(&args[1..])?;
+    let install_args = parse_install_language_options(&args[1..])?;
     let install_registration =
         crate::command::provider_install_registry::provider_install_registration(language_id)?;
     let target = match install_args.target {
@@ -112,10 +117,6 @@ async fn run_install_provider(args: &[String]) -> Result<(), String> {
     };
     let invocation_root =
         env::current_dir().map_err(|error| format!("failed to read current directory: {error}"))?;
-    let project_root = match &install_args.scope {
-        InstallScope::Global => None,
-        InstallScope::Project { root } => Some(root.as_path()),
-    };
     let state_home = agent_semantic_runtime::resolve_state_home()?;
     let artifact_catalog =
         agent_semantic_artifacts::runtime_artifact_catalog::load_runtime_artifact_catalog(
@@ -138,8 +139,6 @@ async fn run_install_provider(args: &[String]) -> Result<(), String> {
                 registered_binary,
                 &target,
                 &invocation_root,
-                project_root,
-                &install_args.scope,
                 root,
                 &registration,
                 built,
@@ -158,26 +157,10 @@ async fn run_install_provider(args: &[String]) -> Result<(), String> {
         )?;
     let install_target =
         resolve_provider_binary_install_target(&spec.language_id, &provider_binary)?;
-    let (scope, provider_lock_dir, provider_package_root, scope_root) = match &install_args.scope {
-        InstallScope::Global => {
-            let state_root = canonical_global_provider_state_root()?;
-            (
-                "global",
-                state_root.join("receipts"),
-                state_root.join("packages"),
-                state_root,
-            )
-        }
-        InstallScope::Project { root } => {
-            let provider_lock_dir = ensure_project_provider_lock_dir(root)?;
-            (
-                "project",
-                provider_lock_dir.clone(),
-                provider_lock_dir,
-                root.clone(),
-            )
-        }
-    };
+    let scope = "state-home";
+    let scope_root = canonical_provider_state_root()?;
+    let provider_lock_dir = scope_root.join("receipts");
+    let provider_package_root = scope_root.join("packages");
     let provider_package_dir = provider_package_root
         .join(&spec.language_id)
         .join(path_segment(rev))
@@ -215,11 +198,8 @@ async fn run_install_provider(args: &[String]) -> Result<(), String> {
         &install_target.path,
         &provider_package_dir,
     )?;
-    let runtime_state = project_runtime_state(project_root.unwrap_or(&invocation_root))?;
-    let stable_entry = project_root.map_or_else(
-        || install_target.path.clone(),
-        |_| runtime_state.runtime_bin_dir.join(&provider_binary),
-    );
+    let runtime_state = project_runtime_state(&invocation_root)?;
+    let stable_entry = install_target.path.clone();
     let artifact_root = runtime_state.protocol_home.join("runtime/artifacts");
     let published = super::protocol_binary::install_protocol_binary_target(
         &installed_entrypoint,
@@ -280,15 +260,11 @@ async fn run_install_provider(args: &[String]) -> Result<(), String> {
             launcher_digest: None,
         },
     )?;
-    let installed_provider_artifacts = if matches!(install_args.scope, InstallScope::Global) {
-        Some(
-            super::installed_provider_artifacts::publish_current_installed_provider_artifacts(
-                &runtime_state.protocol_home,
-            )?,
-        )
-    } else {
-        None
-    };
+    let installed_provider_artifacts = Some(
+        super::installed_provider_artifacts::publish_current_installed_provider_artifacts(
+            &runtime_state.protocol_home,
+        )?,
+    );
     println!(
         "[asp-install] provider={} language={} scope={} installMode=locked-release rev={} target={} binary={} sha256={} checksumAuthority={} installedPath={} installTargetSource={} lock={} runtimeBinDir={} binaryCurrent={} binarySwitch=atomic installedProviderArtifacts={} installedProviderArtifactsWrite={} installedProviderArtifactsChangedLeaves={} installedProviderArtifactsElapsedMicros={}",
         spec.provider_id,
@@ -321,55 +297,7 @@ async fn run_install_provider(args: &[String]) -> Result<(), String> {
     Ok(())
 }
 
-#[allow(clippy::too_many_arguments)]
-#[derive(clap::Parser)]
-#[command(
-    name = "asp install language",
-    disable_version_flag = true,
-    about = "Install a pinned language provider into global state or one explicit project"
-)]
-struct InstallCliArgs {
-    /// Install into global ASP state (the default).
-    #[arg(long, conflicts_with = "project")]
-    global: bool,
-
-    /// Install into the canonical state for this project root.
-    #[arg(long, value_name = "ROOT", conflicts_with = "global")]
-    project: Option<PathBuf>,
-
-    #[arg(long, value_name = "TARGET")]
-    target: Option<String>,
-}
-
-fn parse_install_args(args: &[String]) -> Result<InstallArgs, String> {
-    use clap::Parser as _;
-
-    let cli = InstallCliArgs::try_parse_from(
-        std::iter::once("asp install language").chain(args.iter().map(String::as_str)),
-    )
-    .map_err(|error| error.to_string())?;
-    let scope = match (cli.global, cli.project) {
-        (_, Some(root)) => {
-            let invocation_root = env::current_dir()
-                .map_err(|error| format!("failed to read current directory: {error}"))?;
-            let absolute = absolute_project_root(&invocation_root, &root);
-            let root = absolute.canonicalize().map_err(|error| {
-                format!(
-                    "failed to canonicalize project root {}: {error}",
-                    absolute.display()
-                )
-            })?;
-            InstallScope::Project { root }
-        }
-        (true, None) | (false, None) => InstallScope::Global,
-    };
-    Ok(InstallArgs {
-        scope,
-        target: cli.target,
-    })
-}
-
-pub(super) fn canonical_global_provider_state_root() -> Result<PathBuf, String> {
+pub(super) fn canonical_provider_state_root() -> Result<PathBuf, String> {
     let state_home = env::var_os("ASP_STATE_HOME")
         .map(PathBuf::from)
         .or_else(|| {
@@ -377,21 +305,21 @@ pub(super) fn canonical_global_provider_state_root() -> Result<PathBuf, String> 
                 .map(PathBuf::from)
                 .map(|home| home.join(".agent-semantic-protocols"))
         })
-        .ok_or_else(|| "global provider install requires ASP_STATE_HOME or HOME".to_string())?;
-    canonical_global_provider_state_root_from(&state_home)
+        .ok_or_else(|| "provider installation requires ASP_STATE_HOME or HOME".to_string())?;
+    canonical_provider_state_root_from(&state_home)
 }
 
-fn canonical_global_provider_state_root_from(state_home: &Path) -> Result<PathBuf, String> {
+fn canonical_provider_state_root_from(state_home: &Path) -> Result<PathBuf, String> {
     let provider_root = agent_semantic_runtime::provider_state_root(state_home);
     fs::create_dir_all(&provider_root).map_err(|error| {
         format!(
-            "failed to create global provider state root {}: {error}",
+            "failed to create State Home provider root {}: {error}",
             provider_root.display()
         )
     })?;
     provider_root.canonicalize().map_err(|error| {
         format!(
-            "failed to canonicalize global provider state root {}: {error}",
+            "failed to canonicalize State Home provider root {}: {error}",
             provider_root.display()
         )
     })

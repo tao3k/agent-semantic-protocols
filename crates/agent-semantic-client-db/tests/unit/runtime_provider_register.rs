@@ -203,6 +203,59 @@ async fn external_provider_state_survives_runtime_server_reconstruction() {
 }
 
 #[tokio::test]
+async fn stale_installed_capability_is_quarantined_without_killing_runtime_core() {
+    let temporary = tempfile::tempdir().expect("provider state directory");
+    let store_path = temporary.path().join("provider-register-state.json");
+    let register = RuntimeProviderRegister::from_seed_with_store(
+        vec![identity_provider("gerbil-scheme", "asp-gerbil-scheme")],
+        store_path.clone(),
+    )
+    .await
+    .expect("initial provider register");
+    register
+        .apply(request(
+            Some(1),
+            ProviderRegisterOperation::Register {
+                provider: installed_capability("gerbil-scheme", "asp-gerbil-scheme"),
+            },
+        ))
+        .await
+        .expect("persist valid capability");
+    drop(register);
+
+    let mut persisted: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(&store_path).expect("read persisted provider register"),
+    )
+    .expect("decode persisted provider register");
+    persisted["providers"][0]["registration"]["routes"][0]["requestSchemaId"] =
+        json!("agent.semantic-protocols.legacy-request");
+    std::fs::write(
+        &store_path,
+        serde_json::to_vec(&persisted).expect("encode stale provider register"),
+    )
+    .expect("write stale provider register");
+
+    let restored = RuntimeProviderRegister::from_seed_with_store(
+        vec![identity_provider("gerbil-scheme", "asp-gerbil-scheme")],
+        store_path,
+    )
+    .await
+    .expect("invalid capability must not terminate Runtime core");
+    assert!(restored.compiled_routes("asp-gerbil-scheme").is_none());
+    assert!(
+        restored
+            .rejected_capability("asp-gerbil-scheme")
+            .expect("typed provider rejection")
+            .contains("requestSchemaId")
+    );
+    let failure = restored
+        .resolve_route("gerbil-scheme", "query")
+        .expect_err("quarantined provider must remain fail-closed");
+    assert!(failure.contains("reasonKind=installed-capability-invalid"));
+    assert!(failure.contains("providerId=asp-gerbil-scheme"));
+}
+
+#[tokio::test]
 async fn builtin_identity_accepts_installed_routes_and_unregister_returns_to_seed() {
     let register = RuntimeProviderRegister::from_seed(vec![identity_provider("rust", "asp-rust")])
         .expect("seed register");

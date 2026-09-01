@@ -5,7 +5,7 @@ use crate::graph_candidate_projection::{
 };
 
 #[test]
-fn graph_candidate_item_nodes_use_registered_language_structural_identity_without_line_ranges() {
+fn graph_candidate_item_nodes_use_language_neutral_structural_identity_without_line_ranges() {
     let candidate = GraphProjectionCandidate::new(
         "src/lib.rs",
         3,
@@ -15,13 +15,9 @@ fn graph_candidate_item_nodes_use_registered_language_structural_identity_withou
         "source-index",
         "high",
     );
-    let language_ids = agent_semantic_hook::registered_language_ids();
-
-    assert!(!language_ids.is_empty());
-
-    for language_id in language_ids {
+    for language_id in ["rust", "python", "typescript"] {
         let nodes = graph_candidate_item_nodes(GraphCandidateItemNodesRequest::new(
-            &language_id.as_str().into(),
+            &language_id.into(),
             std::slice::from_ref(&candidate),
             8,
         ));

@@ -11,8 +11,8 @@ pub use client_protocol::{
     AspClientDispatchRequest, AspClientDispatcher, AspClientFrameService,
 };
 pub use grpc::{
-    AspClientGrpcService, AspClientGrpcTransport, bind_asp_client_grpc_unix,
-    serve_asp_client_grpc_unix,
+    AspClientGrpcService, AspClientGrpcTransport, CLIENT_FRAME_SESSION_CAPACITY,
+    CLIENT_FRAME_SESSION_CONTROL_RESERVE, bind_asp_client_grpc_unix, serve_asp_client_grpc_unix,
 };
 
 pub use provider_project_resolution::provider_capabilities_permit_project_resolution;

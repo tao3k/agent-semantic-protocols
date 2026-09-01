@@ -64,7 +64,7 @@ pub(super) const LANGUAGE_SCENARIO_BENCHMARK_REQUIREMENTS:
     &[LanguageScenarioBenchmarkRequirement] = &[
     LanguageScenarioBenchmarkRequirement {
         language: "rust",
-        root: "languages/rust-lang-project-harness/tests/unit/scenarios",
+        root: "languages/asp-rust/tests/unit/scenarios",
         syntax: ScenarioBenchmarkSyntax::TomlPair,
     },
     LanguageScenarioBenchmarkRequirement {

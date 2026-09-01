@@ -35,8 +35,6 @@ mod hook_recovery_admission;
 mod hook_workspace_candidate;
 #[path = "unit/match_policy_contract.rs"]
 mod match_policy_contract;
-#[path = "unit/rust_project_harness_gate.rs"]
-mod rust_project_harness_gate;
 #[path = "unit/test_process_env.rs"]
 mod test_process_env;
 #[path = "unit/tool_action.rs"]

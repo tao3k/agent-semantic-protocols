@@ -89,8 +89,7 @@ fn workspace_scope_has_no_selected_package() {
 #[test]
 fn absolute_package_root_is_not_joined_to_workspace_again() {
     let workspace = Path::new("/Users/guangtao/ghq/github.com/tao3k/repo");
-    let package =
-        Path::new("/Users/guangtao/ghq/github.com/tao3k/repo/languages/rust-lang-project-harness");
+    let package = Path::new("/Users/guangtao/ghq/github.com/tao3k/repo/languages/asp-rust");
     assert_eq!(
         resolve_workspace_member_root_v1(workspace, package).expect("absolute package"),
         package
@@ -101,12 +100,9 @@ fn absolute_package_root_is_not_joined_to_workspace_again() {
 fn relative_package_root_is_resolved_once() {
     let workspace = Path::new("/repo");
     assert_eq!(
-        resolve_workspace_member_root_v1(
-            workspace,
-            Path::new("languages/rust-lang-project-harness"),
-        )
-        .expect("relative package"),
-        PathBuf::from("/repo/languages/rust-lang-project-harness")
+        resolve_workspace_member_root_v1(workspace, Path::new("languages/asp-rust"),)
+            .expect("relative package"),
+        PathBuf::from("/repo/languages/asp-rust")
     );
 }
 

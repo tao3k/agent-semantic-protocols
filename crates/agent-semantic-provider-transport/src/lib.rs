@@ -17,6 +17,7 @@ mod asp_client_server;
 mod asp_client_server_lifecycle;
 pub mod byte_text;
 mod capture;
+mod priority_json_stream;
 mod process_contract;
 pub mod projection_batch;
 mod resident_runtime;
@@ -39,6 +40,7 @@ pub use asp_client_server_lifecycle::{
     ASP_CLIENT_SERVER_LIFECYCLE_RECEIPT_SCHEMA_ID, AspClientServerLifecycleReceipt,
     AspClientServerLifecycleState,
 };
+pub use priority_json_stream::{PriorityJsonStream, PriorityJsonStreamTerminal};
 pub use process_contract::{
     DEFAULT_PROVIDER_MEMORY_LIMIT_BYTES, OutputFraming, OutputMode, ProviderProcessError,
     ProviderProcessFraming, ProviderProcessLimits, ProviderProcessReceipt, ProviderProcessSpec,

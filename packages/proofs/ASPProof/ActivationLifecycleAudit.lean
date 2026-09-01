@@ -280,59 +280,78 @@ theorem evolution_without_compatibility_witness_cannot_be_applied
   rw [incompatible] at compatible
   exact Bool.noConfusion compatible
 
-/-! ## Atomic activation-generation publication -/
+/-! ## Atomic active/healthy bundle publication -/
 
-structure ActivationGenerationSnapshot where
-  generation : Nat
-  activationDigest : Nat
-  receiptActivationDigest : Nat
-  providerGeneration : Nat
-  configGeneration : Nat
+structure ActiveHealthyBundleSnapshot where
+  activeBundleDigest : Nat
+  healthyBundleDigest : Nat
+  receiptBundleDigest : Nat
+  publicationNonce : Nat
   complete : Bool
   deriving DecidableEq, Repr
 
-def GenerationConsistent (snapshot : ActivationGenerationSnapshot) : Prop :=
+def ServingBundleConsistent (snapshot : ActiveHealthyBundleSnapshot) : Prop :=
   snapshot.complete = true ∧
-  snapshot.activationDigest = snapshot.receiptActivationDigest
+  snapshot.activeBundleDigest = snapshot.healthyBundleDigest ∧
+  snapshot.activeBundleDigest = snapshot.receiptBundleDigest
 
-def publishGeneration
-    (current candidate : ActivationGenerationSnapshot) : ActivationGenerationSnapshot :=
+def publishServingBundle
+    (current candidate : ActiveHealthyBundleSnapshot) : ActiveHealthyBundleSnapshot :=
   if candidate.complete &&
-      decide (candidate.activationDigest = candidate.receiptActivationDigest)
+      decide (candidate.activeBundleDigest = candidate.healthyBundleDigest) &&
+      decide (candidate.activeBundleDigest = candidate.receiptBundleDigest)
   then candidate
   else current
 
-theorem incomplete_candidate_cannot_replace_published_generation
-    (current candidate : ActivationGenerationSnapshot)
+theorem incomplete_candidate_cannot_replace_serving_bundle
+    (current candidate : ActiveHealthyBundleSnapshot)
     (incomplete : candidate.complete = false) :
-    publishGeneration current candidate = current := by
-  simp [publishGeneration, incomplete]
+    publishServingBundle current candidate = current := by
+  simp [publishServingBundle, incomplete]
 
-theorem digest_mismatched_candidate_cannot_replace_published_generation
-    (current candidate : ActivationGenerationSnapshot)
-    (mismatch : candidate.activationDigest ≠ candidate.receiptActivationDigest) :
-    publishGeneration current candidate = current := by
-  simp [publishGeneration, mismatch]
+theorem active_healthy_mismatch_cannot_replace_serving_bundle
+    (current candidate : ActiveHealthyBundleSnapshot)
+    (mismatch : candidate.activeBundleDigest ≠ candidate.healthyBundleDigest) :
+    publishServingBundle current candidate = current := by
+  simp [publishServingBundle, mismatch]
 
-theorem consistent_candidate_is_the_only_new_visible_generation
-    (current candidate : ActivationGenerationSnapshot)
+theorem receipt_mismatch_cannot_replace_serving_bundle
+    (current candidate : ActiveHealthyBundleSnapshot)
+    (mismatch : candidate.activeBundleDigest ≠ candidate.receiptBundleDigest) :
+    publishServingBundle current candidate = current := by
+  by_cases activeHealthy : candidate.activeBundleDigest = candidate.healthyBundleDigest
+  · have healthyReceipt : candidate.healthyBundleDigest ≠ candidate.receiptBundleDigest := by
+      intro equal
+      apply mismatch
+      calc
+        candidate.activeBundleDigest = candidate.healthyBundleDigest := activeHealthy
+        _ = candidate.receiptBundleDigest := equal
+    simp [publishServingBundle, activeHealthy, healthyReceipt]
+  · simp [publishServingBundle, activeHealthy]
+
+theorem consistent_candidate_is_the_only_new_visible_serving_bundle
+    (current candidate : ActiveHealthyBundleSnapshot)
     (complete : candidate.complete = true)
-    (consistent : candidate.activationDigest = candidate.receiptActivationDigest) :
-    publishGeneration current candidate = candidate := by
-  simp [publishGeneration, complete, consistent]
+    (activeHealthy : candidate.activeBundleDigest = candidate.healthyBundleDigest)
+    (activeReceipt : candidate.activeBundleDigest = candidate.receiptBundleDigest) :
+    publishServingBundle current candidate = candidate := by
+  have healthyReceipt : candidate.healthyBundleDigest = candidate.receiptBundleDigest := by
+    calc
+      candidate.healthyBundleDigest = candidate.activeBundleDigest := activeHealthy.symm
+      _ = candidate.receiptBundleDigest := activeReceipt
+  simp [publishServingBundle, complete, activeHealthy, healthyReceipt]
 
-def mixedTwoFileGeneration : ActivationGenerationSnapshot where
-  generation := 2
-  activationDigest := 22
-  receiptActivationDigest := 11
-  providerGeneration := 2
-  configGeneration := 2
+def mixedTwoFileBundle : ActiveHealthyBundleSnapshot where
+  activeBundleDigest := 22
+  healthyBundleDigest := 22
+  receiptBundleDigest := 11
+  publicationNonce := 2
   complete := true
 
 /-- Writing activation and receipt as separate visible files admits a mixed
-generation that the atomic publication protocol must reject. -/
+bundle that the atomic publication protocol must reject. -/
 theorem two_file_activation_then_receipt_publish_is_not_consistent :
-    ¬ GenerationConsistent mixedTwoFileGeneration := by
-  simp [GenerationConsistent, mixedTwoFileGeneration]
+    ¬ ServingBundleConsistent mixedTwoFileBundle := by
+  simp [ServingBundleConsistent, mixedTwoFileBundle]
 
 end ASPProof.ActivationLifecycleAudit

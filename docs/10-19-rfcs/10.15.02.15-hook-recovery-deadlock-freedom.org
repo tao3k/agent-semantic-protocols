@@ -93,7 +93,7 @@ activation. Runtime states
 =stopped=, =pending=, =failed=, and =ready= cannot change Hook policy
 availability. The fixed Plugin launcher resolves only
 =runtime/bin/asp-hook= and MUST NOT read =runtime/bin/asp=, Runtime
-active/healthy slots, endpoint state, or activation generation.
+active/healthy slots, endpoint state, or Runtime publication identity.
 
 Runtime binary publication has a separate dual-authority invariant.  Inside
 the sole =artifact-mutation.lock= transaction, Artifacts MUST allocate the next

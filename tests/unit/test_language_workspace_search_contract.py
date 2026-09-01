@@ -69,7 +69,7 @@ def test_language_workspace_search_contract_runs_expected_matrix(tmp_path: Path)
         "workspace",
         "--view",
         "seeds",
-        "languages/rust-lang-project-harness",
+        "languages/asp-rust",
     ) in seen
     assert (
         "typescript",

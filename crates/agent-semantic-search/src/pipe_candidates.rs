@@ -3,8 +3,8 @@
 use std::path::{Path, PathBuf};
 
 use crate::{
-    DynamicSearchCandidate, DynamicSearchRootCandidateRequest,
-    collect_dynamic_lexical_overlay_candidates_from_roots, language_file_spec,
+    DynamicSearchCandidate, DynamicSearchRootCandidateRequest, LanguageFileSpec,
+    collect_dynamic_lexical_overlay_candidates_from_roots,
 };
 
 /// Candidate returned by the search pipe candidate service.
@@ -22,20 +22,20 @@ pub struct SearchPipeCandidate {
 /// Search-pipe candidates bound to the canonical snapshot searched.
 #[derive(Clone, Debug)]
 pub struct SearchPipeCandidateCollection {
-    pub source_snapshot: agent_semantic_artifacts::SourceSnapshotEvidence,
+    pub source_snapshot: agent_semantic_content_identity::SourceSnapshotEvidence,
     pub candidates: Vec<SearchPipeCandidate>,
 }
 
 /// Request for `search pipe` candidate collection.
 pub struct SearchPipeCandidateRequest<'a> {
-    pub language_id: &'a str,
+    pub file_spec: &'a LanguageFileSpec,
     pub project_root: &'a Path,
     pub locator_root: &'a Path,
     pub query: &'a str,
     pub owners: &'a [PathBuf],
     pub ignore_dirs: &'a [String],
     pub include_hidden_dirs: &'a [String],
-    pub base_snapshot: &'a agent_semantic_artifacts::WorkspaceSnapshot,
+    pub base_snapshot: &'a agent_semantic_content_identity::WorkspaceSnapshot,
     pub provider_digest: &'a str,
     pub require_multi_clause: bool,
     pub limit: usize,
@@ -56,7 +56,6 @@ pub fn collect_search_pipe_candidates(
         );
     }
 
-    let file_spec = language_file_spec(request.language_id);
     collect_dynamic_lexical_overlay_candidates_from_roots(DynamicSearchRootCandidateRequest {
         project_root: request.project_root,
         locator_root: request.locator_root,
@@ -66,7 +65,7 @@ pub fn collect_search_pipe_candidates(
         include_hidden_dirs: request.include_hidden_dirs,
         base_snapshot: request.base_snapshot,
         provider_digest: request.provider_digest,
-        file_matches: &|path| file_spec.matches(path),
+        file_matches: &|path| request.file_spec.matches(path),
         limit: request.limit,
     })
     .map(|collection| SearchPipeCandidateCollection {

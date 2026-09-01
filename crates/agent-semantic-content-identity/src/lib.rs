@@ -11,6 +11,7 @@ mod domain;
 mod file_artifact;
 mod hashing;
 mod model;
+mod project_resolution;
 mod schema_contract_identity;
 mod source_snapshot;
 pub mod structural_selector;
@@ -45,6 +46,14 @@ pub use model::{
     ArtifactChildRef, ArtifactIdentityDocument, ArtifactLeafInput, ArtifactNodeInput,
     ArtifactRootInput, ArtifactRootRef,
 };
+pub use project_resolution::{
+    AdmittedProjectResolution, ExternalDependency, InternalDependencyEdge,
+    LANGUAGE_PACKAGE_GRAPH_SCHEMA_ID, LanguagePackage, LanguagePackageGraph, LanguageTarget,
+    PROJECT_RESOLUTION_SCHEMA_ID, ProjectFile, ProjectResolutionConflict, ProjectResolutionMetrics,
+    ProjectResolutionReceipt, ResolvedSourceExclusion, ResolvedSourceScope,
+    UnresolvedProjectReference, project_resolution_schema_digest,
+    workspace_source_scope_generation_digest,
+};
 pub use schema_contract_identity::{SchemaContractIdentity, schema_contract_identities};
 pub use source_snapshot::{
     ResolutionAuthority, ResolutionEvidence, ResolutionState, SOURCE_RESOLUTION_SCHEMA_ID,
@@ -62,6 +71,10 @@ mod derived_artifact_evidence_tests;
 #[cfg(test)]
 #[path = "../tests/unit/source_snapshot.rs"]
 mod source_snapshot_tests;
+
+#[cfg(test)]
+#[path = "../tests/unit/project_resolution.rs"]
+mod project_resolution_tests;
 
 #[cfg(test)]
 #[path = "../tests/unit/source_snapshot_contract.rs"]

@@ -10,46 +10,54 @@ Server used by every public search and query request.
 
 * Single authority
 
-The ASP Server owns Runtime process, endpoint, provider, workspace generation,
-cache, readiness, drain, and fallback lifecycle. Protocol and command packages
+Artifacts owns the sole binary-bundle publication state. The ASP Server owns
+Runtime process, endpoint, provider, workspace generation, cache, readiness,
+and drain, but it never selects executable bytes. Protocol and command packages
 may compose arguments and coordinate installation, but must not implement or
-poll this state machine.
+poll either state machine.
 
-One generation directory contains all authority coupled to a running server:
+One immutable bundle contains every executable that must switch together:
 
 #+begin_example
-runtime/server/publications/<runtimeGenerationDigest>/
+runtime/resident/candidates/asp/<bundleDigest>/
   asp
-  endpoint.json
-  authority.json
-runtime/server/current  -> publications/<runtimeGenerationDigest>
-runtime/server/fallback -> publications/<previousHealthyGenerationDigest>
+  asp-hook
+  bundle.json
+  activation.json
+runtime/resident/active  -> candidates/asp/<activeBundleDigest>
+runtime/resident/healthy -> candidates/asp/<healthyBundleDigest>
+runtime/bin/asp          -> ../resident/active/asp
+runtime/bin/asp-hook     -> ../resident/active/asp-hook
 #+end_example
 
-The stable client binary alias and endpoint resolver both traverse =current=.
-An atomic replacement of that one pointer therefore switches the client binary,
-server endpoint, schema, and Runtime generation together. Independent active
-binary and endpoint pointers are forbidden.
+The stable launchers never select an immutable candidate directly and are not
+rewritten after their first canonical installation. An install changes only the
+=active= bundle selector; Runtime readiness changes only =healthy=. A numeric
+content-bound publication nonce, active/healthy selectors, and serving alias
+are forbidden serving authorities.
 
 * Candidate handover
 
 Installation MUST follow this ordered transition:
 
-1. Snapshot the binary into the content-addressed artifact store.
-2. Create an immutable candidate generation directory and generation-scoped
-   sockets/lifecycle state.
-3. Launch the candidate without changing =current=.
-4. Receive a typed Ready or Failed receipt. Polling, sleeps, and outer timeouts
-   are not readiness mechanisms.
-5. Validate =binaryContentDigest=, =runtimeGenerationDigest=, and =schemaDigest=
-   across artifact, endpoint, and Ready receipt.
-6. Atomically move the previous =current= generation to =fallback= and publish
-   the ready candidate as =current=.
-7. Stop admitting requests to the old generation, allow its in-flight requests
-   to complete, then request its graceful drain.
+1. Materialize and content-validate every declared bundle member outside the
+   mutation lock.
+2. Under the one Artifacts mutation transaction, consume the publication lease,
+   write the content-bound pending event, ensure the fixed launchers, and switch
+   only =active= to the complete bundle. Preserve =healthy= unchanged.
+3. Return from installation without waiting for Runtime or a datagram wakeup.
+   The durable event is authority; notification is only a best-effort hint.
+4. The Runtime activation actor launches the event-bound =active= candidate and
+   receives one typed Ready or Failed terminal without polling or sleeps.
+5. A matching Ready terminal switches only =healthy= to =active=, publishes the
+   applied acknowledgement, then drains the previous healthy process.
+6. A matching Failed terminal restores only =active= from =healthy=. A stale
+   candidate whose bundle digest or publication nonce differs changes neither
+   slot.
 
-A candidate that is not Ready cannot change =current= or the client binary
-authority. A failed installation leaves the previous active generation intact.
+A failed candidate materialization or install transaction preserves both prior
+slots. A Runtime failure after publication preserves =healthy= and restores the
+fixed launchers automatically because they always traverse =active=.
 
 * Client handshake
 
@@ -74,12 +82,13 @@ provider spawning, generation restore, polling, or a compatibility route.
 
 * Activation event and resident actor
 
-Installation MUST materialize the immutable content-addressed candidate outside
-the publication lock. It then publishes exactly one pending activation event
-containing the typed candidate digest, immutable artifact path, runtime and
-schema identities, nonce, and the candidate RuntimeArtifactIdentityReceipt.
-The event and receipt MUST bind to the same digest and nonce. This step MUST
-NOT mutate =active=, =healthy=, or the stable client alias.
+Installation MUST materialize the immutable content-addressed bundle outside
+the publication lock. The one short publication transaction then writes exactly
+one pending activation event and moves only =active=. The event contains the
+bundle digest, primary artifact digest, immutable candidate path, publication
+nonce, and candidate identity receipt. The manifest, event, member bytes, and
+receipt MUST bind to the same identities. Stable launchers remain fixed and
+=healthy= remains unchanged.
 
 Exactly one Tokio activation actor is mounted in the production ASP Server.
 At startup it recovers the durable pending event; while online it consumes
@@ -90,16 +99,17 @@ cancellation-aware selection; polling, sleeping, and outer timeouts are
 forbidden. Every launch/readiness failure writes a typed Failed terminal and
 leaves the actor supervised and alive.
 
-Only a typed Ready receipt whose digest, runtime generation, schema identity,
-artifact bytes, and event nonce all match MAY enter the Artifacts commit. That
-short atomic commit sets =healthy= to the exact currently serving artifact
-identity, =active= to the candidate, updates the stable alias to =active=, and
-writes the applied acknowledgement. The old generation is drained only after
-this commit. Before commit, any failure leaves =active=, =healthy=, and the
-stable alias unchanged.
+Installation materializes one immutable bundle, writes its content-bound event,
+and atomically switches =active= to that bundle. Stable launchers resolve members
+through =active=; =healthy= remains the previous serving bundle. Only a typed
+Ready receipt whose digest, publication nonce, schema identity, artifact bytes,
+and endpoint bindings all match MAY enter the Artifacts commit. That short
+commit changes only =healthy= to the exact =active= bundle and writes the applied
+acknowledgement. Activation failure changes only =active= back to =healthy=.
+The previous healthy process is drained only after the Ready commit.
 
 The canonical two-slot vocabulary is =active=/=healthy=. On an initial
-installation with no serving generation, a Ready candidate sets both slots to
+installation with no serving bundle, a Ready candidate sets both slots to
 the same immutable artifact. After every successful commit, retention removes
 all artifacts unreachable from =active=, =healthy=, or one live pending event;
 pending candidates are bounded and recoverable. No third runtime pointer or
@@ -108,18 +118,17 @@ second activation actor exists.
 * Resident replacement observation
 
 The resident replacement identity is exactly the canonical applied activation
-and serving transaction tuple =(activationGeneration, artifactDigest,
-ownerEpoch)=.  The Runtime monitor may observe only that tuple.  A pending
+and serving transaction tuple =(artifactDigest, publicationNonce, ownerEpoch)=.
+The Runtime monitor may observe only that tuple.  A pending
 activation is input to the resident activation actor and is not an applied or
 serving identity until the actor commits it.
 
 A developer source-generation receipt, build output, stable-link target, or
 artifact-identity side receipt cannot request handoff and cannot retire a
-healthy owner.  Missing, malformed, or unknown applied authority is a typed
+healthy owner. Missing, malformed, or unknown applied authority is a typed
 observation failure: it never fabricates a replacement and never drains the
-last healthy resident.  A new applied generation is distinct even when its
-content digest is unchanged, and it emits one generation-bound replacement
-observation.
+last healthy resident. A distinct content-bound publication nonce is observable
+even when immutable content is reused, and it emits one replacement observation.
 
 * Deterministic acceptance
 

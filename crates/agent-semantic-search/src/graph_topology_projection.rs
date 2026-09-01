@@ -69,7 +69,7 @@ pub struct GraphTopologyProjectionRequest<'a> {
     language_id: GraphTopologyLanguageId,
     workspace_root: &'a Path,
     candidates: &'a [GraphProjectionCandidate],
-    project_resolutions: &'a [agent_semantic_runtime::AdmittedProjectResolution],
+    project_resolutions: &'a [agent_semantic_content_identity::AdmittedProjectResolution],
     include_repository_discovery: bool,
 }
 
@@ -78,7 +78,7 @@ pub struct GraphOwnerMissingTopologyRequest<'a> {
     pub owner_path: &'a str,
     pub generation_digest: &'a str,
     pub root_digest: &'a str,
-    pub project_resolutions: &'a [agent_semantic_runtime::AdmittedProjectResolution],
+    pub project_resolutions: &'a [agent_semantic_content_identity::AdmittedProjectResolution],
 }
 
 impl<'a> GraphTopologyProjectionRequest<'a> {
@@ -98,7 +98,7 @@ impl<'a> GraphTopologyProjectionRequest<'a> {
 
     pub fn with_project_resolutions(
         mut self,
-        project_resolutions: &'a [agent_semantic_runtime::AdmittedProjectResolution],
+        project_resolutions: &'a [agent_semantic_content_identity::AdmittedProjectResolution],
     ) -> Self {
         self.project_resolutions = project_resolutions;
         self
@@ -384,7 +384,7 @@ pub fn graph_owner_missing_topology_projection(
 }
 
 fn admitted_project_resolution_contains_owner(
-    admitted: &agent_semantic_runtime::AdmittedProjectResolution,
+    admitted: &agent_semantic_content_identity::AdmittedProjectResolution,
     owner_path: &str,
 ) -> bool {
     admitted
@@ -398,7 +398,7 @@ fn append_admitted_project_resolution(
     projection: &mut GraphTopologyProjection,
     provider_root_id: &str,
     language_id: &GraphTopologyLanguageId,
-    admitted: &agent_semantic_runtime::AdmittedProjectResolution,
+    admitted: &agent_semantic_content_identity::AdmittedProjectResolution,
     candidates: &[GraphProjectionCandidate],
     submodule_paths: &[String],
 ) {
@@ -532,7 +532,7 @@ fn append_project_file_node(
     language_id: &GraphTopologyLanguageId,
     project_id: &str,
     candidate_base: &str,
-    file: &agent_semantic_runtime::ProjectFile,
+    file: &agent_semantic_content_identity::ProjectFile,
     kind: &str,
     relation: &str,
 ) {
@@ -561,7 +561,7 @@ fn append_project_file_node(
 fn append_internal_dependency_edges(
     projection: &mut GraphTopologyProjection,
     project_value: &str,
-    resolution: &agent_semantic_runtime::ProjectResolutionReceipt,
+    resolution: &agent_semantic_content_identity::ProjectResolutionReceipt,
 ) {
     for dependency in &resolution.package_graph.internal_dependency_edges {
         projection.edges.push(json!({
@@ -583,7 +583,7 @@ fn append_source_scope_nodes(
     projection: &mut GraphTopologyProjection,
     project_value: &str,
     candidate_base: &str,
-    resolution: &agent_semantic_runtime::ProjectResolutionReceipt,
+    resolution: &agent_semantic_content_identity::ProjectResolutionReceipt,
     candidates: &[GraphProjectionCandidate],
 ) {
     for scope in &resolution.source_scopes {
@@ -630,7 +630,7 @@ fn append_source_scope_nodes(
 
 fn source_scope_contains(
     candidate_base: &str,
-    scope: &agent_semantic_runtime::ResolvedSourceScope,
+    scope: &agent_semantic_content_identity::ResolvedSourceScope,
     candidate_path: &str,
 ) -> bool {
     let explicit_match = scope

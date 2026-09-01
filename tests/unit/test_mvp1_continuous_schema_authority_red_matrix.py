@@ -69,7 +69,7 @@ def _run_schema_phase(language: str, phase: str) -> subprocess.CompletedProcess[
 
 def _receipt_for(language: str) -> dict[str, object]:
     roots = {
-        "rust": ROOT / "languages/rust-lang-project-harness/schemas",
+        "rust": ROOT / "languages/asp-rust/schemas",
         "typescript": ROOT / "languages/typescript-lang-project-harness/schemas",
         "python": ROOT / "languages/python-lang-project-harness/schemas",
         "julia": ROOT / "languages/JuliaLangProjectHarness.jl/schemas",

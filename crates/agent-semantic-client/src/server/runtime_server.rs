@@ -84,7 +84,7 @@ struct RuntimeServerRestartReceipt {
     schema_version: &'static str,
     state: &'static str,
     lifecycle_authority: &'static str,
-    activation_generation: u64,
+    publication_nonce: String,
     artifact_digest: String,
     previous_owner_epoch: Option<u64>,
     owner_epoch: u64,
@@ -141,7 +141,7 @@ async fn run_restart() -> Result<(), String> {
         schema_version: "1",
         state: "healthy",
         lifecycle_authority: "state-home-supervisor-transaction",
-        activation_generation: event.activation_generation,
+        publication_nonce: event.publication_nonce,
         artifact_digest: event.artifact_digest.to_string(),
         previous_owner_epoch,
         owner_epoch: endpoint.owner_epoch,
@@ -196,18 +196,18 @@ async fn run_start_inner() -> Result<(), String> {
 async fn operator_start_activation_event(
     state_home: &Path,
 ) -> Result<
-    Option<agent_semantic_artifacts::runtime_artifact_publication::RuntimeArtifactActivationEvent>,
+    Option<agent_semantic_artifacts::runtime_artifact_activation::RuntimeArtifactActivationEvent>,
     String,
 > {
     if let Some(event) =
-        agent_semantic_artifacts::runtime_artifact_publication::read_runtime_artifact_activation_event(
+        agent_semantic_artifacts::runtime_artifact_activation::read_runtime_artifact_activation_event(
             state_home,
         )
         .await?
     {
         return Ok(Some(event));
     }
-    agent_semantic_artifacts::runtime_artifact_publication::read_applied_runtime_artifact_activation_event(
+    agent_semantic_artifacts::runtime_artifact_activation::read_applied_runtime_artifact_activation_event(
         state_home,
     )
     .await
@@ -327,7 +327,7 @@ pub(crate) fn runtime_server_client_bootstrap_continues(
 
 pub(crate) fn runtime_server_client_bootstrap_receipt(
     outcome: agent_semantic_client_db::runtime_server_supervisor::SupervisorOutcome,
-    activation_generation: u64,
+    publication_nonce: String,
     artifact_digest: String,
     authority: &agent_semantic_client_db::runtime_server_control::RuntimeServerClientBootstrapAuthority,
 ) -> Option<agent_semantic_client_db::runtime_server_control::RuntimeServerClientBootstrapReceipt> {
@@ -343,7 +343,7 @@ pub(crate) fn runtime_server_client_bootstrap_receipt(
             Some(RuntimeServerClientBootstrapReceipt::new(
                 RuntimeServerState::Starting,
                 "runtime-server-activation-spawn-accepted",
-                Some(activation_generation),
+                Some(publication_nonce),
                 Some(artifact_digest),
                 "observe-runtime-server-activation",
                 authority.clone(),
@@ -353,7 +353,7 @@ pub(crate) fn runtime_server_client_bootstrap_receipt(
             Some(RuntimeServerClientBootstrapReceipt::new(
                 RuntimeServerState::Degraded,
                 "runtime-server-owner-stale",
-                Some(activation_generation),
+                Some(publication_nonce),
                 Some(artifact_digest),
                 "inspect-runtime-server-owner-receipt",
                 authority.clone(),
@@ -363,7 +363,7 @@ pub(crate) fn runtime_server_client_bootstrap_receipt(
             Some(RuntimeServerClientBootstrapReceipt::new(
                 RuntimeServerState::Degraded,
                 "runtime-server-supervisor-failed",
-                Some(activation_generation),
+                Some(publication_nonce),
                 Some(artifact_digest),
                 "inspect-runtime-server-supervisor-receipt",
                 authority.clone(),
@@ -385,7 +385,7 @@ pub(crate) async fn reconcile_pending_runtime_activation_for_client_bootstrap()
         state_home_source: state_resolution.source,
         asp_state_home_present: state_resolution.asp_state_home_present,
         home_present: state_resolution.home_present,
-        pending_activation_path: agent_semantic_artifacts::runtime_artifact_publication::runtime_artifact_activation_event_path(&state_home),
+        pending_activation_path: agent_semantic_artifacts::runtime_artifact_activation::runtime_artifact_activation_event_path(&state_home),
         applied_activation_path: state_home.join("runtime/activation/applied.json"),
         runtime_endpoint_path: agent_semantic_client_db::runtime_server_endpoint_path(&state_home)?,
     };
@@ -422,7 +422,8 @@ pub(crate) async fn reconcile_pending_runtime_activation_for_client_bootstrap()
 
     if !agent_semantic_client_db::runtime_server_lifecycle::admit_activation_after_operator_stop(
         &state_home,
-        activation_event.activation_generation,
+        &activation_event.artifact_digest,
+        &activation_event.publication_nonce,
     )
     .await?
     {
@@ -430,8 +431,8 @@ pub(crate) async fn reconcile_pending_runtime_activation_for_client_bootstrap()
             &agent_semantic_client_db::runtime_server_control::RuntimeServerClientBootstrapReceipt::new(
                 agent_semantic_client_db::runtime_server_control::RuntimeServerState::Degraded,
                 "runtime-server-operator-stopped",
-            Some(activation_event.activation_generation),
-            Some(activation_event.artifact_digest.to_string()),
+                Some(activation_event.publication_nonce.clone()),
+                Some(activation_event.artifact_digest.to_string()),
                 "publish-newer-runtime-artifact-activation",
                 authority.clone(),
             ),
@@ -459,7 +460,7 @@ pub(crate) async fn reconcile_pending_runtime_activation_for_client_bootstrap()
             &agent_semantic_client_db::runtime_server_control::RuntimeServerClientBootstrapReceipt::new(
                 agent_semantic_client_db::runtime_server_control::RuntimeServerState::Starting,
                 "runtime-server-activation-owner-starting",
-                Some(activation_event.activation_generation),
+                Some(activation_event.publication_nonce.clone()),
                 Some(activation_event.artifact_digest.to_string()),
                 "observe-runtime-server-activation",
                 authority.clone(),
@@ -470,7 +471,7 @@ pub(crate) async fn reconcile_pending_runtime_activation_for_client_bootstrap()
     }
     let Some(receipt) = runtime_server_client_bootstrap_receipt(
         outcome,
-        activation_event.activation_generation,
+        activation_event.publication_nonce.clone(),
         activation_event.artifact_digest.to_string(),
         &authority,
     ) else {

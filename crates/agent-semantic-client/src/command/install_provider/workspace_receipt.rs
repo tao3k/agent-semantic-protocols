@@ -4,7 +4,7 @@ use agent_semantic_provider_protocol::{
     ProviderRegisterOperation, ProviderRegisterRequest, ProviderRegisterResult,
     ProviderRegistrationDocument,
 };
-use agent_semantic_runtime::{ensure_project_provider_lock_dir, project_runtime_state};
+use agent_semantic_runtime::project_runtime_state;
 
 // Workspace publication receipts remain private to the provider-install branch.
 use super::workspace::BuiltProviderWorkspace;
@@ -16,8 +16,6 @@ pub(in super::super) async fn record_registered_provider_workspace_install(
     registered_binary: &str,
     target: &str,
     invocation_root: &Path,
-    project_root: Option<&Path>,
-    install_scope: &super::core::InstallScope,
     configured_dev_root: &Path,
     registration: &super::super::provider_install_registry::ProviderInstallRegistration,
     built: BuiltProviderWorkspace,
@@ -34,14 +32,11 @@ pub(in super::super) async fn record_registered_provider_workspace_install(
         .join(&registration.source_root)
         .canonicalize()
         .map_err(|error| format!("failed to canonicalize provider sourceRoot: {error}"))?;
-    let runtime_state = project_runtime_state(project_root.unwrap_or(invocation_root))?;
+    let runtime_state = project_runtime_state(invocation_root)?;
     let provider_binary = super::archive::binary_file_name(registered_binary, target);
     let install_target =
         super::target::resolve_provider_binary_install_target(language_id, &provider_binary)?;
-    let stable_entry = project_root.map_or_else(
-        || install_target.path.clone(),
-        |_| runtime_state.runtime_bin_dir.join(&provider_binary),
-    );
+    let stable_entry = install_target.path.clone();
     let binary_artifact_root = runtime_state
         .protocol_home
         .join("runtime/provider-artifacts")
@@ -74,7 +69,10 @@ pub(in super::super) async fn record_registered_provider_workspace_install(
     let artifact_entrypoint_sha256 = super::archive::sha256_file(&published.artifact_entrypoint)?;
     let launcher_digest =
         agent_semantic_content_identity::file_content_digest_v1(&published.launcher)?;
-    let (scope, lock_path) = install_scope_and_lock(language_id, install_scope)?;
+    let scope = "state-home";
+    let lock_path = super::core::canonical_provider_state_root()?
+        .join("receipts")
+        .join(format!("{language_id}.lock.toml"));
     super::core::write_provider_lock(
         &lock_path,
         &super::core::ProviderInstallLock {
@@ -109,7 +107,9 @@ pub(in super::super) async fn record_registered_provider_workspace_install(
         },
     )?;
     let installed_provider_artifacts =
-        publish_installed_artifacts_if_needed(&runtime_state.protocol_home, install_scope)?;
+        super::super::installed_provider_artifacts::publish_current_installed_provider_artifacts(
+            &runtime_state.protocol_home,
+        )?;
     publish_live_provider_registration(&runtime_state.protocol_home, live_registration).await?;
     println!(
         "[asp-install] provider={} language={} scope={} installMode=develop-workspace-tree sourceKind=develop-workspace-tree devRoot={} target={} binary={} binaryContentDigest={} digestAlgorithm=blake3-256 artifactLeafCount={} artifactEntrypoint={} installedPath={} lock={} switch=atomic installedProviderArtifacts={} installedProviderArtifactsWrite={} installedProviderArtifactsChangedLeaves={} installedProviderArtifactsElapsedMicros={}",
@@ -124,19 +124,10 @@ pub(in super::super) async fn record_registered_provider_workspace_install(
         published.artifact_entrypoint.display(),
         published.installed_path.display(),
         lock_path.display(),
-        installed_provider_artifacts
-            .as_ref()
-            .map(|publication| publication.generation())
-            .unwrap_or("not-applicable"),
-        installed_provider_artifacts
-            .as_ref()
-            .is_some_and(|publication| publication.artifact_write()),
-        installed_provider_artifacts
-            .as_ref()
-            .map_or(0, |publication| publication.changed_leaf_count()),
-        installed_provider_artifacts
-            .as_ref()
-            .map_or(0, |publication| publication.elapsed_micros()),
+        installed_provider_artifacts.generation(),
+        installed_provider_artifacts.artifact_write(),
+        installed_provider_artifacts.changed_leaf_count(),
+        installed_provider_artifacts.elapsed_micros(),
     );
     Ok(())
 }
@@ -225,38 +216,4 @@ fn validate_registration_identity(
         "ProviderRegistry workspace-install identity drift: language={} provider={} binary={} expectedLanguage={language_id} expectedProvider={provider_id} expectedBinary={registered_binary}",
         registration.language_id, registration.provider_id, registration.binary
     ))
-}
-
-fn install_scope_and_lock<'a>(
-    language_id: &str,
-    install_scope: &'a super::core::InstallScope,
-) -> Result<(&'a str, std::path::PathBuf), String> {
-    match install_scope {
-        super::core::InstallScope::Global => Ok((
-            "global",
-            super::core::canonical_global_provider_state_root()?
-                .join("receipts")
-                .join(format!("{language_id}.lock.toml")),
-        )),
-        super::core::InstallScope::Project { root } => Ok((
-            "project",
-            ensure_project_provider_lock_dir(root)?.join(format!("{language_id}.lock.toml")),
-        )),
-    }
-}
-
-fn publish_installed_artifacts_if_needed(
-    state_home: &Path,
-    install_scope: &super::core::InstallScope,
-) -> Result<
-    Option<crate::command::installed_provider_artifacts::InstalledProviderArtifactsPublication>,
-    String,
-> {
-    if !matches!(install_scope, super::core::InstallScope::Global) {
-        return Ok(None);
-    }
-    super::super::installed_provider_artifacts::publish_current_installed_provider_artifacts(
-        state_home,
-    )
-    .map(Some)
 }

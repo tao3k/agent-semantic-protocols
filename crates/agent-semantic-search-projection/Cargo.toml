@@ -9,11 +9,10 @@ description = "Typed language-neutral search projection model, resident result c
 agent-semantic-content-identity = { path = "../agent-semantic-content-identity" }
 serde.workspace = true
 serde_json.workspace = true
-jsonschema.workspace = true
-referencing.workspace = true
 
 [dev-dependencies]
 asp-rust-project-harness-policy.workspace = true
+jsonschema.workspace = true
 
 [build-dependencies]
 asp-rust-project-harness-policy.workspace = true

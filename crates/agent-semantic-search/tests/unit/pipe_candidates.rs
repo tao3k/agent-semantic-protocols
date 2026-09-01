@@ -14,25 +14,32 @@ fn pipe_candidates_collect_dynamic_overlay_for_non_path_query() {
     let root = temp_root("asp-pipe-candidates-dynamic");
     let src = root.join("src");
     fs::create_dir_all(&src).expect("create source directory");
-    fs::write(
-        src.join("pipe_owner.rs"),
-        "pub fn pipe_candidate_owner() { let dynamic_overlay = true; }\n",
-    )
-    .expect("write rust fixture");
+    let source = b"pub fn pipe_candidate_owner() { let dynamic_overlay = true; }\n";
+    fs::write(src.join("pipe_owner.rs"), source).expect("write rust fixture");
 
     let ignore_dirs = vec!["target".to_string()];
     let include_hidden_dirs = Vec::new();
     let owners = vec![std::path::PathBuf::from("src/pipe_owner.rs")];
     let fixture = crate::source_snapshot_fixture::canonical_test_snapshot();
+    let file_spec = crate::LanguageFileSpec::from_runtime_scope(
+        vec![".rs".to_owned()],
+        Vec::new(),
+        Vec::new(),
+        Vec::new(),
+    );
+    let workspace = agent_semantic_content_identity::WorkspaceSnapshot::from_file_bytes([(
+        "src/pipe_owner.rs",
+        source.as_slice(),
+    )]);
     let collection = collect_search_pipe_candidates(SearchPipeCandidateRequest {
-        language_id: "rust",
+        file_spec: &file_spec,
         project_root: &root,
         locator_root: &root,
         query: "pipe_candidate",
         owners: &owners,
         ignore_dirs: &ignore_dirs,
         include_hidden_dirs: &include_hidden_dirs,
-        base_snapshot: &fixture.workspace,
+        base_snapshot: &workspace,
         provider_digest: fixture.provider_digest.as_str(),
         limit: 16,
         require_multi_clause: false,
@@ -44,7 +51,8 @@ fn pipe_candidates_collect_dynamic_overlay_for_non_path_query() {
         candidates
             .iter()
             .any(|candidate| candidate.path == "src/pipe_owner.rs"
-                && candidate.source == "search-overlay")
+                && candidate.source == "search-overlay"),
+        "candidates={candidates:?}"
     );
     assert!(candidates.iter().all(|candidate| {
         candidate.line == 1 && candidate.end_line == 1 && !candidate.path.contains(":1:1")
@@ -59,8 +67,14 @@ fn pipe_candidates_reject_empty_query_before_any_route() {
     let ignore_dirs = Vec::new();
     let include_hidden_dirs = Vec::new();
     let fixture = crate::source_snapshot_fixture::canonical_test_snapshot();
+    let file_spec = crate::LanguageFileSpec::from_runtime_scope(
+        vec![".rs".to_owned()],
+        Vec::new(),
+        Vec::new(),
+        Vec::new(),
+    );
     let error = collect_search_pipe_candidates(SearchPipeCandidateRequest {
-        language_id: "rust",
+        file_spec: &file_spec,
         project_root: &root,
         locator_root: &root,
         query: "  \t\n",

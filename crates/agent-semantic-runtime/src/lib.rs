@@ -17,7 +17,6 @@ mod graph_render;
 pub mod hook_process_runtime;
 pub mod language_owner_items;
 mod live_corpus;
-mod project_resolution;
 pub mod provider_workspace_artifact;
 pub mod runtime_identity_monitor;
 pub mod runtime_process_lifecycle;
@@ -72,13 +71,6 @@ pub use live_corpus::{
     live_corpus_artifact_manifest, live_corpus_artifact_paths, live_corpus_git_checkout_is_clean,
     live_corpus_git_repository_paths, live_corpus_lock_digest, qualify_live_corpus_git_checkout,
     qualify_live_corpus_language_extensions, sync_live_corpus_git_checkout,
-};
-pub use project_resolution::{
-    AdmittedProjectResolution, ExternalDependency, InternalDependencyEdge, LanguagePackage,
-    LanguagePackageGraph, LanguageTarget, ProjectFile, ProjectResolutionConflict,
-    ProjectResolutionMetrics, ProjectResolutionReceipt, ResolvedSourceExclusion,
-    ResolvedSourceScope, UnresolvedProjectReference, project_resolution_schema_digest,
-    workspace_source_scope_generation_digest,
 };
 pub use runtime_source::{
     RuntimeSourceCheckout, RuntimeSourceIndexContext, RuntimeSourceIndexContextRequest,

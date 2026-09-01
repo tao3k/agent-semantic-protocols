@@ -294,6 +294,12 @@ fn residual_uncertainty(
     request: &RecallCompositionRequest,
     stages: &[RecallRouteStage],
 ) -> Vec<String> {
+    if stages
+        .iter()
+        .any(|stage| stage.capability_id == "search.direct-selector")
+    {
+        return Vec::new();
+    }
     let mut residual = BTreeSet::new();
     if request.calibration_state == RecallCalibrationState::Uncalibrated {
         residual.insert("uncalibrated-route-quality");

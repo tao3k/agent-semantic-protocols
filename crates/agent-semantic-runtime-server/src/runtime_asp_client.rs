@@ -15,7 +15,8 @@ use agent_semantic_client_protocol::{
     AspClientExactQueryRequest, AspClientExactQueryResponse, AspClientOwnerSearchRequest,
     AspClientOwnerSearchResponse, AspClientOwnerSearchSeed, AspClientRuntimeWorkCounters,
     AspClientSearchRequest, ClientRequestId, ClientSessionId, ClientWorkspaceIdentity,
-    GRAPH_TIMELINE_METHOD, SCHEMA_BUNDLE_METHOD, SchemaBundleRequest, ServerClientRoute,
+    GRAPH_TIMELINE_METHOD, LIVE_CORPUS_CACHE_STATE_METHOD, LiveCorpusCacheStateReceipt,
+    LiveCorpusCacheStateRequest, SCHEMA_BUNDLE_METHOD, SchemaBundleRequest, ServerClientRoute,
 };
 use agent_semantic_client_server::{
     AspClientDispatchError, AspClientDispatchFuture, AspClientDispatchRequest, AspClientDispatcher,
@@ -453,8 +454,8 @@ pub struct RuntimeAspClientDispatcher {
     runtime_search_service: RuntimeSearchServiceHandle,
     generation_admission: Arc<WorkspaceGenerationAdmission>,
     installed_provider_targets: Arc<[(String, String)]>,
-    query_generation:
-        tokio::sync::watch::Receiver<Arc<HashMap<String, RuntimeQueryGenerationState>>>,
+    workspace_store_root: std::path::PathBuf,
+    query_generation_authority: RuntimeQueryGenerationAuthority,
     telemetry_sender: agent_semantic_client_db::runtime_telemetry_bus::RuntimeTelemetryBusSender,
     cancellations: Arc<Mutex<HashMap<ClientRequestKey, tokio::sync::watch::Sender<bool>>>>,
     cancellation_admitted: Arc<tokio::sync::Notify>,
@@ -468,9 +469,8 @@ impl RuntimeAspClientDispatcher {
         generation_admission: Arc<WorkspaceGenerationAdmission>,
         initialized_workspaces: Arc<Mutex<HashMap<ClientWorkspaceKey, InitializedWorkspace>>>,
         installed_provider_targets: Arc<[(String, String)]>,
-        query_generation: tokio::sync::watch::Receiver<
-            Arc<HashMap<String, RuntimeQueryGenerationState>>,
-        >,
+        workspace_store_root: std::path::PathBuf,
+        query_generation_authority: RuntimeQueryGenerationAuthority,
         telemetry_sender: agent_semantic_client_db::runtime_telemetry_bus::RuntimeTelemetryBusSender,
     ) -> Self {
         Self {
@@ -480,7 +480,8 @@ impl RuntimeAspClientDispatcher {
             generation_admission,
             initialized_workspaces,
             installed_provider_targets,
-            query_generation,
+            workspace_store_root,
+            query_generation_authority,
             telemetry_sender,
             cancellations: Arc::new(Mutex::new(HashMap::new())),
             cancellation_admitted: Arc::new(tokio::sync::Notify::new()),
@@ -497,10 +498,10 @@ pub fn build_frame_service(
     generation_admission: Arc<WorkspaceGenerationAdmission>,
     client_catalog_generation: String,
     installed_provider_targets: Arc<[(String, String)]>,
+    workspace_store_root: std::path::PathBuf,
     query_generation_authority: RuntimeQueryGenerationAuthority,
     telemetry_sender: agent_semantic_client_db::runtime_telemetry_bus::RuntimeTelemetryBusSender,
 ) -> Result<Arc<AspClientFrameService<RuntimeAspClientDispatcher>>, String> {
-    let query_generation = query_generation_authority.subscribe();
     let initialized_workspaces = Arc::new(Mutex::new(HashMap::new()));
     let catalog_generation = client_catalog_generation;
     let catalog_provider_targets = Arc::clone(&installed_provider_targets);
@@ -511,7 +512,8 @@ pub fn build_frame_service(
         generation_admission,
         Arc::clone(&initialized_workspaces),
         installed_provider_targets,
-        query_generation,
+        workspace_store_root,
+        query_generation_authority,
         telemetry_sender,
     ));
     Ok(Arc::new(AspClientFrameService::new_async(
@@ -603,7 +605,9 @@ impl AspClientDispatcher for RuntimeAspClientDispatcher {
         let runtime_search_service = self.runtime_search_service.clone();
         let generation_admission = Arc::clone(&self.generation_admission);
         let installed_provider_targets = Arc::clone(&self.installed_provider_targets);
-        let query_generation = self.query_generation.clone();
+        let workspace_store_root = self.workspace_store_root.clone();
+        let query_generation_authority = self.query_generation_authority.clone();
+        let query_generation = query_generation_authority.subscribe();
         let telemetry_sender = self.telemetry_sender.clone();
         let cancellations = Arc::clone(&self.cancellations);
         Box::pin(async move {
@@ -711,6 +715,134 @@ impl AspClientDispatcher for RuntimeAspClientDispatcher {
                         .map_err(|error| error.to_string())
                         .map_err(AspClientOperationError::Message);
                 }
+                if request.method == LIVE_CORPUS_CACHE_STATE_METHOD {
+                    let started = tokio::time::Instant::now();
+                    let params: LiveCorpusCacheStateRequest =
+                        serde_json::from_value(request.params).map_err(|error| {
+                            format!("decode Live Corpus cache-state request: {error}")
+                        })?;
+                    params.validate()?;
+                    let installed_provider_matches =
+                        installed_provider_targets
+                            .iter()
+                            .any(|(language_id, provider_id)| {
+                                language_id == &params.language_id
+                                    && provider_id == &params.provider_id
+                            });
+                    if !installed_provider_matches {
+                        return Err(AspClientOperationError::Message(format!(
+                            "Live Corpus cache-state provider identity is not installed: languageId={} providerId={}",
+                            params.language_id, params.provider_id
+                        )));
+                    }
+                    let workspace_identity = request.workspace_identity.as_str();
+                    let resident_generation_evicted = match params.cache_state.as_str() {
+                        "cold-build" => {
+                            query_generation_authority
+                                .require_workspace_absent(workspace_identity)?;
+                            false
+                        }
+                        "cold-load" => {
+                            let expected_generation_digest = params
+                                .expected_generation_digest
+                                .as_deref()
+                                .expect("validated cold-load generation digest");
+                            let expected_root_digest = params
+                                .expected_root_digest
+                                .as_deref()
+                                .expect("validated cold-load root digest");
+                            query_generation_authority.evict_ready_exact(
+                                workspace_identity,
+                                expected_generation_digest,
+                                expected_root_digest,
+                            )?;
+                            let initialized = initialized_workspaces
+                                .lock()
+                                .map_err(|_| {
+                                    "ASP client workspace-root registry poisoned".to_owned()
+                                })?
+                                .get(&(
+                                    workspace_identity.to_owned(),
+                                    request.session_id.as_str().to_owned(),
+                                ))
+                                .cloned()
+                                .ok_or_else(|| {
+                                    "Live Corpus cache state requires an initialized workspace root"
+                                        .to_owned()
+                                })?;
+                            let pointer_path = agent_semantic_client_db::runtime_server_workspace::workspace_generation_pointer_path(
+                                &workspace_store_root,
+                                workspace_identity,
+                                &initialized.project_root,
+                            )?;
+                            let reopened = query_generation_authority
+                                .ensure_ready(
+                                    workspace_identity,
+                                    &pointer_path,
+                                    &initialized.project_root,
+                                    expected_generation_digest,
+                                )
+                                .await?;
+                            if reopened.resident().root_digest() != expected_root_digest {
+                                return Err(AspClientOperationError::Message(
+                                    "Live Corpus cold-load reopened a different source root"
+                                        .to_owned(),
+                                ));
+                            }
+                            true
+                        }
+                        "warm-read" => {
+                            query_generation_authority.verify_ready_exact(
+                                workspace_identity,
+                                params
+                                    .expected_generation_digest
+                                    .as_deref()
+                                    .expect("validated warm-read generation digest"),
+                                params
+                                    .expected_root_digest
+                                    .as_deref()
+                                    .expect("validated warm-read root digest"),
+                            )?;
+                            false
+                        }
+                        "released" => {
+                            query_generation_authority.evict_ready_exact(
+                                workspace_identity,
+                                params
+                                    .expected_generation_digest
+                                    .as_deref()
+                                    .expect("validated release generation digest"),
+                                params
+                                    .expected_root_digest
+                                    .as_deref()
+                                    .expect("validated release root digest"),
+                            )?;
+                            true
+                        }
+                        _ => unreachable!("validated Live Corpus cache state"),
+                    };
+                    let receipt = LiveCorpusCacheStateReceipt {
+                        schema_id: agent_semantic_client_protocol::LIVE_CORPUS_CACHE_STATE_RECEIPT_SCHEMA_ID
+                            .to_owned(),
+                        schema_version: "1".to_owned(),
+                        operation_id: params.operation_id,
+                        state: "ready".to_owned(),
+                        cache_state: params.cache_state,
+                        workspace_identity: workspace_identity.to_owned(),
+                        generation_digest: params.expected_generation_digest,
+                        root_digest: params.expected_root_digest,
+                        resident_generation_evicted,
+                        client_session_evicted: false,
+                        source_workspace_mutation_count: 0,
+                        global_cache_mutation_count: 0,
+                        filesystem_delete_count: 0,
+                        elapsed_micros: elapsed_micros(started),
+                    };
+                    receipt.validate()?;
+                    return serde_json::to_value(receipt)
+                        .map_err(|error| error.to_string())
+                        .map_err(AspClientOperationError::Message);
+                }
                 if request.method == GRAPH_TIMELINE_METHOD {
                     let params: agent_semantic_client_protocol::AspClientGraphsTimelineRequest =
                         serde_json::from_value(request.params).map_err(|error| {
@@ -776,26 +908,33 @@ impl AspClientDispatcher for RuntimeAspClientDispatcher {
                         .ok_or_else(|| {
                             "ASP client request requires an initialized workspace root".to_owned()
                         })?;
-                    let (generation_digest, generation_token) = query_generation
-                        .borrow()
-                        .get(request.workspace_identity.as_str())
-                        .and_then(|state| match state {
-                            RuntimeQueryGenerationState::Ready(generation) => Some((
-                                generation.generation_digest().to_owned(),
-                                generation.generation_token(),
-                            )),
-                            _ => None,
-                        })
-                        .ok_or_else(|| {
-                            "graph evaluation requires an active Ready workspace generation"
-                                .to_owned()
-                        })?;
+                    let (generation_digest, source_root_digest, generation_token) =
+                        query_generation
+                            .borrow()
+                            .get(request.workspace_identity.as_str())
+                            .and_then(|state| match state {
+                                RuntimeQueryGenerationState::Ready(generation) => Some((
+                                    generation.generation_digest().to_owned(),
+                                    generation.resident().root_digest(),
+                                    generation.generation_token(),
+                                )),
+                                _ => None,
+                            })
+                            .ok_or_else(|| {
+                                "graph evaluation requires an active Ready workspace generation"
+                                    .to_owned()
+                            })?;
+                    let (graph_generation_digest, graph_open_payload) =
+                        graph_open_payload(&validated_params)?;
                     let receipt = runtime_search_service
                         .graphs_evaluate(
                             initialized.project_root,
                             request.workspace_identity.as_str().to_owned(),
                             generation_digest,
+                            source_root_digest,
                             generation_token,
+                            graph_generation_digest,
+                            graph_open_payload,
                             request.request_id.as_str().to_owned(),
                             validated_params,
                         )
@@ -1003,8 +1142,10 @@ impl AspClientDispatcher for RuntimeAspClientDispatcher {
                     agent_semantic_client_protocol::ServerClientRoute::CancellationProbe => {
                         unreachable!("cancellation probe is owned by the lifecycle route")
                     }
+                    agent_semantic_client_protocol::ServerClientRoute::LiveCorpusCacheState => {
+                        unreachable!("Live Corpus cache state is handled before language dispatch")
+                    }
                     agent_semantic_client_protocol::ServerClientRoute::Search => {
-                        let started = tokio::time::Instant::now();
                         let params: AspClientSearchRequest = serde_json::from_value(params)
                             .map_err(|error| {
                                 format!("decode ASP client search request: {error}")
@@ -1022,11 +1163,13 @@ impl AspClientDispatcher for RuntimeAspClientDispatcher {
                             language_id: language.clone(),
                             provider_id: provider_id.as_str().into(),
                         };
+                        let resident_started = tokio::time::Instant::now();
                         let lookup = generation.resident().read_source_index(
                             &params.query,
                             Some(&authority),
                             100,
                         )?;
+                        let resident_read_elapsed_micros = elapsed_micros(resident_started);
                         let owner_paths = lookup
                             .hits
                             .iter()
@@ -1035,7 +1178,42 @@ impl AspClientDispatcher for RuntimeAspClientDispatcher {
                         let parser_owned_selector_pairs = generation
                             .resident()
                             .parser_owned_callable_selector_pairs(&owner_paths)?;
-                        let elapsed_micros = elapsed_micros(started);
+                        let graph_stage =
+                            crate::runtime_search_graph::rank_resident_search_frontier(
+                                &runtime_search_service,
+                                &project_root,
+                                request.workspace_identity.as_str(),
+                                request.request_id.as_str(),
+                                &params.operation,
+                                &params.query,
+                                &language_id,
+                                &provider_id,
+                                generation.generation_digest(),
+                                generation.generation_token(),
+                                generation.resident(),
+                                &lookup.hits,
+                            )
+                            .await
+                            .map_err(|error| {
+                                AspClientOperationError::Terminal(AspClientDispatchError {
+                                    reason_kind: error.reason_kind.to_owned(),
+                                    message: error.message,
+                                    details: error.details,
+                                })
+                            })?;
+                        if let Some(graph_stage) = graph_stage.as_ref() {
+                            record_runtime_route_performance(
+                                &telemetry_sender,
+                                request.workspace_identity.as_str(),
+                                &language_id,
+                                generation.generation_digest(),
+                                request.request_id.as_str(),
+                                "search",
+                                "runtime-graph-rank",
+                                &graph_stage.result_digest,
+                                graph_stage.elapsed_micros,
+                            )?;
+                        }
                         record_runtime_route_performance(
                             &telemetry_sender,
                             request.workspace_identity.as_str(),
@@ -1045,16 +1223,17 @@ impl AspClientDispatcher for RuntimeAspClientDispatcher {
                             "search",
                             "runtime-source-index-read",
                             &params.operation,
-                            elapsed_micros,
+                            resident_read_elapsed_micros,
                         )?;
-                        let receipt = agent_semantic_search::build_runtime_provider_search_receipt(
+                        let receipt = agent_semantic_search::build_runtime_provider_search_receipt_with_graph(
                             request.request_id.as_str().to_owned(),
                             language,
                             vec![agent_semantic_search::RuntimeSearchSource::once(
                                 "resident", lookup,
                             )],
-                            elapsed_micros,
+                            resident_read_elapsed_micros,
                             parser_owned_selector_pairs,
+                            graph_stage,
                         )
                         .await?;
                         Ok(serde_json::to_value(receipt)
@@ -1321,6 +1500,27 @@ impl AspClientDispatcher for RuntimeAspClientDispatcher {
             }
         })
     }
+}
+
+fn graph_open_payload(
+    request: &serde_json::Value,
+) -> Result<(String, Arc<serde_json::Value>), String> {
+    let graph = request
+        .get("graph")
+        .cloned()
+        .ok_or_else(|| "graph evaluation requires graph".to_owned())?;
+    let payload = serde_json::json!({
+        "graph": graph,
+        "sourceSnapshot": request.get("sourceSnapshot").cloned().unwrap_or(serde_json::Value::Null),
+        "workspaceGeneration": request.get("workspaceGeneration").cloned().unwrap_or(serde_json::Value::Null),
+    });
+    let artifact = agent_semantic_content_identity::ArtifactJson::from_serializable(&payload)
+        .map_err(|error| format!("canonicalize graph generation: {error}"))?;
+    let digest = format!(
+        "blake3-256:{}",
+        agent_semantic_content_identity::hash_normalized_json(&artifact).value
+    );
+    Ok((digest, Arc::new(payload)))
 }
 
 fn elapsed_micros(started: tokio::time::Instant) -> u64 {

@@ -109,7 +109,7 @@ fn assert_install_pinned_release_writes_runtime_bin_package_and_lock() {
     let root = temp_project_root();
     let home = root.join("home");
     let release_dir = create_pinned_release_fixture(&root);
-    let workspace_decoy = root.join("languages/rust-lang-project-harness/target/release/asp-rust");
+    let workspace_decoy = root.join("languages/asp-rust/target/release/asp-rust");
     std::fs::create_dir_all(workspace_decoy.parent().expect("workspace decoy parent"))
         .expect("create workspace decoy parent");
     std::fs::write(&workspace_decoy, b"workspace-decoy\n").expect("write workspace decoy");

@@ -155,6 +155,13 @@
             "minLength": 1
           }
         },
+        "positiveSubjects": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
         "negativeCommands": {
           "type": "array",
           "uniqueItems": true,

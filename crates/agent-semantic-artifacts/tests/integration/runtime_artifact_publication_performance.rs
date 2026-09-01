@@ -1,9 +1,9 @@
 use std::os::unix::fs::PermissionsExt;
 
-use agent_semantic_artifacts::runtime_artifact_publication::publish_runtime_artifact;
-use agent_semantic_artifacts::runtime_artifact_publication::{
+use agent_semantic_artifacts::runtime_artifact_activation::{
     commit_runtime_artifact_activation, read_runtime_artifact_activation_event,
 };
+use agent_semantic_artifacts::runtime_artifact_publication::publish_runtime_artifact;
 
 const SAMPLE_COUNT: usize = 32;
 const PUBLICATION_P99_MICROS: u128 = 1_000_000;
@@ -28,6 +28,7 @@ fn executable_source(path: &std::path::Path, sample: usize) {
 async fn publication_latency_distribution_is_subsecond_with_millisecond_lock_scope() {
     let mut cold_total = Vec::with_capacity(SAMPLE_COUNT);
     let mut cold_lock = Vec::with_capacity(SAMPLE_COUNT);
+    let mut cold_phase = Vec::with_capacity(SAMPLE_COUNT);
     for sample in 0..SAMPLE_COUNT {
         let temporary = tempfile::tempdir().expect("cold publication root");
         let state_home = temporary.path().join("state");
@@ -41,6 +42,7 @@ async fn publication_latency_distribution_is_subsecond_with_millisecond_lock_sco
             .expect("publish cold artifact");
         cold_total.push(started.elapsed().as_micros());
         cold_lock.push(u128::from(receipt.lock_elapsed_micros));
+        cold_phase.push(receipt.phase_trace);
     }
 
     let temporary = tempfile::tempdir().expect("warm publication root");
@@ -48,6 +50,7 @@ async fn publication_latency_distribution_is_subsecond_with_millisecond_lock_sco
     let target = temporary.path().join("bin/asp");
     let mut warm_total = Vec::with_capacity(SAMPLE_COUNT);
     let mut warm_lock = Vec::with_capacity(SAMPLE_COUNT);
+    let mut warm_phase = Vec::with_capacity(SAMPLE_COUNT);
     for sample in 0..SAMPLE_COUNT {
         let source = temporary.path().join(format!("asp-{sample}"));
         executable_source(&source, sample);
@@ -58,6 +61,7 @@ async fn publication_latency_distribution_is_subsecond_with_millisecond_lock_sco
             .expect("publish warm artifact");
         warm_total.push(started.elapsed().as_micros());
         warm_lock.push(u128::from(receipt.lock_elapsed_micros));
+        warm_phase.push(receipt.phase_trace);
     }
 
     let cold_p50 = percentile_micros(&cold_total, 50);
@@ -70,9 +74,28 @@ async fn publication_latency_distribution_is_subsecond_with_millisecond_lock_sco
     let warm_max = *warm_total.iter().max().expect("warm samples");
     let cold_lock_p99 = percentile_micros(&cold_lock, 99);
     let warm_lock_p99 = percentile_micros(&warm_lock, 99);
+    let cold_lock_max_index = cold_lock
+        .iter()
+        .enumerate()
+        .max_by_key(|(_, elapsed)| *elapsed)
+        .map(|(index, _)| index)
+        .expect("cold lock samples");
+    let warm_lock_max_index = warm_lock
+        .iter()
+        .enumerate()
+        .max_by_key(|(_, elapsed)| *elapsed)
+        .map(|(index, _)| index)
+        .expect("warm lock samples");
 
     eprintln!(
         "runtime-artifact-publication-performance samples={SAMPLE_COUNT} environment=tempdir-local-filesystem coldP50Micros={cold_p50} coldP95Micros={cold_p95} coldP99Micros={cold_p99} coldMaxMicros={cold_max} warmP50Micros={warm_p50} warmP95Micros={warm_p95} warmP99Micros={warm_p99} warmMaxMicros={warm_max} coldLockP99Micros={cold_lock_p99} warmLockP99Micros={warm_lock_p99}"
+    );
+    eprintln!(
+        "runtime-artifact-lock-outliers coldMaxMicros={} coldPhase={:?} warmMaxMicros={} warmPhase={:?}",
+        cold_lock[cold_lock_max_index],
+        cold_phase[cold_lock_max_index],
+        warm_lock[warm_lock_max_index],
+        warm_phase[warm_lock_max_index],
     );
     assert!(
         cold_p99 < PUBLICATION_P99_MICROS,
