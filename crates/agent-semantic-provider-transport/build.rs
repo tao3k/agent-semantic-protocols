@@ -1,3 +1,4 @@
+#[cfg(feature = "grpc-session")]
 fn main() {
     println!(
         "cargo:rerun-if-changed=../agent-semantic-runtime-server/proto/asp-provider-stream.proto"
@@ -11,3 +12,6 @@ fn main() {
         )
         .expect("compile provider-transport provider stream proto");
 }
+
+#[cfg(not(feature = "grpc-session"))]
+fn main() {}

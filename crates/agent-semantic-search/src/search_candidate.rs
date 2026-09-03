@@ -121,7 +121,7 @@ pub struct FieldHit {
     pub matched_terms: Vec<SearchCandidateMatchedTerm>,
 }
 
-/// Named score component used by router and analyzer replay.
+/// Named score component used by router and analyzer projection.
 #[derive(Clone, Debug, PartialEq)]
 pub struct RankFeature {
     pub name: SearchCandidateRankFeatureName,
@@ -149,7 +149,7 @@ pub struct SearchStageReceipt {
     pub fallback_reason: String,
 }
 
-/// Search candidates plus the receipt needed by graph-route replay.
+/// Search candidates plus the receipt needed by graph-route admission.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SearchCandidateMergeReceipt {
     pub ranked: Vec<RankedSearchCandidate>,
@@ -286,7 +286,7 @@ pub fn merge_search_candidates(candidates: Vec<SearchCandidate>) -> Vec<RankedSe
     merge_search_candidates_with_receipt(candidates).ranked
 }
 
-/// Merge heterogeneous search candidates and retain a replayable stage receipt.
+/// Merge heterogeneous search candidates and retain an immutable stage receipt.
 #[must_use]
 pub fn merge_search_candidates_with_receipt(
     candidates: Vec<SearchCandidate>,

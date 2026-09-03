@@ -68,7 +68,7 @@
     ]
   },
   "workdir": {
-    "relative": "languages/typescript-lang-project-harness"
+    "relative": "languages/asp-typescript"
   },
   "budgets": {
     "maxCommands": 6,

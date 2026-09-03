@@ -28,7 +28,7 @@ class ReceiptQuerySetReportTests(unittest.TestCase):
                         "scenarioId": "typescript.render-location-queryset",
                         "language": "typescript",
                         "project": {
-                            "name": "typescript-lang-project-harness",
+                            "name": "asp-typescript",
                             "source": "checkout",
                         },
                         "intent": "Repair semantic-search render location formatting",

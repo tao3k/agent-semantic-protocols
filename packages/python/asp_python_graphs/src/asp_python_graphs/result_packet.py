@@ -44,7 +44,7 @@ def _identity_section(result: GraphResult) -> dict[str, object]:
         "packetKind": "graph-turbo-result",
         "profile": result.profile.name,
         "algorithm": ALGORITHM_ID,
-        "seedIds": list(result.seed_ids),
+        "entryNodeIds": list(result.seed_ids),
         "budget": result.budget,
         "kindBudgets": dict(result.kind_budgets),
         "profiles": list(result.profiles),

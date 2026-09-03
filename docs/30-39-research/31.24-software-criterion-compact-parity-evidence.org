@@ -16,7 +16,7 @@ claim blocking severity promotion or repair success.
 * Evidence record
 
 #+begin_example
-[software-criterion-compact-parity] language=typescript provider=asp-typescript project=languages/typescript-lang-project-harness
+[software-criterion-compact-parity] language=typescript provider=asp-typescript project=languages/asp-typescript
 command=node dist/src/cli/main.js check --full .
 metrics=exitCode=0,packetBytes=13528
 signals=control-flow.decision-stack:5,control-flow.traversal-knot:4,native-idiom.manual-transform-loop:6

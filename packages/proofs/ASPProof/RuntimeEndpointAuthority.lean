@@ -147,6 +147,138 @@ theorem sandboxWithoutUsableCapabilityFailsBeforeSocketIo
     admitClientBootstrap .sandboxClient capability = .rejectTransportUnavailable := by
   simp [admitClientBootstrap, unusable]
 
+inductive RuntimeReadinessObservation
+  | canonicalEndpoint
+  | inheritedProcessExit
+  | clientBoundReadySocket
+  deriving DecidableEq
+
+def readinessObservationAllowed : RuntimeReadinessObservation → Bool
+  | .canonicalEndpoint => true
+  | .inheritedProcessExit => true
+  | .clientBoundReadySocket => false
+
+theorem sandboxClientCannotOwnActivationReadySocket :
+    readinessObservationAllowed .clientBoundReadySocket = false := by
+  rfl
+
+theorem supervisorWaitUsesOnlyCanonicalOrInheritedEvidence
+    (observation : RuntimeReadinessObservation)
+    (allowed : readinessObservationAllowed observation = true) :
+    observation = .canonicalEndpoint ∨ observation = .inheritedProcessExit := by
+  cases observation <;> simp [readinessObservationAllowed] at allowed ⊢
+
+inductive RuntimeServicePlane
+  | control
+  | clientData
+  | provider
+  deriving DecidableEq
+
+inductive RuntimeIngressTransport
+  | hostUnixSocket
+  | loopbackTcp
+  | inheritedConnectedDescriptor
+  | clientLocalFallback
+  deriving DecidableEq
+
+def sandboxReachable : RuntimeIngressTransport → Bool
+  | .hostUnixSocket => false
+  | .loopbackTcp => false
+  | .inheritedConnectedDescriptor => true
+  | .clientLocalFallback => false
+
+def hostReachable : RuntimeIngressTransport → Bool
+  | .hostUnixSocket => true
+  | .loopbackTcp => true
+  | .inheritedConnectedDescriptor => true
+  | .clientLocalFallback => false
+
+def soleRuntimeAuthority : RuntimeIngressTransport → Bool
+  | .hostUnixSocket => true
+  | .loopbackTcp => true
+  | .inheritedConnectedDescriptor => true
+  | .clientLocalFallback => false
+
+def admittedSandboxRuntimeIngress (transport : RuntimeIngressTransport) : Bool :=
+  sandboxReachable transport && soleRuntimeAuthority transport
+
+def admittedHostRuntimeIngress (transport : RuntimeIngressTransport) : Bool :=
+  hostReachable transport && soleRuntimeAuthority transport
+
+theorem inheritedDescriptorIsTheOnlyAdmittedCrossSandboxIngress
+    (transport : RuntimeIngressTransport)
+    (admitted : admittedSandboxRuntimeIngress transport = true) :
+    transport = .inheritedConnectedDescriptor := by
+  cases transport <;> simp [admittedSandboxRuntimeIngress, sandboxReachable,
+    soleRuntimeAuthority] at admitted ⊢
+
+def allRuntimePlanesUse
+    (transport : RuntimeServicePlane → RuntimeIngressTransport) : Bool :=
+  admittedHostRuntimeIngress (transport .control) &&
+    admittedHostRuntimeIngress (transport .clientData) &&
+    admittedHostRuntimeIngress (transport .provider)
+
+theorem admittedRuntimeGenerationUsesLoopbackForEveryPlane
+    (transport : RuntimeServicePlane → RuntimeIngressTransport)
+    (onlyLoopback : transport .control = .loopbackTcp ∧
+      transport .clientData = .loopbackTcp ∧ transport .provider = .loopbackTcp) :
+    transport .control = .loopbackTcp ∧
+      transport .clientData = .loopbackTcp ∧
+      transport .provider = .loopbackTcp := by
+  exact onlyLoopback
+
+theorem sandboxLoopbackCounterexampleIsRejected :
+    admittedSandboxRuntimeIngress .loopbackTcp = false := by
+  rfl
+
+def providerCatalogReplacementAdmitted
+    (guardHeld : Bool)
+    (observedContentDigest reobservedContentDigest : Nat) : Bool :=
+  guardHeld && observedContentDigest == reobservedContentDigest
+
+theorem providerCatalogReplacementRequiresGuardAndExactBytes
+    (guardHeld : Bool)
+    (observedContentDigest reobservedContentDigest : Nat)
+    (admitted : providerCatalogReplacementAdmitted guardHeld observedContentDigest
+      reobservedContentDigest = true) :
+    guardHeld = true ∧ observedContentDigest = reobservedContentDigest := by
+  simp [providerCatalogReplacementAdmitted] at admitted
+  exact admitted
+
+structure ProviderExecutionBindingReadiness where
+  installedProviderGenerationCanonical : Bool
+  schemaBundleDigestCanonical : Bool
+  workspaceClosureDigestCanonical : Bool
+  sourceSnapshotDigestCanonical : Bool
+  sourceIndexGenerationCanonical : Bool
+  deriving DecidableEq
+
+def providerExecutionBindingAdmitted
+    (readiness : ProviderExecutionBindingReadiness) : Bool :=
+  readiness.installedProviderGenerationCanonical &&
+    readiness.schemaBundleDigestCanonical &&
+      readiness.workspaceClosureDigestCanonical &&
+        readiness.sourceSnapshotDigestCanonical &&
+          readiness.sourceIndexGenerationCanonical
+
+theorem incompleteSourceSnapshotIdentityCannotReachGenerationAdmission
+    (installedProviderGenerationCanonical schemaBundleDigestCanonical
+      workspaceClosureDigestCanonical sourceIndexGenerationCanonical : Bool) :
+    providerExecutionBindingAdmitted
+        { installedProviderGenerationCanonical
+          schemaBundleDigestCanonical
+          workspaceClosureDigestCanonical
+          sourceSnapshotDigestCanonical := false
+          sourceIndexGenerationCanonical } = false := by
+  simp [providerExecutionBindingAdmitted]
+
+theorem admittedProviderExecutionBindingHasCanonicalSourceSnapshot
+    (readiness : ProviderExecutionBindingReadiness)
+    (admitted : providerExecutionBindingAdmitted readiness = true) :
+    readiness.sourceSnapshotDigestCanonical = true := by
+  cases snapshotCanonical : readiness.sourceSnapshotDigestCanonical <;>
+    simp_all [providerExecutionBindingAdmitted]
+
 def publicStartSucceeds (endpointPublished endpointHealthy : Bool) : Bool :=
   endpointPublished && endpointHealthy
 

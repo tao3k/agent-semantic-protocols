@@ -1,3 +1,5 @@
+//! Typed callable skeleton projections bound to exact structural selectors.
+
 use crate::exact_structural_selector::{
     ExactStructuralSelectorV1, ExactStructuralSelectorValidationError,
 };
@@ -10,16 +12,39 @@ use serde_json::Value;
 use std::collections::{BTreeMap, HashSet};
 use std::fmt;
 
+/// Stable schema identity for callable-skeleton projection payloads.
 pub const CALLABLE_SKELETON_PAYLOAD_SCHEMA_ID: &str = "agent.semantic-protocols.callable-skeleton";
 
+/// Provider-defined callable category carried as a validated value object.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct CallableDescriptorKindV1(String);
+
+impl CallableDescriptorKindV1 {
+    /// Creates a callable category, rejecting an empty provider value.
+    pub fn new(value: impl Into<String>) -> Result<Self, CallableSkeletonValidationError> {
+        let value = value.into();
+        if value.is_empty() {
+            return Err(CallableSkeletonValidationError::EmptyRequiredField);
+        }
+        Ok(Self(value))
+    }
+
+    fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+}
+
+/// Raw DTO boundary for one provider callable descriptor in schema version 1.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CallableDescriptorV1 {
-    pub kind: String,
+    pub kind: CallableDescriptorKindV1,
     pub display_name: String,
     pub signature: String,
 }
 
+/// Closed node-category catalog for a callable control-flow skeleton.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum CallableSkeletonNodeKindV1 {
@@ -37,6 +62,7 @@ pub enum CallableSkeletonNodeKindV1 {
     LanguageExtension,
 }
 
+/// Raw DTO boundary for optional display and byte locations in provider source.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SourceLocatorHintV1 {
@@ -50,6 +76,7 @@ pub struct SourceLocatorHintV1 {
     pub source_byte_end: Option<u64>,
 }
 
+/// Raw DTO boundary for one typed node in a callable skeleton projection.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CallableSkeletonNodeV1 {
@@ -77,6 +104,7 @@ pub enum CallableSkeletonRootSelectorV1 {
 }
 
 impl CallableSkeletonRootSelectorV1 {
+    /// Returns the exact structural selector represented by either wire form.
     pub fn selector(&self) -> &str {
         match self {
             Self::Inline(selector) => &selector.selector,
@@ -85,14 +113,36 @@ impl CallableSkeletonRootSelectorV1 {
     }
 }
 
+/// Provider-defined relation category carried as a validated value object.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct CallableSkeletonRelationKindV1(String);
+
+impl CallableSkeletonRelationKindV1 {
+    /// Creates a relation category, rejecting an empty provider value.
+    pub fn new(value: impl Into<String>) -> Result<Self, CallableSkeletonValidationError> {
+        let value = value.into();
+        if value.is_empty() {
+            return Err(CallableSkeletonValidationError::InvalidRelation);
+        }
+        Ok(Self(value))
+    }
+
+    fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+}
+
+/// Raw DTO boundary for a directed relation between two skeleton nodes.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CallableSkeletonRelationV1 {
     pub from_node_id: String,
     pub to_node_id: String,
-    pub kind: String,
+    pub kind: CallableSkeletonRelationKindV1,
 }
 
+/// Raw DTO boundary for byte and token accounting in schema version 1.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CallableSkeletonCostV1 {
@@ -107,13 +157,37 @@ pub struct CallableSkeletonCostV1 {
     pub token_estimator: Option<String>,
 }
 
-/// Typed provider response for a resolved native exact callable projection.
+/// Raw DTO boundary for a resolved native exact callable projection.
 ///
 /// The schema owns the wire version. Rust callers validate every authority
 /// field independently so transport drift cannot collapse into an opaque
 /// identity-mismatch error.
+/// Projection mode selected by the provider-native exact projection boundary.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ProviderNativeProjectionModeV1(String);
+
+impl ProviderNativeProjectionModeV1 {
+    /// Creates a non-empty provider-native projection mode.
+    pub fn new(value: impl Into<String>) -> Result<Self, CallableSkeletonValidationError> {
+        let value = value.into();
+        if value.is_empty() {
+            return Err(CallableSkeletonValidationError::EmptyRequiredField);
+        }
+        Ok(Self(value))
+    }
+
+    fn as_str(&self) -> &str {
+        self.0.as_str()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+/// Provider-native exact projection encoded at the stable JSON wire boundary.
+///
+/// Raw DTO boundary: the identity strings preserve provider-owned schema values;
+/// semantic validation occurs before this projection is admitted.
 pub struct ProviderNativeExactProjection {
     pub schema_id: String,
     pub schema_version: String,
@@ -122,7 +196,7 @@ pub struct ProviderNativeExactProjection {
     pub owner_path: String,
     pub requested_structural_selector: String,
     pub structural_selector: String,
-    pub projection_mode: String,
+    pub projection_mode: ProviderNativeProjectionModeV1,
     pub normalized_parser_facts: Value,
     pub projection_payload: CallableSkeletonPayload,
     pub source_content_digest: String,
@@ -130,7 +204,7 @@ pub struct ProviderNativeExactProjection {
     pub source_byte_end: u64,
 }
 
-/// Expected authority for one provider-native exact response.
+/// Semantic field boundary for expected provider-native response authority.
 #[derive(Debug, Clone, Copy)]
 pub struct ProviderNativeExactAuthority<'a> {
     pub language_id: &'a str,
@@ -187,6 +261,7 @@ impl ProviderNativeExactProjection {
     }
 }
 
+/// Raw DTO boundary for the complete callable-skeleton payload.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CallableSkeletonPayload {
@@ -206,15 +281,22 @@ pub struct CallableSkeletonPayload {
 mod provider_contract_tests;
 
 impl CallableSkeletonPayload {
+    /// Returns the provider projection mode requested from native parsers.
     pub const fn projection_mode() -> &'static str {
         "skeleton"
     }
 
+    /// Returns the language-neutral semantic projection kind.
     pub const fn projection_kind() -> &'static str {
         "callable-skeleton"
     }
 
+    /// Validates node identity, selector scope, relations, and cost accounting.
     pub fn validate(&self) -> Result<(), CallableSkeletonValidationError> {
+        self.validate_payload()
+    }
+
+    fn validate_payload(&self) -> Result<(), CallableSkeletonValidationError> {
         if self.root_node_id.is_empty() || self.callable.kind.is_empty() {
             return Err(CallableSkeletonValidationError::EmptyRequiredField);
         }
@@ -287,6 +369,7 @@ impl CallableSkeletonPayload {
         Ok(())
     }
 
+    /// Validates that every queryable node stays within the requested root.
     pub fn validate_scope(
         &self,
         root_selector: &str,
@@ -361,6 +444,7 @@ impl CallableSkeletonPayload {
         Ok(())
     }
 
+    /// Encodes a validated payload as standard Base64 JSON bytes.
     pub fn encode_payload_base64(&self) -> Result<String, CallableSkeletonEncodingError> {
         self.validate()
             .map_err(CallableSkeletonEncodingError::Validation)?;
@@ -369,6 +453,7 @@ impl CallableSkeletonPayload {
     }
 }
 
+/// Typed failures produced while validating a callable skeleton projection.
 #[derive(Debug)]
 pub enum CallableSkeletonValidationError {
     SchemaId,
@@ -400,6 +485,7 @@ impl fmt::Display for CallableSkeletonValidationError {
 
 impl std::error::Error for CallableSkeletonValidationError {}
 
+/// Typed failures produced while encoding a callable skeleton payload.
 #[derive(Debug)]
 pub enum CallableSkeletonEncodingError {
     Validation(CallableSkeletonValidationError),

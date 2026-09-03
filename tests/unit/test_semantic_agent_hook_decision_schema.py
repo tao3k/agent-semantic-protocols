@@ -186,7 +186,7 @@ class SemanticAgentHookDecisionSchemaTests(unittest.TestCase):
             / "semantic-agent-hook-decision.v1.schema.json",
             _REPO_ROOT
             / "languages"
-            / "typescript-lang-project-harness"
+            / "asp-typescript"
             / "schemas"
             / "semantic-agent-hook-decision.v1.schema.json",
             _REPO_ROOT

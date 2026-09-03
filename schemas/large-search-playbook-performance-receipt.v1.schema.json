@@ -1,0 +1,202 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/large-search-playbook-performance-receipt.v1.schema.json",
+  "title": "Large Search Playbook performance receipt V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId", "schemaVersion", "owners", "contentGeneration", "coldRgQuery",
+    "bootstrapAccelerator", "deltaAccelerator", "firstTantivyOpen", "warm", "concurrent",
+    "fusedCache", "pythonGraph", "requestTimeExternalWork"
+  ],
+  "properties": {
+    "schemaId": {"const": "agent.semantic-protocols.large-search-playbook-performance-receipt"},
+    "schemaVersion": {"const": "1"},
+    "owners": {"type": "integer", "minimum": 4096},
+    "contentGeneration": {
+      "unevaluatedProperties": false,
+      "allOf": [
+        {"$ref": "#/$defs/distribution"},
+        {
+          "type": "object",
+          "required": ["stageP95Nanos"],
+          "properties": {
+            "samples": {"type": "integer", "minimum": 32},
+            "stageP95Nanos": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "fdInventory", "repositoryAdmission", "sourceByteAcquisition",
+                "nativeSyntax", "rustGraph", "publication"
+              ],
+              "properties": {
+                "fdInventory": {"$ref": "#/$defs/nanos"},
+                "repositoryAdmission": {"$ref": "#/$defs/nanos"},
+                "sourceByteAcquisition": {"$ref": "#/$defs/nanos"},
+                "nativeSyntax": {"$ref": "#/$defs/nanos"},
+                "rustGraph": {"$ref": "#/$defs/nanos"},
+                "publication": {"$ref": "#/$defs/nanos"}
+              }
+            }
+          }
+        }
+      ]
+    },
+    "coldRgQuery": {
+      "unevaluatedProperties": false,
+      "allOf": [
+        {"$ref": "#/$defs/distribution"},
+        {
+          "type": "object",
+          "required": [
+            "fdProcessCount", "rgProcessCount", "tantivyBuildCount",
+            "contentVerificationP95Nanos", "nativeSyntaxVerificationP95Nanos"
+          ],
+          "properties": {
+            "samples": {"type": "integer", "minimum": 32},
+            "fdProcessCount": {"const": 0},
+            "rgProcessCount": {"type": "integer", "minimum": 32},
+            "tantivyBuildCount": {"const": 0},
+            "contentVerificationP95Nanos": {"$ref": "#/$defs/nanos"},
+            "nativeSyntaxVerificationP95Nanos": {"$ref": "#/$defs/nanos"}
+          }
+        }
+      ]
+    },
+    "bootstrapAccelerator": {
+      "unevaluatedProperties": false,
+      "allOf": [
+        {"$ref": "#/$defs/distribution"},
+        {
+          "type": "object",
+          "required": [
+            "samples", "reusedShardCount", "rebuiltShardCount",
+            "shardPlanP95Nanos", "tantivyCommitP95Nanos",
+            "equivalenceValidationP95Nanos", "pointerPublicationP95Nanos"
+          ],
+          "properties": {
+            "samples": {"type": "integer", "minimum": 32},
+            "reusedShardCount": {"const": 0},
+            "rebuiltShardCount": {"type": "integer", "minimum": 4096},
+            "shardPlanP95Nanos": {"$ref": "#/$defs/nanos"},
+            "tantivyCommitP95Nanos": {"$ref": "#/$defs/nanos"},
+            "equivalenceValidationP95Nanos": {"$ref": "#/$defs/nanos"},
+            "pointerPublicationP95Nanos": {"$ref": "#/$defs/nanos"}
+          }
+        }
+      ]
+    },
+    "deltaAccelerator": {
+      "unevaluatedProperties": false,
+      "allOf": [
+        {"$ref": "#/$defs/distribution"},
+        {
+          "type": "object",
+          "required": [
+            "samples", "changedOwnerCount", "reusedShardCount",
+            "rebuiltShardCount", "retiredShardCount", "unchangedOwnerRescanCount"
+          ],
+          "properties": {
+            "samples": {"type": "integer", "minimum": 32},
+            "changedOwnerCount": {"type": "integer", "minimum": 1},
+            "reusedShardCount": {"type": "integer", "minimum": 1},
+            "rebuiltShardCount": {"type": "integer", "minimum": 1},
+            "retiredShardCount": {"type": "integer", "minimum": 0},
+            "unchangedOwnerRescanCount": {"const": 0}
+          }
+        }
+      ]
+    },
+    "firstTantivyOpen": {
+      "unevaluatedProperties": false,
+      "allOf": [
+        {"$ref": "#/$defs/distribution"},
+        {
+          "type": "object",
+          "required": ["filesystemReadCount", "fdProcessCount", "rgProcessCount", "tantivyBuildCount"],
+          "properties": {
+            "samples": {"type": "integer", "minimum": 32},
+            "filesystemReadCount": {"type": "integer", "minimum": 32},
+            "fdProcessCount": {"const": 0},
+            "rgProcessCount": {"const": 0},
+            "tantivyBuildCount": {"const": 0}
+          }
+        }
+      ]
+    },
+    "warm": {
+      "unevaluatedProperties": false,
+      "allOf": [
+        {"$ref": "#/$defs/distribution"},
+        {"properties": {"samples": {"type": "integer", "minimum": 512}}}
+      ]
+    },
+    "concurrent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["queries", "p99Nanos", "maxNanos", "wallNanos"],
+      "properties": {
+        "queries": {"type": "integer", "minimum": 32},
+        "p99Nanos": {"$ref": "#/$defs/nanos"},
+        "maxNanos": {"$ref": "#/$defs/nanos"},
+        "wallNanos": {"$ref": "#/$defs/nanos"}
+      }
+    },
+    "fusedCache": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "hitCount", "missCount", "entryCount", "valueBytes", "capacity",
+        "shardCount", "externalWorkCount"
+      ],
+      "properties": {
+        "hitCount": {"const": 1},
+        "missCount": {"const": 0},
+        "entryCount": {"type": "integer", "minimum": 1},
+        "valueBytes": {"type": "integer", "minimum": 1},
+        "capacity": {"type": "integer", "minimum": 1},
+        "shardCount": {"type": "integer", "minimum": 1},
+        "externalWorkCount": {"const": 0}
+      }
+    },
+    "pythonGraph": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state", "generationDigest", "receiptValidationNanos"],
+      "properties": {
+        "state": {"const": "executed"},
+        "generationDigest": {"type": "string", "pattern": "^blake3-256:[0-9a-f]{64}$"},
+        "receiptValidationNanos": {"$ref": "#/$defs/nanos"}
+      }
+    },
+    "requestTimeExternalWork": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "databaseReadCount", "filesystemReadCount", "providerProcessCount",
+        "socketOperationCount", "schedulerTaskCount"
+      ],
+      "properties": {
+        "databaseReadCount": {"const": 0},
+        "filesystemReadCount": {"const": 0},
+        "providerProcessCount": {"const": 0},
+        "socketOperationCount": {"const": 0},
+        "schedulerTaskCount": {"const": 0}
+      }
+    }
+  },
+  "$defs": {
+    "nanos": {"type": "integer", "minimum": 0},
+    "distribution": {
+      "type": "object",
+      "required": ["samples", "p50Nanos", "p95Nanos", "p99Nanos", "maxNanos"],
+      "properties": {
+        "samples": {"type": "integer", "minimum": 1},
+        "p50Nanos": {"$ref": "#/$defs/nanos"},
+        "p95Nanos": {"$ref": "#/$defs/nanos"},
+        "p99Nanos": {"$ref": "#/$defs/nanos"},
+        "maxNanos": {"$ref": "#/$defs/nanos"}
+      }
+    }
+  }
+}

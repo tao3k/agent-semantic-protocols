@@ -72,8 +72,7 @@ def test_live_corpus_search_query_plan_covers_the_complete_locked_matrix() -> No
     assert {provider_id for _, _, provider_id in planned.values()} == {
         "asp-gerbil-scheme",
         "asp-julia",
-        "asp-md",
-        "asp-org",
+        "orgize",
         "asp-python",
         "asp-rust",
         "asp-typescript",

@@ -96,14 +96,41 @@ fn live_corpus_cache_state_matrix_is_content_bound_and_fail_closed() {
 }
 
 #[test]
-fn northbound_client_requests_are_distinct_from_provider_runtime_requests() {
-    let search = crate::AspClientSearchRequest {
-        schema_id: "agent.semantic-protocols.asp-client-search-request".to_owned(),
+fn live_corpus_cache_receipt_is_bound_to_project_workspace_without_global_authority() {
+    let receipt = crate::LiveCorpusCacheStateReceipt {
+        schema_id: crate::LIVE_CORPUS_CACHE_STATE_RECEIPT_SCHEMA_ID.to_owned(),
         schema_version: "1".to_owned(),
-        operation: "pipe".to_owned(),
-        query: "RuntimeAspClient".to_owned(),
+        operation_id: "warm-rust-tokio".to_owned(),
+        state: "ready".to_owned(),
+        cache_state: "warm-read".to_owned(),
+        project_id: "repo-project".to_owned(),
+        workspace_id: "workspace-checkout".to_owned(),
+        generation_digest: Some(format!("blake3-256:{}", "b".repeat(64))),
+        root_digest: Some("c".repeat(64)),
+        resident_generation_evicted: false,
+        client_session_evicted: false,
+        source_workspace_mutation_count: 0,
+        filesystem_delete_count: 0,
+        elapsed_micros: 17,
     };
+    receipt.validate().expect("project/workspace-bound receipt");
+    let value = serde_json::to_value(receipt).expect("serialize receipt");
+    assert_eq!(value["projectId"], "repo-project");
+    assert_eq!(value["workspaceId"], "workspace-checkout");
+    assert!(value.get("workspaceIdentity").is_none());
+    assert!(value.get("globalCacheMutationCount").is_none());
+}
+
+#[test]
+fn northbound_client_requests_are_distinct_from_provider_runtime_requests() {
+    let search = crate::AspClientSearchRequest::playbook("conceptual", "RuntimeAspClient");
     search.validate_schema_identity().expect("search identity");
+    let mut legacy_search = search.clone();
+    legacy_search.intent = "pipe".to_owned();
+    assert!(legacy_search.validate_schema_identity().is_err());
+    let mut empty_search = search.clone();
+    empty_search.query.clear();
+    assert!(empty_search.validate_schema_identity().is_err());
 
     let source_index = crate::AspClientSourceIndexLookupRequest {
         schema_id: "agent.semantic-protocols.asp-client-source-index-lookup-request".to_owned(),
@@ -123,35 +150,6 @@ fn northbound_client_requests_are_distinct_from_provider_runtime_requests() {
         projection: "callable-skeleton".to_owned(),
     };
     exact.validate_schema_identity().expect("query identity");
-
-    let owner = crate::AspClientOwnerSearchRequest {
-        schema_id: "agent.semantic-protocols.asp-client-owner-search-request".to_owned(),
-        schema_version: "1".to_owned(),
-        owner_path: "src/lib.rs".to_owned(),
-        query: "example".to_owned(),
-        view: "seeds".to_owned(),
-    };
-    owner.validate_schema_identity().expect("owner identity");
-
-    let owner_response = crate::AspClientOwnerSearchResponse {
-        schema_id: "agent.semantic-protocols.asp-client-owner-search-response".to_owned(),
-        schema_version: "1".to_owned(),
-        state: "owner".to_owned(),
-        generation_digest: "generation-1".to_owned(),
-        root_digest: "root-1".to_owned(),
-        owner_path: "src/lib.rs".to_owned(),
-        content_digest: Some("blake3-256:owner".to_owned()),
-        query: "example".to_owned(),
-        view: "seeds".to_owned(),
-        candidate_count: 1,
-        returned_count: 1,
-        selectors: vec![crate::AspClientOwnerSearchSeed {
-            selector: "rust://src/lib.rs#item/function/example".to_owned(),
-            byte_start: 0,
-            byte_end: 12,
-        }],
-    };
-    owner_response.validate().expect("owner response identity");
 
     assert_ne!(
         search.schema_id,
@@ -181,6 +179,8 @@ fn exact_query_response_carries_falsifiable_resident_performance() {
         schema_id: "agent.semantic-protocols.asp-client-exact-query-response".to_owned(),
         schema_version: "1".to_owned(),
         operation_id: "query-1".to_owned(),
+        project_id: "repo-project".to_owned(),
+        workspace_id: "workspace-checkout".to_owned(),
         language_id: "rust".to_owned(),
         provider_id: "asp-rust".to_owned(),
         generation_digest: format!("blake3-256:{}", "a".repeat(64)),
@@ -210,6 +210,8 @@ fn exact_query_response_rejects_empty_ready_and_failure_is_a_distinct_terminal()
         schema_id: "agent.semantic-protocols.asp-client-exact-query-response".to_owned(),
         schema_version: "1".to_owned(),
         operation_id: "query-terminal".to_owned(),
+        project_id: "repo-project".to_owned(),
+        workspace_id: "workspace-checkout".to_owned(),
         language_id: "rust".to_owned(),
         provider_id: "asp-rust".to_owned(),
         generation_digest: format!("blake3-256:{}", "a".repeat(64)),
@@ -232,6 +234,8 @@ fn exact_query_response_rejects_empty_ready_and_failure_is_a_distinct_terminal()
         schema_version: "1".to_owned(),
         state: "failed".to_owned(),
         operation_id: "query-terminal".to_owned(),
+        project_id: "repo-project".to_owned(),
+        workspace_id: "workspace-checkout".to_owned(),
         language_id: "rust".to_owned(),
         provider_id: "asp-rust".to_owned(),
         requested_selector: Some("rust://src/lib.rs#item/function/missing".to_owned()),
@@ -330,7 +334,8 @@ fn provider_route_bindings_roundtrip_and_reject_identity_drift() {
         schema_id: "agent.semantic-protocols.runtime-provider-search-request".to_owned(),
         schema_version: "1".to_owned(),
         operation_id: "op".to_owned(),
-        workspace_identity: "workspace".to_owned(),
+        project_id: "repo-project".to_owned(),
+        workspace_id: "workspace".to_owned(),
         language_id: "rust".to_owned(),
         scope: "production".to_owned(),
         query_plan: json!({"method":"lexical","terms":["owner"],"view":"seeds"}),
@@ -340,7 +345,7 @@ fn provider_route_bindings_roundtrip_and_reject_identity_drift() {
         serde_json::from_slice(&encoded).expect("decode");
     assert!(decoded.validate_schema_identity().is_ok());
     let mut invalid = decoded;
-    invalid.schema_id.push_str(".v1");
+    invalid.project_id.clear();
     assert!(invalid.validate_schema_identity().is_err());
 }
 
@@ -394,7 +399,8 @@ fn base() -> ClientFrameBase {
         protocol_id: CLIENT_PROTOCOL_ID.to_owned(),
         protocol_version: CLIENT_PROTOCOL_VERSION.to_owned(),
         session_id: ClientSessionId::new("session").expect("session id"),
-        workspace_identity: ClientWorkspaceIdentity::new("workspace").expect("workspace id"),
+        project_id: ClientProjectId::new("repo-project").expect("project id"),
+        workspace_id: ClientWorkspaceIdentity::new("workspace-checkout").expect("workspace id"),
         trace_context: None,
     }
 }
@@ -423,7 +429,6 @@ fn client_lifecycle_has_no_provider_control_transition() {
     let initialize = ClientFrame::Initialize {
         base: base(),
         request_id: request_id("initialize"),
-        project_root: "/workspace".to_owned(),
         client_info: ClientInfo {
             name: "test".to_owned(),
             version: "1".to_owned(),
@@ -532,7 +537,7 @@ fn shared_conformance_fixture_runs_in_the_reference_implementation() {
 }
 
 #[test]
-fn session_and_workspace_identity_are_bound_at_initialize() {
+fn session_project_and_workspace_are_bound_at_initialize() {
     let catalog = catalog();
     let mut session = ClientSession::default();
     session
@@ -540,7 +545,6 @@ fn session_and_workspace_identity_are_bound_at_initialize() {
             &ClientFrame::Initialize {
                 base: base(),
                 request_id: request_id("initialize"),
-                project_root: "/workspace".to_owned(),
                 client_info: ClientInfo {
                     name: "test".to_owned(),
                     version: "1".to_owned(),
@@ -551,8 +555,7 @@ fn session_and_workspace_identity_are_bound_at_initialize() {
         )
         .expect("initialize");
     let mut crossed = base();
-    crossed.workspace_identity =
-        ClientWorkspaceIdentity::new("other-workspace").expect("workspace id");
+    crossed.workspace_id = ClientWorkspaceIdentity::new("other-workspace").expect("workspace id");
     let error = session
         .admit(
             &ClientFrame::Request {
@@ -566,5 +569,22 @@ fn session_and_workspace_identity_are_bound_at_initialize() {
             &catalog,
         )
         .expect_err("workspace crossing must fail");
+    assert_eq!(error.reason_kind, "client-session-isolation-mismatch");
+
+    let mut crossed = base();
+    crossed.project_id = ClientProjectId::new("repo-other-project").expect("project id");
+    let error = session
+        .admit(
+            &ClientFrame::Request {
+                base: crossed,
+                request_id: request_id("request-project-crossing"),
+                catalog_generation: catalog.catalog_generation.clone(),
+                workspace_generation: catalog.workspace_generation.clone(),
+                method: "rust.search".to_owned(),
+                params: json!({"query": "owner"}),
+            },
+            &catalog,
+        )
+        .expect_err("project crossing must fail");
     assert_eq!(error.reason_kind, "client-session-isolation-mismatch");
 }

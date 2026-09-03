@@ -5,6 +5,13 @@ use crate::runtime_server_control::{
 };
 use agent_semantic_artifacts::runtime_artifact_catalog::RuntimeBinaryIdentity;
 
+fn loopback(port: u16) -> crate::runtime_server_control::RuntimeServerLoopbackEndpoint {
+    crate::runtime_server_control::RuntimeServerLoopbackEndpoint::from_socket_addr(
+        ([127, 0, 0, 1], port).into(),
+    )
+    .expect("loopback endpoint")
+}
+
 fn endpoint(root: &std::path::Path) -> RuntimeServerEndpoint {
     RuntimeServerEndpoint {
         binary_content_digest:
@@ -27,15 +34,9 @@ fn endpoint(root: &std::path::Path) -> RuntimeServerEndpoint {
         artifact_mode: "dev".to_owned(),
         artifact_catalog_digest: format!("blake3-256:{}", "3".repeat(64)),
         binding_token: "binding-token".to_owned(),
-        socket_path: root
-            .join("runtime/server/control.sock")
-            .display()
-            .to_string(),
-        data_plane_socket_path: root.join("runtime/server/data.sock").display().to_string(),
-        provider_plane_socket_path: root
-            .join("runtime/server/providers.sock")
-            .display()
-            .to_string(),
+        control_endpoint: loopback(43001),
+        data_endpoint: loopback(43002),
+        provider_endpoint: loopback(43003),
         workspace_store_path: root.join("runtime/server/workspaces").display().to_string(),
         status_memory_path: root
             .join("runtime/server/status.memory")
@@ -55,6 +56,7 @@ async fn reused_locator_lookup_p99_is_sub_millisecond_under_workspace_pressure()
             .await
             .expect("project root");
         entries.insert(RuntimeWorkspaceAdmissionCatalogEntry {
+            project_id: format!("repo-{index}"),
             workspace_identity: format!("workspace-{index}"),
             project_root: project_root.clone(),
         });

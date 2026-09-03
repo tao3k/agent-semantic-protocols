@@ -5,7 +5,7 @@ fn collaboration_message_names_the_configured_agent_and_native_tool() {
     let message = render_collaboration_instruction(
         Some("asp_explorer"),
         Some("parent-thread-1"),
-        "Run `asp rust search prime --workspace .` exactly once",
+        "Run `asp rust search playbook 'HookDecision' --workspace .` exactly once",
     );
 
     assert!(message.contains("collaboration.spawn_agent"));
@@ -19,7 +19,10 @@ fn collaboration_message_names_the_configured_agent_and_native_tool() {
     assert!(message.contains("Host-native authority"));
     assert!(message.contains("sandbox_permissions: \"require_escalated\""));
     assert!(message.contains("Do not first launch it inside the child sandbox"));
-    assert!(message.contains("Run `asp rust search prime --workspace .` exactly once"));
+    assert!(
+        message
+            .contains("Run `asp rust search playbook 'HookDecision' --workspace .` exactly once")
+    );
     assert!(message.contains("execute this parent-authored task exactly as written"));
     assert!(message.contains("/root/asp_explorer"));
     assert!(message.contains("collaboration.list_agents({\n  path_prefix: \"/root\"\n})"));

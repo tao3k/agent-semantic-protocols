@@ -18,10 +18,22 @@ use crate::runtime_artifact_activation::{
 use crate::runtime_artifact_quiescence::prepare_runtime_artifact_quiescence_lease;
 use crate::runtime_artifact_retention::RuntimeArtifactMutationGuard;
 use crate::runtime_artifact_slots::{
-    RuntimeArtifactSlotAuthority, discard_prepared_runtime_artifact,
+    PreparedRuntimeArtifact, RuntimeArtifactSlotAuthority, discard_prepared_runtime_artifact,
     prepare_runtime_artifact_candidate_for_kind, runtime_artifact_bundle_digest,
     runtime_artifact_candidate_digest,
 };
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct RuntimeArtifactBundleMemberSource<'a> {
+    pub name: &'a str,
+    pub source: &'a Path,
+}
+
+#[derive(Debug)]
+struct PreparedRuntimeArtifactBundleMember {
+    name: String,
+    artifact: PreparedRuntimeArtifact,
+}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RuntimeArtifactPublicationReceipt {
@@ -62,7 +74,7 @@ pub async fn publish_runtime_artifact(
         source,
         target,
         artifact_mode,
-        None,
+        &[],
         || async {},
     )
     .await
@@ -77,12 +89,30 @@ pub async fn publish_runtime_artifact_bundle(
     artifact_mode: &str,
     hook_source: &Path,
 ) -> Result<RuntimeArtifactPublicationReceipt, String> {
+    let members = [RuntimeArtifactBundleMemberSource {
+        name: "asp-hook",
+        source: hook_source,
+    }];
+    publish_runtime_artifact_bundle_members(state_home, source, target, artifact_mode, &members)
+        .await
+}
+
+/// Publish the Runtime client and a declarative set of optional executable
+/// members as one immutable active/healthy bundle. Member names are the only
+/// lookup keys; callers cannot publish a second descriptor or stable selector.
+pub async fn publish_runtime_artifact_bundle_members(
+    state_home: &Path,
+    source: &Path,
+    target: &Path,
+    artifact_mode: &str,
+    member_sources: &[RuntimeArtifactBundleMemberSource<'_>],
+) -> Result<RuntimeArtifactPublicationReceipt, String> {
     publish_runtime_artifact_with_before_guard(
         state_home,
         source,
         target,
         artifact_mode,
-        Some(hook_source),
+        member_sources,
         || async {},
     )
     .await
@@ -93,7 +123,7 @@ async fn publish_runtime_artifact_with_before_guard<BeforeGuard, BeforeGuardFutu
     source: &Path,
     target: &Path,
     artifact_mode: &str,
-    hook_source: Option<&Path>,
+    member_sources: &[RuntimeArtifactBundleMemberSource<'_>],
     before_guard: BeforeGuard,
 ) -> Result<RuntimeArtifactPublicationReceipt, String>
 where
@@ -103,17 +133,28 @@ where
     let artifact_root = state_home.join("runtime/artifacts");
     let resident_root = state_home.join("runtime/resident");
     let digest = runtime_artifact_candidate_digest(source).await?;
-    let hook_digest = match hook_source {
-        Some(source) => Some(runtime_artifact_candidate_digest(source).await?),
-        None => None,
-    };
     let binary_name = target
         .file_name()
         .and_then(|name| name.to_str())
         .ok_or_else(|| "Runtime artifact target has no binary name".to_owned())?;
     let mut members = std::collections::BTreeMap::from([(binary_name.to_owned(), digest.clone())]);
-    if let Some(hook_digest) = hook_digest.as_ref() {
-        members.insert("asp-hook".to_owned(), hook_digest.clone());
+    for member in member_sources {
+        let member_path = Path::new(member.name);
+        if member_path.components().count() != 1
+            || member.name == "."
+            || member.name == ".."
+            || member.name == binary_name
+            || members.contains_key(member.name)
+        {
+            return Err(format!(
+                "invalid or duplicate Runtime artifact bundle member `{}`",
+                member.name
+            ));
+        }
+        members.insert(
+            member.name.to_owned(),
+            runtime_artifact_candidate_digest(member.source).await?,
+        );
     }
     let bundle_digest = runtime_artifact_bundle_digest(&members);
     let token = bundle_digest.content_digest().as_str();
@@ -138,27 +179,32 @@ where
         discard_prepared_runtime_artifact(&prepared).await?;
         return Err(error);
     }
-    let prepared_hook = match hook_source {
-        Some(hook_source) => {
-            let hook_prepared = prepare_runtime_artifact_candidate_for_kind(
-                state_home,
-                &candidate_dir,
-                hook_source,
-                "asp-hook",
-            )
-            .await?;
-            if let Err(error) = slots
-                .stage_candidate_member(&candidate_dir, "asp-hook", &hook_prepared.path)
-                .await
-            {
-                discard_prepared_runtime_artifact(&hook_prepared).await?;
-                discard_prepared_runtime_artifact(&prepared).await?;
-                return Err(error);
-            }
-            Some(hook_prepared)
+    let mut prepared_members = Vec::with_capacity(member_sources.len());
+    for member in member_sources {
+        let member_prepared = prepare_runtime_artifact_candidate_for_kind(
+            state_home,
+            &candidate_dir,
+            member.source,
+            member.name,
+        )
+        .await?;
+        if let Err(error) = slots
+            .stage_candidate_member(&candidate_dir, member.name, &member_prepared.path)
+            .await
+        {
+            discard_prepared_runtime_artifact(&member_prepared).await?;
+            discard_prepared_runtime_artifact_bundle_members(&prepared_members).await?;
+            discard_prepared_runtime_artifact(&prepared).await?;
+            return Err(error);
         }
-        None => None,
-    };
+        prepared_members.push(PreparedRuntimeArtifactBundleMember {
+            name: member.name.to_owned(),
+            artifact: member_prepared,
+        });
+    }
+    let has_hook = prepared_members
+        .iter()
+        .any(|member| member.name == "asp-hook");
     let bundle_identity = serde_json::json!({
         "schemaId": "agent.semantic-protocols.runtime-binary-bundle",
         "schemaVersion": 1,
@@ -173,9 +219,7 @@ where
     .map_err(|error| format!("stage Runtime binary bundle identity: {error}"))?;
     if let Err(error) = slots.validate_candidate(&candidate_dir).await {
         discard_prepared_runtime_artifact(&prepared).await?;
-        if let Some(prepared_hook) = prepared_hook.as_ref() {
-            discard_prepared_runtime_artifact(prepared_hook).await?;
-        }
+        discard_prepared_runtime_artifact_bundle_members(&prepared_members).await?;
         return Err(error);
     }
     let activation_event_path = runtime_artifact_activation_event_path(state_home);
@@ -190,9 +234,7 @@ where
             Ok(snapshot) => snapshot,
             Err(error) => {
                 discard_prepared_runtime_artifact(&prepared).await?;
-                if let Some(prepared_hook) = prepared_hook.as_ref() {
-                    discard_prepared_runtime_artifact(prepared_hook).await?;
-                }
+                discard_prepared_runtime_artifact_bundle_members(&prepared_members).await?;
                 return Err(error);
             }
         };
@@ -200,9 +242,7 @@ where
         Ok(snapshot) => snapshot,
         Err(error) => {
             discard_prepared_runtime_artifact(&prepared).await?;
-            if let Some(prepared_hook) = prepared_hook.as_ref() {
-                discard_prepared_runtime_artifact(prepared_hook).await?;
-            }
+            discard_prepared_runtime_artifact_bundle_members(&prepared_members).await?;
             return Err(error);
         }
     };
@@ -216,9 +256,7 @@ where
         Ok(guard) => guard,
         Err(error) => {
             discard_prepared_runtime_artifact(&prepared).await?;
-            if let Some(prepared_hook) = prepared_hook.as_ref() {
-                discard_prepared_runtime_artifact(prepared_hook).await?;
-            }
+            discard_prepared_runtime_artifact_bundle_members(&prepared_members).await?;
             return Err(error);
         }
     };
@@ -229,9 +267,7 @@ where
     {
         drop(guard);
         discard_prepared_runtime_artifact(&prepared).await?;
-        if let Some(prepared_hook) = prepared_hook.as_ref() {
-            discard_prepared_runtime_artifact(prepared_hook).await?;
-        }
+        discard_prepared_runtime_artifact_bundle_members(&prepared_members).await?;
         return Err(error);
     }
     let quiescence = match prepare_runtime_artifact_quiescence_lease(
@@ -244,9 +280,7 @@ where
         Err(error) => {
             drop(guard);
             discard_prepared_runtime_artifact(&prepared).await?;
-            if let Some(prepared_hook) = prepared_hook.as_ref() {
-                discard_prepared_runtime_artifact(prepared_hook).await?;
-            }
+            discard_prepared_runtime_artifact_bundle_members(&prepared_members).await?;
             return Err(error);
         }
     };
@@ -256,9 +290,7 @@ where
         Err(error) => {
             drop(guard);
             discard_prepared_runtime_artifact(&prepared).await?;
-            if let Some(prepared_hook) = prepared_hook.as_ref() {
-                discard_prepared_runtime_artifact(prepared_hook).await?;
-            }
+            discard_prepared_runtime_artifact_bundle_members(&prepared_members).await?;
             return Err(format!(
                 "Runtime artifact publication clock failed: {error}"
             ));
@@ -289,18 +321,14 @@ where
         Err(error) => {
             drop(guard);
             discard_prepared_runtime_artifact(&prepared).await?;
-            if let Some(prepared_hook) = prepared_hook.as_ref() {
-                discard_prepared_runtime_artifact(prepared_hook).await?;
-            }
+            discard_prepared_runtime_artifact_bundle_members(&prepared_members).await?;
             return Err(format!("encode Runtime artifact activation event: {error}"));
         }
     };
     if let Err(error) = std::fs::write(candidate_dir.join("activation.json"), &event_bytes) {
         drop(guard);
         discard_prepared_runtime_artifact(&prepared).await?;
-        if let Some(prepared_hook) = prepared_hook.as_ref() {
-            discard_prepared_runtime_artifact(prepared_hook).await?;
-        }
+        discard_prepared_runtime_artifact_bundle_members(&prepared_members).await?;
         return Err(format!("stage Runtime artifact activation event: {error}"));
     }
     let staged_pending = match stage_pending_runtime_artifact_activation(
@@ -312,9 +340,7 @@ where
         Err(error) => {
             drop(guard);
             discard_prepared_runtime_artifact(&prepared).await?;
-            if let Some(prepared_hook) = prepared_hook.as_ref() {
-                discard_prepared_runtime_artifact(prepared_hook).await?;
-            }
+            discard_prepared_runtime_artifact_bundle_members(&prepared_members).await?;
             return Err(error);
         }
     };
@@ -327,9 +353,7 @@ where
             drop(guard);
             let _ = std::fs::remove_file(&staged_pending);
             discard_prepared_runtime_artifact(&prepared).await?;
-            if let Some(prepared_hook) = prepared_hook.as_ref() {
-                discard_prepared_runtime_artifact(prepared_hook).await?;
-            }
+            discard_prepared_runtime_artifact_bundle_members(&prepared_members).await?;
             return Err(error);
         }
     };
@@ -342,9 +366,7 @@ where
             quiescence.restore_after_failed_commit(&consumed_lease, &guard)?;
             drop(guard);
             discard_prepared_runtime_artifact(&prepared).await?;
-            if let Some(prepared_hook) = prepared_hook.as_ref() {
-                discard_prepared_runtime_artifact(prepared_hook).await?;
-            }
+            discard_prepared_runtime_artifact_bundle_members(&prepared_members).await?;
             return Err(error);
         }
     };
@@ -355,9 +377,7 @@ where
             quiescence.restore_after_failed_commit(&consumed_lease, &guard)?;
             drop(guard);
             discard_prepared_runtime_artifact(&prepared).await?;
-            if let Some(prepared_hook) = prepared_hook.as_ref() {
-                discard_prepared_runtime_artifact(prepared_hook).await?;
-            }
+            discard_prepared_runtime_artifact_bundle_members(&prepared_members).await?;
             return Err(error);
         }
     };
@@ -369,9 +389,7 @@ where
                 quiescence.restore_after_failed_commit(&consumed_lease, &guard)?;
                 drop(guard);
                 discard_prepared_runtime_artifact(&prepared).await?;
-                if let Some(prepared_hook) = prepared_hook.as_ref() {
-                    discard_prepared_runtime_artifact(prepared_hook).await?;
-                }
+                discard_prepared_runtime_artifact_bundle_members(&prepared_members).await?;
                 return Err(format!(
                     "state=runtime-artifact-publication-failed reasonKind=healthy-member-snapshot-unreadable path={} error={error}",
                     healthy.join(binary_name).display()
@@ -388,9 +406,7 @@ where
         quiescence.restore_after_failed_commit(&consumed_lease, &guard)?;
         drop(guard);
         discard_prepared_runtime_artifact(&prepared).await?;
-        if let Some(prepared_hook) = prepared_hook.as_ref() {
-            discard_prepared_runtime_artifact(prepared_hook).await?;
-        }
+        discard_prepared_runtime_artifact_bundle_members(&prepared_members).await?;
         return Err(
             "state=runtime-artifact-publication-failed reasonKind=resident-slot-snapshot-drift"
                 .to_owned(),
@@ -403,7 +419,7 @@ where
             observed_active,
             observed_healthy,
             read_optional_symlink(target)?,
-            if hook_source.is_some() {
+            if has_hook {
                 read_optional_symlink(&hook_stable_path)?
             } else {
                 None
@@ -417,9 +433,7 @@ where
             quiescence.restore_after_failed_commit(&consumed_lease, &guard)?;
             drop(guard);
             discard_prepared_runtime_artifact(&prepared).await?;
-            if let Some(prepared_hook) = prepared_hook.as_ref() {
-                discard_prepared_runtime_artifact(prepared_hook).await?;
-            }
+            discard_prepared_runtime_artifact_bundle_members(&prepared_members).await?;
             return Err(error);
         }
     };
@@ -441,9 +455,7 @@ where
             quiescence.restore_after_failed_commit(&consumed_lease, &guard)?;
             drop(guard);
             discard_prepared_runtime_artifact(&prepared).await?;
-            if let Some(prepared_hook) = prepared_hook.as_ref() {
-                discard_prepared_runtime_artifact(prepared_hook).await?;
-            }
+            discard_prepared_runtime_artifact_bundle_members(&prepared_members).await?;
             return Err(error);
         }
     };
@@ -466,7 +478,7 @@ where
             result
         });
         let commit = commit.and_then(|()| {
-            if hook_source.is_some() {
+            if has_hook {
                 publish_runtime_bundle_member_launcher(
                     &hook_stable_path,
                     &resident_root.join("active/asp-hook"),
@@ -480,7 +492,7 @@ where
         commit?;
         slots.publish_active_candidate_under_guard(&candidate_dir)?;
         validate_runtime_bundle_launcher(target, &candidate_dir.join(binary_name))?;
-        if hook_source.is_some() {
+        if has_hook {
             validate_runtime_bundle_launcher(&hook_stable_path, &candidate_dir.join("asp-hook"))?;
         }
         Ok(())
@@ -504,7 +516,7 @@ where
                     stable_before.as_deref(),
                     &quiescence.lease.lease_nonce,
                 ))
-                .and(if hook_source.is_some() {
+                .and(if has_hook {
                     restore_runtime_artifact_symlink(
                         &hook_stable_path,
                         hook_stable_before.as_deref(),
@@ -516,9 +528,7 @@ where
             quiescence.restore_after_failed_commit(&consumed_lease, &guard)?;
             drop(guard);
             discard_prepared_runtime_artifact(&prepared).await?;
-            if let Some(prepared_hook) = prepared_hook.as_ref() {
-                discard_prepared_runtime_artifact(prepared_hook).await?;
-            }
+            discard_prepared_runtime_artifact_bundle_members(&prepared_members).await?;
             rollback?;
             return Err(error);
         }
@@ -526,8 +536,6 @@ where
     let lock_elapsed_micros = lock_started.elapsed().as_micros();
     quiescence.finish_consumption(&consumed_lease, &guard)?;
     drop(guard);
-
-    let _ = prepared_hook;
 
     notify_runtime_artifact_activation(state_home, &event_bytes).await;
 
@@ -545,6 +553,15 @@ where
         lease_producer_process_id: quiescence.lease.producer_process_id,
         lease_consumer_process_id: std::process::id(),
     })
+}
+
+async fn discard_prepared_runtime_artifact_bundle_members(
+    members: &[PreparedRuntimeArtifactBundleMember],
+) -> Result<(), String> {
+    for member in members {
+        discard_prepared_runtime_artifact(&member.artifact).await?;
+    }
+    Ok(())
 }
 
 fn publish_runtime_bundle_member_launcher(

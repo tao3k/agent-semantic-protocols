@@ -29,6 +29,22 @@ fn generation() -> WorkspaceMemoryGeneration {
             .to_hex()
             .to_string(),
     );
+    let module_graph_digest = format!(
+        "blake3-256:{}",
+        blake3::hash(b"resident-source-index-module-graph").to_hex()
+    );
+    let runtime_provider_execution_binding = agent_semantic_artifacts::installed_provider_binding::RuntimeProviderExecutionBinding::build(
+        crate::fixture::FIXTURE_PROJECT_ID.to_owned(),
+        "workspace-a".to_owned(),
+        format!("blake3-256:{}", "1".repeat(64)),
+        format!("blake3-256:{}", "2".repeat(64)),
+        format!("blake3-256:{}", "3".repeat(64)),
+        source_snapshot
+            .root_integrity_reference()
+            .expect("source snapshot integrity reference"),
+        module_graph_digest.clone(),
+    )
+    .expect("Runtime provider execution binding");
     WorkspaceMemoryGeneration::try_from_build(WorkspaceGenerationBuild {
     projection_capability: agent_semantic_client_db::active_generation_projection_capability::ActiveGenerationProjectionCapabilityManifest::single_selector("blake3-256:0000000000000000000000000000000000000000000000000000000000000000".to_owned(), "rust://fixture/src/lib.rs#item/function/fixture".to_owned(), "src/lib.rs".to_owned(), std::collections::BTreeSet::from([agent_semantic_client_db::active_generation_projection_capability::ActiveGenerationProjectionMode::Source])).expect("test projection capability manifest"),
         relations: Vec::new(),
@@ -36,11 +52,13 @@ fn generation() -> WorkspaceMemoryGeneration {
         project_root: project_root().display().to_string(),
         active_epoch: 1,
         workspace_snapshot,
-        source_snapshot,
-        module_graph_digest: format!(
-            "blake3-256:{}",
-            blake3::hash(b"resident-source-index-module-graph").to_hex()
+        content_search_generation: crate::fixture::content_search_generation_receipt(
+            "workspace-a",
+            &source_snapshot,
         ),
+        source_snapshot,
+        module_graph_digest,
+        runtime_provider_execution_binding: Some(runtime_provider_execution_binding),
         project_resolutions: Vec::new(),
         owners: vec![WorkspaceOwnerSnapshot {
                         authority: None,

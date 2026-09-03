@@ -2,15 +2,24 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://agent-semantic-protocols.dev/schemas/semantic-agent-search-playbook-receipt.v1.schema.json",
   "title": "ASP Search Playbook Receipt v1",
-  "description": "One agent-facing query plan over indexed lexical recall, generation-bound resident Rust graph reasoning, and bounded ripgrep verification. Python graph computation is an offline calibration producer and is not a Ready query lane. Seed products are not admitted.",
+  "description": "One truthful agent-facing query plan over an admitted generation. Source-byte acquisition, provider-native syntax, Tantivy, resident byte evidence, and Rust resident graph are distinct facts; ripgrep and asp-python-graphs may only report execution when an exact bound observation exists.",
   "type": "object",
   "additionalProperties": false,
   "required": [
     "schemaId",
     "schemaVersion",
     "workspaceIdentity",
+    "languageId",
+    "providerDigest",
+    "indexArtifactDigest",
     "generationDigest",
     "sourceRootDigest",
+    "operationId",
+    "candidateCount",
+    "residentReadElapsedMicros",
+    "serviceElapsedMicros",
+    "elapsedMicros",
+    "workCounters",
     "query",
     "intent",
     "state",
@@ -23,13 +32,22 @@
     "schemaId": {"const": "asp.search.playbook-receipt"},
     "schemaVersion": {"const": "1"},
     "workspaceIdentity": {"type": "string", "minLength": 1},
+    "languageId": {"type": "string", "minLength": 1},
+    "providerDigest": {"type": "string", "minLength": 1},
+    "indexArtifactDigest": {"type": "string", "minLength": 1},
     "generationDigest": {"type": "string", "minLength": 1},
     "sourceRootDigest": {"type": "string", "minLength": 1},
+    "operationId": {"type": "string", "minLength": 1},
+    "candidateCount": {"type": "integer", "minimum": 0},
+    "residentReadElapsedMicros": {"type": "integer", "minimum": 0},
+    "serviceElapsedMicros": {"type": "integer", "minimum": 0},
+    "elapsedMicros": {"type": "integer", "minimum": 0},
+    "workCounters": {"$ref": "runtime-provider-search-receipt.v1.schema.json#/$defs/zeroWorkCounters"},
     "query": {"type": "string", "minLength": 1},
     "intent": {
-      "enum": ["exact-selector", "conceptual", "relationship", "exact-literal", "absence-proof"]
+      "enum": ["conceptual", "relationship", "exact-literal", "absence-proof"]
     },
-    "state": {"enum": ["completed", "refine", "failed"]},
+    "state": {"const": "completed"},
     "plan": {
       "type": "object",
       "additionalProperties": false,
@@ -37,12 +55,17 @@
       "properties": {
         "stages": {
           "type": "array",
-          "minItems": 1,
-          "maxItems": 3,
-          "uniqueItems": true,
-          "items": {
-            "$ref": "#/$defs/stage"
-          }
+          "minItems": 6,
+          "maxItems": 6,
+          "prefixItems": [
+            {"const": {"family": "acquire", "capabilityId": "search.source-byte-acquisition"}},
+            {"const": {"family": "acquire", "capabilityId": "search.cold-rg-recall"}},
+            {"const": {"family": "syntax", "capabilityId": "search.native-syntax-playbook"}},
+            {"const": {"family": "acquire", "capabilityId": "search.tantivy-lexical"}},
+            {"const": {"family": "reason", "capabilityId": "search.rust-resident-graph"}},
+            {"const": {"family": "reason", "capabilityId": "search.python-graph"}}
+          ],
+          "items": false
         },
         "coverage": {"enum": ["candidates", "complete"]},
         "maxOwners": {"type": "integer", "minimum": 1},
@@ -52,18 +75,22 @@
     "evidence": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["indexedLexical", "residentGraph", "ripgrep", "correlation"],
+      "required": ["sourceAcquisition", "nativeSyntax", "indexedLexical", "byteEvidence", "residentGraph", "ripgrep", "pythonGraph", "correlation"],
       "properties": {
+        "sourceAcquisition": {"$ref": "#/$defs/sourceAcquisition"},
+        "nativeSyntax": {"$ref": "#/$defs/nativeSyntax"},
         "indexedLexical": {"$ref": "#/$defs/indexedLexical"},
+        "byteEvidence": {"$ref": "#/$defs/byteEvidence"},
         "residentGraph": {"$ref": "#/$defs/residentGraph"},
         "ripgrep": {"$ref": "#/$defs/ripgrep"},
+        "pythonGraph": {"$ref": "#/$defs/pythonGraph"},
         "correlation": {"$ref": "#/$defs/correlation"}
       }
     },
     "decision": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["chosenPath", "explanation", "residualUncertainty"],
+      "required": ["chosenPath", "explanation", "residualUncertainty", "nextCommand", "selectors", "ownerPaths"],
       "properties": {
         "chosenPath": {"type": "string", "minLength": 1},
         "explanation": {"type": "string", "minLength": 1},
@@ -75,115 +102,295 @@
         "nextCommand": {
           "type": ["string", "null"],
           "pattern": "^asp\\s+[^\\s]+\\s+(search\\s+playbook|query)\\b(?!.*<[^>]+>).*$"
-        }
+        },
+        "selectors": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "ownerPaths": {"$ref": "#/$defs/ownerIds"}
       }
     },
     "metrics": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["totalElapsedMicros", "laneElapsedMicros", "commandCount"],
+      "required": ["totalElapsedMicros", "stageElapsedMicros", "commandCount"],
       "properties": {
         "totalElapsedMicros": {"type": "integer", "minimum": 0},
-        "laneElapsedMicros": {
+        "stageElapsedMicros": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["indexedLexical", "residentGraph", "ripgrep"],
+          "required": ["nativeSyntax", "indexedLexical", "byteEvidence", "residentGraph", "ripgrep", "pythonGraph"],
           "properties": {
+            "nativeSyntax": {"type": "integer", "minimum": 0},
             "indexedLexical": {"type": "integer", "minimum": 0},
+            "byteEvidence": {"type": "integer", "minimum": 0},
             "residentGraph": {"type": "integer", "minimum": 0},
-            "ripgrep": {"type": "integer", "minimum": 0}
+            "ripgrep": {"type": "integer", "minimum": 0},
+            "pythonGraph": {"type": "integer", "minimum": 0}
           }
         },
         "commandCount": {"type": "integer", "minimum": 1, "maximum": 1}
-      }
-    },
-    "failure": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["reasonKind", "detail"],
-      "properties": {
-        "reasonKind": {
-          "enum": ["provider-unavailable", "generation-unavailable", "budget-exhausted", "coverage-incomplete", "graph-unavailable", "verification-unavailable"]
-        },
-        "detail": {"type": "string", "minLength": 1}
       }
     }
   },
   "allOf": [
     {
-      "if": {"properties": {"state": {"const": "failed"}}, "required": ["state"]},
-      "then": {"required": ["failure"]},
-      "else": {"not": {"required": ["failure"]}}
-    },
-    {
       "if": {"properties": {"intent": {"const": "absence-proof"}}, "required": ["intent"]},
       "then": {"properties": {"plan": {"properties": {"coverage": {"const": "complete"}}}}}
+    },
+    {
+      "if": {"properties": {"intent": {"const": "relationship"}}, "required": ["intent"]},
+      "then": {
+        "properties": {
+          "evidence": {
+            "properties": {
+              "pythonGraph": {
+                "properties": {
+                  "state": {"const": "executed"},
+                  "reasonKind": {"const": "exact-generation-resident-evaluation"},
+                  "projectionDigest": {"type": "string"}
+                }
+              }
+            }
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "evidence": {
+            "properties": {
+              "pythonGraph": {
+                "properties": {
+                  "state": {"const": "skipped"},
+                  "reasonKind": {"const": "optional-capability-not-requested"},
+                  "projectionDigest": {"type": "null"},
+                  "candidateOwnerIds": {"maxItems": 0}
+                }
+              }
+            }
+          }
+        }
+      }
     }
   ],
   "$defs": {
-    "stage": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["family", "capabilityId"],
-      "properties": {
-        "family": {"enum": ["direct", "acquire", "reason", "verify"]},
-        "capabilityId": {
-          "type": "string",
-          "pattern": "^[a-z][a-z0-9-]*(\\.[a-z][a-z0-9-]*)+$"
-        }
-      }
-    },
     "ownerIds": {
       "type": "array",
       "uniqueItems": true,
       "items": {"type": "string", "minLength": 1}
     },
+    "sourceAcquisition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state", "stageArtifactDigest", "generationDigest", "admittedOwnerCount", "complete"],
+      "properties": {
+        "state": {"const": "admitted"},
+        "stageArtifactDigest": {"type": "string", "pattern": "^blake3-256:[0-9a-f]{64}$"},
+        "generationDigest": {"type": "string", "minLength": 1},
+        "admittedOwnerCount": {"type": "integer", "minimum": 0},
+        "complete": {"const": true}
+      }
+    },
+    "nativeSyntax": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state", "stageArtifactDigest", "projections", "relations", "properByteRanges", "nonEmptyQueryKeys", "relationsBoundToOwners", "complete"],
+      "properties": {
+        "state": {"enum": ["queued", "building", "ready", "failed"]},
+        "stageArtifactDigest": {"type": "string", "pattern": "^blake3-256:[0-9a-f]{64}$"},
+        "projections": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/nativeSyntaxProjection"}
+        },
+        "relations": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/nativeSyntaxRelation"}
+        },
+        "properByteRanges": {"type": "boolean"},
+        "nonEmptyQueryKeys": {"type": "boolean"},
+        "relationsBoundToOwners": {"type": "boolean"},
+        "complete": {"type": "boolean"}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"state": {"const": "ready"}}},
+          "then": {"properties": {"properByteRanges": {"const": true}, "nonEmptyQueryKeys": {"const": true}, "relationsBoundToOwners": {"const": true}, "complete": {"const": true}}},
+          "else": {"properties": {"projections": {"maxItems": 0}, "relations": {"maxItems": 0}, "properByteRanges": {"const": false}, "nonEmptyQueryKeys": {"const": false}, "relationsBoundToOwners": {"const": false}, "complete": {"const": false}}}
+        }
+      ]
+    },
+    "nativeSyntaxProjection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ownerPath", "contentDigest", "selectors"],
+      "properties": {
+        "ownerPath": {"type": "string", "minLength": 1},
+        "contentDigest": {"type": "string", "pattern": "^blake3-256:[0-9a-f]{64}$"},
+        "selectors": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/nativeSyntaxSelector"}
+        }
+      }
+    },
+    "nativeSyntaxSelector": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["selector", "byteStart", "byteEnd", "queryKeys", "derivedProjectionDigest"],
+      "properties": {
+        "selector": {"type": "string", "minLength": 1},
+        "byteStart": {"type": "integer", "minimum": 0},
+        "byteEnd": {"type": "integer", "minimum": 1},
+        "queryKeys": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "derivedProjectionDigest": {"type": "string", "pattern": "^blake3-256:[0-9a-f]{64}$"}
+      }
+    },
+    "nativeSyntaxRelation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ownerPath", "relationDigest"],
+      "properties": {
+        "ownerPath": {"type": "string", "minLength": 1},
+        "relationDigest": {"type": "string", "pattern": "^blake3-256:[0-9a-f]{64}$"}
+      }
+    },
     "indexedLexical": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["backend", "candidateOwnerIds", "indexedOwnerCount", "admittedOwnerCount", "complete"],
+      "required": ["state", "backend", "generationDigest", "indexArtifactDigest", "candidateOwnerIds", "indexedOwnerCount", "admittedOwnerCount", "complete"],
       "properties": {
-        "backend": {"enum": ["turso-fts", "tantivy-hot-overlay", "unavailable"]},
+        "state": {"enum": ["executed", "skipped"]},
+        "backend": {"enum": ["tantivy", "unavailable"]},
+        "generationDigest": {"type": "string", "minLength": 1},
+        "indexArtifactDigest": {"type": "string", "minLength": 1},
         "candidateOwnerIds": {"$ref": "#/$defs/ownerIds"},
         "indexedOwnerCount": {"type": "integer", "minimum": 0},
         "admittedOwnerCount": {"type": "integer", "minimum": 0},
         "complete": {"type": "boolean"}
       }
     },
+    "byteEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state", "mode", "generationDigest", "candidateOwnerIds", "coverageComplete"],
+      "properties": {
+        "state": {"enum": ["executed", "skipped"]},
+        "mode": {"enum": ["verify-candidates", "prove-coverage"]},
+        "generationDigest": {"type": "string", "minLength": 1},
+        "candidateOwnerIds": {"$ref": "#/$defs/ownerIds"},
+        "coverageComplete": {"type": "boolean"}
+      }
+    },
     "residentGraph": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["entryOwnerIds", "entryNodeIds", "candidateOwnerIds", "closureState", "unresolvedFrontierCount"],
+      "required": ["state", "backend", "generationDigest", "resultDigest", "entryOwnerIds", "entryNodeIds", "candidateOwnerIds", "closureState", "unresolvedFrontierCount"],
       "properties": {
+        "state": {"enum": ["executed", "skipped"]},
+        "backend": {"const": "rust-resident-graph"},
+        "generationDigest": {"type": "string", "minLength": 1},
+        "resultDigest": {"type": "string", "pattern": "^blake3-256:[0-9a-f]{64}$"},
         "entryOwnerIds": {"$ref": "#/$defs/ownerIds"},
         "entryNodeIds": {"$ref": "#/$defs/ownerIds"},
         "candidateOwnerIds": {"$ref": "#/$defs/ownerIds"},
         "closureState": {"enum": ["complete", "frontier-open", "stale", "unavailable"]},
         "unresolvedFrontierCount": {"type": "integer", "minimum": 0}
-      }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "state": {"const": "executed"},
+            "closureState": {"const": "complete"},
+            "unresolvedFrontierCount": {"const": 0}
+          }
+        },
+        {
+          "properties": {
+            "state": {"const": "skipped"},
+            "entryOwnerIds": {"maxItems": 0},
+            "entryNodeIds": {"maxItems": 0},
+            "candidateOwnerIds": {"maxItems": 0},
+            "closureState": {"const": "unavailable"}
+          }
+        }
+      ]
     },
     "ripgrep": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["mode", "verifiedOwnerIds", "matchedOwnerIds", "coveredOwnerCount", "admittedOwnerCount", "complete"],
+      "required": ["state", "reasonKind", "mode", "generationDigest", "coverageInputDigest", "candidateOwnerIds", "processCount", "complete"],
       "properties": {
-        "mode": {"enum": ["verify-candidates", "prove-coverage", "unavailable"]},
-        "verifiedOwnerIds": {"$ref": "#/$defs/ownerIds"},
-        "matchedOwnerIds": {"$ref": "#/$defs/ownerIds"},
-        "coveredOwnerCount": {"type": "integer", "minimum": 0},
-        "admittedOwnerCount": {"type": "integer", "minimum": 0},
+        "state": {"enum": ["executed", "skipped"]},
+        "reasonKind": {"enum": ["content-generation-cold-recall", "ready-path-does-not-execute-ripgrep"]},
+        "mode": {"enum": ["immutable-generation-corpus", "not-requested"]},
+        "generationDigest": {"type": "string", "minLength": 1},
+        "coverageInputDigest": {
+          "oneOf": [
+            {"type": "null"},
+            {"type": "string", "pattern": "^blake3-256:[0-9a-f]{64}$"}
+          ]
+        },
+        "candidateOwnerIds": {"$ref": "#/$defs/ownerIds"},
+        "processCount": {"type": "integer", "minimum": 0, "maximum": 1},
         "complete": {"type": "boolean"}
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "state": {"const": "executed"},
+            "reasonKind": {"const": "content-generation-cold-recall"},
+            "mode": {"const": "immutable-generation-corpus"},
+            "coverageInputDigest": {"type": "string"},
+            "processCount": {"const": 1},
+            "complete": {"const": true}
+          }
+        },
+        {
+          "properties": {
+            "state": {"const": "skipped"},
+            "reasonKind": {"const": "ready-path-does-not-execute-ripgrep"},
+            "mode": {"const": "not-requested"},
+            "coverageInputDigest": {"type": "null"},
+            "candidateOwnerIds": {"maxItems": 0},
+            "processCount": {"const": 0},
+            "complete": {"const": false}
+          }
+        }
+      ]
+    },
+    "pythonGraph": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state", "reasonKind", "backend", "generationDigest", "projectionDigest", "candidateOwnerIds"],
+      "properties": {
+        "state": {"enum": ["executed", "skipped"]},
+        "reasonKind": {"enum": ["exact-generation-resident-evaluation", "optional-capability-not-requested"]},
+        "backend": {"const": "asp-python-graphs"},
+        "generationDigest": {"type": "string", "minLength": 1},
+        "projectionDigest": {
+          "oneOf": [
+            {"type": "null"},
+            {"type": "string", "pattern": "^blake3-256:[0-9a-f]{64}$"}
+          ]
+        },
+        "candidateOwnerIds": {"$ref": "#/$defs/ownerIds"}
       }
     },
     "correlation": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["lexicalGraphOverlapCount", "lexicalGraphJaccardPermille", "graphMarginalCandidateCount", "verifiedUnionCandidateCount"],
+      "required": ["lexicalGraphOverlapCount", "lexicalGraphJaccardPermille", "graphMarginalCandidateCount", "candidateUnionCount"],
       "properties": {
         "lexicalGraphOverlapCount": {"type": "integer", "minimum": 0},
         "lexicalGraphJaccardPermille": {"type": "integer", "minimum": 0, "maximum": 1000},
         "graphMarginalCandidateCount": {"type": "integer", "minimum": 0},
-        "verifiedUnionCandidateCount": {"type": "integer", "minimum": 0}
+        "candidateUnionCount": {"type": "integer", "minimum": 0}
       }
     }
   }

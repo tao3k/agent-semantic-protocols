@@ -1,11 +1,13 @@
 //! Transport-neutral Ready generation publication channel.
 
+use agent_semantic_client_protocol::{ClientProjectId, ClientWorkspaceIdentity};
 use std::path::PathBuf;
 use tokio::sync::watch;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct WorkspaceGenerationPublished {
-    pub workspace_identity: String,
+    pub project_id: ClientProjectId,
+    pub workspace_id: ClientWorkspaceIdentity,
     pub project_root: PathBuf,
     pub resident_pointer_path: PathBuf,
     pub generation_digest: String,

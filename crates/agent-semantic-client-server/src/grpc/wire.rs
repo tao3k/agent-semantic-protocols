@@ -17,33 +17,14 @@ pub(super) fn encode_frame(frame: ClientFrame) -> Result<wire::ClientFrameEnvelo
         ClientFrame::Initialize {
             base,
             request_id,
-            project_root,
             client_info,
             capabilities,
         } => (
             base,
             Frame::Initialize(wire::InitializeFrame {
                 request_id: request_id.into_inner(),
-                project_root,
                 client_info: Some(encode_client_info(client_info)),
                 capabilities_json: encode_json(&capabilities)?,
-            }),
-        ),
-        ClientFrame::Dispatch {
-            base,
-            request_id,
-            project_root,
-            client_info,
-            method,
-            params,
-        } => (
-            base,
-            Frame::Dispatch(wire::DispatchFrame {
-                request_id: request_id.into_inner(),
-                project_root,
-                client_info: Some(encode_client_info(client_info)),
-                method,
-                params_json: encode_json(&params)?,
             }),
         ),
         ClientFrame::Request {
@@ -121,17 +102,8 @@ pub(super) fn decode_frame(envelope: wire::ClientFrameEnvelope) -> Result<Client
         Frame::Initialize(frame) => Ok(ClientFrame::Initialize {
             base,
             request_id: identifier(frame.request_id, "requestId")?,
-            project_root: required(frame.project_root, "projectRoot")?,
             client_info: decode_client_info(require(frame.client_info, "clientInfo")?)?,
             capabilities: decode_json(&frame.capabilities_json, "capabilities")?,
-        }),
-        Frame::Dispatch(frame) => Ok(ClientFrame::Dispatch {
-            base,
-            request_id: identifier(frame.request_id, "requestId")?,
-            project_root: required(frame.project_root, "projectRoot")?,
-            client_info: decode_client_info(require(frame.client_info, "clientInfo")?)?,
-            method: required(frame.method, "method")?,
-            params: decode_json(&frame.params_json, "params")?,
         }),
         Frame::Request(frame) => Ok(ClientFrame::Request {
             base,
@@ -177,7 +149,8 @@ fn encode_base(base: ClientFrameBase) -> wire::ClientFrameBase {
         protocol_id: base.protocol_id,
         protocol_version: base.protocol_version,
         session_id: base.session_id.into_inner(),
-        workspace_identity: base.workspace_identity.into_inner(),
+        project_id: base.project_id.into_inner(),
+        workspace_id: base.workspace_id.into_inner(),
         trace_context: base.trace_context.map(|trace| wire::TraceContext {
             traceparent: trace.traceparent,
             tracestate: trace.tracestate,
@@ -192,7 +165,8 @@ fn decode_base(base: wire::ClientFrameBase) -> Result<ClientFrameBase, String> {
         protocol_id: required(base.protocol_id, "protocolId")?,
         protocol_version: required(base.protocol_version, "protocolVersion")?,
         session_id: identifier(base.session_id, "sessionId")?,
-        workspace_identity: identifier(base.workspace_identity, "workspaceIdentity")?,
+        project_id: identifier(base.project_id, "projectId")?,
+        workspace_id: identifier(base.workspace_id, "workspaceId")?,
         trace_context: base
             .trace_context
             .map(|trace| -> Result<TraceContext, String> {

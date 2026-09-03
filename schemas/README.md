@@ -54,6 +54,14 @@ carry a materialized owner selector plus a placeholder-free executable command.
 `semantic-agent-search-playbook-receipt.v1.schema.json` owns the single public
 Search Playbook result. It composes indexed lexical candidates, resident Python
 graph reasoning, and bounded ripgrep verification into one route decision.
+Its ordered plan fixes source acquisition, cold ripgrep recall, provider-native
+syntax, Tantivy lexical recall, Rust resident-graph ranking, and optional Python
+Graph reasoning as distinct stages. A cold receipt records exactly one ripgrep
+process over the immutable content-generation corpus; a warm receipt records
+Tantivy and must not fabricate ripgrep execution.
+Its `nativeSyntax.projections` records expose bounded provider-native selectors,
+byte ranges, query keys, derived projection digests, and owner-bound relation
+digests; an owner list or count alone is invalid native-syntax evidence.
 Legacy seed products and multi-command route scripts are not admitted.
 
 `search-owner-missing-topology.v1.schema.json` owns the bounded graph returned
@@ -1023,8 +1031,7 @@ query-time provider RPC, durable reads, and generation mutation are zero.
 
 `semantic-graph-turbo-request.v1.schema.json` is the schema-owned algorithm
 input packet for the cold/offline `asp-python-graphs` service project. It never
-serves the Ready `search`, `query`, `search.owner`, or `asp.graph.evaluate`
-routes. It carries
+serves the Ready `search`, `query`, or `asp.graph.evaluate` routes. It carries
 the requested reasoning profile, algorithm id, seed node ids, ranking budget,
 optional per-kind budgets, optional window-merge controls, and typed graph
 facts under `graph.nodes[]` and `graph.edges[]`. Fast-search request nodes may

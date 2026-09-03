@@ -15,8 +15,8 @@ impl WorkspaceGenerationAdmission {
         self.entries
             .get(&WorkspaceGenerationAdmissionKey {
                 workspace_identity: workspace_identity.to_owned(),
-                project_root: project_root.to_path_buf(),
             })
+            .filter(|entry| entry.matches_project_root(project_root))
             .map(|entry| entry.observed())
     }
 
@@ -28,8 +28,8 @@ impl WorkspaceGenerationAdmission {
         self.entries
             .get(&WorkspaceGenerationAdmissionKey {
                 workspace_identity: workspace_identity.to_owned(),
-                project_root: project_root.to_path_buf(),
             })
+            .filter(|entry| entry.matches_project_root(project_root))
             .map(|entry| entry.receipt.borrow().clone())
     }
 
@@ -39,12 +39,21 @@ impl WorkspaceGenerationAdmission {
         project_root: &std::path::Path,
         candidate: WorkspaceGenerationCandidateIdentity,
     ) -> Result<WorkspaceGenerationAdmissionReceipt, String> {
+        if let Some(entry) = self.entries.get(&WorkspaceGenerationAdmissionKey {
+            workspace_identity: workspace_identity.to_owned(),
+        }) && !entry.matches_project_root(project_root)
+        {
+            return Err(format!(
+                "workspace generation admission root drift: workspaceIdentity={workspace_identity} requestedRoot={}",
+                project_root.display()
+            ));
+        }
         candidate.validate()?;
         self.record_catalog_resident(
-            crate::runtime_server_admission_catalog::RuntimeWorkspaceAdmissionCatalogEntry {
-                workspace_identity: workspace_identity.to_owned(),
-                project_root: project_root.to_path_buf(),
-            },
+            crate::runtime_server_admission_catalog::RuntimeWorkspaceAdmissionCatalogEntry::resolve(
+                workspace_identity.to_owned(),
+                project_root.to_path_buf(),
+            )?,
         )?;
         match self.status(workspace_identity, project_root) {
             Some(receipt)

@@ -63,15 +63,14 @@ fn cli_doctor_syncs_generated_activation_drift() {
         .find(|provider| provider.provider_id == "asp-rust")
         .expect("synced rust provider");
     assert_eq!(
-        rust_provider.routes.prime.argv,
+        rust_provider.routes.playbook.argv,
         vec![
             "asp-rust",
             "search",
-            "prime",
+            "playbook",
+            "{query}",
             "--workspace",
-            "{workspace}",
-            "--view",
-            "seeds"
+            "{workspace}"
         ]
     );
     assert!(!synced.contains("\"stdinMode\": null"));
@@ -102,10 +101,8 @@ fn write_invalid_generated_activation(root: &std::path::Path) -> std::path::Path
                 "sourceRoots": ["src", "tests"],
                 "ignoredPathPrefixes": ["target", ".git"],
                 "commands": {
-                    "prime": {"argv": ["asp-rust", "search", "prime", "."]},
-                    "owner": {"argv": ["asp-rust", "search", "owner", "{path}", "."]},
+                    "playbook": {"argv": ["asp-rust", "search", "playbook", "{query}", "--workspace", "."]},
                     "text": {"argv": ["asp-rust", "search", "text", "{query}", "."]},
-                    "ingest": {"argv": ["asp-rust", "search", "ingest", "."], "stdinMode": "pipe-candidates"},
                     "checkChanged": {"argv": ["asp-rust", "check", "--changed", "."]}
                 }
             }]

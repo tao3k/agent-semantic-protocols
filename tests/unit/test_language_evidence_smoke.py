@@ -25,7 +25,7 @@ _EVIDENCE_GRAPH_SCHEMA = _REPO_ROOT / "schemas/semantic-evidence-graph.v1.schema
 _LANGUAGE_CASES = [
     ("rust", "languages/asp-rust"),
     ("python", "languages/asp-python"),
-    ("typescript", "languages/typescript-lang-project-harness"),
+    ("typescript", "languages/asp-typescript"),
     ("julia", "languages/AspJulia.jl"),
     ("gerbil-scheme", "languages/gerbil-scheme-language-project-harness"),
 ]

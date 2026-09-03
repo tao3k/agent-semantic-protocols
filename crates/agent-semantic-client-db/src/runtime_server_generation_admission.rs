@@ -15,31 +15,21 @@ impl RuntimeServer {
         source_builder: crate::runtime_server_admission::WorkspaceGenerationCandidateBuilder,
         catalog: crate::runtime_server_admission_catalog::RuntimeWorkspaceAdmissionCatalog,
     ) -> Self {
-        self.configure_workspace_generation_builder(source_builder, None, Some(catalog))
+        self.configure_workspace_generation_builder(source_builder, Some(catalog), None)
     }
 
-    pub fn with_workspace_generation_and_owner_builders(
+    pub fn with_workspace_generation_builder_catalog_and_provider_binding_probe(
         self,
         source_builder: crate::runtime_server_admission::WorkspaceGenerationCandidateBuilder,
-        owner_projection_builder: crate::runtime_server_admission::WorkspaceOwnerProjectionBuilder,
-    ) -> Self {
-        self.configure_workspace_generation_builder(
-            source_builder,
-            Some(owner_projection_builder),
-            None,
-        )
-    }
-
-    pub fn with_workspace_generation_and_owner_builders_and_catalog(
-        self,
-        source_builder: crate::runtime_server_admission::WorkspaceGenerationCandidateBuilder,
-        owner_projection_builder: crate::runtime_server_admission::WorkspaceOwnerProjectionBuilder,
         catalog: crate::runtime_server_admission_catalog::RuntimeWorkspaceAdmissionCatalog,
+        provider_binding_generation_probe: std::sync::Arc<
+            dyn Fn() -> Result<Option<String>, String> + Send + Sync + 'static,
+        >,
     ) -> Self {
         self.configure_workspace_generation_builder(
             source_builder,
-            Some(owner_projection_builder),
             Some(catalog),
+            Some(provider_binding_generation_probe),
         )
     }
 
@@ -48,6 +38,6 @@ impl RuntimeServer {
         self,
         catalog: crate::runtime_server_admission_catalog::RuntimeWorkspaceAdmissionCatalog,
     ) -> Self {
-        self.configure_workspace_generation_builder(None, None, Some(catalog))
+        self.configure_workspace_generation_builder(None, Some(catalog), None)
     }
 }

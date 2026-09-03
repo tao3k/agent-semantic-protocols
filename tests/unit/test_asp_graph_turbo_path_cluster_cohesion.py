@@ -22,15 +22,15 @@ def test_package_cohesion_scales_with_specific_path_token_coverage() -> None:
                     "kind": "owner",
                     "role": "path",
                     "value": (
-                        "languages/typescript-lang-project-harness/src/cli/"
+                        "languages/asp-typescript/src/cli/"
                         "semantic-search/workspace-ranking.ts"
                     ),
                     "path": (
-                        "languages/typescript-lang-project-harness/src/cli/"
+                        "languages/asp-typescript/src/cli/"
                         "semantic-search/workspace-ranking.ts"
                     ),
                     "ownerPath": (
-                        "languages/typescript-lang-project-harness/src/cli/"
+                        "languages/asp-typescript/src/cli/"
                         "semantic-search/workspace-ranking.ts"
                     ),
                 },
@@ -39,15 +39,15 @@ def test_package_cohesion_scales_with_specific_path_token_coverage() -> None:
                     "kind": "owner",
                     "role": "path",
                     "value": (
-                        "languages/typescript-lang-project-harness/src/parser/"
+                        "languages/asp-typescript/src/parser/"
                         "package_index.ts"
                     ),
                     "path": (
-                        "languages/typescript-lang-project-harness/src/parser/"
+                        "languages/asp-typescript/src/parser/"
                         "package_index.ts"
                     ),
                     "ownerPath": (
-                        "languages/typescript-lang-project-harness/src/parser/"
+                        "languages/asp-typescript/src/parser/"
                         "package_index.ts"
                     ),
                 },
@@ -56,15 +56,15 @@ def test_package_cohesion_scales_with_specific_path_token_coverage() -> None:
                     "kind": "owner",
                     "role": "path",
                     "value": (
-                        "languages/typescript-lang-project-harness/schemas/"
+                        "languages/asp-typescript/schemas/"
                         "semantic-dependency-topology.v1.schema.json"
                     ),
                     "path": (
-                        "languages/typescript-lang-project-harness/schemas/"
+                        "languages/asp-typescript/schemas/"
                         "semantic-dependency-topology.v1.schema.json"
                     ),
                     "ownerPath": (
-                        "languages/typescript-lang-project-harness/schemas/"
+                        "languages/asp-typescript/schemas/"
                         "semantic-dependency-topology.v1.schema.json"
                     ),
                 },
@@ -73,15 +73,15 @@ def test_package_cohesion_scales_with_specific_path_token_coverage() -> None:
                     "kind": "owner",
                     "role": "path",
                     "value": (
-                        "languages/typescript-lang-project-harness/schemas/"
+                        "languages/asp-typescript/schemas/"
                         "semantic-dependency-graph.v1.schema.json"
                     ),
                     "path": (
-                        "languages/typescript-lang-project-harness/schemas/"
+                        "languages/asp-typescript/schemas/"
                         "semantic-dependency-graph.v1.schema.json"
                     ),
                     "ownerPath": (
-                        "languages/typescript-lang-project-harness/schemas/"
+                        "languages/asp-typescript/schemas/"
                         "semantic-dependency-graph.v1.schema.json"
                     ),
                 },
@@ -90,15 +90,15 @@ def test_package_cohesion_scales_with_specific_path_token_coverage() -> None:
                     "kind": "owner",
                     "role": "path",
                     "value": (
-                        "languages/typescript-lang-project-harness/schemas/"
+                        "languages/asp-typescript/schemas/"
                         "semantic-dependency-source.v1.schema.json"
                     ),
                     "path": (
-                        "languages/typescript-lang-project-harness/schemas/"
+                        "languages/asp-typescript/schemas/"
                         "semantic-dependency-source.v1.schema.json"
                     ),
                     "ownerPath": (
-                        "languages/typescript-lang-project-harness/schemas/"
+                        "languages/asp-typescript/schemas/"
                         "semantic-dependency-source.v1.schema.json"
                     ),
                 },

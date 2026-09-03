@@ -2,7 +2,7 @@ set shell := ["bash", "-cu"]
 
 repo := "."
 rust_harness_project := "languages/asp-rust"
-typescript_harness_project := "languages/typescript-lang-project-harness"
+typescript_harness_project := "languages/asp-typescript"
 python_harness_project := "languages/asp-python"
 julia_harness_project := "languages/AspJulia.jl"
 julia_harness := "julia --project=languages/AspJulia.jl languages/AspJulia.jl/bin/asp-julia.jl"
@@ -79,7 +79,7 @@ _agent-hooks-doctor-codex bin_dir="":
 # Replay the root classifier directly without launching Codex.
 agent-hooks-smoke-hook:
     @activation="$(cargo run -q -p agent-semantic-client --bin asp -- hook paths . | awk -F= '$1=="activation"{print substr($0, 12)}')"; \
-      printf '%s' '{"tool_name":"functions.exec_command","tool_input":{"cmd":"sed -n '\''1,8p'\'' languages/typescript-lang-project-harness/tests/unit/cli.test.ts"}}' \
+      printf '%s' '{"tool_name":"functions.exec_command","tool_input":{"cmd":"sed -n '\''1,8p'\'' languages/asp-typescript/tests/unit/cli.test.ts"}}' \
       | cargo run -q -p agent-semantic-client --bin asp -- hook pre-tool --client codex --activation "$activation" --config .codex/agent-semantic-protocol/hooks/config.toml --emit decision \
       | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["decision"]=="deny", d; assert d["reasonKind"] in {"bulk-source-dump","direct-source-read"}, d; print("[agent-hooks-smoke-hook] blocked", d["reasonKind"])'
 
@@ -90,7 +90,7 @@ agent-hooks-smoke-codex:
       if [ -z "${codex_bin}" ] && [ -x /Applications/Codex.app/Contents/Resources/codex ]; then codex_bin=/Applications/Codex.app/Contents/Resources/codex; fi; \
       if [ -z "${codex_bin}" ]; then echo "codex binary not found on PATH"; rm -f "${out}"; exit 127; fi; \
       "${codex_bin}" exec --json --dangerously-bypass-approvals-and-sandbox --dangerously-bypass-hook-trust -C "$PWD" \
-        "Run exactly this shell command and do nothing else: sed -n '1,8p' languages/typescript-lang-project-harness/tests/unit/cli.test.ts" >"${out}" 2>&1 || true; \
+        "Run exactly this shell command and do nothing else: sed -n '1,8p' languages/asp-typescript/tests/unit/cli.test.ts" >"${out}" 2>&1 || true; \
       if rg -q "Command blocked by PreToolUse hook: bulk-source-dump denied|permissionDecision.*deny" "${out}"; then \
         echo "[agent-hooks-smoke-codex] blocked"; \
       elif rg -q '"type":"command_execution"' "${out}"; then \
@@ -133,7 +133,7 @@ agent-tools-install-asp bin_dir="":
 build-asp-release:
     cargo build --release --manifest-path Cargo.toml --package agent-semantic-client --bin asp
 
-agent-tools-install-protocol bin_dir="":
+agent-tools-install-protocol bin_dir="": check-rust-workspace-policy
     @requested_bin_dir="{{bin_dir}}"; \
       if [ -n "${requested_bin_dir}" ]; then \
         echo "agent-tools-install-protocol no longer accepts a custom bin_dir; Runtime configuration owns the stable install slot" >&2; \
@@ -149,6 +149,9 @@ agent-tools-install-protocol bin_dir="":
       "${destination}" --version --require-release >/dev/null
 
 # Install the debug protocol binary into the canonical State Home runtime.
+# Developer publication relies on each compiled package's O(1) build-policy
+# identity gate. The whole-workspace advisory audit belongs to release/CI and
+# must never rescan all package sources on the developer hot path.
 agent-tools-install-protocol-debug:
     @asp_artifact="target/debug/asp"; \
       cargo build --manifest-path Cargo.toml --package agent-semantic-client --bin asp --package agent-semantic-hook --bin asp-hook || exit $?; \
@@ -337,7 +340,13 @@ check-live-corpus-search-query-all:
     PATH="$PWD/.bin:$PATH" .bin/asp server start >/dev/null
     PATH="$PWD/.bin:$PATH" .bin/asp live-corpus qualify --plan benchmarks/live-corpus-search-query-qualification.json
 
-provider-gate: check-rust-warnings check-schema-profiles check-rfc-docs check-schema-manager check-tree-sitter-query-contracts check-language-workspace-search-contracts check-graph-turbo-focused provider-gate-root provider-gate-rust provider-gate-typescript provider-gate-python provider-gate-julia provider-gate-gerbil
+provider-gate: check-rust-workspace-policy check-rust-warnings check-schema-profiles check-rfc-docs check-schema-manager check-tree-sitter-query-contracts check-language-workspace-search-contracts check-graph-turbo-focused provider-gate-root provider-gate-rust provider-gate-typescript provider-gate-python provider-gate-julia provider-gate-gerbil
+
+# Run the parser-owned whole-workspace policy exactly once. Ordinary member
+# builds keep the O(1) manifest/policy-identity dependency and never rescan the
+# crate source tree.
+check-rust-workspace-policy:
+    rtk cargo test -p asp-rust-project-harness-policy --features workspace-policy --test workspace_policy -- --nocapture
 
 check-rust-warnings:
     env RUSTFLAGS="-D warnings" cargo check -q -p agent-semantic-client
@@ -454,13 +463,13 @@ check-gerbil-owner-items-fast-path:
     )
     if median > max_seconds:
         raise SystemExit(
-            "[gerbil-owner-items-fast] median latency exceeded threshold; "
-            "keep `asp gerbil-scheme search owner ... items` on the Rust inline path"
+            "[gerbil-native-syntax-playbook] median latency exceeded threshold; "
+            "keep native syntax inside the single Search playbook generation path"
         )
 
 provider-gate-rust:
-    cargo test --manifest-path {{rust_harness_project}}/Cargo.toml --features cli,search search
-    cargo test --manifest-path {{rust_harness_project}}/Cargo.toml --features cli,search query
+    cargo test --manifest-path {{rust_harness_project}}/Cargo.toml --features provider-server parser_native_syntax
+    cargo test --manifest-path {{rust_harness_project}}/Cargo.toml --features provider-server project_resolution
     cargo test --manifest-path {{rust_harness_project}}/Cargo.toml --features cli,search policy
 
 provider-gate-typescript:

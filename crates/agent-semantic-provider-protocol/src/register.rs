@@ -372,15 +372,15 @@ mod tests {
                 "routes": [{
                     "schemaId": "agent.semantic-protocols.provider-route",
                     "schemaVersion": "1",
-                    "routeId": format!("{language_id}.search.owner"),
-                    "operation": "search.owner",
+                    "routeId": format!("{language_id}.search"),
+                    "operation": "search",
                     "authority": "asp-server",
                     "target": {
                         "languageId": language_id,
                         "providerId": provider_id
                     },
                     "requestSchema": {
-                        "schemaId": "agent.semantic-protocols.search-owner-request",
+                        "schemaId": "agent.semantic-protocols.runtime-provider-search-request",
                         "schemaVersion": "1"
                     },
                     "inputs": [],
@@ -406,7 +406,7 @@ mod tests {
                         "keySlots": []
                     },
                     "telemetry": {
-                        "spanName": "asp.route.search.owner",
+                        "spanName": "asp.route.search",
                         "attributeSlots": []
                     }
                 }]

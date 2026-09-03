@@ -22,8 +22,10 @@ not a schema-version mechanism.
 
 The protobuf wire type contains one =bytes json= field.  The JSON value is
 validated against shared schemas before dispatch and after receipt.  Required
-operations are =hello=, =open-generation=, =evaluate=,
-=release-generation=, =cancel=, =health=, and =shutdown=.
+operations are =hello=, =compile-generation=, =cancel=, =health=, and
+=shutdown=.  Python does not open, retain, evaluate, release, or query a live
+generation; it returns one bounded construction result to the Rust-owned
+generation attempt.
 
 Every request and receipt echoes request ID, workspace identity when scoped,
 generation digest and positive generation token when generation-scoped, and
@@ -73,24 +75,25 @@ HTTP adapter because it is not a language client.
 
 * Artifact publication
 
-The Runtime daemon is a read-only consumer of one
-=asp-python-graphs-runtime-artifact= v2 descriptor.  It MUST NOT discover a
-workspace checkout, synthesize argv, repair a missing descriptor, or publish
-an executable during bootstrap.  The sole writer is the explicit ASP artifact
-publication subcommand.  It verifies the prebuilt =asp-python-graphs= service
-artifact, binds its content digest and complete command digest, then publishes
-the descriptor with one lock-held compare-and-swap transaction.  The artifact
-is a server-managed service process, never a public standalone graph command
+The Runtime daemon is a read-only consumer of the exact
+=asp-python-graphs= member of the active and healthy Runtime artifact bundle.
+It MUST NOT discover a workspace checkout, synthesize argv, repair a missing
+member, inspect PATH, or publish an executable during bootstrap.  There is no
+loose State Home descriptor and no graph-specific publication command.  The
+Artifacts transaction verifies the member bytes, binds its content digest to
+the bundle digest, and advances the bundle selector once.  The member is a
+server-managed optional capability, never a public standalone graph command
 or a second lifecycle/authority.
 
 The release bundle therefore carries the prebuilt =asp-python-graphs= wheel,
 its complete dependency environment, private executable launcher, and a
-machine-readable artifact manifest alongside =asp=.  The manifest covers every
-environment and launcher file, identifies the =graph-turbo= algorithm, and binds
-the private =asp_python_graphs.service_cli= gRPC entry point.  Runtime
-publication consumes that verified bundle through the explicit
-artifact-publication path; the release bundle does not publish a public graph
-executable or add a second service lifecycle.
+machine-readable artifact manifest as a member of the same bundle as =asp=.
+The manifest covers every environment and launcher file, identifies the
+=graph-turbo= algorithm, and binds the private
+=asp_python_graphs.service_cli= gRPC entry point.  Runtime publication consumes
+that verified bundle through the single generic Runtime artifact transaction;
+the release bundle does not publish a public graph executable or add a second
+service lifecycle.
 
 *** Service-first algorithm boundary
 
@@ -126,19 +129,15 @@ control and lookup are explicit server IPC operations owned by ASP Server and
 are never hidden subprocesses or local checkout scans inside provider search.
 
 The exact release environment layout remains an MVP1 architecture decision,
-not a release acceptance claim.  A candidate bundle must prove that its
-absolute executable locator remains valid after extraction on every supported
+not a release acceptance claim. A candidate bundle must prove that its exact
+=asp-python-graphs= member remains valid after extraction on every supported
 platform and that the service starts offline without dependency installation or
-network access.  Until that relocation proof and the Windows private-endpoint
-oracle are accepted, release-bundle smoke output is design evidence only and
-does not replace the Runtime descriptor publication gate.
-
-Every successful publication carries a strictly increasing
-=publicationGeneration= and a non-empty =publicationNonce=.  A writer whose
-expected generation is stale fails before writing.  The descriptor is fsynced
-to a unique temporary file and renamed over the stable pointer; malformed or
-partial JSON is never a successful publication.  Schema version 1 has no
-generation CAS and is removed rather than accepted as a compatibility path.
+network access. The Runtime active/healthy bundle selector, bundle digest, and
+member content digest are the complete publication authority. There is no
+separate graph descriptor generation or stable graph executable selector.
+Until relocation proof and the Windows private-endpoint oracle are accepted,
+release-bundle smoke output is design evidence only and does not replace the
+Runtime bundle admission gate.
 
 * Proof and test obligations
 

@@ -185,6 +185,34 @@ fn graph_command() -> Command {
         )
 }
 
+fn workspace_search_playbook_command() -> Command {
+    Command::new("playbook")
+        .bin_name("asp search playbook")
+        .about("Plan deterministic language-scoped Search routes from Runtime authority")
+        .arg(Arg::new("query").value_name("QUERY").required(true))
+        .arg(Arg::new("intent").long("intent").value_name("INTENT"))
+        .arg(Arg::new("scope").long("scope").value_name("SCOPE"))
+        .arg(Arg::new("coverage").long("coverage").value_name("COVERAGE"))
+        .arg(
+            Arg::new("language")
+                .long("language")
+                .short('l')
+                .value_name("LANGUAGE_ID"),
+        )
+        .arg(
+            Arg::new("max-owners")
+                .long("max-owners")
+                .value_name("COUNT"),
+        )
+        .arg(
+            Arg::new("deadline-ms")
+                .long("deadline-ms")
+                .value_name("MILLIS"),
+        )
+        .arg(Arg::new("explain").long("explain").value_name("MODE"))
+        .arg(Arg::new("workspace").long("workspace").value_name("ROOT"))
+}
+
 fn facade_command(name: &'static str, bin_name: &'static str) -> Command {
     command_with_subcommands(
         name,
@@ -475,7 +503,11 @@ fn selected_command_default(args: &[String]) -> Command {
         (Some("live-corpus"), _) => live_corpus_command(),
         (Some("ast-patch"), _) => ast_patch_command(),
         (Some("graph"), _) => graph_command(),
-        (Some("search"), _) => facade_leaf_command("search", "asp search"),
+        (Some("search"), Some("playbook")) => workspace_search_playbook_command(),
+        (Some("search"), _) => Command::new("search")
+            .bin_name("asp search")
+            .about("Plan workspace Search routes")
+            .subcommand(workspace_search_playbook_command()),
         (Some("query"), _) => facade_leaf_command("query", "asp query"),
         (Some(document), Some(command))
             if is_document_facade(document)

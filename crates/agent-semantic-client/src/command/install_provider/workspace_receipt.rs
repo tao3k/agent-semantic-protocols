@@ -151,11 +151,12 @@ async fn publish_live_provider_registration(
             expected_generation: None,
             request: ProviderRegisterOperation::List,
         };
-        let list = agent_semantic_provider_transport::grpc_session::call_runtime_provider_register(
-            &endpoint.provider_plane_socket_path,
-            &list,
-        )
-        .await?;
+        let list =
+            agent_semantic_provider_transport::grpc_session::call_runtime_provider_register_tcp(
+                endpoint.provider_endpoint.socket_addr(),
+                &list,
+            )
+            .await?;
         list.validate()?;
         let generation = match list.result {
             ProviderRegisterResult::Snapshot { snapshot } => snapshot.generation,
@@ -178,8 +179,8 @@ async fn publish_live_provider_registration(
             },
         };
         let response =
-            agent_semantic_provider_transport::grpc_session::call_runtime_provider_register(
-                &endpoint.provider_plane_socket_path,
+            agent_semantic_provider_transport::grpc_session::call_runtime_provider_register_tcp(
+                endpoint.provider_endpoint.socket_addr(),
                 &register,
             )
             .await?;

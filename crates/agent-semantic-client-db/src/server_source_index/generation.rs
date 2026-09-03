@@ -12,178 +12,13 @@ use agent_semantic_content_identity::exact_selector_generation_fixture::{
 use agent_semantic_content_identity::workspace_search_identity::WorkspaceSearchIdentityV1;
 use agent_semantic_search::exact_selector_fixture_publication::build_exact_selector_fixture_from_projection_records_v1;
 use agent_semantic_search::exact_selector_generation_fixture::{
-    ExactSelectorGenerationMemorySearchV1, publish_immutable_exact_selector_generation_fixture_v1,
+    ExactSelectorFixturePublicationV1, ExactSelectorGenerationMemorySearchV1,
+    publish_immutable_exact_selector_generation_fixture_v1,
 };
 
 use crate::server_source_index::CurrentSourceIndexSnapshot;
 
 static GENERATION_TRANSACTION_ID: AtomicU64 = AtomicU64::new(0);
-
-/// Typed inputs for publishing one ordinary target-provider source envelope.
-pub struct TargetProviderSourceEnvelopePublicationRequestV1<'a> {
-    pub collection_scope: crate::server_source_index::collect::SourceIndexCollectionScope,
-    pub provider_registry: &'a agent_semantic_client_core::RuntimeProviderProjection,
-    pub artifact_root: &'a Path,
-    pub project_root: &'a Path,
-}
-
-/// Publish one provider-scoped source envelope without opening a complete
-/// workspace generation transaction.
-pub async fn publish_target_provider_source_envelope_v1(
-    runtime: &crate::runtime_search_service::RuntimeSearchServiceHandle,
-    publication: TargetProviderSourceEnvelopePublicationRequestV1<'_>,
-    cancellation: crate::runtime_generation_cancellation::GenerationCancellation,
-) -> Result<PathBuf, String> {
-    let requested_provider = match &publication.collection_scope {
-        crate::server_source_index::collect::SourceIndexCollectionScope::TargetProvider {
-            language_id,
-            provider_id,
-        } => publication
-            .provider_registry
-            .providers
-            .iter()
-            .find(|provider| {
-                &provider.language_id == language_id && &provider.provider_id == provider_id
-            })
-            .ok_or_else(|| {
-                format!(
-                    "requested target provider is not registered: languageId={} providerId={}",
-                    language_id, provider_id
-                )
-            })?,
-        crate::server_source_index::collect::SourceIndexCollectionScope::TargetProviderId {
-            provider_id,
-        } => {
-            let mut matches = publication
-                .provider_registry
-                .providers
-                .iter()
-                .filter(|provider| &provider.provider_id == provider_id);
-            let requested_provider = matches.next().ok_or_else(|| {
-                format!("requested target provider is not registered: providerId={provider_id}")
-            })?;
-            if matches.next().is_some() {
-                return Err(format!(
-                    "requested target provider id is ambiguous: providerId={provider_id}"
-                ));
-            }
-            requested_provider
-        }
-        crate::server_source_index::collect::SourceIndexCollectionScope::CompleteGeneration
-        | crate::server_source_index::collect::SourceIndexCollectionScope::ExplicitOwners {
-            ..
-        } => {
-            return Err(
-                "target-provider source envelope publication requires target-provider collection scope"
-                    .to_owned(),
-            );
-        }
-    };
-    let collection =
-        crate::server_source_index::collect::collect_source_index_scope_with_runtime_service_async(
-            runtime,
-            publication.project_root,
-            publication.provider_registry,
-            &publication.collection_scope,
-            cancellation,
-        )
-        .await?;
-    if collection.files.is_empty()
-        || collection.files.iter().any(|file| {
-            file.language_id != requested_provider.language_id
-                || file.provider_id != requested_provider.provider_id
-        })
-    {
-        return Err(format!(
-            "target Runtime provider source scope is incomplete: languageId={} providerId={}",
-            requested_provider.language_id, requested_provider.provider_id
-        ));
-    }
-    let registry = publication
-        .provider_registry
-        .evidence(publication.project_root);
-    let (_, workspace_snapshot, source_snapshot, source_blobs) =
-        crate::server_source_index::api::source_index_snapshot_from_files(
-            publication.project_root,
-            &collection.files,
-            &registry,
-        )?;
-    let snapshot = crate::server_source_index::api::materialized_current_source_index_snapshot(
-        workspace_snapshot,
-        source_snapshot,
-        source_blobs,
-    )?;
-    let normalized_extensions = requested_provider
-        .source_extensions
-        .iter()
-        .map(|extension| extension.trim_start_matches('.').to_ascii_lowercase())
-        .collect::<BTreeSet<_>>();
-    let provider_owner_count = snapshot
-        .source_blobs
-        .iter()
-        .filter(|(path, _)| {
-            normalized_extensions.is_empty()
-                || Path::new(path)
-                    .extension()
-                    .map(|extension| extension.to_string_lossy().to_ascii_lowercase())
-                    .is_some_and(|extension| normalized_extensions.contains(&extension))
-        })
-        .count();
-    if provider_owner_count == 0 {
-        return Err(format!(
-            "target-provider source envelope publication has no provider owners: reason=owners-empty languageId={} providerId={}",
-            requested_provider.language_id, requested_provider.provider_id
-        ));
-    }
-    let address_provider_digest =
-        crate::server_source_index::provider_envelope::provider_registry_address_digest(
-            publication.provider_registry,
-            publication.project_root,
-        );
-    let immutable_envelope = crate::server_source_index::publish_provider_source_snapshot_envelope(
-        crate::server_source_index::ProviderSourceSnapshotEnvelopePublicationV1 {
-            snapshot: &snapshot,
-            provider_id: requested_provider.provider_id.as_str(),
-            address_provider_digest: &address_provider_digest,
-            source_extensions: &requested_provider.source_extensions,
-            artifact_root: publication.artifact_root,
-            provider_workspace_root: publication.project_root,
-        },
-    )?;
-    let canonical_directory = publication
-        .artifact_root
-        .join("source-snapshot-envelopes")
-        .join("v1");
-    let canonical_file_name =
-        crate::server_source_index::provider_envelope::source_snapshot_envelope_file_name(
-            requested_provider.provider_id.as_str(),
-            &address_provider_digest,
-            &crate::server_source_index::provider_envelope::provider_workspace_identity_v1(
-                publication.project_root,
-            )?
-            .digest,
-        );
-    let canonical_envelope = canonical_directory.join(&canonical_file_name);
-    let temporary = canonical_directory.join(format!(
-        ".{canonical_file_name}.tmp-{}-{}",
-        std::process::id(),
-        GENERATION_TRANSACTION_ID.fetch_add(1, Ordering::Relaxed)
-    ));
-    fs::copy(&immutable_envelope, &temporary).map_err(|error| {
-        format!(
-            "failed to stage canonical target-provider source envelope {}: {error}",
-            temporary.display()
-        )
-    })?;
-    fs::rename(&temporary, &canonical_envelope).map_err(|error| {
-        let _ = fs::remove_file(&temporary);
-        format!(
-            "failed to publish canonical target-provider source envelope {}: {error}",
-            canonical_envelope.display()
-        )
-    })?;
-    Ok(canonical_envelope)
-}
 
 /// Typed evidence required to publish one complete source-index generation.
 pub struct WorkspaceSearchGenerationPublicationRequestV1<'a> {
@@ -218,23 +53,9 @@ pub struct PublishedSourceIndexGenerationV1 {
 pub fn publish_workspace_search_generation_v1(
     publication: WorkspaceSearchGenerationPublicationRequestV1<'_>,
 ) -> Result<PublishedSourceIndexGenerationV1, String> {
-    match &publication.collection_scope {
-        crate::server_source_index::collect::SourceIndexCollectionScope::CompleteGeneration => {
-            publish_complete_workspace_search_generation_v1(publication)
-        }
-        crate::server_source_index::collect::SourceIndexCollectionScope::TargetProvider {
-            ..
-        }
-        | crate::server_source_index::collect::SourceIndexCollectionScope::TargetProviderId {
-            ..
-        }
-        | crate::server_source_index::collect::SourceIndexCollectionScope::ExplicitOwners {
-            ..
-        } => Err(
-            "workspace search generation publication requires complete-generation collection scope"
-                .to_owned(),
-        ),
-    }
+    let crate::server_source_index::collect::SourceIndexCollectionScope::CompleteGeneration =
+        &publication.collection_scope;
+    publish_complete_workspace_search_generation_v1(publication)
 }
 
 fn publish_complete_workspace_search_generation_v1(
@@ -400,17 +221,19 @@ fn publish_complete_workspace_search_generation_v1(
         .inspect_err(|_| {
             let _ = fs::remove_dir_all(&staging_directory);
         })?;
-    let exact_selector_fixture_path = publish_immutable_exact_selector_generation_fixture_v1(
-        &staging_directory.join("exact-selector"),
-        &fixture,
-        publication.workspace_identity,
-        generation_digest,
-        fixture_digest,
-    )
-    .map_err(|error| {
-        let _ = fs::remove_dir_all(&staging_directory);
-        format!("failed to stage exact-selector generation: {error:?}")
-    })?;
+    let exact_selector_generation_directory = staging_directory.join("exact-selector");
+    let exact_selector_fixture_path =
+        publish_immutable_exact_selector_generation_fixture_v1(ExactSelectorFixturePublicationV1 {
+            generation_directory: &exact_selector_generation_directory,
+            fixture: &fixture,
+            workspace_identity: publication.workspace_identity,
+            generation_digest,
+            fixture_digest,
+        })
+        .map_err(|error| {
+            let _ = fs::remove_dir_all(&staging_directory);
+            format!("failed to stage exact-selector generation: {error:?}")
+        })?;
     let provider_relation_path = staging_directory.join("provider-relations.v1.json");
     fs::write(&provider_relation_path, &relation_bytes).map_err(|error| {
         let _ = fs::remove_dir_all(&staging_directory);

@@ -141,9 +141,7 @@ impl WorkspaceGenerationPublisher {
             super::WorkspaceExactProjectionDataPlaneClient::open(&self.pointer_path).await?,
         );
         let authority = Arc::new(data_plane.authority().clone());
-        if authority.workspace_identity != workspace_identity
-            || authority.active_epoch != active_epoch
-        {
+        if authority.workspace_id != workspace_identity || authority.active_epoch != active_epoch {
             return Err("restored workspace search generation authority drift".to_owned());
         }
         let generation = Arc::new(
@@ -226,44 +224,51 @@ impl WorkspaceGenerationPublisher {
             None,
         );
         let generation_encode_started = tokio::time::Instant::now();
-        let (generation, segment, exact_segment, search_segment, durable_commit_digest) =
-            tokio::task::spawn_blocking(move || {
-                generation.validate()?;
-                let segment = encode_segment(&generation)?;
-                let exact_segment =
-                    super::exact_segment::encode_exact_projection_segment(&generation)?;
-                let search_segment =
-                    super::encode_workspace_search_generation_segment(&generation)?;
-                let segment_digest =
-                    agent_semantic_content_identity::ArtifactHash::blake3(&segment).value;
-                let exact_segment_digest =
-                    agent_semantic_content_identity::ArtifactHash::blake3(&exact_segment).value;
-                let search_segment_digest =
-                    agent_semantic_content_identity::ArtifactHash::blake3(&search_segment).value;
-                let durable_commit_binding = format!(
-                    "{}\u{1f}{}\u{1f}{}\u{1f}{}",
-                    generation.generation_digest,
-                    segment_digest,
-                    exact_segment_digest,
-                    search_segment_digest,
-                );
-                let durable_commit_digest = format!(
-                    "blake3-256:{}",
-                    agent_semantic_content_identity::ArtifactHash::blake3(
-                        durable_commit_binding.as_bytes(),
-                    )
-                    .value,
-                );
-                Ok::<_, String>((
-                    generation,
-                    segment,
-                    exact_segment,
-                    search_segment,
-                    durable_commit_digest,
-                ))
-            })
-            .await
-            .map_err(|error| format!("workspace generation encoder task failed: {error}"))??;
+        let (
+            generation,
+            segment,
+            exact_segment,
+            search_segment,
+            search_generation_authority,
+            durable_commit_digest,
+        ) = tokio::task::spawn_blocking(move || {
+            generation.validate()?;
+            let segment = encode_segment(&generation)?;
+            let exact_segment = super::exact_segment::encode_exact_projection_segment(&generation)?;
+            let encoded_search = super::search_index_projection::
+                    encode_workspace_search_generation_segment_with_authority(&generation)?;
+            let search_segment = encoded_search.bytes;
+            let segment_digest =
+                agent_semantic_content_identity::ArtifactHash::blake3(&segment).value;
+            let exact_segment_digest =
+                agent_semantic_content_identity::ArtifactHash::blake3(&exact_segment).value;
+            let search_segment_digest =
+                agent_semantic_content_identity::ArtifactHash::blake3(&search_segment).value;
+            let durable_commit_binding = format!(
+                "{}\u{1f}{}\u{1f}{}\u{1f}{}",
+                generation.generation_digest,
+                segment_digest,
+                exact_segment_digest,
+                search_segment_digest,
+            );
+            let durable_commit_digest = format!(
+                "blake3-256:{}",
+                agent_semantic_content_identity::ArtifactHash::blake3(
+                    durable_commit_binding.as_bytes(),
+                )
+                .value,
+            );
+            Ok::<_, String>((
+                generation,
+                segment,
+                exact_segment,
+                search_segment,
+                encoded_search.authority,
+                durable_commit_digest,
+            ))
+        })
+        .await
+        .map_err(|error| format!("workspace generation encoder task failed: {error}"))??;
         record_generation_stage(
             "generation-segment-encode",
             &generation,
@@ -334,6 +339,9 @@ impl WorkspaceGenerationPublisher {
             leaf_count: generation.workspace_generation.leaf_count,
             owner_count: generation.workspace_generation.owner_count,
             provider_schema_digest: generation.provider_schema_digest.clone(),
+            runtime_provider_execution_binding: generation
+                .runtime_provider_execution_binding
+                .clone(),
             source_root_digest: qualified_digest(&generation.source_snapshot.root_digest),
             base_root_digest: generation
                 .source_snapshot
@@ -355,9 +363,11 @@ impl WorkspaceGenerationPublisher {
             previous_epoch_readable,
         };
         snapshot.validate()?;
-        let search_authority =
-            super::publish_search_generation_authority_segment(state.pointer.path(), &generation)
-                .await?;
+        let search_authority = super::publish_search_generation_authority_segment(
+            state.pointer.path(),
+            search_generation_authority,
+        )
+        .await?;
         state.pointer.publish(&snapshot).await?;
         super::WorkspaceGenerationDataPlaneClient::invalidate_committed_pointer(
             state.pointer.path(),
@@ -487,9 +497,18 @@ async fn prune_obsolete_generation_segments(
         {
             continue;
         }
-        fs::remove_file(&path).await.map_err(|error| {
+        let file_type = entry
+            .file_type()
+            .await
+            .map_err(|error| format!("inspect workspace generation entry: {error}"))?;
+        if file_type.is_dir() {
+            fs::remove_dir_all(&path).await
+        } else {
+            fs::remove_file(&path).await
+        }
+        .map_err(|error| {
             format!(
-                "remove superseded workspace generation segment `{}`: {error}",
+                "remove superseded workspace generation artifact `{}`: {error}",
                 path.display()
             )
         })?;

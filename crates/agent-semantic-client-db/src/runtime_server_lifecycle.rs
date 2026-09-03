@@ -1,14 +1,12 @@
 //! Runtime Server lifecycle receipt store owned by client-db composition.
 
 use crate::{
-    RuntimeServerActivationReadyReceipt, RuntimeServerDrainReceipt, RuntimeServerExitReceipt,
-    RuntimeServerResidentTransactionReceipt, RuntimeServerSpawnReceipt,
-    RuntimeServerSpawnReceiptRead,
+    RuntimeServerDrainReceipt, RuntimeServerExitReceipt, RuntimeServerResidentTransactionReceipt,
+    RuntimeServerSpawnReceipt, RuntimeServerSpawnReceiptRead,
 };
 use std::path::{Path, PathBuf};
 
 const SERVER_DIR: &str = "runtime/server";
-static READY_LISTENER_SEQUENCE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 fn server_dir(home: &Path) -> PathBuf {
     if let Some(publication_dir) = std::env::var_os("ASP_RUNTIME_SERVER_PUBLICATION_DIR") {
         return PathBuf::from(publication_dir).join("lifecycle");
@@ -17,151 +15,6 @@ fn server_dir(home: &Path) -> PathBuf {
 }
 fn marker(home: &Path, name: &str) -> PathBuf {
     server_dir(home).join(name)
-}
-
-pub struct RuntimeServerActivationReadyListener {
-    path: PathBuf,
-    socket: tokio::net::UnixDatagram,
-}
-
-impl RuntimeServerActivationReadyListener {
-    pub fn path(&self) -> &Path {
-        &self.path
-    }
-
-    pub async fn receive(&mut self) -> Result<RuntimeServerActivationReadyReceipt, String> {
-        let mut bytes = vec![0_u8; 16 * 1024];
-        let received = self
-            .socket
-            .recv(&mut bytes)
-            .await
-            .map_err(|error| format!("receive Runtime activation ready receipt: {error}"))?;
-        serde_json::from_slice(&bytes[..received])
-            .map_err(|error| format!("decode Runtime activation ready receipt: {error}"))
-    }
-}
-
-impl Drop for RuntimeServerActivationReadyListener {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_file(&self.path);
-    }
-}
-
-pub async fn bind_activation_ready_listener(
-    state_home: &Path,
-    publication_nonce: &str,
-) -> Result<RuntimeServerActivationReadyListener, String> {
-    use std::os::unix::ffi::OsStrExt as _;
-    use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _};
-
-    let canonical_state_home = tokio::fs::canonicalize(state_home)
-        .await
-        .map_err(|error| format!("canonicalize Runtime activation State Home: {error}"))?;
-    let expected_uid = tokio::fs::symlink_metadata(&canonical_state_home)
-        .await
-        .map_err(|error| format!("inspect Runtime activation State Home: {error}"))?
-        .uid();
-    let mut identity = blake3::Hasher::new();
-    identity.update(b"agent.semantic-protocols.runtime-activation-ready.v1\0");
-    identity.update(canonical_state_home.as_os_str().as_bytes());
-    identity.update(publication_nonce.as_bytes());
-    identity.update(&std::process::id().to_le_bytes());
-    identity.update(
-        &READY_LISTENER_SEQUENCE
-            .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
-            .to_le_bytes(),
-    );
-    let digest = identity.finalize().to_hex();
-    let runtime_base = crate::runtime_server_control::runtime_server_runtime_base(state_home)?;
-    let uid = runtime_base
-        .parent()
-        .and_then(|parent| parent.file_name())
-        .and_then(|name| name.to_str())
-        .and_then(|name| name.strip_prefix("asp-runtime-server-"))
-        .filter(|uid| !uid.is_empty() && uid.bytes().all(|byte| byte.is_ascii_digit()))
-        .ok_or_else(|| "Runtime activation ready UID authority is invalid".to_owned())?;
-    let uid_root = PathBuf::from("/tmp").join(format!("asp-ar-{uid}"));
-    let root = uid_root.join(&digest[..20]);
-    for directory in [&uid_root, &root] {
-        match tokio::fs::create_dir(directory).await {
-            Ok(()) => {}
-            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
-            Err(error) => {
-                return Err(format!(
-                    "create Runtime activation ready directory {}: {error}",
-                    directory.display()
-                ));
-            }
-        }
-        let metadata = tokio::fs::symlink_metadata(directory)
-            .await
-            .map_err(|error| {
-                format!(
-                    "inspect Runtime activation ready directory {}: {error}",
-                    directory.display()
-                )
-            })?;
-        if !metadata.file_type().is_dir()
-            || metadata.file_type().is_symlink()
-            || metadata.uid() != expected_uid
-        {
-            return Err(format!(
-                "Runtime activation ready directory is not owned by the State Home authority: {}",
-                directory.display()
-            ));
-        }
-        let mut permissions = metadata.permissions();
-        permissions.set_mode(0o700);
-        tokio::fs::set_permissions(directory, permissions)
-            .await
-            .map_err(|error| {
-                format!(
-                    "protect Runtime activation ready directory {}: {error}",
-                    directory.display()
-                )
-            })?;
-    }
-    let path = root.join("r.sock");
-    const MAX_PORTABLE_UNIX_SOCKET_PATH_BYTES: usize = 100;
-    if path.as_os_str().as_bytes().len() > MAX_PORTABLE_UNIX_SOCKET_PATH_BYTES {
-        return Err(format!(
-            "Runtime activation ready socket exceeds portable sun_path budget: bytes={} path={}",
-            path.as_os_str().as_bytes().len(),
-            path.display()
-        ));
-    }
-    match tokio::fs::remove_file(&path).await {
-        Ok(()) => {}
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-        Err(error) => {
-            return Err(format!(
-                "remove stale Runtime activation ready socket {}: {error}",
-                path.display()
-            ));
-        }
-    }
-    let socket = tokio::net::UnixDatagram::bind(&path).map_err(|error| {
-        format!(
-            "bind Runtime activation ready socket {}: {error}",
-            path.display()
-        )
-    })?;
-    Ok(RuntimeServerActivationReadyListener { path, socket })
-}
-
-pub async fn publish_activation_ready(
-    path: &Path,
-    receipt: &RuntimeServerActivationReadyReceipt,
-) -> Result<(), String> {
-    let bytes = serde_json::to_vec(receipt)
-        .map_err(|error| format!("encode Runtime activation ready receipt: {error}"))?;
-    let socket = tokio::net::UnixDatagram::unbound()
-        .map_err(|error| format!("create Runtime activation ready sender: {error}"))?;
-    socket
-        .send_to(&bytes, path)
-        .await
-        .map_err(|error| format!("publish Runtime activation ready receipt: {error}"))?;
-    Ok(())
 }
 
 pub fn spawn_receipt_digest(
@@ -531,9 +384,9 @@ pub async fn observe_resident_transaction(
         endpoint_owner_epoch: endpoint.owner_epoch,
         endpoint_binary_content_digest,
         endpoint_runtime_generation_digest: endpoint.runtime_generation_digest,
-        control_endpoint: endpoint.socket_path,
-        data_endpoint: endpoint.data_plane_socket_path,
-        provider_endpoint: endpoint.provider_plane_socket_path,
+        control_endpoint: endpoint.control_endpoint.clone(),
+        data_endpoint: endpoint.data_endpoint.clone(),
+        provider_endpoint: endpoint.provider_endpoint.clone(),
         previous_serving_digest: applied.previous_artifact_digest,
         previous_owner_epoch: spawn.previous_owner_epoch,
         previous_drain_state: previous_drain_state.to_owned(),

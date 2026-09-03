@@ -60,11 +60,14 @@ def _query_package_tokens(
     graph: TypedGraph,
     seed_ids: Iterable[str],
 ) -> tuple[str, ...]:
+    query_tokens = _query_tokens(graph, seed_ids)
+    if not query_tokens:
+        return ()
     path_token_counts, path_node_count = _path_token_counts(graph)
     path_tokens = set(path_token_counts)
     candidate_tokens = tuple(
         token
-        for token in _query_tokens(graph, seed_ids)
+        for token in query_tokens
         if "_" in token or (token in path_tokens and token not in GENERIC_PATH_TOKENS)
     )
     specific_tokens = tuple(

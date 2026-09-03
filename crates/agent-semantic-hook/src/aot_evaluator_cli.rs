@@ -79,15 +79,11 @@ pub fn main_entry() {
 }
 
 fn emit_runtime_identity() {
-    let result = crate::aot_compiler::embedded_hook_policy_content_digest();
+    let result = crate::hook_runtime_identity_receipt();
     match result {
-        Ok(policy_content_digest) => println!(
+        Ok(receipt) => println!(
             "{}",
-            serde_json::json!({
-                "schemaId": "agent.semantic-protocols.hook-runtime-identity",
-                "schemaVersion": 1,
-                "policyContentDigest": policy_content_digest,
-            })
+            serde_json::to_string(&receipt).expect("Hook Runtime identity receipt is serializable")
         ),
         Err(error) => println!(
             "{}",

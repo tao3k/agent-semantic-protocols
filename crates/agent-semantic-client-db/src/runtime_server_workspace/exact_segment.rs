@@ -83,8 +83,22 @@ impl MappedWorkspaceExactProjection {
                 .map(&file)
                 .map_err(|error| format!("map workspace exact projection segment: {error}"))?
         };
+        Self::from_mapping(
+            mapping,
+            snapshot.active_epoch,
+            &snapshot.workspace_identity,
+            &snapshot.generation_digest,
+        )
+    }
+
+    fn from_mapping(
+        mapping: Mmap,
+        expected_epoch: u64,
+        expected_workspace_identity: &str,
+        expected_generation_digest: &str,
+    ) -> Result<Self, String> {
         let header = decode_header(&mapping)?;
-        if header.epoch != snapshot.active_epoch {
+        if header.epoch != expected_epoch {
             return Err("workspace exact projection epoch does not match pointer".to_owned());
         }
         let workspace_identity = read_text(
@@ -93,7 +107,7 @@ impl MappedWorkspaceExactProjection {
             header.workspace_id_len,
             "workspace identity",
         )?;
-        if workspace_identity != snapshot.workspace_identity {
+        if workspace_identity != expected_workspace_identity {
             return Err("workspace exact projection identity does not match pointer".to_owned());
         }
         let generation_digest = read_text(
@@ -103,7 +117,7 @@ impl MappedWorkspaceExactProjection {
             "generation digest",
         )?
         .to_owned();
-        if generation_digest != snapshot.generation_digest {
+        if generation_digest != expected_generation_digest {
             return Err("workspace exact projection generation does not match pointer".to_owned());
         }
         let root_digest = read_text(

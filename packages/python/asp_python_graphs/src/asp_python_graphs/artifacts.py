@@ -192,7 +192,7 @@ def _rank_request_twice(request: Mapping[str, object]):
     graph = TypedGraph.from_packet(request)
     kwargs = {
         "profile": str(request["profile"]),
-        "seeds": tuple(str(item) for item in request["seedIds"]),
+        "seeds": tuple(str(item) for item in request["entryNodeIds"]),
         "limit": int(request["budget"]),
         "kind_budgets": request["kindBudgets"],
         "path_budget": int(request["pathBudget"]),

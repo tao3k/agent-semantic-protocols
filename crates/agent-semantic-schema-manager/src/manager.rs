@@ -87,6 +87,23 @@ pub struct SchemaBundleReport {
     pub bundle_digest: String,
 }
 
+/// One canonical schema document resolved without writing a package-local bundle.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ResolvedSchemaDocument {
+    pub name: String,
+    pub digest: String,
+    pub bytes: Vec<u8>,
+}
+
+/// Immutable language bundle input for build-time consumers.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ResolvedLanguageSchemaBundle {
+    pub language_id: String,
+    pub root_set_ids: Vec<String>,
+    pub bundle_digest: String,
+    pub schemas: Vec<ResolvedSchemaDocument>,
+}
+
 #[derive(Clone, Debug)]
 pub struct SchemaManager {
     workspace_root: PathBuf,
@@ -159,6 +176,19 @@ impl SchemaManager {
             .map_err(|error| format!("schema verification task failed: {error}"))?
     }
 
+    /// Resolve canonical closures for embedding without materializing or
+    /// verifying a mutable package-local bundle.
+    pub async fn resolve_bundles(
+        &self,
+        language_ids: &[String],
+    ) -> Result<Vec<ResolvedLanguageSchemaBundle>, String> {
+        let manager = self.clone();
+        let language_ids = language_ids.to_vec();
+        tokio::task::spawn_blocking(move || manager.resolve_bundles_blocking(&language_ids))
+            .await
+            .map_err(|error| format!("schema bundle resolution task failed: {error}"))?
+    }
+
     pub async fn publish_client_bundle(
         &self,
         language_id: String,
@@ -199,6 +229,42 @@ impl SchemaManager {
         self.select_profiles(&registry, language_ids)?
             .into_iter()
             .map(|profile| self.verify_profile(&registry, profile))
+            .collect()
+    }
+
+    fn resolve_bundles_blocking(
+        &self,
+        language_ids: &[String],
+    ) -> Result<Vec<ResolvedLanguageSchemaBundle>, String> {
+        let registry = self.load_registry()?;
+        self.select_profiles(&registry, language_ids)?
+            .into_iter()
+            .map(|profile| {
+                let (receipt, documents) = self.expected_receipt(&registry, profile)?;
+                let schemas = receipt
+                    .schemas
+                    .into_iter()
+                    .map(|schema| {
+                        let bytes = documents.get(&schema.name).cloned().ok_or_else(|| {
+                            format!(
+                                "resolved schema bundle omitted canonical document: {}",
+                                schema.name
+                            )
+                        })?;
+                        Ok(ResolvedSchemaDocument {
+                            name: schema.name,
+                            digest: schema.digest,
+                            bytes,
+                        })
+                    })
+                    .collect::<Result<Vec<_>, String>>()?;
+                Ok(ResolvedLanguageSchemaBundle {
+                    language_id: profile.language_id.clone(),
+                    root_set_ids: profile.root_sets.clone(),
+                    bundle_digest: receipt.bundle_digest,
+                    schemas,
+                })
+            })
             .collect()
     }
 

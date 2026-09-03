@@ -7,7 +7,79 @@ use agent_semantic_client_protocol::{
 
 use crate::runtime_language_client::{
     SessionKey, SessionRegistry, decode_schema_bundle_response, session_for_key,
+    validate_cancelled_terminal,
 };
+
+fn client_frame_base() -> ClientFrameBase {
+    ClientFrameBase {
+        schema_id: CLIENT_FRAME_SCHEMA_ID.to_owned(),
+        schema_version: SCHEMA_VERSION.to_owned(),
+        protocol_id: CLIENT_PROTOCOL_ID.to_owned(),
+        protocol_version: CLIENT_PROTOCOL_VERSION.to_owned(),
+        session_id: ClientSessionId::new("test-session").expect("session id"),
+        project_id: agent_semantic_client_protocol::ClientProjectId::new("repo-project")
+            .expect("project id"),
+        workspace_id: ClientWorkspaceIdentity::new("workspace").expect("workspace identity"),
+        trace_context: None,
+    }
+}
+
+fn cancellation_response(
+    request_id: ClientRequestId,
+    error: Option<serde_json::Value>,
+) -> ClientFrame {
+    ClientFrame::Response {
+        base: client_frame_base(),
+        request_id,
+        outcome: ClientOutcome::Cancelled,
+        result: None,
+        error,
+        catalog: None,
+    }
+}
+
+#[test]
+fn cancelled_outcome_with_typed_diagnostic_is_one_terminal() {
+    let request_id = ClientRequestId::new("cancel-request").expect("request id");
+    validate_cancelled_terminal(
+        cancellation_response(
+            request_id.clone(),
+            Some(serde_json::json!({
+                "reasonKind": "client-request-cancelled",
+                "message": "client request was cancelled",
+            })),
+        ),
+        &request_id,
+    )
+    .expect("typed cancellation terminal");
+}
+
+#[test]
+fn bare_cancelled_outcome_is_not_a_typed_terminal() {
+    let request_id = ClientRequestId::new("cancel-request").expect("request id");
+    let error =
+        validate_cancelled_terminal(cancellation_response(request_id.clone(), None), &request_id)
+            .expect_err("bare Cancelled must fail closed");
+    assert!(error.contains("typed diagnostic"));
+}
+
+#[test]
+fn cancellation_diagnostic_cannot_be_attached_to_another_request() {
+    let request_id = ClientRequestId::new("cancel-request").expect("request id");
+    let other_request_id = ClientRequestId::new("other-request").expect("request id");
+    let error = validate_cancelled_terminal(
+        cancellation_response(
+            other_request_id,
+            Some(serde_json::json!({
+                "reasonKind": "client-request-cancelled",
+                "message": "client request was cancelled",
+            })),
+        ),
+        &request_id,
+    )
+    .expect_err("cross-request cancellation must fail closed");
+    assert!(error.contains("request identity mismatch"));
+}
 
 #[tokio::test]
 async fn thirty_two_concurrent_misses_share_one_single_flight_connection() {
@@ -131,8 +203,9 @@ fn typed_schema_bundle_decoder_preserves_failed_terminal() {
             protocol_id: CLIENT_PROTOCOL_ID.to_owned(),
             protocol_version: CLIENT_PROTOCOL_VERSION.to_owned(),
             session_id: ClientSessionId::new("test-session").expect("session id"),
-            workspace_identity: ClientWorkspaceIdentity::new("workspace")
-                .expect("workspace identity"),
+            project_id: agent_semantic_client_protocol::ClientProjectId::new("repo-project")
+                .expect("project id"),
+            workspace_id: ClientWorkspaceIdentity::new("workspace").expect("workspace identity"),
             trace_context: None,
         },
         request_id: ClientRequestId::new("schema-request").expect("request id"),

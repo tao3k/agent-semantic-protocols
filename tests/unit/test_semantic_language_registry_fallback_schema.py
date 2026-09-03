@@ -18,7 +18,7 @@ def test_registry_schema_accepts_owner_item_query_fallback_descriptor() -> None:
         (
             _ROOT
             / "languages"
-            / "typescript-lang-project-harness"
+            / "asp-typescript"
             / "schemas"
             / "asp-provider.json"
         ).read_text()

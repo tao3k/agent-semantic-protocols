@@ -13,12 +13,7 @@ fn publication_has_one_typed_transaction_entry() {
 #[test]
 fn publication_request_carries_explicit_collection_scope() {
     fn consume_scope(request: WorkspaceSearchGenerationPublicationRequestV1<'_>) {
-        match request.collection_scope {
-            SourceIndexCollectionScope::CompleteGeneration => {}
-            SourceIndexCollectionScope::TargetProvider { .. } => {}
-            SourceIndexCollectionScope::TargetProviderId { .. } => {}
-            SourceIndexCollectionScope::ExplicitOwners { .. } => {}
-        }
+        let SourceIndexCollectionScope::CompleteGeneration = request.collection_scope;
     }
 
     let _typed_scope_consumer: for<'a> fn(WorkspaceSearchGenerationPublicationRequestV1<'a>) =

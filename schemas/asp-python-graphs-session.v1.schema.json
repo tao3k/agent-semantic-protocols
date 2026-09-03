@@ -26,11 +26,10 @@
     "messageKind": {
       "enum": [
         "hello",
-        "open-generation",
-        "evaluate",
-        "search-evidence",
-        "timeline",
+        "generation-graph",
+        "evaluate-resident",
         "release-generation",
+        "timeline",
         "cancel",
         "health",
         "shutdown",
@@ -39,7 +38,6 @@
     },
     "workspaceIdentity": {"type": "string", "minLength": 1},
     "generationDigest": {"$ref": "#/$defs/blake3Digest"},
-    "generationToken": {"type": "integer", "minimum": 1},
     "runtimeArtifactDigest": {"$ref": "#/$defs/blake3Digest"},
     "executionArtifactDigest": {"$ref": "#/$defs/blake3Digest"},
     "deadlineUnixMillis": {"type": "integer", "minimum": 0},
@@ -48,18 +46,6 @@
     "payload": {"type": "object"}
   },
   "allOf": [
-    {
-      "if": {
-        "properties": {
-          "messageKind": {
-            "enum": ["open-generation", "evaluate", "search-evidence", "release-generation"]
-          }
-        }
-      },
-      "then": {
-        "required": ["workspaceIdentity", "generationDigest", "generationToken"]
-      }
-    },
     {
       "if": {"properties": {"messageKind": {"const": "hello"}}},
       "then": {
@@ -71,14 +57,14 @@
       "then": {"required": ["cancellationId"]}
     },
     {
-      "if": {"properties": {"messageKind": {"const": "search-evidence"}}},
-      "then": {
+      "if": {
         "properties": {
-          "payloadSchemaId": {
-            "const": "agent.semantic-protocols.asp-python-graphs-search-evidence"
+          "messageKind": {
+            "enum": ["generation-graph", "evaluate-resident", "release-generation"]
           }
         }
-      }
+      },
+      "then": {"required": ["workspaceIdentity", "generationDigest"]}
     }
   ],
   "$defs": {

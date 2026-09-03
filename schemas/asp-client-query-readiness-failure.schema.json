@@ -6,7 +6,7 @@
   "additionalProperties": false,
   "required": [
     "schemaId", "schemaVersion", "state", "phase", "reasonKind",
-    "workspaceIdentity", "languageId", "providerId", "generationState",
+    "projectId", "workspaceId", "languageId", "providerId", "generationState",
     "publicationError", "recommendedNext", "elapsedMicros", "workCounters"
   ],
   "properties": {
@@ -17,7 +17,8 @@
     "state": { "const": "failed" },
     "phase": { "const": "runtime-generation-authority" },
     "reasonKind": { "const": "query-not-ready" },
-    "workspaceIdentity": { "type": "string", "minLength": 1 },
+    "projectId": { "type": "string", "minLength": 1 },
+    "workspaceId": { "type": "string", "minLength": 1 },
     "languageId": { "type": "string", "minLength": 1 },
     "providerId": { "type": "string", "minLength": 1 },
     "generationState": { "enum": ["unpublished", "failed"] },

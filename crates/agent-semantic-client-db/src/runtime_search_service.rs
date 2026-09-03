@@ -53,6 +53,26 @@ pub enum RuntimeSearchServiceRequest {
         cancellation: crate::runtime_generation_cancellation::GenerationCancellation,
         response: oneshot::Sender<Result<Value, String>>,
     },
+    GenerationGraph {
+        request_id: String,
+        payload: Value,
+        cancellation: crate::runtime_generation_cancellation::GenerationCancellation,
+        response: oneshot::Sender<Result<Value, String>>,
+    },
+    EvaluateResidentGraph {
+        workspace_identity: String,
+        generation_digest: String,
+        request_id: String,
+        payload: Value,
+        cancellation: crate::runtime_generation_cancellation::GenerationCancellation,
+        response: oneshot::Sender<Result<Value, String>>,
+    },
+    ReleaseGenerationGraph {
+        workspace_identity: String,
+        generation_digest: String,
+        request_id: String,
+        response: oneshot::Sender<Result<Value, String>>,
+    },
     ProviderOwner {
         workspace_identity: String,
         project_root: PathBuf,
@@ -241,6 +261,91 @@ impl RuntimeSearchServiceHandle {
         )
         .await
     }
+
+    pub async fn generation_graph(
+        &self,
+        request_id: String,
+        payload: Value,
+        cancellation: crate::runtime_generation_cancellation::GenerationCancellation,
+    ) -> Result<Value, String> {
+        let (response, receipt) = oneshot::channel();
+        self.sender
+            .send(RuntimeSearchServiceRequest::GenerationGraph {
+                request_id,
+                payload,
+                cancellation,
+                response,
+            })
+            .await
+            .map_err(|_| {
+                "Runtime search service is not accepting generation graph requests".to_owned()
+            })?;
+        self.await_receipt(
+            receipt,
+            "generation-graph",
+            "Runtime search service dropped the generation graph response",
+        )
+        .await
+    }
+
+    pub async fn evaluate_resident_graph(
+        &self,
+        workspace_identity: String,
+        generation_digest: String,
+        request_id: String,
+        payload: Value,
+        cancellation: crate::runtime_generation_cancellation::GenerationCancellation,
+    ) -> Result<Value, String> {
+        let (response, receipt) = oneshot::channel();
+        self.sender
+            .send(RuntimeSearchServiceRequest::EvaluateResidentGraph {
+                workspace_identity,
+                generation_digest,
+                request_id,
+                payload,
+                cancellation,
+                response,
+            })
+            .await
+            .map_err(|_| {
+                "Runtime search service is not accepting resident graph evaluation requests"
+                    .to_owned()
+            })?;
+        self.await_receipt(
+            receipt,
+            "evaluate-resident-graph",
+            "Runtime search service dropped the resident graph evaluation response",
+        )
+        .await
+    }
+
+    pub async fn release_generation_graph(
+        &self,
+        workspace_identity: String,
+        generation_digest: String,
+        request_id: String,
+    ) -> Result<Value, String> {
+        let (response, receipt) = oneshot::channel();
+        self.sender
+            .send(RuntimeSearchServiceRequest::ReleaseGenerationGraph {
+                workspace_identity,
+                generation_digest,
+                request_id,
+                response,
+            })
+            .await
+            .map_err(|_| {
+                "Runtime search service is not accepting graph generation release requests"
+                    .to_owned()
+            })?;
+        self.await_receipt(
+            receipt,
+            "release-generation-graph",
+            "Runtime search service dropped the graph generation release response",
+        )
+        .await
+    }
+
     async fn await_receipt<T>(
         &self,
         receipt: oneshot::Receiver<Result<T, String>>,

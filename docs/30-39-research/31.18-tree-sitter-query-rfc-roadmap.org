@@ -199,7 +199,7 @@ contracts.  Tree-sitter provenance converges through
    Rust evidence status: =docs/30-39-research/31.19-rfc011-rust-syntax-real-evidence.org=
    records the first =agent-semantic-protocols= flow.  TypeScript evidence
    status: =docs/30-39-research/31.20-rfc011-typescript-syntax-real-evidence.org=
-   records the first =typescript-lang-project-harness= flow.  Benchmark review
+   records the first =asp-typescript= flow.  Benchmark review
    status: =docs/30-39-research/31.21-rfc011-native-projection-benchmark-review.org=
    accepts the Rust and TypeScript native-projection v1 lanes.  Neither record claims cache hit replay.
 

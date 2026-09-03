@@ -4,8 +4,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::exact_selector_cache::ExactSelectorProjectionRecordV1;
 use crate::exact_selector_merkle::{
-    ContentDigestV1, ExactProjectionModeV1, ExactSelectorMerkleProofV1, canonical_digest_v1,
-    derive_projection_digest_v1,
+    ContentDigestV1, ExactProjectionModeV1, ExactSelectorMerkleProofV1, ProjectionDigestInputV1,
+    canonical_digest_v1, derive_projection_digest_v1,
 };
 use crate::workspace_merkle_v1::{WorkspacePathMerkleTreeV1, derive_owner_subtree_digest_v1};
 
@@ -328,13 +328,13 @@ impl ExactSelectorProjectionPacketV1 {
         ) {
             return Err(ExactSelectorProjectionPacketV1Error::SourceSnapshotMismatch);
         }
-        let projection_digest = derive_projection_digest_v1(
-            &self.canonical_item_selector,
-            self.structural_selector.as_str(),
-            self.projection_mode,
-            &self.parser_fact_digest,
-            &projection_payload,
-        );
+        let projection_digest = derive_projection_digest_v1(ProjectionDigestInputV1 {
+            canonical_item_selector: &self.canonical_item_selector,
+            structural_selector: self.structural_selector.as_str(),
+            projection_mode: self.projection_mode,
+            parser_fact_digest: &self.parser_fact_digest,
+            projection_payload: &projection_payload,
+        });
         Ok(ExactSelectorProjectionRecordV1 {
             source_byte_range: self.source_byte_start..self.source_byte_end,
             proof: ExactSelectorMerkleProofV1::from_input(

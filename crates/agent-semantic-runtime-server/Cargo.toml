@@ -28,6 +28,10 @@ tower.workspace = true
 hyper-util.workspace = true
 
 [build-dependencies]
+asp-rust-project-harness-policy.workspace = true
+agent-semantic-schema-manager.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
 tonic-prost-build.workspace = true
 
 [dev-dependencies]

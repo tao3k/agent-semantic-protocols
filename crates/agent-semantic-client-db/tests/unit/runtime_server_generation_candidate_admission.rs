@@ -10,6 +10,35 @@ use tokio::sync::{Barrier, Mutex};
 
 use super::{candidate_identity_for, completed_generation};
 
+#[tokio::test]
+async fn workspace_identity_cannot_split_admission_by_absolute_root() {
+    let admission = WorkspaceGenerationAdmission::new(Arc::new(
+        |_workspace_identity,
+         _project_root,
+         candidate,
+         _build_mode,
+         _changed_paths,
+         _provider_target,
+         _cancellation| { Box::pin(async move { completed_generation(candidate) }) },
+    ));
+    let first_root = std::env::temp_dir().join("asp-single-workspace-key-first");
+    let second_root = std::env::temp_dir().join("asp-single-workspace-key-second");
+    let candidate = candidate_identity_for(
+        "blake3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    );
+
+    admission
+        .admit("workspace-single-key", first_root, candidate.clone())
+        .await
+        .expect("admit canonical workspace partition");
+    let error = admission
+        .admit("workspace-single-key", second_root, candidate)
+        .await
+        .expect_err("same workspace identity cannot create a second root partition");
+    assert!(error.contains("workspace generation admission root drift"));
+    admission.shutdown().await.expect("drain admission lane");
+}
+
 fn run_git(root: &std::path::Path, args: &[&str]) {
     let output = Command::new("git")
         .args(args)
@@ -40,8 +69,10 @@ async fn ensure_runtime_generation_ready_upgrades_targeted_state_once() {
         .expect("discover complete generation candidate");
 
     let builds = Arc::new(Mutex::new(0_u8));
+    let binding_fresh = Arc::new(std::sync::atomic::AtomicBool::new(true));
     let admission = WorkspaceGenerationAdmission::new(Arc::new({
         let builds = Arc::clone(&builds);
+        let binding_fresh = Arc::clone(&binding_fresh);
         move |_workspace_identity,
               _project_root,
               candidate,
@@ -50,10 +81,21 @@ async fn ensure_runtime_generation_ready_upgrades_targeted_state_once() {
               _provider_target,
               _cancellation| {
             let builds = Arc::clone(&builds);
+            let binding_fresh = Arc::clone(&binding_fresh);
             Box::pin(async move {
                 *builds.lock().await += 1;
+                binding_fresh.store(true, std::sync::atomic::Ordering::Release);
                 completed_generation(candidate)
             })
+        }
+    }))
+    .with_ready_validator(Arc::new({
+        let binding_fresh = Arc::clone(&binding_fresh);
+        move |_workspace_identity, _project_root| {
+            binding_fresh
+                .load(std::sync::atomic::Ordering::Acquire)
+                .then_some(())
+                .ok_or_else(|| "provider binding generation drift".to_owned())
         }
     }));
 
@@ -72,7 +114,7 @@ async fn ensure_runtime_generation_ready_upgrades_targeted_state_once() {
         .expect("targeted admission reaches terminal");
     assert_eq!(
         targeted.admission_mode,
-        WorkspaceGenerationAdmissionMode::ColdTargeted
+        WorkspaceGenerationAdmissionMode::CompleteGeneration
     );
 
     let complete = admission
@@ -100,6 +142,17 @@ async fn ensure_runtime_generation_ready_upgrades_targeted_state_once() {
     assert_eq!(replay.attempt, complete.attempt);
     assert_eq!(replay.commit, complete.commit);
     assert_eq!(*builds.lock().await, 2);
+
+    binding_fresh.store(false, std::sync::atomic::Ordering::Release);
+    let refreshed = admission
+        .ensure_runtime_generation_ready(
+            "workspace-complete-generation-barrier".to_owned(),
+            project_root.to_path_buf(),
+        )
+        .await
+        .expect("stale provider binding rebuilds the complete generation");
+    assert!(refreshed.attempt > replay.attempt);
+    assert_eq!(*builds.lock().await, 3);
     admission.shutdown().await.expect("drain admission lane");
 }
 

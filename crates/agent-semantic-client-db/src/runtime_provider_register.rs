@@ -5,7 +5,7 @@ use agent_semantic_provider_protocol::{
 };
 use arc_swap::ArcSwap;
 use sha2::{Digest, Sha256};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -23,6 +23,7 @@ pub struct RuntimeProviderRegister {
     state: ArcSwap<RuntimeProviderRegisterState>,
     writer: tokio::sync::Mutex<()>,
     identity_constraints: BTreeMap<String, ProviderRegistrationDocument>,
+    admitted_provider_ids: Option<BTreeSet<String>>,
     store_path: Option<PathBuf>,
 }
 
@@ -50,6 +51,7 @@ impl RuntimeProviderRegister {
             state: ArcSwap::from_pointee(build_state(0, Vec::new()).expect("empty register")),
             writer: tokio::sync::Mutex::new(()),
             identity_constraints: BTreeMap::new(),
+            admitted_provider_ids: None,
             store_path: None,
         }
     }
@@ -65,6 +67,7 @@ impl RuntimeProviderRegister {
             state: ArcSwap::from_pointee(build_state(1, providers)?),
             writer: tokio::sync::Mutex::new(()),
             identity_constraints,
+            admitted_provider_ids: None,
             store_path: None,
         })
     }
@@ -73,7 +76,49 @@ impl RuntimeProviderRegister {
         identity_constraints: Vec<ProviderRegistrationDocument>,
         store_path: PathBuf,
     ) -> Result<Self, String> {
+        Self::from_seed_with_store_admission(identity_constraints, store_path, None).await
+    }
+
+    /// Build a register whose executable provider set is constrained by the
+    /// verified installed-provider binding captured for this Runtime daemon.
+    pub async fn from_verified_seed_with_store(
+        identity_constraints: Vec<ProviderRegistrationDocument>,
+        store_path: PathBuf,
+        admitted_targets: &[(String, String)],
+    ) -> Result<Self, String> {
+        let admitted = admitted_targets
+            .iter()
+            .map(|(language_id, provider_id)| (provider_id.clone(), language_id.clone()))
+            .collect::<BTreeMap<_, _>>();
+        if admitted.len() != admitted_targets.len() {
+            return Err("installed provider binding targets must be unique".to_owned());
+        }
+        let filtered = identity_constraints
+            .into_iter()
+            .filter(|provider| {
+                admitted
+                    .get(&provider.provider_id)
+                    .is_some_and(|language_id| language_id == &provider.language_id)
+            })
+            .collect::<Vec<_>>();
+        if filtered.len() != admitted.len() {
+            return Err("installed provider binding target is absent from binary seed".to_owned());
+        }
+        Self::from_seed_with_store_admission(
+            filtered,
+            store_path,
+            Some(admitted.into_keys().collect()),
+        )
+        .await
+    }
+
+    async fn from_seed_with_store_admission(
+        identity_constraints: Vec<ProviderRegistrationDocument>,
+        store_path: PathBuf,
+        admitted_provider_ids: Option<BTreeSet<String>>,
+    ) -> Result<Self, String> {
         let mut register = Self::from_seed(identity_constraints)?;
+        register.admitted_provider_ids = admitted_provider_ids;
         let installed_capabilities = read_external_providers(&store_path).await?;
         for provider in &installed_capabilities {
             if let Some(identity) = register.identity_constraints.get(&provider.provider_id)
@@ -94,6 +139,13 @@ impl RuntimeProviderRegister {
             .collect::<BTreeMap<_, _>>();
         let mut rejected_capabilities = BTreeMap::new();
         for provider in installed_capabilities {
+            if register
+                .admitted_provider_ids
+                .as_ref()
+                .is_some_and(|admitted| !admitted.contains(&provider.provider_id))
+            {
+                continue;
+            }
             match provider.compiled_routes() {
                 Ok(_) => {
                     providers.insert(provider.provider_id.clone(), provider);
@@ -273,6 +325,19 @@ impl RuntimeProviderRegister {
                 rejected_capabilities.clear();
             }
             ProviderRegisterOperation::Register { provider } => {
+                if self
+                    .admitted_provider_ids
+                    .as_ref()
+                    .is_some_and(|admitted| !admitted.contains(&provider.provider_id))
+                {
+                    return Ok(rejected_response(
+                        "provider-not-in-installed-binding",
+                        format!(
+                            "provider `{}` is not admitted by the Runtime installed-provider binding",
+                            provider.provider_id
+                        ),
+                    ));
+                }
                 if let Some(identity) = self.identity_constraints.get(&provider.provider_id)
                     && identity.language_id != provider.language_id
                 {

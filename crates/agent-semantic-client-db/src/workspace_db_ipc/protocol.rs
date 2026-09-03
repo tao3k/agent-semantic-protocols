@@ -1,4 +1,4 @@
-//! Typed Unix-domain transport for one workspace database owner epoch.
+//! Typed loopback transport for one workspace database owner epoch.
 
 use std::path::PathBuf;
 
@@ -42,7 +42,7 @@ pub(super) struct WorkspaceDbSessionBinding {
     pub(super) runtime_binary_path: String,
     pub(super) runtime_binary_digest: String,
     pub(super) binding_token: String,
-    pub(super) socket_path: String,
+    pub(super) data_endpoint: crate::runtime_server_control::RuntimeServerLoopbackEndpoint,
     pub(super) generation_pointer_path: Option<PathBuf>,
 }
 

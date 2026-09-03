@@ -75,14 +75,58 @@ impl WorkspaceGenerationCandidateIdentity {
             .filter(|digest| {
                 digest.len() == 64 && digest.bytes().all(|byte| byte.is_ascii_hexdigit())
             });
-        if self.candidate_generation.algorithm != "blake3-worktree-state-v1"
-            || candidate_digest.is_none()
+        if !matches!(
+            self.candidate_generation.algorithm.as_str(),
+            "blake3-worktree-state-v1" | "blake3-runtime-admission-v1"
+        ) || candidate_digest.is_none()
             || self.candidate_generation.authorities.is_empty()
             || policy_digest.is_none()
         {
             return Err("workspace generation candidate identity is incomplete".to_owned());
         }
         Ok(())
+    }
+
+    /// Build the O(1) identity used to coalesce one Runtime demand.
+    ///
+    /// This is not a source snapshot. Source paths and bytes are discovered
+    /// exactly once by the generation builder and the resulting commit carries
+    /// their immutable identity. Query admission must not perform a second
+    /// repository walk merely to select a single-flight lane.
+    pub fn for_runtime_admission(
+        project_id: &str,
+        workspace_identity: &str,
+        provider_target: Option<&WorkspaceGenerationProviderTarget>,
+    ) -> Result<Self, String> {
+        if project_id.trim().is_empty() || workspace_identity.trim().is_empty() {
+            return Err("runtime admission identity requires ProjectId and WorkspaceId".to_owned());
+        }
+        let provider_identity = provider_target.map_or_else(
+            || "complete-generation".to_owned(),
+            |target| {
+                format!(
+                    "{}:{}",
+                    target.language_id,
+                    target.provider_id.as_deref().unwrap_or("unresolved")
+                )
+            },
+        );
+        let authority = format!(
+            "asp-runtime-admission-v1:{project_id}:{workspace_identity}:{provider_identity}"
+        );
+        Ok(Self {
+            candidate_generation: agent_semantic_runtime::git::RepositoryCandidateGeneration {
+                algorithm: "blake3-runtime-admission-v1".to_owned(),
+                digest: format!("blake3:{}", blake3::hash(authority.as_bytes()).to_hex()),
+                authorities: vec![
+                    agent_semantic_runtime::git::RepositoryCandidateAuthority::ServerResident,
+                ],
+            },
+            policy_overlay_digest: format!(
+                "blake3:{}",
+                blake3::hash(format!("{authority}:policy-overlay").as_bytes()).to_hex()
+            ),
+        })
     }
 }
 
@@ -299,30 +343,11 @@ pub type WorkspaceGenerationCandidateBuilder = Arc<
     dyn Fn(
             String,
             PathBuf,
+            WorkspaceGenerationCandidateIdentity,
             Arc<std::collections::BTreeSet<PathBuf>>,
             Option<WorkspaceGenerationProviderTarget>,
             crate::runtime_generation_cancellation::GenerationCancellation,
         ) -> WorkspaceGenerationCandidateBuildFuture
-        + Send
-        + Sync
-        + 'static,
->;
-
-pub type WorkspaceOwnerProjectionBuildFuture = Pin<
-    Box<
-        dyn Future<
-                Output = Result<crate::runtime_server_workspace::WorkspaceOwnerProjection, String>,
-            > + Send
-            + 'static,
-    >,
->;
-pub type WorkspaceOwnerProjectionBuilder = Arc<
-    dyn Fn(
-            String,
-            PathBuf,
-            String,
-            crate::runtime_generation_cancellation::GenerationCancellation,
-        ) -> WorkspaceOwnerProjectionBuildFuture
         + Send
         + Sync
         + 'static,

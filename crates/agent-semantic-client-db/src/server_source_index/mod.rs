@@ -23,8 +23,7 @@ pub use async_rebuild::{
 };
 pub use collect::SourceIndexCollectionScope;
 pub use generation::{
-    PublishedSourceIndexGenerationV1, TargetProviderSourceEnvelopePublicationRequestV1,
-    WorkspaceSearchGenerationPublicationRequestV1, publish_target_provider_source_envelope_v1,
+    PublishedSourceIndexGenerationV1, WorkspaceSearchGenerationPublicationRequestV1,
     publish_workspace_search_generation_v1,
 };
 pub use model::{

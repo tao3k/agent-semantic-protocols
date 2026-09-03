@@ -309,6 +309,10 @@ impl RuntimeServerWorkspaceRegistry {
                 .has_same_content_identity(&materialization.as_materialization().source_snapshot)
             && active.generation().provider_schema_digest
                 == materialization.as_materialization().provider_schema_digest
+            && active.generation().runtime_provider_execution_binding
+                == materialization
+                    .as_materialization()
+                    .runtime_provider_execution_binding
             && active.generation().module_graph_digest
                 == materialization.as_materialization().import_digest
             && active.generation().selector_set_digest
@@ -344,8 +348,6 @@ impl RuntimeServerWorkspaceRegistry {
                 counters: crate::runtime_server_workspace::RuntimeDataPlaneCounters::default(),
             };
             receipt.validate()?;
-            self.prepare_search_projection_client(&workspace_identity, project_root)
-                .await?;
             self.sparse_provider_owners
                 .evict_scope(&workspace_identity, project_root);
             return Ok(receipt);
@@ -371,15 +373,6 @@ impl RuntimeServerWorkspaceRegistry {
         let receipt = receive
             .await
             .map_err(|_| "runtime workspace writer lane dropped its completion".to_owned())??;
-        self.wait_canonical_generation_durable(
-            &workspace_identity,
-            &project_root,
-            &receipt.generation_digest,
-            receipt.target_epoch,
-        )
-        .await?;
-        self.prepare_search_projection_client(&workspace_identity, &project_root)
-            .await?;
         self.sparse_provider_owners
             .evict_scope(&workspace_identity, &project_root);
         Ok(receipt)

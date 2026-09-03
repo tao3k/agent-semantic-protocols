@@ -113,25 +113,26 @@ repeated publication epochs, shutdown, and orphan-task absence under Tokio time.
 
 * Typed Ranker Artifact
 
-The Runtime Server MUST activate the =asp-python-graphs= service artifact and
-route graph-turbo calls through the ASP Server gRPC boundary. The immutable
-runtime catalog binds the service artifact locator and content digest before
-daemon publication. A standalone graph algorithm executable, Python
+The Runtime Server MAY lazily activate the =asp-python-graphs= service artifact
+only for an explicit Graph Turbo capability request and MUST route that request
+through the ASP Server data plane. The optional bundle member is not a Runtime
+endpoint or Search/Query generation prerequisite. A standalone graph algorithm executable, Python
 interpreter shortcut, =python -m= launch, query-time materialization,
 healthcheck-time installation, =uv= environment, or checkout execution is a
 contract violation, not a recovery path.
 
-Graph ranking is an installed runtime capability, not a source-checkout
-fallback.  Activation MUST bind each ranker by ranker ID, capability ID,
+Graph Turbo numerical analysis is an optional installed runtime capability, not
+a source-checkout fallback.  When present, activation MUST bind each ranker by ranker ID, capability ID,
 entrypoint, content digest, artifact-metadata digest, and protocol version.
 
 The =graph-turbo= capability is an algorithm profile provided by the activated
-=asp-python-graphs= service. Installed search MUST call the ASP Server method
+=asp-python-graphs= service. Explicit Graph Turbo requests MUST call the ASP Server method
 and MUST NOT spawn an executable, invoke =uv=, use a Python module shortcut, a
 package-manager environment, or a repository checkout.
 
-If the artifact or its receipt is missing, stale, or digest-mismatched, search
-fails closed with =ranker-unavailable=.  It does not downgrade to a wrapper,
+If the artifact or its receipt is missing, stale, or digest-mismatched, the
+explicit Graph Turbo capability fails closed with =ranker-unavailable= while
+base Search/Query remains available from the Rust-owned resident graph. It does not downgrade to a wrapper,
 run an installer during the request, or select an untyped ranker.
 
 The installed-search performance gate rejects any process tree containing
@@ -160,6 +161,96 @@ typed =asp-client-server-not-ready= state.  Shutdown closes admission, cancels
 the actor, drains outstanding responses, reaps the child, and publishes a
 terminal receipt.  There is no request-time process fallback and no framed
 stdin compatibility transport in this architecture.
+
+** Per-owner syntax failure isolation
+
+V1 distinguishes immutable source membership from parser availability.  The
+Source Snapshot and its Merkle leaf prove that an owner belongs to the complete
+generation.  A provider parser proves only which language items and relations
+are available for that already-admitted owner.  Parser success MUST NOT become
+a second source-membership authority.
+
+Every provider projection response therefore returns exactly one owner record
+for every requested owner.  The record has one of two states:
+
+- =ready=: the parser accepted the owner; =diagnostic= is null and the validated
+  =items= and =relations= are admitted.
+- =syntax-unavailable=: the immutable owner remains a member of the generation,
+  =items= and =relations= are empty, and =diagnostic= is a bounded typed
+  =source-syntax-unavailable= receipt for that owner.
+
+An unavailable syntax projection is not an empty-source match, a cache hit, or
+permission to omit the source leaf.  Lexical and rg acquisition may still use
+the immutable source bytes; exact syntax query for that owner terminates with
+the typed diagnostic.  The CompleteGeneration publisher binds the owner state
+and diagnostic into the same content identity as the source leaf.
+
+Transport failure, response identity drift, owner coverage drift, source-leaf
+digest drift, duplicate owners or selectors, invalid byte ranges, malformed
+diagnostics, and relation-proof failure remain generation-wide failures.  They
+are authority or integrity failures, not syntax failures.  Providers MUST NOT
+convert resource limits, cancellation, actor loss, or malformed request frames
+into =syntax-unavailable=.
+
+The rejected legacy rule required every source owner to parse before any
+generation could publish.  It coupled corpus size and dialect diversity to one
+all-or-nothing parser transaction, so one R7RS fixture could indefinitely block
+unrelated Gerbil owners and every resident Search/Query reader.  Path excludes,
+client retry, provider-private caches, and silent empty projections are not
+compatible recovery mechanisms and are removed from the V1 model.
+
+* Byte-first publication and exact-generation syntax attachment
+
+The base =ContentSearchGenerationReceipt.v1= is admitted by complete immutable
+source membership and byte coverage.  Its digest MUST NOT contain provider
+projection output.  This makes the base generation publishable before any
+provider actor, parser, Tantivy builder, or graph builder completes.
+
+Base inventory is derived only from the Runtime-owned repository candidate
+snapshot and the installed provider descriptor's declarative source
+extensions.  Entry markers MUST NOT select a provider =project-resolution=
+operation on this path.  Project resolution is semantic enrichment and may be
+attached after publication; it is not source-membership authority.  A
+4096-owner base build records candidate-filter, byte-read, Merkle, and commit
+timings separately, and its cold p95 MUST remain below one second even when the
+provider actor is delayed or unavailable.  The timing receipt MUST prove zero
+provider processes and zero provider RPCs before the base commit.
+
+Provider-native syntax is a derived attachment, alongside Tantivy and graph.
+The attachment key is exactly =(ProjectId, WorkspaceId, generationToken,
+contentGenerationDigest, native-syntax)=.  It transitions through
+=Queued -> Building -> Ready|Failed= under the ASP Server task and resource
+supervisor.  A stale or cross-content completion is rejected; it cannot mutate
+the active byte generation.  Exact Query returns a typed
+=native-syntax-not-ready= terminal until this attachment is Ready.  Cold rg
+and resident byte Search remain available throughout.
+
+The rejected design joined byte acquisition and provider projection before
+CompleteGeneration publication.  That made one slow or unavailable language
+provider hold every language's cold recall behind a request deadline.  A wider
+deadline, client retry, provider-private cache, targeted publication, or an
+empty syntax projection does not repair that authority error.
+
+The first =Search= request MAY spend a bounded part of its own deadline waiting
+for exactly one byte-first =CompleteGeneration= terminal after it submits or
+coalesces the server-owned readiness demand.  This exception exists only for
+the base inventory-and-bytes generation, is capped by the Runtime dispatch
+budget, and has a sub-second service objective.  It MUST NOT wait for native
+syntax, Tantivy, graph, provider installation, or another generation attempt.
+The wait is a passive observation of the single ASP Server authority: timeout
+does not cancel, retry, rebuild, or mutate the admitted task.  Ready continues
+against the exact published generation; Failed or timeout returns exactly one
+typed =query-not-ready= terminal.
+
+=ExactQuery= never performs that foreground wait.  When its exact
+=(ProjectId, WorkspaceId)= base generation is absent or failed, it submits or
+coalesces one readiness demand and immediately returns one typed
+=query-not-ready= terminal.  When the base generation is Ready but its exact
+native-syntax attachment is not Ready, it immediately returns the typed
+=native-syntax-not-ready= terminal.  Thus precise structural lookup remains an
+O(1) resident-state decision on unavailable paths, while the public cold
+=Search= operation can deliver useful rg-backed bytes without forcing a second
+client round trip.
 
 * Resident Provider Relation Graph
 
@@ -347,6 +438,12 @@ sections directly.  They MUST NOT await the writer, start a provider, repair an
 overlay, admit a generation, probe a checkout, or translate a provider CLI
 view on the query hot path.  Provider work belongs to generation construction;
 publication is the sole transition that makes the resulting sections visible.
+The public client therefore MUST NOT invoke =workspace.generation.ensure-ready=
+as an implicit Search/Query preflight.  That method is a control-plane operation
+only.  A missing or stale resident generation terminates the read immediately
+as typed =ActiveGenerationRequired= / =query-not-ready= and may enqueue one
+deduplicated background demand without awaiting it.  A process-local OnceCell
+is not a cross-process readiness authority.
 
 The public terminal states are disjoint:
 
@@ -369,6 +466,22 @@ or publishing an older epoch fails without changing the watched value.  On
 shutdown the writer closes command intake, cancels and joins every owned build
 task, publishes terminal closure, and leaves no detached provider or workspace
 task.
+
+V1 source lineage has exactly two admitted forms.  A baseline generation has
+neither =baseRootDigest= nor =dirtyPathsDigest=.  A successor generation has
+both: the base is the previously active source root, and the dirty digest is
+derived by the Source Snapshot authority from the canonical changed and removed
+owner sets over the fully materialized successor.  Construction MUST NOT copy
+one optional field from a partial provider snapshot while synthesizing the
+other.  A half-overlay is =GenerationCorrupt= and cannot be published.  Full
+recovery and target-provider replacement follow this same rule; they do not
+receive a second lineage authority.
+
+The complete successor import is also atomic evidence.  Its import digest and
+the refresh request MUST both be derived from the same merged owner/source set
+used to build the canonical materialization.  A partial refresh import cannot
+be paired with a complete successor materialization, even when their source
+root matches.
 
 The latency contract is split by plane.  Resident reads perform no command
 mailbox round trip and remain bounded by immutable in-memory section lookup.

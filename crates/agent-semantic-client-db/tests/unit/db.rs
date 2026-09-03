@@ -498,7 +498,7 @@ async fn agent_session_registry_storage_is_turso_owned() {
             .record_tool_event(AgentSessionToolEventRequest {
                 session_id: "child-session".into(),
                 tool_event: "search".into(),
-                command: Some("asp rust search owner".into()),
+                command: Some("asp rust search playbook source-structure".into()),
                 evidence_ref: Some("receipt:1".into()),
                 now: 1_800_000_010,
             })
@@ -512,7 +512,7 @@ async fn agent_session_registry_storage_is_turso_owned() {
     assert_eq!(updated.last_tool_event.as_deref(), Some("search"));
     assert_eq!(
         updated.last_command.as_deref(),
-        Some("asp rust search owner")
+        Some("asp rust search playbook source-structure")
     );
     assert_eq!(updated.last_evidence_ref.as_deref(), Some("receipt:1"));
 
@@ -659,6 +659,50 @@ async fn agent_session_register_rejects_same_child_rebind_from_stale_root_mappin
         "old-root"
     );
 
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[tokio::test]
+async fn agent_session_register_is_idempotent_and_cross_project_rebind_is_typed() {
+    let root = temp_root("agent-session-registry-global-child-identity");
+    let registry =
+        AgentSessionRegistry::open_or_create_state_root(root.join("agent")).expect("registry");
+    let request = |project_id: &str, now| AgentSessionRegisterRequest {
+        project_id: project_id.into(),
+        root_session_id: "root-session".into(),
+        session_id: "child-session".into(),
+        parent_session_id: Some("parent-thread".into()),
+        name: "asp-explorer".into(),
+        role: "asp_explorer".into(),
+        model_observation: None,
+        message_target_id: None,
+        status: "active".into(),
+        expires_at: None,
+        metadata_json: "{}".into(),
+        now,
+    };
+
+    let first = registry
+        .register_session(request("project-a", 1_800_000_000))
+        .await
+        .expect("first registration");
+    let replay = registry
+        .register_session(request("project-a", 1_800_000_001))
+        .await
+        .expect("same child binding is idempotent");
+    assert_eq!(first.session_id(), replay.session_id());
+    assert_eq!(replay.physical_generation, 1);
+
+    let error = registry
+        .register_session(request("project-b", 1_800_000_002))
+        .await
+        .expect_err("one Codex ThreadId cannot bind to another project");
+    assert!(
+        error.contains("agent-session-child-identity-rebind-denied")
+            && error.contains("storedProject=project-a")
+            && error.contains("requestedProject=project-b"),
+        "unexpected cross-project rebind terminal: {error}"
+    );
     let _ = std::fs::remove_dir_all(root);
 }
 

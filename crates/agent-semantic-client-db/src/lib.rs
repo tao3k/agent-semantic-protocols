@@ -43,9 +43,8 @@ pub mod runtime_server_supervisor;
 pub mod workspace_generation_qualification;
 pub use runtime_server_owner_receipt::{
     RUNTIME_SERVER_OWNER_SPAWN_SCHEMA_ID, RUNTIME_SERVER_OWNER_SPAWN_SCHEMA_VERSION,
-    RuntimeServerActivationReadyReceipt, RuntimeServerDrainReceipt, RuntimeServerExitReceipt,
-    RuntimeServerResidentTransactionReceipt, RuntimeServerSpawnReceipt,
-    RuntimeServerSpawnReceiptRead, StaleRuntimeServerSpawnReceipt,
+    RuntimeServerDrainReceipt, RuntimeServerExitReceipt, RuntimeServerResidentTransactionReceipt,
+    RuntimeServerSpawnReceipt, RuntimeServerSpawnReceiptRead, StaleRuntimeServerSpawnReceipt,
 };
 mod runtime_server_asp_python_graphs_status;
 pub mod runtime_server_diagnostics;

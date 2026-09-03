@@ -592,7 +592,7 @@ P1 audit should answer:
   test discovery. Runtime evidence through =run_cli(["search", "semantic-facts",
   "pytest dependency", "--json", "."])= produces schema-valid
   =semantic-fact-graph.v1= output with the same P3 edge vocabulary.
-- =languages/typescript-lang-project-harness/src/cli/semantic-graph-facts.ts=
+- =languages/asp-typescript/src/cli/semantic-graph-facts.ts=
   now merges parser-owned TypeScript field facts with project-level =package=,
   =build=, =dependency=, and =test= facts from =package.json= and AST-based
   test discovery. Runtime evidence:

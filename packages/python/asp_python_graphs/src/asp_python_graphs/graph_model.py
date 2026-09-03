@@ -50,6 +50,7 @@ class TypedGraph:
         self.edges: list[Edge] = []
         self._outgoing: dict[str, list[Edge]] = defaultdict(list)
         self._incoming: dict[str, list[Edge]] = defaultdict(list)
+        self._revision = 0
         for node in nodes:
             self.add_node(node)
         for edge in edges:
@@ -59,6 +60,7 @@ class TypedGraph:
         if not node.id:
             raise ValueError("node id must not be empty")
         self.nodes[node.id] = node
+        self._revision += 1
 
     def add_edge(self, edge: Edge) -> None:
         if edge.source not in self.nodes:
@@ -68,6 +70,13 @@ class TypedGraph:
         self.edges.append(edge)
         self._outgoing[edge.source].append(edge)
         self._incoming[edge.target].append(edge)
+        self._revision += 1
+
+    @property
+    def revision(self) -> int:
+        """Monotonic mutation identity for safe derived-index caching."""
+
+        return self._revision
 
     def adjacent_edges(
         self, node_id: str, allowed_relations: frozenset[str]
@@ -119,7 +128,9 @@ def _list_field(source: Mapping[str, Any], name: str) -> list[Mapping[str, Any]]
     return value
 
 
-def _optional_list_field(source: Mapping[str, Any], name: str) -> list[Mapping[str, Any]]:
+def _optional_list_field(
+    source: Mapping[str, Any], name: str
+) -> list[Mapping[str, Any]]:
     value = source.get(name, [])
     if value is None:
         return []

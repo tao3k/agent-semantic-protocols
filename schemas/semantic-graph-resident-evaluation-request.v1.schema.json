@@ -6,7 +6,7 @@
   "required": [
     "schemaId", "schemaVersion", "protocolId", "protocolVersion",
     "packetKind", "languageId", "surface", "queryTerms", "profile",
-    "seedIds", "budget"
+    "entryNodeIds", "budget"
   ],
   "properties": {
     "schemaId": {"const": "agent.semantic-protocols.semantic-graph-resident-evaluation-request"},
@@ -16,14 +16,14 @@
     "packetKind": {"const": "resident-graph-evaluation-request"},
     "languageId": {"type": "string", "pattern": "^[a-z][a-z0-9-]*$"},
     "surface": {
-      "enum": ["search-pipe", "search-rg", "search-lexical", "search-owner", "query"]
+      "enum": ["search-playbook", "query"]
     },
     "queryTerms": {
       "type": "array", "maxItems": 32, "uniqueItems": true,
       "items": {"type": "string", "minLength": 1, "maxLength": 256}
     },
     "profile": {"enum": ["balanced", "structural", "dependency"]},
-    "seedIds": {
+    "entryNodeIds": {
       "type": "array", "maxItems": 128, "uniqueItems": true,
       "items": {"type": "string", "minLength": 1, "maxLength": 1024}
     },
@@ -41,7 +41,7 @@
   },
   "anyOf": [
     {"properties": {"queryTerms": {"minItems": 1}}},
-    {"properties": {"seedIds": {"minItems": 1}}}
+    {"properties": {"entryNodeIds": {"minItems": 1}}}
   ],
   "additionalProperties": false
 }

@@ -3,7 +3,7 @@
 use agent_semantic_client_db::runtime_server_workspace::{
     RuntimeServerWorkspaceRegistry, WorkspaceMemoryGeneration, WorkspaceOwnerSnapshot,
     WorkspaceRecoverySource, WorkspaceRuntimeSelectorOverlay, WorkspaceRuntimeSelectorRead,
-    WorkspaceSearchGenerationAuthority, WorkspaceSelectorSnapshot,
+    WorkspaceSelectorSnapshot,
 };
 use std::sync::Arc;
 use tempfile::tempdir;
@@ -72,11 +72,16 @@ fn generation_with_owners(
             project_root: project_root.display().to_string(),
             active_epoch: epoch,
             workspace_snapshot,
+            content_search_generation: crate::fixture::content_search_generation_receipt(
+                workspace_identity,
+                &source_snapshot,
+            ),
             source_snapshot,
             module_graph_digest: format!(
                 "blake3-256:{}",
                 blake3::hash(b"resident-ready-fixture-module-graph").to_hex()
             ),
+            runtime_provider_execution_binding: None,
             project_resolutions: Vec::new(),
             owners,
         },
@@ -105,11 +110,10 @@ async fn search_generation_authority_wire_size_is_constant_in_owner_count() {
         )
         .await
         .expect("publish large resident generation");
-    let lease = registry
-        .lease("workspace-authority-wire-size", &project_root)
-        .expect("large generation lease");
-    let authority = WorkspaceSearchGenerationAuthority::from_lease(&lease)
-        .expect("derive compact search authority");
+    let authority = registry
+        .projection_search_generation_authority("workspace-authority-wire-size", &project_root)
+        .await
+        .expect("read published compact search authority");
     let wire = serde_json::to_vec(&authority).expect("encode compact authority");
     assert!(
         wire.len() < 2_048,

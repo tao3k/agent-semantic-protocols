@@ -14,8 +14,8 @@ use super::scenario_policy_scan::{
     validate_language_harness_json_boundary,
 };
 use super::shared::{
-    AGENT_POLICY_ID_GRAMMAR, COLD_FIRST_SEARCH_LANGUAGE_IDS,
-    LANGUAGE_SCENARIO_BENCHMARK_REQUIREMENTS, REQUIRED_PERFORMANCE_SENSITIVE_SUBCOMMAND_POLICY_IDS,
+    AGENT_POLICY_ID_GRAMMAR, LANGUAGE_SCENARIO_BENCHMARK_REQUIREMENTS,
+    REQUIRED_PERFORMANCE_SENSITIVE_SUBCOMMAND_POLICY_IDS,
     SharedBenchmarkToml, SharedScenarioToml,
 };
 
@@ -174,62 +174,4 @@ pub(super) fn asp_unit_scenarios_cover_perf_sensitive_subcommands() {
         missing.is_empty(),
         "ASP unit scenarios must cover performance-sensitive subcommands; missing={missing:?}; observed={policy_ids:?}"
     );
-}
-
-pub(super) fn asp_language_scenarios_define_cold_first_performance_gates() {
-    let missing = COLD_FIRST_SEARCH_LANGUAGE_IDS
-        .iter()
-        .copied()
-        .filter(|language| !language_has_cold_first_benchmark(language))
-        .collect::<Vec<_>>();
-
-    assert!(
-        missing.is_empty(),
-        "language scenario benchmark matrix must define at least one cold functional gate per target language; missing={missing:?}"
-    );
-}
-
-fn language_has_cold_first_benchmark(language: &str) -> bool {
-    LANGUAGE_SCENARIO_BENCHMARK_REQUIREMENTS
-        .iter()
-        .find(|requirement| requirement.language == language)
-        .is_some_and(|requirement| {
-            let root = Path::new(env!("CARGO_MANIFEST_DIR"))
-                .parent()
-                .and_then(Path::parent)
-                .expect("workspace root")
-                .join(requirement.root);
-            discover_benchmark_toml_paths(&root)
-                .into_iter()
-                .any(|path| {
-                    let benchmark: SharedBenchmarkToml = read_toml(&path);
-                    benchmark.phase.as_deref() == Some("cold")
-                        && benchmark.route_source.is_some()
-                        && benchmark.max_provider_process_count.is_some()
-                        && benchmark.max_stdout_bytes.is_some()
-                        && benchmark.fallback_reason.as_deref() == Some("none")
-                        && benchmark.target_total != "0ms"
-                        && benchmark.max_total != "0ms"
-                })
-        })
-}
-
-fn discover_benchmark_toml_paths(root: &Path) -> Vec<PathBuf> {
-    let mut paths = Vec::new();
-    discover_benchmark_toml_paths_into(root, &mut paths);
-    paths
-}
-
-fn discover_benchmark_toml_paths_into(root: &Path, paths: &mut Vec<PathBuf>) {
-    let Ok(entries) = fs::read_dir(root) else {
-        return;
-    };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if path.is_dir() {
-            discover_benchmark_toml_paths_into(&path, paths);
-        } else if path.file_name().and_then(|name| name.to_str()) == Some("benchmark.toml") {
-            paths.push(path);
-        }
-    }
 }

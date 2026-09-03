@@ -1,4 +1,3 @@
-use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::path::Path;
 
@@ -12,8 +11,6 @@ use super::model::{
     runtime_server_transport_contract_digest,
 };
 use agent_semantic_artifacts::runtime_artifact_catalog::RuntimeBinaryIdentity;
-
-const MAX_UNIX_SOCKET_PATH_BYTES: usize = 103;
 
 unsafe extern "C" {
     fn getuid() -> u32;
@@ -384,6 +381,9 @@ pub async fn prepare_runtime_server_endpoint_with_workspace_store_and_identity(
     artifact_catalog_digest: &str,
     owner_epoch: u64,
     binding_token: &str,
+    control_endpoint: super::RuntimeServerLoopbackEndpoint,
+    data_endpoint: super::RuntimeServerLoopbackEndpoint,
+    provider_endpoint: super::RuntimeServerLoopbackEndpoint,
 ) -> Result<RuntimeServerEndpoint, String> {
     let runtime_base = runtime_server_runtime_base_async(state_home).await?;
     prepare_runtime_server_endpoint_in_with_workspace_store_and_identity(
@@ -395,6 +395,7 @@ pub async fn prepare_runtime_server_endpoint_with_workspace_store_and_identity(
         artifact_catalog_digest,
         owner_epoch,
         binding_token,
+        Some((control_endpoint, data_endpoint, provider_endpoint)),
     )
     .await
 }
@@ -443,6 +444,7 @@ async fn prepare_runtime_server_endpoint_in_with_workspace_store(
         artifact_catalog_digest,
         owner_epoch,
         binding_token,
+        None,
     )
     .await
 }
@@ -456,6 +458,11 @@ async fn prepare_runtime_server_endpoint_in_with_workspace_store_and_identity(
     artifact_catalog_digest: &str,
     owner_epoch: u64,
     binding_token: &str,
+    endpoints: Option<(
+        super::RuntimeServerLoopbackEndpoint,
+        super::RuntimeServerLoopbackEndpoint,
+        super::RuntimeServerLoopbackEndpoint,
+    )>,
 ) -> Result<RuntimeServerEndpoint, String> {
     let uid_root = runtime_base
         .parent()
@@ -484,26 +491,15 @@ async fn prepare_runtime_server_endpoint_in_with_workspace_store_and_identity(
         .as_bytes(),
     )
     .to_hex();
-    let socket_path = runtime_base.join(format!("r-{}.sock", &digest[..16]));
-    let data_plane_socket_path = runtime_base.join(format!("r-{}.data.sock", &digest[..16]));
-    let provider_plane_socket_path = super::provider_endpoint::provider_plane_socket_path(
-        &runtime_base,
-        &digest,
-        MAX_UNIX_SOCKET_PATH_BYTES,
-    )?;
     let status_memory_path = runtime_base.join(format!("status-{}.memory", &digest[..16]));
-    if socket_path.as_os_str().as_bytes().len() > MAX_UNIX_SOCKET_PATH_BYTES {
-        return Err(format!(
-            "Runtime Server socket path exceeds Unix sun_path budget: {}",
-            socket_path.display()
-        ));
-    }
-    if data_plane_socket_path.as_os_str().as_bytes().len() > MAX_UNIX_SOCKET_PATH_BYTES {
-        return Err(format!(
-            "Runtime Server data-plane socket path exceeds Unix sun_path budget: {}",
-            data_plane_socket_path.display()
-        ));
-    }
+    let (control_endpoint, data_endpoint, provider_endpoint) = match endpoints {
+        Some(endpoints) => endpoints,
+        None => (
+            reserve_loopback_endpoint().await?,
+            reserve_loopback_endpoint().await?,
+            reserve_loopback_endpoint().await?,
+        ),
+    };
     Ok(RuntimeServerEndpoint {
         schema_id: ENDPOINT_SCHEMA_ID.to_owned(),
         schema_version: SCHEMA_VERSION.to_owned(),
@@ -520,11 +516,21 @@ async fn prepare_runtime_server_endpoint_in_with_workspace_store_and_identity(
         artifact_mode: artifact_mode.to_owned(),
         artifact_catalog_digest: artifact_catalog_digest.to_owned(),
         binding_token: binding_token.to_owned(),
-        socket_path: socket_path.to_string_lossy().into_owned(),
-        data_plane_socket_path: data_plane_socket_path.to_string_lossy().into_owned(),
-        provider_plane_socket_path: provider_plane_socket_path.to_string_lossy().into_owned(),
+        control_endpoint,
+        data_endpoint,
+        provider_endpoint,
         workspace_store_path: workspace_store_path.to_string_lossy().into_owned(),
         status_memory_path: status_memory_path.to_string_lossy().into_owned(),
     })
+}
+
+async fn reserve_loopback_endpoint() -> Result<super::RuntimeServerLoopbackEndpoint, String> {
+    let listener = tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0))
+        .await
+        .map_err(|error| format!("reserve Runtime Server loopback endpoint: {error}"))?;
+    let address = listener
+        .local_addr()
+        .map_err(|error| format!("read reserved Runtime Server loopback endpoint: {error}"))?;
+    super::RuntimeServerLoopbackEndpoint::from_socket_addr(address)
 }
 use std::path::PathBuf;

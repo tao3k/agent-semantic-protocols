@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/cold-rg-query-receipt.v1.schema.json",
+  "title": "Cold rg query receipt V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId", "schemaVersion", "identity", "inventoryDigest",
+    "normalizedQueryDigest", "candidateSetDigest", "fdProcessCount",
+    "rgProcessCount", "tantivyBuildCount", "complete"
+  ],
+  "properties": {
+    "schemaId": {"const": "agent.semantic-protocols.cold-rg-query-receipt"},
+    "schemaVersion": {"const": "1"},
+    "identity": {"$ref": "#/$defs/identity"},
+    "inventoryDigest": {"$ref": "#/$defs/digest"},
+    "normalizedQueryDigest": {"$ref": "#/$defs/digest"},
+    "candidateSetDigest": {"$ref": "#/$defs/digest"},
+    "fdProcessCount": {"const": 0},
+    "rgProcessCount": {"const": 0},
+    "tantivyBuildCount": {"const": 0},
+    "complete": {"const": true}
+  },
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^blake3-256:[0-9a-f]{64}$"},
+    "identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "projectId", "workspaceId", "sourceRootDigest", "providerDigest",
+        "schemaDigest", "generationCandidateDigest"
+      ],
+      "properties": {
+        "projectId": {"type": "string", "minLength": 1},
+        "workspaceId": {"type": "string", "minLength": 1},
+        "sourceRootDigest": {"$ref": "#/$defs/digest"},
+        "providerDigest": {"$ref": "#/$defs/digest"},
+        "schemaDigest": {"$ref": "#/$defs/digest"},
+        "generationCandidateDigest": {"$ref": "#/$defs/digest"}
+      }
+    }
+  }
+}

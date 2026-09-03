@@ -35,9 +35,9 @@ commandContainsAny = ["custom-config-deny"]
 providerId = "asp-rust"
 languageId = "rust"
 binary = "asp"
-kind = "ingest"
-argv = ["asp", "rust", "search", "ingest", "items", "tests", "--view", "seeds", "."]
-stdinMode = "pipe-candidates"
+kind = "playbook"
+argv = ["asp", "rust", "search", "playbook", "{query}", "--workspace", "."]
+stdinMode = "none"
 "#,
     );
 
@@ -51,7 +51,7 @@ stdinMode = "pipe-candidates"
     assert_eq!(decision["reasonKind"], "raw-broad-search");
     assert!(
         decision["message"].as_str().is_some_and(
-            |message| message.contains("`asp rust search ingest items tests --view seeds .`")
+            |message| message.contains("`asp rust search playbook")
         ),
         "{decision}"
     );
@@ -61,10 +61,10 @@ stdinMode = "pipe-candidates"
     assert_eq!(
         decision["routes"][0]["argv"],
         json!([
-            "asp", "rust", "search", "ingest", "items", "tests", "--view", "seeds", "."
+            "asp", "rust", "search", "playbook", "{query}", "--workspace", "."
         ])
     );
-    assert_eq!(decision["routes"][0]["stdinMode"], "pipe-candidates");
+    assert_eq!(decision["routes"][0]["stdinMode"], "none");
     std::fs::remove_dir_all(root).expect("cleanup temp project root");
 }
 
@@ -175,7 +175,7 @@ fn missing_hook_config_auto_refreshes_then_routes_search_to_host_role() {
             "transcript_path": "/tmp/rollout-hook-auto-refresh-root.jsonl",
             "cwd": root,
             "tool_name": "Bash",
-            "tool_input": {"command": "asp rust search pipe owner --workspace . --view seeds"}
+            "tool_input": {"command": "asp rust search playbook owner --workspace ."}
         }),
     );
 

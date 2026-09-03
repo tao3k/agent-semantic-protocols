@@ -62,14 +62,11 @@ impl HookPolicy {}
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct HookRoutes {
-    pub prime: CommandTemplate,
-    pub owner: CommandTemplate,
-    pub lexical: CommandTemplate,
+    pub playbook: CommandTemplate,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub query: Option<CommandTemplate>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub exact_selector_native: Option<CommandTemplate>,
-    pub ingest: CommandTemplate,
     pub check_changed: CommandTemplate,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub dependency_topology: Option<CommandTemplate>,
@@ -84,14 +81,11 @@ pub struct HookRoutes {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct HookRouteBindings {
-    pub prime: String,
-    pub owner: String,
-    pub lexical: String,
+    pub playbook: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub query: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub exact_selector_native: Option<String>,
-    pub ingest: String,
     pub check_changed: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub dependency_topology: Option<String>,
@@ -348,15 +342,9 @@ where
 #[serde(rename_all = "kebab-case")]
 /// Semantic route kind suggested by a hook denial.
 pub enum DecisionRouteKind {
-    Prime,
-    Owner,
+    Playbook,
     Query,
-    Lexical,
     Read,
-    Deps,
-    Api,
-    Ingest,
-    Tests,
     CheckChanged,
 }
 
@@ -624,9 +612,9 @@ pub fn subagent_deny_message(message: &str) -> String {
 
 fn user_prompt_search_first_context(locator_only: bool) -> &'static str {
     if locator_only {
-        return "ASP evidence-state search routing is active for this prompt. This is a locator/frontier question: answer where to look before editing, not by reading source code. Search is not a mandatory pipeline. Choose the narrowest ASP route whose preconditions are already satisfied. If an exact selector, owner path, symbol, dependency, test/failure, changed file, or previous recommendedNext exists, use that anchor and skip `search prime`. Use `search prime --workspace <workspace-root> --view seeds` only when the workspace, project, or owner map is unknown. Use `search pipe '<question-or-feature-term>' --workspace <workspace-root> --view seeds` only when the evidence state is ambiguous and needs query refinement. Do not answer from prime alone; prime is only a project map and is never final evidence. Do not repeat an exact ASP command. Use owner/frontier/locator metadata from search output. Subagents should return one compact `[asp-search-subagent]` graph-route receipt with schema/intent/route/state/evidence/next, never source bodies or line-range selectors. Materialize source only from an exact structural selector with `asp <language> query --selector <exact-selector> --workspace . --projection source`; use `--projection callable-skeleton` for a callable skeleton. Exact query has no implicit projection. ASP facades are language IDs, not package names; for Effect use `asp typescript ...`.";
+        return "ASP Search playbook routing is active for this locator question. Invoke `asp <language> search playbook '<question>' --intent conceptual --scope workspace --coverage candidates --explain compact --workspace <workspace-root>`. When an owner path is already known, use `--scope owner:<path>` instead of a separate owner-search command. The server executes one ordered resident generation: rg acquisition, Tantivy lexical retrieval, then the admitted asp-python-graphs projection. Do not use removed prime, pipe, lexical, owner, seeds, or `--view` routes. Materialize source only from an exact structural selector with `asp <language> query --selector <exact-selector> --workspace . --projection source`; use `--projection callable-skeleton` for a callable skeleton. Exact query has no implicit projection. ASP facades are language IDs, not package names; for Effect use `asp typescript ...`.";
     }
-    "ASP evidence-state search routing is active for this prompt. Before reading source or running raw grep/find, use parser-owned ASP discovery. Search is not a mandatory pipeline. Choose the narrowest ASP route whose preconditions are already satisfied. If an exact selector, owner path, symbol, dependency, test/failure, changed file, or previous recommendedNext exists, use that anchor and skip `search prime`. Use `search prime --workspace <workspace-root> --view seeds` only when the workspace, project, or owner map is unknown. Use `search pipe '<question-or-feature-term>' --workspace <workspace-root> --view seeds` only when the evidence state is ambiguous and needs query refinement. Do not answer from prime alone; prime is only a project map and is never final evidence. Do not repeat an exact ASP command. Follow `recommendedNext` or `nextCommand` from ASP output. Subagents perform owner/frontier/search work and return one compact `[asp-search-subagent]` graph-route receipt with schema/intent/route/state/evidence/next, never source bodies or line-range selectors. After ASP provides exact parser-owned identity, use `asp <language> query --selector <exact-selector> --workspace . --projection source`, or `--projection callable-skeleton` for a callable skeleton. Exact query has no implicit projection. Treat display line ranges and sourceLocatorHint as hints, not executable selectors. Do not use direct source reads as the first step. ASP facades are language IDs, not package names; for Effect use `asp typescript ...`."
+    "ASP Search playbook routing is active for this prompt. Before direct source reads, invoke `asp <language> search playbook '<question>' --intent <conceptual|relationship|exact-literal|absence-proof> --scope <workspace|owner:path> --coverage <candidates|complete> --explain compact --workspace <workspace-root>`. Complete coverage is admitted only for absence-proof intent. The server uses one ordered resident generation: rg acquisition, Tantivy lexical retrieval, then admitted asp-python-graphs projection. Do not use removed prime, pipe, lexical, owner, seeds, or `--view` routes. Follow the returned structural evidence and materialize source with `asp <language> query --selector <exact-selector> --workspace . --projection source`, or `--projection callable-skeleton`. Exact query has no implicit projection. ASP facades are language IDs, not package names; for Effect use `asp typescript ...`."
 }
 
 pub(crate) fn normalize_source_selector(selector: &str) -> &str {

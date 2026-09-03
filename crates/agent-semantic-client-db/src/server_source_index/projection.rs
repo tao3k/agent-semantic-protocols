@@ -32,10 +32,6 @@ use agent_semantic_provider_transport::projection_batch::{
 
 enum ProviderProjectionExecutor<'a> {
     Resident(&'a ProviderRuntimeActorClient),
-    RuntimeService(
-        &'a crate::runtime_search_service::RuntimeSearchServiceHandle,
-        crate::runtime_generation_cancellation::GenerationCancellation,
-    ),
 }
 
 pub(super) type ProviderProjectionAuxiliaryOwners = BTreeMap<String, Vec<ProviderProjectionOwner>>;
@@ -51,28 +47,6 @@ pub(super) async fn project_generation_with_resident_runtime(
 ) -> Result<Vec<ClientDbSourceIndexScopeFile>, String> {
     project_generation_with_executor(
         ProviderProjectionExecutor::Resident(runtime),
-        project_root,
-        workspace_identity,
-        registry,
-        files,
-        source_blobs,
-        auxiliary_owners,
-    )
-    .await
-}
-
-pub(super) async fn project_generation_with_runtime_service(
-    runtime: &crate::runtime_search_service::RuntimeSearchServiceHandle,
-    cancellation: crate::runtime_generation_cancellation::GenerationCancellation,
-    project_root: &Path,
-    workspace_identity: &str,
-    registry: &RuntimeProviderProjection,
-    files: &[ClientDbSourceIndexScopeFile],
-    source_blobs: &ClientDbSourceIndexSourceBlobs,
-    auxiliary_owners: &ProviderProjectionAuxiliaryOwners,
-) -> Result<Vec<ClientDbSourceIndexScopeFile>, String> {
-    project_generation_with_executor(
-        ProviderProjectionExecutor::RuntimeService(runtime, cancellation),
         project_root,
         workspace_identity,
         registry,
@@ -239,41 +213,6 @@ async fn project_provider(
                 let encoded = request.encode().map_err(|error| error.to_string())?;
                 let response = runtime
                     .request(&operation.operation, encoded)
-                    .await
-                    .map_err(|error| {
-                        format!(
-                            "provider projection frame failed: ownerPaths={frame_owner_paths} error={error}"
-                        )
-                    })?;
-                agent_semantic_provider_transport::projection_batch::ProviderProjectionBatchResponse::decode_for(
-                    &request,
-                    &response,
-                )
-                .map_err(|error| error.to_string())?
-            }
-            ProviderProjectionExecutor::RuntimeService(runtime, cancellation) => {
-                runtime
-                    .provider_runtime(
-                        project_root.to_path_buf(),
-                        provider.language_id.as_str().to_owned(),
-                    )
-                    .await?;
-                runtime
-                    .provider_runtime_await_ready(
-                        project_root.to_path_buf(),
-                        provider.language_id.as_str().to_owned(),
-                        cancellation.clone(),
-                    )
-                    .await?;
-                let encoded = request.encode().map_err(|error| error.to_string())?;
-                let response = runtime
-        .provider_operation(
-            project_root.to_path_buf(),
-            provider.language_id.as_str().to_owned(),
-    operation.operation.clone(),
-    encoded,
-    cancellation.clone(),
-)
                     .await
                     .map_err(|error| {
                         format!(

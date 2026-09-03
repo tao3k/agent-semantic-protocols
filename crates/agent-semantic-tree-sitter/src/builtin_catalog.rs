@@ -82,13 +82,13 @@ fn rust_catalog_source(catalog_id: &str) -> Option<&'static str> {
 fn typescript_catalog_source(catalog_id: &str) -> Option<&'static str> {
     match catalog_id {
         "calls" => Some(include_str!(
-            "../../../languages/typescript-lang-project-harness/tree-sitter/tree-sitter-typescript/queries/calls.scm"
+            "../../../languages/asp-typescript/tree-sitter/tree-sitter-typescript/queries/calls.scm"
         )),
         "declarations" => Some(include_str!(
-            "../../../languages/typescript-lang-project-harness/tree-sitter/tree-sitter-typescript/queries/declarations.scm"
+            "../../../languages/asp-typescript/tree-sitter/tree-sitter-typescript/queries/declarations.scm"
         )),
         "imports" => Some(include_str!(
-            "../../../languages/typescript-lang-project-harness/tree-sitter/tree-sitter-typescript/queries/imports.scm"
+            "../../../languages/asp-typescript/tree-sitter/tree-sitter-typescript/queries/imports.scm"
         )),
         _ => None,
     }

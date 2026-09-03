@@ -55,8 +55,7 @@ SEMANTIC_COMMAND_BINARIES = frozenset(
         "asp-typescript",
         "asp-julia",
         "asp-gerbil-scheme",
-        "asp-org",
-        "asp-md",
+        "orgize",
     }
 )
 

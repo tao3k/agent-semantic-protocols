@@ -10,7 +10,6 @@ pub use candidate::{
     WorkspaceGenerationCandidateBuild, WorkspaceGenerationCandidateBuildFuture,
     WorkspaceGenerationCandidateBuilder, WorkspaceGenerationCandidateIdentity,
     WorkspaceGenerationFailureStage, WorkspaceGenerationProviderTarget,
-    WorkspaceOwnerProjectionBuildFuture, WorkspaceOwnerProjectionBuilder,
     discover_workspace_generation_candidate, record_workspace_generation_candidate,
 };
 pub use mutation::{
@@ -19,6 +18,7 @@ pub use mutation::{
     WorkspaceGenerationMutationAdmissionReceipt, WorkspaceGenerationMutationSubmissionReceipt,
     WorkspaceGenerationMutationSubmissionState,
 };
+pub use query_demand::WorkspaceGenerationReadinessRequestState;
 
 #[path = "runtime_server_admission_artifact_publication.rs"]
 mod artifact_publication;
@@ -53,7 +53,6 @@ pub const WORKSPACE_GENERATION_ADMISSION_RECEIPT_SCHEMA_ID: &str =
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub(crate) struct WorkspaceGenerationAdmissionKey {
     workspace_identity: String,
-    project_root: PathBuf,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -176,7 +175,7 @@ impl WorkspaceGenerationAdmissionReceipt {
         }
         if !matches!(
             self.admission_mode.as_str(),
-            "cold-targeted" | "incremental-overlay" | "full-recovery"
+            "complete-generation" | "full-recovery"
         ) {
             return Err(format!(
                 "workspace generation admission receipt mode is unsupported: {}",
@@ -221,12 +220,18 @@ impl WorkspaceGenerationAdmissionReceipt {
 #[derive(Clone)]
 pub struct WorkspaceGenerationAdmission {
     builder: WorkspaceGenerationBuilder,
+    ready_validator: Option<WorkspaceGenerationReadyValidator>,
     catalog: Option<crate::runtime_server_admission_catalog::RuntimeWorkspaceAdmissionCatalog>,
     entries: AdmissionRegistry,
     changes: Arc<tokio::sync::Notify>,
     build_dispatcher: dispatcher::RuntimeServerAdmissionDispatcher,
+    pending_readiness_requests:
+        Arc<std::sync::Mutex<std::collections::BTreeMap<WorkspaceGenerationAdmissionKey, PathBuf>>>,
     telemetry_sender: crate::runtime_telemetry_bus::RuntimeTelemetryBusSender,
 }
+
+pub type WorkspaceGenerationReadyValidator =
+    Arc<dyn Fn(&str, &std::path::Path) -> Result<(), String> + Send + Sync + 'static>;
 
 struct PendingWorkspaceMutation {
     mutation_id: String,
@@ -250,17 +255,19 @@ struct WorkspaceMutationClaim {
 }
 
 pub(crate) struct AdmissionEntry {
+    project_root: PathBuf,
     receipt: watch::Sender<WorkspaceGenerationAdmissionReceipt>,
     active_mutation: watch::Sender<Option<WorkspaceMutationIdentity>>,
     mutation_changed: tokio::sync::Notify,
     lane: AdmissionEntryAuthority,
     transition: tokio::sync::Mutex<()>,
-    cancellation: crate::runtime_generation_cancellation::GenerationCancellation,
+    cancellation: std::sync::Mutex<crate::runtime_generation_cancellation::GenerationCancellation>,
     query_target_coverage: std::sync::Mutex<QueryTargetCoverage>,
 }
 
 impl AdmissionEntry {
     pub(crate) fn new(
+        project_root: PathBuf,
         receipt: WorkspaceGenerationAdmissionReceipt,
         active_mutation: Option<WorkspaceMutationIdentity>,
     ) -> Self {
@@ -275,14 +282,46 @@ impl AdmissionEntry {
         );
         let active_mutation = active_mutation_sender;
         Self {
+            project_root,
             receipt: sender,
             active_mutation,
             mutation_changed: tokio::sync::Notify::new(),
             lane,
             transition: tokio::sync::Mutex::new(()),
-            cancellation: crate::runtime_generation_cancellation::GenerationCancellation::new(),
+            cancellation: std::sync::Mutex::new(
+                crate::runtime_generation_cancellation::GenerationCancellation::new(),
+            ),
             query_target_coverage: std::sync::Mutex::new(QueryTargetCoverage::default()),
         }
+    }
+
+    pub(crate) fn current_cancellation(
+        &self,
+    ) -> crate::runtime_generation_cancellation::GenerationCancellation {
+        self.cancellation
+            .lock()
+            .expect("workspace generation cancellation authority poisoned")
+            .clone()
+    }
+
+    pub(crate) fn cancel_and_renew_generation(&self) {
+        let mut cancellation = self
+            .cancellation
+            .lock()
+            .expect("workspace generation cancellation authority poisoned");
+        cancellation.cancel();
+        *cancellation = crate::runtime_generation_cancellation::GenerationCancellation::new();
+    }
+
+    pub(crate) fn cancel_generation(&self) {
+        self.cancellation
+            .lock()
+            .expect("workspace generation cancellation authority poisoned")
+            .cancel();
+    }
+
+    pub(crate) fn matches_project_root(&self, project_root: &std::path::Path) -> bool {
+        self.project_root == project_root
     }
 
     fn observed(&self) -> WorkspaceGenerationAdmissionReceipt {
@@ -335,6 +374,40 @@ impl WorkspaceGenerationAdmission {
         Ok(())
     }
 
+    /// Admit only the canonical ProjectId/workspaceId/root identity.
+    ///
+    /// This is the cold control-plane predecessor of ClientFrame Initialize.
+    /// It deliberately performs no generation discovery, build, publication,
+    /// workspace database open, or provider work. Generation readiness has its
+    /// own single authority in `ensure_runtime_generation_ready_for_provider`.
+    pub async fn admit_project_workspace_identity(
+        &self,
+        project_root: std::path::PathBuf,
+    ) -> Result<
+        crate::runtime_server_admission_catalog::RuntimeWorkspaceAdmissionCatalogEntry,
+        String,
+    > {
+        let workspace_identity = crate::AgentSessionRegistry::workspace_id(&project_root)?;
+        let entry =
+            crate::runtime_server_admission_catalog::RuntimeWorkspaceAdmissionCatalogEntry::resolve(
+                workspace_identity,
+                project_root,
+            )?;
+        self.catalog
+            .as_ref()
+            .ok_or_else(|| "Runtime Server workspace admission catalog is unavailable".to_owned())?
+            .record(entry.clone())
+            .await?;
+        Ok(entry)
+    }
+
+    #[must_use]
+    pub fn admitted_project_workspace_count(&self) -> usize {
+        self.catalog
+            .as_ref()
+            .map_or(0, |catalog| catalog.snapshot().len())
+    }
+
     pub fn new(builder: WorkspaceGenerationBuilder) -> Self {
         let bus = crate::runtime_telemetry_bus::RuntimeTelemetryBus::new();
         Self::new_with_telemetry_sender(builder, bus.sender)
@@ -346,10 +419,14 @@ impl WorkspaceGenerationAdmission {
     ) -> Self {
         Self {
             builder,
+            ready_validator: None,
             catalog: None,
             entries: AdmissionRegistry::new(Self::initial_control_plane_capacity()),
             changes: Arc::new(tokio::sync::Notify::new()),
             build_dispatcher: dispatcher::RuntimeServerAdmissionDispatcher::new(),
+            pending_readiness_requests: Arc::new(std::sync::Mutex::new(
+                std::collections::BTreeMap::new(),
+            )),
             telemetry_sender,
         }
     }
@@ -359,6 +436,26 @@ impl WorkspaceGenerationAdmission {
         catalog: crate::runtime_server_admission_catalog::RuntimeWorkspaceAdmissionCatalog,
     ) -> Self {
         self.catalog = Some(catalog);
+        self
+    }
+
+    pub fn resolve_project_workspace_root(
+        &self,
+        project_id: &str,
+        workspace_id: &str,
+    ) -> Result<std::path::PathBuf, String> {
+        self.catalog
+            .as_ref()
+            .ok_or_else(|| "Runtime Server workspace admission catalog is unavailable".to_owned())?
+            .resolve_project_workspace(project_id, workspace_id)
+            .map(|entry| entry.project_root)
+    }
+
+    pub fn with_ready_validator(
+        mut self,
+        ready_validator: WorkspaceGenerationReadyValidator,
+    ) -> Self {
+        self.ready_validator = Some(ready_validator);
         self
     }
 
@@ -388,7 +485,7 @@ impl WorkspaceGenerationAdmission {
                 candidate,
                 WorkspaceGenerationBuildMode::RestoreOrBuild,
                 WorkspaceGenerationAdmissionTrigger::QueryDemand,
-                WorkspaceGenerationAdmissionMode::ColdTargeted,
+                WorkspaceGenerationAdmissionMode::CompleteGeneration,
                 None,
                 Arc::default(),
             )
@@ -431,9 +528,15 @@ impl WorkspaceGenerationAdmission {
         }
         let key = WorkspaceGenerationAdmissionKey {
             workspace_identity: workspace_identity.clone(),
-            project_root: project_root.clone(),
         };
         if let Some(entry) = self.entries.get(&key) {
+            if !entry.matches_project_root(&project_root) {
+                return Err(format!(
+                    "workspace generation admission root drift: workspaceIdentity={workspace_identity} requestedRoot={} admittedRoot={}",
+                    project_root.display(),
+                    entry.project_root.display(),
+                ));
+            }
             return self
                 .admit_existing(
                     entry,
@@ -471,7 +574,7 @@ impl WorkspaceGenerationAdmission {
         receipt.validate()?;
         let (entry, inserted) = self
             .entries
-            .get_or_insert(key, receipt.clone(), None)
+            .get_or_insert(key, project_root.clone(), receipt.clone(), None)
             .await?;
         let accepted_receipt = inserted.then_some(receipt);
         if let Some(receipt) = accepted_receipt {
@@ -657,7 +760,6 @@ impl WorkspaceGenerationAdmission {
         let changes = Arc::clone(&self.changes);
         let telemetry_sender = self.telemetry_sender.clone();
         let admission_owner = self.clone();
-        let cancellation = entry.cancellation.clone();
         let completed_entry = Arc::clone(&entry);
         let dispatcher_start_entry = Arc::clone(&entry);
         let dispatcher_start_changes = Arc::clone(&self.changes);
@@ -671,12 +773,13 @@ impl WorkspaceGenerationAdmission {
         let dispatcher_terminal_candidate_digest = candidate.candidate_generation.digest.clone();
         let dispatcher_terminal_started = std::time::Instant::now();
         let task = Box::pin(async move {
-            if let Err(error) = admission_owner.record_catalog_resident(
-                crate::runtime_server_admission_catalog::RuntimeWorkspaceAdmissionCatalogEntry {
-                    workspace_identity: workspace_identity.clone(),
-                    project_root: project_root.clone(),
-                },
-            ) {
+            if let Err(error) =
+                crate::runtime_server_admission_catalog::RuntimeWorkspaceAdmissionCatalogEntry::resolve(
+                    workspace_identity.clone(),
+                    project_root.clone(),
+                )
+                .and_then(|entry| admission_owner.record_catalog_resident(entry))
+            {
                 let mut failed = completed_entry.observed();
                 failed.state = WorkspaceGenerationAdmissionState::Failed;
                 failed.accepted = false;
@@ -690,6 +793,7 @@ impl WorkspaceGenerationAdmission {
             }
             let mut attempt = attempt;
             loop {
+                let cancellation = completed_entry.current_cancellation();
                 let build_started = std::time::Instant::now();
                 let changed_paths = completed_entry
                     .active_mutation
@@ -739,7 +843,7 @@ impl WorkspaceGenerationAdmission {
                             schema_version: "1".to_owned(),
                             workspace_identity: workspace_identity.clone(),
                             trigger: WorkspaceGenerationAdmissionTrigger::WorkspaceChange,
-                            admission_mode: WorkspaceGenerationAdmissionMode::IncrementalOverlay,
+                            admission_mode: WorkspaceGenerationAdmissionMode::CompleteGeneration,
                             build_owner: "runtime-server".to_owned(),
                             cancellation_authority: "runtime-server".to_owned(),
                             request_lifetime_independent: true,
@@ -844,7 +948,7 @@ impl WorkspaceGenerationAdmission {
             ) {
                 return;
             }
-            dispatcher_terminal_entry.cancellation.cancel();
+            dispatcher_terminal_entry.cancel_generation();
             let mut failed = dispatcher_terminal_entry.observed();
             if !matches!(
                 failed.state,
@@ -943,7 +1047,7 @@ impl WorkspaceGenerationAdmission {
                 );
             }
             entry.lane.shutdown().await;
-            entry.cancellation.cancel();
+            entry.cancel_generation();
         }
         self.changes.notify_waiters();
         let _ = self.build_dispatcher.shutdown().await?;

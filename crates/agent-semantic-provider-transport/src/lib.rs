@@ -13,6 +13,7 @@ pub use agent_semantic_provider_protocol::{
     SyntaxQueryPredicateOp, SyntaxQueryPredicateValue,
 };
 
+#[cfg(feature = "http-client-server")]
 mod asp_client_server;
 mod asp_client_server_lifecycle;
 pub mod byte_text;
@@ -24,17 +25,20 @@ mod resident_runtime;
 mod runtime_contract;
 mod runtime_process;
 mod runtime_wire;
+mod search_tool_process;
 pub use projection_batch::{
     ProviderDerivedProjection, ProviderProjectedItem, ProviderProjectedOwner,
     ProviderProjectionBatchError, ProviderProjectionBatchRequest, ProviderProjectionBatchResponse,
-    ProviderProjectionOwner,
+    ProviderProjectionDiagnostic, ProviderProjectionOwner, ProviderProjectionState,
 };
 mod transport;
 
+#[cfg(feature = "http-client-server")]
 pub use agent_semantic_http_json::{
     HttpJsonRequest as AspClientServerRequest, HttpJsonResponse as AspClientServerResponse,
     run_http_json as run_asp_client_server, serve_http_json as serve_asp_client_server,
 };
+#[cfg(feature = "http-client-server")]
 pub use asp_client_server::{AspClientServerPeer, AspClientServerSpec};
 pub use asp_client_server_lifecycle::{
     ASP_CLIENT_SERVER_LIFECYCLE_RECEIPT_SCHEMA_ID, AspClientServerLifecycleReceipt,
@@ -61,9 +65,15 @@ pub use runtime_wire::{
     PROVIDER_RUNTIME_RESPONSE_FRAME_SCHEMA_ID, ProviderRuntimeRequestFrame,
     ProviderRuntimeResponseFrame, ProviderRuntimeResponseOutcome,
 };
+pub use search_tool_process::{
+    FdInventoryOutput, FdInventoryReceipt, RgColdQueryOutput, RgColdQueryReceipt,
+    ValidatedColdRgCorpus, run_fd_inventory, run_rg_cold_query,
+};
 pub use transport::{
     ProviderProcessOutput, ProviderProcessStarted, ProviderProcessSupervisor,
     provider_process_limits_from_environment,
 };
+#[cfg(feature = "grpc-session")]
 pub mod grpc_session;
+#[cfg(feature = "grpc-session")]
 pub use grpc_session::GrpcProviderSessionClient;

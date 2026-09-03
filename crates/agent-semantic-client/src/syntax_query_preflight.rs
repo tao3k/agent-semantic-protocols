@@ -40,7 +40,7 @@ fn validate_exact_projection_selector_target(request: &ClientRequest) -> Result<
         resolve_under_workspace(&workspace, selector_owner.as_deref().unwrap_or(selector));
     if selector_path.is_dir() {
         return Err(format!(
-            "exact query requires a parser-owned structural selector; `{selector}` is a directory. Use search lexical or search owner with --workspace for directory-scoped discovery"
+            "exact query requires a parser-owned structural selector; `{selector}` is a directory. Use ASP Search with --workspace for directory-scoped discovery"
         ));
     }
     if tree_sitter_query_source(request)?.is_some() {
@@ -49,7 +49,7 @@ fn validate_exact_projection_selector_target(request: &ClientRequest) -> Result<
     if let Some(language_id) = non_structural_selector_language(request, selector) {
         let workspace_arg = query_workspace_arg(request).unwrap_or(".");
         return Err(format!(
-            "invalid exact-query selector `{selector}`: file selectors are not executable structural selectors; query an exact parser-owned item selector such as {language_id}://path#item/function/name; recover with search owner <path> items\nselectorState=file-selector\nallowed=false\nreason=file-selectors-are-not-structural-selectors\nnextAction=materialize-owner-items\nnextCommand=asp {language_id} search owner {selector} items --workspace {workspace_arg} --view seeds\nrequiredSelector={language_id}://{selector}#item/<kind>/<name>"
+            "invalid exact-query selector `{selector}`: file selectors are not executable structural selectors; query an exact parser-owned item selector such as {language_id}://path#item/function/name; recover through ASP Search\nselectorState=file-selector\nallowed=false\nreason=file-selectors-are-not-structural-selectors\nnextAction=run-search\nnextCommand=asp {language_id} search 'source structure' --scope owner:{selector} --workspace {workspace_arg}\nrequiredSelector={language_id}://{selector}#item/<kind>/<name>"
         ));
     }
     if let Some(owner) = selector_owner.as_deref() {

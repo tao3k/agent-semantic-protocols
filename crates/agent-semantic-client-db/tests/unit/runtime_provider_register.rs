@@ -38,7 +38,7 @@ fn installed_capability(language_id: &str, provider_id: &str) -> ProviderRegistr
         "transport": "http-json",
         "clientBinding": "schema-driven",
         "operations": [{
-            "operation": "search.owner",
+            "operation": "search",
             "requestSchema": {
                 "schemaId": "agent.semantic-protocols.search-owner-request",
                 "schemaVersion": "1"
@@ -52,8 +52,8 @@ fn installed_capability(language_id: &str, provider_id: &str) -> ProviderRegistr
     provider.registration["routes"] = json!([{
         "schemaId": "agent.semantic-protocols.provider-route",
         "schemaVersion": "1",
-        "routeId": format!("{language_id}.search.owner"),
-        "operation": "search.owner",
+        "routeId": format!("{language_id}.search"),
+        "operation": "search",
         "authority": "asp-server",
         "target": {"languageId": language_id, "providerId": provider_id},
         "inputs": [],
@@ -74,7 +74,7 @@ fn installed_capability(language_id: &str, provider_id: &str) -> ProviderRegistr
         },
         "failureSchemaIds": ["agent.semantic-protocols.route-failure"],
         "cache": {"authority": "asp-server", "scope": "workspace", "keySlots": []},
-        "telemetry": {"spanName": "asp.route.search.owner", "attributeSlots": []}
+        "telemetry": {"spanName": "asp.route.search", "attributeSlots": []}
     }]);
     provider
 }
@@ -369,11 +369,40 @@ async fn warm_compiled_route_lookup_is_sub_millisecond() {
 }
 
 #[tokio::test]
+async fn verified_binding_rejects_provider_outside_admitted_targets() {
+    let root = tempfile::tempdir().expect("provider register root");
+    let register = RuntimeProviderRegister::from_verified_seed_with_store(
+        vec![
+            identity_provider("rust", "asp-rust"),
+            identity_provider("zig", "asp-zig"),
+        ],
+        root.path().join("provider-register.v1.json"),
+        &[("rust".to_owned(), "asp-rust".to_owned())],
+    )
+    .await
+    .expect("verified provider register");
+    assert_eq!(register.snapshot().providers.len(), 1);
+    let response = register
+        .apply(request(
+            Some(register.snapshot().generation),
+            ProviderRegisterOperation::Register {
+                provider: installed_capability("zig", "asp-zig"),
+            },
+        ))
+        .await
+        .expect("typed rejection");
+    let ProviderRegisterResult::Rejected { reason_kind, .. } = response.result else {
+        panic!("expected rejection")
+    };
+    assert_eq!(reason_kind, "provider-not-in-installed-binding");
+}
+
+#[tokio::test]
 async fn operation_resolution_requires_an_installed_compiled_route() {
     let register = RuntimeProviderRegister::from_seed(vec![identity_provider("rust", "asp-rust")])
         .expect("seed register");
     let missing = register
-        .resolve_route("rust", "search.owner")
+        .resolve_route("rust", "search")
         .expect_err("identity seed must not dispatch");
     assert!(
         missing.contains("operation-not-in-installed-capability"),
@@ -390,8 +419,8 @@ async fn operation_resolution_requires_an_installed_compiled_route() {
         .await
         .expect("register installed route");
     let (provider_id, route) = register
-        .resolve_route("rust", "search.owner")
+        .resolve_route("rust", "search")
         .expect("resolve installed route");
     assert_eq!(provider_id, "asp-rust");
-    assert_eq!(route.spec().route_id, "rust.search.owner");
+    assert_eq!(route.spec().route_id, "rust.search");
 }

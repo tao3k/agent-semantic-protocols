@@ -1,3 +1,5 @@
+//! Persistent incremental workspace Merkle tree, delta metrics, and inclusion proofs.
+
 use std::{
     collections::{BTreeMap, BTreeSet},
     path::{Component, Path},
@@ -11,6 +13,7 @@ const EMPTY_DOMAIN: &[u8] = b"asp.workspace-path-radix-merkle-v1-incremental.emp
 const LEAF_DOMAIN: &[u8] = b"asp.workspace-path-radix-merkle-v1-incremental.leaf";
 const NODE_DOMAIN: &[u8] = b"asp.workspace-path-radix-merkle-v1-incremental.node";
 
+/// Typed failures produced by incremental workspace Merkle operations.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WorkspaceMerkleIncrementalV1Error {
     InvalidPath,
@@ -21,6 +24,7 @@ pub enum WorkspaceMerkleIncrementalV1Error {
     InvalidProof,
 }
 
+/// One content-addressed delta applied to the incremental workspace tree.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WorkspaceMerkleDeltaOperationIncrementalV1 {
     Upsert {
@@ -34,6 +38,7 @@ pub enum WorkspaceMerkleDeltaOperationIncrementalV1 {
     },
 }
 
+/// Measured structural work performed by one incremental delta.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct WorkspaceMerkleDeltaMetricsIncrementalV1 {
     pub touched_leaf_count: usize,
@@ -42,12 +47,14 @@ pub struct WorkspaceMerkleDeltaMetricsIncrementalV1 {
     pub full_merkle_rebuilds: usize,
 }
 
+/// One sibling edge retained in an incremental inclusion proof.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WorkspaceMerkleProofSiblingIncrementalV1 {
     pub edge: u8,
     pub digest: ContentDigestV1,
 }
 
+/// One radix depth step retained in an incremental inclusion proof.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WorkspaceMerkleProofStepIncrementalV1 {
     pub depth: usize,
@@ -55,6 +62,7 @@ pub struct WorkspaceMerkleProofStepIncrementalV1 {
     pub siblings: Vec<WorkspaceMerkleProofSiblingIncrementalV1>,
 }
 
+/// Complete inclusion proof for one owner path and source blob.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WorkspaceMerkleProofIncrementalV1 {
     pub owner_path: String,
@@ -63,6 +71,7 @@ pub struct WorkspaceMerkleProofIncrementalV1 {
     pub steps: Vec<WorkspaceMerkleProofStepIncrementalV1>,
 }
 
+/// Serializable record for one persistent radix node.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WorkspaceMerkleNodeRecordIncrementalV1 {
     pub path_prefix_hex: String,
@@ -71,6 +80,7 @@ pub struct WorkspaceMerkleNodeRecordIncrementalV1 {
     pub digest: ContentDigestV1,
 }
 
+/// Persistent path-radix Merkle tree supporting content-addressed deltas.
 #[derive(Debug, Clone)]
 struct RadixNodeIncrementalV1 {
     terminal_digest: Option<ContentDigestV1>,
@@ -96,6 +106,7 @@ impl RadixNodeIncrementalV1 {
     }
 }
 
+/// Persistent path-radix Merkle tree supporting content-addressed deltas.
 #[derive(Debug, Clone)]
 pub struct WorkspacePathMerkleTreeIncrementalV1 {
     root: Arc<RadixNodeIncrementalV1>,
@@ -103,6 +114,7 @@ pub struct WorkspacePathMerkleTreeIncrementalV1 {
 }
 
 impl WorkspacePathMerkleTreeIncrementalV1 {
+    /// Creates an empty workspace Merkle tree.
     pub fn empty() -> Self {
         Self {
             root: RadixNodeIncrementalV1::empty(),
@@ -110,6 +122,7 @@ impl WorkspacePathMerkleTreeIncrementalV1 {
         }
     }
 
+    /// Builds a workspace Merkle tree from unique normalized owner paths.
     pub fn from_file_digests(
         file_digests: impl IntoIterator<Item = (String, ContentDigestV1)>,
     ) -> Result<Self, WorkspaceMerkleIncrementalV1Error> {
@@ -129,24 +142,29 @@ impl WorkspacePathMerkleTreeIncrementalV1 {
         Ok(tree)
     }
 
+    /// Returns the current root digest.
     pub fn root_digest(&self) -> &ContentDigestV1 {
         &self.root.digest
     }
 
+    /// Returns the number of owner-path leaves.
     pub fn leaf_count(&self) -> usize {
         self.leaves.len()
     }
 
+    /// Returns the number of persistent radix nodes.
     pub fn node_count(&self) -> usize {
         count_nodes(&self.root)
     }
 
+    /// Materializes a deterministic node table for persistence.
     pub fn node_table(&self) -> Vec<WorkspaceMerkleNodeRecordIncrementalV1> {
         let mut records = Vec::with_capacity(self.node_count());
         collect_node_records(&self.root, &mut Vec::new(), &mut records);
         records
     }
 
+    /// Returns the content digest of the deterministic node table.
     pub fn node_table_digest(&self) -> ContentDigestV1 {
         let records = self.node_table();
         let mut payload = Vec::new();
@@ -162,10 +180,12 @@ impl WorkspacePathMerkleTreeIncrementalV1 {
         )
     }
 
+    /// Looks up the exact source blob digest for one owner path.
     pub fn source_blob_digest(&self, owner_path: &str) -> Option<&ContentDigestV1> {
         self.leaves.get(owner_path)
     }
 
+    /// Applies a bounded set of content-addressed upserts and removals.
     pub fn apply_delta(
         &self,
         operations: &[WorkspaceMerkleDeltaOperationIncrementalV1],
@@ -241,6 +261,7 @@ impl WorkspacePathMerkleTreeIncrementalV1 {
         ))
     }
 
+    /// Builds an inclusion proof for one current owner path.
     pub fn inclusion_proof(&self, owner_path: &str) -> Option<WorkspaceMerkleProofIncrementalV1> {
         let source_blob_digest = self.leaves.get(owner_path)?.clone();
         let owner_subtree_digest =
@@ -261,6 +282,7 @@ impl WorkspacePathMerkleTreeIncrementalV1 {
     }
 }
 
+/// Derives the leaf digest binding an owner path to its source blob.
 pub fn derive_owner_subtree_digest_incremental_v1(
     owner_path: &str,
     source_blob_digest: &ContentDigestV1,
@@ -274,17 +296,28 @@ pub fn derive_owner_subtree_digest_incremental_v1(
     )
 }
 
+/// Verifies one incremental owner inclusion proof against an expected root.
 pub fn verify_owner_inclusion_incremental_v1(
     proof: &WorkspaceMerkleProofIncrementalV1,
     expected_root_digest: &ContentDigestV1,
 ) -> Result<bool, WorkspaceMerkleIncrementalV1Error> {
     validate_path(&proof.owner_path)?;
-    if proof.steps.len() != proof.owner_path.len() + 1
-        || derive_owner_subtree_digest_incremental_v1(&proof.owner_path, &proof.source_blob_digest)
-            != proof.owner_subtree_digest
-    {
+    if !incremental_proof_shape_matches(proof) {
         return Ok(false);
     }
+    let child_digest = fold_incremental_proof_steps(proof)?;
+    Ok(child_digest.as_ref() == Some(expected_root_digest))
+}
+
+fn incremental_proof_shape_matches(proof: &WorkspaceMerkleProofIncrementalV1) -> bool {
+    proof.steps.len() == proof.owner_path.len() + 1
+        && derive_owner_subtree_digest_incremental_v1(&proof.owner_path, &proof.source_blob_digest)
+            == proof.owner_subtree_digest
+}
+
+fn fold_incremental_proof_steps(
+    proof: &WorkspaceMerkleProofIncrementalV1,
+) -> Result<Option<ContentDigestV1>, WorkspaceMerkleIncrementalV1Error> {
     let mut child_digest = None;
     for depth in (0..proof.steps.len()).rev() {
         let step = &proof.steps[depth];
@@ -308,7 +341,7 @@ pub fn verify_owner_inclusion_incremental_v1(
         }
         let terminal_digest = if depth == proof.owner_path.len() {
             if step.terminal_digest.as_ref() != Some(&proof.owner_subtree_digest) {
-                return Ok(false);
+                return Ok(None);
             }
             Some(proof.owner_subtree_digest.clone())
         } else {
@@ -319,7 +352,7 @@ pub fn verify_owner_inclusion_incremental_v1(
             &child_digests,
         ));
     }
-    Ok(child_digest.as_ref() == Some(expected_root_digest))
+    Ok(child_digest)
 }
 
 fn proof_step(
@@ -418,10 +451,9 @@ fn radix_node_digest_from_digests(
         None => payload.push(0),
     }
     payload.extend_from_slice(&(children.len() as u64).to_be_bytes());
-    for (edge, digest) in children {
-        payload.push(*edge);
-        payload.extend_from_slice(digest.as_str().as_bytes());
-    }
+    payload.extend(children.iter().flat_map(|(edge, digest)| {
+        std::iter::once(*edge).chain(digest.as_str().as_bytes().iter().copied())
+    }));
     canonical_digest_v1(NODE_DOMAIN, &[&payload])
 }
 
@@ -485,106 +517,5 @@ fn validate_path(path: &str) -> Result<(), WorkspaceMerkleIncrementalV1Error> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::exact_selector_merkle::parse_content_digest_v1;
-
-    fn digest(byte: char) -> ContentDigestV1 {
-        parse_content_digest_v1(&byte.to_string().repeat(64)).expect("test digest")
-    }
-
-    #[test]
-    fn one_owner_update_rewrites_only_the_owner_path() {
-        let tree = WorkspacePathMerkleTreeIncrementalV1::from_file_digests([
-            ("src/lib.rs".to_owned(), digest('1')),
-            ("src/sibling.rs".to_owned(), digest('2')),
-        ])
-        .expect("base tree");
-        let previous_node_count = tree.node_count();
-        let (successor, metrics) = tree
-            .apply_delta(&[WorkspaceMerkleDeltaOperationIncrementalV1::Upsert {
-                owner_path: "src/lib.rs".to_owned(),
-                previous_source_blob_digest: Some(digest('1')),
-                source_blob_digest: digest('3'),
-            }])
-            .expect("incremental update");
-        assert_ne!(successor.root_digest(), tree.root_digest());
-        assert_eq!(successor.leaf_count(), 2);
-        assert_eq!(successor.node_count(), previous_node_count);
-        assert_eq!(metrics.touched_leaf_count, 1);
-        assert_eq!(metrics.written_node_count, "src/lib.rs".len() + 1);
-        assert!(metrics.reused_node_count > 0);
-        assert_eq!(metrics.full_merkle_rebuilds, 0);
-    }
-
-    #[test]
-    fn inclusion_proof_round_trips_after_incremental_update() {
-        let tree = WorkspacePathMerkleTreeIncrementalV1::from_file_digests([
-            ("src/lib.rs".to_owned(), digest('1')),
-            ("src/sibling.rs".to_owned(), digest('2')),
-        ])
-        .expect("base tree");
-        let (successor, _) = tree
-            .apply_delta(&[WorkspaceMerkleDeltaOperationIncrementalV1::Upsert {
-                owner_path: "src/lib.rs".to_owned(),
-                previous_source_blob_digest: Some(digest('1')),
-                source_blob_digest: digest('3'),
-            }])
-            .expect("incremental update");
-        let proof = successor
-            .inclusion_proof("src/lib.rs")
-            .expect("owner proof");
-        assert!(
-            verify_owner_inclusion_incremental_v1(&proof, successor.root_digest())
-                .expect("valid proof")
-        );
-        assert!(
-            !verify_owner_inclusion_incremental_v1(&proof, tree.root_digest()).expect("stale root")
-        );
-    }
-
-    #[test]
-    fn delta_preconditions_fail_closed() {
-        let tree = WorkspacePathMerkleTreeIncrementalV1::from_file_digests([(
-            "src/lib.rs".to_owned(),
-            digest('1'),
-        )])
-        .expect("base tree");
-        let error = tree
-            .apply_delta(&[WorkspaceMerkleDeltaOperationIncrementalV1::Remove {
-                owner_path: "src/lib.rs".to_owned(),
-                previous_source_blob_digest: digest('2'),
-            }])
-            .expect_err("digest drift must fail");
-        assert_eq!(
-            error,
-            WorkspaceMerkleIncrementalV1Error::PreviousDigestMismatch
-        );
-    }
-
-    #[test]
-    fn node_table_is_deterministic_and_linear_in_tree_nodes() {
-        let tree = WorkspacePathMerkleTreeIncrementalV1::from_file_digests([
-            ("src/lib.rs".to_owned(), digest('1')),
-            ("src/sibling.rs".to_owned(), digest('2')),
-        ])
-        .expect("tree");
-        let records = tree.node_table();
-        assert_eq!(records.len(), tree.node_count());
-        assert_eq!(records.first().expect("root record").path_prefix_hex, "");
-        assert_eq!(
-            records.first().expect("root record").digest,
-            *tree.root_digest()
-        );
-        assert_eq!(tree.node_table_digest(), tree.node_table_digest());
-
-        let (successor, _) = tree
-            .apply_delta(&[WorkspaceMerkleDeltaOperationIncrementalV1::Upsert {
-                owner_path: "src/lib.rs".to_owned(),
-                previous_source_blob_digest: Some(digest('1')),
-                source_blob_digest: digest('3'),
-            }])
-            .expect("successor");
-        assert_ne!(tree.node_table_digest(), successor.node_table_digest());
-    }
-}
+#[path = "../tests/unit/workspace_merkle_incremental_v1.rs"]
+mod tests;

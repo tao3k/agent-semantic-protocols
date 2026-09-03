@@ -13,3 +13,7 @@ open ASPProof.Audit.RuntimeWorkspaceGeneration
 #check generation_identity_is_a_function
 #check resident_read_gate_requires_zero_db_open
 #check resident_read_gate_requires_memory_hit
+#check legacy_v1_catalog_has_no_project_workspace_authority
+#check current_v1_catalog_preserves_project_workspace_identity
+#check host_control_can_admit_empty_v1_catalog
+#check initialized_read_session_cannot_mutate_v1_catalog

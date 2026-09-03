@@ -7,7 +7,11 @@ fn search_and_query_share_one_diagnostics_flag_parser() {
     for command in ["search", "query"] {
         let mut args = vec![
             command.to_owned(),
-            "lexical".to_owned(),
+            if command == "search" {
+                "playbook".to_owned()
+            } else {
+                "--selector".to_owned()
+            },
             "--verbose".to_owned(),
             "--debug".to_owned(),
             "--trace".to_owned(),
@@ -21,7 +25,17 @@ fn search_and_query_share_one_diagnostics_flag_parser() {
         assert!(options.trace);
         assert_eq!(
             args,
-            [command, "lexical", "--workspace", "."].map(str::to_owned)
+            [
+                command,
+                if command == "search" {
+                    "playbook"
+                } else {
+                    "--selector"
+                },
+                "--workspace",
+                "."
+            ]
+            .map(str::to_owned)
         );
     }
 }
@@ -30,7 +44,7 @@ fn search_and_query_share_one_diagnostics_flag_parser() {
 fn diagnostics_flags_are_not_silently_repeated_or_taken_from_provider_data() {
     let mut repeated = vec![
         "search".to_owned(),
-        "pipe".to_owned(),
+        "playbook".to_owned(),
         "--trace".to_owned(),
         "--trace".to_owned(),
     ];
@@ -47,7 +61,11 @@ fn diagnostics_flags_are_not_silently_repeated_or_taken_from_provider_data() {
 
 #[test]
 fn trace_receipt_is_v1_json_and_marks_budget_excess_as_a_bug() {
-    let mut args = vec!["search".to_owned(), "pipe".to_owned(), "--trace".to_owned()];
+    let mut args = vec![
+        "search".to_owned(),
+        "playbook".to_owned(),
+        "--trace".to_owned(),
+    ];
     let options = take_search_command_diagnostic_options(&mut args).expect("trace flag parses");
     let diagnostics = SearchCommandDiagnostics::start(
         "rust",

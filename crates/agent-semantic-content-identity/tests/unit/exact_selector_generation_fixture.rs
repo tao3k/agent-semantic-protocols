@@ -16,14 +16,14 @@ fn materialization_proof() -> ExactSelectorMaterializationProofV1 {
     let projection = b"fn run() {}".to_vec();
     let structural_selector = "rust://src/lib.rs#item/function/run".to_string();
     ExactSelectorMaterializationProofV1 {
-        language_id: "rust".to_string(),
-        provider_id: "asp-rust".to_string(),
+        language_id: "rust".into(),
+        provider_id: "asp-rust".into(),
         canonical_item_selector: CanonicalItemSelector::parse(&structural_selector)
             .expect("canonical selector"),
         parser_identity_digest: digest(1),
         query_pack_digest: digest(2),
         workspace_root_digest: digest(3),
-        owner_path: "src/lib.rs".to_string(),
+        owner_path: "src/lib.rs".into(),
         owner_subtree_digest: digest(3),
         owner_inclusion_proof: Vec::new(),
         source_blob_digest: digest(4),
@@ -42,7 +42,7 @@ fn materialization_proof_converts_without_source_or_line_reconstruction() {
     let proof = materialization_proof();
     let record = ExactSelectorGenerationRecordV1::try_from(&proof).expect("proof");
     assert_eq!(record.structural_selector, proof.structural_selector);
-    assert_eq!(record.owner_path, proof.owner_path);
+    assert_eq!(record.owner_path, proof.owner_path.as_str());
     assert_eq!(
         record.source_byte_range,
         proof.source_byte_start..proof.source_byte_end

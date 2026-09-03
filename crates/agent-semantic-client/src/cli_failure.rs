@@ -5,6 +5,18 @@
 #[must_use]
 pub fn materialize_cli_failure(message: &str) -> String {
     let lower = message.to_ascii_lowercase();
+    if lower.contains("reasonkind=transport-unavailable") {
+        return serde_json::json!({
+            "schemaId": "agent.semantic-protocols.cli-failure",
+            "schemaVersion": 1,
+            "state": "blocked",
+            "reasonKind": "transport-unavailable",
+            "failureLayer": "runtime-transport-capability",
+            "message": "ASP could not enter the Runtime ClientFrame service because no usable Host-declared transport capability was available.",
+            "originalError": message,
+        })
+        .to_string();
+    }
     if !lower.contains("operation not permitted") && !lower.contains("os error 1") {
         return message.to_owned();
     }

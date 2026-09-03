@@ -5,10 +5,22 @@ edition = "2024"
 license = "MIT"
 description = "Tokio process transport for external ASP language providers."
 
+[features]
+default = ["http-client-server", "grpc-session"]
+http-client-server = ["dep:agent-semantic-http-json", "dep:reqwest"]
+grpc-session = [
+  "dep:hyper-util",
+  "dep:prost",
+  "dep:tonic",
+  "dep:tonic-prost",
+  "dep:tonic-prost-build",
+  "dep:tower",
+]
+
 [dependencies]
 agent-semantic-provider-protocol.workspace = true
 agent-semantic-content-identity.workspace = true
-agent-semantic-http-json.workspace = true
+agent-semantic-http-json = { workspace = true, optional = true }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 bstr = "1"
@@ -17,21 +29,22 @@ bytes = "1"
 futures-util = "0.3"
 libc = "0.2"
 memchr = "2"
+ignore.workspace = true
 sha2 = "0.10"
 tokio.workspace = true
-reqwest = { version = "0.13", default-features = false }
+reqwest = { version = "0.13", default-features = false, optional = true }
 tokio-stream = { version = "0.1", features = ["sync"] }
-tower.workspace = true
-hyper-util.workspace = true
+tower = { workspace = true, optional = true }
+hyper-util = { workspace = true, optional = true }
 tokio-util = { version = "0.7", features = ["codec"] }
-prost.workspace = true
-tonic.workspace = true
-tonic-prost.workspace = true
+prost = { workspace = true, optional = true }
+tonic = { workspace = true, optional = true }
+tonic-prost = { workspace = true, optional = true }
 tracing = "0.1"
 
 [build-dependencies]
 asp-rust-project-harness-policy.workspace = true
-tonic-prost-build.workspace = true
+tonic-prost-build = { workspace = true, optional = true }
 
 [dev-dependencies]
 criterion = "0.8.2"

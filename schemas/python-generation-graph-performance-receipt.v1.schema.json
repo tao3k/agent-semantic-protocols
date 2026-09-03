@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/python-generation-graph-performance-receipt.v1.schema.json",
+  "title": "Python generation graph performance receipt V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId", "schemaVersion", "owners", "cold", "warm", "concurrent",
+    "artifactDigest"
+  ],
+  "properties": {
+    "schemaId": {"const": "agent.semantic-protocols.python-generation-graph-performance-receipt"},
+    "schemaVersion": {"const": "1"},
+    "owners": {"type": "integer", "minimum": 4096},
+    "cold": {
+      "allOf": [
+        {"$ref": "#/$defs/distribution"},
+        {"properties": {"samples": {"type": "integer", "minimum": 8}}}
+      ],
+      "unevaluatedProperties": false
+    },
+    "warm": {
+      "allOf": [
+        {"$ref": "#/$defs/distribution"},
+        {"properties": {"samples": {"type": "integer", "minimum": 128}}}
+      ],
+      "unevaluatedProperties": false
+    },
+    "concurrent": {
+      "allOf": [
+        {"$ref": "#/$defs/distribution"},
+        {
+          "required": ["queries", "wallNanos"],
+          "properties": {
+            "queries": {"type": "integer", "minimum": 32},
+            "wallNanos": {"$ref": "#/$defs/nanos"}
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "artifactDigest": {"type": "string", "pattern": "^blake3-256:[0-9a-f]{64}$"}
+  },
+  "$defs": {
+    "nanos": {"type": "integer", "minimum": 0},
+    "distribution": {
+      "type": "object",
+      "required": ["samples", "p50Nanos", "p95Nanos", "p99Nanos", "maxNanos"],
+      "properties": {
+        "samples": {"type": "integer", "minimum": 1},
+        "p50Nanos": {"$ref": "#/$defs/nanos"},
+        "p95Nanos": {"$ref": "#/$defs/nanos"},
+        "p99Nanos": {"$ref": "#/$defs/nanos"},
+        "maxNanos": {"$ref": "#/$defs/nanos"}
+      }
+    }
+  }
+}

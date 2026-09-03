@@ -83,6 +83,7 @@ def collect_scores(
         seed_ids=seed_id_tuple,
         query_clauses=query_clauses,
         policy=query_adjustment_policy,
+        node_ids=best_depth,
     )
     scores = score_nodes(
         graph,

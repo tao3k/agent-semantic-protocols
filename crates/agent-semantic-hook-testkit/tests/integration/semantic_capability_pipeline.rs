@@ -30,9 +30,7 @@ fn runtime_with_rust_policy_projection(project_root: &str) -> HookRuntime {
             source_extensions: vec![".rs".to_owned()],
             config_files: Vec::new(),
             policy: HookPolicy::default(),
-            owner_route: route(),
-            lexical_route: route(),
-            ingest_route: route(),
+            playbook_route: route(),
         }],
     }
 }
@@ -183,7 +181,7 @@ fn emitted_action_ir_conforms_to_the_v1_schema() {
 fn registered_search_denial_emits_role_receipt_without_legacy_target_identity() {
     let decision = classify(
         &runtime("."),
-        "asp typescript search lexical projectRoot owner tests .",
+        "asp typescript search playbook projectRoot --workspace .",
     );
     assert_eq!(decision["decision"], "deny");
     assert_eq!(
@@ -217,10 +215,36 @@ fn registered_search_denial_emits_role_receipt_without_legacy_target_identity() 
 }
 
 #[test]
+fn only_playbook_is_routed_as_the_public_search_operation() {
+    for retired in [
+        "asp rust search prime --workspace .",
+        "asp rust search ingest --workspace .",
+        "asp rust search lexical owner --workspace .",
+        "asp rust search owner src/lib.rs --workspace .",
+        "asp rust search pipe owner --workspace .",
+    ] {
+        let decision = classify(&runtime("."), retired);
+        assert_ne!(
+            decision["fields"]["configRuleId"], "registered-asp-reasoning-search",
+            "retired provider-local command must not enter Search routing: {retired} {decision}"
+        );
+    }
+
+    let playbook = classify(
+        &runtime("."),
+        "asp rust search playbook 'source structure' --scope owner:src/lib.rs --workspace .",
+    );
+    assert_eq!(
+        playbook["fields"]["configRuleId"],
+        "registered-asp-reasoning-search"
+    );
+}
+
+#[test]
 fn agent_search_json_denial_is_owned_by_the_declared_rule() {
     let decision = classify(
         &runtime("."),
-        "asp typescript search lexical projectRoot owner tests --json .",
+        "asp typescript search playbook projectRoot --workspace . --json",
     );
     assert_eq!(decision["decision"], "deny");
     assert_eq!(decision["fields"]["configRuleId"], "deny-agent-search-json");
@@ -304,7 +328,7 @@ fn verified_explorer_search_is_authorized_once_and_post_tool_remains_observation
         "agent_role": "asp_explorer",
         "tool_name": "Bash",
         "tool_input": {
-            "command": "rtk --ultra-compact err asp rust search pipe 'HookDecision' --workspace . --view seeds"
+            "command": "rtk --ultra-compact err asp rust search playbook 'HookDecision' --workspace ."
         }
     })];
 
@@ -334,7 +358,7 @@ fn config_agent_roles_satisfy_only_their_declared_dispatch_routes() {
     let cases = [
         (
             "asp_explorer",
-            "asp typescript search lexical projectRoot owner tests .",
+            "asp typescript search playbook projectRoot --workspace .",
             "allow",
             "reasoning-search",
         ),
@@ -358,7 +382,7 @@ fn config_agent_roles_satisfy_only_their_declared_dispatch_routes() {
         ),
         (
             "asp_testing",
-            "asp typescript search lexical projectRoot owner tests .",
+            "asp typescript search playbook projectRoot --workspace .",
             "deny",
             "reasoning-search",
         ),

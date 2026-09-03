@@ -7,6 +7,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 LOCK_PATH = ROOT / "benchmarks/large-library-runtime-corpora.json"
 PLAN_PATH = ROOT / "benchmarks/live-corpus-search-query-qualification.json"
+WORKFLOW_PATH = ROOT / ".github/workflows/large-library-runtime-benchmark.yml"
 
 
 def load(path: Path) -> dict[str, object]:
@@ -22,7 +23,7 @@ def test_every_locked_live_corpus_has_one_fixed_search_query_case() -> None:
     assert len(corpora) == 17
     assert len(cases) == 17
     assert plan["clientProtocol"]["appliesToCaseCount"] == 17
-    assert plan["clientProtocol"]["transport"] == "http-json"
+    assert plan["clientProtocol"]["transport"] == "grpc-tokio-streams"
     assert plan["clientProtocol"]["phases"] == [
         "initialize", "catalog", "request", "cancel", "cancelled", "shutdown"
     ]
@@ -81,3 +82,10 @@ def test_client_protocol_contract_is_one_typed_runtime_lifecycle() -> None:
         "client_protocol_cancelled",
         "client_protocol_shutdown",
     ]
+
+
+def test_live_corpus_workflow_uses_the_canonical_lock() -> None:
+    workflow = WORKFLOW_PATH.read_text(encoding="utf-8")
+    canonical = "benchmarks/large-library-runtime-corpora.json"
+    assert canonical in workflow
+    assert "benchmarks/large-library-runtime-corpora.v1.json" not in workflow

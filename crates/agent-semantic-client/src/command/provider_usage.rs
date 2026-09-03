@@ -6,7 +6,7 @@ pub(super) fn is_guide(args: &[String]) -> bool {
 
 pub(super) fn provider_usage() -> String {
     format!(
-        "usage: asp <{}> [--help|--version] <guide|search|query|check|cache|info|bench|projection|agent doctor|ast-patch|evidence> ...\nprojection: import --owner <relative-owner-path> --workspace <root>\nsearch: pipe|lexical|deps|dependency|ingest|failure|reasoning|owner|guide|prime\nsearch deps: current manifest dependency topology and dependency-owned next actions",
+        "usage: asp <{}> [--help|--version] <guide|search|query|check|cache|info|bench|projection|agent doctor|ast-patch|evidence> ...\nprojection: import --owner <relative-owner-path> --workspace <root>\nsearch: playbook <query> [--intent conceptual|relationship|exact-literal|absence-proof] [--scope workspace|owner:<path>] [--coverage candidates|complete] [--max-owners <1..100>] [--deadline-ms <1..5000>] [--explain compact|full]\nquery: --selector <parser-owned-selector> [--projection source]",
         registered_language_facades_line()
     )
 }

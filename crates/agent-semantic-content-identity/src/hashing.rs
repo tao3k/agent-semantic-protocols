@@ -160,9 +160,8 @@ fn write_canonical_json(value: &serde_json::Value, output: &mut Vec<u8>) {
             output.extend_from_slice(number.to_string().as_bytes())
         }
         serde_json::Value::String(text) => {
-            let encoded =
-                serde_json::to_string(text).expect("JSON string serialization cannot fail");
-            output.extend_from_slice(encoded.as_bytes());
+            serde_json::to_writer(&mut *output, text)
+                .expect("JSON string serialization cannot fail");
         }
         serde_json::Value::Array(values) => {
             output.push(b'[');
@@ -182,9 +181,8 @@ fn write_canonical_json(value: &serde_json::Value, output: &mut Vec<u8>) {
                 if index > 0 {
                     output.push(b',');
                 }
-                let encoded_key =
-                    serde_json::to_string(key).expect("JSON key serialization cannot fail");
-                output.extend_from_slice(encoded_key.as_bytes());
+                serde_json::to_writer(&mut *output, key)
+                    .expect("JSON key serialization cannot fail");
                 output.push(b':');
                 write_canonical_json(value, output);
             }

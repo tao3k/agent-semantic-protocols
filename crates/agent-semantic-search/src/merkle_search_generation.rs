@@ -3,7 +3,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
-use crate::{ResidentSearchAuthority, ResidentSourceIndex, ResidentSourceIndexSeed};
+use crate::{ResidentSearchAuthority, ResidentSourceDocument, ResidentSourceIndex};
 
 const SEARCH_PROJECTION_ANALYZER_ID: &str =
     "agent.semantic-protocols.search-projection-analyzer.rg-lexical-graph.v1";
@@ -32,7 +32,7 @@ pub fn search_owner_graph_fragment_digest(
     canonical.sort();
     canonical.dedup();
     let bytes = serde_json::to_vec(&canonical)
-        .map_err(|error| format!("encode search owner graph fragment: {error}"))?;
+        .map_err(|error| format!("encode search source-document graph fragment: {error}"))?;
     let mut hasher = blake3::Hasher::new();
     hash_field(
         &mut hasher,
@@ -74,16 +74,20 @@ impl SearchOwnerFragment {
         let owner_path = owner_path.into();
         let content_digest = content_digest.into();
         if owner_path.is_empty() || content_digest.is_empty() {
-            return Err("search owner fragment requires path and content digest".to_owned());
+            return Err(
+                "search source-document fragment requires path and content digest".to_owned(),
+            );
         }
         let mut canonical_keys = lexical_query_keys;
         canonical_keys.sort_unstable();
         canonical_keys.dedup();
         if canonical_keys.iter().any(String::is_empty) {
-            return Err("search owner fragment query keys must be non-empty".to_owned());
+            return Err("search source-document fragment query keys must be non-empty".to_owned());
         }
         if graph_fragment_digest.as_deref() == Some("") {
-            return Err("search owner graph fragment digest must be non-empty".to_owned());
+            return Err(
+                "search source-document graph fragment digest must be non-empty".to_owned(),
+            );
         }
         Ok(Self {
             owner_path,
@@ -142,7 +146,7 @@ impl MerkleSearchGeneration {
                 SearchOwnerChange::Added { fragment } => {
                     if owners.contains_key(&fragment.owner_path) {
                         return Err(format!(
-                            "added search owner already exists: {}",
+                            "added search source document already exists: {}",
                             fragment.owner_path
                         ));
                     }
@@ -205,11 +209,12 @@ impl MerkleSearchGeneration {
         self.owners.len()
     }
 
-    pub fn resident_source_index_from_seeds(
+    pub fn resident_source_index_from_documents(
         &self,
         source_snapshot: agent_semantic_content_identity::SourceSnapshotEvidence,
         generation_digest: String,
-        candidate_seeds: BTreeMap<String, ResidentSourceIndexSeed>,
+        source_documents: BTreeMap<String, ResidentSourceDocument>,
+        resources: crate::ResidentIndexBuildResources,
     ) -> Result<ResidentSourceIndex, String> {
         if source_snapshot.root_digest != self.identity.source_root_digest
             || source_snapshot.provider_digest != self.identity.provider_digest
@@ -218,45 +223,40 @@ impl MerkleSearchGeneration {
                 "Merkle search generation and source snapshot identity mismatch".to_owned(),
             );
         }
-        if candidate_seeds.len() != self.owners.len() {
-            return Err("Merkle search generation owner seed coverage mismatch".to_owned());
+        if source_documents.len() != self.owners.len() {
+            return Err("Merkle search generation source document coverage mismatch".to_owned());
         }
-        let mut lexical_index = BTreeMap::<String, Vec<String>>::new();
         for (owner_path, fragment) in &self.owners {
-            let seed = candidate_seeds.get(owner_path).ok_or_else(|| {
-                format!("Merkle search generation omitted owner seed: {owner_path}")
+            let document = source_documents.get(owner_path).ok_or_else(|| {
+                format!("Merkle search generation omitted source document: {owner_path}")
             })?;
-            let mut seed_keys = seed.query_keys.clone();
-            seed_keys.sort_unstable();
-            seed_keys.dedup();
-            if seed.owner_path != *owner_path
-                || seed.owner_content_digest != fragment.content_digest
-                || seed.line_count != fragment.line_count
-                || seed_keys != fragment.lexical_query_keys
+            let mut document_keys = document.query_keys.clone();
+            document_keys.sort_unstable();
+            document_keys.dedup();
+            if document.owner_path != *owner_path
+                || document.owner_content_digest != fragment.content_digest
+                || document.line_count != fragment.line_count
+                || document_keys != fragment.lexical_query_keys
             {
                 return Err(format!(
                     "Merkle search generation owner projection drift: {owner_path}"
                 ));
             }
-            for key in &fragment.lexical_query_keys {
-                lexical_index
-                    .entry(key.clone())
-                    .or_default()
-                    .push(owner_path.clone());
-            }
         }
-        if candidate_seeds
+        if source_documents
             .keys()
             .any(|owner_path| !self.owners.contains_key(owner_path))
         {
-            return Err("Merkle search generation contains an uncommitted owner seed".to_owned());
+            return Err(
+                "Merkle search generation contains an uncommitted source document".to_owned(),
+            );
         }
-        Ok(ResidentSourceIndex::new(
-            lexical_index,
-            candidate_seeds,
+        ResidentSourceIndex::new(
+            source_documents,
             source_snapshot,
             generation_digest,
-        ))
+            resources,
+        )
     }
 
     pub fn resident_source_index(
@@ -264,6 +264,7 @@ impl MerkleSearchGeneration {
         source_snapshot: agent_semantic_content_identity::SourceSnapshotEvidence,
         language_id: agent_semantic_config::LanguageId,
         provider_id: agent_semantic_config::ProviderId,
+        resources: crate::ResidentIndexBuildResources,
     ) -> Result<ResidentSourceIndex, String> {
         if source_snapshot.root_digest != self.identity.source_root_digest
             || source_snapshot.provider_digest != self.identity.provider_digest
@@ -276,20 +277,13 @@ impl MerkleSearchGeneration {
             language_id,
             provider_id,
         };
-        let mut lexical_index = BTreeMap::<String, Vec<String>>::new();
-        let candidate_seeds = self
+        let source_documents = self
             .owners
             .values()
             .map(|fragment| {
-                for key in &fragment.lexical_query_keys {
-                    lexical_index
-                        .entry(key.clone())
-                        .or_default()
-                        .push(fragment.owner_path.clone());
-                }
                 (
                     fragment.owner_path.clone(),
-                    ResidentSourceIndexSeed {
+                    ResidentSourceDocument {
                         owner_path: fragment.owner_path.clone(),
                         owner_content_digest: fragment.content_digest.clone(),
                         line_count: fragment.line_count,
@@ -299,10 +293,11 @@ impl MerkleSearchGeneration {
                 )
             })
             .collect();
-        self.resident_source_index_from_seeds(
+        self.resident_source_index_from_documents(
             source_snapshot,
             self.manifest_digest.clone(),
-            candidate_seeds,
+            source_documents,
+            resources,
         )
     }
 }
@@ -342,7 +337,9 @@ fn validate_change_order(changes: &[SearchOwnerChange]) -> Result<(), String> {
         .windows(2)
         .any(|pair| pair[0].owner_path() >= pair[1].owner_path())
     {
-        return Err("Merkle search owner changes must be unique and path-sorted".to_owned());
+        return Err(
+            "Merkle search source-document changes must be unique and path-sorted".to_owned(),
+        );
     }
     Ok(())
 }
@@ -352,12 +349,12 @@ fn require_previous_digest(
     owner_path: &str,
     previous_content_digest: &str,
 ) -> Result<(), String> {
-    let current = owners
-        .get(owner_path)
-        .ok_or_else(|| format!("search owner is absent from base generation: {owner_path}"))?;
+    let current = owners.get(owner_path).ok_or_else(|| {
+        format!("search source document is absent from base generation: {owner_path}")
+    })?;
     if current.content_digest != previous_content_digest {
         return Err(format!(
-            "search owner previous digest mismatch: {owner_path}"
+            "search source-document previous digest mismatch: {owner_path}"
         ));
     }
     Ok(())

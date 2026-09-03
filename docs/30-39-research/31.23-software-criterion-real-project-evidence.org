@@ -20,7 +20,7 @@ accumulation are therefore excluded from the final evidence.
 * Evidence record
 
 #+begin_example
-[software-criterion-real-evidence] language=typescript provider=asp-typescript project=languages/typescript-lang-project-harness
+[software-criterion-real-evidence] language=typescript provider=asp-typescript project=languages/asp-typescript
 commands=policy-json-check
 metrics=commandCount=1,providerProcessCount=1,packetBytes=9423005,coldElapsedMs=2236,warmElapsedMs=2174
 metrics=findingCount=28,qualityFindingCount=15,exitCode=0,repeatedTriggerDelta=0
@@ -55,7 +55,7 @@ reported as the warm elapsed value; packet sizes and finding counts were
 unchanged between the two runs.
 
 #+begin_example
-cd languages/typescript-lang-project-harness
+cd languages/asp-typescript
 node dist/src/cli/main.js check --full --json .
 
 cd languages/asp-python

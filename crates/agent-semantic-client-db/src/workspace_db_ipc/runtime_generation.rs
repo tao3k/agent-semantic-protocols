@@ -2,7 +2,7 @@ use super::protocol::{WorkspaceDbIpcOperation, WorkspaceDbIpcResult, WorkspaceDb
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 struct MutationFlightKey {
-    socket_path: String,
+    data_endpoint: std::net::SocketAddr,
     owner_epoch: u64,
     workspace_identity: String,
 }
@@ -119,12 +119,12 @@ fn mutation_flights()
 }
 
 pub(super) fn runtime_generation_mutation_lane(
-    socket_path: &str,
+    data_endpoint: std::net::SocketAddr,
     owner_epoch: u64,
     workspace_identity: &str,
 ) -> std::sync::Arc<MutationWorkspaceLane> {
     let key = MutationFlightKey {
-        socket_path: socket_path.to_owned(),
+        data_endpoint,
         owner_epoch,
         workspace_identity: workspace_identity.to_owned(),
     };
@@ -476,7 +476,7 @@ impl WorkspaceDbIpcSession {
     > {
         let lane = self.shared.runtime_generation_mutations.get_or_init(|| {
             super::runtime_generation::runtime_generation_mutation_lane(
-                &self.endpoint.socket_path,
+                self.endpoint.data_endpoint.socket_addr(),
                 self.endpoint.owner_epoch,
                 &self.endpoint.workspace_identity,
             )
@@ -579,7 +579,7 @@ impl WorkspaceDbIpcSession {
         let changed_path_count = changed_paths.len();
         let lane = self.shared.runtime_generation_mutations.get_or_init(|| {
             super::runtime_generation::runtime_generation_mutation_lane(
-                &self.endpoint.socket_path,
+                self.endpoint.data_endpoint.socket_addr(),
                 self.endpoint.owner_epoch,
                 &self.endpoint.workspace_identity,
             )

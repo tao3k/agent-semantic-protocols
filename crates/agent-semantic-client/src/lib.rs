@@ -36,9 +36,7 @@ pub use language_command::{
     LanguageCommandResponse, RuntimeLanguageCommandApplication, RuntimeLanguageCommandClient,
     execute_language_command,
 };
-pub use runtime_language_client::{
-    AspClient, ClientBackpressureProbeReceipt, host_runtime_transport_capability_declared,
-};
+pub use runtime_language_client::{AspClient, ClientBackpressureProbeReceipt};
 
 pub mod cli_failure;
 pub use command::protocol_binary::{
@@ -53,10 +51,6 @@ pub use agent_semantic_client_server::{
     ProviderProjectResolution, ProviderProjectResolutionCandidates,
     ProviderProjectResolutionPolicyExclusion, encode_provider_project_resolution_request,
     project_resolution_from_stdout, provider_project_resolution_candidates,
-};
-pub use agent_semantic_runtime::{
-    LanguageOwnerItemsAttempt, LanguageOwnerItemsDispatchPlan, language_owner_items_workspace_root,
-    language_owner_path_exists, run_language_owner_items_dispatch_plan,
 };
 pub use cli::{run_cli_args, run_cli_from_env};
 pub use client_cli::{

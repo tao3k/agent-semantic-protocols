@@ -33,3 +33,5 @@ def test_contract_is_new_v1_not_legacy_v2() -> None:
     assert result["properties"]["schemaVersion"]["const"] == "1"
     assert request["properties"]["packetKind"]["const"] == "resident-graph-evaluation-request"
     assert result["properties"]["packetKind"]["const"] == "resident-graph-evaluation-result"
+    assert request["properties"]["surface"]["enum"] == ["search-playbook", "query"]
+    assert result["properties"]["surface"]["enum"] == ["search-playbook", "query"]

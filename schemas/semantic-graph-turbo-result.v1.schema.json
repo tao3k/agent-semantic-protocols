@@ -11,7 +11,7 @@
     "packetKind",
     "profile",
     "algorithm",
-    "seedIds",
+    "entryNodeIds",
     "rankedNodes",
     "edges"
   ],
@@ -39,7 +39,7 @@
       "type": "string",
       "minLength": 1
     },
-    "seedIds": {
+    "entryNodeIds": {
       "type": "array",
       "items": {
         "type": "string",

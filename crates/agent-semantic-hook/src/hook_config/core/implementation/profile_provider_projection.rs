@@ -4,7 +4,7 @@ use agent_semantic_config::{
     HookClientProfileConfig, HookClientProviderRouteIdentity, LanguageId, ProviderId,
 };
 
-use crate::protocol::{ActionPolicy, CommandTemplate, HookPolicy, StdinMode};
+use crate::protocol::{ActionPolicy, CommandTemplate, HookPolicy};
 use crate::protocol_activation::protocol_activation_manifest::HookProviderProjection;
 
 pub(super) fn extend_profile_provider_projections(
@@ -116,60 +116,22 @@ fn provider_projection(
             raw_source_search: ActionPolicy::Block,
             agent_search_json: ActionPolicy::Block,
         },
-        owner_route: command(
+        playbook_route: command(
             [
                 "asp",
                 language,
                 "search",
-                "owner",
-                "{owner}",
-                "items",
-                "--workspace",
-                "{workspace}",
-                "--view",
-                "seeds",
-            ]
-            .into_iter()
-            .map(str::to_owned)
-            .collect(),
-            None,
-        ),
-        lexical_route: command(
-            [
-                "asp",
-                language,
-                "search",
-                "lexical",
+                "playbook",
                 "{query}",
-                "owner",
-                "tests",
+                "--scope",
+                "owner:{owner}",
                 "--workspace",
                 "{workspace}",
-                "--view",
-                "seeds",
             ]
             .into_iter()
             .map(str::to_owned)
             .collect(),
             None,
-        ),
-        ingest_route: command(
-            [
-                "asp",
-                language,
-                "search",
-                "ingest",
-                "owner",
-                "tests",
-                "--workspace",
-                "{workspace}",
-                "--view",
-                "seeds",
-            ]
-            .into_iter()
-            .map(str::to_owned)
-            .collect(),
-            Some(StdinMode::PipeCandidates),
         ),
     }
 }

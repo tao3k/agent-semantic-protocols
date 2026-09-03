@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use super::generation_builder::{Stage, await_stage};
 
-use tokio::net::UnixListener;
+use tokio::net::TcpListener;
 use tokio::sync::watch;
 use tokio::task::JoinSet;
 
@@ -12,6 +12,74 @@ use crate::runtime_server_control::RuntimeServerEndpoint;
 use crate::runtime_server_control::status_memory::RuntimeServerStatusMemoryWriter;
 
 use crate::WorkspaceDbRegistry;
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SourceIndexDurabilityAttachmentReceipt<'a> {
+    schema_id: &'static str,
+    schema_version: &'static str,
+    state: &'static str,
+    project_id: &'a str,
+    workspace_id: &'a str,
+    generation_digest: &'a str,
+    source_root_digest: &'a str,
+    elapsed_micros: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason_kind: Option<&'static str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error: Option<&'a str>,
+}
+
+fn emit_source_index_durability_attachment(
+    state: &'static str,
+    project_id: &str,
+    workspace_id: &str,
+    generation_digest: &str,
+    source_root_digest: &str,
+    elapsed_micros: u64,
+    error: Option<&str>,
+) {
+    eprintln!(
+        "[source-index-durability-attachment] {}",
+        serde_json::to_string(&SourceIndexDurabilityAttachmentReceipt {
+            schema_id: "agent.semantic-protocols.source-index-durability-attachment-receipt",
+            schema_version: "1",
+            state,
+            project_id,
+            workspace_id,
+            generation_digest,
+            source_root_digest,
+            elapsed_micros,
+            reason_kind: error.map(|_| "source-index-durability-attachment-failed"),
+            error,
+        })
+        .unwrap_or_else(|encode_error| format!(
+            "{{\"schemaId\":\"agent.semantic-protocols.source-index-durability-attachment-receipt\",\"schemaVersion\":\"1\",\"state\":\"failed\",\"reasonKind\":\"receipt-encoding-failed\",\"error\":{}}}",
+            serde_json::Value::String(encode_error.to_string())
+        ))
+    );
+}
+
+async fn spawn_runtime_owned_durability_task<F>(
+    durability_tasks: &Arc<tokio::sync::Mutex<JoinSet<()>>>,
+    task: F,
+) where
+    F: std::future::Future<Output = ()> + Send + 'static,
+{
+    let mut durability_tasks = durability_tasks.lock().await;
+    while durability_tasks.try_join_next().is_some() {}
+    durability_tasks.spawn(task);
+}
+
+fn durable_provider_binding_matches_current(
+    observed_generation: Option<&str>,
+    current_generation: Option<&str>,
+) -> bool {
+    matches!(
+        (observed_generation, current_generation),
+        (Some(observed), Some(current)) if !current.is_empty() && observed == current
+    )
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum RuntimeServerExit {
@@ -24,6 +92,7 @@ pub use crate::runtime_server_observability::RuntimeServerEvent;
 use crate::runtime_server_observability::publish_event;
 
 const CONNECTION_DRAIN_BOUNDARY: std::time::Duration = std::time::Duration::from_millis(100);
+const DURABILITY_DRAIN_BOUNDARY: std::time::Duration = std::time::Duration::from_millis(100);
 
 #[derive(Clone)]
 pub struct RuntimeServerShutdownHandle {
@@ -44,7 +113,7 @@ pub struct RuntimeServer {
     pub(super) runtime_search_service:
         Option<crate::runtime_search_service::RuntimeSearchServiceHandle>,
     pub(super) endpoint: RuntimeServerEndpoint,
-    pub(super) listener: UnixListener,
+    pub(super) listener: TcpListener,
     pub(super) provider_register: Arc<crate::runtime_provider_register::RuntimeProviderRegister>,
     pub(super) registry: Arc<WorkspaceDbRegistry>,
     pub(super) workspace_count: watch::Receiver<usize>,
@@ -53,6 +122,7 @@ pub struct RuntimeServer {
     pub(super) readiness_sender: watch::Sender<crate::runtime_server_control::RuntimeServerState>,
     pub(super) generation_publication:
         crate::runtime_server_publication::WorkspaceGenerationPublication,
+    pub(super) durability_tasks: Arc<tokio::sync::Mutex<JoinSet<()>>>,
     pub(crate) status_memory: RuntimeServerStatusMemoryWriter,
     pub(super) events: Option<crate::runtime_server_observability::RuntimeServerEventPublisher>,
     pub(super) generation_admission:
@@ -109,14 +179,7 @@ impl RuntimeServer {
     }
 
     pub(super) async fn cleanup_bound_artifacts(&self) {
-        for path in [
-            &self.endpoint.socket_path,
-            &self.endpoint.data_plane_socket_path,
-            &self.endpoint.provider_plane_socket_path,
-            &self.endpoint.status_memory_path,
-        ] {
-            let _ = tokio::fs::remove_file(path).await;
-        }
+        let _ = tokio::fs::remove_file(&self.endpoint.status_memory_path).await;
     }
 
     pub fn with_event_sender(
@@ -163,17 +226,43 @@ impl RuntimeServer {
         source_builder: impl Into<
             Option<crate::runtime_server_admission::WorkspaceGenerationCandidateBuilder>,
         >,
-        owner_projection_builder: Option<
-            crate::runtime_server_admission::WorkspaceOwnerProjectionBuilder,
-        >,
         catalog: Option<crate::runtime_server_admission_catalog::RuntimeWorkspaceAdmissionCatalog>,
+        provider_binding_generation_probe: Option<
+            std::sync::Arc<dyn Fn() -> Result<Option<String>, String> + Send + Sync + 'static>,
+        >,
     ) -> Self {
         let source_builder = source_builder.into();
         let durable_registry = Arc::clone(&self.registry);
         let memory_registry = Arc::clone(&self.workspace_registry);
         let generation_publication = self.generation_publication.clone();
-        let mutation_owner_projection_builder = owner_projection_builder.clone();
+        let durability_tasks = Arc::clone(&self.durability_tasks);
         let events = self.events.clone();
+        let durable_restore_provider_binding_probe = provider_binding_generation_probe.clone();
+        let ready_validator = provider_binding_generation_probe.map(|probe| {
+            let memory_registry = Arc::clone(&memory_registry);
+            std::sync::Arc::new(
+                move |workspace_identity: &str, project_root: &std::path::Path| {
+                    let expected = probe()?;
+                    let lease = memory_registry.lease(workspace_identity, project_root)?;
+                    let generation = lease.generation();
+                    let observed = match generation.runtime_provider_execution_binding.as_ref() {
+                        Some(binding) => {
+                            binding.validate()?;
+                            Some(binding.installed_provider_binding_generation.clone())
+                        }
+                        None => None,
+                    };
+                    if observed != expected {
+                        return Err(format!(
+                            "Runtime provider binding generation drift: expected={} observed={}",
+                            expected.as_deref().unwrap_or("absent"),
+                            observed.as_deref().unwrap_or("absent")
+                        ));
+                    }
+                    Ok(())
+                },
+            ) as crate::runtime_server_admission::WorkspaceGenerationReadyValidator
+        });
         let builder = Arc::new(
             move |workspace_identity: String,
                   project_root: std::path::PathBuf,
@@ -187,10 +276,11 @@ impl RuntimeServer {
                 let durable_registry = Arc::clone(&durable_registry);
                 let memory_registry = Arc::clone(&memory_registry);
                 let generation_publication = generation_publication.clone();
-        let source_builder = source_builder.clone();
+                let durability_tasks = Arc::clone(&durability_tasks);
+                let durable_restore_provider_binding_probe =
+                    durable_restore_provider_binding_probe.clone();
+                let source_builder = source_builder.clone();
         let source_builder_cancellation = cancellation.clone();
-                let mutation_owner_projection_builder =
-                    mutation_owner_projection_builder.clone();
                 let events = events.clone();
                 let workspace_for_build = workspace_identity.clone();
                 Box::pin(async move {
@@ -233,40 +323,45 @@ impl RuntimeServer {
                             workspace_identity.clone(),
                             operation_id.clone(),
                         );
-let session = await_stage(
-                        &workspace_identity,
-                        &operation_id,
-                        Stage::WorkspaceBootstrap,
-                        async {
-        async {
-            if workspace_identity.trim().is_empty() {
-                return Err(
-                    "workspace admission requires a non-empty workspace identity".to_owned(),
-                );
-            }
-            if let Some(session) = durable_registry.loaded_session(&workspace_identity) {
-                return Ok(session);
-            }
-            let session = durable_registry.bootstrap_workspace(&project_root).await?;
-            if session.workspace_identity() != workspace_identity {
-                return Err(format!(
-                    "workspace admission identity mismatch: requested={workspace_identity} resolved={}",
-                    session.workspace_identity()
-                ));
-            }
-            Ok(session)
-        }
-        .await
-        .map_err(|error| {
-                                crate::runtime_server_admission::WorkspaceGenerationBuildFailure::new(
-                                    crate::runtime_server_admission::WorkspaceGenerationFailureStage::WorkspaceBootstrap,
-                                    error,
-                                )
-                            })
-                        },
-                    )
-                    .await?;
-                    if build_mode.attempts_durable_restore() {
+                    if workspace_identity.trim().is_empty() {
+                        return Err(crate::runtime_server_admission::WorkspaceGenerationBuildFailure::new(
+                            crate::runtime_server_admission::WorkspaceGenerationFailureStage::WorkspaceBootstrap,
+                            "workspace admission requires a non-empty workspace identity",
+                        ));
+                    }
+                    let durable_restore_admitted = if !build_mode.attempts_durable_restore() {
+                        false
+                    } else if provider_target.is_none() {
+                        true
+                    } else {
+                        let current_generation = durable_restore_provider_binding_probe
+                            .as_ref()
+                            .and_then(|probe| probe().ok().flatten());
+                        let observed_generation = async {
+                            let pointer_path = crate::runtime_server_workspace::workspace_generation_pointer_path(
+                                memory_registry.root(),
+                                &workspace_identity,
+                                &project_root,
+                            )
+                            .ok()?;
+                            let reader = crate::runtime_server_workspace::WorkspaceGenerationPointerReader::open_optional(
+                                &pointer_path,
+                            )
+                            .await
+                            .ok()??;
+                            let snapshot = reader.read().ok()?;
+                            snapshot.validate().ok()?;
+                            snapshot
+                                .runtime_provider_execution_binding
+                                .map(|binding| binding.installed_provider_binding_generation)
+                        }
+                        .await;
+                        durable_provider_binding_matches_current(
+                            observed_generation.as_deref(),
+                            current_generation.as_deref(),
+                        )
+                    };
+                    if durable_restore_admitted {
                         let restore_started = std::time::Instant::now();
                         let pointer_restore = await_stage(
                             &workspace_identity,
@@ -375,33 +470,6 @@ let session = await_stage(
                             Err(_) => {}
                         }
                     }
-                    if build_mode
-                        == crate::runtime_server_admission::WorkspaceGenerationBuildMode::RebuildAfterMutation
-                        && !changed_paths.is_empty()
-                    {
-                        let owner_projection_builder = mutation_owner_projection_builder
-                            .as_ref()
-                            .ok_or_else(|| {
-                                crate::runtime_server_admission::WorkspaceGenerationBuildFailure::new(
-                                    crate::runtime_server_admission::WorkspaceGenerationFailureStage::SourceBuilder,
-                                    "runtime mutation owner projection builder is unavailable",
-                                )
-                            })?;
-        return super::generation_builder::publish_mutation_generation(
-                            owner_projection_builder,
-                            &memory_registry,
-                            &workspace_identity,
-                            &project_root,
-                            changed_paths.as_ref(),
-                            format!(
-                                "daemon-admission-mutation-{workspace_identity}-{}",
-                                candidate.candidate_generation.digest
-                            ),
-            candidate,
-            cancellation.clone(),
-        )
-                        .await;
-                    }
                     let source_builder = source_builder.as_ref().ok_or_else(|| {
                         format!(
                             "canonical workspace generation is unavailable; writer lane publication is required before admission: workspaceIdentity={workspace_identity}"
@@ -424,6 +492,7 @@ let session = await_stage(
                     source_builder(
                         workspace_for_build,
                         project_root.clone(),
+                        candidate.clone(),
                         changed_paths,
                         provider_target,
                         source_builder_cancellation,
@@ -469,49 +538,39 @@ let session = await_stage(
                                 error,
                             )
                         })?;
-                    let (durable, committed_materialization) =
-                        await_stage(
-                        &workspace_identity,
-                        &operation_id,
-                            Stage::SourceIndexCommit,
-                            async {
-                                session
-                                    .commit_source_index_generation(
-                                        build.refresh,
-                                        build.materialization,
-                                    )
-                                    .await
-                                    .map_err(|error| {
-                                        crate::runtime_server_admission::WorkspaceGenerationBuildFailure::new(
-                                            crate::runtime_server_admission::WorkspaceGenerationFailureStage::SourceIndexCommit,
-                                            error,
-                                        )
-                                    })
-                            },
-                        )
-                        .await?;
-                    let committed_materialization =
-                        committed_materialization.into_validated(&workspace_identity).map_err(|error| {
+                    build
+                        .materialization
+                        .require_content_search_generation()
+                        .map_err(|error| {
                             crate::runtime_server_admission::WorkspaceGenerationBuildFailure::new(
-                                crate::runtime_server_admission::WorkspaceGenerationFailureStage::SourceIndexCommit,
+                                crate::runtime_server_admission::WorkspaceGenerationFailureStage::AdmissionValidation,
                                 error,
                             )
                         })?;
-                    if !durable
-                        .source_snapshot
-                        .has_same_content_identity(
-                            &committed_materialization.as_materialization().source_snapshot,
-                        )
-                    {
+                    // The immutable byte generation is the Search authority.
+                    // Turso is a recoverability attachment and must not sit in
+                    // front of the cold-query linearization point.
+                    let source_index_refresh = build.refresh;
+                    let source_index_materialization = build.materialization.clone();
+                    let committed_materialization = build
+                        .materialization
+                        .into_validated(&workspace_identity)
+                        .map_err(|error| {
+                            crate::runtime_server_admission::WorkspaceGenerationBuildFailure::new(
+                                crate::runtime_server_admission::WorkspaceGenerationFailureStage::AdmissionValidation,
+                                error,
+                            )
+                        })?;
+                    let published_materialization_identity = committed_materialization
+                        .as_materialization()
+                        .clone();
+                    if cancellation.is_cancelled() {
                         return Err(crate::runtime_server_admission::WorkspaceGenerationBuildFailure::new(
-                            crate::runtime_server_admission::WorkspaceGenerationFailureStage::SourceIndexCommit,
-                            format!(
-                            "Turso generation evidence differs from canonical materialization: durable={:?} materialized={:?}",
-                            durable.source_snapshot,
-                            committed_materialization.as_materialization().source_snapshot
-                            ),
+                            crate::runtime_server_admission::WorkspaceGenerationFailureStage::GenerationBuilderSupervision,
+                            "generation build was superseded before canonical publication",
                         ));
                     }
+                    let resident_publication_started = std::time::Instant::now();
                     let published = await_stage(
                         &workspace_identity,
                         &operation_id,
@@ -536,14 +595,50 @@ let session = await_stage(
                         },
                     )
                     .await?;
+                    eprintln!(
+                        "[resident-generation-publication-timing] {}",
+                        serde_json::json!({
+                            "schemaId": "agent.semantic-protocols.resident-generation-publication-timing-receipt",
+                            "schemaVersion": "1",
+                            "workspaceId": &workspace_identity,
+                            "generationDigest": &published.generation_digest,
+                            "elapsedMicros": u64::try_from(resident_publication_started.elapsed().as_micros()).unwrap_or(u64::MAX),
+                        })
+                    );
                     let pointer_path = crate::runtime_server_workspace::workspace_generation_pointer_path(
                         memory_registry.root(), &workspace_identity, &project_root,
                     ).map_err(|error| crate::runtime_server_admission::WorkspaceGenerationBuildFailure::new(
                         crate::runtime_server_admission::WorkspaceGenerationFailureStage::CanonicalGenerationPublication,
                         error,
                     ))?;
+                    let project_id = agent_semantic_client_protocol::ClientProjectId::new(
+                        agent_semantic_client_core::state_core::ResolvedState::resolve(&project_root)
+                    .map_err(|error| {
+                        crate::runtime_server_admission::WorkspaceGenerationBuildFailure::new(
+                            crate::runtime_server_admission::WorkspaceGenerationFailureStage::CanonicalGenerationPublication,
+                            format!("failed to resolve publication ProjectId: {error}"),
+                        )
+                    })?
+                    .repo
+                    .repo_id
+                    .to_string(),
+                    ).map_err(|error| {
+                        crate::runtime_server_admission::WorkspaceGenerationBuildFailure::new(
+                            crate::runtime_server_admission::WorkspaceGenerationFailureStage::CanonicalGenerationPublication,
+                            error,
+                        )
+                    })?;
+                    let workspace_id = agent_semantic_client_protocol::ClientWorkspaceIdentity::new(
+                        workspace_identity.clone(),
+                    ).map_err(|error| {
+                        crate::runtime_server_admission::WorkspaceGenerationBuildFailure::new(
+                            crate::runtime_server_admission::WorkspaceGenerationFailureStage::CanonicalGenerationPublication,
+                            error,
+                        )
+                    })?;
                     generation_publication.publish(crate::runtime_server_publication::WorkspaceGenerationPublished {
-                        workspace_identity: workspace_identity.clone(),
+                        project_id: project_id.clone(),
+                        workspace_id: workspace_id.clone(),
                         project_root: project_root.clone(),
                         resident_pointer_path: pointer_path,
                         generation_digest: published.generation_digest.clone(),
@@ -554,13 +649,101 @@ let session = await_stage(
                             error,
                         )
                     })?;
-                    crate::runtime_server_admission::WorkspaceGenerationBuildCompletion::new(
+                    let completion = crate::runtime_server_admission::WorkspaceGenerationBuildCompletion::new(
                         captured_candidate,
                         commit,
                     ).map_err(|error| crate::runtime_server_admission::WorkspaceGenerationBuildFailure::new(
                         crate::runtime_server_admission::WorkspaceGenerationFailureStage::CanonicalGenerationPublication,
                         error,
-                    ))
+                    ))?;
+                    let durability_generation_digest = published.generation_digest.clone();
+                    let durability_source_root_digest = published.source_root_digest.clone();
+                    spawn_runtime_owned_durability_task(&durability_tasks, async move {
+                        let durability_started = std::time::Instant::now();
+                        let durability = async {
+                            let session = await_stage(
+                                &workspace_identity,
+                                &operation_id,
+                                Stage::WorkspaceBootstrap,
+                                async {
+                                    let session = match durable_registry
+                                        .loaded_session(&workspace_identity)
+                                    {
+                                        Some(session) => session,
+                                        None => durable_registry
+                                            .bootstrap_workspace(&project_root)
+                                            .await
+                                            .map_err(|error| {
+                                                crate::runtime_server_admission::WorkspaceGenerationBuildFailure::new(
+                                                    crate::runtime_server_admission::WorkspaceGenerationFailureStage::WorkspaceBootstrap,
+                                                    error,
+                                                )
+                                            })?,
+                                    };
+                                    if session.workspace_identity() != workspace_identity {
+                                        return Err(crate::runtime_server_admission::WorkspaceGenerationBuildFailure::new(
+                                            crate::runtime_server_admission::WorkspaceGenerationFailureStage::WorkspaceBootstrap,
+                                            format!(
+                                                "workspace admission identity mismatch: requested={workspace_identity} resolved={}",
+                                                session.workspace_identity()
+                                            ),
+                                        ));
+                                    }
+                                    Ok(session)
+                                },
+                            )
+                            .await?;
+                            await_stage(
+                                &workspace_identity,
+                                &operation_id,
+                                Stage::SourceIndexCommit,
+                                async {
+                                    session
+                                        .commit_source_index_generation(
+                                            source_index_refresh,
+                                            source_index_materialization,
+                                        )
+                                        .await
+                                        .map_err(|error| {
+                                            crate::runtime_server_admission::WorkspaceGenerationBuildFailure::new(
+                                                crate::runtime_server_admission::WorkspaceGenerationFailureStage::SourceIndexCommit,
+                                                error,
+                                            )
+                                        })
+                                },
+                            )
+                            .await
+                        }
+                        .await;
+                        let elapsed_micros = u64::try_from(
+                            durability_started.elapsed().as_micros(),
+                        )
+                        .unwrap_or(u64::MAX);
+                        let error = match durability {
+                            Ok((durable, durable_materialization))
+                                if durable.source_snapshot.has_same_content_identity(
+                                    &durable_materialization.source_snapshot,
+                                ) && durable_materialization.has_same_generation_identity(
+                                    &published_materialization_identity,
+                                ) => None,
+                            Ok(_) => Some(
+                                "durable Source Index identity differs from the published resident generation"
+                                    .to_owned(),
+                            ),
+                            Err(error) => Some(error.message),
+                        };
+                        emit_source_index_durability_attachment(
+                            if error.is_none() { "ready" } else { "failed" },
+                            project_id.as_str(),
+                            workspace_id.as_str(),
+                            &durability_generation_digest,
+                            &durability_source_root_digest,
+                            elapsed_micros,
+                            error.as_deref(),
+                        );
+                    })
+                    .await;
+                    Ok(completion)
                     }
                     .await;
                     if let Err(error) = &result {
@@ -586,6 +769,10 @@ let session = await_stage(
         let admission = match self.telemetry_sender.clone() {
             Some(sender) => crate::runtime_server_admission::WorkspaceGenerationAdmission::new_with_telemetry_sender(builder, sender),
             None => crate::runtime_server_admission::WorkspaceGenerationAdmission::new(builder),
+        };
+        let admission = match ready_validator {
+            Some(ready_validator) => admission.with_ready_validator(ready_validator),
+            None => admission,
         };
         self.generation_admission = Some(Arc::new(match catalog {
             Some(catalog) => admission.with_catalog(catalog),
@@ -615,6 +802,7 @@ let session = await_stage(
             telemetry_sender: _,
             readiness_sender,
             generation_publication,
+            durability_tasks,
         } = self;
         let (_lifecycle_state, lifecycle) =
             watch::channel(crate::runtime_server_control::RuntimeServerState::Healthy);
@@ -660,12 +848,12 @@ let session = await_stage(
         let exit = loop {
             tokio::select! {
                 connection = listener.accept(), if connection_supervisor.has_capacity() => {
-                    let (stream, _) = connection.map_err(|error| {
+                    let (stream, peer) = connection.map_err(|error| {
                         format!("failed to accept runtime server request: {error}")
                     })?;
-                    crate::runtime_server_control::validate_runtime_server_peer_fd(
-                        std::os::fd::AsRawFd::as_raw_fd(&stream),
-                    )?;
+                    if !peer.ip().is_loopback() {
+                        return Err("Runtime Server rejected a non-loopback control peer".to_owned());
+                    }
                     let lease = connection_supervisor
                         .try_admit()
                         .expect("capacity guard must admit one control connection");
@@ -841,6 +1029,16 @@ let session = await_stage(
                 }
             }
         }
+        let mut durability_tasks = durability_tasks.lock().await;
+        if tokio::time::timeout(DURABILITY_DRAIN_BOUNDARY, async {
+            while durability_tasks.join_next().await.is_some() {}
+        })
+        .await
+        .is_err()
+        {
+            durability_tasks.abort_all();
+            while durability_tasks.join_next().await.is_some() {}
+        }
         Ok(exit)
     }
 }
@@ -870,6 +1068,10 @@ fn publish_connection_completion(
 #[cfg(test)]
 #[path = "../../tests/unit/runtime_server_connection_completion.rs"]
 mod connection_completion_tests;
+
+#[cfg(test)]
+#[path = "../../tests/unit/runtime_server_durability_attachment.rs"]
+mod durability_attachment_tests;
 
 #[cfg(unix)]
 pub(super) async fn runtime_server_shutdown_signal() -> Result<(), String> {

@@ -102,9 +102,9 @@ const RETIRED_POLICY_ID_SCAN_PATHS: &[&str] = &[
     "rust-lang-project-harness/src",
     "rust-lang-project-harness/docs",
     "rust-lang-project-harness/tests",
-    "typescript-lang-project-harness/src",
-    "typescript-lang-project-harness/docs",
-    "typescript-lang-project-harness/tests",
+    "asp-typescript/src",
+    "asp-typescript/docs",
+    "asp-typescript/tests",
 ];
 
 pub(super) fn validate_gerbil_benchmark_ss(

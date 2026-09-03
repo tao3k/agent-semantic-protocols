@@ -44,7 +44,7 @@ fn install_language_pinned_release_ignores_asp_toml_provider_bin() {
 
 #[test]
 #[cfg(unix)]
-fn install_binary_does_not_reconcile_provider_artifacts() {
+fn install_binary_reconciles_provider_artifacts_without_starting_runtime() {
     let _install_guard = crate::install_binary_test_guard::acquire();
     let root = temp_project_root();
     let state_home = root.join("state");
@@ -74,12 +74,22 @@ fn install_binary_does_not_reconcile_provider_artifacts() {
     );
     let stdout = String::from_utf8_lossy(&warm.stdout);
     assert!(
-        stdout.contains("providerReconciliation=not-on-binary-install"),
+        stdout.contains("providerReconciliation=automatic"),
         "{stdout}"
     );
     assert!(
-        stdout.contains("installedProviderArtifacts=not-on-binary-install"),
+        stdout.contains("installedProviderArtifactsGeneration=sha256:"),
         "{stdout}"
+    );
+    assert!(
+        stdout.contains("installedProviderArtifactsWrite=false"),
+        "{stdout}"
+    );
+    assert!(
+        state_home
+            .join("runtime/installed-provider-artifacts.json")
+            .is_file(),
+        "binary installation must refresh the installed provider artifact projection"
     );
     assert!(
         !state_home.join("runtime/server/candidates").exists(),

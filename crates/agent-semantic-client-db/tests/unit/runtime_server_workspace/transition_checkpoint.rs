@@ -75,11 +75,16 @@ fn generation(
             project_root: project_root(workspace_identity).display().to_string(),
             active_epoch: epoch,
             workspace_snapshot,
+            content_search_generation: crate::fixture::content_search_generation_receipt(
+                workspace_identity,
+                &source_snapshot,
+            ),
             source_snapshot,
             module_graph_digest: format!(
                 "blake3-256:{}",
                 blake3::hash(b"runtime-workspace-fixture-module-graph").to_hex()
             ),
+            runtime_provider_execution_binding: None,
             project_resolutions: Vec::new(),
             owners: vec![owner],
         },
@@ -563,6 +568,14 @@ async fn published_generation_exposes_parser_owned_selectors_without_hidden_lexi
         )
         .await
         .expect("open zero-copy search generation");
+    assert!(
+        !client.graph_generation_is_ready(),
+        "cold generation open must not create a graph builder"
+    );
+    assert!(
+        !client.lexical_accelerator_is_ready(),
+        "cold generation open must not create a Tantivy builder"
+    );
     let lookup = client
         .read_source_index("run_search", None, 8)
         .expect("read lexical section");

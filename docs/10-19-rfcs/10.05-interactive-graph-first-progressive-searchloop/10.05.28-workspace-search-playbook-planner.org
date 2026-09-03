@@ -1,0 +1,95 @@
+#+TITLE: RFC 10.05.28 — Workspace Search Playbook Planner V1
+#+STATUS: implementation
+
+* Decision
+
+=asp search playbook= is the only workspace-level Search planner.  It does not
+guess one language from a file suffix and it does not forward =playbook= as a
+provider-specific view.  It reads one Runtime-owned ProjectId/WorkspaceId,
+one immutable content-generation identity, and one admitted provider registry
+snapshot, then emits a deterministic set of language-scoped routes.
+
+The executable leaves are:
+
+- =asp <language> search playbook <query> ...= for discovery;
+- =asp <language> query --selector <exact-selector> ...= for exact projection.
+
+There is no public =pipe=, =prime=, =ingest=, =rg=, =lexical=, provider-local
+fallback, file-extension language guess, or client-owned generation cache.
+
+* Authority and isolation
+
+Every route in one plan MUST bind the same three identities:
+
+1. ProjectId — stable project isolation and state-home namespace;
+2. WorkspaceId — the admitted checkout/worktree identity;
+3. contentGenerationDigest — immutable content membership and native syntax.
+
+Provider registration selects capability, never identity.  A provider cannot
+publish a second workspace generation or silently substitute another ProjectId.
+Unregistered, unselected, empty-scope, or unsupported languages appear in
+=skippedLanguages= with a typed reason.  An empty route set is therefore a
+valid diagnostic plan, not an ambiguous successful search.
+
+* Four-stage language route
+
+Each admitted language route has exactly this logical order:
+
+1. =rg-acquisition=: ASP Server-owned immutable byte membership.  The name
+   describes rg-equivalent fixed-string semantics; warm requests launch zero
+   rg processes and perform zero workspace scans.
+2. =provider-native-syntax=: the one registered language provider parses the
+   admitted bytes and emits structural selectors, relations, and query keys.
+3. =tantivy-lexical=: generation-bound derived accelerator.  It is used only
+   when its content identity matches; absence never blocks the cold resident
+   byte/native-syntax result.
+4. =python-graph=: generation-bound derived relationship computation.  It is
+   required only for relationship intent and otherwise skipped.  Python owns
+   graph algorithms, not Schema Manager, workspace identity, or publication.
+
+=fd= or equivalent inventory traversal is permitted only while constructing a
+new content generation.  It is forbidden on the request hot path.  Rust owns
+Schema Manager and shared validation; Python and language harnesses consume the
+declarative V1 schema bundle through trivial generated bindings.
+
+* Latency and work budget
+
+Warm planning and warm language dispatch must not read the filesystem, launch
+a provider process, or rediscover a socket.  The plan records these counters as
+zero.  The steady-state target is sub-millisecond per in-process/IPC hop; cold
+generation construction, parser admission, and derived accelerator builds have
+separate receipts and may not be hidden inside request latency.
+
+Fan-out is bounded to eight language routes.  Route order, normalized terms,
+extensions, stages, and skips are canonical and deterministic.  Parallelism is
+an execution optimization only; sequential execution must produce the same
+plan and synthesis identity.
+
+* Failure semantics
+
+Every request returns exactly one typed terminal.  Host socket denial, absent
+content generation, stale derived artifacts, provider unavailability, timeout,
+and cancellation remain distinct reason kinds.  Raw EOF, silent retry, local
+fallback, activation counters used as content freshness, and an empty success
+standing in for =query-not-ready= are prohibited.
+
+* V1 compatibility policy
+
+This is a hard-cut rewrite of V1, not a V2 migration.  Removed operations and
+old harness names are deleted rather than aliased.  Git is the archive.  The
+current tree contains only the server-first planner and language routes.
+
+* Acceptance
+
+Acceptance requires all of the following:
+
+- the V1 JSON schema validates plans with multiple routes and all-skipped plans;
+- Rust proves deterministic route order and exact generation binding;
+- Lean proves language filtering cannot alter ProjectId/WorkspaceId/content
+  identity and stale derived capabilities cannot attach;
+- =asp search playbook= produces a typed plan from the live Runtime;
+- every selected =asp <language> search playbook= and exact query returns one
+  terminal without replay;
+- cold/warm, ten sequential, thirty-two concurrent, cache-clear/load, and
+  failure-injection receipts are captured on real per-language corpora.
+

@@ -1,3 +1,5 @@
+//! Exact-content execution identity for every public search operation.
+
 use serde::{Deserialize, Serialize};
 
 use crate::content_binding::{
@@ -5,30 +7,38 @@ use crate::content_binding::{
 };
 use crate::runtime_execution::{RuntimeExecutionBinding, RuntimeExecutionBindingError};
 
+/// Stable schema identifier for search execution frames.
 pub const SEARCH_EXECUTION_SCHEMA_ID: &str = "asp.search-execution";
+/// Stable schema version shared with the content-binding contract.
 pub const SEARCH_EXECUTION_SCHEMA_VERSION: &str = CONTENT_BINDING_SCHEMA_VERSION;
 
+/// Public search operation admitted by an exact content binding.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum SearchOperation {
-    Prime,
-    QuerySet,
-    Search,
+    /// Execute the complete search playbook.
+    Playbook,
+    /// Evaluate one search query.
     Query,
+    /// Resolve one exact structural selector.
     Exact,
-    Pipe,
 }
 
+/// Exact content and optional Runtime identity bound to one execution.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SearchExecutionContext {
+    /// Content identity admitted for this execution.
     pub binding: ContentBinding,
+    /// Digest of the publication commit that admitted `binding`.
     pub commit_digest: String,
+    /// Runtime and evaluator identity when execution crosses the Runtime boundary.
     #[serde(default)]
     pub runtime_binding: Option<RuntimeExecutionBinding>,
 }
 
 impl SearchExecutionContext {
+    /// Constructs a context pinned to one exact content publication.
     pub fn exact(
         binding: ContentBinding,
         commit: &ContentPublicationCommit,
@@ -46,6 +56,7 @@ impl SearchExecutionContext {
         })
     }
 
+    /// Constructs a context pinned to content and Runtime identities.
     pub fn exact_with_runtime_binding(
         binding: ContentBinding,
         commit: &ContentPublicationCommit,
@@ -59,6 +70,7 @@ impl SearchExecutionContext {
         Ok(context)
     }
 
+    /// Revalidates this context against the currently supplied publication.
     pub fn validate_against(
         &self,
         commit: &ContentPublicationCommit,
@@ -83,36 +95,84 @@ impl SearchExecutionContext {
     }
 }
 
+macro_rules! search_identity {
+    ($name:ident, $doc:literal) => {
+        #[doc = $doc]
+        #[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
+        #[serde(transparent)]
+        pub struct $name(String);
+
+        impl $name {
+            /// Borrows the wire identity value.
+            pub fn as_str(&self) -> &str {
+                &self.0
+            }
+        }
+
+        impl From<String> for $name {
+            fn from(value: String) -> Self {
+                Self(value)
+            }
+        }
+
+        impl From<&str> for $name {
+            fn from(value: &str) -> Self {
+                Self(value.to_owned())
+            }
+        }
+    };
+}
+
+search_identity!(SearchRequestId, "Identity of one admitted search request.");
+search_identity!(
+    SearchSessionId,
+    "Identity of the session that owns a search request."
+);
+search_identity!(
+    SearchCancellationId,
+    "Identity of the cancellation channel bound to a search request."
+);
+
+/// Raw search client-frame DTO whose identity fields use typed wire values.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SearchClientFrame {
+    /// Schema identifier carried by the client frame.
     pub frame_schema_id: String,
+    /// Schema version carried by the client frame.
     pub frame_schema_version: String,
-    pub request_id: String,
-    pub session_id: String,
+    /// Request identity.
+    pub request_id: SearchRequestId,
+    /// Owning session identity.
+    pub session_id: SearchSessionId,
+    /// Search operation.
     pub operation: SearchOperation,
+    /// Exact execution context.
     pub context: SearchExecutionContext,
+    /// Optional provider-native exact selector.
     pub selector: Option<String>,
-    pub cancellation_id: String,
+    /// Cancellation identity.
+    pub cancellation_id: SearchCancellationId,
 }
 
 impl SearchClientFrame {
+    /// Validates schema, identity, selector, and content binding.
     pub fn validate(&self, commit: &ContentPublicationCommit) -> Result<(), SearchExecutionError> {
         if self.frame_schema_id != SEARCH_EXECUTION_SCHEMA_ID
             || self.frame_schema_version != SEARCH_EXECUTION_SCHEMA_VERSION
         {
             return Err(SearchExecutionError::SchemaMismatch);
         }
-        if self.request_id.is_empty()
-            || self.session_id.is_empty()
-            || self.cancellation_id.is_empty()
+        if self.request_id.as_str().is_empty()
+            || self.session_id.as_str().is_empty()
+            || self.cancellation_id.as_str().is_empty()
         {
             return Err(SearchExecutionError::MissingFrameIdentity);
         }
         self.context.validate_against(commit)?;
         if matches!(
             self.operation,
-            SearchOperation::Query | SearchOperation::Exact | SearchOperation::Pipe
+            SearchOperation::Query | SearchOperation::Exact
         ) && self.selector.as_deref().map(str::is_empty).unwrap_or(true)
         {
             return Err(SearchExecutionError::StaleSelector);
@@ -121,41 +181,60 @@ impl SearchClientFrame {
     }
 }
 
+/// Terminal state of an admitted search request.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum TerminalStatus {
+    /// Search completed successfully.
     Succeeded,
+    /// Search completed with a typed failure.
     Failed,
+    /// Search was cancelled.
     Cancelled,
 }
 
+/// Durable terminal receipt for one search request.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TerminalReceipt {
-    pub request_id: String,
+    /// Request identity.
+    pub request_id: SearchRequestId,
+    /// Exact content commit digest used by the request.
     pub commit_digest: String,
+    /// Terminal status.
     pub status: TerminalStatus,
 }
 
+/// Typed failure returned by search execution admission and completion.
 #[derive(Debug, Eq, PartialEq)]
 pub enum SearchExecutionError {
+    /// Content binding is invalid.
     Binding(ContentBindingError),
+    /// Runtime binding is invalid.
     RuntimeBinding(RuntimeExecutionBindingError),
+    /// Frame and publication commit digests differ.
     CommitDigestMismatch,
+    /// Frame schema identity is not current.
     SchemaMismatch,
+    /// A required request, session, or cancellation identity is empty.
     MissingFrameIdentity,
+    /// A selector-required operation omitted its selector.
     StaleSelector,
+    /// The execution already emitted a terminal receipt.
     AlreadyTerminal,
+    /// The execution was cancelled.
     Cancelled,
 }
 
+/// One exact-content search execution with a single terminal transition.
 pub struct SearchExecution {
     context: SearchExecutionContext,
     terminal: Option<TerminalReceipt>,
 }
 
 impl SearchExecution {
-    pub fn prime(
+    /// Binds a new execution to one exact content publication.
+    pub fn bind(
         binding: ContentBinding,
         commit: &ContentPublicationCommit,
     ) -> Result<Self, SearchExecutionError> {
@@ -165,7 +244,8 @@ impl SearchExecution {
         })
     }
 
-    pub fn prime_with_runtime_binding(
+    /// Binds a new execution to content and Runtime identities.
+    pub fn bind_with_runtime_binding(
         binding: ContentBinding,
         commit: &ContentPublicationCommit,
         runtime_binding: RuntimeExecutionBinding,
@@ -180,10 +260,12 @@ impl SearchExecution {
         })
     }
 
+    /// Returns the exact execution context.
     pub fn context(&self) -> &SearchExecutionContext {
         &self.context
     }
 
+    /// Admits a client frame only when all identities match this execution.
     pub fn admit(
         &self,
         frame: &SearchClientFrame,
@@ -199,15 +281,16 @@ impl SearchExecution {
         Ok(())
     }
 
+    /// Emits the single terminal receipt for this execution.
     pub fn finish(
         &mut self,
-        request_id: String,
+        request_id: SearchRequestId,
         status: TerminalStatus,
     ) -> Result<&TerminalReceipt, SearchExecutionError> {
         if self.terminal.is_some() {
             return Err(SearchExecutionError::AlreadyTerminal);
         }
-        if request_id.is_empty() {
+        if request_id.as_str().is_empty() {
             return Err(SearchExecutionError::MissingFrameIdentity);
         }
         self.terminal = Some(TerminalReceipt {
@@ -218,101 +301,20 @@ impl SearchExecution {
         Ok(self.terminal.as_ref().expect("terminal was just inserted"))
     }
 
-    pub fn cancel(&mut self, request_id: String) -> Result<&TerminalReceipt, SearchExecutionError> {
+    /// Emits the cancellation terminal for this execution.
+    pub fn cancel(
+        &mut self,
+        request_id: SearchRequestId,
+    ) -> Result<&TerminalReceipt, SearchExecutionError> {
         self.finish(request_id, TerminalStatus::Cancelled)
     }
 
+    /// Returns the terminal receipt when the execution has completed.
     pub fn terminal(&self) -> Option<&TerminalReceipt> {
         self.terminal.as_ref()
     }
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::content_binding::{AuthorityStamp, ContentIdentity};
-
-    fn identity() -> ContentIdentity {
-        let digest = "blake3-256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
-        ContentIdentity {
-            runtime_artifact_digest: digest.into(),
-            workspace_snapshot_digest: digest.into(),
-            source_generation_digest: digest.into(),
-            source_index_digest: digest.into(),
-            schema_digest: digest.into(),
-            provider_catalog_digest: digest.into(),
-        }
-    }
-
-    fn commit() -> ContentPublicationCommit {
-        let identity = identity();
-        let digest = identity.digest();
-        ContentPublicationCommit::linearize(
-            identity,
-            AuthorityStamp {
-                key_id: "test-key".into(),
-                canonical_digest: digest,
-                signature: "test-signature".into(),
-            },
-        )
-        .expect("valid commit")
-    }
-
-    #[test]
-    fn prime_pins_one_exact_context_for_all_operations() {
-        let commit = commit();
-        let execution = SearchExecution::prime(
-            ContentBinding::new(
-                commit.identity.clone(),
-                AuthorityStamp {
-                    key_id: "test-key".into(),
-                    canonical_digest: commit.commit_digest.clone(),
-                    signature: "test-signature".into(),
-                },
-            )
-            .expect("valid binding"),
-            &commit,
-        )
-        .expect("prime");
-        let frame = SearchClientFrame {
-            frame_schema_id: SEARCH_EXECUTION_SCHEMA_ID.into(),
-            frame_schema_version: SEARCH_EXECUTION_SCHEMA_VERSION.into(),
-            request_id: "request-1".into(),
-            session_id: "session-1".into(),
-            operation: SearchOperation::Query,
-            context: execution.context().clone(),
-            selector: Some("rust://item/1".into()),
-            cancellation_id: "cancel-1".into(),
-        };
-        execution
-            .admit(&frame, &commit)
-            .expect("same content admits");
-    }
-
-    #[test]
-    fn cancellation_is_terminal_and_cannot_be_followed_by_success() {
-        let commit = commit();
-        let mut execution = SearchExecution::prime(
-            ContentBinding::new(
-                commit.identity.clone(),
-                AuthorityStamp {
-                    key_id: "test-key".into(),
-                    canonical_digest: commit.commit_digest.clone(),
-                    signature: "test-signature".into(),
-                },
-            )
-            .expect("valid binding"),
-            &commit,
-        )
-        .expect("prime");
-        execution.cancel("request-1".into()).expect("cancel");
-        assert_eq!(
-            execution.finish("request-1".into(), TerminalStatus::Succeeded),
-            Err(SearchExecutionError::AlreadyTerminal)
-        );
-        assert_eq!(
-            execution.terminal().map(|receipt| receipt.status),
-            Some(TerminalStatus::Cancelled)
-        );
-    }
-}
+#[path = "../tests/unit/search_execution.rs"]
+mod tests;

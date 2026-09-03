@@ -53,7 +53,7 @@ fn validate_workspace_root(language_id: &str, root: &Path) -> Result<(), String>
     }
     if metadata.is_file() {
         return Err(format!(
-            "--workspace requires a directory project root, got file `{}`. Keep the file path as the owner/selector and use a directory workspace, for example `asp {language_id} search owner <file> items --query '<terms>' --workspace . --view seeds`.",
+            "--workspace requires a directory project root, got file `{}`. Keep the file path as the search scope and use a directory workspace, for example `asp {language_id} search '<terms>' --scope owner:<file> --workspace .`.",
             root.display()
         ));
     }

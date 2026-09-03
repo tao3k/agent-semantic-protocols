@@ -1,10 +1,11 @@
 use super::{
     MAX_PROVIDER_PROJECTION_BATCH_OWNERS, MAX_PROVIDER_PROJECTION_BATCH_SOURCE_BYTES,
     MAX_PROVIDER_PROJECTION_SINGLE_OWNER_SOURCE_BYTES, PROJECTION_BATCH_RESPONSE_SCHEMA_ID,
-    ProviderProjectedItem, ProviderProjectedItemIdentity, ProviderProjectedOwner,
-    ProviderProjectionBatchRequest, ProviderProjectionBatchResponse, ProviderProjectionOwner,
-    provider_projection_batch_ranges, provider_projection_batch_ranges_with_auxiliary_bytes,
-    validate_response,
+    PROJECTION_DIAGNOSTIC_SCHEMA_ID, ProviderProjectedItem, ProviderProjectedItemIdentity,
+    ProviderProjectedOwner, ProviderProjectionBatchRequest, ProviderProjectionBatchResponse,
+    ProviderProjectionDiagnostic, ProviderProjectionOwner, ProviderProjectionState,
+    SOURCE_SYNTAX_UNAVAILABLE_REASON_KIND, provider_projection_batch_ranges,
+    provider_projection_batch_ranges_with_auxiliary_bytes, validate_response,
 };
 
 fn request() -> ProviderProjectionBatchRequest {
@@ -85,6 +86,8 @@ fn response_validation_rejects_generation_or_owner_drift() {
         owners: vec![ProviderProjectedOwner {
             owner_path: "src/lib.rs".to_string(),
             source_leaf_digest: "leaf-a".to_string(),
+            projection_state: ProviderProjectionState::Ready,
+            diagnostic: None,
             items: vec![ProviderProjectedItem {
                 item_id: "item:function:exact".to_string(),
                 owner_id: "owner:src/lib.rs".to_string(),
@@ -123,6 +126,73 @@ fn response_validation_rejects_generation_or_owner_drift() {
     assert!(validate_response(&delimiter_request, &delimiter_response).is_err());
 
     response.owners[0].source_leaf_digest = "leaf-drift".to_string();
+    assert!(validate_response(&request, &response).is_err());
+}
+
+#[test]
+fn syntax_unavailable_owner_preserves_coverage_without_semantic_facts() {
+    let request = request();
+    let response = ProviderProjectionBatchResponse {
+        schema_id: PROJECTION_BATCH_RESPONSE_SCHEMA_ID.to_string(),
+        schema_version: "1".to_string(),
+        language_id: "rust".to_string(),
+        provider_id: "asp-rust".to_string(),
+        generation_root_digest: "generation-a".to_string(),
+        owners: vec![ProviderProjectedOwner {
+            owner_path: "src/lib.rs".to_string(),
+            source_leaf_digest: "leaf-a".to_string(),
+            projection_state: ProviderProjectionState::SyntaxUnavailable,
+            diagnostic: Some(ProviderProjectionDiagnostic {
+                schema_id: PROJECTION_DIAGNOSTIC_SCHEMA_ID.to_string(),
+                schema_version: "1".to_string(),
+                reason_kind: SOURCE_SYNTAX_UNAVAILABLE_REASON_KIND.to_string(),
+                message: "fixture parser rejected this owner".to_string(),
+            }),
+            items: Vec::new(),
+            relations: Vec::new(),
+        }],
+    };
+
+    validate_response(&request, &response).expect("typed syntax failure remains source-complete");
+}
+
+#[test]
+fn syntax_unavailable_owner_cannot_forge_semantic_facts() {
+    let request = request();
+    let mut response = ProviderProjectionBatchResponse {
+        schema_id: PROJECTION_BATCH_RESPONSE_SCHEMA_ID.to_string(),
+        schema_version: "1".to_string(),
+        language_id: "rust".to_string(),
+        provider_id: "asp-rust".to_string(),
+        generation_root_digest: "generation-a".to_string(),
+        owners: vec![ProviderProjectedOwner {
+            owner_path: "src/lib.rs".to_string(),
+            source_leaf_digest: "leaf-a".to_string(),
+            projection_state: ProviderProjectionState::SyntaxUnavailable,
+            diagnostic: Some(ProviderProjectionDiagnostic {
+                schema_id: PROJECTION_DIAGNOSTIC_SCHEMA_ID.to_string(),
+                schema_version: "1".to_string(),
+                reason_kind: SOURCE_SYNTAX_UNAVAILABLE_REASON_KIND.to_string(),
+                message: "fixture parser rejected this owner".to_string(),
+            }),
+            items: Vec::new(),
+            relations: Vec::new(),
+        }],
+    };
+    response.owners[0].relations.push(
+        agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelation {
+            from: agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelationEndpoint {
+                kind: "owner".to_string(),
+                id: "owner:src/lib.rs".to_string(),
+            },
+            kind: "contains".to_string(),
+            to: agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelationEndpoint {
+                kind: "item".to_string(),
+                id: "item:function:forged".to_string(),
+            },
+        },
+    );
+
     assert!(validate_response(&request, &response).is_err());
 }
 

@@ -31,11 +31,16 @@ fn generation(workspace_identity: &str) -> WorkspaceMemoryGeneration {
             project_root: project_root(workspace_identity).display().to_string(),
             active_epoch: 1,
             workspace_snapshot,
+            content_search_generation: crate::fixture::content_search_generation_receipt(
+                workspace_identity,
+                &source_snapshot,
+            ),
             source_snapshot,
             module_graph_digest: format!(
                 "blake3-256:{}",
                 blake3::hash(b"resident-recovery-fixture-module-graph").to_hex()
             ),
+            runtime_provider_execution_binding: None,
             project_resolutions: Vec::new(),
             owners: vec![WorkspaceOwnerSnapshot {
                                 authority: None,

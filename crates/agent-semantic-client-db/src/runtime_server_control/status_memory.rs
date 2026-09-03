@@ -556,9 +556,9 @@ pub(super) fn validate_resident_transaction(
         || transaction.endpoint_owner_epoch != endpoint.owner_epoch
         || transaction.endpoint_binary_content_digest.to_string() != endpoint.binary_content_digest
         || transaction.endpoint_runtime_generation_digest != endpoint.runtime_generation_digest
-        || transaction.control_endpoint != endpoint.socket_path
-        || transaction.data_endpoint != endpoint.data_plane_socket_path
-        || transaction.provider_endpoint != endpoint.provider_plane_socket_path
+        || transaction.control_endpoint != endpoint.control_endpoint
+        || transaction.data_endpoint != endpoint.data_endpoint
+        || transaction.provider_endpoint != endpoint.provider_endpoint
         || !launcher_path.is_absolute()
         || transaction.launcher_artifact_path != endpoint.runtime_artifact_path
         || transaction.spawn_argv.is_empty()

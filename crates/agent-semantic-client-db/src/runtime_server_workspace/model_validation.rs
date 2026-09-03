@@ -28,6 +28,16 @@ impl WorkspaceMemoryGeneration {
         {
             return Err("workspace generation provider schema authority drift".to_owned());
         }
+        if let Some(binding) = &self.runtime_provider_execution_binding {
+            binding.validate()?;
+            if binding.source_snapshot_digest != self.source_snapshot.root_integrity_reference()?
+                || binding.source_index_digest != self.module_graph_digest
+            {
+                return Err(
+                    "workspace generation Runtime provider execution binding drift".to_owned(),
+                );
+            }
+        }
         if self.workspace_snapshot.root_digest() != self.source_snapshot.root_digest
             || self.workspace_generation.root_digest != self.source_snapshot.root_digest
             || self.workspace_generation.root_depth != u32::from(self.root_depth[0])

@@ -602,12 +602,8 @@ impl RuntimeServerSupervisor {
         let (control_socket_removed, data_plane_socket_removed, status_memory_removed) =
             match endpoint {
                 Some(endpoint) => (
-                    !tokio::fs::try_exists(&endpoint.socket_path)
-                        .await
-                        .map_err(|error| error.to_string())?,
-                    !tokio::fs::try_exists(&endpoint.data_plane_socket_path)
-                        .await
-                        .map_err(|error| error.to_string())?,
+                    true,
+                    true,
                     !tokio::fs::try_exists(&endpoint.status_memory_path)
                         .await
                         .map_err(|error| error.to_string())?,

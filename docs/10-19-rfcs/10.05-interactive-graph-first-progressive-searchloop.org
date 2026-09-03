@@ -32,7 +32,7 @@ ASP exposes one SearchLoop data plane:
 typed request client
   -> shared agent-semantic-client
   -> ClientFrame gRPC/Tokio stream
-  -> Runtime-owned bounded Unix data socket
+  -> Host-admitted transport binding
   -> ASP Runtime Server admission
   -> resident provider/generation/search authority
   -> typed terminal receipt and client presentation
@@ -51,13 +51,127 @@ may parse a method into a second route or provide a fallback.  Runtime audits
 the existing =data_socket= before endpoint allocation; it does not create a
 fourth semantic authority.
 
-The current endpoint field is the Runtime-owned bounded UDS
-=client_endpoint=.  A v1 =client_http_endpoint= record may be consumed only as
-authoritative input to one-way endpoint migration.  It never authorizes a
-second current endpoint or semantic dispatcher.  When an HTTP endpoint is
-advertised, its one canonical frame path is only a transport adapter over the
-same =AspClientFrameService=; gRPC and HTTP/JSON round trips therefore produce
-identical typed responses, including admission failures.
+Host-native clients use the Runtime-published loopback HTTP/2 endpoint.
+Restricted clients receive an already-connected descriptor from the Host and
+never discover, bind, or connect a socket themselves.  A filesystem socket,
+client-local endpoint derivation, and retrying a denied connect in a broader
+permission domain are not admitted transports.  The endpoint record and an
+inherited descriptor are two bindings to the same =AspClientFrameService=,
+not two semantic dispatchers.  HTTP/JSON remains a debug adapter over that
+same service and therefore produces the same typed terminal semantics.
+
+** LSP lessons are negative requirements
+
+SearchLoop does not copy the request-time process composition of LSP.  The
+following historically common LSP failure modes are explicit countermodels:
+
+- initialization state scoped to a client process rather than an immutable
+  workspace generation;
+- capability discovery that advertises a method before its lifecycle and
+  terminal route exist;
+- request-time server spawning, socket discovery, reconnect, or client retry;
+- mutable text/document caches treated as semantic membership authority;
+- cancellation that drops a client future but leaves unowned background work;
+- dynamic registration or a compatibility command that creates a second
+  dispatcher; and
+- cross-process chaining of independent features on every interactive read.
+
+ASP improves on LSP by moving all expensive cross-language work to generation
+construction and mutation admission.  A Ready Search/Query is a single
+generation lease followed by bounded Rust reads over one fused immutable
+artifact.  Transports are ablatable, capabilities are generation-bound, and
+every request emits exactly one typed terminal without fallback.
+
+A selected-language demand carries only an internal provider work hint.  It
+cannot choose collection scope, generation membership, or publication shape.
+Generation construction inventories the workspace once, derives the complete
+current provider and owner membership, and publishes one complete successor.
+The hinted provider may be scheduled first, but publication cannot omit
+unhinted admitted owners.  Publishing a selected provider or changed-owner set
+as if it were a complete workspace generation is forbidden: a later demand
+would erase earlier membership and recreate LSP-style per-language state.  Cold
+and mutation admission use the same =CompleteGeneration= linearization point.
+
+Project isolation has one composite key authority.  State Core derives
+=ProjectId= from repository identity and =WorkspaceId= from the canonical
+checkout binding.  Admission, single-flight lanes, resident generations, and
+cache partitions MUST key on the indivisible =(ProjectId, WorkspaceId)= pair.
+The absolute project root is validated content used to locate source bytes; it
+is not a third partition key.  The same =WorkspaceId= may exist under distinct
+projects without aliasing, while a request presenting an existing pair with a
+different root is identity drift and fails closed.
+
+This decision deliberately starts from LSP's real trade-offs rather than a
+generic client/server analogy.  The official LSP architecture puts each
+language analysis tool in a separate process and negotiates client/server
+capabilities during =initialize=; the reference implementation also maintains
+an incrementally synchronized document mirror through open/change/close
+notifications.  Those mechanisms solve editor/tool M-by-N integration, but
+they are not admitted as ASP Search authority.  See the upstream
+[[https://code.visualstudio.com/api/language-extensions/language-server-extension-guide][Language Server Extension Guide]] and
+[[https://microsoft.github.io/language-server-protocol/specifications/specification-current][current LSP specification]].
+
+ASP retains LSP's useful separation of language-specific analysis from the
+client, then removes the request-time authority that causes lifecycle and
+freshness ambiguity:
+
+| LSP mechanism | ASP hard cut |
+|-
+| per-client =initialize= capability state | generation-bound server catalog |
+| client-maintained document synchronization | content-addressed source snapshot |
+| independent language-server process hop | lazy construction worker, absent from Ready reads |
+| dynamic registration | immutable admitted capability set |
+| request cancellation notification | server-owned attempt with exactly one terminal |
+| reconnect/restart recovery | Host-supervised binding plus typed unavailable terminal |
+
+The table is normative.  A Rust type, schema, CLI alias, adapter, or provider
+that reintroduces the left-hand authority is legacy and MUST be removed rather
+than hidden behind a compatibility feature.
+
+LSP also teaches a less visible lifecycle lesson: a client-visible
+=initialize/start accepted= acknowledgement is not service readiness.  ASP
+therefore does not admit =SpawnAccepted= or =Starting= as the terminal of a
+Search/Query request.  Bootstrap owns the spawned attempt until the Runtime
+publishes either the exact Healthy transaction identity or one typed Failed or
+Cancelled terminal.  A client never polls a guessed endpoint path, and it
+never derives a second endpoint location from State Home.  The endpoint path
+and transport identity are values published by the elected Runtime owner.
+
+Schema catalog publication follows the same rule.  Deleting a schema while a
+schema family still names that path is a torn publication and MUST fail before
+Runtime activation.  Removing a capability deletes its schema, family
+membership, method catalog entry, artifact member, and dispatcher route in one
+reviewed change.  Runtime startup is not a late garbage collector for stale
+schema membership.
+
+Schema Manager executes during the Rust artifact build/publication boundary,
+not during daemon bootstrap.  It emits one deterministic catalog that is
+embedded in the Runtime binary and therefore covered by the active bundle's
+content digest.  Runtime startup only decodes and validates those immutable
+bytes.  It MUST NOT locate =CARGO_MANIFEST_DIR=, read a checkout schema tree,
+materialize package copies, or repair registry membership.  This moves schema
+drift from a post-install availability failure to a pre-publication build
+failure.
+
+The build boundary itself is read-only.  It consumes Schema Manager's
+=resolve_bundles= value API, which returns canonical closure bytes, document
+digests, root-set identities, and the bundle digest without a destination
+path.  Calling =materialize= from =build.rs= is forbidden: Cargo would mutate
+downstream packages while compiling and then treat those mutable copies as its
+own input.  Materialization remains an explicit publication command for
+external language packages; embedded Rust consumers receive the same
+declarative closure directly from the manager.
+
+Cancellation has two orthogonal dimensions: terminal outcome and diagnostic
+payload.  The correlated request emits exactly one =Cancelled= response frame;
+that same frame MUST carry a typed =client-request-cancelled= diagnostic and
+MUST NOT carry a result or catalog.  The diagnostic is not a second terminal
+and does not change the outcome to =Error=.  Conversely, a client MUST reject a
+bare =Cancelled= frame, an =Error= frame labelled as cancellation, a mismatched
+request identity, or any cancellation response that also carries successful
+result data.  This separation avoids the LSP-era ambiguity where cancelling a
+local future, receiving a protocol error, and stopping server work could be
+mistaken for the same event.
 
 The package and route contract is owned by
 [[file:10.05-interactive-graph-first-progressive-searchloop/10.05.01-server-client-package-responsibility.org][10.05.01 Server/Client Package Responsibility]].
@@ -143,6 +257,40 @@ Query handling never starts, repairs, restarts, or locally executes a provider.
 Runtime absence and provider unavailability are typed terminal evidence, not
 permission to construct an alternate route.
 
+Every Search/Query request and terminal binds the same =ProjectId= and
+=WorkspaceId=.  The binding is present in both the ClientFrame envelope and
+the persisted operation terminal so detached receipts remain attributable.
+=workspaceIdentity=, =projectRoot=, an endpoint path, or an activation counter
+MUST NOT appear as an alternate partition key.  Stage, publication, resident
+lease, search fan-in, and exact-query projection all reject a project or
+workspace mismatch before observing or mutating active generation state.
+Live Corpus cold/warm/release receipts use the same pair and never expose a
+mutable =globalCacheMutationCount=: there is no global cache partition or
+global mutation authority.  A cold/release action can only compare-and-mutate
+the exact project/workspace resident generation named by the request.
+
+Every public operation that measures or consumes Search/Query semantics enters
+the same Runtime activation admission before opening the data plane.  This
+includes language facades and formal Live Corpus qualification.  Qualification
+MUST NOT construct =AspClient= directly against an endpoint path and thereby
+bypass supervisor admission.  It may wait for a newly admitted Runtime to
+publish =Healthy= before the measurement phase begins; that bounded startup
+wait is recorded separately and is never counted as a Ready-query latency.
+Once measurement begins, the benchmark uses the identical resident gRPC
+service, catalog, generation lease, cancellation registry, and terminal rules
+as =asp <language> search/query=.  A benchmark-only daemon, socket, or recovery
+path is a second lifecycle authority and is forbidden.
+
+=Healthy endpoint= and =committed resident transaction= are not synonyms.  A
+new owner can publish a reachable endpoint before its applied activation
+receipt becomes atomically visible.  Supervisor admission MUST therefore wait
+until the reachable endpoint, owner-spawn receipt, applied activation receipt,
+publication nonce, artifact path, and content digest all describe the same
+transaction.  Endpoint health without that identity closure remains
+=Starting=; it is never returned as Ready and is not repaired by client retry.
+This rule closes the same initialization race that LSP clients commonly paper
+over with reconnect loops, while preserving a single Runtime authority.
+
 Tokio task ownership, generation-attempt terminalization, and telemetry
 isolation are owned by
 [[file:10.05.11.05-runtime-server-tokio-task-lifecycle.org][10.05.11.05 Runtime Server Tokio Task Lifecycle]].
@@ -157,6 +305,13 @@ when an index-owner argument is absent.
 Only an explicitly unscoped operation may request global coverage.  Runtime
 evidence for a language-scoped operation therefore reports no unrelated
 provider process or preparation work.
+
+The same boundary applies before a generation exists.  A targeted demand
+constructs =requiredLanguages= from the selected provider identity alone; it
+does not enumerate every language detected in the repository.  An absent,
+cold, or uninstalled provider for another language cannot turn the selected
+request into =query-not-ready=.  Only an explicit =CompleteGeneration=
+transaction may fan in the repository-wide provider set.
 
 Provider package, registration, and server authority are owned by
 [[file:10.05.61-language-provider-server-authority.org][10.05.61 Language Provider Server Authority]].
@@ -234,15 +389,17 @@ capability, and resident locator advance as one validated publication.  Readers
 observe either the previous complete generation or the successor complete
 generation.
 
-A request's language/provider target is a readiness constraint only.  It MUST
-NOT narrow the registry or collection scope used to build a workspace
-generation.  When a targeted Search or Query discovers that no current
-generation is admitted, the single-flight builder validates that the requested
-provider is present, then constructs =CompleteGeneration= from every applicable
-registered provider.  Publishing =TargetProvider= or a target-only registry as
-the active workspace generation is forbidden: it would let whichever language
-queries first erase every other language from the shared membership authority.
-Targeted projection remains valid only as non-active diagnostic evidence.
+A request's language/provider target narrows construction work, never the
+published authority.  The single-flight builder starts only that provider and
+collects its complete current owner, relation, and ProjectResolution
+membership.  It then replaces the previous membership for the exact
+language/provider authority in the active immutable base and publishes the
+result as one =CompleteGeneration=.  Unselected providers, their source blobs,
+relations, and ProjectResolution receipts are carried forward byte-for-byte.
+The first targeted demand on a cold workspace is the initial complete member
+set.  Publishing the target-only candidate directly, or rescanning every
+registered provider for one language demand, is forbidden: the former erases
+active languages and the latter destroys lazy provider isolation.
 
 Provider coverage ranges only over programming-language registrations.  Org
 and Markdown are embedded document surfaces and therefore contribute document
@@ -333,10 +490,12 @@ owner facts, or choose an action independently.
 * Resident lexical recall and explicit coverage
 
 Warm lexical recall MUST use the immutable generation's parser-produced query
-keys through a resident inverted index.  A query MUST NOT walk workspace
+keys through a resident inverted index.  Native syntax is part of that same
+complete generation, not an independently published attachment.  A query MUST NOT walk workspace
 directories, reread owner source, rebuild token sets for every document, or
-launch a subprocess.  Updating an overlay owner atomically replaces that
-owner's postings so stale terms cannot remain searchable.
+launch a subprocess.  A mutation invalidates the prior generation and submits
+its changed paths only as inventory hints to the sole complete-generation
+builder.  No overlay or owner-delta path may mint a Search generation.
 
 Generation admission compiles owner paths to dense generation-local
 =OwnerId= values and compiles every normalized term to a sorted, duplicate-free
@@ -357,13 +516,124 @@ Correctness and the sub-millisecond Ready budget MUST hold on a cache miss;
 generation-local query memoization may accelerate exact replay but cannot be a
 latency prerequisite or freshness authority.
 
-Ripgrep is an explicit bounded coverage lane, not a recall fallback or a cache
-authority.  Runtime MUST NOT spawn =rg=, =fd=, or =exa= from the query path.
-The lane consumes output supplied by an admitted executor only when every
-record is proven against a committed owner blob: workspace membership, owner
-content digest, and exact line bytes MUST all agree with the immutable source
-generation.  A missing owner, stale blob, or stale line fails the complete
-coverage request; partial candidates are never returned.
+Cold lexical recall is the bounded rg-equivalent executor over resident bytes,
+not a cache or durable index authority.  File discovery executes once while
+constructing the immutable inventory; Runtime MUST NOT spawn =fd=, =exa=, or
+=rg= from the query path.  Every returned record is proven against a committed
+owner blob: workspace membership, owner content digest, and exact line bytes
+MUST all agree with the immutable source generation.  A missing owner, stale
+blob, or stale line fails the cold request; partial candidates are never
+returned.
+
+The content generation consists only of one Runtime-owned =fd=/ignore inventory,
+admitted owner bytes, and their content/Merkle identity.  Request admission is
+keyed in constant time by the admitted ProjectId, WorkspaceId, provider binding,
+and Runtime mutation epoch; it MUST NOT perform a Git/repository walk.  The
+builder derives source identity once from the inventory paths and bytes.  Once those facts
+validate, Runtime atomically publishes that generation and cold recall becomes
+available immediately.  Provider-native syntax is already parser-owned data in
+that immutable generation.  Tantivy, the resident graph, and Python Graphs are
+independent derived attachments.  They consume the same immutable content
+generation asynchronously; none participates in cold admission, and failure of
+one cannot roll back the content generation or the other attachments.
+
+The byte-generation linearization point precedes Source Index database
+persistence.  Canonical resident publication validates the complete owner set,
+ProjectId, WorkspaceId, source root, provider digest, and generation digest,
+then publishes the immutable reader and its Ready notification as one ASP
+Server transaction.  Turso subsequently persists the same exact identity as a
+durability attachment.  A database commit, WAL flush, source-index row rebuild,
+or database connection lease is therefore forbidden from the cold Search
+foreground path.  Its failure emits one typed durability terminal and retains
+the last valid resident generation; it cannot reinterpret a complete byte
+generation as =Building= or revoke its query lease.
+
+This is not a second authority or an acknowledgement-before-commit shortcut.
+The resident generation is itself the committed Search authority; Turso is a
+recoverability projection of that authority.  Publication uses one
+=(ProjectId, WorkspaceId, contentGenerationDigest)= compare-and-set.  A late or
+failed durability attachment for generation N cannot overwrite N+1, and daemon
+recovery may restore only a database record whose complete identity equals the
+canonical generation record.  If no such durable record exists, Runtime
+reconstructs through the same single-flight byte-generation admission instead
+of exposing stale rows.
+
+The ASP Server owns exactly one resident generation-builder service for its
+process lifetime.  Opening a generation submits immutable facts to that service;
+it MUST NOT create an =IndexWriter=, a builder thread pool, or a detached build
+task inside the generation object.  The service may retain reusable Tantivy
+writer resources and bounded CPU workers, while published generation objects
+contain only immutable cold facts and independently completed attachment
+results.  Clients, query handlers, and provider processes cannot own or start
+the builder.
+
+The resident builder is a control plane, not another generic thread pool.  Its
+Tokio task owns admission, bounded queues, cancellation, drain, and join.  A
+Tantivy indexing transaction owns Tantivy's segment workers; a graph transaction
+owns a separate CPU permit.  Both acquire typed daemon-wide CPU and memory
+permits before entering blocking work, so accepting many content generations
+cannot multiply the process worker count.  Queue capacity is not a resource
+limit and an in-flight counter is not a permit.
+
+The builder exposes one bounded Tokio event stream plus one immutable latest-state
+snapshot of derived attachments.  =broadcast + BroadcastStream= preserves every
+transition for live consumers and reports lag explicitly; =watch= retains the
+latest state for a late subscriber without replaying stderr or polling files.
+For each =(ProjectId, WorkspaceId, contentGenerationDigest, attachment)= key the
+stream advances through =queued -> building -> ready|failed= with a strictly
+positive process-local sequence.  =graph= and =tantivy= are separate keys and
+can become Ready in either order.  Every
+transition is emitted by the same Runtime-owned task that owns admission and
+join; query handlers cannot manufacture attachment events, and an event for
+generation N can never make an attachment visible in generation N+1.
+
+Tokio is the lifecycle scheduler, not the indexing engine.  The bounded channel
+and daemon resource supervisor own backpressure, cancellation, and shutdown;
+CPU-bound graph and Tantivy transactions cross exactly one =spawn_blocking=
+boundary after receiving permits.  Tantivy continues to own its internal
+segment workers.  ASP MUST NOT wrap each segment in another Tokio task, start a
+per-query Runtime, or use async syntax to hide synchronous cold admission.
+
+Resource selection is feedback-controlled and workload-bound.  Its history key
+includes build strategy, logarithmic lexical-byte and owner-count buckets, and
+changed-owner ratio; observations from unlike workloads cannot be averaged.
+Receipts record queue wait, acquired CPU and memory, build/finalize time, and
+measured throughput.  Static products such as a fixed fraction of host memory,
+bytes-per-owner, owners-per-worker, or “maximum threads” are not an adaptive
+policy.  Search exposes engine capability bounds and executes the explicit
+resource envelope; only ASP Server selects that envelope from Host capacity,
+current permits, and matching observed history.
+
+An unseen workload bucket MUST NOT trigger disposable sample indexes or
+successive-halving before its production attachment.  The resident builder
+selects one feasible initial envelope from current daemon CPU and memory
+permits, workload size, and Tantivy's validity floor, then materializes the
+production attachment exactly once.  That real build is the calibration
+observation: its strategy, resources, exact content-generation identity,
+build/finalize time, and measured throughput are retained for a later matching
+generation.  Calibration therefore adds no build to the cold critical path.
+
+The observation is retained under the exact Tantivy engine digest, effective
+machine-capacity identity, and workload key.  Runtime restart may reuse it only
+when all three identities match; engine, capacity, or workload drift chooses a
+new feasible initial envelope and again learns from the single production
+build.  A generation can consume an earlier observation, but it cannot use its
+own completion to choose a second build.  This admits non-monotonic machines
+without encoding one machine's worker or memory result as a product constant.
+
+Every derived request, receipt, and pointer carries the exact
+=contentGenerationDigest=.  An attachment becomes visible only if that digest
+equals the currently selected content generation under the attachment's atomic
+compare-and-set.  A late completion for generation N cannot attach to N+1, and
+opening a cold generation never waits for, reconstructs, or synchronously opens
+Tantivy or graph state.  Schema version 1 remains the contract; this is a
+hard-cut correction of publication ownership, not a parallel version.
+
+Each derived attachment consumes one shared immutable request and materializes
+exactly once.  Digest derivation reads the completed immutable attachment; it
+MUST NOT materialize a graph or Tantivy index once for hashing and a second time
+for publication.  The build result, digest, Ready event, and retained resident
+object are four views of the same transaction.
 
 The request declares byte, record, result, and deadline budgets.  Its receipt
 is bound to the same workspace root, provider digest, generation, and index
@@ -378,14 +648,25 @@ search.
 
 ** Resident recall and byte verification composition
 
-The resident lexical index and ripgrep are composed through a typed plan, not
-through a shell pipeline and not by concatenating two result lists.  The
-resident index first evaluates normalized lexical terms, language, owner-path,
-kind, and generation fields and emits an ordered immutable owner set.  Every
-owner entry carries its workspace-relative path and committed content digest.
-The executor may then run one or more bounded ripgrep shards against exactly
-that owner set.  Sharding is deterministic and constrained by owner count,
-argument bytes, input bytes, record count, result count, and deadline.
+The resident lexical index and cold ripgrep output are composed through one
+typed route contract, not through an agent-authored shell pipeline and not by
+concatenating two result lists.  Cold rg candidates are immediately verified
+against immutable owner bytes and native syntax.  Tantivy-ready requests read
+the immutable mapping only and never execute ripgrep.  Qualification fixtures
+prove that both routes produce the same admitted candidate set and ordering
+for the covered query corpus before an accelerator pointer may become current.
+
+The resident byte index uses fixed-width byte grams to select the smallest
+generation-bound owner posting set, intersects remaining postings, and verifies
+the literal against mmap owner bytes.  Verification is bounded by an explicit
+candidate budget.  If a query is shorter than the gram width or its candidate
+set exceeds the budget, the result is typed =query-not-ready= rather than an
+unbounded scan.  A complete absence claim is admitted only when at least one
+gram has an empty complete posting, or every intersected owner was verified.
+Thus posting false positives can cost bounded verification but can never create
+a false absence.  Construction sharding remains deterministic and constrained
+by owner count, argument bytes, input bytes, record count, result count, and
+deadline.
 
 The composition has two distinct modes:
 
@@ -415,31 +696,128 @@ identity and selector projection.  The Runtime owns generation admission,
 plan caching, cancellation, and result coalescing.  No layer may rebuild or
 persist a second workspace index under the name of ripgrep coverage.
 
-** Indexed lexical, Python graph, and ripgrep route composition
+** Source bytes, native syntax, Tantivy, Rust graph, and optional workers
 
-The production search route is one evidence product with three typed lanes,
-not three independent search commands:
+The production system has four logically ordered construction receipts and one
+fused Ready read path.  Source-byte acquisition is itself an explicit streaming
+pipeline: one resident =fd=/ignore walk owns filesystem inventory and one
+bounded rg-equivalent scan owns lexical byte coverage for admitted owners.
+Runtime binds both to normalized owner path and content digest before any
+derived index may consume them.  A second Git candidate walk, a second
+whole-workspace scan, or request-time process discovery is not admitted.
+Owner-byte acquisition uses a bounded set of blocking shards derived from the
+Host's available parallelism.  Canonically adjacent paths are distributed
+round-robin rather than in contiguous chunks, because directory ordering
+otherwise clusters large owners on one worker and turns cold latency into the
+slowest-directory latency.  Results retain their original inventory index and
+are sorted before hashing, so scheduling never changes generation identity.
+
+Once source admission fixes their common immutable identity, each derived CPU
+stage executes as an independently admitted node in the resident builder DAG,
+outside Tokio worker threads.  Every node joins before publishing its own
+attachment; cold content publication does not join either derived node.  Thus
+cold wall time contains no Tantivy or graph build, without turning the stages
+into request-time commands, RPCs, or publication authorities:
 
 #+begin_src text
-Turso/Tantivy-derived indexed lexical candidates
-  -> Python EvidenceGraph expansion, contraction, and route ranking
-  -> bounded ripgrep byte verification
-  -> agent-facing route choice plus residual uncertainty
+complete content-generation admission
+  -> one fd inventory + owner bytes
+  -> content/Merkle identity
+  -> atomic cold-generation publication
+
+Independent Rust resident-graph transaction
+  -> lease exact complete content generation
+  -> derive graph from the generation's admitted native-syntax relations
+  -> validate exact content-generation identity
+  -> atomic graph capability pointer publication
+
+Cold Search/Query while lexical accelerator is building
+  -> lease exact complete content generation
+  -> rg query over only the admitted fd inventory
+  -> content-digest and generation-native-syntax verification
+  -> Rust resident graph rank -> exactly one typed terminal
+
+Runtime-owned lexical accelerator transaction
+  -> submit exact generation to the ASP Server resident builder
+  -> content-addressed lexical shard plan using retained writer resources
+  -> attach reused Tantivy shards + build changed shards
+  -> validate result equivalence against generation-bound rg fixtures
+  -> atomic accelerator pointer publication
+
+Tantivy-ready Search/Query
+  -> lease exact complete content generation + accelerator
+  -> mmap/open Tantivy + Rust graph + byte-evidence plan
+  -> deterministic merge -> exactly one typed terminal
 #+end_src
 
-The indexed lexical lane owns broad candidate recall for identifiers, qualified
-names, documentation, package paths, dependency names, and error text.  The
-durable backend remains Turso FTS/BM25; a Tantivy-derived hot backend may serve
-generation-bound overlays only through the same analyzer, field, identity, and
-scoring contract.  Direct product code MUST NOT create an unrelated Tantivy
-workspace authority.
+The native-syntax playbook consumes the complete provider parser projection:
+owner identity, canonical structural selectors, byte ranges, query keys,
+derived projections, module facts, and relations.  It is the semantic core of
+the playbook, not an owner-only lookup and not a public =search owner= alias.
+Every selector has a proper non-empty byte range and at least one normalized
+query key; every relation is bound to an owner in the same content-proven
+projection.  Duplicate owners, selectors, or relations make the candidate
+incomplete and therefore unpublishable.
+The agent-facing receipt projects those facts as bounded
+=nativeSyntax.projections[]= records.  It MUST NOT collapse them back into an
+owner list or selector count: owner is identity, while the selector/range/key/
+derived-projection/relation tuple is the semantic capability.
 
-The resident Python graphs service consumes lexical candidate owners and admitted
-parser/provider graph facts.  It owns bounded relation closure, topology
-membership, path ranking, diversity, and a compact explanation of why each
-owner was added, retained, or removed.  It MUST return graph frontier and
-closure state explicitly.  An incomplete or stale graph is evidence for a
-different route; it is never silently treated as a complete negative result.
+The indexed lexical stage owns broad candidate recall for identifiers,
+qualified names, documentation, package paths, dependency names, and error
+text.  Tantivy is the production lexical authority.  Direct product code MUST
+NOT create a hand-written postings map, CLI-local scorer, or parallel durable
+database lexical authority.
+
+Tantivy does not own file discovery, source scanning, or content-generation
+admission.  It consumes compact, deduplicated lexical facts from already
+content-proven provider/native-parser owners.  Those facts are partitioned by
+a stable owner content key into content-addressed shards.  An unchanged shard
+is attached to the accelerator candidate by digest; it is not tokenized,
+serialized, or merged again.  Only added, changed, or retired owners rebuild
+their affected shards.  Shard attachment and changed-shard construction join
+before one accelerator commit, so reuse cannot expose a partially current
+index and cannot delay publication of the complete content generation.
+
+=rg= is the cold lexical executor, not a second persistent index and not an
+ingestion-time whole-repository tokenizer.  Until the exact generation's
+Tantivy accelerator is current, Runtime may execute one bounded =rg= query
+against the admitted =fd= inventory.  Every candidate is re-bound to the
+generation's owner content digest and provider-native projection before it is
+returned.  Once Tantivy is current, the same query route performs zero =fd=
+and zero =rg= processes.  A later accelerator may replace only the accelerator
+pointer for the same complete content identity; it never mutates source,
+syntax, graph, or generation admission authority.
+
+Cold performance evidence distinguishes =coldRgQuery= (complete content
+generation, accelerator absent), =bootstrapAccelerator= (no prior shard
+artifact), =deltaAccelerator= (prior accelerator plus a declared owner change
+set), and =firstTantivyOpen=.  The first reports =fd= inventory reuse, bounded
+=rg= execution, content verification and native-syntax verification.  The
+accelerator phases report reused/rebuilt/retired shard counts, Tantivy
+attach/commit, equivalence validation and pointer publication.  Reporting one
+monolithic =cold= or =tantivyCommit= duration is insufficient to diagnose or
+qualify the cold path.
+
+The Rust resident graph is the base relation authority, but it is not part of
+the content-generation publication quorum.  It is independently derived from
+the same admitted provider facts and attaches only through the exact content
+generation identity.  Cold byte/native-syntax search remains available while
+that graph transaction is absent or building.  =asp-python-graphs= is an optional, intent-selected graph
+capability: relationship or an explicit Python-graph request requires an exact
+Project/Workspace/Generation/root-bound graph session, while lexical and exact
+literal requests may remain entirely on the Rust resident generation.  A
+missing or stale optional session is a typed capability failure for a request
+that requires it; it never blocks publication or falsifies a complete result.
+
+The v1 Python session admits one bounded graph view per exact
+Project/Workspace/Generation/root identity.  The Runtime opens that view only
+after the Rust generation is admitted, sends bounded entry-node/ranking work,
+and releases it when the corresponding Rust generation retires.  Python never
+publishes a source generation or owns the active pointer.  Replaying an exact
+identity is idempotent; cross-generation seeds, stale roots, cancellation,
+capacity exhaustion, and unknown identities fail closed.  A skipped Python
+capability starts no worker and preserves the base generation identity.
 
 Python graph and schema tooling runs from an exact lock-derived environment.
 Frozen resolution alone is insufficient because it may leave an extraneous
@@ -451,15 +829,65 @@ module, duplicate entry point, or compatibility import is admitted.  Python
 remains a bounded graph algorithm worker, while schema, generation, admission,
 and terminal authority stay in the Rust Runtime.
 
-Ripgrep receives only a generation-bound ordered owner set from the planner.
-It verifies exact bytes, extracts bounded match context, or proves coverage in
-the separately admitted =prove-coverage= mode.  It does not rank semantic
-owners, infer graph relations, or scan the workspace implicitly.
+Ripgrep is an optional bounded coverage executor, not the name of source-byte
+acquisition and not a Ready-query subprocess.  It receives only an ordered
+owner set whose membership and content digests are already committed.  A
+receipt may claim ripgrep execution only when it carries the actual v1
+=RgCoverageReceipt= input digest and the exact generation/root/provider/index
+binding.  Resident byte evidence is reported separately.  Copying Tantivy
+owners into =verifiedOwnerIds= or using elapsed =0= as an execution receipt is
+forbidden.
 
-Every lane uses the same workspace, source root, provider generation, and owner
-content identities.  The composition receipt records:
+The production indexed lexical stage is Tantivy and is owned by
+=agent-semantic-search=.  It consumes only the owner identities admitted by
+the ripgrep-compatible acquisition/coverage stage and emits a deterministic
+ranked owner frontier.  A hand-written postings map, CLI-local lexical scorer,
+Turso query facade, or Runtime-local ranking loop is not an alternative
+production backend.  Turso may persist generation/catalog material, but it
+does not own lexical ranking semantics.  Mutation successors use the same
+Tantivy field/token/scoring contract after complete-generation publication;
+there is no overlay lexical authority.
 
-- the lexical, graph, and verified owner sets and their pairwise overlap;
+The content receipts form one ordered refinement. Native syntax is committed
+with source bytes at that refinement boundary; accelerator and graph receipts
+are independent transactions over the same admitted identity:
+
+#+begin_example
+content-proven source-byte acquisition and complete byte membership
+  -> provider-native syntax playbook and canonical parser facts
+  -> Rust validation, canonicalization, and atomic content publication
+
+exact content-generation identity
+  -> independent Tantivy accelerator publication
+  -> independent Rust resident-graph publication
+  -> optional independent Python Graph session
+#+end_example
+
+The output owner set of each stage is a subset of the preceding admitted
+candidate set.  A later stage may reorder, annotate, or expand relations among
+admitted identities, but it cannot mint an owner, selector, source byte, or
+generation identity.  Content publication requires only acquisition and native
+syntax to have joined with one exact identity.  Derived workers may finish
+later, but attach only after their complete receipt validates against that
+published identity.  Reversing the content stages, replaying from a different
+generation, exposing a partial derived artifact, or attaching stale work is
+fail-closed.
+
+The resident attachment snapshot has exactly one slot per
+=(ProjectId, WorkspaceId, attachmentKind)=.  Content digest proves what was
+built; a nonzero Runtime generation token proves ordering.  Publishing a newer
+=queued= event replaces that slot, while every later event with an older token
+is discarded before both the =watch= snapshot and =broadcast= stream.  Thus a
+slow Graph or Tantivy build for generation N cannot roll back generation N+1,
+and snapshot memory is bounded by active workspaces rather than generation
+history.
+
+Every construction lane uses the same workspace, source root, provider set,
+schema catalog, algorithm catalog, generation candidate, and owner content
+identities.  Publication is rejected unless all required lane receipts have
+that exact identity.  The composition receipt records:
+
+- the acquisition, native-syntax, lexical, and graph artifacts and their shared identity;
 - indexed-owner coverage, graph frontier/closure state, and ripgrep shard
   coverage;
 - the marginal verified-owner gain contributed by each additional lane;
@@ -476,56 +904,81 @@ benchmark calibration bound to the planner digest.  A missing calibration is
 typed =uncalibrated=; it does not prevent deterministic routing, but the agent
 must see the remaining uncertainty.
 
-The default route policy is intent-sensitive:
+The public workspace orchestrator is exactly =asp search playbook=.  It is a
+server-owned planner, never an alias for any provider's =search= method.  Given
+ProjectId, WorkspaceId, the active content generation, intent, and query, it
+emits =workspace-search-playbook-plan.v1= with one deterministic route per
+admitted language.  Each route binds language/provider/generation, declared
+extensions, =search= or =query=, normalized terms/selectors, budget,
+dependencies, and the exact public =asp <language> ...= command.  Unsupported
+or unavailable languages are explicit skipped records with typed reasons.
+
+The Server may execute that plan with bounded fan-out/fan-in.  File discovery
+occurs once while building the content generation.  Ripgrep may run only on a
+cold lexical request before Tantivy readiness and never on a warm plan request.
+Lexical and parser indexes remain language-scoped resident inputs.  Python Graph may fuse relationships only
+after every route terminal is bound to the same content generation.  There is
+no fallback from a missing language route to a workspace-wide provider call.
+
+Conversely, =asp <language> search|query= is strictly the execution data plane
+for one registered provider, its declared extensions, and parser-owned facts.
+It cannot observe another language's owners and cannot mint a workspace plan.
+
+The fused Ready route policy is intent-sensitive:
 
 | Intent/evidence | Ordered route | Stop condition |
 |-
 | exact selector with current identity | parser/source direct | selector resolves uniquely; no lexical or ripgrep work |
-| conceptual or API query | indexed lexical -> Python graph -> ripgrep =verify-candidates= | verified owner/selector evidence satisfies requested axes |
-| relation, impact, dependency, or ownership query | Python graph -> indexed lexical gap fill -> ripgrep =verify-candidates= | required relation witnesses and cited bytes are verified |
-| exact literal or diagnostic text | indexed path/profile restriction -> ripgrep =verify-candidates= -> Python graph context | byte match is verified and graph context is sufficient |
-| complete absence claim | complete admitted owner set -> ripgrep =prove-coverage= | every owner covered exactly once and every shard succeeds |
+| conceptual or API query before accelerator readiness | bounded rg frontier -> content/native-syntax verification -> Rust resident graph | verified owner/selector evidence satisfies requested axes |
+| conceptual or API query with current accelerator | resident Tantivy frontier -> Rust resident graph -> optional byte evidence | verified owner/selector evidence satisfies requested axes |
+| relation, impact, dependency, or ownership query | current lexical frontier (rg cold or Tantivy ready) -> exact Python graph session -> resident byte evidence | required relation witnesses and cited bytes are verified |
+| exact literal or diagnostic text | indexed path/profile restriction -> resident byte evidence -> optional Rust graph context | byte match is verified and graph context is sufficient |
+| complete absence claim | complete published byte-coverage block | every admitted owner was covered exactly once during publication |
 
-The planner may skip a lane only with a typed reason.  It may also fan out the
-lexical and graph lanes when both consume the same immutable generation, then
-join them deterministically before ripgrep verification.  Candidate union is
-used to preserve recall; intersection and graph distance are ranking evidence,
-not filters that may discard the only supported owner.  The agent-facing result
-therefore explains the query path it selected, the evidence gained at each
-step, and the cheapest next path that can reduce the remaining uncertainty.
+The planner may skip a resident lane only with a typed capability or intent
+reason.  Lexical, graph, and byte-evidence reads may fan out as bounded tasks on
+the workspace Tokio runtime because they share one immutable mapping; they
+join deterministically before encoding.  Candidate union preserves recall;
+intersection and graph distance are ranking evidence, not filters that may
+discard the only supported owner.  No Ready path starts Python, invokes
+ripgrep, performs provider RPC, scans the workspace, reads durable storage, or
+discovers an endpoint.
 
-*** Resident graph evidence stream
+The fused Ready cache is owned by the immutable resident generation.  Its key
+binds ProjectId, WorkspaceId, exact source/content generation, normalized query
+terms, language/profile/algorithm, lexical frontier, and explicit budgets.  Its
+value is an immutable =Arc= projection of the admitted lexical-plus-graph
+result; it never retains a writer and never becomes a publication authority.
+The atomic generation pointer is the only invalidation boundary.  Receipts
+report cache hit/miss, entry count, retained bytes, capacity, shard count, and
+zero request-time external work.  Cross-generation or content drift cannot hit
+the cache.
 
-=asp_python_graphs= uses its existing bidirectional gRPC =Session= as the
-resident graph stream; the architecture MUST NOT add an =asp-serve= sidecar or
-a second graph daemon.  ASP Server opens one graph generation, then sends
-ordered, bounded =search-evidence= frames as indexed lexical, Python graph, and
-ripgrep work reaches a terminal.  Each frame binds the existing workspace,
-generation digest/token, request sequence, lane, stable frame id, owner ids,
-completion state, and lane elapsed time.
+The dispatcher MUST NOT hard-code, probe, or infer these lane capabilities.
+Generation admission validates the fused receipt once and stores the resulting
+capability value beside the immutable resident lease.  Every Ready request reads
+that value.  This removes the LSP-style split where initialization advertises a
+capability independently from the data snapshot that is expected to implement
+it; receipt drift therefore fails admission instead of appearing later as an
+empty result or an unreachable method.
 
-The Python actor incrementally retains only the compact candidate correlation
-state for that generation.  It emits a route delta after every frame:
+*** Generation-bound optional graph stream
 
-#+begin_src text
-submit-python-graph
-verify-candidates
-prove-coverage
-stop-evidence-sufficient
-#+end_src
-
-Duplicate frame ids are idempotent.  Intent drift, generation drift, unknown
+=asp_python_graphs= uses its bidirectional gRPC =Session= to admit one bounded
+graph projection and perform bounded rank operations for the exact active Rust
+generation.  The stream binds project, workspace, source root, generation,
+schema/algorithm digests, ordered mutation id, stable frame id, and
+cancellation attempt.  Duplicate frame ids are idempotent.  Drift, unknown
 fields, invalid owner identities, release, cancellation, stream closure, and
-capacity exhaustion are typed terminals.  Release-generation removes both the
-loaded graph and its accumulated search evidence.  The existing bounded gRPC
-queue owns backpressure; the Python service never opens source files, launches
-ripgrep, or owns Runtime lifecycle.
+capacity exhaustion fail that optional capability without mutating the active
+Rust generation.
 
-The route delta is graph-algorithm evidence, not the final command authority.
-The Rust search planner joins it with indexed coverage and ripgrep receipts and
-emits the final Search Playbook decision.  This keeps Python useful to the LLM
-as a continuously updated reasoning surface while preserving one Runtime,
-generation, cancellation, and publication authority.
+The Python process retains only bounded graph views owned by Runtime generation
+leases; it retains no publication token or active pointer.  Warm ranking sends
+only bounded entry-node/ranking input and never retransmits the full graph.
+Release follows Runtime generation retirement.  This preserves Python as a
+replaceable graph-algorithm worker without creating a second publication
+authority.
 
 *** Search Playbook public surface
 
@@ -564,7 +1017,9 @@ graph algorithm implementation.
 
 Route stages use the stable families =direct=, =acquire=, =reason=, and
 =verify= plus a catalog-bound =capabilityId=.  The initial reason capability is
-=search.python-graph=.  The future logical lane is owned externally by the
+=search.rust-resident-graph=. The base logical lane is owned by the Rust Runtime
+and is materialized from the same immutable generation. Optional numerical
+analysis is owned externally by the
 =meta-relational-reasoning= facade: GQL/PGL are language adapters and bounded
 Ascent evaluation is a backend, not an ASP-owned duplicate relation engine.
 Those adapters register additional =reason= capabilities; they do not add

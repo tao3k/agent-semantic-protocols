@@ -21,14 +21,15 @@ fn configured_message_binds_language_and_appends_executable_provider_route() {
             language_id: agent_semantic_config::LanguageId::new("rust"),
             provider_id: agent_semantic_config::ProviderId::new("asp-rust"),
             binary: "asp".to_owned(),
-            kind: DecisionRouteKind::Owner,
+            kind: DecisionRouteKind::Playbook,
             argv: vec![
                 "asp".to_owned(),
                 "rust".to_owned(),
                 "search".to_owned(),
-                "owner".to_owned(),
-                "src/a file.rs".to_owned(),
-                "items".to_owned(),
+                "playbook".to_owned(),
+                "source structure".to_owned(),
+                "--scope".to_owned(),
+                "owner:src/a file.rs".to_owned(),
                 "--workspace".to_owned(),
                 ".".to_owned(),
             ],
@@ -48,7 +49,9 @@ fn configured_message_binds_language_and_appends_executable_provider_route() {
     assert!(
         decision
             .message
-            .contains("ASP route: `asp rust search owner 'src/a file.rs' items --workspace .`")
+            .contains(
+                "ASP route: `asp rust search playbook 'source structure' --scope 'owner:src/a file.rs' --workspace .`"
+            )
     );
 }
 

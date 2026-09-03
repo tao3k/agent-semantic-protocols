@@ -1,0 +1,151 @@
+#+title: Host-supervised Runtime Readiness Without Client-bound Sockets
+#+status: accepted
+
+* Problem
+
+The activation waiter created a per-command Unix datagram under
+=/tmp/asp-ar-UID/.../r.sock=.  A sandboxed ASP client was therefore required to
+bind a Host socket before it could ask the Host supervisor to recover Runtime.
+macOS correctly rejected that bind with =EPERM=.  Hook then required ASP for
+source access, producing a circular dependency that =ASP_NO_AGENT= could not
+repair.
+
+* Decision
+
+Only the Host supervisor starts or recovers Runtime.  A client never binds an
+activation-ready socket and the daemon never publishes readiness to a
+client-provided path.  For an explicitly monitored start, the supervisor keeps
+the inherited child-process handle and observes exactly two authoritative
+events:
+
+1. the canonical Runtime endpoint becomes Healthy with the expected applied
+   publication transaction; or
+2. the inherited child exits, producing a typed failure with its terminal
+   status.
+
+The wait is bounded.  Observing readiness may poll the canonical status at a
+short interval, but never replays a business request, respawns a provider, or
+creates another lifecycle authority.  Client bootstrap remains asynchronous;
+ordinary Search/Query receives one typed bootstrap terminal and a later request
+uses the healthy resident endpoint.
+
+* Second divergence: a Host listener is not automatically sandbox ingress
+
+Removing the client-bound readiness socket fixes activation, but it does not
+make a Host listener reachable.  A Runtime created by the Host and a CLI
+created inside a macOS sandbox do not share Unix-domain socket connect
+authority even when both processes have the same UID and the socket is mode
+0600.  Replacing UDS with =127.0.0.1= is also insufficient: a restricted
+network sandbox can reject loopback =connect(2)= with the same =EPERM=.  Both
+counterexamples occur before ClientFrame and must not be reclassified as
+Runtime death.
+
+Runtime V1 publishes three *structured loopback TCP endpoints* for Host-native
+control, client data, and provider admission.  Each endpoint contains an IP
+address and port as typed fields; no URL parsing or path heuristic is allowed.
+The address must be loopback and the port nonzero.  A sandbox profile that
+cannot connect to loopback instead receives one Host-opened connected
+descriptor out of band.  The descriptor mounts the same ClientFrame service
+and is consumed once; it is not a second endpoint or fallback.  The existing
+endpoint generation, binding token, binary content digest, publication nonce,
+and request identity remain the application-layer capability.
+
+The daemon binds all three listeners before it publishes the endpoint.  It
+publishes one endpoint transaction only after the control frame service, gRPC
+ClientFrame service, and provider gRPC service are ready.  A partially bound
+generation is never Healthy.  The client atomically selects the single
+Host-declared capability before I/O.  It either opens the typed loopback
+endpoint or consumes the inherited descriptor; there is no UDS fallback,
+localhost port scan, silent retry, or client-local Runtime.  A sandbox without
+an inherited capability returns typed =transport-unavailable= before
+attempting lifecycle recovery or socket I/O.
+
+Loopback TCP is an ingress boundary, not a language execution boundary.  Rust
+still owns indexing, Merkle generations, lexical/structural fan-in, admission,
+and caches.  Python Graphs and Gerbil HTTP remain Runtime-owned lazy workers;
+they do not create public endpoint authority.
+
+* Lessons taken from LSP rather than repeated
+
+LSP demonstrates that a useful language protocol can outlive any particular
+editor or parser, but it also exposes failure modes ASP must not inherit:
+
+- process launch, transport discovery, =initialize=, workspace attachment, and
+  feature registration are distinct states; a client must not collapse them
+  into "the server process exists";
+- capability negotiation is descriptive, not authority to invent a second
+  server, cache, or index when a capability is absent;
+- dynamic registration and workspace-folder changes require an exact
+  generation binding; labels and client-local mutable state are insufficient;
+- cancellation and shutdown need exactly-one typed terminals, not EOF, process
+  disappearance, or client retry as protocol meaning;
+- document synchronization must be content-addressed.  Replaying whole-file
+  text or trusting monotonically named versions is not an incremental cache
+  proof;
+- transport endpoints are deployment data.  They must not leak into semantic
+  method names, provider capabilities, or language-specific code paths.
+
+ASP therefore separates Host-supervised Runtime lifecycle from ClientFrame
+sessions, and separates both from language-provider activation.  A language is
+loaded only when a workspace admits that provider.  Rust, Python, Gerbil,
+TypeScript, and Julia share the same ClientFrame/generation/terminal contract
+without requiring every provider process or artifact to be resident.
+
+* Publication must not parse obsolete state as current authority
+
+A dev publication can encounter a receipt written by an architecture that has
+already been removed.  Strict Runtime reads must reject that receipt; however,
+the publication writer must not require the obsolete bytes to deserialize as
+the new schema before it can replace them.  Doing so creates an upgrade
+deadlock: the only writer capable of publishing the new receipt is blocked by
+the receipt it is replacing.
+
+The publication path therefore classifies raw bytes as absent, current and
+valid, or obsolete.  It records the BLAKE3 digest of the exact observed bytes,
+acquires the single Runtime artifact mutation guard, re-reads the file, and
+replaces it only when the bytes are unchanged.  The replacement is the complete
+current V1 identity; there is no permissive deserializer, field alias, or
+legacy read result.  Concurrent drift fails closed before mutation.  Ordinary
+Runtime readers continue to accept only the strict current schema.
+
+* Provider execution binding is a commit precondition
+
+Recovering the Host transport is not permission to admit a partial workspace
+generation.  The installed-provider generation, schema bundle, workspace
+closure, source snapshot, and source-index generation are five mandatory
+content identities.  All five must be canonical integrity references before a
+provider execution binding is derived or a query demand is submitted.
+
+The source snapshot producer owns the conversion from its Merkle root domain to
+the shared integrity-reference representation.  A Runtime caller must not guess
+an algorithm, prepend a string opportunistically, or accept a bare root as a
+second identity.  An incomplete binding returns typed =query-not-ready= with no
+commit and no active-generation mutation.  This is stricter than the common LSP
+pattern where an initialized server may answer against whichever document
+version it currently holds: ASP requires the exact content-bound generation at
+admission.
+
+* Performance budget
+
+Warm control and ClientFrame exchanges reuse bounded Tokio connection pools.
+The service budget is p50 below 1 millisecond on the local live corpus; cold
+bind/start time is reported separately and cannot be averaged into warm
+latency.  Required receipts distinguish server service time from client queue,
+connect, and total time.  UDS-versus-loopback transport is measured as an
+ablation, but sandbox reachability is a correctness constraint and cannot be
+traded away for a smaller synthetic latency.
+
+* Rejected designs
+
+- chmod or a world-accessible =/tmp= activation socket: weakens authority and
+  still makes sandbox filesystem policy part of Runtime correctness.
+- silent client retry: duplicates effects and hides lifecycle failure.
+- =ASP_NO_AGENT= as transport: bypasses Hook policy but cannot grant Host socket
+  capability.
+- keeping Host UDS plus a TCP fallback: creates two transport authorities and
+  makes failures depend on client execution order.
+- treating loopback as universally sandbox-reachable: repeats LSP deployment
+  assumptions and turns Host network policy into an untyped Runtime failure.
+- encoding =tcp://host:port= in the old socket-path string: a URL heuristic
+  hides a breaking contract change and lets path consumers misinterpret the
+  endpoint.

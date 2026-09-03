@@ -5,6 +5,44 @@ use agent_semantic_client_db::active_generation_projection_capability::{
     ActiveGenerationProjectionMode, ActiveGenerationSelectorCapability,
 };
 
+pub(crate) const FIXTURE_PROJECT_ID: &str = "repo-0000000000000001";
+
+pub(crate) fn content_search_generation_receipt(
+    workspace_identity: &str,
+    source_snapshot: &agent_semantic_content_identity::SourceSnapshotEvidence,
+) -> agent_semantic_search::ContentSearchGenerationReceipt {
+    use agent_semantic_search::{
+        ContentSearchGenerationReceipt, SearchGenerationConstructionStage,
+        SearchGenerationIdentity, SearchGenerationStageReceipt, canonical_blake3_digest,
+    };
+
+    let identity = SearchGenerationIdentity {
+        project_id: FIXTURE_PROJECT_ID.to_owned(),
+        workspace_id: workspace_identity.to_owned(),
+        source_root_digest: canonical_blake3_digest(&source_snapshot.root_digest)
+            .expect("fixture source root digest"),
+        provider_digest: canonical_blake3_digest(&source_snapshot.provider_digest)
+            .expect("fixture provider digest"),
+        schema_digest:
+            "blake3-256:0000000000000000000000000000000000000000000000000000000000000000".to_owned(),
+        generation_candidate_digest:
+            "blake3-256:1111111111111111111111111111111111111111111111111111111111111111".to_owned(),
+    };
+    let stage = |stage, artifact_byte: char, worker_id: &str| SearchGenerationStageReceipt {
+        stage,
+        identity: identity.clone(),
+        artifact_digest: format!("blake3-256:{}", artifact_byte.to_string().repeat(64)),
+        worker_id: worker_id.to_owned(),
+        complete: true,
+    };
+    ContentSearchGenerationReceipt::new(stage(
+        SearchGenerationConstructionStage::SourceByteAcquisition,
+        '4',
+        "fixture-source-byte-acquisition-v1",
+    ))
+    .expect("fixture content search generation receipt")
+}
+
 pub(crate) fn projection_capability_manifest_fixture()
 -> ActiveGenerationProjectionCapabilityManifest {
     ActiveGenerationProjectionCapabilityManifest::single_selector(

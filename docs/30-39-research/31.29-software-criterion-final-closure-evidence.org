@@ -70,7 +70,7 @@ direnv exec . cargo test \
 asp typescript check --changed .
 # [ok] typescript files=0 parsed=0
 
-cd languages/typescript-lang-project-harness
+cd languages/asp-typescript
 npm run build
 node --test \
   dist/tests/unit/software_criterion_snapshot.test.js \

@@ -9,7 +9,7 @@ fn mint_uses_clap_to_require_a_typed_defect_and_exact_command() {
             "--defect-kind",
             "exhausted-non-progress-cycle",
             "--command",
-            "asp rust search lexical --query ASP_NO_AGENT --workspace . --view seeds",
+            "asp rust search playbook ASP_NO_AGENT --workspace .",
             "--ttl-seconds",
             "30",
             ".",

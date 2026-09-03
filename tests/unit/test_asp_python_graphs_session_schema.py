@@ -41,17 +41,18 @@ def test_hello_binds_installed_artifacts() -> None:
     VALIDATOR.validate(packet)
 
 
-def test_evaluate_binds_workspace_generation() -> None:
-    packet = envelope("evaluate")
+def test_evaluate_resident_binds_workspace_generation() -> None:
+    packet = envelope("evaluate-resident")
     packet.update(
         workspaceIdentity="workspace-1",
         generationDigest=digest("c"),
-        cancellationId="cancel-1",
     )
     VALIDATOR.validate(packet)
 
 
-@pytest.mark.parametrize("kind", ["open-generation", "evaluate", "release-generation"])
+@pytest.mark.parametrize(
+    "kind", ["generation-graph", "evaluate-resident", "release-generation"]
+)
 def test_generation_scoped_operation_rejects_missing_generation(kind: str) -> None:
     packet = envelope(kind)
     packet["workspaceIdentity"] = "workspace-1"

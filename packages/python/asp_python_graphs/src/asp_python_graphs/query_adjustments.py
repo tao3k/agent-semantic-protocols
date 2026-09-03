@@ -9,7 +9,11 @@ from .query_clause_coverage import (
     CLAUSE_COVERAGE_BONUS,
     query_clause_coverage_adjustment,
 )
-from .query_local_evidence import local_evidence_adjustment
+from .query_local_evidence import (
+    LocalEvidenceIndex,
+    build_local_evidence_index,
+    local_evidence_adjustment,
+)
 from .query_package_cohesion import (
     _PACKAGE_COHESION_BONUS,
     _PACKAGE_DRIFT_PENALTY,
@@ -19,6 +23,8 @@ from .query_package_cohesion import (
 from .query_topology_membership import (
     TOPOLOGY_DRIFT_PENALTY,
     TOPOLOGY_MEMBERSHIP_BONUS,
+    TopologyMembershipIndex,
+    build_topology_membership_index,
     topology_membership_adjustment,
 )
 from .query_weights import (
@@ -64,6 +70,7 @@ def query_adjustments_by_node(
     seed_ids: Iterable[str],
     query_clauses: Iterable[str],
     policy: Mapping[str, object] | None = None,
+    node_ids: Iterable[str] | None = None,
 ) -> Mapping[str, Mapping[str, float]]:
     normalized_policy = normalize_query_adjustment_policy(policy)
     seed_id_tuple = tuple(seed_ids)
@@ -73,6 +80,16 @@ def query_adjustments_by_node(
         if normalized_policy["packageCohesion"]
         else ()
     )
+    topology_index = (
+        build_topology_membership_index(graph)
+        if normalized_policy["topologyMembership"]
+        else None
+    )
+    local_evidence_index = (
+        build_local_evidence_index(graph)
+        if normalized_policy["localEvidence"]
+        else None
+    )
     if normalized_policy["seedPrior"]:
         _record_seed_prior_adjustments(
             adjustments,
@@ -80,15 +97,23 @@ def query_adjustments_by_node(
             profile_name=profile_name,
             seed_ids=seed_id_tuple,
         )
-    for node in graph.nodes.values():
+    query_clause_tuple = tuple(query_clauses)
+    adjusted_nodes = (
+        graph.nodes.values()
+        if node_ids is None
+        else (graph.nodes[node_id] for node_id in node_ids if node_id in graph.nodes)
+    )
+    for node in adjusted_nodes:
         _record_node_adjustments(
             adjustments,
             graph=graph,
             profile_name=profile_name,
             seed_ids=seed_id_tuple,
-            query_clauses=query_clauses,
+            query_clauses=query_clause_tuple,
             policy=normalized_policy,
             package_tokens=package_tokens,
+            local_evidence_index=local_evidence_index,
+            topology_index=topology_index,
             node_id=node.id,
         )
     return adjustments
@@ -115,9 +140,11 @@ def _record_node_adjustments(
     graph: TypedGraph,
     profile_name: str,
     seed_ids: tuple[str, ...],
-    query_clauses: Iterable[str],
+    query_clauses: tuple[str, ...],
     policy: Mapping[str, bool],
     package_tokens: tuple[str, ...],
+    local_evidence_index: LocalEvidenceIndex | None,
+    topology_index: TopologyMembershipIndex | None,
     node_id: str,
 ) -> None:
     node = graph.nodes[node_id]
@@ -134,7 +161,7 @@ def _record_node_adjustments(
                 package_tokens=package_tokens,
             ),
         )
-    if policy["queryClauseCoverage"]:
+    if policy["queryClauseCoverage"] and query_clauses:
         _record_adjustment(
             adjustments,
             node_id,
@@ -154,6 +181,7 @@ def _record_node_adjustments(
                 graph,
                 profile_name=profile_name,
                 node_id=node_id,
+                index=local_evidence_index,
             ),
         )
     if policy["topologyMembership"]:
@@ -165,6 +193,7 @@ def _record_node_adjustments(
                 graph,
                 profile_name=profile_name,
                 node_id=node_id,
+                index=topology_index,
             ),
         )
 

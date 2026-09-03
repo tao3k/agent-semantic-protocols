@@ -100,5 +100,8 @@ fn is_content_digest(value: &str) -> bool {
     let Some(hex) = value.strip_prefix("blake3-256:") else {
         return false;
     };
-    hex.len() == 64 && hex.bytes().all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+    hex.len() == 64
+        && hex
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
 }

@@ -209,6 +209,28 @@ const CLIENT_STABILITY_OWNERS: &[AspRustProjectHarnessOwnerPolicy] = &[
     },
 ];
 
+const RUNTIME_SERVER_LATENCY_OWNERS: &[AspRustProjectHarnessOwnerPolicy] = &[
+    AspRustProjectHarnessOwnerPolicy {
+        path: "src/query_generation.rs",
+        rationale: "Runtime generation admission, bounded calibration, and resident attachment publication control cold-to-warm Search latency",
+    },
+    AspRustProjectHarnessOwnerPolicy {
+        path: "src/runtime_asp_client.rs",
+        rationale: "Runtime ClientFrame dispatch and terminalization sit on every public Search and Query request",
+    },
+];
+
+const RUNTIME_SERVER_STABILITY_OWNERS: &[AspRustProjectHarnessOwnerPolicy] = &[
+    AspRustProjectHarnessOwnerPolicy {
+        path: "src/query_generation.rs",
+        rationale: "ProjectId and WorkspaceId generation partitions must preserve single-flight, drain, and exact content binding",
+    },
+    AspRustProjectHarnessOwnerPolicy {
+        path: "src/runtime_asp_client.rs",
+        rationale: "Every admitted request must emit exactly one typed terminal without raw EOF or client fallback",
+    },
+];
+
 const ASP_WORKSPACE_MEMBER_POLICIES: &[AspRustProjectHarnessMemberPolicy] = &[
     AspRustProjectHarnessMemberPolicy {
         package_name: "agent-semantic-artifacts",
@@ -339,6 +361,16 @@ const ASP_WORKSPACE_MEMBER_POLICIES: &[AspRustProjectHarnessMemberPolicy] = &[
         criterion_performance_verification: false,
         latency_sensitive_performance_owners: &[],
         availability_stability_owners: &[],
+    },
+    AspRustProjectHarnessMemberPolicy {
+        package_name: "agent-semantic-runtime-server",
+        crate_root: "crates/agent-semantic-runtime-server",
+        cargo_check_advice_allow_explanation: "scope=agent-semantic-runtime-server cargo-check advice; owner=Runtime Server generation and ClientFrame build gate; finding_category=advisory policy findings; why_safe_now=advisory findings remain visible while warning and error findings fail the explicit workspace policy gate; cleanup_trigger=clear Runtime Server owner-size and lifecycle findings before publication",
+        verification_label: Some("Runtime Server"),
+        rule_severity_overrides: &[],
+        criterion_performance_verification: true,
+        latency_sensitive_performance_owners: RUNTIME_SERVER_LATENCY_OWNERS,
+        availability_stability_owners: RUNTIME_SERVER_STABILITY_OWNERS,
     },
     AspRustProjectHarnessMemberPolicy {
         package_name: "orgize",

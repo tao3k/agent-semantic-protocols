@@ -8,11 +8,9 @@ pub(crate) use endpoint_cleanup::cleanup_invalid_runtime_server_endpoint;
 pub use endpoint_cleanup::cleanup_runtime_server_endpoint;
 mod endpoint_validation;
 pub use endpoint_validation::validate_runtime_server_endpoint_for_state_home;
-mod listener;
-mod provider_endpoint;
-pub use provider_endpoint::provider_register_state_path;
 mod endpoint_identity;
 mod frame;
+mod listener;
 mod model;
 pub(crate) mod status_memory;
 
@@ -36,18 +34,18 @@ pub use endpoint_io::{
 };
 pub(crate) use frame::{read_runtime_server_requests, write_runtime_server_receipts};
 pub use listener::{
-    bind_runtime_server_listener, runtime_server_connection_pool_capacity,
-    runtime_server_connection_pool_size, runtime_server_listener_backlog,
-    validate_runtime_server_peer_fd,
+    bind_runtime_server_listener, bind_runtime_server_listener_at,
+    runtime_server_connection_pool_capacity, runtime_server_connection_pool_size,
+    runtime_server_listener_backlog,
 };
 pub use model::{
     AgentSessionControlPlaneState, AspPythonGraphsState, AspPythonGraphsStatus,
     RuntimeServerAgentSessionLifecycleState, RuntimeServerAgentSessionStatus,
     RuntimeServerClientBootstrapAuthority, RuntimeServerClientBootstrapReceipt,
     RuntimeServerControlReceipt, RuntimeServerControlRequest, RuntimeServerEndpoint,
-    RuntimeServerEndpointOwnerBinding, RuntimeServerOperation, RuntimeServerRequestReadError,
-    RuntimeServerState, WorkspaceGenerationControlReceipt,
-    runtime_server_transport_contract_digest,
+    RuntimeServerEndpointOwnerBinding, RuntimeServerLoopbackEndpoint, RuntimeServerOperation,
+    RuntimeServerRequestReadError, RuntimeServerState, RuntimeServerTransport,
+    WorkspaceGenerationControlReceipt, runtime_server_transport_contract_digest,
 };
 pub use status_memory::{
     RuntimeServerStatusMemoryMetrics, prewarm_runtime_server_status_memory,

@@ -1,17 +1,5 @@
 //! ASP downstream policy crate for Rust project harness evidence graphs.
 
-/// Digest of the Cargo-derived workspace Build Support receipt.
-pub const ASP_RUST_WORKSPACE_BUILD_RECEIPT_DIGEST: &str =
-    env!("ASP_RUST_WORKSPACE_BUILD_RECEIPT_DIGEST");
-
-/// Number of Cargo workspace packages observed by the shared build unit.
-pub const ASP_RUST_WORKSPACE_BUILD_PACKAGE_COUNT: &str =
-    env!("ASP_RUST_WORKSPACE_BUILD_PACKAGE_COUNT");
-
-/// Digest of the declarative package policy catalog bound to the Build DAG.
-pub const ASP_RUST_WORKSPACE_POLICY_CATALOG_DIGEST: &str =
-    env!("ASP_RUST_WORKSPACE_POLICY_CATALOG_DIGEST");
-
 #[cfg(feature = "workspace-policy")]
 pub use asp_rust;
 

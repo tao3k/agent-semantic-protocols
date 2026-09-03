@@ -11,7 +11,7 @@ fn intent() -> serde_json::Value {
         "surface": "search-pipe",
         "queryTerms": ["parser"],
         "profile": "structural",
-        "seedIds": [],
+        "entryNodeIds": [],
         "budget": {"maxDepth": 4, "maxNodes": 64, "maxEdges": 128, "maxResults": 32}
     })
 }

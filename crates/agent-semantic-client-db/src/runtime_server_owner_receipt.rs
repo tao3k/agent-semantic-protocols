@@ -280,24 +280,11 @@ pub struct RuntimeServerResidentTransactionReceipt {
     pub endpoint_binary_content_digest:
         agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest,
     pub endpoint_runtime_generation_digest: String,
-    pub control_endpoint: String,
-    pub data_endpoint: String,
-    pub provider_endpoint: String,
+    pub control_endpoint: crate::runtime_server_control::RuntimeServerLoopbackEndpoint,
+    pub data_endpoint: crate::runtime_server_control::RuntimeServerLoopbackEndpoint,
+    pub provider_endpoint: crate::runtime_server_control::RuntimeServerLoopbackEndpoint,
     pub previous_serving_digest:
         Option<agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest>,
     pub previous_owner_epoch: Option<u64>,
     pub previous_drain_state: String,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct RuntimeServerActivationReadyReceipt {
-    pub schema_id: String,
-    pub schema_version: String,
-    pub state: String,
-    pub publication_nonce: String,
-    pub artifact_digest: agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest,
-    pub owner_epoch: u64,
-    pub launcher_receipt_digest:
-        agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest,
 }

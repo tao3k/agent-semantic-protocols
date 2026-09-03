@@ -67,7 +67,7 @@ fn bash_ast_tokens_preserve_absolute_shell_and_nested_command_modes() {
 #[test]
 fn bash_ast_tokens_preserve_pipeline_separator() {
     assert_eq!(
-        semantic_shell_tokens("asp rust search prime . | rg HookDecision src/lib.rs"),
+        semantic_shell_tokens("asp rust search playbook workspace | rg HookDecision src/lib.rs"),
         vec![
             "asp",
             "rust",
@@ -139,10 +139,10 @@ fn bash_ast_tokens_surface_nested_command_stages() {
 }
 
 #[test]
-fn bash_ast_tokens_keep_quoted_search_pipe_stage() {
+fn bash_ast_tokens_keep_quoted_search_playbook_stage() {
     assert_eq!(
         semantic_shell_tokens(
-            "asp typescript search pipe 'Effect concurrency Fiber' --workspace . --view seeds",
+            "asp typescript search playbook 'Effect concurrency Fiber' --workspace .",
         ),
         vec![
             "asp",

@@ -15,7 +15,7 @@
     "sourcePacketKind",
     "profile",
     "algorithm",
-    "seedIds",
+    "entryNodeIds",
     "budget",
     "kindBudgets",
     "profiles",
@@ -70,7 +70,7 @@
     "algorithm": {
       "const": "typed-ppr-diverse"
     },
-    "seedIds": {
+    "entryNodeIds": {
       "type": "array",
       "items": {
         "$ref": "#/$defs/nodeId"

@@ -37,7 +37,7 @@
     "planDigest": { "$ref": "#/$defs/blake3" },
     "languageId": { "$ref": "#/$defs/nonEmpty" },
     "operation": {
-      "enum": ["exact", "search", "query", "search.owner"]
+      "enum": ["exact", "search", "query"]
     },
     "transport": {
       "enum": ["direct-service-core", "grpc", "http-json-debug"]

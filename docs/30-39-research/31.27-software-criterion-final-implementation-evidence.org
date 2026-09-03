@@ -27,7 +27,7 @@ Changed compact surfaces:
 
 - Python renderer: =languages/asp-python/src/asp_python/_render.py=
 - Rust algorithm-shape policy: =languages/asp-rust/src/rules/agent_policy/algorithm_shape.rs=
-- TypeScript agent-policy summaries: =languages/typescript-lang-project-harness/src/rules/agent_policy/pack.ts=
+- TypeScript agent-policy summaries: =languages/asp-typescript/src/rules/agent_policy/pack.ts=
 
 Snapshot coverage now fixes both sides:
 
@@ -71,7 +71,7 @@ uv run --group test pytest -q \
   tests/unit/harness/test_software_criterion_snapshots.py
 # 2 passed
 
-cd languages/typescript-lang-project-harness
+cd languages/asp-typescript
 npm run build
 node --test \
   dist/tests/unit/software_criterion_snapshot.test.js \

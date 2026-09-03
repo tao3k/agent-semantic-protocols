@@ -13,7 +13,7 @@ use super::install_provider::run_install_command;
 use super::live_corpus::run_live_corpus_command;
 use super::paths::run_paths_command;
 use super::provider_dispatch::run_language_command;
-use super::root_language_facade::run_root_language_facade;
+use super::root_language_facade::{run_root_language_facade, run_workspace_search_playbook};
 use super::run_protocol_version_command;
 use super::runtime_server::run_runtime_server_command;
 use super::schema::run_schema_command;
@@ -59,7 +59,7 @@ pub(crate) async fn run_protocol_command_started(
         Some("search") if args.get(1).is_some_and(|arg| arg == "history") => {
             run_client_command(args).await
         }
-        Some("search") => run_root_language_facade("search", &args[1..]).await,
+        Some("search") => run_workspace_search_playbook(&args[1..]).await,
         Some("query") => {
             match super::provider_selector::root_structural_selector_language(&args[1..])? {
                 Some(language_id) => {
@@ -157,7 +157,7 @@ fn reject_file_workspace_for_search(args: &[String]) -> Result<(), String> {
     };
     if workspace_path.is_file() {
         return Err(format!(
-            "--workspace requires a directory project root, got file `{}`. Keep the file path as the owner/selector and use a directory workspace, for example `asp gerbil-scheme search owner <file> items --query '<terms>' --workspace . --view seeds`.",
+            "--workspace requires a directory project root, got file `{}`. Keep the file path as the search scope and use a directory workspace, for example `asp gerbil-scheme search '<terms>' --scope owner:<file> --workspace .`.",
             workspace_path.display()
         ));
     }

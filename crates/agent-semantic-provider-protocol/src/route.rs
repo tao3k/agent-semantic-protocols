@@ -465,7 +465,7 @@ mod semantic_identifier_tests {
 
     #[test]
     fn provider_operations_accept_single_or_dotted_semantic_ids() {
-        for operation in ["query", "search", "projection-batch", "search.owner"] {
+        for operation in ["query", "search", "projection-batch"] {
             require_semantic_id("operation", operation).unwrap();
         }
     }
@@ -485,15 +485,15 @@ mod tests {
         ProviderRouteSpec {
             schema_id: PROVIDER_ROUTE_SCHEMA_ID.into(),
             schema_version: PROVIDER_ROUTE_SCHEMA_VERSION.into(),
-            route_id: "rust.search.owner".into(),
-            operation: "search.owner".into(),
+            route_id: "rust.search".into(),
+            operation: "search".into(),
             authority: ProviderRouteAuthority::AspServer,
             target: ProviderRouteTarget {
                 language_id: "rust".into(),
                 provider_id: "asp-rust".into(),
             },
             request_schema: Some(ProviderSchemaReference {
-                schema_id: "agent.semantic-protocols.search-owner-request".into(),
+                schema_id: "agent.semantic-protocols.runtime-provider-search-request".into(),
                 schema_version: "1".into(),
             }),
             inputs: vec![ProviderRouteInputSlot {
@@ -537,7 +537,7 @@ mod tests {
     #[test]
     fn compiles_a_semantic_route_without_an_argv_projection() {
         let compiled = route().compile().expect("route should compile");
-        assert_eq!(compiled.spec().route_id, "rust.search.owner");
+        assert_eq!(compiled.spec().route_id, "rust.search");
         assert!(compiled.input_slot("query").is_some());
     }
 

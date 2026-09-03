@@ -3,6 +3,7 @@ mod canonical;
 mod contract;
 pub(in crate::engine) mod core;
 pub(in crate::engine) mod generation_snapshot;
+pub(crate) use active_generation::active_turso_workspace_generation_materialization;
 pub use active_generation::{
     ClientDbActiveSourceIndexGeneration, active_turso_source_index_generation,
 };

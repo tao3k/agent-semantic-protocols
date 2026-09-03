@@ -455,7 +455,7 @@ pub fn evaluate_pre_tool<'a>(
             .zip(subject.as_deref())
             .map(|(language, subject)| {
                 format!(
-                    "asp {language} search owner {subject} items --workspace {} --view seeds",
+                    "asp {language} search playbook '{subject}' --intent conceptual --scope owner:{subject} --coverage candidates --explain compact --workspace {}",
                     payload.cwd.unwrap_or(".")
                 )
             });

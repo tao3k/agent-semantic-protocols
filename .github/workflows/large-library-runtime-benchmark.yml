@@ -29,7 +29,7 @@ jobs:
           set -euo pipefail
           git submodule update --init --depth 1 \
             languages/asp-rust \
-            languages/typescript-lang-project-harness \
+            languages/asp-typescript \
             languages/asp-python \
             languages/AspJulia.jl \
             languages/gerbil-scheme-language-project-harness \
@@ -55,7 +55,7 @@ jobs:
         with:
           node-version: "24"
           cache: npm
-          cache-dependency-path: languages/typescript-lang-project-harness/package-lock.json
+          cache-dependency-path: languages/asp-typescript/package-lock.json
 
       - name: Set up Python and uv
         uses: actions/setup-python@v5
@@ -92,19 +92,19 @@ jobs:
         run: |
           set -euo pipefail
           jq -r '.corpora[].resourceId' \
-            benchmarks/large-library-runtime-corpora.v1.json | \
+            benchmarks/large-library-runtime-corpora.json | \
             while IFS= read -r resource_id; do
               sync_receipt="$(
                 "$ASP_STATE_HOME/runtime/bin/asp" live-corpus sync \
                   --resource "$resource_id" \
-                  --lock benchmarks/large-library-runtime-corpora.v1.json \
+                  --lock benchmarks/large-library-runtime-corpora.json \
                   --json
               )"
               checkout_path="$(jq -r '.checkoutPath' <<<"$sync_receipt")"
               "$ASP_STATE_HOME/runtime/bin/asp" live-corpus materialize \
                 --resource "$resource_id" \
                 --source "$checkout_path" \
-                --lock benchmarks/large-library-runtime-corpora.v1.json
+                --lock benchmarks/large-library-runtime-corpora.json
             done
 
       - name: Run V1 registered-corpus search command matrix

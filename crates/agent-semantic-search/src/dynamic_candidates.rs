@@ -67,7 +67,7 @@ pub struct DynamicSearchCandidateCollection {
     pub candidates: Vec<DynamicSearchCandidate>,
 }
 
-/// Candidate projected from a pipe ingest stream before protocol rendering.
+/// Candidate acquired from bounded rg output before generation admission.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IngestSearchCandidate {
     /// Owner path relative to the caller's locator root when possible.
@@ -485,7 +485,7 @@ fn sorted_search_root_files(
     }
     let metadata = std::fs::metadata(root).map_err(|error| {
         format!(
-            "failed to inspect search pipe root {}: {error}",
+            "failed to inspect Search acquisition root {}: {error}",
             root.display()
         )
     })?;
@@ -501,7 +501,7 @@ fn sorted_search_root_files(
                 format!("dynamic lexical owner is absent from committed snapshot: {owner_path}")
             })?;
         let source = std::fs::read(root).map_err(|error| {
-            format!("failed to read committed search owner {owner_path}: {error}")
+            format!("failed to read committed source document {owner_path}: {error}")
         })?;
         let observed =
             agent_semantic_content_identity::exact_selector_merkle::blake3_content_digest_v1(

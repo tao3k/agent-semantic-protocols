@@ -170,29 +170,17 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "prime",
-        "owner",
-        "lexical",
-        "ingest",
+        "playbook",
         "checkChanged"
       ],
       "properties": {
-        "prime": {
-          "$ref": "#/$defs/commandTemplate"
-        },
-        "owner": {
-          "$ref": "#/$defs/commandTemplate"
-        },
-        "lexical": {
+        "playbook": {
           "$ref": "#/$defs/commandTemplate"
         },
         "query": {
           "$ref": "#/$defs/commandTemplate"
         },
         "exactSelectorNative": {
-          "$ref": "#/$defs/commandTemplate"
-        },
-        "ingest": {
           "$ref": "#/$defs/commandTemplate"
         },
         "checkChanged": {

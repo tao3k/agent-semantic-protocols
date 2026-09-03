@@ -53,10 +53,10 @@ def rank_packet(
         [_load_calibration_packet(path) for path in calibration_paths],
     )
     seed_override = _string_paths(options, "seed")
-    seeds = seed_override or _string_list_packet_field(packet, "seedIds")
+    seeds = seed_override or _string_list_packet_field(packet, "entryNodeIds")
     limit_override = _option(options, "limit")
     controls = dict(packet)
-    controls["seedIds"] = seeds
+    controls["entryNodeIds"] = seeds
     controls["budget"] = (
         limit_override
         if isinstance(limit_override, int)
@@ -83,7 +83,7 @@ def rank_graph(
     return rank_frontier(
         graph,
         profile=selected_profile,
-        seeds=_string_list_packet_field(controls, "seedIds"),
+        seeds=_string_list_packet_field(controls, "entryNodeIds"),
         limit=_positive_int_packet_field(controls, "budget", 8),
         kind_budgets=_kind_budgets_packet_field(controls),
         window_merge_enabled=window_merge["enabled"],

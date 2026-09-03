@@ -20,14 +20,35 @@ fn search_segment_publishes_a_verified_owner_inclusion_proof() {
         agent_semantic_content_identity::SourceSnapshotKind::Filesystem,
         projection_capability.provider_catalog_digest.clone(),
     );
+    let module_graph_digest = format!("blake3-256:{}", blake3::hash(b"module-graph").to_hex());
+    let runtime_provider_execution_binding =
+        agent_semantic_artifacts::installed_provider_binding::RuntimeProviderExecutionBinding::build(
+            "repo-merkle-proof".to_owned(),
+            "workspace-merkle-proof".to_owned(),
+            format!("blake3-256:{}", "1".repeat(64)),
+            format!("blake3-256:{}", "2".repeat(64)),
+            format!("blake3-256:{}", "3".repeat(64)),
+            source_snapshot
+                .root_integrity_reference()
+                .expect("source snapshot integrity reference"),
+            module_graph_digest.clone(),
+        )
+        .expect("Runtime provider execution binding");
     let generation = WorkspaceMemoryGeneration::try_from_build(WorkspaceGenerationBuild {
         projection_capability,
         workspace_identity: "workspace-merkle-proof".to_owned(),
         project_root: "/workspace/merkle-proof".to_owned(),
         active_epoch: 1,
         workspace_snapshot,
+        content_search_generation:
+            crate::runtime_server_workspace::test_content_search_generation_receipt(
+                &runtime_provider_execution_binding.project_id,
+                "workspace-merkle-proof",
+                &source_snapshot,
+            ),
         source_snapshot,
-        module_graph_digest: format!("blake3-256:{}", blake3::hash(b"module-graph").to_hex()),
+        module_graph_digest,
+        runtime_provider_execution_binding: Some(runtime_provider_execution_binding.clone()),
         project_resolutions: Vec::new(),
         owners: vec![
             WorkspaceOwnerSnapshot {
@@ -48,6 +69,17 @@ fn search_segment_publishes_a_verified_owner_inclusion_proof() {
         relations: Vec::new(),
     })
     .expect("workspace generation");
+    generation
+        .validate()
+        .expect("execution binding participates in generation validation");
+    assert_eq!(
+        generation
+            .runtime_provider_execution_binding
+            .as_ref()
+            .expect("execution binding persisted")
+            .generation,
+        runtime_provider_execution_binding.generation
+    );
 
     let encoded =
         encode_workspace_search_generation_segment(&generation).expect("encode search generation");

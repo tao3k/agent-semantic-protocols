@@ -17,6 +17,31 @@ fn evidence_binds_the_canonical_merkle_algorithm_and_leaf_count() {
     assert_eq!(evidence.root_digest, snapshot.root_digest());
     assert_eq!(evidence.leaf_count, 2);
     assert_eq!(evidence.provider_digest, "d".repeat(64));
+    assert_eq!(
+        evidence
+            .root_integrity_reference()
+            .expect("canonical snapshot integrity reference"),
+        format!("blake3-256:{}", snapshot.root_digest())
+    );
+}
+
+#[test]
+fn snapshot_integrity_reference_rejects_algorithm_and_root_drift() {
+    let snapshot = WorkspaceSnapshot::from_file_hashes([("src/lib.rs", "a".repeat(64))]);
+    let mut evidence = snapshot.evidence(SourceSnapshotKind::Filesystem, "d".repeat(64));
+
+    evidence.algorithm = "client-guessed-hash".to_owned();
+    assert!(
+        evidence.root_integrity_reference().is_err(),
+        "a Runtime caller cannot reinterpret a foreign snapshot algorithm"
+    );
+
+    evidence.algorithm = SOURCE_SNAPSHOT_ALGORITHM.to_owned();
+    evidence.root_digest = "not-a-root".to_owned();
+    assert!(
+        evidence.root_integrity_reference().is_err(),
+        "a partial snapshot identity cannot reach provider admission"
+    );
 }
 
 #[test]

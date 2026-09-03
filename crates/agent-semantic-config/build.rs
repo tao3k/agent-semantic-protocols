@@ -1,8 +1,7 @@
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
-#[path = "../agent-semantic-schema-manager/src/build_support/provider_registry.rs"]
-mod provider_registry;
+use agent_semantic_schema_manager::build_support::provider_registry;
 
 fn main() {
     let manifest_dir = PathBuf::from(

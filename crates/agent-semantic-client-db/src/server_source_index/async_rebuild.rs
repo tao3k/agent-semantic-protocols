@@ -10,6 +10,25 @@ use crate::server_source_index::generation_build::{
     SourceIndexGenerationRefresh, SourceIndexRefreshContext,
 };
 
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BaseGenerationBuildTimingReceipt {
+    schema_id: &'static str,
+    schema_version: &'static str,
+    project_id: String,
+    workspace_id: String,
+    inventory_micros: u64,
+    snapshot_merkle_materialization_micros: u64,
+    content_receipt_micros: u64,
+    total_micros: u64,
+    provider_process_count: u8,
+    provider_rpc_count: u8,
+}
+
+fn elapsed_micros(started: Instant) -> u64 {
+    u64::try_from(started.elapsed().as_micros()).unwrap_or(u64::MAX)
+}
+
 enum RuntimeOwnerProjectionExecutor {
     Resident(ProviderRuntimeActorClient),
 }
@@ -171,10 +190,13 @@ async fn prepare_runtime_server_owner_projection_async(
 
 pub async fn prepare_runtime_server_workspace_generation_with_runtime_service_async(
     runtime: crate::runtime_search_service::RuntimeSearchServiceHandle,
+    project_id: String,
+    workspace_id: String,
     project_root: PathBuf,
     snapshot: RuntimeProviderProjection,
     collection_scope: SourceIndexCollectionScope,
-    repository_candidates: agent_semantic_runtime::git::RepositoryCandidateSnapshot,
+    candidate: crate::runtime_server_admission::WorkspaceGenerationCandidateIdentity,
+    inventory: Vec<String>,
     cancellation: crate::runtime_generation_cancellation::GenerationCancellation,
 ) -> Result<crate::runtime_server_admission::WorkspaceGenerationCandidateBuild, String> {
     let trace_started = Instant::now();
@@ -182,22 +204,25 @@ pub async fn prepare_runtime_server_workspace_generation_with_runtime_service_as
     trace("context-resolved", trace_started);
     trace("provider-registry-admitted", trace_started);
     let registry = snapshot.evidence(&project_root);
+    let inventory_started = Instant::now();
     let collection =
-        crate::server_source_index::collect::collect_source_index_scope_from_candidate_snapshot_with_runtime_service_async(
-            &runtime,
+        crate::server_source_index::collect::collect_source_index_scope_from_inventory(
             &project_root,
             &snapshot,
             &collection_scope,
-            repository_candidates,
-            cancellation.clone(),
-        )
-        .await?;
+            &inventory,
+            candidate,
+        )?;
+    let inventory_micros = elapsed_micros(inventory_started);
     trace("scope-files-collected", trace_started);
-    context
+    let SourceIndexCollectionScope::CompleteGeneration = &collection_scope;
+    let snapshot_started = Instant::now();
+    let prepared = context
         .prepare_generation_with_runtime_service_async(
             &runtime,
             SourceIndexGenerationRefresh {
-                changed_owner_paths: collection_scope.explicit_owner_paths(),
+                changed_owner_paths: None,
+                replacement_authority: None,
                 index_root: &project_root,
                 files: &collection.files,
                 project_resolutions: &collection.project_resolutions,
@@ -205,10 +230,103 @@ pub async fn prepare_runtime_server_workspace_generation_with_runtime_service_as
                 registry: &registry,
                 provider_registry: &snapshot,
             },
-            cancellation,
+            cancellation.clone(),
         )
-        .await
-        .map(|prepared| prepared.into_runtime_server_build())
+        .await?;
+    let snapshot_merkle_materialization_micros = elapsed_micros(snapshot_started);
+    let mut build = prepared.into_runtime_server_build();
+    let content_receipt_started = Instant::now();
+    finalize_content_search_generation(
+        &runtime,
+        &mut build,
+        &project_id,
+        &workspace_id,
+        cancellation,
+    )
+    .await?;
+    let content_receipt_micros = elapsed_micros(content_receipt_started);
+    eprintln!(
+        "[base-generation-build-timing] {}",
+        serde_json::to_string(&BaseGenerationBuildTimingReceipt {
+            schema_id: "agent.semantic-protocols.base-generation-build-timing-receipt",
+            schema_version: "1",
+            project_id,
+            workspace_id,
+            inventory_micros,
+            snapshot_merkle_materialization_micros,
+            content_receipt_micros,
+            total_micros: elapsed_micros(trace_started),
+            provider_process_count: 0,
+            provider_rpc_count: 0,
+        })
+        .map_err(|error| format!("encode base generation timing receipt: {error}"))?
+    );
+    Ok(build)
+}
+
+async fn finalize_content_search_generation(
+    _runtime: &crate::runtime_search_service::RuntimeSearchServiceHandle,
+    build: &mut crate::runtime_server_admission::WorkspaceGenerationCandidateBuild,
+    project_id: &str,
+    workspace_id: &str,
+    cancellation: crate::runtime_generation_cancellation::GenerationCancellation,
+) -> Result<(), String> {
+    if cancellation.is_cancelled() {
+        return Err("search generation construction cancelled".to_owned());
+    }
+    let materialization = &mut build.materialization;
+    if materialization.workspace_identity != workspace_id {
+        return Err("search generation workspaceId differs from its materialization".to_owned());
+    }
+    let identity = agent_semantic_search::SearchGenerationIdentity {
+        project_id: project_id.to_owned(),
+        workspace_id: workspace_id.to_owned(),
+        source_root_digest: agent_semantic_search::canonical_blake3_digest(
+            &materialization.source_snapshot.root_digest,
+        )?,
+        provider_digest: agent_semantic_search::canonical_blake3_digest(
+            &materialization.source_snapshot.provider_digest,
+        )?,
+        schema_digest: agent_semantic_search::canonical_blake3_digest(
+            &agent_semantic_content_identity::project_resolution_schema_digest(),
+        )?,
+        generation_candidate_digest: agent_semantic_search::canonical_blake3_digest(
+            &build.candidate.candidate_generation.digest,
+        )?,
+    };
+    identity.validate()?;
+    let source_owners = materialization
+        .owners
+        .iter()
+        .map(|owner| {
+            (
+                owner.owner_path.clone(),
+                owner.content_digest.clone(),
+                owner.bytes.len(),
+            )
+        })
+        .collect::<Vec<_>>();
+    let acquisition = crate::runtime_server_runtime::RuntimeServerOwnedTask::spawn_blocking(
+        "content-search-generation-byte-acquisition",
+        move || {
+            agent_semantic_search::build_source_byte_acquisition_stage(
+                identity,
+                source_owners
+                    .iter()
+                    .map(|(owner_path, content_digest, byte_len)| {
+                        agent_semantic_search::SourceByteOwner {
+                            owner_path,
+                            content_digest,
+                            byte_len: *byte_len,
+                        }
+                    }),
+            )
+        },
+    )
+    .join()
+    .await??;
+    let receipt = agent_semantic_search::ContentSearchGenerationReceipt::new(acquisition)?;
+    materialization.attach_content_search_generation(receipt)
 }
 
 fn trace(stage: &str, started: Instant) {

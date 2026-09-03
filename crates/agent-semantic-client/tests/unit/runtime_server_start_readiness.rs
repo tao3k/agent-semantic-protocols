@@ -69,25 +69,38 @@ fn stop_isolated_runtime(state_home: &Path) {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn pending_activation_bootstrap_spawns_one_supervised_runtime_owner() {
+async fn pending_activation_bootstrap_waits_for_one_healthy_runtime_owner() {
     let temporary = tempfile::tempdir().expect("create isolated state home");
     let state_home = temporary.path().to_path_buf();
     publish_pending_runtime(&state_home).await;
 
     let bootstrap = run_asp(&state_home, RUNTIME_CLIENT_QUERY_ARGS);
-    assert_success(&bootstrap, "client bootstrap activation reconciliation");
     assert!(
         state_home
             .join("runtime/server/owner-spawn.v1.json")
             .is_file()
     );
-    let bootstrap_receipt: serde_json::Value = serde_json::from_slice(&bootstrap.stdout)
-        .expect("decode nonblocking client bootstrap receipt");
-    assert_eq!(bootstrap_receipt["state"], "starting");
-    assert_eq!(
-        bootstrap_receipt["reasonKind"],
-        "runtime-server-activation-spawn-accepted"
+    let output = format!(
+        "{}{}",
+        String::from_utf8_lossy(&bootstrap.stdout),
+        String::from_utf8_lossy(&bootstrap.stderr)
     );
+    assert!(
+        !output.contains("runtime-server-activation-spawn-accepted")
+            && !output.contains("runtime-server-activation-owner-starting"),
+        "client request returned an intermediate bootstrap observation: {output}"
+    );
+    assert!(
+        !output.contains("runtime-server-activation-failed"),
+        "client bootstrap failed before Healthy publication: {output}"
+    );
+    let transaction =
+        agent_semantic_client_db::runtime_server_lifecycle::observe_resident_transaction(
+            &state_home,
+        )
+        .await
+        .expect("bootstrap must publish one bound Runtime resident transaction");
+    assert_eq!(transaction.state, "ready");
 
     stop_isolated_runtime(&state_home);
 }
@@ -122,9 +135,18 @@ async fn explicit_activation_waits_for_one_bound_resident_transaction_without_po
     );
     assert!(std::path::Path::new(&transaction.launcher_artifact_path).is_absolute());
     assert_eq!(transaction.spawn_argv, ["server", "daemon"]);
-    assert!(std::path::Path::new(&transaction.control_endpoint).is_absolute());
-    assert!(std::path::Path::new(&transaction.data_endpoint).is_absolute());
-    assert!(std::path::Path::new(&transaction.provider_endpoint).is_absolute());
+    transaction
+        .control_endpoint
+        .validate()
+        .expect("typed loopback control endpoint");
+    transaction
+        .data_endpoint
+        .validate()
+        .expect("typed loopback data endpoint");
+    transaction
+        .provider_endpoint
+        .validate()
+        .expect("typed loopback provider endpoint");
     assert_eq!(transaction.previous_drain_state, "not-required");
 
     stop_isolated_runtime(&state_home);

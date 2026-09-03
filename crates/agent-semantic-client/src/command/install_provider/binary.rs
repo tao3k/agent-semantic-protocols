@@ -33,6 +33,14 @@ pub(crate) async fn run_install_binary(args: &[String]) -> Result<(), String> {
         &hook_candidate.source,
     )
     .await?;
+    let install_registry_digest =
+        crate::command::provider_install_registry::provider_install_registry_digest()?;
+    let provider_catalog_generation =
+        agent_semantic_artifacts::runtime_artifact_catalog::publish_runtime_provider_catalog(
+            &runtime_state.protocol_home,
+            installed.artifact_digest.as_str(),
+            &install_registry_digest,
+        )?;
     let legacy_hook_generation =
         install_binary_config_admission::retire_legacy_hook_generation_pointer(
             &runtime_state.protocol_home,
@@ -43,6 +51,10 @@ pub(crate) async fn run_install_binary(args: &[String]) -> Result<(), String> {
         &runtime_state.activation_path,
     )?;
     agent_config_sync::synchronize_embedded_agent_state_config(&runtime_state.protocol_home)?;
+    let provider_artifacts =
+        crate::command::installed_provider_artifacts::publish_current_installed_provider_artifacts(
+            &runtime_state.protocol_home,
+        )?;
     let state_resolution = agent_semantic_runtime::state_core::resolve_state_home_projection()?;
     if state_resolution.state_home != runtime_state.protocol_home {
         return Err(format!(
@@ -60,11 +72,13 @@ pub(crate) async fn run_install_binary(args: &[String]) -> Result<(), String> {
     let runtime_endpoint_path =
         agent_semantic_client_db::runtime_server_endpoint_path(&runtime_state.protocol_home)?;
     println!(
-        "[asp-install-binary] binaryPath={} binaryInstall={} binaryContentDigest={} digestAlgorithm=blake3-256 binaryCurrent={} binarySwitch=atomic hookBinaryPath={} hookBinaryDigest={} hookBinarySwitch=active-healthy-bundle bundleLockAcquisitionCount={} hookConfigPublication={} hookConfigCoupling=embedded-in-hook-binary legacyHookGeneration={} hookAuthority=runtime-active-bundle-content-digest agentConfigPublication=current agentConfigCoupling=embedded-in-hook-binary runtimeServerLifecycle=resident-owner-independent reasonKind=none providerReconciliation=not-on-binary-install installedProviderArtifacts=not-on-binary-install developerIdentityReceipt={} installSource={} installScope=state-home projectRoot={} executablePath={} stateHome={} stateHomeSource={:?} aspStateHomePresent={} homePresent={} pendingActivationPath={} appliedActivationPath={} runtimeEndpointPath={}",
+        "[asp-install-binary] binaryPath={} binaryInstall={} binaryContentDigest={} digestAlgorithm=blake3-256 binaryCurrent={} binarySwitch=atomic providerCatalogGeneration={} providerInstallRegistryDigest={} hookBinaryPath={} hookBinaryDigest={} hookBinarySwitch=active-healthy-bundle bundleLockAcquisitionCount={} hookConfigPublication={} hookConfigCoupling=embedded-in-hook-binary legacyHookGeneration={} hookAuthority=runtime-active-bundle-content-digest agentConfigPublication=current agentConfigCoupling=embedded-in-hook-binary runtimeServerLifecycle=resident-owner-independent reasonKind=none providerReconciliation=automatic installedProviderArtifactsGeneration={} installedProviderArtifactsWrite={} installedProviderArtifactsChangedLeaves={} developerIdentityReceipt={} installSource={} installScope=state-home projectRoot={} executablePath={} stateHome={} stateHomeSource={:?} aspStateHomePresent={} homePresent={} pendingActivationPath={} appliedActivationPath={} runtimeEndpointPath={}",
         installed.path.display(),
         installed.status,
         installed.artifact_digest,
         installed.path.display(),
+        provider_catalog_generation,
+        install_registry_digest,
         runtime_state
             .protocol_home
             .join("runtime/bin/asp-hook")
@@ -73,6 +87,9 @@ pub(crate) async fn run_install_binary(args: &[String]) -> Result<(), String> {
         installed.lock_acquisition_count,
         hook_config_status,
         legacy_hook_generation,
+        provider_artifacts.generation(),
+        provider_artifacts.artifact_write(),
+        provider_artifacts.changed_leaf_count(),
         active_artifact_receipt.as_str(),
         plan.install_source_kind(),
         project_root.display(),

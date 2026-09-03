@@ -1,14 +1,62 @@
+//! Merkle materialization proof for one exact-selector fixture record.
+
 use super::{DIGEST_LEN, ExactSelectorGenerationRecordV1, ExactSelectorProjectionModeV1};
 
+macro_rules! proof_identity {
+    ($name:ident, $doc:literal) => {
+        #[doc = $doc]
+        #[derive(Clone, Debug, Eq, PartialEq)]
+        pub struct $name(String);
+
+        impl $name {
+            /// Borrows the canonical identity value.
+            pub fn as_str(&self) -> &str {
+                &self.0
+            }
+        }
+
+        impl From<String> for $name {
+            fn from(value: String) -> Self {
+                Self(value)
+            }
+        }
+
+        impl From<&str> for $name {
+            fn from(value: &str) -> Self {
+                Self(value.to_owned())
+            }
+        }
+    };
+}
+
+proof_identity!(
+    ExactSelectorLanguageIdV1,
+    "Provider language identity carried by an exact-selector proof."
+);
+proof_identity!(
+    ExactSelectorProviderIdV1,
+    "Provider identity carried by an exact-selector proof."
+);
+proof_identity!(
+    ExactSelectorOwnerPathV1,
+    "Workspace-relative owner path carried by an exact-selector proof."
+);
+
+/// Side on which a Merkle sibling participates in a proof step.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ExactSelectorMerkleProofSideV1 {
+    /// Sibling precedes the accumulated node.
     Left,
+    /// Sibling follows the accumulated node.
     Right,
 }
 
+/// One sibling step in an exact-selector Merkle proof.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ExactSelectorMerkleProofStepV1 {
+    /// Position of the sibling.
     pub side: ExactSelectorMerkleProofSideV1,
+    /// Exact sibling digest.
     pub digest: [u8; DIGEST_LEN],
 }
 
@@ -19,13 +67,13 @@ pub struct ExactSelectorMerkleProofStepV1 {
 /// reconstruct any field from line numbers or by rereading source.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ExactSelectorMaterializationProofV1 {
-    pub language_id: String,
-    pub provider_id: String,
+    pub language_id: ExactSelectorLanguageIdV1,
+    pub provider_id: ExactSelectorProviderIdV1,
     pub canonical_item_selector: crate::CanonicalItemSelector,
     pub parser_identity_digest: [u8; DIGEST_LEN],
     pub query_pack_digest: [u8; DIGEST_LEN],
     pub workspace_root_digest: [u8; DIGEST_LEN],
-    pub owner_path: String,
+    pub owner_path: ExactSelectorOwnerPathV1,
     pub owner_subtree_digest: [u8; DIGEST_LEN],
     pub owner_inclusion_proof: Vec<ExactSelectorMerkleProofStepV1>,
     pub source_blob_digest: [u8; DIGEST_LEN],
@@ -178,15 +226,15 @@ impl<'de> serde::Deserialize<'de> for ExactSelectorMaterializationProofV1 {
             ));
         }
         let proof = Self {
-            language_id: projection.language_id,
-            provider_id: projection.provider_id,
+            language_id: projection.language_id.into(),
+            provider_id: projection.provider_id.into(),
             canonical_item_selector: projection.canonical_item_selector,
             parser_identity_digest: decode_digest_v1::<D::Error>(
                 &projection.parser_identity_digest,
             )?,
             query_pack_digest: decode_digest_v1::<D::Error>(&projection.query_pack_digest)?,
             workspace_root_digest: decode_digest_v1::<D::Error>(&merkle.workspace_root_digest)?,
-            owner_path: projection.owner_path,
+            owner_path: projection.owner_path.into(),
             owner_subtree_digest: decode_digest_v1::<D::Error>(&merkle.owner_subtree_digest)?,
             owner_inclusion_proof: merkle
                 .owner_inclusion_proof
@@ -237,12 +285,12 @@ impl serde::Serialize for ExactSelectorMaterializationProofV1 {
                 schema_id: "agent.semantic-protocols.exact-selector-projection-packet".to_string(),
                 schema_version: "1".to_string(),
                 digest_algorithm: "blake3-256".to_string(),
-                language_id: self.language_id.clone(),
-                provider_id: self.provider_id.clone(),
+                language_id: self.language_id.as_str().to_owned(),
+                provider_id: self.provider_id.as_str().to_owned(),
                 canonical_item_selector: self.canonical_item_selector.clone(),
                 parser_identity_digest: encode_digest_v1(&self.parser_identity_digest),
                 query_pack_digest: encode_digest_v1(&self.query_pack_digest),
-                owner_path: self.owner_path.clone(),
+                owner_path: self.owner_path.as_str().to_owned(),
                 source_blob_digest: encode_digest_v1(&self.source_blob_digest),
                 parser_fact_digest: encode_digest_v1(&self.normalized_parser_facts_digest),
                 structural_selector: self.structural_selector.clone(),
@@ -255,9 +303,9 @@ impl serde::Serialize for ExactSelectorMaterializationProofV1 {
                 schema_id: "agent.semantic-protocols.exact-selector-merkle-proof".to_string(),
                 schema_version: "1".to_string(),
                 digest_algorithm: "blake3-256".to_string(),
-                language_id: self.language_id.clone(),
+                language_id: self.language_id.as_str().to_owned(),
                 workspace_root_digest: encode_digest_v1(&self.workspace_root_digest),
-                owner_path: self.owner_path.clone(),
+                owner_path: self.owner_path.as_str().to_owned(),
                 owner_subtree_digest: encode_digest_v1(&self.owner_subtree_digest),
                 owner_inclusion_proof: self
                     .owner_inclusion_proof
@@ -287,6 +335,7 @@ impl serde::Serialize for ExactSelectorMaterializationProofV1 {
     }
 }
 
+/// Typed failure returned while constructing or verifying a materialization proof.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ExactSelectorMaterializationProofErrorV1 {
     EmptyIdentity,
@@ -328,8 +377,8 @@ impl TryFrom<&ExactSelectorMaterializationProofV1> for ExactSelectorGenerationRe
     type Error = ExactSelectorMaterializationProofErrorV1;
 
     fn try_from(proof: &ExactSelectorMaterializationProofV1) -> Result<Self, Self::Error> {
-        if proof.language_id.is_empty()
-            || proof.provider_id.is_empty()
+        if proof.language_id.as_str().is_empty()
+            || proof.provider_id.as_str().is_empty()
             || proof.structural_selector.is_empty()
         {
             return Err(Self::Error::EmptyIdentity);
@@ -338,10 +387,11 @@ impl TryFrom<&ExactSelectorMaterializationProofV1> for ExactSelectorGenerationRe
         if canonical.structural_selector != proof.structural_selector {
             return Err(Self::Error::InvalidCanonicalSelector);
         }
-        if proof.owner_path.is_empty()
-            || proof.owner_path.starts_with('/')
+        if proof.owner_path.as_str().is_empty()
+            || proof.owner_path.as_str().starts_with('/')
             || proof
                 .owner_path
+                .as_str()
                 .split('/')
                 .any(|component| component == "..")
         {
@@ -391,7 +441,7 @@ impl TryFrom<&ExactSelectorMaterializationProofV1> for ExactSelectorGenerationRe
         }
         Ok(Self {
             structural_selector: proof.structural_selector.clone(),
-            owner_path: proof.owner_path.clone(),
+            owner_path: proof.owner_path.as_str().to_owned(),
             owner_subtree_digest: proof.owner_subtree_digest,
             source_blob_digest: proof.source_blob_digest,
             normalized_parser_facts_digest: proof.normalized_parser_facts_digest,

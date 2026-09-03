@@ -13,7 +13,7 @@ pub fn adapt_graph_evaluate_payload(
         .ok_or_else(|| "asp-python-graphs graph request requires queryTerms".to_owned())?;
     let mut rank_payload = serde_json::Map::new();
     for field in [
-        "seedIds",
+        "entryNodeIds",
         "kindBudgets",
         "windowMerge",
         "pathBudget",
@@ -56,4 +56,106 @@ pub fn validate_graph_source_root(
         ));
     }
     Ok(())
+}
+
+/// Bind the exact admitted workspace and generation identities carried by a
+/// complete-generation graph payload onto the Python Graphs service envelope.
+pub fn bind_graph_generation_identity(request: &mut serde_json::Value) -> Result<(), String> {
+    let identity = request
+        .get("payload")
+        .and_then(|payload| payload.get("identity"))
+        .and_then(serde_json::Value::as_object)
+        .ok_or_else(|| "generation graph payload lacks identity".to_owned())?;
+    let workspace_identity = identity
+        .get("workspaceId")
+        .and_then(serde_json::Value::as_str)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| "generation graph payload lacks identity.workspaceId".to_owned())?
+        .to_owned();
+    let generation_digest = identity
+        .get("generationCandidateDigest")
+        .and_then(serde_json::Value::as_str)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| {
+            "generation graph payload lacks identity.generationCandidateDigest".to_owned()
+        })?
+        .to_owned();
+    request["workspaceIdentity"] = serde_json::Value::String(workspace_identity);
+    request["generationDigest"] = serde_json::Value::String(generation_digest);
+    Ok(())
+}
+
+/// Reject a response replayed from any other request, workspace, generation,
+/// or lifecycle state before exposing its payload to Search.
+pub fn validate_graph_generation_receipt_identity(
+    receipt: &serde_json::Value,
+    request_id: &str,
+    state: &str,
+    workspace_identity: &str,
+    generation_digest: &str,
+) -> Result<(), String> {
+    let receipt_state = receipt
+        .get("payload")
+        .and_then(serde_json::Value::as_object)
+        .and_then(|payload| payload.get("state"))
+        .and_then(serde_json::Value::as_str);
+    if receipt.get("requestId").and_then(serde_json::Value::as_str) != Some(request_id)
+        || receipt_state != Some(state)
+        || receipt
+            .get("workspaceIdentity")
+            .and_then(serde_json::Value::as_str)
+            != Some(workspace_identity)
+        || receipt
+            .get("generationDigest")
+            .and_then(serde_json::Value::as_str)
+            != Some(generation_digest)
+    {
+        return Err(format!(
+            "asp-python-graphs generation receipt identity mismatch: receipt={receipt}"
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{bind_graph_generation_identity, validate_graph_generation_receipt_identity};
+
+    #[test]
+    fn generation_identity_is_bound_from_the_exact_graph_payload() {
+        let mut request = serde_json::json!({
+            "payload": {
+                "identity": {
+                    "workspaceId": "workspace-a",
+                    "generationCandidateDigest": "blake3-256:abc"
+                }
+            }
+        });
+
+        bind_graph_generation_identity(&mut request).unwrap();
+
+        assert_eq!(request["workspaceIdentity"], "workspace-a");
+        assert_eq!(request["generationDigest"], "blake3-256:abc");
+    }
+
+    #[test]
+    fn generation_receipt_rejects_cross_generation_replay() {
+        let receipt = serde_json::json!({
+            "requestId": "request-a",
+            "payload": { "state": "completed" },
+            "workspaceIdentity": "workspace-a",
+            "generationDigest": "blake3-256:old"
+        });
+
+        assert!(
+            validate_graph_generation_receipt_identity(
+                &receipt,
+                "request-a",
+                "completed",
+                "workspace-a",
+                "blake3-256:new",
+            )
+            .is_err()
+        );
+    }
 }

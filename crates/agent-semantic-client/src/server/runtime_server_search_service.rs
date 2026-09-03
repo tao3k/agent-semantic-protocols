@@ -300,6 +300,81 @@ pub(super) async fn serve_runtime_search_requests(
                     }
                 });
             }
+            RuntimeSearchServiceRequest::GenerationGraph {
+                request_id,
+                payload,
+                cancellation,
+                mut response,
+            } => {
+                let permit = match graph_slots.clone().try_acquire_owned() {
+                    Ok(permit) => permit,
+                    Err(_) => {
+                        let _ = response.send(Err(
+                            "state=busy reasonKind=asp-python-graphs-capacity-exhausted".to_owned(),
+                        ));
+                        continue;
+                    }
+                };
+                let graph_server = graph_server.clone();
+                tasks.spawn(async move {
+                    let _permit = permit;
+                    let operation =
+                        graph_server.generation_graph(request_id, payload, cancellation.clone());
+                    tokio::pin!(operation);
+                    tokio::select! {
+                        result = &mut operation => { let _ = response.send(result); }
+                        _ = response.closed() => { cancellation.cancel(); }
+                    }
+                });
+            }
+            RuntimeSearchServiceRequest::EvaluateResidentGraph {
+                workspace_identity,
+                generation_digest,
+                request_id,
+                payload,
+                cancellation,
+                mut response,
+            } => {
+                let permit = match graph_slots.clone().try_acquire_owned() {
+                    Ok(permit) => permit,
+                    Err(_) => {
+                        let _ = response.send(Err(
+                            "state=busy reasonKind=asp-python-graphs-capacity-exhausted".to_owned(),
+                        ));
+                        continue;
+                    }
+                };
+                let graph_server = graph_server.clone();
+                tasks.spawn(async move {
+                    let _permit = permit;
+                    let operation = graph_server.evaluate_resident(
+                        workspace_identity,
+                        generation_digest,
+                        request_id,
+                        payload,
+                        cancellation.clone(),
+                    );
+                    tokio::pin!(operation);
+                    tokio::select! {
+                        result = &mut operation => { let _ = response.send(result); }
+                        _ = response.closed() => { cancellation.cancel(); }
+                    }
+                });
+            }
+            RuntimeSearchServiceRequest::ReleaseGenerationGraph {
+                workspace_identity,
+                generation_digest,
+                request_id,
+                response,
+            } => {
+                let graph_server = graph_server.clone();
+                tasks.spawn(async move {
+                    let result = graph_server
+                        .release_generation(workspace_identity, generation_digest, request_id)
+                        .await;
+                    let _ = response.send(result);
+                });
+            }
             RuntimeSearchServiceRequest::ProviderOwner {
                 workspace_identity,
                 project_root,

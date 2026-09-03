@@ -79,7 +79,7 @@ def ontology_catalog_to_graph_request(
         "queryTerms": [query],
         "profile": profile,
         "algorithm": ALGORITHM_ID,
-        "seedIds": [seed_id],
+        "entryNodeIds": [seed_id],
         "budget": budget,
         "kindBudgets": {
             "query": 1,

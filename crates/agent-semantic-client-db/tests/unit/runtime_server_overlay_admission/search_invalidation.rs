@@ -18,6 +18,37 @@ fn fixture_root() -> std::path::PathBuf {
     ))
 }
 
+fn content_search_generation_receipt(
+    workspace_identity: &str,
+    source_snapshot: &agent_semantic_content_identity::SourceSnapshotEvidence,
+) -> agent_semantic_search::ContentSearchGenerationReceipt {
+    use agent_semantic_search::{
+        ContentSearchGenerationReceipt, SearchGenerationConstructionStage,
+        SearchGenerationIdentity, SearchGenerationStageReceipt, canonical_blake3_digest,
+    };
+    let identity = SearchGenerationIdentity {
+        project_id: "project-overlay-fixture".to_owned(),
+        workspace_id: workspace_identity.to_owned(),
+        source_root_digest: canonical_blake3_digest(&source_snapshot.root_digest).unwrap(),
+        provider_digest: canonical_blake3_digest(&source_snapshot.provider_digest).unwrap(),
+        schema_digest: format!("blake3-256:{}", "0".repeat(64)),
+        generation_candidate_digest: format!("blake3-256:{}", "1".repeat(64)),
+    };
+    let stage = |kind, byte: char, worker: &str| SearchGenerationStageReceipt {
+        stage: kind,
+        identity: identity.clone(),
+        artifact_digest: format!("blake3-256:{}", byte.to_string().repeat(64)),
+        worker_id: worker.to_owned(),
+        complete: true,
+    };
+    ContentSearchGenerationReceipt::new(stage(
+        SearchGenerationConstructionStage::SourceByteAcquisition,
+        '4',
+        "fixture-source-byte-acquisition",
+    ))
+    .unwrap()
+}
+
 fn generation(
     workspace_identity: &str,
     project_root: &std::path::Path,
@@ -44,11 +75,16 @@ fn generation(
         project_root: project_root.display().to_string(),
         active_epoch: 1,
         workspace_snapshot,
+        content_search_generation: content_search_generation_receipt(
+            workspace_identity,
+            &source_snapshot,
+        ),
         source_snapshot,
         module_graph_digest: format!(
             "blake3-256:{}",
             blake3::hash(b"runtime-search-invalidation-module-graph").to_hex()
         ),
+        runtime_provider_execution_binding: None,
         project_resolutions: Vec::new(),
         owners: vec![WorkspaceOwnerSnapshot {
             authority: None,

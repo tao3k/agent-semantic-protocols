@@ -11,10 +11,6 @@ const CLIENT_EXACT_QUERY_REQUEST: &str = "agent.semantic-protocols.asp-client-ex
 const CLIENT_EXACT_QUERY_RESPONSE: &str =
     "agent.semantic-protocols.asp-client-exact-query-response";
 const CLIENT_EXACT_QUERY_FAILURE: &str = "agent.semantic-protocols.asp-client-exact-query-failure";
-const CLIENT_OWNER_SEARCH_REQUEST: &str =
-    "agent.semantic-protocols.asp-client-owner-search-request";
-const CLIENT_OWNER_SEARCH_RESPONSE: &str =
-    "agent.semantic-protocols.asp-client-owner-search-response";
 const CLIENT_GRAPHS_TIMELINE_REQUEST: &str =
     "agent.semantic-protocols.asp-client-graphs-timeline-request";
 pub const LIVE_CORPUS_CACHE_STATE_REQUEST_SCHEMA_ID: &str =
@@ -23,16 +19,19 @@ pub const LIVE_CORPUS_CACHE_STATE_RECEIPT_SCHEMA_ID: &str =
     "agent.semantic-protocols.live-corpus-cache-state-receipt";
 const EXACT_REQUEST: &str = "agent.semantic-protocols.provider-native-exact-request";
 const EXACT_RESPONSE: &str = "agent.semantic-protocols.provider-native-exact-projection";
-const OWNER_REQUEST: &str = "agent.semantic-protocols.provider-native-owner-search-request";
-const OWNER_RESPONSE: &str = "agent.semantic-protocols.provider-native-owner-search-response";
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AspClientSearchRequest {
     pub schema_id: String,
     pub schema_version: String,
-    pub operation: String,
+    pub intent: String,
     pub query: String,
+    pub scope: String,
+    pub coverage: String,
+    pub max_owners: u32,
+    pub deadline_ms: u64,
+    pub explain: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -155,13 +154,13 @@ pub struct LiveCorpusCacheStateReceipt {
     pub operation_id: String,
     pub state: String,
     pub cache_state: String,
-    pub workspace_identity: String,
+    pub project_id: String,
+    pub workspace_id: String,
     pub generation_digest: Option<String>,
     pub root_digest: Option<String>,
     pub resident_generation_evicted: bool,
     pub client_session_evicted: bool,
     pub source_workspace_mutation_count: u64,
-    pub global_cache_mutation_count: u64,
     pub filesystem_delete_count: u64,
     pub elapsed_micros: u64,
 }
@@ -172,13 +171,13 @@ impl LiveCorpusCacheStateReceipt {
             || self.schema_version != "1"
             || self.operation_id.is_empty()
             || self.state != "ready"
-            || self.workspace_identity.is_empty()
+            || self.project_id.is_empty()
+            || self.workspace_id.is_empty()
             || !matches!(
                 self.cache_state.as_str(),
                 "cold-build" | "cold-load" | "warm-read" | "released"
             )
             || self.source_workspace_mutation_count != 0
-            || self.global_cache_mutation_count != 0
             || self.filesystem_delete_count != 0
         {
             return Err("Live Corpus cache-state receipt is invalid".to_owned());
@@ -226,6 +225,8 @@ pub struct AspClientExactQueryResponse {
     pub schema_id: String,
     pub schema_version: String,
     pub operation_id: String,
+    pub project_id: String,
+    pub workspace_id: String,
     pub language_id: String,
     pub provider_id: String,
     pub generation_digest: String,
@@ -244,6 +245,8 @@ pub struct AspClientExactQueryFailure {
     pub schema_version: String,
     pub state: String,
     pub operation_id: String,
+    pub project_id: String,
+    pub workspace_id: String,
     pub language_id: String,
     pub provider_id: String,
     pub requested_selector: Option<String>,
@@ -261,51 +264,14 @@ pub struct AspClientExactQueryFailure {
     pub details: Value,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct AspClientOwnerSearchRequest {
-    pub schema_id: String,
-    pub schema_version: String,
-    pub owner_path: String,
-    pub query: String,
-    pub view: String,
-}
-
-/// Compact structural seed returned by owner-local search.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct AspClientOwnerSearchSeed {
-    pub selector: String,
-    pub byte_start: usize,
-    pub byte_end: usize,
-}
-
-/// Versioned bounded owner-local search response.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct AspClientOwnerSearchResponse {
-    pub schema_id: String,
-    pub schema_version: String,
-    pub state: String,
-    pub generation_digest: String,
-    pub root_digest: String,
-    pub owner_path: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub content_digest: Option<String>,
-    pub query: String,
-    pub view: String,
-    pub candidate_count: usize,
-    pub returned_count: usize,
-    pub selectors: Vec<AspClientOwnerSearchSeed>,
-}
-
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RuntimeProviderSearchRequest {
     pub schema_id: String,
     pub schema_version: String,
     pub operation_id: String,
-    pub workspace_identity: String,
+    pub project_id: String,
+    pub workspace_id: String,
     pub language_id: String,
     pub scope: String,
     pub query_plan: Value,
@@ -376,38 +342,6 @@ pub struct ProviderNativeExactProjection {
     pub source_byte_end: Option<usize>,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct ProviderNativeOwnerSearchRequest {
-    pub schema_id: String,
-    pub schema_version: String,
-    pub language_id: String,
-    pub provider_id: String,
-    pub workspace_identity: String,
-    pub provider_workspace_identity_digest: String,
-    pub owner_path: String,
-    pub source_fingerprint: Value,
-    pub source_encoding: String,
-    pub source_bytes_base64: String,
-    pub projection_mode: String,
-    pub transport: String,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct ProviderNativeOwnerSearchResponse {
-    pub schema_id: String,
-    pub schema_version: String,
-    pub language_id: String,
-    pub provider_id: String,
-    pub requested_owner_path: String,
-    pub requested_projection_mode: String,
-    pub source_content_digest: String,
-    pub parsed_owner_count: usize,
-    pub projection_completeness: String,
-    pub projections: Vec<Value>,
-}
-
 fn check(id: &str, schema_id: &str, schema_version: &str) -> Result<(), String> {
     if id != schema_id {
         return Err(format!(
@@ -431,58 +365,78 @@ macro_rules! validate_schema_identity {
         }
     };
 }
-validate_schema_identity!(RuntimeProviderSearchRequest, SEARCH_REQUEST);
-validate_schema_identity!(AspClientSearchRequest, CLIENT_SEARCH_REQUEST);
 validate_schema_identity!(
     AspClientSourceIndexLookupRequest,
     CLIENT_SOURCE_INDEX_LOOKUP_REQUEST
 );
 validate_schema_identity!(AspClientExactQueryRequest, CLIENT_EXACT_QUERY_REQUEST);
-validate_schema_identity!(AspClientOwnerSearchRequest, CLIENT_OWNER_SEARCH_REQUEST);
-validate_schema_identity!(AspClientOwnerSearchResponse, CLIENT_OWNER_SEARCH_RESPONSE);
 validate_schema_identity!(
     AspClientGraphsTimelineRequest,
     CLIENT_GRAPHS_TIMELINE_REQUEST
 );
 validate_schema_identity!(ProviderNativeExactRequest, EXACT_REQUEST);
 validate_schema_identity!(ProviderNativeExactProjection, EXACT_RESPONSE);
-validate_schema_identity!(ProviderNativeOwnerSearchRequest, OWNER_REQUEST);
-validate_schema_identity!(ProviderNativeOwnerSearchResponse, OWNER_RESPONSE);
+impl RuntimeProviderSearchRequest {
+    pub fn validate_schema_identity(&self) -> Result<(), String> {
+        check(&self.schema_id, SEARCH_REQUEST, &self.schema_version)?;
+        if self.operation_id.trim().is_empty()
+            || self.project_id.trim().is_empty()
+            || self.workspace_id.trim().is_empty()
+            || self.language_id.trim().is_empty()
+        {
+            return Err("Runtime provider Search request identity is incomplete".to_owned());
+        }
+        Ok(())
+    }
+}
 
-impl AspClientOwnerSearchResponse {
-    pub fn validate(&self) -> Result<(), String> {
-        self.validate_schema_identity()?;
-        if self.owner_path.trim().is_empty()
-            || self.generation_digest.trim().is_empty()
-            || self.root_digest.trim().is_empty()
-            || self.view != "seeds"
-        {
-            return Err("owner-search response identity is incomplete".to_owned());
+impl AspClientSearchRequest {
+    pub fn playbook(intent: impl Into<String>, query: impl Into<String>) -> Self {
+        Self {
+            schema_id: CLIENT_SEARCH_REQUEST.to_owned(),
+            schema_version: "1".to_owned(),
+            intent: intent.into(),
+            query: query.into(),
+            scope: "workspace".to_owned(),
+            coverage: "candidates".to_owned(),
+            max_owners: 100,
+            deadline_ms: 1_000,
+            explain: "compact".to_owned(),
         }
-        if self.returned_count != self.selectors.len()
-            || self.returned_count > 100
-            || self.returned_count > self.candidate_count
-        {
-            return Err("owner-search response counts are inconsistent".to_owned());
+    }
+
+    pub fn validate_schema_identity(&self) -> Result<(), String> {
+        check(&self.schema_id, CLIENT_SEARCH_REQUEST, &self.schema_version)?;
+        if !matches!(
+            self.intent.as_str(),
+            "conceptual" | "relationship" | "exact-literal" | "absence-proof"
+        ) {
+            return Err("ASP client search intent is unsupported".to_owned());
         }
-        match self.state.as_str() {
-            "owner" if self.content_digest.is_some() => {}
-            "owner-missing"
-                if self.content_digest.is_none()
-                    && self.candidate_count == 0
-                    && self.selectors.is_empty() => {}
-            _ => return Err("owner-search response state is inconsistent".to_owned()),
+        if self.query.trim().is_empty() {
+            return Err("ASP client search query must not be empty".to_owned());
         }
-        if self
-            .selectors
-            .iter()
-            .any(|seed| seed.selector.trim().is_empty() || seed.byte_end < seed.byte_start)
-            || self
-                .selectors
-                .windows(2)
-                .any(|pair| pair[0].selector >= pair[1].selector)
+        if self.scope != "workspace"
+            && !self
+                .scope
+                .strip_prefix("owner:")
+                .is_some_and(|owner| !owner.trim().is_empty())
         {
-            return Err("owner-search response selector seeds are not canonical".to_owned());
+            return Err("ASP client search scope is unsupported".to_owned());
+        }
+        if !matches!(self.coverage.as_str(), "candidates" | "complete")
+            || (self.coverage == "complete" && self.intent != "absence-proof")
+        {
+            return Err("ASP client search coverage is unsupported".to_owned());
+        }
+        if self.max_owners == 0 || self.max_owners > 100 {
+            return Err("ASP client search maxOwners is out of bounds".to_owned());
+        }
+        if self.deadline_ms == 0 || self.deadline_ms > 5_000 {
+            return Err("ASP client search deadlineMs is out of bounds".to_owned());
+        }
+        if !matches!(self.explain.as_str(), "compact" | "full") {
+            return Err("ASP client search explain mode is unsupported".to_owned());
         }
         Ok(())
     }
@@ -496,6 +450,8 @@ impl AspClientExactQueryResponse {
             &self.schema_version,
         )?;
         if self.operation_id.trim().is_empty()
+            || self.project_id.trim().is_empty()
+            || self.workspace_id.trim().is_empty()
             || self.language_id.trim().is_empty()
             || self.provider_id.trim().is_empty()
         {
@@ -550,6 +506,8 @@ impl AspClientExactQueryFailure {
             return Err("exact-query failure state must be failed".to_owned());
         }
         if self.operation_id.trim().is_empty()
+            || self.project_id.trim().is_empty()
+            || self.workspace_id.trim().is_empty()
             || self.language_id.trim().is_empty()
             || self.provider_id.trim().is_empty()
             || self.phase.trim().is_empty()

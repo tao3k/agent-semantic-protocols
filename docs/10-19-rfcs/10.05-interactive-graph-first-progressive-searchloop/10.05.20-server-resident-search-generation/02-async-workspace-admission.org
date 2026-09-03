@@ -19,21 +19,25 @@ repair activation, open a database, invoke a provider, or own cancellation.  A
 missing or failed resident generation returns the typed v1 in-progress receipt
 while the detached Runtime task publishes one atomic generation.
 
-For an exact structural-selector query, =cold-targeted= is executable scope,
-not a receipt label.  The Runtime data plane MUST parse the canonical selector,
-validate its language identity, resolve its normalized owner path beneath the
-workspace root, and carry that absolute owner target through the single-flight
-admission into the generation builder.  An empty target set means complete
-generation and is non-conforming for an exact selector.  The query request may
-drop after admission; only Runtime lifecycle authority may cancel the targeted
-build.  Concurrent requests for the same workspace and covered target set
-reuse the active admission.  A request for an uncovered target waits for the
-active attempt to publish a terminal receipt, then submits one successor
-targeted attempt; it is neither falsely satisfied by the first attempt nor
-widened into a complete-workspace build.  A =Ready= generation is reusable
-only when its accumulated target coverage contains the requested owner set.
-Empty coverage represents an explicitly complete generation, never an
-accidental exact-query fallback.
+Every Search or Query demand observes the same =CompleteGeneration= read
+barrier.  The Runtime data plane MUST parse a canonical selector, validate its
+language identity, and resolve its normalized owner path beneath the workspace
+root before submitting demand, but that target is only a provider-work hint.
+It is never a second publication scope, coverage receipt, or readable partial
+generation.  The single-flight builder may lazily start only the selected
+provider and carry forward already admitted providers byte-for-byte, then it
+publishes one complete immutable workspace generation.  A cold workspace has
+no readable target-only predecessor: the first admitted provider result forms
+the initial complete member set.
+
+The query request may drop after admission; only Runtime lifecycle authority
+may cancel the build.  Concurrent demands reuse the active attempt.  A demand
+whose provider is not represented by the active attempt requests a provider
+extension through the same builder, but every reader still waits on the unique
+=CompleteGeneration= barrier.  An empty target set is therefore valid: it asks
+the authority to prove the current complete workspace generation.  No empty,
+uncovered, or targeted publication may be interpreted as a successful
+=no-matches= result.
 
 * Cold restore preserves committed authority
 

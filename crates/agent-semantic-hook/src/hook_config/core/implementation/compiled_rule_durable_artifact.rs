@@ -58,9 +58,7 @@ struct DurableHookProviderProjection {
     source_extensions: Vec<String>,
     config_files: Vec<String>,
     policy: crate::protocol::HookPolicy,
-    owner_route: DurableCommandTemplate,
-    lexical_route: DurableCommandTemplate,
-    ingest_route: DurableCommandTemplate,
+    playbook_route: DurableCommandTemplate,
 }
 
 impl From<&crate::protocol::CommandTemplate> for DurableCommandTemplate {
@@ -94,9 +92,7 @@ impl From<&crate::protocol_activation::protocol_activation_manifest::HookProvide
             source_extensions: value.source_extensions.clone(),
             config_files: value.config_files.clone(),
             policy: value.policy.clone(),
-            owner_route: (&value.owner_route).into(),
-            lexical_route: (&value.lexical_route).into(),
-            ingest_route: (&value.ingest_route).into(),
+            playbook_route: (&value.playbook_route).into(),
         }
     }
 }
@@ -112,9 +108,7 @@ impl From<DurableHookProviderProjection>
             source_extensions: value.source_extensions,
             config_files: value.config_files,
             policy: value.policy,
-            owner_route: value.owner_route.into(),
-            lexical_route: value.lexical_route.into(),
-            ingest_route: value.ingest_route.into(),
+            playbook_route: value.playbook_route.into(),
         }
     }
 }

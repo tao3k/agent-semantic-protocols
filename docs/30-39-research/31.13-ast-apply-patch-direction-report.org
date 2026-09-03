@@ -31,7 +31,7 @@ The concrete TypeScript command was:
 #+begin_src shell
 asp-typescript query src/cli/semantic-search/render.ts \
   --term renderSemanticSearchSeedPacket \
-  --code languages/typescript-lang-project-harness
+  --code languages/asp-typescript
 #+end_src
 
 The provider selected the right function, but the output was a lossy control

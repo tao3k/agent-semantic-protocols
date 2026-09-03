@@ -333,9 +333,9 @@ mod tests {
             artifact_mode: "release".to_owned(),
             artifact_catalog_digest,
             binding_token: format!("binding-{owner_epoch}"),
-            socket_path: format!("/tmp/{owner_epoch}.sock"),
-            data_plane_socket_path: format!("/tmp/{owner_epoch}.data.sock"),
-            provider_plane_socket_path: format!("/tmp/{owner_epoch}.provider.sock"),
+            control_endpoint: agent_semantic_client_db::runtime_server_control::RuntimeServerLoopbackEndpoint::from_socket_addr(([127, 0, 0, 1], 45001 + (owner_epoch % 100) as u16).into()).expect("control endpoint"),
+            data_endpoint: agent_semantic_client_db::runtime_server_control::RuntimeServerLoopbackEndpoint::from_socket_addr(([127, 0, 0, 1], 45101 + (owner_epoch % 100) as u16).into()).expect("data endpoint"),
+            provider_endpoint: agent_semantic_client_db::runtime_server_control::RuntimeServerLoopbackEndpoint::from_socket_addr(([127, 0, 0, 1], 45201 + (owner_epoch % 100) as u16).into()).expect("provider endpoint"),
             workspace_store_path: "/tmp/workspaces".to_owned(),
             status_memory_path: format!("/tmp/{owner_epoch}.status"),
         }
@@ -560,9 +560,9 @@ mod production_transaction_tests {
             artifact_mode: "release".to_owned(),
             artifact_catalog_digest: artifact_catalog_digest.clone(),
             binding_token: "candidate-binding".to_owned(),
-            socket_path: "/runtime/candidate-control.sock".to_owned(),
-            data_plane_socket_path: "/runtime/candidate-data.sock".to_owned(),
-            provider_plane_socket_path: "/runtime/candidate-provider.sock".to_owned(),
+            control_endpoint: agent_semantic_client_db::runtime_server_control::RuntimeServerLoopbackEndpoint::from_socket_addr(([127, 0, 0, 1], 45301).into()).expect("control endpoint"),
+            data_endpoint: agent_semantic_client_db::runtime_server_control::RuntimeServerLoopbackEndpoint::from_socket_addr(([127, 0, 0, 1], 45302).into()).expect("data endpoint"),
+            provider_endpoint: agent_semantic_client_db::runtime_server_control::RuntimeServerLoopbackEndpoint::from_socket_addr(([127, 0, 0, 1], 45303).into()).expect("provider endpoint"),
             workspace_store_path: "/runtime/workspaces".to_owned(),
             status_memory_path: "/runtime/status.memory".to_owned(),
         };
@@ -587,38 +587,20 @@ mod production_transaction_tests {
         let drain_called = Arc::new(AtomicBool::new(false));
         let drain_observer = Arc::clone(&drain_called);
         let publisher = AtomicResidentPublisher::new(temporary.path().join("resident"));
-        let socket_root = tempfile::tempdir().expect("create candidate socket root");
         let mut endpoint = endpoint;
-        endpoint.socket_path = socket_root
-            .path()
-            .join("control.sock")
-            .display()
-            .to_string();
-        endpoint.data_plane_socket_path =
-            socket_root.path().join("data.sock").display().to_string();
-        endpoint.provider_plane_socket_path = socket_root
-            .path()
-            .join("provider.sock")
-            .display()
-            .to_string();
-
-        for socket_path in [
-            &endpoint.socket_path,
-            &endpoint.data_plane_socket_path,
-            &endpoint.provider_plane_socket_path,
-        ] {
-            std::fs::create_dir_all(
-                std::path::Path::new(socket_path)
-                    .parent()
-                    .expect("runtime socket parent"),
-            )
-            .expect("create runtime socket parent");
-        }
-        let _control_listener = tokio::net::UnixListener::bind(&endpoint.socket_path)
+        let _control_listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
+            .await
             .expect("bind candidate control plane");
-        let _provider_listener =
-            tokio::net::UnixListener::bind(&endpoint.provider_plane_socket_path)
-                .expect("bind candidate provider plane");
+        let _provider_listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
+            .await
+            .expect("bind candidate provider plane");
+        endpoint.control_endpoint = agent_semantic_client_db::runtime_server_control::RuntimeServerLoopbackEndpoint::from_socket_addr(_control_listener.local_addr().expect("control address")).expect("control endpoint");
+        endpoint.provider_endpoint = agent_semantic_client_db::runtime_server_control::RuntimeServerLoopbackEndpoint::from_socket_addr(_provider_listener.local_addr().expect("provider address")).expect("provider endpoint");
+        let data_listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
+            .await
+            .expect("reserve candidate data plane");
+        endpoint.data_endpoint = agent_semantic_client_db::runtime_server_control::RuntimeServerLoopbackEndpoint::from_socket_addr(data_listener.local_addr().expect("data address")).expect("data endpoint");
+        drop(data_listener);
 
         let active_before_failure = publisher
             .active()
@@ -667,7 +649,8 @@ mod production_transaction_tests {
             !drain_called.load(Ordering::Acquire),
             "precommit data-plane failure must not drain the serving generation"
         );
-        let _data_listener = tokio::net::UnixListener::bind(&endpoint.data_plane_socket_path)
+        let _data_listener = tokio::net::TcpListener::bind(endpoint.data_endpoint.socket_addr())
+            .await
             .expect("bind candidate data plane");
 
         let receipt = publish_candidate_transaction(

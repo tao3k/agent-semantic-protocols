@@ -42,6 +42,23 @@ structure SupervisorState where
   runningDigest : Digest
 deriving DecidableEq, Repr
 
+inductive DerivedSearchCapability where
+  | absent
+  | building
+  | ready (contentDigest : Digest) (artifactDigest : Digest)
+  | failed
+deriving DecidableEq, Repr
+
+def CanAttachDerivedSearchCapability
+    (activeContentDigest : Digest)
+    (capability : DerivedSearchCapability) : Prop :=
+  match capability with
+  | .ready contentDigest _ => contentDigest = activeContentDigest
+  | _ => False
+
+def ColdContentQueryable (state : ServerState) : Prop :=
+  state.readerOnline = true
+
 def CliMayWriteGeneration : Prop := False
 
 def QueryMayEnter (locator : LocatorState) : Prop :=
@@ -295,7 +312,21 @@ theorem active_read_lease_is_writer_lifecycle_independent
     acquireActiveLease
         (withWriterLifecycle state writerOnline stagedGeneration) =
       acquireActiveLease state := by
-  simp [acquireActiveLease, withWriterLifecycle]
+  rfl
+
+theorem cold_content_does_not_wait_for_derived_capability
+    (state : ServerState)
+    (_capability : DerivedSearchCapability)
+    (hReader : state.readerOnline = true) :
+    ColdContentQueryable state := by
+  exact hReader
+
+theorem stale_derived_capability_cannot_attach
+    (activeContentDigest capabilityContentDigest artifactDigest : Digest)
+    (hStale : capabilityContentDigest ≠ activeContentDigest) :
+    ¬ CanAttachDerivedSearchCapability activeContentDigest
+      (.ready capabilityContentDigest artifactDigest) := by
+  exact hStale
 
 theorem pending_writer_cannot_revoke_active_query
     (state : ServerState)

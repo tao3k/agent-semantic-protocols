@@ -3,7 +3,6 @@ use std::sync::Arc;
 use agent_semantic_client_db::runtime_server::{RuntimeServer, RuntimeServerExit};
 use agent_semantic_client_db::runtime_server_control::{
     prepare_runtime_server_endpoint_in, publish_runtime_server_endpoint,
-    validate_runtime_server_peer_fd,
 };
 use agent_semantic_client_db::runtime_server_runtime::RuntimeServerConnectionSupervisor;
 use agent_semantic_client_db::{RuntimeServerOperation, WorkspaceDbRegistry, call_runtime_server};
@@ -36,16 +35,6 @@ async fn fixture_endpoint(
     .await
     .expect("prepare isolated runtime server endpoint");
     (endpoint, Arc::new(catalog))
-}
-
-#[test]
-fn authenticates_same_uid_unix_peer() {
-    let (left, right) =
-        std::os::unix::net::UnixStream::pair().expect("same-UID Unix socket pair available");
-    validate_runtime_server_peer_fd(std::os::fd::AsRawFd::as_raw_fd(&left))
-        .expect("left peer credential matches current effective UID");
-    validate_runtime_server_peer_fd(std::os::fd::AsRawFd::as_raw_fd(&right))
-        .expect("right peer credential matches current effective UID");
 }
 
 #[test]
@@ -208,7 +197,7 @@ async fn unauthenticated_control_connection_is_closed_at_first_frame_budget() {
     .await
     .expect("bind runtime server");
     let server = tokio::spawn(server.serve());
-    let mut stalled = tokio::net::UnixStream::connect(&endpoint.socket_path)
+    let mut stalled = tokio::net::TcpStream::connect(endpoint.control_endpoint.socket_addr())
         .await
         .expect("connect stalled unauthenticated client");
     tokio::time::sleep(

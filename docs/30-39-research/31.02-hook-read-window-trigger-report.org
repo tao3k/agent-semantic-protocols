@@ -305,10 +305,10 @@ Provider alignment evidence:
 #+begin_src shell
 direnv exec . cargo test --manifest-path languages/asp-rust/Cargo.toml --features cli,search cli_search_views_render_rfc_line_protocol -- --nocapture
 direnv exec . uv run --project languages/asp-python --frozen python -m pytest languages/asp-python/tests/unit/harness/test_semantic_cli_query_set.py
-direnv exec . npm --prefix languages/typescript-lang-project-harness run check:implementation
+direnv exec . npm --prefix languages/asp-typescript run check:implementation
 direnv exec . node --test \
-  languages/typescript-lang-project-harness/dist/tests/unit/cli_semantic_search.test.js \
-  languages/typescript-lang-project-harness/dist/tests/unit/semantic_search_schema.test.js
+  languages/asp-typescript/dist/tests/unit/cli_semantic_search.test.js \
+  languages/asp-typescript/dist/tests/unit/semantic_search_schema.test.js
 direnv exec . julia --project=languages/AspJulia.jl -e 'using AspJulia; using Test; include("languages/AspJulia.jl/test/unit/cli.jl")'
 #+end_src
 

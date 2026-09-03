@@ -18,7 +18,7 @@ REPO_ROOT = repo_root()
 GRAMMAR_ROOT = (
     REPO_ROOT
     / "languages"
-    / "typescript-lang-project-harness"
+    / "asp-typescript"
     / "tree-sitter"
     / "tree-sitter-typescript"
 )

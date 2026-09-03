@@ -4,6 +4,8 @@ use std::path::{Path, PathBuf};
 
 use agent_semantic_artifacts::runtime_artifact_catalog::{
     RuntimeArtifactCatalog, RuntimeArtifactReceipt, load_runtime_artifact_catalog,
+    load_runtime_provider_catalog_identity, publish_runtime_provider_catalog,
+    publish_runtime_provider_catalog_cas,
 };
 use agent_semantic_config::runtime_dev::{ArtifactOrigin, RuntimeArtifactMode};
 
@@ -548,20 +550,82 @@ fn catalog_identity_binds_provider_catalog_generation() {
 #[tokio::test]
 async fn tokio_loader_admits_provider_catalog_generation_into_daemon_identity() {
     let state_home = tempfile::tempdir().expect("state home");
-    tokio::fs::create_dir_all(state_home.path().join("runtime"))
-        .await
-        .expect("runtime directory");
-    tokio::fs::write(
-        state_home.path().join("runtime/provider-catalog.v1.json"),
-        r#"{"catalogGeneration":"blake3-256:provider-generation"}"#,
-    )
-    .await
-    .expect("provider catalog");
+    let binary_digest = format!("blake3-256:{}", "a".repeat(64));
+    let registry_digest = format!("sha256:{}", "b".repeat(64));
+    let provider_generation =
+        publish_runtime_provider_catalog(state_home.path(), &binary_digest, &registry_digest)
+            .expect("provider catalog");
 
     let loaded = load_runtime_artifact_catalog(state_home.path())
         .await
         .expect("runtime catalog with provider generation");
     let expected = RuntimeArtifactCatalog::new(RuntimeArtifactMode::Release)
-        .with_provider_catalog_generation("blake3-256:provider-generation");
+        .with_provider_catalog_generation(provider_generation);
     assert_eq!(loaded.digest(), expected.digest());
+}
+
+#[test]
+fn provider_catalog_publication_enforces_expected_generation() {
+    let state_home = tempfile::tempdir().expect("state home");
+    let binary_digest = format!("blake3-256:{}", "a".repeat(64));
+    let registry_digest = format!("sha256:{}", "b".repeat(64));
+    let first =
+        publish_runtime_provider_catalog(state_home.path(), &binary_digest, &registry_digest)
+            .expect("first provider catalog");
+    let error = publish_runtime_provider_catalog_cas(
+        state_home.path(),
+        &format!("blake3-256:{}", "c".repeat(64)),
+        &registry_digest,
+        Some("blake3-256:stale"),
+    )
+    .expect_err("stale provider catalog writer must lose");
+    assert!(error.contains("publication conflict"), "{error}");
+    let refreshed = publish_runtime_provider_catalog_cas(
+        state_home.path(),
+        &format!("blake3-256:{}", "c".repeat(64)),
+        &registry_digest,
+        Some(&first),
+    )
+    .expect("fresh provider catalog writer");
+    assert_ne!(refreshed, first);
+}
+
+#[test]
+fn provider_catalog_publication_replaces_obsolete_bytes_without_weakening_readers() {
+    let state_home = tempfile::tempdir().expect("state home");
+    let runtime_root = state_home.path().join("runtime");
+    std::fs::create_dir_all(&runtime_root).expect("runtime root");
+    let catalog_path = runtime_root.join("provider-catalog.v1.json");
+    let obsolete = br#"{
+  "schemaId": "agent.semantic-protocols.runtime-provider-catalog",
+  "schemaVersion": "1",
+  "providers": []
+}"#;
+    std::fs::write(&catalog_path, obsolete).expect("obsolete provider catalog");
+
+    let strict_error = load_runtime_provider_catalog_identity(state_home.path())
+        .expect_err("ordinary readers must reject obsolete provider catalog bytes");
+    assert!(
+        strict_error.contains("unknown field `providers`"),
+        "{strict_error}"
+    );
+
+    let binary_digest = format!("blake3-256:{}", "a".repeat(64));
+    let registry_digest = format!("sha256:{}", "b".repeat(64));
+    let published =
+        publish_runtime_provider_catalog(state_home.path(), &binary_digest, &registry_digest)
+            .expect("sole publication writer replaces the exact obsolete observation");
+    let identity = load_runtime_provider_catalog_identity(state_home.path())
+        .expect("strict provider catalog read")
+        .expect("published provider catalog identity");
+
+    assert_eq!(identity.catalog_generation, published);
+    assert_eq!(identity.binary_artifact_digest, binary_digest);
+    assert_eq!(identity.install_registry_digest, registry_digest);
+    assert!(
+        !String::from_utf8(std::fs::read(catalog_path).expect("published bytes"))
+            .expect("provider catalog utf8")
+            .contains("\"providers\""),
+        "obsolete provider membership must not survive the hard cut"
+    );
 }

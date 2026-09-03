@@ -86,8 +86,7 @@ def test_live_corpus_lock_and_plan_derive_provider_id_from_language() -> None:
     plan = load("benchmarks/live-corpus-search-query-qualification.json")
 
     locked = {
-        entry["resourceId"]: f"asp-{entry['language']}"
-        for entry in lock["corpora"]
+        entry["resourceId"]: entry["providerId"] for entry in lock["corpora"]
     }
     planned = {
         case["resourceId"]: case["providerId"]
@@ -95,8 +94,8 @@ def test_live_corpus_lock_and_plan_derive_provider_id_from_language() -> None:
     }
 
     assert planned == locked
-    assert locked["org.worg"] == "asp-org"
-    assert locked["md.mdn-content"] == "asp-md"
+    assert locked["org.worg"] == "orgize"
+    assert locked["md.mdn-content"] == "orgize"
 
 
 def test_canonical_provider_ids_are_used_by_the_public_corpus() -> None:
@@ -106,8 +105,7 @@ def test_canonical_provider_ids_are_used_by_the_public_corpus() -> None:
         "asp-typescript",
         "asp-julia",
         "asp-gerbil-scheme",
-        "asp-org",
-        "asp-md",
+        "orgize",
     }
     lock = load("benchmarks/large-library-runtime-corpora.json")
     assert all(entry["providerId"] in canonical for entry in lock["corpora"])
@@ -158,17 +156,10 @@ def test_canonical_provider_identity_schema_accepts_every_registered_language() 
 def test_gerbil_structural_index_is_not_a_python_graphs_authority() -> None:
     structural_index = (
         ROOT
-        / "languages/gerbil-scheme-language-project-harness/src/protocol/structural-index.ss"
-    ).read_text(encoding="utf-8")
-    structural_command = (
-        ROOT
-        / "languages/gerbil-scheme-language-project-harness/src/commands/search-structural.ss"
+        / "languages/asp-gerbil-scheme/src/protocol/structural-index.ss"
     ).read_text(encoding="utf-8")
 
     assert "asp-python-graphs" not in structural_index
     assert "graphTurboOwner" not in structural_index
     assert "asp-rust" not in structural_index
     assert "heavyIndexOwner" not in structural_index
-    assert "asp-python-graphs" not in structural_command
-    assert "graphTurbo" not in structural_command
-    assert "asp-rust" not in structural_command

@@ -369,7 +369,7 @@ read locators should the agent use next?
 Validation evidence:
 
 #+begin_src text
-npm --prefix languages/typescript-lang-project-harness run test:implementation
+npm --prefix languages/asp-typescript run test:implementation
 # 250 passed
 
 uv run --project . --frozen pytest -q

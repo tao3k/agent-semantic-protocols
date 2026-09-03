@@ -58,8 +58,10 @@ search packets, or agent-facing search guidance, follow this order:
    hidden string heuristics or provider-private shortcuts that other languages
    cannot reproduce.
 
-When `search prime` exposes several independent semantic axes, prefer a
-fan-out/fan-in exploration step before editing:
+When `search playbook` exposes several independent semantic axes, prefer a
+fan-out/fan-in exploration step before editing. The playbook is the sole
+public search operation; its fixed internal order is rg acquisition,
+provider-native syntax, Tantivy lexical retrieval, then Python Graphs:
 
 - fan out only independent axes, such as dependency API usage, source owners,
   test reachability, and policy findings

@@ -165,7 +165,11 @@ struct LiveCorpusSyncReceipt {
 pub(crate) async fn run_live_corpus_command(args: &[String]) -> Result<(), String> {
     match args.first().map(String::as_str) {
         Some("materialize") => materialize(parse_materialize_request(&args[1..])?).await,
-        Some("qualify") => qualification::run(&args[1..]).await,
+        Some("qualify") => {
+            crate::server::runtime_server::ensure_healthy_runtime_server_for_bounded_operation()
+                .await?;
+            qualification::run(&args[1..]).await
+        }
         Some("path") => print_path(parse_path_request(&args[1..])?),
         Some("sync") => sync_resource(parse_resource_request(&args[1..], sync_usage)?),
         Some("help" | "--help" | "-h") => {
@@ -299,7 +303,7 @@ async fn materialize(request: MaterializeRequest) -> Result<(), String> {
             "Live Corpus materialization requires a healthy Runtime Server".to_owned()
         })?;
     let registration =
-        runtime_provider_registration(&endpoint.provider_plane_socket_path, corpus).await?;
+        runtime_provider_registration(endpoint.provider_endpoint.socket_addr(), corpus).await?;
     if registration.provider_id != corpus.provider_id {
         return Err(format!(
             "live corpus provider mismatch: lock={} registration={}",
@@ -323,24 +327,23 @@ async fn materialize(request: MaterializeRequest) -> Result<(), String> {
         agent_semantic_client::LanguageCommandRequest {
             language_id: agent_semantic_client::LanguageId::new(corpus.language.as_str()),
             operation: agent_semantic_client::LanguageCommandOperation::Search(
-                agent_semantic_client_protocol::AspClientSearchRequest {
-                    schema_id: "agent.semantic-protocols.asp-client-search-request".to_owned(),
-                    schema_version: "1".to_owned(),
-                    operation: "lexical".to_owned(),
-                    query: corpus.inputs.query.clone(),
-                },
+                agent_semantic_client_protocol::AspClientSearchRequest::playbook(
+                    "conceptual",
+                    corpus.inputs.query.clone(),
+                ),
             ),
             project_root: source.clone(),
             machine_readable: true,
         },
     )
     .await?;
-    let generation = serde_json::from_value::<
-        agent_semantic_search_projection::RuntimeProviderSearchReceipt,
-    >(response.require_ready_payload()?)
+    let generation = serde_json::from_value::<agent_semantic_search::SearchPlaybookReceipt>(
+        response.require_ready_payload()?,
+    )
     .map_err(|error| format!("decode Live Corpus public search payload: {error}"))?;
     generation.validate()?;
-    let materialized_source = materialized_source_identity(checkout, generation.root_digest)?;
+    let materialized_source =
+        materialized_source_identity(checkout, generation.source_root_digest)?;
     emit_live_corpus_timing("runtime-generation", &mut step_started);
 
     let resource_lock =
@@ -418,7 +421,7 @@ async fn materialize(request: MaterializeRequest) -> Result<(), String> {
 }
 
 async fn runtime_provider_registration(
-    provider_plane_socket_path: &str,
+    provider_endpoint: std::net::SocketAddr,
     corpus: &LiveCorpusLockEntry,
 ) -> Result<ProviderRegistrationDocument, String> {
     let request = ProviderRegisterRequest {
@@ -428,11 +431,12 @@ async fn runtime_provider_registration(
         expected_generation: None,
         request: ProviderRegisterOperation::List,
     };
-    let response = agent_semantic_provider_transport::grpc_session::call_runtime_provider_register(
-        provider_plane_socket_path,
-        &request,
-    )
-    .await?;
+    let response =
+        agent_semantic_provider_transport::grpc_session::call_runtime_provider_register_tcp(
+            provider_endpoint,
+            &request,
+        )
+        .await?;
     response.validate()?;
     let snapshot = match response.result {
         ProviderRegisterResult::Snapshot { snapshot } => snapshot,

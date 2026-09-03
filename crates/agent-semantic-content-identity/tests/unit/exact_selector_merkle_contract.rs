@@ -84,25 +84,27 @@ fn proof_rejects_parent_directory_owner_path() {
 fn parser_fact_and_projection_digests_are_domain_separated_and_recomputable() {
     let language_id =
         agent_semantic_content_identity::exact_selector_merkle::ParserLanguageIdV1::from("rust");
-    let parser_fact = derive_parser_fact_digest_v1(
-        &language_id,
-        &digest('e'),
-        &digest('f'),
-        &digest('d'),
-        b"normalized-parser-facts",
-    );
-    let projection = derive_projection_digest_v1(
-        &agent_semantic_content_identity::canonical_item_identity::CanonicalItemSelector::new(
+    let parser_fact = derive_parser_fact_digest_v1(ParserFactDigestInputV1 {
+        language_id: &language_id,
+        parser_identity_digest: &digest('e'),
+        query_pack_digest: &digest('f'),
+        source_blob_digest: &digest('d'),
+        normalized_parser_facts: b"normalized-parser-facts",
+    });
+    let canonical_item_selector =
+        agent_semantic_content_identity::canonical_item_identity::CanonicalItemSelector::new(
             agent_semantic_content_identity::canonical_item_identity::CanonicalItemIdentity::new(
                 "rust", "function", "run",
             ),
             "rust://crates/example/src/lib.rs#item/function/run",
-        ),
-        "rust://crates/example/src/lib.rs#item/function/run",
-        ExactProjectionModeV1::Code,
-        &parser_fact,
-        b"fn run() {}",
-    );
+        );
+    let projection = derive_projection_digest_v1(ProjectionDigestInputV1 {
+        canonical_item_selector: &canonical_item_selector,
+        structural_selector: "rust://crates/example/src/lib.rs#item/function/run",
+        projection_mode: ExactProjectionModeV1::Code,
+        parser_fact_digest: &parser_fact,
+        projection_payload: b"fn run() {}",
+    });
     assert_ne!(parser_fact, projection);
 
     let mut proof = proof();
@@ -120,5 +122,6 @@ fn parser_fact_and_projection_digests_are_domain_separated_and_recomputable() {
     );
 }
 use agent_semantic_content_identity::exact_selector_merkle::{
-    derive_parser_fact_digest_v1, derive_projection_digest_v1, verify_projection_digest_v1,
+    ParserFactDigestInputV1, ProjectionDigestInputV1, derive_parser_fact_digest_v1,
+    derive_projection_digest_v1, verify_projection_digest_v1,
 };

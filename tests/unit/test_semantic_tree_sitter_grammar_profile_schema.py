@@ -22,7 +22,7 @@ _PYTHON_PROFILE_PATH = (
 )
 _TYPESCRIPT_PROFILE_PATH = (
     _REPO_ROOT
-    / "languages/typescript-lang-project-harness/tree-sitter/tree-sitter-typescript/grammar-profile.json"
+    / "languages/asp-typescript/tree-sitter/tree-sitter-typescript/grammar-profile.json"
 )
 _JULIA_PROFILE_PATH = (
     _REPO_ROOT

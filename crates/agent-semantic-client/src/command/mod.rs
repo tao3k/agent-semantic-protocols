@@ -9,7 +9,6 @@ mod cli_help;
 mod dispatch;
 mod dispatch_agent_session_policy;
 mod document_provider;
-mod gerbil_deps;
 mod graph;
 mod healthcheck;
 mod hook;

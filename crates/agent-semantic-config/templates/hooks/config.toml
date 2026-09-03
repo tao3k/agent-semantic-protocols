@@ -50,7 +50,7 @@ sourceRootAny = ["crates", "languages/asp-rust"]
 languageId = "typescript"
 providerId = "asp-typescript"
 extensionAny = ["ts", "tsx", "js", "jsx", "mts", "cts", "mjs", "cjs"]
-sourceRootAny = ["languages/typescript-lang-project-harness"]
+sourceRootAny = ["languages/asp-typescript"]
 
 [profiles.python]
 languageId = "python"
@@ -249,12 +249,12 @@ priority = 100000
 intent = "reasoning-search"
 decision = "deny"
 reasonKind = "agent-choice-required"
-message = "The current Agent cannot run this registered-source reasoning search. Delegate the denied search to ASP Explorer. It must return an exact selector; after that, materialize only that selector from the main thread with `asp <language> query --selector ... --projection source`. Use `--json` only for explicitly requested debugging or programmatic automation. {{agentDispatchMessage}}"
+message = "The current Agent cannot run this registered-source Search playbook. Delegate the exact `search playbook` request to ASP Explorer. ASP Server will use the admitted rg acquisition, Tantivy lexical, and asp-python-graphs generation. If the receipt returns an exact selector, materialize only that selector from the main thread with `asp <language> query --selector ... --projection source`. {{agentDispatchMessage}}"
 event = "pre-tool"
 
 [rules.match]
 argvPatternAny = [
-  ["asp", "<registered-language>", "search"],
+  ["asp", "<registered-language>", "search", "playbook"],
 ]
 
 [rules.dispatch]

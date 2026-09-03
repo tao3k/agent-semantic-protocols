@@ -18,9 +18,9 @@ async fn read_only_runtime_session_rejects_selector_mutation_before_io() {
         owner_epoch: 1,
         owner_process_id: 0,
         binding_token: "fixture-binding".to_owned(),
-        socket_path: "/tmp/unused-control.sock".to_owned(),
-        data_plane_socket_path: "/tmp/unused-data.sock".to_owned(),
-        provider_plane_socket_path: "/tmp/unused-providers.sock".to_owned(),
+        control_endpoint: agent_semantic_client_db::runtime_server_control::RuntimeServerLoopbackEndpoint::from_socket_addr(([127, 0, 0, 1], 46001).into()).expect("control endpoint"),
+        data_endpoint: agent_semantic_client_db::runtime_server_control::RuntimeServerLoopbackEndpoint::from_socket_addr(([127, 0, 0, 1], 46002).into()).expect("data endpoint"),
+        provider_endpoint: agent_semantic_client_db::runtime_server_control::RuntimeServerLoopbackEndpoint::from_socket_addr(([127, 0, 0, 1], 46003).into()).expect("provider endpoint"),
         runtime_artifact_path: "/tmp/asp".to_owned(),
         runtime_binary_identity:
             agent_semantic_artifacts::runtime_artifact_catalog::RuntimeBinaryIdentity::from_bytes(

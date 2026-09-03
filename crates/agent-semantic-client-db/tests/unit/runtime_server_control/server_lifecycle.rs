@@ -42,7 +42,15 @@ async fn runtime_endpoint_omits_workspace_and_process_identity() {
 
     assert!(!object.contains_key("workspaceIdentity"));
     assert!(!object.contains_key("ownerPid"));
-    assert!(endpoint.socket_path.len() <= 103);
+    endpoint
+        .control_endpoint
+        .validate()
+        .expect("control endpoint");
+    endpoint.data_endpoint.validate().expect("data endpoint");
+    endpoint
+        .provider_endpoint
+        .validate()
+        .expect("provider endpoint");
     assert_eq!(
         agent_semantic_client_db::runtime_server_endpoint_path(runtime_dir.path())
             .expect("derive Runtime Server endpoint path"),
@@ -64,25 +72,24 @@ async fn endpoint_is_published_only_after_every_required_transport_plane_is_read
     )
     .await
     .expect("bind Runtime Server control plane");
-    let _client_grpc_listener = tokio::net::UnixListener::bind(&endpoint.data_plane_socket_path)
+    let _client_grpc_listener = tokio::net::TcpListener::bind(endpoint.data_endpoint.socket_addr())
+        .await
         .expect("bind ASP Client gRPC plane");
-    let _provider_listener = tokio::net::UnixListener::bind(&endpoint.provider_plane_socket_path)
-        .expect("bind provider plane");
+    let _provider_listener =
+        tokio::net::TcpListener::bind(endpoint.provider_endpoint.socket_addr())
+            .await
+            .expect("bind provider plane");
     server
         .publish_endpoint_after_required_planes(&endpoint_path)
         .await
         .expect("publish ready Runtime Server endpoint");
 
-    assert!(
-        tokio::fs::try_exists(&endpoint.socket_path)
-            .await
-            .expect("inspect control socket")
-    );
-    assert!(
-        tokio::fs::try_exists(&endpoint.data_plane_socket_path)
-            .await
-            .expect("inspect data-plane socket")
-    );
+    tokio::net::TcpStream::connect(endpoint.control_endpoint.socket_addr())
+        .await
+        .expect("control endpoint reachable");
+    tokio::net::TcpStream::connect(endpoint.data_endpoint.socket_addr())
+        .await
+        .expect("data endpoint reachable");
     assert!(
         tokio::fs::try_exists(&endpoint.status_memory_path)
             .await
@@ -116,10 +123,13 @@ async fn failed_ready_endpoint_publication_removes_every_bound_runtime_artifact(
     )
     .await
     .expect("bind Runtime Server control plane");
-    let _client_grpc_listener = tokio::net::UnixListener::bind(&endpoint.data_plane_socket_path)
+    let _client_grpc_listener = tokio::net::TcpListener::bind(endpoint.data_endpoint.socket_addr())
+        .await
         .expect("bind ASP Client gRPC plane");
-    let _provider_listener = tokio::net::UnixListener::bind(&endpoint.provider_plane_socket_path)
-        .expect("bind provider plane");
+    let _provider_listener =
+        tokio::net::TcpListener::bind(endpoint.provider_endpoint.socket_addr())
+            .await
+            .expect("bind provider plane");
     let error = server
         .publish_endpoint_after_required_planes(&endpoint_path)
         .await
@@ -130,16 +140,6 @@ async fn failed_ready_endpoint_publication_removes_every_bound_runtime_artifact(
         "unexpected endpoint publication failure: {error}"
     );
     assert!(
-        !tokio::fs::try_exists(&endpoint.socket_path)
-            .await
-            .expect("inspect control socket")
-    );
-    assert!(
-        !tokio::fs::try_exists(&endpoint.data_plane_socket_path)
-            .await
-            .expect("inspect data-plane socket")
-    );
-    assert!(
         !tokio::fs::try_exists(&endpoint.status_memory_path)
             .await
             .expect("inspect status memory")
@@ -147,7 +147,7 @@ async fn failed_ready_endpoint_publication_removes_every_bound_runtime_artifact(
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn owner_bound_cleanup_removes_provider_plane_socket() {
+async fn owner_bound_cleanup_removes_endpoint_and_status_receipts() {
     let state_home = tempfile::tempdir().expect("create isolated Runtime Server State Home");
     let runtime_digest = format!("blake3-256:{}", "2".repeat(64));
     let catalog_digest = format!("blake3-256:{}", "1".repeat(64));
@@ -165,16 +165,9 @@ async fn owner_bound_cleanup_removes_provider_plane_socket() {
     )
     .await
     .expect("prepare strict Runtime Server endpoint");
-    for path in [
-        &endpoint.socket_path,
-        &endpoint.data_plane_socket_path,
-        &endpoint.provider_plane_socket_path,
-        &endpoint.status_memory_path,
-    ] {
-        tokio::fs::write(path, b"bound")
-            .await
-            .expect("create bound artifact");
-    }
+    tokio::fs::write(&endpoint.status_memory_path, b"bound")
+        .await
+        .expect("create status artifact");
     let endpoint_path = runtime_server_endpoint_path(state_home.path())
         .expect("derive Runtime Server endpoint receipt path");
     publish_runtime_server_endpoint(&endpoint_path, &endpoint)
@@ -185,9 +178,9 @@ async fn owner_bound_cleanup_removes_provider_plane_socket() {
         .await
         .expect("cleanup owner-bound endpoint artifacts");
     assert!(
-        !tokio::fs::try_exists(&endpoint.provider_plane_socket_path)
+        !tokio::fs::try_exists(&endpoint.status_memory_path)
             .await
-            .expect("inspect provider-plane socket")
+            .expect("inspect status receipt")
     );
     assert!(
         !tokio::fs::try_exists(&endpoint_path)

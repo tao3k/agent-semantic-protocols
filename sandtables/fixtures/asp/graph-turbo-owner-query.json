@@ -37,7 +37,7 @@
       "normalized": 3
     }
   ],
-  "seedIds": [
+  "entryNodeIds": [
     "q:parser",
     "owner:cli"
   ],

@@ -14,6 +14,10 @@ pub const PROJECTION_BATCH_RESPONSE_SCHEMA_ID: &str =
     "agent.semantic-protocols.provider-language-projection-batch-response";
 pub const CANONICAL_LANGUAGE_ITEM_IDENTITY_SCHEMA_ID: &str =
     "agent.semantic-protocols.canonical-language-item-identity";
+pub const PROJECTION_DIAGNOSTIC_SCHEMA_ID: &str =
+    "agent.semantic-protocols.provider-language-projection-diagnostic";
+pub const SOURCE_SYNTAX_UNAVAILABLE_REASON_KIND: &str = "source-syntax-unavailable";
+pub const MAX_PROVIDER_PROJECTION_DIAGNOSTIC_CHARS: usize = 4096;
 /// Maximum owners admitted to one provider projection wire frame.
 pub const MAX_PROVIDER_PROJECTION_BATCH_OWNERS: usize = 32;
 /// Maximum immutable config owners admitted alongside one source-owner frame.
@@ -98,10 +102,28 @@ pub struct ProviderProjectionBatchResponse {
 pub struct ProviderProjectedOwner {
     pub owner_path: String,
     pub source_leaf_digest: String,
+    pub projection_state: ProviderProjectionState,
+    pub diagnostic: Option<ProviderProjectionDiagnostic>,
     pub items: Vec<ProviderProjectedItem>,
     pub relations: Vec<
         agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelation,
     >,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, Eq, PartialEq)]
+#[serde(rename_all = "kebab-case")]
+pub enum ProviderProjectionState {
+    Ready,
+    SyntaxUnavailable,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, Eq, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ProviderProjectionDiagnostic {
+    pub schema_id: String,
+    pub schema_version: String,
+    pub reason_kind: String,
+    pub message: String,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
@@ -317,6 +339,7 @@ fn validate_response(
             .find(|owner| owner.owner_path == projected_owner.owner_path)
             .expect("owner coverage was checked above");
         let expected_owner_id = format!("owner:{}", projected_owner.owner_path);
+        validate_owner_projection_state(projected_owner)?;
         let mut selectors = BTreeSet::new();
         for item in &projected_owner.items {
             let canonical = agent_semantic_content_identity::CanonicalItemSelector::parse(
@@ -413,6 +436,44 @@ fn validate_response(
         }
     }
     Ok(())
+}
+
+fn validate_owner_projection_state(
+    owner: &ProviderProjectedOwner,
+) -> Result<(), ProviderProjectionBatchError> {
+    match (&owner.projection_state, &owner.diagnostic) {
+        (ProviderProjectionState::Ready, None) => Ok(()),
+        (ProviderProjectionState::Ready, Some(_)) => Err(ProviderProjectionBatchError(format!(
+            "ready projection owner carries a diagnostic: ownerPath={}",
+            owner.owner_path
+        ))),
+        (ProviderProjectionState::SyntaxUnavailable, None) => {
+            Err(ProviderProjectionBatchError(format!(
+                "syntax-unavailable projection owner omitted its diagnostic: ownerPath={}",
+                owner.owner_path
+            )))
+        }
+        (ProviderProjectionState::SyntaxUnavailable, Some(diagnostic)) => {
+            if !owner.items.is_empty() || !owner.relations.is_empty() {
+                return Err(ProviderProjectionBatchError(format!(
+                    "syntax-unavailable projection owner carries semantic facts: ownerPath={}",
+                    owner.owner_path
+                )));
+            }
+            if diagnostic.schema_id != PROJECTION_DIAGNOSTIC_SCHEMA_ID
+                || diagnostic.schema_version != "1"
+                || diagnostic.reason_kind != SOURCE_SYNTAX_UNAVAILABLE_REASON_KIND
+                || diagnostic.message.trim().is_empty()
+                || diagnostic.message.chars().count() > MAX_PROVIDER_PROJECTION_DIAGNOSTIC_CHARS
+            {
+                return Err(ProviderProjectionBatchError(format!(
+                    "syntax-unavailable projection owner has an invalid diagnostic: ownerPath={}",
+                    owner.owner_path
+                )));
+            }
+            Ok(())
+        }
+    }
 }
 
 fn require_text(field: &str, value: &str) -> Result<(), ProviderProjectionBatchError> {

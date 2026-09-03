@@ -77,6 +77,7 @@ static MAPPED_CATALOGS: OnceLock<RwLock<BTreeMap<PathBuf, MappedCatalogIndex>>> 
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RuntimeWorkspaceAdmissionCatalogEntry {
+    pub project_id: String,
     pub workspace_identity: String,
     pub project_root: PathBuf,
 }
@@ -107,7 +108,27 @@ impl RuntimeWorkspaceAdmissionCatalogMutation {
 }
 
 impl RuntimeWorkspaceAdmissionCatalogEntry {
+    pub fn resolve(workspace_identity: String, project_root: PathBuf) -> Result<Self, String> {
+        let state = agent_semantic_client_core::state_core::ResolvedState::resolve(&project_root)?;
+        if state.workspace.workspace_id.as_str() != workspace_identity {
+            return Err(format!(
+                "workspace admission catalog identity drift: requestedWorkspaceId={workspace_identity} resolvedWorkspaceId={}",
+                state.workspace.workspace_id
+            ));
+        }
+        let entry = Self {
+            project_id: state.repo.repo_id.to_string(),
+            workspace_identity,
+            project_root,
+        };
+        entry.validate()?;
+        Ok(entry)
+    }
+
     pub fn validate(&self) -> Result<(), String> {
+        if self.project_id.trim().is_empty() {
+            return Err("workspace admission catalog projectId must be non-empty".to_owned());
+        }
         if self.workspace_identity.trim().is_empty() {
             return Err("workspace admission catalog identity must be non-empty".to_owned());
         }
@@ -129,6 +150,21 @@ struct RuntimeWorkspaceAdmissionCatalogDocument {
     entries: Vec<RuntimeWorkspaceAdmissionCatalogEntry>,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct LegacyWorkspaceAdmissionCatalogDocumentV1 {
+    schema_id: String,
+    schema_version: String,
+    entries: Vec<LegacyWorkspaceAdmissionCatalogEntryV1>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct LegacyWorkspaceAdmissionCatalogEntryV1 {
+    workspace_identity: String,
+    project_root: PathBuf,
+}
+
 #[derive(Clone, Debug, Default)]
 struct CatalogDurabilityState {
     durable_revision: u64,
@@ -147,6 +183,32 @@ pub struct RuntimeWorkspaceAdmissionCatalog {
 }
 
 impl RuntimeWorkspaceAdmissionCatalog {
+    pub fn resolve_project_workspace(
+        &self,
+        project_id: &str,
+        workspace_id: &str,
+    ) -> Result<RuntimeWorkspaceAdmissionCatalogEntry, String> {
+        let snapshot = self.snapshot();
+        let mut matches = snapshot
+            .iter()
+            .filter(|entry| {
+                entry.project_id == project_id && entry.workspace_identity == workspace_id
+            })
+            .cloned();
+        let entry = matches.next().ok_or_else(|| {
+            format!(
+                "Runtime Server workspace admission catalog has no binding: projectId={project_id} workspaceId={workspace_id}"
+            )
+        })?;
+        if matches.next().is_some() {
+            return Err(format!(
+                "Runtime Server workspace admission catalog has ambiguous binding: projectId={project_id} workspaceId={workspace_id}"
+            ));
+        }
+        entry.validate()?;
+        Ok(entry)
+    }
+
     pub async fn load(path: PathBuf) -> Result<Self, String> {
         let entries = match tokio::fs::read(&path).await {
             Ok(bytes) => decode_catalog(&bytes)?,
@@ -209,6 +271,20 @@ impl RuntimeWorkspaceAdmissionCatalog {
             });
         }
         let mut entries = self.entries.borrow().as_ref().clone();
+        if let Some(existing) = entries.iter().find(|existing| {
+            (existing.project_root == entry.project_root
+                || existing.workspace_identity == entry.workspace_identity)
+                && existing.project_id != entry.project_id
+        }) {
+            return Err(format!(
+                "workspace admission catalog rejected ProjectId drift: existingProjectId={} requestedProjectId={} workspaceId={} existingProjectRoot={} requestedProjectRoot={}",
+                existing.project_id,
+                entry.project_id,
+                entry.workspace_identity,
+                existing.project_root.display(),
+                entry.project_root.display()
+            ));
+        }
         if let Some(existing) = entries
             .iter()
             .find(|existing| {
@@ -472,19 +548,39 @@ fn catalog_file_identity(file: &std::fs::File) -> Result<CatalogFileIdentity, St
 }
 
 fn decode_catalog(bytes: &[u8]) -> Result<BTreeSet<RuntimeWorkspaceAdmissionCatalogEntry>, String> {
-    let document = serde_json::from_slice::<RuntimeWorkspaceAdmissionCatalogDocument>(bytes)
-        .map_err(|error| format!("decode Runtime Server workspace admission catalog: {error}"))?;
+    let document = match serde_json::from_slice::<RuntimeWorkspaceAdmissionCatalogDocument>(bytes) {
+        Ok(document) => document,
+        Err(current_error) => {
+            let legacy = serde_json::from_slice::<LegacyWorkspaceAdmissionCatalogDocumentV1>(bytes)
+                .map_err(|_| {
+                    format!("decode Runtime Server workspace admission catalog: {current_error}")
+                })?;
+            if legacy.schema_id != SCHEMA_ID || legacy.schema_version != "1" {
+                return Err("Runtime Server workspace admission catalog schema mismatch".to_owned());
+            }
+            for entry in legacy.entries {
+                if entry.workspace_identity.trim().is_empty() || !entry.project_root.is_absolute() {
+                    return Err(
+                        "legacy V1 workspace admission catalog shape is malformed".to_owned()
+                    );
+                }
+            }
+            return Ok(BTreeSet::new());
+        }
+    };
     if document.schema_id != SCHEMA_ID || document.schema_version != "1" {
         return Err("Runtime Server workspace admission catalog schema mismatch".to_owned());
     }
     let mut entries = BTreeSet::new();
-    let mut root_owners = BTreeMap::<PathBuf, String>::new();
-    let mut workspace_roots = BTreeMap::<String, PathBuf>::new();
+    let mut root_owners = BTreeMap::<PathBuf, (String, String)>::new();
+    let mut workspace_roots = BTreeMap::<String, (String, PathBuf)>::new();
     for entry in document.entries {
         entry.validate()?;
         if root_owners
             .get(&entry.project_root)
-            .is_some_and(|identity| identity != &entry.workspace_identity)
+            .is_some_and(|identity| {
+                identity != &(entry.project_id.clone(), entry.workspace_identity.clone())
+            })
         {
             return Err(format!(
                 "Runtime Server workspace admission catalog contains a root identity conflict: projectRoot={}",
@@ -493,7 +589,9 @@ fn decode_catalog(bytes: &[u8]) -> Result<BTreeSet<RuntimeWorkspaceAdmissionCata
         }
         if workspace_roots
             .get(&entry.workspace_identity)
-            .is_some_and(|root| root != &entry.project_root)
+            .is_some_and(|binding| {
+                binding != &(entry.project_id.clone(), entry.project_root.clone())
+            })
         {
             return Err(format!(
                 "Runtime Server workspace admission catalog maps one workspace identity to multiple roots: workspaceIdentity={}",
@@ -501,14 +599,18 @@ fn decode_catalog(bytes: &[u8]) -> Result<BTreeSet<RuntimeWorkspaceAdmissionCata
             ));
         }
         let project_root = entry.project_root.clone();
+        let project_id = entry.project_id.clone();
         let workspace_identity = entry.workspace_identity.clone();
         if !entries.insert(entry) {
             return Err(
                 "Runtime Server workspace admission catalog contains duplicates".to_owned(),
             );
         }
-        root_owners.insert(project_root.clone(), workspace_identity.clone());
-        workspace_roots.insert(workspace_identity, project_root);
+        root_owners.insert(
+            project_root.clone(),
+            (project_id.clone(), workspace_identity.clone()),
+        );
+        workspace_roots.insert(workspace_identity, (project_id, project_root));
     }
     Ok(entries)
 }

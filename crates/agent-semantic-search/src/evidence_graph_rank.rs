@@ -1,4 +1,4 @@
-//! EvidenceGraph node ranking policy for graph-route seeds.
+//! EvidenceGraph node ranking policy for admitted graph entry nodes.
 
 use std::cmp::Reverse;
 use std::collections::BTreeSet;

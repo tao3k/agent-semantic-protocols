@@ -437,6 +437,9 @@ pub struct WorkspaceGenerationBuild {
     pub workspace_snapshot: agent_semantic_content_identity::WorkspaceSnapshot,
     pub source_snapshot: agent_semantic_content_identity::SourceSnapshotEvidence,
     pub module_graph_digest: String,
+    pub runtime_provider_execution_binding:
+        Option<agent_semantic_artifacts::installed_provider_binding::RuntimeProviderExecutionBinding>,
+    pub content_search_generation: agent_semantic_search::ContentSearchGenerationReceipt,
     pub project_resolutions: Vec<agent_semantic_content_identity::AdmittedProjectResolution>,
     pub owners: Vec<WorkspaceOwnerSnapshot>,
     pub relations: Vec<crate::ClientDbSourceIndexOwnedRelation>,
@@ -455,7 +458,11 @@ pub struct WorkspaceMemoryGeneration {
     pub source_snapshot: agent_semantic_content_identity::SourceSnapshotEvidence,
     pub workspace_generation: agent_semantic_content_identity::workspace_generation_evidence::WorkspaceGenerationEvidenceV1,
     pub provider_schema_digest: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub runtime_provider_execution_binding:
+        Option<agent_semantic_artifacts::installed_provider_binding::RuntimeProviderExecutionBinding>,
     pub module_graph_digest: String,
+    pub content_search_generation: agent_semantic_search::ContentSearchGenerationReceipt,
     pub selector_set_digest: String,
     pub projection_capability: crate::active_generation_projection_capability::ActiveGenerationProjectionCapabilityManifest,
     pub memory_backend_digest: String,
@@ -482,6 +489,26 @@ impl WorkspaceMemoryGeneration {
     }
 
     pub fn try_from_build(input: WorkspaceGenerationBuild) -> Result<Self, String> {
+        input.content_search_generation.validate()?;
+        let content_identity = input.content_search_generation.identity();
+        if content_identity.workspace_id != input.workspace_identity
+            || content_identity.source_root_digest
+                != agent_semantic_search::canonical_blake3_digest(
+                    &input.source_snapshot.root_digest,
+                )?
+            || content_identity.provider_digest
+                != agent_semantic_search::canonical_blake3_digest(
+                    &input.source_snapshot.provider_digest,
+                )?
+        {
+            return Err("workspace content search generation build identity drift".to_owned());
+        }
+        if let Some(binding) = input.runtime_provider_execution_binding.as_ref()
+            && (content_identity.project_id != binding.project_id
+                || content_identity.workspace_id != binding.workspace_id)
+        {
+            return Err("workspace content search generation project binding drift".to_owned());
+        }
         let workspace_generation =
             agent_semantic_content_identity::workspace_generation_evidence::WorkspaceGenerationEvidenceV1 {
                 root_digest: input.source_snapshot.root_digest.clone(),
@@ -517,7 +544,9 @@ impl WorkspaceMemoryGeneration {
             &input.source_snapshot,
             &workspace_generation,
             &provider_schema_digest,
+            &input.runtime_provider_execution_binding,
             &input.module_graph_digest,
+            &input.content_search_generation,
             &selector_set_digest,
             &input.relations,
             &workspace_source_scope_generation,
@@ -534,7 +563,9 @@ impl WorkspaceMemoryGeneration {
             source_snapshot: input.source_snapshot,
             workspace_generation,
             provider_schema_digest,
+            runtime_provider_execution_binding: input.runtime_provider_execution_binding,
             module_graph_digest: input.module_graph_digest,
+            content_search_generation: input.content_search_generation,
             selector_set_digest,
             memory_backend_digest,
             projection_capability: input.projection_capability,
@@ -592,7 +623,9 @@ impl WorkspaceMemoryGeneration {
             &self.source_snapshot,
             &self.workspace_generation,
             &self.provider_schema_digest,
+            &self.runtime_provider_execution_binding,
             &self.module_graph_digest,
+            &self.content_search_generation,
             &self.selector_set_digest,
             &self.relations,
             &self.workspace_source_scope_generation,
@@ -638,6 +671,10 @@ pub struct WorkspaceGenerationSnapshot {
     pub leaf_count: u64,
     pub owner_count: u64,
     pub provider_schema_digest: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub runtime_provider_execution_binding: Option<
+        agent_semantic_artifacts::installed_provider_binding::RuntimeProviderExecutionBinding,
+    >,
     pub source_root_digest: String,
     pub base_root_digest: Option<String>,
     pub source_provider_digest: String,
@@ -684,6 +721,17 @@ impl WorkspaceGenerationSnapshot {
     fn validate_snapshot_digests(&self) -> Result<(), String> {
         validate_digest("generationDigest", &self.generation_digest)?;
         validate_digest("providerSchemaDigest", &self.provider_schema_digest)?;
+        if let Some(binding) = &self.runtime_provider_execution_binding {
+            binding.validate()?;
+            if binding.source_snapshot_digest != self.source_root_digest
+                || binding.source_index_digest != self.module_graph_digest
+            {
+                return Err(
+                    "workspace generation snapshot Runtime provider execution binding drift"
+                        .to_owned(),
+                );
+            }
+        }
         validate_digest("sourceRootDigest", &self.source_root_digest)?;
         if let Some(base_root_digest) = self.base_root_digest.as_deref() {
             validate_digest("baseRootDigest", base_root_digest)?;

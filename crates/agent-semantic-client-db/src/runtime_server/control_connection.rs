@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use tokio::{io::AsyncWriteExt, net::UnixStream, sync::watch};
+use tokio::{io::AsyncWriteExt, net::TcpStream, sync::watch};
 
 use crate::{
     WorkspaceDbRegistry,
@@ -42,7 +42,6 @@ impl RuntimeServerControlReplayGuard {
 
 async fn ensure_control_workspace(
     project_root: Option<&str>,
-    registry: &Arc<WorkspaceDbRegistry>,
     generation_admission: Option<
         &Arc<crate::runtime_server_admission::WorkspaceGenerationAdmission>,
     >,
@@ -50,39 +49,13 @@ async fn ensure_control_workspace(
     let project_root = project_root
         .map(std::path::Path::new)
         .ok_or_else(|| "Runtime Server ensure-workspace request omitted project root".to_owned())?;
-    let workspace_generation = if let Some(admission) = generation_admission {
-        let workspace_identity = crate::AgentSessionRegistry::workspace_id(project_root)?;
-        let candidate =
-            crate::runtime_server_admission::discover_workspace_generation_candidate(project_root)
-                .await?;
-        let candidate_digest = candidate.candidate_generation.digest.clone();
-        let previous = admission
-            .current(&workspace_identity, project_root)
-            .map(|receipt| receipt.candidate_generation.digest);
-        let receipt = admission
-            .ensure(&workspace_identity, project_root, candidate)
-            .await?;
-        let active_generation_digest = receipt
-            .commit
-            .as_ref()
-            .map(|commit| commit.generation_digest.clone())
-            .unwrap_or_else(|| receipt.candidate_generation.digest.clone());
-        Some(
-            crate::runtime_server_control::WorkspaceGenerationControlReceipt {
-                workspace_identity,
-                previous_generation_digest: previous.clone(),
-                active_generation_digest,
-                candidate_digest,
-                generation_changed: previous.as_deref()
-                    != Some(receipt.candidate_generation.digest.as_str()),
-                state: format!("{:?}", receipt.state),
-            },
-        )
-    } else {
-        None
-    };
-    registry.bootstrap_workspace(project_root).await?;
-    Ok(workspace_generation)
+    let admission = generation_admission.ok_or_else(|| {
+        "Runtime Server ensure-workspace requires the workspace admission authority".to_owned()
+    })?;
+    admission
+        .admit_project_workspace_identity(project_root.to_path_buf())
+        .await?;
+    Ok(None)
 }
 
 async fn build_control_receipt(
@@ -101,17 +74,19 @@ async fn build_control_receipt(
     let generation = if request.operation
         == crate::runtime_server_control::RuntimeServerOperation::EnsureWorkspace
     {
-        ensure_control_workspace(
-            request.project_root.as_deref(),
-            registry,
-            generation_admission,
-        )
-        .await
+        ensure_control_workspace(request.project_root.as_deref(), generation_admission).await
     } else {
         Ok(None)
     };
     let entry_counts = registry.workspace_entry_counts();
-    let workspace_entry_count = entry_counts.slot_count.max(entry_counts.loaded_entry_count);
+    let workspace_entry_count = entry_counts
+        .slot_count
+        .max(entry_counts.loaded_entry_count)
+        .max(
+            generation_admission
+                .map(|admission| admission.admitted_project_workspace_count())
+                .unwrap_or(0),
+        );
     let mut receipt = control_receipt_for_state(
         request.request_id,
         endpoint,
@@ -194,7 +169,7 @@ async fn process_control_requests(
 }
 
 pub(super) async fn serve_connection(
-    mut stream: UnixStream,
+    mut stream: TcpStream,
     endpoint: RuntimeServerEndpoint,
     registry: Arc<WorkspaceDbRegistry>,
     generation_admission: Option<
@@ -251,7 +226,7 @@ pub(super) async fn serve_connection(
 }
 
 async fn read_control_requests(
-    stream: &mut UnixStream,
+    stream: &mut TcpStream,
     authenticated_first_frame: bool,
 ) -> Result<Option<Vec<RuntimeServerControlRequest>>, String> {
     let read = async {

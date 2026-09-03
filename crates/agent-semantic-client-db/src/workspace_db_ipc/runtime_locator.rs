@@ -29,7 +29,7 @@ impl WorkspaceDbIpcSession {
                 runtime_binary_path: binding.runtime_artifact_path.clone(),
                 runtime_binary_digest: binding.runtime_artifact_digest.clone(),
                 binding_token: binding.binding_token.clone(),
-                socket_path: binding.data_plane_socket_path.clone(),
+                data_endpoint: binding.data_endpoint.clone(),
                 generation_pointer_path,
             },
             WorkspaceDbSessionProfile::HookReadOnly,

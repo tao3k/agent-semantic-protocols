@@ -37,9 +37,7 @@ fn shell_subject_projection_accepts_a_registered_source_root_descendant() {
             source_extensions: vec![".rs".to_owned()],
             config_files: Vec::new(),
             policy: HookPolicy::default(),
-            owner_route: route(),
-            lexical_route: route(),
-            ingest_route: route(),
+            playbook_route: route(),
         }],
     };
 

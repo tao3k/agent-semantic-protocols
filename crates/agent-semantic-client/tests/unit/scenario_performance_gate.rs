@@ -2,24 +2,14 @@
 mod agent_session_pressure;
 #[path = "scenario_performance_gate/contracts.rs"]
 mod contracts;
-#[path = "scenario_performance_gate/gerbil_deps.rs"]
-mod gerbil_deps;
-#[path = "scenario_performance_gate/gerbil_projection_owner_items.rs"]
-mod gerbil_projection_owner_items;
 #[path = "scenario_performance_gate/graph.rs"]
 mod graph;
 #[path = "scenario_performance_gate/graph_rank.rs"]
 mod graph_rank;
-#[path = "scenario_performance_gate/graph_seed.rs"]
-mod graph_seed;
 #[path = "scenario_performance_gate/large_library.rs"]
 mod large_library;
 #[path = "scenario_performance_gate/overlay_and_provider_gates.rs"]
 mod overlay_and_provider_gates;
-#[path = "scenario_performance_gate/owner_items.rs"]
-mod owner_items;
-#[path = "scenario_performance_gate/owner_items_cold.rs"]
-mod owner_items_cold;
 #[path = "scenario_performance_gate/policy_ids.rs"]
 mod policy_ids;
 #[path = "scenario_performance_gate/runtime_gates.rs"]

@@ -20,9 +20,8 @@
     "schemaVersion": { "const": "1" },
     "bindingKind": {
       "enum": [
-        "uid-shared-unix",
         "inherited-connected-descriptor",
-        "loopback-http2"
+        "loopback-tcp-http2"
       ]
     },
     "endpointIdentityDigest": {

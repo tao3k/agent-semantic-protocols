@@ -28,7 +28,7 @@ CONTRACT_CASES: tuple[SearchContractCase, ...] = (
     ),
     SearchContractCase(
         language="typescript",
-        project_root="languages/typescript-lang-project-harness",
+        project_root="languages/asp-typescript",
         ingest_pipes=("items", "tests"),
         accepted_pipes_json='"acceptedPipes":["items","tests"]',
         workspace_needles=("O=owner:path(.)!owner",),

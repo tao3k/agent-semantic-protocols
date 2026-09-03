@@ -1,6 +1,6 @@
 use agent_semantic_client_protocol::{
     CLIENT_FRAME_SCHEMA_ID, CLIENT_PROTOCOL_ID, CLIENT_PROTOCOL_VERSION, ClientFrame,
-    ClientFrameBase, ClientInfo, ClientOutcome, ClientRequestId, ClientSessionId,
+    ClientFrameBase, ClientOutcome, ClientProjectId, ClientRequestId, ClientSessionId,
     ClientWorkspaceIdentity, SCHEMA_VERSION, WORKSPACE_GENERATION_ENSURE_READY_METHOD,
 };
 
@@ -9,24 +9,22 @@ use super::{
     encode_response_partitions, response_budget_for_frame,
 };
 
-fn dispatch(method: &str) -> ClientFrame {
-    ClientFrame::Dispatch {
+fn request(method: &str) -> ClientFrame {
+    ClientFrame::Request {
         base: ClientFrameBase {
             schema_id: CLIENT_FRAME_SCHEMA_ID.to_owned(),
             schema_version: SCHEMA_VERSION.to_owned(),
             protocol_id: CLIENT_PROTOCOL_ID.to_owned(),
             protocol_version: CLIENT_PROTOCOL_VERSION.to_owned(),
             session_id: ClientSessionId::new("transport-budget-session").expect("session id"),
-            workspace_identity: ClientWorkspaceIdentity::new("transport-budget-workspace")
+            project_id: ClientProjectId::new("repo-transport-budget").expect("project id"),
+            workspace_id: ClientWorkspaceIdentity::new("workspace-transport-budget")
                 .expect("workspace identity"),
             trace_context: None,
         },
         request_id: ClientRequestId::new(format!("transport-budget-{method}")).expect("request id"),
-        project_root: "/workspace".to_owned(),
-        client_info: ClientInfo {
-            name: "transport-budget-test".to_owned(),
-            version: "1".to_owned(),
-        },
+        catalog_generation: "catalog-generation".to_owned(),
+        workspace_generation: "workspace-generation".to_owned(),
         method: method.to_owned(),
         params: serde_json::json!({}),
     }
@@ -34,8 +32,8 @@ fn dispatch(method: &str) -> ClientFrame {
 
 fn large_response() -> ClientFrame {
     ClientFrame::Response {
-        base: match dispatch("rust.query") {
-            ClientFrame::Dispatch { base, .. } => base,
+        base: match request("rust.query") {
+            ClientFrame::Request { base, .. } => base,
             _ => unreachable!(),
         },
         request_id: ClientRequestId::new("partitioned-response").expect("request id"),
@@ -49,13 +47,13 @@ fn large_response() -> ClientFrame {
 }
 
 #[test]
-fn grpc_transport_preserves_catalog_dispatch_class() {
+fn grpc_transport_preserves_catalog_request_class() {
     assert_eq!(
-        response_budget_for_frame(&dispatch(WORKSPACE_GENERATION_ENSURE_READY_METHOD)),
+        response_budget_for_frame(&request(WORKSPACE_GENERATION_ENSURE_READY_METHOD)),
         None,
     );
     assert_eq!(
-        response_budget_for_frame(&dispatch("rust.query")),
+        response_budget_for_frame(&request("rust.query")),
         Some(CLIENT_FRAME_RESPONSE_BUDGET),
     );
 }

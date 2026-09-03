@@ -31,7 +31,7 @@
         "runtimeBinaryPath",
         "runtimeBinaryDigest",
         "bindingToken",
-        "socketPath"
+        "dataEndpoint"
       ],
       "properties": {
         "schemaId": {
@@ -63,9 +63,17 @@
         "bindingToken": {
           "$ref": "#/$defs/identity"
         },
-        "socketPath": {
-          "$ref": "#/$defs/identity"
-        }
+        "dataEndpoint": { "$ref": "#/$defs/loopbackEndpoint" }
+      }
+    },
+    "loopbackEndpoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["transport", "address", "port"],
+      "properties": {
+        "transport": { "const": "loopback-tcp" },
+        "address": { "enum": ["127.0.0.1", "::1"] },
+        "port": { "type": "integer", "minimum": 1, "maximum": 65535 }
       }
     },
     "request": {

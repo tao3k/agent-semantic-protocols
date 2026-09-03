@@ -62,7 +62,7 @@ async fn built_asp_install_binary_publishes_runtime_hook_independent_of_runtime_
         std::fs::write(
             &hook,
             format!(
-                "#!/bin/sh\nprintf '%s\\n' '{{\"schemaId\":\"agent.semantic-protocols.hook-runtime-identity\",\"schemaVersion\":1,\"policyContentDigest\":\"{policy_digest}\"}}'\n"
+                "#!/bin/sh\nprintf '%s\\n' '{{\"schemaId\":\"agent.semantic-protocols.hook-runtime-identity\",\"schemaVersion\":1,\"policyContentDigest\":\"{policy_digest}\",\"handlerElapsedNanos\":1}}'\n"
             ),
         )
         .expect("write Hook identity fixture");

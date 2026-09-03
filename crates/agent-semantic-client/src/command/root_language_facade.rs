@@ -1,6 +1,6 @@
-//! Thin root `asp search` / `asp query` router over language facades.
+//! Root query facade plus the Runtime-owned workspace Search planner.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use super::provider_dispatch::{
     is_language_facade, run_language_command, unsupported_language_facade_message,
@@ -11,6 +11,71 @@ pub(crate) async fn run_root_language_facade(command: &str, args: &[String]) -> 
     let mut language_args = vec![command.to_string()];
     language_args.extend(provider_args);
     run_language_command(&language_id, &language_args, tokio::time::Instant::now()).await
+}
+
+pub(crate) async fn run_workspace_search_playbook(args: &[String]) -> Result<(), String> {
+    let mut parser_args = vec!["search".to_owned()];
+    parser_args.extend_from_slice(args);
+    let request = agent_semantic_search::parse_search_playbook_args(&parser_args)?;
+    let project_root = resolve_playbook_workspace(&request.workspace)?;
+
+    crate::server::runtime_server::ensure_healthy_runtime_server_for_bounded_operation().await?;
+    let state_home = agent_semantic_runtime::state_core::resolve_state_home()?;
+    #[cfg(unix)]
+    let client = crate::AspClient::new_from_host_capability(state_home, &project_root)?;
+    #[cfg(not(unix))]
+    let client = crate::AspClient::new(state_home, &project_root);
+    let language_id = request
+        .language
+        .as_deref()
+        .ok_or_else(|| "search playbook requires --language <language>".to_owned())?;
+    let frame = client
+        .dispatch(
+            language_id,
+            "search",
+            serde_json::to_value(agent_semantic_client_protocol::AspClientSearchRequest {
+                schema_id: "agent.semantic-protocols.asp-client-search-request".to_owned(),
+                schema_version: "1".to_owned(),
+                intent: request.intent,
+                query: request.query,
+                scope: request.scope,
+                coverage: request.coverage,
+                max_owners: request.max_owners,
+                deadline_ms: request.deadline_ms,
+                explain: request.explain,
+            })
+            .map_err(|error| format!("encode Search playbook request: {error}"))?,
+        )
+        .await?;
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&frame)
+            .map_err(|error| format!("encode workspace Search playbook response: {error}"))?
+    );
+    Ok(())
+}
+
+fn resolve_playbook_workspace(workspace: &str) -> Result<PathBuf, String> {
+    let workspace = PathBuf::from(workspace);
+    let workspace = if workspace.is_absolute() {
+        workspace
+    } else {
+        std::env::current_dir()
+            .map_err(|error| format!("failed to resolve current project directory: {error}"))?
+            .join(workspace)
+    };
+    if !workspace.is_dir() {
+        return Err(format!(
+            "search playbook workspace must be a directory: {}",
+            workspace.display()
+        ));
+    }
+    std::fs::canonicalize(&workspace).map_err(|error| {
+        format!(
+            "failed to canonicalize Search playbook workspace {}: {error}",
+            workspace.display()
+        )
+    })
 }
 
 fn root_language_and_args(command: &str, args: &[String]) -> Result<(String, Vec<String>), String> {

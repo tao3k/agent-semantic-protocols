@@ -5,37 +5,11 @@ use serde_json::json;
 
 use super::{
     InstalledProviderArtifact, InstalledProviderArtifactsDocument, RuntimeProviderArtifacts,
-    SCHEMA_ID, SCHEMA_VERSION, document_path, generation, project_registered_provider_artifacts,
+    SCHEMA_ID, SCHEMA_VERSION, document_path, generation, integrity_ref,
+    load_authoritative_runtime_projection, load_runtime_provider_artifacts,
     publish_current_installed_provider_artifacts, runtime_source_index_provider_projection,
     workspace_required_provider_languages_for_paths,
 };
-
-#[test]
-fn retired_document_artifact_is_not_runtime_provider_authority() {
-    let providers = vec![InstalledProviderArtifact {
-        language_id: "md".to_owned(),
-        provider_id: "asp-md".to_owned(),
-        materialized_path: "/retired/asp-md".to_owned(),
-        artifact_digest: format!("blake3-256:{}", "a".repeat(64)),
-        artifact_metadata_digest: format!("blake3-256:{}", "b".repeat(64)),
-        execution_command_digest: format!("sha256:{}", "c".repeat(64)),
-    }];
-    let stored_generation = generation(&providers).expect("stored generation");
-    let projected = project_registered_provider_artifacts(InstalledProviderArtifactsDocument {
-        schema_id: SCHEMA_ID.to_owned(),
-        schema_version: SCHEMA_VERSION.to_owned(),
-        generation: stored_generation.clone(),
-        providers,
-    })
-    .expect("retired document surface must be projected out");
-
-    assert!(projected.providers.is_empty());
-    assert_ne!(projected.generation, stored_generation);
-    assert_eq!(
-        projected.generation,
-        generation(&[]).expect("empty generation")
-    );
-}
 
 #[test]
 fn runtime_source_index_projection_is_derived_from_live_register() {
@@ -93,8 +67,8 @@ fn runtime_source_index_projection_is_derived_from_live_register() {
             "routes": [{
                 "schemaId": "agent.semantic-protocols.provider-route",
                 "schemaVersion": "1",
-                "routeId": "rust.search.owner",
-                "operation": "search.owner",
+                "routeId": "rust.search",
+                "operation": "search",
                 "authority": "asp-server",
                 "target": {"languageId": "rust", "providerId": "asp-rust"},
                 "inputs": [],
@@ -120,7 +94,7 @@ fn runtime_source_index_projection_is_derived_from_live_register() {
                     "keySlots": []
                 },
                 "telemetry": {
-                    "spanName": "asp.route.search.owner",
+                    "spanName": "asp.route.search",
                     "attributeSlots": []
                 }
             }]
@@ -138,7 +112,7 @@ fn runtime_source_index_projection_is_derived_from_live_register() {
     inactive_julia_registration.registration["sourceInventory"]["projectResolution"]["entryMarkers"] =
         json!(["Project.toml"]);
     inactive_julia_registration.registration["queryPackDescriptor"]["languageId"] = json!("julia");
-    inactive_julia_registration.registration["routes"][0]["routeId"] = json!("julia.search.owner");
+    inactive_julia_registration.registration["routes"][0]["routeId"] = json!("julia.search");
     inactive_julia_registration.registration["routes"][0]["target"]["languageId"] = json!("julia");
     inactive_julia_registration.registration["routes"][0]["target"]["providerId"] =
         json!("asp-julia");
@@ -176,6 +150,7 @@ fn runtime_source_index_projection_is_derived_from_live_register() {
             generation: generation(&providers).expect("generation"),
             providers,
         }),
+        binding: None,
     };
 
     let rust_only = std::collections::BTreeSet::from(["rust".to_owned()]);
@@ -190,9 +165,7 @@ fn runtime_source_index_projection_is_derived_from_live_register() {
         runtime_source_index_provider_projection(&artifacts, &incomplete_register, &rust_and_julia)
             .expect_err("a required Julia provider must reject a missing artifact");
     assert!(
-        incomplete_error.contains(
-            "installed provider capability has no artifact: languageId=julia providerId=asp-julia"
-        ),
+        incomplete_error.contains("missing=julia:artifact"),
         "{incomplete_error}"
     );
 
@@ -217,6 +190,23 @@ fn runtime_source_index_projection_is_derived_from_live_register() {
     assert!(provider.registration_digest.starts_with("sha256:"));
     assert!(generation.starts_with("sha256:"));
 
+    let mut relocated_document = (*artifacts.document).clone();
+    relocated_document.providers[0].materialized_path =
+        "/different-state-home/runtime/artifacts/asp-rust".to_owned();
+    relocated_document.generation =
+        super::generation(&relocated_document.providers).expect("relocated legacy projection");
+    let relocated = RuntimeProviderArtifacts {
+        document: Arc::new(relocated_document),
+        binding: artifacts.binding.clone(),
+    };
+    let (_, relocated_closure) =
+        runtime_source_index_provider_projection(&relocated, &register, &rust_only)
+            .expect("relocated provider closure");
+    assert_eq!(
+        relocated_closure, generation,
+        "workspace provider closure identity must not depend on an absolute compatibility path"
+    );
+
     let launch = artifacts
         .runtime_launch(Path::new("/workspace"), "rust", &register)
         .expect("Runtime provider launch");
@@ -232,8 +222,8 @@ fn runtime_source_index_projection_is_derived_from_live_register() {
 }
 
 #[cfg(unix)]
-#[test]
-fn guarded_install_publication_is_atomic_and_rejects_receipt_drift() {
+#[tokio::test]
+async fn guarded_install_publication_is_atomic_and_rejects_receipt_drift() {
     let root = std::env::temp_dir().join(format!(
         "asp-installed-provider-publication-{}",
         std::process::id()
@@ -247,6 +237,15 @@ fn guarded_install_publication_is_atomic_and_rejects_receipt_drift() {
     std::fs::create_dir_all(&artifact_dir).expect("create provider CAS fixture");
     std::fs::create_dir_all(&runtime_bin_dir).expect("create provider runtime bin fixture");
     std::fs::create_dir_all(&receipt_dir).expect("create provider receipt fixture");
+    let registry_digest =
+        crate::command::provider_install_registry::provider_install_registry_digest()
+            .expect("provider registry digest");
+    agent_semantic_artifacts::runtime_artifact_catalog::publish_runtime_provider_catalog(
+        &root,
+        &format!("blake3-256:{}", "a".repeat(64)),
+        &registry_digest,
+    )
+    .expect("publish provider catalog identity");
     let artifact = artifact_dir.join("asp-rust");
     let stable = runtime_bin_dir.join("asp-rust");
     std::fs::write(&artifact, b"asp-rust-provider").expect("write provider CAS artifact");
@@ -278,6 +277,24 @@ fn guarded_install_publication_is_atomic_and_rejects_receipt_drift() {
         publish_current_installed_provider_artifacts(&root).expect("publish provider snapshot");
     assert!(first.artifact_write);
     assert_eq!(first.changed_leaf_count, 1);
+    let first_binding =
+        agent_semantic_artifacts::installed_provider_binding::load_installed_provider_binding(
+            &root,
+        )
+        .expect("load installed provider binding")
+        .expect("published installed provider binding");
+    assert_eq!(first_binding.generation, first.generation());
+    assert_eq!(
+        first_binding.providers[0].entrypoint_digest,
+        integrity_ref(&content)
+    );
+    let (runtime_projection, runtime_binding) = load_authoritative_runtime_projection(&root)
+        .expect("load authoritative Runtime projection");
+    assert_eq!(runtime_projection.providers.len(), 1);
+    assert_eq!(
+        runtime_binding.expect("Runtime binding").generation,
+        first.generation()
+    );
     let second = publish_current_installed_provider_artifacts(&root)
         .expect("observe current provider snapshot");
     assert!(!second.artifact_write);
@@ -301,12 +318,13 @@ fn guarded_install_publication_is_atomic_and_rejects_receipt_drift() {
         &format!("artifactDigest = \"{next_artifact_digest}\""),
         1,
     );
-    std::fs::write(&receipt_path, changed_artifact_receipt)
+    std::fs::write(&receipt_path, &changed_artifact_receipt)
         .expect("write changed provider artifact identity");
     let changed = publish_current_installed_provider_artifacts(&root)
         .expect("publish changed provider artifact identity");
     assert!(changed.artifact_write);
     assert_eq!(changed.changed_leaf_count, 2);
+    assert_ne!(changed.generation(), first.generation());
     let changed_document: InstalledProviderArtifactsDocument = serde_json::from_slice(
         &std::fs::read(document_path(&root)).expect("read changed provider snapshot"),
     )
@@ -314,6 +332,29 @@ fn guarded_install_publication_is_atomic_and_rejects_receipt_drift() {
     assert_eq!(
         changed_document.providers[0].artifact_digest,
         next_artifact_digest
+    );
+
+    agent_semantic_artifacts::runtime_artifact_catalog::publish_runtime_provider_catalog(
+        &root,
+        &format!("blake3-256:{}", "a".repeat(64)),
+        &format!("blake3-256:{}", "9".repeat(64)),
+    )
+    .expect("publish drifted catalog generation");
+    let drift = load_authoritative_runtime_projection(&root)
+        .expect_err("authority drift requires reconciliation");
+    assert!(drift.contains("automatic refresh is required"), "{drift}");
+    let refreshed = load_runtime_provider_artifacts(&root)
+        .await
+        .expect("normal authority drift must refresh automatically");
+    assert_eq!(refreshed.document.providers.len(), 1);
+    assert_eq!(
+        agent_semantic_artifacts::runtime_artifact_catalog::load_runtime_provider_catalog_identity(
+            &root,
+        )
+        .expect("load refreshed catalog")
+        .expect("refreshed catalog identity")
+        .install_registry_digest,
+        registry_digest
     );
 
     std::fs::write(
@@ -324,6 +365,13 @@ fn guarded_install_publication_is_atomic_and_rejects_receipt_drift() {
     let error = publish_current_installed_provider_artifacts(&root)
         .expect_err("receipt content drift must fail closed");
     assert!(error.contains("does not match artifact"), "{error}");
+
+    std::fs::write(&receipt_path, changed_artifact_receipt)
+        .expect("restore bound provider receipt");
+    std::fs::write(&artifact, b"tampered-provider").expect("tamper provider bytes");
+    let tamper = load_authoritative_runtime_projection(&root)
+        .expect_err("Runtime must re-admit executable bytes");
+    assert!(tamper.contains("content drift"), "{tamper}");
 
     std::fs::remove_dir_all(root).expect("remove provider publication fixture");
 }

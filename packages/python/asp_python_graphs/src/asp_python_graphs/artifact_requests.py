@@ -127,7 +127,7 @@ def _request_packet(
         "packetKind": "graph-turbo-request",
         "profile": profile,
         "algorithm": "typed-ppr-diverse",
-        "seedIds": seed_ids,
+        "entryNodeIds": seed_ids,
         "budget": budget,
         "kindBudgets": {"owner": 4, "dependency": 2, "test": 3, "item": 3, "hot": 2},
         "windowMerge": {"enabled": True, "maxGapLines": 8},

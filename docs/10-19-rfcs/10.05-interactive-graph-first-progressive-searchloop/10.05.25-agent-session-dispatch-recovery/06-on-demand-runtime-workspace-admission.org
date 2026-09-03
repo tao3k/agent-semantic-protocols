@@ -24,16 +24,37 @@ writer does not repair this ownership error.
 The global Runtime endpoint is the bootstrap authority.  For a canonical
 absolute project root, a read-side caller MUST:
 
-1. resolve an existing durable catalog entry as identity evidence, or classify
-   =WorkspaceNotAdmitted= as a cold bootstrap;
-2. bind the global endpoint to the derived workspace identity in either case;
-3. call the daemon-owned =EnsureRuntimeGenerationReady= operation; it MUST
+1. derive =ProjectId/WorkspaceId= locally without reading or writing the Runtime
+   catalog;
+2. on a Host-reachable loopback transport, execute exactly one typed
+   =EnsureWorkspace(projectRoot)= control request inside the cached session's
+   Initialize single-flight; the Runtime validates the root, derives the same
+   identities, and is the sole V1 catalog writer.  This identity admission MUST
+   NOT discover a generation candidate, build or publish a generation, open a
+   workspace database, or bootstrap a provider;
+3. on an inherited connected descriptor, require the Host supervisor to finish
+   that admission before transferring the descriptor; the sandbox client never
+   opens a control transport;
+4. bind the public ClientFrame session using only =ProjectId/WorkspaceId=;
+5. call the daemon-owned =EnsureRuntimeGenerationReady= operation; it MUST
    schedule one discovery when absent or join the existing completion watch
    when startup restore or another caller already owns discovery;
-4. wait for terminal Ready without issuing the non-blocking
+6. wait for terminal Ready without issuing the non-blocking
    =EnsureRuntimeGeneration= operation, whose =discovery-in-progress= receipt is
    not a read barrier;
-5. open the read-only workspace session using the admitted identity.
+7. open the read-only workspace session using the admitted identity.
+
+=projectRoot= exists only on the cold control request.  It is absent from
+Initialize, Search, Query, and every warm read frame.  This retains LSP's useful
+explicit workspace initialization lesson without copying its client-owned
+workspace-routing state into every request.
+
+A successful =EnsureWorkspace= terminal proves only the durable
+=ProjectId/WorkspaceId/projectRoot= binding.  It does not imply generation
+readiness.  =EnsureRuntimeGenerationReady= is the sole cold generation barrier;
+putting that work in both control admission and generation preflight creates a
+duplicate authority, forces every new session through repository discovery, and
+can commit state after the control client has already timed out.
 
 The public ClientFrame spelling of step 3 is
 =asp.workspace.generation.ensure-ready=.  It is a server-owned cold-preflight
@@ -86,6 +107,9 @@ daemon-owned admission transition, producing =C=; readiness then produces
 - Issue concurrent exact/search/session requests for one canonical workspace.
 - Observe one workspace identity, one admitted generation, and no duplicate
   resident service.
+- Prove =EnsureWorkspace= performs no generation discovery/publication, DB open,
+  provider spawn, or workspace-store bootstrap, and returns exactly one typed
+  terminal even when the catalog entry already exists.
 - Prove one cold =ensure-ready= terminal followed by warm language dispatches
   with zero candidate discovery, generation mutation, or provider process
   starts.

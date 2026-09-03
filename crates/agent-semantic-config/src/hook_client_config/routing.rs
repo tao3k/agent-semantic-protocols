@@ -306,15 +306,9 @@ pub enum HookClientConfigReasonKind {
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum HookClientConfigRouteKind {
-    Prime,
-    Owner,
+    Playbook,
     Query,
-    Lexical,
     Read,
-    Deps,
-    Api,
-    Ingest,
-    Tests,
     CheckChanged,
 }
 

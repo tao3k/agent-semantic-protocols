@@ -105,18 +105,18 @@ direnv exec . just provider-gate-typescript
 Expanded commands:
 
 #+begin_src shell
-direnv exec . npm --prefix languages/typescript-lang-project-harness run build
-direnv exec . npm --prefix languages/typescript-lang-project-harness run check:implementation
+direnv exec . npm --prefix languages/asp-typescript run build
+direnv exec . npm --prefix languages/asp-typescript run check:implementation
 direnv exec . node --test \
-  languages/typescript-lang-project-harness/dist/tests/unit/cli_compact_query_snapshot.test.js \
-  languages/typescript-lang-project-harness/dist/tests/unit/cli_item_query.test.js \
-  languages/typescript-lang-project-harness/dist/tests/unit/cli_item_query_code.test.js \
-  languages/typescript-lang-project-harness/dist/tests/unit/cli_item_query_fallback.test.js \
-  languages/typescript-lang-project-harness/dist/tests/unit/cli_search_policy.test.js \
-  languages/typescript-lang-project-harness/dist/tests/unit/cli_search_query.test.js \
-  languages/typescript-lang-project-harness/dist/tests/unit/semantic_language_registry_read_packet.test.js \
-  languages/typescript-lang-project-harness/dist/tests/unit/semantic_search_registry_expectations.js \
-  languages/typescript-lang-project-harness/dist/tests/unit/semantic_search_schema.test.js
+  languages/asp-typescript/dist/tests/unit/cli_compact_query_snapshot.test.js \
+  languages/asp-typescript/dist/tests/unit/cli_item_query.test.js \
+  languages/asp-typescript/dist/tests/unit/cli_item_query_code.test.js \
+  languages/asp-typescript/dist/tests/unit/cli_item_query_fallback.test.js \
+  languages/asp-typescript/dist/tests/unit/cli_search_policy.test.js \
+  languages/asp-typescript/dist/tests/unit/cli_search_query.test.js \
+  languages/asp-typescript/dist/tests/unit/semantic_language_registry_read_packet.test.js \
+  languages/asp-typescript/dist/tests/unit/semantic_search_registry_expectations.js \
+  languages/asp-typescript/dist/tests/unit/semantic_search_schema.test.js
 #+end_src
 
 Required evidence:

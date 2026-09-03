@@ -73,25 +73,30 @@ theorem mutation_never_publishes_existing (currentGenerationPointer : Bool) :
     decide .rebuildAfterMutation currentGenerationPointer = .runSourceBuilder := by
   cases currentGenerationPointer <;> rfl
 
-structure RestoredGenerationRoots where
-  sourceSnapshotRoot : String
-  ownerMerkleRoot : String
-
-inductive RootConsumer where
-  | sourceRecovery
-  | ownerProof
+structure SourceSnapshotRoot where
+  value : String
   deriving DecidableEq
 
-def rootFor (roots : RestoredGenerationRoots) : RootConsumer → String
-  | .sourceRecovery => roots.sourceSnapshotRoot
-  | .ownerProof => roots.ownerMerkleRoot
+structure OwnerMerkleRoot where
+  value : String
+  deriving DecidableEq
+
+structure RestoredGenerationRoots where
+  sourceSnapshotRoot : SourceSnapshotRoot
+  ownerMerkleRoot : OwnerMerkleRoot
+
+def sourceRecoveryRoot (roots : RestoredGenerationRoots) : SourceSnapshotRoot :=
+  roots.sourceSnapshotRoot
+
+def ownerProofRoot (roots : RestoredGenerationRoots) : OwnerMerkleRoot :=
+  roots.ownerMerkleRoot
 
 theorem source_recovery_uses_only_source_snapshot_root (roots : RestoredGenerationRoots) :
-    rootFor roots .sourceRecovery = roots.sourceSnapshotRoot := by
+    sourceRecoveryRoot roots = roots.sourceSnapshotRoot := by
   rfl
 
 theorem owner_proof_uses_only_owner_merkle_root (roots : RestoredGenerationRoots) :
-    rootFor roots .ownerProof = roots.ownerMerkleRoot := by
+    ownerProofRoot roots = roots.ownerMerkleRoot := by
   rfl
 
 end ASPProof.RuntimeServerRestoreAuthority

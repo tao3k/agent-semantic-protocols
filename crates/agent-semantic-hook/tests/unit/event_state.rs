@@ -594,7 +594,9 @@ fn source_access_replay_preserves_exact_parser_route_message() {
     let _state_home = AspStateHomeGuard::activate_isolated();
     let project_root = unique_project_root();
     let mut first = decision("parser-route-replay", 0);
-    first.message = "Use parser evidence. ASP route: asp rust search owner src/lib.rs".to_string();
+    first.message =
+        "Use parser evidence. ASP route: asp rust search playbook source --scope owner:src/lib.rs"
+            .to_string();
     let original_message = first.message.clone();
 
     assert!(!agent_semantic_hook::apply_repeated_deny_replay(&project_root, &mut first).unwrap());

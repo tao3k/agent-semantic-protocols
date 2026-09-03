@@ -396,34 +396,16 @@
     },
     "methodId": {
       "type": "string",
-      "pattern": "^(?:guide|query|(search|query|proof|review|evidence|ast-patch|agent)/[a-z][a-z0-9_-]*)$"
+      "pattern": "^(?:guide|query|(query|proof|review|evidence|ast-patch|agent)/[a-z][a-z0-9_-]*)$"
     },
     "hookRouteBindings": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "prime",
-        "owner",
-        "lexical",
-        "ingest"
-      ],
       "properties": {
-        "prime": {
-          "$ref": "#/$defs/methodId"
-        },
-        "owner": {
-          "$ref": "#/$defs/methodId"
-        },
-        "lexical": {
-          "$ref": "#/$defs/methodId"
-        },
         "query": {
           "$ref": "#/$defs/methodId"
         },
         "exactSelectorNative": {
-          "$ref": "#/$defs/methodId"
-        },
-        "ingest": {
           "$ref": "#/$defs/methodId"
         },
         "dependencyTopology": {

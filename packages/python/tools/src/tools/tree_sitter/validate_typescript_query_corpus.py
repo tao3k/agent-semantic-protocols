@@ -19,7 +19,7 @@ from .contract import assert_asp_tree_sitter_contract
 SEPARATOR = "=" * 80
 EXPECTED_SEPARATOR = "-" * 80
 REPO_ROOT = repo_root()
-PROVIDER_ROOT = REPO_ROOT / "languages" / "typescript-lang-project-harness"
+PROVIDER_ROOT = REPO_ROOT / "languages" / "asp-typescript"
 GRAMMAR_ROOT = PROVIDER_ROOT / "tree-sitter" / "tree-sitter-typescript"
 CORPUS_ROOT = GRAMMAR_ROOT / "test" / "corpus"
 PROFILE_PATH = GRAMMAR_ROOT / "grammar-profile.json"

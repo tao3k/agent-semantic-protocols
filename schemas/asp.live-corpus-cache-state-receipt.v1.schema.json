@@ -6,9 +6,9 @@
   "additionalProperties": false,
   "required": [
     "schemaId", "schemaVersion", "operationId", "state", "cacheState",
-    "workspaceIdentity", "generationDigest", "rootDigest",
+    "projectId", "workspaceId", "generationDigest", "rootDigest",
     "residentGenerationEvicted", "clientSessionEvicted", "sourceWorkspaceMutationCount",
-    "globalCacheMutationCount", "filesystemDeleteCount", "elapsedMicros"
+    "filesystemDeleteCount", "elapsedMicros"
   ],
   "properties": {
     "schemaId": { "const": "agent.semantic-protocols.live-corpus-cache-state-receipt" },
@@ -16,7 +16,8 @@
     "operationId": { "type": "string", "minLength": 1 },
     "state": { "const": "ready" },
     "cacheState": { "enum": ["cold-build", "cold-load", "warm-read", "released"] },
-    "workspaceIdentity": { "type": "string", "minLength": 1 },
+    "projectId": { "type": "string", "minLength": 1 },
+    "workspaceId": { "type": "string", "minLength": 1 },
     "generationDigest": {
       "oneOf": [
         { "type": "string", "pattern": "^blake3-256:[0-9a-f]{64}$" },
@@ -32,7 +33,6 @@
     "residentGenerationEvicted": { "type": "boolean" },
     "clientSessionEvicted": { "type": "boolean" },
     "sourceWorkspaceMutationCount": { "const": 0 },
-    "globalCacheMutationCount": { "const": 0 },
     "filesystemDeleteCount": { "const": 0 },
     "elapsedMicros": { "type": "integer", "minimum": 0 }
   }

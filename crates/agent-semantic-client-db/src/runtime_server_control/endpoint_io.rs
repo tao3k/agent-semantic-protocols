@@ -182,7 +182,11 @@ fn materialize_endpoint_v1_identity(value: &mut Value) -> Result<bool, String> {
             "reasonKind=runtime-server-endpoint-identity-incomplete missing ownerEpoch".to_owned()
         })?;
     let binding_token = required_string("bindingToken")?;
-    let socket_path = required_string("socketPath")?;
+    let control_endpoint = object.get("controlEndpoint").cloned().ok_or_else(|| {
+        "reasonKind=runtime-server-endpoint-identity-incomplete missing controlEndpoint".to_owned()
+    })?;
+    let control_endpoint = serde_json::to_string(&control_endpoint)
+        .map_err(|error| format!("encode Runtime control endpoint identity: {error}"))?;
     let runtime_artifact_path = required_string("runtimeArtifactPath")?;
     let schema_id = required_string("schemaId")?;
     let schema_version = required_string("schemaVersion")?;
@@ -195,7 +199,7 @@ fn materialize_endpoint_v1_identity(value: &mut Value) -> Result<bool, String> {
             &owner_process_id.to_string(),
             &owner_epoch.to_string(),
             &binding_token,
-            &socket_path,
+            &control_endpoint,
             &runtime_artifact_path,
         ],
     );
@@ -460,16 +464,12 @@ pub async fn cleanup_endpoint(
     endpoint: &RuntimeServerEndpoint,
 ) -> Result<(), String> {
     let endpoint_path = runtime_server_endpoint_path(state_home)?;
-    let socket_path = PathBuf::from(&endpoint.socket_path);
-    let data_plane_socket_path = PathBuf::from(&endpoint.data_plane_socket_path);
     let status_memory_path = PathBuf::from(&endpoint.status_memory_path);
     let owned = read_endpoint(&endpoint_path).await.is_ok_and(|actual| {
         actual.owner_epoch == endpoint.owner_epoch && actual.binding_token == endpoint.binding_token
     });
     if owned {
         let _ = tokio::fs::remove_file(endpoint_path).await;
-        let _ = tokio::fs::remove_file(socket_path).await;
-        let _ = tokio::fs::remove_file(data_plane_socket_path).await;
         let _ = tokio::fs::remove_file(status_memory_path).await;
     }
     Ok(())

@@ -76,7 +76,7 @@ fn rust_harness_activation_routes_explicit_reads_to_owner_frontier() {
         ReasonKind::RegisteredSourceRouteRequired
     );
     assert_eq!(decision.language_ids, ["rust"]);
-    assert_eq!(decision.routes[0].kind, DecisionRouteKind::Owner);
+    assert_eq!(decision.routes[0].kind, DecisionRouteKind::Playbook);
     assert_eq!(decision.routes[0].provider_id, "asp-rust");
 }
 

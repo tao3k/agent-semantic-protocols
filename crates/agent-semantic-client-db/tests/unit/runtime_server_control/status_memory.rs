@@ -13,6 +13,13 @@ use super::{
     resolve_runtime_server_agent_session_status, validate_resident_transaction,
 };
 
+fn loopback(port: u16) -> crate::runtime_server_control::RuntimeServerLoopbackEndpoint {
+    crate::runtime_server_control::RuntimeServerLoopbackEndpoint::from_socket_addr(
+        ([127, 0, 0, 1], port).into(),
+    )
+    .expect("loopback endpoint")
+}
+
 fn fixture_endpoint(root: &std::path::Path, owner_epoch: u64) -> RuntimeServerEndpoint {
     RuntimeServerEndpoint {
         binary_content_digest: RuntimeBinaryIdentity::from_bytes(
@@ -40,9 +47,9 @@ fn fixture_endpoint(root: &std::path::Path, owner_epoch: u64) -> RuntimeServerEn
         artifact_mode: "dev".to_owned(),
         artifact_catalog_digest: format!("blake3-256:{}", "a".repeat(64)),
         binding_token: format!("binding-{owner_epoch}"),
-        socket_path: root.join("control.sock").to_string_lossy().into_owned(),
-        data_plane_socket_path: root.join("data.sock").to_string_lossy().into_owned(),
-        provider_plane_socket_path: root.join("providers.sock").to_string_lossy().into_owned(),
+        control_endpoint: loopback(42001 + (owner_epoch % 100) as u16),
+        data_endpoint: loopback(42101 + (owner_epoch % 100) as u16),
+        provider_endpoint: loopback(42201 + (owner_epoch % 100) as u16),
         workspace_store_path: root.join("workspaces").to_string_lossy().into_owned(),
         status_memory_path: root.join("status.memory").to_string_lossy().into_owned(),
     }
@@ -66,9 +73,9 @@ fn fixture_resident_transaction(
         endpoint_owner_epoch: endpoint.owner_epoch,
         endpoint_binary_content_digest: digest,
         endpoint_runtime_generation_digest: endpoint.runtime_generation_digest.clone(),
-        control_endpoint: endpoint.socket_path.clone(),
-        data_endpoint: endpoint.data_plane_socket_path.clone(),
-        provider_endpoint: endpoint.provider_plane_socket_path.clone(),
+        control_endpoint: endpoint.control_endpoint.clone(),
+        data_endpoint: endpoint.data_endpoint.clone(),
+        provider_endpoint: endpoint.provider_endpoint.clone(),
         previous_serving_digest: None,
         previous_owner_epoch: None,
         previous_drain_state: "not-required".to_owned(),

@@ -292,11 +292,11 @@
         "native-idiom.manual-transform-loop"
       ],
       "sourceOwners": [
-        "languages/typescript-lang-project-harness/src/rules/agent_policy/pack.ts",
-        "languages/typescript-lang-project-harness/src/rules/agent_policy/software_criteria.ts",
-        "languages/typescript-lang-project-harness/src/parser/function-shape.ts",
-        "languages/typescript-lang-project-harness/src/parser/native_syntax/control_flow.ts",
-        "languages/typescript-lang-project-harness/src/cli/semantic-search/api.ts"
+        "languages/asp-typescript/src/rules/agent_policy/pack.ts",
+        "languages/asp-typescript/src/rules/agent_policy/software_criteria.ts",
+        "languages/asp-typescript/src/parser/function-shape.ts",
+        "languages/asp-typescript/src/parser/native_syntax/control_flow.ts",
+        "languages/asp-typescript/src/cli/semantic-search/api.ts"
       ],
       "factKeys": [
         "TypeScriptPublicFunctionControlFlowFact",

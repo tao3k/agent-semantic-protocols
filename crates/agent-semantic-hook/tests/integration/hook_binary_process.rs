@@ -268,6 +268,12 @@ fn binary_projects_its_embedded_policy_content_identity() {
         "agent.semantic-protocols.hook-runtime-identity"
     );
     assert_eq!(identity["schemaVersion"], 1);
+    assert!(
+        identity["handlerElapsedNanos"]
+            .as_u64()
+            .is_some_and(|elapsed| elapsed < 1_000_000),
+        "identity handler must remain below 1ms: {identity}"
+    );
     assert_eq!(
         identity["policyContentDigest"],
         agent_semantic_hook::aot_compiler::embedded_hook_policy_content_digest()

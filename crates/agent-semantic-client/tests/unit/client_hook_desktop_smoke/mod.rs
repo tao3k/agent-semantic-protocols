@@ -44,7 +44,7 @@ fn codex_desktop_read_aliases_reach_runtime_policy() {
             "Read alias must retain the provider-owned recovery route: {decision}"
         );
         assert_route_mentions(&decision, "src/lib.rs");
-        assert_route_uses_owner_items_recovery(&decision);
+        assert_route_uses_native_syntax_playbook_recovery(&decision);
     }
 }
 
@@ -74,7 +74,7 @@ fn codex_desktop_shell_read_wrappers_reach_runtime_policy() {
             "shell Read wrapper must retain the provider-owned recovery route: {decision}"
         );
         assert_route_mentions(&decision, "src/lib.rs");
-        assert_route_uses_owner_items_recovery(&decision);
+        assert_route_uses_native_syntax_playbook_recovery(&decision);
     }
 }
 
@@ -372,7 +372,7 @@ fn assert_route_mentions(decision: &Value, needle: &str) {
     );
 }
 
-fn assert_route_uses_owner_items_recovery(decision: &Value) {
+fn assert_route_uses_native_syntax_playbook_recovery(decision: &Value) {
     let argv = decision["routes"][0]["argv"]
         .as_array()
         .expect("route argv");
@@ -381,17 +381,17 @@ fn assert_route_uses_owner_items_recovery(decision: &Value) {
         .map(|arg| arg.as_str().expect("route arg string"))
         .collect::<Vec<_>>();
     assert!(
-        args.windows(5)
-            .any(|window| window == ["asp", "rust", "search", "owner", "src/lib.rs",]),
-        "route argv should use search owner recovery: {args:?}"
+        args.windows(4)
+            .any(|window| window == ["asp", "rust", "search", "playbook"]),
+        "route argv should use search playbook recovery: {args:?}"
     );
     assert!(
-        args.windows(4)
-            .any(|window| window == ["items", "--workspace", ".", "--view",]),
-        "route argv should use owner items --workspace . --view: {args:?}"
+        args.windows(2)
+            .any(|window| window == ["--scope", "owner:src/lib.rs"]),
+        "route argv should scope the native-syntax playbook to the owner: {args:?}"
     );
     assert!(
         !args.contains(&"--code"),
-        "owner recovery route must not request --code: {args:?}"
+        "playbook recovery route must not request --code: {args:?}"
     );
 }

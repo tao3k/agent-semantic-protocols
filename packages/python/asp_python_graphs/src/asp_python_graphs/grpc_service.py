@@ -78,9 +78,10 @@ class AspPythonGraphsGrpcHandler(grpc.GenericRpcHandler):
                 # A cancellation may have won the registry race while the
                 # immutable graph job was finishing.  Its terminal is owned
                 # by the control path; never publish the late result.
-                if message.get("messageKind") in {"evaluate", "timeline"} and session.is_cancelled(
-                    str(message.get("requestId", ""))
-                ):
+                if message.get("messageKind") in {
+                    "timeline",
+                    "evaluate-resident",
+                } and session.is_cancelled(str(message.get("requestId", ""))):
                     session.complete_request(str(message.get("requestId", "")))
                     return
                 await outbound.put(receipt)
@@ -107,9 +108,11 @@ class AspPythonGraphsGrpcHandler(grpc.GenericRpcHandler):
                     try:
                         session.admit_message(message, validate_service_epoch=False)
                     except ServiceProtocolError as error:
-                        await outbound.put(unavailable_receipt(message, error.code, str(error)))
+                        await outbound.put(
+                            unavailable_receipt(message, error.code, str(error))
+                        )
                         continue
-                    if kind in {"evaluate", "timeline"}:
+                    if kind in {"timeline", "evaluate-resident"}:
                         if active_evaluates >= self._max_in_flight:
                             await outbound.put(
                                 unavailable_receipt(
@@ -169,7 +172,9 @@ async def serve(socket_path: Path, max_in_flight: int) -> None:
     server.add_generic_rpc_handlers((AspPythonGraphsGrpcHandler(max_in_flight),))
     endpoint = f"unix:{socket_path}"
     if server.add_insecure_port(endpoint) != 1:
-        raise RuntimeError(f"failed to bind ASP Python Graphs gRPC endpoint: {endpoint}")
+        raise RuntimeError(
+            f"failed to bind ASP Python Graphs gRPC endpoint: {endpoint}"
+        )
     await server.start()
     await server.wait_for_termination()
 

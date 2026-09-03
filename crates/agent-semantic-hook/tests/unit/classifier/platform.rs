@@ -12,7 +12,7 @@ fn permission_request_allow_renders_explicit_allow_for_claude() {
             "hook_event_name": "PermissionRequest",
             "tool_name": "Bash",
             "tool_input": {
-                "command": "asp typescript search prime --workspace . --view seeds"
+                "command": "asp typescript search playbook 'ParserService cacheDir' --workspace ."
             }
         }),
     );
@@ -43,7 +43,7 @@ fn permission_request_uses_codex_decision_object_contract() {
             "hook_event_name": "PermissionRequest",
             "tool_name": "Bash",
             "tool_input": {
-                "command": "asp typescript search prime --workspace . --view seeds"
+                "command": "asp typescript search playbook 'ParserService cacheDir' --workspace ."
             }
         }),
     );

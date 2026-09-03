@@ -8,8 +8,7 @@ use crate::AspClient;
 use crate::projection_presentation::{ProjectionPresentation, render_exact_projection_response};
 use agent_semantic_client_core::LanguageId;
 use agent_semantic_client_protocol::{
-    AspClientExactQueryRequest, AspClientOwnerSearchRequest, AspClientSearchRequest, ClientFrame,
-    ClientOutcome,
+    AspClientExactQueryRequest, AspClientSearchRequest, ClientFrame, ClientOutcome,
 };
 
 /// Typed language operation admitted by the shared client protocol.
@@ -17,7 +16,6 @@ use agent_semantic_client_protocol::{
 pub enum LanguageCommandOperation {
     Search(AspClientSearchRequest),
     ExactQuery(AspClientExactQueryRequest),
-    OwnerSearch(AspClientOwnerSearchRequest),
 }
 
 impl LanguageCommandOperation {
@@ -25,7 +23,6 @@ impl LanguageCommandOperation {
         match self {
             Self::Search(request) => encode_operation("search", request),
             Self::ExactQuery(request) => encode_operation("query", request),
-            Self::OwnerSearch(request) => encode_operation("search.owner", request),
         }
     }
 }

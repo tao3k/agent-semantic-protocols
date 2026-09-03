@@ -44,12 +44,11 @@
     },
     "method": {
       "type": "string",
-      "pattern": "^(?:guide|query|(search|query|proof|review|evidence|ast-patch|agent)/[a-z][a-z0-9_-]*)$"
+      "pattern": "^(?:guide|query|(query|proof|review|evidence|ast-patch|agent)/[a-z][a-z0-9_-]*)$"
     },
     "command": {
       "enum": [
         "guide",
-        "search",
         "query",
         "proof",
         "review",
@@ -247,36 +246,6 @@
           "type": "boolean"
         }
       },
-      "allOf": [
-        {
-          "if": {
-            "properties": {
-              "argumentProjection": {
-                "properties": {
-                  "tokens": {
-                    "contains": {
-                      "type": "object",
-                      "required": ["kind", "name"],
-                      "properties": {
-                        "kind": {"const": "slot"},
-                        "name": {"const": "owner"}
-                      }
-                    }
-                  }
-                }
-              }
-            },
-            "required": ["argumentProjection"]
-          },
-          "then": {
-            "properties": {
-              "method": {
-                "pattern": "^search/owner(?:$|-)"
-              }
-            }
-          }
-        }
-      ],
       "additionalProperties": true
     }
   }

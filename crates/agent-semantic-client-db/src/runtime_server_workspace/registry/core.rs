@@ -167,8 +167,6 @@ pub(super) struct RuntimeDataPlaneCounterState {
 mod counter_state;
 #[path = "projection_slots.rs"]
 mod projection_slots;
-#[path = "search_authority.rs"]
-mod search_authority;
 
 impl RuntimeServerWorkspaceRegistry {
     pub fn root(&self) -> &std::path::Path {
@@ -298,6 +296,15 @@ impl RuntimeServerWorkspaceRegistry {
             entry.overlays.snapshot(backend.generation()),
             Arc::clone(&resident.activity),
         )
+    }
+
+    pub fn resident_read_client(
+        &self,
+        workspace_identity: &str,
+        project_root: &std::path::Path,
+    ) -> Result<crate::runtime_resident_read::RuntimeResidentReadClient, String> {
+        let lease = self.lease(workspace_identity, project_root)?;
+        crate::runtime_resident_read::RuntimeResidentReadClient::from_resident_lease(lease)
     }
 
     pub async fn prepare_resident_workspace_scope(
@@ -661,6 +668,14 @@ async fn workspace_writer_lane(
 ) {
     let _ = ready.send(());
     let mut last_receipts = HashMap::<String, WorkspaceRecoveryReceipt>::new();
+    let (durability_sender, mut durability_requests) =
+        tokio::sync::mpsc::unbounded_channel::<canonical_publication::DurabilityTask>();
+    let mut durability_tasks = Some(durability_sender);
+    let mut durability_task = Some(tokio::spawn(async move {
+        while let Some(task) = durability_requests.recv().await {
+            task.await;
+        }
+    }));
     while let Some(command) = receiver.recv().await {
         match command {
             WorkspaceWriteCommand::Publish {
@@ -858,6 +873,9 @@ async fn workspace_writer_lane(
                     command,
                     &counters,
                     &mut last_receipts,
+                    durability_tasks
+                        .as_ref()
+                        .expect("durability lane exists until workspace shutdown"),
                 )
                 .await;
             }
@@ -885,6 +903,10 @@ async fn workspace_writer_lane(
                 let _ = reply.send(result);
             }
             WorkspaceWriteCommand::Shutdown { reply } => {
+                durability_tasks.take();
+                if let Some(task) = durability_task.take() {
+                    let _ = task.await;
+                }
                 let _ = reply.send(());
                 break;
             }

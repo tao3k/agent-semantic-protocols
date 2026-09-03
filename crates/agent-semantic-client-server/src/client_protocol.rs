@@ -3,8 +3,8 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 use agent_semantic_client_protocol::{
-    ClientFrame, ClientFrameBase, ClientOutcome, ClientProtocolCatalog, ClientRequestId,
-    ClientSessionId, ClientWorkspaceIdentity,
+    ClientFrame, ClientFrameBase, ClientOutcome, ClientProjectId, ClientProtocolCatalog,
+    ClientRequestId, ClientSessionId, ClientWorkspaceIdentity,
 };
 use serde_json::{Value, json};
 
@@ -14,8 +14,9 @@ pub type AspClientCancelFuture = Pin<Box<dyn Future<Output = bool> + Send>>;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct AspClientDispatchRequest {
+    pub project_id: ClientProjectId,
     pub session_id: ClientSessionId,
-    pub workspace_identity: ClientWorkspaceIdentity,
+    pub workspace_id: ClientWorkspaceIdentity,
     pub request_id: ClientRequestId,
     pub method: String,
     pub params: Value,
@@ -33,7 +34,8 @@ pub trait AspClientDispatcher: Send + Sync + 'static {
 
     fn cancel(
         &self,
-        workspace_identity: &ClientWorkspaceIdentity,
+        project_id: &ClientProjectId,
+        workspace_id: &ClientWorkspaceIdentity,
         session_id: &ClientSessionId,
         request_id: &ClientRequestId,
     ) -> AspClientCancelFuture;
@@ -56,9 +58,6 @@ pub struct AspClientFrameService<D> {
     resolve_catalog: Arc<CatalogResolver>,
 }
 
-/// Compatibility name for the HTTP binding. Both HTTP and gRPC call the same
-/// transport-neutral frame owner.
-
 async fn execute_admitted<D: AspClientDispatcher>(
     dispatcher: Arc<D>,
     catalog: Option<ClientProtocolCatalog>,
@@ -74,13 +73,7 @@ async fn execute_admitted<D: AspClientDispatcher>(
             None,
             catalog,
         )),
-        ClientFrame::Dispatch {
-            request_id,
-            method,
-            params,
-            ..
-        }
-        | ClientFrame::Request {
+        ClientFrame::Request {
             request_id,
             method,
             params,
@@ -88,8 +81,9 @@ async fn execute_admitted<D: AspClientDispatcher>(
         } => {
             let dispatched = dispatcher
                 .dispatch(AspClientDispatchRequest {
+                    project_id: base.project_id.clone(),
                     session_id: base.session_id.clone(),
-                    workspace_identity: base.workspace_identity.clone(),
+                    workspace_id: base.workspace_id.clone(),
                     request_id: request_id.clone(),
                     method,
                     params,
@@ -126,7 +120,12 @@ async fn execute_admitted<D: AspClientDispatcher>(
         }
         ClientFrame::Cancel { request_id, .. } => {
             let _ = dispatcher
-                .cancel(&base.workspace_identity, &base.session_id, &request_id)
+                .cancel(
+                    &base.project_id,
+                    &base.workspace_id,
+                    &base.session_id,
+                    &request_id,
+                )
                 .await;
             // The correlated in-flight dispatch owns the exactly-one terminal.
             // Returning a second response here races that terminal and can hide
@@ -163,13 +162,10 @@ impl<D: AspClientDispatcher> AspClientFrameService<D> {
         dispatcher: Arc<D>,
         resolve_catalog: impl Fn(&str) -> Result<ClientProtocolCatalog, String> + Send + Sync + 'static,
     ) -> Self {
-        Self::new_async(
-            dispatcher,
-            move |workspace_identity, _session_id, _project_root| {
-                let result = resolve_catalog(&workspace_identity);
-                async move { result }
-            },
-        )
+        Self::new_async(dispatcher, move |_project_id, workspace_id, _session_id| {
+            let result = resolve_catalog(&workspace_id);
+            async move { result }
+        })
     }
 
     pub fn new_async<F, Fut>(dispatcher: Arc<D>, resolve_catalog: F) -> Self
@@ -179,12 +175,8 @@ impl<D: AspClientDispatcher> AspClientFrameService<D> {
     {
         Self {
             dispatcher,
-            resolve_catalog: Arc::new(move |workspace_identity, session_id, project_root| {
-                Box::pin(resolve_catalog(
-                    workspace_identity,
-                    session_id,
-                    project_root,
-                ))
+            resolve_catalog: Arc::new(move |project_id, workspace_id, session_id| {
+                Box::pin(resolve_catalog(project_id, workspace_id, session_id))
             }),
         }
     }
@@ -193,14 +185,12 @@ impl<D: AspClientDispatcher> AspClientFrameService<D> {
     /// one typed frame, independent of its HTTP or gRPC transport.
     pub async fn handle_frame(&self, frame: ClientFrame) -> Result<Option<ClientFrame>, String> {
         let base = frame.base().clone();
-        let catalog = if let ClientFrame::Initialize { project_root, .. }
-        | ClientFrame::Dispatch { project_root, .. } = &frame
-        {
+        let catalog = if matches!(frame, ClientFrame::Initialize { .. }) {
             Some(
                 (self.resolve_catalog)(
-                    base.workspace_identity.as_str().to_owned(),
+                    base.project_id.as_str().to_owned(),
+                    base.workspace_id.as_str().to_owned(),
                     base.session_id.as_str().to_owned(),
-                    project_root.clone(),
                 )
                 .await?,
             )

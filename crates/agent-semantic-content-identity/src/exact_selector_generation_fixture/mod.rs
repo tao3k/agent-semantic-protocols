@@ -1,3 +1,9 @@
+//! Reasoning tree for exact-selector generation fixtures.
+//!
+//! `core` owns the immutable binary layout and zero-copy lookup, while
+//! `materialization_proof` owns the parser-produced Merkle evidence admitted
+//! into that layout.
+
 mod core;
 mod materialization_proof;
 
@@ -11,6 +17,7 @@ pub use core::{
     build_exact_selector_generation_fixture_v1, fixture_digest_v1,
 };
 pub use materialization_proof::{
-    ExactSelectorMaterializationProofErrorV1, ExactSelectorMaterializationProofV1,
-    ExactSelectorMerkleProofSideV1, ExactSelectorMerkleProofStepV1,
+    ExactSelectorLanguageIdV1, ExactSelectorMaterializationProofErrorV1,
+    ExactSelectorMaterializationProofV1, ExactSelectorMerkleProofSideV1,
+    ExactSelectorMerkleProofStepV1, ExactSelectorOwnerPathV1, ExactSelectorProviderIdV1,
 };

@@ -23,13 +23,16 @@ fn graph_adapter_preserves_the_admitted_query_budget_inside_rank_controls() {
         "queryTerms": ["compare"],
         "profile": "owner-query",
         "budget": 3,
-        "seedIds": ["owner:src/lib.rs"],
+        "entryNodeIds": ["owner:src/lib.rs"],
         "cache": {"enabled": true},
     });
 
     let adapted = adapt_graph_evaluate_payload(&request).expect("adapt graph evaluation");
     assert_eq!(adapted["budget"], 3);
     assert_eq!(adapted["rankPayload"]["budget"], 3);
-    assert_eq!(adapted["rankPayload"]["seedIds"][0], "owner:src/lib.rs");
+    assert_eq!(
+        adapted["rankPayload"]["entryNodeIds"][0],
+        "owner:src/lib.rs"
+    );
     assert!(adapted.get("graph").is_none());
 }

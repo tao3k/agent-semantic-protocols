@@ -13,16 +13,16 @@ use agent_semantic_search::exact_selector_fixture_publication::publish_exact_sel
 fn required_activation_leaf()
 -> agent_semantic_content_identity::active_artifact_merkle::ActiveArtifactLeaf {
     agent_semantic_content_identity::active_artifact_merkle::ActiveArtifactLeaf::new(
-        "activation.json",
-        "/tmp/activation.json",
-        agent_semantic_content_identity::active_artifact_merkle::ActiveArtifactKind::Activation,
-        agent_semantic_content_identity::exact_selector_merkle::ContentDigestV1::parse(
-            blake3::hash(b"activation").to_hex().to_string(),
+        agent_semantic_content_identity::active_artifact_merkle::ActiveArtifactLeafInput::new(
+            "activation.json",
+            "/tmp/activation.json",
+            agent_semantic_content_identity::active_artifact_merkle::ActiveArtifactKind::Activation,
+            agent_semantic_content_identity::exact_selector_merkle::ContentDigestV1::parse(
+                blake3::hash(b"activation").to_hex().to_string(),
+            )
+            .expect("activation content digest"),
         )
-        .expect("activation content digest"),
-        1,
-        1,
-        None,
+        .with_materialization_metadata(1, 1, None),
     )
     .expect("activation leaf")
 }
@@ -39,16 +39,16 @@ fn active_receipt_without_exact_fixture_is_typed_generation_unavailable() {
         agent_semantic_content_identity::active_artifact_merkle::ActiveAspArtifactReceipt::build(
             "empty-active-artifact-set",
             binary_with_required_activation![agent_semantic_content_identity::active_artifact_merkle::ActiveArtifactLeaf::new(
-                "bin/asp",
-                "/tmp/asp",
-                agent_semantic_content_identity::active_artifact_merkle::ActiveArtifactKind::AspBinary,
-                agent_semantic_content_identity::exact_selector_merkle::ContentDigestV1::parse(
-                    blake3::hash(b"asp-binary").to_hex().to_string(),
+                agent_semantic_content_identity::active_artifact_merkle::ActiveArtifactLeafInput::new(
+                    "bin/asp",
+                    "/tmp/asp",
+                    agent_semantic_content_identity::active_artifact_merkle::ActiveArtifactKind::AspBinary,
+                    agent_semantic_content_identity::exact_selector_merkle::ContentDigestV1::parse(
+                        blake3::hash(b"asp-binary").to_hex().to_string(),
+                    )
+                    .expect("content digest"),
                 )
-                .expect("content digest"),
-                1,
-                1,
-                None,
+                .with_materialization_metadata(1, 1, None),
             )
             .expect("asp binary leaf")],
         )

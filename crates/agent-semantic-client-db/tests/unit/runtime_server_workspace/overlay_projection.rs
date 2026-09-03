@@ -77,11 +77,16 @@ fn generation_with_owners(
             project_root: project_root(workspace_identity).display().to_string(),
             active_epoch: epoch,
             workspace_snapshot,
+            content_search_generation: crate::fixture::content_search_generation_receipt(
+                workspace_identity,
+                &source_snapshot,
+            ),
             source_snapshot,
             module_graph_digest: format!(
                 "blake3-256:{}",
                 blake3::hash(b"runtime-workspace-fixture-module-graph").to_hex()
             ),
+            runtime_provider_execution_binding: None,
             project_resolutions: Vec::new(),
             owners,
         },
@@ -807,7 +812,7 @@ async fn concurrent_projection_reads_share_one_watch_snapshot_with_bounded_warm_
         let authority = result
             .expect("join projection read")
             .expect("read projection authority");
-        assert_eq!(authority.workspace_identity, "workspace-projection-slot");
+        assert_eq!(authority.workspace_id, "workspace-projection-slot");
     }
     assert_eq!(
         registry.workspace_count(),
@@ -970,11 +975,16 @@ async fn process_cold_owner_snapshot_is_independent_of_unrelated_selector_volume
                 .to_string(),
             active_epoch: 1,
             workspace_snapshot,
+            content_search_generation: crate::fixture::content_search_generation_receipt(
+                "workspace-owner-identity-performance",
+                &source_snapshot,
+            ),
             source_snapshot,
             module_graph_digest: format!(
                 "blake3-256:{}",
                 blake3::hash(b"owner-identity-performance-module-graph").to_hex()
             ),
+            runtime_provider_execution_binding: None,
             project_resolutions: Vec::new(),
             owners,
         },

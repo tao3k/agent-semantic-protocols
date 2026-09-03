@@ -99,7 +99,7 @@ fn open_state(claim_class: ClaimClass) -> UncheckedContextProductStateV1 {
 fn candidate(state: &UncheckedContextProductStateV1) -> RecommendedNextCandidate {
     RecommendedNextCandidate {
         language_id: id("rust"),
-        operation: id("search.owner"),
+        operation: id("search"),
         argv: vec!["asp".into(), "rust".into(), "search".into()],
         action_identity: digest("action-1"),
         context_binding_digest: state.context.binding_digest.clone(),

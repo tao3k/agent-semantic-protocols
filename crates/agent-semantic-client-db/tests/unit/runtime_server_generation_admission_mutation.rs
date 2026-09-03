@@ -63,6 +63,7 @@ async fn mutation_admission_rejects_non_normalized_paths_and_workspace_identity_
         .expect("load resident workspace catalog");
     catalog
         .record(RuntimeWorkspaceAdmissionCatalogEntry {
+            project_id: "repo-parent".to_owned(),
             workspace_identity: "workspace-parent".to_owned(),
             project_root: parent_root.clone(),
         })
@@ -143,28 +144,46 @@ async fn explicit_mutation_admission_returns_the_exact_attempt_terminal_receipt(
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn changed_paths_fan_out_to_each_workspace_resident_without_git_rediscovery() {
+async fn changed_paths_are_inventory_hints_to_each_complete_generation_builder() {
     let temp = tempfile::tempdir().expect("temporary resident catalog");
     let parent_root = temp.path().join("repository");
     let nested_root = parent_root.join("languages/asp-rust");
     tokio::fs::create_dir_all(&nested_root)
         .await
         .expect("nested workspace root");
+    let parent_workspace_identity =
+        agent_semantic_client_core::state_core::ResolvedState::resolve(&parent_root)
+            .expect("resolve parent workspace state")
+            .workspace
+            .workspace_id
+            .to_string();
+    let nested_workspace_identity =
+        agent_semantic_client_core::state_core::ResolvedState::resolve(&nested_root)
+            .expect("resolve nested workspace state")
+            .workspace
+            .workspace_id
+            .to_string();
     let catalog = RuntimeWorkspaceAdmissionCatalog::load(temp.path().join("catalog.json"))
         .await
         .expect("load resident workspace catalog");
     catalog
-        .record(RuntimeWorkspaceAdmissionCatalogEntry {
-            workspace_identity: "workspace-parent".to_owned(),
-            project_root: parent_root.clone(),
-        })
+        .record(
+            RuntimeWorkspaceAdmissionCatalogEntry::resolve(
+                parent_workspace_identity.clone(),
+                parent_root.clone(),
+            )
+            .expect("resolve canonical parent workspace identity"),
+        )
         .await
         .expect("record parent workspace");
     catalog
-        .record(RuntimeWorkspaceAdmissionCatalogEntry {
-            workspace_identity: "workspace-nested".to_owned(),
-            project_root: nested_root.clone(),
-        })
+        .record(
+            RuntimeWorkspaceAdmissionCatalogEntry::resolve(
+                nested_workspace_identity.clone(),
+                nested_root.clone(),
+            )
+            .expect("resolve canonical nested workspace identity"),
+        )
         .await
         .expect("record nested workspace");
 
@@ -191,8 +210,8 @@ async fn changed_paths_fan_out_to_each_workspace_resident_without_git_rediscover
     }))
     .with_catalog(catalog);
     for (workspace_identity, workspace_root) in [
-        ("workspace-parent", &parent_root),
-        ("workspace-nested", &nested_root),
+        (parent_workspace_identity.as_str(), &parent_root),
+        (nested_workspace_identity.as_str(), &nested_root),
     ] {
         admission
             .admit(
@@ -207,12 +226,13 @@ async fn changed_paths_fan_out_to_each_workspace_resident_without_git_rediscover
             .await
             .expect("resident candidate evidence ready");
     }
+    assert_eq!(builds.lock().await.len(), 2);
     builds.lock().await.clear();
 
     let receipt = admission
-        .admit_observed_mutation(
+        .admit_observed_mutation_terminal(
             "mutation-parent-and-nested",
-            "workspace-parent",
+            parent_workspace_identity.as_str(),
             parent_root.clone(),
             vec![
                 parent_root.join("README.md"),
@@ -231,36 +251,31 @@ async fn changed_paths_fan_out_to_each_workspace_resident_without_git_rediscover
             .iter()
             .map(|receipt| receipt.workspace_identity.as_str())
             .collect::<Vec<_>>(),
-        vec!["workspace-nested", "workspace-parent"]
+        vec![
+            nested_workspace_identity.as_str(),
+            parent_workspace_identity.as_str(),
+        ]
     );
-    for (workspace_identity, workspace_root) in [
-        ("workspace-parent", &parent_root),
-        ("workspace-nested", &nested_root),
-    ] {
-        admission
-            .wait_terminal(workspace_identity, workspace_root)
-            .await
-            .expect("workspace mutation terminal state");
-    }
     let mut builds = builds.lock().await.clone();
     builds.sort();
     assert_eq!(
         builds,
         vec![
             (
-                "workspace-nested".to_owned(),
+                nested_workspace_identity,
                 nested_root.clone(),
                 std::collections::BTreeSet::from([nested_root.join("src/exact_source.rs")]),
             ),
             (
-                "workspace-parent".to_owned(),
+                parent_workspace_identity,
                 parent_root.clone(),
                 std::collections::BTreeSet::from([
                     parent_root.join("README.md"),
                     nested_root.join("src/exact_source.rs"),
                 ]),
             ),
-        ]
+        ],
+        "mutation receipt: {receipt:?}"
     );
     assert!(builds.iter().all(|(_, _, changed_paths)| {
         !changed_paths.contains(&parent_root.join("src/untouched.rs"))

@@ -1,22 +1,30 @@
+//! Exact-selector Merkle proofs and domain-separated content digests.
+
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
+/// Schema identifier for an exact-selector Merkle proof.
 pub const EXACT_SELECTOR_MERKLE_PROOF_SCHEMA_ID: &str =
     "agent.semantic-protocols.exact-selector-merkle-proof";
+/// Schema version for an exact-selector Merkle proof.
 pub const EXACT_SELECTOR_MERKLE_PROOF_SCHEMA_VERSION: &str = "1";
+/// Digest algorithm used by exact-selector Merkle proofs.
 pub const EXACT_SELECTOR_MERKLE_DIGEST_ALGORITHM: &str = "blake3-256";
 
+/// Provider parser language identity retained in exact-selector proofs.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct ParserLanguageIdV1(String);
 
 impl ParserLanguageIdV1 {
+    /// Creates a parser language identity.
     #[must_use]
     pub fn new(value: impl Into<String>) -> Self {
         Self(value.into())
     }
 
     #[must_use]
+    /// Returns the parser language identity as text.
     pub fn as_str(&self) -> &str {
         &self.0
     }
@@ -34,6 +42,7 @@ impl From<String> for ParserLanguageIdV1 {
     }
 }
 
+/// Content-proven exact-selector projection receipt.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExactSelectorMerkleProofV1 {
@@ -93,6 +102,7 @@ impl ExactSelectorMerkleProofV1 {
         }
     }
 
+    /// Validates schema identity, owner inclusion, and selector binding.
     pub fn validate_shape(&self) -> Result<(), ExactSelectorMerkleProofError> {
         if self.schema_id != EXACT_SELECTOR_MERKLE_PROOF_SCHEMA_ID {
             return Err(ExactSelectorMerkleProofError::SchemaId);
@@ -130,127 +140,153 @@ impl ExactSelectorMerkleProofV1 {
         Ok(())
     }
 
+    /// Returns the provider language identity.
     pub fn language_id(&self) -> &str {
         self.language_id.as_str()
     }
 
+    /// Returns the typed parser language identity.
     pub fn parser_language_id(&self) -> &ParserLanguageIdV1 {
         &self.language_id
     }
 
+    /// Returns the admitted workspace root digest.
     pub fn workspace_root_digest(&self) -> &ContentDigestV1 {
         &self.workspace_root_digest
     }
 
+    /// Returns the normalized source owner path.
     pub fn owner_path(&self) -> &str {
         &self.owner_path
     }
 
+    /// Returns the owner subtree digest.
     pub fn owner_subtree_digest(&self) -> &ContentDigestV1 {
         &self.owner_subtree_digest
     }
 
+    /// Returns the owner inclusion proof.
     pub fn owner_inclusion_proof(&self) -> &[MerkleInclusionStepV1] {
         &self.owner_inclusion_proof
     }
 
+    /// Returns the exact source blob digest.
     pub fn source_blob_digest(&self) -> &ContentDigestV1 {
         &self.source_blob_digest
     }
 
+    /// Returns the parser implementation identity digest.
     pub fn parser_identity_digest(&self) -> &ContentDigestV1 {
         &self.parser_identity_digest
     }
 
+    /// Returns the provider query-pack digest.
     pub fn query_pack_digest(&self) -> &ContentDigestV1 {
         &self.query_pack_digest
     }
 
+    /// Returns the normalized parser-fact digest.
     pub fn parser_fact_digest(&self) -> &ContentDigestV1 {
         &self.parser_fact_digest
     }
 
+    /// Returns the canonical item selector bound by this proof.
     pub fn canonical_item_selector(
         &self,
     ) -> &crate::canonical_item_identity::CanonicalItemSelector {
         &self.canonical_item_selector
     }
 
+    /// Returns the structural selector bound by this proof.
     pub fn structural_selector(&self) -> &str {
         &self.structural_selector
     }
 
+    /// Returns the exact projection mode.
     pub fn projection_mode(&self) -> &ExactProjectionModeV1 {
         &self.projection_mode
     }
 
+    /// Returns the exact projection payload digest.
     pub fn projection_digest(&self) -> &ContentDigestV1 {
         &self.projection_digest
     }
 }
 
-pub fn derive_parser_fact_digest_v1(
-    language_id: &ParserLanguageIdV1,
-    parser_identity_digest: &ContentDigestV1,
-    query_pack_digest: &ContentDigestV1,
-    source_blob_digest: &ContentDigestV1,
-    normalized_parser_facts: &[u8],
-) -> ContentDigestV1 {
+/// Named inputs for deriving one normalized parser-fact digest.
+pub struct ParserFactDigestInputV1<'a> {
+    pub language_id: &'a ParserLanguageIdV1,
+    pub parser_identity_digest: &'a ContentDigestV1,
+    pub query_pack_digest: &'a ContentDigestV1,
+    pub source_blob_digest: &'a ContentDigestV1,
+    pub normalized_parser_facts: &'a [u8],
+}
+
+/// Derives the domain-separated digest of normalized provider parser facts.
+pub fn derive_parser_fact_digest_v1(input: ParserFactDigestInputV1<'_>) -> ContentDigestV1 {
     canonical_digest_v1(
         b"asp.parser-fact.v1",
         &[
-            language_id.as_str().as_bytes(),
-            parser_identity_digest.as_str().as_bytes(),
-            query_pack_digest.as_str().as_bytes(),
-            source_blob_digest.as_str().as_bytes(),
-            normalized_parser_facts,
+            input.language_id.as_str().as_bytes(),
+            input.parser_identity_digest.as_str().as_bytes(),
+            input.query_pack_digest.as_str().as_bytes(),
+            input.source_blob_digest.as_str().as_bytes(),
+            input.normalized_parser_facts,
         ],
     )
 }
 
-pub fn derive_projection_digest_v1(
-    canonical_item_selector: &crate::canonical_item_identity::CanonicalItemSelector,
-    structural_selector: &str,
-    projection_mode: ExactProjectionModeV1,
-    parser_fact_digest: &ContentDigestV1,
-    projection_payload: &[u8],
-) -> ContentDigestV1 {
-    let canonical_item_selector =
-        serde_json::to_vec(canonical_item_selector).expect("canonical item selector v1 serializes");
+/// Named inputs for deriving one exact projection digest.
+pub struct ProjectionDigestInputV1<'a> {
+    pub canonical_item_selector: &'a crate::canonical_item_identity::CanonicalItemSelector,
+    pub structural_selector: &'a str,
+    pub projection_mode: ExactProjectionModeV1,
+    pub parser_fact_digest: &'a ContentDigestV1,
+    pub projection_payload: &'a [u8],
+}
+
+/// Derives the domain-separated digest of one exact projection payload.
+pub fn derive_projection_digest_v1(input: ProjectionDigestInputV1<'_>) -> ContentDigestV1 {
+    let canonical_item_selector = serde_json::to_vec(input.canonical_item_selector)
+        .expect("canonical item selector v1 serializes");
     canonical_digest_v1(
         b"asp.exact-projection.v1",
         &[
             &canonical_item_selector,
-            structural_selector.as_bytes(),
-            projection_mode.as_str().as_bytes(),
-            parser_fact_digest.as_str().as_bytes(),
-            projection_payload,
+            input.structural_selector.as_bytes(),
+            input.projection_mode.as_str().as_bytes(),
+            input.parser_fact_digest.as_str().as_bytes(),
+            input.projection_payload,
         ],
     )
 }
 
+/// Verifies an exact projection payload against its Merkle proof.
 pub fn verify_projection_digest_v1(
     proof: &ExactSelectorMerkleProofV1,
     projection_payload: &[u8],
 ) -> Result<bool, ExactSelectorMerkleProofError> {
     proof.validate_shape()?;
-    Ok(derive_projection_digest_v1(
-        &proof.canonical_item_selector,
-        &proof.structural_selector,
-        proof.projection_mode,
-        &proof.parser_fact_digest,
+    Ok(derive_projection_digest_v1(ProjectionDigestInputV1 {
+        canonical_item_selector: &proof.canonical_item_selector,
+        structural_selector: &proof.structural_selector,
+        projection_mode: proof.projection_mode,
+        parser_fact_digest: &proof.parser_fact_digest,
         projection_payload,
-    ) == proof.projection_digest)
+    }) == proof.projection_digest)
 }
 
+/// Canonical lowercase BLAKE3 content digest.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct ContentDigestV1(String);
 
+/// Hashes one byte slice into a canonical content digest.
 pub fn blake3_content_digest_v1(bytes: &[u8]) -> ContentDigestV1 {
     ContentDigestV1(blake3::hash(bytes).to_hex().to_string())
 }
 
+/// Parses a canonical lowercase hexadecimal content digest.
 pub fn parse_content_digest_v1(value: &str) -> Result<ContentDigestV1, String> {
     if value.len() != 64
         || !value
@@ -262,6 +298,7 @@ pub fn parse_content_digest_v1(value: &str) -> Result<ContentDigestV1, String> {
     Ok(ContentDigestV1(value.to_string()))
 }
 
+/// Hashes length-delimited parts under an explicit identity domain.
 pub fn canonical_content_digest(domain: &[u8], parts: &[&[u8]]) -> ContentDigestV1 {
     let mut hasher = blake3::Hasher::new();
     hasher.update(&(domain.len() as u64).to_be_bytes());
@@ -275,6 +312,7 @@ pub fn canonical_content_digest(domain: &[u8], parts: &[&[u8]]) -> ContentDigest
 }
 
 impl ContentDigestV1 {
+    /// Parses a canonical content digest into the proof error domain.
     pub fn parse(value: impl Into<String>) -> Result<Self, ExactSelectorMerkleProofError> {
         let value = value.into();
         if value.len() == 64
@@ -288,11 +326,13 @@ impl ContentDigestV1 {
         }
     }
 
+    /// Returns the lowercase hexadecimal digest.
     pub fn as_str(&self) -> &str {
         &self.0
     }
 }
 
+/// Side of a sibling digest in a Merkle inclusion step.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum MerkleInclusionSideV1 {
@@ -300,6 +340,7 @@ pub enum MerkleInclusionSideV1 {
     Right,
 }
 
+/// One sibling step in an owner inclusion proof.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MerkleInclusionStepV1 {
@@ -307,6 +348,7 @@ pub struct MerkleInclusionStepV1 {
     pub digest: ContentDigestV1,
 }
 
+/// Projection form whose bytes are bound by an exact-selector proof.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ExactProjectionModeV1 {
@@ -317,6 +359,7 @@ pub enum ExactProjectionModeV1 {
 }
 
 impl ExactProjectionModeV1 {
+    /// Returns the stable wire label for this projection mode.
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Code => "code",
@@ -327,6 +370,7 @@ impl ExactProjectionModeV1 {
     }
 }
 
+/// Typed validation failures for exact-selector Merkle proofs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExactSelectorMerkleProofError {
     SchemaId,

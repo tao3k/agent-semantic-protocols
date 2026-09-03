@@ -27,7 +27,7 @@ pub struct RuntimeHookAdmissionEndpointBinding {
     pub runtime_artifact_path: String,
     pub runtime_artifact_digest: String,
     pub binding_token: String,
-    pub data_plane_socket_path: String,
+    pub data_endpoint: crate::runtime_server_control::RuntimeServerLoopbackEndpoint,
     pub workspace_store_path: String,
 }
 
@@ -42,7 +42,7 @@ impl RuntimeHookAdmissionEndpointBinding {
                 .content_digest()
                 .to_string(),
             binding_token: endpoint.binding_token.clone(),
-            data_plane_socket_path: endpoint.data_plane_socket_path.clone(),
+            data_endpoint: endpoint.data_endpoint.clone(),
             workspace_store_path: endpoint.workspace_store_path.clone(),
         }
     }
@@ -62,13 +62,13 @@ impl RuntimeHookAdmissionEndpointBinding {
                 self.runtime_artifact_digest.as_str(),
             ),
             ("bindingToken", self.binding_token.as_str()),
-            ("dataPlaneSocketPath", self.data_plane_socket_path.as_str()),
             ("workspaceStorePath", self.workspace_store_path.as_str()),
         ] {
             if value.trim().is_empty() {
                 return Err(format!("Hook admission locator {name} must be non-empty"));
             }
         }
+        self.data_endpoint.validate()?;
         Ok(())
     }
 }

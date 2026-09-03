@@ -85,16 +85,16 @@ wrapperExemption = "native Edit is a typed Host action and has no shell wrapper 
 id = "registered-asp-reasoning-search"
 ruleComposition = [
   { pointer = "/matcherPolicies", contains = "wrapped_command" },
-  { pointer = "/match/argvPatternAny", contains = ["asp", "<registered-language>", "search"] },
+  { pointer = "/match/argvPatternAny", contains = ["asp", "<registered-language>", "search", "playbook"] },
   { pointer = "/dispatch/agent", equals = "asp_explorer" },
 ]
 positiveCommands = [
-  "asp rust search owner crates/agent-semantic-hook/src/lib.rs items --query capability --workspace . --view seeds",
-  "env TRACE=1 asp rust search pipe HookDecision --workspace . --view seeds",
-  "asp typescript search pipe Effect --workspace . --view seeds",
-  "asp python search owner packages/python/project.py items --query policy --workspace . --view seeds",
-  "asp julia search pipe runtime --workspace . --view seeds",
-  "asp gerbil-scheme search owner src/main.ss items --query profile --workspace . --view seeds",
+  "asp rust search playbook capability --scope owner:crates/agent-semantic-hook/src/lib.rs --workspace .",
+  "env TRACE=1 asp rust search playbook HookDecision --workspace .",
+  "asp typescript search playbook Effect --workspace .",
+  "asp python search playbook policy --scope owner:packages/python/project.py --workspace .",
+  "asp julia search playbook runtime --workspace .",
+  "asp gerbil-scheme search playbook profile --scope owner:src/main.ss --workspace .",
 ]
 negativeCommands = [
   "asp healthcheck",
@@ -116,8 +116,8 @@ positiveCommands = [
 ]
 negativeCommands = [
   "asp healthcheck",
-  "asp rust search pipe HookDecision --workspace . --view seeds",
-  "asp python search owner packages/python/project.py items --query policy --workspace . --view seeds",
+  "asp rust search playbook HookDecision --workspace .",
+  "asp python search playbook policy --scope owner:packages/python/project.py --workspace .",
 ]
 
 [[rules]]
@@ -261,7 +261,7 @@ ruleComposition = [
   { pointer = "/matcherPolicies", contains = "wrapped_command" },
   { pointer = "/match/commandContainsAny", contains = "--json" },
 ]
-positiveCommands = ["asp rust search pipe Effect --workspace . --json", "asp typescript search pipe Effect --workspace . --json"]
+positiveCommands = ["asp rust search playbook Effect --workspace . --json", "asp typescript search playbook Effect --workspace . --json"]
 negativeCommands = ["asp healthcheck --json", "asp paths --json"]
 
 [[rules]]

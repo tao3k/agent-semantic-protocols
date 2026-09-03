@@ -7,8 +7,7 @@ use agent_semantic_client_db::runtime_server_admission_catalog::{
     RuntimeWorkspaceAdmissionCatalog, RuntimeWorkspaceAdmissionCatalogEntry,
 };
 use agent_semantic_client_db::runtime_server_control::{
-    RuntimeServerOperation, RuntimeServerState, call_runtime_server,
-    prepare_runtime_server_endpoint_in,
+    RuntimeServerState, prepare_runtime_server_endpoint_in,
 };
 
 async fn fixture_endpoint(
@@ -55,6 +54,7 @@ async fn daemon_startup_does_not_eagerly_restore_registered_workspaces() {
     .expect("load admission catalog");
     catalog
         .record(RuntimeWorkspaceAdmissionCatalogEntry {
+            project_id: "repo-stale".to_owned(),
             workspace_identity: "workspace-stale".to_owned(),
             project_root,
         })
@@ -86,17 +86,16 @@ async fn daemon_startup_does_not_eagerly_restore_registered_workspaces() {
     .expect("bind Runtime Server")
     .with_workspace_generation_admission(Arc::new(admission));
     let shutdown = server.shutdown_handle();
+    let mut readiness = server.readiness_subscribe();
     let server = tokio::spawn(server.serve());
 
-    let healthy = call_runtime_server(
-        &endpoint,
-        RuntimeServerOperation::Status,
-        endpoint.runtime_binary_identity.clone(),
-        "status-with-on-demand-workspace-restore".to_owned(),
-    )
-    .await
-    .expect("read Healthy status before on-demand workspace admission");
-    assert_eq!(healthy.state, RuntimeServerState::Healthy);
+    if *readiness.borrow() != RuntimeServerState::Healthy {
+        readiness
+            .changed()
+            .await
+            .expect("observe Runtime Server Healthy state");
+    }
+    assert_eq!(*readiness.borrow(), RuntimeServerState::Healthy);
     assert_eq!(
         build_count.load(std::sync::atomic::Ordering::SeqCst),
         0,

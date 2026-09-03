@@ -4,8 +4,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use super::{
-    WorkspaceMemoryBackend, WorkspaceMemoryGeneration, WorkspaceOwnerSnapshot,
-    WorkspaceProjectionLease,
+    WorkspaceMemoryBackend, WorkspaceMemoryGeneration, WorkspaceOwnerSearchSeedSnapshot,
+    WorkspaceOwnerSearchSnapshot, WorkspaceOwnerSnapshot, WorkspaceProjectionLease,
 };
 
 #[derive(Debug)]
@@ -227,6 +227,10 @@ impl WorkspaceGenerationLease {
         self.backend.generation()
     }
 
+    pub(crate) fn generation_arc(&self) -> Arc<WorkspaceMemoryGeneration> {
+        Arc::clone(self.backend.generation())
+    }
+
     pub fn project(&self, selector: &str) -> Option<WorkspaceProjectionLease> {
         self.backend.projection(selector)
     }
@@ -251,6 +255,44 @@ impl WorkspaceGenerationLease {
         self.overlay
             .owner_snapshot(self.generation(), owner_path)
             .map(|owner| (self.overlay.generation_digest().to_owned(), owner))
+    }
+
+    pub fn runtime_owner_search_snapshot(
+        &self,
+        owner_path: &str,
+        query_terms: &[String],
+        limit: usize,
+    ) -> Result<Option<WorkspaceOwnerSearchSnapshot>, String> {
+        let Some((_, owner)) = self.runtime_owner_snapshot(owner_path) else {
+            return Ok(None);
+        };
+        let matching = owner
+            .selectors
+            .iter()
+            .filter_map(|selector| {
+                match super::owner_search_admission::selector_is_admitted(
+                    super::ExactProjectionKind::Source,
+                    &selector.query_keys,
+                    query_terms,
+                ) {
+                    Ok(true) => Some(Ok(WorkspaceOwnerSearchSeedSnapshot {
+                        selector: selector.selector.clone(),
+                        byte_start: selector.byte_start,
+                        byte_end: selector.byte_end,
+                    })),
+                    Ok(false) => None,
+                    Err(error) => Some(Err(error)),
+                }
+            })
+            .collect::<Result<Vec<_>, String>>()?;
+        let (candidate_count, selectors) =
+            super::owner_search_admission::finish_owner_search(matching, limit)?;
+        Ok(Some(WorkspaceOwnerSearchSnapshot {
+            owner_path: owner.owner_path,
+            content_digest: owner.content_digest,
+            candidate_count,
+            selectors,
+        }))
     }
 
     pub fn runtime_generation_digest(&self) -> String {

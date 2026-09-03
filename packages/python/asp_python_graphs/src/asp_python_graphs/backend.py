@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
+from collections import deque
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 
 import numpy as np
 from scipy.sparse import csr_matrix, diags
-from scipy.sparse.csgraph import dijkstra
 
 from .model import Edge, GraphProfile, OrientedEdge, TypedGraph
 from .profiles import allowed_oriented_edges
@@ -23,6 +23,7 @@ class SparseGraphBackend:
     relation_edge_counts: Mapping[str, int]
     relation_weight_mass: Mapping[str, float]
     selected_edges: tuple[OrientedEdge, ...]
+    neighbors_by_id: Mapping[str, tuple[str, ...]]
 
 
 def build_sparse_backend(
@@ -60,6 +61,7 @@ def build_sparse_backend(
     adjacency = csr_matrix(
         (weights, (rows, cols)), shape=(len(node_ids), len(node_ids))
     )
+    oriented_edges = tuple(selected_edges.values())
     return SparseGraphBackend(
         node_ids=node_ids,
         index_by_id=index_by_id,
@@ -80,7 +82,8 @@ def build_sparse_backend(
             relation: relation_weight_mass.get(relation, 0.0)
             for relation in sorted(profile.allowed_relations)
         },
-        selected_edges=tuple(selected_edges.values()),
+        selected_edges=oriented_edges,
+        neighbors_by_id=_neighbors_by_id(oriented_edges),
     )
 
 
@@ -126,29 +129,29 @@ def sparse_backend_from_parts(
             for relation in sorted(frozenset(relations) | frozenset(relation_weights))
         },
         selected_edges=selected_edges,
+        neighbors_by_id=_neighbors_by_id(selected_edges),
     )
 
 
 def multi_source_hop_lengths(
     backend: SparseGraphBackend, seed_ids: Iterable[str], max_depth: int
 ) -> dict[str, int]:
-    seed_indexes = _seed_indexes(backend, seed_ids)
-    if not seed_indexes:
-        return {}
-    distances = dijkstra(
-        backend.adjacency,
-        directed=True,
-        indices=seed_indexes,
-        unweighted=True,
-        limit=max_depth,
+    admitted_seeds = tuple(
+        node_id for node_id in seed_ids if node_id in backend.index_by_id
     )
-    matrix = np.atleast_2d(distances)
-    min_distances = matrix.min(axis=0)
-    return {
-        backend.node_ids[index]: int(distance)
-        for index, distance in enumerate(min_distances)
-        if np.isfinite(distance) and distance <= max_depth
-    }
+    best_depth = {node_id: 0 for node_id in admitted_seeds}
+    queue = deque(admitted_seeds)
+    while queue:
+        node_id = queue.popleft()
+        depth = best_depth[node_id]
+        if depth >= max_depth:
+            continue
+        for adjacent_id in backend.neighbors_by_id.get(node_id, ()):
+            if adjacent_id in best_depth:
+                continue
+            best_depth[adjacent_id] = depth + 1
+            queue.append(adjacent_id)
+    return best_depth
 
 
 def reachable_edges(
@@ -161,14 +164,16 @@ def reachable_edges(
     }
 
 
-def _seed_indexes(
-    backend: SparseGraphBackend, seed_ids: Iterable[str]
-) -> tuple[int, ...]:
-    return tuple(
-        backend.index_by_id[node_id]
-        for node_id in seed_ids
-        if node_id in backend.index_by_id
-    )
+def _neighbors_by_id(
+    selected_edges: Iterable[OrientedEdge],
+) -> Mapping[str, tuple[str, ...]]:
+    neighbors: dict[str, list[str]] = {}
+    for edge in selected_edges:
+        neighbors.setdefault(edge.source, []).append(edge.target)
+    return {
+        node_id: tuple(dict.fromkeys(adjacent))
+        for node_id, adjacent in neighbors.items()
+    }
 
 
 def _row_stochastic_transition(adjacency: csr_matrix) -> csr_matrix:

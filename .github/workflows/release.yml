@@ -61,7 +61,7 @@ jobs:
             languages/gerbil-scheme-language-project-harness \
             languages/org \
             languages/orgize \
-            languages/typescript-lang-project-harness \
+            languages/asp-typescript \
             languages/asp-python \
             languages/AspJulia.jl
 
@@ -169,33 +169,18 @@ jobs:
           "./package/${ASP_BINARY}${{ matrix.exe }}" guide >/dev/null
           if [[ -x package/asp-python-graphs.bundle/asp-python-graphs-service ]]; then
             service_launcher="$PWD/package/asp-python-graphs.bundle/asp-python-graphs-service"
-            service_publication_args=(--argument serve --argument '--socket=${socketPath}')
             service_run_args=(serve --socket)
           else
             service_launcher="$PWD/package/asp-python-graphs.bundle/environment/Scripts/python.exe"
-            service_publication_args=(--argument -m --argument asp_python_graphs.service_cli --argument serve --argument '--socket=${socketPath}')
             service_run_args=(-m asp_python_graphs.service_cli serve --socket)
           fi
           test -x "${service_launcher}" || test -f "${service_launcher}"
-          service_state="$RUNNER_TEMP/asp-python-graphs-release-state"
-          mkdir -p "${service_state}"
-          ASP_STATE_HOME="${service_state}" \
-            "./package/${ASP_BINARY}${{ matrix.exe }}" graph artifact publish \
-            --executable "${service_launcher}" \
-            "${service_publication_args[@]}" > "${service_state}/publication.json"
-          descriptor="${service_state}/runtime/server/asp-python-graphs-artifact.v2.json"
-          test -f "${descriptor}"
-          python - "${descriptor}" "${service_launcher}" <<'PY'
-          import json
+          python - "${service_launcher}" <<'PY'
           import os
           import pathlib
           import sys
 
-          descriptor = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
-          launcher = pathlib.Path(sys.argv[2]).resolve()
-          assert pathlib.Path(descriptor["executionArtifactLocator"]).resolve() == launcher
-          assert descriptor["commandArguments"][-1] == "--socket=${socketPath}"
-          assert "asp_python_graphs.service_cli" in descriptor["commandArguments"] or launcher.name == "asp-python-graphs-service"
+          launcher = pathlib.Path(sys.argv[1]).resolve()
           assert os.access(launcher, os.X_OK) or launcher.suffix == ".cmd"
           PY
           socket_path="$RUNNER_TEMP/asp-python-graphs-release.sock"

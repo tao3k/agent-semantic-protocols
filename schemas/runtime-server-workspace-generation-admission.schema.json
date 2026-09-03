@@ -39,7 +39,7 @@
     },
     "admissionMode": {
       "enum": [
-        "cold-targeted",
+        "complete-generation",
         "incremental-overlay",
         "full-recovery"
       ]

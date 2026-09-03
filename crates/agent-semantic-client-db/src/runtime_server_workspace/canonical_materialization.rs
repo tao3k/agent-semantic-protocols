@@ -21,7 +21,12 @@ pub struct WorkspaceCanonicalMaterialization {
     pub workspace_generation: agent_semantic_content_identity::workspace_generation_evidence::WorkspaceGenerationEvidenceV1,
     pub provider_schema_digest: String,
     pub import_digest: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub runtime_provider_execution_binding:
+        Option<agent_semantic_artifacts::installed_provider_binding::RuntimeProviderExecutionBinding>,
     pub selector_set_digest: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content_search_generation: Option<agent_semantic_search::ContentSearchGenerationReceipt>,
     pub projection_capability: crate::active_generation_projection_capability::ActiveGenerationProjectionCapabilityManifest,
     pub workspace_source_scope_generation: String,
     pub project_resolutions: Vec<agent_semantic_content_identity::AdmittedProjectResolution>,
@@ -101,7 +106,9 @@ fn assemble_canonical_materialization(
         workspace_generation: derived.workspace_generation,
         provider_schema_digest: derived.provider_schema_digest,
         import_digest: derived.import_digest,
+        runtime_provider_execution_binding: None,
         selector_set_digest: derived.selector_set_digest,
+        content_search_generation: None,
         projection_capability: derived.projection_capability,
         workspace_source_scope_generation: derived.workspace_source_scope_generation,
         project_resolutions,
@@ -263,6 +270,42 @@ impl ValidatedWorkspaceCanonicalMaterialization {
 }
 
 impl WorkspaceCanonicalMaterialization {
+    pub fn attach_content_search_generation(
+        &mut self,
+        receipt: agent_semantic_search::ContentSearchGenerationReceipt,
+    ) -> Result<(), String> {
+        receipt.validate()?;
+        let identity = receipt.identity();
+        let source_root_digest =
+            agent_semantic_search::canonical_blake3_digest(&self.source_snapshot.root_digest)?;
+        if identity.workspace_id != self.workspace_identity
+            || identity.source_root_digest != source_root_digest
+            || identity.provider_digest
+                != agent_semantic_search::canonical_blake3_digest(
+                    &self.source_snapshot.provider_digest,
+                )?
+            || identity.schema_digest
+                != agent_semantic_search::canonical_blake3_digest(
+                    &agent_semantic_content_identity::project_resolution_schema_digest(),
+                )?
+        {
+            return Err("content search generation materialization binding drift".to_owned());
+        }
+        self.content_search_generation = Some(receipt);
+        Ok(())
+    }
+
+    pub fn require_content_search_generation(
+        &self,
+    ) -> Result<&agent_semantic_search::ContentSearchGenerationReceipt, String> {
+        let receipt = self.content_search_generation.as_ref().ok_or_else(|| {
+            "query-not-ready: canonical generation lacks content search construction receipt"
+                .to_owned()
+        })?;
+        receipt.validate()?;
+        Ok(receipt)
+    }
+
     pub fn into_validated(
         self,
         workspace_identity: &str,
@@ -304,6 +347,7 @@ impl WorkspaceCanonicalMaterialization {
             && self.workspace_generation == other.workspace_generation
             && self.provider_schema_digest == other.provider_schema_digest
             && self.import_digest == other.import_digest
+            && self.runtime_provider_execution_binding == other.runtime_provider_execution_binding
             && self.selector_set_digest == other.selector_set_digest
             && self.workspace_source_scope_generation == other.workspace_source_scope_generation
             && self.project_resolutions == other.project_resolutions
@@ -324,6 +368,7 @@ impl WorkspaceCanonicalMaterialization {
             workspace_generation: &'a agent_semantic_content_identity::workspace_generation_evidence::WorkspaceGenerationEvidenceV1,
             provider_schema_digest: &'a str,
             import_digest: &'a str,
+            runtime_provider_execution_binding: &'a Option<agent_semantic_artifacts::installed_provider_binding::RuntimeProviderExecutionBinding>,
             selector_set_digest: &'a str,
             workspace_source_scope_generation: &'a str,
             project_resolutions: &'a [agent_semantic_content_identity::AdmittedProjectResolution],
@@ -341,6 +386,7 @@ impl WorkspaceCanonicalMaterialization {
             workspace_generation: &self.workspace_generation,
             provider_schema_digest: &self.provider_schema_digest,
             import_digest: &self.import_digest,
+            runtime_provider_execution_binding: &self.runtime_provider_execution_binding,
             selector_set_digest: &self.selector_set_digest,
             workspace_source_scope_generation: &self.workspace_source_scope_generation,
             project_resolutions: &self.project_resolutions,
@@ -723,6 +769,17 @@ impl WorkspaceCanonicalMaterialization {
         {
             return Err("workspace canonical materialization import digest is invalid".to_owned());
         }
+        if let Some(binding) = &self.runtime_provider_execution_binding {
+            binding.validate()?;
+            if binding.source_snapshot_digest != self.source_snapshot.root_integrity_reference()?
+                || binding.source_index_digest != self.import_digest
+            {
+                return Err(
+                    "workspace canonical materialization Runtime provider execution binding drift"
+                        .to_owned(),
+                );
+            }
+        }
         if self.workspace_source_scope_generation
             != agent_semantic_content_identity::workspace_source_scope_generation_digest(
                 &self.project_resolutions,
@@ -736,6 +793,11 @@ impl WorkspaceCanonicalMaterialization {
     }
 
     pub fn into_generation(self, active_epoch: u64) -> Result<WorkspaceMemoryGeneration, String> {
+        let content_search_generation =
+            self.content_search_generation.clone().ok_or_else(|| {
+                "query-not-ready: canonical generation lacks content search construction receipt"
+                    .to_owned()
+            })?;
         let target_epoch = active_epoch
             .checked_add(1)
             .ok_or_else(|| "workspace generation epoch overflow".to_owned())?;
@@ -747,10 +809,29 @@ impl WorkspaceCanonicalMaterialization {
             workspace_snapshot: self.workspace_snapshot,
             source_snapshot: self.source_snapshot,
             module_graph_digest: self.import_digest,
+            runtime_provider_execution_binding: self.runtime_provider_execution_binding,
+            content_search_generation,
             project_resolutions: self.project_resolutions,
             relations: self.relations,
             owners: self.owners,
         })
+    }
+
+    pub fn bind_runtime_provider_execution(
+        &mut self,
+        binding: agent_semantic_artifacts::installed_provider_binding::RuntimeProviderExecutionBinding,
+    ) -> Result<(), String> {
+        binding.validate()?;
+        if binding.source_snapshot_digest != self.source_snapshot.root_integrity_reference()?
+            || binding.source_index_digest != self.import_digest
+        {
+            return Err(
+                "workspace canonical materialization Runtime provider execution binding drift"
+                    .to_owned(),
+            );
+        }
+        self.runtime_provider_execution_binding = Some(binding);
+        Ok(())
     }
 
     fn typed_digest<T: Serialize>(value: &T) -> Result<String, String> {

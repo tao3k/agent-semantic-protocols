@@ -5,12 +5,9 @@ use super::provider_usage;
 use agent_semantic_client::{
     LanguageCommandApplication, LanguageCommandOperation, LanguageCommandRequest,
 };
-use agent_semantic_client_protocol::{
-    AspClientExactQueryRequest, AspClientOwnerSearchRequest, AspClientSearchRequest,
-};
+use agent_semantic_client_protocol::{AspClientExactQueryRequest, AspClientSearchRequest};
 use std::env;
 
-use super::gerbil_deps::try_run_gerbil_deps_index_command;
 use super::protocol_version_line;
 pub(crate) use super::provider_selector::{
     is_language_facade, unsupported_language_facade_message,
@@ -43,17 +40,13 @@ async fn forward_runtime_language_command(
     project_root: std::path::PathBuf,
     machine_readable: bool,
 ) -> Result<(), String> {
-    if !agent_semantic_client::host_runtime_transport_capability_declared() {
-        let bootstrap = if std::env::var_os("ASP_NO_AGENT").is_some_and(|value| value == "1") {
-            crate::server::runtime_server::reconcile_runtime_activation_for_no_agent_client()
-                .await?
-        } else {
-            crate::server::runtime_server::reconcile_pending_runtime_activation_for_client_bootstrap()
-                .await?
-        };
-        if !crate::server::runtime_server::runtime_server_client_bootstrap_continues(bootstrap) {
-            return Ok(());
-        }
+    let state_home = agent_semantic_runtime::state_core::resolve_state_home()?;
+    if agent_semantic_client_db::read_runtime_server_endpoint(&state_home)
+        .await?
+        .is_none()
+    {
+        crate::server::runtime_server::ensure_healthy_runtime_server_for_bounded_operation()
+            .await?;
     }
     forward_language_command(
         &agent_semantic_client::RuntimeLanguageCommandApplication,
@@ -114,9 +107,6 @@ pub(crate) async fn run_language_command(
         println!("{}", guide_usage(language_id));
         return Ok(());
     }
-    if try_run_gerbil_deps_index_command(language_id, &command_args)? {
-        return Ok(());
-    }
     if is_runtime_exact_query(&command_args) {
         if let Some(diagnostics) = command_diagnostics.as_mut() {
             diagnostics.mark_stage("exact-query-resident-dispatch");
@@ -135,23 +125,6 @@ pub(crate) async fn run_language_command(
             LanguageCommandOperation::ExactQuery(intent),
             exact_project_root,
             presentation,
-        )
-        .await;
-    }
-    if is_search_owner_items_query(&command_args) {
-        let (owner_project_root, owner_args) =
-            super::provider_roots::explicit_workspace_project_root(
-                language_id,
-                &command_args,
-                &invocation_root,
-            )?
-            .unwrap_or_else(|| (invocation_root.clone(), command_args.clone()));
-        let intent = runtime_owner_intent(&owner_args)?;
-        return forward_runtime_language_command(
-            language_id,
-            LanguageCommandOperation::OwnerSearch(intent),
-            owner_project_root,
-            true,
         )
         .await;
     }
@@ -223,13 +196,6 @@ fn is_guide_help(args: &[String]) -> bool {
             .any(|arg| arg == "--help" || arg == "-h")
 }
 
-fn is_search_owner_items_query(args: &[String]) -> bool {
-    matches!(args.first().map(String::as_str), Some("search"))
-        && matches!(args.get(1).map(String::as_str), Some("owner"))
-        && matches!(args.get(3).map(String::as_str), Some("items"))
-        && !args.iter().any(|arg| arg == "--json")
-}
-
 fn option_value(args: &[String], option: &str) -> Result<Option<String>, String> {
     let Some(index) = args.iter().position(|arg| arg == option) else {
         return Ok(None);
@@ -263,56 +229,21 @@ fn runtime_query_presentation(args: &[String]) -> bool {
     args.iter().any(|arg| arg == "--json")
 }
 
-fn runtime_owner_intent(args: &[String]) -> Result<AspClientOwnerSearchRequest, String> {
-    let owner_path = args
-        .get(2)
-        .filter(|value| !value.starts_with('-'))
-        .cloned()
-        .ok_or_else(|| "search owner requires an owner path".to_owned())?;
-    Ok(AspClientOwnerSearchRequest {
-        schema_id: "agent.semantic-protocols.asp-client-owner-search-request".to_owned(),
-        schema_version: "1".to_owned(),
-        owner_path,
-        query: option_value(args, "--query")?.unwrap_or_default(),
-        view: option_value(args, "--view")?.unwrap_or_else(|| "seeds".to_owned()),
-    })
-}
-
 fn runtime_search_intent(args: &[String]) -> Result<AspClientSearchRequest, String> {
-    let operation = args
-        .get(1)
-        .filter(|value| !value.starts_with('-'))
-        .cloned()
-        .ok_or_else(|| "search requires an operation".to_owned())?;
-    let mut queries = Vec::new();
-    let mut index = 1;
-    while index < args.len() {
-        match args[index].as_str() {
-            "--query" => {
-                let value = args
-                    .get(index + 1)
-                    .filter(|value| !value.starts_with('-'))
-                    .ok_or_else(|| "--query requires a value".to_owned())?;
-                queries.push(value.clone());
-                index += 2;
-            }
-            "--workspace" | "--view" | "--query-set" | "--owner" | "--from-hook"
-            | "--projection" | "--selector" | "--context" => index += 2,
-            option if option.starts_with('-') => index += 1,
-            _value if index == 1 => index += 1,
-            value => {
-                queries.push(value.to_owned());
-                index += 1;
-            }
-        }
-    }
+    let playbook = agent_semantic_search::parse_search_playbook_args(args)?;
     Ok(AspClientSearchRequest {
         schema_id: "agent.semantic-protocols.asp-client-search-request".to_owned(),
         schema_version: "1".to_owned(),
-        operation,
-        query: queries.join(" "),
+        intent: playbook.intent,
+        query: playbook.query,
+        scope: playbook.scope,
+        coverage: playbook.coverage,
+        max_owners: playbook.max_owners,
+        deadline_ms: playbook.deadline_ms,
+        explain: playbook.explain,
     })
 }
+
 use super::provider_selector::is_runtime_exact_query;
 
 #[cfg(test)]

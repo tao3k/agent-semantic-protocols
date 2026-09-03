@@ -6,6 +6,7 @@ fn cli_live_corpus_forwards_only_typed_public_client_requests() {
         include_str!("../../../src/command/live_corpus_qualification/runner.rs"),
     );
     for required in [
+        "ensure_healthy_runtime_server_for_bounded_operation",
         "RuntimeLanguageCommandClient",
         "LanguageCommandClient",
         "LanguageCommandRequest",

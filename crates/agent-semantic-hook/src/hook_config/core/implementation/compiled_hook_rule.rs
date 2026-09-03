@@ -107,11 +107,12 @@ impl CompiledHookRule {
         .map(|matched| {
             let argv = matched
                 .provider
-                .owner_route
+                .playbook_route
                 .argv
                 .iter()
                 .map(|argument| match argument.as_str() {
                     "{owner}" => matched.route_selector.clone(),
+                    "{query}" => "source structure".to_owned(),
                     "{workspace}" => runtime.project_root.clone(),
                     _ => argument.clone(),
                 })
@@ -120,9 +121,9 @@ impl CompiledHookRule {
                 language_id: matched.provider.language_id,
                 provider_id: matched.provider.provider_id,
                 binary: argv.first().cloned().unwrap_or_default(),
-                kind: crate::protocol::DecisionRouteKind::Owner,
+                kind: crate::protocol::DecisionRouteKind::Playbook,
                 argv,
-                stdin_mode: matched.provider.owner_route.stdin_mode,
+                stdin_mode: matched.provider.playbook_route.stdin_mode,
             }
         })
         .collect()

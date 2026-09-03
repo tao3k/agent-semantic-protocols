@@ -281,7 +281,7 @@ different capability level.
 #+begin_src shell
 asp-typescript search owner src/cli/semantic-search/item-query.ts items \
   --query 'render_semantic_query_json|projection_from_code_line|projection_node|expandActions' \
-  languages/typescript-lang-project-harness
+  languages/asp-typescript
 #+end_src
 
 TypeScript previously selected =compactExpandActions= and immediately emitted a
@@ -433,14 +433,14 @@ replay confirms exact TypeScript and Python source reads route to provider
 queries, while broad TypeScript source globs route to provider prime:
 
 #+begin_example
-Read languages/typescript-lang-project-harness/src/cli/protocol.ts
-  -> asp-typescript query --selector src/cli/protocol.ts --code languages/typescript-lang-project-harness
+Read languages/asp-typescript/src/cli/protocol.ts
+  -> asp-typescript query --selector src/cli/protocol.ts --code languages/asp-typescript
 
 Read languages/asp-python/src/asp_python/_semantic_search_item_direct_read.py
   -> asp-python query --selector src/asp_python/_semantic_search_item_direct_read.py --code languages/asp-python
 
-Read languages/typescript-lang-project-harness/src/**/*.ts
-  -> asp-typescript search prime --view seeds languages/typescript-lang-project-harness
+Read languages/asp-typescript/src/**/*.ts
+  -> asp-typescript search prime --view seeds languages/asp-typescript
 #+end_example
 
 Cross-language classifier coverage now locks the same behavior for Rust,
@@ -448,11 +448,11 @@ TypeScript, JavaScript, and Python source suffixes.  Real global-hook replay als
 confirms nested provider roots are preserved correctly:
 
 #+begin_example
-head -n 80 languages/typescript-lang-project-harness/src/cli/protocol.ts
-  -> asp-typescript query --selector src/cli/protocol.ts:1:80 --code languages/typescript-lang-project-harness
+head -n 80 languages/asp-typescript/src/cli/protocol.ts
+  -> asp-typescript query --selector src/cli/protocol.ts:1:80 --code languages/asp-typescript
 
-awk 'NR>=10 && NR<=30' languages/typescript-lang-project-harness/src/cli/protocol.ts
-  -> asp-typescript query --selector src/cli/protocol.ts:10:30 --code languages/typescript-lang-project-harness
+awk 'NR>=10 && NR<=30' languages/asp-typescript/src/cli/protocol.ts
+  -> asp-typescript query --selector src/cli/protocol.ts:10:30 --code languages/asp-typescript
 
 tail -n +115 languages/asp-python/src/asp_python/_semantic_search_item_direct_read.py | head -n 126
   -> asp-python query --selector src/asp_python/_semantic_search_item_direct_read.py:115:240 --code languages/asp-python

@@ -1,9 +1,13 @@
+//! Binary fixture format for one complete exact-selector generation.
+
 use std::cmp::Ordering;
 use std::fmt;
 use std::ops::Range;
 
+/// Stable schema identifier for exact-selector generation fixtures.
 pub const EXACT_SELECTOR_GENERATION_FIXTURE_SCHEMA_ID: &str =
     "agent.semantic-protocols.exact-selector-generation-fixture";
+/// Stable schema version for exact-selector generation fixtures.
 pub const EXACT_SELECTOR_GENERATION_FIXTURE_SCHEMA_VERSION: &str = "1";
 
 const MAGIC: &[u8; 8] = b"ASPXGFV1";
@@ -12,6 +16,7 @@ const FIXED_HEADER_LEN: usize = 8 + 4 + 4 + 4 + 4 + 2 + 2 + (DIGEST_LEN * 6);
 const FIXTURE_DIGEST_OFFSET: usize = FIXED_HEADER_LEN - DIGEST_LEN;
 const RECORD_HEADER_LEN: usize = 4 + 4 + 4 + 1 + 8 + 8 + (DIGEST_LEN * 3);
 
+/// Projection payload stored for one exact selector.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(u8)]
 pub enum ExactSelectorProjectionModeV1 {
@@ -29,6 +34,7 @@ impl ExactSelectorProjectionModeV1 {
     }
 }
 
+/// Immutable identity and completeness counts for one fixture generation.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ExactSelectorGenerationIdentityV1 {
     pub language_id: String,
@@ -42,6 +48,7 @@ pub struct ExactSelectorGenerationIdentityV1 {
     pub owner_count: u32,
     pub leaf_count: u32,
 }
+/// Owned exact-selector record encoded into a generation fixture.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ExactSelectorGenerationRecordV1 {
     pub structural_selector: String,
@@ -54,6 +61,7 @@ pub struct ExactSelectorGenerationRecordV1 {
     pub projection: Vec<u8>,
 }
 
+/// Borrowed zero-copy record returned from an attached fixture.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ExactSelectorGenerationRecordViewV1<'a> {
     pub structural_selector: &'a str,
@@ -66,6 +74,7 @@ pub struct ExactSelectorGenerationRecordViewV1<'a> {
     pub projection: &'a [u8],
 }
 
+/// Zero-copy validated view over one exact-selector generation fixture.
 #[derive(Clone, Copy, Debug)]
 pub struct ExactSelectorGenerationFixtureViewV1<'a> {
     bytes: &'a [u8],
@@ -85,154 +94,118 @@ pub struct ExactSelectorGenerationFixtureViewV1<'a> {
     records_start: usize,
 }
 
+struct DecodedFixtureHeader<'a> {
+    record_count: u32,
+    selector_count: u32,
+    owner_count: u32,
+    leaf_count: u32,
+    language_len: usize,
+    provider_len: usize,
+    workspace_root_digest: &'a [u8; DIGEST_LEN],
+    workspace_identity_digest: &'a [u8; DIGEST_LEN],
+    parser_identity_digest: &'a [u8; DIGEST_LEN],
+    query_pack_digest: &'a [u8; DIGEST_LEN],
+    generation_digest: &'a [u8; DIGEST_LEN],
+    fixture_digest: &'a [u8; DIGEST_LEN],
+}
+
+struct FixtureLayout<'a> {
+    language_id: &'a str,
+    provider_id: &'a str,
+    offsets_start: usize,
+    records_start: usize,
+}
+
 impl<'a> ExactSelectorGenerationFixtureViewV1<'a> {
+    /// Validates and attaches to fixture bytes without copying record payloads.
     pub fn attach(
         bytes: &'a [u8],
         expected_generation_digest: &[u8; DIGEST_LEN],
         expected_fixture_digest: &[u8; DIGEST_LEN],
     ) -> Result<Self, ExactSelectorGenerationFixtureErrorV1> {
-        if bytes.len() < FIXED_HEADER_LEN || bytes.get(..MAGIC.len()) != Some(MAGIC) {
-            return Err(ExactSelectorGenerationFixtureErrorV1::InvalidHeader);
-        }
-        let record_count = read_u32(bytes, 8)?;
-        let owner_count = read_u32(bytes, 12)?;
-        let leaf_count = read_u32(bytes, 16)?;
-        let selector_count = read_u32(bytes, 20)?;
-        if record_count == 0
-            || record_count != selector_count
-            || owner_count == 0
-            || owner_count != leaf_count
-        {
-            return Err(
-                ExactSelectorGenerationFixtureErrorV1::IncompleteGeneration {
-                    record_count,
-                    selector_count,
-                    owner_count,
-                    leaf_count,
-                },
-            );
-        }
-        let language_len = usize::from(read_u16(bytes, 24)?);
-        let provider_len = usize::from(read_u16(bytes, 26)?);
-        let workspace_root_digest = digest_at(bytes, 28)?;
-        let workspace_identity_digest = digest_at(bytes, 60)?;
-        let parser_identity_digest = digest_at(bytes, 92)?;
-        let query_pack_digest = digest_at(bytes, 124)?;
-        let generation_digest = digest_at(bytes, 156)?;
-        let fixture_digest = digest_at(bytes, FIXTURE_DIGEST_OFFSET)?;
-        if generation_digest != expected_generation_digest {
-            return Err(ExactSelectorGenerationFixtureErrorV1::GenerationMismatch);
-        }
-        if fixture_digest != expected_fixture_digest {
-            return Err(ExactSelectorGenerationFixtureErrorV1::FixtureMismatch);
-        }
-        let language_start = FIXED_HEADER_LEN;
-        let provider_start = language_start
-            .checked_add(language_len)
-            .ok_or(ExactSelectorGenerationFixtureErrorV1::InvalidHeader)?;
-        let offsets_start = provider_start
-            .checked_add(provider_len)
-            .ok_or(ExactSelectorGenerationFixtureErrorV1::InvalidHeader)?;
-        let offsets_len = usize::try_from(record_count)
-            .ok()
-            .and_then(|count| count.checked_add(1))
-            .and_then(|count| count.checked_mul(8))
-            .ok_or(ExactSelectorGenerationFixtureErrorV1::InvalidHeader)?;
-        let records_start = offsets_start
-            .checked_add(offsets_len)
-            .ok_or(ExactSelectorGenerationFixtureErrorV1::InvalidHeader)?;
-        if records_start > bytes.len() {
-            return Err(ExactSelectorGenerationFixtureErrorV1::InvalidHeader);
-        }
-        let final_offset = read_u64(
-            bytes,
-            offsets_start
-                .checked_add(
-                    usize::try_from(record_count)
-                        .map_err(|_| ExactSelectorGenerationFixtureErrorV1::InvalidHeader)?
-                        .checked_mul(8)
-                        .ok_or(ExactSelectorGenerationFixtureErrorV1::InvalidHeader)?,
-                )
-                .ok_or(ExactSelectorGenerationFixtureErrorV1::InvalidHeader)?,
-        )?;
-        let records_len = u64::try_from(bytes.len() - records_start)
-            .map_err(|_| ExactSelectorGenerationFixtureErrorV1::InvalidHeader)?;
-        if final_offset != records_len {
-            return Err(ExactSelectorGenerationFixtureErrorV1::InvalidOffset);
-        }
-        let language_id = utf8_slice(bytes, language_start, provider_start)?;
-        let provider_end = offsets_start;
-        let provider_id = utf8_slice(bytes, provider_start, provider_end)?;
-        if language_id.is_empty() || provider_id.is_empty() {
-            return Err(ExactSelectorGenerationFixtureErrorV1::InvalidHeader);
-        }
+        let header =
+            decode_fixture_header(bytes, expected_generation_digest, expected_fixture_digest)?;
+        let layout = decode_fixture_layout(bytes, &header)?;
         Ok(Self {
             bytes,
-            language_id,
-            provider_id,
-            workspace_root_digest,
-            workspace_identity_digest,
-            parser_identity_digest,
-            query_pack_digest,
-            generation_digest,
-            fixture_digest,
-            record_count,
-            selector_count,
-            owner_count,
-            leaf_count,
-            offsets_start,
-            records_start,
+            language_id: layout.language_id,
+            provider_id: layout.provider_id,
+            workspace_root_digest: header.workspace_root_digest,
+            workspace_identity_digest: header.workspace_identity_digest,
+            parser_identity_digest: header.parser_identity_digest,
+            query_pack_digest: header.query_pack_digest,
+            generation_digest: header.generation_digest,
+            fixture_digest: header.fixture_digest,
+            record_count: header.record_count,
+            selector_count: header.selector_count,
+            owner_count: header.owner_count,
+            leaf_count: header.leaf_count,
+            offsets_start: layout.offsets_start,
+            records_start: layout.records_start,
         })
     }
 
+    /// Returns the provider language identity.
     pub fn language_id(&self) -> &'a str {
         self.language_id
     }
 
+    /// Returns the provider identity.
     pub fn provider_id(&self) -> &'a str {
         self.provider_id
     }
 
+    /// Returns the workspace-root digest.
     pub fn workspace_root_digest(&self) -> &'a [u8; DIGEST_LEN] {
         self.workspace_root_digest
     }
 
+    /// Returns the workspace identity digest.
     pub fn workspace_identity_digest(&self) -> &'a [u8; DIGEST_LEN] {
         self.workspace_identity_digest
     }
 
+    /// Returns the parser identity digest.
     pub fn parser_identity_digest(&self) -> &'a [u8; DIGEST_LEN] {
         self.parser_identity_digest
     }
 
+    /// Returns the query-pack digest.
     pub fn query_pack_digest(&self) -> &'a [u8; DIGEST_LEN] {
         self.query_pack_digest
     }
 
+    /// Returns the complete generation digest.
     pub fn generation_digest(&self) -> &'a [u8; DIGEST_LEN] {
         self.generation_digest
     }
 
+    /// Returns the canonical fixture digest.
     pub fn fixture_digest(&self) -> &'a [u8; DIGEST_LEN] {
         self.fixture_digest
     }
 
+    /// Returns the number of encoded records.
     pub fn record_count(&self) -> u32 {
         self.record_count
     }
 
+    /// Returns the number of covered owners.
     pub fn owner_count(&self) -> u32 {
         self.owner_count
     }
 
+    /// Returns the number of exact selectors.
     pub fn selector_count(&self) -> u32 {
         self.selector_count
     }
 
+    /// Returns the number of owner Merkle leaves.
     pub fn leaf_count(&self) -> u32 {
         self.leaf_count
     }
 
+    /// Looks up one exact structural selector with binary search.
     pub fn lookup(
         &self,
         structural_selector: &str,
@@ -290,7 +263,114 @@ impl<'a> ExactSelectorGenerationFixtureViewV1<'a> {
     }
 }
 
+fn decode_fixture_header<'a>(
+    bytes: &'a [u8],
+    expected_generation_digest: &[u8; DIGEST_LEN],
+    expected_fixture_digest: &[u8; DIGEST_LEN],
+) -> Result<DecodedFixtureHeader<'a>, ExactSelectorGenerationFixtureErrorV1> {
+    if bytes.len() < FIXED_HEADER_LEN || bytes.get(..MAGIC.len()) != Some(MAGIC) {
+        return Err(ExactSelectorGenerationFixtureErrorV1::InvalidHeader);
+    }
+    let record_count = read_u32(bytes, 8)?;
+    let owner_count = read_u32(bytes, 12)?;
+    let leaf_count = read_u32(bytes, 16)?;
+    let selector_count = read_u32(bytes, 20)?;
+    if record_count == 0
+        || record_count != selector_count
+        || owner_count == 0
+        || owner_count != leaf_count
+    {
+        return Err(
+            ExactSelectorGenerationFixtureErrorV1::IncompleteGeneration {
+                record_count,
+                selector_count,
+                owner_count,
+                leaf_count,
+            },
+        );
+    }
+    let generation_digest = digest_at(bytes, 156)?;
+    let fixture_digest = digest_at(bytes, FIXTURE_DIGEST_OFFSET)?;
+    if generation_digest != expected_generation_digest {
+        return Err(ExactSelectorGenerationFixtureErrorV1::GenerationMismatch);
+    }
+    if fixture_digest != expected_fixture_digest {
+        return Err(ExactSelectorGenerationFixtureErrorV1::FixtureMismatch);
+    }
+    Ok(DecodedFixtureHeader {
+        record_count,
+        selector_count,
+        owner_count,
+        leaf_count,
+        language_len: usize::from(read_u16(bytes, 24)?),
+        provider_len: usize::from(read_u16(bytes, 26)?),
+        workspace_root_digest: digest_at(bytes, 28)?,
+        workspace_identity_digest: digest_at(bytes, 60)?,
+        parser_identity_digest: digest_at(bytes, 92)?,
+        query_pack_digest: digest_at(bytes, 124)?,
+        generation_digest,
+        fixture_digest,
+    })
+}
+
+fn decode_fixture_layout<'a>(
+    bytes: &'a [u8],
+    header: &DecodedFixtureHeader<'_>,
+) -> Result<FixtureLayout<'a>, ExactSelectorGenerationFixtureErrorV1> {
+    let language_start = FIXED_HEADER_LEN;
+    let provider_start = language_start
+        .checked_add(header.language_len)
+        .ok_or(ExactSelectorGenerationFixtureErrorV1::InvalidHeader)?;
+    let offsets_start = provider_start
+        .checked_add(header.provider_len)
+        .ok_or(ExactSelectorGenerationFixtureErrorV1::InvalidHeader)?;
+    let offsets_len = usize::try_from(header.record_count)
+        .ok()
+        .and_then(|count| count.checked_add(1))
+        .and_then(|count| count.checked_mul(8))
+        .ok_or(ExactSelectorGenerationFixtureErrorV1::InvalidHeader)?;
+    let records_start = offsets_start
+        .checked_add(offsets_len)
+        .ok_or(ExactSelectorGenerationFixtureErrorV1::InvalidHeader)?;
+    if records_start > bytes.len() {
+        return Err(ExactSelectorGenerationFixtureErrorV1::InvalidHeader);
+    }
+    let final_offset_position = offsets_start
+        .checked_add(
+            usize::try_from(header.record_count)
+                .map_err(|_| ExactSelectorGenerationFixtureErrorV1::InvalidHeader)?
+                .checked_mul(8)
+                .ok_or(ExactSelectorGenerationFixtureErrorV1::InvalidHeader)?,
+        )
+        .ok_or(ExactSelectorGenerationFixtureErrorV1::InvalidHeader)?;
+    let final_offset = read_u64(bytes, final_offset_position)?;
+    let records_len = u64::try_from(bytes.len() - records_start)
+        .map_err(|_| ExactSelectorGenerationFixtureErrorV1::InvalidHeader)?;
+    if final_offset != records_len {
+        return Err(ExactSelectorGenerationFixtureErrorV1::InvalidOffset);
+    }
+    let language_id = utf8_slice(bytes, language_start, provider_start)?;
+    let provider_id = utf8_slice(bytes, provider_start, offsets_start)?;
+    if language_id.is_empty() || provider_id.is_empty() {
+        return Err(ExactSelectorGenerationFixtureErrorV1::InvalidHeader);
+    }
+    Ok(FixtureLayout {
+        language_id,
+        provider_id,
+        offsets_start,
+        records_start,
+    })
+}
+
+/// Builds canonical fixture bytes for one complete exact-selector generation.
 pub fn build_exact_selector_generation_fixture_v1(
+    identity: &ExactSelectorGenerationIdentityV1,
+    records: Vec<ExactSelectorGenerationRecordV1>,
+) -> Result<Vec<u8>, ExactSelectorGenerationFixtureErrorV1> {
+    encode_complete_exact_selector_generation(identity, records)
+}
+
+fn encode_complete_exact_selector_generation(
     identity: &ExactSelectorGenerationIdentityV1,
     mut records: Vec<ExactSelectorGenerationRecordV1>,
 ) -> Result<Vec<u8>, ExactSelectorGenerationFixtureErrorV1> {
@@ -407,12 +487,14 @@ pub fn build_exact_selector_generation_fixture_v1(
     Ok(bytes)
 }
 
+/// Borrows the fixture digest embedded in validated fixture bytes.
 pub fn fixture_digest_v1(
     bytes: &[u8],
 ) -> Result<&[u8; DIGEST_LEN], ExactSelectorGenerationFixtureErrorV1> {
     digest_at(bytes, FIXTURE_DIGEST_OFFSET)
 }
 
+/// Typed decoding, completeness, and identity failure for fixture operations.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ExactSelectorGenerationFixtureErrorV1 {
     DuplicateSelector,

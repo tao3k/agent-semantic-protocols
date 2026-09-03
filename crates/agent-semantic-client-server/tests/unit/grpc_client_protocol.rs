@@ -3,14 +3,14 @@ use std::sync::{Arc, Mutex};
 
 use agent_semantic_client_protocol::{
     CLIENT_CATALOG_SCHEMA_ID, CLIENT_FRAME_SCHEMA_ID, CLIENT_PROTOCOL_ID, CLIENT_PROTOCOL_VERSION,
-    ClientCapabilities, ClientFrame, ClientFrameBase, ClientInfo, ClientOutcome,
-    ClientProtocolCatalog, ClientRequestId, ClientSessionId, ClientTransport,
+    ClientCapabilities, ClientFrame, ClientFrameBase, ClientInfo, ClientMethod, ClientOutcome,
+    ClientProjectId, ClientProtocolCatalog, ClientRequestId, ClientSessionId, ClientTransport,
     ClientWorkspaceIdentity, SCHEMA_VERSION,
 };
 use agent_semantic_client_server::{
     AspClientCancelFuture, AspClientDispatchError, AspClientDispatchFuture,
     AspClientDispatchRequest, AspClientDispatcher, AspClientFrameService, AspClientGrpcTransport,
-    CLIENT_FRAME_SESSION_CAPACITY, bind_asp_client_grpc_unix, serve_asp_client_grpc_unix,
+    CLIENT_FRAME_SESSION_CAPACITY, bind_asp_client_grpc_tcp, serve_asp_client_grpc_tcp,
 };
 use serde_json::json;
 
@@ -72,6 +72,7 @@ impl AspClientDispatcher for ExactQueryDispatcher {
 
     fn cancel(
         &self,
+        _: &ClientProjectId,
         _: &ClientWorkspaceIdentity,
         _: &ClientSessionId,
         request_id: &ClientRequestId,
@@ -100,40 +101,30 @@ fn base() -> ClientFrameBase {
         protocol_id: CLIENT_PROTOCOL_ID.to_owned(),
         protocol_version: CLIENT_PROTOCOL_VERSION.to_owned(),
         session_id: ClientSessionId::new("grpc-exact-query-session").expect("session id"),
-        workspace_identity: ClientWorkspaceIdentity::new("grpc-workspace")
+        project_id: ClientProjectId::new("repo-grpc-project").expect("project id"),
+        workspace_id: ClientWorkspaceIdentity::new("workspace-grpc-workspace")
             .expect("workspace identity"),
         trace_context: None,
     }
 }
 
 fn exact_query_frame(request_id: String) -> ClientFrame {
-    ClientFrame::Dispatch {
+    ClientFrame::Request {
         base: base(),
         request_id: ClientRequestId::new(request_id).expect("request id"),
-        project_root: "/workspace".to_owned(),
-        client_info: ClientInfo {
-            name: "thin-cli".to_owned(),
-            version: "1".to_owned(),
-        },
+        catalog_generation: format!("sha256:{}", "a".repeat(64)),
+        workspace_generation: format!("blake3-256:{}", "b".repeat(64)),
         method: "rust.query".to_owned(),
-        params: json!({
-            "schemaId": "agent.semantic-protocols.asp-client-exact-query-request",
-            "schemaVersion": "1",
-            "selector": "rust://src/lib.rs#item/function/missing",
-            "projection": "source"
-        }),
+        params: json!({}),
     }
 }
 
 fn large_response_frame() -> ClientFrame {
-    ClientFrame::Dispatch {
+    ClientFrame::Request {
         base: base(),
         request_id: ClientRequestId::new("large-response").expect("request id"),
-        project_root: "/workspace".to_owned(),
-        client_info: ClientInfo {
-            name: "thin-cli".to_owned(),
-            version: "1".to_owned(),
-        },
+        catalog_generation: format!("sha256:{}", "a".repeat(64)),
+        workspace_generation: format!("blake3-256:{}", "b".repeat(64)),
         method: "test.large-response".to_owned(),
         params: json!({}),
     }
@@ -154,17 +145,32 @@ fn catalog() -> ClientProtocolCatalog {
             streaming: true,
             trace_context: true,
         },
-        methods: Vec::new(),
+        methods: [
+            "rust.query",
+            "test.large-response",
+            "test.cancellation-probe",
+        ]
+        .into_iter()
+        .map(|method| ClientMethod {
+            method: method.to_owned(),
+            route_id: method.to_owned(),
+            request_schema_id: format!("agent.semantic-protocols.test.{method}.request"),
+            response_schema_id: format!("agent.semantic-protocols.test.{method}.response"),
+            error_schema_ids: Vec::new(),
+            parameters: Vec::new(),
+            cancellable: true,
+            streaming: false,
+        })
+        .collect(),
     }
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn grpc_unix_exact_query_returns_typed_terminal() {
-    let temporary = tempfile::tempdir().expect("temporary socket root");
-    let socket_path = temporary.path().join("asp-client.grpc.sock");
-    let listener = bind_asp_client_grpc_unix(&socket_path)
+async fn grpc_loopback_exact_query_returns_typed_terminal() {
+    let listener = bind_asp_client_grpc_tcp()
         .await
-        .expect("bind public ASP Client Protocol socket");
+        .expect("bind public ASP Client Protocol endpoint");
+    let endpoint = listener.local_addr().expect("client endpoint");
     let service = Arc::new(AspClientFrameService::new(
         Arc::new(ExactQueryDispatcher {
             cancellation_by_request: Arc::new(Mutex::new(BTreeMap::new())),
@@ -172,8 +178,8 @@ async fn grpc_unix_exact_query_returns_typed_terminal() {
         |_| Ok(catalog()),
     ));
     let (shutdown, shutdown_rx) = tokio::sync::watch::channel(false);
-    let server = tokio::spawn(serve_asp_client_grpc_unix(listener, service, shutdown_rx));
-    let client = AspClientGrpcTransport::connect_unix(&socket_path)
+    let server = tokio::spawn(serve_asp_client_grpc_tcp(listener, service, shutdown_rx));
+    let client = AspClientGrpcTransport::connect_tcp(endpoint)
         .await
         .expect("connect public ASP Client Protocol stream");
 
@@ -181,7 +187,6 @@ async fn grpc_unix_exact_query_returns_typed_terminal() {
         .call(ClientFrame::Initialize {
             base: base(),
             request_id: ClientRequestId::new("initialize").expect("request id"),
-            project_root: "/workspace".to_owned(),
             client_info: ClientInfo {
                 name: "thin-cli".to_owned(),
                 version: "1".to_owned(),
@@ -300,23 +305,13 @@ async fn grpc_unix_exact_query_returns_typed_terminal() {
         "warm 32-concurrent gRPC p95 must remain below 1ms: {concurrent_p95_nanos}ns"
     );
 
-    let lazy_client = AspClientGrpcTransport::connect_unix(&socket_path)
+    let lazy_client = AspClientGrpcTransport::connect_tcp(endpoint)
         .await
         .expect("connect lazy ASP Client gRPC transport");
     let lazy_terminal = lazy_client
-        .call(ClientFrame::Dispatch {
-            base: base(),
-            request_id: ClientRequestId::new("lazy-exact-query").expect("request id"),
-            project_root: "/workspace".to_owned(),
-            client_info: ClientInfo {
-                name: "grpc-test".to_owned(),
-                version: "1".to_owned(),
-            },
-            method: "rust.query".to_owned(),
-            params: json!({"selector": "rust://crate#item/function/example"}),
-        })
+        .call(exact_query_frame("request-before-initialize".to_owned()))
         .await
-        .expect("lazy typed exact-query terminal");
+        .expect("pre-initialize request has one typed terminal");
     assert!(matches!(
         lazy_terminal,
         ClientFrame::Response {
@@ -329,14 +324,11 @@ async fn grpc_unix_exact_query_returns_typed_terminal() {
 
     let cancellation_request_id = ClientRequestId::new("cancel-request").expect("request id");
     let pending = client
-        .begin_call(ClientFrame::Dispatch {
+        .begin_call(ClientFrame::Request {
             base: base(),
             request_id: cancellation_request_id.clone(),
-            project_root: "/workspace".to_owned(),
-            client_info: ClientInfo {
-                name: "grpc-test".to_owned(),
-                version: "1".to_owned(),
-            },
+            catalog_generation: format!("sha256:{}", "a".repeat(64)),
+            workspace_generation: format!("blake3-256:{}", "b".repeat(64)),
             method: "test.cancellation-probe".to_owned(),
             params: json!({}),
         })
@@ -371,11 +363,10 @@ async fn grpc_unix_exact_query_returns_typed_terminal() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn full_session_rejects_one_excess_data_call_and_preserves_cancellation_lane() {
-    let temporary = tempfile::tempdir().expect("temporary socket root");
-    let socket_path = temporary.path().join("asp-client-backpressure.grpc.sock");
-    let listener = bind_asp_client_grpc_unix(&socket_path)
+    let listener = bind_asp_client_grpc_tcp()
         .await
-        .expect("bind public ASP Client Protocol socket");
+        .expect("bind public ASP Client Protocol endpoint");
+    let endpoint = listener.local_addr().expect("client endpoint");
     let service = Arc::new(AspClientFrameService::new(
         Arc::new(ExactQueryDispatcher {
             cancellation_by_request: Arc::new(Mutex::new(BTreeMap::new())),
@@ -383,15 +374,14 @@ async fn full_session_rejects_one_excess_data_call_and_preserves_cancellation_la
         |_| Ok(catalog()),
     ));
     let (shutdown, shutdown_rx) = tokio::sync::watch::channel(false);
-    let server = tokio::spawn(serve_asp_client_grpc_unix(listener, service, shutdown_rx));
-    let client = AspClientGrpcTransport::connect_unix(&socket_path)
+    let server = tokio::spawn(serve_asp_client_grpc_tcp(listener, service, shutdown_rx));
+    let client = AspClientGrpcTransport::connect_tcp(endpoint)
         .await
         .expect("connect public ASP Client Protocol stream");
     client
         .call(ClientFrame::Initialize {
             base: base(),
             request_id: ClientRequestId::new("backpressure-initialize").expect("request id"),
-            project_root: "/workspace".to_owned(),
             client_info: ClientInfo {
                 name: "grpc-test".to_owned(),
                 version: "1".to_owned(),
@@ -407,14 +397,11 @@ async fn full_session_rejects_one_excess_data_call_and_preserves_cancellation_la
         let request_id =
             ClientRequestId::new(format!("backpressure-held-{index}")).expect("request id");
         let pending = client
-            .begin_call(ClientFrame::Dispatch {
+            .begin_call(ClientFrame::Request {
                 base: base(),
                 request_id: request_id.clone(),
-                project_root: "/workspace".to_owned(),
-                client_info: ClientInfo {
-                    name: "grpc-test".to_owned(),
-                    version: "1".to_owned(),
-                },
+                catalog_generation: format!("sha256:{}", "a".repeat(64)),
+                workspace_generation: format!("blake3-256:{}", "b".repeat(64)),
                 method: "test.cancellation-probe".to_owned(),
                 params: json!({}),
             })
@@ -470,15 +457,16 @@ async fn full_session_rejects_one_excess_data_call_and_preserves_cancellation_la
 }
 
 #[tokio::test]
-async fn stalled_unix_handshake_returns_one_bounded_typed_failure() {
-    let temporary = tempfile::tempdir().expect("temporary socket root");
-    let socket_path = temporary.path().join("stalled.sock");
-    let _listener = tokio::net::UnixListener::bind(&socket_path).expect("bind stalled listener");
+async fn stalled_loopback_handshake_returns_one_bounded_typed_failure() {
+    let _listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
+        .await
+        .expect("bind stalled listener");
+    let endpoint = _listener.local_addr().expect("stalled endpoint");
     let started = tokio::time::Instant::now();
 
     let failure = tokio::time::timeout(
         std::time::Duration::from_secs(4),
-        AspClientGrpcTransport::connect_unix(&socket_path),
+        AspClientGrpcTransport::connect_tcp(endpoint),
     )
     .await
     .expect("transport owns a shorter connect deadline")

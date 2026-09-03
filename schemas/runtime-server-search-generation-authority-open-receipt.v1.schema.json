@@ -19,7 +19,7 @@
       "const": "1"
     },
     "authority": {
-      "$ref": "runtime-server-search-generation-authority.v2.schema.json"
+      "$ref": "runtime-server-search-generation-authority.v1.schema.json"
     },
     "generationPointerPath": {
       "type": "string",

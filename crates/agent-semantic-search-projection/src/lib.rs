@@ -33,7 +33,10 @@ pub use resident_search_result::{
     ResidentSearchHit, ResidentSearchProjectionTier, ResidentSearchReadyResult,
     ResidentSearchReadyState, ResidentSearchWorkCounters, RuntimeProviderSearchReceipt,
 };
-pub use runtime_graph_request::{adapt_graph_evaluate_payload, validate_graph_source_root};
+pub use runtime_graph_request::{
+    adapt_graph_evaluate_payload, bind_graph_generation_identity,
+    validate_graph_generation_receipt_identity, validate_graph_source_root,
+};
 pub use storage_route::{
     ProviderGraphEvidence, SEMANTIC_SEARCH_STORAGE_ROUTE_SCHEMA_ID,
     SEMANTIC_SEARCH_STORAGE_ROUTE_SCHEMA_VERSION, SemanticMutationClass,

@@ -33,18 +33,20 @@ impl std::fmt::Display for WorkspaceGenerationAdmissionTrigger {
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum WorkspaceGenerationAdmissionMode {
-    ColdTargeted,
-    IncrementalOverlay,
+    CompleteGeneration,
     FullRecovery,
 }
 
 impl WorkspaceGenerationAdmissionMode {
     pub const fn as_str(self) -> &'static str {
         match self {
-            Self::ColdTargeted => "cold-targeted",
-            Self::IncrementalOverlay => "incremental-overlay",
+            Self::CompleteGeneration => "complete-generation",
             Self::FullRecovery => "full-recovery",
         }
+    }
+
+    pub const fn is_complete_generation(self) -> bool {
+        matches!(self, Self::CompleteGeneration | Self::FullRecovery)
     }
 }
 

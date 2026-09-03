@@ -125,7 +125,6 @@ fn cache_command() -> Command {
         "asp cache",
         "Maintain Runtime-owned workspace cache metadata",
         &[
-            ("gc", "Collect expired project registry entries"),
             (
                 "source-index",
                 "Use the language-scoped ClientFrame source-index lookup",

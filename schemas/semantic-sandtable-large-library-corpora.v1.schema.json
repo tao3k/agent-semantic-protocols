@@ -39,8 +39,7 @@
         },
         "scenarioId": { "type": "string", "minLength": 1 },
         "providerId": {
-          "type": "string",
-          "pattern": "^asp-[a-z0-9][a-z0-9-]*$"
+          "$ref": "asp.live-corpus-artifact.v1.schema.json#/$defs/identifier"
         },
         "language": {
           "enum": [

@@ -2,7 +2,7 @@ use agent_semantic_client_protocol::{
     CLIENT_CATALOG_SCHEMA_ID, CLIENT_FRAME_SCHEMA_ID, CLIENT_PROTOCOL_ID, CLIENT_PROTOCOL_VERSION,
     ClientCapabilities, ClientFrame, ClientFrameBase, ClientInfo, ClientMethod, ClientOutcome,
     ClientParameter, ClientParameterCardinality, ClientParameterSource, ClientParameterType,
-    ClientProtocolCatalog, ClientRequestId, ClientSessionId, ClientTransport,
+    ClientProjectId, ClientProtocolCatalog, ClientRequestId, ClientSessionId, ClientTransport,
     ClientWorkspaceIdentity, SCHEMA_VERSION, TraceContext,
 };
 use serde_json::json;
@@ -16,7 +16,8 @@ fn base() -> ClientFrameBase {
         protocol_id: CLIENT_PROTOCOL_ID.to_owned(),
         protocol_version: CLIENT_PROTOCOL_VERSION.to_owned(),
         session_id: ClientSessionId::new("wire-session").expect("session id"),
-        workspace_identity: ClientWorkspaceIdentity::new("wire-workspace")
+        project_id: ClientProjectId::new("repo-wire-project").expect("project id"),
+        workspace_id: ClientWorkspaceIdentity::new("workspace-wire-workspace")
             .expect("workspace identity"),
         trace_context: None,
     }
@@ -91,17 +92,8 @@ fn canonical_protobuf_round_trips_every_client_frame_variant() {
         ClientFrame::Initialize {
             base: base(),
             request_id: request_id("initialize"),
-            project_root: "/workspace".to_owned(),
             client_info: info.clone(),
             capabilities: json!({"streaming": true}),
-        },
-        ClientFrame::Dispatch {
-            base: base(),
-            request_id: request_id("dispatch"),
-            project_root: "/workspace".to_owned(),
-            client_info: info,
-            method: "rust.search".to_owned(),
-            params: json!({"query": "WorkspaceGenerationAdmission"}),
         },
         ClientFrame::Request {
             base: base(),
@@ -170,24 +162,21 @@ fn canonical_protobuf_rejects_missing_identity_and_discriminant() {
 
 #[test]
 fn canonical_protobuf_rejects_invalid_dynamic_json_and_unknown_outcome() {
-    let dispatch = ClientFrame::Dispatch {
+    let request = ClientFrame::Request {
         base: base(),
-        request_id: request_id("dispatch-invalid-json"),
-        project_root: "/workspace".to_owned(),
-        client_info: ClientInfo {
-            name: "wire-test".to_owned(),
-            version: "1".to_owned(),
-        },
+        request_id: request_id("request-invalid-json"),
+        catalog_generation: "catalog-generation".to_owned(),
+        workspace_generation: "workspace-generation".to_owned(),
         method: "rust.search".to_owned(),
         params: json!({"query": "valid-before-wire-corruption"}),
     };
-    let mut invalid_json = encode_frame(dispatch).expect("encode dispatch");
-    let Some(super::wire::client_frame_envelope::Frame::Dispatch(dispatch)) =
+    let mut invalid_json = encode_frame(request).expect("encode request");
+    let Some(super::wire::client_frame_envelope::Frame::Request(request)) =
         invalid_json.frame.as_mut()
     else {
-        panic!("expected dispatch wire frame");
+        panic!("expected request wire frame");
     };
-    dispatch.params_json = b"{".to_vec();
+    request.params_json = b"{".to_vec();
     assert!(
         decode_frame(invalid_json)
             .expect_err("invalid dynamic JSON must fail")

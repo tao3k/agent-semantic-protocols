@@ -51,6 +51,14 @@ path = "tests/performance/runtime_server_opentelemetry_harness.rs"
 name = "runtime_search_invalidation"
 path = "tests/unit/runtime_server_overlay_admission/search_invalidation.rs"
 
+[[test]]
+name = "runtime_generation_readiness_request"
+path = "tests/unit/runtime_generation_readiness_request.rs"
+
+[[test]]
+name = "runtime_server_owner_receipt"
+path = "tests/unit/runtime_server_owner_receipt.rs"
+
 [[bench]]
 name = "turso_mvcc_concurrent_write"
 harness = false

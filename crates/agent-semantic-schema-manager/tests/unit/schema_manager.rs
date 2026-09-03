@@ -109,6 +109,28 @@ async fn materialize_resolves_closure_and_verify_is_read_only() {
 }
 
 #[tokio::test]
+async fn resolve_bundles_returns_canonical_bytes_without_materializing_package_files() {
+    let (root, manager) = fixture();
+    let schema_root = root.path().join("languages/fixture/schemas");
+
+    let bundles = manager.resolve_bundles(&[]).await.expect("resolve bundles");
+
+    assert_eq!(bundles.len(), 1);
+    assert_eq!(bundles[0].language_id, "fixture");
+    assert_eq!(bundles[0].root_set_ids, ["contract"]);
+    assert_eq!(bundles[0].schemas.len(), 3);
+    assert!(
+        bundles[0]
+            .schemas
+            .iter()
+            .all(|schema| !schema.bytes.is_empty())
+    );
+    assert!(!schema_root.join("root.schema.json").exists());
+    assert!(!schema_root.join("dependency.schema.json").exists());
+    assert!(!schema_root.join(BUNDLE_RECEIPT_FILE).exists());
+}
+
+#[tokio::test]
 async fn materialize_replaces_a_stale_package_copy_from_the_canonical_root() {
     let (root, manager) = fixture();
     manager.materialize(&[]).await.expect("initial materialize");
@@ -331,6 +353,8 @@ fn canonical_client_profile_publishes_the_shared_schema_bundle_route() {
 
     assert!(client_roots.contains(&"asp-client-schema-bundle-request.schema.json"));
     assert!(client_roots.contains(&"asp-client-schema-bundle-response.schema.json"));
+    assert!(client_roots.contains(&"semantic-agent-search-playbook-receipt.v1.schema.json"));
+    assert!(client_roots.contains(&"large-search-playbook-performance-receipt.v1.schema.json"));
     assert!(
         registry["profiles"]
             .as_array()
@@ -368,6 +392,7 @@ fn every_language_profile_receives_the_resident_graph_contract_declaratively() {
     for schema in [
         "semantic-graph-resident-evaluation-request.v1.schema.json",
         "semantic-graph-resident-evaluation-result.v1.schema.json",
+        "python-generation-graph-performance-receipt.v1.schema.json",
     ] {
         assert!(
             reasoning_roots.iter().any(|entry| entry == schema),
@@ -407,4 +432,12 @@ fn canonical_client_protocol_wire_artifact_has_one_schema_manager_authority() {
             .exists(),
         "transport package must not retain a private protobuf authority"
     );
+}
+#[test]
+fn repository_schema_family_registry_never_names_a_missing_schema() {
+    let workspace = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let profiles = crate::SchemaManager::new(&workspace)
+        .registered_language_profiles()
+        .expect("the canonical schema family registry must be complete");
+    assert!(!profiles.is_empty());
 }

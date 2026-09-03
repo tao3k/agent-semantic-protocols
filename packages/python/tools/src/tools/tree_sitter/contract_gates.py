@@ -103,7 +103,7 @@ def _selected_gates(names: list[str] | None) -> list[tuple[str, Gate]]:
 
 
 def _build_runtime(asp_bin: Path) -> None:
-    run(["npm", "--prefix", "languages/typescript-lang-project-harness", "run", "build"])
+    run(["npm", "--prefix", "languages/asp-typescript", "run", "build"])
     run(["cargo", "build", "-q", "-p", "agent-semantic-client", "--bin", "asp"])
     run(
         [
@@ -153,7 +153,7 @@ class _runtime_env:
             )
             _write_shim(
                 shim_dir / "asp-typescript",
-                f'exec node "{ROOT}/languages/typescript-lang-project-harness/dist/src/cli/main.js" "$@"\n',
+                f'exec node "{ROOT}/languages/asp-typescript/dist/src/cli/main.js" "$@"\n',
             )
             _write_shim(
                 shim_dir / "asp-python",

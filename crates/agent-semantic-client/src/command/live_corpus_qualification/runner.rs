@@ -712,15 +712,21 @@ where
         artifact_digest,
     )
     .await?;
-    let selector = evidence.search.selectors.first().cloned().ok_or_else(|| {
-        format!(
-            "Live Corpus public search selector missing: case={}",
-            case.case_id
-        )
-    })?;
+    let selector = evidence
+        .search
+        .decision
+        .selectors
+        .first()
+        .cloned()
+        .ok_or_else(|| {
+            format!(
+                "Live Corpus public search selector missing: case={}",
+                case.case_id
+            )
+        })?;
     for query in [&evidence.source, &evidence.callable_skeleton] {
         if query.generation_digest != evidence.search.generation_digest
-            || query.root_digest != evidence.search.root_digest
+            || query.root_digest != evidence.search.source_root_digest
             || query.provider_id != case.provider_id
         {
             return Err(format!(
@@ -728,13 +734,13 @@ where
                 case.case_id,
                 evidence.search.generation_digest,
                 query.generation_digest,
-                evidence.search.root_digest,
+                evidence.search.source_root_digest,
                 query.root_digest
             ));
         }
     }
     if evidence.zero_match.generation_digest != evidence.search.generation_digest
-        || evidence.zero_match.root_digest != evidence.search.root_digest
+        || evidence.zero_match.source_root_digest != evidence.search.source_root_digest
     {
         return Err(format!(
             "Live Corpus public zero-match route crossed generation authority: case={}",
@@ -796,7 +802,7 @@ where
         stale_content_binding_rejected: false,
         stale_content_binding_probe_elapsed_micros: 0,
         generation_digest: evidence.search.generation_digest,
-        root_digest: evidence.search.root_digest,
+        root_digest: evidence.search.source_root_digest,
         search_operation_id: evidence.search.operation_id,
         search_elapsed_micros: evidence.search.elapsed_micros,
         resident_sample_count,

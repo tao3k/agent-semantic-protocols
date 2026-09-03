@@ -49,3 +49,29 @@ pub async fn active_turso_source_index_generation(
         source_blobs,
     }))
 }
+
+pub(crate) async fn active_turso_workspace_generation_materialization(
+    db_path: &Path,
+    workspace_identity: &str,
+    project_root: &Path,
+) -> Result<Option<crate::runtime_server_workspace::WorkspaceCanonicalMaterialization>, String> {
+    use crate::runtime_server_workspace::WorkspaceCanonicalMaterializationLoad;
+
+    if !db_path.exists() {
+        return Ok(None);
+    }
+    let normalized_project_root = crate::types::normalized_project_root(project_root)?;
+    let connection = crate::engine::turso::connect_turso_client_db(db_path).await?;
+    super::core::ensure_turso_source_index_schema(&connection).await?;
+    match super::materialization::load_active_workspace_generation_materialization(
+        &connection,
+        workspace_identity,
+        normalized_project_root.as_str(),
+    )
+    .await?
+    {
+        WorkspaceCanonicalMaterializationLoad::Ready(materialization) => Ok(Some(materialization)),
+        WorkspaceCanonicalMaterializationLoad::Missing => Ok(None),
+        WorkspaceCanonicalMaterializationLoad::Incompatible { reason } => Err(reason),
+    }
+}

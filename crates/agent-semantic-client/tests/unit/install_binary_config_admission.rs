@@ -1,6 +1,7 @@
 use super::{
-    admit_embedded_hook_config, publish_embedded_hook_config, resolve_hook_binary_candidate,
-    retire_legacy_hook_generation_pointer, validate_hook_binary_candidate_identity,
+    admit_embedded_hook_config, admit_embedded_hook_runtime_candidate,
+    publish_embedded_hook_config, resolve_hook_binary_candidate,
+    retire_legacy_hook_generation_pointer,
 };
 
 #[test]
@@ -53,6 +54,36 @@ fn canonical_runtime_hook_retires_only_the_legacy_generation_pointer() {
     );
 }
 
+#[cfg(unix)]
+#[tokio::test]
+async fn hook_candidate_admission_is_content_only_and_never_spawns_the_candidate() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let root = tempfile::tempdir().expect("isolated build directory");
+    let asp = root.path().join("asp");
+    let hook = root.path().join("asp-hook");
+    let execution_marker = root.path().join("candidate-was-executed");
+    std::fs::write(&asp, b"asp fixture").expect("write ASP fixture");
+    std::fs::write(
+        &hook,
+        format!("#!/bin/sh\ntouch '{}'\n", execution_marker.display()),
+    )
+    .expect("write executable Hook fixture");
+    let mut permissions = std::fs::metadata(&hook).unwrap().permissions();
+    permissions.set_mode(0o755);
+    std::fs::set_permissions(&hook, permissions).expect("Hook fixture mode");
+
+    let admitted = admit_embedded_hook_runtime_candidate(&asp)
+        .await
+        .expect("content-addressed Hook admission");
+    assert_eq!(admitted.source, hook);
+    assert!(admitted.artifact_digest.starts_with("blake3-256:"));
+    assert!(
+        !execution_marker.exists(),
+        "publication admission must not execute candidate artifacts"
+    );
+}
+
 #[test]
 fn legacy_generation_directory_conflict_fails_closed_without_deletion() {
     let root = tempfile::tempdir().expect("isolated State Home");
@@ -63,28 +94,6 @@ fn legacy_generation_directory_conflict_fails_closed_without_deletion() {
         .expect_err("directory conflict must fail closed");
     assert!(error.contains("legacy-hook-generation-path-conflict"));
     assert!(current.is_dir());
-}
-
-#[cfg(unix)]
-#[tokio::test]
-async fn stale_hook_candidate_policy_identity_fails_before_publication() {
-    use std::os::unix::fs::PermissionsExt;
-
-    let root = tempfile::tempdir().expect("isolated build directory");
-    let hook = root.path().join("asp-hook");
-    std::fs::write(
-        &hook,
-        b"#!/bin/sh\nprintf '%s\\n' '{\"schemaId\":\"agent.semantic-protocols.hook-runtime-identity\",\"schemaVersion\":1,\"policyContentDigest\":\"blake3-256:stale\"}'\n",
-    )
-    .expect("write stale Hook identity fixture");
-    let mut permissions = std::fs::metadata(&hook).unwrap().permissions();
-    permissions.set_mode(0o755);
-    std::fs::set_permissions(&hook, permissions).expect("Hook fixture mode");
-
-    let error = validate_hook_binary_candidate_identity(&hook)
-        .await
-        .expect_err("stale Hook policy identity must fail closed");
-    assert!(error.contains("policy identity mismatch"), "{error}");
 }
 
 #[cfg(unix)]

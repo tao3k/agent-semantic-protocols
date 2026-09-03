@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
-use tokio::net::UnixStream;
+use tokio::net::TcpStream;
 
 use super::{
     RuntimeServerControlReceipt, RuntimeServerControlRequest, RuntimeServerRequestReadError,
@@ -18,7 +18,7 @@ fn encode_frame<T: Serialize>(value: &T) -> Result<Vec<u8>, String> {
 }
 
 pub(crate) async fn read_runtime_server_requests(
-    stream: &mut UnixStream,
+    stream: &mut TcpStream,
 ) -> Result<Vec<RuntimeServerControlRequest>, RuntimeServerRequestReadError> {
     let length = match stream.read_u32().await {
         Ok(length) => length as usize,
@@ -57,7 +57,7 @@ pub(crate) async fn read_runtime_server_requests(
 }
 
 pub(crate) async fn write_runtime_server_receipts(
-    stream: &mut UnixStream,
+    stream: &mut TcpStream,
     receipts: &[RuntimeServerControlReceipt],
 ) -> Result<(), String> {
     write_frame(stream, &receipts).await

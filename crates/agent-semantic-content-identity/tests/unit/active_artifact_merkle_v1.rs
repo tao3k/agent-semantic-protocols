@@ -1,17 +1,18 @@
 use super::{
-    ActiveArtifactKind, ActiveArtifactLeaf, ActiveAspArtifactReceipt, ActiveAspArtifactReceiptError,
+    ActiveArtifactKind, ActiveArtifactLeaf, ActiveArtifactLeafInput, ActiveAspArtifactReceipt,
+    ActiveAspArtifactReceiptError,
 };
 use crate::exact_selector_merkle::blake3_content_digest_v1;
 
 fn leaf(logical_path: &str, artifact_kind: ActiveArtifactKind, bytes: &[u8]) -> ActiveArtifactLeaf {
     ActiveArtifactLeaf::new(
-        logical_path,
-        format!("/active/{logical_path}"),
-        artifact_kind,
-        blake3_content_digest_v1(bytes),
-        bytes.len() as u64,
-        0,
-        None,
+        ActiveArtifactLeafInput::new(
+            logical_path,
+            format!("/active/{logical_path}"),
+            artifact_kind,
+            blake3_content_digest_v1(bytes),
+        )
+        .with_materialization_metadata(bytes.len() as u64, 0, None),
     )
     .expect("valid active artifact leaf")
 }
@@ -41,13 +42,17 @@ fn receipt_is_sorted_and_binds_every_leaf() {
     let mut changed = receipt.clone();
     let original = &changed.leaves[0];
     changed.leaves[0] = ActiveArtifactLeaf::new(
-        original.logical_path(),
-        original.materialized_path(),
-        original.artifact_kind(),
-        original.artifact_digest().clone(),
-        original.size_bytes() + 1,
-        original.modified_unix_nanos(),
-        original.change_time_unix_nanos(),
+        ActiveArtifactLeafInput::new(
+            original.logical_path(),
+            original.materialized_path(),
+            original.artifact_kind(),
+            original.artifact_digest().clone(),
+        )
+        .with_materialization_metadata(
+            original.size_bytes() + 1,
+            original.modified_unix_nanos(),
+            original.change_time_unix_nanos(),
+        ),
     )
     .expect("changed active artifact leaf");
     assert_eq!(
@@ -108,13 +113,17 @@ fn content_root_is_stable_across_materialization_roots() {
             .expect("canonical receipt");
 
     let alias = ActiveArtifactLeaf::new(
-        binary.logical_path(),
-        "/workspace/.bin/.asp-artifacts/blake3-256/abc/asp",
-        binary.artifact_kind(),
-        binary.artifact_digest().clone(),
-        binary.size_bytes(),
-        binary.modified_unix_nanos(),
-        binary.change_time_unix_nanos(),
+        ActiveArtifactLeafInput::new(
+            binary.logical_path(),
+            "/workspace/.bin/.asp-artifacts/blake3-256/abc/asp",
+            binary.artifact_kind(),
+            binary.artifact_digest().clone(),
+        )
+        .with_materialization_metadata(
+            binary.size_bytes(),
+            binary.modified_unix_nanos(),
+            binary.change_time_unix_nanos(),
+        ),
     )
     .expect("aliased active artifact leaf");
     let aliased = ActiveAspArtifactReceipt::build("asp-runtime", vec![activation, alias])

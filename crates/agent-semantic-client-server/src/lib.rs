@@ -13,8 +13,8 @@ pub use client_protocol::{
 pub use grpc::{
     AspClientGrpcService, AspClientGrpcTransport, CLIENT_FRAME_SESSION_CAPACITY,
     CLIENT_FRAME_SESSION_CONTROL_RESERVE, admit_asp_client_grpc_inherited_descriptor,
-    bind_asp_client_grpc_unix, connect_asp_client_grpc_inherited_descriptor,
-    serve_asp_client_grpc_unix,
+    bind_asp_client_grpc_tcp, connect_asp_client_grpc_inherited_descriptor,
+    serve_asp_client_grpc_tcp,
 };
 
 pub use provider_project_resolution::provider_capabilities_permit_project_resolution;

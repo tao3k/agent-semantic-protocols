@@ -20,7 +20,7 @@ use crate::{
     WorkspaceDbWriteFinishMode, WorkspaceDbWriteFinishReceipt,
 };
 use std::path::{Path, PathBuf};
-use tokio::{io::BufStream, net::UnixStream};
+use tokio::{io::BufStream, net::TcpStream};
 
 /// Per-operation deadline for immutable search/query reads.
 ///
@@ -40,7 +40,7 @@ pub struct WorkspaceDbIpcSession {
 pub(in crate::workspace_db_ipc) struct WorkspaceDbIpcSessionState {
     client_id: u64,
     next_request_id: std::sync::atomic::AtomicU64,
-    lanes: Vec<tokio::sync::Mutex<Option<BufStream<UnixStream>>>>,
+    lanes: Vec<tokio::sync::Mutex<Option<BufStream<TcpStream>>>>,
     runtime_mutation_capable: bool,
     pub(in crate::workspace_db_ipc) runtime_generation_mutations:
         std::sync::OnceLock<std::sync::Arc<MutationWorkspaceLane>>,
@@ -107,7 +107,7 @@ impl WorkspaceDbIpcSession {
                 .content_digest()
                 .to_string(),
             binding_token: endpoint.binding_token.clone(),
-            socket_path: endpoint.data_plane_socket_path.clone(),
+            data_endpoint: endpoint.data_endpoint.clone(),
             generation_pointer_path,
         };
         let shared = resident_state(&endpoint, || {
@@ -137,7 +137,7 @@ impl WorkspaceDbIpcSession {
                 .content_digest()
                 .to_string(),
             binding_token: endpoint.binding_token.clone(),
-            socket_path: endpoint.data_plane_socket_path.clone(),
+            data_endpoint: endpoint.data_endpoint.clone(),
             generation_pointer_path: None,
         };
         let shared = Self::new_state(WorkspaceDbSessionProfile::HookReadOnly);
@@ -163,7 +163,7 @@ impl WorkspaceDbIpcSession {
                 .content_digest()
                 .to_string(),
             binding_token: endpoint.binding_token.clone(),
-            socket_path: endpoint.data_plane_socket_path.clone(),
+            data_endpoint: endpoint.data_endpoint.clone(),
             generation_pointer_path: None,
         };
         let shared = Self::new_state(WorkspaceDbSessionProfile::Full);
@@ -193,7 +193,7 @@ impl WorkspaceDbIpcSession {
             crate::runtime_resident_read::RuntimeResidentReadClient::open(pointer, project_root)
                 .await?;
         if resident.generation_digest() != receipt.generation_digest
-            || resident.root_digest() != receipt.source_root_digest
+            || resident.source_root_digest() != receipt.source_root_digest
         {
             return Err(
                 "Runtime resident read does not match the admitted recovery receipt".to_owned(),
@@ -354,7 +354,7 @@ impl WorkspaceDbIpcSession {
         };
         if lane.is_none() {
             *lane = Some(BufStream::new(
-                UnixStream::connect(&self.endpoint.socket_path)
+                TcpStream::connect(self.endpoint.data_endpoint.socket_addr())
                     .await
                     .map_err(runtime_server_data_connect_error)?,
             ));

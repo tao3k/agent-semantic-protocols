@@ -64,7 +64,7 @@ async fn project_registry_never_direct_opens_without_runtime_server_endpoint() {
 
 #[cfg(unix)]
 #[tokio::test]
-async fn project_registry_selects_runtime_proxy_from_unix_socket_endpoint() {
+async fn project_registry_selects_runtime_proxy_from_loopback_endpoint() {
     let _environment = environment_lock();
     let fixture = tempfile::Builder::new()
         .prefix("asp-ipc-")
@@ -115,14 +115,8 @@ async fn project_registry_selects_runtime_proxy_from_unix_socket_endpoint() {
         Some(endpoint.binary_content_digest.as_str()),
         "unexpected typed endpoint identity shape: {endpoint_value}"
     );
-    std::fs::create_dir_all(
-        std::path::Path::new(&endpoint.socket_path)
-            .parent()
-            .expect("Runtime socket parent"),
-    )
-    .expect("create Runtime socket directory");
-    let _listener = std::os::unix::net::UnixListener::bind(&endpoint.socket_path)
-        .expect("bind Runtime Server control socket");
+    let _listener = std::net::TcpListener::bind(endpoint.control_endpoint.socket_addr())
+        .expect("bind Runtime Server loopback control endpoint");
     publish_runtime_server_endpoint(&endpoint_path, &endpoint)
         .await
         .expect("publish typed Runtime Server endpoint descriptor fixture");

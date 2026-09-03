@@ -24,6 +24,7 @@ fn snapshot(active_epoch: u64) -> WorkspaceGenerationSnapshot {
         leaf_count: 1,
         owner_count: 1,
         provider_schema_digest: digest(),
+        runtime_provider_execution_binding: None,
         source_root_digest,
         base_root_digest: None,
         source_provider_digest: digest(),

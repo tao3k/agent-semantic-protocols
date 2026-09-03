@@ -15,10 +15,8 @@ pub struct GrpcProviderSessionClient {
 }
 
 impl GrpcProviderSessionClient {
-    pub async fn connect_unix(
-        socket_path: impl Into<std::path::PathBuf>,
-    ) -> Result<Self, tonic::Status> {
-        let channel = connect_unix_channel(socket_path.into()).await?;
+    pub async fn connect_tcp(address: std::net::SocketAddr) -> Result<Self, tonic::Status> {
+        let channel = connect_tcp_channel(address).await?;
         let mut client = ProviderSessionClient::new(channel);
         let (outbound, receiver) = mpsc::channel(32);
         let response = client
@@ -42,14 +40,21 @@ impl GrpcProviderSessionClient {
     }
 }
 
-pub async fn call_runtime_provider_register(
-    socket_path: impl Into<std::path::PathBuf>,
+pub async fn call_runtime_provider_register_tcp(
+    address: std::net::SocketAddr,
+    request: &agent_semantic_provider_protocol::ProviderRegisterRequest,
+) -> Result<agent_semantic_provider_protocol::ProviderRegisterResponse, String> {
+    let channel = connect_tcp_channel(address)
+        .await
+        .map_err(|status| status.to_string())?;
+    call_runtime_provider_register_channel(channel, request).await
+}
+
+async fn call_runtime_provider_register_channel(
+    channel: tonic::transport::Channel,
     request: &agent_semantic_provider_protocol::ProviderRegisterRequest,
 ) -> Result<agent_semantic_provider_protocol::ProviderRegisterResponse, String> {
     request.validate()?;
-    let channel = connect_unix_channel(socket_path.into())
-        .await
-        .map_err(|status| status.to_string())?;
     let mut client = ProviderSessionClient::new(channel);
     let packet = ProviderRegisterPacket {
         schema_id: agent_semantic_provider_protocol::PROVIDER_REGISTER_REQUEST_SCHEMA_ID.to_owned(),
@@ -76,19 +81,17 @@ pub async fn call_runtime_provider_register(
     Ok(response)
 }
 
-async fn connect_unix_channel(
-    socket_path: std::path::PathBuf,
+async fn connect_tcp_channel(
+    address: std::net::SocketAddr,
 ) -> Result<tonic::transport::Channel, tonic::Status> {
-    tonic::transport::Endpoint::try_from("http://[::]:50051")
+    if !address.ip().is_loopback() || address.port() == 0 {
+        return Err(tonic::Status::invalid_argument(
+            "provider transport requires a nonzero loopback endpoint",
+        ));
+    }
+    tonic::transport::Endpoint::from_shared(format!("http://{address}"))
         .map_err(|error| tonic::Status::invalid_argument(error.to_string()))?
-        .connect_with_connector(tower::service_fn(move |_| {
-            let socket_path = socket_path.clone();
-            async move {
-                tokio::net::UnixStream::connect(socket_path)
-                    .await
-                    .map(hyper_util::rt::TokioIo::new)
-            }
-        }))
+        .connect()
         .await
         .map_err(|error| tonic::Status::unavailable(error.to_string()))
 }

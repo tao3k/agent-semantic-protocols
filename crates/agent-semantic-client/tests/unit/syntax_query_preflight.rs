@@ -53,7 +53,8 @@ fn rejects_exact_projection_file_selector_before_provider_execution() {
         error.contains("invalid exact-query selector `src/lib.rs`"),
         "{error}"
     );
-    assert!(error.contains("search owner <path> items"), "{error}");
+    assert!(error.contains("native-syntax playbook"), "{error}");
+    assert!(error.contains("search 'source structure'"), "{error}");
     assert!(error.contains("rust://path#item/function/name"), "{error}");
 }
 

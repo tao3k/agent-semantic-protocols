@@ -7,9 +7,10 @@ async fn missing_authority_is_typed_active_generation_required() {
     tokio::fs::create_dir_all(pointer.parent().expect("parent"))
         .await
         .expect("generation directory");
-    let error = read_search_generation_authority_fixture(&pointer, 59, "ws", "/project")
-        .await
-        .expect_err("missing authority must fail closed");
+    let error =
+        read_search_generation_authority_fixture(&pointer, 59, "repo-fixture", "workspace-fixture")
+            .await
+            .expect_err("missing authority must fail closed");
     assert!(error.contains("active-generation-required"), "{error}");
 }
 
@@ -24,8 +25,9 @@ async fn corrupt_authority_is_typed_authority_corrupt() {
     tokio::fs::write(generations.join("search-authority-59.json"), b"not-json")
         .await
         .expect("corrupt authority");
-    let error = read_search_generation_authority_fixture(&pointer, 59, "ws", "/project")
-        .await
-        .expect_err("corrupt authority must fail closed");
+    let error =
+        read_search_generation_authority_fixture(&pointer, 59, "repo-fixture", "workspace-fixture")
+            .await
+            .expect_err("corrupt authority must fail closed");
     assert!(error.contains("authority-corrupt"), "{error}");
 }

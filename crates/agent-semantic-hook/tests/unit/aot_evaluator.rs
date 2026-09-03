@@ -15,7 +15,7 @@ const GENERATION: &str = r#"{
     "message":"Use the parser-owned ASP route.",
     "profile":"rust",
     "language":"rust",
-    "route":"asp languages search owner"
+    "route":"asp languages search playbook"
   }]
 }"#;
 

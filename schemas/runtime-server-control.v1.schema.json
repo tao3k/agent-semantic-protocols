@@ -48,9 +48,9 @@
         "artifactMode",
         "artifactCatalogDigest",
       "bindingToken",
-      "dataPlaneSocketPath",
-      "providerPlaneSocketPath",
-      "socketPath",
+      "controlEndpoint",
+      "dataEndpoint",
+      "providerEndpoint",
         "workspaceStorePath"
         ,"statusMemoryPath"
       ],
@@ -93,18 +93,9 @@
           "type": "string",
           "minLength": 1
         },
-        "socketPath": {
-          "type": "string",
-          "minLength": 1
-        },
-      "dataPlaneSocketPath": {
-        "type": "string",
-        "minLength": 1
-      },
-      "providerPlaneSocketPath": {
-        "type": "string",
-        "minLength": 1
-      },
+        "controlEndpoint": { "$ref": "#/$defs/loopbackEndpoint" },
+        "dataEndpoint": { "$ref": "#/$defs/loopbackEndpoint" },
+        "providerEndpoint": { "$ref": "#/$defs/loopbackEndpoint" },
       "workspaceStorePath": {
           "type": "string",
           "minLength": 1
@@ -113,6 +104,16 @@
           "type": "string",
           "minLength": 1
         }
+      }
+    },
+    "loopbackEndpoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["transport", "address", "port"],
+      "properties": {
+        "transport": { "const": "loopback-tcp" },
+        "address": { "enum": ["127.0.0.1", "::1"] },
+        "port": { "type": "integer", "minimum": 1, "maximum": 65535 }
       }
     },
     "dataPlaneCounters": {
@@ -158,6 +159,7 @@
         "leafCount",
         "ownerCount",
         "providerSchemaDigest",
+        "runtimeProviderExecutionBinding",
         "sourceRootDigest",
         "baseRootDigest",
         "sourceProviderDigest",
@@ -208,6 +210,9 @@
         "providerSchemaDigest": {
           "type": "string",
           "pattern": "^blake3-256:[0-9a-f]{64}$"
+        },
+        "runtimeProviderExecutionBinding": {
+          "$ref": "runtime-provider-execution-binding.v1.schema.json"
         },
         "sourceRootDigest": {
           "type": "string",

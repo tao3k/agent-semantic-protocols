@@ -264,10 +264,10 @@ impl WorkspaceGenerationAdmission {
             entry.workspace_identity == workspace_identity && entry.project_root == project_root
         }) {
             catalog_entries.push(
-                crate::runtime_server_admission_catalog::RuntimeWorkspaceAdmissionCatalogEntry {
-                    workspace_identity: workspace_identity.clone(),
-                    project_root: project_root.clone(),
-                },
+                crate::runtime_server_admission_catalog::RuntimeWorkspaceAdmissionCatalogEntry::resolve(
+                    workspace_identity.clone(),
+                    project_root.clone(),
+                )?,
             );
         }
         let mut affected = std::collections::BTreeMap::<String, PathBuf>::new();
@@ -310,7 +310,6 @@ impl WorkspaceGenerationAdmission {
             } else {
                 let key = WorkspaceGenerationAdmissionKey {
                     workspace_identity: affected_identity.clone(),
-                    project_root: affected_root.clone(),
                 };
                 let entry = self.entries.get(&key).ok_or_else(|| {
                     format!(
@@ -319,6 +318,13 @@ impl WorkspaceGenerationAdmission {
                         affected_root.display(),
                     )
                 })?;
+                if !entry.matches_project_root(&affected_root) {
+                    return Err(format!(
+                        "workspace mutation fanout root drift: workspaceIdentity={} projectRoot={}",
+                        affected_identity,
+                        affected_root.display(),
+                    ));
+                }
                 let observed = entry.observed();
                 super::WorkspaceGenerationCandidateIdentity {
                     candidate_generation: observed.candidate_generation,
@@ -352,7 +358,6 @@ impl WorkspaceGenerationAdmission {
                 } else {
                     let key = WorkspaceGenerationAdmissionKey {
                         workspace_identity: affected_identity.clone(),
-                        project_root: affected_root.clone(),
                     };
                     let entry = self.entries.get(&key).ok_or_else(|| {
                         format!(
@@ -361,6 +366,13 @@ impl WorkspaceGenerationAdmission {
                             affected_root.display(),
                         )
                     })?;
+                    if !entry.matches_project_root(&affected_root) {
+                        return Err(format!(
+                            "workspace mutation fanout root drift: workspaceIdentity={} projectRoot={}",
+                            affected_identity,
+                            affected_root.display(),
+                        ));
+                    }
                     let observed = entry.observed();
                     super::WorkspaceGenerationCandidateIdentity {
                         candidate_generation: observed.candidate_generation,
@@ -493,7 +505,6 @@ impl WorkspaceGenerationAdmission {
         candidate.validate()?;
         let key = WorkspaceGenerationAdmissionKey {
             workspace_identity: workspace_identity.clone(),
-            project_root: project_root.clone(),
         };
         let receipt = mutation_submission_receipt(&workspace_identity, &candidate, 1)?;
         let active_mutation = Some(super::WorkspaceMutationIdentity {
@@ -503,7 +514,7 @@ impl WorkspaceGenerationAdmission {
         });
         let (entry, inserted) = self
             .entries
-            .get_or_insert(key, receipt.clone(), active_mutation)
+            .get_or_insert(key, project_root.clone(), receipt.clone(), active_mutation)
             .await?;
         let inserted_receipt = inserted.then_some(receipt);
         if let Some(receipt) = inserted_receipt {
@@ -519,7 +530,7 @@ impl WorkspaceGenerationAdmission {
                 1,
                 super::WorkspaceGenerationBuildMode::RestoreOrBuild,
                 crate::runtime_server_admission::WorkspaceGenerationAdmissionTrigger::WorkspaceChange,
-                crate::runtime_server_admission::WorkspaceGenerationAdmissionMode::IncrementalOverlay,
+                crate::runtime_server_admission::WorkspaceGenerationAdmissionMode::CompleteGeneration,
                 None,
                 Arc::default(),
             )
@@ -625,7 +636,7 @@ impl WorkspaceGenerationAdmission {
                 attempt,
                 build_mode,
                 crate::runtime_server_admission::WorkspaceGenerationAdmissionTrigger::WorkspaceChange,
-                crate::runtime_server_admission::WorkspaceGenerationAdmissionMode::IncrementalOverlay,
+                crate::runtime_server_admission::WorkspaceGenerationAdmissionMode::CompleteGeneration,
                 None,
                 Arc::default(),
             )
@@ -635,6 +646,10 @@ impl WorkspaceGenerationAdmission {
 
         if entry.lane.observed().building {
             let attempt = claimed_attempt;
+            // A mutation that arrives during source construction invalidates
+            // that attempt before its canonical publication point. The next
+            // queued mutation receives a fresh cancellation epoch.
+            entry.cancel_and_renew_generation();
             entry
                 .lane
                 .enqueue_mutation(PendingWorkspaceMutation {
@@ -664,7 +679,7 @@ fn mutation_submission_receipt(
         trigger:
             crate::runtime_server_admission::WorkspaceGenerationAdmissionTrigger::WorkspaceChange,
         admission_mode:
-            crate::runtime_server_admission::WorkspaceGenerationAdmissionMode::IncrementalOverlay,
+            crate::runtime_server_admission::WorkspaceGenerationAdmissionMode::CompleteGeneration,
         build_owner: "runtime-server".to_owned(),
         cancellation_authority: "runtime-server".to_owned(),
         request_lifetime_independent: true,

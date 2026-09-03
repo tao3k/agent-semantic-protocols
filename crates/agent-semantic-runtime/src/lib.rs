@@ -15,7 +15,6 @@ mod codex_rollout_sessions;
 pub mod git;
 mod graph_render;
 pub mod hook_process_runtime;
-pub mod language_owner_items;
 mod live_corpus;
 pub mod provider_workspace_artifact;
 pub mod runtime_identity_monitor;
@@ -54,15 +53,6 @@ pub use graph_render::{
     GraphRenderReceiptRequest, run_graph_render_packet, run_graph_render_packet_bytes,
     run_graph_render_packet_bytes_with_receipt,
 };
-pub use language_owner_items::{
-    LanguageOwnerItemsAttempt, LanguageOwnerItemsCacheRequest, LanguageOwnerItemsDispatchPlan,
-    LanguageOwnerItemsProviderOutput, LanguageOwnerItemsRuntimeOutcome,
-    LanguageOwnerItemsRuntimeReceipt, compact_language_owner_items_stdout,
-    language_owner_items_failure, language_owner_items_runtime_receipt,
-    language_owner_items_workspace_root, language_owner_path_exists, language_owner_source_path,
-    read_language_owner_items_cache, resolve_language_owner_items_runtime_outcome,
-    run_language_owner_items_dispatch_plan, write_language_owner_items_cache,
-};
 pub use live_corpus::{
     LIVE_CORPUS_ARTIFACT_SCHEMA_ID, LIVE_CORPUS_ARTIFACT_SCHEMA_VERSION,
     LiveCorpusArtifactGitIdentity, LiveCorpusArtifactIdentity, LiveCorpusArtifactManifest,
@@ -98,9 +88,6 @@ pub use timeout_policy::{
 #[cfg(test)]
 #[path = "../tests/unit/agent_session_status.rs"]
 mod agent_session_status_tests;
-#[cfg(test)]
-#[path = "../tests/unit/language_owner_items.rs"]
-mod language_owner_items_tests;
 #[cfg(test)]
 #[path = "../tests/unit/runtime_host_authority.rs"]
 mod runtime_host_authority_tests;

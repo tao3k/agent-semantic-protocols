@@ -22,34 +22,34 @@ def test_timeline_resolves_package_local_project_root_actions(tmp_path) -> None:
         (group["method"], group["subject"]): group["projectRootArg"]
         for group in report["repeatGroups"]
     }
-    expected_root = "languages/typescript-lang-project-harness"
+    expected_root = "languages/asp-typescript"
     assert repeat_roots[("search/owner", owner_path)] == expected_root
     assert repeat_roots[("search/typed-frontier", owner_path)] == expected_root
     assert report["ownerCollapse"]["actions"][0]["projectRootArg"] == expected_root
     assert report["ownerCollapse"]["actions"][0]["avoidCommand"] == (
         "asp typescript search owner src/cli/protocol.ts <same-scope> "
-        "languages/typescript-lang-project-harness"
+        "languages/asp-typescript"
     )
     assert report["ownerCollapse"]["actions"][0]["preferredCommand"] == (
         "asp typescript search owner src/cli/protocol.ts items --view seeds "
-        "languages/typescript-lang-project-harness"
+        "languages/asp-typescript"
     )
     assert report["typedFrontierPromotion"]["actions"][0]["projectRootArg"] == expected_root
     assert report["typedFrontierPromotion"]["actions"][0]["avoidCommand"] == (
         "asp typescript search typed-frontier <same-query> owner tests --view seeds "
-        "languages/typescript-lang-project-harness"
+        "languages/asp-typescript"
     )
     assert report["typedFrontierPromotion"]["actions"][0]["preferredCommand"] == (
         "asp typescript search owner src/cli/protocol.ts items --view seeds "
-        "languages/typescript-lang-project-harness"
+        "languages/asp-typescript"
     )
-    assert "root=languages/typescript-lang-project-harness" in (
+    assert "root=languages/asp-typescript" in (
         report["optimizationTargets"][0]["evidence"]
     )
 
 
 def _touch_typescript_owner(repo, owner_path: str) -> None:
-    project_root = repo / "languages" / "typescript-lang-project-harness"
+    project_root = repo / "languages" / "asp-typescript"
     (project_root / "src" / "cli").mkdir(parents=True)
     (project_root / owner_path).touch()
 

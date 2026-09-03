@@ -16,12 +16,10 @@ pub mod workspace_source_mutation;
 mod workspace_source_mutation_tests;
 pub use routes::{
     AspClientExactQueryFailure, AspClientExactQueryRequest, AspClientExactQueryResponse,
-    AspClientGraphsTimelineRequest, AspClientOwnerSearchRequest, AspClientOwnerSearchResponse,
-    AspClientOwnerSearchSeed, AspClientRuntimeWorkCounters, AspClientSearchRequest,
+    AspClientGraphsTimelineRequest, AspClientRuntimeWorkCounters, AspClientSearchRequest,
     AspClientSourceIndexLookupRequest, LIVE_CORPUS_CACHE_STATE_RECEIPT_SCHEMA_ID,
     LIVE_CORPUS_CACHE_STATE_REQUEST_SCHEMA_ID, LiveCorpusCacheStateReceipt,
     LiveCorpusCacheStateRequest, ProviderNativeExactProjection, ProviderNativeExactRequest,
-    ProviderNativeOwnerSearchRequest, ProviderNativeOwnerSearchResponse,
     RuntimeProviderSearchRequest,
 };
 pub use schema_bundle::{
@@ -81,6 +79,7 @@ macro_rules! client_identifier {
     };
 }
 
+client_identifier!(ClientProjectId);
 client_identifier!(ClientWorkspaceIdentity);
 client_identifier!(ClientSessionId);
 client_identifier!(ClientRequestId);
@@ -178,18 +177,8 @@ pub enum ClientFrame {
         #[serde(flatten)]
         base: ClientFrameBase,
         request_id: ClientRequestId,
-        project_root: String,
         client_info: ClientInfo,
         capabilities: Value,
-    },
-    Dispatch {
-        #[serde(flatten)]
-        base: ClientFrameBase,
-        request_id: ClientRequestId,
-        project_root: String,
-        client_info: ClientInfo,
-        method: String,
-        params: Value,
     },
     Request {
         #[serde(flatten)]
@@ -243,7 +232,8 @@ pub struct ClientFrameBase {
     pub protocol_id: String,
     pub protocol_version: String,
     pub session_id: ClientSessionId,
-    pub workspace_identity: ClientWorkspaceIdentity,
+    pub project_id: ClientProjectId,
+    pub workspace_id: ClientWorkspaceIdentity,
     #[serde(default)]
     pub trace_context: Option<TraceContext>,
 }
@@ -313,7 +303,8 @@ pub enum ClientSessionState {
 pub struct ClientSession {
     state: ClientSessionState,
     session_id: Option<ClientSessionId>,
-    workspace_identity: Option<ClientWorkspaceIdentity>,
+    project_id: Option<ClientProjectId>,
+    workspace_id: Option<ClientWorkspaceIdentity>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -408,7 +399,6 @@ impl ClientFrame {
     pub fn base(&self) -> &ClientFrameBase {
         match self {
             Self::Initialize { base, .. }
-            | Self::Dispatch { base, .. }
             | Self::Request { base, .. }
             | Self::Cancel { base, .. }
             | Self::Shutdown { base, .. }
@@ -433,15 +423,20 @@ impl ClientFrame {
                 "client sessionId is required",
             ));
         }
-        if base.workspace_identity.as_str().is_empty() {
+        if base.project_id.as_str().is_empty() {
+            return Err(error(
+                "client-project-required",
+                "client projectId is required",
+            ));
+        }
+        if base.workspace_id.as_str().is_empty() {
             return Err(error(
                 "client-workspace-required",
-                "client workspaceIdentity is required",
+                "client workspaceId is required",
             ));
         }
         let correlated_request_id = match self {
             Self::Initialize { request_id, .. }
-            | Self::Dispatch { request_id, .. }
             | Self::Request { request_id, .. }
             | Self::Cancel { request_id, .. }
             | Self::Shutdown { request_id, .. }
@@ -515,7 +510,8 @@ impl Default for ClientSession {
         Self {
             state: ClientSessionState::Created,
             session_id: None,
-            workspace_identity: None,
+            project_id: None,
+            workspace_id: None,
         }
     }
 }
@@ -541,13 +537,15 @@ impl ClientSession {
                 ));
             }
             self.session_id = Some(base.session_id.clone());
-            self.workspace_identity = Some(base.workspace_identity.clone());
+            self.project_id = Some(base.project_id.clone());
+            self.workspace_id = Some(base.workspace_id.clone());
         } else if self.session_id.as_ref() != Some(&base.session_id)
-            || self.workspace_identity.as_ref() != Some(&base.workspace_identity)
+            || self.project_id.as_ref() != Some(&base.project_id)
+            || self.workspace_id.as_ref() != Some(&base.workspace_id)
         {
             return Err(error(
                 "client-session-isolation-mismatch",
-                "client sessionId or workspaceIdentity crossed an isolation boundary",
+                "client sessionId, projectId, or workspaceId crossed an isolation boundary",
             ));
         }
         let next = self.state.admit(frame, catalog)?;

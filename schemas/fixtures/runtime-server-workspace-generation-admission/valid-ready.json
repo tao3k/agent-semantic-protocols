@@ -2,7 +2,7 @@
   "schemaId": "agent.semantic-protocols.runtime-server-workspace-generation-admission",
   "schemaVersion": "1",
   "trigger": "query-demand",
-  "admissionMode": "cold-targeted",
+  "admissionMode": "complete-generation",
   "buildOwner": "runtime-server",
   "cancellationAuthority": "runtime-server",
   "requestLifetimeIndependent": true,

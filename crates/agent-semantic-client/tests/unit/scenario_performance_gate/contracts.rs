@@ -1,12 +1,5 @@
 use super::shared::SharedBenchmarkToml;
 
-pub(crate) fn assert_dynamic_overlay_benchmark_contract(benchmark: &SharedBenchmarkToml) {
-    assert_eq!(benchmark.route_source.as_deref(), Some("dynamic-overlay"));
-    assert_eq!(benchmark.max_provider_process_count, Some(0));
-    assert_eq!(benchmark.max_stdout_bytes, Some(8192));
-    assert_eq!(benchmark.fallback_reason.as_deref(), Some("none"));
-}
-
 pub(crate) fn assert_evidence_graph_rank_benchmark_contract(benchmark: &SharedBenchmarkToml) {
     assert_eq!(
         benchmark.route_source.as_deref(),
@@ -27,22 +20,6 @@ pub(crate) fn assert_search_candidate_contract_benchmark_contract(benchmark: &Sh
     assert_eq!(benchmark.fallback_reason.as_deref(), Some("none"));
 }
 
-pub(crate) fn assert_search_owner_source_index_trace_benchmark_contract(
-    benchmark: &SharedBenchmarkToml,
-    expected_fallback_reason: &str,
-) {
-    assert_eq!(
-        benchmark.route_source.as_deref(),
-        Some("search-owner-source-index-trace")
-    );
-    assert_eq!(benchmark.max_provider_process_count, Some(0));
-    assert_eq!(benchmark.max_stdout_bytes, Some(1024));
-    assert_eq!(
-        benchmark.fallback_reason.as_deref(),
-        Some(expected_fallback_reason)
-    );
-}
-
 pub(crate) fn assert_search_query_budget_benchmark_contract(benchmark: &SharedBenchmarkToml) {
     assert_eq!(
         benchmark.route_source.as_deref(),
@@ -50,16 +27,6 @@ pub(crate) fn assert_search_query_budget_benchmark_contract(benchmark: &SharedBe
     );
     assert_eq!(benchmark.max_provider_process_count, Some(0));
     assert_eq!(benchmark.max_stdout_bytes, Some(4096));
-    assert_eq!(benchmark.fallback_reason.as_deref(), Some("none"));
-}
-
-pub(crate) fn assert_generated_candidate_benchmark_contract(benchmark: &SharedBenchmarkToml) {
-    assert_eq!(
-        benchmark.route_source.as_deref(),
-        Some("search-pipe-generated-candidate")
-    );
-    assert_eq!(benchmark.max_provider_process_count, Some(0));
-    assert_eq!(benchmark.max_stdout_bytes, Some(8192));
     assert_eq!(benchmark.fallback_reason.as_deref(), Some("none"));
 }
 
@@ -114,54 +81,10 @@ pub(super) fn assert_graph_owner_rank_benchmark_contract(benchmark: &SharedBench
     assert_eq!(benchmark.fallback_reason.as_deref(), Some("none"));
 }
 
-pub(super) fn assert_graph_query_owner_seed_benchmark_contract(benchmark: &SharedBenchmarkToml) {
-    assert_eq!(
-        benchmark.route_source.as_deref(),
-        Some("graph-query-owner-seed")
-    );
-    assert_eq!(benchmark.max_provider_process_count, Some(0));
-    assert_eq!(benchmark.max_stdout_bytes, Some(4096));
-    assert_eq!(benchmark.fallback_reason.as_deref(), Some("none"));
-}
-
-pub(super) fn assert_graph_seed_decision_benchmark_contract(benchmark: &SharedBenchmarkToml) {
-    assert_eq!(
-        benchmark.route_source.as_deref(),
-        Some("graph-seed-decision")
-    );
-    assert_eq!(benchmark.max_provider_process_count, Some(0));
-    assert_eq!(benchmark.max_stdout_bytes, Some(4096));
-    assert_eq!(benchmark.fallback_reason.as_deref(), Some("none"));
-}
-
 pub(super) fn assert_graph_evidence_projection_benchmark_contract(benchmark: &SharedBenchmarkToml) {
     assert_eq!(
         benchmark.route_source.as_deref(),
         Some("graph-evidence-projection")
-    );
-    assert_eq!(benchmark.max_provider_process_count, Some(0));
-    assert_eq!(benchmark.max_stdout_bytes, Some(4096));
-    assert_eq!(benchmark.fallback_reason.as_deref(), Some("none"));
-}
-
-pub(super) fn assert_runtime_owner_items_receipt_benchmark_contract(
-    benchmark: &SharedBenchmarkToml,
-) {
-    assert_eq!(
-        benchmark.route_source.as_deref(),
-        Some("owner-items-runtime")
-    );
-    assert_eq!(benchmark.max_provider_process_count, Some(1));
-    assert_eq!(benchmark.max_stdout_bytes, Some(4096));
-    assert_eq!(benchmark.fallback_reason.as_deref(), Some("none"));
-}
-
-pub(super) fn assert_rust_owner_items_minimal_ast_cut_benchmark_contract(
-    benchmark: &SharedBenchmarkToml,
-) {
-    assert_eq!(
-        benchmark.route_source.as_deref(),
-        Some("dynamic-owner-items")
     );
     assert_eq!(benchmark.max_provider_process_count, Some(0));
     assert_eq!(benchmark.max_stdout_bytes, Some(4096));
@@ -177,5 +100,4 @@ pub(super) fn assert_runtime_timeout_policy_benchmark_contract(benchmark: &Share
     assert_eq!(benchmark.max_stdout_bytes, Some(1024));
     assert_eq!(benchmark.fallback_reason.as_deref(), Some("none"));
 }
-const _: fn(&SharedBenchmarkToml, &str) = assert_search_owner_source_index_trace_benchmark_contract;
 const _: fn(&SharedBenchmarkToml) = assert_search_query_budget_benchmark_contract;

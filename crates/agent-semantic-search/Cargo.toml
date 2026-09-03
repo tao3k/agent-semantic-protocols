@@ -3,10 +3,6 @@ name = "file_locator"
 path = "tests/integration/file_locator.rs"
 
 [[test]]
-name = "search_planner"
-path = "tests/integration/search_planner.rs"
-
-[[test]]
 name = "source_index_lookup_terms"
 path = "tests/integration/source_index_lookup_terms.rs"
 
@@ -14,12 +10,20 @@ path = "tests/integration/source_index_lookup_terms.rs"
 name = "source_index_rank_performance"
 path = "tests/integration/source_index_rank_performance.rs"
 
+[[test]]
+name = "graph_generation_authority"
+path = "tests/integration/graph_generation_authority.rs"
+
 [package]
 name = "agent-semantic-search"
 version = "0.1.0"
 edition.workspace = true
 description = "Search orchestration services for ASP agent-facing queries."
 license = "MIT"
+
+[features]
+default = ["tantivy-accelerator"]
+tantivy-accelerator = ["dep:tantivy"]
 
 [dependencies]
 sha2.workspace = true
@@ -37,6 +41,7 @@ memchr = "2"
 toml = { workspace = true }
 tokio = { workspace = true }
 tokio-stream.workspace = true
+tantivy = { workspace = true, optional = true }
 which = { workspace = true }
 
 [build-dependencies]
@@ -48,10 +53,6 @@ tempfile = { workspace = true }
 [[test]]
 name = "graph_owner_rank_report"
 path = "tests/integration/graph_owner_rank_report/mod.rs"
-
-[[test]]
-name = "merkle_search_generation"
-path = "tests/unit/merkle_search_generation.rs"
 
 [[test]]
 name = "search_generation_segment"

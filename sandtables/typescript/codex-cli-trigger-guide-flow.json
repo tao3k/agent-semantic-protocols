@@ -137,7 +137,7 @@
             "--selector",
             "sdk/typescript/src/codex.ts",
             "--workspace",
-            "languages/typescript-lang-project-harness",
+            "languages/asp-typescript",
             "--code"
           ],
           "sourceLeakNotContains": [

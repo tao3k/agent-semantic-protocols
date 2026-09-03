@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from collections.abc import AsyncIterator
 
 import pytest
@@ -13,6 +14,11 @@ from asp_python_graphs.grpc_service import (
     AspPythonGraphsGrpcHandler,
     decode_envelope,
     encode_envelope,
+)
+from service_session_support import (
+    DIGEST_B,
+    generation_payload,
+    resident_evaluation_payload,
 )
 
 
@@ -74,17 +80,16 @@ def test_concurrent_health_requests_share_one_service_session() -> None:
     assert all(receipt["messageKind"] == "receipt" for receipt in receipts)
 
 
-def test_evaluate_admission_reports_deterministic_capacity_saturation() -> None:
+def test_removed_compile_generation_returns_typed_failures() -> None:
     async def requests() -> AsyncIterator[dict[str, object]]:
         for index in range(33):
             yield {
-                **health(f"evaluate-{index}"),
+                **health(f"compile-{index}"),
                 "sequence": index + 1,
-                "messageKind": "evaluate",
+                "messageKind": "compile-generation",
                 "workspaceIdentity": "workspace-a",
                 "generationDigest": f"blake3-256:{'a' * 64}",
-                "generationToken": 1,
-                "payload": {"terms": ["runtime"], "rankPayload": {}},
+                "payload": {"graph": {"nodes": [], "edges": []}},
             }
 
     async def collect() -> list[dict[str, object]]:
@@ -93,7 +98,62 @@ def test_evaluate_admission_reports_deterministic_capacity_saturation() -> None:
 
     receipts = asyncio.run(collect())
     assert len(receipts) == 33
-    assert sum(
-        receipt.get("payload", {}).get("reasonKind") == "capacity-exhausted"  # type: ignore[union-attr]
+    assert all(
+        receipt.get("payload", {}).get("reasonKind") == "unsupported-message-kind"  # type: ignore[union-attr]
         for receipt in receipts
-    ) == 1
+    )
+
+
+def test_concurrent_resident_rank_can_be_cancelled_without_late_result(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from asp_python_graphs import algorithm
+
+    original_rank_graph = algorithm.rank_graph
+
+    def slow_rank_graph(*args: object, **kwargs: object):  # type: ignore[no-untyped-def]
+        time.sleep(0.05)
+        return original_rank_graph(*args, **kwargs)
+
+    monkeypatch.setattr(algorithm, "rank_graph", slow_rank_graph)
+
+    async def requests() -> AsyncIterator[dict[str, object]]:
+        yield {
+            **health("hello-1"),
+            "messageKind": "hello",
+            "runtimeArtifactDigest": f"blake3-256:{'a' * 64}",
+            "executionArtifactDigest": DIGEST_B,
+        }
+        yield {
+            **health("generation-1"),
+            "sequence": 2,
+            "messageKind": "generation-graph",
+            "workspaceIdentity": "workspace-test",
+            "generationDigest": DIGEST_B,
+            "payload": generation_payload(),
+        }
+        yield {
+            **health("rank-1"),
+            "sequence": 3,
+            "messageKind": "evaluate-resident",
+            "workspaceIdentity": "workspace-test",
+            "generationDigest": DIGEST_B,
+            "payload": resident_evaluation_payload(),
+        }
+        yield {
+            **health("cancel-rank-1"),
+            "sequence": 4,
+            "messageKind": "cancel",
+            "cancellationId": "rank-1",
+        }
+
+    async def collect() -> list[dict[str, object]]:
+        handler = AspPythonGraphsGrpcHandler(max_in_flight=2)
+        return [receipt async for receipt in handler.session(requests(), object())]  # type: ignore[arg-type]
+
+    receipts = asyncio.run(collect())
+    by_request = {str(receipt["requestId"]): receipt for receipt in receipts}
+    assert by_request["cancel-rank-1"]["payload"]["state"] == "cancelled"  # type: ignore[index]
+    if "rank-1" in by_request:
+        assert by_request["rank-1"]["payload"]["state"] == "cancelled"  # type: ignore[index]
+        assert "result" not in by_request["rank-1"]["payload"]  # type: ignore[operator]

@@ -38,13 +38,19 @@ pub(super) async fn admit_embedded_hook_runtime_candidate(
     agent_semantic_hook::aot_compiler::compile_embedded_hook_policy_bundle()
         .map_err(|error| format!("validate embedded Hook policy: {error}"))?;
     let source = resolve_hook_binary_candidate(installing_asp_binary)?;
-    validate_hook_binary_candidate_identity(&source).await?;
     let artifact_digest =
         agent_semantic_artifacts::runtime_artifact_slots::runtime_artifact_candidate_digest(
             &source,
         )
         .await?
         .to_string();
+    // The immutable Runtime bundle binds this complete artifact digest to the
+    // `asp-hook` member and derives one bundle digest over every member.  Do
+    // not execute a candidate during publication admission: process creation,
+    // loader and code-signature latency are neither semantic identity nor a
+    // deterministic part of the publication transaction.  `--identity`
+    // remains a runtime diagnostic only; Active/Healthy bundle content is the
+    // sole installation authority.
     Ok(HookRuntimeBundleCandidate {
         source,
         artifact_digest,
@@ -81,67 +87,6 @@ pub(super) fn retire_legacy_hook_generation_pointer(
             legacy.display()
         )),
     }
-}
-
-async fn validate_hook_binary_candidate_identity(candidate: &Path) -> Result<(), String> {
-    let expected = agent_semantic_hook::aot_compiler::embedded_hook_policy_content_digest()?;
-    let mut command = tokio::process::Command::new(candidate);
-    command
-        .arg("--identity")
-        .env_remove("ASP_NO_AGENT")
-        .kill_on_drop(true);
-    let output = tokio::time::timeout(std::time::Duration::from_secs(1), command.output())
-        .await
-        .map_err(|_| {
-            format!(
-                "Hook binary candidate {} exceeded 1000ms identity timeout",
-                candidate.display()
-            )
-        })?
-        .map_err(|error| {
-            format!(
-                "failed to execute Hook binary candidate identity {}: {error}",
-                candidate.display()
-            )
-        })?;
-    if !output.status.success() {
-        return Err(format!(
-            "Hook binary candidate identity failed for {}: status={}",
-            candidate.display(),
-            output.status
-        ));
-    }
-    let identity =
-        serde_json::from_slice::<serde_json::Value>(&output.stdout).map_err(|error| {
-            format!(
-                "Hook binary candidate identity returned invalid JSON for {}: {error}",
-                candidate.display()
-            )
-        })?;
-    let actual = identity
-        .get("policyContentDigest")
-        .and_then(serde_json::Value::as_str)
-        .ok_or_else(|| {
-            format!(
-                "Hook binary candidate identity is incomplete for {}",
-                candidate.display()
-            )
-        })?;
-    if identity.get("schemaId").and_then(serde_json::Value::as_str)
-        != Some("agent.semantic-protocols.hook-runtime-identity")
-        || identity
-            .get("schemaVersion")
-            .and_then(serde_json::Value::as_u64)
-            != Some(1)
-        || actual != expected
-    {
-        return Err(format!(
-            "Hook binary candidate policy identity mismatch: candidate={} expected={} actual={actual}",
-            candidate.display(),
-            expected
-        ));
-    }
-    Ok(())
 }
 
 fn resolve_hook_binary_candidate(

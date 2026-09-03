@@ -669,9 +669,7 @@ pub struct HookProviderProjection {
     pub source_extensions: Vec<String>,
     pub config_files: Vec<String>,
     pub policy: HookPolicy,
-    pub owner_route: CommandTemplate,
-    pub lexical_route: CommandTemplate,
-    pub ingest_route: CommandTemplate,
+    pub playbook_route: CommandTemplate,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum SourceSelectorKind {

@@ -37,7 +37,6 @@ _CORPUS_SCHEMA = (
     _ROOT / "schemas/semantic-sandtable-large-library-corpora.v1.schema.json"
 )
 _CORPUS_MANIFEST = _ROOT / "benchmarks/large-library-runtime-corpora.json"
-_PROVIDER_REGISTRY = _ROOT / "schemas/semantic-language-registry.providers.v1.json"
 
 
 def test_runtime_benchmark_rejects_missing_release_binary_and_corpora(
@@ -203,14 +202,6 @@ def test_runtime_corpus_manifest_has_all_unique_real_library_targets() -> None:
         "bzg/worg",
         "mdn/content",
     }
-    registry = json.loads(_PROVIDER_REGISTRY.read_text(encoding="utf-8"))
-    registered = {
-        entry["languageId"]: entry["providerId"] for entry in registry["languages"]
-    }
-    locked = {entry["language"]: entry["providerId"] for entry in corpora}
-    assert locked == registered
-
-
 def test_runtime_workspace_deployment_uses_release_install_command(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

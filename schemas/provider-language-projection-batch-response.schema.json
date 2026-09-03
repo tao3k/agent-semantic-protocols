@@ -45,6 +45,8 @@
       "required": [
         "ownerPath",
         "sourceLeafDigest",
+        "projectionState",
+        "diagnostic",
         "items",
         "relations"
       ],
@@ -57,6 +59,15 @@
           "type": "string",
           "minLength": 1
         },
+        "projectionState": {
+          "enum": ["ready", "syntax-unavailable"]
+        },
+        "diagnostic": {
+          "oneOf": [
+            { "type": "null" },
+            { "$ref": "#/$defs/projectionDiagnostic" }
+          ]
+        },
         "items": {
           "type": "array",
           "items": {
@@ -68,6 +79,47 @@
           "items": {
             "$ref": "#/$defs/relation"
           }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "projectionState": { "const": "ready" } }
+          },
+          "then": {
+            "properties": { "diagnostic": { "type": "null" } }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "projectionState": { "const": "syntax-unavailable" }
+            }
+          },
+          "then": {
+            "properties": {
+              "diagnostic": { "$ref": "#/$defs/projectionDiagnostic" },
+              "items": { "maxItems": 0 },
+              "relations": { "maxItems": 0 }
+            }
+          }
+        }
+      ]
+    },
+    "projectionDiagnostic": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaId", "schemaVersion", "reasonKind", "message"],
+      "properties": {
+        "schemaId": {
+          "const": "agent.semantic-protocols.provider-language-projection-diagnostic"
+        },
+        "schemaVersion": { "const": "1" },
+        "reasonKind": { "const": "source-syntax-unavailable" },
+        "message": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096
         }
       }
     },

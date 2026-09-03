@@ -4,16 +4,20 @@
   "title": "ASP Client Search Request",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaId", "schemaVersion", "operation", "query"],
+  "required": ["schemaId", "schemaVersion", "intent", "query", "scope", "coverage", "maxOwners", "deadlineMs", "explain"],
   "properties": {
     "schemaId": {
       "const": "agent.semantic-protocols.asp-client-search-request"
     },
     "schemaVersion": { "const": "1" },
-    "operation": {
-      "type": "string",
-      "pattern": "^[a-z][a-z0-9-]*$"
+    "intent": {
+      "enum": ["conceptual", "relationship", "exact-literal", "absence-proof"]
     },
-    "query": { "type": "string" }
+    "query": { "type": "string", "minLength": 1 },
+    "scope": { "pattern": "^(workspace|owner:.+)$" },
+    "coverage": { "enum": ["candidates", "complete"] },
+    "maxOwners": { "type": "integer", "minimum": 1, "maximum": 100 },
+    "deadlineMs": { "type": "integer", "minimum": 1, "maximum": 5000 },
+    "explain": { "enum": ["compact", "full"] }
   }
 }

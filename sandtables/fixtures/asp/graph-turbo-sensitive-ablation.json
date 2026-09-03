@@ -6,7 +6,7 @@
   "packetKind": "graph-turbo-request",
   "profile": "owner-query",
   "algorithm": "typed-ppr-diverse",
-  "seedIds": [
+  "entryNodeIds": [
     "query:calibration"
   ],
   "budget": 4,

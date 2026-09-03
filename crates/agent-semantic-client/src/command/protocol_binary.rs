@@ -225,6 +225,19 @@ pub(crate) async fn ensure_protocol_binary_bundle_installed_transaction(
     plan: &ProtocolBinaryInstallPlan,
     hook_source: &Path,
 ) -> Result<ProtocolBinaryInstall, String> {
+    let members = [
+        agent_semantic_artifacts::runtime_artifact_publication::RuntimeArtifactBundleMemberSource {
+            name: "asp-hook",
+            source: hook_source,
+        },
+    ];
+    ensure_protocol_binary_bundle_members_installed_transaction(plan, &members).await
+}
+
+pub(crate) async fn ensure_protocol_binary_bundle_members_installed_transaction(
+    plan: &ProtocolBinaryInstallPlan,
+    members: &[agent_semantic_artifacts::runtime_artifact_publication::RuntimeArtifactBundleMemberSource<'_>],
+) -> Result<ProtocolBinaryInstall, String> {
     for alias in &plan.managed_path_aliases {
         validate_protocol_entry_for_repair(alias, &plan.artifact_root)?;
     }
@@ -234,7 +247,7 @@ pub(crate) async fn ensure_protocol_binary_bundle_installed_transaction(
         &plan.artifact_root,
         &plan.binary_identity,
         None,
-        Some(hook_source),
+        members,
     )
     .await?;
     if install.status != "published-active-awaiting-health" {
@@ -402,7 +415,7 @@ pub(crate) async fn install_protocol_binary_target(
         artifact_root,
         binary_identity,
         None,
-        None,
+        &[],
     )
     .await
 }
@@ -485,7 +498,7 @@ async fn install_protocol_binary_target_transaction(
     qualified_source: Option<
         agent_semantic_artifacts::runtime_artifact_catalog::QualifiedRuntimeArtifactSource,
     >,
-    hook_source: Option<&Path>,
+    bundle_members: &[agent_semantic_artifacts::runtime_artifact_publication::RuntimeArtifactBundleMemberSource<'_>],
 ) -> Result<ProtocolBinaryInstall, String> {
     let binary_name = binary_identity.name();
     if target.file_name() != Some(binary_name) {
@@ -538,28 +551,25 @@ async fn install_protocol_binary_target_transaction(
         validate_protocol_entry_for_repair(target, artifact_root)?;
     }
     let artifact_mode = if developer_source { "dev" } else { "release" };
-    let receipt = match hook_source {
-        Some(hook_source) => {
-            agent_semantic_runtime_server::resident_install::install_resident_runtime_bundle(
-                state_home,
-                source,
-                target,
-                hook_source,
-                artifact_mode,
-                qualified_source,
-            )
-            .await?
-        }
-        None => {
-            agent_semantic_runtime_server::resident_install::install_resident_runtime(
-                state_home,
-                source,
-                target,
-                artifact_mode,
-                qualified_source,
-            )
-            .await?
-        }
+    let receipt = if bundle_members.is_empty() {
+        agent_semantic_runtime_server::resident_install::install_resident_runtime(
+            state_home,
+            source,
+            target,
+            artifact_mode,
+            qualified_source,
+        )
+        .await?
+    } else {
+        agent_semantic_runtime_server::resident_install::install_resident_runtime_bundle_members(
+            state_home,
+            source,
+            target,
+            bundle_members,
+            artifact_mode,
+            qualified_source,
+        )
+        .await?
     };
     let install = ProtocolBinaryInstall {
         path: receipt.path,

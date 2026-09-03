@@ -6,13 +6,13 @@
 * Scope
 
 This records the first TypeScript real-project syntax flow for RFC 011 using the
-public =asp typescript= facade against =languages/typescript-lang-project-harness=.
+public =asp typescript= facade against =languages/asp-typescript=.
 It is evidence for the native-projection v1 lane only.  It does not claim cache hit replay, Julia cache payoff, arbitrary TypeScript/Python S-expression support, or CodeQL backend execution.
 
 * Evidence record
 
 #+begin_example
-[syntax-real-evidence] language=typescript provider=asp-typescript project=typescript-lang-project-harness
+[syntax-real-evidence] language=typescript provider=asp-typescript project=asp-typescript
 commands=search-prime,syntax-frontier,exact-selector-code,hook-recovery
 metrics=commandCount=6,providerProcessCount=6,packetBytes=13040,coldElapsedMs=31,warmElapsedMs=50
 metrics=syntaxQueryCount=3,exactCodeCount=1,manualRangeScanCount=0,repeatedTriggerReduction=0
@@ -25,10 +25,10 @@ cacheClaim=warm-provider
 The measured flow used:
 
 #+begin_example
-.bin/asp typescript search prime --view seeds languages/typescript-lang-project-harness
-.bin/asp typescript query --selector src/parser/native_syntax/tree-sitter-query.ts --treesitter-query '(function_declaration name: (identifier) @function.name)' languages/typescript-lang-project-harness
-.bin/asp typescript query --selector src/parser/native_syntax/tree-sitter-query.ts:202:221 --treesitter-query '(function_declaration name: (identifier) @function.name)' --code languages/typescript-lang-project-harness
-.bin/asp typescript query --from-hook direct-source-read --selector src/parser/native_syntax/tree-sitter-query.ts:202:221 --code languages/typescript-lang-project-harness
+.bin/asp typescript search prime --view seeds languages/asp-typescript
+.bin/asp typescript query --selector src/parser/native_syntax/tree-sitter-query.ts --treesitter-query '(function_declaration name: (identifier) @function.name)' languages/asp-typescript
+.bin/asp typescript query --selector src/parser/native_syntax/tree-sitter-query.ts:202:221 --treesitter-query '(function_declaration name: (identifier) @function.name)' --code languages/asp-typescript
+.bin/asp typescript query --from-hook direct-source-read --selector src/parser/native_syntax/tree-sitter-query.ts:202:221 --code languages/asp-typescript
 #+end_example
 
 The repeated warm syntax-frontier probes used the same selector and pattern as

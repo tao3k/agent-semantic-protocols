@@ -89,9 +89,7 @@ impl From<&ActivatedProvider> for HookProviderProjection {
             source_extensions: provider.source_extensions.clone(),
             config_files: provider.config_files.clone(),
             policy: provider.policy.clone(),
-            owner_route: provider.routes.owner.clone(),
-            lexical_route: provider.routes.lexical.clone(),
-            ingest_route: provider.routes.ingest.clone(),
+            playbook_route: provider.routes.playbook.clone(),
         }
     }
 }

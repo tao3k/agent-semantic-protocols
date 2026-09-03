@@ -41,7 +41,7 @@ def test_runtime_owned_incremental_admission_requires_origin_and_mode() -> None:
         "runtime-recovery",
     ]
     assert schema["properties"]["admissionMode"]["enum"] == [
-        "cold-targeted",
+        "complete-generation",
         "incremental-overlay",
         "full-recovery",
     ]

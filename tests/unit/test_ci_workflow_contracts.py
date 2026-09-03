@@ -37,8 +37,8 @@ def test_root_release_carries_server_managed_graphs_artifact() -> None:
     assert "asp_python_graphs.service_cli" in workflow
     assert "packages/python/asp_graph_turbo" not in workflow
     assert "graph_turbo_cli" not in workflow
-    assert "graph artifact publish" in workflow
-    assert "asp-python-graphs-artifact.v2.json" in workflow
+    assert "graph artifact publish" not in workflow
+    assert "asp-python-graphs-artifact.v2.json" not in workflow
     assert '"publicStandaloneCommand": False' in workflow
     assert "asp-graph-turbo" not in workflow
     assert "asp-graph-turbo-resident" not in workflow

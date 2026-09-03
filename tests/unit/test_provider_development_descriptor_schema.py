@@ -9,7 +9,7 @@ ROOT = Path(__file__).resolve().parents[2]
 SCHEMA_PATH = ROOT / "schemas" / "provider-manifest.schema.json"
 MANIFESTS = (
     ROOT / "languages/asp-rust/schemas/asp-provider.json",
-    ROOT / "languages/typescript-lang-project-harness/schemas/asp-provider.json",
+    ROOT / "languages/asp-typescript/schemas/asp-provider.json",
     ROOT / "languages/asp-python/schemas/asp-provider.json",
     ROOT
     / "languages/gerbil-scheme-language-project-harness/schemas/asp-provider.json",

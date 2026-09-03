@@ -8,11 +8,11 @@ use std::sync::{Arc, OnceLock};
 use agent_semantic_client_db::runtime_server_control::RuntimeServerEndpoint;
 use agent_semantic_client_protocol::{
     CANCELLATION_PROBE_METHOD, CLIENT_FRAME_SCHEMA_ID, CLIENT_PROTOCOL_ID, CLIENT_PROTOCOL_VERSION,
-    ClientFrame, ClientFrameBase, ClientInfo, ClientRequestId, ClientSessionId,
-    ClientWorkspaceIdentity, GRAPH_EVALUATE_METHOD, GRAPH_TIMELINE_METHOD,
-    LIVE_CORPUS_CACHE_STATE_METHOD, LiveCorpusCacheStateReceipt, LiveCorpusCacheStateRequest,
-    SCHEMA_BUNDLE_METHOD, SCHEMA_BUNDLE_REQUEST_SCHEMA_ID, SCHEMA_VERSION, SchemaBundleRequest,
-    SchemaBundleResponse, WORKSPACE_GENERATION_ENSURE_READY_METHOD,
+    ClientFrame, ClientFrameBase, ClientInfo, ClientProjectId, ClientProtocolCatalog,
+    ClientRequestId, ClientSessionId, ClientWorkspaceIdentity, GRAPH_EVALUATE_METHOD,
+    GRAPH_TIMELINE_METHOD, LIVE_CORPUS_CACHE_STATE_METHOD, LiveCorpusCacheStateReceipt,
+    LiveCorpusCacheStateRequest, SCHEMA_BUNDLE_METHOD, SCHEMA_BUNDLE_REQUEST_SCHEMA_ID,
+    SCHEMA_VERSION, SchemaBundleRequest, SchemaBundleResponse,
 };
 use agent_semantic_client_server::{
     AspClientGrpcTransport, CLIENT_FRAME_SESSION_CAPACITY, CLIENT_FRAME_SESSION_CONTROL_RESERVE,
@@ -26,11 +26,8 @@ static HOST_RUNTIME_DESCRIPTOR_CONSUMED: std::sync::atomic::AtomicBool =
 #[cfg(unix)]
 pub const ASP_RUNTIME_CLIENT_FD_ENV: &str = "ASP_RUNTIME_CLIENT_FD";
 
-/// Whether the Host transferred a connected Runtime capability to this
-/// process. The CLI uses this only to bypass pathname lifecycle probes;
-/// `new_from_host_capability` still validates and consumes the descriptor.
-pub fn host_runtime_transport_capability_declared() -> bool {
-    std::env::var_os(ASP_RUNTIME_CLIENT_FD_ENV).is_some()
+fn transport_unavailable(message: &str) -> String {
+    format!("reasonKind=transport-unavailable {message}")
 }
 
 /// A multiplexed gRPC session pinned to one published Runtime endpoint.
@@ -41,18 +38,69 @@ pub fn host_runtime_transport_capability_declared() -> bool {
 struct CachedClientSession {
     transport: Arc<AspClientGrpcTransport>,
     session_id: ClientSessionId,
-    initialized: tokio::sync::OnceCell<()>,
-    generation_ready: tokio::sync::OnceCell<()>,
+    initialized: tokio::sync::OnceCell<ClientProtocolCatalog>,
 }
 
 const SESSION_REGISTRY_CAPACITY: usize = 32;
+const CLIENT_REQUEST_CANCELLED_REASON_KIND: &str = "client-request-cancelled";
+
+pub(crate) fn validate_cancelled_terminal(
+    frame: ClientFrame,
+    expected_request_id: &ClientRequestId,
+) -> Result<(), String> {
+    let ClientFrame::Response {
+        request_id,
+        outcome: agent_semantic_client_protocol::ClientOutcome::Cancelled,
+        result: None,
+        error: Some(error),
+        catalog: None,
+        ..
+    } = frame
+    else {
+        return Err(
+            "cancelled request must return one Cancelled response with typed diagnostic and no result or catalog"
+                .to_owned(),
+        );
+    };
+    if request_id != *expected_request_id {
+        return Err(format!(
+            "cancelled terminal request identity mismatch: expected={} actual={}",
+            expected_request_id.as_str(),
+            request_id.as_str(),
+        ));
+    }
+    let diagnostic = error
+        .as_object()
+        .ok_or_else(|| "cancelled terminal error must be an object".to_owned())?;
+    if diagnostic
+        .keys()
+        .any(|key| !matches!(key.as_str(), "reasonKind" | "message" | "terminal"))
+    {
+        return Err("cancelled terminal diagnostic contains unknown fields".to_owned());
+    }
+    if diagnostic
+        .get("reasonKind")
+        .and_then(serde_json::Value::as_str)
+        != Some(CLIENT_REQUEST_CANCELLED_REASON_KIND)
+    {
+        return Err(format!(
+            "cancelled terminal must carry reasonKind={CLIENT_REQUEST_CANCELLED_REASON_KIND}"
+        ));
+    }
+    if !diagnostic
+        .get("message")
+        .and_then(serde_json::Value::as_str)
+        .is_some_and(|message| !message.trim().is_empty())
+    {
+        return Err("cancelled terminal diagnostic message must be non-empty".to_owned());
+    }
+    Ok(())
+}
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub(crate) struct SessionKey {
-    workspace_identity: String,
-    owner_epoch: u64,
-    binding_token: String,
-    runtime_generation_digest: String,
+    project_id: String,
+    workspace_id: String,
     binary_content_digest: String,
 }
 
@@ -65,12 +113,14 @@ pub struct ClientBackpressureProbeReceipt {
 }
 
 impl SessionKey {
-    fn from_endpoint(endpoint: &RuntimeServerEndpoint, workspace_identity: String) -> Self {
+    fn from_endpoint(
+        endpoint: &RuntimeServerEndpoint,
+        project_id: String,
+        workspace_id: String,
+    ) -> Self {
         Self {
-            workspace_identity,
-            owner_epoch: endpoint.owner_epoch,
-            binding_token: endpoint.binding_token.clone(),
-            runtime_generation_digest: endpoint.runtime_generation_digest.clone(),
+            project_id,
+            workspace_id,
             binary_content_digest: endpoint.binary_content_digest.clone(),
         }
     }
@@ -78,10 +128,8 @@ impl SessionKey {
     #[cfg(test)]
     pub(crate) fn fixture(identity: u64) -> Self {
         Self {
-            workspace_identity: format!("workspace-{identity}"),
-            owner_epoch: identity + 1,
-            binding_token: format!("binding-{identity}"),
-            runtime_generation_digest: format!("blake3-256:{:064x}", identity + 1),
+            project_id: format!("repo-{identity}"),
+            workspace_id: format!("workspace-{identity}"),
             binary_content_digest: format!("blake3-256:{:064x}", identity + 2),
         }
     }
@@ -89,9 +137,7 @@ impl SessionKey {
     #[cfg(test)]
     pub(crate) fn fixture_successor(identity: u64) -> Self {
         let mut key = Self::fixture(identity);
-        key.owner_epoch += 1;
-        key.binding_token.push_str("-successor");
-        key.runtime_generation_digest = format!("blake3-256:{}", "f".repeat(64));
+        key.binary_content_digest = format!("blake3-256:{}", "f".repeat(64));
         key
     }
 }
@@ -212,7 +258,8 @@ fn request_id(prefix: &str) -> Result<ClientRequestId, String> {
 
 fn frame_base(
     session_id: ClientSessionId,
-    workspace_identity: String,
+    project_id: &str,
+    workspace_id: &str,
 ) -> Result<ClientFrameBase, String> {
     Ok(ClientFrameBase {
         schema_id: CLIENT_FRAME_SCHEMA_ID.to_owned(),
@@ -220,9 +267,18 @@ fn frame_base(
         protocol_id: CLIENT_PROTOCOL_ID.to_owned(),
         protocol_version: CLIENT_PROTOCOL_VERSION.to_owned(),
         session_id,
-        workspace_identity: ClientWorkspaceIdentity::new(workspace_identity)?,
+        project_id: ClientProjectId::new(project_id)?,
+        workspace_id: ClientWorkspaceIdentity::new(workspace_id)?,
         trace_context: None,
     })
+}
+
+fn project_workspace_ids(project_root: &std::path::Path) -> Result<(String, String), String> {
+    let state = agent_semantic_client_core::state_core::ResolvedState::resolve(project_root)?;
+    Ok((
+        state.repo.repo_id.to_string(),
+        state.workspace.workspace_id.to_string(),
+    ))
 }
 
 pub(crate) async fn session_for_key<T, Create, CreateFuture>(
@@ -247,7 +303,7 @@ where
 
 async fn session_for_endpoint(
     key: &SessionKey,
-    published_socket_path: &std::path::Path,
+    published_endpoint: std::net::SocketAddr,
     transport_capability: &AspClientTransportCapability,
 ) -> Result<
     (
@@ -256,11 +312,10 @@ async fn session_for_endpoint(
     ),
     String,
 > {
-    let published_socket_path = published_socket_path.to_path_buf();
     session_for_key(session_registry(), key, || async {
         let transport = Arc::new(match transport_capability {
-            AspClientTransportCapability::PublishedUnix => {
-                AspClientGrpcTransport::connect_unix(published_socket_path).await?
+            AspClientTransportCapability::PublishedLoopbackTcp => {
+                AspClientGrpcTransport::connect_tcp(published_endpoint).await?
             }
             #[cfg(unix)]
             AspClientTransportCapability::InheritedDescriptor(descriptor) => {
@@ -283,7 +338,6 @@ async fn session_for_endpoint(
                 REQUEST_SEQUENCE.fetch_add(1, Ordering::Relaxed)
             ))?,
             initialized: tokio::sync::OnceCell::new(),
-            generation_ready: tokio::sync::OnceCell::new(),
         }))
     })
     .await
@@ -298,7 +352,7 @@ async fn evict_session(
 
 /// ASP Client command transport to an already-published ASP Server endpoint.
 enum AspClientTransportCapability {
-    PublishedUnix,
+    PublishedLoopbackTcp,
     #[cfg(unix)]
     InheritedDescriptor(std::sync::Mutex<Option<std::os::fd::OwnedFd>>),
 }
@@ -315,16 +369,17 @@ impl AspClient {
         Self {
             state_home: state_home.into(),
             project_root: project_root.into(),
-            transport_capability: AspClientTransportCapability::PublishedUnix,
+            transport_capability: AspClientTransportCapability::PublishedLoopbackTcp,
         }
     }
 
     /// Select the Host-published transport capability exactly once.
     ///
-    /// Outside a sandbox the absence of `ASP_RUNTIME_CLIENT_FD` selects the
-    /// endpoint's published Unix binding. A sandbox Host transfers an already
-    /// connected descriptor and sets the variable to that descriptor number;
-    /// malformed, closed, or replayed capabilities fail before socket I/O.
+    /// Outside a restricted network sandbox, absence of
+    /// `ASP_RUNTIME_CLIENT_FD` selects the published loopback TCP binding. A
+    /// sandbox Host transfers an already connected descriptor and sets the
+    /// variable to that descriptor number; malformed, closed, or replayed
+    /// capabilities fail before socket I/O.
     #[cfg(unix)]
     pub fn new_from_host_capability(
         state_home: impl Into<PathBuf>,
@@ -402,11 +457,10 @@ impl AspClient {
         request.validate()?;
         let endpoint = agent_semantic_client_db::read_runtime_server_endpoint(&self.state_home)
             .await?
-            .ok_or_else(|| "ASP Server endpoint is unavailable".to_owned())?;
+            .ok_or_else(|| transport_unavailable("ASP Server endpoint is unavailable"))?;
         endpoint.validate()?;
-        let workspace_identity =
-            agent_semantic_client_db::AgentSessionRegistry::workspace_id(&self.project_root)?;
-        let session_key = SessionKey::from_endpoint(&endpoint, workspace_identity);
+        let (project_id, workspace_id) = project_workspace_ids(&self.project_root)?;
+        let session_key = SessionKey::from_endpoint(&endpoint, project_id, workspace_id);
         let cache_state = request.cache_state.clone();
         let frame = self
             .dispatch_method(
@@ -429,6 +483,14 @@ impl AspClient {
         let mut receipt = serde_json::from_value::<LiveCorpusCacheStateReceipt>(payload)
             .map_err(|error| format!("decode Live Corpus cache-state receipt: {error}"))?;
         receipt.validate()?;
+        if receipt.project_id != session_key.project_id
+            || receipt.workspace_id != session_key.workspace_id
+        {
+            return Err(
+                "Live Corpus cache-state receipt crossed its ProjectId/WorkspaceId binding"
+                    .to_owned(),
+            );
+        }
         if matches!(cache_state.as_str(), "cold-load" | "released") {
             receipt.client_session_evicted =
                 session_registry().lock().await.remove_key(&session_key);
@@ -449,12 +511,8 @@ impl AspClient {
         route: &str,
         params: serde_json::Value,
     ) -> Result<ClientFrame, String> {
-        self.dispatch_method_with_generation_preflight(
-            format!("{language_id}.{route}"),
-            params,
-            true,
-        )
-        .await
+        self.dispatch_method_on_session(format!("{language_id}.{route}"), params)
+            .await
     }
 
     pub(crate) async fn dispatch_method(
@@ -462,35 +520,38 @@ impl AspClient {
         method: String,
         params: serde_json::Value,
     ) -> Result<ClientFrame, String> {
-        self.dispatch_method_with_generation_preflight(method, params, false)
-            .await
+        self.dispatch_method_on_session(method, params).await
     }
 
-    async fn dispatch_method_with_generation_preflight(
+    async fn initialized_session(
         &self,
-        method: String,
-        params: serde_json::Value,
-        require_generation: bool,
-    ) -> Result<ClientFrame, String> {
+    ) -> Result<
+        (
+            Arc<CachedClientSession>,
+            Arc<tokio::sync::OnceCell<Arc<CachedClientSession>>>,
+            ClientFrameBase,
+            SessionKey,
+        ),
+        String,
+    > {
         let endpoint =
             match agent_semantic_client_db::read_runtime_server_endpoint(&self.state_home).await? {
                 Some(endpoint) => endpoint,
                 None => {
                     self.drain_cached_sessions().await;
-                    return Err("ASP Server endpoint is unavailable".to_owned());
+                    return Err(transport_unavailable("ASP Server endpoint is unavailable"));
                 }
             };
         endpoint.validate()?;
-        let workspace_identity =
-            agent_semantic_client_db::AgentSessionRegistry::workspace_id(&self.project_root)?;
-        let session_key = SessionKey::from_endpoint(&endpoint, workspace_identity.clone());
+        let (project_id, workspace_id) = project_workspace_ids(&self.project_root)?;
+        let session_key =
+            SessionKey::from_endpoint(&endpoint, project_id.clone(), workspace_id.clone());
         let (session, session_cell) = session_for_endpoint(
             &session_key,
-            std::path::Path::new(&endpoint.data_plane_socket_path),
+            endpoint.data_endpoint.socket_addr(),
             &self.transport_capability,
         )
         .await?;
-        let project_root = self.project_root.display().to_string();
         let client_info = ClientInfo {
             name: "asp-client".to_owned(),
             version: "1".to_owned(),
@@ -498,84 +559,67 @@ impl AspClient {
         let initialize_result = session
             .initialized
             .get_or_try_init(|| async {
-                let base = frame_base(session.session_id.clone(), workspace_identity.clone())?;
-                session
+                if matches!(
+                    &self.transport_capability,
+                    AspClientTransportCapability::PublishedLoopbackTcp
+                ) {
+                    agent_semantic_client_db::runtime_server_control::ensure_runtime_server_workspace(
+                        &endpoint,
+                        &self.project_root,
+                        request_id("ensure-workspace")?.into_inner(),
+                    )
+                    .await?;
+                }
+                let base = frame_base(session.session_id.clone(), &project_id, &workspace_id)?;
+                let terminal = session
                     .transport
                     .call(ClientFrame::Initialize {
                         base,
                         request_id: request_id("initialize")?,
-                        project_root: project_root.clone(),
                         client_info: client_info.clone(),
                         capabilities: serde_json::json!({"requestCancellation": true}),
                     })
-                    .await
-                    .map(|_| ())
+                    .await?;
+                let ClientFrame::Response {
+                    outcome: agent_semantic_client_protocol::ClientOutcome::Ready,
+                    catalog: Some(catalog),
+                    result: None,
+                    error: None,
+                    ..
+                } = terminal
+                else {
+                    return Err(format!(
+                        "ASP Client initialization did not return Ready with catalog: {terminal:?}"
+                    ));
+                };
+                Ok::<ClientProtocolCatalog, String>(catalog)
             })
             .await;
         if let Err(error) = initialize_result {
             evict_session(&session_key, &session_cell).await;
             return Err(error);
         }
-        if require_generation {
-            let generation_ready = session
-                .generation_ready
-                .get_or_try_init(|| async {
-                    let base =
-                        frame_base(session.session_id.clone(), workspace_identity.clone())?;
-                    let terminal = session
-                        .transport
-                        .call(ClientFrame::Dispatch {
-                            base,
-                            request_id: request_id("ensure-generation-ready")?,
-                            project_root: project_root.clone(),
-                            client_info: client_info.clone(),
-                            method: WORKSPACE_GENERATION_ENSURE_READY_METHOD.to_owned(),
-                            params: serde_json::json!({}),
-                        })
-                        .await?;
-                    let ClientFrame::Response {
-                        outcome: agent_semantic_client_protocol::ClientOutcome::Ready,
-                        result: Some(payload),
-                        error: None,
-                        ..
-                    } = terminal
-                    else {
-                        return Err(format!(
-                            "workspace generation ensure-ready did not return one Ready terminal: {terminal:?}"
-                        ));
-                    };
-                    let receipt = serde_json::from_value::<
-                        agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmissionReceipt,
-                    >(payload)
-                    .map_err(|error| {
-                        format!("decode workspace generation ensure-ready receipt: {error}")
-                    })?;
-                    receipt.validate()?;
-                    if receipt.state
-                        != agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmissionState::Ready
-                        || receipt.commit.is_none()
-                    {
-                        return Err(format!(
-                            "workspace generation ensure-ready returned a non-ready admission: state={:?} attempt={}",
-                            receipt.state, receipt.attempt
-                        ));
-                    }
-                    Ok::<(), String>(())
-                })
-                .await;
-            if let Err(error) = generation_ready {
-                evict_session(&session_key, &session_cell).await;
-                return Err(error.clone());
-            }
-        }
-        let base = frame_base(session.session_id.clone(), workspace_identity)?;
+        let base = frame_base(session.session_id.clone(), &project_id, &workspace_id)?;
+        Ok((session, session_cell, base, session_key))
+    }
+
+    async fn dispatch_method_on_session(
+        &self,
+        method: String,
+        params: serde_json::Value,
+    ) -> Result<ClientFrame, String> {
+        let (session, session_cell, base, session_key) = self.initialized_session().await?;
+        let catalog = session
+            .initialized
+            .get()
+            .expect("successful initialization publishes its catalog");
         let result = session
             .transport
-            .call(ClientFrame::Dispatch {
+            .call(ClientFrame::Request {
                 base,
                 request_id: request_id("dispatch")?,
-                project_root,
-                client_info,
+                catalog_generation: catalog.catalog_generation.clone(),
+                workspace_generation: catalog.workspace_generation.clone(),
                 method,
                 params,
             })
@@ -590,108 +634,46 @@ impl AspClient {
     /// session.  The probe dispatch remains pending until the correlated
     /// `Cancel` frame reaches the Runtime-owned cancellation registry.
     pub async fn cancellation_probe(&self) -> Result<u64, String> {
-        let endpoint = agent_semantic_client_db::read_runtime_server_endpoint(&self.state_home)
-            .await?
-            .ok_or_else(|| "ASP Server endpoint is unavailable".to_owned())?;
-        endpoint.validate()?;
-        let workspace_identity =
-            agent_semantic_client_db::AgentSessionRegistry::workspace_id(&self.project_root)?;
-        let transport =
-            AspClientGrpcTransport::connect_unix(&endpoint.data_plane_socket_path).await?;
-        let session_id = ClientSessionId::new(format!(
-            "asp-client-probe-{}-{}",
-            std::process::id(),
-            REQUEST_SEQUENCE.fetch_add(1, Ordering::Relaxed)
-        ))?;
-        let project_root = self.project_root.display().to_string();
-        let client_info = ClientInfo {
-            name: "asp-client".to_owned(),
-            version: "1".to_owned(),
-        };
-        let base = frame_base(session_id, workspace_identity)?;
-        let initialized = transport
-            .call(ClientFrame::Initialize {
-                base: base.clone(),
-                request_id: request_id("initialize")?,
-                project_root: project_root.clone(),
-                client_info: client_info.clone(),
-                capabilities: serde_json::json!({"requestCancellation": true}),
-            })
-            .await?;
-        let ClientFrame::Response {
-            outcome: agent_semantic_client_protocol::ClientOutcome::Ready,
-            catalog: Some(catalog),
-            result: None,
-            error: None,
-            ..
-        } = initialized
-        else {
-            return Err(format!(
-                "ASP Client cancellation probe initialization did not return Ready with catalog: {initialized:?}"
-            ));
-        };
+        let (session, session_cell, base, session_key) = self.initialized_session().await?;
+        let catalog = session
+            .initialized
+            .get()
+            .expect("successful initialization publishes its catalog");
         if !catalog.admits_method(CANCELLATION_PROBE_METHOD) {
             return Err("ASP Client catalog omitted the cancellation probe".to_owned());
         }
-        let cancellation_request_id = request_id("cancellation-probe")?;
-        let started = tokio::time::Instant::now();
-        let pending = transport
-            .begin_call(ClientFrame::Dispatch {
-                base: base.clone(),
-                request_id: cancellation_request_id.clone(),
-                project_root,
-                client_info,
-                method: CANCELLATION_PROBE_METHOD.to_owned(),
-                params: serde_json::json!({}),
-            })
-            .await?;
-        transport
-            .cancel_pending(base.clone(), cancellation_request_id.clone())
-            .await?;
-        let terminal = pending.wait().await?;
-        let elapsed_micros = match terminal {
-            ClientFrame::Response {
-                request_id: terminal_request_id,
-                outcome: agent_semantic_client_protocol::ClientOutcome::Cancelled,
-                result: None,
-                error: None,
-                ..
-            } if terminal_request_id == cancellation_request_id => {
-                started.elapsed().as_micros().min(u128::from(u64::MAX)) as u64
-            }
-            frame => {
+        let result = async {
+            let cancellation_request_id = request_id("cancellation-probe")?;
+            let started = tokio::time::Instant::now();
+            let pending = session
+                .transport
+                .begin_call(ClientFrame::Request {
+                    base: base.clone(),
+                    request_id: cancellation_request_id.clone(),
+                    catalog_generation: catalog.catalog_generation.clone(),
+                    workspace_generation: catalog.workspace_generation.clone(),
+                    method: CANCELLATION_PROBE_METHOD.to_owned(),
+                    params: serde_json::json!({}),
+                })
+                .await?;
+            session
+                .transport
+                .cancel_pending(base, cancellation_request_id.clone())
+                .await?;
+            validate_cancelled_terminal(pending.wait().await?, &cancellation_request_id)?;
+            let residual = session.transport.pending_call_count();
+            if residual != 0 {
                 return Err(format!(
-                    "ASP Client cancellation probe did not return exactly one typed Cancelled terminal: {frame:?}"
+                    "ASP Client cancellation left residual pending calls: {residual}"
                 ));
             }
-        };
-        let residual = transport.pending_call_count();
-        if residual != 0 {
-            return Err(format!(
-                "ASP Client cancellation left residual pending calls: {residual}"
-            ));
+            Ok(started.elapsed().as_micros().min(u128::from(u64::MAX)) as u64)
         }
-        let shutdown = transport
-            .call(ClientFrame::Shutdown {
-                base: base.clone(),
-                request_id: request_id("shutdown")?,
-            })
-            .await?;
-        if !matches!(
-            shutdown,
-            ClientFrame::Response {
-                outcome: agent_semantic_client_protocol::ClientOutcome::Ready,
-                result: None,
-                error: None,
-                ..
-            }
-        ) {
-            return Err(format!(
-                "ASP Client cancellation probe shutdown did not return Ready: {shutdown:?}"
-            ));
+        .await;
+        if result.is_err() {
+            evict_session(&session_key, &session_cell).await;
         }
-        transport.send_oneway(ClientFrame::Exit { base }).await?;
-        Ok(elapsed_micros)
+        result
     }
 
     /// Fill one real public gRPC session to its bounded data-call limit while
@@ -701,28 +683,25 @@ impl AspClient {
     pub async fn backpressure_probe(&self) -> Result<ClientBackpressureProbeReceipt, String> {
         let endpoint = agent_semantic_client_db::read_runtime_server_endpoint(&self.state_home)
             .await?
-            .ok_or_else(|| "ASP Server endpoint is unavailable".to_owned())?;
+            .ok_or_else(|| transport_unavailable("ASP Server endpoint is unavailable"))?;
         endpoint.validate()?;
-        let workspace_identity =
-            agent_semantic_client_db::AgentSessionRegistry::workspace_id(&self.project_root)?;
+        let (project_id, workspace_id) = project_workspace_ids(&self.project_root)?;
         let transport =
-            AspClientGrpcTransport::connect_unix(&endpoint.data_plane_socket_path).await?;
+            AspClientGrpcTransport::connect_tcp(endpoint.data_endpoint.socket_addr()).await?;
         let session_id = ClientSessionId::new(format!(
             "asp-client-backpressure-probe-{}-{}",
             std::process::id(),
             REQUEST_SEQUENCE.fetch_add(1, Ordering::Relaxed)
         ))?;
-        let project_root = self.project_root.display().to_string();
         let client_info = ClientInfo {
             name: "asp-client".to_owned(),
             version: "1".to_owned(),
         };
-        let base = frame_base(session_id, workspace_identity)?;
+        let base = frame_base(session_id, &project_id, &workspace_id)?;
         let initialized = transport
             .call(ClientFrame::Initialize {
                 base: base.clone(),
                 request_id: request_id("initialize")?,
-                project_root: project_root.clone(),
                 client_info: client_info.clone(),
                 capabilities: serde_json::json!({"requestCancellation": true}),
             })
@@ -749,11 +728,11 @@ impl AspClient {
         for index in 0..held_call_count {
             let request_id = request_id(&format!("backpressure-held-{index}"))?;
             let call = transport
-                .begin_call(ClientFrame::Dispatch {
+                .begin_call(ClientFrame::Request {
                     base: base.clone(),
                     request_id: request_id.clone(),
-                    project_root: project_root.clone(),
-                    client_info: client_info.clone(),
+                    catalog_generation: catalog.catalog_generation.clone(),
+                    workspace_generation: catalog.workspace_generation.clone(),
                     method: CANCELLATION_PROBE_METHOD.to_owned(),
                     params: serde_json::json!({}),
                 })
@@ -762,11 +741,11 @@ impl AspClient {
         }
         let rejected_request_id = request_id("backpressure-rejected")?;
         let rejected = match transport
-            .begin_call(ClientFrame::Dispatch {
+            .begin_call(ClientFrame::Request {
                 base: base.clone(),
                 request_id: rejected_request_id,
-                project_root: project_root.clone(),
-                client_info: client_info.clone(),
+                catalog_generation: catalog.catalog_generation.clone(),
+                workspace_generation: catalog.workspace_generation.clone(),
                 method: CANCELLATION_PROBE_METHOD.to_owned(),
                 params: serde_json::json!({}),
             })
@@ -794,20 +773,7 @@ impl AspClient {
                 .await?;
         }
         for (request_id, call) in pending {
-            match call.wait().await? {
-                ClientFrame::Response {
-                    request_id: terminal_request_id,
-                    outcome: agent_semantic_client_protocol::ClientOutcome::Cancelled,
-                    result: None,
-                    error: None,
-                    ..
-                } if terminal_request_id == request_id => {}
-                frame => {
-                    return Err(format!(
-                        "ASP Client backpressure probe did not return a correlated Cancelled terminal: {frame:?}"
-                    ));
-                }
-            }
+            validate_cancelled_terminal(call.wait().await?, &request_id)?;
         }
         if transport.pending_call_count() != 0 {
             return Err("ASP Client backpressure probe left residual pending calls".to_owned());

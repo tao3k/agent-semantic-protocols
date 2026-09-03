@@ -2,9 +2,7 @@ use super::core::runtime_server_shutdown_signal;
 use super::core::{RuntimeServer, RuntimeServerExit, RuntimeServerShutdownHandle};
 use crate::WorkspaceDbRegistry;
 use crate::runtime_server_control::status_memory::RuntimeServerStatusMemoryWriter;
-use crate::runtime_server_control::{
-    RuntimeServerEndpoint, bind_runtime_server_listener, publish_runtime_server_endpoint,
-};
+use crate::runtime_server_control::{RuntimeServerEndpoint, publish_runtime_server_endpoint};
 use std::path::Path;
 use std::sync::Arc;
 use tokio::sync::watch;
@@ -110,23 +108,61 @@ impl RuntimeServer {
             &workspace_store,
             artifact_catalog.as_ref(),
         )?;
-        Self::bind_validated_artifact_catalog(endpoint, registry, workspace_store, artifact_catalog)
-            .await
+        let listener = crate::runtime_server_control::bind_runtime_server_listener_at(
+            &endpoint.control_endpoint,
+        )
+        .await?;
+        Self::bind_validated_artifact_catalog(
+            endpoint,
+            listener,
+            registry,
+            workspace_store,
+            artifact_catalog,
+        )
+        .await
     }
 
-    async fn bind_validated_artifact_catalog(
+    pub async fn bind_with_artifact_catalog_and_listener(
         endpoint: RuntimeServerEndpoint,
+        listener: tokio::net::TcpListener,
         registry: Arc<WorkspaceDbRegistry>,
         workspace_store: crate::runtime_server_workspace::RuntimeServerWorkspaceStore,
         artifact_catalog: Arc<
             agent_semantic_artifacts::runtime_artifact_catalog::RuntimeArtifactCatalog,
         >,
     ) -> Result<Self, String> {
-        let listener = bind_runtime_server_listener(Path::new(&endpoint.socket_path))?;
-        let provider_register_state_path =
-            crate::runtime_server_control::provider_register_state_path(Path::new(
-                &endpoint.provider_plane_socket_path,
-            ))?;
+        validate_runtime_server_bind_authorities(
+            &endpoint,
+            &workspace_store,
+            artifact_catalog.as_ref(),
+        )?;
+        let observed = listener
+            .local_addr()
+            .map_err(|error| format!("inspect Runtime control listener: {error}"))?;
+        if observed != endpoint.control_endpoint.socket_addr() {
+            return Err("Runtime control listener and endpoint publication differ".to_owned());
+        }
+        Self::bind_validated_artifact_catalog(
+            endpoint,
+            listener,
+            registry,
+            workspace_store,
+            artifact_catalog,
+        )
+        .await
+    }
+
+    async fn bind_validated_artifact_catalog(
+        endpoint: RuntimeServerEndpoint,
+        listener: tokio::net::TcpListener,
+        registry: Arc<WorkspaceDbRegistry>,
+        workspace_store: crate::runtime_server_workspace::RuntimeServerWorkspaceStore,
+        artifact_catalog: Arc<
+            agent_semantic_artifacts::runtime_artifact_catalog::RuntimeArtifactCatalog,
+        >,
+    ) -> Result<Self, String> {
+        let provider_register_state_path = std::path::PathBuf::from(&endpoint.workspace_store_path)
+            .join("provider-register.v1.json");
         let mut status_memory = RuntimeServerStatusMemoryWriter::create(&endpoint).await?;
         let entry_counts = registry.workspace_entry_counts();
         let slot_count = entry_counts.slot_count;
@@ -144,18 +180,30 @@ impl RuntimeServer {
         let (shutdown_sender, shutdown) = watch::channel(false);
         let (readiness_sender, _readiness) =
             watch::channel(crate::runtime_server_control::RuntimeServerState::Starting);
+        let provider_seed = agent_semantic_provider_protocol::builtin_provider_registrations()?;
+        let provider_register = if artifact_catalog
+            .installed_provider_binding_generation()
+            .is_some()
+        {
+            crate::runtime_provider_register::RuntimeProviderRegister::from_verified_seed_with_store(
+                provider_seed,
+                provider_register_state_path,
+                artifact_catalog.installed_provider_targets(),
+            )
+            .await?
+        } else {
+            crate::runtime_provider_register::RuntimeProviderRegister::from_seed_with_store(
+                provider_seed,
+                provider_register_state_path,
+            )
+            .await?
+        };
         Ok(Self {
             artifact_catalog,
             workspace_registry,
             endpoint,
             listener,
-            provider_register: Arc::new(
-                crate::runtime_provider_register::RuntimeProviderRegister::from_seed_with_store(
-                    agent_semantic_provider_protocol::builtin_provider_registrations()?,
-                    provider_register_state_path,
-                )
-                .await?,
-            ),
+            provider_register: Arc::new(provider_register),
             registry,
             workspace_count,
             shutdown,
@@ -165,6 +213,7 @@ impl RuntimeServer {
             readiness_sender,
             generation_publication:
                 crate::runtime_server_publication::WorkspaceGenerationPublication::new(),
+            durability_tasks: Arc::new(tokio::sync::Mutex::new(tokio::task::JoinSet::new())),
             status_memory,
             events: None,
             generation_admission: None,

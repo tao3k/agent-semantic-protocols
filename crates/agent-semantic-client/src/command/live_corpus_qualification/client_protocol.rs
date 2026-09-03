@@ -11,7 +11,7 @@ use agent_semantic_client_protocol::{
     AspClientSearchRequest, ClientFrame, ClientOutcome, LIVE_CORPUS_CACHE_STATE_REQUEST_SCHEMA_ID,
     LiveCorpusCacheStateRequest,
 };
-use agent_semantic_search_projection::RuntimeProviderSearchReceipt;
+use agent_semantic_search::SearchPlaybookReceipt;
 
 use super::contract::{LatencyDistribution, QualificationCase};
 
@@ -115,10 +115,10 @@ async fn dispatch_ready<C: LanguageCommandClient>(
 
 #[derive(Debug)]
 pub(super) struct PublicQualificationEvidence {
-    pub(super) search: RuntimeProviderSearchReceipt,
+    pub(super) search: SearchPlaybookReceipt,
     pub(super) source: AspClientExactQueryResponse,
     pub(super) callable_skeleton: AspClientExactQueryResponse,
-    pub(super) zero_match: RuntimeProviderSearchReceipt,
+    pub(super) zero_match: SearchPlaybookReceipt,
     pub(super) merkle_proof: agent_semantic_client_db::runtime_merkle_owner_proof_qualification::RuntimeMerkleOwnerProofQualificationReceipt,
     pub(super) search_resident_read_latency_micros: LatencyDistribution,
     pub(super) search_service_latency_micros: LatencyDistribution,
@@ -156,19 +156,23 @@ where
         &case.search.terms,
     )
     .await?;
-    if search.candidate_count < case.search.minimum_candidates {
+    if search.decision.owner_paths.len() < case.search.minimum_candidates {
         return Err(format!(
             "Live Corpus public search returned too few candidates: case={} candidates={} minimum={}",
-            case.case_id, search.candidate_count, case.search.minimum_candidates
+            case.case_id,
+            search.decision.owner_paths.len(),
+            case.search.minimum_candidates
         ));
     }
-    if search.resident_read_elapsed_micros > case.search.maximum_resident_micros {
+    if search.metrics.stage_elapsed_micros.indexed_lexical > case.search.maximum_resident_micros {
         return Err(format!(
             "Live Corpus public search exceeded resident budget: case={} elapsedMicros={} maximumMicros={}",
-            case.case_id, search.resident_read_elapsed_micros, case.search.maximum_resident_micros
+            case.case_id,
+            search.metrics.stage_elapsed_micros.indexed_lexical,
+            case.search.maximum_resident_micros
         ));
     }
-    let selector = search.selectors.first().ok_or_else(|| {
+    let selector = search.decision.selectors.first().ok_or_else(|| {
         format!(
             "Live Corpus public search returned no parser-owned selector: case={}",
             case.case_id
@@ -256,10 +260,11 @@ where
         &case.zero_match_terms,
     )
     .await?;
-    if zero_match.candidate_count != 0 {
+    if !zero_match.decision.owner_paths.is_empty() {
         return Err(format!(
             "Live Corpus public zero-match search returned candidates: case={} candidates={}",
-            case.case_id, zero_match.candidate_count
+            case.case_id,
+            zero_match.decision.owner_paths.len()
         ));
     }
     let warm_read_prepare = cache_client
@@ -270,14 +275,14 @@ where
             "reuse-exact-resident-generation",
             "none",
             Some(search.generation_digest.clone()),
-            Some(search.root_digest.clone()),
+            Some(search.source_root_digest.clone()),
             0,
         ))
         .await?;
     if warm_read_prepare.resident_generation_evicted
         || warm_read_prepare.client_session_evicted
         || warm_read_prepare.generation_digest.as_deref() != Some(search.generation_digest.as_str())
-        || warm_read_prepare.root_digest.as_deref() != Some(search.root_digest.as_str())
+        || warm_read_prepare.root_digest.as_deref() != Some(search.source_root_digest.as_str())
     {
         return Err(format!(
             "Live Corpus warm-read preparation drifted or mutated cache state: case={}",
@@ -323,7 +328,8 @@ where
             "callable-skeleton",
             sample_index,
         )?;
-        search_resident_read_samples.push(sampled_search.resident_read_elapsed_micros);
+        search_resident_read_samples
+            .push(sampled_search.metrics.stage_elapsed_micros.indexed_lexical);
         search_service_samples.push(sampled_search.service_elapsed_micros);
         search_total_samples.push(sampled_search.elapsed_micros);
         exact_source_samples.push(sampled_source.elapsed_micros);
@@ -392,14 +398,14 @@ where
                 "evict-resident-generation-only",
                 "benchmark-workspace-generation",
                 Some(search.generation_digest.clone()),
-                Some(search.root_digest.clone()),
+                Some(search.source_root_digest.clone()),
                 sample_index,
             ))
             .await?;
         if !cache_receipt.resident_generation_evicted
             || !cache_receipt.client_session_evicted
             || cache_receipt.generation_digest.as_deref() != Some(search.generation_digest.as_str())
-            || cache_receipt.root_digest.as_deref() != Some(search.root_digest.as_str())
+            || cache_receipt.root_digest.as_deref() != Some(search.source_root_digest.as_str())
         {
             return Err(format!(
                 "Live Corpus cold-load preparation did not preserve exact content identity: case={} sample={sample_index}",
@@ -508,7 +514,7 @@ async fn run_positive_search_query_sample<C: LanguageCommandClient>(
     client: &C,
     project_root: &Path,
     case: &QualificationCase,
-    baseline_search: &RuntimeProviderSearchReceipt,
+    baseline_search: &SearchPlaybookReceipt,
     baseline_source: &AspClientExactQueryResponse,
     baseline_skeleton: &AspClientExactQueryResponse,
     selector: &str,
@@ -559,17 +565,16 @@ async fn run_positive_search_query_sample<C: LanguageCommandClient>(
 
 fn validate_sampled_search(
     case: &QualificationCase,
-    baseline: &RuntimeProviderSearchReceipt,
-    sample: &RuntimeProviderSearchReceipt,
+    baseline: &SearchPlaybookReceipt,
+    sample: &SearchPlaybookReceipt,
     sample_index: usize,
 ) -> Result<(), String> {
     if sample.generation_digest != baseline.generation_digest
-        || sample.root_digest != baseline.root_digest
+        || sample.source_root_digest != baseline.source_root_digest
         || sample.provider_digest != baseline.provider_digest
         || sample.index_artifact_digest != baseline.index_artifact_digest
-        || sample.selectors != baseline.selectors
-        || sample.owner_paths != baseline.owner_paths
-        || sample.candidate_count != baseline.candidate_count
+        || sample.decision.selectors != baseline.decision.selectors
+        || sample.decision.owner_paths != baseline.decision.owner_paths
     {
         return Err(format!(
             "Live Corpus resident search sample identity drift: case={} sample={sample_index}",
@@ -622,21 +627,19 @@ async fn search_receipt<C: LanguageCommandClient>(
     language_id: &str,
     operation: &str,
     terms: &[String],
-) -> Result<RuntimeProviderSearchReceipt, String> {
+) -> Result<SearchPlaybookReceipt, String> {
     let payload = dispatch_ready(
         client,
         project_root,
         language_id,
         "search",
-        LanguageCommandOperation::Search(AspClientSearchRequest {
-            schema_id: "agent.semantic-protocols.asp-client-search-request".to_owned(),
-            schema_version: "1".to_owned(),
-            operation: operation.to_owned(),
-            query: terms.join(" "),
-        }),
+        LanguageCommandOperation::Search(AspClientSearchRequest::playbook(
+            operation,
+            terms.join(" "),
+        )),
     )
     .await?;
-    let receipt = serde_json::from_value::<RuntimeProviderSearchReceipt>(payload)
+    let receipt = serde_json::from_value::<SearchPlaybookReceipt>(payload)
         .map_err(|error| format!("decode Live Corpus public search payload: {error}"))?;
     receipt.validate()?;
     if receipt.language_id != language_id {

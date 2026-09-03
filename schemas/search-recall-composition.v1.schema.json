@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://agent-semantic-protocols.dev/schemas/search-recall-composition.v1.schema.json",
   "title": "Search Recall Composition v1",
-  "description": "Generation-bound route decision joining indexed lexical candidates, Python graph reasoning, and bounded ripgrep verification without claiming benchmark-only recall.",
+  "description": "Generation-bound playbook decision joining source-byte acquisition, provider-native syntax facts, Tantivy lexical candidates, and Rust resident-graph reasoning without fabricating ripgrep or optional Python-graph execution.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -53,12 +53,15 @@
     },
     "stages": {
       "type": "array",
-      "minItems": 1,
-      "maxItems": 3,
-      "uniqueItems": true,
-      "items": {
-        "$ref": "#/$defs/stage"
-      }
+      "minItems": 4,
+      "maxItems": 4,
+      "prefixItems": [
+        {"const": {"family": "acquire", "capabilityId": "search.source-byte-acquisition"}},
+        {"const": {"family": "syntax", "capabilityId": "search.native-syntax-playbook"}},
+        {"const": {"family": "acquire", "capabilityId": "search.tantivy-lexical"}},
+        {"const": {"family": "reason", "capabilityId": "search.rust-resident-graph"}}
+      ],
+      "items": false
     },
     "correlation": {
       "$ref": "#/$defs/correlation"
@@ -70,6 +73,7 @@
         "enum": [
           "uncalibrated-route-quality",
           "indexed-owner-coverage-incomplete",
+          "native-syntax-projection-incomplete",
           "indexed-lexical-unavailable",
           "graph-frontier-open",
           "graph-generation-stale",
@@ -82,41 +86,27 @@
     }
   },
   "$defs": {
-    "stage": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["family", "capabilityId"],
-      "properties": {
-        "family": {
-          "enum": ["direct", "acquire", "reason", "verify"]
-        },
-        "capabilityId": {
-          "type": "string",
-          "pattern": "^[a-z][a-z0-9-]*(\\.[a-z][a-z0-9-]*)+$"
-        }
-      }
-    },
     "correlation": {
       "type": "object",
       "additionalProperties": false,
       "required": [
         "lexicalGraphOverlapCount",
-        "lexicalVerifiedOverlapCount",
-        "graphVerifiedOverlapCount",
+        "lexicalByteVerifiedOverlapCount",
+        "graphByteVerifiedOverlapCount",
         "lexicalGraphJaccardPermille",
         "graphMarginalCandidateCount",
-        "verifiedUnionCandidateCount"
+        "candidateUnionCount"
       ],
       "properties": {
         "lexicalGraphOverlapCount": {
           "type": "integer",
           "minimum": 0
         },
-        "lexicalVerifiedOverlapCount": {
+        "lexicalByteVerifiedOverlapCount": {
           "type": "integer",
           "minimum": 0
         },
-        "graphVerifiedOverlapCount": {
+        "graphByteVerifiedOverlapCount": {
           "type": "integer",
           "minimum": 0
         },
@@ -129,7 +119,7 @@
           "type": "integer",
           "minimum": 0
         },
-        "verifiedUnionCandidateCount": {
+        "candidateUnionCount": {
           "type": "integer",
           "minimum": 0
         }

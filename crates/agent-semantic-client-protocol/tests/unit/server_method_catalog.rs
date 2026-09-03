@@ -24,7 +24,6 @@ fn server_catalog_exposes_northbound_search_query_and_schema_bundle_methods() {
             "asp.workspace.generation.ensure-ready",
             "rust.query",
             "rust.search",
-            "rust.search.owner",
             "rust.source-index.lookup"
         ]
     );
@@ -42,7 +41,28 @@ fn server_catalog_exposes_northbound_search_query_and_schema_bundle_methods() {
 }
 
 #[test]
-fn workspace_generation_preflight_is_server_owned_and_language_independent() {
+fn search_catalog_matches_the_intent_request_contract() {
+    let method = server_client_methods(["rust".to_owned()])
+        .expect("Rust method catalog")
+        .into_iter()
+        .find(|method| method.method == "rust.search")
+        .expect("Rust search method");
+    assert_eq!(
+        method
+            .parameters
+            .iter()
+            .map(|parameter| parameter.name.as_str())
+            .collect::<Vec<_>>(),
+        ["schemaId", "schemaVersion", "intent", "query"]
+    );
+    assert!(method.parameters.iter().all(|parameter| matches!(
+        parameter.cardinality,
+        crate::ClientParameterCardinality::Required
+    )));
+}
+
+#[test]
+fn workspace_generation_preflight_is_server_owned_and_language_targeted() {
     let languages = ["rust".to_owned(), "python".to_owned()];
     assert_eq!(
         resolve_server_client_method_owner(
@@ -58,7 +78,12 @@ fn workspace_generation_preflight_is_server_owned_and_language_independent() {
         .into_iter()
         .find(|method| method.method == crate::WORKSPACE_GENERATION_ENSURE_READY_METHOD)
         .expect("workspace generation ensure-ready method");
-    assert!(method.parameters.is_empty());
+    assert_eq!(method.parameters.len(), 1);
+    assert_eq!(method.parameters[0].name, "languageId");
+    assert_eq!(
+        method.parameters[0].cardinality,
+        crate::ClientParameterCardinality::Optional
+    );
     assert!(method.cancellable);
 }
 
@@ -123,7 +148,7 @@ fn server_catalog_exposes_the_resident_runtime_graph_evaluation_method() {
             "surface",
             "queryTerms",
             "profile",
-            "seedIds",
+            "entryNodeIds",
             "budget"
         ]
     );
@@ -177,10 +202,6 @@ fn schema_bundle_method_is_transport_neutral_and_profile_selected() {
 #[test]
 fn method_resolution_is_independent_of_provider_runtime_routes() {
     let languages = ["rust".to_owned(), "python".to_owned()];
-    assert_eq!(
-        resolve_server_client_method("rust.search.owner", languages.clone()),
-        Ok(("rust".to_owned(), ServerClientRoute::OwnerSearch))
-    );
     assert_eq!(
         resolve_server_client_method("python.query", languages),
         Ok(("python".to_owned(), ServerClientRoute::ExactQuery))

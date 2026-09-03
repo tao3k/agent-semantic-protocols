@@ -37,7 +37,7 @@ fn candidate_identity_for(digest: &str) -> WorkspaceGenerationCandidateIdentity 
 fn ready_receipt(workspace_identity: &str) -> WorkspaceGenerationAdmissionReceipt {
     WorkspaceGenerationAdmissionReceipt {
         trigger: agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmissionTrigger::QueryDemand,
-        admission_mode: agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmissionMode::ColdTargeted,
+        admission_mode: agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmissionMode::CompleteGeneration,
         build_owner: "runtime-server".to_owned(),
         cancellation_authority: "runtime-server".to_owned(),
         request_lifetime_independent: true,
@@ -225,6 +225,38 @@ fn cold_restore_publishes_committed_generation_without_live_checkout_probe() {
     assert!(!source.contains("canonical_materialization_matches_candidate_generation"));
     assert!(!source.contains("discover_repository_candidate_snapshot"));
     assert!(!source.contains("if materialization.project_resolutions.is_empty()"));
+}
+
+#[test]
+fn cold_byte_generation_is_published_before_source_index_durability_attachment() {
+    let source = include_str!("../../src/runtime_server/core.rs");
+    assert!(source.contains("let durable_restore_admitted ="));
+    assert!(source.contains("durable_provider_binding_matches_current("));
+    let publication = source
+        .find("generation_publication.publish(")
+        .expect("canonical resident generation publication");
+    let completion = source
+        .find("let completion = crate::runtime_server_admission::WorkspaceGenerationBuildCompletion::new(")
+        .expect("canonical admission completion");
+    let durability_task = source
+        .find("spawn_runtime_owned_durability_task(&durability_tasks, async move")
+        .expect("Runtime-owned durability attachment task");
+    let durability = source
+        .find(".commit_source_index_generation(")
+        .expect("Source Index durability attachment");
+    let workspace_bootstrap = source
+        .find(".bootstrap_workspace(&project_root)")
+        .expect("workspace durability bootstrap");
+    assert!(
+        publication < completion
+            && completion < durability_task
+            && durability_task < workspace_bootstrap
+            && workspace_bootstrap < durability,
+        "Turso bootstrap and commit must both run only inside the post-publication durability task"
+    );
+    assert!(!source.contains("tokio::spawn(async move"));
+    assert!(source.contains("agent.semantic-protocols.source-index-durability-attachment-receipt"));
+    assert!(source.contains("source-index-durability-attachment-failed"));
 }
 
 #[test]

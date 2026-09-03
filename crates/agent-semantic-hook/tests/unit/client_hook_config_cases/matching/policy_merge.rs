@@ -41,7 +41,7 @@ argvPatternAny = [["asp", "<registered-language>", "search"]]
         event: "pre-tool",
         payload: &json!({
             "tool_name": "Bash",
-            "tool_input": {"command": "asp rust search pipe ownership --workspace . --view seeds"}
+            "tool_input": {"command": "asp rust search playbook ownership --workspace ."}
         }),
     });
 
@@ -267,7 +267,7 @@ fn registered_reasoning_search_dispatches_before_raw_search_rules_and_lazy_loads
             .any(|provider| provider.language_id.as_str() == "rust"),
         "canonical projection must register Rust"
     );
-    let search_command = "asp rust search pipe 'HookDecision' --workspace . --view seeds";
+    let search_command = "asp rust search playbook 'HookDecision' --workspace .";
     let stages = agent_semantic_shell_parser::parse_bash_command_candidates(search_command)
         .expect("parse direct ASP search command");
     assert!(
@@ -369,11 +369,11 @@ fn registered_reasoning_search_dispatches_before_raw_search_rules_and_lazy_loads
     for (language_id, command) in [
         (
             "org",
-            "asp org search owner docs/spec.org items --query capability --workspace . --view seeds",
+            "asp org search playbook capability --scope owner:docs/spec.org --workspace .",
         ),
         (
             "md",
-            "asp md search owner README.md items --query runtime --workspace . --view seeds",
+            "asp md search playbook runtime --scope owner:README.md --workspace .",
         ),
     ] {
         let provider_route_decision = classify_hook_with_config(HookClassificationRequest {

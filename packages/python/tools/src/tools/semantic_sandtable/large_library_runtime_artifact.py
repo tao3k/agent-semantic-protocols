@@ -133,7 +133,7 @@ def language_extension_evidence_matches_lock(
     matching_files = evidence.get("matchingFileCount")
     candidate_files = evidence.get("candidateLanguageFileCount")
     if (
-        evidence.get("authority") != "provider-workspace-scope"
+        evidence.get("authority") != "provider-project-resolution"
         or evidence.get("candidateSetAuthority") != "provider-registry-extension-index"
         or not isinstance(extensions, list)
         or not extensions

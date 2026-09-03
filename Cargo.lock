@@ -217,6 +217,7 @@ dependencies = [
 name = "agent-semantic-config"
 version = "0.1.0"
 dependencies = [
+ "agent-semantic-schema-manager",
  "blake3",
  "figment",
  "globset",
@@ -345,6 +346,7 @@ dependencies = [
  "criterion",
  "futures-util",
  "hyper-util",
+ "ignore",
  "libc",
  "memchr",
  "prost",
@@ -401,6 +403,7 @@ dependencies = [
  "agent-semantic-schema-manager",
  "agent-semantic-search",
  "agent-semantic-search-projection",
+ "asp-rust-project-harness-policy",
  "blake3",
  "hyper-util",
  "prost",
@@ -445,6 +448,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.10.9",
+ "tantivy",
  "tempfile",
  "tokio",
  "tokio-stream",

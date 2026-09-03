@@ -89,19 +89,14 @@ impl ProviderSession for RuntimeStreamService {
     }
 }
 
-pub async fn bind_provider_stream_listener(
-    socket_path: &std::path::Path,
-) -> Result<tokio::net::UnixListener, String> {
-    tokio::net::UnixListener::bind(socket_path).map_err(|error| {
-        format!(
-            "failed to bind Runtime Server provider stream {}: {error}",
-            socket_path.display()
-        )
-    })
+pub async fn bind_provider_stream_tcp() -> Result<tokio::net::TcpListener, String> {
+    tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0))
+        .await
+        .map_err(|error| format!("failed to bind Runtime provider loopback gRPC: {error}"))
 }
 
-pub async fn serve_provider_stream(
-    listener: tokio::net::UnixListener,
+pub async fn serve_provider_stream_tcp(
+    listener: tokio::net::TcpListener,
     provider_register: std::sync::Arc<
         agent_semantic_client_db::runtime_provider_register::RuntimeProviderRegister,
     >,
@@ -114,7 +109,7 @@ pub async fn serve_provider_stream(
             ),
         )
         .serve_with_incoming_shutdown(
-            tokio_stream::wrappers::UnixListenerStream::new(listener),
+            tokio_stream::wrappers::TcpListenerStream::new(listener),
             async move {
                 while !*shutdown.borrow() {
                     if shutdown.changed().await.is_err() {
@@ -124,5 +119,5 @@ pub async fn serve_provider_stream(
             },
         )
         .await
-        .map_err(|error| format!("Runtime Server provider stream failed: {error}"))
+        .map_err(|error| format!("Runtime provider loopback gRPC failed: {error}"))
 }

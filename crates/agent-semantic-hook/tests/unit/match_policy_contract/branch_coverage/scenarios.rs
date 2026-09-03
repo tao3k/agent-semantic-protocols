@@ -16,7 +16,7 @@ struct Scenario {
 
 #[test]
 fn registered_asp_search_intent_is_stable_across_native_wrapped_and_nested_surfaces() {
-    let command = "asp rust search pipe 'HookDecision' --workspace . --view seeds";
+    let command = "asp rust search playbook 'HookDecision' --workspace .";
     run_scenarios(
         "registered ASP search surfaces",
         &[
@@ -31,7 +31,7 @@ fn registered_asp_search_intent_is_stable_across_native_wrapped_and_nested_surfa
                 payload: shell_surface(
                     "Bash",
                     "command",
-                    "env ASP_VIEW=seeds asp rust search pipe 'HookDecision' --workspace . --view seeds",
+                    "asp rust search playbook 'HookDecision' --workspace .",
                 ),
                 expected_rule: Some("registered-asp-reasoning-search"),
                 forbidden_rule: None,
@@ -41,7 +41,7 @@ fn registered_asp_search_intent_is_stable_across_native_wrapped_and_nested_surfa
                 payload: shell_surface(
                     "Bash",
                     "command",
-                    "rtk --ultra-compact err asp rust search pipe 'HookDecision' --workspace . --view seeds",
+                    "rtk --ultra-compact err asp rust search playbook 'HookDecision' --workspace .",
                 ),
                 expected_rule: Some("registered-asp-reasoning-search"),
                 forbidden_rule: None,
@@ -51,7 +51,7 @@ fn registered_asp_search_intent_is_stable_across_native_wrapped_and_nested_surfa
                 payload: serde_json::json!({
                     "tool_name": "functions.exec",
                     "tool_input": {
-                        "code": "const r = await tools.exec_command({cmd: \"asp rust search pipe 'HookDecision' --workspace . --view seeds\"});"
+                        "code": "const r = await tools.exec_command({cmd: \"asp rust search playbook 'HookDecision' --workspace .\"});"
                     }
                 }),
                 expected_rule: Some("registered-asp-reasoning-search"),

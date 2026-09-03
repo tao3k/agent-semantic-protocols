@@ -78,7 +78,7 @@ def language_extension_admission(raw: Any) -> LanguageExtensionAdmission | None:
     minimum_files = record.get("minimumMatchingFiles")
     minimum_ratio = record.get("minimumMatchingFileRatio")
     if (
-        authority != "provider-workspace-scope"
+        authority != "provider-project-resolution"
         or not isinstance(minimum_files, int)
         or isinstance(minimum_files, bool)
         or minimum_files < 1

@@ -35,14 +35,14 @@ async fn provider_register(
 #[tokio::test]
 async fn provider_stream_register_activate_facts_ready_cancel_drain_is_one_bidi_stream() {
     let directory = tempfile::tempdir().unwrap();
-    let socket_path = directory.path().join("provider.sock");
     let provider_register = provider_register(&directory).await;
-    let listener = agent_semantic_runtime_server::bind_provider_stream_listener(&socket_path)
+    let listener = agent_semantic_runtime_server::bind_provider_stream_tcp()
         .await
         .unwrap();
+    let endpoint = listener.local_addr().unwrap();
     let (shutdown, shutdown_rx) = tokio::sync::watch::channel(false);
     let server = tokio::spawn(async move {
-        agent_semantic_runtime_server::serve_provider_stream(
+        agent_semantic_runtime_server::serve_provider_stream_tcp(
             listener,
             provider_register,
             shutdown_rx,
@@ -51,7 +51,7 @@ async fn provider_stream_register_activate_facts_ready_cancel_drain_is_one_bidi_
         .unwrap();
     });
 
-    let mut client = GrpcProviderSessionClient::connect_unix(&socket_path)
+    let mut client = GrpcProviderSessionClient::connect_tcp(endpoint)
         .await
         .unwrap();
     for (sequence, kind) in [
@@ -78,14 +78,14 @@ async fn provider_stream_register_activate_facts_ready_cancel_drain_is_one_bidi_
 #[tokio::test]
 async fn provider_stream_rejects_invalid_schema_version() {
     let directory = tempfile::tempdir().unwrap();
-    let socket_path = directory.path().join("provider.sock");
     let provider_register = provider_register(&directory).await;
-    let listener = agent_semantic_runtime_server::bind_provider_stream_listener(&socket_path)
+    let listener = agent_semantic_runtime_server::bind_provider_stream_tcp()
         .await
         .unwrap();
+    let endpoint = listener.local_addr().unwrap();
     let (shutdown, shutdown_rx) = tokio::sync::watch::channel(false);
     let server = tokio::spawn(async move {
-        agent_semantic_runtime_server::serve_provider_stream(
+        agent_semantic_runtime_server::serve_provider_stream_tcp(
             listener,
             provider_register,
             shutdown_rx,
@@ -93,7 +93,7 @@ async fn provider_stream_rejects_invalid_schema_version() {
         .await
         .unwrap();
     });
-    let mut client = GrpcProviderSessionClient::connect_unix(&socket_path)
+    let mut client = GrpcProviderSessionClient::connect_tcp(endpoint)
         .await
         .unwrap();
     let mut invalid = envelope("Register", 1);
@@ -108,14 +108,14 @@ async fn provider_stream_rejects_invalid_schema_version() {
 #[tokio::test]
 async fn provider_register_uses_the_same_grpc_provider_plane() {
     let directory = tempfile::tempdir().unwrap();
-    let socket_path = directory.path().join("provider.sock");
     let provider_register = provider_register(&directory).await;
-    let listener = agent_semantic_runtime_server::bind_provider_stream_listener(&socket_path)
+    let listener = agent_semantic_runtime_server::bind_provider_stream_tcp()
         .await
         .unwrap();
+    let endpoint = listener.local_addr().unwrap();
     let (shutdown, shutdown_rx) = tokio::sync::watch::channel(false);
     let server = tokio::spawn(async move {
-        agent_semantic_runtime_server::serve_provider_stream(
+        agent_semantic_runtime_server::serve_provider_stream_tcp(
             listener,
             provider_register,
             shutdown_rx,
@@ -123,19 +123,20 @@ async fn provider_register_uses_the_same_grpc_provider_plane() {
         .await
         .unwrap();
     });
-    let response = agent_semantic_provider_transport::grpc_session::call_runtime_provider_register(
-        &socket_path,
-        &agent_semantic_provider_protocol::ProviderRegisterRequest {
-            schema_id: agent_semantic_provider_protocol::PROVIDER_REGISTER_REQUEST_SCHEMA_ID
-                .to_owned(),
-            schema_version: agent_semantic_provider_protocol::PROVIDER_REGISTER_SCHEMA_VERSION
-                .to_owned(),
-            expected_generation: None,
-            request: agent_semantic_provider_protocol::ProviderRegisterOperation::List,
-        },
-    )
-    .await
-    .unwrap();
+    let response =
+        agent_semantic_provider_transport::grpc_session::call_runtime_provider_register_tcp(
+            endpoint,
+            &agent_semantic_provider_protocol::ProviderRegisterRequest {
+                schema_id: agent_semantic_provider_protocol::PROVIDER_REGISTER_REQUEST_SCHEMA_ID
+                    .to_owned(),
+                schema_version: agent_semantic_provider_protocol::PROVIDER_REGISTER_SCHEMA_VERSION
+                    .to_owned(),
+                expected_generation: None,
+                request: agent_semantic_provider_protocol::ProviderRegisterOperation::List,
+            },
+        )
+        .await
+        .unwrap();
     response.validate().unwrap();
     assert!(matches!(
         response.result,

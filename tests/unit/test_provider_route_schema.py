@@ -72,7 +72,7 @@ def test_provider_registration_requires_route_dsl_and_has_no_method_legacy() -> 
 def test_all_seven_provider_registrations_have_canonical_inventory_and_root_identity() -> None:
     registrations = {
         "rust": ROOT / "languages/asp-rust/provider/asp-provider-registration.json",
-        "typescript": ROOT / "languages/typescript-lang-project-harness/provider/asp-provider-registration.json",
+        "typescript": ROOT / "languages/asp-typescript/provider/asp-provider-registration.json",
         "python": ROOT / "languages/asp-python/provider/asp-provider-registration.json",
         "julia": ROOT / "languages/AspJulia.jl/juliac/asp-provider-registration.json",
         "gerbil-scheme": ROOT / "languages/gerbil-scheme-language-project-harness/provider/asp-provider-registration.json",

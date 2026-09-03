@@ -17,7 +17,7 @@
     "queryTerms",
     "profile",
     "algorithm",
-    "seedIds",
+    "entryNodeIds",
     "budget"
   ],
   "anyOf": [
@@ -152,7 +152,7 @@
         "$ref": "#/$defs/sourceTraceEntry"
       }
     },
-    "seedIds": {
+    "entryNodeIds": {
       "type": "array",
       "items": {
         "$ref": "#/$defs/nodeId"
@@ -380,7 +380,7 @@
       "minLength": 1
     },
     "seedPlan": {
-      "description": "First-phase seed selection diagnostics for graph-turbo ranking. This explains why seedIds were selected before traversal and rendering.",
+      "description": "First-phase seed selection diagnostics for graph-turbo ranking. This explains why entryNodeIds were selected before traversal and rendering.",
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -395,7 +395,7 @@
         "queryOwnerSeedCount",
         "fallbackOwnerSeedCount",
         "selectedSeedCount",
-        "seedIds",
+        "entryNodeIds",
         "riskFactors",
         "recommendedActions"
       ],
@@ -447,7 +447,7 @@
           "type": "integer",
           "minimum": 0
         },
-        "seedIds": {
+        "entryNodeIds": {
           "type": "array",
           "items": {
             "$ref": "#/$defs/nodeId"

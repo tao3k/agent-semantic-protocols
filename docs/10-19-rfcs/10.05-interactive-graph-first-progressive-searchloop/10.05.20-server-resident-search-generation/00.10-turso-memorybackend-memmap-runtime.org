@@ -119,12 +119,19 @@ maintenance lane after leases prove them unreachable; lifecycle startup is
 never the garbage collector.
 
 The Global daemon owns one durable workspace-admission catalog containing only
-=workspaceIdentity + canonicalProjectRoot=.  It is a control-plane lookup set,
+=projectId + workspaceId + canonicalProjectRoot=.  It is a control-plane lookup set,
 not source authority.  First admission atomically records a source scope;
 repeated admission performs no write.  On restart the daemon publishes
 =Starting=, loads this single catalog, restores all registered scopes from their
 Turso canonical materializations through the workspace writer lanes, and only
-then publishes =Healthy=.  Restore fans out across independent workspaces but
+then publishes =Healthy=.  The ProjectId hard cut refines the sole V1 contract
+in place: =runtime/server/workspace-admissions.v1.json= keeps schema identity
+=agent.semantic-protocols.runtime-server-workspace-admission-catalog.v1=, while
+every current entry requires =projectId=, =workspaceIdentity=, and the canonical
+project root.  A pre-refactor V1 shape without =projectId= has no admission
+authority: it contributes zero resident entries, is not migrated into a current
+entry, and is not republished by the read path.  Lifecycle admission repopulates
+the catalog only from typed =projectId + workspaceId= observations.  Restore fans out across independent workspaces but
 remains single-flight per source scope.  Startup MUST NOT discover projects by
 walking =$ASP_STATE_HOME=, and query-time code MUST NOT repair a missing catalog
 by rebuilding a provider index.

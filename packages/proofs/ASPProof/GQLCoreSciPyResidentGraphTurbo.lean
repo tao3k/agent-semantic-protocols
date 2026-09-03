@@ -30,6 +30,480 @@ theorem python_proposal_cannot_mint_evidence_authority
     pythonProposalAuthority status = .candidate := by
   cases status <;> rfl
 
+inductive SearchGenerationConstructionOwner where
+  | rustServer
+  | pythonWorker
+  deriving Repr, DecidableEq, BEq
+
+structure BaseGenerationInputs where
+  immutableSnapshot : Bool
+  rgAcquisitionComplete : Bool
+  nativeSyntaxPlaybookComplete : Bool
+  tantivyLexicalComplete : Bool
+  residentGraphComplete : Bool
+  deriving Repr, DecidableEq, BEq
+
+structure NativeSyntaxPlaybookCoverage where
+  owners : Bool
+  canonicalSelectors : Bool
+  properByteRanges : Bool
+  nonEmptyQueryKeys : Bool
+  derivedProjections : Bool
+  relationsBoundToOwners : Bool
+  deriving Repr, DecidableEq, BEq
+
+structure NativeSyntaxSelectorProjection where
+  selector : String
+  byteStart : Nat
+  byteEnd : Nat
+  queryKeys : List String
+  derivedProjectionDigest : String
+  deriving Repr, DecidableEq, BEq
+
+structure NativeSyntaxOwnerProjection where
+  ownerPath : String
+  contentDigest : String
+  selectors : List NativeSyntaxSelectorProjection
+  deriving Repr, DecidableEq, BEq
+
+structure NativeSyntaxRelationProjection where
+  ownerPath : String
+  relationDigest : String
+  deriving Repr, DecidableEq, BEq
+
+def nativeSyntaxSelectorProjectionValid
+    (selector : NativeSyntaxSelectorProjection) : Bool :=
+  !selector.selector.isEmpty &&
+    decide (selector.byteStart < selector.byteEnd) &&
+    !selector.queryKeys.isEmpty &&
+    selector.queryKeys.all (fun key => !key.isEmpty) &&
+    !selector.derivedProjectionDigest.isEmpty
+
+def nativeSyntaxProjectionValid
+    (projections : List NativeSyntaxOwnerProjection)
+    (relations : List NativeSyntaxRelationProjection) : Bool :=
+  decide (projections.map (·.ownerPath)).Nodup &&
+    projections.all (fun projection =>
+      !projection.ownerPath.isEmpty &&
+        !projection.contentDigest.isEmpty &&
+        !projection.selectors.isEmpty &&
+        decide (projection.selectors.map (·.selector)).Nodup &&
+        projection.selectors.all nativeSyntaxSelectorProjectionValid) &&
+    decide relations.Nodup &&
+    relations.all (fun relation =>
+      !relation.relationDigest.isEmpty &&
+        projections.any (fun projection => projection.ownerPath == relation.ownerPath))
+
+def ownerOnlyNativeSyntaxProjection : List NativeSyntaxOwnerProjection :=
+  [ { ownerPath := "src/router.rs"
+      contentDigest := "blake3-256:content"
+      selectors := [] } ]
+
+theorem owner_identity_without_parser_projection_is_rejected :
+    nativeSyntaxProjectionValid ownerOnlyNativeSyntaxProjection [] = false := by
+  decide
+
+def nativeSyntaxCoverageComplete (coverage : NativeSyntaxPlaybookCoverage) : Bool :=
+  coverage.owners &&
+    coverage.canonicalSelectors &&
+    coverage.properByteRanges &&
+    coverage.nonEmptyQueryKeys &&
+    coverage.derivedProjections &&
+    coverage.relationsBoundToOwners
+
+def ownerOnlyNativeSyntaxCoverage : NativeSyntaxPlaybookCoverage :=
+  { owners := true
+    canonicalSelectors := false
+    properByteRanges := false
+    nonEmptyQueryKeys := false
+    derivedProjections := false
+    relationsBoundToOwners := false }
+
+def completeNativeSyntaxPlaybookCoverage : NativeSyntaxPlaybookCoverage :=
+  { owners := true
+    canonicalSelectors := true
+    properByteRanges := true
+    nonEmptyQueryKeys := true
+    derivedProjections := true
+    relationsBoundToOwners := true }
+
+theorem owner_only_lookup_cannot_complete_native_syntax_playbook :
+    nativeSyntaxCoverageComplete ownerOnlyNativeSyntaxCoverage = false := by
+  decide
+
+inductive SearchPipelineStage where
+  | rgAcquisition
+  | nativeSyntaxPlaybook
+  | tantivyLexical
+  | residentGraph
+  deriving Repr, DecidableEq, BEq
+
+def searchPipelineOrderAdmitted (stages : List SearchPipelineStage) : Bool :=
+  stages == [.rgAcquisition, .nativeSyntaxPlaybook, .tantivyLexical, .residentGraph]
+
+theorem canonical_search_pipeline_order_is_admitted :
+    searchPipelineOrderAdmitted
+      [.rgAcquisition, .nativeSyntaxPlaybook, .tantivyLexical, .residentGraph] = true := by
+  decide
+
+theorem peer_lane_or_reversed_search_composition_is_rejected :
+    searchPipelineOrderAdmitted
+      [.rgAcquisition, .tantivyLexical, .nativeSyntaxPlaybook, .residentGraph] = false := by
+  decide
+
+def searchPipelineStageDirectlyToolAddressable (_stage : SearchPipelineStage) : Bool :=
+  false
+
+theorem internal_search_stages_are_not_public_tool_calls :
+    searchPipelineStageDirectlyToolAddressable .rgAcquisition = false ∧
+      searchPipelineStageDirectlyToolAddressable .nativeSyntaxPlaybook = false ∧
+      searchPipelineStageDirectlyToolAddressable .tantivyLexical = false ∧
+      searchPipelineStageDirectlyToolAddressable .residentGraph = false := by
+  decide
+
+def baseGenerationReady
+    (owner : SearchGenerationConstructionOwner)
+    (inputs : BaseGenerationInputs) : Bool :=
+  owner == .rustServer &&
+    inputs.immutableSnapshot &&
+    inputs.rgAcquisitionComplete &&
+    inputs.nativeSyntaxPlaybookComplete &&
+    inputs.tantivyLexicalComplete &&
+    inputs.residentGraphComplete
+
+def completeBaseGenerationInputs : BaseGenerationInputs :=
+  { immutableSnapshot := true
+    rgAcquisitionComplete := true
+    nativeSyntaxPlaybookComplete :=
+      nativeSyntaxCoverageComplete completeNativeSyntaxPlaybookCoverage
+    tantivyLexicalComplete := true
+    residentGraphComplete := true }
+
+theorem rust_is_the_only_base_generation_construction_owner :
+    baseGenerationReady .rustServer completeBaseGenerationInputs = true := by
+  decide
+
+theorem python_worker_cannot_publish_a_base_generation :
+    baseGenerationReady .pythonWorker completeBaseGenerationInputs = false := by
+  decide
+
+def baseGenerationReadyWithPython (_pythonAvailable : Bool) : Bool :=
+  baseGenerationReady .rustServer completeBaseGenerationInputs
+
+theorem python_graph_outage_cannot_block_base_generation_commit :
+    baseGenerationReadyWithPython false = true := by
+  decide
+
+theorem python_graph_availability_does_not_change_base_generation_identity :
+    baseGenerationReadyWithPython false = baseGenerationReadyWithPython true := by
+  decide
+
+inductive PublicSearchOperation where
+  | playbook
+  | prime
+  | pipe
+  | lexical
+  | ownerSearch
+  deriving Repr, DecidableEq, BEq
+
+def publicSearchOperationAdmitted : PublicSearchOperation -> Bool
+  | .playbook => true
+  | _ => false
+
+theorem playbook_is_the_only_public_search_operation :
+    publicSearchOperationAdmitted .playbook = true := by
+  rfl
+
+def admittedPublicSearchOperations : List PublicSearchOperation :=
+  [.playbook, .prime, .pipe, .lexical, .ownerSearch]
+    |>.filter publicSearchOperationAdmitted
+
+theorem public_search_tool_call_branching_factor_is_one :
+    admittedPublicSearchOperations.length = 1 := by
+  decide
+
+theorem retired_search_operations_cannot_form_a_second_authority :
+    publicSearchOperationAdmitted .prime = false ∧
+      publicSearchOperationAdmitted .pipe = false ∧
+      publicSearchOperationAdmitted .lexical = false ∧
+      publicSearchOperationAdmitted .ownerSearch = false := by
+  decide
+
+inductive HookSearchRouteKind where
+  | playbook
+  | prime
+  | owner
+  | lexical
+  | ingest
+  deriving Repr, DecidableEq, BEq
+
+def hookSearchRouteAdmitted : HookSearchRouteKind -> Bool
+  | .playbook => true
+  | _ => false
+
+theorem hook_cannot_reintroduce_a_retired_search_authority :
+    hookSearchRouteAdmitted .prime = false ∧
+      hookSearchRouteAdmitted .owner = false ∧
+      hookSearchRouteAdmitted .lexical = false ∧
+      hookSearchRouteAdmitted .ingest = false := by
+  decide
+
+inductive PublicSearchExecutionOwner where
+  | searchPackage
+  | languageProviderCli
+  deriving Repr, DecidableEq, BEq
+
+def publicSearchExecutionOwnerAdmitted : PublicSearchExecutionOwner -> Bool
+  | .searchPackage => true
+  | .languageProviderCli => false
+
+theorem language_provider_cli_cannot_form_a_parallel_search_workflow :
+    publicSearchExecutionOwnerAdmitted .languageProviderCli = false := by
+  rfl
+
+inductive SearchConstructionInput where
+  | sourceDocument
+  | byteCoverageInput
+  | graphEntryNode
+  deriving Repr, DecidableEq, BEq
+
+def isGraphInternalInput : SearchConstructionInput -> Bool
+  | .graphEntryNode => true
+  | _ => false
+
+theorem source_inputs_cannot_be_reinterpreted_as_graph_entry_nodes :
+    isGraphInternalInput .sourceDocument = false ∧
+      isGraphInternalInput .byteCoverageInput = false := by
+  decide
+
+inductive RuntimeObservation where
+  | endpointReachable
+  | transactionIdentityBound
+  | hostPermissionDenied
+  deriving Repr, DecidableEq, BEq
+
+def runtimeReady : RuntimeObservation -> Bool
+  | .transactionIdentityBound => true
+  | _ => false
+
+theorem endpoint_reachability_is_not_runtime_readiness :
+    runtimeReady .endpointReachable = false := by
+  rfl
+
+theorem host_permission_denial_cannot_prove_runtime_termination :
+    runtimeReady .hostPermissionDenied = false := by
+  rfl
+
+inductive BootstrapObservation where
+  | spawnAccepted
+  | healthyTransaction
+  | failedTerminal
+  | cancelledTerminal
+  deriving Repr, DecidableEq, BEq
+
+def bootstrapTerminal : BootstrapObservation -> Bool
+  | .spawnAccepted => false
+  | .healthyTransaction => true
+  | .failedTerminal => true
+  | .cancelledTerminal => true
+
+theorem spawn_acceptance_is_not_a_search_terminal :
+    bootstrapTerminal .spawnAccepted = false := by
+  rfl
+
+inductive EndpointIdentityAuthority where
+  | runtimePublished
+  | clientDerivedStateHomePath
+  | filesystemProbe
+  deriving Repr, DecidableEq, BEq
+
+def endpointIdentityAdmitted : EndpointIdentityAuthority -> Bool
+  | .runtimePublished => true
+  | .clientDerivedStateHomePath => false
+  | .filesystemProbe => false
+
+theorem client_derived_endpoint_path_cannot_authorize_search :
+    endpointIdentityAdmitted .clientDerivedStateHomePath = false := by
+  rfl
+
+structure SchemaFamilyMembership where
+  registered : Bool
+  schemaPresent : Bool
+  deriving Repr, DecidableEq, BEq
+
+def schemaFamilyMembershipAdmitted (membership : SchemaFamilyMembership) : Bool :=
+  membership.registered && membership.schemaPresent
+
+theorem deleted_schema_cannot_remain_an_admitted_family_member :
+    schemaFamilyMembershipAdmitted
+      { registered := true, schemaPresent := false } = false := by
+  rfl
+
+inductive RuntimeSchemaCatalogAuthority where
+  | buildVerifiedEmbeddedBytes
+  | mutableCheckoutAtDaemonStartup
+  | clientMaterializedCopy
+  deriving Repr, DecidableEq, BEq
+
+def runtimeSchemaCatalogAuthorityAdmitted :
+    RuntimeSchemaCatalogAuthority -> Bool
+  | .buildVerifiedEmbeddedBytes => true
+  | .mutableCheckoutAtDaemonStartup => false
+  | .clientMaterializedCopy => false
+
+theorem daemon_startup_cannot_admit_mutable_checkout_schema_authority :
+    runtimeSchemaCatalogAuthorityAdmitted
+      .mutableCheckoutAtDaemonStartup = false := by
+  rfl
+
+inductive BuildSchemaResolutionMode where
+  | resolveCanonicalBytes
+  | materializePackageBundle
+  deriving Repr, DecidableEq, BEq
+
+def buildSchemaResolutionAdmitted : BuildSchemaResolutionMode -> Bool
+  | .resolveCanonicalBytes => true
+  | .materializePackageBundle => false
+
+theorem cargo_build_cannot_materialize_a_downstream_schema_bundle :
+    buildSchemaResolutionAdmitted .materializePackageBundle = false := by
+  rfl
+
+inductive OptionalCapabilityArtifactAuthority where
+  | activeRuntimeBundleMember
+  | looseStateHomeDescriptor
+  | pathLookup
+  deriving Repr, DecidableEq, BEq
+
+def optionalCapabilityArtifactAdmitted :
+    OptionalCapabilityArtifactAuthority -> Bool
+  | .activeRuntimeBundleMember => true
+  | .looseStateHomeDescriptor => false
+  | .pathLookup => false
+
+theorem active_bundle_member_is_the_only_optional_capability_artifact_authority :
+    optionalCapabilityArtifactAdmitted .activeRuntimeBundleMember = true := by
+  rfl
+
+theorem loose_descriptor_cannot_authorize_optional_capability_execution :
+    optionalCapabilityArtifactAdmitted .looseStateHomeDescriptor = false := by
+  rfl
+
+theorem path_lookup_cannot_authorize_optional_capability_execution :
+    optionalCapabilityArtifactAdmitted .pathLookup = false := by
+  rfl
+
+structure BaseSearchHotPathCost where
+  selectedProviderLookups : Nat
+  childProcessStarts : Nat
+  fullMerkleRebuilds : Nat
+  deriving Repr, DecidableEq, BEq
+
+def baseSearchHotPathCost (_installedLanguageCount : Nat) : BaseSearchHotPathCost :=
+  { selectedProviderLookups := 1
+    childProcessStarts := 0
+    fullMerkleRebuilds := 0 }
+
+theorem unselected_languages_do_not_change_base_search_hot_path_cost
+    (leftInstalled rightInstalled : Nat) :
+    baseSearchHotPathCost leftInstalled = baseSearchHotPathCost rightInstalled := by
+  rfl
+
+theorem base_search_hot_path_never_starts_optional_workers
+    (installedLanguageCount : Nat) :
+    (baseSearchHotPathCost installedLanguageCount).childProcessStarts = 0 := by
+  rfl
+
+inductive GenerationAdmissionScope where
+  | targeted (languageId : String)
+  | completeWorkspace (languageIds : List String)
+  deriving Repr, DecidableEq, BEq
+
+def requiredProviderLanguages : GenerationAdmissionScope -> List String
+  | .targeted languageId => [languageId]
+  | .completeWorkspace languageIds => languageIds
+
+theorem targeted_query_admission_is_independent_of_unselected_languages
+    (selected _unselected : String) :
+    requiredProviderLanguages (.targeted selected) = [selected] := by
+  rfl
+
+theorem complete_generation_is_the_only_cross_language_fan_in
+    (languages : List String) :
+    requiredProviderLanguages (.completeWorkspace languages) = languages := by
+  rfl
+
+inductive ProjectGenerationIsolationKey where
+  | canonicalWorkspaceId
+  | workspaceIdPlusAbsoluteRoot
+  deriving Repr, DecidableEq, BEq
+
+def projectGenerationIsolationKeyAdmitted : ProjectGenerationIsolationKey -> Bool
+  | .canonicalWorkspaceId => true
+  | .workspaceIdPlusAbsoluteRoot => false
+
+theorem absolute_root_cannot_create_a_second_workspace_partition :
+    projectGenerationIsolationKeyAdmitted .workspaceIdPlusAbsoluteRoot = false := by
+  rfl
+
+structure ProviderGenerationMembership where
+  languageId : String
+  providerId : String
+  deriving Repr, DecidableEq, BEq
+
+inductive ProviderEvidenceKind where
+  | owner
+  | relation
+  | projectResolution
+  deriving Repr, DecidableEq, BEq
+
+structure ProviderEvidenceMembership where
+  authority : ProviderGenerationMembership
+  kind : ProviderEvidenceKind
+  deriving Repr, DecidableEq, BEq
+
+def replaceProviderEvidence
+    (active replacement : List ProviderEvidenceMembership)
+    (target : ProviderGenerationMembership) : List ProviderEvidenceMembership :=
+  (active.filter fun evidence => decide (evidence.authority ≠ target)) ++
+    (replacement.filter fun evidence => decide (evidence.authority = target))
+
+theorem targeted_replacement_preserves_unselected_project_resolution
+    (active replacement : List ProviderEvidenceMembership)
+    (target unselected : ProviderGenerationMembership)
+    (present : ProviderEvidenceMembership.mk unselected .projectResolution ∈ active)
+    (different : unselected ≠ target) :
+    ProviderEvidenceMembership.mk unselected .projectResolution ∈
+      replaceProviderEvidence active replacement target := by
+  simp [replaceProviderEvidence, different, present]
+
+def replaceProviderMembership
+    (active replacement : List ProviderGenerationMembership)
+    (target : ProviderGenerationMembership) : List ProviderGenerationMembership :=
+  (active.filter fun member => decide (member ≠ target)) ++
+    (replacement.filter fun member => decide (member = target))
+
+theorem targeted_replacement_preserves_unselected_provider_membership
+    (active replacement : List ProviderGenerationMembership)
+    (target unselected : ProviderGenerationMembership)
+    (different : unselected ≠ target)
+    (present : unselected ∈ active) :
+    unselected ∈ replaceProviderMembership active replacement target := by
+  simp [replaceProviderMembership, different, present]
+
+inductive ProviderDemandPublication where
+  | selectedOnlyGeneration
+  | completeSuccessorFromActiveBase
+  deriving Repr, DecidableEq, BEq
+
+def providerDemandPublicationAdmitted : ProviderDemandPublication -> Bool
+  | .selectedOnlyGeneration => false
+  | .completeSuccessorFromActiveBase => true
+
+theorem selected_provider_generation_cannot_replace_complete_active_generation :
+    providerDemandPublicationAdmitted .selectedOnlyGeneration = false := by
+  rfl
+
 structure GraphSessionIdentity where
   workspaceDigest : String
   sessionId : String

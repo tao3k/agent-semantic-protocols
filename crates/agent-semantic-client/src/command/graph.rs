@@ -15,47 +15,9 @@ pub(crate) async fn run_graph_command(args: &[String]) -> Result<(), String> {
     };
     match command {
         "render" => run_graph_render_command(&args[1..]).await,
-        "artifact" => run_graph_artifact_command(&args[1..]).await,
         "help" | "--help" | "-h" => Err(usage()),
         _ => Err(usage()),
     }
-}
-
-async fn run_graph_artifact_command(args: &[String]) -> Result<(), String> {
-    if args.first().map(String::as_str) != Some("publish") {
-        return Err(usage());
-    }
-    let executable = flag_value(&args[1..], "--executable")
-        .ok_or_else(|| "graph artifact publish requires --executable <path>".to_owned())?;
-    let command_arguments = flag_values(&args[1..], "--argument");
-    if command_arguments.is_empty() {
-        return Err(
-            "graph artifact publish requires at least one --argument and exactly one ${socketPath} placeholder"
-                .to_owned(),
-        );
-    }
-    let expected_generation = flag_value(&args[1..], "--expected-generation")
-        .map(|value| {
-            value
-                .parse::<u64>()
-                .map_err(|error| format!("invalid --expected-generation: {error}"))
-        })
-        .transpose()?;
-    let state_home = agent_semantic_runtime::state_core::resolve_state_home()?;
-    let receipt =
-        agent_semantic_runtime_server::asp_python_graphs_artifact::publish_asp_python_graphs_artifact(
-            &state_home,
-            Path::new(&executable),
-            command_arguments,
-            expected_generation,
-        )
-        .await?;
-    println!(
-        "{}",
-        serde_json::to_string(&receipt)
-            .map_err(|error| format!("encode graph artifact publication receipt: {error}"))?
-    );
-    Ok(())
 }
 
 async fn run_graph_render_command(args: &[String]) -> Result<(), String> {
@@ -180,13 +142,6 @@ fn flag_value(args: &[String], flag: &str) -> Option<String> {
         .map(|window| window[1].clone())
 }
 
-fn flag_values(args: &[String], flag: &str) -> Vec<String> {
-    args.windows(2)
-        .filter(|window| window[0] == flag)
-        .map(|window| window[1].clone())
-        .collect()
-}
-
 fn usage() -> String {
-    "usage: asp graph render --packet <path-or-> [--view seeds] [--seeds N]\n       asp graph artifact publish --executable <absolute-path> --argument <arg>... [--expected-generation N]".to_string()
+    "usage: asp graph render --packet <path-or-> [--view seeds] [--seeds N]".to_string()
 }

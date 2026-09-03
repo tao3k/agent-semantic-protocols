@@ -40,10 +40,12 @@ impl PreparedSourceIndexGeneration {
         mut self,
         source_snapshot: agent_semantic_content_identity::SourceSnapshotEvidence,
         file_count: u32,
+        import: crate::ClientDbSourceIndexImport,
         materialization: crate::runtime_server_workspace::WorkspaceCanonicalMaterialization,
     ) -> Self {
         self.refresh_request.source_snapshot = source_snapshot;
         self.refresh_request.file_count = file_count;
+        self.refresh_request.import = import;
         self.materialization = materialization;
         self
     }

@@ -52,7 +52,7 @@
         "runtimeArtifactPath",
         "runtimeArtifactDigest",
         "bindingToken",
-        "dataPlaneSocketPath",
+        "dataEndpoint",
         "workspaceStorePath"
       ],
       "properties": {
@@ -75,12 +75,20 @@
           "type": "string",
           "minLength": 1
         },
-        "dataPlaneSocketPath": {
-          "$ref": "#/$defs/absolutePath"
-        },
+        "dataEndpoint": { "$ref": "#/$defs/loopbackEndpoint" },
         "workspaceStorePath": {
           "$ref": "#/$defs/absolutePath"
         }
+      }
+    },
+    "loopbackEndpoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["transport", "address", "port"],
+      "properties": {
+        "transport": { "const": "loopback-tcp" },
+        "address": { "enum": ["127.0.0.1", "::1"] },
+        "port": { "type": "integer", "minimum": 1, "maximum": 65535 }
       }
     },
     "workspaceAdmission": {

@@ -68,15 +68,22 @@ impl AdmissionRegistry {
     pub(super) async fn get_or_insert(
         &self,
         key: WorkspaceGenerationAdmissionKey,
+        project_root: std::path::PathBuf,
         receipt: WorkspaceGenerationAdmissionReceipt,
         active_mutation: Option<WorkspaceMutationIdentity>,
     ) -> Result<(Arc<AdmissionEntry>, bool), String> {
         match self.entries.entry(key) {
             dashmap::mapref::entry::Entry::Occupied(existing) => {
+                if !existing.get().matches_project_root(&project_root) {
+                    return Err(format!(
+                        "workspace generation admission root drift: requestedRoot={}",
+                        project_root.display()
+                    ));
+                }
                 Ok((Arc::clone(existing.get()), false))
             }
             dashmap::mapref::entry::Entry::Vacant(vacant) => {
-                let entry = Arc::new(AdmissionEntry::new(receipt, active_mutation));
+                let entry = Arc::new(AdmissionEntry::new(project_root, receipt, active_mutation));
                 vacant.insert(Arc::clone(&entry));
                 self.snapshot_sender.send_replace(Arc::new(
                     self.entries

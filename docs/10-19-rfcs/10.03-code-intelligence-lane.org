@@ -211,7 +211,7 @@ BuildTools[]
 
 The existing =renderTypeScriptReasoningTree= already produces =Modules:=,
 =Extensions:=, =BuildTools:=, =OwnerBranches:=, =OwnerDependencies:=,
-=FindingGroups:= sections [typescript-lang-project-harness README].
+=FindingGroups:= sections [asp-typescript README].
 
 ** =edit/plan=
 
@@ -450,7 +450,7 @@ The TypeScript harness already exports =TypeScriptReasoningTree=,
 =TypeScriptReasoningOwnerBranchFact=, =TypeScriptReasoningOwnerDependencyFact=,
 =TypeScriptReasoningDiagnosticFact=, =renderTypeScriptReasoningTree=,
 =renderTypeScriptProjectHarnessAgentCompactText=, and other agent-facing APIs
-[typescript-lang-project-harness].  The extension path is inheriting these
+[asp-typescript].  The extension path is inheriting these
 into a service, not starting from scratch.
 
 * Naming

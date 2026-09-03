@@ -18,13 +18,66 @@ def rank_payload() -> dict[str, object]:
     )
     return {
         "graph": copy.deepcopy(packet["graph"]),
-        "seedIds": copy.deepcopy(packet["seedIds"]),
+        "entryNodeIds": copy.deepcopy(packet["entryNodeIds"]),
         "kindBudgets": copy.deepcopy(packet["kindBudgets"]),
         "windowMerge": copy.deepcopy(packet["windowMerge"]),
         "pathBudget": packet["pathBudget"],
         "pathMaxHops": packet["pathMaxHops"],
         "cache": copy.deepcopy(packet["cache"]),
         "queryClauses": copy.deepcopy(packet.get("queryClauses", [])),
+    }
+
+
+def generation_payload() -> dict[str, object]:
+    return {
+        "schemaId": "agent.semantic-protocols.search-generation-graph-request",
+        "schemaVersion": "1",
+        "identity": {
+            "projectId": "project-test",
+            "workspaceId": "workspace-test",
+            "sourceRootDigest": DIGEST_A,
+            "providerDigest": DIGEST_B,
+            "schemaDigest": DIGEST_A,
+            "generationCandidateDigest": DIGEST_B,
+        },
+        "sourceSnapshot": {
+            "schemaId": "asp.source-snapshot.v1",
+            "algorithm": "blake3-merkle-v1",
+            "rootDigest": DIGEST_A.removeprefix("blake3-256:"),
+            "sourceKind": "filesystem",
+            "leafCount": 2,
+            "providerDigest": DIGEST_B.removeprefix("blake3-256:"),
+        },
+        "workspaceGeneration": {
+            "rootDigest": DIGEST_A.removeprefix("blake3-256:"),
+            "rootDepth": 1,
+            "leafCount": 2,
+            "ownerCount": 2,
+        },
+        "ownerPaths": ["src/a.py", "src/b.py"],
+        "relations": [
+            {
+                "from": {"kind": "owner", "id": "src/a.py"},
+                "kind": "imports",
+                "to": {"kind": "owner", "id": "src/b.py"},
+            }
+        ],
+    }
+
+
+def resident_evaluation_payload() -> dict[str, object]:
+    return {
+        "schemaId": "agent.semantic-protocols.semantic-graph-resident-evaluation-request",
+        "schemaVersion": "1",
+        "protocolId": "agent.semantic-protocols.search",
+        "protocolVersion": "1",
+        "packetKind": "resident-graph-evaluation-request",
+        "languageId": "python",
+        "surface": "search-playbook",
+        "queryTerms": [],
+        "profile": "dependency",
+        "entryNodeIds": ["owner:src/a.py"],
+        "budget": {"maxDepth": 4, "maxNodes": 64, "maxEdges": 128, "maxResults": 8},
     }
 
 
@@ -47,7 +100,6 @@ def message(kind: str, request_id: str, **fields: object) -> dict[str, object]:
         "serviceEpoch": "epoch-a",
         "requestId": request_id,
         "sequence": sequence_by_request.get(request_id, 1),
-        "generationToken": 1,
         "messageKind": kind,
         "payloadSchemaId": "agent.semantic-protocols.asp-python-graphs-test",
         "payload": {},

@@ -1,3 +1,5 @@
+//! In-memory lookup and immutable publication for exact-selector generation fixtures.
+
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -13,6 +15,7 @@ use agent_semantic_content_identity::workspace_search_identity::WorkspaceSearchI
 
 static FIXTURE_TRANSACTION_ID: AtomicU64 = AtomicU64::new(0);
 
+/// Attached in-memory exact-selector fixture for one admitted generation.
 #[derive(Clone, Debug)]
 pub struct ExactSelectorGenerationMemorySearchV1 {
     bytes: Arc<[u8]>,
@@ -21,6 +24,7 @@ pub struct ExactSelectorGenerationMemorySearchV1 {
     fixture_digest: [u8; 32],
 }
 
+/// Timing and side-effect receipt for one exact-selector lookup.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ExactSelectorGenerationSearchReceiptV1 {
     pub fixture_attach_micros: u128,
@@ -39,6 +43,7 @@ pub struct ExactSelectorGenerationSearchReceiptV1 {
     pub hit: bool,
 }
 
+/// Typed lookup and immutable-publication failure.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ExactSelectorGenerationSearchErrorV1 {
     Fixture(ExactSelectorGenerationFixtureErrorV1),
@@ -57,6 +62,7 @@ impl From<ExactSelectorGenerationFixtureErrorV1> for ExactSelectorGenerationSear
 }
 
 impl ExactSelectorGenerationMemorySearchV1 {
+    /// Attaches fixture bytes to an exact workspace and generation identity.
     pub fn attach(
         bytes: Arc<[u8]>,
         workspace_identity: &WorkspaceSearchIdentityV1,
@@ -112,6 +118,7 @@ impl ExactSelectorGenerationMemorySearchV1 {
         })
     }
 
+    /// Loads and attaches an immutable fixture artifact.
     pub fn load_immutable_artifact(
         artifact_path: &Path,
         workspace_identity: &WorkspaceSearchIdentityV1,
@@ -132,6 +139,7 @@ impl ExactSelectorGenerationMemorySearchV1 {
         )
     }
 
+    /// Resolves one selector without producing a performance receipt.
     pub fn resolve(
         &self,
         structural_selector: &str,
@@ -149,7 +157,24 @@ impl ExactSelectorGenerationMemorySearchV1 {
         })
     }
 
+    /// Resolves one selector and reports exact lookup costs and side effects.
     pub fn resolve_with_receipt(
+        &self,
+        structural_selector: &str,
+    ) -> Result<
+        (
+            ExactSelectorGenerationRecordViewV1<'_>,
+            ExactSelectorGenerationSearchReceiptV1,
+        ),
+        (
+            ExactSelectorGenerationSearchErrorV1,
+            ExactSelectorGenerationSearchReceiptV1,
+        ),
+    > {
+        self.resolve_with_receipt_inner(structural_selector)
+    }
+
+    fn resolve_with_receipt_inner(
         &self,
         structural_selector: &str,
     ) -> Result<
@@ -264,18 +289,43 @@ impl ExactSelectorGenerationMemorySearchV1 {
         }
     }
 
+    /// Returns the exact workspace identity digest.
     pub fn workspace_identity_digest(&self) -> &[u8; 32] {
         &self.workspace_identity_digest
     }
 }
 
+/// Named immutable-publication input for one exact-selector fixture.
+pub struct ExactSelectorFixturePublicationV1<'a> {
+    /// Content-addressed generation directory.
+    pub generation_directory: &'a Path,
+    /// Canonical fixture bytes.
+    pub fixture: &'a [u8],
+    /// Exact workspace identity.
+    pub workspace_identity: &'a WorkspaceSearchIdentityV1,
+    /// Exact generation digest.
+    pub generation_digest: [u8; 32],
+    /// Canonical fixture digest.
+    pub fixture_digest: [u8; 32],
+}
+
+/// Atomically publishes a validated immutable exact-selector fixture.
 pub fn publish_immutable_exact_selector_generation_fixture_v1(
-    generation_directory: &Path,
-    fixture: &[u8],
-    workspace_identity: &WorkspaceSearchIdentityV1,
-    generation_digest: [u8; 32],
-    fixture_digest: [u8; 32],
+    publication: ExactSelectorFixturePublicationV1<'_>,
 ) -> Result<PathBuf, ExactSelectorGenerationSearchErrorV1> {
+    publish_exact_selector_fixture_transaction(publication)
+}
+
+fn publish_exact_selector_fixture_transaction(
+    publication: ExactSelectorFixturePublicationV1<'_>,
+) -> Result<PathBuf, ExactSelectorGenerationSearchErrorV1> {
+    let ExactSelectorFixturePublicationV1 {
+        generation_directory,
+        fixture,
+        workspace_identity,
+        generation_digest,
+        fixture_digest,
+    } = publication;
     ExactSelectorGenerationMemorySearchV1::attach(
         Arc::from(fixture),
         workspace_identity,

@@ -1,9 +1,13 @@
+//! Provider-neutral project-resolution receipts and immutable package-graph facts.
+
 use std::collections::HashSet;
 use std::path::{Component, Path};
 
 use serde::{Deserialize, Serialize};
 
+/// Schema identifier for provider project-resolution receipts.
 pub const PROJECT_RESOLUTION_SCHEMA_ID: &str = "agent.semantic-protocols.project-resolution";
+/// Schema identifier for immutable language package graphs.
 pub const LANGUAGE_PACKAGE_GRAPH_SCHEMA_ID: &str =
     "agent.semantic-protocols.language-package-graph";
 
@@ -11,6 +15,10 @@ pub const LANGUAGE_PACKAGE_GRAPH_SCHEMA_ID: &str =
 /// deliberately absent; ASP binds this receipt to an admitted candidate base.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+/// Raw DTO boundary for a provider project-resolution receipt.
+///
+/// Typed catalog boundary: `state` and completeness labels are validated against
+/// the closed project-resolution catalog before ASP admits the receipt.
 pub struct ProjectResolutionReceipt {
     pub schema_id: String,
     pub schema_version: String,
@@ -29,6 +37,7 @@ pub struct ProjectResolutionReceipt {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+/// Raw DTO boundary for an immutable language package graph.
 pub struct LanguagePackageGraph {
     pub schema_id: String,
     pub schema_version: String,
@@ -46,6 +55,10 @@ pub struct LanguagePackageGraph {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+/// Describes one project file classified by a language provider.
+///
+/// Typed catalog boundary: file kinds remain provider-owned vocabulary and are
+/// admitted only as non-empty package-graph facts.
 pub struct ProjectFile {
     pub path: String,
     pub kind: String,
@@ -54,6 +67,7 @@ pub struct ProjectFile {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+/// Describes one package discovered in a language project.
 pub struct LanguagePackage {
     pub package_id: String,
     pub name: String,
@@ -67,6 +81,10 @@ pub struct LanguagePackage {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+/// Describes one build or execution target owned by a language package.
+///
+/// Typed catalog boundary: target kinds remain provider-owned vocabulary and
+/// are admitted only with a valid target identity.
 pub struct LanguageTarget {
     pub target_id: String,
     pub kind: String,
@@ -79,6 +97,9 @@ pub struct LanguageTarget {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+/// Describes one dependency edge between packages in the same project graph.
+///
+/// Typed catalog boundary: dependency kinds remain provider-owned vocabulary.
 pub struct InternalDependencyEdge {
     pub from_package_id: String,
     pub to_package_id: String,
@@ -87,6 +108,9 @@ pub struct InternalDependencyEdge {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+/// Describes one dependency resolved outside the current project graph.
+///
+/// Typed catalog boundary: external dependency kinds remain provider-owned vocabulary.
 pub struct ExternalDependency {
     pub dependency_id: String,
     pub name: String,
@@ -99,6 +123,9 @@ pub struct ExternalDependency {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+/// Describes a project reference that the provider could not resolve.
+///
+/// Typed catalog boundary: unresolved states and reasons preserve provider-owned vocabulary.
 pub struct UnresolvedProjectReference {
     pub state: String,
     pub path: String,
@@ -107,6 +134,9 @@ pub struct UnresolvedProjectReference {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+/// Raw DTO boundary for an admitted source scope in a package graph.
+///
+/// Typed catalog boundary: optional resolution state preserves provider-owned vocabulary.
 pub struct ResolvedSourceScope {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub schema_id: Option<String>,
@@ -134,6 +164,7 @@ pub struct ResolvedSourceScope {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+/// Describes one source exclusion attached to an admitted scope.
 pub struct ResolvedSourceExclusion {
     pub prefix: String,
     pub authority: String,
@@ -141,6 +172,9 @@ pub struct ResolvedSourceExclusion {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+/// Describes a deterministic conflict found during project resolution.
+///
+/// Typed catalog boundary: conflict reasons preserve provider-owned vocabulary.
 pub struct ProjectResolutionConflict {
     pub path: String,
     pub include_authority: String,
@@ -150,6 +184,7 @@ pub struct ProjectResolutionConflict {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+/// Records measured work performed by project resolution.
 pub struct ProjectResolutionMetrics {
     pub parsed_manifest_count: u64,
     pub parsed_lockfile_count: u64,
@@ -174,6 +209,10 @@ pub struct AdmittedProjectResolution {
 }
 
 impl ProjectResolutionReceipt {
+    /// Validates the raw provider DTO against the expected ASP identity.
+    ///
+    /// Primitive field boundary: expected identifiers arrive from the provider
+    /// registry and are compared without rewriting their wire representation.
     pub fn validate(
         &self,
         expected_language_id: &str,
@@ -261,6 +300,7 @@ impl AdmittedProjectResolution {
     }
 }
 
+/// Computes the generation digest for the complete admitted workspace source scope.
 pub fn workspace_source_scope_generation_digest(
     resolutions: &[AdmittedProjectResolution],
 ) -> Result<String, String> {
@@ -271,16 +311,32 @@ pub fn workspace_source_scope_generation_digest(
 }
 
 fn validate_package_graph(graph: &LanguagePackageGraph) -> Result<(), String> {
-    let mut package_ids = HashSet::with_capacity(graph.packages.len());
-    for file in graph.manifests.iter().chain(&graph.lockfiles) {
-        if !is_relative_logical_path(&file.path)
-            || file.kind.trim().is_empty()
-            || file.digest.trim().is_empty()
-        {
-            return Err("provider package graph contains an invalid manifest/lockfile".to_owned());
-        }
-    }
-    for package in &graph.packages {
+    validate_project_files(graph)?;
+    let package_ids = collect_valid_package_ids(&graph.packages)?;
+    validate_internal_dependency_edges(&graph.internal_dependency_edges, &package_ids)
+}
+
+fn validate_project_files(graph: &LanguagePackageGraph) -> Result<(), String> {
+    graph
+        .manifests
+        .iter()
+        .chain(&graph.lockfiles)
+        .try_for_each(|file| {
+            if !is_relative_logical_path(&file.path)
+                || file.kind.trim().is_empty()
+                || file.digest.trim().is_empty()
+            {
+                return Err(
+                    "provider package graph contains an invalid manifest/lockfile".to_owned(),
+                );
+            }
+            Ok(())
+        })
+}
+
+fn collect_valid_package_ids(packages: &[LanguagePackage]) -> Result<HashSet<&str>, String> {
+    let mut package_ids = HashSet::with_capacity(packages.len());
+    for package in packages {
         if package.package_id.trim().is_empty()
             || package.name.trim().is_empty()
             || !is_relative_logical_path(&package.root)
@@ -291,23 +347,36 @@ fn validate_package_graph(graph: &LanguagePackageGraph) -> Result<(), String> {
                 "provider package graph contains an invalid or duplicate package".to_owned(),
             );
         }
-        for target in &package.targets {
-            if target.target_id.trim().is_empty() || target.name.trim().is_empty() {
-                return Err("provider package graph contains an invalid target".to_owned());
-            }
-            for path in target
-                .source_roots
-                .iter()
-                .chain(&target.entrypoints)
-                .chain(&target.generated_roots)
-            {
-                if !is_relative_logical_path(path) {
-                    return Err("provider package graph target contains an invalid path".to_owned());
-                }
-            }
-        }
+        package
+            .targets
+            .iter()
+            .try_for_each(validate_language_target)?;
     }
-    for edge in &graph.internal_dependency_edges {
+    Ok(package_ids)
+}
+
+fn validate_language_target(target: &LanguageTarget) -> Result<(), String> {
+    if target.target_id.trim().is_empty() || target.name.trim().is_empty() {
+        return Err("provider package graph contains an invalid target".to_owned());
+    }
+    target
+        .source_roots
+        .iter()
+        .chain(&target.entrypoints)
+        .chain(&target.generated_roots)
+        .try_for_each(|path| {
+            if !is_relative_logical_path(path) {
+                return Err("provider package graph target contains an invalid path".to_owned());
+            }
+            Ok(())
+        })
+}
+
+fn validate_internal_dependency_edges(
+    edges: &[InternalDependencyEdge],
+    package_ids: &HashSet<&str>,
+) -> Result<(), String> {
+    edges.iter().try_for_each(|edge| {
         if !package_ids.contains(edge.from_package_id.as_str())
             || !package_ids.contains(edge.to_package_id.as_str())
         {
@@ -315,8 +384,8 @@ fn validate_package_graph(graph: &LanguagePackageGraph) -> Result<(), String> {
                 "provider package graph dependency edge references an unknown package".to_owned(),
             );
         }
-    }
-    Ok(())
+        Ok(())
+    })
 }
 
 fn validate_source_scopes(scopes: &[ResolvedSourceScope]) -> Result<(), String> {

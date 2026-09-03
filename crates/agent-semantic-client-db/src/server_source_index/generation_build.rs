@@ -43,12 +43,29 @@ impl SourceIndexRefreshContext {
         request: SourceIndexGenerationRefresh<'_>,
         cancellation: crate::runtime_generation_cancellation::GenerationCancellation,
     ) -> Result<PreparedSourceIndexGeneration, String> {
-        let changed_owner_paths = request.changed_owner_paths.map(|paths| {
-            paths
-                .iter()
-                .cloned()
-                .collect::<std::collections::BTreeSet<_>>()
-        });
+        let replacement_authority = request.replacement_authority;
+        let changed_owner_paths = request
+            .changed_owner_paths
+            .map(|paths| {
+                paths
+                    .iter()
+                    .cloned()
+                    .collect::<std::collections::BTreeSet<_>>()
+            })
+            .or_else(|| {
+                request.replacement_authority.map(|_| {
+                    request
+                        .files
+                        .iter()
+                        .filter_map(|file| {
+                            file.path
+                                .strip_prefix(request.index_root)
+                                .ok()
+                                .map(|path| path.to_string_lossy().into_owned())
+                        })
+                        .collect::<std::collections::BTreeSet<_>>()
+                })
+            });
         let prepared = self
             .prepare_partial_generation_with_runtime_service_async(
                 runtime,
@@ -63,18 +80,19 @@ impl SourceIndexRefreshContext {
             &self.db_path,
             prepared,
             changed_owner_paths,
+            replacement_authority,
         )
         .await
     }
 
     async fn prepare_partial_generation_with_runtime_service_async(
         &self,
-        runtime: &crate::runtime_search_service::RuntimeSearchServiceHandle,
+        _runtime: &crate::runtime_search_service::RuntimeSearchServiceHandle,
         request: SourceIndexGenerationRefresh<'_>,
         cancellation: crate::runtime_generation_cancellation::GenerationCancellation,
     ) -> Result<PreparedSourceIndexGeneration, String> {
         let trace_started = Instant::now();
-        let (file_hashes, workspace_snapshot, source_snapshot, source_blobs, auxiliary_owners) = tokio::select! {
+        let (file_hashes, workspace_snapshot, source_snapshot, source_blobs, _auxiliary_owners) = tokio::select! {
             result = crate::server_source_index::async_snapshot::source_index_snapshot_from_files_async(
                 request.index_root,
                 request.files,
@@ -85,29 +103,16 @@ impl SourceIndexRefreshContext {
                 return Err("runtime-generation-cancelled: source snapshot cancelled".to_owned());
             }
         };
-        let workspace_identity =
-            agent_semantic_client_core::state_core::ResolvedState::resolve(request.index_root)?
-                .workspace
-                .workspace_id
-                .to_string();
-        let projected_files =
-            crate::server_source_index::projection::project_generation_with_runtime_service(
-                runtime,
-                cancellation,
-                request.index_root,
-                &workspace_identity,
-                request.provider_registry,
-                request.files,
-                &source_blobs,
-                &auxiliary_owners,
-            )
-            .await?;
+        // CompleteGeneration is the immutable source-membership and byte
+        // publication barrier. Provider-native syntax is scheduled after this
+        // base generation becomes resident and is never awaited here.
         self.prepare_generation_from_snapshot(
             SourceIndexGenerationRefresh {
                 index_root: request.index_root,
-                files: &projected_files,
+                files: request.files,
                 project_resolutions: request.project_resolutions,
                 changed_owner_paths: request.changed_owner_paths,
+                replacement_authority: request.replacement_authority,
                 candidate: request.candidate,
                 registry: request.registry,
                 provider_registry: request.provider_registry,
@@ -179,6 +184,7 @@ impl SourceIndexRefreshContext {
 
 pub(super) struct SourceIndexGenerationRefresh<'a> {
     pub(super) changed_owner_paths: Option<&'a [String]>,
+    pub(super) replacement_authority: Option<&'a agent_semantic_search::ResidentSearchAuthority>,
     pub(super) index_root: &'a Path,
     pub(super) files: &'a [SourceIndexScopeFile],
     pub(super) project_resolutions:

@@ -9,6 +9,8 @@ use sha2::{Digest, Sha256};
 
 const SCHEMA_ID: &str = "agent.semantic-protocols.installed-provider-artifacts";
 const SCHEMA_VERSION: &str = "1";
+const INSTALLED_PROVIDER_BINDING_AUTHORITY_DRIFT: &str =
+    "installed provider binding authority drift; automatic refresh is required";
 const FILE_NAME: &str = "installed-provider-artifacts.json";
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -60,6 +62,8 @@ impl InstalledProviderArtifactsPublication {
 #[derive(Clone)]
 pub(crate) struct RuntimeProviderArtifacts {
     document: Arc<InstalledProviderArtifactsDocument>,
+    binding:
+        Option<Arc<agent_semantic_artifacts::installed_provider_binding::InstalledProviderBinding>>,
 }
 
 pub(crate) struct RuntimeProviderLaunch {
@@ -126,32 +130,6 @@ fn validate_serialized_document(
     Ok(())
 }
 
-fn project_registered_provider_artifacts(
-    mut document: InstalledProviderArtifactsDocument,
-) -> Result<InstalledProviderArtifactsDocument, String> {
-    validate_serialized_document(&document)?;
-    let registrations = super::super::provider_install_registry::provider_install_registrations()?
-        .into_iter()
-        .map(|registration| (registration.language_id, registration.provider_id))
-        .collect::<std::collections::BTreeMap<_, _>>();
-    for provider in &document.providers {
-        if let Some(expected_provider_id) = registrations.get(&provider.language_id)
-            && expected_provider_id != &provider.provider_id
-        {
-            return Err(format!(
-                "installed provider identity drift: languageId={} expectedProviderId={} actualProviderId={}",
-                provider.language_id, expected_provider_id, provider.provider_id
-            ));
-        }
-    }
-    document
-        .providers
-        .retain(|provider| registrations.contains_key(&provider.language_id));
-    document.generation = generation(&document.providers)?;
-    validate_serialized_document(&document)?;
-    Ok(document)
-}
-
 fn validate_document(document: &InstalledProviderArtifactsDocument) -> Result<(), String> {
     validate_serialized_document(document)?;
     for provider in &document.providers {
@@ -176,10 +154,91 @@ fn registration_digest(
     Ok(format!("sha256:{:x}", Sha256::digest(bytes)))
 }
 
+fn reconcile_authoritative_binding(
+    state_home: &Path,
+    providers: &[InstalledProviderArtifact],
+    receipts: &[agent_semantic_runtime::ProviderInstallReceipt],
+) -> Result<
+    agent_semantic_artifacts::installed_provider_binding::InstalledProviderBindingPublication,
+    String,
+> {
+    let registry_digest =
+        super::super::provider_install_registry::provider_install_registry_digest()?;
+    let mut catalog =
+        agent_semantic_artifacts::runtime_artifact_catalog::load_runtime_provider_catalog_identity(
+            state_home,
+        )?
+        .ok_or_else(|| "runtime provider catalog identity is not published".to_owned())?;
+    if catalog.install_registry_digest != registry_digest {
+        agent_semantic_artifacts::runtime_artifact_catalog::publish_runtime_provider_catalog(
+            state_home,
+            &catalog.binary_artifact_digest,
+            &registry_digest,
+        )?;
+        catalog = agent_semantic_artifacts::runtime_artifact_catalog::load_runtime_provider_catalog_identity(
+            state_home,
+        )?
+        .ok_or_else(|| "runtime provider catalog identity disappeared after refresh".to_owned())?;
+    }
+    let hook_policy_digest =
+        agent_semantic_hook::aot_compiler::embedded_hook_policy_content_digest()?;
+    let identities = providers
+        .iter()
+        .map(|provider| {
+            let receipt = receipts
+                .iter()
+                .find(|receipt| {
+                    receipt.language_id == provider.language_id
+                        && receipt.provider_id == provider.provider_id
+                })
+                .ok_or_else(|| {
+                    format!(
+                        "installed provider artifact lacks receipt: languageId={} providerId={}",
+                        provider.language_id, provider.provider_id
+                    )
+                })?;
+            Ok(agent_semantic_artifacts::installed_provider_binding::InstalledProviderArtifactIdentity {
+                language_id: provider.language_id.clone(),
+                provider_id: provider.provider_id.clone(),
+                artifact_digest: provider.artifact_digest.clone(),
+                entrypoint_digest: integrity_ref(&receipt.installed_entrypoint_digest),
+                artifact_metadata_digest: provider.artifact_metadata_digest.clone(),
+                execution_command_digest: provider.execution_command_digest.clone(),
+            })
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    agent_semantic_artifacts::installed_provider_binding::reconcile_installed_provider_binding(
+        state_home,
+        agent_semantic_artifacts::installed_provider_binding::InstalledProviderBindingInput {
+            binary_catalog_digest: catalog.catalog_generation,
+            provider_registration_digest: registry_digest,
+            hook_policy_digest,
+            providers: identities,
+        },
+    )
+}
+
+pub(crate) fn reconcile_runtime_provider_catalog_for_binary(
+    state_home: &Path,
+    binary_artifact_digest: &str,
+) -> Result<String, String> {
+    let registry_digest =
+        super::super::provider_install_registry::provider_install_registry_digest()?;
+    agent_semantic_artifacts::runtime_artifact_catalog::publish_runtime_provider_catalog(
+        state_home,
+        binary_artifact_digest,
+        &registry_digest,
+    )
+}
+
 /// Runtime-owned view of the installed provider artifact generation.
 impl RuntimeProviderArtifacts {
     pub(crate) fn generation(&self) -> &str {
-        &self.document.generation
+        self.binding
+            .as_ref()
+            .map_or(self.document.generation.as_str(), |binding| {
+                binding.generation.as_str()
+            })
     }
 
     pub(crate) fn installed_provider_targets(&self) -> Vec<(String, String)> {
@@ -260,7 +319,7 @@ impl RuntimeProviderArtifacts {
         Ok(RuntimeProviderLaunch {
             key: format!(
                 "{}:{}:{}:{}:{}",
-                self.document.generation,
+                self.generation(),
                 provider.language_id,
                 provider.provider_id,
                 provider.artifact_digest,
@@ -272,20 +331,163 @@ impl RuntimeProviderArtifacts {
     }
 }
 
+fn load_authoritative_runtime_projection(
+    state_home: &Path,
+) -> Result<
+    (
+        InstalledProviderArtifactsDocument,
+        Option<agent_semantic_artifacts::installed_provider_binding::InstalledProviderBinding>,
+    ),
+    String,
+> {
+    let binding =
+        agent_semantic_artifacts::installed_provider_binding::load_installed_provider_binding(
+            state_home,
+        )?;
+    let Some(binding) = binding else {
+        return Ok((empty_document()?, None));
+    };
+    let catalog =
+        agent_semantic_artifacts::runtime_artifact_catalog::load_runtime_provider_catalog_identity(
+            state_home,
+        )?
+        .ok_or_else(|| "runtime provider catalog identity is not published".to_owned())?;
+    let registry_digest =
+        super::super::provider_install_registry::provider_install_registry_digest()?;
+    let hook_policy_digest =
+        agent_semantic_hook::aot_compiler::embedded_hook_policy_content_digest()?;
+    if binding.binary_catalog_digest != catalog.catalog_generation
+        || binding.provider_registration_digest != registry_digest
+        || binding.hook_policy_digest != hook_policy_digest
+    {
+        return Err(INSTALLED_PROVIDER_BINDING_AUTHORITY_DRIFT.to_owned());
+    }
+    let receipt_dir = agent_semantic_runtime::provider_receipt_dir(state_home);
+    let providers = binding
+        .providers
+        .iter()
+        .map(|identity| {
+            let receipt = super::super::provider_install_receipt::read_provider_install_receipt(
+                &identity.language_id,
+                &receipt_dir,
+            )?;
+            let artifact_digest = integrity_ref(&receipt.artifact_digest);
+            let entrypoint_digest = integrity_ref(&receipt.installed_entrypoint_digest);
+            let artifact_metadata_digest =
+                integrity_ref(&receipt.installed_entrypoint_metadata_digest);
+            for (field, expected, actual) in [
+                ("providerId", identity.provider_id.as_str(), receipt.provider_id.as_str()),
+                (
+                    "artifactDigest",
+                    identity.artifact_digest.as_str(),
+                    artifact_digest.as_str(),
+                ),
+                (
+                    "entrypointDigest",
+                    identity.entrypoint_digest.as_str(),
+                    entrypoint_digest.as_str(),
+                ),
+                (
+                    "artifactMetadataDigest",
+                    identity.artifact_metadata_digest.as_str(),
+                    artifact_metadata_digest.as_str(),
+                ),
+            ] {
+                if expected != actual {
+                    return Err(format!(
+                        "installed provider artifact failed V1 receipt admission: languageId={} field={field} expected={expected} actual={actual}",
+                        identity.language_id
+                    ));
+                }
+            }
+            let canonical_artifact = agent_semantic_artifacts::installed_provider_binding::admit_installed_provider_artifact(
+                state_home,
+                &receipt.installed_path,
+                identity,
+            )?;
+            let receipt_execution_command_digest =
+                agent_semantic_hook::provider_execution_command_digest(
+                    &[receipt.installed_path.to_string_lossy().into_owned()],
+                    &receipt.installed_entrypoint_digest,
+                )?;
+            if receipt.execution_command_digest != receipt_execution_command_digest {
+                return Err(format!(
+                    "installed provider receipt execution command drift: languageId={} expected={} actual={}",
+                    identity.language_id,
+                    receipt_execution_command_digest,
+                    receipt.execution_command_digest
+                ));
+            }
+            let canonical_execution_command_digest =
+                agent_semantic_hook::provider_execution_command_digest(
+                    &[canonical_artifact.to_string_lossy().into_owned()],
+                    &receipt.installed_entrypoint_digest,
+                )?;
+            if identity.execution_command_digest != canonical_execution_command_digest {
+                return Err(format!(
+                    "installed provider binding execution command drift: languageId={} expected={} actual={}",
+                    identity.language_id,
+                    identity.execution_command_digest,
+                    canonical_execution_command_digest
+                ));
+            }
+            Ok(InstalledProviderArtifact {
+                language_id: identity.language_id.clone(),
+                provider_id: identity.provider_id.clone(),
+                materialized_path: canonical_artifact.to_string_lossy().into_owned(),
+                artifact_digest: identity.artifact_digest.clone(),
+                artifact_metadata_digest: identity.artifact_metadata_digest.clone(),
+                execution_command_digest: identity.execution_command_digest.clone(),
+            })
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    let document = InstalledProviderArtifactsDocument {
+        schema_id: SCHEMA_ID.to_owned(),
+        schema_version: SCHEMA_VERSION.to_owned(),
+        generation: generation(&providers)?,
+        providers,
+    };
+    validate_document(&document)?;
+    Ok((document, Some(binding)))
+}
+
 pub(crate) async fn load_runtime_provider_artifacts(
     state_home: &Path,
 ) -> Result<RuntimeProviderArtifacts, String> {
-    let path = document_path(state_home);
-    let document = match tokio::fs::read(&path).await {
-        Ok(bytes) => serde_json::from_slice(&bytes)
-            .map_err(|error| format!("parse {}: {error}", path.display()))?,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => empty_document()?,
-        Err(error) => return Err(format!("read {}: {error}", path.display())),
-    };
-    let document = project_registered_provider_artifacts(document)?;
+    let (document, binding) = load_runtime_provider_projection_with_refresh(state_home)?;
     Ok(RuntimeProviderArtifacts {
         document: Arc::new(document),
+        binding: binding.map(Arc::new),
     })
+}
+
+fn load_runtime_provider_projection_with_refresh(
+    state_home: &Path,
+) -> Result<
+    (
+        InstalledProviderArtifactsDocument,
+        Option<agent_semantic_artifacts::installed_provider_binding::InstalledProviderBinding>,
+    ),
+    String,
+> {
+    match load_authoritative_runtime_projection(state_home) {
+        Ok(projection) => Ok(projection),
+        Err(error) if error == INSTALLED_PROVIDER_BINDING_AUTHORITY_DRIFT => {
+            publish_current_installed_provider_artifacts(state_home)?;
+            load_authoritative_runtime_projection(state_home).map_err(|refresh_error| {
+                format!("installed provider binding automatic refresh failed: {refresh_error}")
+            })
+        }
+        Err(error) => Err(error),
+    }
+}
+
+pub(crate) fn runtime_provider_binding_generation_with_refresh(
+    state_home: &Path,
+) -> Result<Option<String>, String> {
+    Ok(load_runtime_provider_projection_with_refresh(state_home)?
+        .1
+        .map(|binding| binding.generation))
 }
 
 pub(super) fn publish_installed_provider_artifacts(
@@ -326,6 +528,8 @@ pub(super) fn publish_installed_provider_artifacts(
         providers,
     };
     validate_document(&document)?;
+    let binding_publication =
+        reconcile_authoritative_binding(state_home, &document.providers, receipts)?;
     let path = document_path(state_home);
     let previous = std::fs::read(&path)
         .ok()
@@ -336,9 +540,9 @@ pub(super) fn publish_installed_provider_artifacts(
         .is_some_and(|previous| previous.generation == document.generation)
     {
         return Ok(InstalledProviderArtifactsPublication {
-            generation: document.generation,
+            generation: binding_publication.generation,
             changed_leaf_count: 0,
-            artifact_write: false,
+            artifact_write: binding_publication.artifact_write,
             elapsed_micros: started.elapsed().as_micros().try_into().unwrap_or(u64::MAX),
         });
     }
@@ -373,7 +577,7 @@ pub(super) fn publish_installed_provider_artifacts(
     std::fs::rename(&temporary, &path)
         .map_err(|error| format!("publish {}: {error}", path.display()))?;
     Ok(InstalledProviderArtifactsPublication {
-        generation: document.generation,
+        generation: binding_publication.generation,
         changed_leaf_count,
         artifact_write: true,
         elapsed_micros: started.elapsed().as_micros().try_into().unwrap_or(u64::MAX),
@@ -501,66 +705,39 @@ pub(crate) fn runtime_source_index_provider_projection(
         .into_iter()
         .filter(|registration| required_languages.contains(&registration.language_id))
         .collect::<Vec<_>>();
-    for language_id in required_languages {
-        if !registrations
-            .iter()
-            .any(|registration| &registration.language_id == language_id)
-        {
-            return Err(format!(
-                "state=provider-missing reasonKind=workspace-required-provider-capability-missing languageId={language_id}"
-            ));
-        }
+    let mut missing = required_languages
+        .iter()
+        .filter(|language_id| {
+            !registrations
+                .iter()
+                .any(|registration| &registration.language_id == *language_id)
+        })
+        .map(|language_id| format!("{language_id}:capability"))
+        .collect::<Vec<_>>();
+    missing.extend(registrations.iter().filter_map(|registration| {
+        (!artifacts.document.providers.iter().any(|artifact| {
+            artifact.language_id == registration.language_id
+                && artifact.provider_id == registration.provider_id
+        }))
+        .then(|| format!("{}:artifact", registration.language_id))
+    }));
+    if !missing.is_empty() {
+        missing.sort();
+        return Err(format!(
+            "state=provider-closure-incomplete reasonKind=workspace-required-provider-closure-incomplete missing={}",
+            missing.join(",")
+        ));
     }
     runtime_source_index_provider_projection_for_registrations(artifacts, registrations)
 }
 
-pub(crate) fn workspace_required_provider_languages(
-    register: &agent_semantic_client_db::runtime_provider_register::RuntimeProviderRegister,
-    candidates: &agent_semantic_runtime::git::RepositoryCandidateSnapshot,
-) -> Result<BTreeSet<String>, String> {
-    workspace_required_provider_languages_for_paths(
-        register,
-        candidates
-            .candidates
-            .iter()
-            .map(|candidate| candidate.path.as_path()),
-    )
-}
-
-pub(crate) fn provider_language_for_owner_path(
-    register: &agent_semantic_client_db::runtime_provider_register::RuntimeProviderRegister,
-    owner_path: &Path,
-) -> Result<String, String> {
-    let owner_path = owner_path.to_string_lossy();
-    let mut matches = register
-        .installed_capabilities()
-        .into_iter()
-        .filter_map(|registration| {
-            let inventory = registration.source_inventory().ok()?;
-            inventory
-                .source_extensions
-                .iter()
-                .any(|extension| owner_path.ends_with(extension))
-                .then_some(registration.language_id)
-        });
-    let language_id = matches.next().ok_or_else(|| {
-        format!("runtime owner projection has no registered provider: ownerPath={owner_path}")
-    })?;
-    if matches.next().is_some() {
-        return Err(format!(
-            "runtime owner projection provider is ambiguous: ownerPath={owner_path}"
-        ));
-    }
-    Ok(language_id)
-}
-
 fn workspace_required_provider_languages_for_paths<'a>(
-    register: &agent_semantic_client_db::runtime_provider_register::RuntimeProviderRegister,
+    _register: &agent_semantic_client_db::runtime_provider_register::RuntimeProviderRegister,
     paths: impl IntoIterator<Item = &'a Path>,
 ) -> Result<BTreeSet<String>, String> {
     let paths = paths.into_iter().collect::<Vec<_>>();
     let mut required = BTreeSet::new();
-    for registration in register.installed_capabilities() {
+    for registration in agent_semantic_provider_protocol::builtin_provider_registrations()? {
         let inventory = registration.source_inventory()?;
         let has_entry_marker = inventory
             .project_resolution
@@ -583,6 +760,14 @@ fn workspace_required_provider_languages_for_paths<'a>(
         }
     }
     Ok(required)
+}
+
+pub(crate) fn workspace_required_provider_languages_for_inventory(
+    register: &agent_semantic_client_db::runtime_provider_register::RuntimeProviderRegister,
+    paths: &[String],
+) -> Result<BTreeSet<String>, String> {
+    let paths = paths.iter().map(Path::new).collect::<Vec<_>>();
+    workspace_required_provider_languages_for_paths(register, paths)
 }
 
 fn runtime_source_index_provider_projection_for_registrations(
@@ -693,15 +878,31 @@ fn runtime_source_index_provider_projection_for_registrations(
     let closure_bytes = serde_json::to_vec(
         &providers
             .iter()
-            .map(|provider| {
-                (
+            .map(|provider| -> Result<_, String> {
+                let artifact = artifacts
+                    .document
+                    .providers
+                    .iter()
+                    .find(|artifact| {
+                        artifact.language_id == provider.language_id.as_str()
+                            && artifact.provider_id == provider.provider_id.as_str()
+                    })
+                    .ok_or_else(|| {
+                        format!(
+                            "workspace provider closure lost admitted artifact: languageId={} providerId={}",
+                            provider.language_id.as_str(),
+                            provider.provider_id.as_str()
+                        )
+                    })?;
+                Ok((
                     provider.language_id.as_str(),
                     provider.provider_id.as_str(),
                     provider.registration_digest.as_str(),
-                    provider.binary.as_str(),
-                )
+                    artifact.artifact_digest.as_str(),
+                    artifact.execution_command_digest.as_str(),
+                ))
             })
-            .collect::<Vec<_>>(),
+            .collect::<Result<Vec<_>, String>>()?,
     )
     .map_err(|error| format!("encode workspace provider closure: {error}"))?;
     let closure_digest = format!("sha256:{:x}", Sha256::digest(&closure_bytes));

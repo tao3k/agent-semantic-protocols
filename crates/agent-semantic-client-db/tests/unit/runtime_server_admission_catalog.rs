@@ -92,6 +92,7 @@ async fn catalog_persists_unique_workspace_source_scopes_atomically() {
         .await
         .unwrap();
     let entry = RuntimeWorkspaceAdmissionCatalogEntry {
+        project_id: "repo-test".to_owned(),
         workspace_identity: "workspace-a".to_owned(),
         project_root: root.join("checkout-a"),
     };
@@ -107,6 +108,72 @@ async fn catalog_persists_unique_workspace_source_scopes_atomically() {
 }
 
 #[tokio::test]
+async fn legacy_v1_shape_cannot_populate_the_project_workspace_catalog() {
+    let root = fixture_root();
+    tokio::fs::create_dir_all(&root).await.unwrap();
+    let legacy_path = root.join("workspace-admissions.v1.json");
+    let legacy_bytes = br#"{"schemaId":"agent.semantic-protocols.runtime-server-workspace-admission-catalog.v1","schemaVersion":"1","entries":[{"workspaceIdentity":"workspace-legacy","projectRoot":"/tmp/legacy"}]}"#;
+    tokio::fs::write(&legacy_path, legacy_bytes).await.unwrap();
+
+    let catalog = RuntimeWorkspaceAdmissionCatalog::load(legacy_path.clone())
+        .await
+        .unwrap();
+
+    assert!(catalog.snapshot().is_empty());
+    assert_eq!(tokio::fs::read(&legacy_path).await.unwrap(), legacy_bytes);
+
+    tokio::fs::remove_dir_all(root).await.unwrap();
+}
+
+#[tokio::test]
+async fn identity_only_admission_publishes_v1_catalog_without_generation_build() {
+    let root = fixture_root();
+    let project_root = root.join("checkout");
+    initialize_candidate_checkout(&project_root);
+    let catalog_path = root.join("workspace-admissions.v1.json");
+    let catalog = RuntimeWorkspaceAdmissionCatalog::load(catalog_path.clone())
+        .await
+        .unwrap();
+    let builds = Arc::new(AtomicU64::new(0));
+    let admission =
+        agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmission::new(
+            Arc::new({
+                let builds = Arc::clone(&builds);
+                move |_, _, _, _, _, _, _| {
+                    let builds = Arc::clone(&builds);
+                    Box::pin(async move {
+                        builds.fetch_add(1, Ordering::Relaxed);
+                        Err(WorkspaceGenerationBuildFailure::new(
+                            WorkspaceGenerationFailureStage::GenerationBuilder,
+                            "identity-only admission must not invoke generation builder",
+                        ))
+                    })
+                }
+            }),
+        )
+        .with_catalog(catalog);
+
+    let entry = admission
+        .admit_project_workspace_identity(project_root.clone())
+        .await
+        .expect("admit canonical V1 project/workspace identity");
+
+    assert_eq!(builds.load(Ordering::Relaxed), 0);
+    assert_eq!(admission.admitted_project_workspace_count(), 1);
+    assert!(
+        admission
+            .current(&entry.workspace_identity, &project_root)
+            .is_none()
+    );
+    assert_eq!(
+        RuntimeWorkspaceAdmissionCatalog::resolve_mapped(&catalog_path, &project_root).unwrap(),
+        entry
+    );
+    admission.shutdown().await.unwrap();
+    tokio::fs::remove_dir_all(root).await.unwrap();
+}
+
+#[tokio::test]
 async fn stale_workspace_identity_projection_is_replaced_once_by_current_derivation() {
     let root = fixture_root();
     let project_root = root.join("checkout");
@@ -116,6 +183,7 @@ async fn stale_workspace_identity_projection_is_replaced_once_by_current_derivat
         .await
         .unwrap();
     let stale = RuntimeWorkspaceAdmissionCatalogEntry {
+        project_id: "repo-test".to_owned(),
         workspace_identity: "workspace-legacy-derived-id".to_owned(),
         project_root: project_root.clone(),
     };
@@ -130,6 +198,7 @@ async fn stale_workspace_identity_projection_is_replaced_once_by_current_derivat
     ));
 
     let current = RuntimeWorkspaceAdmissionCatalogEntry {
+        project_id: "repo-test".to_owned(),
         workspace_identity: agent_semantic_client_db::AgentSessionRegistry::workspace_id(
             &project_root,
         )
@@ -184,6 +253,7 @@ async fn repeated_admission_is_silent_and_cannot_retrigger_materialization() {
     let catalog = RuntimeWorkspaceAdmissionCatalog::load(path).await.unwrap();
     let mut publications = catalog.subscribe();
     let entry = RuntimeWorkspaceAdmissionCatalogEntry {
+        project_id: "repo-test".to_owned(),
         workspace_identity: "workspace-republish".to_owned(),
         project_root: root.join("checkout"),
     };
@@ -229,6 +299,7 @@ async fn two_sessions_cannot_amplify_one_workspace_admission_into_io() {
     let catalog = RuntimeWorkspaceAdmissionCatalog::load(path).await.unwrap();
     let mut publications = catalog.subscribe();
     let entry = RuntimeWorkspaceAdmissionCatalogEntry {
+        project_id: "repo-test".to_owned(),
         workspace_identity: "workspace-two-session-pressure".to_owned(),
         project_root: root.join("checkout"),
     };
@@ -282,6 +353,7 @@ async fn catalog_rejects_relative_project_roots() {
     assert!(
         catalog
             .record(RuntimeWorkspaceAdmissionCatalogEntry {
+                project_id: "repo-test".to_owned(),
                 workspace_identity: "workspace-a".to_owned(),
                 project_root: "relative".into(),
             })
@@ -299,6 +371,7 @@ async fn mapped_locator_resolves_canonical_scope_without_runtime_or_git() {
         .await
         .unwrap();
     let entry = RuntimeWorkspaceAdmissionCatalogEntry {
+        project_id: "repo-test".to_owned(),
         workspace_identity: "workspace-mapped".to_owned(),
         project_root: project_root.clone(),
     };
@@ -312,6 +385,51 @@ async fn mapped_locator_resolves_canonical_scope_without_runtime_or_git() {
 }
 
 #[tokio::test]
+async fn project_workspace_resolution_is_exact_and_cross_project_requests_fail_closed() {
+    let root = fixture_root();
+    let catalog = RuntimeWorkspaceAdmissionCatalog::load(root.join("catalog.json"))
+        .await
+        .unwrap();
+    let entry = RuntimeWorkspaceAdmissionCatalogEntry {
+        project_id: "repo-project-a".to_owned(),
+        workspace_identity: "workspace-checkout-a".to_owned(),
+        project_root: root.join("checkout-a"),
+    };
+    catalog.record(entry.clone()).await.unwrap();
+
+    assert_eq!(
+        catalog
+            .resolve_project_workspace("repo-project-a", "workspace-checkout-a")
+            .unwrap(),
+        entry
+    );
+    assert!(
+        catalog
+            .resolve_project_workspace("repo-project-b", "workspace-checkout-a")
+            .is_err()
+    );
+    assert!(
+        catalog
+            .resolve_project_workspace("repo-project-a", "workspace-checkout-b")
+            .is_err()
+    );
+
+    let before_drift = catalog.snapshot();
+    let drift_error = catalog
+        .record(RuntimeWorkspaceAdmissionCatalogEntry {
+            project_id: "repo-project-b".to_owned(),
+            workspace_identity: "workspace-checkout-a".to_owned(),
+            project_root: root.join("checkout-a"),
+        })
+        .await
+        .expect_err("one project/workspace binding must not admit another ProjectId");
+    assert!(drift_error.contains("ProjectId drift"), "{drift_error}");
+    assert_eq!(catalog.snapshot().as_ref(), before_drift.as_ref());
+
+    tokio::fs::remove_dir_all(root).await.unwrap();
+}
+
+#[tokio::test]
 async fn mapped_locator_projects_nested_language_project_to_admitted_workspace() {
     let root = fixture_root();
     let path = root.join("catalog.json");
@@ -321,6 +439,7 @@ async fn mapped_locator_projects_nested_language_project_to_admitted_workspace()
         .await
         .unwrap();
     let workspace_entry = RuntimeWorkspaceAdmissionCatalogEntry {
+        project_id: "repo-test".to_owned(),
         workspace_identity: "workspace-repository".to_owned(),
         project_root: workspace_root.clone(),
     };
@@ -341,6 +460,7 @@ async fn mapped_locator_reloads_after_atomic_catalog_publication() {
         .await
         .unwrap();
     let first = RuntimeWorkspaceAdmissionCatalogEntry {
+        project_id: "repo-test".to_owned(),
         workspace_identity: "workspace-first".to_owned(),
         project_root: root.join("checkout-first"),
     };
@@ -351,6 +471,7 @@ async fn mapped_locator_reloads_after_atomic_catalog_publication() {
     );
 
     let second = RuntimeWorkspaceAdmissionCatalogEntry {
+        project_id: "repo-test".to_owned(),
         workspace_identity: "workspace-second".to_owned(),
         project_root: root.join("checkout-second"),
     };
@@ -371,6 +492,7 @@ async fn catalog_rejects_two_workspace_identities_for_one_canonical_root() {
     let project_root = root.join("checkout");
     catalog
         .record(RuntimeWorkspaceAdmissionCatalogEntry {
+            project_id: "repo-test".to_owned(),
             workspace_identity: "workspace-first".to_owned(),
             project_root: project_root.clone(),
         })
@@ -379,6 +501,7 @@ async fn catalog_rejects_two_workspace_identities_for_one_canonical_root() {
     assert!(
         catalog
             .record(RuntimeWorkspaceAdmissionCatalogEntry {
+                project_id: "repo-test".to_owned(),
                 workspace_identity: "workspace-second".to_owned(),
                 project_root,
             })
@@ -396,6 +519,7 @@ async fn catalog_rejects_one_workspace_identity_for_multiple_roots() {
         .unwrap();
     catalog
         .record(RuntimeWorkspaceAdmissionCatalogEntry {
+            project_id: "repo-test".to_owned(),
             workspace_identity: "workspace-one".to_owned(),
             project_root: root.join("checkout"),
         })
@@ -403,6 +527,7 @@ async fn catalog_rejects_one_workspace_identity_for_multiple_roots() {
         .unwrap();
     let error = catalog
         .record(RuntimeWorkspaceAdmissionCatalogEntry {
+            project_id: "repo-test".to_owned(),
             workspace_identity: "workspace-one".to_owned(),
             project_root: root.join("checkout/src"),
         })
@@ -426,6 +551,7 @@ async fn process_cold_mapped_locator_has_sub_ms_p95_and_bounded_p99() {
         let project_root = root.join(format!("checkout-{index}"));
         catalog
             .record(RuntimeWorkspaceAdmissionCatalogEntry {
+                project_id: "repo-test".to_owned(),
                 workspace_identity: format!("workspace-{index}"),
                 project_root: project_root.clone(),
             })
@@ -474,6 +600,8 @@ async fn typed_ipc_admission_publishes_initial_locator_and_reaches_ready() {
     let root = fixture_root();
     let project_root = root.join("checkout");
     tokio::fs::create_dir_all(&project_root).await.unwrap();
+    let workspace_id =
+        agent_semantic_client_db::AgentSessionRegistry::workspace_id(&project_root).unwrap();
     let catalog_path = root.join("catalog.json");
     assert!(matches!(
         RuntimeWorkspaceAdmissionCatalog::resolve_mapped(&catalog_path, &project_root),
@@ -504,15 +632,11 @@ async fn typed_ipc_admission_publishes_initial_locator_and_reaches_ready() {
         )
         .with_catalog(catalog.clone());
     admission
-        .admit(
-            "workspace-initial",
-            project_root.clone(),
-            candidate_identity(),
-        )
+        .admit(&workspace_id, project_root.clone(), candidate_identity())
         .await
         .unwrap();
     let published = admission
-        .ensure("workspace-initial", &project_root, candidate_identity())
+        .ensure(&workspace_id, &project_root, candidate_identity())
         .await
         .unwrap();
     assert!(matches!(
@@ -522,7 +646,7 @@ async fn typed_ipc_admission_publishes_initial_locator_and_reaches_ready() {
             | agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmissionState::Ready
     ));
     let ready = admission
-        .wait_terminal("workspace-initial", &project_root)
+        .wait_terminal(&workspace_id, &project_root)
         .await
         .unwrap();
     assert_eq!(
@@ -534,7 +658,7 @@ async fn typed_ipc_admission_publishes_initial_locator_and_reaches_ready() {
         RuntimeWorkspaceAdmissionCatalog::resolve_mapped(&catalog_path, &project_root)
             .unwrap()
             .workspace_identity,
-        "workspace-initial"
+        workspace_id
     );
     tokio::fs::remove_file(&catalog_path).await.unwrap();
     assert!(matches!(
@@ -547,7 +671,7 @@ async fn typed_ipc_admission_publishes_initial_locator_and_reaches_ready() {
         RuntimeWorkspaceAdmissionCatalog::resolve_mapped(&catalog_path, &project_root)
             .unwrap()
             .workspace_identity,
-        "workspace-initial"
+        workspace_id
     );
     admission.shutdown().await.unwrap();
     tokio::fs::remove_dir_all(root).await.unwrap();

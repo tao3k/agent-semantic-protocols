@@ -1,439 +1,614 @@
 //! Immutable Ready-generation query executor owned by Runtime Server.
 
-use std::collections::HashMap;
+use std::pin::Pin;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
-use tokio::sync::watch;
+use std::sync::atomic::Ordering;
+use tokio_stream::Stream;
 
-use agent_semantic_client_db::runtime_resident_read::RuntimeResidentReadClient;
+pub use crate::query_generation_calibration::RuntimeSearchGenerationBuildResourceReceipt;
+use crate::query_generation_calibration::{
+    RuntimeSearchCalibrationDecision, RuntimeSearchCalibrationStore,
+    RuntimeSearchGenerationBuildResourceInput, RuntimeSearchGenerationWorkloadKey,
+    cached_calibration_decisions, load_runtime_search_calibration_store,
+    persist_runtime_search_calibration_store, resident_index_minimum_memory_per_worker,
+    resident_index_server_worker_ceiling, runtime_search_calibration_key,
+    select_runtime_search_build_resources, select_single_segment_bulk,
+    upsert_runtime_search_calibration_decision, workload_bucket,
+};
+pub use crate::runtime_query_generation::RuntimeQueryGeneration;
+pub use crate::runtime_query_generation_key::RuntimeProjectWorkspaceKey;
+pub use agent_semantic_search::{
+    RuntimeSearchDerivedAttachmentEvent, RuntimeSearchDerivedAttachmentKind,
+    RuntimeSearchDerivedAttachmentSnapshot, RuntimeSearchDerivedAttachmentState,
+};
+use agent_semantic_search::{
+    RuntimeSearchDerivedAttachmentHub, RuntimeSearchDerivedAttachmentIdentity,
+};
 
-pub struct RuntimeQueryGeneration {
-    generation_digest: String,
-    generation_token: AtomicU64,
-    resident: Option<Arc<RuntimeResidentReadClient>>,
+pub(super) struct RuntimeSearchGenerationBuilder {
+    sender: tokio::sync::mpsc::Sender<RuntimeSearchGenerationBuilderCommand>,
+    task: tokio::sync::Mutex<
+        Option<
+            agent_semantic_client_db::runtime_server_runtime::RuntimeServerOwnedTask<
+                Result<(), String>,
+            >,
+        >,
+    >,
+    accepting: std::sync::atomic::AtomicBool,
+    resource_supervisor:
+        agent_semantic_client_db::runtime_server_runtime::RuntimeServerResourceSupervisor,
+    throughput_by_workload: Arc<
+        std::sync::Mutex<
+            std::collections::BTreeMap<
+                RuntimeSearchGenerationWorkloadKey,
+                std::collections::BTreeMap<usize, u64>,
+            >,
+        >,
+    >,
+    calibration_store: Arc<std::sync::Mutex<RuntimeSearchCalibrationStore>>,
+    calibration_store_path: Option<std::path::PathBuf>,
+    engine_digest: String,
+    effective_cpu: usize,
+    process_memory_budget_bytes: usize,
+    minimum_memory_per_worker_bytes: usize,
+    attachment_hub: RuntimeSearchDerivedAttachmentHub,
 }
 
-#[derive(Clone)]
-pub enum RuntimeQueryGenerationState {
-    Ready(Arc<RuntimeQueryGeneration>),
-    Failed {
-        expected_generation_digest: Arc<str>,
-        reason: Arc<str>,
-    },
+type RuntimeSearchGenerationBuild = Box<
+    dyn FnOnce() -> Result<
+            agent_semantic_client_db::runtime_server_workspace::RuntimeDerivedAttachmentBuildTiming,
+            String,
+        > + Send
+        + 'static,
+>;
+
+struct RuntimeSearchGenerationBuildJob {
+    graph: RuntimeSearchGenerationBuildOperation,
+    lexical: RuntimeSearchGenerationBuildOperation,
 }
 
-#[derive(Clone)]
-pub struct RuntimeQueryGenerationAuthority {
-    sender: watch::Sender<Arc<HashMap<String, RuntimeQueryGenerationState>>>,
-    open_lanes: Arc<tokio::sync::Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>>,
-    next_generation_token: Arc<AtomicU64>,
-    publication_lock: Arc<std::sync::Mutex<()>>,
+struct RuntimeSearchGenerationBuildOperation {
+    name: &'static str,
+    identity: RuntimeSearchDerivedAttachmentIdentity,
+    resources: agent_semantic_client_db::runtime_server_runtime::RuntimeServerResourceRequest,
+    build: RuntimeSearchGenerationBuild,
+    fail: Box<dyn FnOnce(String) + Send + 'static>,
 }
 
-impl RuntimeQueryGenerationAuthority {
-    pub fn new() -> Self {
-        let (sender, _) = watch::channel(Arc::new(HashMap::new()));
-        Self {
+enum RuntimeSearchGenerationBuilderCommand {
+    Build(RuntimeSearchGenerationBuildJob),
+    Shutdown(tokio::sync::oneshot::Sender<()>),
+}
+
+fn emit_runtime_search_build_failure(
+    task: &'static str,
+    reason_kind: &'static str,
+    error: &str,
+    permit: Option<
+        agent_semantic_client_db::runtime_server_runtime::RuntimeServerResourcePermitReceipt,
+    >,
+) {
+    eprintln!(
+        "[runtime-search-generation-build-resource] {}",
+        serde_json::json!({
+            "schemaId": "agent.semantic-protocols.runtime-search-generation-build-resource-use-receipt",
+            "schemaVersion": "1",
+            "state": "failed",
+            "task": task,
+            "reasonKind": reason_kind,
+            "error": error,
+            "permit": permit,
+        })
+    );
+}
+
+fn spawn_runtime_search_generation_build(
+    builds: &mut tokio::task::JoinSet<Result<(), String>>,
+    task_scope: agent_semantic_client_db::runtime_server_runtime::RuntimeServerTaskScope,
+    resource_supervisor: agent_semantic_client_db::runtime_server_runtime::RuntimeServerResourceSupervisor,
+    attachment_hub: RuntimeSearchDerivedAttachmentHub,
+    operation: RuntimeSearchGenerationBuildOperation,
+) {
+    builds.spawn(async move {
+        let RuntimeSearchGenerationBuildOperation {
+            name,
+            identity,
+            resources,
+            build,
+            fail,
+        } = operation;
+        let permit = match resource_supervisor.acquire(resources).await {
+            Ok(permit) => permit,
+            Err(error) => {
+                fail(error.clone());
+                attachment_hub.publish(
+                    &identity,
+                    RuntimeSearchDerivedAttachmentState::Failed,
+                    None,
+                    Some("resource-admission-failed"),
+                );
+                emit_runtime_search_build_failure(
+                    name,
+                    "resource-admission-failed",
+                    &error,
+                    None,
+                );
+                return Err(error);
+            }
+        };
+        let permit_receipt = permit.receipt();
+        attachment_hub.publish(
+            &identity,
+            RuntimeSearchDerivedAttachmentState::Building,
+            None,
+            None,
+        );
+        let task = match task_scope.spawn_blocking(name, build) {
+            Ok(task) => task,
+            Err(error) => {
+                fail(error.clone());
+                attachment_hub.publish(
+                    &identity,
+                    RuntimeSearchDerivedAttachmentState::Failed,
+                    None,
+                    Some("task-admission-failed"),
+                );
+                emit_runtime_search_build_failure(
+                    name,
+                    "task-admission-failed",
+                    &error,
+                    Some(permit_receipt),
+                );
+                return Err(error);
+            }
+        };
+        let timing = match task.join().await {
+            Ok(Ok(timing)) => timing,
+            Ok(Err(error)) => {
+                fail(error.clone());
+                attachment_hub.publish(
+                    &identity,
+                    RuntimeSearchDerivedAttachmentState::Failed,
+                    None,
+                    Some("build-failed"),
+                );
+                emit_runtime_search_build_failure(
+                    name,
+                    "build-failed",
+                    &error,
+                    Some(permit_receipt),
+                );
+                return Err(error);
+            }
+            Err(error) => {
+                fail(error.clone());
+                attachment_hub.publish(
+                    &identity,
+                    RuntimeSearchDerivedAttachmentState::Failed,
+                    None,
+                    Some("task-join-failed"),
+                );
+                emit_runtime_search_build_failure(
+                    name,
+                    "task-join-failed",
+                    &error,
+                    Some(permit_receipt),
+                );
+                return Err(error);
+            }
+        };
+        attachment_hub.publish(
+            &identity,
+            RuntimeSearchDerivedAttachmentState::Ready,
+            Some((timing.build_micros, timing.finalize_micros)),
+            None,
+        );
+        eprintln!(
+            "[runtime-search-generation-build-resource] {}",
+            serde_json::json!({
+                "schemaId": "agent.semantic-protocols.runtime-search-generation-build-resource-use-receipt",
+                "schemaVersion": "1",
+                "state": "ready",
+                "task": name,
+                "permit": permit_receipt,
+                "buildMicros": timing.build_micros,
+                "finalizeMicros": timing.finalize_micros,
+            })
+        );
+        Ok(())
+    });
+}
+
+impl RuntimeSearchGenerationBuilder {
+    #[cfg(test)]
+    fn new(
+        task_scope: agent_semantic_client_db::runtime_server_runtime::RuntimeServerTaskScope,
+        resource_supervisor: agent_semantic_client_db::runtime_server_runtime::RuntimeServerResourceSupervisor,
+    ) -> Result<Self, String> {
+        Self::new_with_calibration_store(task_scope, resource_supervisor, None)
+    }
+
+    pub(super) fn new_with_calibration_store(
+        task_scope: agent_semantic_client_db::runtime_server_runtime::RuntimeServerTaskScope,
+        resource_supervisor: agent_semantic_client_db::runtime_server_runtime::RuntimeServerResourceSupervisor,
+        calibration_store_path: Option<std::path::PathBuf>,
+    ) -> Result<Self, String> {
+        let effective_cpu = resource_supervisor.effective_cpu();
+        let process_memory_budget_bytes = resource_supervisor.memory_budget_bytes();
+        let engine_digest = agent_semantic_search::resident_index_engine_digest();
+        let calibration_store = Arc::new(std::sync::Mutex::new(
+            load_runtime_search_calibration_store(calibration_store_path.as_deref()),
+        ));
+        let minimum_memory_per_worker_bytes =
+            resident_index_minimum_memory_per_worker(process_memory_budget_bytes)?;
+        let (sender, mut receiver) =
+            tokio::sync::mpsc::channel::<RuntimeSearchGenerationBuilderCommand>(32);
+        let attachment_hub = RuntimeSearchDerivedAttachmentHub::new();
+        let build_attachment_hub = attachment_hub.clone();
+        let build_task_scope = task_scope.clone();
+        let build_resources = resource_supervisor.clone();
+        let task = task_scope.spawn("search-generation-builder", async move {
+            let mut builds = tokio::task::JoinSet::new();
+            let mut shutdown_receipt = None;
+            loop {
+                tokio::select! {
+                    command = receiver.recv() => {
+                        match command {
+                            Some(RuntimeSearchGenerationBuilderCommand::Build(job)) => {
+                                for operation in [job.graph, job.lexical] {
+                                    spawn_runtime_search_generation_build(
+                                        &mut builds,
+                                        build_task_scope.clone(),
+                                        build_resources.clone(),
+                                        build_attachment_hub.clone(),
+                                        operation,
+                                    );
+                                }
+                            }
+                            Some(RuntimeSearchGenerationBuilderCommand::Shutdown(receipt)) => {
+                                receiver.close();
+                                shutdown_receipt = Some(receipt);
+                                break;
+                            }
+                            None => break,
+                        }
+                    }
+                    completed = builds.join_next(), if !builds.is_empty() => {
+                        let _ = completed;
+                    }
+                }
+            }
+            while let Ok(command) = receiver.try_recv() {
+                let RuntimeSearchGenerationBuilderCommand::Build(job) = command else {
+                    continue;
+                };
+                for operation in [job.graph, job.lexical] {
+                    spawn_runtime_search_generation_build(
+                        &mut builds,
+                        build_task_scope.clone(),
+                        build_resources.clone(),
+                        build_attachment_hub.clone(),
+                        operation,
+                    );
+                }
+            }
+            while builds.join_next().await.is_some() {}
+            if let Some(receipt) = shutdown_receipt {
+                let _ = receipt.send(());
+            }
+            Ok::<(), String>(())
+        })?;
+        Ok(Self {
             sender,
-            open_lanes: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
-            next_generation_token: Arc::new(AtomicU64::new(0)),
-            publication_lock: Arc::new(std::sync::Mutex::new(())),
-        }
+            task: tokio::sync::Mutex::new(Some(task)),
+            accepting: std::sync::atomic::AtomicBool::new(true),
+            resource_supervisor,
+            throughput_by_workload: Arc::new(std::sync::Mutex::new(
+                std::collections::BTreeMap::new(),
+            )),
+            calibration_store,
+            calibration_store_path,
+            engine_digest,
+            effective_cpu,
+            process_memory_budget_bytes,
+            minimum_memory_per_worker_bytes,
+            attachment_hub,
+        })
     }
 
-    pub fn subscribe(&self) -> watch::Receiver<Arc<HashMap<String, RuntimeQueryGenerationState>>> {
-        self.sender.subscribe()
-    }
-
-    pub fn publish_ready(
+    pub(super) fn schedule(
         &self,
-        workspace_identity: String,
+        key: &RuntimeProjectWorkspaceKey,
+        _project_root: &std::path::Path,
         generation: Arc<RuntimeQueryGeneration>,
-    ) -> Result<u64, String> {
-        let _publication_guard = self
-            .publication_lock
+        previous: Option<&RuntimeQueryGeneration>,
+    ) -> Result<(), String> {
+        let (owner_count, lexical_bytes, changed_owner_count) = generation
+            .resident()
+            .derived_build_workload(previous.map(RuntimeQueryGeneration::resident));
+        let server_worker_ceiling = resident_index_server_worker_ceiling(
+            self.resource_supervisor.background_cpu(),
+            self.process_memory_budget_bytes,
+        )?;
+        let bulk_workload_key =
+            workload_bucket(lexical_bytes, owner_count, changed_owner_count, true);
+        let parallel_workload_key =
+            workload_bucket(lexical_bytes, owner_count, changed_owner_count, false);
+        let throughput_by_workload = self
+            .throughput_by_workload
             .lock()
-            .map_err(|_| "query generation publication lock poisoned".to_owned())?;
-        if let Some(RuntimeQueryGenerationState::Ready(current)) =
-            self.sender.borrow().get(&workspace_identity)
-            && Arc::ptr_eq(current, &generation)
-        {
-            let current_token = current.generation_token();
-            if current_token != 0 {
-                return Ok(current_token);
+            .map_err(|_| "search build throughput history is poisoned".to_owned())?;
+        let mut bulk_history = throughput_by_workload
+            .get(&bulk_workload_key)
+            .cloned()
+            .unwrap_or_default();
+        let mut parallel_history = throughput_by_workload
+            .get(&parallel_workload_key)
+            .cloned()
+            .unwrap_or_default();
+        drop(throughput_by_workload);
+        let cached_decisions = {
+            let store = self
+                .calibration_store
+                .lock()
+                .map_err(|_| "Runtime search calibration store is poisoned".to_owned())?;
+            cached_calibration_decisions(
+                &store,
+                &self.engine_digest,
+                self.effective_cpu,
+                self.process_memory_budget_bytes,
+                bulk_workload_key,
+                parallel_workload_key,
+            )
+        };
+        for decision in cached_decisions {
+            if decision.workers == 0
+                || decision.workers > server_worker_ceiling
+                || decision.memory_budget_bytes > self.process_memory_budget_bytes
+            {
+                return Err(
+                    "Runtime search calibration exceeds current machine authority".to_owned(),
+                );
+            }
+            match decision.strategy.as_str() {
+                "single-segment-bulk" => {
+                    bulk_history.insert(decision.workers, decision.observed_owners_per_second);
+                }
+                "parallel-segments" => {
+                    parallel_history.insert(decision.workers, decision.observed_owners_per_second);
+                }
+                _ => return Err("Runtime search calibration strategy is invalid".to_owned()),
             }
         }
-        let generation_token = if generation.generation_token.load(Ordering::Acquire) == 0 {
-            let next = self.next_generation_token.fetch_add(1, Ordering::AcqRel) + 1;
-            match generation.generation_token.compare_exchange(
-                0,
-                next,
-                Ordering::AcqRel,
-                Ordering::Acquire,
-            ) {
-                Ok(_) | Err(_) => generation.generation_token.load(Ordering::Acquire),
-            }
-        } else {
-            generation.generation_token.load(Ordering::Acquire)
-        };
-        let mut generations = self.sender.borrow().as_ref().clone();
-        if let Some(RuntimeQueryGenerationState::Ready(current)) =
-            generations.get(&workspace_identity)
-            && generation_token <= current.generation_token()
-        {
-            return Err(format!(
-                "state=stale-generation reasonKind=non-monotonic-query-generation-publication workspaceIdentity={workspace_identity} token={generation_token} currentToken={}",
-                current.generation_token()
-            ));
-        }
-        generations.insert(
-            workspace_identity,
-            RuntimeQueryGenerationState::Ready(generation),
-        );
-        self.sender.send_replace(Arc::new(generations));
-        Ok(generation_token)
-    }
-
-    pub fn publish_failed(
-        &self,
-        workspace_identity: String,
-        publication_token: u64,
-        expected_generation_digest: impl Into<Arc<str>>,
-        reason: impl Into<Arc<str>>,
-    ) {
-        let Ok(_publication_guard) = self.publication_lock.lock() else {
-            return;
-        };
-        if let Some(RuntimeQueryGenerationState::Ready(current)) =
-            self.sender.borrow().get(&workspace_identity)
-            && current.generation_token() >= publication_token
-        {
-            return;
-        }
-        let mut generations = self.sender.borrow().as_ref().clone();
-        generations.insert(
-            workspace_identity,
-            RuntimeQueryGenerationState::Failed {
-                expected_generation_digest: expected_generation_digest.into(),
-                reason: reason.into(),
+        let (strategy, strategy_name, workload_key, throughput_by_workers) =
+            if select_single_segment_bulk(owner_count, &bulk_history, &parallel_history) {
+                (
+                    agent_semantic_search::ResidentIndexBuildStrategy::SingleSegmentBulk,
+                    "single-segment-bulk",
+                    bulk_workload_key,
+                    bulk_history,
+                )
+            } else {
+                (
+                    agent_semantic_search::ResidentIndexBuildStrategy::ParallelSegments,
+                    "parallel-segments",
+                    parallel_workload_key,
+                    parallel_history,
+                )
+            };
+        let receipt = select_runtime_search_build_resources(
+            RuntimeSearchGenerationBuildResourceInput {
+                effective_cpu: self.effective_cpu,
+                server_worker_ceiling,
+                process_memory_budget_bytes: self.process_memory_budget_bytes,
+                blocking_lane_pressure: self.resource_supervisor.active_background_cpu(),
+                lexical_bytes,
+                owner_count,
+                changed_owner_count,
             },
+            self.minimum_memory_per_worker_bytes,
+            &throughput_by_workers,
+            strategy_name,
+        )?;
+        let selected = (
+            agent_semantic_search::ResidentIndexBuildResources::new(
+                receipt.chosen_workers,
+                receipt.memory_budget_bytes,
+                strategy,
+            )?,
+            receipt,
+            workload_key,
         );
-        self.sender.send_replace(Arc::new(generations));
-    }
-
-    pub fn clear_workspace(&self, workspace_identity: &str) {
-        let Ok(_publication_guard) = self.publication_lock.lock() else {
-            return;
-        };
-        let mut generations = self.sender.borrow().as_ref().clone();
-        generations.remove(workspace_identity);
-        self.sender.send_replace(Arc::new(generations));
-    }
-
-    /// Admit a cold-build benchmark only when the run-scoped workspace has no
-    /// resident generation.  This does not clear or mutate another workspace.
-    pub fn require_workspace_absent(&self, workspace_identity: &str) -> Result<(), String> {
-        let _publication_guard = self
-            .publication_lock
-            .lock()
-            .map_err(|_| "query generation publication lock poisoned".to_owned())?;
-        if self.sender.borrow().contains_key(workspace_identity) {
-            return Err(format!(
-                "state=cache-state-conflict reasonKind=cold-build-workspace-already-published workspaceIdentity={workspace_identity}"
-            ));
+        generation
+            .build_resource_receipt
+            .set(selected.1.clone())
+            .map_err(|_| "search generation build resources were already published".to_owned())?;
+        let content_generation_digest = generation.content_generation_digest().to_owned();
+        let generation_token = generation.generation_token();
+        if generation_token == 0 {
+            return Err(
+                "search derived attachments require a published generation token".to_owned(),
+            );
         }
+        let graph_build_generation = Arc::clone(&generation);
+        let graph_fail_generation = Arc::clone(&generation);
+        let lexical_build_generation = Arc::clone(&generation);
+        let lexical_fail_generation = Arc::clone(&generation);
+        let graph_content_generation_digest = content_generation_digest.clone();
+        let throughput_by_workload = Arc::clone(&self.throughput_by_workload);
+        let calibration_store = Arc::clone(&self.calibration_store);
+        let calibration_store_path = self.calibration_store_path.clone();
+        let engine_digest = self.engine_digest.clone();
+        let effective_cpu = self.effective_cpu;
+        let process_memory_budget_bytes = self.process_memory_budget_bytes;
+        let (lexical_cpu, lexical_memory) =
+            (selected.1.chosen_workers, selected.1.memory_budget_bytes);
+        self.schedule_job(RuntimeSearchGenerationBuildJob {
+            graph: RuntimeSearchGenerationBuildOperation {
+                name: "search-generation-graph-build",
+                identity: RuntimeSearchDerivedAttachmentIdentity {
+                    project_id: key.project_id().as_str().to_owned(),
+                    workspace_id: key.workspace_id().as_str().to_owned(),
+                    generation_token,
+                    content_generation_digest: content_generation_digest.clone(),
+                    attachment: RuntimeSearchDerivedAttachmentKind::Graph,
+                },
+                resources:
+                    agent_semantic_client_db::runtime_server_runtime::RuntimeServerResourceRequest {
+                        cpu: 1,
+                        memory_bytes: lexical_bytes.max(1).min(self.process_memory_budget_bytes),
+                    },
+                build: Box::new(move || {
+                    graph_build_generation
+                        .resident()
+                        .build_graph_attachment(&graph_content_generation_digest)
+                }),
+                fail: Box::new(move |error| {
+                    graph_fail_generation
+                        .resident()
+                        .fail_graph_attachment(&error)
+                }),
+            },
+            lexical: RuntimeSearchGenerationBuildOperation {
+                name: "search-generation-lexical-build",
+                identity: RuntimeSearchDerivedAttachmentIdentity {
+                    project_id: key.project_id().as_str().to_owned(),
+                    workspace_id: key.workspace_id().as_str().to_owned(),
+                    generation_token,
+                    content_generation_digest: content_generation_digest.clone(),
+                    attachment: RuntimeSearchDerivedAttachmentKind::Tantivy,
+                },
+                resources:
+                    agent_semantic_client_db::runtime_server_runtime::RuntimeServerResourceRequest {
+                        cpu: lexical_cpu,
+                        memory_bytes: lexical_memory,
+                    },
+                build: Box::new(move || {
+                    let (resources, resource_receipt, workload_key) = selected;
+                    let started = std::time::Instant::now();
+                    let timing = lexical_build_generation
+                        .resident()
+                        .build_lexical_attachment(&content_generation_digest, resources)?;
+                    let elapsed_nanos = started.elapsed().as_nanos().max(1);
+                    if lexical_build_generation
+                        .resident()
+                        .lexical_accelerator_is_ready()
+                    {
+                        let owners_per_second = u64::try_from(
+                            (owner_count as u128)
+                                .saturating_mul(1_000_000_000)
+                                .checked_div(elapsed_nanos)
+                                .unwrap_or(0),
+                        )
+                        .unwrap_or(u64::MAX);
+                        if let Ok(mut history) = throughput_by_workload.lock() {
+                            history
+                                .entry(workload_key)
+                                .or_default()
+                                .entry(resource_receipt.chosen_workers)
+                                .and_modify(|observed| {
+                                    *observed = observed.saturating_add(owners_per_second) / 2;
+                                })
+                                .or_insert(owners_per_second);
+                        }
+                        let mut store = calibration_store.lock().map_err(|_| {
+                            "Runtime search calibration store is poisoned".to_owned()
+                        })?;
+                        store.schema_id =
+                            "agent.semantic-protocols.runtime-search-calibration-store".to_owned();
+                        store.schema_version = "1".to_owned();
+                        let key = runtime_search_calibration_key(
+                            &engine_digest,
+                            effective_cpu,
+                            process_memory_budget_bytes,
+                            workload_key,
+                        );
+                        upsert_runtime_search_calibration_decision(
+                            &mut store,
+                            key,
+                            RuntimeSearchCalibrationDecision {
+                                strategy: resource_receipt.strategy.to_owned(),
+                                workers: resource_receipt.chosen_workers,
+                                memory_budget_bytes: resource_receipt.memory_budget_bytes,
+                                observed_owners_per_second: owners_per_second,
+                                sample_identity: content_generation_digest.clone(),
+                            },
+                        );
+                        if let Some(path) = calibration_store_path.as_deref() {
+                            persist_runtime_search_calibration_store(path, &store)?;
+                        }
+                    }
+                    Ok(timing)
+                }),
+                fail: Box::new(move |error| {
+                    lexical_fail_generation
+                        .resident()
+                        .fail_lexical_attachment(&error)
+                }),
+            },
+        })
+    }
+
+    fn schedule_job(&self, job: RuntimeSearchGenerationBuildJob) -> Result<(), String> {
+        if !self.accepting.load(Ordering::Acquire) {
+            return Err("search generation builder is draining".to_owned());
+        }
+        let queued = [job.graph.identity.clone(), job.lexical.identity.clone()];
+        let permit = self.sender.try_reserve().map_err(|error| match error {
+            tokio::sync::mpsc::error::TrySendError::Full(_) => {
+                "search generation builder queue is full".to_owned()
+            }
+            tokio::sync::mpsc::error::TrySendError::Closed(_) => {
+                "search generation builder is closed".to_owned()
+            }
+        })?;
+        for identity in queued {
+            self.attachment_hub.publish(
+                &identity,
+                RuntimeSearchDerivedAttachmentState::Queued,
+                None,
+                None,
+            );
+        }
+        permit.send(RuntimeSearchGenerationBuilderCommand::Build(job));
         Ok(())
     }
 
-    /// Verify a warm benchmark against the exact resident content identity.
-    pub fn verify_ready_exact(
+    pub(super) fn subscribe_attachment_events(
         &self,
-        workspace_identity: &str,
-        expected_generation_digest: &str,
-        expected_root_digest: &str,
-    ) -> Result<(), String> {
-        let _publication_guard = self
-            .publication_lock
-            .lock()
-            .map_err(|_| "query generation publication lock poisoned".to_owned())?;
-        let generations = self.sender.borrow();
-        let Some(RuntimeQueryGenerationState::Ready(generation)) =
-            generations.get(workspace_identity)
-        else {
-            return Err(format!(
-                "state=query-not-ready reasonKind=resident-generation-missing workspaceIdentity={workspace_identity}"
-            ));
-        };
-        validate_ready_identity(
-            workspace_identity,
-            generation,
-            expected_generation_digest,
-            expected_root_digest,
-        )
-    }
-
-    /// Evict exactly one resident workspace generation after comparing both
-    /// generation and source-root identities under the publication lock.
-    pub fn evict_ready_exact(
-        &self,
-        workspace_identity: &str,
-        expected_generation_digest: &str,
-        expected_root_digest: &str,
-    ) -> Result<bool, String> {
-        let _publication_guard = self
-            .publication_lock
-            .lock()
-            .map_err(|_| "query generation publication lock poisoned".to_owned())?;
-        let mut generations = self.sender.borrow().as_ref().clone();
-        let Some(RuntimeQueryGenerationState::Ready(generation)) =
-            generations.get(workspace_identity)
-        else {
-            return Err(format!(
-                "state=query-not-ready reasonKind=resident-generation-missing workspaceIdentity={workspace_identity}"
-            ));
-        };
-        validate_ready_identity(
-            workspace_identity,
-            generation,
-            expected_generation_digest,
-            expected_root_digest,
-        )?;
-        generations.remove(workspace_identity);
-        self.sender.send_replace(Arc::new(generations));
-        Ok(true)
-    }
-
-    pub fn clear_all(&self) {
-        let Ok(_publication_guard) = self.publication_lock.lock() else {
-            return;
-        };
-        self.sender.send_replace(Arc::new(HashMap::new()));
-    }
-
-    pub async fn ensure_ready(
-        &self,
-        workspace_identity: &str,
-        pointer_path: &std::path::Path,
-        project_root: &std::path::Path,
-        expected_generation_digest: &str,
-    ) -> Result<Arc<RuntimeQueryGeneration>, String> {
-        if let Some(RuntimeQueryGenerationState::Ready(generation)) =
-            self.sender.borrow().get(workspace_identity)
-            && generation.generation_digest() == expected_generation_digest
-        {
-            return Ok(Arc::clone(generation));
-        }
-        let lane = {
-            let mut lanes = self.open_lanes.lock().await;
-            Arc::clone(
-                lanes
-                    .entry(workspace_identity.to_owned())
-                    .or_insert_with(|| Arc::new(tokio::sync::Mutex::new(()))),
-            )
-        };
-        let _guard = lane.lock().await;
-        if let Some(RuntimeQueryGenerationState::Ready(generation)) =
-            self.sender.borrow().get(workspace_identity)
-            && generation.generation_digest() == expected_generation_digest
-        {
-            return Ok(Arc::clone(generation));
-        }
-        match RuntimeQueryGeneration::open(pointer_path, project_root).await {
-            Ok(generation) if generation.generation_digest() == expected_generation_digest => {
-                let generation = Arc::new(generation);
-                self.publish_ready(workspace_identity.to_owned(), Arc::clone(&generation))
-                    .map(|_| generation)
-            }
-            Ok(generation) => {
-                let error = format!(
-                    "generation digest mismatch: expected={} actual={}",
-                    expected_generation_digest,
-                    generation.generation_digest()
-                );
-                self.publish_failed(
-                    workspace_identity.to_owned(),
-                    generation.generation_token(),
-                    expected_generation_digest.to_owned(),
-                    error.clone(),
-                );
-                Err(error)
-            }
-            Err(error) => {
-                self.publish_failed(
-                    workspace_identity.to_owned(),
-                    0,
-                    expected_generation_digest.to_owned(),
-                    error.clone(),
-                );
-                Err(error)
-            }
-        }
-    }
-}
-
-fn validate_ready_identity(
-    workspace_identity: &str,
-    generation: &RuntimeQueryGeneration,
-    expected_generation_digest: &str,
-    expected_root_digest: &str,
-) -> Result<(), String> {
-    let actual_root_digest = generation.resident().root_digest();
-    if generation.generation_digest() != expected_generation_digest
-        || actual_root_digest != expected_root_digest
+    ) -> Pin<Box<dyn Stream<Item = Result<RuntimeSearchDerivedAttachmentEvent, String>> + Send>>
     {
-        return Err(format!(
-            "state=stale-generation reasonKind=cache-state-content-binding-mismatch workspaceIdentity={workspace_identity} expectedGenerationDigest={expected_generation_digest} actualGenerationDigest={} expectedRootDigest={expected_root_digest} actualRootDigest={actual_root_digest}",
-            generation.generation_digest()
-        ));
+        self.attachment_hub.subscribe()
     }
-    Ok(())
+
+    pub(super) fn derived_attachment_snapshot(
+        &self,
+    ) -> Arc<RuntimeSearchDerivedAttachmentSnapshot> {
+        self.attachment_hub.snapshot()
+    }
+
+    pub(super) async fn shutdown(&self) -> Result<(), String> {
+        if !self.accepting.swap(false, Ordering::AcqRel) {
+            return Ok(());
+        }
+        let (receipt_sender, receipt_receiver) = tokio::sync::oneshot::channel();
+        self.sender
+            .send(RuntimeSearchGenerationBuilderCommand::Shutdown(
+                receipt_sender,
+            ))
+            .await
+            .map_err(|_| "search generation builder shutdown channel is closed".to_owned())?;
+        receipt_receiver
+            .await
+            .map_err(|_| "search generation builder stopped before drain receipt".to_owned())?;
+        let Some(task) = self.task.lock().await.take() else {
+            return Ok(());
+        };
+        task.join().await??;
+        Ok(())
+    }
 }
 
 #[cfg(test)]
-mod tests {
-    use super::{RuntimeQueryGenerationAuthority, RuntimeQueryGenerationState};
-
-    #[test]
-    fn authority_starts_empty_and_can_clear_all() {
-        let authority = RuntimeQueryGenerationAuthority::new();
-        let receiver = authority.subscribe();
-        assert!(receiver.borrow().is_empty());
-        authority.clear_all();
-        assert!(receiver.borrow().is_empty());
-    }
-
-    #[test]
-    fn cold_build_admission_is_scoped_to_an_absent_workspace() {
-        let authority = RuntimeQueryGenerationAuthority::new();
-        authority
-            .require_workspace_absent("workspace-live-corpus-rust")
-            .expect("fresh benchmark workspace");
-        authority.publish_failed(
-            "workspace-live-corpus-rust".to_owned(),
-            1,
-            format!("blake3-256:{}", "a".repeat(64)),
-            "fixture failure",
-        );
-        let error = authority
-            .require_workspace_absent("workspace-live-corpus-rust")
-            .expect_err("published benchmark workspace must not be reused as cold-build");
-        assert!(error.contains("cold-build-workspace-already-published"));
-        authority
-            .require_workspace_absent("workspace-live-corpus-python")
-            .expect("another language workspace is unaffected");
-    }
-
-    #[test]
-    fn failed_publication_is_bound_to_the_expected_generation_digest() {
-        let authority = RuntimeQueryGenerationAuthority::new();
-        let receiver = authority.subscribe();
-
-        authority.publish_failed(
-            "workspace-test".to_owned(),
-            0,
-            "blake3-256:expected",
-            "resident open failed",
-        );
-
-        let observed = receiver.borrow();
-        let Some(RuntimeQueryGenerationState::Failed {
-            expected_generation_digest,
-            reason,
-        }) = observed.get("workspace-test")
-        else {
-            panic!("failed publication must retain generation identity");
-        };
-        assert_eq!(expected_generation_digest.as_ref(), "blake3-256:expected");
-        assert_eq!(reason.as_ref(), "resident open failed");
-    }
-
-    #[tokio::test]
-    async fn failed_open_publishes_a_typed_workspace_state() {
-        let authority = RuntimeQueryGenerationAuthority::new();
-        let receiver = authority.subscribe();
-        let missing = std::path::Path::new("/definitely-missing-asp-generation/pointer");
-
-        let result = authority
-            .ensure_ready(
-                "workspace-test",
-                missing,
-                std::path::Path::new("/definitely-missing-asp-generation/project"),
-                "blake3-256:expected",
-            )
-            .await;
-        let Err(error) = result else {
-            panic!("missing generation must fail");
-        };
-
-        assert!(!error.is_empty());
-        assert!(matches!(
-            receiver.borrow().get("workspace-test"),
-            Some(RuntimeQueryGenerationState::Failed { .. })
-        ));
-    }
-
-    fn test_generation(digest: &str) -> std::sync::Arc<super::RuntimeQueryGeneration> {
-        std::sync::Arc::new(super::RuntimeQueryGeneration {
-            generation_digest: digest.to_owned(),
-            generation_token: std::sync::atomic::AtomicU64::new(0),
-            resident: None,
-        })
-    }
-
-    #[test]
-    fn republishing_old_arc_cannot_mint_or_rollback() {
-        let authority = RuntimeQueryGenerationAuthority::new();
-        let old = test_generation("blake3-256:old");
-        let newer = test_generation("blake3-256:newer");
-        let old_token = authority
-            .publish_ready("workspace-test".to_owned(), std::sync::Arc::clone(&old))
-            .expect("first publication");
-        let newer_token = authority
-            .publish_ready("workspace-test".to_owned(), std::sync::Arc::clone(&newer))
-            .expect("newer publication");
-        assert!(newer_token > old_token);
-        assert!(
-            authority
-                .publish_ready("workspace-test".to_owned(), old)
-                .is_err()
-        );
-        let current = authority.subscribe();
-        let snapshot = current.borrow().clone();
-        let super::RuntimeQueryGenerationState::Ready(current) =
-            snapshot.get("workspace-test").expect("current")
-        else {
-            panic!("expected ready generation")
-        };
-        assert_eq!(current.generation_digest(), "blake3-256:newer");
-        assert_eq!(current.generation_token(), newer_token);
-    }
-}
-
-impl RuntimeQueryGeneration {
-    pub async fn open(
-        pointer_path: &std::path::Path,
-        project_root: &std::path::Path,
-    ) -> Result<Self, String> {
-        let resident = RuntimeResidentReadClient::open(pointer_path, project_root).await?;
-        let generation_digest = resident.generation_digest();
-        Ok(Self {
-            generation_digest,
-            generation_token: AtomicU64::new(0),
-            resident: Some(Arc::new(resident)),
-        })
-    }
-
-    pub fn generation_digest(&self) -> &str {
-        &self.generation_digest
-    }
-
-    pub fn generation_token(&self) -> u64 {
-        self.generation_token.load(Ordering::Acquire)
-    }
-
-    pub fn resident(&self) -> &RuntimeResidentReadClient {
-        self.resident
-            .as_deref()
-            .expect("ready query generation always owns a resident read client")
-    }
-}
+#[path = "../tests/unit/query_generation.rs"]
+mod tests;

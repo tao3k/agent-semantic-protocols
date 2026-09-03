@@ -13,7 +13,7 @@ LANGUAGE_RELEASE_WORKFLOWS = {
             "x86_64-pc-windows-msvc",
         },
     },
-    "languages/typescript-lang-project-harness": {
+    "languages/asp-typescript": {
         "binary": "asp-typescript",
         "darwin_os": "ubuntu-latest",
         "targets": {

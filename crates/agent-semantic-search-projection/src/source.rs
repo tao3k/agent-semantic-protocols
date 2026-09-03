@@ -53,12 +53,12 @@ impl ResidentGraphEvaluationRequestV1 {
         )?;
         require_bounded_unique_string_array(object, "queryTerms", 32, 256)?;
         require_allowed_string(object, "profile", &["balanced", "structural", "dependency"])?;
-        require_bounded_unique_string_array(object, "seedIds", 128, 1024)?;
+        require_bounded_unique_string_array(object, "entryNodeIds", 128, 1024)?;
         let query_terms = object["queryTerms"].as_array().expect("validated array");
-        let seed_ids = object["seedIds"].as_array().expect("validated array");
-        if query_terms.is_empty() && seed_ids.is_empty() {
+        let entry_node_ids = object["entryNodeIds"].as_array().expect("validated array");
+        if query_terms.is_empty() && entry_node_ids.is_empty() {
             return Err(SearchProjectionError::InvalidPacket(
-                "resident graph evaluation requires queryTerms or seedIds".to_owned(),
+                "resident graph evaluation requires queryTerms or entryNodeIds".to_owned(),
             ));
         }
         validate_resident_evaluation_budget(object)?;
@@ -193,7 +193,7 @@ impl GraphTurboResultPacketV1 {
         require_exact_string(object, "packetKind", "graph-turbo-result")?;
         require_non_empty_string(object, "profile")?;
         require_non_empty_string(object, "algorithm")?;
-        require_string_array(object, "seedIds")?;
+        require_string_array(object, "entryNodeIds")?;
         require_object_array(object, "rankedNodes")?;
         require_object_array(object, "edges")?;
 
@@ -316,7 +316,7 @@ fn reject_unknown_resident_evaluation_fields(
         "surface",
         "queryTerms",
         "profile",
-        "seedIds",
+        "entryNodeIds",
         "budget",
     ];
     if let Some(field) = object

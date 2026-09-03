@@ -4,6 +4,14 @@ use super::{
 };
 use agent_semantic_artifacts::runtime_artifact_catalog::RuntimeBinaryIdentity;
 
+fn loopback(
+    port: u16,
+) -> agent_semantic_client_db::runtime_server_control::RuntimeServerLoopbackEndpoint {
+    agent_semantic_client_db::runtime_server_control::RuntimeServerLoopbackEndpoint::from_socket_addr(
+        ([127, 0, 0, 1], port).into(),
+    ).expect("loopback endpoint")
+}
+
 fn endpoint() -> RuntimeServerEndpoint {
     RuntimeServerEndpoint {
         binary_content_digest: RuntimeBinaryIdentity::from_bytes(b"running-runtime")
@@ -25,9 +33,9 @@ fn endpoint() -> RuntimeServerEndpoint {
         artifact_catalog_digest:
             "blake3-256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_owned(),
         binding_token: "binding-token".to_owned(),
-        socket_path: "/runtime/control.sock".to_owned(),
-        data_plane_socket_path: "/runtime/data.sock".to_owned(),
-        provider_plane_socket_path: "/runtime/providers.sock".to_owned(),
+        control_endpoint: loopback(41001),
+        data_endpoint: loopback(41002),
+        provider_endpoint: loopback(41003),
         workspace_store_path: "/runtime/workspaces".to_owned(),
         status_memory_path: "/runtime/status.memory".to_owned(),
     }
@@ -112,7 +120,7 @@ fn endpoint_requires_a_typed_artifact_mode_and_catalog_digest() {
 }
 
 #[test]
-fn endpoint_owner_process_identity_is_additive_and_legacy_safe() {
+fn endpoint_requires_owner_process_identity() {
     let mut encoded = serde_json::to_value(endpoint()).expect("serialize endpoint");
     assert_eq!(encoded["ownerProcessId"], 77);
 
@@ -120,9 +128,25 @@ fn endpoint_owner_process_identity_is_additive_and_legacy_safe() {
         .as_object_mut()
         .expect("endpoint object")
         .remove("ownerProcessId");
-    let legacy: RuntimeServerEndpoint =
-        serde_json::from_value(encoded).expect("decode legacy endpoint without ownerProcessId");
-    assert_eq!(legacy.owner_process_id, 0);
+    let error = serde_json::from_value::<RuntimeServerEndpoint>(encoded)
+        .expect_err("endpoint without ownerProcessId must fail closed");
+    assert!(error.to_string().contains("ownerProcessId"));
+}
+
+#[test]
+fn runtime_ingress_rejects_non_loopback_and_zero_port() {
+    let non_loopback = "192.0.2.10:47001".parse().expect("test address");
+    assert!(
+        agent_semantic_client_db::runtime_server_control::RuntimeServerLoopbackEndpoint::from_socket_addr(non_loopback)
+            .expect_err("non-loopback ingress must fail closed")
+            .contains("loopback")
+    );
+    let zero_port = "127.0.0.1:0".parse().expect("test address");
+    assert!(
+        agent_semantic_client_db::runtime_server_control::RuntimeServerLoopbackEndpoint::from_socket_addr(zero_port)
+            .expect_err("zero-port ingress must fail closed")
+            .contains("nonzero")
+    );
 }
 
 #[test]

@@ -17,9 +17,6 @@ pub async fn cleanup_runtime_server_endpoint(
     }
     for path in [
         runtime_server_endpoint_path_async(state_home).await?,
-        PathBuf::from(&endpoint.socket_path),
-        PathBuf::from(&endpoint.data_plane_socket_path),
-        PathBuf::from(&endpoint.provider_plane_socket_path),
         PathBuf::from(&endpoint.status_memory_path),
     ] {
         match tokio::fs::remove_file(&path).await {
@@ -64,26 +61,21 @@ pub(crate) async fn cleanup_invalid_runtime_server_endpoint(
         }
     };
     let mut paths = Vec::new();
-    if let (Some(owner_epoch), Some(binding_token), Some(identity)) = (
-        value.get("ownerEpoch").and_then(serde_json::Value::as_u64),
-        value
+    if value
+        .get("ownerEpoch")
+        .and_then(serde_json::Value::as_u64)
+        .is_some()
+        && value
             .get("bindingToken")
-            .and_then(serde_json::Value::as_str),
-        value
+            .and_then(serde_json::Value::as_str)
+            .is_some()
+        && value
             .get("runtimeBinaryIdentity")
             .and_then(|value| value.get("value"))
-            .and_then(serde_json::Value::as_str),
-    ) {
+            .and_then(serde_json::Value::as_str)
+            .is_some()
+    {
         let runtime_base = super::endpoint_identity::runtime_server_runtime_base(state_home)?;
-        let digest =
-            blake3::hash(format!("{owner_epoch}\0{binding_token}\0{identity}").as_bytes()).to_hex();
-        paths.push(runtime_base.join(format!("r-{}.sock", &digest[..16])));
-        paths.push(runtime_base.join(format!("r-{}.data.sock", &digest[..16])));
-        paths.push(super::provider_endpoint::provider_plane_socket_path(
-            &runtime_base,
-            &digest,
-            103,
-        )?);
         paths.push(runtime_base.join("status.v1.memory"));
     } else {
         // Without a verifiable identity, only remove the canonical receipt.

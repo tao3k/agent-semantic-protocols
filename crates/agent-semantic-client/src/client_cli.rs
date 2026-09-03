@@ -100,11 +100,12 @@ async fn run_providers(parsed: ParsedArgs) -> Result<(), String> {
         expected_generation: None,
         request: agent_semantic_provider_protocol::ProviderRegisterOperation::List,
     };
-    let response = agent_semantic_provider_transport::grpc_session::call_runtime_provider_register(
-        &endpoint.provider_plane_socket_path,
-        &request,
-    )
-    .await?;
+    let response =
+        agent_semantic_provider_transport::grpc_session::call_runtime_provider_register_tcp(
+            endpoint.provider_endpoint.socket_addr(),
+            &request,
+        )
+        .await?;
     let agent_semantic_provider_protocol::ProviderRegisterResult::Snapshot { snapshot } =
         response.result
     else {

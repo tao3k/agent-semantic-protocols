@@ -6,18 +6,24 @@ use agent_semantic_client_db::runtime_server_control::{
 };
 
 struct TestListeners {
-    _control: tokio::net::UnixListener,
-    _data: tokio::net::UnixListener,
-    provider: Option<tokio::net::UnixListener>,
+    _control: tokio::net::TcpListener,
+    _data: tokio::net::TcpListener,
+    provider: Option<tokio::net::TcpListener>,
 }
 
 async fn endpoint_with_listeners(root: &Path) -> (RuntimeServerEndpoint, TestListeners) {
-    let control_path = root.join("control.sock");
-    let data_path = root.join("data.sock");
-    let provider_path = root.join("provider.sock");
-    let control = tokio::net::UnixListener::bind(&control_path).expect("bind control");
-    let data = tokio::net::UnixListener::bind(&data_path).expect("bind data");
-    let provider = tokio::net::UnixListener::bind(&provider_path).expect("bind provider");
+    let control = tokio::net::TcpListener::bind(("127.0.0.1", 0))
+        .await
+        .expect("bind control");
+    let data = tokio::net::TcpListener::bind(("127.0.0.1", 0))
+        .await
+        .expect("bind data");
+    let provider = tokio::net::TcpListener::bind(("127.0.0.1", 0))
+        .await
+        .expect("bind provider");
+    let control_endpoint = agent_semantic_client_db::runtime_server_control::RuntimeServerLoopbackEndpoint::from_socket_addr(control.local_addr().expect("control address")).expect("control endpoint");
+    let data_endpoint = agent_semantic_client_db::runtime_server_control::RuntimeServerLoopbackEndpoint::from_socket_addr(data.local_addr().expect("data address")).expect("data endpoint");
+    let provider_endpoint = agent_semantic_client_db::runtime_server_control::RuntimeServerLoopbackEndpoint::from_socket_addr(provider.local_addr().expect("provider address")).expect("provider endpoint");
     let runtime_binary_identity = runtime_identity();
     let binary_content_digest = match &runtime_binary_identity {
         RuntimeBinaryIdentity::Content { digest } => digest.to_string(),
@@ -40,9 +46,9 @@ async fn endpoint_with_listeners(root: &Path) -> (RuntimeServerEndpoint, TestLis
         artifact_mode: "dev".to_owned(),
         artifact_catalog_digest: format!("blake3-256:{}", "1".repeat(64)),
         binding_token: "test-binding".to_owned(),
-        socket_path: control_path.display().to_string(),
-        data_plane_socket_path: data_path.display().to_string(),
-        provider_plane_socket_path: provider_path.display().to_string(),
+        control_endpoint,
+        data_endpoint,
+        provider_endpoint,
         workspace_store_path: root.join("workspaces").display().to_string(),
         status_memory_path: root.join("status.memory").display().to_string(),
     };

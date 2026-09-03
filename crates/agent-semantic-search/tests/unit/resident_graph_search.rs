@@ -5,11 +5,29 @@ use agent_semantic_content_identity::{
 };
 use agent_semantic_search_projection::{ResidentSearchHit, ResidentSearchProjectionTier};
 
+use crate::resident_graph_search::materialize_resident_graph_generation;
 use crate::{
-    ResidentGraphEvaluationBudget, ResidentGraphEvaluationRequest, ResidentGraphSearchBudget,
-    ResidentGraphSearchRequest, build_resident_graph_generation,
-    evaluate_resident_graph_generation, rank_resident_graph_generation, stable_graph_node_id,
+    ContentSearchGenerationReceipt, ResidentGraphEvaluationBudget, ResidentGraphEvaluationRequest,
+    ResidentGraphSearchBudget, ResidentGraphSearchRequest, SearchGenerationConstructionStage,
+    SearchGenerationGraphRequest, SearchGenerationIdentity, SearchGenerationStageReceipt,
+    build_resident_graph_generation, evaluate_resident_graph_generation,
+    rank_resident_graph_generation, stable_graph_node_id,
 };
+
+fn content_generation(identity: &SearchGenerationIdentity) -> ContentSearchGenerationReceipt {
+    let stage = |stage, byte: char| SearchGenerationStageReceipt {
+        stage,
+        identity: identity.clone(),
+        artifact_digest: format!("blake3-256:{}", byte.to_string().repeat(64)),
+        worker_id: byte.to_string(),
+        complete: true,
+    };
+    ContentSearchGenerationReceipt::new(stage(
+        SearchGenerationConstructionStage::SourceByteAcquisition,
+        'e',
+    ))
+    .expect("content generation")
+}
 
 fn hit(path: &str) -> ResidentSearchHit {
     ResidentSearchHit {
@@ -65,7 +83,7 @@ fn lexical_frontier_ranks_inside_one_generation_bound_graph() {
     };
     let hits = vec![hit("src/lib.rs")];
     let relations = vec![relation("src/lib.rs")];
-    let graph = build_resident_graph_generation(
+    let graph = materialize_resident_graph_generation(
         &snapshot,
         &generation,
         ["src/lib.rs".to_owned()],
@@ -76,7 +94,7 @@ fn lexical_frontier_ranks_inside_one_generation_bound_graph() {
     let stage = rank_resident_graph_generation(
         ResidentGraphSearchRequest {
             operation_id: "dispatch-1",
-            operation: "pipe",
+            operation: "conceptual",
             query: "WorkspaceGenerationAdmission compare",
             language_id: "rust",
             provider_id: "asp-rust",
@@ -98,7 +116,7 @@ fn lexical_frontier_ranks_inside_one_generation_bound_graph() {
     assert_eq!(stage.generation_digest, generation_digest);
     assert_eq!(stage.ranked_owner_paths, ["src/lib.rs"]);
     assert_eq!(stage.work.provider_rpc_count, 0);
-    assert_eq!(graph.graph()["edges"].as_array().unwrap().len(), 1);
+    assert_eq!(graph.edge_count(), 1);
 }
 
 #[test]
@@ -113,7 +131,7 @@ fn graph_projection_rejects_a_lexical_owner_outside_the_generation() {
         owner_count: 1,
     };
     let hits = vec![hit("src/lib.rs")];
-    let graph = build_resident_graph_generation(
+    let graph = materialize_resident_graph_generation(
         &snapshot,
         &generation,
         ["src/other.rs".to_owned()],
@@ -124,7 +142,7 @@ fn graph_projection_rejects_a_lexical_owner_outside_the_generation() {
     let error = rank_resident_graph_generation(
         ResidentGraphSearchRequest {
             operation_id: "dispatch-2",
-            operation: "pipe",
+            operation: "conceptual",
             query: "compare",
             language_id: "rust",
             provider_id: "asp-rust",
@@ -157,14 +175,14 @@ fn generation_graph_is_query_independent_and_deterministic() {
         leaf_count: 2,
         owner_count: 2,
     };
-    let forward = build_resident_graph_generation(
+    let forward = materialize_resident_graph_generation(
         &snapshot,
         &generation,
         ["src/z.rs".to_owned(), "src/a.rs".to_owned()],
         [relation("src/a.rs")],
     )
     .expect("forward graph");
-    let reverse = build_resident_graph_generation(
+    let reverse = materialize_resident_graph_generation(
         &snapshot,
         &generation,
         ["src/a.rs".to_owned(), "src/z.rs".to_owned()],
@@ -173,7 +191,8 @@ fn generation_graph_is_query_independent_and_deterministic() {
     .expect("reverse graph");
 
     assert_eq!(forward.digest(), reverse.digest());
-    assert_eq!(forward.graph(), reverse.graph());
+    assert_eq!(forward.node_count(), reverse.node_count());
+    assert_eq!(forward.edge_count(), reverse.edge_count());
 }
 
 #[test]
@@ -199,7 +218,7 @@ fn generation_graph_rejects_a_relation_to_an_unadmitted_owner() {
         },
     };
 
-    let error = build_resident_graph_generation(
+    let error = materialize_resident_graph_generation(
         &snapshot,
         &generation,
         ["src/lib.rs".to_owned()],
@@ -223,7 +242,7 @@ fn generation_graph_cannot_be_reused_under_a_different_source_root() {
         leaf_count: 1,
         owner_count: 1,
     };
-    let graph = build_resident_graph_generation(
+    let graph = materialize_resident_graph_generation(
         &snapshot,
         &generation,
         ["src/lib.rs".to_owned()],
@@ -246,7 +265,7 @@ fn generation_graph_cannot_be_reused_under_a_different_source_root() {
     let error = rank_resident_graph_generation(
         ResidentGraphSearchRequest {
             operation_id: "dispatch-stale",
-            operation: "pipe",
+            operation: "conceptual",
             query: "compare",
             language_id: "rust",
             provider_id: "asp-rust",
@@ -271,49 +290,92 @@ fn generation_graph_cannot_be_reused_under_a_different_source_root() {
 #[test]
 fn warm_graph_rank_executes_inside_the_resident_generation_without_provider_rpc() {
     let root = "a".repeat(64);
-    let snapshot =
-        SourceSnapshotEvidence::new(root.clone(), SourceSnapshotKind::Filesystem, 2, "provider");
+    let snapshot = SourceSnapshotEvidence::new(
+        root.clone(),
+        SourceSnapshotKind::Filesystem,
+        2,
+        format!("blake3-256:{}", "b".repeat(64)),
+    );
     let generation = WorkspaceGenerationEvidenceV1 {
         root_digest: root,
         root_depth: 1,
         leaf_count: 2,
         owner_count: 2,
     };
-    let graph = build_resident_graph_generation(
-        &snapshot,
-        &generation,
+    let identity = SearchGenerationIdentity {
+        project_id: "project-cache".to_owned(),
+        workspace_id: "workspace-cache".to_owned(),
+        source_root_digest: format!("blake3-256:{}", "a".repeat(64)),
+        provider_digest: format!("blake3-256:{}", "b".repeat(64)),
+        schema_digest: format!("blake3-256:{}", "c".repeat(64)),
+        generation_candidate_digest: format!("blake3-256:{}", "d".repeat(64)),
+    };
+    let graph_request = SearchGenerationGraphRequest::new(
+        &content_generation(&identity),
+        snapshot.clone(),
+        generation.clone(),
         ["src/a.rs".to_owned(), "src/b.rs".to_owned()],
         [owner_relation("src/a.rs", "src/b.rs")],
     )
-    .expect("generation graph");
+    .expect("generation graph request");
+    let graph = build_resident_graph_generation(std::sync::Arc::new(graph_request))
+        .expect("generation graph");
     let generation_digest = format!("blake3-256:{}", "c".repeat(64));
+    let hits = [hit("src/a.rs")];
+    let budget = ResidentGraphSearchBudget {
+        max_nodes: 8,
+        max_edges: 8,
+        max_frontier: 8,
+        max_results: 8,
+    };
     let stage = rank_resident_graph_generation(
         ResidentGraphSearchRequest {
             operation_id: "dispatch-resident",
-            operation: "pipe",
+            operation: "conceptual",
             query: "compare",
             language_id: "rust",
             provider_id: "asp-rust",
             generation_digest: &generation_digest,
             source_snapshot: &snapshot,
             workspace_generation: &generation,
-            lexical_hits: &[hit("src/a.rs")],
+            lexical_hits: &hits,
             generation_graph: &graph,
         },
-        ResidentGraphSearchBudget {
-            max_nodes: 8,
-            max_edges: 8,
-            max_frontier: 8,
-            max_results: 8,
-        },
+        budget,
     )
     .expect("resident graph rank");
+    let cached = rank_resident_graph_generation(
+        ResidentGraphSearchRequest {
+            operation_id: "dispatch-resident-replay",
+            operation: "conceptual",
+            query: "COMPARE",
+            language_id: "rust",
+            provider_id: "asp-rust",
+            generation_digest: &generation_digest,
+            source_snapshot: &snapshot,
+            workspace_generation: &generation,
+            lexical_hits: &hits,
+            generation_graph: &graph,
+        },
+        budget,
+    )
+    .expect("cached resident graph rank");
 
     assert_eq!(stage.ranked_owner_paths, ["src/a.rs", "src/b.rs"]);
     assert_eq!(stage.work.provider_rpc_count, 0);
     assert!(stage.work.visited_nodes <= 8);
     assert!(stage.work.visited_edges <= 8);
     assert!(stage.work.frontier_peak <= 8);
+    assert_eq!(stage.work.cache_miss_count, 1);
+    assert_eq!(stage.work.cache_hit_count, 0);
+    assert_eq!(cached.work.cache_hit_count, 1);
+    assert_eq!(cached.work.cache_miss_count, 0);
+    assert_eq!(cached.work.cache_entry_count, 1);
+    assert_eq!(cached.work.cache_capacity, 1_024);
+    assert_eq!(cached.work.cache_shard_count, 64);
+    assert!(cached.work.cache_value_bytes > 0);
+    assert_eq!(cached.result_digest, stage.result_digest);
+    assert_eq!(cached.ranked_owner_paths, stage.ranked_owner_paths);
 }
 
 #[test]
@@ -327,7 +389,7 @@ fn resident_graph_rank_fails_closed_when_the_explicit_budget_is_exhausted() {
         leaf_count: 2,
         owner_count: 2,
     };
-    let graph = build_resident_graph_generation(
+    let graph = materialize_resident_graph_generation(
         &snapshot,
         &generation,
         ["src/a.rs".to_owned(), "src/b.rs".to_owned()],
@@ -338,7 +400,7 @@ fn resident_graph_rank_fails_closed_when_the_explicit_budget_is_exhausted() {
     let error = rank_resident_graph_generation(
         ResidentGraphSearchRequest {
             operation_id: "dispatch-budget",
-            operation: "pipe",
+            operation: "conceptual",
             query: "compare",
             language_id: "rust",
             provider_id: "asp-rust",
@@ -371,7 +433,7 @@ fn intent_only_evaluation_uses_the_resident_generation_and_zero_provider_rpc() {
         leaf_count: 2,
         owner_count: 2,
     };
-    let graph = build_resident_graph_generation(
+    let graph = materialize_resident_graph_generation(
         &snapshot,
         &generation,
         ["src/a.rs".to_owned(), "src/b.rs".to_owned()],
@@ -385,7 +447,7 @@ fn intent_only_evaluation_uses_the_resident_generation_and_zero_provider_rpc() {
             generation_digest: &generation_digest,
             source_snapshot: &snapshot,
             workspace_generation: &generation,
-            seed_ids: &[stable_graph_node_id("owner", "src/a.rs")],
+            entry_node_ids: &[stable_graph_node_id("owner", "src/a.rs")],
             generation_graph: &graph,
         },
         ResidentGraphEvaluationBudget {

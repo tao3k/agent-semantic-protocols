@@ -1,6 +1,5 @@
 //! Low-overhead resident-process memory evidence for Runtime Server telemetry.
 
-pub(super) const RUNTIME_SERVER_MEMORY_BUDGET_BYTES: u64 = 1024 * 1024 * 1024;
 pub(super) const MEMORY_WATERMARK_STEP_BYTES: u64 = 256 * 1024 * 1024;
 pub(super) const RUNTIME_EVENT_LOOP_LAG_BUDGET_MICROS: u64 = 10_000;
 pub(super) const RUNTIME_SERVER_OPEN_DESCRIPTOR_BUDGET: u64 = 1_024;
@@ -94,7 +93,10 @@ pub(super) fn observe_process_memory(
     Some(ProcessMemoryObservation {
         resident_bytes,
         peak_resident_bytes,
-        budget_bytes: RUNTIME_SERVER_MEMORY_BUDGET_BYTES,
+        budget_bytes: u64::try_from(
+            crate::runtime_server_runtime::runtime_server_process_memory_budget_bytes(),
+        )
+        .unwrap_or(u64::MAX),
         disk_read_bytes: io.map(|io| io.disk_read_bytes),
         disk_write_bytes: io.map(|io| io.disk_write_bytes),
         page_ins: io.map(|io| io.page_ins),

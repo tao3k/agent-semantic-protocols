@@ -26,50 +26,70 @@ pub(crate) async fn source_index_snapshot_from_files_async(
 > {
     let auxiliary_owners =
         collect_projection_auxiliary_owners(index_root, files, provider_registry).await?;
-    let io_concurrency = tokio::runtime::Handle::current()
-        .metrics()
-        .num_workers()
-        .max(1);
-    let mut reads = tokio::task::JoinSet::new();
-    let mut next_file = 0_usize;
-    let mut results = vec![None; files.len()];
-    while next_file < files.len() || !reads.is_empty() {
-        while next_file < files.len() && reads.len() < io_concurrency {
-            let index = next_file;
-            let source_path = if files[index].path.is_absolute() {
-                files[index].path.clone()
+    // One Tokio filesystem future per owner floods the blocking scheduler,
+    // while one sequential batch underuses large machines. Partition the
+    // immutable inventory into an adaptive O(CPU) set of deterministic shards;
+    // each shard performs sequential blocking reads and returns indexed facts.
+    let source_paths = files
+        .iter()
+        .map(|file| {
+            if file.path.is_absolute() {
+                file.path.clone()
             } else {
-                index_root.join(&files[index].path)
-            };
-            let index_root = index_root.to_path_buf();
-            reads.spawn(async move {
-                let bytes = tokio::fs::read(&source_path).await.map_err(|error| {
-                    format!(
-                        "failed to hash workspace source {} with BLAKE3: {error}",
-                        source_path.display()
-                    )
-                })?;
-                let snapshot_path = source_path
-                    .strip_prefix(&index_root)
-                    .unwrap_or(source_path.as_path())
-                    .to_string_lossy()
-                    .replace('\\', "/");
-                Ok::<_, String>((index, snapshot_path, bytes))
-            });
-            next_file += 1;
-        }
-        if let Some(result) = reads.join_next().await {
-            let (index, snapshot_path, bytes) =
-                result.map_err(|error| format!("workspace source read task failed: {error}"))??;
-            results[index] = Some((snapshot_path, bytes));
-        }
+                index_root.join(&file.path)
+            }
+        })
+        .collect::<Vec<_>>();
+    let worker_count = std::thread::available_parallelism()
+        .map(std::num::NonZeroUsize::get)
+        .unwrap_or(1)
+        .min(source_paths.len().max(1));
+    let source_count = source_paths.len();
+    // Paths are canonically ordered, so adjacent owners commonly belong to the
+    // same crate and have correlated sizes. Contiguous chunks therefore put a
+    // cluster of large owners on one worker and make cold latency equal to the
+    // slowest directory. Round-robin assignment balances those clusters while
+    // the indexed merge below preserves the canonical input order.
+    let mut shards = (0..worker_count)
+        .map(|_| Vec::<(usize, PathBuf)>::new())
+        .collect::<Vec<_>>();
+    for (index, source_path) in source_paths.into_iter().enumerate() {
+        shards[index % worker_count].push((index, source_path));
     }
+    let mut reads = tokio::task::JoinSet::new();
+    for shard in shards {
+        let index_root_owned = index_root.to_path_buf();
+        reads.spawn_blocking(move || {
+            shard
+                .into_iter()
+                .map(|(index, source_path)| {
+                    let bytes = std::fs::read(&source_path).map_err(|error| {
+                        format!(
+                            "failed to hash workspace source {} with BLAKE3: {error}",
+                            source_path.display()
+                        )
+                    })?;
+                    let snapshot_path = source_path
+                        .strip_prefix(&index_root_owned)
+                        .unwrap_or(source_path.as_path())
+                        .to_string_lossy()
+                        .replace('\\', "/");
+                    Ok::<_, String>((index, snapshot_path, bytes))
+                })
+                .collect::<Result<Vec<_>, String>>()
+        });
+    }
+    let mut indexed_results = Vec::with_capacity(source_count);
+    while let Some(joined) = reads.join_next().await {
+        indexed_results.extend(
+            joined.map_err(|error| format!("workspace source read shard failed: {error}"))??,
+        );
+    }
+    indexed_results.sort_unstable_by_key(|(index, _, _)| *index);
 
     let mut workspace_file_hashes = Vec::with_capacity(files.len());
     let mut source_blobs = Vec::with_capacity(files.len());
-    for result in results {
-        let (snapshot_path, bytes) =
-            result.ok_or_else(|| "workspace source read task omitted a file".to_owned())?;
+    for (_, snapshot_path, bytes) in indexed_results {
         workspace_file_hashes.push((
             snapshot_path.clone(),
             blake3::hash(&bytes).to_hex().to_string(),

@@ -67,18 +67,14 @@ impl HostSessionBinding {
     where
         F: FnMut(&str) -> Option<String>,
     {
-        let platform = read("ASP_HOST_PLATFORM").ok_or(HostSessionBindingError::MissingField(
-            "platform",
-        ))?;
-        let root = read("ASP_ROOT_SESSION_ID").ok_or(HostSessionBindingError::MissingField(
-            "rootSessionId",
-        ))?;
-        let parent = read("CODEX_SESSION_ID").ok_or(HostSessionBindingError::MissingField(
-            "parentSessionId",
-        ))?;
-        let current = read("CODEX_THREAD_ID").ok_or(HostSessionBindingError::MissingField(
-            "currentSessionId",
-        ))?;
+        let platform =
+            read("ASP_HOST_PLATFORM").ok_or(HostSessionBindingError::MissingField("platform"))?;
+        let root = read("ASP_ROOT_SESSION_ID")
+            .ok_or(HostSessionBindingError::MissingField("rootSessionId"))?;
+        let parent = read("CODEX_SESSION_ID")
+            .ok_or(HostSessionBindingError::MissingField("parentSessionId"))?;
+        let current = read("CODEX_THREAD_ID")
+            .ok_or(HostSessionBindingError::MissingField("currentSessionId"))?;
         Self::new(platform, root, parent, current)
     }
 }

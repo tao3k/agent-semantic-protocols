@@ -1,24 +1,32 @@
+//! Content identity for the active ASP artifact set and its Merkle receipt.
+
 use serde::{Deserialize, Serialize};
 
 use crate::exact_selector_merkle::{
     ContentDigestV1, canonical_content_digest, parse_content_digest_v1,
 };
 
+/// Stable schema identifier for an active ASP artifact receipt.
 pub const ACTIVE_ASP_ARTIFACT_RECEIPT_SCHEMA_ID: &str =
     "agent.semantic-protocols.active-asp-artifact-receipt";
+/// Stable schema version for an active ASP artifact receipt.
 pub const ACTIVE_ASP_ARTIFACT_RECEIPT_SCHEMA_VERSION: &str = "1";
+/// Digest algorithm used for artifact and materialization roots.
 pub const ACTIVE_ASP_ARTIFACT_DIGEST_ALGORITHM: &str = "blake3-256";
 
+/// Stable identity of one active artifact set.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct ActiveArtifactSetId(String);
 
 impl ActiveArtifactSetId {
+    /// Create an artifact-set identity from its stable string value.
     #[must_use]
     pub fn new(value: impl Into<String>) -> Self {
         Self(value.into())
     }
 
+    /// Return the stable artifact-set identity string.
     #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
@@ -37,6 +45,7 @@ impl From<&str> for ActiveArtifactSetId {
     }
 }
 
+/// Semantic role of one leaf in the active artifact set.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum ActiveArtifactKind {
@@ -50,6 +59,7 @@ pub enum ActiveArtifactKind {
 }
 
 impl ActiveArtifactKind {
+    /// Return the canonical receipt spelling for this artifact role.
     pub fn canonical_name(self) -> &'static str {
         match self {
             Self::AspBinary => "asp-binary",
@@ -63,6 +73,7 @@ impl ActiveArtifactKind {
     }
 }
 
+/// Content and materialization identity of one active artifact.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ActiveArtifactLeaf {
@@ -97,18 +108,62 @@ struct ActiveArtifactModifiedUnixNanosV1(u64);
 #[serde(transparent)]
 struct ActiveArtifactChangeTimeUnixNanosV1(i64);
 
-impl ActiveArtifactLeaf {
+/// Named construction input for one active artifact leaf.
+pub struct ActiveArtifactLeafInput {
+    logical_path: String,
+    materialized_path: String,
+    artifact_kind: ActiveArtifactKind,
+    artifact_digest: ContentDigestV1,
+    size_bytes: u64,
+    modified_unix_nanos: u64,
+    change_time_unix_nanos: Option<i64>,
+}
+
+impl ActiveArtifactLeafInput {
+    /// Create the logical and content identity of one artifact leaf.
     pub fn new(
         logical_path: impl Into<String>,
         materialized_path: impl Into<String>,
         artifact_kind: ActiveArtifactKind,
         artifact_digest: ContentDigestV1,
+    ) -> Self {
+        Self {
+            logical_path: logical_path.into(),
+            materialized_path: materialized_path.into(),
+            artifact_kind,
+            artifact_digest,
+            size_bytes: 0,
+            modified_unix_nanos: 0,
+            change_time_unix_nanos: None,
+        }
+    }
+
+    /// Attach filesystem metadata without changing logical content identity.
+    pub fn with_materialization_metadata(
+        mut self,
         size_bytes: u64,
         modified_unix_nanos: u64,
         change_time_unix_nanos: Option<i64>,
-    ) -> Result<Self, String> {
-        let logical_path = logical_path.into();
-        let materialized_path = materialized_path.into();
+    ) -> Self {
+        self.size_bytes = size_bytes;
+        self.modified_unix_nanos = modified_unix_nanos;
+        self.change_time_unix_nanos = change_time_unix_nanos;
+        self
+    }
+}
+
+impl ActiveArtifactLeaf {
+    /// Validate and construct one artifact leaf.
+    pub fn new(input: ActiveArtifactLeafInput) -> Result<Self, String> {
+        let ActiveArtifactLeafInput {
+            logical_path,
+            materialized_path,
+            artifact_kind,
+            artifact_digest,
+            size_bytes,
+            modified_unix_nanos,
+            change_time_unix_nanos,
+        } = input;
         if logical_path.is_empty() || materialized_path.is_empty() {
             return Err(
                 "active artifact logical and materialized paths must be non-empty".to_string(),
@@ -128,35 +183,43 @@ impl ActiveArtifactLeaf {
         })
     }
 
+    /// Return the stable logical path within the artifact set.
     pub fn logical_path(&self) -> &str {
         &self.logical_path.0
     }
 
+    /// Return the concrete materialized path used by the active runtime.
     pub fn materialized_path(&self) -> &str {
         &self.materialized_path.0
     }
 
+    /// Return the semantic artifact role.
     pub fn artifact_kind(&self) -> ActiveArtifactKind {
         self.artifact_kind
     }
 
+    /// Return the content digest of the materialized artifact.
     pub fn artifact_digest(&self) -> &ContentDigestV1 {
         &self.artifact_digest
     }
 
+    /// Return the artifact size in bytes.
     pub fn size_bytes(&self) -> u64 {
         self.size_bytes.0
     }
 
+    /// Return the observed modification time in Unix nanoseconds.
     pub fn modified_unix_nanos(&self) -> u64 {
         self.modified_unix_nanos.0
     }
 
+    /// Return the optional change time in Unix nanoseconds.
     pub fn change_time_unix_nanos(&self) -> Option<i64> {
         self.change_time_unix_nanos.map(|value| value.0)
     }
 }
 
+/// Content-proven receipt for the complete active ASP artifact set.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ActiveAspArtifactReceipt {
@@ -207,6 +270,7 @@ impl<'de> Deserialize<'de> for ActiveAspArtifactReceipt {
     }
 }
 
+/// Typed validation failures for active artifact receipts.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ActiveAspArtifactReceiptError {
     Identity,
@@ -222,18 +286,22 @@ pub enum ActiveAspArtifactReceiptError {
 }
 
 impl ActiveAspArtifactReceipt {
+    /// Return the logical artifact-set Merkle root.
     pub fn artifact_root_digest(&self) -> &ContentDigestV1 {
         &self.artifact_root_digest
     }
 
+    /// Return the materialization-bound Merkle root.
     pub fn materialization_root_digest(&self) -> &ContentDigestV1 {
         &self.materialization_root_digest
     }
 
+    /// Return the ordered artifact leaves covered by this receipt.
     pub fn leaves(&self) -> &[ActiveArtifactLeaf] {
         &self.leaves
     }
 
+    /// Build and validate a deterministic receipt from an unordered leaf set.
     pub fn build(
         artifact_set_id: impl Into<String>,
         mut leaves: Vec<ActiveArtifactLeaf>,
@@ -256,6 +324,7 @@ impl ActiveAspArtifactReceipt {
         Ok(receipt)
     }
 
+    /// Validate schema identity, leaf ordering, required roles, and both roots.
     pub fn validate(&self) -> Result<(), ActiveAspArtifactReceiptError> {
         if self.schema_id != ACTIVE_ASP_ARTIFACT_RECEIPT_SCHEMA_ID
             || self.schema_version != ACTIVE_ASP_ARTIFACT_RECEIPT_SCHEMA_VERSION
@@ -304,6 +373,7 @@ impl ActiveAspArtifactReceipt {
         Ok(())
     }
 
+    /// Return the unique validated ASP binary leaf.
     pub fn asp_binary_leaf(&self) -> &ActiveArtifactLeaf {
         self.leaves
             .iter()
@@ -311,6 +381,7 @@ impl ActiveAspArtifactReceipt {
             .expect("validated active ASP receipt has one binary leaf")
     }
 
+    /// Return the unique validated activation leaf.
     pub fn activation_leaf(&self) -> &ActiveArtifactLeaf {
         self.leaves
             .iter()
@@ -319,6 +390,7 @@ impl ActiveAspArtifactReceipt {
     }
 }
 
+/// Derive the logical content root for an active artifact set.
 pub fn active_artifact_root_digest_v1(
     artifact_set_id: &ActiveArtifactSetId,
     leaves: &[ActiveArtifactLeaf],
@@ -375,6 +447,7 @@ pub fn active_artifact_root_digest_v1(
     ))
 }
 
+/// Derive the materialization-bound root for an active artifact set.
 pub fn active_artifact_materialization_root_digest_v1(
     artifact_set_id: &ActiveArtifactSetId,
     leaves: &[ActiveArtifactLeaf],

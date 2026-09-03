@@ -66,7 +66,7 @@ fn ranked_graph_packet_uses_shared_projection_renderer() {
         "packetKind": "graph-turbo-result",
         "profile": "owner-query",
         "algorithm": "typed-ppr-diverse",
-        "seedIds": ["query:parser"],
+        "entryNodeIds": ["query:parser"],
         "rankedNodes": [
             {
                 "id": "query:parser",

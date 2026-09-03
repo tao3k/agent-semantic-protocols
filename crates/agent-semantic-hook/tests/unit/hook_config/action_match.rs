@@ -60,9 +60,7 @@ fn rust_runtime() -> HookRuntime {
                     raw_source_search: crate::protocol::ActionPolicy::Block,
                     agent_search_json: crate::protocol::ActionPolicy::Block,
                 },
-                owner_route: command.clone(),
-                lexical_route: command.clone(),
-                ingest_route: command,
+                playbook_route: command,
             },
         ],
     }

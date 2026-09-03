@@ -17,7 +17,7 @@ pub struct WorkspaceExactProjectionDataPlaneClient {
 
 #[derive(Debug)]
 struct WorkspaceExactProjectionDataPlaneClientInner {
-    pointer: WorkspaceGenerationPointerReader,
+    pointer: Option<WorkspaceGenerationPointerReader>,
     current: parking_lot::RwLock<std::sync::Arc<MappedWorkspaceExactProjection>>,
 }
 
@@ -95,7 +95,7 @@ impl WorkspaceExactProjectionDataPlaneClient {
                 let mapped = MappedWorkspaceExactProjection::open(&snapshot).await?;
                 Ok::<_, String>(Self {
                     inner: std::sync::Arc::new(WorkspaceExactProjectionDataPlaneClientInner {
-                        pointer,
+                        pointer: Some(pointer),
                         current: parking_lot::RwLock::new(std::sync::Arc::new(mapped)),
                     }),
                 })
@@ -182,7 +182,10 @@ impl WorkspaceExactProjectionDataPlaneClient {
     }
 
     pub async fn refresh_if_changed(&mut self) -> Result<bool, String> {
-        let snapshot = self.inner.pointer.read()?;
+        let Some(pointer) = &self.inner.pointer else {
+            return Ok(false);
+        };
+        let snapshot = pointer.read()?;
         snapshot.validate()?;
         let current = self.inner.current.read();
         decode_header(&current.mapping)?;

@@ -282,9 +282,12 @@ fn canonical_config_document_sections_are_owned_by_testkit_and_aot_projection() 
         .iter()
         .map(|route| (route.language_id.as_str(), route.provider_id.as_str()))
         .collect::<BTreeSet<_>>();
-    assert_eq!(provider_routes.len(), 7);
-    assert!(provider_routes.contains(&("org", "asp-org")));
-    assert!(provider_routes.contains(&("md", "asp-md")));
+    assert_eq!(provider_routes.len(), 5);
+    assert!(
+        provider_routes
+            .iter()
+            .all(|(language_id, _)| !matches!(*language_id, "org" | "md"))
+    );
 
     let generation = agent_semantic_hook::aot_compiler::compile_aot_hook_policy_bundle(
         &config,

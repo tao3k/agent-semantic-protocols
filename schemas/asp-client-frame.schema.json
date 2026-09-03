@@ -5,7 +5,6 @@
   "oneOf": [
     { "$ref": "#/$defs/initialize" },
     { "$ref": "#/$defs/request" },
-    { "$ref": "#/$defs/dispatch" },
     { "$ref": "#/$defs/cancel" },
     { "$ref": "#/$defs/shutdown" },
     { "$ref": "#/$defs/exit" },
@@ -24,7 +23,7 @@
     },
     "base": {
       "type": "object",
-      "required": ["schemaId", "schemaVersion", "protocolId", "protocolVersion", "kind", "sessionId", "workspaceIdentity"],
+      "required": ["schemaId", "schemaVersion", "protocolId", "protocolVersion", "kind", "sessionId", "projectId", "workspaceId"],
       "properties": {
         "schemaId": { "const": "agent.semantic-protocols.client.frame" },
         "schemaVersion": { "const": "1" },
@@ -32,7 +31,8 @@
         "protocolVersion": { "const": "1" },
         "kind": { "type": "string" },
         "sessionId": { "type": "string", "minLength": 1 },
-        "workspaceIdentity": { "type": "string", "minLength": 1 },
+        "projectId": { "type": "string", "minLength": 1 },
+        "workspaceId": { "type": "string", "minLength": 1 },
         "traceContext": {
           "type": "object",
           "additionalProperties": false,
@@ -50,12 +50,11 @@
         {
           "type": "object",
           "additionalProperties": false,
-          "required": ["schemaId", "schemaVersion", "protocolId", "protocolVersion", "kind", "sessionId", "workspaceIdentity", "requestId", "projectRoot", "clientInfo", "capabilities"],
+          "required": ["schemaId", "schemaVersion", "protocolId", "protocolVersion", "kind", "sessionId", "projectId", "workspaceId", "requestId", "clientInfo", "capabilities"],
           "properties": {
             "schemaId": {}, "schemaVersion": {}, "protocolId": {}, "protocolVersion": {},
-            "kind": { "const": "initialize" }, "sessionId": {}, "workspaceIdentity": {}, "traceContext": {},
+            "kind": { "const": "initialize" }, "sessionId": {}, "projectId": {}, "workspaceId": {}, "traceContext": {},
             "requestId": { "type": "string", "minLength": 1 },
-            "projectRoot": { "type": "string", "minLength": 1 },
             "clientInfo": { "$ref": "#/$defs/clientInfo" },
             "capabilities": { "type": "object" }
           }
@@ -68,32 +67,13 @@
         {
           "type": "object",
           "additionalProperties": false,
-          "required": ["schemaId", "schemaVersion", "protocolId", "protocolVersion", "kind", "sessionId", "workspaceIdentity", "requestId", "catalogGeneration", "workspaceGeneration", "method", "params"],
+          "required": ["schemaId", "schemaVersion", "protocolId", "protocolVersion", "kind", "sessionId", "projectId", "workspaceId", "requestId", "catalogGeneration", "workspaceGeneration", "method", "params"],
           "properties": {
             "schemaId": {}, "schemaVersion": {}, "protocolId": {}, "protocolVersion": {},
-            "kind": { "const": "request" }, "sessionId": {}, "workspaceIdentity": {}, "traceContext": {},
+            "kind": { "const": "request" }, "sessionId": {}, "projectId": {}, "workspaceId": {}, "traceContext": {},
             "requestId": { "type": "string", "minLength": 1 },
             "catalogGeneration": { "type": "string", "minLength": 1 },
             "workspaceGeneration": { "type": "string", "minLength": 1 },
-            "method": { "type": "string", "minLength": 1 },
-            "params": {}
-          }
-        }
-      ]
-    },
-    "dispatch": {
-      "allOf": [
-        { "$ref": "#/$defs/base" },
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["schemaId", "schemaVersion", "protocolId", "protocolVersion", "kind", "sessionId", "workspaceIdentity", "requestId", "projectRoot", "clientInfo", "method", "params"],
-          "properties": {
-            "schemaId": {}, "schemaVersion": {}, "protocolId": {}, "protocolVersion": {},
-            "kind": { "const": "dispatch" }, "sessionId": {}, "workspaceIdentity": {}, "traceContext": {},
-            "requestId": { "type": "string", "minLength": 1 },
-            "projectRoot": { "type": "string", "minLength": 1 },
-            "clientInfo": { "$ref": "#/$defs/clientInfo" },
             "method": { "type": "string", "minLength": 1 },
             "params": {}
           }
@@ -106,10 +86,10 @@
         {
           "type": "object",
           "additionalProperties": false,
-          "required": ["schemaId", "schemaVersion", "protocolId", "protocolVersion", "kind", "sessionId", "workspaceIdentity", "requestId"],
+          "required": ["schemaId", "schemaVersion", "protocolId", "protocolVersion", "kind", "sessionId", "projectId", "workspaceId", "requestId"],
           "properties": {
             "schemaId": {}, "schemaVersion": {}, "protocolId": {}, "protocolVersion": {},
-            "kind": { "const": "cancel" }, "sessionId": {}, "workspaceIdentity": {}, "traceContext": {},
+            "kind": { "const": "cancel" }, "sessionId": {}, "projectId": {}, "workspaceId": {}, "traceContext": {},
             "requestId": { "type": "string", "minLength": 1 }
           }
         }

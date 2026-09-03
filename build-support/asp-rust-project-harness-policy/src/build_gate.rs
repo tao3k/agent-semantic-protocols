@@ -48,14 +48,16 @@ pub fn validate_asp_rust_project_harness_member_manifest(
             ));
         }
     }
-    if manifest_declares_dependency(
-        &manifest,
-        "rust-lang-project-harness",
-        &["dependencies", "build-dependencies"],
-    ) {
-        return Err(format!(
-            "ASP Rust harness member {package_name} must not compile the full ASP Rust scanner from normal or build dependencies; use the shared Build Support dependency and run full verification once from the workspace gate",
-        ));
+    for full_harness_package in ["asp-rust", "rust-lang-project-harness"] {
+        if manifest_declares_dependency(
+            &manifest,
+            full_harness_package,
+            &["dependencies", "build-dependencies"],
+        ) {
+            return Err(format!(
+                "ASP Rust harness member {package_name} must not compile the full ASP Rust scanner from normal or build dependencies: {full_harness_package}; use the shared Build Support dependency and run full verification once from the workspace gate",
+            ));
+        }
     }
     Ok(AspRustProjectHarnessMemberPolicyReceipt {
         schema_id: "agent.semantic-protocols.rust-harness-member-build-receipt",

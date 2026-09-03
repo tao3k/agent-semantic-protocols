@@ -66,7 +66,10 @@ mod publication_identity;
 #[cfg(feature = "compiler")]
 pub use command::semantic_shell_tokens;
 #[cfg(feature = "compiler")]
-pub use publication_identity::{is_generation_bound_hook_deny, is_typed_hook_deny};
+pub use publication_identity::{
+    HOOK_RUNTIME_IDENTITY_SCHEMA_ID, HookRuntimeIdentityReceipt, hook_runtime_identity_receipt,
+    is_generation_bound_hook_deny, is_typed_hook_deny,
+};
 #[cfg(feature = "compiler")]
 #[cfg(feature = "compiler")]
 pub use tool_action::{codex_tool_event_requires_policy_evaluation, direct_source_read_paths};

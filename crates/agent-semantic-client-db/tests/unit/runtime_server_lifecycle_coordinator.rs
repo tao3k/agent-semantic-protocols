@@ -373,9 +373,12 @@ fn fixture_endpoint(state_home: &std::path::Path, owner_epoch: u64) -> RuntimeSe
     let binding_token = format!("binding-{owner_epoch}");
     let runtime_binary_identity = RuntimeBinaryIdentity::from_bytes(b"runtime-digest");
     let identity_value = runtime_binary_identity.content_digest().to_string();
-    let digest =
-        blake3::hash(format!("{owner_epoch}\0{binding_token}\0{identity_value}").as_bytes())
-            .to_hex();
+    let loopback = |port| {
+        agent_semantic_client_db::runtime_server_control::RuntimeServerLoopbackEndpoint::from_socket_addr(
+            ([127, 0, 0, 1], port).into(),
+        )
+        .expect("loopback endpoint")
+    };
     RuntimeServerEndpoint {
         binary_content_digest: identity_value,
         runtime_generation_digest: "blake3-256:1111111111111111111111111111111111111111111111111111111111111111".to_owned(),
@@ -393,17 +396,11 @@ fn fixture_endpoint(state_home: &std::path::Path, owner_epoch: u64) -> RuntimeSe
         artifact_mode: "dev".to_owned(),
         artifact_catalog_digest: format!("blake3-256:{}", "a".repeat(64)),
         binding_token,
-        socket_path: runtime_root.join(format!("r-{}.sock", &digest[..16])).display().to_string(),
-        data_plane_socket_path: runtime_root.join(format!("r-{}.data.sock", &digest[..16])).display().to_string(),
-        provider_plane_socket_path: runtime_root
-            .join(format!("r-{}.providers.sock", &digest[..16]))
-            .display()
-            .to_string(),
+        control_endpoint: loopback(44001 + (owner_epoch % 100) as u16),
+        data_endpoint: loopback(44101 + (owner_epoch % 100) as u16),
+        provider_endpoint: loopback(44201 + (owner_epoch % 100) as u16),
         workspace_store_path: runtime_root.join("workspaces").display().to_string(),
-        status_memory_path: runtime_root
-            .join(format!("status-{}.memory", &digest[..16]))
-            .display()
-            .to_string(),
+        status_memory_path: runtime_root.join("status.v1.memory").display().to_string(),
     }
 }
 
@@ -415,13 +412,9 @@ async fn publish_endpoint_fixture(state_home: &std::path::Path, endpoint: &Runti
     )
     .await
     .unwrap();
-    for path in [
-        &endpoint.socket_path,
-        &endpoint.data_plane_socket_path,
-        &endpoint.status_memory_path,
-    ] {
-        tokio::fs::write(path, b"fixture").await.unwrap();
-    }
+    tokio::fs::write(&endpoint.status_memory_path, b"fixture")
+        .await
+        .unwrap();
 }
 
 #[tokio::test]
@@ -498,41 +491,22 @@ async fn resident_transaction_requires_the_matching_previous_owner_drain() {
     endpoint.observed_runtime_binary_identity = runtime_identity;
     let runtime_root =
         agent_semantic_client_db::runtime_server_runtime_base(&state_home).expect("Runtime root");
-    let endpoint_digest = blake3::hash(
-        format!(
-            "{}\0{}\0{}",
-            endpoint.owner_epoch,
-            endpoint.binding_token,
-            endpoint.runtime_binary_identity.content_digest()
-        )
-        .as_bytes(),
-    )
-    .to_hex();
-    endpoint.socket_path = runtime_root
-        .join(format!("r-{}.sock", &endpoint_digest[..16]))
-        .display()
-        .to_string();
-    endpoint.data_plane_socket_path = runtime_root
-        .join(format!("r-{}.data.sock", &endpoint_digest[..16]))
-        .display()
-        .to_string();
-    endpoint.provider_plane_socket_path = runtime_root
-        .join(format!("r-{}.providers.sock", &endpoint_digest[..16]))
-        .display()
-        .to_string();
-    endpoint.status_memory_path = runtime_root
-        .join(format!("status-{}.memory", &endpoint_digest[..16]))
-        .display()
-        .to_string();
+    endpoint.status_memory_path = runtime_root.join("status.v1.memory").display().to_string();
     tokio::fs::create_dir_all(&runtime_root)
         .await
         .expect("create Runtime root");
-    let _control =
-        tokio::net::UnixListener::bind(&endpoint.socket_path).expect("bind control listener");
-    let _data = tokio::net::UnixListener::bind(&endpoint.data_plane_socket_path)
+    let _control = tokio::net::TcpListener::bind(("127.0.0.1", 0))
+        .await
+        .expect("bind control listener");
+    let _data = tokio::net::TcpListener::bind(("127.0.0.1", 0))
+        .await
         .expect("bind data listener");
-    let _provider = tokio::net::UnixListener::bind(&endpoint.provider_plane_socket_path)
+    let _provider = tokio::net::TcpListener::bind(("127.0.0.1", 0))
+        .await
         .expect("bind provider listener");
+    endpoint.control_endpoint = agent_semantic_client_db::runtime_server_control::RuntimeServerLoopbackEndpoint::from_socket_addr(_control.local_addr().expect("control address")).expect("control endpoint");
+    endpoint.data_endpoint = agent_semantic_client_db::runtime_server_control::RuntimeServerLoopbackEndpoint::from_socket_addr(_data.local_addr().expect("data address")).expect("data endpoint");
+    endpoint.provider_endpoint = agent_semantic_client_db::runtime_server_control::RuntimeServerLoopbackEndpoint::from_socket_addr(_provider.local_addr().expect("provider address")).expect("provider endpoint");
     let endpoint_path =
         agent_semantic_client_db::runtime_server_endpoint_path(&state_home).unwrap();
     agent_semantic_client_db::runtime_server_control::publish_runtime_server_endpoint(

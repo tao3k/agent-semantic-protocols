@@ -195,60 +195,67 @@ theorem lifecycle_admission_returns_its_attempt_terminal
     receipt.observedAttempt = receipt.expectedAttempt ∧ receipt.terminal = true :=
   satisfies
 
-inductive PublishedPointerState where
-  | missing
-  | recoveryRequired
+inductive GenerationDurabilityState where
+  | absent
+  | building
   | ready
+  | failed
   deriving DecidableEq
 
 structure GenerationPublicationReceipt where
-  controlReady : Bool
-  pointerState : PublishedPointerState
+  contentIdentityComplete : Bool
+  residentReady : Bool
+  durabilityState : GenerationDurabilityState
 
 def AdmissibleGenerationReady (receipt : GenerationPublicationReceipt) : Prop :=
-  receipt.controlReady = true ∧ receipt.pointerState = .ready
+  receipt.contentIdentityComplete = true ∧ receipt.residentReady = true
 
-/-- The former resident-first writer could emit control-plane `Ready` while
-the immutable pointer was still absent.  The new admission relation rejects
-that concrete counterexample. -/
-def OldResidentFirstCounterexample : GenerationPublicationReceipt :=
-  { controlReady := true, pointerState := .missing }
+def AdmissibleDurableRestore (receipt : GenerationPublicationReceipt) : Prop :=
+  AdmissibleGenerationReady receipt ∧ receipt.durabilityState = .ready
 
-theorem old_resident_first_ready_is_not_admissible :
-    ¬ AdmissibleGenerationReady OldResidentFirstCounterexample := by
-  simp [AdmissibleGenerationReady, OldResidentFirstCounterexample]
+def ResidentBeforeDurabilityReceipt : GenerationPublicationReceipt :=
+  { contentIdentityComplete := true
+    residentReady := true
+    durabilityState := .building }
 
-theorem admissible_ready_implies_published_pointer
+theorem resident_ready_does_not_wait_for_durability :
+    AdmissibleGenerationReady ResidentBeforeDurabilityReceipt := by
+  simp [AdmissibleGenerationReady, ResidentBeforeDurabilityReceipt]
+
+theorem durability_failure_cannot_revoke_resident_ready
     (receipt : GenerationPublicationReceipt)
     (admissible : AdmissibleGenerationReady receipt) :
-    receipt.pointerState = .ready :=
-  admissible.2
+    AdmissibleGenerationReady { receipt with durabilityState := .failed } := by
+  exact admissible
 
-theorem missing_pointer_cannot_return_ready
+theorem durable_restore_requires_successful_attachment
     (receipt : GenerationPublicationReceipt)
-    (missing : receipt.pointerState = .missing) :
-    ¬ AdmissibleGenerationReady receipt := by
-  intro admissible
-  have impossible : PublishedPointerState.missing = .ready :=
-    missing.symm.trans admissible.2
-  exact PublishedPointerState.noConfusion impossible
+    (restore : AdmissibleDurableRestore receipt) :
+    receipt.durabilityState = .ready :=
+  restore.2
 
 def DurablePublicationBoundaryMs : Nat := 500
 
 structure TimedGenerationPublicationReceipt extends GenerationPublicationReceipt where
   elapsedMs : Nat
 
-def LegacyFastResidentOnlyReceipt : TimedGenerationPublicationReceipt :=
-  { controlReady := true, pointerState := .missing, elapsedMs := 1 }
+def FastResidentPublicationReceipt : TimedGenerationPublicationReceipt :=
+  { contentIdentityComplete := true
+    residentReady := true
+    durabilityState := .building
+    elapsedMs := 1 }
 
-/-- Meeting the former one-millisecond resident-only timing gate cannot prove
-durable publication.  This concrete fast receipt still lacks its pointer. -/
-theorem legacy_fast_timing_cannot_imply_durable_ready :
-    LegacyFastResidentOnlyReceipt.elapsedMs < DurablePublicationBoundaryMs ∧
-      ¬ AdmissibleGenerationReady LegacyFastResidentOnlyReceipt.toGenerationPublicationReceipt := by
+/-- A fast resident publication is queryable but cannot be used as restart
+restore evidence until the independently supervised attachment is durable. -/
+theorem fast_resident_ready_is_not_yet_durable_restore :
+    FastResidentPublicationReceipt.elapsedMs < DurablePublicationBoundaryMs ∧
+      AdmissibleGenerationReady FastResidentPublicationReceipt.toGenerationPublicationReceipt ∧
+      ¬ AdmissibleDurableRestore FastResidentPublicationReceipt.toGenerationPublicationReceipt := by
   constructor
   · decide
-  · simp [LegacyFastResidentOnlyReceipt, AdmissibleGenerationReady]
+  · constructor
+    · simp [FastResidentPublicationReceipt, AdmissibleGenerationReady]
+    · simp [FastResidentPublicationReceipt, AdmissibleDurableRestore]
 
 def RuntimeIpcTypicalBudgetMs : Nat := 50
 def RuntimeIpcHardBoundaryMs : Nat := 500
@@ -452,6 +459,325 @@ dependency on Runtime liveness or thread-per-connect supervision. -/
 theorem hook_plane_has_no_runtime_probe_or_sync_worker :
     NewHookPlaneAllows .runtimeControlProbe = false ∧
       NewHookPlaneAllows .synchronousConnectWorker = false := by
+  decide
+
+/-! The root Search Playbook composes Rust lexical/byte evidence for every
+request and starts Python Graphs only for relationship-shaped intent.  The
+optional worker is bound to the same immutable generation identity; it is not
+a second publication authority. -/
+
+inductive SearchPlaybookIntent where
+  | lexical
+  | exact
+  | relationship
+  | explicitGraph
+  deriving DecidableEq
+
+structure GraphSessionIdentity where
+  projectId : String
+  workspaceIdentity : String
+  generationDigest : String
+  rootDigest : String
+  graphArtifactDigest : String
+  deriving DecidableEq
+
+inductive PythonGraphSelection where
+  | skipped
+  | exact (identity : GraphSessionIdentity)
+  deriving DecidableEq
+
+def RequiresPythonGraph : SearchPlaybookIntent → Bool
+  | .relationship | .explicitGraph => true
+  | .lexical | .exact => false
+
+def AdmissiblePythonGraph
+    (intent : SearchPlaybookIntent)
+    (expected : GraphSessionIdentity)
+    (selection : PythonGraphSelection) : Prop :=
+  if RequiresPythonGraph intent then selection = .exact expected
+  else selection = .skipped
+
+def PythonWorkerStarts : PythonGraphSelection → Nat
+  | .skipped => 0
+  | .exact _ => 1
+
+theorem lexical_and_exact_skip_python_without_worker_start
+    (expected : GraphSessionIdentity) :
+    AdmissiblePythonGraph .lexical expected .skipped ∧
+      AdmissiblePythonGraph .exact expected .skipped ∧
+      PythonWorkerStarts .skipped = 0 := by
+  simp [AdmissiblePythonGraph, RequiresPythonGraph, PythonWorkerStarts]
+
+theorem relationship_requires_the_exact_generation_identity
+    (expected observed : GraphSessionIdentity)
+    (admitted : AdmissiblePythonGraph .relationship expected (.exact observed)) :
+    observed = expected := by
+  simpa [AdmissiblePythonGraph, RequiresPythonGraph] using admitted
+
+theorem stale_python_generation_fails_closed
+    (expected observed : GraphSessionIdentity)
+    (stale : observed ≠ expected) :
+    ¬ AdmissiblePythonGraph .explicitGraph expected (.exact observed) := by
+  simp [AdmissiblePythonGraph, RequiresPythonGraph, stale]
+
+structure ResidentSearchTriad where
+  lexicalIdentity : GraphSessionIdentity
+  rustGraphIdentity : GraphSessionIdentity
+  byteCoverageIdentity : GraphSessionIdentity
+  deriving DecidableEq
+
+def AdmissibleResidentSearchTriad
+    (expected : GraphSessionIdentity)
+    (triad : ResidentSearchTriad) : Prop :=
+  triad.lexicalIdentity = expected ∧
+    triad.rustGraphIdentity = expected ∧
+    triad.byteCoverageIdentity = expected
+
+theorem resident_search_triad_has_one_generation_identity
+    (expected : GraphSessionIdentity)
+    (triad : ResidentSearchTriad)
+    (admitted : AdmissibleResidentSearchTriad expected triad) :
+    triad.lexicalIdentity = triad.rustGraphIdentity ∧
+      triad.rustGraphIdentity = triad.byteCoverageIdentity := by
+  rcases admitted with ⟨lexical, graph, bytes⟩
+  constructor <;> simp [lexical, graph, bytes]
+
+structure WarmSearchWork where
+  filesystemReads : Nat
+  providerCalls : Nat
+  processLaunches : Nat
+  deriving DecidableEq
+
+def ResidentWarmSearchWork (work : WarmSearchWork) : Prop :=
+  work.filesystemReads = 0 ∧
+    work.providerCalls = 0 ∧
+    work.processLaunches = 0
+
+theorem resident_warm_search_cannot_hide_external_work
+    (work : WarmSearchWork)
+    (resident : ResidentWarmSearchWork work) :
+    work = { filesystemReads := 0, providerCalls := 0, processLaunches := 0 } := by
+  rcases resident with ⟨reads, providers, processes⟩
+  cases work
+  simp_all
+
+structure SearchPlaybookTimingReceipt where
+  pythonWarmRankP99Nanos : Nat
+  pythonReceiptValidationNanos : Nat
+
+def PublicPlaybookDeadlineNanos : Nat := 500000000
+
+def AdmissibleSearchPlaybookTiming (receipt : SearchPlaybookTimingReceipt) : Prop :=
+  receipt.pythonWarmRankP99Nanos < PublicPlaybookDeadlineNanos
+
+theorem python_execution_deadline_is_not_receipt_validation_time
+    (receipt : SearchPlaybookTimingReceipt)
+    (admitted : AdmissibleSearchPlaybookTiming receipt) :
+    receipt.pythonWarmRankP99Nanos < 500000000 := by
+  exact admitted
+
+structure RgCoverageReceipt where
+  workspaceIdentity : String
+  generationDigest : String
+  rootDigest : String
+  byteArtifactDigest : String
+  bytesCovered : Nat
+  complete : Bool
+  deriving DecidableEq
+
+def AdmissibleRgCoverage
+    (expectedWorkspace expectedGeneration expectedRoot expectedArtifact : String)
+    (receipt : RgCoverageReceipt) : Prop :=
+  receipt.workspaceIdentity = expectedWorkspace ∧
+    receipt.generationDigest = expectedGeneration ∧
+    receipt.rootDigest = expectedRoot ∧
+    receipt.byteArtifactDigest = expectedArtifact ∧
+    receipt.bytesCovered > 0 ∧
+    receipt.complete = true
+
+theorem boolean_rg_coverage_cannot_substitute_for_bound_receipt
+    (expectedWorkspace expectedGeneration expectedRoot expectedArtifact : String)
+    (receipt : RgCoverageReceipt)
+    (admitted : AdmissibleRgCoverage expectedWorkspace expectedGeneration
+      expectedRoot expectedArtifact receipt) :
+    receipt.workspaceIdentity = expectedWorkspace ∧
+      receipt.generationDigest = expectedGeneration ∧
+      receipt.rootDigest = expectedRoot ∧
+      receipt.byteArtifactDigest = expectedArtifact := by
+  exact ⟨admitted.1, admitted.2.1, admitted.2.2.1, admitted.2.2.2.1⟩
+
+theorem rg_artifact_drift_fails_closed
+    (expectedWorkspace expectedGeneration expectedRoot expectedArtifact : String)
+    (receipt : RgCoverageReceipt)
+    (drift : receipt.byteArtifactDigest ≠ expectedArtifact) :
+    ¬ AdmissibleRgCoverage expectedWorkspace expectedGeneration
+      expectedRoot expectedArtifact receipt := by
+  intro admitted
+  exact drift admitted.2.2.2.1
+
+structure FusedSearchCacheIdentity where
+  projectId : String
+  workspaceId : String
+  sourceRootDigest : String
+  generationDigest : String
+  normalizedQueryTermsDigest : String
+  profileDigest : String
+  algorithmDigest : String
+  lexicalFrontierDigest : String
+  budgetDigest : String
+  deriving DecidableEq
+
+def FusedCacheHitAdmitted
+    (expected observed : FusedSearchCacheIdentity) : Prop :=
+  observed = expected
+
+theorem fused_cache_cannot_cross_project_workspace_or_generation
+    (expected observed : FusedSearchCacheIdentity)
+    (drift : observed ≠ expected) :
+    ¬ FusedCacheHitAdmitted expected observed := by
+  exact drift
+
+structure ContentGenerationBuildTerminal where
+  fdInventoryJoined : Bool
+  ownerBytesJoined : Bool
+  contentIdentityComplete : Bool
+
+inductive MutationGenerationRoute where
+  | completeGeneration
+  deriving DecidableEq
+
+def MutationGenerationPublishable : MutationGenerationRoute → Bool
+  | .completeGeneration => true
+
+/-- Changed paths may prioritize inventory work, but cannot create an
+owner-delta or overlay publication authority. -/
+theorem mutation_has_only_complete_generation_publication
+    (route : MutationGenerationRoute) :
+    route = .completeGeneration := by
+  cases route
+  rfl
+
+structure ProviderWorkHint where
+  languageId : String
+  providerId : String
+
+inductive GenerationMembershipScope where
+  | completeGeneration
+  deriving DecidableEq
+
+def MembershipScopeForHint (_hint : Option ProviderWorkHint) :
+    GenerationMembershipScope :=
+  .completeGeneration
+
+/-- A provider hint may prioritize work but cannot narrow publication
+membership or construct a partial generation. -/
+theorem provider_hint_cannot_narrow_generation_membership
+    (hint : Option ProviderWorkHint) :
+    MembershipScopeForHint hint = .completeGeneration := by
+  rfl
+
+def ContentGenerationPublishable
+    (terminal : ContentGenerationBuildTerminal) : Prop :=
+  terminal.fdInventoryJoined = true ∧
+    terminal.ownerBytesJoined = true ∧
+    terminal.contentIdentityComplete = true
+
+theorem content_generation_does_not_wait_for_lexical_acceleration
+    (terminal : ContentGenerationBuildTerminal)
+    (publishable : ContentGenerationPublishable terminal) :
+    terminal.fdInventoryJoined = true ∧
+      terminal.ownerBytesJoined = true ∧
+      terminal.contentIdentityComplete = true := by
+  exact publishable
+
+inductive DerivedSearchAttachment where
+  | tantivyLexical
+  | residentGraph
+  | pythonGraph
+  deriving DecidableEq
+
+def RequiredBeforeContentPublication : DerivedSearchAttachment → Bool
+  | .tantivyLexical | .residentGraph | .pythonGraph => false
+
+theorem content_publication_is_independent_of_all_derived_attachments :
+    (∀ attachment, RequiredBeforeContentPublication attachment = false) := by
+  intro attachment
+  cases attachment <;> rfl
+
+structure LexicalAcceleratorBuildTerminal where
+  contentIdentityBound : Bool
+  shardPlanComplete : Bool
+  tantivyBuildJoined : Bool
+  rgTantivyEquivalent : Bool
+
+def LexicalAcceleratorPublishable
+    (terminal : LexicalAcceleratorBuildTerminal) : Prop :=
+  terminal.contentIdentityBound = true ∧
+    terminal.shardPlanComplete = true ∧
+    terminal.tantivyBuildJoined = true ∧
+    terminal.rgTantivyEquivalent = true
+
+theorem accelerator_cannot_publish_without_cold_route_equivalence
+    (terminal : LexicalAcceleratorBuildTerminal)
+    (publishable : LexicalAcceleratorPublishable terminal) :
+    terminal.rgTantivyEquivalent = true := by
+  exact publishable.2.2.2
+
+/-! File discovery, cold rg execution, index construction, and serving are
+distinct authorities. Content publication never waits for the accelerator;
+the accelerator may become current only after equivalence validation. -/
+
+structure LexicalGenerationPlanEvidence where
+  admittedOwnerCount : Nat
+  fdInventoryComplete : Bool
+  contentGenerationBound : Bool
+  lexicalFactCoverageComplete : Bool
+  reusedShardCount : Nat
+  rebuiltShardCount : Nat
+
+def LexicalGenerationPublishable
+    (evidence : LexicalGenerationPlanEvidence) : Prop :=
+  evidence.fdInventoryComplete = true ∧
+    evidence.contentGenerationBound = true ∧
+    evidence.lexicalFactCoverageComplete = true ∧
+    evidence.reusedShardCount + evidence.rebuiltShardCount =
+      evidence.admittedOwnerCount
+
+theorem lexical_generation_requires_complete_join
+    (evidence : LexicalGenerationPlanEvidence)
+    (publishable : LexicalGenerationPublishable evidence) :
+      evidence.fdInventoryComplete = true ∧
+      evidence.contentGenerationBound = true ∧
+      evidence.lexicalFactCoverageComplete = true ∧
+      evidence.reusedShardCount + evidence.rebuiltShardCount =
+        evidence.admittedOwnerCount := by
+  exact publishable
+
+structure LexicalOpenEffects where
+  fdProcessCount : Nat
+  rgProcessCount : Nat
+  tantivyBuildCount : Nat
+
+def publishedLexicalOpenEffects : LexicalOpenEffects :=
+  { fdProcessCount := 0
+    rgProcessCount := 0
+    tantivyBuildCount := 0 }
+
+theorem published_lexical_open_is_build_free :
+    publishedLexicalOpenEffects.fdProcessCount = 0 ∧
+      publishedLexicalOpenEffects.rgProcessCount = 0 ∧
+      publishedLexicalOpenEffects.tantivyBuildCount = 0 := by
+  decide
+
+def coldRgQueryEffects : LexicalOpenEffects :=
+  { fdProcessCount := 0
+    rgProcessCount := 1
+    tantivyBuildCount := 0 }
+
+theorem cold_route_reuses_inventory_and_never_builds_tantivy :
+    coldRgQueryEffects.fdProcessCount = 0 ∧
+      coldRgQueryEffects.rgProcessCount = 1 ∧
+      coldRgQueryEffects.tantivyBuildCount = 0 := by
   decide
 
 end ASPProof.ProviderLiveProjectSearchPlaybook

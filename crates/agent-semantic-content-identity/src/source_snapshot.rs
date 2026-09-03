@@ -84,6 +84,32 @@ impl SourceSnapshotEvidence {
             && self.leaf_count == other.leaf_count
             && self.provider_digest == other.provider_digest
     }
+
+    /// Render the snapshot root in the shared integrity-reference domain.
+    ///
+    /// The snapshot producer owns this conversion because only it can bind the
+    /// Merkle algorithm label to the root bytes. Runtime callers must not infer
+    /// an algorithm from a bare digest string.
+    pub fn root_integrity_reference(&self) -> Result<String, String> {
+        if self.algorithm != SOURCE_SNAPSHOT_ALGORITHM {
+            return Err(format!(
+                "source snapshot algorithm is not admitted: {}",
+                self.algorithm
+            ));
+        }
+        if self.root_digest.len() != 64
+            || !self
+                .root_digest
+                .bytes()
+                .all(|byte| byte.is_ascii_hexdigit())
+        {
+            return Err("source snapshot root is not a canonical BLAKE3 digest".to_owned());
+        }
+        Ok(format!(
+            "blake3-256:{}",
+            self.root_digest.to_ascii_lowercase()
+        ))
+    }
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]

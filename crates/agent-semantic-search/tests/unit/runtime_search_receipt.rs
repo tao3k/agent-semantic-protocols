@@ -10,6 +10,73 @@ use crate::{
     build_runtime_provider_search_receipt, build_runtime_provider_search_receipt_with_graph,
 };
 
+fn attachment_identity(
+    token: u64,
+    digest_byte: char,
+    attachment: crate::RuntimeSearchDerivedAttachmentKind,
+) -> crate::RuntimeSearchDerivedAttachmentIdentity {
+    crate::RuntimeSearchDerivedAttachmentIdentity {
+        project_id: "project-test".to_owned(),
+        workspace_id: "workspace-test".to_owned(),
+        generation_token: token,
+        content_generation_digest: format!("blake3-256:{}", digest_byte.to_string().repeat(64)),
+        attachment,
+    }
+}
+
+#[tokio::test]
+async fn attachment_hub_is_bounded_and_suppresses_late_generation_events() {
+    use crate::RuntimeSearchDerivedAttachmentKind::Graph;
+    use crate::RuntimeSearchDerivedAttachmentState::{Building, Queued, Ready};
+    use tokio_stream::StreamExt;
+
+    let hub = crate::RuntimeSearchDerivedAttachmentHub::new();
+    let mut events = hub.subscribe();
+    let first = attachment_identity(1, 'a', Graph);
+    let second = attachment_identity(2, 'b', Graph);
+
+    assert!(hub.publish(&first, Queued, None, None));
+    assert!(hub.publish(&first, Building, None, None));
+    assert!(hub.publish(&second, Queued, None, None));
+    assert!(!hub.publish(&first, Ready, Some((1, 1)), None));
+
+    let snapshot = hub.snapshot();
+    assert_eq!(snapshot.len(), 1, "one attachment owns one bounded slot");
+    let current = snapshot.values().next().expect("current attachment event");
+    assert_eq!(current.generation_token, 2);
+    assert_eq!(current.state, Queued);
+    for expected_token in [1, 1, 2] {
+        assert_eq!(
+            events
+                .next()
+                .await
+                .expect("event stream remains open")
+                .expect("event stream does not lag")
+                .generation_token,
+            expected_token,
+        );
+    }
+}
+
+#[test]
+fn attachment_hub_rejects_invalid_transition_and_cross_digest_alias() {
+    use crate::RuntimeSearchDerivedAttachmentKind::Tantivy;
+    use crate::RuntimeSearchDerivedAttachmentState::{Building, Queued, Ready};
+
+    let hub = crate::RuntimeSearchDerivedAttachmentHub::new();
+    let first = attachment_identity(1, 'a', Tantivy);
+    let alias = attachment_identity(1, 'b', Tantivy);
+
+    assert!(!hub.publish(&first, Building, None, None));
+    assert!(hub.publish(&first, Queued, None, None));
+    assert!(!hub.publish(&first, Ready, Some((1, 1)), None));
+    assert!(!hub.publish(&alias, Building, None, None));
+    assert_eq!(
+        hub.snapshot().values().next().expect("queued state").state,
+        Queued
+    );
+}
+
 fn ready_result(generation: &str, owner_path: &str, selector: &str) -> ResidentSearchReadyResult {
     ResidentSearchReadyResult {
         schema_id: RESIDENT_SEARCH_RESULT_SCHEMA_ID.to_owned(),

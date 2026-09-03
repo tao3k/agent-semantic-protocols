@@ -1,12 +1,19 @@
+//! Provider-neutral exact structural-selector wire identities and validation.
+
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
+/// Schema identifier for exact structural selectors.
 pub const EXACT_STRUCTURAL_SELECTOR_SCHEMA_ID: &str = "asp.exact-structural-selector.v1";
+/// Schema version for exact structural selectors.
 pub const EXACT_STRUCTURAL_SELECTOR_SCHEMA_VERSION: &str = "1";
 
+/// Provider DTO for the canonical root item embedded in an exact selector.
+///
+/// Typed catalog boundary: item kinds remain provider-owned syntax vocabulary.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct CanonicalItemSelector {
+pub struct ExactCanonicalItemSelectorV1 {
     pub schema_id: String,
     pub schema_version: String,
     pub language_id: String,
@@ -16,6 +23,9 @@ pub struct CanonicalItemSelector {
     pub structural_selector: String,
 }
 
+/// One lexical scope in an exact canonical item selector.
+///
+/// Typed catalog boundary: scope item kinds remain provider-owned syntax vocabulary.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CanonicalItemSelectorScopeV1 {
@@ -24,6 +34,9 @@ pub struct CanonicalItemSelectorScopeV1 {
     pub symbol: String,
 }
 
+/// One exact descendant segment following the canonical root item.
+///
+/// Typed catalog boundary: segment kinds remain provider-owned syntax vocabulary.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ExactStructuralSelectorSegmentV1 {
@@ -35,6 +48,9 @@ pub struct ExactStructuralSelectorSegmentV1 {
 }
 
 /// Lossless V1 identity parsed from an exact structural-selector request.
+/// One parsed exact descendant path segment.
+///
+/// Typed catalog boundary: segment kinds remain provider-owned syntax vocabulary.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExactStructuralSelectorPathV1 {
     pub selector: String,
@@ -42,6 +58,9 @@ pub struct ExactStructuralSelectorPathV1 {
     pub segments: Vec<ExactStructuralSelectorPathSegmentV1>,
 }
 
+/// One parsed exact descendant path segment.
+///
+/// Typed catalog boundary: segment kinds remain provider-owned syntax vocabulary.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExactStructuralSelectorPathSegmentV1 {
     pub kind: String,
@@ -49,6 +68,7 @@ pub struct ExactStructuralSelectorPathSegmentV1 {
 }
 
 impl ExactStructuralSelectorPathV1 {
+    /// Parses a canonical root selector followed by exact descendant segments.
     pub fn parse(structural_selector: impl Into<String>) -> Result<Self, String> {
         let selector = structural_selector.into();
         let mut parts = selector.split("/segment/");
@@ -84,6 +104,7 @@ impl ExactStructuralSelectorPathV1 {
     }
 }
 
+/// Raw DTO boundary for a complete exact structural-selector receipt.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ExactStructuralSelectorV1 {
@@ -95,11 +116,12 @@ pub struct ExactStructuralSelectorV1 {
     pub generation_identity_digest: String,
     pub parser_identity_digest: String,
     pub query_pack_digest: String,
-    pub root_item_selector: CanonicalItemSelector,
+    pub root_item_selector: ExactCanonicalItemSelectorV1,
     pub segments: Vec<ExactStructuralSelectorSegmentV1>,
 }
 
 impl ExactStructuralSelectorV1 {
+    /// Validates schema identity, content digests, root binding, and descendant segments.
     pub fn validate(&self) -> Result<(), ExactStructuralSelectorValidationError> {
         if self.schema_id != EXACT_STRUCTURAL_SELECTOR_SCHEMA_ID {
             return Err(ExactStructuralSelectorValidationError::SchemaId);
@@ -156,6 +178,7 @@ impl ExactStructuralSelectorV1 {
         Ok(())
     }
 
+    /// Returns whether two selectors bind the same projection identity.
     pub fn shares_projection_identity_with(&self, other: &Self) -> bool {
         self.language_id == other.language_id
             && self.owner_path == other.owner_path
@@ -189,6 +212,7 @@ fn looks_like_source_location(identity: &str) -> bool {
             .any(|prefix| normalized.starts_with(prefix))
 }
 
+/// Typed validation failures for exact structural selectors.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ExactStructuralSelectorValidationError {
     SchemaId,

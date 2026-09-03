@@ -1,6 +1,48 @@
 //! Publication identity predicates shared by Host acceptance and black-box TestKit assertions.
 
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
+
+pub const HOOK_RUNTIME_IDENTITY_SCHEMA_ID: &str = "agent.semantic-protocols.hook-runtime-identity";
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HookRuntimeIdentityReceipt {
+    pub schema_id: String,
+    pub schema_version: u32,
+    pub policy_content_digest: String,
+    pub handler_elapsed_nanos: u64,
+}
+
+impl HookRuntimeIdentityReceipt {
+    pub fn validate(&self) -> Result<(), String> {
+        if self.schema_id != HOOK_RUNTIME_IDENTITY_SCHEMA_ID || self.schema_version != 1 {
+            return Err("Hook Runtime identity receipt schema mismatch".to_owned());
+        }
+        let Some(hex) = self.policy_content_digest.strip_prefix("blake3-256:") else {
+            return Err("Hook Runtime identity receipt digest is not BLAKE3".to_owned());
+        };
+        if hex.len() != 64 || !hex.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+            return Err("Hook Runtime identity receipt digest is malformed".to_owned());
+        }
+        Ok(())
+    }
+}
+
+/// Produce the complete process-local identity without Config parsing,
+/// Runtime/DB initialization, socket I/O, or workspace discovery.
+pub fn hook_runtime_identity_receipt() -> Result<HookRuntimeIdentityReceipt, String> {
+    let started = std::time::Instant::now();
+    let policy_content_digest = crate::aot_compiler::embedded_hook_policy_content_digest()?;
+    let receipt = HookRuntimeIdentityReceipt {
+        schema_id: HOOK_RUNTIME_IDENTITY_SCHEMA_ID.to_owned(),
+        schema_version: 1,
+        policy_content_digest,
+        handler_elapsed_nanos: started.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64,
+    };
+    receipt.validate()?;
+    Ok(receipt)
+}
 
 pub fn is_typed_hook_deny(value: &Value) -> bool {
     value.get("schemaId").and_then(Value::as_str) == Some("agent.semantic-protocols.hook.decision")

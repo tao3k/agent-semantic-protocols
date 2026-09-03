@@ -53,7 +53,7 @@ def test_typescript_syntax_real_evidence_records_bounded_claims() -> None:
     text = _TYPESCRIPT_EVIDENCE.read_text(encoding="utf-8")
 
     required_terms = [
-        "[syntax-real-evidence] language=typescript provider=asp-typescript project=typescript-lang-project-harness",
+        "[syntax-real-evidence] language=typescript provider=asp-typescript project=asp-typescript",
         "metrics=commandCount=6,providerProcessCount=6,packetBytes=13040,coldElapsedMs=31,warmElapsedMs=50",
         "cacheClaim=warm-provider",
         "does not claim cache hit replay",

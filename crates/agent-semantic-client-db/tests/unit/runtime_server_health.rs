@@ -37,10 +37,13 @@ async fn concurrent_cached_health_is_sub_millisecond_at_p99() {
     )
     .await
     .expect("bind Runtime Server control plane");
-    let _client_grpc_listener = tokio::net::UnixListener::bind(&endpoint.data_plane_socket_path)
+    let _client_grpc_listener = tokio::net::TcpListener::bind(endpoint.data_endpoint.socket_addr())
+        .await
         .expect("bind ASP Client gRPC plane");
-    let _provider_listener = tokio::net::UnixListener::bind(&endpoint.provider_plane_socket_path)
-        .expect("bind provider plane");
+    let _provider_listener =
+        tokio::net::TcpListener::bind(endpoint.provider_endpoint.socket_addr())
+            .await
+            .expect("bind provider plane");
     server
         .publish_endpoint_after_required_planes(
             &runtime_server_endpoint_path(state_home.path())

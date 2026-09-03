@@ -757,15 +757,9 @@ impl TryFrom<HookClientRuleRouteConfig> for RuleRoute {
 impl From<HookClientConfigRouteKind> for DecisionRouteKind {
     fn from(kind: HookClientConfigRouteKind) -> Self {
         match kind {
-            HookClientConfigRouteKind::Prime => Self::Prime,
-            HookClientConfigRouteKind::Owner => Self::Owner,
+            HookClientConfigRouteKind::Playbook => Self::Playbook,
             HookClientConfigRouteKind::Query => Self::Query,
-            HookClientConfigRouteKind::Lexical => Self::Lexical,
             HookClientConfigRouteKind::Read => Self::Read,
-            HookClientConfigRouteKind::Deps => Self::Deps,
-            HookClientConfigRouteKind::Api => Self::Api,
-            HookClientConfigRouteKind::Ingest => Self::Ingest,
-            HookClientConfigRouteKind::Tests => Self::Tests,
             HookClientConfigRouteKind::CheckChanged => Self::CheckChanged,
         }
     }

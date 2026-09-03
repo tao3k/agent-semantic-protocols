@@ -2,8 +2,8 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 
 use super::{
-    publish_runtime_artifact, publish_runtime_artifact_bundle,
-    publish_runtime_artifact_with_before_guard,
+    RuntimeArtifactBundleMemberSource, publish_runtime_artifact, publish_runtime_artifact_bundle,
+    publish_runtime_artifact_bundle_members, publish_runtime_artifact_with_before_guard,
 };
 use crate::blake3_content_digest::Blake3ContentDigest;
 use crate::runtime_artifact_activation::{
@@ -158,6 +158,44 @@ async fn runtime_and_hook_launchers_follow_one_active_bundle_selector() {
         .expect("mark the same active bundle healthy");
     assert_eq!(slots.active_target().await.unwrap(), Some(active.clone()));
     assert_eq!(slots.healthy_target().await.unwrap(), Some(active));
+}
+
+#[tokio::test]
+async fn optional_capability_is_an_exact_member_of_the_same_active_bundle() {
+    let temporary = tempfile::tempdir().expect("optional bundle member fixture");
+    let state_home = temporary.path().join("state");
+    let asp_source = temporary.path().join("asp");
+    let hook_source = temporary.path().join("asp-hook");
+    let graphs_source = temporary.path().join("asp-python-graphs");
+    let asp_target = state_home.join("runtime/bin/asp");
+    write_executable(&asp_source, "#!/bin/sh\nexit 0\n");
+    write_executable(&hook_source, "#!/bin/sh\nexit 0\n");
+    write_executable(&graphs_source, "#!/bin/sh\nexit 0\n");
+    let members = [
+        RuntimeArtifactBundleMemberSource {
+            name: "asp-hook",
+            source: &hook_source,
+        },
+        RuntimeArtifactBundleMemberSource {
+            name: "asp-python-graphs",
+            source: &graphs_source,
+        },
+    ];
+
+    publish_runtime_artifact_bundle_members(&state_home, &asp_source, &asp_target, "dev", &members)
+        .await
+        .expect("publish one bundle with optional graph capability");
+
+    let slots = RuntimeArtifactSlotAuthority::new(state_home.join("runtime/resident"));
+    let active = slots.active_target().await.unwrap().expect("active bundle");
+    assert_eq!(
+        std::fs::read(active.join("asp-python-graphs")).unwrap(),
+        std::fs::read(&graphs_source).unwrap()
+    );
+    assert!(!state_home.join("runtime/bin/asp-python-graphs").exists());
+    crate::runtime_artifact_slots::verify_runtime_artifact_bundle(&active)
+        .await
+        .expect("content-proven bundle");
 }
 
 #[tokio::test]
@@ -359,7 +397,7 @@ async fn publication_derives_previous_serving_after_acquiring_the_mutation_guard
             &pending_source,
             &publish_target,
             "release",
-            None,
+            &[],
             move || async move {
                 before_guard_tx
                     .send(())

@@ -86,6 +86,12 @@ fn merkle_change_set_reuses_unchanged_fragments_and_tombstones_deletions() {
             fixture.evidence.clone(),
             agent_semantic_config::LanguageId::new("python"),
             agent_semantic_config::ProviderId::new("asp-python"),
+            crate::ResidentIndexBuildResources::new(
+                1,
+                32 * 1024 * 1024,
+                crate::ResidentIndexBuildStrategy::SingleSegmentBulk,
+            )
+            .unwrap(),
         )
         .expect("resident index from the exact candidate manifest");
     assert_eq!(

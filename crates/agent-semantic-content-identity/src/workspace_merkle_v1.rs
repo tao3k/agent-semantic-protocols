@@ -250,4 +250,10 @@ impl fmt::Display for WorkspaceMerkleV1Error {
 impl std::error::Error for WorkspaceMerkleV1Error {}
 #[path = "workspace_merkle_incremental_v1.rs"]
 mod incremental_v1;
-pub use incremental_v1::*;
+pub use incremental_v1::{
+    WorkspaceMerkleDeltaMetricsIncrementalV1, WorkspaceMerkleDeltaOperationIncrementalV1,
+    WorkspaceMerkleIncrementalV1Error, WorkspaceMerkleNodeRecordIncrementalV1,
+    WorkspaceMerkleProofIncrementalV1, WorkspaceMerkleProofSiblingIncrementalV1,
+    WorkspaceMerkleProofStepIncrementalV1, WorkspacePathMerkleTreeIncrementalV1,
+    derive_owner_subtree_digest_incremental_v1, verify_owner_inclusion_incremental_v1,
+};

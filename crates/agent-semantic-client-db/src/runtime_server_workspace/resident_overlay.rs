@@ -6,9 +6,8 @@ use std::sync::Arc;
 use parking_lot::RwLock;
 
 use super::{
-    WorkspaceDerivedProjectionSnapshot, WorkspaceMemoryGeneration, WorkspaceOwnerSnapshot,
-    WorkspaceRuntimeSelectorOverlay, WorkspaceRuntimeSelectorOverlayReceipt,
-    WorkspaceRuntimeSelectorRead, WorkspaceSelectorSnapshot,
+    WorkspaceMemoryGeneration, WorkspaceOwnerSnapshot, WorkspaceRuntimeSelectorOverlay,
+    WorkspaceRuntimeSelectorOverlayReceipt, WorkspaceRuntimeSelectorRead,
 };
 
 #[derive(Debug)]
@@ -20,7 +19,6 @@ pub(crate) struct ResidentOverlayStore {
 struct ResidentOverlayState {
     base_generation_digest: String,
     generation_digest: String,
-    base_epoch: u64,
     revision: u64,
     workspace_snapshot: agent_semantic_content_identity::WorkspaceSnapshot,
     owners: HashMap<String, WorkspaceOwnerSnapshot>,
@@ -333,135 +331,19 @@ impl ResidentOverlayStore {
 impl ResidentOverlaySnapshot {
     pub(super) fn materialize_generation(
         &self,
-        base: &WorkspaceMemoryGeneration,
-        projection_capability: crate::active_generation_projection_capability::ActiveGenerationProjectionCapabilityManifest,
+        _base: &WorkspaceMemoryGeneration,
+        _projection_capability: crate::active_generation_projection_capability::ActiveGenerationProjectionCapabilityManifest,
     ) -> Result<WorkspaceMemoryGeneration, String> {
-        let mut owners = base
-            .owners
-            .iter()
-            .filter(|owner| !self.state.tombstones.contains(&owner.owner_path))
-            .map(|owner| (owner.owner_path.clone(), owner.clone()))
-            .collect::<std::collections::BTreeMap<_, _>>();
-        for (owner_path, owner) in &self.state.owners {
-            owners.insert(owner_path.clone(), owner.clone());
-        }
-        for overlay in self.state.selectors.values() {
-            let owner = owners.get_mut(&overlay.owner_path).ok_or_else(|| {
-                format!(
-                    "runtime selector overlay omitted its owner during generation materialization: ownerPath={}",
-                    overlay.owner_path
-                )
-            })?;
-            materialize_selector(owner, &projection_capability, overlay)?;
-        }
-        let mut owners = owners.into_values().collect::<Vec<_>>();
-        for owner in &mut owners {
-            owner
-                .selectors
-                .sort_by(|left, right| left.selector.cmp(&right.selector));
-        }
-        let mut source_snapshot = self.state.workspace_snapshot.evidence(
-            agent_semantic_content_identity::SourceSnapshotKind::DerivedOverlay,
-            base.source_snapshot.provider_digest.clone(),
-        );
-        source_snapshot.base_root_digest = Some(base.source_snapshot.root_digest.clone());
-        source_snapshot.dirty_paths_digest = Some(overlay_delta_digest(&self.state));
-        let mut relations = self
-            .state
-            .relations
-            .values()
-            .flatten()
-            .cloned()
-            .collect::<Vec<_>>();
-        relations.sort();
-        relations.dedup();
-        WorkspaceMemoryGeneration::try_from_build(super::model::WorkspaceGenerationBuild {
-            projection_capability,
-            workspace_identity: base.workspace_identity.clone(),
-            project_root: base.project_root.clone(),
-            active_epoch: self.epoch(),
-            workspace_snapshot: self.state.workspace_snapshot.clone(),
-            source_snapshot,
-            module_graph_digest: base.module_graph_digest.clone(),
-            project_resolutions: base.project_resolutions.clone(),
-            relations,
-            owners,
-        })
+        Err(
+            "query-not-ready: resident overlay cannot mint a content search generation; canonical generation rebuild required"
+                .to_owned(),
+        )
     }
-}
-
-fn materialize_selector(
-    owner: &mut WorkspaceOwnerSnapshot,
-    capability: &crate::active_generation_projection_capability::ActiveGenerationProjectionCapabilityManifest,
-    overlay: &WorkspaceRuntimeSelectorOverlay,
-) -> Result<(), String> {
-    validate_selector_overlay(owner, capability, overlay)?;
-    let selector = match owner
-        .selectors
-        .iter_mut()
-        .find(|selector| selector.selector == overlay.structural_selector)
-    {
-        Some(selector) => selector,
-        None => {
-            owner.selectors.push(WorkspaceSelectorSnapshot {
-                selector: overlay.structural_selector.clone(),
-                byte_start: overlay.byte_start,
-                byte_end: overlay.byte_end,
-                query_keys: Vec::new(),
-                derived_projections: Vec::new(),
-            });
-            owner.selectors.last_mut().expect("selector was inserted")
-        }
-    };
-    selector.byte_start = overlay.byte_start;
-    selector.byte_end = overlay.byte_end;
-    if overlay.projection_kind != super::model::ExactProjectionKind::Source {
-        if let Some(projection) = selector
-            .derived_projections
-            .iter_mut()
-            .find(|projection| projection.projection_kind == overlay.projection_kind)
-        {
-            projection.bytes.clone_from(&overlay.projection_bytes);
-        } else {
-            selector
-                .derived_projections
-                .push(WorkspaceDerivedProjectionSnapshot {
-                    projection_kind: overlay.projection_kind,
-                    bytes: overlay.projection_bytes.clone(),
-                    evidence_context: None,
-                });
-        }
-        selector
-            .derived_projections
-            .sort_by(|left, right| left.projection_kind.cmp(&right.projection_kind));
-    }
-    Ok(())
-}
-
-fn overlay_delta_digest(state: &ResidentOverlayState) -> String {
-    let mut paths = state
-        .owners
-        .keys()
-        .chain(state.tombstones.iter())
-        .cloned()
-        .collect::<Vec<_>>();
-    paths.sort();
-    paths.dedup();
-    let mut hasher = blake3::Hasher::new();
-    for path in paths {
-        hasher.update(path.as_bytes());
-        hasher.update(b"\0");
-    }
-    format!("blake3-256:{}", hasher.finalize().to_hex())
 }
 
 impl ResidentOverlaySnapshot {
     pub(super) fn generation_digest(&self) -> &str {
         &self.state.generation_digest
-    }
-
-    pub(super) fn epoch(&self) -> u64 {
-        self.state.base_epoch.saturating_add(self.state.revision)
     }
 
     pub(super) fn owner_bytes(
@@ -537,7 +419,6 @@ impl ResidentOverlayState {
         Self {
             base_generation_digest: String::new(),
             generation_digest: String::new(),
-            base_epoch: 0,
             revision: 0,
             workspace_snapshot:
                 agent_semantic_content_identity::WorkspaceSnapshot::from_file_hashes(
@@ -554,7 +435,6 @@ impl ResidentOverlayState {
         Self {
             base_generation_digest: generation.generation_digest.clone(),
             generation_digest: generation.generation_digest.clone(),
-            base_epoch: generation.active_epoch,
             revision: 0,
             workspace_snapshot: generation.workspace_snapshot.clone(),
             owners: generation

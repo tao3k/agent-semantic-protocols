@@ -73,7 +73,7 @@ class ReceiptCountValidationTests(unittest.TestCase):
                         "schemaVersion": "1",
                         "scenarioId": "typescript.receipt",
                         "language": "typescript",
-                        "project": {"name": "typescript-lang-project-harness"},
+                        "project": {"name": "asp-typescript"},
                         "intent": "Explore parser tests",
                         "editBoundary": "before-edit",
                         "commands": [

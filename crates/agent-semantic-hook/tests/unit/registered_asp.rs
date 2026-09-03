@@ -23,9 +23,7 @@ fn rust_runtime() -> HookRuntime {
             source_extensions: vec![".rs".to_owned()],
             config_files: Vec::new(),
             policy: HookPolicy::default(),
-            owner_route: route(),
-            lexical_route: route(),
-            ingest_route: route(),
+            playbook_route: route(),
         }],
     }
 }
@@ -33,7 +31,7 @@ fn rust_runtime() -> HookRuntime {
 #[test]
 fn direct_registered_asp_search_matches_the_declarative_language_pattern() {
     let action = ToolAction::normalized_shell_command_action(
-        "asp rust search pipe 'HookDecision' --workspace . --view seeds".to_owned(),
+        "asp rust search playbook 'HookDecision' --workspace .".to_owned(),
         "Bash".to_owned(),
     );
     let patterns = vec![vec![

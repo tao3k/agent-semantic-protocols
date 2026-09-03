@@ -10,11 +10,6 @@ pub(crate) async fn read_runtime_server_spawn_receipt(
     agent_semantic_client_db::runtime_server_lifecycle::read_owner_receipt(state_home).await
 }
 
-pub(crate) enum RuntimeServerActivationReconciliation {
-    Supervisor(agent_semantic_client_db::runtime_server_supervisor::SupervisorOutcome),
-    Healthy(agent_semantic_client_db::runtime_server_control::RuntimeServerControlReceipt),
-}
-
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum RuntimeServerActivationAuthority {
     OperatorStart,
@@ -27,27 +22,29 @@ impl RuntimeServerActivationAuthority {
     }
 }
 
-pub(crate) fn validate_activation_ready_binding(
-    receipt: &agent_semantic_client_db::RuntimeServerActivationReadyReceipt,
+fn runtime_activation_environment(
+    state_home: &Path,
     event: &agent_semantic_artifacts::runtime_artifact_activation::RuntimeArtifactActivationEvent,
-    spawn: &agent_semantic_client_db::RuntimeServerSpawnReceipt,
-) -> Result<(), String> {
-    let spawn_receipt_digest =
-        agent_semantic_client_db::runtime_server_lifecycle::spawn_receipt_digest(spawn)?;
-    if receipt.schema_id != "agent.semantic-protocols.runtime-activation-ready-receipt"
-        || receipt.schema_version != "1"
-        || receipt.state != "ready"
-        || receipt.publication_nonce != event.publication_nonce
-        || receipt.artifact_digest != event.artifact_digest
-        || receipt.owner_epoch == 0
-        || receipt.launcher_receipt_digest != spawn_receipt_digest
-    {
-        return Err(
-            "state=runtime-activation-ready-failed reasonKind=ready-authority-binding-mismatch"
-                .to_owned(),
-        );
-    }
-    Ok(())
+) -> Vec<(String, String)> {
+    vec![
+        (
+            "ASP_STATE_HOME".to_owned(),
+            state_home.to_string_lossy().into_owned(),
+        ),
+        (
+            "ASP_RUNTIME_BINARY_CONTENT_DIGEST".to_owned(),
+            event.artifact_digest.to_string(),
+        ),
+    ]
+}
+
+fn resident_transaction_identity_matches(
+    event: &agent_semantic_artifacts::runtime_artifact_activation::RuntimeArtifactActivationEvent,
+    publication_nonce: &str,
+    applied_artifact_digest: &agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest,
+) -> bool {
+    publication_nonce == event.publication_nonce
+        && applied_artifact_digest == &event.artifact_digest
 }
 
 pub(crate) async fn ensure_healthy_runtime_server_for_activation_event(
@@ -55,95 +52,51 @@ pub(crate) async fn ensure_healthy_runtime_server_for_activation_event(
     event: &agent_semantic_artifacts::runtime_artifact_activation::RuntimeArtifactActivationEvent,
     serving_digest: Option<&agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest>,
 ) -> Result<agent_semantic_client_db::runtime_server_control::RuntimeServerControlReceipt, String> {
-    match reconcile_runtime_server_activation_event(
+    reconcile_runtime_server_activation_event(
         state_home,
         event,
         serving_digest,
-        true,
         RuntimeServerActivationAuthority::OperatorStart,
         false,
     )
-    .await?
-    {
-        RuntimeServerActivationReconciliation::Healthy(receipt) => Ok(receipt),
-        RuntimeServerActivationReconciliation::Supervisor(_) => {
-            Err("Runtime activation reconciliation returned before healthy publication".to_owned())
-        }
-    }
+    .await
 }
 
 pub(crate) async fn restart_healthy_runtime_server_for_activation_event(
     state_home: &Path,
     event: &agent_semantic_artifacts::runtime_artifact_activation::RuntimeArtifactActivationEvent,
 ) -> Result<agent_semantic_client_db::runtime_server_control::RuntimeServerControlReceipt, String> {
-    match reconcile_runtime_server_activation_event(
+    reconcile_runtime_server_activation_event(
         state_home,
         event,
         event.previous_artifact_digest.as_ref(),
-        true,
         RuntimeServerActivationAuthority::OperatorStart,
         true,
     )
-    .await?
-    {
-        RuntimeServerActivationReconciliation::Healthy(receipt) => Ok(receipt),
-        RuntimeServerActivationReconciliation::Supervisor(_) => {
-            Err("Runtime restart transaction returned before healthy publication".to_owned())
-        }
-    }
-}
-
-pub(crate) async fn ensure_runtime_server_for_activation_event(
-    state_home: &Path,
-    event: &agent_semantic_artifacts::runtime_artifact_activation::RuntimeArtifactActivationEvent,
-    serving_digest: Option<&agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest>,
-) -> Result<agent_semantic_client_db::runtime_server_supervisor::SupervisorOutcome, String> {
-    match reconcile_runtime_server_activation_event(
-        state_home,
-        event,
-        serving_digest,
-        false,
-        RuntimeServerActivationAuthority::ClientBootstrap,
-        false,
-    )
-    .await?
-    {
-        RuntimeServerActivationReconciliation::Supervisor(supervisor) => Ok(supervisor),
-        RuntimeServerActivationReconciliation::Healthy(_) => Err(
-            "Runtime bootstrap reconciliation crossed the healthy publication boundary".to_owned(),
-        ),
-    }
+    .await
 }
 
 pub(crate) async fn ensure_healthy_runtime_server_for_client_recovery(
     state_home: &Path,
     event: &agent_semantic_artifacts::runtime_artifact_activation::RuntimeArtifactActivationEvent,
 ) -> Result<agent_semantic_client_db::runtime_server_control::RuntimeServerControlReceipt, String> {
-    match reconcile_runtime_server_activation_event(
+    reconcile_runtime_server_activation_event(
         state_home,
         event,
         event.previous_artifact_digest.as_ref(),
-        true,
         RuntimeServerActivationAuthority::ClientBootstrap,
         false,
     )
-    .await?
-    {
-        RuntimeServerActivationReconciliation::Healthy(receipt) => Ok(receipt),
-        RuntimeServerActivationReconciliation::Supervisor(_) => {
-            Err("Runtime no-agent recovery returned before healthy publication".to_owned())
-        }
-    }
+    .await
 }
 
 pub(crate) async fn reconcile_runtime_server_activation_event(
     state_home: &Path,
     event: &agent_semantic_artifacts::runtime_artifact_activation::RuntimeArtifactActivationEvent,
     serving_digest: Option<&agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest>,
-    wait_for_healthy: bool,
     authority: RuntimeServerActivationAuthority,
     force_handoff: bool,
-) -> Result<RuntimeServerActivationReconciliation, String> {
+) -> Result<agent_semantic_client_db::runtime_server_control::RuntimeServerControlReceipt, String> {
     if event.artifact_digest != event.candidate_identity.artifact_digest
         || event.artifact_path != event.candidate_identity.artifact_path
         || event.publication_nonce != event.candidate_identity.publication_nonce
@@ -165,33 +118,7 @@ pub(crate) async fn reconcile_runtime_server_activation_event(
         ));
     }
 
-    let mut ready_listener = if wait_for_healthy {
-        Some(
-            agent_semantic_client_db::runtime_server_lifecycle::bind_activation_ready_listener(
-                state_home,
-                &event.publication_nonce,
-            )
-            .await?,
-        )
-    } else {
-        None
-    };
-    let mut environment = vec![
-        (
-            "ASP_STATE_HOME".to_owned(),
-            state_home.to_string_lossy().into_owned(),
-        ),
-        (
-            "ASP_RUNTIME_BINARY_CONTENT_DIGEST".to_owned(),
-            event.artifact_digest.to_string(),
-        ),
-    ];
-    if let Some(listener) = ready_listener.as_ref() {
-        environment.push((
-            "ASP_RUNTIME_ACTIVATION_READY_SOCKET".to_owned(),
-            listener.path().to_string_lossy().into_owned(),
-        ));
-    }
+    let environment = runtime_activation_environment(state_home, event);
     let owner_stderr_path = state_home.join("runtime/server/owner-stderr.log");
     let request =
         agent_semantic_client_db::runtime_server_supervisor::SupervisorRequest::for_activation(
@@ -206,15 +133,6 @@ pub(crate) async fn reconcile_runtime_server_activation_event(
             environment,
             owner_stderr_path.clone(),
         );
-    if !wait_for_healthy {
-        let supervisor =
-            agent_semantic_client_db::runtime_server_supervisor::RuntimeServerSupervisor
-                .ensure_runtime_server(request, authority.is_explicit_operator_start())
-                .await?;
-        return Ok(RuntimeServerActivationReconciliation::Supervisor(
-            supervisor,
-        ));
-    }
     let mut supervision = if force_handoff {
         agent_semantic_client_db::runtime_server_supervisor::RuntimeServerSupervisor
             .restart_runtime_server_monitored(request)
@@ -224,75 +142,113 @@ pub(crate) async fn reconcile_runtime_server_activation_event(
             .ensure_runtime_server_monitored(request, authority.is_explicit_operator_start())
             .await?
     };
+    let mut observed_transaction = None;
     if supervision.outcome
         == agent_semantic_client_db::runtime_server_supervisor::SupervisorOutcome::SpawnAccepted
     {
         let mut process = supervision.process.take().ok_or_else(|| {
             "Runtime activation SpawnAccepted outcome requires a monitored child".to_owned()
         })?;
-        let listener = ready_listener
-            .as_mut()
-            .ok_or_else(|| "Runtime activation wait requires a bound ready listener".to_owned())?;
-        let receipt = tokio::select! {
-            receipt = listener.receive() => receipt?,
-            exit = process.wait() => {
-                let exit = exit?;
-                let daemon_stderr = tokio::fs::read_to_string(&owner_stderr_path)
-                    .await
-                    .unwrap_or_else(|error| format!("unavailable: {error}"));
-                return Err(serde_json::json!({
-                    "schemaId": "agent.semantic-protocols.runtime-activation-ready-receipt",
-                    "schemaVersion": "1",
-                    "state": "failed",
-                    "reasonKind": "runtime-owner-exited-before-ready",
-                    "exitStatus": exit.to_string(),
-                    "daemonStderr": daemon_stderr,
-                    "publicationNonce": event.publication_nonce,
-                    "artifactDigest": event.artifact_digest,
-                }).to_string());
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(30);
+        let mut last_observation = "canonical endpoint not yet published".to_owned();
+        loop {
+            tokio::select! {
+                exit = process.wait() => {
+                    let exit = exit?;
+                    let daemon_stderr = tokio::fs::read_to_string(&owner_stderr_path)
+                        .await
+                        .unwrap_or_else(|error| format!("unavailable: {error}"));
+                    return Err(serde_json::json!({
+                        "schemaId": "agent.semantic-protocols.runtime-supervision-terminal",
+                        "schemaVersion": "1",
+                        "state": "failed",
+                        "reasonKind": "runtime-owner-exited-before-healthy",
+                        "exitStatus": exit.to_string(),
+                        "daemonStderr": daemon_stderr,
+                        "publicationNonce": event.publication_nonce,
+                        "artifactDigest": event.artifact_digest,
+                    }).to_string());
+                }
+                _ = tokio::time::sleep_until(deadline) => {
+                    return Err(serde_json::json!({
+                        "schemaId": "agent.semantic-protocols.runtime-supervision-terminal",
+                        "schemaVersion": "1",
+                        "state": "failed",
+                        "reasonKind": "runtime-healthy-observation-timeout",
+                        "lastObservation": last_observation,
+                        "publicationNonce": event.publication_nonce,
+                        "artifactDigest": event.artifact_digest,
+                    }).to_string());
+                }
+                _ = tokio::time::sleep(std::time::Duration::from_millis(10)) => {}
             }
-        };
-        let spawn =
-            agent_semantic_client_db::runtime_server_lifecycle::read_owner_receipt(state_home)
-                .await?
-                .ok_or_else(|| {
-                    "Runtime activation ready receipt has no owner-spawn authority".to_owned()
-                })?;
-        validate_activation_ready_binding(&receipt, event, &spawn)?;
-        if let Some(exit) = process.try_wait()? {
-            return Err(serde_json::json!({
-                "schemaId": "agent.semantic-protocols.runtime-activation-ready-receipt",
-                "schemaVersion": "1",
-                "state": "failed",
-                "reasonKind": "runtime-owner-exited-after-ready",
-                "exitStatus": exit.to_string(),
-                "publicationNonce": event.publication_nonce,
-                "artifactDigest": event.artifact_digest,
-            })
-            .to_string());
+            match crate::server::runtime_server::observe_runtime_server_readiness(state_home).await
+            {
+                Ok(receipt)
+                    if receipt.state
+                        == agent_semantic_client_db::runtime_server_control::RuntimeServerState::Healthy =>
+                {
+                    match agent_semantic_client_db::runtime_server_lifecycle::observe_resident_transaction(
+                        state_home,
+                    )
+                    .await
+                    {
+                        Ok(transaction)
+                            if resident_transaction_identity_matches(
+                                event,
+                                &transaction.publication_nonce,
+                                &transaction.applied_artifact_digest,
+                            ) =>
+                        {
+                            observed_transaction = Some(transaction);
+                            break;
+                        }
+                        Ok(_) => {
+                            last_observation =
+                                "healthy endpoint is not bound to the admitted activation transaction"
+                                    .to_owned();
+                        }
+                        Err(error) => last_observation = error,
+                    }
+                }
+                Ok(receipt) => {
+                    last_observation = format!(
+                        "state={:?} reason={}",
+                        receipt.state,
+                        receipt.reason.as_deref().unwrap_or("none")
+                    );
+                }
+                Err(error) => last_observation = error,
+            }
         }
     }
     let ready = crate::server::runtime_server::observe_runtime_server_readiness(state_home).await?;
-    let transaction =
-        agent_semantic_client_db::runtime_server_lifecycle::observe_resident_transaction(
-            state_home,
-        )
-        .await?;
+    let transaction = match observed_transaction {
+        Some(transaction) => transaction,
+        None => {
+            agent_semantic_client_db::runtime_server_lifecycle::observe_resident_transaction(
+                state_home,
+            )
+            .await?
+        }
+    };
     eprintln!(
         "[runtime-server-resident-transaction] {}",
         serde_json::to_string(&transaction)
             .map_err(|error| format!("encode Runtime resident transaction receipt: {error}"))?
     );
-    if transaction.publication_nonce != event.publication_nonce
-        || transaction.applied_artifact_digest != event.artifact_digest
-    {
+    if !resident_transaction_identity_matches(
+        event,
+        &transaction.publication_nonce,
+        &transaction.applied_artifact_digest,
+    ) {
         return Err(
             "state=runtime-activation-ready-failed reasonKind=transaction-authority-mismatch"
                 .to_owned(),
         );
     }
     let _ = serving_digest;
-    Ok(RuntimeServerActivationReconciliation::Healthy(ready))
+    Ok(ready)
 }
 
 #[cfg(test)]

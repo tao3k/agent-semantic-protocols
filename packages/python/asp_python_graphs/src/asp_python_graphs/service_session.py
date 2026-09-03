@@ -2,26 +2,35 @@
 
 from __future__ import annotations
 
-import json
 import os
 import threading
 from pathlib import Path
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Mapping
+from typing import Any, Mapping
+
+from .model import TypedGraph
+
+
+MAX_RETAINED_GENERATIONS = 8
+
+
+@dataclass(frozen=True, slots=True)
+class RetainedGenerationGraph:
+    project_id: str
+    workspace_identity: str
+    generation_digest: str
+    root_digest: str
+    artifact_digest: str
+    graph: TypedGraph
+
 
 from .service_protocol import (
     ServiceProtocolError,
-    positive_int,
     required_digest,
     required_string,
     service_receipt,
-    string_sequence,
     validate_service_envelope,
 )
-from .search_evidence_stream import SearchEvidenceAccumulator
-
-if TYPE_CHECKING:
-    from .graph_model import TypedGraph
 
 
 @dataclass
@@ -29,13 +38,6 @@ class AspPythonGraphsSession:
     runtime_artifact_digest: str | None = None
     execution_artifact_digest: str | None = None
     service_epoch: str | None = None
-    loaded_generations: dict[tuple[str, str, int], "TypedGraph"] = field(
-        default_factory=dict
-    )
-    generation_packets: dict[tuple[str, str, int], str] = field(default_factory=dict)
-    search_evidence: dict[tuple[str, str, int], SearchEvidenceAccumulator] = field(
-        default_factory=dict
-    )
     closed: bool = False
     _last_sequence: int = field(default=0, init=False, repr=False)
     _generation_lock: threading.RLock = field(
@@ -44,6 +46,9 @@ class AspPythonGraphsSession:
     _active_requests: set[str] = field(default_factory=set, init=False, repr=False)
     _admitted_requests: set[str] = field(default_factory=set, init=False, repr=False)
     _cancelled_requests: set[str] = field(default_factory=set, init=False, repr=False)
+    _generation_graphs: dict[tuple[str, str], RetainedGenerationGraph] = field(
+        default_factory=dict, init=False, repr=False
+    )
 
     def handle(self, message: Mapping[str, Any]) -> dict[str, object]:
         return self._handle(message, sequence_admitted=False)
@@ -117,7 +122,7 @@ class AspPythonGraphsSession:
             return self._receipt(
                 request_id, "cancelled", sequence=int(message["sequence"])
             )
-        if kind in {"evaluate", "timeline"}:
+        if kind in {"timeline", "generation-graph", "evaluate-resident"}:
             with self._generation_lock:
                 if request_id in self._active_requests:
                     raise ServiceProtocolError(
@@ -133,22 +138,14 @@ class AspPythonGraphsSession:
                     raise ServiceProtocolError(
                         "process-not-open", "hello is required before evaluate"
                     )
-                graph = None
-                if kind == "evaluate":
-                    workspace, generation, token, _ = self._generation_identity(message)
-                    graph = self.loaded_generations.get((workspace, generation, token))
-                    if graph is None:
-                        raise ServiceProtocolError(
-                            "generation-not-loaded",
-                            "evaluate requires an ASP Server-owned open-generation receipt",
-                        )
                 self._active_requests.add(request_id)
             try:
-                result = (
-                    self._evaluate(message, request_id, graph)
-                    if kind == "evaluate"
-                    else self._timeline(message, request_id)
-                )
+                if kind == "timeline":
+                    result = self._timeline(message, request_id)
+                elif kind == "generation-graph":
+                    result = self._generation_graph(message, request_id)
+                else:
+                    result = self._evaluate_resident(message, request_id)
                 with self._generation_lock:
                     if request_id in self._cancelled_requests:
                         return self._receipt(
@@ -163,14 +160,10 @@ class AspPythonGraphsSession:
                 return self._hello(message, request_id)
             if kind == "health":
                 return self._health(message, request_id)
-            if kind == "shutdown":
-                return self._shutdown(message, request_id)
-            if kind == "open-generation":
-                return self._open_generation(message, request_id)
             if kind == "release-generation":
                 return self._release_generation(message, request_id)
-            if kind == "search-evidence":
-                return self._observe_search_evidence(message, request_id)
+            if kind == "shutdown":
+                return self._shutdown(message, request_id)
             raise ServiceProtocolError(
                 "unsupported-message-kind", f"unsupported messageKind: {kind!r}"
             )
@@ -245,6 +238,142 @@ class AspPythonGraphsSession:
         receipt["payload"] = {"result": report}
         return receipt
 
+    def _generation_graph(
+        self, message: Mapping[str, Any], request_id: str
+    ) -> dict[str, object]:
+        from .generation_graph import compile_generation_graph
+
+        payload = message.get("payload")
+        if not isinstance(payload, Mapping):
+            raise ServiceProtocolError("invalid-payload", "payload must be an object")
+        try:
+            workspace, generation, _ = self._generation_candidate_identity(message)
+            compiled = compile_generation_graph(payload)
+            identity = compiled.receipt["identity"]
+            if not isinstance(identity, Mapping):
+                raise ValueError("search generation graph identity must be an object")
+            project_id = required_string(identity, "projectId")
+            if required_string(identity, "workspaceId") != workspace:
+                raise ValueError("search generation graph workspace identity drift")
+            if required_digest(identity, "generationCandidateDigest") != generation:
+                raise ValueError("search generation graph generation identity drift")
+            root_digest = required_digest(identity, "sourceRootDigest")
+            artifact_digest = required_digest(compiled.receipt, "artifactDigest")
+            retained = RetainedGenerationGraph(
+                project_id=project_id,
+                workspace_identity=workspace,
+                generation_digest=generation,
+                root_digest=root_digest,
+                artifact_digest=artifact_digest,
+                graph=TypedGraph.from_packet({"graph": compiled.graph}),
+            )
+            key = (workspace, generation)
+            with self._generation_lock:
+                current = self._generation_graphs.get(key)
+                if current is not None and (
+                    current.project_id != retained.project_id
+                    or current.root_digest != retained.root_digest
+                    or current.artifact_digest != retained.artifact_digest
+                ):
+                    raise ValueError(
+                        "search generation graph identity already retained with drift"
+                    )
+                if (
+                    current is None
+                    and len(self._generation_graphs) >= MAX_RETAINED_GENERATIONS
+                ):
+                    raise ServiceProtocolError(
+                        "generation-capacity-exhausted",
+                        "resident generation graph capacity is saturated",
+                    )
+                self._generation_graphs[key] = retained
+        except ServiceProtocolError:
+            raise
+        except (TypeError, ValueError) as error:
+            raise ServiceProtocolError(
+                "invalid-generation-graph", str(error)
+            ) from error
+        receipt = self._receipt(
+            request_id,
+            "completed",
+            workspace,
+            generation,
+            sequence=int(message["sequence"]),
+        )
+        receipt["payload"] = {"result": dict(compiled.receipt), "retained": True}
+        return receipt
+
+    def _evaluate_resident(
+        self, message: Mapping[str, Any], request_id: str
+    ) -> dict[str, object]:
+        from .algorithm import rank_graph
+        from .result_packet import result_to_packet
+
+        workspace, generation, payload = self._generation_candidate_identity(message)
+        _validate_resident_evaluation_payload(payload)
+        with self._generation_lock:
+            retained = self._generation_graphs.get((workspace, generation))
+        if retained is None:
+            raise ServiceProtocolError(
+                "resident-generation-unavailable",
+                "the exact workspace generation graph is not retained",
+            )
+        profile = {
+            "balanced": "owner-query",
+            "structural": "owner-query",
+            "dependency": "query-deps",
+        }[str(payload["profile"])]
+        budget = payload["budget"]
+        assert isinstance(budget, Mapping)
+        controls = {
+            "entryNodeIds": list(payload["entryNodeIds"]),
+            "budget": int(budget["maxResults"]),
+        }
+        try:
+            result = result_to_packet(
+                rank_graph(retained.graph, controls, profile=profile)
+            )
+        except (TypeError, ValueError, KeyError) as error:
+            raise ServiceProtocolError(
+                "resident-evaluation-failed", str(error)
+            ) from error
+        receipt = self._receipt(
+            request_id,
+            "completed",
+            workspace,
+            generation,
+            sequence=int(message["sequence"]),
+        )
+        receipt["payload"] = {
+            "result": result,
+            "projectId": retained.project_id,
+            "rootDigest": retained.root_digest,
+            "graphArtifactDigest": retained.artifact_digest,
+        }
+        return receipt
+
+    def _release_generation(
+        self, message: Mapping[str, Any], request_id: str
+    ) -> dict[str, object]:
+        workspace, generation, payload = self._generation_candidate_identity(message)
+        if payload:
+            raise ServiceProtocolError(
+                "invalid-release-payload", "release-generation payload must be empty"
+            )
+        with self._generation_lock:
+            if self._generation_graphs.pop((workspace, generation), None) is None:
+                raise ServiceProtocolError(
+                    "resident-generation-unavailable",
+                    "the exact workspace generation graph is not retained",
+                )
+        return self._receipt(
+            request_id,
+            "released",
+            workspace,
+            generation,
+            sequence=int(message["sequence"]),
+        )
+
     def _hello(self, message: Mapping[str, Any], request_id: str) -> dict[str, object]:
         if self.closed:
             raise ServiceProtocolError(
@@ -271,7 +400,7 @@ class AspPythonGraphsSession:
             "processId": os.getpid(),
             "runtimeArtifactDigest": runtime_artifact_digest,
             "executionArtifactDigest": execution_artifact_digest,
-            "loadedGenerationCount": len(self.loaded_generations),
+            "retainedGenerationCount": len(self._generation_graphs),
         }
         return receipt
 
@@ -279,12 +408,10 @@ class AspPythonGraphsSession:
         self, message: Mapping[str, Any], request_id: str
     ) -> dict[str, object]:
         self.closed = True
-        self.loaded_generations.clear()
-        self.generation_packets.clear()
-        self.search_evidence.clear()
         self._active_requests.clear()
         self._admitted_requests.clear()
         self._cancelled_requests.clear()
+        self._generation_graphs.clear()
         return self._receipt(request_id, "cancelled", sequence=int(message["sequence"]))
 
     def _health(self, message: Mapping[str, Any], request_id: str) -> dict[str, object]:
@@ -293,132 +420,7 @@ class AspPythonGraphsSession:
         receipt = self._receipt(request_id, "ready", sequence=int(message["sequence"]))
         receipt["payload"] = {
             "processId": os.getpid(),
-            "loadedGenerationCount": len(self.loaded_generations),
-        }
-        return receipt
-
-    def _open_generation(
-        self, message: Mapping[str, Any], request_id: str
-    ) -> dict[str, object]:
-        from .graph_model import TypedGraph
-
-        if self.closed or self.runtime_artifact_digest is None:
-            raise ServiceProtocolError(
-                "process-not-open", "hello is required before open-generation"
-            )
-        workspace, generation, token, payload = self._generation_identity(message)
-        graph_packet = payload.get("graph")
-        if not isinstance(graph_packet, Mapping):
-            raise ServiceProtocolError(
-                "missing-generation-graph", "payload.graph must be an object"
-            )
-        load_key = (workspace, generation, token)
-        packet_digest = json.dumps(graph_packet, sort_keys=True, separators=(",", ":"))
-        existing_packet = self.generation_packets.get(load_key)
-        if existing_packet is not None and existing_packet != packet_digest:
-            raise ServiceProtocolError(
-                "generation-graph-mismatch",
-                "same generation identity was admitted with a different graph snapshot",
-            )
-        newly_loaded = load_key not in self.loaded_generations
-        if newly_loaded:
-            self.loaded_generations[load_key] = TypedGraph.from_packet(graph_packet)
-            self.generation_packets[load_key] = packet_digest
-        receipt = self._receipt(
-            request_id,
-            "ready",
-            workspace,
-            generation,
-            token,
-            sequence=int(message["sequence"]),
-        )
-        receipt["payload"] = {
-            "generationLoads": int(newly_loaded),
-            "loadedGenerationCount": len(self.loaded_generations),
-        }
-        return receipt
-
-    def _release_generation(
-        self, message: Mapping[str, Any], request_id: str
-    ) -> dict[str, object]:
-        workspace, generation, token, _ = self._generation_identity(message)
-        load_key = (workspace, generation, token)
-        released = self.loaded_generations.pop(load_key, None) is not None
-        self.generation_packets.pop(load_key, None)
-        self.search_evidence.pop(load_key, None)
-        receipt = self._receipt(
-            request_id,
-            "completed",
-            workspace,
-            generation,
-            token,
-            sequence=int(message["sequence"]),
-        )
-        receipt["payload"] = {"released": released}
-        return receipt
-
-    def _observe_search_evidence(
-        self, message: Mapping[str, Any], request_id: str
-    ) -> dict[str, object]:
-        workspace, generation, token, payload = self._generation_identity(message)
-        load_key = (workspace, generation, token)
-        if load_key not in self.loaded_generations:
-            raise ServiceProtocolError(
-                "generation-not-loaded",
-                "search-evidence requires an ASP Server-owned open-generation receipt",
-            )
-        accumulator = self.search_evidence.setdefault(
-            load_key, SearchEvidenceAccumulator()
-        )
-        receipt = self._receipt(
-            request_id,
-            "completed",
-            workspace,
-            generation,
-            token,
-            sequence=int(message["sequence"]),
-        )
-        receipt["payload"] = accumulator.observe(payload)
-        return receipt
-
-    def _evaluate(
-        self, message: Mapping[str, Any], request_id: str, graph: "TypedGraph"
-    ) -> dict[str, object]:
-        from .algorithm import rank_graph
-        from .result_packet import result_to_packet
-
-        workspace, generation, token, payload = self._generation_identity(message)
-        terms = payload.get("terms")
-        rank_payload = payload.get("rankPayload")
-        if not isinstance(terms, list) or any(
-            not isinstance(term, str) or not term for term in terms
-        ):
-            raise ServiceProtocolError(
-                "invalid-terms", "payload.terms must be a string array"
-            )
-        if not isinstance(rank_payload, Mapping):
-            raise ServiceProtocolError(
-                "invalid-rank-payload", "payload.rankPayload must be an object"
-            )
-        controls = dict(rank_payload)
-        controls["seedIds"] = list(string_sequence(rank_payload.get("seedIds")))
-        controls["budget"] = positive_int(rank_payload.get("budget"), 8)
-        result = rank_graph(
-            graph,
-            controls,
-            profile=str(payload.get("profile", "owner-query")),
-        )
-        receipt = self._receipt(
-            request_id,
-            "completed",
-            workspace,
-            generation,
-            token,
-            sequence=int(message["sequence"]),
-        )
-        receipt["payload"] = {
-            "generationLoads": 0,
-            "result": result_to_packet(result),
+            "retainedGenerationCount": len(self._generation_graphs),
         }
         return receipt
 
@@ -447,20 +449,15 @@ class AspPythonGraphsSession:
             self._admitted_requests.discard(request_id)
             self._cancelled_requests.discard(request_id)
 
-    def _generation_identity(
+    def _generation_candidate_identity(
         self, message: Mapping[str, Any]
-    ) -> tuple[str, str, int, Mapping[str, Any]]:
+    ) -> tuple[str, str, Mapping[str, Any]]:
         workspace = required_string(message, "workspaceIdentity")
         generation = required_digest(message, "generationDigest")
-        token = message.get("generationToken")
-        if not isinstance(token, int) or isinstance(token, bool) or token < 1:
-            raise ServiceProtocolError(
-                "invalid-generation-token", "generationToken must be a positive integer"
-            )
         payload = message.get("payload")
         if not isinstance(payload, Mapping):
             raise ServiceProtocolError("invalid-payload", "payload must be an object")
-        return workspace, generation, token, payload
+        return workspace, generation, payload
 
     def _receipt(
         self,
@@ -468,7 +465,6 @@ class AspPythonGraphsSession:
         state: str,
         workspace: str | None = None,
         generation: str | None = None,
-        generation_token: int | None = None,
         sequence: int = 1,
     ) -> dict[str, object]:
         return service_receipt(
@@ -477,6 +473,74 @@ class AspPythonGraphsSession:
             state=state,
             workspace=workspace,
             generation=generation,
-            generation_token=generation_token,
             sequence=sequence,
+        )
+
+
+def _validate_resident_evaluation_payload(payload: Mapping[str, Any]) -> None:
+    required = {
+        "schemaId",
+        "schemaVersion",
+        "protocolId",
+        "protocolVersion",
+        "packetKind",
+        "languageId",
+        "surface",
+        "queryTerms",
+        "profile",
+        "entryNodeIds",
+        "budget",
+    }
+    if set(payload) != required:
+        raise ServiceProtocolError(
+            "invalid-resident-evaluation",
+            "resident evaluation payload must use the exact V1 field set",
+        )
+    exact = {
+        "schemaId": "agent.semantic-protocols.semantic-graph-resident-evaluation-request",
+        "schemaVersion": "1",
+        "protocolId": "agent.semantic-protocols.search",
+        "protocolVersion": "1",
+        "packetKind": "resident-graph-evaluation-request",
+    }
+    if any(payload.get(key) != value for key, value in exact.items()):
+        raise ServiceProtocolError(
+            "invalid-resident-evaluation", "resident evaluation V1 identity mismatch"
+        )
+    if payload.get("surface") not in {"search-playbook", "query"}:
+        raise ServiceProtocolError(
+            "invalid-resident-evaluation",
+            "resident evaluation surface must be search-playbook or query",
+        )
+    if payload.get("profile") not in {"balanced", "structural", "dependency"}:
+        raise ServiceProtocolError(
+            "invalid-resident-evaluation", "resident evaluation profile is unsupported"
+        )
+    for key in ("queryTerms", "entryNodeIds"):
+        value = payload.get(key)
+        if not isinstance(value, list) or any(
+            not isinstance(item, str) or not item for item in value
+        ):
+            raise ServiceProtocolError(
+                "invalid-resident-evaluation", f"{key} must be a string array"
+            )
+    if not payload["queryTerms"] and not payload["entryNodeIds"]:
+        raise ServiceProtocolError(
+            "invalid-resident-evaluation",
+            "resident evaluation requires queryTerms or entryNodeIds",
+        )
+    budget = payload.get("budget")
+    expected_budget = {"maxDepth", "maxNodes", "maxEdges", "maxResults"}
+    if not isinstance(budget, Mapping) or set(budget) != expected_budget:
+        raise ServiceProtocolError(
+            "invalid-resident-evaluation", "resident evaluation budget is invalid"
+        )
+    if any(
+        not isinstance(budget[field], int)
+        or isinstance(budget[field], bool)
+        or budget[field] < (0 if field in {"maxDepth", "maxEdges"} else 1)
+        for field in expected_budget
+    ):
+        raise ServiceProtocolError(
+            "invalid-resident-evaluation", "resident evaluation budget is invalid"
         )

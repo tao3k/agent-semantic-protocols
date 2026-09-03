@@ -1,7 +1,6 @@
-//! Unix gRPC transport for multiplexed public ASP `ClientFrame` sessions.
+//! Loopback TCP gRPC transport for multiplexed public ASP `ClientFrame` sessions.
 
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
@@ -225,19 +224,14 @@ fn encode_response_partitions(frame: ClientFrame) -> Result<Vec<ClientFrameEnvel
         .collect()
 }
 
-pub async fn bind_asp_client_grpc_unix(
-    socket_path: &Path,
-) -> Result<tokio::net::UnixListener, String> {
-    tokio::net::UnixListener::bind(socket_path).map_err(|error| {
-        format!(
-            "failed to bind ASP Client Protocol gRPC socket {}: {error}",
-            socket_path.display()
-        )
-    })
+pub async fn bind_asp_client_grpc_tcp() -> Result<tokio::net::TcpListener, String> {
+    tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0))
+        .await
+        .map_err(|error| format!("failed to bind ASP Client Protocol loopback gRPC: {error}"))
 }
 
-pub async fn serve_asp_client_grpc_unix<D: AspClientDispatcher>(
-    listener: tokio::net::UnixListener,
+pub async fn serve_asp_client_grpc_tcp<D: AspClientDispatcher>(
+    listener: tokio::net::TcpListener,
     service: Arc<AspClientFrameService<D>>,
     mut shutdown: watch::Receiver<bool>,
 ) -> Result<(), String> {
@@ -246,7 +240,7 @@ pub async fn serve_asp_client_grpc_unix<D: AspClientDispatcher>(
             service,
         )))
         .serve_with_incoming_shutdown(
-            tokio_stream::wrappers::UnixListenerStream::new(listener),
+            tokio_stream::wrappers::TcpListenerStream::new(listener),
             async move {
                 while !*shutdown.borrow() {
                     if shutdown.changed().await.is_err() {
@@ -256,7 +250,7 @@ pub async fn serve_asp_client_grpc_unix<D: AspClientDispatcher>(
             },
         )
         .await
-        .map_err(|error| format!("ASP Client Protocol gRPC server failed: {error}"))
+        .map_err(|error| format!("ASP Client Protocol loopback gRPC server failed: {error}"))
 }
 
 type PendingResponse = oneshot::Sender<Result<ClientFrame, String>>;
@@ -308,7 +302,7 @@ impl AspClientPendingCall {
 
 fn response_budget_for_frame(frame: &ClientFrame) -> Option<std::time::Duration> {
     match frame {
-        ClientFrame::Dispatch { method, .. }
+        ClientFrame::Request { method, .. }
             if classify_client_dispatch(method) == ClientDispatchClass::ColdGenerationAdmission =>
         {
             None
@@ -451,8 +445,25 @@ impl AspClientGrpcTransport {
         self.pending.lock().len()
     }
 
-    pub async fn connect_unix(socket_path: impl Into<PathBuf>) -> Result<Self, String> {
-        let channel = connect_unix_channel(socket_path.into()).await?;
+    pub async fn connect_tcp(address: std::net::SocketAddr) -> Result<Self, String> {
+        if !address.ip().is_loopback() || address.port() == 0 {
+            return Err("ASP Client Protocol requires a nonzero loopback endpoint".to_owned());
+        }
+        let endpoint = tonic::transport::Endpoint::from_shared(format!("http://{address}"))
+            .map_err(|error| error.to_string())?;
+        let channel = tokio::time::timeout(CLIENT_SESSION_CONNECT_BUDGET, endpoint.connect())
+            .await
+            .map_err(|_| {
+                format!(
+                    "reasonKind=runtime-client-connect-deadline-exceeded budgetMs={} retryAdmitted=false",
+                    CLIENT_SESSION_CONNECT_BUDGET.as_millis()
+                )
+            })?
+            .map_err(|error| {
+                format!(
+                    "reasonKind=transport-unavailable bindingKind=loopback-tcp-http2 retryAdmitted=false error={error}"
+                )
+            })?;
         Self::connect_channel(channel).await
     }
 
@@ -662,35 +673,12 @@ impl AspClientGrpcTransport {
 fn frame_request_id(frame: &ClientFrame) -> Option<&ClientRequestId> {
     match frame {
         ClientFrame::Initialize { request_id, .. }
-        | ClientFrame::Dispatch { request_id, .. }
         | ClientFrame::Request { request_id, .. }
         | ClientFrame::Cancel { request_id, .. }
         | ClientFrame::Shutdown { request_id, .. }
         | ClientFrame::Response { request_id, .. } => Some(request_id),
         ClientFrame::Exit { .. } | ClientFrame::Event { .. } => None,
     }
-}
-
-async fn connect_unix_channel(socket_path: PathBuf) -> Result<tonic::transport::Channel, String> {
-    let endpoint = tonic::transport::Endpoint::try_from("http://[::]:50051")
-        .map_err(|error| error.to_string())?;
-    let connection = endpoint.connect_with_connector(tower::service_fn(move |_| {
-        let socket_path = socket_path.clone();
-        async move {
-            tokio::net::UnixStream::connect(socket_path)
-                .await
-                .map(hyper_util::rt::TokioIo::new)
-        }
-    }));
-    tokio::time::timeout(CLIENT_SESSION_CONNECT_BUDGET, connection)
-        .await
-        .map_err(|_| {
-            format!(
-                "reasonKind=runtime-client-connect-deadline-exceeded budgetMs={} retryAdmitted=false",
-                CLIENT_SESSION_CONNECT_BUDGET.as_millis()
-            )
-        })?
-        .map_err(|error| error.to_string())
 }
 
 #[cfg(test)]

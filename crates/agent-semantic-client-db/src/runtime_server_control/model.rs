@@ -30,6 +30,48 @@ const PROVIDER_REGISTER_RESPONSE_CONTRACT: &[u8] =
 const ASP_CLIENT_FRAME_CONTRACT: &[u8] =
     include_bytes!("../../../../schemas/asp-client-frame.schema.json");
 
+#[derive(Clone, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RuntimeServerLoopbackEndpoint {
+    pub transport: RuntimeServerTransport,
+    pub address: std::net::IpAddr,
+    pub port: u16,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum RuntimeServerTransport {
+    LoopbackTcp,
+}
+
+impl RuntimeServerLoopbackEndpoint {
+    pub fn validate(&self) -> Result<(), String> {
+        if self.transport != RuntimeServerTransport::LoopbackTcp
+            || !self.address.is_loopback()
+            || self.port == 0
+        {
+            return Err(
+                "Runtime Server endpoint must be a nonzero loopback TCP endpoint".to_owned(),
+            );
+        }
+        Ok(())
+    }
+
+    pub fn socket_addr(&self) -> std::net::SocketAddr {
+        std::net::SocketAddr::new(self.address, self.port)
+    }
+
+    pub fn from_socket_addr(address: std::net::SocketAddr) -> Result<Self, String> {
+        let endpoint = Self {
+            transport: RuntimeServerTransport::LoopbackTcp,
+            address: address.ip(),
+            port: address.port(),
+        };
+        endpoint.validate()?;
+        Ok(endpoint)
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RuntimeServerEndpoint {
@@ -40,7 +82,6 @@ pub struct RuntimeServerEndpoint {
     pub schema_digest: String,
     pub transport_contract_digest: String,
     pub owner_epoch: u64,
-    #[serde(default)]
     pub owner_process_id: u32,
     pub runtime_artifact_path: String,
     pub runtime_binary_identity: RuntimeBinaryIdentity,
@@ -49,9 +90,9 @@ pub struct RuntimeServerEndpoint {
     pub artifact_mode: String,
     pub artifact_catalog_digest: String,
     pub binding_token: String,
-    pub socket_path: String,
-    pub data_plane_socket_path: String,
-    pub provider_plane_socket_path: String,
+    pub control_endpoint: RuntimeServerLoopbackEndpoint,
+    pub data_endpoint: RuntimeServerLoopbackEndpoint,
+    pub provider_endpoint: RuntimeServerLoopbackEndpoint,
     pub workspace_store_path: String,
     pub status_memory_path: String,
 }
@@ -69,7 +110,6 @@ pub struct RuntimeServerEndpointOwnerBinding {
     pub schema_id: String,
     pub schema_version: String,
     pub owner_epoch: u64,
-    #[serde(default)]
     pub owner_process_id: u32,
     pub runtime_artifact_path: String,
     pub binding_token: String,
@@ -117,9 +157,6 @@ impl RuntimeServerEndpoint {
             || !matches!(self.artifact_mode.as_str(), "dev" | "release")
             || !is_blake3_digest(&self.artifact_catalog_digest)
             || self.binding_token.is_empty()
-            || self.socket_path.is_empty()
-            || self.data_plane_socket_path.is_empty()
-            || self.provider_plane_socket_path.is_empty()
             || self.workspace_store_path.is_empty()
             || self.status_memory_path.is_empty()
         {
@@ -143,12 +180,9 @@ impl RuntimeServerEndpoint {
                 self.schema_digest
             ));
         }
-        if !Path::new(&self.socket_path).is_absolute() {
-            return Err("Runtime Server socket path must be absolute".to_owned());
-        }
-        if !Path::new(&self.data_plane_socket_path).is_absolute() {
-            return Err("Runtime Server data-plane socket path must be absolute".to_owned());
-        }
+        self.control_endpoint.validate()?;
+        self.data_endpoint.validate()?;
+        self.provider_endpoint.validate()?;
         if !Path::new(&self.workspace_store_path).is_absolute() {
             return Err("Runtime Server workspace store path must be absolute".to_owned());
         }
@@ -169,7 +203,7 @@ impl RuntimeServerEndpoint {
     pub async fn validate_service_reachability(&self) -> Result<(), String> {
         self.validate()?;
         let control = async {
-            tokio::net::UnixStream::connect(&self.socket_path)
+            tokio::net::TcpStream::connect(self.control_endpoint.socket_addr())
                 .await
                 .map(|_| ())
                 .map_err(|error| {
@@ -180,7 +214,7 @@ impl RuntimeServerEndpoint {
                 })
         };
         let data = async {
-            tokio::net::UnixStream::connect(&self.data_plane_socket_path)
+            tokio::net::TcpStream::connect(self.data_endpoint.socket_addr())
                 .await
                 .map(|_| ())
                 .map_err(|error| {
@@ -191,7 +225,7 @@ impl RuntimeServerEndpoint {
                 })
         };
         let provider = async {
-            tokio::net::UnixStream::connect(&self.provider_plane_socket_path)
+            tokio::net::TcpStream::connect(self.provider_endpoint.socket_addr())
                 .await
                 .map(|_| ())
                 .map_err(|error| {
@@ -453,6 +487,8 @@ pub struct RuntimeServerClientBootstrapReceipt {
     pub publication_nonce: Option<String>,
     pub artifact_digest: Option<String>,
     pub recommended_next: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub diagnostic: Option<String>,
     pub authority: RuntimeServerClientBootstrapAuthority,
 }
 
@@ -477,8 +513,14 @@ impl RuntimeServerClientBootstrapReceipt {
             publication_nonce,
             artifact_digest,
             recommended_next,
+            diagnostic: None,
             authority,
         }
+    }
+
+    pub fn with_diagnostic(mut self, diagnostic: impl Into<String>) -> Self {
+        self.diagnostic = Some(diagnostic.into());
+        self
     }
 }
 

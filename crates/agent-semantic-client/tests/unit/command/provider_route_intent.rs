@@ -6,14 +6,21 @@ use agent_semantic_client::{
 };
 use agent_semantic_client_protocol::AspClientSearchRequest;
 
-use super::{
-    forward_language_command, runtime_owner_intent, runtime_query_intent, runtime_search_intent,
-};
+use super::{forward_language_command, runtime_query_intent, runtime_search_intent};
 
 #[test]
 fn route_intents_are_semantic_and_do_not_forward_argv() {
     let search = runtime_search_intent(
-        &["search", "pipe", "tokio stream", "--workspace", "."].map(str::to_owned),
+        &[
+            "search",
+            "playbook",
+            "tokio stream",
+            "--intent",
+            "conceptual",
+            "--workspace",
+            ".",
+        ]
+        .map(str::to_owned),
     )
     .expect("search intent");
     assert_eq!(
@@ -22,26 +29,12 @@ fn route_intents_are_semantic_and_do_not_forward_argv() {
     );
     assert_eq!(search.schema_version, "1");
     assert_eq!(search.query, "tokio stream");
-    assert_eq!(search.operation, "pipe");
+    assert_eq!(search.intent, "conceptual");
 
-    let owner = runtime_owner_intent(
-        &[
-            "search",
-            "owner",
-            "src/lib.rs",
-            "items",
-            "--query",
-            "Runtime",
-        ]
-        .map(str::to_owned),
-    )
-    .expect("owner intent");
-    assert_eq!(
-        owner.schema_id,
-        "agent.semantic-protocols.asp-client-owner-search-request"
-    );
-    assert_eq!(owner.owner_path, "src/lib.rs");
-    assert_eq!(owner.query, "Runtime");
+    let removed_owner =
+        runtime_search_intent(&["search", "owner", "src/lib.rs", "items"].map(str::to_owned))
+            .expect_err("owner is not a public Search operation");
+    assert!(removed_owner.contains("was removed"));
 
     let query = runtime_query_intent(
         &[
@@ -111,12 +104,10 @@ impl LanguageCommandApplication for RecordingApplication {
 async fn language_cli_boundary_only_forwards_one_typed_request() {
     let application = RecordingApplication::default();
     let project_root = std::path::PathBuf::from("/workspace/project");
-    let operation = LanguageCommandOperation::Search(AspClientSearchRequest {
-        schema_id: "agent.semantic-protocols.asp-client-search-request".to_owned(),
-        schema_version: "1".to_owned(),
-        operation: "pipe".to_owned(),
-        query: "typed request".to_owned(),
-    });
+    let operation = LanguageCommandOperation::Search(AspClientSearchRequest::playbook(
+        "conceptual",
+        "typed request",
+    ));
 
     forward_language_command(
         &application,
@@ -162,7 +153,8 @@ fn registered_language_schema_profiles_share_projection_presentation() {
                 "protocolId": "agent.semantic-protocols.client",
                 "protocolVersion": "1",
                 "sessionId": "session-projection",
-                "workspaceIdentity": "workspace-projection",
+                "projectId": "repo-projection",
+                "workspaceId": "workspace-projection",
                 "requestId": "request-projection",
                 "outcome": "ready",
                 "result": {

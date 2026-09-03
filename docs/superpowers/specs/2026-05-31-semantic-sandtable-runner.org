@@ -119,7 +119,7 @@ Example surfaces:
 {
   "id": "typescript.search-code-flow",
   "language": "typescript",
-  "workdir": {"relative": "languages/typescript-lang-project-harness"},
+  "workdir": {"relative": "languages/asp-typescript"},
   "steps": [
     {
       "id": "text-owner-tests-pipe",

@@ -1,6 +1,6 @@
 //! Bounded, multiplexed gRPC transport to the ASP Server-owned Python graphs service.
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::{
     Arc,
@@ -261,85 +261,6 @@ impl AspPythonGraphsTransport {
     }
 }
 
-#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct GraphGenerationIdentity {
-    pub workspace_identity: String,
-    pub generation_digest: String,
-    pub publication_token: u64,
-}
-
-impl GraphGenerationIdentity {
-    pub fn new(
-        workspace_identity: impl Into<String>,
-        generation_digest: impl Into<String>,
-    ) -> Result<Self, String> {
-        let identity = Self {
-            workspace_identity: workspace_identity.into(),
-            generation_digest: generation_digest.into(),
-            publication_token: 0,
-        };
-        if identity.workspace_identity.is_empty() || identity.generation_digest.is_empty() {
-            return Err(
-                "asp-python-graphs generation identity requires workspace and generation"
-                    .to_owned(),
-            );
-        }
-        Ok(identity)
-    }
-
-    pub fn new_with_token(
-        workspace_identity: impl Into<String>,
-        generation_digest: impl Into<String>,
-        publication_token: u64,
-    ) -> Result<Self, String> {
-        let mut identity = Self::new(workspace_identity, generation_digest)?;
-        identity.publication_token = publication_token;
-        Ok(identity)
-    }
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct GenerationAdmission {
-    new: bool,
-}
-
-impl GenerationAdmission {
-    pub fn is_new(self) -> bool {
-        self.new
-    }
-}
-
-#[derive(Default)]
-pub struct GraphGenerationLedger {
-    refs: BTreeMap<GraphGenerationIdentity, usize>,
-}
-
-impl GraphGenerationLedger {
-    pub fn admit(&mut self, identity: GraphGenerationIdentity) -> GenerationAdmission {
-        let entry = self.refs.entry(identity).or_insert(0);
-        let new = *entry == 0;
-        *entry += 1;
-        GenerationAdmission { new }
-    }
-
-    pub fn refs(&self, identity: &GraphGenerationIdentity) -> Option<usize> {
-        self.refs.get(identity).copied()
-    }
-
-    pub fn release(&mut self, identity: &GraphGenerationIdentity) -> bool {
-        let Some(entry) = self.refs.get_mut(identity) else {
-            return false;
-        };
-        *entry -= 1;
-        if *entry == 0 {
-            self.refs.remove(identity);
-            true
-        } else {
-            false
-        }
-    }
-}
-
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum AspPythonGraphsLifecycleState {
     Starting,
@@ -349,21 +270,6 @@ pub enum AspPythonGraphsLifecycleState {
     Stopped,
 }
 
-struct GenerationSlot {
-    session_id: String,
-    refs: usize,
-    graph_payload_digest: String,
-    graph_payload: Arc<Value>,
-    retiring: bool,
-    status: GenerationSlotStatus,
-}
-
-enum GenerationSlotStatus {
-    Opening(Arc<tokio::sync::Notify>),
-    Ready,
-    Failed(String),
-}
-
 struct LifecycleState {
     transport: Option<AspPythonGraphsTransport>,
     child_shutdown: Option<tokio::sync::watch::Sender<bool>>,
@@ -371,14 +277,12 @@ struct LifecycleState {
     starting: Option<Arc<tokio::sync::Notify>>,
     terminal: Option<String>,
     draining: bool,
-    generations: BTreeMap<GraphGenerationIdentity, GenerationSlot>,
-    changed: Arc<tokio::sync::Notify>,
 }
 
 /// ASP Server-owned lifecycle for the one Python Graphs process connection.
 ///
 /// The process itself is selected by the Runtime Server control plane. This
-/// type owns exactly one long-lived UDS gRPC session and all generation leases;
+/// type owns exactly one long-lived UDS gRPC session;
 /// callers never connect or spawn a provider per request.
 #[derive(Clone)]
 pub struct AspPythonGraphsServer {
@@ -390,13 +294,6 @@ pub struct AspPythonGraphsServer {
 }
 
 pub type AspPythonGraphsLifecycle = AspPythonGraphsServer;
-
-pub struct GraphGenerationLease {
-    server: AspPythonGraphsServer,
-    identity: GraphGenerationIdentity,
-    session_id: String,
-    released: bool,
-}
 
 impl AspPythonGraphsServer {
     pub fn new(socket_path: impl Into<PathBuf>, capacity: usize) -> Result<Self, String> {
@@ -415,8 +312,6 @@ impl AspPythonGraphsServer {
                 starting: None,
                 terminal: None,
                 draining: false,
-                generations: BTreeMap::new(),
-                changed: Arc::new(tokio::sync::Notify::new()),
             })),
         })
     }
@@ -505,10 +400,11 @@ impl AspPythonGraphsServer {
     async fn start_once(&self, completion: Arc<tokio::sync::Notify>) {
         let result = async {
             let artifact = self.artifact.as_ref().ok_or_else(|| {
-                "state=unavailable reasonKind=asp-python-graphs-artifact-receipt-missing".to_owned()
+                "state=unavailable reasonKind=asp-python-graphs-bundle-member-not-installed"
+                    .to_owned()
             })?;
             let child = artifact.command_for_socket(&self.socket_path)?.spawn().map_err(|error| {
-                format!("state=unavailable reasonKind=asp-python-graphs-artifact-spawn-failed error={error}")
+                format!("state=unavailable reasonKind=asp-python-graphs-bundle-member-spawn-failed error={error}")
             })?;
             let (child_shutdown, child_shutdown_receiver) = tokio::sync::watch::channel(false);
             let server = self.clone();
@@ -536,8 +432,8 @@ impl AspPythonGraphsServer {
                 }
             };
             let (runtime_digest, execution_digest) = (
-                &artifact.descriptor().content_digest,
-                &artifact.descriptor().execution_command_digest,
+                artifact.content_digest(),
+                artifact.execution_command_digest(),
             );
             let request_id = self.next_id("hello");
             let hello = serde_json::json!({
@@ -593,9 +489,6 @@ impl AspPythonGraphsServer {
 
     pub async fn recover_after_terminal(&self) -> Result<(), String> {
         let mut state = self.state.lock().await;
-        if !state.generations.is_empty() {
-            return Err("cannot recover asp-python-graphs while generations are leased".to_owned());
-        }
         state.transport = None;
         state.terminal = None;
         state.draining = false;
@@ -654,292 +547,159 @@ impl AspPythonGraphsServer {
         result
     }
 
-    pub async fn open_generation_with_token(
+    /// Construct and content-bind the graph stage of one Search generation.
+    /// The Runtime owns transport and lifecycle only; the request and receipt
+    /// contract are owned by `agent-semantic-search`.
+    pub async fn generation_graph(
         &self,
-        identity: GraphGenerationIdentity,
-        publication_token: u64,
-        graph_payload: Value,
+        request_id: String,
+        payload: Value,
         cancellation: agent_semantic_client_db::runtime_generation_cancellation::GenerationCancellation,
-    ) -> Result<GraphGenerationLease, String> {
-        let artifact =
-            agent_semantic_content_identity::ArtifactJson::from_serializable(&graph_payload)
-                .map_err(|error| format!("canonicalize asp-python-graphs generation: {error}"))?;
-        let graph_payload_digest = format!(
-            "blake3-256:{}",
-            agent_semantic_content_identity::hash_normalized_json(&artifact).value
-        );
-        self.open_generation_shared_with_token(
-            identity,
-            publication_token,
-            graph_payload_digest,
-            Arc::new(graph_payload),
-            cancellation,
-        )
-        .await
-    }
-
-    /// Acquire a generation lease without cloning or re-hashing the immutable
-    /// graph on every query. The Runtime search mmap owns the canonical Arc and
-    /// digest; only the first admission sends the payload to Python.
-    pub async fn open_generation_shared_with_token(
-        &self,
-        mut identity: GraphGenerationIdentity,
-        publication_token: u64,
-        graph_payload_digest: String,
-        graph_payload: Arc<Value>,
-        cancellation: agent_semantic_client_db::runtime_generation_cancellation::GenerationCancellation,
-    ) -> Result<GraphGenerationLease, String> {
-        if publication_token == 0 {
-            return Err("state=stale-generation reasonKind=missing-publication-token".to_owned());
-        }
-        if !graph_payload_digest.starts_with("blake3-256:") {
-            return Err("asp-python-graphs generation payload digest is invalid".to_owned());
-        }
-        identity.publication_token = publication_token;
+    ) -> Result<Value, String> {
         self.ensure_started().await?;
-        let (notify, start_open, session_id) = {
-            let mut state = self.state.lock().await;
-            if state.draining {
-                return Err("asp-python-graphs lifecycle is draining".to_owned());
+        let transport = self
+            .state
+            .lock()
+            .await
+            .transport
+            .clone()
+            .ok_or_else(|| "asp-python-graphs transport is absent".to_owned())?;
+        let internal_request_id = self.next_id("generation-graph");
+        let mut request = self.service_envelope_with_request_id(
+            "runtime-server",
+            "generation-graph",
+            internal_request_id.clone(),
+            payload,
+        );
+        request["clientRequestId"] = Value::String(request_id);
+        agent_semantic_search_projection::bind_graph_generation_identity(&mut request)?;
+        let transport_result = transport.call_cancellable(request, cancellation).await;
+        let transport_error = transport_result.as_ref().err().cloned();
+        let result = transport_result.and_then(|receipt| {
+            if receipt.get("requestId").and_then(Value::as_str)
+                != Some(internal_request_id.as_str())
+            {
+                return Err("asp-python-graphs generation receipt requestId mismatch".to_owned());
             }
-            if let Some(slot) = state.generations.get_mut(&identity) {
-                if let GenerationSlotStatus::Failed(error) = &slot.status {
-                    return Err(error.clone());
-                }
-                if slot.retiring {
-                    return Err("asp-python-graphs generation is retiring".to_owned());
-                }
-                if slot.graph_payload_digest != graph_payload_digest {
-                    return Err("asp-python-graphs generation graph payload conflicts with the admitted snapshot".to_owned());
-                }
-                slot.refs += 1;
-                let notify = match &slot.status {
-                    GenerationSlotStatus::Opening(notify) => Some(Arc::clone(notify)),
-                    GenerationSlotStatus::Ready => {
-                        return Ok(GraphGenerationLease {
-                            server: self.clone(),
-                            identity,
-                            session_id: slot.session_id.clone(),
-                            released: false,
-                        });
-                    }
-                    GenerationSlotStatus::Failed(error) => return Err(error.clone()),
-                };
-                (notify, false, slot.session_id.clone())
-            } else {
-                let session_id = self.next_id("session");
-                let notify = Arc::new(tokio::sync::Notify::new());
-                state.generations.insert(
-                    identity.clone(),
-                    GenerationSlot {
-                        session_id: session_id.clone(),
-                        refs: 1,
-                        graph_payload_digest,
-                        graph_payload,
-                        retiring: false,
-                        status: GenerationSlotStatus::Opening(Arc::clone(&notify)),
-                    },
-                );
-                (Some(notify), true, session_id)
+            if receipt_state(&receipt) != Some("completed") {
+                return Err(format!(
+                    "asp-python-graphs generation graph rejected: {receipt}"
+                ));
             }
-        };
-        if start_open {
-            let server = self.clone();
-            let open_identity = identity.clone();
-            tokio::spawn(async move { server.finish_open(open_identity).await });
-        }
-        let notify = notify.expect("generation open always has a terminal notification");
-        loop {
-            let (terminal, notified) = {
-                let state = self.state.lock().await;
-                let terminal = state
-                    .generations
-                    .get(&identity)
-                    .map(|slot| match &slot.status {
-                        GenerationSlotStatus::Opening(_) => None,
-                        GenerationSlotStatus::Ready => Some(Ok(())),
-                        GenerationSlotStatus::Failed(error) => Some(Err(error.clone())),
-                    });
-                (terminal, notify.notified())
-            };
-            match terminal.flatten() {
-                Some(Ok(())) => {
-                    return Ok(GraphGenerationLease {
-                        server: self.clone(),
-                        identity,
-                        session_id,
-                        released: false,
-                    });
-                }
-                Some(Err(error)) => {
-                    let _ = self.release_generation(&identity, &session_id).await;
-                    return Err(error);
-                }
-                None => tokio::select! {
-                    _ = notified => {},
-                    _ = cancellation.cancelled() => {
-                        let _ = self.release_generation(&identity, &session_id).await;
-                        return Err("asp-python-graphs generation open cancelled".to_owned());
-                    }
-                },
+            receipt
+                .get("payload")
+                .and_then(Value::as_object)
+                .and_then(|payload| payload.get("result"))
+                .cloned()
+                .ok_or_else(|| {
+                    "asp-python-graphs generation receipt lacks payload.result".to_owned()
+                })
+        });
+        if let Some(error) = transport_error {
+            if !error.contains("cancelled") {
+                self.mark_terminal(error).await;
             }
         }
+        result
     }
 
-    async fn finish_open(&self, identity: GraphGenerationIdentity) {
-        let session_id = {
-            let state = self.state.lock().await;
-            state
-                .generations
-                .get(&identity)
-                .map(|slot| slot.session_id.clone())
-        };
-        let Some(session_id) = session_id else { return };
-        let graph_payload = {
-            let state = self.state.lock().await;
-            state
-                .generations
-                .get(&identity)
-                .map(|slot| Arc::clone(&slot.graph_payload))
-        };
-        let Some(graph_payload) = graph_payload else {
-            return;
-        };
-        let request = self.envelope(
-            &session_id,
-            "open-generation",
-            &identity,
-            graph_payload.as_ref().clone(),
+    /// Evaluate one intent-only request against an already retained exact
+    /// workspace generation. The service envelope, not the intent payload,
+    /// carries the durable generation identity.
+    pub async fn evaluate_resident(
+        &self,
+        workspace_identity: String,
+        generation_digest: String,
+        request_id: String,
+        payload: Value,
+        cancellation: agent_semantic_client_db::runtime_generation_cancellation::GenerationCancellation,
+    ) -> Result<Value, String> {
+        self.ensure_started().await?;
+        let transport = self
+            .state
+            .lock()
+            .await
+            .transport
+            .clone()
+            .ok_or_else(|| "asp-python-graphs transport is absent".to_owned())?;
+        let internal_request_id = self.next_id("evaluate-resident");
+        let mut request = self.service_envelope_with_request_id(
+            "runtime-server",
+            "evaluate-resident",
+            internal_request_id.clone(),
+            payload,
         );
-        let (result, process_terminal) = async {
-            let transport = self
-                .state
-                .lock()
-                .await
-                .transport
-                .clone()
-                .ok_or_else(|| "asp-python-graphs transport is absent".to_owned());
-            let transport = match transport {
-                Ok(transport) => transport,
-                Err(error) => return (Err(error), true),
-            };
-            match transport.call(request).await {
-                Err(error) => (Err(error), true),
-                Ok(response) if receipt_state(&response) == Some("ready") => (Ok(()), false),
-                Ok(response) => (
-                    Err(format!(
-                        "asp-python-graphs generation open rejected: {response}"
-                    )),
-                    false,
-                ),
+        request["clientRequestId"] = Value::String(request_id);
+        request["workspaceIdentity"] = Value::String(workspace_identity.clone());
+        request["generationDigest"] = Value::String(generation_digest.clone());
+        let transport_result = transport.call_cancellable(request, cancellation).await;
+        let transport_error = transport_result.as_ref().err().cloned();
+        let result = transport_result.and_then(|receipt| {
+            agent_semantic_search_projection::validate_graph_generation_receipt_identity(
+                &receipt,
+                &internal_request_id,
+                "completed",
+                &workspace_identity,
+                &generation_digest,
+            )?;
+            receipt
+                .get("payload")
+                .and_then(Value::as_object)
+                .cloned()
+                .map(Value::Object)
+                .ok_or_else(|| {
+                    "asp-python-graphs resident evaluation receipt lacks payload".to_owned()
+                })
+        });
+        if let Some(error) = transport_error {
+            if !error.contains("cancelled") {
+                self.mark_terminal(error).await;
             }
         }
-        .await;
-        let (notify, retired) = {
-            let mut state = self.state.lock().await;
-            let Some(slot) = state.generations.get_mut(&identity) else {
-                return;
-            };
-            let notify = match &slot.status {
-                GenerationSlotStatus::Opening(notify) => Arc::clone(notify),
-                _ => return,
-            };
-            let failed = result.as_ref().err().cloned();
-            let succeeded = result.is_ok();
-            slot.status = match result {
-                Ok(()) => GenerationSlotStatus::Ready,
-                Err(error) => GenerationSlotStatus::Failed(error),
-            };
-            if process_terminal {
-                if let Some(error) = failed {
-                    state.terminal = Some(error);
-                }
-            }
-            let highest_token = state
-                .generations
-                .iter()
-                .filter(|(existing, _)| existing.workspace_identity == identity.workspace_identity)
-                .map(|(existing, _)| existing.publication_token)
-                .max()
-                .unwrap_or(identity.publication_token);
-            let equal_token_conflict = succeeded
-                && state.generations.iter().any(|(existing, _)| {
-                    existing.workspace_identity == identity.workspace_identity
-                        && existing != &identity
-                        && existing.publication_token == identity.publication_token
-                });
-            let stale =
-                succeeded && (identity.publication_token < highest_token || equal_token_conflict);
-            if stale {
-                if let Some(slot) = state.generations.get_mut(&identity) {
-                    slot.retiring = true;
-                    slot.status = GenerationSlotStatus::Failed(
-                        "asp-python-graphs stale generation publication".to_owned(),
-                    );
-                }
-            }
-            let retired = if succeeded && !stale {
-                state
-                    .generations
-                    .iter_mut()
-                    .filter(|(existing, _)| {
-                        existing.workspace_identity == identity.workspace_identity
-                            && *existing != &identity
-                    })
-                    .filter_map(|(_, slot)| {
-                        slot.retiring = true;
-                        (slot.refs == 0).then(|| slot.session_id.clone())
-                    })
-                    .collect::<Vec<_>>()
-            } else {
-                Vec::new()
-            };
-            (notify, retired)
-        };
-        notify.notify_waiters();
-        for session in retired {
-            self.retire_zero_ref_generation(&identity.workspace_identity, &session)
-                .await;
-        }
+        result
+    }
+
+    /// Release exactly one retained workspace generation. A missing or drifted
+    /// identity remains a typed terminal and cannot release another entry.
+    pub async fn release_generation(
+        &self,
+        workspace_identity: String,
+        generation_digest: String,
+        request_id: String,
+    ) -> Result<Value, String> {
+        self.ensure_started().await?;
+        let transport = self
+            .state
+            .lock()
+            .await
+            .transport
+            .clone()
+            .ok_or_else(|| "asp-python-graphs transport is absent".to_owned())?;
+        let internal_request_id = self.next_id("release-generation");
+        let mut request = self.service_envelope_with_request_id(
+            "runtime-server",
+            "release-generation",
+            internal_request_id.clone(),
+            serde_json::json!({}),
+        );
+        request["clientRequestId"] = Value::String(request_id);
+        request["workspaceIdentity"] = Value::String(workspace_identity.clone());
+        request["generationDigest"] = Value::String(generation_digest.clone());
+        let receipt = transport.call(request).await?;
+        agent_semantic_search_projection::validate_graph_generation_receipt_identity(
+            &receipt,
+            &internal_request_id,
+            "released",
+            &workspace_identity,
+            &generation_digest,
+        )?;
+        Ok(receipt)
     }
 
     async fn mark_terminal(&self, reason: String) {
         let mut state = self.state.lock().await;
         state.terminal = Some(reason);
         state.transport = None;
-    }
-
-    fn envelope(
-        &self,
-        session_id: &str,
-        kind: &str,
-        identity: &GraphGenerationIdentity,
-        payload: Value,
-    ) -> Value {
-        self.envelope_with_request_id(session_id, kind, identity, self.next_id("request"), payload)
-    }
-
-    fn envelope_with_request_id(
-        &self,
-        session_id: &str,
-        kind: &str,
-        identity: &GraphGenerationIdentity,
-        request_id: String,
-        payload: Value,
-    ) -> Value {
-        serde_json::json!({
-            "schemaId": ASP_PYTHON_GRAPHS_SESSION_SCHEMA_ID,
-            "schemaVersion": ASP_PYTHON_GRAPHS_SESSION_SCHEMA_VERSION,
-            "sessionId": session_id,
-            "serviceEpoch": "runtime-server",
-            "requestId": request_id,
-            "messageKind": kind,
-            "workspaceIdentity": identity.workspace_identity,
-            "generationDigest": identity.generation_digest,
-            "generationToken": identity.publication_token,
-            "payloadSchemaId": payload.get("schemaId").and_then(Value::as_str).unwrap_or(ASP_PYTHON_GRAPHS_SESSION_SCHEMA_ID),
-            "payload": payload,
-        })
     }
 
     fn service_envelope_with_request_id(
@@ -966,162 +726,22 @@ impl AspPythonGraphsServer {
         format!("{prefix}-{sequence}")
     }
 
-    async fn release_generation(
-        &self,
-        identity: &GraphGenerationIdentity,
-        session_id: &str,
-    ) -> Result<(), String> {
-        let should_release = {
-            let mut state = self.state.lock().await;
-            let Some(slot) = state.generations.get_mut(identity) else {
-                return Ok(());
-            };
-            if slot.refs > 1 {
-                slot.refs -= 1;
-                false
-            } else if !slot.retiring {
-                slot.refs = 0;
-                state.changed.notify_waiters();
-                false
-            } else {
-                state.generations.remove(identity);
-                state.changed.notify_waiters();
-                true
-            }
-        };
-        if should_release {
-            let transport = self
-                .state
-                .lock()
-                .await
-                .transport
-                .clone()
-                .ok_or_else(|| "asp-python-graphs transport is absent".to_owned())?;
-            let receipt = transport
-                .call(self.envelope(
-                    session_id,
-                    "release-generation",
-                    identity,
-                    serde_json::json!({}),
-                ))
-                .await?;
-            if receipt_state(&receipt) != Some("completed") {
-                return Err(format!(
-                    "asp-python-graphs generation release rejected: {receipt}"
-                ));
-            }
-        }
-        Ok(())
-    }
-
-    async fn retire_zero_ref_generation(&self, workspace_identity: &str, session_id: &str) {
-        let identity = {
-            let mut state = self.state.lock().await;
-            let identity = state
-                .generations
-                .iter()
-                .find(|(identity, slot)| {
-                    identity.workspace_identity == workspace_identity
-                        && slot.session_id == session_id
-                        && slot.retiring
-                        && slot.refs == 0
-                })
-                .map(|(identity, _)| identity.clone());
-            if let Some(identity) = &identity {
-                state.generations.remove(identity);
-                state.changed.notify_waiters();
-            }
-            identity
-        };
-        if let Some(identity) = identity {
-            if let Some(transport) = self.state.lock().await.transport.clone() {
-                let _ = transport
-                    .call(self.envelope(
-                        session_id,
-                        "release-generation",
-                        &identity,
-                        serde_json::json!({}),
-                    ))
-                    .await;
-            }
-        }
-    }
-
     pub async fn drain(&self) -> Result<(), String> {
-        {
-            let mut state = self.state.lock().await;
-            state.draining = true;
-            for slot in state.generations.values_mut() {
-                slot.retiring = true;
-            }
-        }
-        loop {
-            let (retired, changed, remaining) = {
-                let mut state = self.state.lock().await;
-                let retired = state
-                    .generations
-                    .iter()
-                    .filter(|(_, slot)| slot.refs == 0)
-                    .map(|(identity, slot)| (identity.clone(), slot.session_id.clone()))
-                    .collect::<Vec<_>>();
-                for (identity, _) in &retired {
-                    state.generations.remove(identity);
-                }
-                let remaining = !state.generations.is_empty();
-                (retired, Arc::clone(&state.changed), remaining)
-            };
-            for (identity, session_id) in retired {
-                let transport = self.state.lock().await.transport.clone();
-                if let Some(transport) = transport {
-                    let _ = transport
-                        .call(self.envelope(
-                            &session_id,
-                            "release-generation",
-                            &identity,
-                            serde_json::json!({}),
-                        ))
-                        .await;
-                }
-            }
-            if !remaining {
-                break;
-            }
-            changed.notified().await;
-        }
+        self.state.lock().await.draining = true;
         Ok(())
     }
 
     pub async fn shutdown(&self) -> Result<(), String> {
-        let (transport, child_shutdown, supervisor, releases) = {
+        let (transport, child_shutdown, supervisor) = {
             let mut state = self.state.lock().await;
             state.draining = true;
             state.terminal = Some("asp-python-graphs lifecycle stopped".to_owned());
-            let releases = state
-                .generations
-                .iter()
-                .map(|(identity, slot)| (identity.clone(), slot.session_id.clone()))
-                .collect::<Vec<_>>();
-            state.generations.clear();
-            state.changed.notify_waiters();
             (
                 state.transport.take(),
                 state.child_shutdown.take(),
                 state.child_supervisor.take(),
-                releases,
             )
         };
-        if let Some(transport_ref) = transport.as_ref() {
-            for (identity, session_id) in releases {
-                let _ = transport_ref
-                    .call(self.envelope(
-                        &session_id,
-                        "release-generation",
-                        &identity,
-                        serde_json::json!({}),
-                    ))
-                    .await;
-            }
-        }
         drop(transport);
         if let Some(shutdown) = child_shutdown {
             let _ = shutdown.send(true);
@@ -1130,85 +750,6 @@ impl AspPythonGraphsServer {
             let _ = supervisor.await;
         }
         Ok(())
-    }
-}
-
-impl GraphGenerationLease {
-    pub fn identity(&self) -> &GraphGenerationIdentity {
-        &self.identity
-    }
-
-    pub async fn evaluate(
-        &self,
-        payload: Value,
-        cancellation: agent_semantic_client_db::runtime_generation_cancellation::GenerationCancellation,
-    ) -> Result<Value, String> {
-        self.evaluate_with_request_id(payload, self.server.next_id("request"), cancellation)
-            .await
-    }
-
-    pub async fn evaluate_with_request_id(
-        &self,
-        payload: Value,
-        request_id: String,
-        cancellation: agent_semantic_client_db::runtime_generation_cancellation::GenerationCancellation,
-    ) -> Result<Value, String> {
-        if self.released {
-            return Err("asp-python-graphs generation lease is released".to_owned());
-        }
-        let transport = self
-            .server
-            .state
-            .lock()
-            .await
-            .transport
-            .clone()
-            .ok_or_else(|| "asp-python-graphs transport is absent".to_owned())?;
-        let internal_request_id = self.server.next_id("request");
-        let mut request = self.server.envelope_with_request_id(
-            &self.session_id,
-            "evaluate",
-            &self.identity,
-            internal_request_id.clone(),
-            payload,
-        );
-        request["clientRequestId"] = Value::String(request_id);
-        let transport_result = transport.call_cancellable(request, cancellation).await;
-        let transport_error = transport_result.as_ref().err().cloned();
-        let result = transport_result.and_then(|receipt| {
-            if receipt.get("requestId").and_then(Value::as_str)
-                != Some(internal_request_id.as_str())
-            {
-                return Err("asp-python-graphs receipt requestId mismatch".to_owned());
-            }
-            if receipt_state(&receipt) != Some("completed") {
-                return Err(format!("asp-python-graphs evaluation rejected: {receipt}"));
-            }
-            receipt
-                .get("payload")
-                .and_then(Value::as_object)
-                .and_then(|payload| payload.get("result"))
-                .cloned()
-                .ok_or_else(|| {
-                    "asp-python-graphs evaluation receipt lacks payload.result".to_owned()
-                })
-        });
-        if let Some(error) = transport_error {
-            if !error.contains("cancelled") {
-                self.server.mark_terminal(error).await;
-            }
-        }
-        result
-    }
-
-    pub async fn release(mut self) -> Result<(), String> {
-        if self.released {
-            return Ok(());
-        }
-        self.released = true;
-        self.server
-            .release_generation(&self.identity, &self.session_id)
-            .await
     }
 }
 
@@ -1269,45 +810,12 @@ async fn connect_unix_channel(socket_path: PathBuf) -> Result<tonic::transport::
 
 #[cfg(test)]
 mod tests {
-    use serde_json::json;
-
-    use super::{
-        AspPythonGraphsServer, GraphGenerationIdentity, GraphGenerationLedger, decode_receipt,
-        terminalize_pending, wire_terminal_message,
-    };
+    use super::{decode_receipt, terminalize_pending, wire_terminal_message};
 
     #[test]
     fn receipt_requires_json_object() {
         assert!(decode_receipt(br#"{"requestId":"request-1"}"#).is_ok());
         assert!(decode_receipt(br#"[]"#).is_err());
-    }
-
-    #[test]
-    fn generation_ledger_reuses_one_open_and_releases_at_zero() {
-        let mut ledger = GraphGenerationLedger::default();
-        let identity = GraphGenerationIdentity::new("workspace", "generation").unwrap();
-
-        assert!(ledger.admit(identity.clone()).is_new());
-        assert!(!ledger.admit(identity.clone()).is_new());
-        assert_eq!(ledger.refs(&identity), Some(2));
-        assert!(!ledger.release(&identity));
-        assert!(ledger.release(&identity));
-        assert_eq!(ledger.refs(&identity), None);
-    }
-
-    #[test]
-    fn server_envelopes_leave_wire_sequence_to_transport() {
-        let server = AspPythonGraphsServer::new("/tmp/asp-python-graphs.sock", 1).unwrap();
-        let identity =
-            GraphGenerationIdentity::new_with_token("workspace", "generation", 7).unwrap();
-
-        let first = server.envelope("session", "evaluate", &identity, json!({}));
-        let second = server.envelope("session", "evaluate", &identity, json!({}));
-
-        assert!(first.get("sequence").is_none());
-        assert!(second.get("sequence").is_none());
-        assert_eq!(first["requestId"], "request-1");
-        assert_eq!(second["requestId"], "request-2");
     }
 
     #[test]

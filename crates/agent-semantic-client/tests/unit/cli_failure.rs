@@ -1,6 +1,17 @@
 use super::materialize_cli_failure;
 
 #[test]
+fn runtime_transport_unavailable_is_a_typed_pre_frame_terminal() {
+    let rendered = materialize_cli_failure(
+        "reasonKind=transport-unavailable ASP Server endpoint is unavailable",
+    );
+    let receipt: serde_json::Value = serde_json::from_str(&rendered).expect("typed receipt");
+    assert_eq!(receipt["reasonKind"], "transport-unavailable");
+    assert_eq!(receipt["failureLayer"], "runtime-transport-capability");
+    assert_eq!(receipt["state"], "blocked");
+}
+
+#[test]
 fn bare_eperm_becomes_an_explicit_agent_facing_boundary_receipt() {
     let rendered = materialize_cli_failure("Operation not permitted (os error 1)");
     let receipt: serde_json::Value = serde_json::from_str(&rendered).expect("typed CLI failure");

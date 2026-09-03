@@ -67,17 +67,45 @@ pub async fn install_resident_runtime_bundle(
         agent_semantic_artifacts::runtime_artifact_catalog::QualifiedRuntimeArtifactSource,
     >,
 ) -> Result<ResidentRuntimeInstallReceipt, String> {
+    let members = [
+        agent_semantic_artifacts::runtime_artifact_publication::RuntimeArtifactBundleMemberSource {
+            name: "asp-hook",
+            source: hook_source,
+        },
+    ];
+    install_resident_runtime_bundle_members(
+        state_home,
+        source,
+        target,
+        &members,
+        artifact_mode,
+        qualified_source,
+    )
+    .await
+}
+
+pub async fn install_resident_runtime_bundle_members(
+    state_home: &Path,
+    source: &Path,
+    target: &Path,
+    members: &[agent_semantic_artifacts::runtime_artifact_publication::RuntimeArtifactBundleMemberSource<'_>],
+    artifact_mode: &str,
+    qualified_source: Option<
+        agent_semantic_artifacts::runtime_artifact_catalog::QualifiedRuntimeArtifactSource,
+    >,
+) -> Result<ResidentRuntimeInstallReceipt, String> {
     if let Some(authority) = qualified_source.as_ref() {
         authority.validate_source(state_home, source, "asp")?;
-        authority.validate_source(state_home, hook_source, "asp-hook")?;
+        for member in members {
+            authority.validate_source(state_home, member.source, member.name)?;
+        }
     }
-    let receipt =
-        agent_semantic_artifacts::runtime_artifact_publication::publish_runtime_artifact_bundle(
+    let receipt = agent_semantic_artifacts::runtime_artifact_publication::publish_runtime_artifact_bundle_members(
             state_home,
             source,
             target,
             artifact_mode,
-            hook_source,
+            members,
         )
         .await?;
     Ok(ResidentRuntimeInstallReceipt {

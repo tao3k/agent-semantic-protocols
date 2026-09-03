@@ -19,6 +19,10 @@ open ASPProof.Audit.Core
 open ASPProof.GQLCoreSciPyResidentGraphTurbo
 
 def targets : List Target := [
+  Target.mk ``python_graph_outage_cannot_block_base_generation_commit
+    "python-graph-outage-nonblocking" ["GSRGT-BASE-GENERATION", "GSRGT-PYTHON"],
+  Target.mk ``python_graph_availability_does_not_change_base_generation_identity
+    "python-graph-identity-noninterference" ["GSRGT-BASE-GENERATION", "GSRGT-PYTHON"],
   Target.mk ``python_proposal_cannot_mint_evidence_authority
     "python-proposal-nonauthority" ["GSRGT-AUTHORITY", "GSRGT-PYTHON"],
   Target.mk ``exact_graph_session_identity_is_admitted

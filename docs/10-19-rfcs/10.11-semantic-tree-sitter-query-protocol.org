@@ -500,7 +500,7 @@ input form when a provider advertises =queryInputForms=s-expression=, but
 Recommended layout:
 
 #+begin_example
-languages/typescript-lang-project-harness/
+languages/asp-typescript/
   tree-sitter/
     tree-sitter-typescript/
       grammar-profile.json

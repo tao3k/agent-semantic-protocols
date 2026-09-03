@@ -145,14 +145,14 @@ def test_topology_membership_prefers_local_anchor_over_workspace_root() -> None:
                     "id": "submodule:typescript",
                     "kind": "submodule",
                     "role": "workspace-member",
-                    "value": "languages/typescript-lang-project-harness",
+                    "value": "languages/asp-typescript",
                 },
                 {
                     "id": "owner:submodule",
                     "kind": "owner",
                     "role": "path",
                     "value": (
-                        "languages/typescript-lang-project-harness/src/cli/"
+                        "languages/asp-typescript/src/cli/"
                         "semantic-search/workspace-ranking.ts"
                     ),
                 },

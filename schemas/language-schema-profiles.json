@@ -26,6 +26,9 @@
       "asp-client-frame.schema.json",
       "asp-client-conformance.schema.json",
       "asp-client-search-request.schema.json",
+      "semantic-agent-search-playbook-receipt.v1.schema.json",
+      "large-search-playbook-performance-receipt.v1.schema.json",
+      "workspace-search-playbook-plan.v1.schema.json",
       "asp-client-source-index-lookup-request.schema.json",
       "resident-search-result.v1.schema.json",
       "asp-client-exact-query-request.schema.json",
@@ -36,10 +39,7 @@
       "asp-client-work-counters.schema.json",
       "asp-client-schema-bundle-request.schema.json",
       "asp-client-schema-bundle-response.schema.json",
-      "asp-client-owner-search-request.schema.json",
-      "asp-client-owner-search-response.schema.json",
       "grpc-warm-latency-receipt.schema.json",
-      "owner-search-payload-reduction-receipt.schema.json",
       "lexical-postings-work-reduction-receipt.schema.json",
       "rg-coverage-receipt.schema.json",
       "runtime-client-terminal.schema.json",
@@ -95,6 +95,7 @@
       "semantic-evidence-graph.v1.schema.json",
       "semantic-graph-resident-evaluation-request.v1.schema.json",
       "semantic-graph-resident-evaluation-result.v1.schema.json",
+      "python-generation-graph-performance-receipt.v1.schema.json",
       "semantic-graph-turbo-request.v1.schema.json",
       "semantic-assurance-case.v1.schema.json",
       "semantic-ast-patch.v1.schema.json",
@@ -126,8 +127,8 @@
     },
     {
       "languageId": "typescript",
-      "packageRoot": "languages/typescript-lang-project-harness",
-      "bundleRoot": "languages/typescript-lang-project-harness/schemas",
+      "packageRoot": "languages/asp-typescript",
+      "bundleRoot": "languages/asp-typescript/schemas",
       "rootSets": [
         "provider-contract",
         "client-protocol",
@@ -490,11 +491,6 @@
           "active-asp-artifact-"
         ]
       },
-      "membershipOverrides": {
-        "includeSchemaPaths": [
-          "schemas/asp-python-graphs-runtime-artifact.v2.schema.json"
-        ]
-      },
       "definitionSchemaPath": "schemas/semantic-artifact-definitions.v1.schema.json",
       "definitionVisibility": "public"
     },
@@ -502,7 +498,7 @@
       "familyId": "asp.schema-family.semantic-search",
       "owner": "schemas",
       "rationale": "Search packet, projection, trace, and evidence contracts under the semantic-search namespace.",
-      "priority": 200,
+      "priority": 210,
       "parentFamilyId": "asp.schema-family.semantic",
       "namespace": {
         "filenamePrefixes": [
@@ -512,22 +508,27 @@
           "asp-search-",
           "incremental-search-",
           "interactive-search-",
+          "large-search-",
           "memory-search-",
+          "cold-rg-",
+          "content-search-",
+          "lexical-",
+          "python-generation-graph-",
           "rendered-search-",
           "repository-candidate-",
           "search-",
+          "fused-search-",
           "evidence-query-",
           "callable-skeleton-"
         ]
       },
       "membershipOverrides": {
         "includeSchemaPaths": [
-          "schemas/asp-python-graphs-search-evidence.v1.schema.json",
           "schemas/asp.exact-selector-execution-receipt.v1.schema.json",
           "schemas/projection-evidence-context.v1.schema.json",
           "schemas/lexical-postings-work-reduction-receipt.schema.json",
-          "schemas/owner-search-payload-reduction-receipt.schema.json",
-          "schemas/rg-coverage-receipt.schema.json"
+          "schemas/rg-coverage-receipt.schema.json",
+          "schemas/workspace-search-playbook-plan.v1.schema.json"
         ]
       }
     },

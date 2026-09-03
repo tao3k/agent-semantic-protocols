@@ -1,8 +1,8 @@
 [submodule "languages/asp-rust"]
 	path = languages/asp-rust
 	url = https://github.com/tao3k/asp-rust
-[submodule "languages/typescript-lang-project-harness"]
-	path = languages/typescript-lang-project-harness
+[submodule "languages/asp-typescript"]
+	path = languages/asp-typescript
 	url = https://github.com/tao3k/asp-typescript
 [submodule "languages/AspJulia.jl"]
 	path = languages/AspJulia.jl

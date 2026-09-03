@@ -1,7 +1,7 @@
 use super::{
-    CanonicalItemSelector, EXACT_STRUCTURAL_SELECTOR_SCHEMA_ID,
-    EXACT_STRUCTURAL_SELECTOR_SCHEMA_VERSION, ExactStructuralSelectorSegmentV1,
-    ExactStructuralSelectorV1, ExactStructuralSelectorValidationError,
+    EXACT_STRUCTURAL_SELECTOR_SCHEMA_ID, EXACT_STRUCTURAL_SELECTOR_SCHEMA_VERSION,
+    ExactCanonicalItemSelectorV1, ExactStructuralSelectorSegmentV1, ExactStructuralSelectorV1,
+    ExactStructuralSelectorValidationError,
 };
 
 fn selector() -> ExactStructuralSelectorV1 {
@@ -14,7 +14,7 @@ fn selector() -> ExactStructuralSelectorV1 {
         generation_identity_digest: "a".repeat(64),
         parser_identity_digest: "b".repeat(64),
         query_pack_digest: "c".repeat(64),
-        root_item_selector: CanonicalItemSelector {
+        root_item_selector: ExactCanonicalItemSelectorV1 {
             schema_id: "asp.canonical-item-selector.v1".to_owned(),
             schema_version: "1".to_owned(),
             language_id: "rust".to_owned(),

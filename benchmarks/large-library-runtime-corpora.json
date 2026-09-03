@@ -61,7 +61,7 @@
     {
       "resourceId": "md.mdn-content",
       "scenarioId": "md.mdn-content-intent-matrix",
-      "providerId": "asp-md",
+      "providerId": "orgize",
       "language": "md",
       "repository": "mdn/content",
       "git": {
@@ -71,7 +71,7 @@
       "directory": "md-mdn-content",
       "environment": "SANDTABLE_MD_MDN_CONTENT_ROOT",
       "admission": {
-        "extensionAuthority": "provider-workspace-scope",
+        "extensionAuthority": "provider-project-resolution",
         "minimumMatchingFiles": 1000,
         "minimumMatchingFileRatio": 0.8
       },
@@ -80,7 +80,7 @@
     {
       "resourceId": "org.worg",
       "scenarioId": "org.worg-intent-matrix",
-      "providerId": "asp-org",
+      "providerId": "orgize",
       "language": "org",
       "repository": "bzg/worg",
       "git": {
@@ -90,7 +90,7 @@
       "directory": "org-worg",
       "environment": "SANDTABLE_ORG_WORG_ROOT",
       "admission": {
-        "extensionAuthority": "provider-workspace-scope",
+        "extensionAuthority": "provider-project-resolution",
         "minimumMatchingFiles": 100,
         "minimumMatchingFileRatio": 0.8
       },

@@ -43,7 +43,7 @@ jobs:
             languages/gerbil-scheme-language-project-harness \
             languages/org \
             languages/orgize \
-            languages/typescript-lang-project-harness \
+            languages/asp-typescript \
             languages/asp-python \
             languages/AspJulia.jl
 
@@ -123,15 +123,15 @@ jobs:
           install -m 755 target/debug/asp .bin/asp
           cargo build --manifest-path languages/asp-rust/Cargo.toml --features cli --bin asp-rust
           install -m 755 languages/asp-rust/target/debug/asp-rust .bin/asp-rust
-          npm --prefix languages/typescript-lang-project-harness ci
-          npm --prefix languages/typescript-lang-project-harness run build
+          npm --prefix languages/asp-typescript ci
+          npm --prefix languages/asp-typescript run build
           cat > .bin/asp-python <<EOF
           #!/usr/bin/env bash
           exec uv run --project "$repo_root/languages/asp-python" --frozen asp-python "\$@"
           EOF
           cat > .bin/asp-typescript <<EOF
           #!/usr/bin/env bash
-          exec node "$repo_root/languages/typescript-lang-project-harness/dist/src/cli/main.js" "\$@"
+          exec node "$repo_root/languages/asp-typescript/dist/src/cli/main.js" "\$@"
           EOF
           cat > .bin/asp-julia <<'EOF'
           #!/usr/bin/env bash
@@ -189,7 +189,7 @@ jobs:
             languages/gerbil-scheme-language-project-harness \
             languages/org \
             languages/orgize \
-            languages/typescript-lang-project-harness \
+            languages/asp-typescript \
             languages/asp-python \
             languages/AspJulia.jl
 
@@ -208,7 +208,7 @@ jobs:
         with:
           node-version: "24"
           cache: npm
-          cache-dependency-path: languages/typescript-lang-project-harness/package-lock.json
+          cache-dependency-path: languages/asp-typescript/package-lock.json
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
@@ -228,6 +228,13 @@ jobs:
         run: |
           cargo fetch
           cargo fetch --manifest-path languages/asp-rust/Cargo.toml
+
+      - name: ASP Rust workspace policy
+        run: >-
+          cargo test -p asp-rust-project-harness-policy
+          --features workspace-policy
+          --test workspace_policy
+          -- --nocapture
 
       - name: Root schema gates
         run: |
@@ -304,7 +311,7 @@ jobs:
           node --test \
             dist/tests/unit/semantic_search_schema.test.js \
             dist/tests/unit/semantic_language_registry_read_packet.test.js
-        working-directory: languages/typescript-lang-project-harness
+        working-directory: languages/asp-typescript
 
       - name: Language evidence and facade smoke gate
         shell: bash
@@ -317,7 +324,7 @@ jobs:
           export PATH="$HOME/.local/bin:$PATH"
           cargo build --manifest-path languages/asp-rust/Cargo.toml --features cli --bin asp-rust
           install -m 755 languages/asp-rust/target/debug/asp-rust "$HOME/.local/bin/asp-rust"
-          printf '#!/usr/bin/env bash\nexec node "%s/languages/typescript-lang-project-harness/dist/src/cli/main.js" "$@"\n' "$PWD" > "$HOME/.local/bin/asp-typescript"
+          printf '#!/usr/bin/env bash\nexec node "%s/languages/asp-typescript/dist/src/cli/main.js" "$@"\n' "$PWD" > "$HOME/.local/bin/asp-typescript"
           chmod 755 "$HOME/.local/bin/asp-typescript"
           printf '#!/usr/bin/env bash\nexec uv run --project "%s/languages/asp-python" --frozen asp-python "$@"\n' "$PWD" > "$HOME/.local/bin/asp-python"
           chmod 755 "$HOME/.local/bin/asp-python"

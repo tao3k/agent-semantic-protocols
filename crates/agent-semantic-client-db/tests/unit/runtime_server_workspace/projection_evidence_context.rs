@@ -140,8 +140,13 @@ fn generation(owner: WorkspaceOwnerSnapshot, active_epoch: u64) -> WorkspaceMemo
         project_root: project_root().display().to_string(),
         active_epoch,
         workspace_snapshot,
+        content_search_generation: crate::fixture::content_search_generation_receipt(
+            "workspace-compact-callable-identity",
+            &source_snapshot,
+        ),
         source_snapshot,
         module_graph_digest: format!("blake3-256:{}", blake3::hash(b"module-graph").to_hex()),
+        runtime_provider_execution_binding: None,
         project_resolutions: Vec::new(),
         owners: vec![owner],
     })

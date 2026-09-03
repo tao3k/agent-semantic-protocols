@@ -46,7 +46,8 @@ fn error_frame(
         "protocolId": "agent.semantic-protocols.client",
         "protocolVersion": "1",
         "sessionId": "live-corpus-session",
-        "workspaceIdentity": "live-corpus-workspace",
+        "projectId": "repo-live-corpus",
+        "workspaceId": "workspace-live-corpus",
         "requestId": "live-corpus-request",
         "outcome": "error",
         "error": {
@@ -57,6 +58,8 @@ fn error_frame(
                 "schemaVersion": "1",
                 "state": "failed",
                 "operationId": "live-corpus-request",
+                "projectId": "repo-live-corpus",
+                "workspaceId": "workspace-live-corpus",
                 "languageId": "rust",
                 "providerId": "asp-rust",
                 "requestedSelector": "rust:item:test",

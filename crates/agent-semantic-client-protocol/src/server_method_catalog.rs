@@ -25,10 +25,6 @@ const SOURCE_INDEX_LOOKUP_RESPONSE_SCHEMA_ID: &str =
     "agent.semantic-protocols.resident-search-result";
 const EXACT_QUERY_REQUEST_SCHEMA_ID: &str =
     "agent.semantic-protocols.asp-client-exact-query-request";
-const OWNER_SEARCH_REQUEST_SCHEMA_ID: &str =
-    "agent.semantic-protocols.asp-client-owner-search-request";
-const OWNER_SEARCH_RESPONSE_SCHEMA_ID: &str =
-    "agent.semantic-protocols.asp-client-owner-search-response";
 
 pub const GRAPH_EVALUATE_METHOD: &str = "asp.graph.evaluate";
 pub const GRAPH_EVALUATE_REQUEST_SCHEMA_ID: &str =
@@ -86,7 +82,6 @@ pub enum ServerClientRoute {
     Search,
     SourceIndexLookup,
     ExactQuery,
-    OwnerSearch,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -112,7 +107,6 @@ impl ServerClientRoute {
             Self::Search => "search",
             Self::SourceIndexLookup => "source-index.lookup",
             Self::ExactQuery => "query",
-            Self::OwnerSearch => "search.owner",
         }
     }
 }
@@ -132,7 +126,6 @@ pub fn server_client_methods(
             search_method(&language_id),
             source_index_lookup_method(&language_id),
             exact_query_method(&language_id),
-            owner_search_method(&language_id),
         ]);
     }
     methods.extend([
@@ -265,7 +258,12 @@ fn workspace_generation_ensure_ready_method() -> ClientMethod {
         request_schema_id: WORKSPACE_GENERATION_ENSURE_READY_REQUEST_SCHEMA_ID.to_owned(),
         response_schema_id: WORKSPACE_GENERATION_ENSURE_READY_RESPONSE_SCHEMA_ID.to_owned(),
         error_schema_ids: vec![ROUTE_FAILURE_SCHEMA_ID.to_owned()],
-        parameters: Vec::new(),
+        parameters: vec![ClientParameter {
+            name: "languageId".to_owned(),
+            value_type: ClientParameterType::String,
+            cardinality: ClientParameterCardinality::Optional,
+            source: ClientParameterSource::Request,
+        }],
         cancellable: true,
         streaming: false,
     }
@@ -383,7 +381,6 @@ fn route_from_suffix(suffix: &str) -> Option<ServerClientRoute> {
         "search" => Some(ServerClientRoute::Search),
         "source-index.lookup" => Some(ServerClientRoute::SourceIndexLookup),
         "query" => Some(ServerClientRoute::ExactQuery),
-        "search.owner" => Some(ServerClientRoute::OwnerSearch),
         _ => None,
     }
 }
@@ -405,7 +402,7 @@ fn graph_evaluate_method() -> ClientMethod {
             required_string("surface"),
             required("queryTerms", ClientParameterType::StringArray),
             required_string("profile"),
-            required("seedIds", ClientParameterType::StringArray),
+            required("entryNodeIds", ClientParameterType::StringArray),
             required("budget", ClientParameterType::Json),
         ],
         cancellable: true,
@@ -438,8 +435,8 @@ fn search_method(language_id: &str) -> ClientMethod {
         vec![
             required_string("schemaId"),
             required_string("schemaVersion"),
-            required_string("operation"),
-            optional("query", ClientParameterType::String),
+            required_string("intent"),
+            required_string("query"),
         ],
     )
 }
@@ -471,22 +468,6 @@ fn exact_query_method(language_id: &str) -> ClientMethod {
             required_string("schemaVersion"),
             required("selector", ClientParameterType::StructuralSelector),
             optional("projection", ClientParameterType::Presentation),
-        ],
-    )
-}
-
-fn owner_search_method(language_id: &str) -> ClientMethod {
-    method(
-        language_id,
-        ServerClientRoute::OwnerSearch,
-        OWNER_SEARCH_REQUEST_SCHEMA_ID,
-        OWNER_SEARCH_RESPONSE_SCHEMA_ID,
-        vec![
-            required_string("schemaId"),
-            required_string("schemaVersion"),
-            required("ownerPath", ClientParameterType::WorkspaceRelativePath),
-            optional("query", ClientParameterType::String),
-            optional("view", ClientParameterType::Presentation),
         ],
     )
 }

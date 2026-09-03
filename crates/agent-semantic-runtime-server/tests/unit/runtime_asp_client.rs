@@ -2,11 +2,12 @@ use std::sync::Arc;
 
 use agent_semantic_client_protocol::{
     CLIENT_FRAME_SCHEMA_ID, CLIENT_PROTOCOL_ID, CLIENT_PROTOCOL_VERSION, ClientFrame,
-    ClientFrameBase, ClientInfo, ClientRequestId, ClientSessionId, ClientWorkspaceIdentity,
-    SCHEMA_BUNDLE_REQUEST_SCHEMA_ID, SCHEMA_VERSION, SchemaBundleRequest, SchemaBundleResponse,
+    ClientFrameBase, ClientInfo, ClientProjectId, ClientRequestId, ClientSessionId,
+    ClientWorkspaceIdentity, SCHEMA_BUNDLE_REQUEST_SCHEMA_ID, SCHEMA_VERSION, SchemaBundleRequest,
+    SchemaBundleResponse,
 };
 use agent_semantic_client_server::{
-    AspClientGrpcTransport, bind_asp_client_grpc_unix, serve_asp_client_grpc_unix,
+    AspClientGrpcTransport, bind_asp_client_grpc_tcp, serve_asp_client_grpc_tcp,
 };
 use agent_semantic_schema_manager::SchemaManager;
 
@@ -27,14 +28,40 @@ fn registered_language_provider_pairs() -> Vec<(String, String)> {
         .collect()
 }
 
-fn test_generation_admission()
--> Arc<agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmission> {
+async fn test_generation_admission(
+    project_root: &std::path::Path,
+    workspace_id: &str,
+) -> (
+    Arc<agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmission>,
+    String,
+) {
     use agent_semantic_client_db::runtime_server_admission::{
         WorkspaceGenerationAdmission, WorkspaceGenerationBuildFailure,
         WorkspaceGenerationFailureStage,
     };
 
-    Arc::new(WorkspaceGenerationAdmission::new(Arc::new(
+    let project_id = agent_semantic_client_core::state_core::ResolvedState::resolve(project_root)
+        .expect("resolve fixture ProjectId")
+        .repo
+        .repo_id
+        .to_string();
+    let catalog =
+        agent_semantic_client_db::runtime_server_admission_catalog::RuntimeWorkspaceAdmissionCatalog::load(
+            project_root.parent().expect("fixture parent").join("workspace-admissions.v1.json"),
+        )
+        .await
+        .expect("workspace admission catalog");
+    catalog
+        .record(
+            agent_semantic_client_db::runtime_server_admission_catalog::RuntimeWorkspaceAdmissionCatalogEntry {
+                project_id: project_id.clone(),
+                workspace_identity: workspace_id.to_owned(),
+                project_root: project_root.to_path_buf(),
+            },
+        )
+        .await
+        .expect("admit fixture project/workspace");
+    let admission = WorkspaceGenerationAdmission::new(Arc::new(
         |_workspace_identity,
          _project_root,
          _candidate,
@@ -49,7 +76,9 @@ fn test_generation_admission()
                 ))
             })
         },
-    )))
+    ))
+    .with_catalog(catalog);
+    (Arc::new(admission), project_id)
 }
 
 fn assert_exact_query_not_ready_terminal(response_frame: &ClientFrame, params: &serde_json::Value) {
@@ -120,15 +149,24 @@ async fn warm_dispatch_without_resident_generation_returns_query_not_ready(
         .await
         .expect("agent session registry"),
     );
+    let (generation_admission, project_id) =
+        test_generation_admission(&project_root, &workspace_identity).await;
+    let workspace_registry = Arc::new(
+        agent_semantic_client_db::runtime_server_workspace::RuntimeServerWorkspaceRegistry::new(
+            directory.path().join("workspace-generations"),
+        )
+        .expect("workspace registry"),
+    );
     let service = agent_semantic_runtime_server::build_frame_service(
         schema_bundles,
         agent_session_registry,
         runtime_search_service,
-        test_generation_admission(),
+        generation_admission,
+        workspace_registry,
         digest('a'),
         Arc::from(registered_language_provider_pairs()),
         directory.path().join("workspace-store"),
-        agent_semantic_runtime_server::query_generation::RuntimeQueryGenerationAuthority::new(),
+        agent_semantic_runtime_server::RuntimeQueryGenerationAuthority::new(),
         telemetry.sender,
     )
     .expect("frame service");
@@ -138,18 +176,35 @@ async fn warm_dispatch_without_resident_generation_returns_query_not_ready(
         protocol_id: CLIENT_PROTOCOL_ID.to_owned(),
         protocol_version: CLIENT_PROTOCOL_VERSION.to_owned(),
         session_id: ClientSessionId::new("session-initialize").expect("session id"),
-        workspace_identity: ClientWorkspaceIdentity::new(workspace_identity)
-            .expect("workspace identity"),
+        project_id: ClientProjectId::new(project_id).expect("project id"),
+        workspace_id: ClientWorkspaceIdentity::new(workspace_identity).expect("workspace identity"),
         trace_context: None,
     };
-    let request = ClientFrame::Dispatch {
+    let initialize = service
+        .handle_frame(ClientFrame::Initialize {
+            base: base.clone(),
+            request_id: ClientRequestId::new("initialize").expect("request id"),
+            client_info: ClientInfo {
+                name: "runtime-test".to_owned(),
+                version: "1".to_owned(),
+            },
+            capabilities: serde_json::json!({}),
+        })
+        .await
+        .expect("initialize frame")
+        .expect("initialize response");
+    let ClientFrame::Response {
+        catalog: Some(catalog),
+        ..
+    } = initialize
+    else {
+        panic!("initialize must publish the exact session catalog")
+    };
+    let request = ClientFrame::Request {
         base: base.clone(),
         request_id: ClientRequestId::new(request_id).expect("request id"),
-        project_root: project_root.to_string_lossy().into_owned(),
-        client_info: ClientInfo {
-            name: "runtime-test".to_owned(),
-            version: "1".to_owned(),
-        },
+        catalog_generation: catalog.catalog_generation,
+        workspace_generation: catalog.workspace_generation,
         method: method.to_owned(),
         params: params.clone(),
     };
@@ -160,8 +215,8 @@ async fn warm_dispatch_without_resident_generation_returns_query_not_ready(
     let response_frame = service
         .handle_frame(request)
         .await
-        .expect("dispatch frame")
-        .expect("dispatch response");
+        .expect("request frame")
+        .expect("request response");
 
     if method.ends_with(".query") {
         assert_exact_query_not_ready_terminal(&response_frame, &params);
@@ -191,7 +246,13 @@ async fn search_dispatch_requires_a_committed_generation_admission() {
         serde_json::json!({
             "schemaId": "agent.semantic-protocols.asp-client-search-request",
             "schemaVersion": "1",
-            "operation": "pipe"
+            "intent": "conceptual",
+            "query": "ready",
+            "scope": "workspace",
+            "coverage": "candidates",
+            "maxOwners": 16,
+            "deadlineMs": 250,
+            "explain": "compact"
         }),
     )
     .await;
@@ -227,7 +288,7 @@ async fn resident_graph_evaluation_requires_a_committed_generation_without_provi
             "surface": "search-pipe",
             "queryTerms": ["ready"],
             "profile": "structural",
-            "seedIds": [],
+            "entryNodeIds": [],
             "budget": {"maxDepth": 4, "maxNodes": 64, "maxEdges": 128, "maxResults": 32}
         }),
     )
@@ -243,7 +304,13 @@ async fn registered_language_search_routes_share_query_readiness_gate() {
             serde_json::json!({
                 "schemaId": "agent.semantic-protocols.asp-client-search-request",
                 "schemaVersion": "1",
-                "operation": "pipe"
+                "intent": "conceptual",
+                "query": "ready",
+                "scope": "workspace",
+                "coverage": "candidates",
+                "maxOwners": 16,
+                "deadlineMs": 250,
+                "explain": "compact"
             }),
         )
         .await;
@@ -404,34 +471,42 @@ async fn host_uds_schema_bundle_route_bypasses_workspace_generation() {
         .await
         .expect("agent session registry"),
     );
+    let (generation_admission, project_id) =
+        test_generation_admission(&project_root, &workspace_identity).await;
+    let workspace_registry = Arc::new(
+        agent_semantic_client_db::runtime_server_workspace::RuntimeServerWorkspaceRegistry::new(
+            directory.path().join("workspace-generations"),
+        )
+        .expect("workspace registry"),
+    );
     let service = agent_semantic_runtime_server::build_frame_service(
         agent_semantic_runtime_server::RuntimeSchemaBundleCatalog::load(&workspace_root)
             .await
             .expect("verified schema bundle catalog"),
         agent_session_registry,
         runtime_search_service,
-        test_generation_admission(),
+        generation_admission,
+        workspace_registry,
         digest('a'),
         Arc::from(registered_language_provider_pairs()),
         directory.path().join("workspace-store"),
-        agent_semantic_runtime_server::query_generation::RuntimeQueryGenerationAuthority::new(),
+        agent_semantic_runtime_server::RuntimeQueryGenerationAuthority::new(),
         telemetry.sender,
     )
     .expect("frame service");
-    let socket_dir = tempfile::tempdir().expect("socket directory");
-    let socket_path = socket_dir.path().join("asp-client.sock");
-    let listener = bind_asp_client_grpc_unix(&socket_path)
+    let listener = bind_asp_client_grpc_tcp()
         .await
-        .expect("bind UDS");
+        .expect("bind loopback endpoint");
+    let endpoint = listener.local_addr().expect("loopback endpoint");
     let (shutdown, shutdown_receiver) = tokio::sync::watch::channel(false);
-    let server = tokio::spawn(serve_asp_client_grpc_unix(
+    let server = tokio::spawn(serve_asp_client_grpc_tcp(
         listener,
         service,
         shutdown_receiver,
     ));
-    let client = AspClientGrpcTransport::connect_unix(&socket_path)
+    let client = AspClientGrpcTransport::connect_tcp(endpoint)
         .await
-        .expect("connect UDS");
+        .expect("connect loopback endpoint");
     let request = SchemaBundleRequest {
         schema_id: SCHEMA_BUNDLE_REQUEST_SCHEMA_ID.to_owned(),
         schema_version: SCHEMA_VERSION.to_owned(),
@@ -439,24 +514,41 @@ async fn host_uds_schema_bundle_route_bypasses_workspace_generation() {
         root_set_ids: profile.root_sets,
         known_bundle_digest: None,
     };
-    let frame = client
-        .call(ClientFrame::Dispatch {
-            base: ClientFrameBase {
-                schema_id: CLIENT_FRAME_SCHEMA_ID.to_owned(),
-                schema_version: SCHEMA_VERSION.to_owned(),
-                protocol_id: CLIENT_PROTOCOL_ID.to_owned(),
-                protocol_version: CLIENT_PROTOCOL_VERSION.to_owned(),
-                session_id: ClientSessionId::new("schema-bundle-uds").expect("session id"),
-                workspace_identity: ClientWorkspaceIdentity::new(workspace_identity)
-                    .expect("workspace identity"),
-                trace_context: None,
-            },
-            request_id: ClientRequestId::new("schema-bundle-ready").expect("request id"),
-            project_root: project_root.to_string_lossy().into_owned(),
+    let base = ClientFrameBase {
+        schema_id: CLIENT_FRAME_SCHEMA_ID.to_owned(),
+        schema_version: SCHEMA_VERSION.to_owned(),
+        protocol_id: CLIENT_PROTOCOL_ID.to_owned(),
+        protocol_version: CLIENT_PROTOCOL_VERSION.to_owned(),
+        session_id: ClientSessionId::new("schema-bundle-uds").expect("session id"),
+        project_id: ClientProjectId::new(project_id).expect("project id"),
+        workspace_id: ClientWorkspaceIdentity::new(workspace_identity).expect("workspace identity"),
+        trace_context: None,
+    };
+    let initialized = client
+        .call(ClientFrame::Initialize {
+            base: base.clone(),
+            request_id: ClientRequestId::new("schema-bundle-initialize").expect("request id"),
             client_info: ClientInfo {
                 name: "runtime-test".to_owned(),
                 version: "1".to_owned(),
             },
+            capabilities: serde_json::json!({}),
+        })
+        .await
+        .expect("schema bundle session initialization");
+    let ClientFrame::Response {
+        catalog: Some(catalog),
+        ..
+    } = initialized
+    else {
+        panic!("initialize must return the exact Runtime catalog")
+    };
+    let frame = client
+        .call(ClientFrame::Request {
+            base,
+            request_id: ClientRequestId::new("schema-bundle-ready").expect("request id"),
+            catalog_generation: catalog.catalog_generation,
+            workspace_generation: catalog.workspace_generation,
             method: "asp.schema.bundle".to_owned(),
             params: serde_json::to_value(request).expect("request JSON"),
         })

@@ -28,3 +28,12 @@ pub(crate) fn provider_install_registration_digest(
         .map_err(|error| format!("encode provider install registration: {error}"))?;
     Ok(format!("sha256:{:x}", sha2::Sha256::digest(bytes)))
 }
+
+pub(crate) fn provider_install_registry_digest() -> Result<String, String> {
+    let register = agent_semantic_provider_protocol::parse_provider_install_register(
+        REGISTER_JSON.as_bytes(),
+    )?;
+    let bytes = serde_json::to_vec(&register)
+        .map_err(|error| format!("encode provider install register: {error}"))?;
+    Ok(format!("sha256:{:x}", sha2::Sha256::digest(bytes)))
+}

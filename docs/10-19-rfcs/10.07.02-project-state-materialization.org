@@ -110,6 +110,39 @@ One Git repository maps to one repository ID.  Identity preference is:
 3. canonical Git directory
 4. no implicit persistent identity for a non-Git path
 
+The repository ID is the canonical =ProjectId= exposed by ASP protocols.  Rust
+may derive it from Git facts, but protocol and State Home consumers MUST NOT
+create a second project namespace named =repoId=, =projectRoot=, or
+=workspaceIdentity=.  A =WorkspaceId= is a child of exactly one =ProjectId=;
+an immutable generation digest is a child of exactly one =WorkspaceId=.  The
+authority hierarchy is therefore:
+
+#+begin_example
+ProjectId
+└── WorkspaceId
+    └── GenerationDigest
+#+end_example
+
+Canonical roots, Git directories, remotes, and Host project references are
+evidence used to derive or validate this hierarchy.  They are never additional
+partition keys.  The same ProjectId/WorkspaceId paired with a different root is
+identity drift and fails closed instead of allocating another cache, database,
+admission entry, or Runtime owner.
+
+The pair is indivisible at every state transition.  Staging a generation,
+publishing its immutable successor, and acquiring a resident read lease each
+MUST prove both =ProjectId= and =WorkspaceId= equality against the admission
+entry.  Checking only =WorkspaceId= is invalid even when the current derivation
+makes collisions unlikely: it leaves a cross-project generation or lease
+representable and turns a derivation convention into hidden authority.  A
+project mismatch fails before staged, active, retained, or lease state changes.
+
+Runtime binaries form a separate content-addressed hierarchy.  One
+=BinaryDigest= owns its Activity and Healthy observations.  A mutable global
+switch, activation number, path alias, or project-local binary selector cannot
+choose serving authority; publication admits content and health for the exact
+digest, and Runtime recovery observes those facts.
+
 Gitoxide (=gix=) discovery is the sole admission authority for new durable
 State Core identity.  Filesystem marker probing and =git= subprocess output
 may remain migration or diagnostic inputs, but they MUST NOT turn a path into

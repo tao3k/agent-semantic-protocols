@@ -30,7 +30,7 @@ def result_to_summary_packet(result: GraphResult) -> dict[str, object]:
         "sourcePacketKind": full["packetKind"],
         "profile": result.profile.name,
         "algorithm": ALGORITHM_ID,
-        "seedIds": list(result.seed_ids),
+        "entryNodeIds": list(result.seed_ids),
         "budget": result.budget,
         "kindBudgets": dict(result.kind_budgets),
         "profiles": list(result.profiles),

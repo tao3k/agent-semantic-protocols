@@ -9,7 +9,7 @@ use super::protocol::{WorkspaceDbIpcSessionState, WorkspaceDbSessionBinding};
 struct ResidentSessionKey {
     workspace_identity: String,
     project_root: Option<PathBuf>,
-    socket_path: String,
+    data_endpoint: crate::runtime_server_control::RuntimeServerLoopbackEndpoint,
     transport_contract_digest: String,
     owner_epoch: u64,
     binding_token: String,
@@ -20,7 +20,7 @@ impl From<&WorkspaceDbSessionBinding> for ResidentSessionKey {
         Self {
             workspace_identity: binding.workspace_identity.clone(),
             project_root: binding.project_root.clone(),
-            socket_path: binding.socket_path.clone(),
+            data_endpoint: binding.data_endpoint.clone(),
             transport_contract_digest: binding.transport_contract_digest.clone(),
             owner_epoch: binding.owner_epoch,
             binding_token: binding.binding_token.clone(),
@@ -44,7 +44,7 @@ pub(super) fn resident_state(
         RESIDENT_SESSIONS.retain(|existing, _| {
             existing.workspace_identity != key.workspace_identity
                 || existing.project_root != key.project_root
-                || existing.socket_path != key.socket_path
+                || existing.data_endpoint != key.data_endpoint
                 || existing == &key
         });
     }

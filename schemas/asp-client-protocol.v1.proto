@@ -6,9 +6,9 @@ package asp.client.protocol.v1;
 // artifact; transport packages compile it but must not keep a private copy.
 message ClientFrameEnvelope {
   ClientFrameBase base = 1;
+  reserved 11;
   oneof frame {
     InitializeFrame initialize = 10;
-    DispatchFrame dispatch = 11;
     RequestFrame request = 12;
     CancelFrame cancel = 13;
     ShutdownFrame shutdown = 14;
@@ -25,8 +25,10 @@ message ClientFrameBase {
   string protocol_id = 3;
   string protocol_version = 4;
   string session_id = 5;
-  string workspace_identity = 6;
-  TraceContext trace_context = 7;
+  reserved 6;
+  string project_id = 7;
+  string workspace_id = 8;
+  TraceContext trace_context = 9;
 }
 
 message TraceContext {
@@ -41,17 +43,9 @@ message ClientInfo {
 
 message InitializeFrame {
   string request_id = 1;
-  string project_root = 2;
+  reserved 2;
   ClientInfo client_info = 3;
   bytes capabilities_json = 4;
-}
-
-message DispatchFrame {
-  string request_id = 1;
-  string project_root = 2;
-  ClientInfo client_info = 3;
-  string method = 4;
-  bytes params_json = 5;
 }
 
 message RequestFrame {

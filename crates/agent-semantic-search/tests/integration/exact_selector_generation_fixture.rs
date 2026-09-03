@@ -7,8 +7,10 @@ use agent_semantic_content_identity::exact_selector_generation_fixture::{
 use agent_semantic_content_identity::workspace_search_identity::{
     WorkspaceSearchIdentityInputV1, WorkspaceSearchIdentityV1, WorkspaceSearchScopeKindV1,
 };
-use agent_semantic_search::exact_selector_generation_fixture::ExactSelectorGenerationMemorySearchV1;
-use agent_semantic_search::exact_selector_generation_fixture::publish_immutable_exact_selector_generation_fixture_v1;
+use agent_semantic_search::exact_selector_generation_fixture::{
+    ExactSelectorFixturePublicationV1, ExactSelectorGenerationMemorySearchV1,
+    publish_immutable_exact_selector_generation_fixture_v1,
+};
 
 fn digest(byte: u8) -> [u8; 32] {
     [byte; 32]
@@ -132,11 +134,13 @@ fn exact_memory_search_publishes_one_content_addressed_artifact_for_parallel_wri
             let generation_directory = generation_directory.clone();
             std::thread::spawn(move || {
                 publish_immutable_exact_selector_generation_fixture_v1(
-                    &generation_directory,
-                    bytes.as_ref(),
-                    &workspace_identity(),
-                    generation_digest,
-                    *fixture_digest_v1(bytes.as_ref()).expect("fixture digest"),
+                    ExactSelectorFixturePublicationV1 {
+                        generation_directory: &generation_directory,
+                        fixture: bytes.as_ref(),
+                        workspace_identity: &workspace_identity(),
+                        generation_digest,
+                        fixture_digest: *fixture_digest_v1(bytes.as_ref()).expect("fixture digest"),
+                    },
                 )
                 .expect("publish")
             })

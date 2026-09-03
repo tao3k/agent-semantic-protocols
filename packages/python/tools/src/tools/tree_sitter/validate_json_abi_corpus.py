@@ -38,7 +38,7 @@ CORPUS_CONFIGS = (
     CorpusConfig(
         language="typescript",
         corpus_dir=REPO_ROOT
-        / "languages/typescript-lang-project-harness/tree-sitter/tree-sitter-typescript/test/corpus",
+        / "languages/asp-typescript/tree-sitter/tree-sitter-typescript/test/corpus",
         extension="ts",
     ),
     CorpusConfig(

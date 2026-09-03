@@ -4,8 +4,9 @@ use agent_semantic_content_identity::exact_selector_cache::{
 };
 use agent_semantic_content_identity::exact_selector_merkle::{
     ContentDigestV1, EXACT_SELECTOR_MERKLE_DIGEST_ALGORITHM, EXACT_SELECTOR_MERKLE_PROOF_SCHEMA_ID,
-    EXACT_SELECTOR_MERKLE_PROOF_SCHEMA_VERSION, ExactProjectionModeV1, ParserLanguageIdV1,
-    derive_parser_fact_digest_v1, derive_projection_digest_v1,
+    EXACT_SELECTOR_MERKLE_PROOF_SCHEMA_VERSION, ExactProjectionModeV1, ParserFactDigestInputV1,
+    ParserLanguageIdV1, ProjectionDigestInputV1, derive_parser_fact_digest_v1,
+    derive_projection_digest_v1,
 };
 use agent_semantic_content_identity::workspace_merkle_v1::WorkspacePathMerkleTreeV1;
 use std::hint::black_box;
@@ -30,13 +31,13 @@ fn record() -> ExactSelectorProjectionRecordV1 {
         ("crates/other/src/lib.rs".to_owned(), digest('2')),
     ])
     .expect("valid Merkle tree");
-    let parser_fact_digest = derive_parser_fact_digest_v1(
-        &language_id,
-        &digest('e'),
-        &digest('f'),
-        &digest('d'),
-        b"normalized-parser-facts",
-    );
+    let parser_fact_digest = derive_parser_fact_digest_v1(ParserFactDigestInputV1 {
+        language_id: &language_id,
+        parser_identity_digest: &digest('e'),
+        query_pack_digest: &digest('f'),
+        source_blob_digest: &digest('d'),
+        normalized_parser_facts: b"normalized-parser-facts",
+    });
     let structural_selector = "rust://crates/example/src/lib.rs#item/function/run".to_owned();
     let canonical_item_selector =
         agent_semantic_content_identity::canonical_item_identity::CanonicalItemSelector::new(
@@ -45,13 +46,13 @@ fn record() -> ExactSelectorProjectionRecordV1 {
             ),
             structural_selector.clone(),
         );
-    let projection_digest = derive_projection_digest_v1(
-        &canonical_item_selector,
-        &structural_selector,
-        ExactProjectionModeV1::Code,
-        &parser_fact_digest,
-        &projection_payload,
-    );
+    let projection_digest = derive_projection_digest_v1(ProjectionDigestInputV1 {
+        canonical_item_selector: &canonical_item_selector,
+        structural_selector: &structural_selector,
+        projection_mode: ExactProjectionModeV1::Code,
+        parser_fact_digest: &parser_fact_digest,
+        projection_payload: &projection_payload,
+    });
     ExactSelectorProjectionRecordV1 {
         source_byte_range: 0..projection_payload.len() as u64,
         proof: serde_json::from_value(serde_json::json!({

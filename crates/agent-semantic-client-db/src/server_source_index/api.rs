@@ -3,12 +3,9 @@
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
-use crate::source_index_file_hashes;
 use agent_semantic_client_core::{
-    ClientCacheFileHash, ProjectContext, RuntimeProviderProjection,
-    RuntimeProviderProjectionEvidence,
+    ProjectContext, RuntimeProviderProjection, RuntimeProviderProjectionEvidence,
 };
-use sha2::{Digest as _, Sha256};
 
 use crate::server_source_index::model::SourceIndexScopeFile;
 use crate::server_source_index::provider_envelope::{
@@ -41,66 +38,6 @@ pub(super) fn provider_scope_digest(
         )
         .as_bytes(),
     )
-}
-
-pub(super) fn source_index_snapshot_from_files(
-    index_root: &Path,
-    files: &[SourceIndexScopeFile],
-    registry: &RuntimeProviderProjectionEvidence,
-) -> Result<
-    (
-        Vec<ClientCacheFileHash>,
-        agent_semantic_artifacts::WorkspaceSnapshot,
-        agent_semantic_content_identity::SourceSnapshotEvidence,
-        crate::ClientDbSourceIndexSourceBlobs,
-    ),
-    String,
-> {
-    let mut workspace_file_hashes = Vec::with_capacity(files.len());
-    let mut source_blobs = Vec::with_capacity(files.len());
-    for file in files {
-        let source_path = if file.path.is_absolute() {
-            file.path.clone()
-        } else {
-            index_root.join(&file.path)
-        };
-        let bytes = std::fs::read(&source_path).map_err(|error| {
-            format!(
-                "failed to hash workspace source {} with BLAKE3: {error}",
-                source_path.display()
-            )
-        })?;
-        let snapshot_path = source_path
-            .strip_prefix(index_root)
-            .unwrap_or(source_path.as_path())
-            .to_string_lossy()
-            .replace('\\', "/");
-        workspace_file_hashes.push((
-            snapshot_path.clone(),
-            format!("{:x}", Sha256::digest(&bytes)),
-        ));
-        source_blobs.push((crate::ClientDbSourceIndexPath::new(snapshot_path), bytes));
-    }
-    let typed_source_blobs = crate::ClientDbSourceIndexSourceBlobs::from_normalized(source_blobs);
-    let file_hashes = source_index_file_hashes(
-        index_root,
-        files,
-        &typed_source_blobs,
-        &registry.fingerprint,
-        registry.scope_dirs.iter().map(String::as_str),
-    )?;
-    let workspace_snapshot =
-        agent_semantic_artifacts::WorkspaceSnapshot::from_file_hashes(workspace_file_hashes);
-    let source_snapshot = workspace_snapshot.evidence(
-        agent_semantic_artifacts::SourceSnapshotKind::Filesystem,
-        provider_scope_digest(registry, files),
-    );
-    Ok((
-        file_hashes,
-        workspace_snapshot,
-        source_snapshot,
-        typed_source_blobs,
-    ))
 }
 
 /// One content-authoritative view of the live workspace for all source
@@ -331,6 +268,7 @@ pub(super) fn source_index_trace(stage: &str, started: Instant) {
 #[cfg(test)]
 #[path = "../../tests/unit/source_index_api.rs"]
 mod tests;
+#[cfg(test)]
 pub(crate) fn materialized_current_source_index_snapshot(
     workspace_snapshot: agent_semantic_content_identity::WorkspaceSnapshot,
     source_snapshot: agent_semantic_content_identity::SourceSnapshotEvidence,

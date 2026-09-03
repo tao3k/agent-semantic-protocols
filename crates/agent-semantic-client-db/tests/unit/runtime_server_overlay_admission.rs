@@ -43,6 +43,25 @@ fn generation_with_selectors(
             blake3::hash(b"runtime-overlay-fixture-provider").to_hex()
         ),
     );
+    let module_graph_digest = format!(
+        "blake3-256:{}",
+        blake3::hash(b"runtime-overlay-fixture-module-graph").to_hex()
+    );
+    let runtime_provider_execution_binding =
+        agent_semantic_artifacts::installed_provider_binding::RuntimeProviderExecutionBinding::build(
+            crate::fixture::FIXTURE_PROJECT_ID.to_owned(),
+            workspace_identity.to_owned(),
+            format!("blake3-256:{}", "1".repeat(64)),
+            format!("blake3-256:{}", "2".repeat(64)),
+            format!("blake3-256:{}", "3".repeat(64)),
+            source_snapshot
+                .root_integrity_reference()
+                .expect("fixture source snapshot integrity reference"),
+            module_graph_digest.clone(),
+        )
+        .expect("fixture Runtime provider execution binding");
+    let content_search_generation =
+        crate::fixture::content_search_generation_receipt(workspace_identity, &source_snapshot);
     WorkspaceMemoryGeneration::try_from_build(
         agent_semantic_client_db::runtime_server_workspace::WorkspaceGenerationBuild {
             projection_capability: crate::fixture::projection_capability_manifest_fixture(),
@@ -51,11 +70,10 @@ fn generation_with_selectors(
             project_root: project_root.display().to_string(),
             active_epoch: epoch,
             workspace_snapshot,
+            content_search_generation,
             source_snapshot,
-            module_graph_digest: format!(
-                "blake3-256:{}",
-                blake3::hash(b"runtime-overlay-fixture-module-graph").to_hex()
-            ),
+            module_graph_digest,
+            runtime_provider_execution_binding: Some(runtime_provider_execution_binding),
             project_resolutions: Vec::new(),
             owners: vec![WorkspaceOwnerSnapshot {
                 authority: None,
@@ -601,6 +619,86 @@ async fn stale_owner_delta_is_rejected_before_pointer_or_epoch_change() {
     let _ = tokio::fs::remove_dir_all(root).await;
 }
 
+#[tokio::test(flavor = "multi_thread")]
+async fn published_generation_serves_exact_byte_evidence_without_external_io() {
+    let root = fixture_root().join("resident-byte-evidence");
+    let registry = RuntimeServerWorkspaceRegistry::new(root.clone()).expect("create registry");
+    let workspace_identity = "workspace-resident-byte-evidence";
+    registry
+        .publish(
+            "publish-resident-byte-evidence",
+            WorkspaceRecoverySource::TursoGeneration,
+            generation(
+                workspace_identity,
+                &root,
+                1,
+                b"fn exact_literal_marker() {}\n",
+            ),
+        )
+        .await
+        .expect("publish canonical generation");
+    let pointer_path =
+        agent_semantic_client_db::runtime_server_workspace::workspace_generation_pointer_path(
+            &root,
+            workspace_identity,
+            &root,
+        )
+        .expect("pointer path");
+    let data_plane =
+        agent_semantic_client_db::runtime_resident_read::RuntimeResidentReadClient::open(
+            &pointer_path,
+            &root,
+        )
+        .await
+        .expect("open resident generation");
+    let present = data_plane
+        .read_byte_evidence("exact_literal_marker", None, 8)
+        .expect("read exact byte evidence");
+    assert_eq!(present.hits.len(), 1);
+    assert_eq!(present.hits[0].owner_path, "src/lib.rs");
+    let scoped_present = data_plane
+        .read_byte_evidence_for_owner_scope("exact_literal_marker", "src/lib.rs", None, 8)
+        .expect("read owner-scoped exact byte evidence");
+    assert_eq!(scoped_present.hits.len(), 1);
+    assert_eq!(scoped_present.hits[0].owner_path, "src/lib.rs");
+    let wrong_owner = data_plane
+        .read_byte_evidence_for_owner_scope("exact_literal_marker", "src/other.rs", None, 8)
+        .expect("prove owner-scoped exact byte absence");
+    assert!(wrong_owner.hits.is_empty());
+    let scoped_source_index = data_plane
+        .read_source_index_for_owner_scope("exact_literal_marker", "src/lib.rs", None, 8)
+        .expect("read owner-scoped resident source index");
+    assert_eq!(scoped_source_index.hits.len(), 1);
+    assert_eq!(scoped_source_index.hits[0].owner_path, "src/lib.rs");
+    let absent = data_plane
+        .read_byte_evidence("definitely_absent_literal", None, 8)
+        .expect("prove exact byte absence");
+    assert!(absent.hits.is_empty());
+    assert!(data_plane.read_byte_evidence("x", None, 8).is_err());
+    let mut samples = Vec::with_capacity(2_048);
+    for _ in 0..2_048 {
+        let started = std::time::Instant::now();
+        let result = data_plane
+            .read_byte_evidence("exact_literal_marker", None, 8)
+            .expect("warm resident byte evidence");
+        samples.push(started.elapsed().as_nanos());
+        assert_eq!(result.hits.len(), 1);
+    }
+    samples.sort_unstable();
+    let p95 = samples[samples.len() * 95 / 100];
+    let p99 = samples[samples.len() * 99 / 100];
+    assert!(
+        p95 < 1_000_000,
+        "resident byte evidence p95 exceeds 1ms: {p95}"
+    );
+    println!("residentByteEvidence samples=2048 p95Ns={p95} p99Ns={p99}");
+    assert_eq!(registry.data_plane_counters().database_opens, 0);
+    assert_eq!(registry.data_plane_counters().provider_spawns, 0);
+    assert_eq!(registry.data_plane_counters().control_socket_roundtrips, 0);
+    registry.shutdown().await.expect("shutdown registry");
+    let _ = tokio::fs::remove_dir_all(root).await;
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn concurrent_cold_restore_publishes_one_canonical_epoch() {
     let root = fixture_root();
@@ -738,14 +836,6 @@ async fn concurrent_cold_restore_publishes_one_canonical_epoch() {
             &root,
         )
         .expect("resolve active generation pointer");
-    let current_snapshot =
-        agent_semantic_client_db::runtime_server_workspace::WorkspaceGenerationPointerReader::open(
-            &pointer_path,
-        )
-        .await
-        .expect("open current generation pointer")
-        .read()
-        .expect("read current generation snapshot");
     tokio::fs::remove_file(&pointer_path)
         .await
         .expect("remove the published pointer while resident memory remains warm");
@@ -756,9 +846,9 @@ async fn concurrent_cold_restore_publishes_one_canonical_epoch() {
             .expect("observe missing immutable generation"),
         agent_semantic_client_db::runtime_server_workspace::PublishedWorkspaceGenerationState::Missing,
     );
-    let error = registry
-        .ensure_canonical_generation(
-            "reject-resident-only-ready",
+    let resident_republication = registry
+        .admit_canonical_generation_resident(
+            "resident-ready-before-durability",
             workspace_identity,
             materialization
                 .clone()
@@ -766,12 +856,28 @@ async fn concurrent_cold_restore_publishes_one_canonical_epoch() {
                 .expect("validate resident republish materialization"),
         )
         .await
-        .expect_err("resident memory without a pointer must not return Ready");
-    assert!(
-        error.contains("active-workspace-generation-required")
-            || error.contains("canonical generation"),
-        "missing pointer failure must remain typed: {error}"
-    );
+        .expect("resident publication must not wait for its durable pointer");
+    let resident_lease = registry
+        .lease(workspace_identity, &root)
+        .expect("resident generation remains queryable");
+    assert_eq!(resident_lease.epoch(), resident_republication.target_epoch);
+    registry
+        .wait_canonical_generation_durable(
+            workspace_identity,
+            &root,
+            &resident_republication.generation_digest,
+            resident_republication.target_epoch,
+        )
+        .await
+        .expect("explicit restore boundary waits for durability");
+    let current_snapshot =
+        agent_semantic_client_db::runtime_server_workspace::WorkspaceGenerationPointerReader::open(
+            &pointer_path,
+        )
+        .await
+        .expect("open current generation pointer")
+        .read()
+        .expect("read current generation snapshot");
     let mut incompatible_snapshot =
         serde_json::to_value(current_snapshot).expect("encode current generation snapshot");
     let incompatible_object = incompatible_snapshot
@@ -840,7 +946,7 @@ async fn concurrent_cold_restore_publishes_one_canonical_epoch() {
     assert_eq!(
         durability.state,
         agent_semantic_client_db::runtime_server_workspace::WorkspaceGenerationDurabilityState::DurableReady,
-        "terminal Ready must not precede canonical pointer durability"
+        "explicit restart-restore boundary requires canonical pointer durability"
     );
     let repaired_pointer =
         agent_semantic_client_db::runtime_server_workspace::WorkspaceGenerationPointerReader::open(

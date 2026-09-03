@@ -385,7 +385,7 @@ async fn turso_register_session_once(
         CASE WHEN json_valid(?15) AND json_extract(?15, '$.event') = 'subagent-start' AND json_extract(?15, '$.native') = 1 THEN json_extract(?15, '$.agentType') END,
         CASE WHEN json_valid(?15) AND json_extract(?15, '$.event') = 'subagent-start' AND json_extract(?15, '$.native') = 1 THEN ?15 END
     )
-    ON CONFLICT(project_id, session_id) DO UPDATE SET
+    ON CONFLICT(session_id) DO UPDATE SET
                 message_target_id = excluded.message_target_id,
                 model = CASE
                     WHEN excluded.model IS NOT NULL
@@ -415,7 +415,8 @@ async fn turso_register_session_once(
                 metadata_json = excluded.metadata_json,
                 configured_agent_type = COALESCE(excluded.configured_agent_type, asp_agent_sessions.configured_agent_type),
                 profile_evidence_json = COALESCE(excluded.profile_evidence_json, asp_agent_sessions.profile_evidence_json)
-        WHERE asp_agent_sessions.root_session_id = excluded.root_session_id
+        WHERE asp_agent_sessions.project_id = excluded.project_id
+          AND asp_agent_sessions.root_session_id = excluded.root_session_id
           AND asp_agent_sessions.parent_session_id IS excluded.parent_session_id
           AND asp_agent_sessions.name = excluded.name
           AND asp_agent_sessions.role = excluded.role",
@@ -452,13 +453,26 @@ async fn turso_register_session_once(
         "failed to register Turso session",
     )
     .await?;
-    let registered = turso_session_by_id(
+    let registered = match turso_session_by_id(
         db_path,
         request.project_id.as_str(),
         request.session_id.as_str(),
     )
     .await?
-    .ok_or_else(|| "registered Turso session was not readable".to_string())?;
+    {
+        Some(registered) => registered,
+        None => {
+            let stored = turso_session_by_id_any_project(db_path, request.session_id.as_str())
+                .await?
+                .ok_or_else(|| "registered Turso session was not readable".to_string())?;
+            return Err(format!(
+                "agent-session-child-identity-rebind-denied: child={} storedProject={} requestedProject={}",
+                request.session_id,
+                stored.project_id(),
+                request.project_id,
+            ));
+        }
+    };
     if registered.root_session_id() != request.root_session_id
         || registered.parent_session_id() != request.parent_session_id.as_deref()
         || registered.name() != request.name

@@ -79,22 +79,21 @@ An idle Runtime Server therefore has:
 - no Graph Turbo work contributing to endpoint or Hook readiness.
 
 A persisted interpreter path from a project virtual environment is not a
-runtime artifact authority.  Production admission requires the managed Global
-provider catalog identity and its content-addressed artifact receipt.
+runtime artifact authority. Production admission requires the exact
+=asp-python-graphs= member and digest from the current active Runtime bundle.
 
 The Runtime Server supervisor definition MUST NOT carry a Graph Turbo execution
 locator.  Supervisor install, Runtime Server start, endpoint publication, and
-healthcheck are read-only with respect to the optional Graph Turbo config and
-MUST NOT validate, delete, rewrite, or repair it.  A missing, stale, or rejected
-Graph Turbo config changes only the Graph Turbo capability receipt; it cannot
-block or restart the core Runtime Server.  Config publication belongs to the
-managed artifact installation transaction.
+healthcheck do not resolve or launch the optional member. A missing or rejected
+member changes only the Graph Turbo capability receipt; it cannot block or
+restart the core Runtime Server. Member publication belongs to the single
+Runtime bundle installation transaction.
 
 The first validated typed =rank= demand owns one compare-and-set warm
-admission.  Only that winner may read and validate the managed config and start
-the resident process, using Tokio-owned I/O.  Concurrent losers observe
+admission. Only that winner may verify the already active bundle member and
+start the resident process, using Tokio-owned I/O. Concurrent losers observe
 =starting= and return immediately; they cannot enqueue additional warm events,
-read config bytes, or start another process.
+re-read bundle bytes, or start another process.
 
 ** Ascent bounded closure
 
@@ -499,6 +498,45 @@ The renderer refinement is specified separately in
 
 * Runtime publication and persistence ownership
 
+** LSP lessons and the construction/query hard boundary
+
+The architecture MUST NOT repeat the historical language-server pattern of
+placing a pure, deterministic local transformation behind a process lifecycle
+boundary.  Endpoint reachability is not readiness, a successful spawn is not
+initialization, transport retry is not admission, and a loose sidecar
+descriptor is not publication authority.
+
+The complete Search/Query generation is constructed by Rust from one immutable
+source snapshot.  Indexed lexical facts, the canonical resident graph, and
+rg-compatible byte coverage are hashed under one generation candidate identity
+and cross the ASP Server's sole publication point together.  Canonical graph
+validation and canonical JSON encoding are pure Rust construction steps; they
+MUST NOT require a Python process, a graph socket, or a separately published
+artifact descriptor.  Therefore absence, startup failure, or sandbox denial of
+=asp-python-graphs= cannot make the base Search/Query generation unavailable.
+
+=asp-python-graphs= is an optional, lazy, capability-scoped numerical analysis
+worker.  It may consume an already admitted immutable graph for explicit SciPy
+operations or qualification, and it may return candidate-only evidence.  It
+does not construct, canonicalize, publish, activate, or retain the base search
+generation.  Normal ready Search/Query performs no Python launch, handshake, or
+RPC.  This separation keeps language admission lazy: a workspace pays only for
+the selected language provider and only an explicit graph-analysis operation
+pays for Python.
+
+The forbidden legacy topology is:
+
+#+begin_example
+Rust constructs graph -> loose Python descriptor -> Python echoes canonical JSON
+-> Rust hashes response -> CompleteGeneration publication
+#+end_example
+
+It creates a second publication prerequisite, makes a local pure function
+depend on Host socket permissions, and converts a capability outage into a
+workspace-generation outage.  Implementations MUST delete this route rather
+than retrying it, auto-publishing the descriptor, or treating =EPERM= as daemon
+termination.
+
 The ASP Runtime Server owns the Graph Turbo capability through the existing
 workspace data-plane.  It MUST NOT publish a second socket or bypass the
 workspace binding token.  A rank request is the schema-owned =graphs/evaluate=
@@ -519,31 +557,59 @@ child failure, and request timeout fail the capability and remain visible in
 the status receipt.  Authority forgery and contradictory runtime ownership
 remain fail-closed protocol errors.
 
-The configured runtime artifact MUST be a prebuilt, already verified
-=asp-python-graphs= service bundle with a private executable launcher bound to
-=asp_python_graphs.service_cli serve=.  Daemon request handling MUST NOT execute
-=uv=, =pip=, or another package manager.  ASP Server owns one bounded Tokio
-gRPC session to that launcher, multiplexes graph sessions by request identity,
-and sends typed shutdown before its task group drains.  The gRPC session, not
-stdin/stdout JSONL or a per-request process, is the transport authority.
+When the optional numerical-analysis capability is installed, its runtime
+artifact MUST be a prebuilt, already verified bundle member with a private
+executable launcher bound to =asp_python_graphs.service_cli serve=.  Daemon
+request handling MUST NOT execute =uv=, =pip=, or another package manager.  ASP
+Server owns one bounded Tokio gRPC session to that launcher, multiplexes graph
+sessions by request identity, and sends typed shutdown before its task group
+drains.  The gRPC session, not stdin/stdout JSONL or a per-request process, is
+the transport authority.
 
-The daemon resolves the descriptor's absolute =executionArtifactLocator= and
-verifies the complete launcher/environment digest before admission.  The
-configured execution locator remains part of the launch identity; it is never
-replaced by implicit =python= or =PATH= discovery.  A missing, non-absolute, or
-unresolvable locator is reported as capability =unavailable= and does not
-create a fallback executable or a second provider contract.
+The daemon resolves the exact =asp-python-graphs= member from the currently
+active Runtime bundle.  It verifies the bundle manifest digest, the member
+name, and the member bytes before admission.  The member's content-addressed
+path is the launch identity; it is never copied into a state-home descriptor
+and never replaced by implicit =python= or =PATH= discovery.  A missing,
+malformed, or unreadable member is reported as capability =unavailable= and
+does not create a fallback executable or a second provider contract.
 
-The asp-python-graphs Runtime artifact is the sole publication input for the
-server-owned service contract.  The Runtime Server validates and atomically
-publishes that artifact; later requests consume the exact verified locator
-through the Runtime Server and its bounded gRPC session.  Unknown schema
-versions, malformed documents, and invalid locators fail closed; they MUST NOT
-trigger =PATH= discovery, a standalone graph-turbo executable, or a second
-provider contract.  The durable artifact owns process-launch configuration
-only.  It cannot establish, replace, or authorize the per-call
+The optional asp-python-graphs bundle member is process-launch input only; it is
+not a Search/Query generation publication input.  The Runtime Server validates
+the member as part of the same active bundle and later explicit graph-analysis
+requests consume the exact verified locator through the Runtime Server and its
+bounded gRPC session.  A public =graph artifact publish= command and a loose
+state-home descriptor are forbidden second authorities.  Unknown schemas,
+malformed bundle members, and invalid locators fail that optional capability
+closed; they MUST NOT trigger =PATH= discovery, a standalone graph-turbo
+executable, or invalidate the resident Search/Query generation.  The bundle
+member cannot establish, replace, or authorize the per-call
 GraphSession identity carried by =sessionId=, =nodeId=, =snapshotDigest=,
 =workspaceGenerationRootDigest=, and =routeId=.
+
+*** Layered performance budgets
+
+Performance receipts MUST separate process and package lifecycle from resident
+request service time. The warm ASP Server admission/read/projection path has a
+p95 budget below one millisecond on the reference host and performs zero child
+process starts, package-manager calls, source-tree scans, or full Merkle
+rebuilds. This budget excludes CLI process startup and the selected provider's
+parser or numerical kernel; those phases have separate named fields and cannot
+be hidden inside =serviceElapsedMicros=.
+
+The number of installed language providers MUST NOT affect the warm request
+path. Exactly the request's selected provider is admitted, and an unselected
+provider contributes zero process starts, graph loads, cache probes, and
+descriptor reads. Adding five installed languages therefore changes catalog
+storage but not the asymptotic hot-path work: provider selection remains a
+bounded keyed lookup rather than an O(language-count) probe loop.
+
+Cold receipts report Runtime activation, optional capability activation,
+provider start, initial parse, and first generation publication independently.
+Warm, ten-sequential, and thirty-two-concurrent receipts report resident
+service latency independently from CLI/wrapper latency. A faster retry or a
+shorter timeout is not a performance optimization when it repeats lifecycle,
+scan, or publication work.
 
 Starting the daemon-global Python process requires only process identity and a
 successful process handshake.  It MUST NOT call workspace-generation admission

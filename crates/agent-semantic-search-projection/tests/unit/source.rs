@@ -21,7 +21,7 @@ fn complete_request() -> serde_json::Value {
         "surface": "search-pipe",
         "queryTerms": ["owner"],
         "profile": "structural",
-        "seedIds": ["owner:src/lib.rs"],
+        "entryNodeIds": ["owner:src/lib.rs"],
         "budget": {"maxDepth": 4, "maxNodes": 32, "maxEdges": 64, "maxResults": 16}
     })
 }

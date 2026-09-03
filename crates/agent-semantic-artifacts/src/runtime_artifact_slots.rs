@@ -24,6 +24,35 @@ struct RuntimeArtifactBundleManifest {
     members: std::collections::BTreeMap<String, crate::blake3_content_digest::Blake3ContentDigest>,
 }
 
+/// A content-proven immutable Runtime bundle.  Consumers may resolve optional
+/// capability executables only through this authority; state-home descriptors
+/// and PATH lookup are deliberately outside the model.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct VerifiedRuntimeArtifactBundle {
+    root: PathBuf,
+    bundle_digest: crate::blake3_content_digest::Blake3ContentDigest,
+    members: std::collections::BTreeMap<String, crate::blake3_content_digest::Blake3ContentDigest>,
+}
+
+impl VerifiedRuntimeArtifactBundle {
+    pub fn bundle_digest(&self) -> &crate::blake3_content_digest::Blake3ContentDigest {
+        &self.bundle_digest
+    }
+
+    pub fn member_path(&self, member: &str) -> Option<PathBuf> {
+        self.members
+            .contains_key(member)
+            .then(|| self.root.join(member))
+    }
+
+    pub fn member_digest(
+        &self,
+        member: &str,
+    ) -> Option<&crate::blake3_content_digest::Blake3ContentDigest> {
+        self.members.get(member)
+    }
+}
+
 pub fn runtime_artifact_bundle_digest(
     members: &std::collections::BTreeMap<String, crate::blake3_content_digest::Blake3ContentDigest>,
 ) -> crate::blake3_content_digest::Blake3ContentDigest {
@@ -41,6 +70,14 @@ pub fn runtime_artifact_bundle_digest(
 pub async fn runtime_artifact_candidate_bundle_digest(
     candidate: &Path,
 ) -> Result<crate::blake3_content_digest::Blake3ContentDigest, String> {
+    verify_runtime_artifact_bundle(candidate)
+        .await
+        .map(|bundle| bundle.bundle_digest)
+}
+
+pub async fn verify_runtime_artifact_bundle(
+    candidate: &Path,
+) -> Result<VerifiedRuntimeArtifactBundle, String> {
     let manifest_path = candidate.join("bundle.json");
     let bytes = tokio::fs::read(&manifest_path).await.map_err(|error| {
         format!(
@@ -65,20 +102,24 @@ pub async fn runtime_artifact_candidate_bundle_digest(
     if derived != manifest.bundle_digest {
         return Err("Runtime artifact bundle manifest digest mismatch".to_owned());
     }
-    for (member, expected_digest) in manifest.members {
+    for (member, expected_digest) in &manifest.members {
         let member_path = Path::new(&member);
         if member_path.components().count() != 1 || member == "." || member == ".." {
             return Err(format!("invalid Runtime artifact bundle member `{member}`"));
         }
-        let artifact = candidate.join(&member);
+        let artifact = candidate.join(member);
         let observed_digest = runtime_artifact_candidate_digest(&artifact).await?;
-        if observed_digest != expected_digest {
+        if &observed_digest != expected_digest {
             return Err(format!(
                 "Runtime artifact bundle member digest mismatch: member={member} expected={expected_digest} observed={observed_digest}"
             ));
         }
     }
-    Ok(derived)
+    Ok(VerifiedRuntimeArtifactBundle {
+        root: candidate.to_path_buf(),
+        bundle_digest: derived,
+        members: manifest.members,
+    })
 }
 
 impl RuntimeArtifactSlotAuthority {

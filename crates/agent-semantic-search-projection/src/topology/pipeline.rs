@@ -63,7 +63,7 @@ pub(super) fn render_search_topology_projection(
     }
     let mut lines = vec![header];
     if prime_mode {
-        lines.push(prime_decision_line(packet));
+        lines.push(playbook_decision_line(packet));
     }
     lines.push(if prime_owner_only_frontier {
         PRIME_OWNER_ONLY_LEGEND.to_string()
@@ -180,14 +180,14 @@ fn prime_graph_entries_line(aliases: &[aliases::GraphAlias]) -> Option<String> {
     (!entries.is_empty()).then(|| format!("entries={}", entries.join(",")))
 }
 
-fn prime_decision_line(packet: &Value) -> String {
+fn playbook_decision_line(packet: &Value) -> String {
     let language_id = packet
         .get("languageId")
         .and_then(Value::as_str)
         .filter(|language_id| !language_id.trim().is_empty())
         .unwrap_or("<language>");
     format!(
-        "|decision purpose=decision-primer answer=false code=false capabilities=lexical,pipe,fd-query,rg-query,owner-items,selector-code,treesitter-query ladder=lexical>fd-query|rg-query>owner-items>selector-code>pipe history=asp-artifacts:directReadRisk,repeatedPrime,repeatedPipe,bestPath risk=broad-direct-read,manual-window-scan,repeat-prime next=\"asp {language_id} search lexical <question-term> <related-feature-term> owner tests --workspace . --view seeds\""
+        "|decision purpose=search-playbook answer=false code=false publicCapabilities=search-playbook,selector-query internalStages=source-byte-acquisition>native-syntax-playbook>tantivy-lexical>resident-graph risk=broad-direct-read,manual-stage-selection next=\"asp {language_id} search playbook 'source structure' --workspace .\""
     )
 }
 

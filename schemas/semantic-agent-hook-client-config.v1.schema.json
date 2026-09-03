@@ -493,15 +493,9 @@
         },
         "kind": {
           "enum": [
-            "prime",
-            "owner",
+            "playbook",
             "query",
-            "lexical",
             "read",
-            "deps",
-            "api",
-            "ingest",
-            "tests",
             "check-changed"
           ]
         },

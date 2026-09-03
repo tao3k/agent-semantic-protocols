@@ -1,5 +1,5 @@
 use agent_semantic_content_identity::active_artifact_merkle::{
-    ActiveArtifactKind, ActiveArtifactLeaf, ActiveAspArtifactReceipt,
+    ActiveArtifactKind, ActiveArtifactLeaf, ActiveArtifactLeafInput, ActiveAspArtifactReceipt,
 };
 use agent_semantic_content_identity::exact_selector_merkle::blake3_content_digest_v1;
 use std::fs;
@@ -126,22 +126,30 @@ pub fn rebind_active_asp_binary_receipt_if_present(
             .into_content_digest();
     let leaves = vec![
         ActiveArtifactLeaf::new(
-            "runtime/asp",
-            utf8_path(&binary_path, "ASP binary")?,
-            ActiveArtifactKind::AspBinary,
-            binary_digest,
-            binary_metadata.len(),
-            modified_unix_nanos(&binary_metadata)?,
-            change_time_unix_nanos(&binary_metadata),
+            ActiveArtifactLeafInput::new(
+                "runtime/asp",
+                utf8_path(&binary_path, "ASP binary")?,
+                ActiveArtifactKind::AspBinary,
+                binary_digest,
+            )
+            .with_materialization_metadata(
+                binary_metadata.len(),
+                modified_unix_nanos(&binary_metadata)?,
+                change_time_unix_nanos(&binary_metadata),
+            ),
         )?,
         ActiveArtifactLeaf::new(
-            "state/activation.json",
-            utf8_path(&activation_path, "activation")?,
-            ActiveArtifactKind::Activation,
-            blake3_content_digest_v1(&activation_bytes),
-            activation_bytes.len() as u64,
-            modified_unix_nanos(&activation_metadata)?,
-            change_time_unix_nanos(&activation_metadata),
+            ActiveArtifactLeafInput::new(
+                "state/activation.json",
+                utf8_path(&activation_path, "activation")?,
+                ActiveArtifactKind::Activation,
+                blake3_content_digest_v1(&activation_bytes),
+            )
+            .with_materialization_metadata(
+                activation_bytes.len() as u64,
+                modified_unix_nanos(&activation_metadata)?,
+                change_time_unix_nanos(&activation_metadata),
+            ),
         )?,
     ];
     let receipt = ActiveAspArtifactReceipt::build(ACTIVE_ASP_ARTIFACT_SET_ID, leaves)
@@ -203,26 +211,34 @@ pub fn materialize_active_asp_artifact_receipt(
     let artifact_bytes_read = 0;
     let leaves = vec![
         ActiveArtifactLeaf::new(
-            "runtime/asp",
-            utf8_path(&binary_path, "ASP binary")?,
-            ActiveArtifactKind::AspBinary,
-            binary_digest,
-            binary_metadata.len(),
-            modified_unix_nanos(&binary_metadata)?,
-            change_time_unix_nanos(&binary_metadata),
+            ActiveArtifactLeafInput::new(
+                "runtime/asp",
+                utf8_path(&binary_path, "ASP binary")?,
+                ActiveArtifactKind::AspBinary,
+                binary_digest,
+            )
+            .with_materialization_metadata(
+                binary_metadata.len(),
+                modified_unix_nanos(&binary_metadata)?,
+                change_time_unix_nanos(&binary_metadata),
+            ),
         )?,
         ActiveArtifactLeaf::new(
-            "state/activation.json",
-            utf8_path(&activation_path, "activation")?,
-            ActiveArtifactKind::Activation,
-            blake3_content_digest_v1(&activation_bytes),
-            activation_bytes.len() as u64,
-            modified_unix_nanos(&fs::metadata(&activation_path).map_err(|error| {
-                format!("failed to inspect {}: {error}", activation_path.display())
-            })?)?,
-            change_time_unix_nanos(&fs::metadata(&activation_path).map_err(|error| {
-                format!("failed to inspect {}: {error}", activation_path.display())
-            })?),
+            ActiveArtifactLeafInput::new(
+                "state/activation.json",
+                utf8_path(&activation_path, "activation")?,
+                ActiveArtifactKind::Activation,
+                blake3_content_digest_v1(&activation_bytes),
+            )
+            .with_materialization_metadata(
+                activation_bytes.len() as u64,
+                modified_unix_nanos(&fs::metadata(&activation_path).map_err(|error| {
+                    format!("failed to inspect {}: {error}", activation_path.display())
+                })?)?,
+                change_time_unix_nanos(&fs::metadata(&activation_path).map_err(|error| {
+                    format!("failed to inspect {}: {error}", activation_path.display())
+                })?),
+            ),
         )?,
     ];
     let receipt = ActiveAspArtifactReceipt::build(ACTIVE_ASP_ARTIFACT_SET_ID, leaves)

@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use tokio::net::UnixStream;
+use tokio::net::TcpStream;
 use tokio::sync::{Mutex, OnceCell, RwLock};
 
 use super::frame::{read_frame, write_frame};
@@ -25,7 +25,7 @@ pub(super) struct RuntimeServerConnectionPool {
 }
 
 struct RuntimeServerLane {
-    stream: Mutex<Option<UnixStream>>,
+    stream: Mutex<Option<TcpStream>>,
     in_flight: AtomicUsize,
 }
 
@@ -100,7 +100,7 @@ pub(super) async fn connection_pool(
 ) -> Arc<RuntimeServerConnectionPool> {
     let key = format!(
         "{}\0{}\0{}",
-        endpoint.socket_path,
+        endpoint.control_endpoint.socket_addr(),
         endpoint.owner_epoch,
         endpoint.runtime_binary_identity.content_digest()
     );
@@ -117,7 +117,7 @@ pub(super) async fn connection_pool(
     if let Some(pool) = guard.get(&key) {
         return Arc::clone(pool);
     }
-    guard.retain(|_, pool| pool.endpoint.socket_path != endpoint.socket_path);
+    guard.retain(|_, pool| pool.endpoint.control_endpoint != endpoint.control_endpoint);
     let pool = Arc::new(RuntimeServerConnectionPool::new(endpoint));
     guard.insert(key, Arc::clone(&pool));
     pool
@@ -125,7 +125,7 @@ pub(super) async fn connection_pool(
 
 async fn exchange_runtime_server_request(
     endpoint: &RuntimeServerEndpoint,
-    stream: &mut Option<UnixStream>,
+    stream: &mut Option<TcpStream>,
     request: &RuntimeServerControlRequest,
 ) -> Result<RuntimeServerControlReceipt, String> {
     exchange_runtime_server_request_with_budget(
@@ -139,16 +139,15 @@ async fn exchange_runtime_server_request(
 
 async fn exchange_runtime_server_request_with_budget(
     endpoint: &RuntimeServerEndpoint,
-    stream: &mut Option<UnixStream>,
+    stream: &mut Option<TcpStream>,
     request: &RuntimeServerControlRequest,
     budget: std::time::Duration,
 ) -> Result<RuntimeServerControlReceipt, String> {
     discard_closed_or_dirty_control_stream(stream);
     if stream.is_none() {
-        let connected = UnixStream::connect(&endpoint.socket_path)
+        let connected = TcpStream::connect(endpoint.control_endpoint.socket_addr())
             .await
             .map_err(|error| format!("failed to connect Runtime Server endpoint: {error}"))?;
-        super::validate_runtime_server_peer_fd(std::os::fd::AsRawFd::as_raw_fd(&connected))?;
         *stream = Some(connected);
     }
     let active = stream
@@ -187,7 +186,7 @@ async fn exchange_runtime_server_request_with_budget(
     result
 }
 
-fn discard_closed_or_dirty_control_stream(stream: &mut Option<UnixStream>) {
+fn discard_closed_or_dirty_control_stream(stream: &mut Option<TcpStream>) {
     let Some(active) = stream.as_mut() else {
         return;
     };

@@ -38,11 +38,10 @@ def validate_service_envelope(message: Mapping[str, Any]) -> None:
     kind = message.get("messageKind")
     if kind not in {
         "hello",
-        "open-generation",
-        "evaluate",
-        "search-evidence",
-        "timeline",
+        "generation-graph",
+        "evaluate-resident",
         "release-generation",
+        "timeline",
         "cancel",
         "health",
         "shutdown",
@@ -61,7 +60,6 @@ def validate_service_envelope(message: Mapping[str, Any]) -> None:
         "messageKind",
         "workspaceIdentity",
         "generationDigest",
-        "generationToken",
         "runtimeArtifactDigest",
         "executionArtifactDigest",
         "deadlineUnixMillis",
@@ -76,15 +74,6 @@ def validate_service_envelope(message: Mapping[str, Any]) -> None:
         )
     if kind == "cancel":
         required_string(message, "cancellationId")
-    if (
-        kind == "search-evidence"
-        and message.get("payloadSchemaId")
-        != "agent.semantic-protocols.asp-python-graphs-search-evidence"
-    ):
-        raise ServiceProtocolError(
-            "invalid-search-evidence-schema",
-            "search-evidence requires the canonical search evidence payload schema",
-        )
     sequence = message.get("sequence")
     if not isinstance(sequence, int) or isinstance(sequence, bool) or sequence < 1:
         raise ServiceProtocolError(
@@ -99,7 +88,6 @@ def service_receipt(
     state: str,
     workspace: str | None = None,
     generation: str | None = None,
-    generation_token: int | None = None,
     sequence: int = 1,
 ) -> dict[str, object]:
     receipt: dict[str, object] = {
@@ -116,8 +104,6 @@ def service_receipt(
     if workspace is not None and generation is not None:
         receipt["workspaceIdentity"] = workspace
         receipt["generationDigest"] = generation
-        if generation_token is not None:
-            receipt["generationToken"] = generation_token
     return receipt
 
 
@@ -151,7 +137,9 @@ def required_string(message: Mapping[str, Any], key: str) -> str:
 def required_digest(message: Mapping[str, Any], key: str) -> str:
     value = required_string(message, key)
     digest = value.removeprefix("blake3-256:")
-    if len(digest) != 64 or any(character not in "0123456789abcdef" for character in digest):
+    if len(digest) != 64 or any(
+        character not in "0123456789abcdef" for character in digest
+    ):
         raise ServiceProtocolError(
             "invalid-digest", f"{key} must be a blake3-256 digest"
         )
@@ -174,9 +162,7 @@ def string_int_mapping(value: object) -> dict[str, int] | None:
     return {
         key: item
         for key, item in value.items()
-        if isinstance(key, str)
-        and isinstance(item, int)
-        and not isinstance(item, bool)
+        if isinstance(key, str) and isinstance(item, int) and not isinstance(item, bool)
     }
 
 

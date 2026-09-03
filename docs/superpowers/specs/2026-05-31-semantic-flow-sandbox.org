@@ -25,7 +25,7 @@ subagent planning, synthesis, and edit decisions.
 All commands were run from:
 
 #+begin_src text
-languages/typescript-lang-project-harness
+languages/asp-typescript
 #+end_src
 
 ** Registry
@@ -51,8 +51,8 @@ node dist/src/cli/main.js search workspace .
 Observed:
 
 #+begin_src text
-[search-workspace] mode=single-package package=typescript-lang-project-harness packages=0 shown=0 edge=0 external=4 find=39
-|package . name=typescript-lang-project-harness role=workspace-root packages=0 dependencies=4 next=prime:.
+[search-workspace] mode=single-package package=asp-typescript packages=0 shown=0 edge=0 external=4 find=39
+|package . name=asp-typescript role=workspace-root packages=0 dependencies=4 next=prime:.
 |next prime:.
 #+end_src
 
@@ -68,8 +68,8 @@ node dist/src/cli/main.js search prime .
 Observed:
 
 #+begin_src text
-[search-prime] mode=package package=typescript-lang-project-harness src=200 own=171 edge=496 find=39
-|package typescript-lang-project-harness root=. scripts=build,check,check:implementation,check:policy,clean,format,format:check,harness dependencies=4 exports=1 imports=0 workspaces=0
+[search-prime] mode=package package=asp-typescript src=200 own=171 edge=496 find=39
+|package asp-typescript root=. scripts=build,check,check:implementation,check:policy,clean,format,format:check,harness dependencies=4 exports=1 imports=0 workspaces=0
 |owner src/cli/semantic-search/build.ts role="root,entrypoint" public=true ...
 |owner src/cli/protocol.ts role="root,entrypoint" public=true ...
 |owner src/cli/semantic-search/dependency.ts role="root,entrypoint" public=true ...
@@ -206,7 +206,7 @@ split: implementation/test gates pass, while agent-facing advice remains visible
 * Synthesis
 
 #+begin_src text
-[search-synthesis] flow=schema-ci package=typescript-lang-project-harness registry=ok workspace=single-package prime=ok ingest=ok schema_tests=passed check=passed owner_path_only=implemented text_ingest_guidance=implemented missing=none
+[search-synthesis] flow=schema-ci package=asp-typescript registry=ok workspace=single-package prime=ok ingest=ok schema_tests=passed check=passed owner_path_only=implemented text_ingest_guidance=implemented missing=none
 #+end_src
 
 * Findings

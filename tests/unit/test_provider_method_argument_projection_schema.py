@@ -42,7 +42,7 @@ def test_provider_registrations_use_canonical_identity() -> None:
     }
     registration_paths = {
         "rust": "languages/asp-rust/provider/asp-provider-registration.json",
-        "typescript": "languages/typescript-lang-project-harness/provider/asp-provider-registration.json",
+        "typescript": "languages/asp-typescript/provider/asp-provider-registration.json",
         "python": "languages/asp-python/provider/asp-provider-registration.json",
         "julia": "languages/AspJulia.jl/juliac/asp-provider-registration.json",
         "gerbil-scheme": "languages/gerbil-scheme-language-project-harness/provider/asp-provider-registration.json",

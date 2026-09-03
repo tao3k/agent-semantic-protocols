@@ -55,7 +55,7 @@
         "--emit",
         "decision"
       ],
-      "stdin": "{\"tool_name\":\"functions.exec_command\",\"tool_input\":{\"cmd\":\"rg -n \\\"TypeScriptReasoningTree\\\" languages/typescript-lang-project-harness/src/model.ts\"}}",
+      "stdin": "{\"tool_name\":\"functions.exec_command\",\"tool_input\":{\"cmd\":\"rg -n \\\"TypeScriptReasoningTree\\\" languages/asp-typescript/src/model.ts\"}}",
       "expect": {
         "stdoutJsonSchema": "schemas/semantic-agent-hook-decision.v1.schema.json",
         "stdoutJsonEquals": {
@@ -105,7 +105,7 @@
         "--emit",
         "decision"
       ],
-      "stdin": "{\"toolName\":\"functions.read_file\",\"toolInput\":{\"path\":\"languages/typescript-lang-project-harness/src/cli/semantic-search/types.ts\"}}",
+      "stdin": "{\"toolName\":\"functions.read_file\",\"toolInput\":{\"path\":\"languages/asp-typescript/src/cli/semantic-search/types.ts\"}}",
       "expect": {
         "stdoutJsonSchema": "schemas/semantic-agent-hook-decision.v1.schema.json",
         "stdoutJsonEquals": {
@@ -113,7 +113,7 @@
           "reasonKind": "direct-source-read",
           "languageIds.0": "typescript",
           "subject.toolName": "functions.read_file",
-          "subject.paths.0": "languages/typescript-lang-project-harness/src/cli/semantic-search/types.ts",
+          "subject.paths.0": "languages/asp-typescript/src/cli/semantic-search/types.ts",
           "routes.0.kind": "query",
           "routes.0.providerId": "asp-typescript"
         },
