@@ -1,10 +1,13 @@
 use std::time::Duration;
 
-use agent_semantic_hook::aot_evaluator::{evaluate_pre_tool, reader_probe_request};
-use agent_semantic_hook::{
-    ReaderProbeAccess, ReaderProbeObservation, bind_reader_probe_observation,
-    diagnose_reader_probe, diagnose_reader_probe_with_state_home, materialize_reader_probe_fixture,
-};
+use agent_semantic_hook::ReaderProbeAccess;
+use agent_semantic_hook::ReaderProbeObservation;
+use agent_semantic_hook::aot_evaluator::evaluate_pre_tool;
+use agent_semantic_hook::aot_evaluator::reader_probe_request;
+use agent_semantic_hook::bind_reader_probe_observation;
+use agent_semantic_hook::diagnose_reader_probe;
+use agent_semantic_hook::diagnose_reader_probe_with_state_home;
+use agent_semantic_hook::materialize_reader_probe_fixture;
 
 pub(super) const GENERATION: &str = r#"{"schemaId":"agent.semantic-protocols.hook-policy-bundle","schemaVersion":1,"generationDigest":"blake3-256:testkit-perf","rules":[{"id":"route-source","matchers":["Bash"],"wrappedCommand":true,"actions":["read"],"registeredExtensions":["rs"],"decision":"deny","reasonKind":"registered-source-route-required","message":"Use ASP."}]}"#;
 
@@ -190,11 +193,11 @@ fn canonical_aot_generation_preserves_config_rule_composition_and_dominance() {
     let generation = canonical_generation();
     for (command, expected_rule) in [
         (
-            "asp rust search playbook 'owner symbol' --workspace .",
+            "asp search playbook --language rust 'owner symbol' --workspace .",
             Some("registered-asp-reasoning-search"),
         ),
         (
-            "asp rust search playbook 'owner symbol' --workspace . --json",
+            "asp search playbook --language rust 'owner symbol' --workspace . --json",
             Some("deny-agent-search-json"),
         ),
         (
@@ -432,7 +435,7 @@ fn every_canonical_config_rule_has_an_aot_decision_witness() {
             "apply_patch",
             serde_json::json!({"patch":"*** Begin Patch\n*** Update File: README.md\n*** End Patch"}),
         ),
-        decide("Bash", "Bash", serde_json::json!({"command":"asp rust search playbook owner"})),
+        decide("Bash", "Bash", serde_json::json!({"command":"asp search playbook --language rust owner"})),
         decide("Bash", "Bash", serde_json::json!({"command":"asp rust query --selector rust://owner"})),
         decide("Bash", "Bash", serde_json::json!({"command":"cargo test -p agent-semantic-hook"})),
         decide("Bash", "Bash", serde_json::json!({"command":"cargo fmt --all -- --check"})),
@@ -440,7 +443,7 @@ fn every_canonical_config_rule_has_an_aot_decision_witness() {
         decide("Bash", "Bash", serde_json::json!({"command":"git show HEAD:README.md"})),
         decide("Bash", "Bash", serde_json::json!({"command":"asp live-corpus qualify"})),
         decide("Bash", "Bash", serde_json::json!({"command":"gxc -O src/runtime.ss"})),
-        decide("Bash", "Bash", serde_json::json!({"command":"asp rust search playbook owner --json"})),
+        decide("Bash", "Bash", serde_json::json!({"command":"asp search playbook --language rust owner --json"})),
         decide("Bash", "Bash", confirmed_read("src/lib.rs")),
         decide("Bash", "Bash", confirmed_read("fixture.json")),
         decide("Bash", "Bash", serde_json::json!({"command":"jq -c '.name' fixture.json"})),

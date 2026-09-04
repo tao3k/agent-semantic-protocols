@@ -3,12 +3,13 @@
 use std::path::PathBuf;
 
 use crate::types::LanguageId;
-use agent_semantic_tree_sitter::{
-    SyntaxQueryAbiPredicate, SyntaxQueryPredicateValue, builtin_catalog_source,
-    compile_query_abi_source,
-};
+use agent_semantic_tree_sitter::SyntaxQueryAbiPredicate;
+use agent_semantic_tree_sitter::SyntaxQueryPredicateValue;
+use agent_semantic_tree_sitter::builtin_catalog_source;
+use agent_semantic_tree_sitter::compile_query_abi_source;
 use bytes::Bytes;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 
 /// Internal ASP-to-provider argument carrying query capture names.
 ///

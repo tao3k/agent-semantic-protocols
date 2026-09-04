@@ -1,46 +1,127 @@
+//! Canonical Host-agent routes, permissions, and compiled platform projections.
+
 use serde::Deserialize;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 use std::fs;
 use std::path::Path;
 
+#[path = "agent_route_projection_validation.rs"]
+mod projection_validation;
+
+use projection_validation::markdown_frontmatter_value;
+use projection_validation::projection_string;
+use projection_validation::validate_claude_plugin_projection;
+use projection_validation::validate_codex_agent_projection;
+
+/// Stable schema identifier for the declarative agent-route registry.
 pub const AGENT_ROUTE_REGISTRY_SCHEMA_ID: &str = "agent.semantic-protocols.agent-route-registry";
+/// Stable schema version for the declarative agent-route registry.
 pub const AGENT_ROUTE_REGISTRY_SCHEMA_VERSION: u64 = 1;
 
+/// Canonical route key declared by the agent registry.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct AgentRouteKey(String);
 
 impl AgentRouteKey {
+    /// Return the canonical route-key text.
     pub fn as_str(&self) -> &str {
         &self.0
     }
 }
 
+/// Canonical Host platform identifier.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PlatformId(String);
 
 impl PlatformId {
+    /// Return the canonical platform identifier.
     pub fn as_str(&self) -> &str {
         &self.0
     }
 }
 
+/// Native Host agent name bound to one route.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PlatformHostAgentName(String);
 
 impl PlatformHostAgentName {
+    /// Return the Host-native agent name.
     pub fn as_str(&self) -> &str {
         &self.0
     }
 }
 
+/// Lifetime semantics for a configured AgentSession.
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub enum AgentSessionLifetime {
+    /// Durable configured Agent.
     Resident,
+    /// Ephemeral Host subagent.
     Temporary,
 }
 
+/// Closed Host distinction between configured Agents and temporary SubAgents.
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum AgentKind {
+    /// Configured Agent loaded from the Host Agent registry.
+    Agent,
+    /// Temporary SubAgent created for one bounded task.
+    Subagent,
+}
+
+impl AgentKind {
+    /// Return the stable schema spelling.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Agent => "agent",
+            Self::Subagent => "subagent",
+        }
+    }
+}
+
+impl std::fmt::Display for AgentKind {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
+/// Closed Codex sandbox modes admitted by an Agent definition.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HostSandboxMode {
+    /// Source reads only.
+    ReadOnly,
+    /// Mutations restricted to the active workspace.
+    WorkspaceWrite,
+    /// Unrestricted Host filesystem access.
+    DangerFullAccess,
+}
+
+impl HostSandboxMode {
+    /// Parse the exact Codex schema spelling.
+    pub fn parse(value: &str) -> Result<Self, String> {
+        match value {
+            "read-only" => Ok(Self::ReadOnly),
+            "workspace-write" => Ok(Self::WorkspaceWrite),
+            "danger-full-access" => Ok(Self::DangerFullAccess),
+            _ => Err(format!("unsupported Host sandbox mode `{value}`")),
+        }
+    }
+
+    /// Return the exact Codex schema spelling.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::ReadOnly => "read-only",
+            Self::WorkspaceWrite => "workspace-write",
+            Self::DangerFullAccess => "danger-full-access",
+        }
+    }
+}
+
 impl AgentSessionLifetime {
+    /// Return the schema spelling of the lifetime.
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Resident => "resident",
@@ -49,12 +130,15 @@ impl AgentSessionLifetime {
     }
 }
 
+/// Host matcher that selects a platform projection.
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct PlatformAgentRegistrySpec {
+    /// Glob or exact matcher declared by the Host profile.
     pub matcher: String,
 }
 
+/// Declarative routing policy for one configured Agent.
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct AgentRouteSpec {
@@ -63,21 +147,25 @@ pub struct AgentRouteSpec {
     pub focus_mode: AgentFocusMode,
     pub roles: Vec<String>,
     pub allowed_rule_intents: Vec<String>,
-    pub agent_kind: String,
+    pub agent_kind: AgentKind,
     #[serde(default)]
     pub display_role: String,
     #[serde(default)]
     pub description: Option<String>,
 }
 
+/// Host focus behavior attached to an Agent route.
 #[derive(Debug, Clone, Copy, Default, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub enum AgentFocusMode {
     #[default]
+    /// General-purpose Agent route.
     Standard,
+    /// Leaf task route that does not recursively coordinate Agents.
     Leaf,
 }
 
+/// Parsed agent registry document before Host-specific compilation.
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct AgentRouteRegistry {
@@ -87,6 +175,7 @@ pub struct AgentRouteRegistry {
     pub agents: BTreeMap<String, AgentRouteSpec>,
 }
 
+/// Registry plus its deterministic Host-specific lookup indexes.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AgentsRegistry {
     pub registry: AgentRouteRegistry,
@@ -163,29 +252,40 @@ impl AgentsRegistry {
     }
 }
 
+/// Schema identifier for Codex Agent definition projections.
 pub const CODEX_AGENT_DEFINITION_SCHEMA_ID: &str =
     "urn:agent-semantic-protocols:schema:codex-agent-definition";
+/// Schema identifier for Claude Agent frontmatter.
 pub const ANTHROPIC_AGENT_FRONTMATTER_SCHEMA_ID: &str =
     "urn:agent-semantic-protocols:schema:anthropic-agent-frontmatter";
+/// Schema identifier for Claude plugin Agent frontmatter.
 pub const ANTHROPIC_PLUGIN_AGENT_FRONTMATTER_SCHEMA_ID: &str =
     "urn:agent-semantic-protocols:schema:anthropic-plugin-agent-frontmatter";
+/// Schema identifier for the route-registry document projection.
 pub const AGENT_ROUTE_REGISTRY_DOCUMENT_SCHEMA_ID: &str =
     "urn:agent-semantic-protocols:schema:agent-route-registry";
+/// Embedded JSON Schema for Codex Agent definitions.
 pub const CODEX_AGENT_DEFINITION_SCHEMA: &str =
     include_str!("../schemas/codex-agent-definition.schema.json");
+/// Embedded JSON Schema for Claude Agent frontmatter.
 pub const ANTHROPIC_AGENT_FRONTMATTER_SCHEMA: &str =
     include_str!("../schemas/anthropic-agent-frontmatter.schema.json");
+/// Embedded JSON Schema for Claude plugin Agent frontmatter.
 pub const ANTHROPIC_PLUGIN_AGENT_FRONTMATTER_SCHEMA: &str =
     include_str!("../schemas/anthropic-plugin-agent-frontmatter.schema.json");
+/// Embedded JSON Schema for the route registry.
 pub const AGENT_ROUTE_REGISTRY_SCHEMA: &str =
     include_str!("../schemas/agent-route-registry.schema.json");
 
+/// Filesystem permission action controlled by an Agent sandbox.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AgentPermissionAction {
+    /// Source mutation capability.
     Edit,
 }
 
 impl AgentPermissionAction {
+    /// Return the canonical permission-action spelling.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -194,17 +294,20 @@ impl AgentPermissionAction {
     }
 }
 
+/// Effective permission constraints derived from the Host profile.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct EffectiveAgentPermissions {
     denied_actions: Vec<AgentPermissionAction>,
 }
 
 impl EffectiveAgentPermissions {
+    /// Test whether this route denies an action.
     #[must_use]
     pub fn denies(&self, action: AgentPermissionAction) -> bool {
         self.denied_actions.contains(&action)
     }
 
+    /// Iterate over all denied actions.
     pub fn denied_actions(&self) -> impl Iterator<Item = AgentPermissionAction> + '_ {
         self.denied_actions.iter().copied()
     }
@@ -216,6 +319,7 @@ impl EffectiveAgentPermissions {
     }
 }
 
+/// Host-ready route compiled from one registry entry and platform projection.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CompiledAgentRoute {
     pub route_key: AgentRouteKey,
@@ -223,14 +327,14 @@ pub struct CompiledAgentRoute {
     pub focus_mode: AgentFocusMode,
     pub roles: Vec<String>,
     pub allowed_rule_intents: Vec<String>,
-    pub agent_kind: String,
+    pub agent_kind: AgentKind,
     pub display_role: String,
     pub description: String,
     pub platform: PlatformId,
     pub platform_host_agent_name: PlatformHostAgentName,
     pub profile_path: String,
     pub model: Option<String>,
-    pub sandbox_mode: Option<String>,
+    pub sandbox_mode: Option<HostSandboxMode>,
     pub definition_schema_id: &'static str,
     pub effective_permissions: EffectiveAgentPermissions,
 }
@@ -242,9 +346,11 @@ pub struct CompiledAgentRoute {
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HostAgentInvocationProjection {
+    /// Host invocation kind.
     pub kind: &'static str,
     /// Native calling symbol derived from the active Host profile's `name`.
     pub symbol: String,
+    /// Complete Host-native invocation syntax.
     pub syntax: String,
 }
 
@@ -255,9 +361,11 @@ impl CompiledAgentRoute {
     /// Merely appearing in a SubagentStart payload is not registration
     /// authority. Temporary SubAgents and non-Agent Host kinds never become
     /// resident ASP DB records.
+    /// Project one configured route into Host-native invocation syntax.
     #[must_use]
     pub fn is_resident_agent(&self) -> bool {
-        self.agent_kind == "agent" && self.session_lifetime == AgentSessionLifetime::Resident
+        self.agent_kind == AgentKind::Agent
+            && self.session_lifetime == AgentSessionLifetime::Resident
     }
 
     #[must_use]
@@ -282,6 +390,7 @@ impl CompiledAgentRoute {
     }
 }
 
+/// Load and compile the full registry for publication-time validation.
 pub fn load_agent_route_registry(config_path: &Path) -> Result<AgentsRegistry, String> {
     load_agent_route_registry_for_platforms(config_path, None)
 }
@@ -382,6 +491,7 @@ fn load_agent_route_registry_for_platforms(
 }
 
 /// Parses and validates an agent route registry from an immutable source.
+/// Parse and validate one route-registry source document.
 pub fn parse_agent_route_registry(
     source: &str,
     source_label: &str,
@@ -392,158 +502,7 @@ pub fn parse_agent_route_registry(
     Ok(registry)
 }
 
-fn projection_string(value: &toml::Value, field: &str, path: &Path) -> Result<String, String> {
-    value
-        .get(field)
-        .and_then(toml::Value::as_str)
-        .map(str::to_owned)
-        .ok_or_else(|| format!("projection {} requires `{field}`", path.display()))
-}
-
-fn validate_codex_agent_projection(value: &toml::Value, path: &Path) -> Result<(), String> {
-    const ALLOWED: &[&str] = &[
-        "name",
-        "description",
-        "nickname_candidates",
-        "model",
-        "model_reasoning_effort",
-        "sandbox_mode",
-        "developer_instructions",
-    ];
-    let table = value
-        .as_table()
-        .ok_or_else(|| format!("Codex projection {} must be a TOML table", path.display()))?;
-    if let Some(unknown) = table.keys().find(|key| !ALLOWED.contains(&key.as_str())) {
-        return Err(format!(
-            "Codex projection {} declares unknown `{unknown}` field",
-            path.display()
-        ));
-    }
-    let name = projection_string(value, "name", path)?;
-    let mut chars = name.chars();
-    let valid_name = chars.next().is_some_and(|ch| ch.is_ascii_lowercase())
-        && chars.all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit() || ch == '_');
-    if !valid_name {
-        return Err(format!(
-            "Codex projection {} has invalid agent name `{name}`",
-            path.display()
-        ));
-    }
-    projection_string(value, "description", path)?;
-    projection_string(value, "model", path)?;
-    projection_string(value, "developer_instructions", path)?;
-    let reasoning = projection_string(value, "model_reasoning_effort", path)?;
-    if !matches!(
-        reasoning.as_str(),
-        "low" | "medium" | "high" | "xhigh" | "max"
-    ) {
-        return Err(format!(
-            "Codex projection {} has invalid model_reasoning_effort `{reasoning}`",
-            path.display()
-        ));
-    }
-    let sandbox = projection_string(value, "sandbox_mode", path)?;
-    if !matches!(
-        sandbox.as_str(),
-        "read-only" | "workspace-write" | "danger-full-access"
-    ) {
-        return Err(format!(
-            "Codex projection {} has invalid sandbox_mode `{sandbox}`",
-            path.display()
-        ));
-    }
-    Ok(())
-}
-
-fn markdown_frontmatter_value(source: &str, key: &str) -> Option<String> {
-    let mut lines = source.lines();
-    if lines.next()?.trim() != "---" {
-        return None;
-    }
-    for line in lines {
-        let line = line.trim();
-        if line == "---" {
-            break;
-        }
-        let Some((candidate, value)) = line.split_once(':') else {
-            continue;
-        };
-        if candidate.trim() == key {
-            return Some(value.trim().to_owned());
-        }
-    }
-    None
-}
-
-fn markdown_frontmatter_keys(source: &str) -> Option<Vec<String>> {
-    let mut lines = source.lines();
-    if lines.next()?.trim() != "---" {
-        return None;
-    }
-    let mut keys = Vec::new();
-    for line in lines {
-        let line = line.trim();
-        if line == "---" {
-            return Some(keys);
-        }
-        if let Some((key, _)) = line.split_once(':') {
-            keys.push(key.trim().to_owned());
-        }
-    }
-    None
-}
-
-fn validate_claude_plugin_projection(source: &str, path: &Path) -> Result<(), String> {
-    const ALLOWED: &[&str] = &[
-        "name",
-        "description",
-        "tools",
-        "disallowedTools",
-        "model",
-        "maxTurns",
-        "skills",
-        "memory",
-        "background",
-        "effort",
-        "isolation",
-        "color",
-        "initialPrompt",
-    ];
-    let keys = markdown_frontmatter_keys(source).ok_or_else(|| {
-        format!(
-            "Claude plugin projection {} requires closed YAML frontmatter",
-            path.display()
-        )
-    })?;
-    if let Some(unknown) = keys.iter().find(|key| !ALLOWED.contains(&key.as_str())) {
-        return Err(format!(
-            "Claude plugin projection {} declares unknown or ignored `{unknown}` frontmatter",
-            path.display()
-        ));
-    }
-    let name = markdown_frontmatter_value(source, "name")
-        .ok_or_else(|| format!("Claude projection {} requires `name`", path.display()))?;
-    let segments = name.split('-').collect::<Vec<_>>();
-    let valid_name = !segments.is_empty()
-        && segments.iter().all(|segment| {
-            !segment.is_empty()
-                && segment
-                    .chars()
-                    .all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit())
-        })
-        && name
-            .chars()
-            .next()
-            .is_some_and(|ch| ch.is_ascii_lowercase());
-    if !valid_name {
-        return Err(format!(
-            "Claude projection {} has invalid agent name `{name}`",
-            path.display()
-        ));
-    }
-    Ok(())
-}
-
+/// Compile one agent route for an exact Host platform.
 pub fn compile_agent_route(
     loaded: &AgentsRegistry,
     agent_type: &str,
@@ -584,7 +543,7 @@ fn compile_agent_route_from_source(
                 projection_string(&projection, "name", projection_path)?,
                 projection_string(&projection, "description", projection_path)?,
                 Some(projection_string(&projection, "model", projection_path)?),
-                Some(sandbox_mode.clone()),
+                Some(HostSandboxMode::parse(&sandbox_mode)?),
                 CODEX_AGENT_DEFINITION_SCHEMA_ID,
                 if sandbox_mode == "read-only" {
                     EffectiveAgentPermissions::read_only()
@@ -688,12 +647,6 @@ fn validate_agent_route_registry(registry: &AgentRouteRegistry) -> Result<(), St
     }
     for (agent_type, agent) in &registry.agents {
         validate_identifier(agent_type, "agent type")?;
-        if !matches!(agent.agent_kind.as_str(), "agent" | "subagent") {
-            return Err(format!(
-                "agent route `{agent_type}` agent_kind must be `agent` or `subagent`, found `{}`",
-                agent.agent_kind
-            ));
-        }
         validate_string_set(&agent.roles, agent_type, "roles")?;
         validate_string_set(
             &agent.allowed_rule_intents,

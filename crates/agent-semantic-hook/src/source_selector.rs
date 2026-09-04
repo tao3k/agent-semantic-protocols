@@ -1,7 +1,9 @@
-use crate::protocol::{normalize_source_route_selector, normalize_source_selector};
-use crate::protocol_activation::protocol_activation_manifest::{
-    HookProviderProjection, HookRuntime, ProviderSelectorMatch, SourceSelectorKind,
-};
+use crate::protocol::normalize_source_route_selector;
+use crate::protocol::normalize_source_selector;
+use crate::protocol_activation::protocol_activation_manifest::HookProviderProjection;
+use crate::protocol_activation::protocol_activation_manifest::HookRuntime;
+use crate::protocol_activation::protocol_activation_manifest::ProviderSelectorMatch;
+use crate::protocol_activation::protocol_activation_manifest::SourceSelectorKind;
 
 pub(crate) struct SourceSelectorMatch {
     pub(crate) route_selector: String,

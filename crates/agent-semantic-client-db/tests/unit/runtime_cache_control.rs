@@ -1,6 +1,6 @@
-use agent_semantic_client_db::workspace_db_ipc::{
-    RuntimeCacheControlRequest, RuntimeCacheInvalidationScope, WorkspaceDbIpcOperation,
-};
+use agent_semantic_client_db::workspace_db_ipc::RuntimeCacheControlRequest;
+use agent_semantic_client_db::workspace_db_ipc::RuntimeCacheInvalidationScope;
+use agent_semantic_client_db::workspace_db_ipc::WorkspaceDbIpcOperation;
 
 #[test]
 fn cache_status_is_a_typed_runtime_server_operation() {

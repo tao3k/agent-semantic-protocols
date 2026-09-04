@@ -1,6 +1,8 @@
-use agent_semantic_hook::{ClientHookConfig, HookRuntime};
+use agent_semantic_hook::ClientHookConfig;
+use agent_semantic_hook::HookRuntime;
 use agent_semantic_hook_testkit::classify_codex_plugin_scenario;
-use serde_json::{Value, json};
+use serde_json::Value;
+use serde_json::json;
 
 fn empty_runtime() -> HookRuntime {
     HookRuntime {
@@ -19,10 +21,13 @@ fn shell_read(command: &str) -> Value {
 }
 
 #[test]
-fn shell_org_and_markdown_reads_fail_closed_through_registered_profiles() {
+fn shell_registered_source_reads_fail_closed_through_provider_profiles() {
     for (language_id, command) in [
-        ("org", "future-source-consumer < docs/plan.org"),
-        ("md", "future-source-consumer < README.md"),
+        ("rust", "future-source-consumer < src/lib.rs"),
+        ("typescript", "future-source-consumer < src/index.ts"),
+        ("python", "future-source-consumer < src/main.py"),
+        ("julia", "future-source-consumer < src/main.jl"),
+        ("gerbil-scheme", "future-source-consumer < src/main.ss"),
     ] {
         let decision = classify_codex_plugin_scenario(
             &empty_runtime(),
@@ -42,6 +47,25 @@ fn shell_org_and_markdown_reads_fail_closed_through_registered_profiles() {
             "language={language_id}"
         );
         assert_eq!(decision["languageIds"][0], language_id);
+    }
+}
+
+#[test]
+fn document_reads_do_not_fabricate_an_unregistered_search_provider_route() {
+    for command in [
+        "future-source-consumer < docs/plan.org",
+        "future-source-consumer < README.md",
+    ] {
+        let decision = classify_codex_plugin_scenario(
+            &empty_runtime(),
+            &ClientHookConfig::default(),
+            "pre-tool",
+            &shell_read(command),
+            "Bash",
+        )
+        .expect("classify document read without a registered Runtime provider");
+        assert_eq!(decision["decision"], "allow", "command={command}");
+        assert!(decision["fields"]["configRuleId"].is_null());
     }
 }
 

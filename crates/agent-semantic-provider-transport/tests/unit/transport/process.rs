@@ -1,14 +1,17 @@
 use std::fs;
-use std::time::{Duration, Instant};
+use std::time::Duration;
+use std::time::Instant;
 
+use crate::DEFAULT_PROVIDER_MEMORY_LIMIT_BYTES;
 #[cfg(target_os = "macos")]
 use crate::ProviderProcessError;
-use crate::{
-    DEFAULT_PROVIDER_MEMORY_LIMIT_BYTES, ProviderProcessLimits, ProviderProcessSupervisor,
-    StdinMode,
-};
+use crate::ProviderProcessLimits;
+use crate::ProviderProcessSupervisor;
+use crate::StdinMode;
 
-use super::support::{script, spec, temp_dir};
+use super::support::script;
+use super::support::spec;
+use super::support::temp_dir;
 
 #[test]
 fn default_limits_use_the_machine_adaptive_provider_process_group_ceiling() {

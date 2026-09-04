@@ -1,7 +1,8 @@
 //! Tool health diagnostics for ASP-owned search helpers.
 
 use std::ffi::OsString;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 
 const REQUIRED_TOOLS: &[&str] = &["fd", "rg", "eza"];
 

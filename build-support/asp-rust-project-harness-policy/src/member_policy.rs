@@ -90,11 +90,10 @@ impl AspRustProjectHarnessMemberPolicy {
         format!("blake3-256:{}", blake3::hash(&encoded).to_hex())
     }
 
-    /// Builds the explicit `rust-lang-project-harness` execution config.
+    /// Builds the explicit ASP Rust execution config for this package.
     ///
-    /// Downstream `build.rs` consumers intentionally compile without this
-    /// feature: package builds publish policy identity but never compile or run
-    /// the full repository scanner.
+    /// Cargo compiles the shared scanner once in the host dependency graph;
+    /// each package build script applies this config to its own crate root.
     #[cfg(feature = "workspace-policy")]
     pub fn apply_to_asp_rust_config(
         self,
@@ -297,6 +296,26 @@ const ASP_WORKSPACE_MEMBER_POLICIES: &[AspRustProjectHarnessMemberPolicy] = &[
         crate_root: "crates/agent-semantic-hook-testkit",
         cargo_check_advice_allow_explanation: "scope=agent-semantic-hook-testkit cargo-check advice; owner=agent-semantic-hook-testkit build gate; finding_category=advisory policy findings; why_safe_now=the Hook TestKit keeps advisory findings visible while warning and error findings still fail the build; cleanup_trigger=clear the crate advisory backlog and remove this allowance",
         verification_label: Some("Hook TestKit"),
+        rule_severity_overrides: &[],
+        criterion_performance_verification: false,
+        latency_sensitive_performance_owners: &[],
+        availability_stability_owners: &[],
+    },
+    AspRustProjectHarnessMemberPolicy {
+        package_name: "agent-semantic-http-json",
+        crate_root: "crates/agent-semantic-http-json",
+        cargo_check_advice_allow_explanation: "scope=agent-semantic-http-json cargo-check advice; owner=shared loopback HTTP JSON transport build gate; finding_category=advisory policy findings; why_safe_now=the crate now keeps its facade thin while runtime-ownership advice remains visible and warning or error findings fail the build; cleanup_trigger=move connection tasks under the shared runtime owner and remove this allowance",
+        verification_label: Some("HTTP JSON transport"),
+        rule_severity_overrides: &[],
+        criterion_performance_verification: false,
+        latency_sensitive_performance_owners: &[],
+        availability_stability_owners: &[],
+    },
+    AspRustProjectHarnessMemberPolicy {
+        package_name: "agent-semantic-provider-protocol",
+        crate_root: "crates/agent-semantic-provider-protocol",
+        cargo_check_advice_allow_explanation: "scope=agent-semantic-provider-protocol cargo-check advice; owner=provider wire-contract build gate; finding_category=advisory policy findings; why_safe_now=provider protocol keeps schema and typed transport advice visible while warning and error findings fail the build; cleanup_trigger=clear the provider contract advisory backlog and remove this allowance",
+        verification_label: Some("provider protocol"),
         rule_severity_overrides: &[],
         criterion_performance_verification: false,
         latency_sensitive_performance_owners: &[],

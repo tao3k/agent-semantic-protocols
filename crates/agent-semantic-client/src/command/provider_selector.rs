@@ -118,19 +118,3 @@ pub(super) fn option_value<'a>(args: &'a [String], flag: &str) -> Option<&'a str
                 .find_map(|window| (window[0] == flag).then_some(window[1].as_str()))
         })
 }
-
-pub(super) fn root_structural_selector_language(args: &[String]) -> Result<Option<String>, String> {
-    let Some(selector) = option_value(args, "--selector") else {
-        return Ok(None);
-    };
-    let selector =
-        agent_semantic_content_identity::CanonicalItemSelector::parse_root_or_exact_descendant(
-            selector,
-        )
-        .map_err(|_| format!("invalid structural selector `{selector}`"))?;
-    Ok(Some(selector.language_id.as_str().to_string()))
-}
-
-#[cfg(test)]
-#[path = "../../tests/unit/command/provider_selector_exact.rs"]
-mod exact_query_tests;

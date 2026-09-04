@@ -2,7 +2,8 @@
 
 use std::fs;
 use std::io;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 
 /// Store immutable artifact payloads by their lowercase hexadecimal digest.
 #[derive(Debug, Clone)]

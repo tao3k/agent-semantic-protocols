@@ -1,17 +1,34 @@
 use std::collections::BTreeMap;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use std::sync::Mutex;
 
-use agent_semantic_client_protocol::{
-    CLIENT_CATALOG_SCHEMA_ID, CLIENT_FRAME_SCHEMA_ID, CLIENT_PROTOCOL_ID, CLIENT_PROTOCOL_VERSION,
-    ClientCapabilities, ClientFrame, ClientFrameBase, ClientInfo, ClientMethod, ClientOutcome,
-    ClientProjectId, ClientProtocolCatalog, ClientRequestId, ClientSessionId, ClientTransport,
-    ClientWorkspaceIdentity, SCHEMA_VERSION,
-};
-use agent_semantic_client_server::{
-    AspClientCancelFuture, AspClientDispatchError, AspClientDispatchFuture,
-    AspClientDispatchRequest, AspClientDispatcher, AspClientFrameService, AspClientGrpcTransport,
-    CLIENT_FRAME_SESSION_CAPACITY, bind_asp_client_grpc_tcp, serve_asp_client_grpc_tcp,
-};
+use agent_semantic_client_protocol::ClientCapabilities;
+use agent_semantic_client_protocol::ClientFrame;
+use agent_semantic_client_protocol::ClientFrameBase;
+use agent_semantic_client_protocol::ClientInfo;
+use agent_semantic_client_protocol::ClientMethod;
+use agent_semantic_client_protocol::ClientOutcome;
+use agent_semantic_client_protocol::ClientProjectId;
+use agent_semantic_client_protocol::ClientProtocolCatalog;
+use agent_semantic_client_protocol::ClientRequestId;
+use agent_semantic_client_protocol::ClientSessionId;
+use agent_semantic_client_protocol::ClientTransport;
+use agent_semantic_client_protocol::ClientWorkspaceIdentity;
+use agent_semantic_client_protocol::protocol_identity::CLIENT_CATALOG_SCHEMA_ID;
+use agent_semantic_client_protocol::protocol_identity::CLIENT_FRAME_SCHEMA_ID;
+use agent_semantic_client_protocol::protocol_identity::CLIENT_PROTOCOL_ID;
+use agent_semantic_client_protocol::protocol_identity::CLIENT_PROTOCOL_VERSION;
+use agent_semantic_client_protocol::protocol_identity::SCHEMA_VERSION;
+use agent_semantic_client_server::AspClientCancelFuture;
+use agent_semantic_client_server::AspClientDispatchError;
+use agent_semantic_client_server::AspClientDispatchFuture;
+use agent_semantic_client_server::AspClientDispatchRequest;
+use agent_semantic_client_server::AspClientDispatcher;
+use agent_semantic_client_server::AspClientFrameService;
+use agent_semantic_client_server::AspClientGrpcTransport;
+use agent_semantic_client_server::CLIENT_FRAME_SESSION_CAPACITY;
+use agent_semantic_client_server::bind_asp_client_grpc_tcp;
+use agent_semantic_client_server::serve_asp_client_grpc_tcp;
 use serde_json::json;
 
 struct ExactQueryDispatcher {
@@ -153,9 +170,16 @@ fn catalog() -> ClientProtocolCatalog {
         .into_iter()
         .map(|method| ClientMethod {
             method: method.to_owned(),
-            route_id: method.to_owned(),
-            request_schema_id: format!("agent.semantic-protocols.test.{method}.request"),
-            response_schema_id: format!("agent.semantic-protocols.test.{method}.response"),
+            route_id: agent_semantic_client_protocol::ClientRouteId::new(method)
+                .expect("test route id"),
+            request_schema_id: agent_semantic_client_protocol::ClientSchemaId::new(format!(
+                "agent.semantic-protocols.test.{method}.request"
+            ))
+            .expect("test request schema id"),
+            response_schema_id: agent_semantic_client_protocol::ClientSchemaId::new(format!(
+                "agent.semantic-protocols.test.{method}.response"
+            ))
+            .expect("test response schema id"),
             error_schema_ids: Vec::new(),
             parameters: Vec::new(),
             cancellable: true,

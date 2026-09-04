@@ -373,7 +373,7 @@
     },
     "finder": {
       "type": "object",
-      "description": "Provider-owned finder pipeline provenance for lexical/fuzzy search surfaces such as search lexical. This records normalized agent-requested finder options; it is not raw shell argv.",
+      "description": "Provider-owned finder pipeline provenance used internally by search playbook acquisition. This records normalized planner options; it is not raw shell argv and is never a public command surface.",
       "additionalProperties": false,
       "required": [
         "engine",

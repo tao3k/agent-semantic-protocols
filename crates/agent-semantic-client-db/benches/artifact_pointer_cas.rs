@@ -1,15 +1,20 @@
 use std::hint::black_box;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::sync::atomic::AtomicU64;
+use std::sync::atomic::Ordering;
+use std::time::SystemTime;
+use std::time::UNIX_EPOCH;
 
-use agent_semantic_client_db::artifact_pointer_store::{
-    ClientDbArtifactPointerCasOutcome, ClientDbArtifactPointerCasRequest,
-    ClientDbArtifactPointerKey, TursoArtifactPointerStore,
-};
+use agent_semantic_client_db::artifact_pointer_store::ClientDbArtifactPointerCasOutcome;
+use agent_semantic_client_db::artifact_pointer_store::ClientDbArtifactPointerCasRequest;
+use agent_semantic_client_db::artifact_pointer_store::ClientDbArtifactPointerKey;
+use agent_semantic_client_db::artifact_pointer_store::TursoArtifactPointerStore;
 use agent_semantic_content_identity::hash_blob;
-use criterion::{Criterion, Throughput, criterion_group, criterion_main};
+use criterion::Criterion;
+use criterion::Throughput;
+use criterion::criterion_group;
+use criterion::criterion_main;
 
 fn temp_db(name: &str) -> PathBuf {
     let nonce = SystemTime::now()

@@ -1,6 +1,7 @@
 //! Provider install target resolution for language harness binaries.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub(super) struct ProviderBinaryInstallTarget {

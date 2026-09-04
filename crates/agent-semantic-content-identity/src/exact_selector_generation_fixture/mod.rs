@@ -9,15 +9,20 @@ mod materialization_proof;
 
 pub(super) use core::DIGEST_LEN;
 
-pub use core::{
-    EXACT_SELECTOR_GENERATION_FIXTURE_SCHEMA_ID, EXACT_SELECTOR_GENERATION_FIXTURE_SCHEMA_VERSION,
-    ExactSelectorGenerationFixtureErrorV1, ExactSelectorGenerationFixtureViewV1,
-    ExactSelectorGenerationIdentityV1, ExactSelectorGenerationRecordV1,
-    ExactSelectorGenerationRecordViewV1, ExactSelectorProjectionModeV1,
-    build_exact_selector_generation_fixture_v1, fixture_digest_v1,
-};
-pub use materialization_proof::{
-    ExactSelectorLanguageIdV1, ExactSelectorMaterializationProofErrorV1,
-    ExactSelectorMaterializationProofV1, ExactSelectorMerkleProofSideV1,
-    ExactSelectorMerkleProofStepV1, ExactSelectorOwnerPathV1, ExactSelectorProviderIdV1,
-};
+pub use core::EXACT_SELECTOR_GENERATION_FIXTURE_SCHEMA_ID;
+pub use core::EXACT_SELECTOR_GENERATION_FIXTURE_SCHEMA_VERSION;
+pub use core::ExactSelectorGenerationFixtureErrorV1;
+pub use core::ExactSelectorGenerationFixtureViewV1;
+pub use core::ExactSelectorGenerationIdentityV1;
+pub use core::ExactSelectorGenerationRecordV1;
+pub use core::ExactSelectorGenerationRecordViewV1;
+pub use core::ExactSelectorProjectionModeV1;
+pub use core::build_exact_selector_generation_fixture_v1;
+pub use core::fixture_digest_v1;
+pub use materialization_proof::ExactSelectorLanguageIdV1;
+pub use materialization_proof::ExactSelectorMaterializationProofErrorV1;
+pub use materialization_proof::ExactSelectorMaterializationProofV1;
+pub use materialization_proof::ExactSelectorMerkleProofSideV1;
+pub use materialization_proof::ExactSelectorMerkleProofStepV1;
+pub use materialization_proof::ExactSelectorOwnerPathV1;
+pub use materialization_proof::ExactSelectorProviderIdV1;

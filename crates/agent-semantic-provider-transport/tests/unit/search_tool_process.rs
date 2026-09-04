@@ -1,8 +1,18 @@
-use super::*;
-
 use std::fs;
+use std::path::Path;
+use std::path::PathBuf;
+use std::time::Duration;
 use std::time::Instant;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::SystemTime;
+use std::time::UNIX_EPOCH;
+
+use super::MAX_INVENTORY_BYTES;
+use super::MAX_RG_OUTPUT_BYTES;
+use super::ValidatedColdRgCorpus;
+use super::parse_fd_inventory;
+use super::run_fd_inventory;
+use super::run_reference_search_tool;
+use super::run_rg_cold_query;
 
 fn fixture_root(name: &str) -> PathBuf {
     let nonce = SystemTime::now()
@@ -35,7 +45,7 @@ async fn fd_inventory_and_rg_cold_query_remain_separate_bounded_processes() {
         inventory.owner_paths,
         ["src/ignored.py".to_owned(), "src/read.rs".to_owned()]
     );
-    assert_eq!(inventory.receipt.backend, "resident-fd-ignore-walk");
+    assert_eq!(inventory.receipt.backend, "resident-fd-ignore-parallel");
     let fd_parity = run_reference_search_tool(
         Path::new("fd"),
         &root,

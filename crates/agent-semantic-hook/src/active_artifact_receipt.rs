@@ -1,13 +1,17 @@
-use agent_semantic_content_identity::active_artifact_merkle::{
-    ActiveArtifactKind, ActiveArtifactLeaf, ActiveArtifactLeafInput, ActiveAspArtifactReceipt,
-};
+use agent_semantic_content_identity::active_artifact_merkle::ActiveArtifactKind;
+use agent_semantic_content_identity::active_artifact_merkle::ActiveArtifactLeaf;
+use agent_semantic_content_identity::active_artifact_merkle::ActiveArtifactLeafInput;
+use agent_semantic_content_identity::active_artifact_merkle::ActiveAspArtifactReceipt;
 use agent_semantic_content_identity::exact_selector_merkle::blake3_content_digest_v1;
 use std::fs;
 use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 use std::process;
-use std::sync::{Mutex, OnceLock};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::sync::Mutex;
+use std::sync::OnceLock;
+use std::time::SystemTime;
+use std::time::UNIX_EPOCH;
 
 use fs2::FileExt;
 
@@ -275,8 +279,9 @@ pub fn materialize_active_asp_artifact_receipt(
 
 #[path = "active_artifact_receipt_verification.rs"]
 mod verification;
+use verification::change_time_unix_nanos;
+use verification::modified_unix_nanos;
 pub use verification::verify_active_asp_artifact_receipt;
-use verification::{change_time_unix_nanos, modified_unix_nanos};
 
 fn canonical_regular_file(path: &Path, label: &str) -> Result<PathBuf, String> {
     let canonical = fs::canonicalize(path)

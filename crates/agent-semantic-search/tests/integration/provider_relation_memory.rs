@@ -16,12 +16,12 @@ fn fixture() -> (Arc<[u8]>, [u8; 32], [u8; 32]) {
         generation_digest: format!("blake3-256:{}", "07".repeat(32)),
         relations: vec![ProviderProjectedRelation {
             from: ProviderProjectedRelationEndpoint {
-                kind: "item".to_owned(),
+                kind: agent_semantic_content_identity::ProviderRelationEndpointKindV1::Item,
                 id: "item:caller".to_owned(),
             },
-            kind: "calls".to_owned(),
+            kind: "calls".into(),
             to: ProviderProjectedRelationEndpoint {
-                kind: "item".to_owned(),
+                kind: agent_semantic_content_identity::ProviderRelationEndpointKindV1::Item,
                 id: "item:callee".to_owned(),
             },
         }],
@@ -38,7 +38,10 @@ fn attached_relation_fixture_resolves_from_memory() {
         ProviderRelationMemorySearch::attach_owned(bytes, generation_digest, artifact_digest)
             .expect("attach relation fixture");
     assert_eq!(search.relation_count(), 1);
-    let relations = search.relations_from("item", "item:caller");
+    let relations = search.relations_from(
+        agent_semantic_content_identity::ProviderRelationEndpointKindV1::Item,
+        "item:caller",
+    );
     assert_eq!(relations.len(), 1);
     assert_eq!(relations[0].kind, "calls");
     assert_eq!(relations[0].to.id, "item:callee");
@@ -53,7 +56,10 @@ fn hot_relation_lookup_is_sub_millisecond_without_runtime_io() {
 
     for _ in 0..256 {
         let started = std::time::Instant::now();
-        let relations = search.relations_from("item", "item:caller");
+        let relations = search.relations_from(
+            agent_semantic_content_identity::ProviderRelationEndpointKindV1::Item,
+            "item:caller",
+        );
         let elapsed = started.elapsed();
         assert_eq!(relations.len(), 1);
         assert!(

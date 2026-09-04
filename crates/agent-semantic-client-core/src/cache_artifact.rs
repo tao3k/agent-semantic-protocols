@@ -1,6 +1,8 @@
 //! Cache artifact path contracts.
 
-use std::path::{Component, Path, PathBuf};
+use std::path::Component;
+use std::path::Path;
+use std::path::PathBuf;
 
 use crate::CacheArtifactId;
 

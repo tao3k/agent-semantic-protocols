@@ -1,9 +1,8 @@
 //! Canonical provider-register composition for build scripts.
 
-use std::{
-    fs,
-    path::{Path, PathBuf},
-};
+use std::fs;
+use std::path::Path;
+use std::path::PathBuf;
 
 use serde_json::Value;
 

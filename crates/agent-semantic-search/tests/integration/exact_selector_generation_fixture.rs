@@ -1,16 +1,16 @@
 use std::sync::Arc;
 
-use agent_semantic_content_identity::exact_selector_generation_fixture::{
-    ExactSelectorGenerationIdentityV1, ExactSelectorGenerationRecordV1,
-    ExactSelectorProjectionModeV1, build_exact_selector_generation_fixture_v1, fixture_digest_v1,
-};
-use agent_semantic_content_identity::workspace_search_identity::{
-    WorkspaceSearchIdentityInputV1, WorkspaceSearchIdentityV1, WorkspaceSearchScopeKindV1,
-};
-use agent_semantic_search::exact_selector_generation_fixture::{
-    ExactSelectorFixturePublicationV1, ExactSelectorGenerationMemorySearchV1,
-    publish_immutable_exact_selector_generation_fixture_v1,
-};
+use agent_semantic_content_identity::exact_selector_generation_fixture::ExactSelectorGenerationIdentityV1;
+use agent_semantic_content_identity::exact_selector_generation_fixture::ExactSelectorGenerationRecordV1;
+use agent_semantic_content_identity::exact_selector_generation_fixture::ExactSelectorProjectionModeV1;
+use agent_semantic_content_identity::exact_selector_generation_fixture::build_exact_selector_generation_fixture_v1;
+use agent_semantic_content_identity::exact_selector_generation_fixture::fixture_digest_v1;
+use agent_semantic_content_identity::workspace_search_identity::WorkspaceSearchIdentityInputV1;
+use agent_semantic_content_identity::workspace_search_identity::WorkspaceSearchIdentityV1;
+use agent_semantic_content_identity::workspace_search_identity::WorkspaceSearchScopeKindV1;
+use agent_semantic_search::exact_selector_generation_fixture::ExactSelectorFixturePublicationV1;
+use agent_semantic_search::exact_selector_generation_fixture::ExactSelectorGenerationMemorySearchV1;
+use agent_semantic_search::exact_selector_generation_fixture::publish_immutable_exact_selector_generation_fixture_v1;
 
 fn digest(byte: u8) -> [u8; 32] {
     [byte; 32]

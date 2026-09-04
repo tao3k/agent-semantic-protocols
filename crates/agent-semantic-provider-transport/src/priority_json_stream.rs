@@ -1,10 +1,12 @@
 //! Bounded control-priority JSON stream for provider transports.
 
 use std::pin::Pin;
-use std::task::{Context, Poll};
+use std::task::Context;
+use std::task::Poll;
 
 use serde_json::Value;
-use tokio::sync::{mpsc, watch};
+use tokio::sync::mpsc;
+use tokio::sync::watch;
 use tokio_stream::Stream;
 use tokio_stream::wrappers::ReceiverStream;
 

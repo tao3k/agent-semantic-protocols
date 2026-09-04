@@ -1,8 +1,8 @@
 //! Workspace generation evidence contract tests.
 
-use agent_semantic_content_identity::workspace_generation_evidence::{
-    WorkspaceGenerationAuthority, WorkspaceGenerationEvidenceError, WorkspaceGenerationEvidenceV1,
-};
+use agent_semantic_content_identity::workspace_generation_evidence::WorkspaceGenerationAuthority;
+use agent_semantic_content_identity::workspace_generation_evidence::WorkspaceGenerationEvidenceError;
+use agent_semantic_content_identity::workspace_generation_evidence::WorkspaceGenerationEvidenceV1;
 
 fn complete(root: &str) -> WorkspaceGenerationEvidenceV1 {
     WorkspaceGenerationEvidenceV1 {

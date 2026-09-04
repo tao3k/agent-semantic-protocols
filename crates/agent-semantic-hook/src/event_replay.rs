@@ -1,6 +1,8 @@
-use serde_json::{Value, json};
+use serde_json::Value;
+use serde_json::json;
 
-use crate::protocol::{DecisionKind, HookDecision};
+use crate::protocol::DecisionKind;
+use crate::protocol::HookDecision;
 
 pub(crate) fn deny_replay_key(decision: &HookDecision) -> Option<String> {
     if decision.decision != DecisionKind::Deny {

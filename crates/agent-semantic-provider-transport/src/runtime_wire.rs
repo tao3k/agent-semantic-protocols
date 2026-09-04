@@ -1,4 +1,5 @@
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 
 pub const PROVIDER_RUNTIME_REQUEST_FRAME_SCHEMA_ID: &str =
     "agent.semantic-protocols.provider-runtime-request-frame";

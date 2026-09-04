@@ -1,6 +1,7 @@
 //! Agent-session identity helpers shared by CLI and hook runtime code.
 
-use crate::agent_session_status::{codex_rollout_session_metadata, current_agent_runtime_session};
+use crate::agent_session_status::codex_rollout_session_metadata;
+use crate::agent_session_status::current_agent_runtime_session;
 
 /// Runtime-resolved identity for registering one agent session.
 #[derive(Clone, Debug, Eq, PartialEq)]

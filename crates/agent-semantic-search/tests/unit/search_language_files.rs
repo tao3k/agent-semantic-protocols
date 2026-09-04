@@ -1,4 +1,6 @@
-use crate::{LanguageFileSpec, language_file_spec, language_neutral_search_file_spec};
+use crate::LanguageFileSpec;
+use crate::language_file_spec;
+use crate::language_neutral_search_file_spec;
 
 #[test]
 fn programming_language_scope_is_not_reconstructed_from_filenames() {

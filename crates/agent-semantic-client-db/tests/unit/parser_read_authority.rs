@@ -1,16 +1,20 @@
-use super::{
-    CommittedParserGeneration, LoadedParserGeneration, ParserReadAuthority,
-    ParserReadAuthorityRegistry, ParserReadContext, ParserReadCounters, ParserReadRequest,
-    ParserReadRoute, ParserReadState, RuntimeEndpointState,
-};
+use super::CommittedParserGeneration;
+use super::LoadedParserGeneration;
+use super::ParserReadAuthority;
+use super::ParserReadAuthorityRegistry;
+use super::ParserReadContext;
+use super::ParserReadCounters;
+use super::ParserReadRequest;
+use super::ParserReadRoute;
+use super::ParserReadState;
+use super::RuntimeEndpointState;
 
 fn request() -> ParserReadRequest {
     ParserReadRequest::new(generation()).expect("validated parser read request")
 }
-use std::sync::{
-    Arc,
-    atomic::{AtomicU64, Ordering},
-};
+use std::sync::Arc;
+use std::sync::atomic::AtomicU64;
+use std::sync::atomic::Ordering;
 
 fn context() -> ParserReadContext {
     ParserReadContext {

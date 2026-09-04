@@ -1,4 +1,5 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 
 pub(super) fn admit_embedded_hook_config() -> Result<(), String> {
     agent_semantic_config::default_hook_client_config_file()

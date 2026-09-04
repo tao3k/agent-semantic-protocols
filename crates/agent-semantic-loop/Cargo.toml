@@ -10,3 +10,5 @@ agent-semantic-context-product = { path = "../agent-semantic-context-product" }
 getrandom = "0.3"
 serde_json.workspace = true
 serde.workspace = true
+[build-dependencies]
+asp-rust-project-harness-policy.workspace = true

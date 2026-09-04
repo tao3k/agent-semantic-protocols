@@ -1,6 +1,7 @@
-use super::{
-    CodexThreadBinding, RegisterChildArgs, parse_register_child_args, resolve_codex_thread_binding,
-};
+use super::CodexThreadBinding;
+use super::RegisterChildArgs;
+use super::parse_register_child_args;
+use super::resolve_codex_thread_binding;
 
 #[test]
 fn registration_parser_requires_explicit_parent_and_agent() {

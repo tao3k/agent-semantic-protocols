@@ -1,14 +1,17 @@
 //! Runtime provider status rendering and source selector matching.
 
-use globset::{GlobBuilder, GlobSet, GlobSetBuilder};
+use globset::GlobBuilder;
+use globset::GlobSet;
+use globset::GlobSetBuilder;
 use std::borrow::Cow;
 
 use crate::protocol::normalize_source_selector;
 
-use super::protocol_activation_manifest::{
-    ActivatedProvider, HookProviderProjection, HookRuntime, ProviderSelectorMatch,
-    SourceSelectorKind,
-};
+use super::protocol_activation_manifest::ActivatedProvider;
+use super::protocol_activation_manifest::HookProviderProjection;
+use super::protocol_activation_manifest::HookRuntime;
+use super::protocol_activation_manifest::ProviderSelectorMatch;
+use super::protocol_activation_manifest::SourceSelectorKind;
 
 impl HookRuntime {
     pub(crate) fn providers_for_selector(&self, selector: &str) -> Vec<ProviderSelectorMatch> {

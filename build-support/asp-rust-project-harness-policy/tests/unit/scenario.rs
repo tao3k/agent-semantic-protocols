@@ -1,6 +1,5 @@
-use asp_rust_project_harness_policy::{
-    asp_rust_project_harness_scenario, asp_rust_project_harness_scenario_package,
-};
+use asp_rust_project_harness_policy::asp_rust_project_harness_scenario;
+use asp_rust_project_harness_policy::asp_rust_project_harness_scenario_package;
 
 #[test]
 fn scenario_macro_packages_custom_scenario_data() {

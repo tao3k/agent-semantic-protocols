@@ -3,9 +3,12 @@
 //! Construction belongs to generation admission. Query methods perform no
 //! filesystem, database, provider, socket, or scheduler work.
 
-use std::collections::{BTreeMap, BTreeSet, HashSet};
+use std::collections::BTreeMap;
+use std::collections::BTreeSet;
+use std::collections::HashSet;
 use std::path::Path;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use std::sync::Mutex;
 
 use agent_semantic_content_identity::SourceSnapshotEvidence;
 

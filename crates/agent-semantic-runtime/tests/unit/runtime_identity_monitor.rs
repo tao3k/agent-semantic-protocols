@@ -1,10 +1,11 @@
 use std::path::Path;
 use std::time::Duration;
 
-use crate::runtime_identity_monitor::{
-    MonitorAction, ResidentActivationIdentity, RuntimeIdentityMonitor,
-    runtime_identity_poll_interval, spawn_runtime_identity_monitor_with_intervals,
-};
+use crate::runtime_identity_monitor::MonitorAction;
+use crate::runtime_identity_monitor::ResidentActivationIdentity;
+use crate::runtime_identity_monitor::RuntimeIdentityMonitor;
+use crate::runtime_identity_monitor::runtime_identity_poll_interval;
+use crate::runtime_identity_monitor::spawn_runtime_identity_monitor_with_intervals;
 
 #[test]
 fn developer_monitor_is_millisecond_cadence_without_accelerating_release_polling() {

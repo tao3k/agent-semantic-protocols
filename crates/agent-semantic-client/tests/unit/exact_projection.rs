@@ -1,5 +1,6 @@
 use agent_semantic_client::exact_projection::render_callable_skeleton;
-use serde_json::{Value, json};
+use serde_json::Value;
+use serde_json::json;
 
 fn envelope(payload: Value, language_id: &str, root_selector: &str) -> Value {
     json!({

@@ -1,7 +1,12 @@
+//! Defines fail-closed structural-selector codec errors.
+
 use std::error::Error;
-use std::fmt::{self, Display, Formatter};
+use std::fmt::Display;
+use std::fmt::Formatter;
+use std::fmt::{self};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+/// Offset-bearing failure produced by structural-selector decoding.
 pub struct StructuralSelectorCodecError {
     message: String,
 }

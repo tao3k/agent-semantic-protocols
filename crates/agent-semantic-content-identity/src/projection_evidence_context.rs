@@ -1,13 +1,20 @@
 //! Runtime-owned evidence identity shared by compact derived projections.
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 
+use crate::LanguageIdV1;
+use crate::ProjectionEvidenceContextRefV1;
+use crate::ProviderIdV1;
 use crate::exact_selector_merkle::ExactSelectorMerkleProofV1;
 use crate::exact_structural_selector::ExactStructuralSelectorV1;
 
+/// Schema identifier for content-bound projection evidence.
 pub const PROJECTION_EVIDENCE_CONTEXT_SCHEMA_ID: &str =
     "agent.semantic-protocols.projection-evidence-context";
+/// Schema version for projection evidence contexts.
 pub const PROJECTION_EVIDENCE_CONTEXT_SCHEMA_VERSION: &str = "1";
+/// Schema identifier for an exact structural-selector reference.
 pub const EXACT_STRUCTURAL_SELECTOR_REFERENCE_SCHEMA_ID: &str =
     "asp.exact-structural-selector-reference.v1";
 
@@ -17,9 +24,9 @@ pub const EXACT_STRUCTURAL_SELECTOR_REFERENCE_SCHEMA_ID: &str =
 pub struct ProjectionEvidenceContext {
     pub schema_id: String,
     pub schema_version: String,
-    pub evidence_context_ref: String,
-    pub language_id: String,
-    pub provider_id: String,
+    pub evidence_context_ref: ProjectionEvidenceContextRefV1,
+    pub language_id: LanguageIdV1,
+    pub provider_id: ProviderIdV1,
     pub generation_identity_digest: String,
     pub parser_identity_digest: String,
     pub query_pack_digest: String,
@@ -37,16 +44,17 @@ pub struct ExactStructuralSelectorReferenceV1 {
 
 impl ProjectionEvidenceContext {
     pub fn from_exact_selector_proof(
-        provider_id: &str,
+        provider_id: impl Into<ProviderIdV1>,
         proof: &ExactSelectorMerkleProofV1,
     ) -> Self {
+        let provider_id = provider_id.into();
         let language_id = proof.language_id();
         let generation_identity_digest = proof.workspace_root_digest().as_str();
         let parser_identity_digest = proof.parser_identity_digest().as_str();
         let query_pack_digest = proof.query_pack_digest().as_str();
         let evidence_context_ref = evidence_context_ref(
             language_id,
-            provider_id,
+            provider_id.as_str(),
             generation_identity_digest,
             parser_identity_digest,
             query_pack_digest,
@@ -54,9 +62,9 @@ impl ProjectionEvidenceContext {
         Self {
             schema_id: PROJECTION_EVIDENCE_CONTEXT_SCHEMA_ID.to_owned(),
             schema_version: PROJECTION_EVIDENCE_CONTEXT_SCHEMA_VERSION.to_owned(),
-            evidence_context_ref,
-            language_id: language_id.to_owned(),
-            provider_id: provider_id.to_owned(),
+            evidence_context_ref: evidence_context_ref.into(),
+            language_id: language_id.into(),
+            provider_id,
             generation_identity_digest: generation_identity_digest.to_owned(),
             parser_identity_digest: parser_identity_digest.to_owned(),
             query_pack_digest: query_pack_digest.to_owned(),
@@ -64,15 +72,16 @@ impl ProjectionEvidenceContext {
     }
 
     pub fn from_inline_selector(
-        provider_id: &str,
+        provider_id: impl Into<ProviderIdV1>,
         selector: &ExactStructuralSelectorV1,
     ) -> Result<Self, ProjectionEvidenceContextValidationError> {
+        let provider_id = provider_id.into();
         selector
             .validate()
             .map_err(|_| ProjectionEvidenceContextValidationError::InlineSelector)?;
         let evidence_context_ref = evidence_context_ref(
             &selector.language_id,
-            provider_id,
+            provider_id.as_str(),
             &selector.generation_identity_digest,
             &selector.parser_identity_digest,
             &selector.query_pack_digest,
@@ -80,9 +89,9 @@ impl ProjectionEvidenceContext {
         Ok(Self {
             schema_id: PROJECTION_EVIDENCE_CONTEXT_SCHEMA_ID.to_owned(),
             schema_version: PROJECTION_EVIDENCE_CONTEXT_SCHEMA_VERSION.to_owned(),
-            evidence_context_ref,
-            language_id: selector.language_id.clone(),
-            provider_id: provider_id.to_owned(),
+            evidence_context_ref: evidence_context_ref.into(),
+            language_id: selector.language_id.as_str().into(),
+            provider_id,
             generation_identity_digest: selector.generation_identity_digest.clone(),
             parser_identity_digest: selector.parser_identity_digest.clone(),
             query_pack_digest: selector.query_pack_digest.clone(),
@@ -96,7 +105,7 @@ impl ProjectionEvidenceContext {
         if self.schema_version != PROJECTION_EVIDENCE_CONTEXT_SCHEMA_VERSION {
             return Err(ProjectionEvidenceContextValidationError::SchemaVersion);
         }
-        if self.language_id.is_empty() || self.provider_id.is_empty() {
+        if self.language_id.as_str().is_empty() || self.provider_id.as_str().is_empty() {
             return Err(ProjectionEvidenceContextValidationError::EmptyIdentity);
         }
         for digest in [
@@ -109,13 +118,13 @@ impl ProjectionEvidenceContext {
             }
         }
         let expected = evidence_context_ref(
-            &self.language_id,
-            &self.provider_id,
+            self.language_id.as_str(),
+            self.provider_id.as_str(),
             &self.generation_identity_digest,
             &self.parser_identity_digest,
             &self.query_pack_digest,
         );
-        if self.evidence_context_ref != expected {
+        if self.evidence_context_ref.as_str() != expected {
             return Err(ProjectionEvidenceContextValidationError::ContextRef);
         }
         Ok(())
@@ -126,7 +135,7 @@ impl ProjectionEvidenceContext {
             schema_id: EXACT_STRUCTURAL_SELECTOR_REFERENCE_SCHEMA_ID.to_owned(),
             schema_version: "1".to_owned(),
             selector,
-            evidence_context_ref: self.evidence_context_ref.clone(),
+            evidence_context_ref: self.evidence_context_ref.to_string(),
         }
     }
 }
@@ -188,6 +197,7 @@ fn is_context_ref(value: &str) -> bool {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// Deterministic validation error for projection evidence.
 pub enum ProjectionEvidenceContextValidationError {
     SchemaId,
     ReferenceSchemaId,

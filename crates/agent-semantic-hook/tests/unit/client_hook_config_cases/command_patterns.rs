@@ -1,7 +1,14 @@
-use super::common::{
-    ClientHookConfig, DecisionKind, Duration, HookClassificationRequest, bind_confirmed_reader,
-    classify_hook_with_config, fs, json, load_client_config, registry, temp_root,
-};
+use super::common::ClientHookConfig;
+use super::common::DecisionKind;
+use super::common::Duration;
+use super::common::HookClassificationRequest;
+use super::common::bind_confirmed_reader;
+use super::common::classify_hook_with_config;
+use super::common::fs;
+use super::common::json;
+use super::common::load_client_config;
+use super::common::registry;
+use super::common::temp_root;
 
 #[test]
 fn repository_git_history_command_set_routes_only_history_inspection_to_testing() {
@@ -519,7 +526,7 @@ fn configurable_hook_default_rule_classification_stays_fast() {
         }),
         json!({
             "tool_name": "Bash",
-            "tool_input": {"command": "asp rust search --workspace . --treesitter-query '(identifier) @id'"}
+            "tool_input": {"command": "asp search playbook --language rust 'agent hooks' --workspace ."}
         }),
     ]
     .map(|mut payload| {

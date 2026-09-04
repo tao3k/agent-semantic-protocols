@@ -1,9 +1,9 @@
 //! Host-envelope materialization for config-authoritative Hook coverage plans.
 
-use agent_semantic_config::{
-    HookClientConfigFile, HookPolicyCoverageSettings, HookPolicyCoverageSurface,
-    derive_hook_policy_coverage_cases,
-};
+use agent_semantic_config::HookClientConfigFile;
+use agent_semantic_config::HookPolicyCoverageSettings;
+use agent_semantic_config::HookPolicyCoverageSurface;
+use agent_semantic_config::derive_hook_policy_coverage_cases;
 use serde_json::Value;
 
 use crate::tool_action::shell_host_envelopes;
@@ -143,10 +143,10 @@ pub fn combinatorial_policy_witnesses(
             ),
             polarity,
             expected_decision: reference_decision.decision,
-            language_id: case.language_id,
-            provider_id: case.provider_id,
+            language_id: case.language_id.into_string(),
+            provider_id: case.provider_id.into_string(),
             source_extension: case.source_extension,
-            path: case.path,
+            path: case.path.into_string(),
             tool_name: payload["tool_name"]
                 .as_str()
                 .expect("typed tool name")

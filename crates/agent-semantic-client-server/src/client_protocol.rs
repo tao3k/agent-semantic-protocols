@@ -2,11 +2,16 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
-use agent_semantic_client_protocol::{
-    ClientFrame, ClientFrameBase, ClientOutcome, ClientProjectId, ClientProtocolCatalog,
-    ClientRequestId, ClientSessionId, ClientWorkspaceIdentity,
-};
-use serde_json::{Value, json};
+use agent_semantic_client_protocol::ClientFrame;
+use agent_semantic_client_protocol::ClientFrameBase;
+use agent_semantic_client_protocol::ClientOutcome;
+use agent_semantic_client_protocol::ClientProjectId;
+use agent_semantic_client_protocol::ClientProtocolCatalog;
+use agent_semantic_client_protocol::ClientRequestId;
+use agent_semantic_client_protocol::ClientSessionId;
+use agent_semantic_client_protocol::ClientWorkspaceIdentity;
+use serde_json::Value;
+use serde_json::json;
 
 pub type AspClientDispatchFuture =
     Pin<Box<dyn Future<Output = Result<Value, AspClientDispatchError>> + Send>>;

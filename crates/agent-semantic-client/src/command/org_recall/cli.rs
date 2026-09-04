@@ -1,10 +1,12 @@
-use super::{checkpoint, memory, render, scan};
+use super::checkpoint;
+use super::memory;
+use super::render;
+use super::scan;
 use crate::command::agent_session;
 use agent_semantic_runtime::project_state_paths;
-use std::{
-    env,
-    path::{Path, PathBuf},
-};
+use std::env;
+use std::path::Path;
+use std::path::PathBuf;
 
 pub(crate) fn run_org_recall_command(args: &[String]) -> Result<(), String> {
     let args = OrgRecallArgs::parse(args)?;

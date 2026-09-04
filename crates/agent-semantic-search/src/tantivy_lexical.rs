@@ -5,13 +5,27 @@
 
 use std::path::Path;
 
+use tantivy::Index;
+use tantivy::IndexReader;
+use tantivy::IndexSettings;
 use tantivy::Order;
+use tantivy::TantivyDocument;
+use tantivy::Term;
 use tantivy::collector::TopDocs;
 use tantivy::directory::MmapDirectory;
-use tantivy::indexer::{NoMergePolicy, SingleSegmentIndexWriter};
-use tantivy::query::{AllQuery, BooleanQuery, Query, TermQuery};
-use tantivy::schema::{FAST, Field, IndexRecordOption, Schema, TextFieldIndexing, TextOptions};
-use tantivy::{Index, IndexReader, IndexSettings, TantivyDocument, Term, doc};
+use tantivy::doc;
+use tantivy::indexer::NoMergePolicy;
+use tantivy::indexer::SingleSegmentIndexWriter;
+use tantivy::query::AllQuery;
+use tantivy::query::BooleanQuery;
+use tantivy::query::Query;
+use tantivy::query::TermQuery;
+use tantivy::schema::FAST;
+use tantivy::schema::Field;
+use tantivy::schema::IndexRecordOption;
+use tantivy::schema::Schema;
+use tantivy::schema::TextFieldIndexing;
+use tantivy::schema::TextOptions;
 
 pub(crate) struct TantivyLexicalIndex {
     _index: Index,

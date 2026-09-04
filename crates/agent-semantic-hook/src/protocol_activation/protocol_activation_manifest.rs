@@ -1,8 +1,11 @@
 //! Activation schema DTOs and resolved runtime provider routing models.
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 
-use crate::protocol::{CommandTemplate, HookPolicy, HookRoutes};
+use crate::protocol::CommandTemplate;
+use crate::protocol::HookPolicy;
+use crate::protocol::HookRoutes;
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]

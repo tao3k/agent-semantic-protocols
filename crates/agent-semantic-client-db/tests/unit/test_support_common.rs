@@ -1,6 +1,9 @@
 use std::ffi::OsString;
-use std::path::{Path, PathBuf};
-use std::sync::{Mutex, MutexGuard, OnceLock};
+use std::path::Path;
+use std::path::PathBuf;
+use std::sync::Mutex;
+use std::sync::MutexGuard;
+use std::sync::OnceLock;
 
 use agent_semantic_client_core::state_core::ResolvedState;
 use agent_semantic_client_db::ProviderIncrementalScoped;

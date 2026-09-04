@@ -4,7 +4,8 @@ use agent_semantic_config::HookClientConfigFile;
 use serde::Serialize;
 use serde_json::Value;
 
-use crate::aot_evaluator::{HOOK_POLICY_BUNDLE_SCHEMA_ID, HOOK_POLICY_BUNDLE_SCHEMA_VERSION};
+use crate::aot_evaluator::HOOK_POLICY_BUNDLE_SCHEMA_ID;
+use crate::aot_evaluator::HOOK_POLICY_BUNDLE_SCHEMA_VERSION;
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]

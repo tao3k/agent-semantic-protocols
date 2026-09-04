@@ -4,7 +4,8 @@ use std::borrow::Cow;
 
 use serde_json::Value;
 
-use crate::command::{apply_patch_source_paths, semantic_shell_tokens};
+use crate::command::apply_patch_source_paths;
+use crate::command::semantic_shell_tokens;
 use crate::protocol::DecisionSubject;
 
 #[path = "tool_action_exec/functions_exec.rs"]
@@ -36,12 +37,18 @@ const ACTION_SCAN_KEYS: &[&str] = &[
     "tool_calls",
     "toolCalls",
 ];
-pub(crate) use crate::action_ir::{
-    AgentAction, AgentActionKind, AgentActionSubject, AgentActionSubjectKind,
-    FilesystemPermissionFact, FilesystemPermissionKind, FilesystemPermissionSource,
-    HostInvocationFact, HostInvocationKind, SemanticCapability, SemanticCapabilityEvidence,
-    action_kind_matches,
-};
+pub(crate) use crate::action_ir::AgentAction;
+pub(crate) use crate::action_ir::AgentActionKind;
+pub(crate) use crate::action_ir::AgentActionSubject;
+pub(crate) use crate::action_ir::AgentActionSubjectKind;
+pub(crate) use crate::action_ir::FilesystemPermissionFact;
+pub(crate) use crate::action_ir::FilesystemPermissionKind;
+pub(crate) use crate::action_ir::FilesystemPermissionSource;
+pub(crate) use crate::action_ir::HostInvocationFact;
+pub(crate) use crate::action_ir::HostInvocationKind;
+pub(crate) use crate::action_ir::SemanticCapability;
+pub(crate) use crate::action_ir::SemanticCapabilityEvidence;
+pub(crate) use crate::action_ir::action_kind_matches;
 
 pub(crate) fn subject_kind_matches(
     candidate: AgentActionSubjectKind,
@@ -940,7 +947,8 @@ fn render_shell_token(value: &str) -> String {
 #[path = "tool_action_paths.rs"]
 mod paths;
 
+use paths::extract_apply_patch_paths_direct;
 use paths::extract_apply_patch_text_direct;
-use paths::{
-    extract_apply_patch_paths_direct, extract_paths_direct, path_values, push_unique_path,
-};
+use paths::extract_paths_direct;
+use paths::path_values;
+use paths::push_unique_path;

@@ -1,11 +1,21 @@
-use super::{
-    CLIENT_DB_SOURCE_INDEX_PROVIDER_ID, CLIENT_DB_SOURCE_INDEX_SCHEMA_ID,
-    CLIENT_DB_SOURCE_INDEX_SCHEMA_VERSION, CacheGenerationId, ClientCacheFileHash,
-    ClientDbSourceIndexImport, ClientDbSourceIndexImportFile, ClientDbSourceIndexImportRequest,
-    ClientDbSourceIndexRefreshRequest, ClientDbSourceIndexSource, LanguageId, ProviderId,
-    SemanticSchemaId, SemanticSchemaVersion, build_fixture_source_index_import, temp_root,
-};
-use std::{fs, path::Path};
+use super::CLIENT_DB_SOURCE_INDEX_PROVIDER_ID;
+use super::CLIENT_DB_SOURCE_INDEX_SCHEMA_ID;
+use super::CLIENT_DB_SOURCE_INDEX_SCHEMA_VERSION;
+use super::CacheGenerationId;
+use super::ClientCacheFileHash;
+use super::ClientDbSourceIndexImport;
+use super::ClientDbSourceIndexImportFile;
+use super::ClientDbSourceIndexImportRequest;
+use super::ClientDbSourceIndexRefreshRequest;
+use super::ClientDbSourceIndexSource;
+use super::LanguageId;
+use super::ProviderId;
+use super::SemanticSchemaId;
+use super::SemanticSchemaVersion;
+use super::build_fixture_source_index_import;
+use super::temp_root;
+use std::fs;
+use std::path::Path;
 
 fn merkle_selector(
     owner_path: &str,
@@ -13,17 +23,16 @@ fn merkle_selector(
     source: &[u8],
     tree: &agent_semantic_content_identity::workspace_merkle_v1::WorkspacePathMerkleTreeV1,
 ) -> agent_semantic_client_db::ClientDbSourceIndexSelector {
-    use agent_semantic_content_identity::canonical_item_identity::{
-        CanonicalItemIdentity, CanonicalItemSelector,
-    };
-    use agent_semantic_content_identity::exact_selector_merkle::{
-        ExactProjectionModeV1, canonical_content_digest,
-    };
-    use agent_semantic_content_identity::exact_selector_projection_packet::{
-        ExactSelectorProjectionPacketV1Input, ProjectionPacketLanguageIdV1,
-        ProjectionPacketOwnerPathV1, ProjectionPacketProviderIdV1,
-        ProjectionPacketStructuralSelectorV1, build_exact_selector_projection_packet_v1,
-    };
+    use agent_semantic_content_identity::canonical_item_identity::CanonicalItemIdentity;
+    use agent_semantic_content_identity::canonical_item_identity::CanonicalItemSelector;
+    use agent_semantic_content_identity::exact_selector_merkle::ExactProjectionModeV1;
+    use agent_semantic_content_identity::exact_selector_merkle::canonical_content_digest;
+    use agent_semantic_content_identity::exact_selector_projection_packet::ExactSelectorProjectionPacketV1Input;
+    use agent_semantic_content_identity::exact_selector_projection_packet::ProjectionPacketLanguageIdV1;
+    use agent_semantic_content_identity::exact_selector_projection_packet::ProjectionPacketOwnerPathV1;
+    use agent_semantic_content_identity::exact_selector_projection_packet::ProjectionPacketProviderIdV1;
+    use agent_semantic_content_identity::exact_selector_projection_packet::ProjectionPacketStructuralSelectorV1;
+    use agent_semantic_content_identity::exact_selector_projection_packet::build_exact_selector_projection_packet_v1;
 
     let structural_selector = format!("rust://{owner_path}#item/function/{symbol}");
     let packet = build_exact_selector_projection_packet_v1(ExactSelectorProjectionPacketV1Input {
@@ -206,8 +215,10 @@ fn merkle_overlay_publishes_an_immutable_generation_for_changed_membership() {
             agent_semantic_content_identity::SourceSnapshotKind::Filesystem,
             "d".repeat(64),
             "f".repeat(64),
-            ["src/a.rs"],
-            std::iter::empty::<&str>(),
+            agent_semantic_content_identity::WorkspaceOverlayPaths::new(
+                ["src/a.rs"],
+                std::iter::empty::<&str>(),
+            ),
         )
         .expect("construct mismatched overlay evidence");
     let receipt = fixture

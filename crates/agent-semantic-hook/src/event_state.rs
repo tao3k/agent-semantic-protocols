@@ -1,20 +1,35 @@
 //! Append-only hook event state persisted by `asp hook`.
 
 use std::collections::BTreeSet;
-use std::fs::{self, File, OpenOptions};
-use std::io::{BufRead, BufReader, Read, Seek, SeekFrom, Write};
-use std::path::{Path, PathBuf};
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::fs::File;
+use std::fs::OpenOptions;
+use std::fs::{self};
+use std::io::BufRead;
+use std::io::BufReader;
+use std::io::Read;
+use std::io::Seek;
+use std::io::SeekFrom;
+use std::io::Write;
+use std::path::Path;
+use std::path::PathBuf;
+use std::time::Duration;
+use std::time::Instant;
+use std::time::SystemTime;
+use std::time::UNIX_EPOCH;
 
 use agent_semantic_runtime::ensure_project_hook_state_dir;
 use fs2::FileExt;
-use serde_json::{Value, json};
+use serde_json::Value;
+use serde_json::json;
 
-use crate::event_replay::{
-    compact_source_access_deny_message, deny_replay_key, is_source_access_replay_key,
-    recovery_ref_for_replay_key, repeated_deny_message, should_compact_source_access_deny_message,
-};
-use crate::protocol::{HOOK_PROTOCOL_ID, HookDecision};
+use crate::event_replay::compact_source_access_deny_message;
+use crate::event_replay::deny_replay_key;
+use crate::event_replay::is_source_access_replay_key;
+use crate::event_replay::recovery_ref_for_replay_key;
+use crate::event_replay::repeated_deny_message;
+use crate::event_replay::should_compact_source_access_deny_message;
+use crate::protocol::HOOK_PROTOCOL_ID;
+use crate::protocol::HookDecision;
 
 pub(crate) const HOOK_EVENT_STATE_FILE: &str = "events.jsonl";
 const PROMPT_SCOPE_WINDOW_MS: u128 = 10 * 60 * 1000;

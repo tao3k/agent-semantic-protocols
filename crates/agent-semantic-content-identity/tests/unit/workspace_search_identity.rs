@@ -1,9 +1,11 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 
-use super::{
-    WorkspaceSearchIdentityErrorV1, WorkspaceSearchIdentityInputV1, WorkspaceSearchIdentityV1,
-    WorkspaceSearchScopeKindV1, resolve_workspace_member_root_v1,
-};
+use super::WorkspaceSearchIdentityErrorV1;
+use super::WorkspaceSearchIdentityInputV1;
+use super::WorkspaceSearchIdentityV1;
+use super::WorkspaceSearchScopeKindV1;
+use super::resolve_workspace_member_root_v1;
 
 fn package_input() -> WorkspaceSearchIdentityInputV1 {
     WorkspaceSearchIdentityInputV1 {

@@ -1,8 +1,9 @@
 use std::path::Path;
 
-use crate::{
-    CacheArtifactId, replay_artifact_path, replay_artifacts_root, structured_evidence_artifact_path,
-};
+use crate::CacheArtifactId;
+use crate::replay_artifact_path;
+use crate::replay_artifacts_root;
+use crate::structured_evidence_artifact_path;
 
 #[test]
 fn replay_artifact_path_resolves_from_live_client_to_artifacts_root() {

@@ -1,8 +1,10 @@
 //! Warm mmap table performance gates owned by Search.
 
-use std::time::{Duration, Instant};
+use std::time::Duration;
+use std::time::Instant;
 
-use super::{ValidatedSortedRecordTable, encode_sorted_record_table};
+use super::ValidatedSortedRecordTable;
+use super::encode_sorted_record_table;
 
 #[test]
 fn large_directory_table_parse_p99_is_sub_millisecond() {

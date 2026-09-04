@@ -1,4 +1,5 @@
-use agent_semantic_provider_protocol::{PROVIDER_STREAM_SCHEMA_ID, PROVIDER_STREAM_SCHEMA_VERSION};
+use agent_semantic_provider_protocol::PROVIDER_STREAM_SCHEMA_ID;
+use agent_semantic_provider_protocol::PROVIDER_STREAM_SCHEMA_VERSION;
 use agent_semantic_provider_transport::GrpcProviderSessionClient;
 use agent_semantic_provider_transport::grpc_session::generated::ProviderStreamEnvelope;
 

@@ -2,15 +2,17 @@
 
 use std::fs;
 use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::AtomicU64;
+use std::sync::atomic::Ordering;
 use std::time::Instant;
 
-use agent_semantic_content_identity::exact_selector_generation_fixture::{
-    ExactSelectorGenerationFixtureErrorV1, ExactSelectorGenerationFixtureViewV1,
-    ExactSelectorGenerationRecordViewV1, fixture_digest_v1,
-};
+use agent_semantic_content_identity::exact_selector_generation_fixture::ExactSelectorGenerationFixtureErrorV1;
+use agent_semantic_content_identity::exact_selector_generation_fixture::ExactSelectorGenerationFixtureViewV1;
+use agent_semantic_content_identity::exact_selector_generation_fixture::ExactSelectorGenerationRecordViewV1;
+use agent_semantic_content_identity::exact_selector_generation_fixture::fixture_digest_v1;
 use agent_semantic_content_identity::workspace_search_identity::WorkspaceSearchIdentityV1;
 
 static FIXTURE_TRANSACTION_ID: AtomicU64 = AtomicU64::new(0);

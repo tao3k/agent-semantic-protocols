@@ -1,8 +1,8 @@
-use super::{RuntimeHookAdmissionLocatorAuthority, connect_hook_workspace_session_with_receipt};
+use super::RuntimeHookAdmissionLocatorAuthority;
+use super::connect_hook_workspace_session_with_receipt;
 use crate::runtime_server_admission_catalog::RuntimeWorkspaceAdmissionCatalogEntry;
-use crate::runtime_server_control::{
-    RuntimeServerEndpoint, runtime_server_transport_contract_digest,
-};
+use crate::runtime_server_control::RuntimeServerEndpoint;
+use crate::runtime_server_control::runtime_server_transport_contract_digest;
 use agent_semantic_artifacts::runtime_artifact_catalog::RuntimeBinaryIdentity;
 
 fn loopback(port: u16) -> crate::runtime_server_control::RuntimeServerLoopbackEndpoint {

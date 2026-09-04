@@ -1,7 +1,6 @@
-use agent_semantic_client_core::{
-    ProviderDocumentInventoryCapability, ProviderProjectInventoryCapability,
-    ProviderSourceInventoryCapabilities,
-};
+use agent_semantic_client_core::ProviderDocumentInventoryCapability;
+use agent_semantic_client_core::ProviderProjectInventoryCapability;
+use agent_semantic_client_core::ProviderSourceInventoryCapabilities;
 use agent_semantic_client_server::provider_capabilities_permit_project_resolution;
 
 #[test]

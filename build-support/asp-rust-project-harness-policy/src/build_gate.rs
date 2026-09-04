@@ -1,8 +1,9 @@
 //! Explicit validation helpers for ASP Rust member harness policy.
 
-use crate::member_policy::{
-    asp_workspace_member_forbidden_normal_dependencies, asp_workspace_member_policy_for,
-};
+use std::collections::BTreeSet;
+
+use crate::member_policy::asp_workspace_member_forbidden_normal_dependencies;
+use crate::member_policy::asp_workspace_member_policy_for;
 
 /// Constant-time receipt for one registered member policy.
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize)]
@@ -15,22 +16,21 @@ pub struct AspRustProjectHarnessMemberPolicyReceipt {
     pub policy_digest: String,
 }
 
-/// Validate one downstream member without loading or running the full Harness.
+/// Assert one package atom selected by Cargo's dependency DAG.
 ///
-/// This reads only the member manifest. It deliberately rejects the full
-/// scanner as a normal or build dependency so a multi-crate Cargo graph cannot
-/// multiply Harness compilation and source scans.
-pub fn validate_asp_rust_project_harness_member_manifest(
+/// Every participating member build script calls this thin API exactly once.
+/// It validates only package identity and manifest-level owner boundaries; the
+/// explicit workspace-policy gate owns the one full source scan for Cargo's DAG.
+pub fn assert_asp_rust_project_harness_member_policy(
     package_name: &str,
     project_root: &std::path::Path,
 ) -> Result<AspRustProjectHarnessMemberPolicyReceipt, String> {
-    let member_policy = asp_workspace_member_policy_for(package_name).ok_or_else(|| {
-        format!("no ASP Rust project harness member policy registered for {package_name}")
-    })?;
-    if !project_root.ends_with(member_policy.crate_root) {
+    let member_policy = asp_workspace_member_policy_for(package_name);
+    if member_policy.is_some_and(|policy| !project_root.ends_with(policy.crate_root)) {
+        let expected_root = member_policy.expect("registered member policy").crate_root;
         return Err(format!(
             "ASP Rust harness member policy root mismatch for {package_name}: expectedSuffix={} observed={}",
-            member_policy.crate_root,
+            expected_root,
             project_root.display(),
         ));
     }
@@ -59,36 +59,58 @@ pub fn validate_asp_rust_project_harness_member_manifest(
             ));
         }
     }
+    let policy_digest = member_policy.map_or_else(
+        || {
+            format!(
+                "blake3-256:{}",
+                blake3::hash(format!("asp-rust.default-package-policy:{package_name}").as_bytes())
+                    .to_hex()
+            )
+        },
+        |policy| policy.contract_digest(),
+    );
     Ok(AspRustProjectHarnessMemberPolicyReceipt {
         schema_id: "agent.semantic-protocols.rust-harness-member-build-receipt",
         schema_version: "1",
         package_name: package_name.to_owned(),
-        crate_root: member_policy.crate_root.to_owned(),
-        policy_digest: member_policy.contract_digest(),
+        crate_root: member_policy.map_or_else(
+            || project_root.display().to_string(),
+            |policy| policy.crate_root.to_owned(),
+        ),
+        policy_digest,
     })
 }
 
+/// Assert the Cargo package that owns the calling build script.
+pub fn assert_asp_rust_project_harness_member_policy_from_env()
+-> AspRustProjectHarnessMemberPolicyReceipt {
+    let package_name = std::env::var("CARGO_PKG_NAME")
+        .expect("CARGO_PKG_NAME is required for the ASP Rust package policy");
+    let crate_root = std::env::var_os("CARGO_MANIFEST_DIR")
+        .map(std::path::PathBuf::from)
+        .expect("CARGO_MANIFEST_DIR is required for the ASP Rust package policy");
+    assert_asp_rust_project_harness_member_policy(&package_name, &crate_root)
+        .unwrap_or_else(|error| panic!("{error}"))
+}
+
 fn manifest_declares_dependency(manifest: &str, dependency: &str, scopes: &[&str]) -> bool {
+    let scopes = scopes.iter().copied().collect::<BTreeSet<_>>();
     let mut matched_dependency_section = false;
-    for line in manifest.lines() {
+    manifest.lines().any(|line| {
         let line = line.trim();
         if line.starts_with('[') && line.ends_with(']') {
             let section = &line[1..line.len() - 1];
-            matched_dependency_section = scopes.iter().any(|scope| {
-                section == *scope
-                    || (section.starts_with("target.") && section.ends_with(&format!(".{scope}")))
-            });
-            continue;
+            let dependency_scope = section.rsplit('.').next().unwrap_or(section);
+            matched_dependency_section = scopes.contains(section)
+                || (section.starts_with("target.") && scopes.contains(dependency_scope));
+            return false;
         }
         if !matched_dependency_section || line.is_empty() || line.starts_with('#') {
-            continue;
+            return false;
         }
         let Some((key, _)) = line.split_once('=') else {
-            continue;
+            return false;
         };
-        if key.trim().trim_matches('"') == dependency {
-            return true;
-        }
-    }
-    false
+        key.trim().trim_matches('"') == dependency
+    })
 }

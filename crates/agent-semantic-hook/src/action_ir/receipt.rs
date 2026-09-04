@@ -1,8 +1,13 @@
-use super::{
-    AgentActionKind, AgentActionSubject, AgentActionSubjectKind, FilesystemPermissionFact,
-    FilesystemPermissionKind, FilesystemPermissionSource, HostInvocationFact, HostInvocationKind,
-    SemanticCapability, SemanticCapabilityEvidence,
-};
+use super::AgentActionKind;
+use super::AgentActionSubject;
+use super::AgentActionSubjectKind;
+use super::FilesystemPermissionFact;
+use super::FilesystemPermissionKind;
+use super::FilesystemPermissionSource;
+use super::HostInvocationFact;
+use super::HostInvocationKind;
+use super::SemanticCapability;
+use super::SemanticCapabilityEvidence;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct AgentAction {

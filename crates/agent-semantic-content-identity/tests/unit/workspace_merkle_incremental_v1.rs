@@ -1,7 +1,8 @@
-use super::{
-    ContentDigestV1, WorkspaceMerkleDeltaOperationIncrementalV1, WorkspaceMerkleIncrementalV1Error,
-    WorkspacePathMerkleTreeIncrementalV1, verify_owner_inclusion_incremental_v1,
-};
+use super::ContentDigestV1;
+use super::WorkspaceMerkleDeltaOperationIncrementalV1;
+use super::WorkspaceMerkleIncrementalV1Error;
+use super::WorkspacePathMerkleTreeIncrementalV1;
+use super::verify_owner_inclusion_incremental_v1;
 use crate::exact_selector_merkle::parse_content_digest_v1;
 
 fn digest(byte: char) -> ContentDigestV1 {

@@ -1,10 +1,9 @@
 //! Codex rollout JSONL session index parser.
 
-use std::{
-    fs,
-    path::{Path, PathBuf},
-    process::Command,
-};
+use std::fs;
+use std::path::Path;
+use std::path::PathBuf;
+use std::process::Command;
 
 pub(crate) fn codex_rollout_paths_for_session_id(
     sessions_dir: &Path,

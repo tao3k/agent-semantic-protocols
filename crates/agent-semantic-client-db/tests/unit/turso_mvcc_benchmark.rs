@@ -1,12 +1,15 @@
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use std::time::Instant;
+use std::time::SystemTime;
+use std::time::UNIX_EPOCH;
 
-use agent_semantic_client_db::turso_mvcc_partition::{
-    TursoMvccExpectedHead, TursoMvccPartitionCommit, TursoMvccPartitionCommitOutcome,
-    TursoMvccPartitionRecord,
-};
-use agent_semantic_client_db::turso_mvcc_store::{TursoMvccStore, TursoMvccStoreConfig};
+use agent_semantic_client_db::turso_mvcc_partition::TursoMvccExpectedHead;
+use agent_semantic_client_db::turso_mvcc_partition::TursoMvccPartitionCommit;
+use agent_semantic_client_db::turso_mvcc_partition::TursoMvccPartitionCommitOutcome;
+use agent_semantic_client_db::turso_mvcc_partition::TursoMvccPartitionRecord;
+use agent_semantic_client_db::turso_mvcc_store::TursoMvccStore;
+use agent_semantic_client_db::turso_mvcc_store::TursoMvccStoreConfig;
 
 #[tokio::test]
 async fn independent_partitions_commit_without_false_conflicts() {

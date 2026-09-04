@@ -1,13 +1,14 @@
-use std::{
-    fs,
-    path::{Path, PathBuf},
-    process::Command,
-};
+use std::fs;
+use std::path::Path;
+use std::path::PathBuf;
+use std::process::Command;
 
-use super::{
-    RuntimeSourceSpec, collect_runtime_source_index_files, ensure_runtime_source_checkout,
-    runtime_source_checkout_dir, runtime_source_index_context, runtime_source_registry_fingerprint,
-};
+use super::RuntimeSourceSpec;
+use super::collect_runtime_source_index_files;
+use super::ensure_runtime_source_checkout;
+use super::runtime_source_checkout_dir;
+use super::runtime_source_index_context;
+use super::runtime_source_registry_fingerprint;
 
 #[test]
 fn runtime_source_dir_uses_state_home_runtime_namespace() {

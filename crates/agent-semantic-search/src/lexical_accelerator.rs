@@ -4,9 +4,12 @@
 //! Runtime-owned; file discovery, repository admission, and native syntax are
 //! already complete before either route is admitted.
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 
-use crate::{LexicalGenerationPlan, SearchGenerationIdentity, canonical_blake3_digest};
+use crate::LexicalGenerationPlan;
+use crate::SearchGenerationIdentity;
+use crate::canonical_blake3_digest;
 
 pub const COLD_RG_QUERY_RECEIPT_SCHEMA_ID: &str = "agent.semantic-protocols.cold-rg-query-receipt";
 pub const LEXICAL_ACCELERATOR_RECEIPT_SCHEMA_ID: &str =

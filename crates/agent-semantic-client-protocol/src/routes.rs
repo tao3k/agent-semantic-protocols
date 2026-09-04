@@ -1,10 +1,13 @@
 //! Typed provider route request and response bindings for the ASP Client Protocol.
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 use serde_json::Value;
 
 const SEARCH_REQUEST: &str = "agent.semantic-protocols.runtime-provider-search-request";
 const CLIENT_SEARCH_REQUEST: &str = "agent.semantic-protocols.asp-client-search-request";
+const CLIENT_WORKSPACE_SEARCH_PLAYBOOK_REQUEST: &str =
+    "agent.semantic-protocols.asp-client-workspace-search-playbook-request";
 const CLIENT_SOURCE_INDEX_LOOKUP_REQUEST: &str =
     "agent.semantic-protocols.asp-client-source-index-lookup-request";
 const CLIENT_EXACT_QUERY_REQUEST: &str = "agent.semantic-protocols.asp-client-exact-query-request";
@@ -13,8 +16,10 @@ const CLIENT_EXACT_QUERY_RESPONSE: &str =
 const CLIENT_EXACT_QUERY_FAILURE: &str = "agent.semantic-protocols.asp-client-exact-query-failure";
 const CLIENT_GRAPHS_TIMELINE_REQUEST: &str =
     "agent.semantic-protocols.asp-client-graphs-timeline-request";
+/// Schema identity for live-corpus cache-state requests.
 pub const LIVE_CORPUS_CACHE_STATE_REQUEST_SCHEMA_ID: &str =
     "agent.semantic-protocols.live-corpus-cache-state-request";
+/// Schema identity for live-corpus cache-state receipts.
 pub const LIVE_CORPUS_CACHE_STATE_RECEIPT_SCHEMA_ID: &str =
     "agent.semantic-protocols.live-corpus-cache-state-receipt";
 const EXACT_REQUEST: &str = "agent.semantic-protocols.provider-native-exact-request";
@@ -22,6 +27,7 @@ const EXACT_RESPONSE: &str = "agent.semantic-protocols.provider-native-exact-pro
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+/// Conceptual search request submitted through the Runtime client protocol.
 pub struct AspClientSearchRequest {
     pub schema_id: String,
     pub schema_version: String,
@@ -34,8 +40,29 @@ pub struct AspClientSearchRequest {
     pub explain: String,
 }
 
+/// Workspace-scoped Search planner request owned by the Runtime Server.
+///
+/// Unlike a language Search request, `language` is only an optional filter on
+/// the Runtime's immutable provider snapshot.  The client never turns it into
+/// a provider route or infers it from a path.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AspClientWorkspaceSearchPlaybookRequest {
+    pub schema_id: String,
+    pub schema_version: String,
+    pub language: Option<String>,
+    pub intent: String,
+    pub query: String,
+    pub scope: String,
+    pub coverage: String,
+    pub max_owners: u32,
+    pub deadline_ms: u64,
+    pub explain: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+/// Lookup request against a published Source Index generation.
 pub struct AspClientSourceIndexLookupRequest {
     pub schema_id: String,
     pub schema_version: String,
@@ -46,6 +73,7 @@ pub struct AspClientSourceIndexLookupRequest {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+/// Exact query request addressed by a provider-owned structural selector.
 pub struct AspClientExactQueryRequest {
     pub schema_id: String,
     pub schema_version: String,
@@ -59,6 +87,7 @@ pub struct AspClientExactQueryRequest {
 /// transport and lifecycle owner is ASP Server's `asp-python-graphs` service.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+/// Request to evaluate a graph timeline from a typed event packet.
 pub struct AspClientGraphsTimelineRequest {
     pub schema_id: String,
     pub schema_version: String,
@@ -68,6 +97,7 @@ pub struct AspClientGraphsTimelineRequest {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+/// Request to inspect or mutate the Runtime-owned live-corpus cache state.
 pub struct LiveCorpusCacheStateRequest {
     pub schema_id: String,
     pub schema_version: String,
@@ -148,6 +178,7 @@ impl LiveCorpusCacheStateRequest {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+/// Terminal receipt for a live-corpus cache-state operation.
 pub struct LiveCorpusCacheStateReceipt {
     pub schema_id: String,
     pub schema_version: String,
@@ -211,6 +242,7 @@ fn valid_hex_digest(digest: &str) -> bool {
 
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+/// Counted Runtime work performed while serving one client operation.
 pub struct AspClientRuntimeWorkCounters {
     pub database_read_count: u64,
     pub filesystem_read_count: u64,
@@ -221,6 +253,7 @@ pub struct AspClientRuntimeWorkCounters {
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+/// Successful exact-query response with generation identity, result, timing, and work counters.
 pub struct AspClientExactQueryResponse {
     pub schema_id: String,
     pub schema_version: String,
@@ -240,6 +273,7 @@ pub struct AspClientExactQueryResponse {
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+/// Typed exact-query failure with selector evidence and a recommended next action.
 pub struct AspClientExactQueryFailure {
     pub schema_id: String,
     pub schema_version: String,
@@ -266,6 +300,7 @@ pub struct AspClientExactQueryFailure {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+/// Runtime dispatch request for provider-backed search execution.
 pub struct RuntimeProviderSearchRequest {
     pub schema_id: String,
     pub schema_version: String,
@@ -279,6 +314,7 @@ pub struct RuntimeProviderSearchRequest {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+/// Source-bound request for a provider-native exact projection.
 pub struct ProviderNativeExactRequest {
     pub schema_id: String,
     pub schema_version: String,
@@ -299,6 +335,7 @@ pub struct ProviderNativeExactRequest {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+/// Provider-native exact projection or typed selector-resolution terminal.
 pub struct ProviderNativeExactProjection {
     pub schema_id: String,
     pub schema_version: String,
@@ -439,6 +476,31 @@ impl AspClientSearchRequest {
             return Err("ASP client search explain mode is unsupported".to_owned());
         }
         Ok(())
+    }
+}
+
+impl AspClientWorkspaceSearchPlaybookRequest {
+    pub fn validate_schema_identity(&self) -> Result<(), String> {
+        check(
+            &self.schema_id,
+            CLIENT_WORKSPACE_SEARCH_PLAYBOOK_REQUEST,
+            &self.schema_version,
+        )?;
+        if self.language.as_deref().is_some_and(str::is_empty) {
+            return Err("ASP workspace Search language filter must not be empty".to_owned());
+        }
+        AspClientSearchRequest {
+            schema_id: CLIENT_SEARCH_REQUEST.to_owned(),
+            schema_version: self.schema_version.clone(),
+            intent: self.intent.clone(),
+            query: self.query.clone(),
+            scope: self.scope.clone(),
+            coverage: self.coverage.clone(),
+            max_owners: self.max_owners,
+            deadline_ms: self.deadline_ms,
+            explain: self.explain.clone(),
+        }
+        .validate_schema_identity()
     }
 }
 

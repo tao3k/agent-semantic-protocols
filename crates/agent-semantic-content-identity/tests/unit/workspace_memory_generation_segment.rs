@@ -1,8 +1,8 @@
-use agent_semantic_content_identity::workspace_memory_generation_segment::{
-    WORKSPACE_MEMORY_GENERATION_SEGMENT_SCHEMA_ID, WorkspaceMemoryGenerationDirectoryV1,
-    WorkspaceMemoryGenerationSectionKindV1, WorkspaceMemoryGenerationSectionRepresentationV1,
-    WorkspaceMemoryGenerationSectionV1,
-};
+use agent_semantic_content_identity::workspace_memory_generation_segment::WORKSPACE_MEMORY_GENERATION_SEGMENT_SCHEMA_ID;
+use agent_semantic_content_identity::workspace_memory_generation_segment::WorkspaceMemoryGenerationDirectoryV1;
+use agent_semantic_content_identity::workspace_memory_generation_segment::WorkspaceMemoryGenerationSectionKindV1;
+use agent_semantic_content_identity::workspace_memory_generation_segment::WorkspaceMemoryGenerationSectionRepresentationV1;
+use agent_semantic_content_identity::workspace_memory_generation_segment::WorkspaceMemoryGenerationSectionV1;
 
 fn digest() -> String {
     format!("blake3-256:{}", "0".repeat(64))

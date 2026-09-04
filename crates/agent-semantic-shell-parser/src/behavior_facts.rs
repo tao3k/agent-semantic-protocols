@@ -39,41 +39,44 @@ pub struct ShellBehaviorFact {
 /// literal input, not evidence that a filesystem path is read.
 pub fn command_stage_behavior_facts(stage: &CommandStage) -> Vec<ShellBehaviorFact> {
     let words = stage.words();
-    let mut facts = Vec::new();
-    for (index, word) in words.iter().enumerate() {
-        let Some((operator, inline_subject)) = redirection_token(word) else {
-            continue;
-        };
-        let subject = inline_subject.map(str::to_owned).or_else(|| {
-            words
-                .get(index + 1)
-                .filter(|next| !is_operator(next))
-                .cloned()
-        });
-        match operator {
-            RedirectionOperator::Input => facts.push(ShellBehaviorFact {
-                access: ShellAccessKind::Read,
-                evidence: ShellBehaviorEvidence::InputRedirection,
-                subject,
-            }),
-            RedirectionOperator::Output => facts.push(ShellBehaviorFact {
-                access: ShellAccessKind::Write,
-                evidence: ShellBehaviorEvidence::OutputRedirection,
-                subject,
-            }),
-            RedirectionOperator::ReadWrite => {
-                for access in [ShellAccessKind::Read, ShellAccessKind::Write] {
-                    facts.push(ShellBehaviorFact {
-                        access,
-                        evidence: ShellBehaviorEvidence::ReadWriteRedirection,
-                        subject: subject.clone(),
-                    });
-                }
-            }
-            RedirectionOperator::LiteralInput => {}
-        }
+    words
+        .iter()
+        .enumerate()
+        .flat_map(|(index, word)| behavior_facts_for_word(words, index, word))
+        .collect()
+}
+
+fn behavior_facts_for_word(words: &[String], index: usize, word: &str) -> Vec<ShellBehaviorFact> {
+    let Some((operator, inline_subject)) = redirection_token(word) else {
+        return Vec::new();
+    };
+    let subject = inline_subject.map(str::to_owned).or_else(|| {
+        words
+            .get(index + 1)
+            .filter(|next| !is_operator(next))
+            .cloned()
+    });
+    match operator {
+        RedirectionOperator::Input => vec![ShellBehaviorFact {
+            access: ShellAccessKind::Read,
+            evidence: ShellBehaviorEvidence::InputRedirection,
+            subject,
+        }],
+        RedirectionOperator::Output => vec![ShellBehaviorFact {
+            access: ShellAccessKind::Write,
+            evidence: ShellBehaviorEvidence::OutputRedirection,
+            subject,
+        }],
+        RedirectionOperator::ReadWrite => [ShellAccessKind::Read, ShellAccessKind::Write]
+            .into_iter()
+            .map(|access| ShellBehaviorFact {
+                access,
+                evidence: ShellBehaviorEvidence::ReadWriteRedirection,
+                subject: subject.clone(),
+            })
+            .collect(),
+        RedirectionOperator::LiteralInput => Vec::new(),
     }
-    facts
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -109,75 +112,5 @@ fn is_operator(word: &str) -> bool {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn projects_input_output_and_read_write_syntax() {
-        let stage = CommandStage::new(vec![
-            "tool".into(),
-            "<".into(),
-            "input.rs".into(),
-            ">out.json".into(),
-            "3<>state.db".into(),
-        ]);
-        assert_eq!(
-            command_stage_behavior_facts(&stage),
-            vec![
-                ShellBehaviorFact {
-                    access: ShellAccessKind::Read,
-                    evidence: ShellBehaviorEvidence::InputRedirection,
-                    subject: Some("input.rs".into()),
-                },
-                ShellBehaviorFact {
-                    access: ShellAccessKind::Write,
-                    evidence: ShellBehaviorEvidence::OutputRedirection,
-                    subject: Some("out.json".into()),
-                },
-                ShellBehaviorFact {
-                    access: ShellAccessKind::Read,
-                    evidence: ShellBehaviorEvidence::ReadWriteRedirection,
-                    subject: Some("state.db".into()),
-                },
-                ShellBehaviorFact {
-                    access: ShellAccessKind::Write,
-                    evidence: ShellBehaviorEvidence::ReadWriteRedirection,
-                    subject: Some("state.db".into()),
-                },
-            ]
-        );
-    }
-
-    #[test]
-    fn heredoc_and_here_string_are_not_filesystem_reads() {
-        for words in [
-            vec!["tool".into(), "<<".into(), "EOF".into()],
-            vec!["tool".into(), "<<<payload".into()],
-        ] {
-            assert!(command_stage_behavior_facts(&CommandStage::new(words)).is_empty());
-        }
-    }
-
-    #[test]
-    fn parsed_bash_redirections_survive_into_behavior_facts() {
-        let stages =
-            crate::parse_bash_command_candidates("opaque < input.rs > output.rs <> state.db")
-                .expect("parse Bash redirections");
-        let facts = stages
-            .iter()
-            .flat_map(command_stage_behavior_facts)
-            .collect::<Vec<_>>();
-        assert!(facts.iter().any(|fact| {
-            fact.access == ShellAccessKind::Read && fact.subject.as_deref() == Some("input.rs")
-        }));
-        assert!(facts.iter().any(|fact| {
-            fact.access == ShellAccessKind::Write && fact.subject.as_deref() == Some("output.rs")
-        }));
-        assert!(facts.iter().any(|fact| {
-            fact.access == ShellAccessKind::Read && fact.subject.as_deref() == Some("state.db")
-        }));
-        assert!(facts.iter().any(|fact| {
-            fact.access == ShellAccessKind::Write && fact.subject.as_deref() == Some("state.db")
-        }));
-    }
-}
+#[path = "../tests/unit/behavior_facts.rs"]
+mod tests;

@@ -3,9 +3,10 @@ use std::sync::Arc;
 #[path = "../integration/source_snapshot_evidence_fixture.rs"]
 mod source_snapshot_fixture;
 
-use agent_semantic_search::{
-    MerkleSearchGeneration, SearchOwnerChange, SearchOwnerFragment, SearchProjectionIdentity,
-};
+use agent_semantic_search::MerkleSearchGeneration;
+use agent_semantic_search::SearchOwnerChange;
+use agent_semantic_search::SearchOwnerFragment;
+use agent_semantic_search::SearchProjectionIdentity;
 
 fn identity(root: &str, provider_digest: &str) -> SearchProjectionIdentity {
     SearchProjectionIdentity {

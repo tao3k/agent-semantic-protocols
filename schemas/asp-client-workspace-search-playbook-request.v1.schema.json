@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/asp-client-workspace-search-playbook-request.v1.schema.json",
+  "title": "ASP Client Workspace Search Playbook Request V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaId", "schemaVersion", "language", "intent", "query", "scope", "coverage", "maxOwners", "deadlineMs", "explain"],
+  "properties": {
+    "schemaId": {"const": "agent.semantic-protocols.asp-client-workspace-search-playbook-request"},
+    "schemaVersion": {"const": "1"},
+    "language": {"oneOf": [{"type": "null"}, {"type": "string", "minLength": 1}]},
+    "intent": {"enum": ["conceptual", "relationship", "exact-literal", "absence-proof"]},
+    "query": {"type": "string", "minLength": 1},
+    "scope": {"pattern": "^(workspace|owner:.+)$"},
+    "coverage": {"enum": ["candidates", "complete"]},
+    "maxOwners": {"type": "integer", "minimum": 1, "maximum": 100},
+    "deadlineMs": {"type": "integer", "minimum": 1, "maximum": 5000},
+    "explain": {"enum": ["compact", "full"]}
+  }
+}

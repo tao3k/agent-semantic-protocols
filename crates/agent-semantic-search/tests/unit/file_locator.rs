@@ -1,9 +1,9 @@
 use std::path::PathBuf;
 use std::time::Instant;
 
-use agent_semantic_search::file_locator::{
-    FileLocatorIndex, FileLocatorMatchKind, FileLocatorQuery,
-};
+use agent_semantic_search::file_locator::FileLocatorIndex;
+use agent_semantic_search::file_locator::FileLocatorMatchKind;
+use agent_semantic_search::file_locator::FileLocatorQuery;
 
 fn fixture_paths() -> Vec<PathBuf> {
     [

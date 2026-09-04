@@ -2,7 +2,9 @@ use std::time::Duration;
 
 use crate::ProviderProcessSupervisor;
 
-use super::support::{script, spec, temp_dir};
+use super::support::script;
+use super::support::spec;
+use super::support::temp_dir;
 
 #[test]
 fn provider_admission_capacity_is_machine_and_memory_adaptive() {

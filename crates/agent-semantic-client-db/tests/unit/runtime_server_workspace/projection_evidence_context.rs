@@ -1,12 +1,17 @@
 //! Runtime publication and mmap lookup contract for compact projection identity.
 
-use agent_semantic_client_db::runtime_server_workspace::{
-    ExactProjectionKind, RuntimeServerWorkspaceRegistry, WorkspaceExactProjectionDataPlaneClient,
-    WorkspaceGenerationBuild, WorkspaceGenerationPointerReader, WorkspaceMemoryGeneration,
-    WorkspaceOwnerSnapshot, WorkspaceRuntimeSelectorRead, WorkspaceSelectorSnapshot,
-    workspace_generation_pointer_path,
-};
-use std::io::{Seek, Write};
+use agent_semantic_client_db::runtime_server_workspace::ExactProjectionKind;
+use agent_semantic_client_db::runtime_server_workspace::RuntimeServerWorkspaceRegistry;
+use agent_semantic_client_db::runtime_server_workspace::WorkspaceExactProjectionDataPlaneClient;
+use agent_semantic_client_db::runtime_server_workspace::WorkspaceGenerationBuild;
+use agent_semantic_client_db::runtime_server_workspace::WorkspaceGenerationPointerReader;
+use agent_semantic_client_db::runtime_server_workspace::WorkspaceMemoryGeneration;
+use agent_semantic_client_db::runtime_server_workspace::WorkspaceOwnerSnapshot;
+use agent_semantic_client_db::runtime_server_workspace::WorkspaceRuntimeSelectorRead;
+use agent_semantic_client_db::runtime_server_workspace::WorkspaceSelectorSnapshot;
+use agent_semantic_client_db::runtime_server_workspace::workspace_generation_pointer_path;
+use std::io::Seek;
+use std::io::Write;
 
 #[tokio::test(flavor = "multi_thread")]
 async fn runtime_publication_interns_callable_identity_and_serves_compact_bytes() {
@@ -57,7 +62,7 @@ async fn runtime_publication_interns_callable_identity_and_serves_compact_bytes(
         .validate()
         .expect("validate projection payload");
     let context = client
-        .projection_evidence_context(&compact.evidence_context_ref)
+        .projection_evidence_context(compact.evidence_context_ref.as_str())
         .expect("resolve evidence context")
         .expect("evidence context is resident");
     let context: agent_semantic_content_identity::projection_evidence_context::ProjectionEvidenceContext =
@@ -115,6 +120,7 @@ fn owner_with_projection(
         owner_path: "src/lib.rs".to_owned(),
         content_digest: format!("blake3-256:{}", blake3::hash(source).to_hex()),
         bytes: source.to_vec(),
+        native_syntax_diagnostic: None,
         selectors: vec![WorkspaceSelectorSnapshot {
             selector: selector.to_owned(),
             byte_start: 0,

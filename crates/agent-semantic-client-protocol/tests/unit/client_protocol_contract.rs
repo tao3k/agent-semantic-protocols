@@ -1,3 +1,8 @@
+use crate::protocol_identity::CLIENT_CATALOG_SCHEMA_ID;
+use crate::protocol_identity::CLIENT_FRAME_SCHEMA_ID;
+use crate::protocol_identity::CLIENT_PROTOCOL_ID;
+use crate::protocol_identity::CLIENT_PROTOCOL_VERSION;
+use crate::protocol_identity::SCHEMA_VERSION;
 use serde_json::json;
 
 #[test]
@@ -43,7 +48,7 @@ fn server_catalog_publishes_the_cancellation_probe() {
         .find(|method| method.method == crate::server_method_catalog::CANCELLATION_PROBE_METHOD)
         .expect("cancellation probe method");
     assert_eq!(
-        method.route_id,
+        method.route_id.as_str(),
         crate::server_method_catalog::CANCELLATION_PROBE_METHOD
     );
     assert!(method.cancellable);
@@ -58,7 +63,10 @@ fn server_catalog_publishes_the_live_corpus_cache_state_authority() {
         .iter()
         .find(|method| method.method == crate::LIVE_CORPUS_CACHE_STATE_METHOD)
         .expect("Live Corpus cache-state method");
-    assert_eq!(method.route_id, crate::LIVE_CORPUS_CACHE_STATE_METHOD);
+    assert_eq!(
+        method.route_id.as_str(),
+        crate::LIVE_CORPUS_CACHE_STATE_METHOD
+    );
     assert!(!method.cancellable);
     assert!(!method.streaming);
 }
@@ -132,6 +140,23 @@ fn northbound_client_requests_are_distinct_from_provider_runtime_requests() {
     empty_search.query.clear();
     assert!(empty_search.validate_schema_identity().is_err());
 
+    let workspace_playbook = crate::AspClientWorkspaceSearchPlaybookRequest {
+        schema_id: "agent.semantic-protocols.asp-client-workspace-search-playbook-request"
+            .to_owned(),
+        schema_version: "1".to_owned(),
+        language: None,
+        intent: "conceptual".to_owned(),
+        query: "RuntimeAspClient".to_owned(),
+        scope: "workspace".to_owned(),
+        coverage: "candidates".to_owned(),
+        max_owners: 100,
+        deadline_ms: 1_000,
+        explain: "compact".to_owned(),
+    };
+    workspace_playbook
+        .validate_schema_identity()
+        .expect("workspace playbook identity");
+
     let source_index = crate::AspClientSourceIndexLookupRequest {
         schema_id: "agent.semantic-protocols.asp-client-source-index-lookup-request".to_owned(),
         schema_version: "1".to_owned(),
@@ -161,7 +186,7 @@ fn northbound_client_requests_are_distinct_from_provider_runtime_requests() {
 fn graph_timeline_request_is_structured_and_rejects_unknown_fields() {
     let request = crate::AspClientGraphsTimelineRequest {
         schema_id: crate::GRAPH_TIMELINE_REQUEST_SCHEMA_ID.to_owned(),
-        schema_version: crate::SCHEMA_VERSION.to_owned(),
+        schema_version: SCHEMA_VERSION.to_owned(),
         event_packet: serde_json::json!({"schemaId": "agent.semantic-protocols.graph-turbo-artifact-events"}),
         arguments: vec!["--recent-sessions".to_owned()],
     };
@@ -199,6 +224,14 @@ fn exact_query_response_carries_falsifiable_resident_performance() {
     };
 
     response.validate().expect("valid exact-query response");
+    let mut derived_owner_root_alias = response.clone();
+    derived_owner_root_alias.root_digest = format!("blake3-256:{}", "b".repeat(64));
+    assert!(
+        derived_owner_root_alias
+            .validate()
+            .expect_err("derived owner-index root must not replace source root")
+            .contains("rootDigest is invalid")
+    );
     let encoded = serde_json::to_value(response).expect("encode exact-query response");
     assert_eq!(encoded["residentReadElapsedMicros"], 7);
     assert_eq!(encoded["workCounters"]["filesystemReadCount"], 0);
@@ -259,7 +292,7 @@ fn exact_query_response_rejects_empty_ready_and_failure_is_a_distinct_terminal()
 fn schema_bundle_terminals_keep_receipt_authority_out_of_language_clients() {
     let request = crate::SchemaBundleRequest {
         schema_id: crate::SCHEMA_BUNDLE_REQUEST_SCHEMA_ID.to_owned(),
-        schema_version: crate::SCHEMA_VERSION.to_owned(),
+        schema_version: SCHEMA_VERSION.to_owned(),
         language_id: "python".to_owned(),
         root_set_ids: vec!["client-protocol".to_owned()],
         known_bundle_digest: Some(format!("blake3-256:{}", "b".repeat(64))),
@@ -275,13 +308,13 @@ fn schema_bundle_terminals_keep_receipt_authority_out_of_language_clients() {
         family_id: "asp.schema-family.asp-client".to_owned(),
         schema_id: "https://schemas.agent-semantic-protocols.dev/asp-client-frame.schema.json"
             .to_owned(),
-        schema_version: crate::SCHEMA_VERSION.to_owned(),
+        schema_version: SCHEMA_VERSION.to_owned(),
         name: "asp-client-frame.schema.json".to_owned(),
         digest: format!("blake3-256:{}", "c".repeat(64)),
     };
     let ready = crate::SchemaBundleResponse::Ready {
         schema_id: crate::SCHEMA_BUNDLE_RESPONSE_SCHEMA_ID.to_owned(),
-        schema_version: crate::SCHEMA_VERSION.to_owned(),
+        schema_version: SCHEMA_VERSION.to_owned(),
         receipt: receipt.clone(),
         entries: vec![entry.clone()],
         documents: vec![crate::SchemaBundleDocument {
@@ -303,7 +336,7 @@ fn schema_bundle_terminals_keep_receipt_authority_out_of_language_clients() {
 
     let unchanged = crate::SchemaBundleResponse::Unchanged {
         schema_id: crate::SCHEMA_BUNDLE_RESPONSE_SCHEMA_ID.to_owned(),
-        schema_version: crate::SCHEMA_VERSION.to_owned(),
+        schema_version: SCHEMA_VERSION.to_owned(),
         receipt,
         entries: vec![entry],
     };
@@ -311,7 +344,7 @@ fn schema_bundle_terminals_keep_receipt_authority_out_of_language_clients() {
 
     let failed = crate::SchemaBundleResponse::Failed {
         schema_id: crate::SCHEMA_BUNDLE_RESPONSE_SCHEMA_ID.to_owned(),
-        schema_version: crate::SCHEMA_VERSION.to_owned(),
+        schema_version: SCHEMA_VERSION.to_owned(),
         language_id: "missing-language".to_owned(),
         reason_kind: "schema-profile-not-registered".to_owned(),
         recommended_next: serde_json::json!({"action": "inspect-schema-profile-registry"}),
@@ -349,7 +382,25 @@ fn provider_route_bindings_roundtrip_and_reject_identity_drift() {
     assert!(invalid.validate_schema_identity().is_err());
 }
 
-use super::*;
+use crate::ClientCapabilities;
+use crate::ClientConformanceSuite;
+use crate::ClientFrame;
+use crate::ClientFrameBase;
+use crate::ClientInfo;
+use crate::ClientMethod;
+use crate::ClientParameter;
+use crate::ClientParameterCardinality;
+use crate::ClientParameterSource;
+use crate::ClientParameterType;
+use crate::ClientProjectId;
+use crate::ClientProtocolCatalog;
+use crate::ClientRequestId;
+use crate::ClientSession;
+use crate::ClientSessionId;
+use crate::ClientSessionState;
+use crate::ClientTransport;
+use crate::ClientWorkspaceIdentity;
+use crate::run_conformance_suite;
 
 fn digest(character: char) -> String {
     format!("blake3-256:{}", character.to_string().repeat(64))
@@ -376,10 +427,14 @@ fn catalog() -> ClientProtocolCatalog {
         },
         methods: vec![ClientMethod {
             method: "rust.search".to_owned(),
-            route_id: "rust.search".to_owned(),
-            request_schema_id: "request-schema".to_owned(),
-            response_schema_id: "response-schema".to_owned(),
-            error_schema_ids: vec!["error-schema".to_owned()],
+            route_id: crate::ClientRouteId::new("rust.search").expect("route id"),
+            request_schema_id: crate::ClientSchemaId::new("request-schema")
+                .expect("request schema id"),
+            response_schema_id: crate::ClientSchemaId::new("response-schema")
+                .expect("response schema id"),
+            error_schema_ids: vec![
+                crate::ClientSchemaId::new("error-schema").expect("error schema id"),
+            ],
             parameters: vec![ClientParameter {
                 name: "query".to_owned(),
                 value_type: ClientParameterType::String,
@@ -521,17 +576,23 @@ fn runtime_context_cannot_be_injected_by_a_client() {
 #[test]
 fn shared_conformance_fixture_runs_in_the_reference_implementation() {
     let suite: ClientConformanceSuite = serde_json::from_str(include_str!(
-        "../../../schemas/fixtures/asp-client-conformance/base.json"
+        "../../../../schemas/fixtures/asp-client-conformance/base.json"
     ))
     .expect("parse shared conformance suite");
     let receipts = run_conformance_suite(&suite, &catalog()).expect("conformance suite");
     assert_eq!(receipts.len(), 5);
     assert_eq!(
-        receipts[2].reason_kind.as_deref(),
+        receipts[2]
+            .reason_kind
+            .as_ref()
+            .map(crate::ClientReasonKind::as_str),
         Some("method-not-in-client-catalog")
     );
     assert_eq!(
-        receipts[3].reason_kind.as_deref(),
+        receipts[3]
+            .reason_kind
+            .as_ref()
+            .map(crate::ClientReasonKind::as_str),
         Some("client-catalog-generation-mismatch")
     );
 }

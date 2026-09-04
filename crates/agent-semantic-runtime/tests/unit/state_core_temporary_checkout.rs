@@ -1,10 +1,13 @@
-use super::{CheckoutIdentity, RepoIdentity, RepoPersistence, is_temporary_checkout_path};
-use crate::git::{GitIdentity, RemoteUrl};
-use std::{
-    fs,
-    path::{Path, PathBuf},
-    process::Command,
-};
+use super::CheckoutIdentity;
+use super::RepoIdentity;
+use super::RepoPersistence;
+use super::is_temporary_checkout_path;
+use crate::git::GitIdentity;
+use crate::git::RemoteUrl;
+use std::fs;
+use std::path::Path;
+use std::path::PathBuf;
+use std::process::Command;
 
 #[test]
 fn recognizes_operating_system_temporary_roots() {

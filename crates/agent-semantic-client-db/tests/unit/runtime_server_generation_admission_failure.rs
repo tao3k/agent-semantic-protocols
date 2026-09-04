@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
-use agent_semantic_client_db::runtime_server_admission::{
-    WorkspaceGenerationAdmission, WorkspaceGenerationAdmissionState,
-};
-use agent_semantic_client_db::runtime_telemetry_bus::{RuntimeTelemetryBus, RuntimeTelemetryEvent};
+use agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmission;
+use agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmissionState;
+use agent_semantic_client_db::runtime_telemetry_bus::RuntimeTelemetryBus;
+use agent_semantic_client_db::runtime_telemetry_bus::RuntimeTelemetryEvent;
 
 use super::candidate_identity;
 

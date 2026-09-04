@@ -1,7 +1,9 @@
-use agent_semantic_content_identity::{ArtifactJson, hash_normalized_json};
+use agent_semantic_content_identity::ArtifactJson;
+use agent_semantic_content_identity::hash_normalized_json;
 use serde_json::Value;
 
-use crate::{SearchProjectionError, SemanticSearchPacketV1};
+use crate::SearchProjectionError;
+use crate::SemanticSearchPacketV1;
 
 pub const SEMANTIC_GRAPH_TURBO_RESULT_SCHEMA_ID: &str =
     "agent.semantic-protocols.semantic-graph-turbo-result";

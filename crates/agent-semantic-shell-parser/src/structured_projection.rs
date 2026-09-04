@@ -135,10 +135,9 @@ fn classify_bounded_path_words(
             break filter;
         }
         if let Some(value_count) = spec.option_value_arity.get(word) {
-            for _ in 0..*value_count {
-                if words.next().is_none() {
-                    return StructuredFilterClassification::Invalid;
-                }
+            let value_count = usize::from(*value_count);
+            if words.by_ref().take(value_count).count() != value_count {
+                return StructuredFilterClassification::Invalid;
             }
             continue;
         }
@@ -203,113 +202,175 @@ fn classify_bounded_path_filter_with_limit(
     if !filter.starts_with('.') {
         return StructuredFilterClassification::Invalid;
     }
+    BoundedPathFilterParser::new(filter, max_slice_items).classify()
+}
 
-    let bytes = filter.as_bytes();
-    let mut cursor = 1;
-    let mut segments = Vec::new();
-    while cursor < bytes.len() {
-        match bytes[cursor] {
-            b'.' => {
-                if bytes.get(cursor + 1) == Some(&b'.') || cursor == 1 {
-                    return StructuredFilterClassification::RecursiveDescent;
-                }
-                cursor += 1;
-                let start = cursor;
-                while cursor < bytes.len() && is_identifier_continue(bytes[cursor]) {
-                    cursor += 1;
-                }
-                if start == cursor {
-                    return classify_unbounded_token(bytes.get(cursor).copied());
-                }
-                segments.push(BoundedPathSegment::Field(filter[start..cursor].to_string()));
-            }
-            b'[' => {
-                cursor += 1;
-                if bytes.get(cursor) == Some(&b']') {
-                    return StructuredFilterClassification::ArrayIteration;
-                }
-                if bytes.get(cursor) == Some(&b'\"') {
-                    cursor += 1;
-                    let start = cursor;
-                    while cursor < bytes.len() && bytes[cursor] != b'\"' {
-                        if bytes[cursor] == b'\\' {
-                            return StructuredFilterClassification::Invalid;
-                        }
-                        cursor += 1;
-                    }
-                    if cursor == start || bytes.get(cursor) != Some(&b'\"') {
-                        return StructuredFilterClassification::Invalid;
-                    }
-                    segments.push(BoundedPathSegment::Field(filter[start..cursor].to_string()));
-                    cursor += 1;
-                } else {
-                    let start = cursor;
-                    while cursor < bytes.len() && bytes[cursor].is_ascii_digit() {
-                        cursor += 1;
-                    }
-                    if bytes.get(cursor) == Some(&b':') {
-                        let slice_start = if start == cursor {
-                            0
-                        } else {
-                            let Ok(value) = filter[start..cursor].parse() else {
-                                return StructuredFilterClassification::Invalid;
-                            };
-                            value
-                        };
-                        cursor += 1;
-                        let end_start = cursor;
-                        while cursor < bytes.len() && bytes[cursor].is_ascii_digit() {
-                            cursor += 1;
-                        }
-                        if end_start == cursor {
-                            return StructuredFilterClassification::Compound;
-                        }
-                        let Ok(slice_end) = filter[end_start..cursor].parse::<usize>() else {
-                            return StructuredFilterClassification::Invalid;
-                        };
-                        if slice_end.saturating_sub(slice_start) > max_slice_items {
-                            return StructuredFilterClassification::Compound;
-                        }
-                        segments.push(BoundedPathSegment::Slice {
-                            start: slice_start,
-                            end: slice_end,
-                        });
-                    } else if start == cursor {
-                        return StructuredFilterClassification::Compound;
-                    } else {
-                        let Ok(index) = filter[start..cursor].parse() else {
-                            return StructuredFilterClassification::Invalid;
-                        };
-                        segments.push(BoundedPathSegment::Index(index));
-                    }
-                }
-                if bytes.get(cursor) != Some(&b']') {
-                    return StructuredFilterClassification::Compound;
-                }
-                cursor += 1;
-            }
-            byte if is_identifier_start(byte) => {
-                let start = cursor;
-                cursor += 1;
-                while cursor < bytes.len() && is_identifier_continue(bytes[cursor]) {
-                    cursor += 1;
-                }
-                segments.push(BoundedPathSegment::Field(filter[start..cursor].to_string()));
-            }
-            b'|' | b',' | b'{' | b'}' | b'(' | b')' | b'?' | b'=' | b';' => {
-                return StructuredFilterClassification::Compound;
-            }
-            _ => return StructuredFilterClassification::Invalid,
+struct BoundedPathFilterParser<'a> {
+    filter: &'a str,
+    cursor: usize,
+    max_slice_items: usize,
+    segments: Vec<BoundedPathSegment>,
+}
+
+impl<'a> BoundedPathFilterParser<'a> {
+    fn new(filter: &'a str, max_slice_items: usize) -> Self {
+        Self {
+            filter,
+            cursor: 1,
+            max_slice_items,
+            segments: Vec::new(),
         }
     }
 
-    if segments.is_empty() {
-        StructuredFilterClassification::Identity
-    } else {
-        StructuredFilterClassification::BoundedPath {
-            segments,
-            source_operands: Vec::new(),
+    fn classify(mut self) -> StructuredFilterClassification {
+        while self.cursor < self.filter.len() {
+            if let Err(classification) = self.parse_next_segment() {
+                return classification;
+            }
         }
+        if self.segments.is_empty() {
+            StructuredFilterClassification::Identity
+        } else {
+            StructuredFilterClassification::BoundedPath {
+                segments: self.segments,
+                source_operands: Vec::new(),
+            }
+        }
+    }
+
+    fn parse_next_segment(&mut self) -> Result<(), StructuredFilterClassification> {
+        match self.bytes()[self.cursor] {
+            b'.' => self.parse_dotted_field(),
+            b'[' => self.parse_bracket_segment(),
+            byte if is_identifier_start(byte) => self.parse_identifier_field(),
+            b'|' | b',' | b'{' | b'}' | b'(' | b')' | b'?' | b'=' | b';' => {
+                Err(StructuredFilterClassification::Compound)
+            }
+            _ => Err(StructuredFilterClassification::Invalid),
+        }
+    }
+
+    fn parse_dotted_field(&mut self) -> Result<(), StructuredFilterClassification> {
+        if self.bytes().get(self.cursor + 1) == Some(&b'.') || self.cursor == 1 {
+            return Err(StructuredFilterClassification::RecursiveDescent);
+        }
+        self.cursor += 1;
+        let start = self.cursor;
+        self.consume_identifier();
+        if start == self.cursor {
+            return Err(classify_unbounded_token(
+                self.bytes().get(self.cursor).copied(),
+            ));
+        }
+        self.push_field(start);
+        Ok(())
+    }
+
+    fn parse_identifier_field(&mut self) -> Result<(), StructuredFilterClassification> {
+        let start = self.cursor;
+        self.cursor += 1;
+        self.consume_identifier();
+        self.push_field(start);
+        Ok(())
+    }
+
+    fn parse_bracket_segment(&mut self) -> Result<(), StructuredFilterClassification> {
+        self.cursor += 1;
+        if self.bytes().get(self.cursor) == Some(&b']') {
+            return Err(StructuredFilterClassification::ArrayIteration);
+        }
+        if self.bytes().get(self.cursor) == Some(&b'\"') {
+            self.parse_quoted_field()?;
+        } else {
+            self.parse_numeric_segment()?;
+        }
+        if self.bytes().get(self.cursor) != Some(&b']') {
+            return Err(StructuredFilterClassification::Compound);
+        }
+        self.cursor += 1;
+        Ok(())
+    }
+
+    fn parse_quoted_field(&mut self) -> Result<(), StructuredFilterClassification> {
+        self.cursor += 1;
+        let start = self.cursor;
+        while self.cursor < self.filter.len() && self.bytes()[self.cursor] != b'\"' {
+            if self.bytes()[self.cursor] == b'\\' {
+                return Err(StructuredFilterClassification::Invalid);
+            }
+            self.cursor += 1;
+        }
+        if self.cursor == start || self.bytes().get(self.cursor) != Some(&b'\"') {
+            return Err(StructuredFilterClassification::Invalid);
+        }
+        self.push_field(start);
+        self.cursor += 1;
+        Ok(())
+    }
+
+    fn parse_numeric_segment(&mut self) -> Result<(), StructuredFilterClassification> {
+        let start = self.cursor;
+        self.consume_digits();
+        if self.bytes().get(self.cursor) == Some(&b':') {
+            self.parse_slice(start)
+        } else if start == self.cursor {
+            Err(StructuredFilterClassification::Compound)
+        } else {
+            let index = self.filter[start..self.cursor]
+                .parse()
+                .map_err(|_| StructuredFilterClassification::Invalid)?;
+            self.segments.push(BoundedPathSegment::Index(index));
+            Ok(())
+        }
+    }
+
+    fn parse_slice(&mut self, start: usize) -> Result<(), StructuredFilterClassification> {
+        let slice_start = if start == self.cursor {
+            0
+        } else {
+            self.filter[start..self.cursor]
+                .parse()
+                .map_err(|_| StructuredFilterClassification::Invalid)?
+        };
+        self.cursor += 1;
+        let end_start = self.cursor;
+        self.consume_digits();
+        if end_start == self.cursor {
+            return Err(StructuredFilterClassification::Compound);
+        }
+        let slice_end = self.filter[end_start..self.cursor]
+            .parse::<usize>()
+            .map_err(|_| StructuredFilterClassification::Invalid)?;
+        if slice_end.saturating_sub(slice_start) > self.max_slice_items {
+            return Err(StructuredFilterClassification::Compound);
+        }
+        self.segments.push(BoundedPathSegment::Slice {
+            start: slice_start,
+            end: slice_end,
+        });
+        Ok(())
+    }
+
+    fn consume_identifier(&mut self) {
+        while self.cursor < self.filter.len() && is_identifier_continue(self.bytes()[self.cursor]) {
+            self.cursor += 1;
+        }
+    }
+
+    fn consume_digits(&mut self) {
+        while self.cursor < self.filter.len() && self.bytes()[self.cursor].is_ascii_digit() {
+            self.cursor += 1;
+        }
+    }
+
+    fn push_field(&mut self, start: usize) {
+        self.segments.push(BoundedPathSegment::Field(
+            self.filter[start..self.cursor].to_string(),
+        ));
+    }
+
+    fn bytes(&self) -> &[u8] {
+        self.filter.as_bytes()
     }
 }
 

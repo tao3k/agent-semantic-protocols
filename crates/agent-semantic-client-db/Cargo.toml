@@ -22,7 +22,6 @@ agent-semantic-content-identity.workspace = true
 agent-semantic-artifacts.workspace = true
 agent-semantic-client-core = { path = "../agent-semantic-client-core" }
 agent-semantic-client-protocol = { path = "../agent-semantic-client-protocol" }
-agent-semantic-client-server = { path = "../agent-semantic-client-server" }
 agent-semantic-config = { path = "../agent-semantic-config" }
 agent-semantic-provider-transport = { path = "../agent-semantic-provider-transport" }
 serde = { workspace = true, features = ["derive"] }

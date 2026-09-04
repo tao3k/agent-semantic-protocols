@@ -1,7 +1,10 @@
-use std::{fs, path::PathBuf};
+use std::fs;
+use std::path::PathBuf;
 
-use crate::test_support::{IsolatedAspStateHome, init_durable_repo};
-use crate::{ProjectContext, StateLayout};
+use crate::ProjectContext;
+use crate::StateLayout;
+use crate::test_support::IsolatedAspStateHome;
+use crate::test_support::init_durable_repo;
 
 #[test]
 fn project_context_resolves_git_toplevel_from_subdir() {

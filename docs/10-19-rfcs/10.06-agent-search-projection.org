@@ -10,7 +10,7 @@ Git history owns the retired prime, pipe, lexical, owner-search, seed, and
 * Public command
 
 #+begin_src sh
-asp <language> search playbook '<query>' \
+asp search playbook '<query>' --language <language> \
   --intent <conceptual|relationship|exact-literal|absence-proof> \
   --scope <workspace|owner:path> \
   --coverage <candidates|complete> \
@@ -36,10 +36,13 @@ One immutable content generation is constructed and admitted in this order:
 
 1. =sourceByteAcquisition= establishes parser-independent byte/path membership
    and binds the source snapshot; it MUST NOT be reported as ripgrep execution.
-2. =nativeSyntax= commits the complete provider parser projection: owner,
-   canonical selector, byte range, query keys, derived projections, module
-   facts, and relations.  It is one internal native-syntax playbook stage, not
-   an owner-only command.
+2. =nativeSyntax= commits the complete provider parser accounting for every
+   admitted owner.  Each owner contributes exactly one of two mutually
+   exclusive records: a usable parser projection (canonical selector, byte
+   range, query keys, derived projections, module facts, and relations), or a
+   typed =source-syntax-unavailable= diagnostic bound to the same owner and
+   content digest.  It is one internal native-syntax playbook stage, not an
+   owner-only command.
 The two content-stage receipts carry the same generation identity. A missing,
 failed, reordered, or identity-drifting acquisition or syntax stage rejects the
 content candidate before publication. =rustResidentGraph= is independently
@@ -69,10 +72,23 @@ must be bound to the exact Project/Workspace/Generation/root identity.
 alternate command grammar.  Both modes are projections of the same admitted
 generation and ranked result.
 
-An =ownerPath= without at least one valid parser selector is not native-syntax
-evidence and MUST fail closed.  The public receipt is rendered by the Runtime
-search handler from the resident generation; a schema-only fixture or an
-owner-count summary is not an implementation of this contract.
+=rootDigest= in every public Search/Query terminal denotes the source snapshot
+root admitted for that ProjectId/WorkspaceId/generation.  A resident owner
+directory or lexical/graph attachment may maintain its own Merkle root, but
+that derived root is never substituted into the public field and is never a
+compatibility alias.  This rule applies equally to Ready and Failed terminals,
+so an owner-missing response cannot silently cross identity domains.
+
+An =ownerPath= without either a valid parser projection or a typed diagnostic
+is unaccounted and MUST fail closed.  A diagnostic is evidence about parser
+availability, never a selector and never permission to synthesize one.  A
+single diagnostic MUST NOT erase independently valid rg acquisition, Tantivy
+lexical, byte, or Python/resident graph evidence.  The native-syntax stage is
+complete only when the disjoint union of projected and diagnosed owners equals
+the selected owner set.  The stage artifact digest binds both collections in
+canonical owner order.  The public receipt is rendered by the Runtime search
+handler from the resident generation; a schema-only fixture or an owner-count
+summary is not an implementation of this contract.
 
 The projection must never call internal construction inputs “seeds”.  Source
 construction inputs are =source documents=; exact byte inputs are =byte

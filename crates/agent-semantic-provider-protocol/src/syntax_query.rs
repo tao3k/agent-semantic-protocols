@@ -1,4 +1,5 @@
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 
 pub const PROVIDER_SYNTAX_QUERY_OPERATION: &str = "syntax-query";
 pub const PROVIDER_SYNTAX_QUERY_REQUEST_SCHEMA_ID: &str =

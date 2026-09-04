@@ -24,6 +24,9 @@ change.
 The existing =asp.content-binding= schemaVersion =1= remains the content
 identity primitive. Runtime execution adds a typed composition containing:
 
+- ProjectId;
+- WorkspaceId;
+- publication nonce;
 - runtime artifact digest;
 - evaluator policy digest;
 - active artifact receipt digest; and
@@ -33,9 +36,21 @@ The composition is immutable and exact. Same policy with a different binary,
 same binary with a different policy, and any cross-content composition are
 rejected before evaluator reuse or provider admission.
 
+** V1 legacy refresh
+
+Existing V1 documents that predate the execution-scope fields remain decodable.
+They are not admissible: an empty ProjectId, WorkspaceId, or publication nonce
+means =refresh-required=. Runtime Server reconstructs the canonical V1 binding
+from its verified serving publication and workspace admission, asks Artifacts
+to CAS-publish it, and retries admission against that publication. A malformed
+digest or an unverifiable receipt is not refreshable and fails closed. This is
+an in-version canonicalization rule, not a schemaVersion 2 migration.
+
 Runtime artifact activation has no numeric generation. Publication nonce plus
 content identity fences stale actors. Neither is a source generation,
 ClientFrame product identity, workspace identity, provider input, or cache key.
+ProjectId and WorkspaceId are explicit execution-scope identities; a filesystem
+project root is never their replacement.
 
 * Authority and data flow
 

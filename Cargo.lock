@@ -140,7 +140,6 @@ dependencies = [
  "agent-semantic-artifacts",
  "agent-semantic-client-core",
  "agent-semantic-client-protocol",
- "agent-semantic-client-server",
  "agent-semantic-config",
  "agent-semantic-content-identity",
  "agent-semantic-context-product",
@@ -218,6 +217,7 @@ name = "agent-semantic-config"
 version = "0.1.0"
 dependencies = [
  "agent-semantic-schema-manager",
+ "asp-rust-project-harness-policy",
  "blake3",
  "figment",
  "globset",
@@ -231,6 +231,7 @@ dependencies = [
 name = "agent-semantic-content-identity"
 version = "0.1.0"
 dependencies = [
+ "asp-rust-project-harness-policy",
  "base64 0.22.1",
  "blake3",
  "serde",
@@ -242,6 +243,7 @@ name = "agent-semantic-context-product"
 version = "0.1.0"
 dependencies = [
  "agent-semantic-content-identity",
+ "asp-rust-project-harness-policy",
  "serde",
  "serde_json",
 ]
@@ -319,6 +321,7 @@ name = "agent-semantic-loop"
 version = "0.1.0"
 dependencies = [
  "agent-semantic-context-product",
+ "asp-rust-project-harness-policy",
  "getrandom 0.3.4",
  "serde",
  "serde_json",
@@ -328,6 +331,8 @@ dependencies = [
 name = "agent-semantic-provider-protocol"
 version = "0.1.0"
 dependencies = [
+ "agent-semantic-schema-manager",
+ "asp-rust-project-harness-policy",
  "serde",
  "serde_json",
 ]
@@ -405,6 +410,7 @@ dependencies = [
  "agent-semantic-search-projection",
  "asp-rust-project-harness-policy",
  "blake3",
+ "criterion",
  "hyper-util",
  "prost",
  "serde",
@@ -471,6 +477,7 @@ dependencies = [
 name = "agent-semantic-shell-parser"
 version = "0.1.0"
 dependencies = [
+ "asp-rust-project-harness-policy",
  "globset",
  "toml 0.9.12+spec-1.1.0",
  "tree-sitter",

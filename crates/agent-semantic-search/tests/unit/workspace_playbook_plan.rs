@@ -1,8 +1,10 @@
-use crate::{
-    SearchPlaybookRequest, WorkspaceSearchPlanBinding, WorkspaceSearchProvider,
-    WorkspaceSearchSkipReason, WorkspaceSearchStageKind, WorkspaceSearchStagePolicy,
-    build_workspace_search_playbook_plan,
-};
+use crate::SearchPlaybookRequest;
+use crate::WorkspaceSearchPlanBinding;
+use crate::WorkspaceSearchProvider;
+use crate::WorkspaceSearchSkipReason;
+use crate::WorkspaceSearchStageKind;
+use crate::WorkspaceSearchStagePolicy;
+use crate::build_workspace_search_playbook_plan;
 
 fn request(intent: &str) -> SearchPlaybookRequest {
     SearchPlaybookRequest {
@@ -30,7 +32,11 @@ fn provider(language: &str, search_supported: bool) -> WorkspaceSearchProvider {
     WorkspaceSearchProvider {
         language_id: language.to_owned(),
         provider_id: format!("asp-{language}"),
-        source_extensions: vec![format!(".{language}")],
+        source_extensions: vec![match language {
+            "rust" => "rs".to_owned(),
+            "python" => "py".to_owned(),
+            other => other.to_owned(),
+        }],
         search_supported,
     }
 }

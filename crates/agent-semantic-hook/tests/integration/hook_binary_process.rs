@@ -1,8 +1,10 @@
 use std::io::Write as _;
 use std::os::unix::fs::PermissionsExt as _;
 use std::path::Path;
-use std::process::{Command, Stdio};
-use std::time::{Duration, Instant};
+use std::process::Command;
+use std::process::Stdio;
+use std::time::Duration;
+use std::time::Instant;
 
 const EVENTS: &[&str] = &[
     "pre-tool",
@@ -15,6 +17,17 @@ const EVENTS: &[&str] = &[
     "subagent-start",
     "subagent-stop",
 ];
+
+// These are one-shot Host-process acceptance tests, not a throughput test.
+// Keep their sub-process deadline independent of unrelated sibling fixtures;
+// the dedicated Reader Probe tests exercise actual concurrent pressure.
+static HOOK_PROCESS_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+fn hook_process_test_guard() -> std::sync::MutexGuard<'static, ()> {
+    HOOK_PROCESS_TEST_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
 
 fn hook_command() -> Command {
     let mut command = Command::new(env!("CARGO_BIN_EXE_asp-hook"));
@@ -31,6 +44,7 @@ fn plugin_launcher() -> std::path::PathBuf {
 
 #[test]
 fn inherited_no_agent_returns_valid_json_for_every_host_event() {
+    let _test_guard = hook_process_test_guard();
     for event in EVENTS {
         let output = hook_command()
             .arg(event)
@@ -51,7 +65,51 @@ fn inherited_no_agent_returns_valid_json_for_every_host_event() {
 }
 
 #[test]
+fn only_the_exact_inherited_no_agent_value_bypasses_policy_bootstrap() {
+    let _test_guard = hook_process_test_guard();
+    let temp = tempfile::tempdir().expect("temporary missing policy bundle");
+    let missing = temp.path().join("missing-policy-bundle.json");
+    for value in ["", "0", "true", "2"] {
+        let mut child = hook_command()
+            .args([
+                "pre-tool",
+                "--client",
+                "codex",
+                "--policy-bundle",
+                missing.to_str().expect("UTF-8 missing path"),
+                "--host-match",
+                "Bash",
+            ])
+            .env("ASP_NO_AGENT", value)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()
+            .expect("spawn noncanonical no-agent Hook binary");
+        serde_json::to_writer(
+            child.stdin.as_mut().expect("Hook stdin"),
+            &serde_json::json!({
+                "tool_name": "Bash",
+                "tool_input": {"command": "arbitrary-command fixture.rs"}
+            }),
+        )
+        .expect("write Host payload");
+        drop(child.stdin.take());
+        let output = child
+            .wait_with_output()
+            .expect("wait for noncanonical no-agent Hook binary");
+        let terminal: serde_json::Value =
+            serde_json::from_slice(&output.stdout).expect("valid fail-closed Host JSON");
+        assert_eq!(output.status.code(), Some(0), "value={value:?}");
+        assert_eq!(
+            terminal["hookSpecificOutput"]["permissionDecision"], "deny",
+            "value={value:?} must not be a recovery selector"
+        );
+    }
+}
+
+#[test]
 fn temporary_subagent_events_are_observational_without_registration_authority() {
+    let _test_guard = hook_process_test_guard();
     let temp = tempfile::tempdir().expect("isolated State Home");
     for event in ["subagent-start", "subagent-stop"] {
         let started = Instant::now();
@@ -76,6 +134,7 @@ fn temporary_subagent_events_are_observational_without_registration_authority() 
 
 #[test]
 fn configured_testing_agent_is_allowed_without_child_registration() {
+    let _test_guard = hook_process_test_guard();
     let temp = tempfile::tempdir().expect("isolated State Home");
     let runtime_bin = temp.path().join("runtime/bin");
     std::fs::create_dir_all(&runtime_bin).expect("Runtime bin directory");
@@ -176,6 +235,7 @@ fn configured_testing_agent_is_allowed_without_child_registration() {
 
 #[test]
 fn process_bound_no_agent_allows_permission_request_without_inheriting_hook_environment() {
+    let _test_guard = hook_process_test_guard();
     let mut child = hook_command()
         .args(["permission-request", "--client", "codex"])
         .stdin(Stdio::piped())
@@ -209,6 +269,7 @@ fn process_bound_no_agent_allows_permission_request_without_inheriting_hook_envi
 
 #[test]
 fn permission_request_is_pass_through_after_native_pre_tool_policy() {
+    let _test_guard = hook_process_test_guard();
     for payload in [
         r#"{"tool_name":"Bash","tool_input":{"command":"cargo test"}}"#,
         r#"{"tool_name":"mcp__codex_app__create_thread","tool_input":{}}"#,
@@ -243,6 +304,7 @@ fn permission_request_is_pass_through_after_native_pre_tool_policy() {
 
 #[test]
 fn binary_identity_is_owned_by_the_hook_package() {
+    let _test_guard = hook_process_test_guard();
     let output = hook_command()
         .arg("--version")
         .output()
@@ -253,6 +315,7 @@ fn binary_identity_is_owned_by_the_hook_package() {
 
 #[test]
 fn binary_projects_its_embedded_policy_content_identity() {
+    let _test_guard = hook_process_test_guard();
     let started = std::time::Instant::now();
     let output = hook_command()
         .arg("--identity")
@@ -288,6 +351,7 @@ fn binary_projects_its_embedded_policy_content_identity() {
 
 #[test]
 fn repeated_hook_subcommand_is_not_a_host_event_namespace() {
+    let _test_guard = hook_process_test_guard();
     let output = hook_command()
         .args([
             "hook",
@@ -311,6 +375,7 @@ fn repeated_hook_subcommand_is_not_a_host_event_namespace() {
 
 #[test]
 fn malformed_host_payload_returns_valid_fail_closed_json_instead_of_code_101() {
+    let _test_guard = hook_process_test_guard();
     let mut child = hook_command()
         .args([
             "pre-tool",
@@ -343,6 +408,7 @@ fn malformed_host_payload_returns_valid_fail_closed_json_instead_of_code_101() {
 
 #[test]
 fn process_bound_no_agent_forms_bypass_the_installed_policy_engine() {
+    let _test_guard = hook_process_test_guard();
     let config = agent_semantic_config::default_hook_client_config_file()
         .expect("load canonical Hook Config V1");
     let generation = agent_semantic_hook::aot_compiler::compile_aot_hook_policy_bundle(
@@ -426,6 +492,7 @@ fn process_bound_no_agent_forms_bypass_the_installed_policy_engine() {
 
 #[test]
 fn command_local_no_agent_escape_precedes_missing_policy_bundle() {
+    let _test_guard = hook_process_test_guard();
     let temp = tempfile::tempdir().expect("temporary missing policy bundle");
     let missing = temp.path().join("missing-policy-bundle.json");
     for command in [
@@ -504,4 +571,35 @@ fn command_local_no_agent_escape_precedes_missing_policy_bundle() {
             .is_some_and(|message| message.contains("Hook policy bundle")),
         "terminal={terminal}"
     );
+
+    let mut child = hook_command()
+        .args([
+            "pre-tool",
+            "--client",
+            "codex",
+            "--policy-bundle",
+            missing.to_str().expect("UTF-8 missing path"),
+            "--host-match",
+            "Bash",
+        ])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("spawn lookalike-variable Hook binary");
+    serde_json::to_writer(
+        child.stdin.as_mut().expect("Hook stdin"),
+        &serde_json::json!({
+            "tool_name": "Bash",
+            "tool_input": {"command": "ASP_NO_ASP=1 arbitrary-command fixture.rs"}
+        }),
+    )
+    .expect("write lookalike-variable Host payload");
+    drop(child.stdin.take());
+    let output = child
+        .wait_with_output()
+        .expect("wait for lookalike-variable Hook binary");
+    let terminal: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("valid fail-closed Host JSON");
+    assert_eq!(output.status.code(), Some(0));
+    assert_eq!(terminal["hookSpecificOutput"]["permissionDecision"], "deny");
 }

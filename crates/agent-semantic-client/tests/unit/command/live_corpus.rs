@@ -1,13 +1,18 @@
-use agent_semantic_runtime::{
-    LiveCorpusGitCheckoutQualification, LiveCorpusLanguageExtensionEvidence,
-};
+use agent_semantic_runtime::LiveCorpusGitCheckoutQualification;
+use agent_semantic_runtime::LiveCorpusLanguageExtensionEvidence;
 use std::path::Path;
 
-use super::{
-    LiveCorpusExtensionAdmission, LiveCorpusGitLock, LiveCorpusInputs, LiveCorpusLockEntry,
-    load_lock, materialized_source_identity, parse_materialize_request, parse_resource_request,
-    publish_immutable_json, sync_usage, validate_extension_admission,
-};
+use super::LiveCorpusExtensionAdmission;
+use super::LiveCorpusGitLock;
+use super::LiveCorpusInputs;
+use super::LiveCorpusLockEntry;
+use super::load_lock;
+use super::materialized_source_identity;
+use super::parse_materialize_request;
+use super::parse_resource_request;
+use super::publish_immutable_json;
+use super::sync_usage;
+use super::validate_extension_admission;
 
 #[test]
 fn materialized_source_identity_uses_the_runtime_content_root() {

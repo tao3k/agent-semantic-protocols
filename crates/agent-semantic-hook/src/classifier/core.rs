@@ -6,11 +6,17 @@ use serde_json::Value;
 
 use super::agent_org_artifacts::with_agent_org_artifact_recovery;
 use super::decision::allow;
+use crate::ClientHookConfig;
+use crate::DecisionKind;
+use crate::HookDecision;
+use crate::HookRuntime;
+use crate::OperationIntent;
+use crate::ReasonKind;
+use crate::ToolAction;
 use crate::agent_dispatch_message::render_collaboration_instruction;
-use crate::{
-    ClientHookConfig, DecisionKind, HookDecision, HookRuntime, OperationIntent, ReasonKind,
-    ToolAction, collect_tool_actions, payload_string, subject_for_action,
-};
+use crate::collect_tool_actions;
+use crate::payload_string;
+use crate::subject_for_action;
 
 use super::higher_priority_candidate;
 

@@ -1,9 +1,10 @@
-use agent_semantic_client_db::seqlock_json_memory::{
-    SeqlockJsonMemoryReader, SeqlockJsonMemoryWriter,
-};
-use serde::{Deserialize, Serialize};
+use agent_semantic_client_db::seqlock_json_memory::SeqlockJsonMemoryReader;
+use agent_semantic_client_db::seqlock_json_memory::SeqlockJsonMemoryWriter;
+use serde::Deserialize;
+use serde::Serialize;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
+use std::time::Instant;
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 struct FixtureReceipt {

@@ -14,6 +14,6 @@
   "candidates": [],
   "actualKinds": [],
   "recommendedNext": {
-    "command": "asp rust search lexical --query 'inventory' --workspace . --view seeds"
+    "command": "asp search playbook --language rust 'inventory' --intent conceptual --scope workspace --coverage candidates --explain compact --workspace ."
   }
 }

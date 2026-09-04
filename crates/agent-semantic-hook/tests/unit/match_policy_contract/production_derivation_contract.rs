@@ -1,4 +1,5 @@
-use super::{AgentActionMatch, AgentActionMatchConfig};
+use super::AgentActionMatch;
+use super::AgentActionMatchConfig;
 use crate::HookRuntime;
 use crate::tool_action::ToolAction;
 

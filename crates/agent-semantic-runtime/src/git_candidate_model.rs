@@ -1,8 +1,9 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 
-use super::{
-    GitWorkspaceFileScopeError, canonicalize_if_possible, discover_repository_candidate_snapshot,
-};
+use super::GitWorkspaceFileScopeError;
+use super::canonicalize_if_possible;
+use super::discover_repository_candidate_snapshot;
 
 #[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "camelCase")]

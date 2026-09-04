@@ -1,6 +1,8 @@
 //! Merkle materialization proof for one exact-selector fixture record.
 
-use super::{DIGEST_LEN, ExactSelectorGenerationRecordV1, ExactSelectorProjectionModeV1};
+use super::DIGEST_LEN;
+use super::ExactSelectorGenerationRecordV1;
+use super::ExactSelectorProjectionModeV1;
 
 macro_rules! proof_identity {
     ($name:ident, $doc:literal) => {

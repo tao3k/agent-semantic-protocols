@@ -300,6 +300,24 @@ impl RuntimeServerWorkspaceRegistry {
             Ok(Some(entry)) => entry.current.borrow().clone(),
             Ok(None) | Err(_) => None,
         };
+        let active_pointer_matches = if let Some(active) = active.as_ref() {
+            match super::super::workspace_generation_pointer_path(
+                &self.root,
+                &workspace_identity,
+                project_root,
+            ) {
+                Ok(pointer_path) => {
+                    super::super::WorkspaceGenerationPointerReader::matches_generation(
+                        &pointer_path,
+                        active.generation(),
+                    )
+                    .await
+                }
+                Err(_) => false,
+            }
+        } else {
+            false
+        };
         if let Some(active) = active
             && active.generation().workspace_identity
                 == materialization.as_materialization().workspace_identity
@@ -321,6 +339,7 @@ impl RuntimeServerWorkspaceRegistry {
                 == materialization
                     .as_materialization()
                     .workspace_source_scope_generation
+            && active_pointer_matches
             && matches!(
                 self.published_generation_state(&workspace_identity, project_root)
                     .await?,

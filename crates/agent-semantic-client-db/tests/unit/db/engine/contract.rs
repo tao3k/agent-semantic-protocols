@@ -335,3 +335,12 @@ fn db_engine_project_lookup_state_home_helper() {
         agent_semantic_client_db::ClientDbSourceIndexLookupState::MissingDb
     );
 }
+use super::fixture::init_git_repository;
+use super::fixture::temp_root;
+use agent_semantic_client_core::state_core::ResolvedState;
+use agent_semantic_client_core::state_core::STATE_LAYOUT_VERSION;
+use agent_semantic_client_core::state_core::TURSO_BACKEND;
+use agent_semantic_client_db::ClientDbBackend;
+use agent_semantic_client_db::ClientDbEngine;
+use std::fs;
+use std::path::PathBuf;

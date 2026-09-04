@@ -67,4 +67,23 @@ theorem missing_accelerator_does_not_block_cold_content
     ColdContentQueryable binding ∧ ¬ CanAttachDerived binding .absent := by
   simp [ColdContentQueryable, CanAttachDerived]
 
+inductive NativeSyntaxOutcome where
+  | projected
+  | sourceSyntaxUnavailable
+  | identityMismatch
+  | malformedEvidence
+  deriving DecidableEq
+
+def nativeSyntaxContinues : NativeSyntaxOutcome → Bool
+  | .projected | .sourceSyntaxUnavailable => true
+  | .identityMismatch | .malformedEvidence => false
+
+theorem owner_without_parser_selectors_preserves_later_stages :
+    nativeSyntaxContinues .sourceSyntaxUnavailable = true := by
+  rfl
+
+theorem identity_drift_cannot_be_downgraded_to_unavailable :
+    nativeSyntaxContinues .identityMismatch = false := by
+  rfl
+
 end ASPProof.WorkspaceSearchPlaybookPlanner

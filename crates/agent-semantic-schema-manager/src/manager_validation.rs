@@ -1,7 +1,8 @@
 //! Validation and reference-discovery helpers for Schema Manager inputs.
 
 use std::collections::BTreeSet;
-use std::path::{Component, Path};
+use std::path::Component;
+use std::path::Path;
 
 use serde_json::Value;
 

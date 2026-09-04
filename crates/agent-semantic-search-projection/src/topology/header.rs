@@ -1,6 +1,7 @@
 use serde_json::Value;
 
-use super::packet::{header_field_scalar, packet_query};
+use super::packet::header_field_scalar;
+use super::packet::packet_query;
 
 /// Render the topology projection header from typed packet facts.
 pub(crate) fn graph_header(

@@ -1,9 +1,12 @@
-use serde_json::{Value, json};
+use serde_json::Value;
+use serde_json::json;
 
-use super::{
-    classify, default_client_config_template, load_policy_with_configured_capabilities, registry,
-    shell, temp_project_root,
-};
+use super::classify;
+use super::default_client_config_template;
+use super::load_policy_with_configured_capabilities;
+use super::registry;
+use super::shell;
+use super::temp_project_root;
 
 fn shell_surface(tool_name: &str, field: &str, command: &str) -> Value {
     json!({

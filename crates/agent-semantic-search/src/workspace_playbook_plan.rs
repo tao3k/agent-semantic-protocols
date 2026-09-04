@@ -2,9 +2,11 @@
 
 use std::collections::BTreeSet;
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 
-use crate::{SearchPlaybookRequest, canonical_blake3_digest};
+use crate::SearchPlaybookRequest;
+use crate::canonical_blake3_digest;
 
 pub const WORKSPACE_SEARCH_PLAYBOOK_PLAN_SCHEMA_ID: &str =
     "agent.semantic-protocols.workspace-search-playbook-plan";

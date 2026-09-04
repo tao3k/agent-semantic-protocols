@@ -1,6 +1,7 @@
 //! Typed runtime development configuration and artifact-origin admission.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 
 use serde::Deserialize;
 

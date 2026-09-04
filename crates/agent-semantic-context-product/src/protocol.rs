@@ -1,7 +1,11 @@
-use super::{
-    ClaimClass, Digest, EvidenceVerdict, ProtocolId, SearchBudget, UncheckedContextProductStateV1,
-};
-use serde::{Deserialize, Serialize};
+use super::ClaimClass;
+use super::Digest;
+use super::EvidenceVerdict;
+use super::ProtocolId;
+use super::SearchBudget;
+use super::UncheckedContextProductStateV1;
+use serde::Deserialize;
+use serde::Serialize;
 use std::fmt;
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]

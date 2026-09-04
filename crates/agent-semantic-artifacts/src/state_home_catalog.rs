@@ -1,8 +1,12 @@
 //! Pure State Home catalog contract.
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 
-use crate::{ProjectBinding, RetainedObject, RetentionLease, RetentionPlanner};
+use crate::ProjectBinding;
+use crate::RetainedObject;
+use crate::RetentionLease;
+use crate::RetentionPlanner;
 
 pub const STATE_HOME_CATALOG_SCHEMA_ID: &str = "agent.semantic-protocols.state-home-catalog";
 pub const STATE_HOME_CATALOG_SCHEMA_VERSION: u32 = 1;

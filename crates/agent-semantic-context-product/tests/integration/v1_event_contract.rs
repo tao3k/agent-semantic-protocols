@@ -1,8 +1,10 @@
-use agent_semantic_context_product::{
-    ContextProductEvent, ExecutionConsumed, ExecutionRevoked, ExecutionStarted,
-    StateAuthorityReceipt,
-};
-use serde_json::{Value, json};
+use agent_semantic_context_product::ContextProductEvent;
+use agent_semantic_context_product::ExecutionConsumed;
+use agent_semantic_context_product::ExecutionRevoked;
+use agent_semantic_context_product::ExecutionStarted;
+use agent_semantic_context_product::StateAuthorityReceipt;
+use serde_json::Value;
+use serde_json::json;
 
 fn digest(byte: char) -> String {
     format!(

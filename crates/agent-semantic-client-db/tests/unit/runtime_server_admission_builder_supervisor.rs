@@ -1,10 +1,11 @@
 use std::sync::Arc;
 
 use agent_semantic_client_db::runtime_generation_cancellation::GenerationCancellation;
-use agent_semantic_client_db::runtime_server_admission::{
-    WorkspaceGenerationBuildFailure, WorkspaceGenerationBuildFuture, WorkspaceGenerationBuildMode,
-    WorkspaceGenerationCandidateIdentity, WorkspaceGenerationFailureStage,
-};
+use agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationBuildFailure;
+use agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationBuildFuture;
+use agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationBuildMode;
+use agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationCandidateIdentity;
+use agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationFailureStage;
 
 fn candidate() -> WorkspaceGenerationCandidateIdentity {
     WorkspaceGenerationCandidateIdentity {

@@ -1,25 +1,33 @@
 //! Canonical schema closure resolution and content-addressed bundle publication.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 use std::fs;
 use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 use serde_json::Value;
 
-use crate::responsibility::{
-    SchemaFamily, SchemaReferenceDecision, SchemaResponsibility, audit_schema_responsibilities,
-};
+use crate::responsibility::SchemaFamily;
+use crate::responsibility::SchemaReferenceDecision;
+use crate::responsibility::SchemaResponsibility;
+use crate::responsibility::audit_schema_responsibilities;
 
-use crate::manager_validation::{
-    ensure_unique, local_schema_name, schema_references, validate_identity, validate_relative_path,
-    validate_schema_name,
-};
-use crate::receipt::{
-    BUNDLE_MEMBERSHIP_FILE, SchemaBundleMembership, read_receipt_if_present, schema_digest,
-    tagged_content_digest, verify_bundle_receipt_blocking,
-};
+use crate::manager_validation::ensure_unique;
+use crate::manager_validation::local_schema_name;
+use crate::manager_validation::schema_references;
+use crate::manager_validation::validate_identity;
+use crate::manager_validation::validate_relative_path;
+use crate::manager_validation::validate_schema_name;
+use crate::receipt::BUNDLE_MEMBERSHIP_FILE;
+use crate::receipt::SchemaBundleMembership;
+use crate::receipt::read_receipt_if_present;
+use crate::receipt::schema_digest;
+use crate::receipt::tagged_content_digest;
+use crate::receipt::verify_bundle_receipt_blocking;
 
 pub const PROFILE_REGISTRY_SCHEMA_ID: &str =
     "agent.semantic-protocols.language-schema-profile-registry";

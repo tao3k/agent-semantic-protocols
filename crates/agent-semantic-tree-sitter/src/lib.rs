@@ -9,16 +9,25 @@
 pub mod builtin_catalog;
 pub mod catalog;
 pub mod query_syntax;
-pub use builtin_catalog::{BuiltinCatalogId, BuiltinCatalogLanguageId, builtin_catalog_source};
-pub use catalog::{
-    LoadedGrammarProfile, LoadedSyntaxCatalog, SyntaxCatalogDescriptor, extract_capture_names,
-    fingerprint_catalog, fingerprint_grammar_profile, load_grammar_profile, load_syntax_catalog,
-    normalize_capture_names,
-};
-pub use query_syntax::{
-    SyntaxQueryAbiError, SyntaxQueryAbiPattern, SyntaxQueryAbiPlan, SyntaxQueryAbiPredicate,
-    SyntaxQueryPredicateOp, SyntaxQueryPredicateValue, compile_query_abi_source,
-};
+pub use builtin_catalog::BuiltinCatalogId;
+pub use builtin_catalog::BuiltinCatalogLanguageId;
+pub use builtin_catalog::builtin_catalog_source;
+pub use catalog::LoadedGrammarProfile;
+pub use catalog::LoadedSyntaxCatalog;
+pub use catalog::SyntaxCatalogDescriptor;
+pub use catalog::extract_capture_names;
+pub use catalog::fingerprint_catalog;
+pub use catalog::fingerprint_grammar_profile;
+pub use catalog::load_grammar_profile;
+pub use catalog::load_syntax_catalog;
+pub use catalog::normalize_capture_names;
+pub use query_syntax::SyntaxQueryAbiError;
+pub use query_syntax::SyntaxQueryAbiPattern;
+pub use query_syntax::SyntaxQueryAbiPlan;
+pub use query_syntax::SyntaxQueryAbiPredicate;
+pub use query_syntax::SyntaxQueryPredicateOp;
+pub use query_syntax::SyntaxQueryPredicateValue;
+pub use query_syntax::compile_query_abi_source;
 
 #[cfg(test)]
 #[path = "../tests/unit/catalog.rs"]

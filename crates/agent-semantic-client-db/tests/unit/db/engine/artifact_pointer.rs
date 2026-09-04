@@ -1,12 +1,14 @@
 mod artifact_pointer_tests {
     use std::path::PathBuf;
     use std::sync::Arc;
-    use std::time::{SystemTime, UNIX_EPOCH};
+    use std::time::SystemTime;
+    use std::time::UNIX_EPOCH;
 
-    use agent_semantic_client_db::artifact_pointer_store::{
-        ClientDbArtifactPointerCasOutcome, ClientDbArtifactPointerCasRequest,
-        ClientDbArtifactPointerKey, ClientDbFailedArtifact, TursoArtifactPointerStore,
-    };
+    use agent_semantic_client_db::artifact_pointer_store::ClientDbArtifactPointerCasOutcome;
+    use agent_semantic_client_db::artifact_pointer_store::ClientDbArtifactPointerCasRequest;
+    use agent_semantic_client_db::artifact_pointer_store::ClientDbArtifactPointerKey;
+    use agent_semantic_client_db::artifact_pointer_store::ClientDbFailedArtifact;
+    use agent_semantic_client_db::artifact_pointer_store::TursoArtifactPointerStore;
     use agent_semantic_content_identity::hash_blob;
 
     fn temp_db(name: &str) -> PathBuf {
@@ -82,7 +84,10 @@ mod artifact_pointer_tests {
             .expect("stale CAS returns typed conflict receipt");
         assert_eq!(stale.outcome, ClientDbArtifactPointerCasOutcome::Conflict);
         assert_eq!(stale.observed_revision, 2);
-        assert_eq!(stale.observed_root_hash.as_deref(), Some(second_root.as_str()));
+        assert_eq!(
+            stale.observed_root_hash.as_deref(),
+            Some(second_root.as_str())
+        );
         drop(store);
 
         let reopened = TursoArtifactPointerStore::open(&path)
@@ -98,7 +103,10 @@ mod artifact_pointer_tests {
             })
             .await
             .expect("CAS after reopen");
-        assert_eq!(recovered.outcome, ClientDbArtifactPointerCasOutcome::Applied);
+        assert_eq!(
+            recovered.outcome,
+            ClientDbArtifactPointerCasOutcome::Applied
+        );
         assert_eq!(recovered.current.as_ref().map(|row| row.revision), Some(3));
     }
 
@@ -142,7 +150,10 @@ mod artifact_pointer_tests {
                 ClientDbArtifactPointerCasOutcome::Conflict => conflicts += 1,
             }
         }
-        assert_eq!(applied, 1, "exactly one contender may advance revision zero");
+        assert_eq!(
+            applied, 1,
+            "exactly one contender may advance revision zero"
+        );
         assert_eq!(conflicts, 15, "every losing contender is a typed conflict");
     }
 
@@ -188,7 +199,10 @@ mod artifact_pointer_tests {
             .await
             .expect("list failed artifacts");
         assert_eq!(failures.len(), 1);
-        assert_eq!(failures[0].candidate_root_hash.as_deref(), Some(failed_root.as_str()));
+        assert_eq!(
+            failures[0].candidate_root_hash.as_deref(),
+            Some(failed_root.as_str())
+        );
 
         let still_current = store
             .compare_and_set(&ClientDbArtifactPointerCasRequest {
@@ -200,7 +214,13 @@ mod artifact_pointer_tests {
             })
             .await
             .expect("failure preservation did not advance pointer");
-        assert_eq!(still_current.outcome, ClientDbArtifactPointerCasOutcome::Applied);
-        assert_eq!(still_current.current.as_ref().map(|row| row.revision), Some(2));
+        assert_eq!(
+            still_current.outcome,
+            ClientDbArtifactPointerCasOutcome::Applied
+        );
+        assert_eq!(
+            still_current.current.as_ref().map(|row| row.revision),
+            Some(2)
+        );
     }
 }

@@ -1,8 +1,12 @@
-use agent_semantic_client_db::turso_mvcc_store::{
-    TursoMvccEvent, TursoMvccStore, TursoMvccStoreConfig,
-};
-use criterion::{BatchSize, Criterion, criterion_group, criterion_main};
-use std::sync::atomic::{AtomicU64, Ordering};
+use agent_semantic_client_db::turso_mvcc_store::TursoMvccEvent;
+use agent_semantic_client_db::turso_mvcc_store::TursoMvccStore;
+use agent_semantic_client_db::turso_mvcc_store::TursoMvccStoreConfig;
+use criterion::BatchSize;
+use criterion::Criterion;
+use criterion::criterion_group;
+use criterion::criterion_main;
+use std::sync::atomic::AtomicU64;
+use std::sync::atomic::Ordering;
 
 const EVENTS_PER_PARTITION: usize = 512;
 const PARTITIONS: [&str; 4] = ["agent-a", "agent-b", "agent-c", "agent-d"];

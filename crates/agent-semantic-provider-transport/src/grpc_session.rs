@@ -1,9 +1,8 @@
-pub mod generated {
-    tonic::include_proto!("asp.provider.stream");
-}
-use generated::{
-    ProviderRegisterPacket, ProviderStreamEnvelope, provider_session_client::ProviderSessionClient,
-};
+#[path = "grpc_generated.rs"]
+pub mod generated;
+use generated::ProviderRegisterPacket;
+use generated::ProviderStreamEnvelope;
+use generated::provider_session_client::ProviderSessionClient;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 

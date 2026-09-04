@@ -168,6 +168,32 @@ theorem supervisorWaitUsesOnlyCanonicalOrInheritedEvidence
     observation = .canonicalEndpoint ∨ observation = .inheritedProcessExit := by
   cases observation <;> simp [readinessObservationAllowed] at allowed ⊢
 
+inductive RuntimeLifecycleClaim
+  | ready
+  | draining
+  | noClaim
+  deriving DecidableEq
+
+inductive RuntimeStatusObservation
+  | authenticatedReady
+  | authenticatedDraining
+  | transportUnavailable
+  | unauthenticatedFailure
+  deriving DecidableEq
+
+def lifecycleClaim : RuntimeStatusObservation → RuntimeLifecycleClaim
+  | .authenticatedReady => .ready
+  | .authenticatedDraining => .draining
+  | .transportUnavailable | .unauthenticatedFailure => .noClaim
+
+theorem transportFailureCannotFabricateLifecycleState :
+    lifecycleClaim .transportUnavailable = .noClaim := by
+  rfl
+
+theorem unauthenticatedFailureCannotFabricateLifecycleState :
+    lifecycleClaim .unauthenticatedFailure = .noClaim := by
+  rfl
+
 inductive RuntimeServicePlane
   | control
   | clientData

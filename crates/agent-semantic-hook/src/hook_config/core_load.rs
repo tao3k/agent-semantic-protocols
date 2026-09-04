@@ -1,13 +1,14 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 
-use agent_semantic_config::{
-    default_hook_client_config_template, load_asp_project_config_file,
-    load_hook_client_config_file, merge_asp_project_hook_config,
-};
+use agent_semantic_config::default_hook_client_config_template;
+use agent_semantic_config::load_asp_project_config_file;
+use agent_semantic_config::load_hook_client_config_file;
+use agent_semantic_config::merge_asp_project_hook_config;
 
-use crate::hook_config::core::{
-    ClientHookConfig, compile_config, compile_config_with_executable_capabilities,
-};
+use crate::hook_config::core::ClientHookConfig;
+use crate::hook_config::core::compile_config;
+use crate::hook_config::core::compile_config_with_executable_capabilities;
 use crate::hook_config_global::default_global_client_config_path;
 use crate::provider_manifest::project_agent_config_path;
 
@@ -24,7 +25,8 @@ pub fn default_client_config_template() -> String {
 
 /// Return the identity of the fully rendered default Hook policy projection.
 pub fn default_client_config_projection_digest() -> String {
-    use sha2::{Digest, Sha256};
+    use sha2::Digest;
+    use sha2::Sha256;
 
     format!(
         "sha256:{:x}",

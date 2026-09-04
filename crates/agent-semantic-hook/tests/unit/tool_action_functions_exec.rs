@@ -1,4 +1,6 @@
-use super::{OperationIntent, collect_tool_actions, workspace_mutation_paths};
+use super::OperationIntent;
+use super::collect_tool_actions;
+use super::workspace_mutation_paths;
 use serde_json::json;
 
 #[test]

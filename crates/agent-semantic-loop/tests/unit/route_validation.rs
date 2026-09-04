@@ -1,8 +1,14 @@
-use super::{
-    BTreeMap, BTreeSet, ProtocolId, RouteEdge, RouteExecutionMode, RouteProposal,
-    RouteValidationError, edge_set, validate_execution_mode, validate_group_dependencies,
-    validate_proposal_execution_groups,
-};
+use super::BTreeMap;
+use super::BTreeSet;
+use super::ProtocolId;
+use super::RouteEdge;
+use super::RouteExecutionMode;
+use super::RouteProposal;
+use super::RouteValidationError;
+use super::edge_set;
+use super::validate_execution_mode;
+use super::validate_group_dependencies;
+use super::validate_proposal_execution_groups;
 
 fn id(value: &str) -> ProtocolId {
     ProtocolId::parse(value).expect("valid protocol id")

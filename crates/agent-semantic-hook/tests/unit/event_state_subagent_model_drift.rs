@@ -1,6 +1,8 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 
-use agent_semantic_hook::{latest_subagent_runtime_drift, latest_subagent_runtime_rebind_verified};
+use agent_semantic_hook::latest_subagent_runtime_drift;
+use agent_semantic_hook::latest_subagent_runtime_rebind_verified;
 use agent_semantic_runtime::ensure_project_hook_state_dir;
 use serde_json::Value;
 

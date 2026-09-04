@@ -1,9 +1,9 @@
 //! Typed fixtures for active-generation projection capability tests.
 
-use agent_semantic_client_db::active_generation_projection_capability::{
-    ActiveGenerationProjectionCapabilityManifest, ActiveGenerationProjectionCapabilityReceipt,
-    ActiveGenerationProjectionMode, ActiveGenerationSelectorCapability,
-};
+use agent_semantic_client_db::active_generation_projection_capability::ActiveGenerationProjectionCapabilityManifest;
+use agent_semantic_client_db::active_generation_projection_capability::ActiveGenerationProjectionCapabilityReceipt;
+use agent_semantic_client_db::active_generation_projection_capability::ActiveGenerationProjectionMode;
+use agent_semantic_client_db::active_generation_projection_capability::ActiveGenerationSelectorCapability;
 
 pub(crate) const FIXTURE_PROJECT_ID: &str = "repo-0000000000000001";
 
@@ -11,10 +11,11 @@ pub(crate) fn content_search_generation_receipt(
     workspace_identity: &str,
     source_snapshot: &agent_semantic_content_identity::SourceSnapshotEvidence,
 ) -> agent_semantic_search::ContentSearchGenerationReceipt {
-    use agent_semantic_search::{
-        ContentSearchGenerationReceipt, SearchGenerationConstructionStage,
-        SearchGenerationIdentity, SearchGenerationStageReceipt, canonical_blake3_digest,
-    };
+    use agent_semantic_search::ContentSearchGenerationReceipt;
+    use agent_semantic_search::SearchGenerationConstructionStage;
+    use agent_semantic_search::SearchGenerationIdentity;
+    use agent_semantic_search::SearchGenerationStageReceipt;
+    use agent_semantic_search::canonical_blake3_digest;
 
     let identity = SearchGenerationIdentity {
         project_id: FIXTURE_PROJECT_ID.to_owned(),
@@ -23,8 +24,10 @@ pub(crate) fn content_search_generation_receipt(
             .expect("fixture source root digest"),
         provider_digest: canonical_blake3_digest(&source_snapshot.provider_digest)
             .expect("fixture provider digest"),
-        schema_digest:
-            "blake3-256:0000000000000000000000000000000000000000000000000000000000000000".to_owned(),
+        schema_digest: canonical_blake3_digest(
+            &agent_semantic_content_identity::project_resolution_schema_digest(),
+        )
+        .expect("fixture ProjectResolution schema digest"),
         generation_candidate_digest:
             "blake3-256:1111111111111111111111111111111111111111111111111111111111111111".to_owned(),
     };

@@ -2,7 +2,8 @@
 
 use std::fmt;
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 
 use crate::domain::HASH_ALGORITHM_BLAKE3;
 
@@ -51,19 +52,6 @@ impl ArtifactJson {
     /// Serialize a typed value into the canonical artifact JSON boundary.
     pub fn from_serializable<T: Serialize + ?Sized>(value: &T) -> Result<Self, serde_json::Error> {
         serde_json::to_value(value).map(|value| Self { value })
-    }
-
-    /// Move an already-materialized JSON value into the canonical artifact
-    /// boundary without cloning the complete value tree.
-    #[must_use]
-    pub fn from_value(value: serde_json::Value) -> Self {
-        Self { value }
-    }
-
-    /// Recover the owned JSON value after canonical hashing.
-    #[must_use]
-    pub fn into_value(self) -> serde_json::Value {
-        self.value
     }
 
     pub(crate) fn as_value(&self) -> &serde_json::Value {

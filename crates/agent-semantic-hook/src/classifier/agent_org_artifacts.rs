@@ -3,10 +3,10 @@
 use serde_json::Value;
 use std::path::Path;
 
-use crate::{
-    ClientHookConfig, DecisionKind, HookDecision,
-    hook_config_agent_org::AgentOrgArtifactsArchiveWarning,
-};
+use crate::ClientHookConfig;
+use crate::DecisionKind;
+use crate::HookDecision;
+use crate::hook_config_agent_org::AgentOrgArtifactsArchiveWarning;
 
 pub(super) fn with_agent_org_artifact_recovery(
     mut decision: HookDecision,

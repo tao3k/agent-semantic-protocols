@@ -1,8 +1,13 @@
-use super::{
-    ClientDbEngine, ClientDbSourceIndexLookupState, Duration, Instant, LanguageId,
-    commit_fixture_generation, large_refresh_request, refresh_request,
-    source_index_refresh_test_guard, temp_project_root,
-};
+use super::ClientDbEngine;
+use super::ClientDbSourceIndexLookupState;
+use super::Duration;
+use super::Instant;
+use super::LanguageId;
+use super::commit_fixture_generation;
+use super::large_refresh_request;
+use super::refresh_request;
+use super::source_index_refresh_test_guard;
+use super::temp_project_root;
 
 #[tokio::test(flavor = "current_thread")]
 async fn source_index_incremental_refresh_prunes_removed_owner_and_postings() {

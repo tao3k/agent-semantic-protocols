@@ -1,8 +1,9 @@
-use super::{
-    EXACT_STRUCTURAL_SELECTOR_SCHEMA_ID, EXACT_STRUCTURAL_SELECTOR_SCHEMA_VERSION,
-    ExactCanonicalItemSelectorV1, ExactStructuralSelectorSegmentV1, ExactStructuralSelectorV1,
-    ExactStructuralSelectorValidationError,
-};
+use super::EXACT_STRUCTURAL_SELECTOR_SCHEMA_ID;
+use super::EXACT_STRUCTURAL_SELECTOR_SCHEMA_VERSION;
+use super::ExactCanonicalItemSelectorV1;
+use super::ExactStructuralSelectorSegmentV1;
+use super::ExactStructuralSelectorV1;
+use super::ExactStructuralSelectorValidationError;
 
 fn selector() -> ExactStructuralSelectorV1 {
     ExactStructuralSelectorV1 {

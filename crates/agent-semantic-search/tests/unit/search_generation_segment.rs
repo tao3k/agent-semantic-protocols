@@ -1,7 +1,8 @@
-use agent_semantic_search::{
-    SearchGenerationSection, SearchGenerationSectionKind, SearchGenerationSectionRepresentation,
-    ValidatedSearchGenerationSegment, encode_search_generation_segment,
-};
+use agent_semantic_search::SearchGenerationSection;
+use agent_semantic_search::SearchGenerationSectionKind;
+use agent_semantic_search::SearchGenerationSectionRepresentation;
+use agent_semantic_search::ValidatedSearchGenerationSegment;
+use agent_semantic_search::encode_search_generation_segment;
 
 fn sections() -> Vec<SearchGenerationSection> {
     [

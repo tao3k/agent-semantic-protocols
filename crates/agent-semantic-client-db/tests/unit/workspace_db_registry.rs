@@ -19,12 +19,16 @@ async fn delayed_resolver_does_not_block_scheduler_heartbeat() {
     assert!(resolver.await.expect("resolver task").is_ok());
 }
 
-use agent_semantic_client_db::{
-    ProviderIncrementalOwnerWrite, ProviderOwnerFingerprint, ProviderOwnerMetadata,
-    WorkspaceDbRegistry, WorkspaceDbRegistryCounters,
-};
+use agent_semantic_client_db::ProviderIncrementalOwnerWrite;
+use agent_semantic_client_db::ProviderOwnerFingerprint;
+use agent_semantic_client_db::ProviderOwnerMetadata;
+use agent_semantic_client_db::WorkspaceDbRegistry;
+use agent_semantic_client_db::WorkspaceDbRegistryCounters;
 
-use crate::test_support::{StateHomeGuard, TestDir, environment_lock, workspace};
+use crate::test_support::StateHomeGuard;
+use crate::test_support::TestDir;
+use crate::test_support::environment_lock;
+use crate::test_support::workspace;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn runtime_server_registry_rejects_non_gix_root_without_project_shell() {

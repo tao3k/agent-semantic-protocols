@@ -44,6 +44,13 @@ concurrent pressure sample MUST satisfy wall =elapsedMicros <= 500=. Thus a resu
 such as 823us is still admitted by the fail-closed boundary but is a performance
 regression because it lacks sufficient scheduling and filesystem headroom.
 
+=ASP_NO_AGENT=1= is the sole escape spelling. Variables such as
+=ASP_NO_ASP=1=, and values such as =0=, =true=, or =2=, are not compatibility
+aliases and MUST continue through the ordinary fail-closed bootstrap path. The
+parser, evaluator, and launcher share one typed recovery-selector
+implementation so a future spelling cannot silently become authority at only
+one layer.
+
 Codex Bash PreTool additionally has one command-local projection in the Rust
 =asp-hook= process boundary. Before loading the embedded policy bundle, the Shell Parser
 proves that =ASP_NO_AGENT=1= reaches the requested process through
@@ -57,16 +64,14 @@ before the policy bundle, Reader Probe, Agent dispatch, Runtime, or any other
 policy rule. Any generation that embeds a policy rule for this escape is a
 failed publication candidate because policy cannot authorize its own bypass.
 
-For an ordinary =asp= CLI invocation, inherited =ASP_NO_AGENT=1= selects the
-=agent-semantic-client= single-thread server-first IPC lane.  That lane creates no Tokio
-worker pool and registers no Ctrl-C signal listener; it retains only the I/O
-driver required to reach or recover the resident ASP Server.  When the owner is
-dead or missing, the lane consumes the event-bound immutable candidate from the
-durable pending-or-applied V1 activation and performs exactly one typed
-supervisor recovery before continuing the original client request.  It is not
-a local parser/provider fallback, does not read a legacy mutable artifact
-identity projection, and cannot override operator-stop or endpoint/candidate
-identity denial.  Such denial remains a V1 typed CLI failure.
+For an ordinary =asp= CLI invocation, inherited =ASP_NO_AGENT=1= has no CLI,
+Runtime, transport, JSON-output, or recovery semantics.  The public CLI always
+uses the same single-thread, server-first client runtime and the same verified
+serving endpoint as a normal invocation.  It never recovers, starts, or selects
+an alternate Runtime route based on this environment variable.  Consequently,
+the variable cannot become a local parser/provider fallback, read a mutable
+artifact identity projection, or override operator-stop or endpoint/candidate
+identity denial.  Those conditions remain typed CLI terminals.
 
 Hook invocation is one-shot but not low-concurrency. Concurrent Host actions
 MUST resolve the stable =ASP_STATE_HOME/runtime/bin/asp-hook= launcher and

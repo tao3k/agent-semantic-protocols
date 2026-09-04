@@ -2,9 +2,8 @@
 
 use agent_semantic_config::HookClientConfigFile;
 
-use crate::hook_config::core::match_types::{
-    DurableCommandContainsMatcher, DurablePathGlobMatcher,
-};
+use crate::hook_config::core::match_types::DurableCommandContainsMatcher;
+use crate::hook_config::core::match_types::DurablePathGlobMatcher;
 
 pub(super) const DURABLE_HOOK_MATCHER_SCHEMA_ID: &str =
     "agent.semantic-protocols.hook-matcher-artifact";

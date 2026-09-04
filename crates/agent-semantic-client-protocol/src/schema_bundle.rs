@@ -1,9 +1,10 @@
 use std::collections::BTreeSet;
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 use serde_json::Value;
 
-use crate::SCHEMA_VERSION;
+use crate::protocol_identity::SCHEMA_VERSION;
 
 pub const SCHEMA_BUNDLE_METHOD: &str = "asp.schema.bundle";
 pub const SCHEMA_BUNDLE_REQUEST_SCHEMA_ID: &str =

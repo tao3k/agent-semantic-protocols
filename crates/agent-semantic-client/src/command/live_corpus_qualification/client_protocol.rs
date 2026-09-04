@@ -3,17 +3,21 @@
 use std::path::Path;
 use std::time::Instant;
 
-use agent_semantic_client::{
-    LanguageCommandClient, LanguageCommandOperation, LanguageCommandRequest,
-};
-use agent_semantic_client_protocol::{
-    AspClientExactQueryFailure, AspClientExactQueryRequest, AspClientExactQueryResponse,
-    AspClientSearchRequest, ClientFrame, ClientOutcome, LIVE_CORPUS_CACHE_STATE_REQUEST_SCHEMA_ID,
-    LiveCorpusCacheStateRequest,
-};
+use agent_semantic_client::LanguageCommandClient;
+use agent_semantic_client::LanguageCommandOperation;
+use agent_semantic_client::LanguageCommandRequest;
+use agent_semantic_client_protocol::AspClientExactQueryFailure;
+use agent_semantic_client_protocol::AspClientExactQueryRequest;
+use agent_semantic_client_protocol::AspClientExactQueryResponse;
+use agent_semantic_client_protocol::AspClientSearchRequest;
+use agent_semantic_client_protocol::ClientFrame;
+use agent_semantic_client_protocol::ClientOutcome;
+use agent_semantic_client_protocol::LIVE_CORPUS_CACHE_STATE_REQUEST_SCHEMA_ID;
+use agent_semantic_client_protocol::LiveCorpusCacheStateRequest;
 use agent_semantic_search::SearchPlaybookReceipt;
 
-use super::contract::{LatencyDistribution, QualificationCase};
+use super::contract::LatencyDistribution;
+use super::contract::QualificationCase;
 
 #[derive(Debug, serde::Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]

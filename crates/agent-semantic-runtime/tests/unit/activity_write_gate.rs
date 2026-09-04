@@ -1,13 +1,12 @@
 //! State activity write-gate tests.
 
-use agent_semantic_runtime::{
-    project_runtime_state_with_state_home, project_state_paths_with_state_home,
-};
-use std::{
-    fs,
-    path::{Path, PathBuf},
-    time::{SystemTime, UNIX_EPOCH},
-};
+use agent_semantic_runtime::project_runtime_state_with_state_home;
+use agent_semantic_runtime::project_state_paths_with_state_home;
+use std::fs;
+use std::path::Path;
+use std::path::PathBuf;
+use std::time::SystemTime;
+use std::time::UNIX_EPOCH;
 
 struct TemporaryStateHome(PathBuf);
 

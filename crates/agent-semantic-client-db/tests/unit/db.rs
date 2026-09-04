@@ -1,22 +1,37 @@
-use std::time::{SystemTime, UNIX_EPOCH};
-use std::{env, path::PathBuf, process::Command, sync::Arc};
+use std::env;
+use std::path::PathBuf;
+use std::process::Command;
+use std::sync::Arc;
+use std::time::SystemTime;
+use std::time::UNIX_EPOCH;
 
 use crate::source_index_fixture::build_fixture_source_index_import;
 
-use agent_semantic_client_core::{
-    CacheGenerationId, ClientCacheFileHash, LanguageId, ProviderId, SemanticSchemaId,
-    SemanticSchemaVersion, state_core::ResolvedState,
-};
-use agent_semantic_client_db::{
-    AGENT_SESSION_REGISTRY_DB_NAME, AgentSessionDispatchClaimRequest,
-    AgentSessionDispatchCompleteRequest, AgentSessionRegisterRequest, AgentSessionRegistry,
-    AgentSessionToolEventRequest, CLIENT_DB_SOURCE_INDEX_PROVIDER_ID,
-    CLIENT_DB_SOURCE_INDEX_SCHEMA_ID, CLIENT_DB_SOURCE_INDEX_SCHEMA_VERSION,
-    ClientDbSourceIndexImportAssemblyRequest, ClientDbSourceIndexImportFile,
-    ClientDbSourceIndexImportRequest, ClientDbSourceIndexRefreshRequest,
-    ClientDbSourceIndexScopeFile, ClientDbSourceIndexSource, client_db_source_index_file_count,
-    source_index_relative_path, source_index_scope_dirs,
-};
+use agent_semantic_client_core::CacheGenerationId;
+use agent_semantic_client_core::ClientCacheFileHash;
+use agent_semantic_client_core::LanguageId;
+use agent_semantic_client_core::ProviderId;
+use agent_semantic_client_core::SemanticSchemaId;
+use agent_semantic_client_core::SemanticSchemaVersion;
+use agent_semantic_client_core::state_core::ResolvedState;
+use agent_semantic_client_db::AGENT_SESSION_REGISTRY_DB_NAME;
+use agent_semantic_client_db::AgentSessionDispatchClaimRequest;
+use agent_semantic_client_db::AgentSessionDispatchCompleteRequest;
+use agent_semantic_client_db::AgentSessionRegisterRequest;
+use agent_semantic_client_db::AgentSessionRegistry;
+use agent_semantic_client_db::AgentSessionToolEventRequest;
+use agent_semantic_client_db::CLIENT_DB_SOURCE_INDEX_PROVIDER_ID;
+use agent_semantic_client_db::CLIENT_DB_SOURCE_INDEX_SCHEMA_ID;
+use agent_semantic_client_db::CLIENT_DB_SOURCE_INDEX_SCHEMA_VERSION;
+use agent_semantic_client_db::ClientDbSourceIndexImportAssemblyRequest;
+use agent_semantic_client_db::ClientDbSourceIndexImportFile;
+use agent_semantic_client_db::ClientDbSourceIndexImportRequest;
+use agent_semantic_client_db::ClientDbSourceIndexRefreshRequest;
+use agent_semantic_client_db::ClientDbSourceIndexScopeFile;
+use agent_semantic_client_db::ClientDbSourceIndexSource;
+use agent_semantic_client_db::client_db_source_index_file_count;
+use agent_semantic_client_db::source_index_relative_path;
+use agent_semantic_client_db::source_index_scope_dirs;
 
 #[tokio::test]
 async fn schema_version_stays_on_first_turso_release_contract() {
@@ -855,6 +870,7 @@ async fn source_index_import_assembly_uses_turso_ready_contract_rows() {
         provider_id: ProviderId::from("asp-rust"),
         projection_coverage:
             agent_semantic_client_db::ClientDbSourceIndexProjectionCoverage::Complete,
+        projection_diagnostic: None,
         selector_receipts: vec![agent_semantic_client_db::ClientDbSourceIndexSelector {
             owner_path: "src/lib.rs".into(),
             provider_id: ProviderId::from("asp-rust"),

@@ -6,14 +6,24 @@
 
 use std::collections::BTreeSet;
 
-use crate::{
-    AGENT_SESSION_REGISTER_METHOD, AGENT_SESSION_REGISTER_REQUEST_SCHEMA_ID,
-    AGENT_SESSION_REGISTER_RESPONSE_SCHEMA_ID, CLIENT_CATALOG_SCHEMA_ID, CLIENT_PROTOCOL_ID,
-    CLIENT_PROTOCOL_VERSION, ClientCapabilities, ClientMethod, ClientParameter,
-    ClientParameterCardinality, ClientParameterSource, ClientParameterType, ClientProtocolCatalog,
-    ClientTransport, SCHEMA_BUNDLE_METHOD, SCHEMA_BUNDLE_REQUEST_SCHEMA_ID,
-    SCHEMA_BUNDLE_RESPONSE_SCHEMA_ID, SCHEMA_VERSION,
-};
+use crate::AGENT_SESSION_REGISTER_METHOD;
+use crate::AGENT_SESSION_REGISTER_REQUEST_SCHEMA_ID;
+use crate::AGENT_SESSION_REGISTER_RESPONSE_SCHEMA_ID;
+use crate::ClientCapabilities;
+use crate::ClientMethod;
+use crate::ClientParameter;
+use crate::ClientParameterCardinality;
+use crate::ClientParameterSource;
+use crate::ClientParameterType;
+use crate::ClientProtocolCatalog;
+use crate::ClientTransport;
+use crate::SCHEMA_BUNDLE_METHOD;
+use crate::SCHEMA_BUNDLE_REQUEST_SCHEMA_ID;
+use crate::SCHEMA_BUNDLE_RESPONSE_SCHEMA_ID;
+use crate::protocol_identity::CLIENT_CATALOG_SCHEMA_ID;
+use crate::protocol_identity::CLIENT_PROTOCOL_ID;
+use crate::protocol_identity::CLIENT_PROTOCOL_VERSION;
+use crate::protocol_identity::SCHEMA_VERSION;
 
 const ROUTE_FAILURE_SCHEMA_ID: &str = "agent.semantic-protocols.route-failure";
 const SEARCH_PACKET_SCHEMA_ID: &str = "agent.semantic-protocols.search-packet";
@@ -25,6 +35,10 @@ const SOURCE_INDEX_LOOKUP_RESPONSE_SCHEMA_ID: &str =
     "agent.semantic-protocols.resident-search-result";
 const EXACT_QUERY_REQUEST_SCHEMA_ID: &str =
     "agent.semantic-protocols.asp-client-exact-query-request";
+const WORKSPACE_SEARCH_PLAYBOOK_REQUEST_SCHEMA_ID: &str =
+    "agent.semantic-protocols.asp-client-workspace-search-playbook-request";
+const WORKSPACE_SEARCH_PLAYBOOK_RESPONSE_SCHEMA_ID: &str =
+    "agent.semantic-protocols.workspace-search-playbook-plan";
 
 pub const GRAPH_EVALUATE_METHOD: &str = "asp.graph.evaluate";
 pub const GRAPH_EVALUATE_REQUEST_SCHEMA_ID: &str =
@@ -43,6 +57,7 @@ pub const CANCELLATION_PROBE_REQUEST_SCHEMA_ID: &str =
 pub const CANCELLATION_PROBE_RESPONSE_SCHEMA_ID: &str =
     "agent.semantic-protocols.asp-client-cancellation-probe-response";
 pub const WORKSPACE_GENERATION_ENSURE_READY_METHOD: &str = "asp.workspace.generation.ensure-ready";
+pub const WORKSPACE_SEARCH_PLAYBOOK_METHOD: &str = "asp.workspace.search.playbook";
 pub const WORKSPACE_GENERATION_ENSURE_READY_REQUEST_SCHEMA_ID: &str =
     "agent.semantic-protocols.asp-client-workspace-generation-ensure-ready-request";
 pub const WORKSPACE_GENERATION_ENSURE_READY_RESPONSE_SCHEMA_ID: &str =
@@ -54,6 +69,7 @@ pub const WORKSPACE_GENERATION_ENSURE_READY_RESPONSE_SCHEMA_ID: &str =
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ClientDispatchClass {
     InteractiveRead,
+    CompleteGenerationRead,
     ColdGenerationAdmission,
 }
 
@@ -61,6 +77,15 @@ pub enum ClientDispatchClass {
 pub fn classify_client_dispatch(method: &str) -> ClientDispatchClass {
     if method == WORKSPACE_GENERATION_ENSURE_READY_METHOD {
         ClientDispatchClass::ColdGenerationAdmission
+    } else if method == WORKSPACE_SEARCH_PLAYBOOK_METHOD
+        || method.ends_with(".search")
+        || method.ends_with(".query")
+    {
+        // Language Search and exact Query first establish the immutable
+        // CompleteGeneration barrier. Transports must not reinterpret that
+        // barrier as an interactive response deadline; the bounded resident
+        // read begins only after the generation becomes readable.
+        ClientDispatchClass::CompleteGenerationRead
     } else {
         ClientDispatchClass::InteractiveRead
     }
@@ -77,6 +102,7 @@ pub enum ServerClientRoute {
     CancellationProbe,
     LiveCorpusCacheState,
     WorkspaceGenerationEnsureReady,
+    WorkspaceSearchPlaybook,
     GraphEvaluate,
     GraphsTimeline,
     Search,
@@ -102,6 +128,7 @@ impl ServerClientRoute {
             Self::CancellationProbe => "lifecycle.cancellation",
             Self::LiveCorpusCacheState => "live-corpus.cache-state",
             Self::WorkspaceGenerationEnsureReady => "workspace.generation.ensure-ready",
+            Self::WorkspaceSearchPlaybook => "workspace.search.playbook",
             Self::GraphEvaluate => "graph.evaluate",
             Self::GraphsTimeline => "graphs.timeline",
             Self::Search => "search",
@@ -135,6 +162,7 @@ pub fn server_client_methods(
         cancellation_probe_method(),
         live_corpus_cache_state_method(),
         workspace_generation_ensure_ready_method(),
+        workspace_search_playbook_method(),
         schema_bundle_method(),
         graph_evaluate_method(),
         graphs_timeline_method(),
@@ -146,11 +174,12 @@ pub fn server_client_methods(
 fn multi_agent_host_event_method() -> ClientMethod {
     ClientMethod {
         method: MULTI_AGENT_HOST_EVENT_METHOD.to_owned(),
-        route_id: MULTI_AGENT_HOST_EVENT_METHOD.to_owned(),
-        request_schema_id: "agent.semantic-protocols.codex-multi-agent-v2-host-lifecycle-event"
-            .to_owned(),
-        response_schema_id: "agent.semantic-protocols.agent-session-host-binding".to_owned(),
-        error_schema_ids: vec![ROUTE_FAILURE_SCHEMA_ID.to_owned()],
+        route_id: client_route_id(MULTI_AGENT_HOST_EVENT_METHOD),
+        request_schema_id: client_schema_id(
+            "agent.semantic-protocols.codex-multi-agent-v2-host-lifecycle-event",
+        ),
+        response_schema_id: client_schema_id("agent.semantic-protocols.agent-session-host-binding"),
+        error_schema_ids: vec![client_schema_id(ROUTE_FAILURE_SCHEMA_ID)],
         parameters: vec![required("event", ClientParameterType::Json)],
         cancellable: false,
         streaming: false,
@@ -160,11 +189,14 @@ fn multi_agent_host_event_method() -> ClientMethod {
 fn multi_agent_children_method() -> ClientMethod {
     ClientMethod {
         method: MULTI_AGENT_CHILDREN_METHOD.to_owned(),
-        route_id: MULTI_AGENT_CHILDREN_METHOD.to_owned(),
-        request_schema_id: "agent.semantic-protocols.agent-session-lifecycle-projection".to_owned(),
-        response_schema_id:
-            "agent.semantic-protocols.codex-multi-agent-v2-control-plane-projection".to_owned(),
-        error_schema_ids: vec![ROUTE_FAILURE_SCHEMA_ID.to_owned()],
+        route_id: client_route_id(MULTI_AGENT_CHILDREN_METHOD),
+        request_schema_id: client_schema_id(
+            "agent.semantic-protocols.agent-session-lifecycle-projection",
+        ),
+        response_schema_id: client_schema_id(
+            "agent.semantic-protocols.codex-multi-agent-v2-control-plane-projection",
+        ),
+        error_schema_ids: vec![client_schema_id(ROUTE_FAILURE_SCHEMA_ID)],
         parameters: vec![required_string("rootSessionId")],
         cancellable: false,
         streaming: false,
@@ -174,10 +206,10 @@ fn multi_agent_children_method() -> ClientMethod {
 fn agent_session_register_method() -> ClientMethod {
     ClientMethod {
         method: AGENT_SESSION_REGISTER_METHOD.to_owned(),
-        route_id: AGENT_SESSION_REGISTER_METHOD.to_owned(),
-        request_schema_id: AGENT_SESSION_REGISTER_REQUEST_SCHEMA_ID.to_owned(),
-        response_schema_id: AGENT_SESSION_REGISTER_RESPONSE_SCHEMA_ID.to_owned(),
-        error_schema_ids: vec![ROUTE_FAILURE_SCHEMA_ID.to_owned()],
+        route_id: client_route_id(AGENT_SESSION_REGISTER_METHOD),
+        request_schema_id: client_schema_id(AGENT_SESSION_REGISTER_REQUEST_SCHEMA_ID),
+        response_schema_id: client_schema_id(AGENT_SESSION_REGISTER_RESPONSE_SCHEMA_ID),
+        error_schema_ids: vec![client_schema_id(ROUTE_FAILURE_SCHEMA_ID)],
         parameters: vec![
             required_string("schemaId"),
             required_string("schemaVersion"),
@@ -196,10 +228,10 @@ fn agent_session_register_method() -> ClientMethod {
 fn live_corpus_cache_state_method() -> ClientMethod {
     ClientMethod {
         method: LIVE_CORPUS_CACHE_STATE_METHOD.to_owned(),
-        route_id: LIVE_CORPUS_CACHE_STATE_METHOD.to_owned(),
-        request_schema_id: crate::LIVE_CORPUS_CACHE_STATE_REQUEST_SCHEMA_ID.to_owned(),
-        response_schema_id: crate::LIVE_CORPUS_CACHE_STATE_RECEIPT_SCHEMA_ID.to_owned(),
-        error_schema_ids: vec![ROUTE_FAILURE_SCHEMA_ID.to_owned()],
+        route_id: client_route_id(LIVE_CORPUS_CACHE_STATE_METHOD),
+        request_schema_id: client_schema_id(crate::LIVE_CORPUS_CACHE_STATE_REQUEST_SCHEMA_ID),
+        response_schema_id: client_schema_id(crate::LIVE_CORPUS_CACHE_STATE_RECEIPT_SCHEMA_ID),
+        error_schema_ids: vec![client_schema_id(ROUTE_FAILURE_SCHEMA_ID)],
         parameters: vec![
             required_string("schemaId"),
             required_string("schemaVersion"),
@@ -222,10 +254,10 @@ fn live_corpus_cache_state_method() -> ClientMethod {
 fn schema_bundle_method() -> ClientMethod {
     ClientMethod {
         method: SCHEMA_BUNDLE_METHOD.to_owned(),
-        route_id: SCHEMA_BUNDLE_METHOD.to_owned(),
-        request_schema_id: SCHEMA_BUNDLE_REQUEST_SCHEMA_ID.to_owned(),
-        response_schema_id: SCHEMA_BUNDLE_RESPONSE_SCHEMA_ID.to_owned(),
-        error_schema_ids: vec![ROUTE_FAILURE_SCHEMA_ID.to_owned()],
+        route_id: client_route_id(SCHEMA_BUNDLE_METHOD),
+        request_schema_id: client_schema_id(SCHEMA_BUNDLE_REQUEST_SCHEMA_ID),
+        response_schema_id: client_schema_id(SCHEMA_BUNDLE_RESPONSE_SCHEMA_ID),
+        error_schema_ids: vec![client_schema_id(ROUTE_FAILURE_SCHEMA_ID)],
         parameters: vec![
             required_string("schemaId"),
             required_string("schemaVersion"),
@@ -241,23 +273,31 @@ fn schema_bundle_method() -> ClientMethod {
 fn cancellation_probe_method() -> ClientMethod {
     ClientMethod {
         method: CANCELLATION_PROBE_METHOD.to_owned(),
-        route_id: CANCELLATION_PROBE_METHOD.to_owned(),
-        request_schema_id: CANCELLATION_PROBE_REQUEST_SCHEMA_ID.to_owned(),
-        response_schema_id: CANCELLATION_PROBE_RESPONSE_SCHEMA_ID.to_owned(),
-        error_schema_ids: vec![ROUTE_FAILURE_SCHEMA_ID.to_owned()],
+        route_id: client_route_id(CANCELLATION_PROBE_METHOD),
+        request_schema_id: client_schema_id(CANCELLATION_PROBE_REQUEST_SCHEMA_ID),
+        response_schema_id: client_schema_id(CANCELLATION_PROBE_RESPONSE_SCHEMA_ID),
+        error_schema_ids: vec![client_schema_id(ROUTE_FAILURE_SCHEMA_ID)],
         parameters: Vec::new(),
         cancellable: true,
         streaming: false,
     }
 }
 
+fn client_route_id(value: &str) -> crate::ClientRouteId {
+    crate::ClientRouteId::new(value).expect("static client route id")
+}
+
+fn client_schema_id(value: &str) -> crate::ClientSchemaId {
+    crate::ClientSchemaId::new(value).expect("static client schema id")
+}
+
 fn workspace_generation_ensure_ready_method() -> ClientMethod {
     ClientMethod {
         method: WORKSPACE_GENERATION_ENSURE_READY_METHOD.to_owned(),
-        route_id: WORKSPACE_GENERATION_ENSURE_READY_METHOD.to_owned(),
-        request_schema_id: WORKSPACE_GENERATION_ENSURE_READY_REQUEST_SCHEMA_ID.to_owned(),
-        response_schema_id: WORKSPACE_GENERATION_ENSURE_READY_RESPONSE_SCHEMA_ID.to_owned(),
-        error_schema_ids: vec![ROUTE_FAILURE_SCHEMA_ID.to_owned()],
+        route_id: client_route_id(WORKSPACE_GENERATION_ENSURE_READY_METHOD),
+        request_schema_id: client_schema_id(WORKSPACE_GENERATION_ENSURE_READY_REQUEST_SCHEMA_ID),
+        response_schema_id: client_schema_id(WORKSPACE_GENERATION_ENSURE_READY_RESPONSE_SCHEMA_ID),
+        error_schema_ids: vec![client_schema_id(ROUTE_FAILURE_SCHEMA_ID)],
         parameters: vec![ClientParameter {
             name: "languageId".to_owned(),
             value_type: ClientParameterType::String,
@@ -349,6 +389,11 @@ pub fn resolve_server_client_method_owner(
             ServerClientRoute::WorkspaceGenerationEnsureReady,
         ));
     }
+    if method == WORKSPACE_SEARCH_PLAYBOOK_METHOD {
+        return Ok(ResolvedServerClientMethod::Server(
+            ServerClientRoute::WorkspaceSearchPlaybook,
+        ));
+    }
     if method == GRAPH_TIMELINE_METHOD {
         return Ok(ResolvedServerClientMethod::Server(
             ServerClientRoute::GraphsTimeline,
@@ -388,10 +433,10 @@ fn route_from_suffix(suffix: &str) -> Option<ServerClientRoute> {
 fn graph_evaluate_method() -> ClientMethod {
     ClientMethod {
         method: GRAPH_EVALUATE_METHOD.to_owned(),
-        route_id: GRAPH_EVALUATE_METHOD.to_owned(),
-        request_schema_id: GRAPH_EVALUATE_REQUEST_SCHEMA_ID.to_owned(),
-        response_schema_id: GRAPH_EVALUATE_RESPONSE_SCHEMA_ID.to_owned(),
-        error_schema_ids: vec![ROUTE_FAILURE_SCHEMA_ID.to_owned()],
+        route_id: client_route_id(GRAPH_EVALUATE_METHOD),
+        request_schema_id: client_schema_id(GRAPH_EVALUATE_REQUEST_SCHEMA_ID),
+        response_schema_id: client_schema_id(GRAPH_EVALUATE_RESPONSE_SCHEMA_ID),
+        error_schema_ids: vec![client_schema_id(ROUTE_FAILURE_SCHEMA_ID)],
         parameters: vec![
             required_string("schemaId"),
             required_string("schemaVersion"),
@@ -413,13 +458,37 @@ fn graph_evaluate_method() -> ClientMethod {
 fn graphs_timeline_method() -> ClientMethod {
     ClientMethod {
         method: GRAPH_TIMELINE_METHOD.to_owned(),
-        route_id: GRAPH_TIMELINE_METHOD.to_owned(),
-        request_schema_id: GRAPH_TIMELINE_REQUEST_SCHEMA_ID.to_owned(),
-        response_schema_id: GRAPH_TIMELINE_RESPONSE_SCHEMA_ID.to_owned(),
-        error_schema_ids: vec![ROUTE_FAILURE_SCHEMA_ID.to_owned()],
+        route_id: client_route_id(GRAPH_TIMELINE_METHOD),
+        request_schema_id: client_schema_id(GRAPH_TIMELINE_REQUEST_SCHEMA_ID),
+        response_schema_id: client_schema_id(GRAPH_TIMELINE_RESPONSE_SCHEMA_ID),
+        error_schema_ids: vec![client_schema_id(ROUTE_FAILURE_SCHEMA_ID)],
         parameters: vec![
             required("eventPacket", ClientParameterType::Json),
             required("arguments", ClientParameterType::StringArray),
+        ],
+        cancellable: true,
+        streaming: false,
+    }
+}
+
+fn workspace_search_playbook_method() -> ClientMethod {
+    ClientMethod {
+        method: WORKSPACE_SEARCH_PLAYBOOK_METHOD.to_owned(),
+        route_id: client_route_id(WORKSPACE_SEARCH_PLAYBOOK_METHOD),
+        request_schema_id: client_schema_id(WORKSPACE_SEARCH_PLAYBOOK_REQUEST_SCHEMA_ID),
+        response_schema_id: client_schema_id(WORKSPACE_SEARCH_PLAYBOOK_RESPONSE_SCHEMA_ID),
+        error_schema_ids: vec![client_schema_id(ROUTE_FAILURE_SCHEMA_ID)],
+        parameters: vec![
+            required_string("schemaId"),
+            required_string("schemaVersion"),
+            optional("language", ClientParameterType::String),
+            required_string("intent"),
+            required_string("query"),
+            required_string("scope"),
+            required_string("coverage"),
+            required("maxOwners", ClientParameterType::UnsignedInteger),
+            required("deadlineMs", ClientParameterType::UnsignedInteger),
+            required_string("explain"),
         ],
         cancellable: true,
         streaming: false,
@@ -482,10 +551,10 @@ fn method(
     let route_id = format!("{language_id}.{}", route.operation());
     ClientMethod {
         method: route_id.clone(),
-        route_id,
-        request_schema_id: request_schema_id.to_owned(),
-        response_schema_id: response_schema_id.to_owned(),
-        error_schema_ids: vec![ROUTE_FAILURE_SCHEMA_ID.to_owned()],
+        route_id: crate::ClientRouteId::new(route_id).expect("derived client route id"),
+        request_schema_id: client_schema_id(request_schema_id),
+        response_schema_id: client_schema_id(response_schema_id),
+        error_schema_ids: vec![client_schema_id(ROUTE_FAILURE_SCHEMA_ID)],
         parameters,
         cancellable: true,
         streaming: false,

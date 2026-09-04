@@ -1,16 +1,20 @@
 //! Immutable content-store publication and stable artifact links.
 
 use std::io::ErrorKind;
-use std::path::{Path, PathBuf};
-use std::sync::{Arc, OnceLock};
+use std::path::Path;
+use std::path::PathBuf;
+use std::sync::Arc;
+use std::sync::OnceLock;
 
 use agent_semantic_config::runtime_dev::ArtifactOrigin;
 
-use crate::runtime_artifact_catalog::{
-    QualifiedRuntimeArtifactSource, RUNTIME_ARTIFACT_REFERENCE_SCHEMA_ID,
-    RUNTIME_ARTIFACT_REFERENCE_SCHEMA_VERSION, RuntimeArtifactReference, RuntimeBinaryIdentity,
-    load_runtime_developer_root, runtime_artifact_source_generation,
-};
+use crate::runtime_artifact_catalog::QualifiedRuntimeArtifactSource;
+use crate::runtime_artifact_catalog::RUNTIME_ARTIFACT_REFERENCE_SCHEMA_ID;
+use crate::runtime_artifact_catalog::RUNTIME_ARTIFACT_REFERENCE_SCHEMA_VERSION;
+use crate::runtime_artifact_catalog::RuntimeArtifactReference;
+use crate::runtime_artifact_catalog::RuntimeBinaryIdentity;
+use crate::runtime_artifact_catalog::load_runtime_developer_root;
+use crate::runtime_artifact_catalog::runtime_artifact_source_generation;
 
 pub(crate) fn runtime_artifact_content_digest(
     path: &Path,
@@ -553,7 +557,8 @@ fn resolve_artifact_profile_slot(
 }
 
 fn temporary_runtime_artifact_path(target: &Path) -> PathBuf {
-    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::sync::atomic::AtomicU64;
+    use std::sync::atomic::Ordering;
     static SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
     let file_name = target

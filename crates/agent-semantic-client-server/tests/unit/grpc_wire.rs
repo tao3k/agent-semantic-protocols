@@ -1,13 +1,29 @@
-use agent_semantic_client_protocol::{
-    CLIENT_CATALOG_SCHEMA_ID, CLIENT_FRAME_SCHEMA_ID, CLIENT_PROTOCOL_ID, CLIENT_PROTOCOL_VERSION,
-    ClientCapabilities, ClientFrame, ClientFrameBase, ClientInfo, ClientMethod, ClientOutcome,
-    ClientParameter, ClientParameterCardinality, ClientParameterSource, ClientParameterType,
-    ClientProjectId, ClientProtocolCatalog, ClientRequestId, ClientSessionId, ClientTransport,
-    ClientWorkspaceIdentity, SCHEMA_VERSION, TraceContext,
-};
+use agent_semantic_client_protocol::ClientCapabilities;
+use agent_semantic_client_protocol::ClientFrame;
+use agent_semantic_client_protocol::ClientFrameBase;
+use agent_semantic_client_protocol::ClientInfo;
+use agent_semantic_client_protocol::ClientMethod;
+use agent_semantic_client_protocol::ClientOutcome;
+use agent_semantic_client_protocol::ClientParameter;
+use agent_semantic_client_protocol::ClientParameterCardinality;
+use agent_semantic_client_protocol::ClientParameterSource;
+use agent_semantic_client_protocol::ClientParameterType;
+use agent_semantic_client_protocol::ClientProjectId;
+use agent_semantic_client_protocol::ClientProtocolCatalog;
+use agent_semantic_client_protocol::ClientRequestId;
+use agent_semantic_client_protocol::ClientSessionId;
+use agent_semantic_client_protocol::ClientTransport;
+use agent_semantic_client_protocol::ClientWorkspaceIdentity;
+use agent_semantic_client_protocol::TraceContext;
+use agent_semantic_client_protocol::protocol_identity::CLIENT_CATALOG_SCHEMA_ID;
+use agent_semantic_client_protocol::protocol_identity::CLIENT_FRAME_SCHEMA_ID;
+use agent_semantic_client_protocol::protocol_identity::CLIENT_PROTOCOL_ID;
+use agent_semantic_client_protocol::protocol_identity::CLIENT_PROTOCOL_VERSION;
+use agent_semantic_client_protocol::protocol_identity::SCHEMA_VERSION;
 use serde_json::json;
 
-use super::{decode_frame, encode_frame};
+use super::decode_frame;
+use super::encode_frame;
 
 fn base() -> ClientFrameBase {
     ClientFrameBase {
@@ -50,10 +66,20 @@ fn catalog() -> ClientProtocolCatalog {
         },
         methods: vec![ClientMethod {
             method: "rust.search".to_owned(),
-            route_id: "rust.search".to_owned(),
-            request_schema_id: "request-schema".to_owned(),
-            response_schema_id: "response-schema".to_owned(),
-            error_schema_ids: vec!["error-schema".to_owned()],
+            route_id: agent_semantic_client_protocol::ClientRouteId::new("rust.search")
+                .expect("route id"),
+            request_schema_id: agent_semantic_client_protocol::ClientSchemaId::new(
+                "request-schema",
+            )
+            .expect("request schema id"),
+            response_schema_id: agent_semantic_client_protocol::ClientSchemaId::new(
+                "response-schema",
+            )
+            .expect("response schema id"),
+            error_schema_ids: vec![
+                agent_semantic_client_protocol::ClientSchemaId::new("error-schema")
+                    .expect("error schema id"),
+            ],
             parameters: parameter_types
                 .into_iter()
                 .enumerate()

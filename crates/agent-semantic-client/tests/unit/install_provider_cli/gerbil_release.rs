@@ -1,10 +1,13 @@
 use std::process::Command;
 
-use super::{
-    create_fake_curl_bin, create_gerbil_pinned_release_fixture,
-    create_gerbil_script_release_fixture, prepend_path, provider_package_path, receipt_path,
-    sorted_file_names, temp_project_root,
-};
+use super::create_fake_curl_bin;
+use super::create_gerbil_pinned_release_fixture;
+use super::create_gerbil_script_release_fixture;
+use super::prepend_path;
+use super::provider_package_path;
+use super::receipt_path;
+use super::sorted_file_names;
+use super::temp_project_root;
 
 #[test]
 #[cfg(unix)]

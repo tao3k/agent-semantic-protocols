@@ -1,6 +1,5 @@
-use agent_semantic_client_db::runtime_server_control::{
-    acquire_runtime_server_election, runtime_server_runtime_base,
-};
+use agent_semantic_client_db::runtime_server_control::acquire_runtime_server_election;
+use agent_semantic_client_db::runtime_server_control::runtime_server_runtime_base;
 
 #[tokio::test(flavor = "current_thread")]
 async fn election_is_singleton_per_state_home_and_isolated_across_state_homes() {

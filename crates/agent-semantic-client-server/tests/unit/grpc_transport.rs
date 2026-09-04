@@ -1,13 +1,21 @@
-use agent_semantic_client_protocol::{
-    CLIENT_FRAME_SCHEMA_ID, CLIENT_PROTOCOL_ID, CLIENT_PROTOCOL_VERSION, ClientFrame,
-    ClientFrameBase, ClientOutcome, ClientProjectId, ClientRequestId, ClientSessionId,
-    ClientWorkspaceIdentity, SCHEMA_VERSION, WORKSPACE_GENERATION_ENSURE_READY_METHOD,
-};
+use agent_semantic_client_protocol::ClientFrame;
+use agent_semantic_client_protocol::ClientFrameBase;
+use agent_semantic_client_protocol::ClientOutcome;
+use agent_semantic_client_protocol::ClientProjectId;
+use agent_semantic_client_protocol::ClientRequestId;
+use agent_semantic_client_protocol::ClientSessionId;
+use agent_semantic_client_protocol::ClientWorkspaceIdentity;
+use agent_semantic_client_protocol::WORKSPACE_GENERATION_ENSURE_READY_METHOD;
+use agent_semantic_client_protocol::protocol_identity::CLIENT_FRAME_SCHEMA_ID;
+use agent_semantic_client_protocol::protocol_identity::CLIENT_PROTOCOL_ID;
+use agent_semantic_client_protocol::protocol_identity::CLIENT_PROTOCOL_VERSION;
+use agent_semantic_client_protocol::protocol_identity::SCHEMA_VERSION;
 
-use super::{
-    CLIENT_FRAME_PARTITION_BYTES, CLIENT_FRAME_RESPONSE_BUDGET, ResponsePartitionAssembly,
-    encode_response_partitions, response_budget_for_frame,
-};
+use super::CLIENT_FRAME_PARTITION_BYTES;
+use super::CLIENT_FRAME_RESPONSE_BUDGET;
+use super::ResponsePartitionAssembly;
+use super::encode_response_partitions;
+use super::response_budget_for_frame;
 
 fn request(method: &str) -> ClientFrame {
     ClientFrame::Request {
@@ -52,8 +60,10 @@ fn grpc_transport_preserves_catalog_request_class() {
         response_budget_for_frame(&request(WORKSPACE_GENERATION_ENSURE_READY_METHOD)),
         None,
     );
+    assert_eq!(response_budget_for_frame(&request("rust.query")), None,);
+    assert_eq!(response_budget_for_frame(&request("rust.search")), None,);
     assert_eq!(
-        response_budget_for_frame(&request("rust.query")),
+        response_budget_for_frame(&request("asp.graph.evaluate")),
         Some(CLIENT_FRAME_RESPONSE_BUDGET),
     );
 }

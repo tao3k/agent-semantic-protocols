@@ -19,6 +19,7 @@ tempfile.workspace = true
 
 [build-dependencies]
 agent-semantic-schema-manager = { path = "../agent-semantic-schema-manager", default-features = false }
+asp-rust-project-harness-policy.workspace = true
 serde_json.workspace = true
 
 [[test]]

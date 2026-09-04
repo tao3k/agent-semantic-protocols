@@ -1,10 +1,12 @@
 //! Resident Runtime Server generation reuse regressions.
 
-use agent_semantic_client_db::runtime_server_workspace::{
-    RuntimeServerWorkspaceRegistry, WorkspaceMemoryGeneration, WorkspaceOwnerSnapshot,
-    WorkspaceRecoverySource, WorkspaceRuntimeSelectorOverlay, WorkspaceRuntimeSelectorRead,
-    WorkspaceSelectorSnapshot,
-};
+use agent_semantic_client_db::runtime_server_workspace::RuntimeServerWorkspaceRegistry;
+use agent_semantic_client_db::runtime_server_workspace::WorkspaceMemoryGeneration;
+use agent_semantic_client_db::runtime_server_workspace::WorkspaceOwnerSnapshot;
+use agent_semantic_client_db::runtime_server_workspace::WorkspaceRecoverySource;
+use agent_semantic_client_db::runtime_server_workspace::WorkspaceRuntimeSelectorOverlay;
+use agent_semantic_client_db::runtime_server_workspace::WorkspaceRuntimeSelectorRead;
+use agent_semantic_client_db::runtime_server_workspace::WorkspaceSelectorSnapshot;
 use std::sync::Arc;
 use tempfile::tempdir;
 
@@ -14,6 +16,7 @@ fn owner(path: &str, selector: &str, bytes: &[u8]) -> WorkspaceOwnerSnapshot {
         owner_path: path.to_owned(),
         content_digest: format!("blake3-256:{}", blake3::hash(bytes).to_hex()),
         bytes: bytes.to_vec(),
+        native_syntax_diagnostic: None,
         selectors: vec![WorkspaceSelectorSnapshot {
             selector: selector.to_owned(),
             byte_start: 0,

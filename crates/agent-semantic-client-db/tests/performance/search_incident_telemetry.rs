@@ -1,13 +1,16 @@
-use std::{path::PathBuf, time::SystemTime};
+use std::path::PathBuf;
+use std::time::SystemTime;
 
-use agent_semantic_client_db::{
-    runtime_server_opentelemetry::{RuntimeServerOpenTelemetry, TursoOpenTelemetrySpanExporter},
-    runtime_telemetry_bus::RuntimeTelemetryBus,
-    search_incident::{
-        IncidentIdentity, IncidentObservation, IncidentState, IncidentSurface,
-        IncidentTelemetryEvent, RequestedProjection, ResourceObservation,
-    },
-};
+use agent_semantic_client_db::runtime_server_opentelemetry::RuntimeServerOpenTelemetry;
+use agent_semantic_client_db::runtime_server_opentelemetry::TursoOpenTelemetrySpanExporter;
+use agent_semantic_client_db::runtime_telemetry_bus::RuntimeTelemetryBus;
+use agent_semantic_client_db::search_incident::IncidentIdentity;
+use agent_semantic_client_db::search_incident::IncidentObservation;
+use agent_semantic_client_db::search_incident::IncidentState;
+use agent_semantic_client_db::search_incident::IncidentSurface;
+use agent_semantic_client_db::search_incident::IncidentTelemetryEvent;
+use agent_semantic_client_db::search_incident::RequestedProjection;
+use agent_semantic_client_db::search_incident::ResourceObservation;
 
 fn socket_path(label: &str) -> PathBuf {
     let nonce = SystemTime::now()
@@ -165,9 +168,9 @@ async fn turso_active_incident_view_closes_only_after_resolved_transition() {
 
 #[test]
 fn typed_terminal_adapter_deduplicates_and_sequences_failures() {
-    use agent_semantic_client_db::search_incident::{
-        SearchIncidentTerminalContext, SearchIncidentTerminalOutcome, observe_terminal,
-    };
+    use agent_semantic_client_db::search_incident::SearchIncidentTerminalContext;
+    use agent_semantic_client_db::search_incident::SearchIncidentTerminalOutcome;
+    use agent_semantic_client_db::search_incident::observe_terminal;
 
     let context = SearchIncidentTerminalContext {
         workspace_identity: "workspace-terminal-e2e".to_owned(),
@@ -201,10 +204,9 @@ fn typed_terminal_adapter_deduplicates_and_sequences_failures() {
 
 #[tokio::test]
 async fn terminal_incident_lane_survives_transition_queue_pressure() {
-    use agent_semantic_client_db::{
-        runtime_server_opentelemetry::RuntimeLifecycleEvent,
-        runtime_telemetry_bus::{CAPACITY, RuntimeTelemetryEvent},
-    };
+    use agent_semantic_client_db::runtime_server_opentelemetry::RuntimeLifecycleEvent;
+    use agent_semantic_client_db::runtime_telemetry_bus::CAPACITY;
+    use agent_semantic_client_db::runtime_telemetry_bus::RuntimeTelemetryEvent;
 
     let mut bus = RuntimeTelemetryBus::new();
     for sequence in 0..CAPACITY {

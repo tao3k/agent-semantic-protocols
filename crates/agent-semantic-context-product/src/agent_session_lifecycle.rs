@@ -1,4 +1,5 @@
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 
 pub const AGENT_SESSION_LIFECYCLE_PROJECTION_SCHEMA_ID: &str =
     "agent.semantic-protocols.agent-session-lifecycle-projection";

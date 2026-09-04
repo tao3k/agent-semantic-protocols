@@ -1,15 +1,22 @@
 //! Client project config install helpers for asp hook.
 
-use crate::codex_trust::{
-    TRUST_BLOCK_END, codex_project_trusted, codex_trust_block_begin,
-    merge_codex_project_trust_config, merge_codex_trust_config, toml_basic_string,
-};
-use agent_semantic_runtime::{project_activation_path, state_core::resolve_state_home};
-use serde_json::{Map, Value, json};
-use sha2::{Digest, Sha256};
+use crate::codex_trust::TRUST_BLOCK_END;
+use crate::codex_trust::codex_project_trusted;
+use crate::codex_trust::codex_trust_block_begin;
+use crate::codex_trust::merge_codex_project_trust_config;
+use crate::codex_trust::merge_codex_trust_config;
+use crate::codex_trust::toml_basic_string;
+use agent_semantic_runtime::project_activation_path;
+use agent_semantic_runtime::state_core::resolve_state_home;
+use serde_json::Map;
+use serde_json::Value;
+use serde_json::json;
+use sha2::Digest;
+use sha2::Sha256;
 use std::env;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 
 /// Start marker for the managed project-level Codex hook block.
 pub const ROOT_BLOCK_BEGIN: &str = "# BEGIN agent-semantic-protocol agent hooks";

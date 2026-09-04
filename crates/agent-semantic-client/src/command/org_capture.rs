@@ -1,16 +1,15 @@
 //! ASP-owned Org capture state materialization.
 
-use super::org_capture_contract_materialize::{
-    ContractCaptureArgs, materialize_contract_capture_args,
-};
+use super::org_capture_contract_materialize::ContractCaptureArgs;
+use super::org_capture_contract_materialize::materialize_contract_capture_args;
 use agent_semantic_runtime::project_state_paths;
 use orgize::agent;
-use std::{
-    env, fs,
-    io::ErrorKind,
-    path::{Path, PathBuf},
-    process::Command,
-};
+use std::env;
+use std::fs;
+use std::io::ErrorKind;
+use std::path::Path;
+use std::path::PathBuf;
+use std::process::Command;
 
 const FLOW_DIRS: &[&str] = &["plans", "sdd", "bdd", "tdd", "bdr"];
 const DEFAULT_ASP_ORG_REPO_URL: &str = "https://github.com/tao3k/org.git";

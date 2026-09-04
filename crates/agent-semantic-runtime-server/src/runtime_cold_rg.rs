@@ -3,7 +3,8 @@
 use std::collections::BTreeSet;
 use std::time::Duration;
 
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::AsyncReadExt;
+use tokio::io::AsyncWriteExt;
 
 const MAX_RG_LINE_BYTES: usize = 4096;
 

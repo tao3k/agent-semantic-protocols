@@ -6,7 +6,11 @@
 use serde::Serialize;
 use serde_json::Value;
 use std::fs::File;
-use std::io::{BufRead, BufReader, Read, Seek, SeekFrom};
+use std::io::BufRead;
+use std::io::BufReader;
+use std::io::Read;
+use std::io::Seek;
+use std::io::SeekFrom;
 use std::path::Path;
 
 /// The diagnostic plane must have a fixed cost even after a long-running

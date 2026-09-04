@@ -1,4 +1,5 @@
-use agent_semantic_content_identity::{ArtifactJson, hash_normalized_json};
+use agent_semantic_content_identity::ArtifactJson;
+use agent_semantic_content_identity::hash_normalized_json;
 use serde_json::Value;
 
 use super::SearchProjectionError;

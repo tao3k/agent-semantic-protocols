@@ -4,8 +4,12 @@
 //! implementations. They let Turso, Python, Julia, and render receipts traverse
 //! provenance without embedding artifact payloads.
 
-use crate::identity::{ArtifactHash, ArtifactKind, ArtifactRootRef, EDGE_DOMAIN_V1};
-use serde::{Deserialize, Serialize};
+use crate::identity::ArtifactHash;
+use crate::identity::ArtifactKind;
+use crate::identity::ArtifactRootRef;
+use crate::identity::EDGE_DOMAIN_V1;
+use serde::Deserialize;
+use serde::Serialize;
 
 /// Schema id for queryable artifact root edges.
 pub const ARTIFACT_EDGE_SCHEMA_ID: &str = "semantic-artifact-edge";

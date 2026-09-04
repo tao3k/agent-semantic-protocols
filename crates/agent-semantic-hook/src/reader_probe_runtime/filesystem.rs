@@ -3,7 +3,8 @@
 use std::path::Path;
 
 pub(super) fn ensure_secure_directory(path: &Path) -> Result<(), String> {
-    use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _};
+    use std::os::unix::fs::MetadataExt as _;
+    use std::os::unix::fs::PermissionsExt as _;
 
     match std::fs::symlink_metadata(path) {
         Ok(_) => {}

@@ -1,3 +1,8 @@
+//! Tree-sitter Bash traversal that projects executable command stages.
+//!
+//! This module owns syntax traversal only. Semantic behavior classification remains in the
+//! parser-facing behavior-fact layer so callers do not infer intent from executable names.
+
 macro_rules! shell_kind_matcher {
     ($name:ident, [$($kind:literal),+ $(,)?]) => {
         fn $name(kind: &str) -> bool {

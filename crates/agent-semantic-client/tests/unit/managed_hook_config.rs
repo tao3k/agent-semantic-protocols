@@ -1,9 +1,16 @@
-use std::sync::{Arc, Barrier, mpsc};
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::sync::Arc;
+use std::sync::Barrier;
+use std::sync::mpsc;
+use std::time::Duration;
+use std::time::Instant;
+use std::time::SystemTime;
+use std::time::UNIX_EPOCH;
 
-use sha2::{Digest, Sha256};
+use sha2::Digest;
+use sha2::Sha256;
 
-use super::{ManagedHookConfigStatus, materialize};
+use super::ManagedHookConfigStatus;
+use super::materialize;
 
 #[cfg(unix)]
 fn current_thread_cpu_nanos() -> u128 {

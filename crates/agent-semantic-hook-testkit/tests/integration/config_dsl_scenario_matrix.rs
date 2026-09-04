@@ -1,9 +1,12 @@
 use std::collections::BTreeSet;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 
-use agent_semantic_hook::{ClientHookConfig, HookRuntime};
+use agent_semantic_hook::ClientHookConfig;
+use agent_semantic_hook::HookRuntime;
 use agent_semantic_hook_testkit::classify_codex_plugin_scenario;
-use serde_json::{Value, json};
+use serde_json::Value;
+use serde_json::json;
 
 const MATRIX: &str =
     include_str!("../../../agent-semantic-config/templates/hooks/config-test.toml");

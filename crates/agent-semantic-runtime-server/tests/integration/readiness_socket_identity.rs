@@ -1,6 +1,7 @@
-use agent_semantic_runtime_server::{
-    readiness::RuntimeServerReadinessListener, resident_publication::resident_readiness_root,
-};
+//! Runtime readiness socket identity integration tests.
+
+use agent_semantic_runtime_server::readiness::RuntimeServerReadinessListener;
+use agent_semantic_runtime_server::resident_publication::resident_readiness_root;
 use std::os::unix::ffi::OsStrExt as _;
 
 #[tokio::test]

@@ -1,10 +1,11 @@
 //! Content identity for the active ASP artifact set and its Merkle receipt.
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 
-use crate::exact_selector_merkle::{
-    ContentDigestV1, canonical_content_digest, parse_content_digest_v1,
-};
+use crate::exact_selector_merkle::ContentDigestV1;
+use crate::exact_selector_merkle::canonical_content_digest;
+use crate::exact_selector_merkle::parse_content_digest_v1;
 
 /// Stable schema identifier for an active ASP artifact receipt.
 pub const ACTIVE_ASP_ARTIFACT_RECEIPT_SCHEMA_ID: &str =
@@ -326,30 +327,11 @@ impl ActiveAspArtifactReceipt {
 
     /// Validate schema identity, leaf ordering, required roles, and both roots.
     pub fn validate(&self) -> Result<(), ActiveAspArtifactReceiptError> {
-        if self.schema_id != ACTIVE_ASP_ARTIFACT_RECEIPT_SCHEMA_ID
-            || self.schema_version != ACTIVE_ASP_ARTIFACT_RECEIPT_SCHEMA_VERSION
-            || self.digest_algorithm != ACTIVE_ASP_ARTIFACT_DIGEST_ALGORITHM
-        {
-            return Err(ActiveAspArtifactReceiptError::Identity);
-        }
-        if self.artifact_set_id.as_str().is_empty() {
-            return Err(ActiveAspArtifactReceiptError::EmptyArtifactSetId);
-        }
-        let mut previous_path: Option<&str> = None;
-        let mut asp_binary_count = 0;
-        let mut activation_count = 0;
-        for leaf in &self.leaves {
-            validate_logical_path(leaf.logical_path())?;
-            parse_content_digest_v1(leaf.artifact_digest.as_str()).map_err(|_| {
-                ActiveAspArtifactReceiptError::NonCanonicalDigest(leaf.logical_path().to_string())
-            })?;
-            if previous_path.is_some_and(|previous| previous >= leaf.logical_path()) {
-                return Err(ActiveAspArtifactReceiptError::UnsortedOrDuplicateLeaves);
-            }
-            previous_path = Some(leaf.logical_path());
-            asp_binary_count += usize::from(leaf.artifact_kind == ActiveArtifactKind::AspBinary);
-            activation_count += usize::from(leaf.artifact_kind == ActiveArtifactKind::Activation);
-        }
+        validate_receipt_identity(self)?;
+        validate_artifact_set_id(&self.artifact_set_id)?;
+        validate_logical_leaves(&self.leaves)?;
+        let asp_binary_count = artifact_kind_count(&self.leaves, ActiveArtifactKind::AspBinary);
+        let activation_count = artifact_kind_count(&self.leaves, ActiveArtifactKind::Activation);
         if asp_binary_count != 1 {
             return Err(ActiveAspArtifactReceiptError::AspBinaryLeafCount(
                 asp_binary_count,
@@ -395,47 +377,23 @@ pub fn active_artifact_root_digest_v1(
     artifact_set_id: &ActiveArtifactSetId,
     leaves: &[ActiveArtifactLeaf],
 ) -> Result<ContentDigestV1, ActiveAspArtifactReceiptError> {
-    if artifact_set_id.as_str().is_empty() {
-        return Err(ActiveAspArtifactReceiptError::EmptyArtifactSetId);
-    }
-    let mut previous_path: Option<&str> = None;
-    for leaf in leaves {
-        validate_logical_path(leaf.logical_path())?;
-        parse_content_digest_v1(leaf.artifact_digest.as_str()).map_err(|_| {
-            ActiveAspArtifactReceiptError::NonCanonicalDigest(leaf.logical_path().to_string())
-        })?;
-        if previous_path.is_some_and(|previous| previous >= leaf.logical_path()) {
-            return Err(ActiveAspArtifactReceiptError::UnsortedOrDuplicateLeaves);
-        }
-        previous_path = Some(leaf.logical_path());
-    }
-    let mut level = Vec::with_capacity(leaves.len());
-    for leaf in leaves {
-        validate_logical_path(leaf.logical_path())?;
-        level.push(canonical_content_digest(
-            b"asp.active-artifact-leaf.v1",
-            &[
-                leaf.logical_path().as_bytes(),
-                leaf.artifact_kind.canonical_name().as_bytes(),
-                leaf.artifact_digest.as_str().as_bytes(),
-                &leaf.size_bytes().to_be_bytes(),
-            ],
-        ));
-    }
-    while level.len() > 1 {
-        let mut next = Vec::with_capacity(level.len().div_ceil(2));
-        for pair in level.chunks(2) {
-            if let [left, right] = pair {
-                next.push(canonical_content_digest(
-                    b"asp.active-artifact-node.v1",
-                    &[left.as_str().as_bytes(), right.as_str().as_bytes()],
-                ));
-            } else {
-                next.push(pair[0].clone());
-            }
-        }
-        level = next;
-    }
+    validate_artifact_set_id(artifact_set_id)?;
+    validate_logical_leaves(leaves)?;
+    let level = leaves
+        .iter()
+        .map(|leaf| {
+            canonical_content_digest(
+                b"asp.active-artifact-leaf.v1",
+                &[
+                    leaf.logical_path().as_bytes(),
+                    leaf.artifact_kind.canonical_name().as_bytes(),
+                    leaf.artifact_digest.as_str().as_bytes(),
+                    &leaf.size_bytes().to_be_bytes(),
+                ],
+            )
+        })
+        .collect();
+    let level = reduce_merkle_level(b"asp.active-artifact-node.v1", level);
     let inner_root = level.first().map(ContentDigestV1::as_str).unwrap_or("");
     Ok(canonical_content_digest(
         b"asp.active-artifact-root.v1",
@@ -452,48 +410,32 @@ pub fn active_artifact_materialization_root_digest_v1(
     artifact_set_id: &ActiveArtifactSetId,
     leaves: &[ActiveArtifactLeaf],
 ) -> Result<ContentDigestV1, ActiveAspArtifactReceiptError> {
-    if artifact_set_id.as_str().is_empty() {
-        return Err(ActiveAspArtifactReceiptError::EmptyArtifactSetId);
-    }
-    let mut previous_path: Option<&str> = None;
-    let mut level = Vec::with_capacity(leaves.len());
-    for leaf in leaves {
-        validate_logical_path(leaf.logical_path())?;
-        validate_materialized_path(leaf.materialized_path())?;
-        if previous_path.is_some_and(|previous| previous >= leaf.logical_path()) {
-            return Err(ActiveAspArtifactReceiptError::UnsortedOrDuplicateLeaves);
-        }
-        previous_path = Some(leaf.logical_path());
-        level.push(canonical_content_digest(
-            b"asp.active-artifact-materialization-leaf.v1",
-            &[
-                leaf.logical_path().as_bytes(),
-                leaf.materialized_path().as_bytes(),
-                leaf.artifact_kind.canonical_name().as_bytes(),
-                leaf.artifact_digest.as_str().as_bytes(),
-                &leaf.size_bytes().to_be_bytes(),
-                &leaf.modified_unix_nanos().to_be_bytes(),
-                &leaf
-                    .change_time_unix_nanos()
-                    .unwrap_or_default()
-                    .to_be_bytes(),
-            ],
-        ));
-    }
-    while level.len() > 1 {
-        let mut next = Vec::with_capacity(level.len().div_ceil(2));
-        for pair in level.chunks(2) {
-            if let [left, right] = pair {
-                next.push(canonical_content_digest(
-                    b"asp.active-artifact-materialization-node.v1",
-                    &[left.as_str().as_bytes(), right.as_str().as_bytes()],
-                ));
-            } else {
-                next.push(pair[0].clone());
-            }
-        }
-        level = next;
-    }
+    validate_artifact_set_id(artifact_set_id)?;
+    validate_logical_leaves(leaves)?;
+    leaves
+        .iter()
+        .try_for_each(|leaf| validate_materialized_path(leaf.materialized_path()))?;
+    let level = leaves
+        .iter()
+        .map(|leaf| {
+            canonical_content_digest(
+                b"asp.active-artifact-materialization-leaf.v1",
+                &[
+                    leaf.logical_path().as_bytes(),
+                    leaf.materialized_path().as_bytes(),
+                    leaf.artifact_kind.canonical_name().as_bytes(),
+                    leaf.artifact_digest.as_str().as_bytes(),
+                    &leaf.size_bytes().to_be_bytes(),
+                    &leaf.modified_unix_nanos().to_be_bytes(),
+                    &leaf
+                        .change_time_unix_nanos()
+                        .unwrap_or_default()
+                        .to_be_bytes(),
+                ],
+            )
+        })
+        .collect();
+    let level = reduce_merkle_level(b"asp.active-artifact-materialization-node.v1", level);
     let inner_root = level.first().map(ContentDigestV1::as_str).unwrap_or("");
     Ok(canonical_content_digest(
         b"asp.active-artifact-materialization-root.v1",
@@ -503,6 +445,73 @@ pub fn active_artifact_materialization_root_digest_v1(
             inner_root.as_bytes(),
         ],
     ))
+}
+
+fn validate_receipt_identity(
+    receipt: &ActiveAspArtifactReceipt,
+) -> Result<(), ActiveAspArtifactReceiptError> {
+    if receipt.schema_id == ACTIVE_ASP_ARTIFACT_RECEIPT_SCHEMA_ID
+        && receipt.schema_version == ACTIVE_ASP_ARTIFACT_RECEIPT_SCHEMA_VERSION
+        && receipt.digest_algorithm == ACTIVE_ASP_ARTIFACT_DIGEST_ALGORITHM
+    {
+        Ok(())
+    } else {
+        Err(ActiveAspArtifactReceiptError::Identity)
+    }
+}
+
+fn validate_artifact_set_id(
+    artifact_set_id: &ActiveArtifactSetId,
+) -> Result<(), ActiveAspArtifactReceiptError> {
+    if artifact_set_id.as_str().is_empty() {
+        Err(ActiveAspArtifactReceiptError::EmptyArtifactSetId)
+    } else {
+        Ok(())
+    }
+}
+
+fn validate_logical_leaves(
+    leaves: &[ActiveArtifactLeaf],
+) -> Result<(), ActiveAspArtifactReceiptError> {
+    leaves.iter().try_fold(None, |previous_path, leaf| {
+        validate_logical_path(leaf.logical_path())?;
+        parse_content_digest_v1(leaf.artifact_digest.as_str()).map_err(|_| {
+            ActiveAspArtifactReceiptError::NonCanonicalDigest(leaf.logical_path().to_string())
+        })?;
+        if previous_path.is_some_and(|previous| previous >= leaf.logical_path()) {
+            Err(ActiveAspArtifactReceiptError::UnsortedOrDuplicateLeaves)
+        } else {
+            Ok(Some(leaf.logical_path()))
+        }
+    })?;
+    Ok(())
+}
+
+fn artifact_kind_count(leaves: &[ActiveArtifactLeaf], kind: ActiveArtifactKind) -> usize {
+    leaves
+        .iter()
+        .filter(|leaf| leaf.artifact_kind == kind)
+        .count()
+}
+
+fn reduce_merkle_level(
+    node_domain: &[u8],
+    mut level: Vec<ContentDigestV1>,
+) -> Vec<ContentDigestV1> {
+    while level.len() > 1 {
+        level = level
+            .chunks(2)
+            .map(|pair| match pair {
+                [left, right] => canonical_content_digest(
+                    node_domain,
+                    &[left.as_str().as_bytes(), right.as_str().as_bytes()],
+                ),
+                [single] => single.clone(),
+                _ => unreachable!("Merkle chunks are never empty"),
+            })
+            .collect();
+    }
+    level
 }
 
 fn validate_materialized_path(path: &str) -> Result<(), ActiveAspArtifactReceiptError> {

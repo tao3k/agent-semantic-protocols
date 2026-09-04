@@ -2,11 +2,14 @@
 
 use std::collections::BTreeMap;
 use std::env;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 
-use agent_semantic_provider_transport::{
-    OutputMode, ProviderProcessLimits, ProviderProcessSpec, ProviderProcessSupervisor, StdinMode,
-};
+use agent_semantic_provider_transport::OutputMode;
+use agent_semantic_provider_transport::ProviderProcessLimits;
+use agent_semantic_provider_transport::ProviderProcessSpec;
+use agent_semantic_provider_transport::ProviderProcessSupervisor;
+use agent_semantic_provider_transport::StdinMode;
 use bytes::Bytes;
 
 const SEMANTIC_AGENT_PROTOCOL_BIN_ENV: &str = "SEMANTIC_AGENT_PROTOCOL_BIN";

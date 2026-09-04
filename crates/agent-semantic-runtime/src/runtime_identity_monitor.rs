@@ -1,10 +1,14 @@
 //! Runtime-owned identity observation state machine and Tokio monitor task.
 
-use std::path::{Path, PathBuf};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::path::Path;
+use std::path::PathBuf;
+use std::time::Duration;
+use std::time::SystemTime;
+use std::time::UNIX_EPOCH;
 
 use serde::Serialize;
-use tokio::sync::{mpsc, watch};
+use tokio::sync::mpsc;
+use tokio::sync::watch;
 use tokio::task::JoinHandle;
 
 #[derive(Clone, Debug, Eq, PartialEq)]

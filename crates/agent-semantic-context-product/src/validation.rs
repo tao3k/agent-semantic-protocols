@@ -1,13 +1,21 @@
-use super::{
-    ClosureDisposition, ContextBinding, DecisionRequirement, Digest, Obligation,
-    ObligationDisposition, ProofReuse, ProofReuseMode, ProtocolId, UncheckedContextProductStateV1,
-    ValidationError,
-};
+use super::ClosureDisposition;
+use super::ContextBinding;
+use super::DecisionRequirement;
+use super::Digest;
+use super::Obligation;
+use super::ObligationDisposition;
+use super::ProofReuse;
+use super::ProofReuseMode;
+use super::ProtocolId;
+use super::UncheckedContextProductStateV1;
+use super::ValidationError;
 use serde::Serialize;
 use serde_json::Value;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 
-use super::model::{CONTEXT_PRODUCT_SCHEMA_ID, CONTEXT_PRODUCT_SCHEMA_VERSION};
+use super::model::CONTEXT_PRODUCT_SCHEMA_ID;
+use super::model::CONTEXT_PRODUCT_SCHEMA_VERSION;
 
 impl ContextBinding {
     pub fn recompute_binding_digest(&self) -> Digest {

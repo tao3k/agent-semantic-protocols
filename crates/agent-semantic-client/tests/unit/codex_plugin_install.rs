@@ -1,9 +1,12 @@
 #[cfg(unix)]
 mod unix {
     use std::os::unix::fs::PermissionsExt;
-    use std::path::{Path, PathBuf};
-    use std::process::{Command, Output};
-    use std::time::{SystemTime, UNIX_EPOCH};
+    use std::path::Path;
+    use std::path::PathBuf;
+    use std::process::Command;
+    use std::process::Output;
+    use std::time::SystemTime;
+    use std::time::UNIX_EPOCH;
 
     const MANIFEST: &[u8] =
         include_bytes!("../../../../asp-codex-plugin/.codex-plugin/plugin.json");

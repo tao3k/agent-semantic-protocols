@@ -5,7 +5,8 @@
 extern crate self as agent_semantic_client;
 
 mod cache_cli;
-pub use cache_cli::{project_registry_clean_clap_command, project_registry_gc_clap_command};
+pub use cache_cli::project_registry_clean_clap_command;
+pub use cache_cli::project_registry_gc_clap_command;
 pub mod cli;
 mod cli_args;
 mod client_cli;
@@ -30,32 +31,37 @@ mod syntax_query_preflight;
 #[path = "../tests/unit/support.rs"]
 mod test_support;
 mod tools_cli;
-pub use language_command::{
-    LanguageCommandApplication, LanguageCommandClient, LanguageCommandDispatchFuture,
-    LanguageCommandFuture, LanguageCommandOperation, LanguageCommandRequest,
-    LanguageCommandResponse, RuntimeLanguageCommandApplication, RuntimeLanguageCommandClient,
-    execute_language_command,
-};
-pub use runtime_language_client::{AspClient, ClientBackpressureProbeReceipt};
+pub use language_command::LanguageCommandApplication;
+pub use language_command::LanguageCommandClient;
+pub use language_command::LanguageCommandDispatchFuture;
+pub use language_command::LanguageCommandFuture;
+pub use language_command::LanguageCommandOperation;
+pub use language_command::LanguageCommandRequest;
+pub use language_command::LanguageCommandResponse;
+pub use language_command::RuntimeLanguageCommandApplication;
+pub use language_command::RuntimeLanguageCommandClient;
+pub use language_command::execute_language_command;
+pub use runtime_language_client::AspClient;
+pub use runtime_language_client::ClientBackpressureProbeReceipt;
 
 pub mod cli_failure;
-pub use command::protocol_binary::{
-    publish_runtime_server_artifact, published_runtime_server_artifact_digest,
-};
+pub use command::protocol_binary::publish_runtime_server_artifact;
+pub use command::protocol_binary::published_runtime_server_artifact_digest;
 #[doc(hidden)]
 pub use state_cli::run_binary_from_env;
 pub(crate) mod codex;
 
 pub use agent_semantic_client_core::LanguageId;
-pub use agent_semantic_client_server::{
-    ProviderProjectResolution, ProviderProjectResolutionCandidates,
-    ProviderProjectResolutionPolicyExclusion, encode_provider_project_resolution_request,
-    project_resolution_from_stdout, provider_project_resolution_candidates,
-};
-pub use cli::{run_cli_args, run_cli_from_env};
-pub use client_cli::{
-    run_cli_args as run_client_cli_args, run_cli_from_env as run_client_cli_from_env,
-};
+pub use agent_semantic_client_server::ProviderProjectResolution;
+pub use agent_semantic_client_server::ProviderProjectResolutionCandidates;
+pub use agent_semantic_client_server::ProviderProjectResolutionPolicyExclusion;
+pub use agent_semantic_client_server::encode_provider_project_resolution_request;
+pub use agent_semantic_client_server::project_resolution_from_stdout;
+pub use agent_semantic_client_server::provider_project_resolution_candidates;
+pub use cli::run_cli_args;
+pub use cli::run_cli_from_env;
+pub use client_cli::run_cli_args as run_client_cli_args;
+pub use client_cli::run_cli_from_env as run_client_cli_from_env;
 pub use syntax_query_preflight::validate_syntax_query_request as validate_client_syntax_query_request;
 
 #[cfg(test)]

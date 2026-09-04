@@ -1,4 +1,5 @@
-use super::{resident_transaction_identity_matches, runtime_activation_environment};
+use super::resident_transaction_identity_matches;
+use super::runtime_activation_environment;
 
 fn event() -> agent_semantic_artifacts::runtime_artifact_activation::RuntimeArtifactActivationEvent
 {

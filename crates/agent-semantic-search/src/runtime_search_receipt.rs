@@ -1,14 +1,20 @@
 //! Bounded Tokio-stream fan-in for the Runtime search data plane.
 
-use std::{collections::BTreeSet, pin::Pin, sync::Arc};
+use std::collections::BTreeSet;
+use std::pin::Pin;
+use std::sync::Arc;
 
-use agent_semantic_search_projection::{
-    RUNTIME_PROVIDER_SEARCH_RECEIPT_SCHEMA_ID, RUNTIME_PROVIDER_SEARCH_RECEIPT_SCHEMA_VERSION,
-    ResidentSearchHit, ResidentSearchReadyResult, ResidentSearchWorkCounters,
-    RuntimeProviderSearchReceipt,
-};
+use agent_semantic_search_projection::RUNTIME_PROVIDER_SEARCH_RECEIPT_SCHEMA_ID;
+use agent_semantic_search_projection::RUNTIME_PROVIDER_SEARCH_RECEIPT_SCHEMA_VERSION;
+use agent_semantic_search_projection::ResidentSearchHit;
+use agent_semantic_search_projection::ResidentSearchReadyResult;
+use agent_semantic_search_projection::ResidentSearchWorkCounters;
+use agent_semantic_search_projection::RuntimeProviderSearchReceipt;
 use tokio::sync::mpsc;
-use tokio_stream::{Stream, StreamExt, StreamMap, wrappers::ReceiverStream};
+use tokio_stream::Stream;
+use tokio_stream::StreamExt;
+use tokio_stream::StreamMap;
+use tokio_stream::wrappers::ReceiverStream;
 
 pub const RUNTIME_SEARCH_SOURCE_CAPACITY: usize = 32;
 pub const RUNTIME_SEARCH_SOURCE_LIMIT: usize = 64;

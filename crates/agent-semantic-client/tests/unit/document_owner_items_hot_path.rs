@@ -1,5 +1,7 @@
-use std::path::{Path, PathBuf};
-use std::time::{Duration, Instant};
+use std::path::Path;
+use std::path::PathBuf;
+use std::time::Duration;
+use std::time::Instant;
 
 #[test]
 fn org_owner_items_stays_on_document_fast_path() {

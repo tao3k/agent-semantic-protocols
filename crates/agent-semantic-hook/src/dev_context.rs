@@ -1,12 +1,16 @@
 //! Development-mode active hook context markers.
 
 use crate::protocol::HookDecision;
-use serde_json::{Value, json};
+use serde_json::Value;
+use serde_json::json;
 use std::env;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 use std::process;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
+use std::time::SystemTime;
+use std::time::UNIX_EPOCH;
 
 const PROJECT_ANCHORS: &[&str] = &[
     "Cargo.toml",

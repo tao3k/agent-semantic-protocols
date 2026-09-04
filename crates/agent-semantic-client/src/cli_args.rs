@@ -1,6 +1,7 @@
 //! Argument parsing for the public client CLI.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 
 #[derive(Debug)]
 pub(crate) struct ParsedArgs {

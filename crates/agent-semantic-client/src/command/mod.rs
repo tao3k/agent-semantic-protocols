@@ -42,8 +42,8 @@ mod schema;
 mod search_config;
 mod session;
 
-pub(crate) use dispatch::{run_protocol_command, run_protocol_command_started};
+pub(crate) use dispatch::run_protocol_command;
+pub(crate) use dispatch::run_protocol_command_started;
 pub(in crate::command) use protocol_binary::ProtocolBinaryInstallPlan;
-pub(in crate::command) use protocol_version::{
-    protocol_version_line, run_protocol_version_command,
-};
+pub(in crate::command) use protocol_version::protocol_version_line;
+pub(in crate::command) use protocol_version::run_protocol_version_command;

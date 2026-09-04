@@ -4,7 +4,9 @@ use std::path::Path;
 use serde_json::json;
 use tempfile::TempDir;
 
-use super::{BUNDLE_RECEIPT_FILE, SchemaManager, verify_bundle_receipt};
+use super::BUNDLE_RECEIPT_FILE;
+use super::SchemaManager;
+use super::verify_bundle_receipt;
 
 fn write_json(path: &Path, value: &serde_json::Value) {
     fs::create_dir_all(path.parent().expect("fixture parent")).expect("create fixture parent");

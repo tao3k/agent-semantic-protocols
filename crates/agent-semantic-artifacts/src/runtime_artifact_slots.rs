@@ -1,13 +1,23 @@
 //! Active/healthy bundle slots and immutable candidate materialization.
 
 use std::io::ErrorKind;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
+
+#[path = "runtime_artifact_slot_links.rs"]
+mod slot_links;
+
+use slot_links::publish_runtime_artifact_slot;
+use slot_links::publish_runtime_artifact_slot_under_guard;
+use slot_links::read_runtime_artifact_slot;
+use slot_links::read_runtime_artifact_slot_under_guard;
+use slot_links::restore_runtime_artifact_slot;
+use slot_links::restore_runtime_artifact_slot_under_guard;
 
 use serde::Deserialize;
 
-use crate::runtime_artifact_store::{
-    publish_runtime_artifact_link, runtime_artifact_content_digest, stage_runtime_artifact,
-};
+use crate::runtime_artifact_store::runtime_artifact_content_digest;
+use crate::runtime_artifact_store::stage_runtime_artifact;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RuntimeArtifactSlotAuthority {
@@ -393,71 +403,6 @@ impl RuntimeArtifactSlotAuthority {
         })
         .await
         .map_err(|error| format!("prune Runtime artifact publications task failed: {error}"))?
-    }
-}
-
-async fn publish_runtime_artifact_slot(target: &Path, slot: &Path) -> Result<(), String> {
-    let target = target.to_path_buf();
-    let slot = slot.to_path_buf();
-    tokio::task::spawn_blocking(move || publish_runtime_artifact_link(&target, &slot))
-        .await
-        .map_err(|error| format!("publish Runtime artifact slot task failed: {error}"))?
-}
-
-fn publish_runtime_artifact_slot_under_guard(target: &Path, slot: &Path) -> Result<(), String> {
-    publish_runtime_artifact_link(target, slot)
-}
-
-async fn restore_runtime_artifact_slot(target: Option<&Path>, slot: &Path) -> Result<(), String> {
-    match target {
-        Some(target) => publish_runtime_artifact_slot(target, slot).await,
-        None => match tokio::fs::remove_file(slot).await {
-            Ok(()) => Ok(()),
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
-            Err(error) => Err(format!(
-                "remove Runtime artifact slot {} during rollback: {error}",
-                slot.display()
-            )),
-        },
-    }
-}
-
-fn restore_runtime_artifact_slot_under_guard(
-    target: Option<&Path>,
-    slot: &Path,
-) -> Result<(), String> {
-    match target {
-        Some(target) => publish_runtime_artifact_slot_under_guard(target, slot),
-        None => match std::fs::remove_file(slot) {
-            Ok(()) => Ok(()),
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
-            Err(error) => Err(format!(
-                "remove Runtime artifact slot {} during rollback: {error}",
-                slot.display()
-            )),
-        },
-    }
-}
-
-async fn read_runtime_artifact_slot(path: &Path) -> Result<Option<PathBuf>, String> {
-    match tokio::fs::read_link(path).await {
-        Ok(target) => Ok(Some(target)),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
-        Err(error) => Err(format!(
-            "read Runtime artifact slot {}: {error}",
-            path.display()
-        )),
-    }
-}
-
-fn read_runtime_artifact_slot_under_guard(path: &Path) -> Result<Option<PathBuf>, String> {
-    match std::fs::read_link(path) {
-        Ok(target) => Ok(Some(target)),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
-        Err(error) => Err(format!(
-            "read Runtime artifact slot {}: {error}",
-            path.display()
-        )),
     }
 }
 

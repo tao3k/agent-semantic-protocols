@@ -1,5 +1,8 @@
-use asp_rust_project_harness_policy::{asp_search_scenario_package, asp_workspace_member_policies};
-use criterion::{Criterion, criterion_group, criterion_main};
+use asp_rust_project_harness_policy::asp_search_scenario_package;
+use asp_rust_project_harness_policy::asp_workspace_member_policies;
+use criterion::Criterion;
+use criterion::criterion_group;
+use criterion::criterion_main;
 
 fn policy_lookup_smoke_benchmark(criterion: &mut Criterion) {
     criterion.bench_function("asp_workspace_member_policies", |bencher| {

@@ -1,9 +1,12 @@
 //! Pure State Home catalog contract tests.
 
-use crate::{
-    CatalogGeneration, CatalogObservation, ProjectBinding, RetainedObject, RetentionLease,
-    RetentionObjectKind, admit_state_home_catalog_batch,
-};
+use crate::CatalogGeneration;
+use crate::CatalogObservation;
+use crate::ProjectBinding;
+use crate::RetainedObject;
+use crate::RetentionLease;
+use crate::RetentionObjectKind;
+use crate::admit_state_home_catalog_batch;
 
 fn observation(object_id: &str, lease_object_id: &str) -> CatalogObservation {
     let root = std::path::Path::new("/workspace");

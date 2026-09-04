@@ -1,7 +1,6 @@
+use agent_semantic_client_db::SessionControlPlaneAgentRegistration;
+use agent_semantic_client_db::SessionControlPlaneDelegationProposal;
 use agent_semantic_client_db::workspace_db_ipc::AgentSessionRegistryIpcOperation;
-use agent_semantic_client_db::{
-    SessionControlPlaneAgentRegistration, SessionControlPlaneDelegationProposal,
-};
 use agent_semantic_context_product::agent_session_delegation_admission::AgentSessionDelegationCapability;
 
 #[test]

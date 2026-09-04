@@ -6,10 +6,9 @@ use serde::Serialize;
 
 use crate::evidence::AspRustProjectHarnessEvidenceGraphInput;
 use crate::member_policy::asp_workspace_member_policies;
-use crate::package_evidence_graph::{
-    AspRustProjectHarnessPackageEvidenceGraphReceipt,
-    AspRustProjectHarnessPackageEvidenceGraphRequest, build_package_evidence_graph_receipt,
-};
+use crate::package_evidence_graph::AspRustProjectHarnessPackageEvidenceGraphReceipt;
+use crate::package_evidence_graph::AspRustProjectHarnessPackageEvidenceGraphRequest;
+use crate::package_evidence_graph::build_package_evidence_graph_receipt;
 
 /// Request for projecting ASP client-db evidence into a workspace graph.
 #[derive(Clone, Debug)]

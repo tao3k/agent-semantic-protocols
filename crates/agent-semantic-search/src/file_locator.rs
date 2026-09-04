@@ -5,9 +5,11 @@
 //! hot lookup stays in memory and only touches indexed hit buckets.
 
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 
-use globset::{Glob, GlobSetBuilder};
+use globset::Glob;
+use globset::GlobSetBuilder;
 
 const DEFAULT_LIMIT: usize = 16;
 

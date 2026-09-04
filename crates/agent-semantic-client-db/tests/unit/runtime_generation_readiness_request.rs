@@ -1,17 +1,21 @@
 use std::fs;
 use std::process::Command;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
 use std::time::Duration;
 
+use agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmission;
+use agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmissionMode;
+use agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmissionReceipt;
+use agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmissionState;
+use agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationBuildCompletion;
+use agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationBuildFailure;
+use agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationCommitReceipt;
+use agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationFailureStage;
+use agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationProviderTarget;
+use agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationReadinessRequestState;
 use agent_semantic_client_db::runtime_server_admission::discover_workspace_generation_candidate;
-use agent_semantic_client_db::runtime_server_admission::{
-    WorkspaceGenerationAdmission, WorkspaceGenerationAdmissionMode,
-    WorkspaceGenerationAdmissionReceipt, WorkspaceGenerationAdmissionState,
-    WorkspaceGenerationBuildCompletion, WorkspaceGenerationBuildFailure,
-    WorkspaceGenerationCommitReceipt, WorkspaceGenerationFailureStage,
-    WorkspaceGenerationProviderTarget, WorkspaceGenerationReadinessRequestState,
-};
 
 async fn observe_terminal(
     admission: &WorkspaceGenerationAdmission,

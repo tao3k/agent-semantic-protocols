@@ -1,13 +1,15 @@
 //! Persistent incremental workspace Merkle tree, delta metrics, and inclusion proofs.
 
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    path::{Component, Path},
-    sync::Arc,
-};
+use std::collections::BTreeMap;
+use std::collections::BTreeSet;
+use std::path::Component;
+use std::path::Path;
+use std::sync::Arc;
 
-use crate::exact_selector_merkle::{ContentDigestV1, canonical_digest_v1};
-use serde::{Deserialize, Serialize};
+use crate::exact_selector_merkle::ContentDigestV1;
+use crate::exact_selector_merkle::canonical_digest_v1;
+use serde::Deserialize;
+use serde::Serialize;
 
 const EMPTY_DOMAIN: &[u8] = b"asp.workspace-path-radix-merkle-v1-incremental.empty";
 const LEAF_DOMAIN: &[u8] = b"asp.workspace-path-radix-merkle-v1-incremental.leaf";

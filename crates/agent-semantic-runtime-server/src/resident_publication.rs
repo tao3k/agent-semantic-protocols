@@ -1,13 +1,18 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
 
 use agent_semantic_client_db::runtime_server_control::RuntimeServerEndpoint;
 use agent_semantic_client_protocol::runtime_generation::RuntimeServerGenerationIdentity;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 use tokio::sync::Notify;
 
-use crate::readiness::{RuntimeServerReadinessReceipt, RuntimeServerReadinessState};
+use crate::readiness::RuntimeServerReadinessReceipt;
+use crate::readiness::RuntimeServerReadinessState;
 
 pub const RESIDENT_PUBLICATION_SCHEMA_ID: &str =
     "agent.semantic-protocols.runtime-server-publication";
@@ -51,14 +56,17 @@ pub struct ResidentPublicationPaths {
 }
 
 impl ResidentPublicationPaths {
+    /// Create paths rooted at the Runtime-owned resident publication store.
     pub fn new(root: impl Into<PathBuf>) -> Self {
         Self { root: root.into() }
     }
 
+    /// Return the immutable publication namespace.
     pub fn publications(&self) -> PathBuf {
         self.root.join("publications")
     }
 
+    /// Return the candidate path for one content-proven Runtime generation.
     pub fn candidate(&self, generation_digest: &str) -> PathBuf {
         self.publications().join(generation_digest)
     }
@@ -71,6 +79,7 @@ pub struct AtomicResidentPublisher {
 }
 
 impl AtomicResidentPublisher {
+    /// Create the sole publisher for one Runtime-owned resident store.
     pub fn new(root: impl Into<PathBuf>) -> Self {
         let root = root.into();
         Self {
@@ -82,14 +91,17 @@ impl AtomicResidentPublisher {
         }
     }
 
+    /// Remove candidate publications unreachable from active or healthy slots.
     pub async fn prune_unreachable_publications(&self) -> Result<(), String> {
         self.slots.prune_unreachable_publications().await
     }
 
+    /// Return the immutable path authority used by this publisher.
     pub fn paths(&self) -> &ResidentPublicationPaths {
         &self.paths
     }
 
+    /// Stage a content-proven candidate without switching any serving slot.
     pub async fn stage_candidate(
         &self,
         artifact_path: &Path,
@@ -119,6 +131,7 @@ impl AtomicResidentPublisher {
         Ok(receipt)
     }
 
+    /// Commit a ready candidate atomically to the active resident publication.
     pub async fn publish_ready(
         &self,
         candidate: &ResidentPublicationReceipt,
@@ -133,6 +146,7 @@ impl AtomicResidentPublisher {
         Ok(active)
     }
 
+    /// Read the healthy serving publication, if a healthy slot is present.
     pub async fn healthy(&self) -> Result<Option<ResidentPublicationReceipt>, String> {
         let Some(target) = self.slots.healthy_target().await? else {
             return Ok(None);
@@ -146,6 +160,7 @@ impl AtomicResidentPublisher {
         Ok(Some(receipt))
     }
 
+    /// Read the active client publication, if an active slot is present.
     pub async fn active(&self) -> Result<Option<ResidentPublicationReceipt>, String> {
         let Some(target) = self.slots.active_target().await? else {
             return Ok(None);
@@ -283,179 +298,8 @@ impl Drop for ResidentRequestLease {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use agent_semantic_artifacts::runtime_artifact_catalog::RuntimeBinaryIdentity;
-
-    const OLD_DIGEST: &str =
-        "blake3-256:1111111111111111111111111111111111111111111111111111111111111111";
-    const NEW_DIGEST: &str =
-        "blake3-256:2222222222222222222222222222222222222222222222222222222222222222";
-
-    fn endpoint(binary: &str, owner_epoch: u64) -> RuntimeServerEndpoint {
-        let schema_id = "agent.semantic-protocols.runtime-server-endpoint".to_owned();
-        let schema_version = "1".to_owned();
-        let transport_contract_digest = "transport".to_owned();
-        let artifact_catalog_digest = "catalog".to_owned();
-        let identity = RuntimeServerGenerationIdentity::derive(
-            binary,
-            &schema_id,
-            &schema_version,
-            &transport_contract_digest,
-            &artifact_catalog_digest,
-            owner_epoch,
-        );
-        RuntimeServerEndpoint {
-            schema_id,
-            schema_version,
-            binary_content_digest: identity.binary_content_digest,
-            runtime_generation_digest: identity.runtime_generation_digest,
-            schema_digest: identity.schema_digest,
-            transport_contract_digest,
-            owner_epoch,
-            owner_process_id: 7,
-            runtime_artifact_path: format!("/artifacts/{binary}/asp"),
-            runtime_binary_identity: RuntimeBinaryIdentity::Content {
-                digest:
-                    agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest::parse(
-                        binary,
-                    )
-                    .expect("fixture Runtime binary digest"),
-            },
-            monitor_capability: true,
-            observed_runtime_binary_identity: RuntimeBinaryIdentity::Content {
-                digest:
-                    agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest::parse(
-                        binary,
-                    )
-                    .expect("fixture Runtime binary digest"),
-            },
-            artifact_mode: "release".to_owned(),
-            artifact_catalog_digest,
-            binding_token: format!("binding-{owner_epoch}"),
-            control_endpoint: agent_semantic_client_db::runtime_server_control::RuntimeServerLoopbackEndpoint::from_socket_addr(([127, 0, 0, 1], 45001 + (owner_epoch % 100) as u16).into()).expect("control endpoint"),
-            data_endpoint: agent_semantic_client_db::runtime_server_control::RuntimeServerLoopbackEndpoint::from_socket_addr(([127, 0, 0, 1], 45101 + (owner_epoch % 100) as u16).into()).expect("data endpoint"),
-            provider_endpoint: agent_semantic_client_db::runtime_server_control::RuntimeServerLoopbackEndpoint::from_socket_addr(([127, 0, 0, 1], 45201 + (owner_epoch % 100) as u16).into()).expect("provider endpoint"),
-            workspace_store_path: "/tmp/workspaces".to_owned(),
-            status_memory_path: format!("/tmp/{owner_epoch}.status"),
-        }
-    }
-
-    fn readiness(
-        endpoint: &RuntimeServerEndpoint,
-        state: RuntimeServerReadinessState,
-    ) -> ResidentCandidateReadyReceipt {
-        ResidentCandidateReadyReceipt {
-            identity: endpoint_generation_identity(endpoint),
-            readiness: RuntimeServerReadinessReceipt {
-                schema_id: "agent.semantic-protocols.runtime-server-readiness".to_owned(),
-                schema_version: "1".to_owned(),
-                state,
-                request_id: "request".to_owned(),
-                readiness_token: "readiness".to_owned(),
-                process_id: endpoint.owner_process_id,
-                owner_epoch: endpoint.owner_epoch,
-                endpoint_binding_token: endpoint.binding_token.clone(),
-                runtime_binary_identity: match &endpoint.runtime_binary_identity {
-                    RuntimeBinaryIdentity::Content { digest } => digest.as_str().to_owned(),
-                },
-                artifact_catalog_digest: endpoint.artifact_catalog_digest.clone(),
-                transport_contract_digest: endpoint.transport_contract_digest.clone(),
-                reason_kind: Some("runtime-server-ready".to_owned()),
-                error: None,
-            },
-        }
-    }
-
-    async fn stage(
-        publisher: &AtomicResidentPublisher,
-        root: &Path,
-        binary: &str,
-        owner_epoch: u64,
-    ) -> (RuntimeServerEndpoint, ResidentPublicationReceipt) {
-        let artifact = root.join(format!("artifact-{binary}"));
-        tokio::fs::write(&artifact, binary).await.unwrap();
-        let endpoint = endpoint(binary, owner_epoch);
-        let candidate = publisher
-            .stage_candidate(&artifact, &endpoint)
-            .await
-            .unwrap();
-        (endpoint, candidate)
-    }
-
-    #[tokio::test]
-    async fn candidate_not_ready_does_not_switch_active_authority() {
-        let root = tempfile::tempdir().unwrap();
-        let publisher = AtomicResidentPublisher::new(root.path().join("resident"));
-        let (endpoint, candidate) = stage(&publisher, root.path(), NEW_DIGEST, 2).await;
-        let error = publisher
-            .publish_ready(
-                &candidate,
-                &readiness(&endpoint, RuntimeServerReadinessState::Starting),
-            )
-            .await
-            .unwrap_err();
-        assert!(error.contains("not ready"));
-        assert!(publisher.active().await.unwrap().is_none());
-    }
-
-    #[tokio::test]
-    async fn ready_switch_is_atomic_and_healthy_retains_previous() {
-        let root = tempfile::tempdir().unwrap();
-        let publisher = AtomicResidentPublisher::new(root.path().join("resident"));
-        let (old_endpoint, old_candidate) = stage(&publisher, root.path(), OLD_DIGEST, 1).await;
-        publisher
-            .publish_ready(
-                &old_candidate,
-                &readiness(&old_endpoint, RuntimeServerReadinessState::Ready),
-            )
-            .await
-            .unwrap();
-        let (new_endpoint, new_candidate) = stage(&publisher, root.path(), NEW_DIGEST, 2).await;
-        publisher
-            .publish_ready(
-                &new_candidate,
-                &readiness(&new_endpoint, RuntimeServerReadinessState::Ready),
-            )
-            .await
-            .unwrap();
-        assert_eq!(
-            publisher
-                .active()
-                .await
-                .unwrap()
-                .unwrap()
-                .identity
-                .binary_content_digest,
-            NEW_DIGEST
-        );
-        assert_eq!(
-            publisher
-                .healthy()
-                .await
-                .unwrap()
-                .unwrap()
-                .identity
-                .binary_content_digest,
-            OLD_DIGEST
-        );
-    }
-
-    #[tokio::test]
-    async fn old_generation_drains_only_after_inflight_request_releases() {
-        let authority = ResidentDrainAuthority::new();
-        let lease = authority.admit().unwrap();
-        let draining = authority.clone();
-        let task = tokio::spawn(async move {
-            draining.drain().await;
-        });
-        tokio::task::yield_now().await;
-        assert!(!task.is_finished());
-        drop(lease);
-        task.await.unwrap();
-        assert!(authority.admit().is_err());
-    }
-}
+#[path = "../tests/unit/resident_publication.rs"]
+mod tests;
 pub async fn publish_candidate_transaction<Drain, DrainFuture>(
     publisher: &AtomicResidentPublisher,
     binary: &std::path::Path,
@@ -493,204 +337,14 @@ where
     Ok(active)
 }
 #[cfg(test)]
-mod production_transaction_tests {
-    use super::{
-        AtomicResidentPublisher, ResidentCandidateReadyReceipt, publish_candidate_transaction,
-    };
-    use crate::readiness::{RuntimeServerReadinessReceipt, RuntimeServerReadinessState};
-    use agent_semantic_artifacts::runtime_artifact_catalog::RuntimeBinaryIdentity;
-    use agent_semantic_client_db::runtime_server_control::{
-        RuntimeServerEndpoint, runtime_server_transport_contract_digest,
-    };
-    use agent_semantic_client_protocol::runtime_generation::RuntimeServerGenerationIdentity;
-    use std::sync::{
-        Arc,
-        atomic::{AtomicBool, Ordering},
-    };
-
-    #[tokio::test]
-    async fn production_transaction_switches_only_after_ready_and_invokes_previous_drain() {
-        let temporary = tempfile::tempdir().expect("temporary resident publication");
-        let binary = temporary.path().join("candidate-asp");
-        tokio::fs::write(&binary, b"resident-candidate")
-            .await
-            .expect("write candidate binary");
-        let binary_content_digest =
-            "blake3-256:0000000000000000000000000000000000000000000000000000000000000000"
-                .to_owned();
-        let artifact_catalog_digest =
-            "blake3-256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-                .to_owned();
-        let transport_contract_digest = runtime_server_transport_contract_digest();
-        let derived_identity = RuntimeServerGenerationIdentity::derive(
-            binary_content_digest.clone(),
-            "agent.semantic-protocols.runtime-server-endpoint",
-            "1",
-            &transport_contract_digest,
-            &artifact_catalog_digest,
-            7,
-        );
-        let runtime_generation_digest = derived_identity.runtime_generation_digest.clone();
-        let schema_digest = derived_identity.schema_digest.clone();
-        let endpoint = RuntimeServerEndpoint {
-            schema_id: "agent.semantic-protocols.runtime-server-endpoint".to_owned(),
-            schema_version: "1".to_owned(),
-            binary_content_digest: binary_content_digest.clone(),
-            runtime_generation_digest: runtime_generation_digest.clone(),
-            schema_digest: schema_digest.clone(),
-            transport_contract_digest: transport_contract_digest.clone(),
-            owner_epoch: 7,
-            owner_process_id: 77,
-            runtime_artifact_path: binary.to_string_lossy().into_owned(),
-            runtime_binary_identity: RuntimeBinaryIdentity::Content {
-                digest:
-                    agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest::parse(
-                        &binary_content_digest,
-                    )
-                    .expect("fixture Runtime binary digest"),
-            },
-            monitor_capability: true,
-            observed_runtime_binary_identity: RuntimeBinaryIdentity::Content {
-                digest:
-                    agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest::parse(
-                        &binary_content_digest,
-                    )
-                    .expect("fixture Runtime binary digest"),
-            },
-            artifact_mode: "release".to_owned(),
-            artifact_catalog_digest: artifact_catalog_digest.clone(),
-            binding_token: "candidate-binding".to_owned(),
-            control_endpoint: agent_semantic_client_db::runtime_server_control::RuntimeServerLoopbackEndpoint::from_socket_addr(([127, 0, 0, 1], 45301).into()).expect("control endpoint"),
-            data_endpoint: agent_semantic_client_db::runtime_server_control::RuntimeServerLoopbackEndpoint::from_socket_addr(([127, 0, 0, 1], 45302).into()).expect("data endpoint"),
-            provider_endpoint: agent_semantic_client_db::runtime_server_control::RuntimeServerLoopbackEndpoint::from_socket_addr(([127, 0, 0, 1], 45303).into()).expect("provider endpoint"),
-            workspace_store_path: "/runtime/workspaces".to_owned(),
-            status_memory_path: "/runtime/status.memory".to_owned(),
-        };
-        let ready = ResidentCandidateReadyReceipt {
-            identity: derived_identity,
-            readiness: RuntimeServerReadinessReceipt {
-                schema_id: "agent.semantic-protocols.runtime-server-readiness".to_owned(),
-                schema_version: "1".to_owned(),
-                state: RuntimeServerReadinessState::Ready,
-                request_id: "resident-transaction-test".to_owned(),
-                readiness_token: "resident-transaction-token".to_owned(),
-                process_id: endpoint.owner_process_id,
-                owner_epoch: endpoint.owner_epoch,
-                endpoint_binding_token: endpoint.binding_token.clone(),
-                runtime_binary_identity: endpoint.binary_content_digest.clone(),
-                artifact_catalog_digest,
-                transport_contract_digest,
-                reason_kind: Some("runtime-server-ready".to_owned()),
-                error: None,
-            },
-        };
-        let drain_called = Arc::new(AtomicBool::new(false));
-        let drain_observer = Arc::clone(&drain_called);
-        let publisher = AtomicResidentPublisher::new(temporary.path().join("resident"));
-        let mut endpoint = endpoint;
-        let _control_listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
-            .await
-            .expect("bind candidate control plane");
-        let _provider_listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
-            .await
-            .expect("bind candidate provider plane");
-        endpoint.control_endpoint = agent_semantic_client_db::runtime_server_control::RuntimeServerLoopbackEndpoint::from_socket_addr(_control_listener.local_addr().expect("control address")).expect("control endpoint");
-        endpoint.provider_endpoint = agent_semantic_client_db::runtime_server_control::RuntimeServerLoopbackEndpoint::from_socket_addr(_provider_listener.local_addr().expect("provider address")).expect("provider endpoint");
-        let data_listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
-            .await
-            .expect("reserve candidate data plane");
-        endpoint.data_endpoint = agent_semantic_client_db::runtime_server_control::RuntimeServerLoopbackEndpoint::from_socket_addr(data_listener.local_addr().expect("data address")).expect("data endpoint");
-        drop(data_listener);
-
-        let active_before_failure = publisher
-            .active()
-            .await
-            .expect("read active before data-plane failure")
-            .map(|slot| slot.identity);
-        let healthy_before_failure = publisher
-            .healthy()
-            .await
-            .expect("read healthy before data-plane failure")
-            .map(|slot| slot.identity);
-        let failed_drain_observer = drain_called.clone();
-        let failure = publish_candidate_transaction(
-            &publisher,
-            &binary,
-            &endpoint,
-            &ready,
-            move || async move {
-                failed_drain_observer.store(true, Ordering::Release);
-                Ok(())
-            },
-        )
-        .await
-        .expect_err("missing data plane must reject resident candidate");
-        assert!(
-            failure.contains("data"),
-            "typed failure must identify the missing data plane: {failure}"
-        );
-        assert_eq!(
-            publisher
-                .active()
-                .await
-                .expect("read active after data-plane failure")
-                .map(|slot| slot.identity),
-            active_before_failure
-        );
-        assert_eq!(
-            publisher
-                .healthy()
-                .await
-                .expect("read healthy after data-plane failure")
-                .map(|slot| slot.identity),
-            healthy_before_failure
-        );
-        assert!(
-            !drain_called.load(Ordering::Acquire),
-            "precommit data-plane failure must not drain the serving generation"
-        );
-        let _data_listener = tokio::net::TcpListener::bind(endpoint.data_endpoint.socket_addr())
-            .await
-            .expect("bind candidate data plane");
-
-        let receipt = publish_candidate_transaction(
-            &publisher,
-            &binary,
-            &endpoint,
-            &ready,
-            move || async move {
-                drain_observer.store(true, Ordering::Release);
-                Ok(())
-            },
-        )
-        .await
-        .expect("publish ready resident candidate");
-        assert!(drain_called.load(Ordering::Acquire));
-        assert!(receipt.publication_dir.join("asp").is_file());
-        assert_eq!(receipt.identity, ready.identity);
-
-        let drain_error =
-            publish_candidate_transaction(&publisher, &binary, &endpoint, &ready, || async {
-                Err("old Runtime drain failed".to_owned())
-            })
-            .await
-            .expect_err("drain failure is a typed terminal after authority commit");
-        assert!(drain_error.contains("after active authority commit"));
-        assert_eq!(
-            publisher.active().await.unwrap().unwrap().identity,
-            ready.identity
-        );
-        assert_eq!(
-            publisher.healthy().await.unwrap().unwrap().identity,
-            ready.identity
-        );
-    }
-}
+#[path = "../tests/unit/resident_publication_transaction.rs"]
+mod production_transaction_tests;
 pub async fn resident_readiness_root(
     state_home: &std::path::Path,
 ) -> Result<crate::readiness::RuntimeServerReadinessRoot, String> {
     use std::os::unix::ffi::OsStrExt as _;
-    use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _};
+    use std::os::unix::fs::MetadataExt as _;
+    use std::os::unix::fs::PermissionsExt as _;
 
     let canonical_state_home = tokio::fs::canonicalize(state_home).await.map_err(|error| {
         format!(

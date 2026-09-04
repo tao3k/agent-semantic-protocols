@@ -1,18 +1,25 @@
-use agent_semantic_content_identity::{
-    SourceSnapshotEvidence, SourceSnapshotKind,
-    provider_projection_relation::{ProviderProjectedRelation, ProviderProjectedRelationEndpoint},
-    workspace_generation_evidence::WorkspaceGenerationEvidenceV1,
-};
-use agent_semantic_search_projection::{ResidentSearchHit, ResidentSearchProjectionTier};
+use agent_semantic_content_identity::SourceSnapshotEvidence;
+use agent_semantic_content_identity::SourceSnapshotKind;
+use agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelation;
+use agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelationEndpoint;
+use agent_semantic_content_identity::workspace_generation_evidence::WorkspaceGenerationEvidenceV1;
+use agent_semantic_search_projection::ResidentSearchHit;
+use agent_semantic_search_projection::ResidentSearchProjectionTier;
 
+use crate::ContentSearchGenerationReceipt;
+use crate::ResidentGraphEvaluationBudget;
+use crate::ResidentGraphEvaluationRequest;
+use crate::ResidentGraphSearchBudget;
+use crate::ResidentGraphSearchRequest;
+use crate::SearchGenerationConstructionStage;
+use crate::SearchGenerationGraphRequest;
+use crate::SearchGenerationIdentity;
+use crate::SearchGenerationStageReceipt;
+use crate::build_resident_graph_generation;
+use crate::evaluate_resident_graph_generation;
+use crate::rank_resident_graph_generation;
 use crate::resident_graph_search::materialize_resident_graph_generation;
-use crate::{
-    ContentSearchGenerationReceipt, ResidentGraphEvaluationBudget, ResidentGraphEvaluationRequest,
-    ResidentGraphSearchBudget, ResidentGraphSearchRequest, SearchGenerationConstructionStage,
-    SearchGenerationGraphRequest, SearchGenerationIdentity, SearchGenerationStageReceipt,
-    build_resident_graph_generation, evaluate_resident_graph_generation,
-    rank_resident_graph_generation, stable_graph_node_id,
-};
+use crate::stable_graph_node_id;
 
 fn content_generation(identity: &SearchGenerationIdentity) -> ContentSearchGenerationReceipt {
     let stage = |stage, byte: char| SearchGenerationStageReceipt {
@@ -45,12 +52,12 @@ fn hit(path: &str) -> ResidentSearchHit {
 fn relation(owner: &str) -> ProviderProjectedRelation {
     ProviderProjectedRelation {
         from: ProviderProjectedRelationEndpoint {
-            kind: "owner".to_owned(),
+            kind: agent_semantic_content_identity::ProviderRelationEndpointKindV1::Owner,
             id: owner.to_owned(),
         },
-        kind: "contains".to_owned(),
+        kind: "contains".into(),
         to: ProviderProjectedRelationEndpoint {
-            kind: "item".to_owned(),
+            kind: agent_semantic_content_identity::ProviderRelationEndpointKindV1::Item,
             id: "WorkspaceGenerationAdmission::compare".to_owned(),
         },
     }
@@ -59,12 +66,12 @@ fn relation(owner: &str) -> ProviderProjectedRelation {
 fn owner_relation(from: &str, to: &str) -> ProviderProjectedRelation {
     ProviderProjectedRelation {
         from: ProviderProjectedRelationEndpoint {
-            kind: "owner".to_owned(),
+            kind: agent_semantic_content_identity::ProviderRelationEndpointKindV1::Owner,
             id: from.to_owned(),
         },
-        kind: "imports".to_owned(),
+        kind: "imports".into(),
         to: ProviderProjectedRelationEndpoint {
-            kind: "owner".to_owned(),
+            kind: agent_semantic_content_identity::ProviderRelationEndpointKindV1::Owner,
             id: to.to_owned(),
         },
     }
@@ -208,12 +215,12 @@ fn generation_graph_rejects_a_relation_to_an_unadmitted_owner() {
     };
     let relation = ProviderProjectedRelation {
         from: ProviderProjectedRelationEndpoint {
-            kind: "owner".to_owned(),
+            kind: agent_semantic_content_identity::ProviderRelationEndpointKindV1::Owner,
             id: "src/lib.rs".to_owned(),
         },
-        kind: "imports".to_owned(),
+        kind: "imports".into(),
         to: ProviderProjectedRelationEndpoint {
-            kind: "owner".to_owned(),
+            kind: agent_semantic_content_identity::ProviderRelationEndpointKindV1::Owner,
             id: "src/missing.rs".to_owned(),
         },
     };

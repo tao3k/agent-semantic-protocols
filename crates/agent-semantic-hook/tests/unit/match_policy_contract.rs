@@ -1,11 +1,17 @@
-use agent_semantic_hook::{
-    DecisionKind, HookClassificationRequest, ReasonKind, classify_hook_with_config,
-    default_client_config_template, load_client_config_for_project_with_executable_capabilities,
-};
-use serde_json::{Value, json};
-use std::{collections::BTreeSet, fs, path::PathBuf};
+use agent_semantic_hook::DecisionKind;
+use agent_semantic_hook::HookClassificationRequest;
+use agent_semantic_hook::ReasonKind;
+use agent_semantic_hook::classify_hook_with_config;
+use agent_semantic_hook::default_client_config_template;
+use agent_semantic_hook::load_client_config_for_project_with_executable_capabilities;
+use serde_json::Value;
+use serde_json::json;
+use std::collections::BTreeSet;
+use std::fs;
+use std::path::PathBuf;
 
-use super::classifier::{builtin_programming_runtime, registry};
+use super::classifier::builtin_programming_runtime;
+use super::classifier::registry;
 
 fn temp_project_root() -> PathBuf {
     let nonce = std::time::SystemTime::now()

@@ -1,6 +1,8 @@
 //! Parser-owned shell-stage projection for declarative Hook classification.
 
-use crate::tool_action::{OperationIntent, ToolAction, ToolSurface};
+use crate::tool_action::OperationIntent;
+use crate::tool_action::ToolAction;
+use crate::tool_action::ToolSurface;
 
 /// Parses a compound shell command once and projects one declarative Hook
 /// action per executable stage. Simple commands stay on the envelope fast path.

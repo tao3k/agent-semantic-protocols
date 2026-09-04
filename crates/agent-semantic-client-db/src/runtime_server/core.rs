@@ -10,75 +10,22 @@ use crate::runtime_server_agent_session_status::AgentSessionStatusHandle;
 pub use crate::runtime_server_asp_python_graphs_status::AspPythonGraphsStatusHandle;
 use crate::runtime_server_control::RuntimeServerEndpoint;
 use crate::runtime_server_control::status_memory::RuntimeServerStatusMemoryWriter;
+use crate::runtime_server_observability::publish_event;
 
 use crate::WorkspaceDbRegistry;
 
-#[derive(serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-struct SourceIndexDurabilityAttachmentReceipt<'a> {
-    schema_id: &'static str,
-    schema_version: &'static str,
-    state: &'static str,
-    project_id: &'a str,
-    workspace_id: &'a str,
-    generation_digest: &'a str,
-    source_root_digest: &'a str,
-    elapsed_micros: u64,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    reason_kind: Option<&'static str>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    error: Option<&'a str>,
-}
+#[path = "durability.rs"]
+mod durability;
+use durability::{
+    durable_provider_binding_matches_current, emit_source_index_durability_attachment,
+    spawn_runtime_owned_durability_task,
+};
 
-fn emit_source_index_durability_attachment(
-    state: &'static str,
-    project_id: &str,
-    workspace_id: &str,
-    generation_digest: &str,
-    source_root_digest: &str,
-    elapsed_micros: u64,
-    error: Option<&str>,
-) {
-    eprintln!(
-        "[source-index-durability-attachment] {}",
-        serde_json::to_string(&SourceIndexDurabilityAttachmentReceipt {
-            schema_id: "agent.semantic-protocols.source-index-durability-attachment-receipt",
-            schema_version: "1",
-            state,
-            project_id,
-            workspace_id,
-            generation_digest,
-            source_root_digest,
-            elapsed_micros,
-            reason_kind: error.map(|_| "source-index-durability-attachment-failed"),
-            error,
-        })
-        .unwrap_or_else(|encode_error| format!(
-            "{{\"schemaId\":\"agent.semantic-protocols.source-index-durability-attachment-receipt\",\"schemaVersion\":\"1\",\"state\":\"failed\",\"reasonKind\":\"receipt-encoding-failed\",\"error\":{}}}",
-            serde_json::Value::String(encode_error.to_string())
-        ))
-    );
-}
-
-async fn spawn_runtime_owned_durability_task<F>(
-    durability_tasks: &Arc<tokio::sync::Mutex<JoinSet<()>>>,
-    task: F,
-) where
-    F: std::future::Future<Output = ()> + Send + 'static,
-{
-    let mut durability_tasks = durability_tasks.lock().await;
-    while durability_tasks.try_join_next().is_some() {}
-    durability_tasks.spawn(task);
-}
-
-fn durable_provider_binding_matches_current(
-    observed_generation: Option<&str>,
-    current_generation: Option<&str>,
-) -> bool {
-    matches!(
-        (observed_generation, current_generation),
-        (Some(observed), Some(current)) if !current.is_empty() && observed == current
-    )
+#[path = "lifecycle_support.rs"]
+mod lifecycle_support;
+use lifecycle_support::publish_connection_completion;
+pub(crate) async fn runtime_server_shutdown_signal() -> Result<(), String> {
+    lifecycle_support::runtime_server_shutdown_signal().await
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -89,7 +36,6 @@ pub enum RuntimeServerExit {
 }
 
 pub use crate::runtime_server_observability::RuntimeServerEvent;
-use crate::runtime_server_observability::publish_event;
 
 const CONNECTION_DRAIN_BOUNDARY: std::time::Duration = std::time::Duration::from_millis(100);
 const DURABILITY_DRAIN_BOUNDARY: std::time::Duration = std::time::Duration::from_millis(100);
@@ -182,45 +128,6 @@ impl RuntimeServer {
         let _ = tokio::fs::remove_file(&self.endpoint.status_memory_path).await;
     }
 
-    pub fn with_event_sender(
-        mut self,
-        events: crate::runtime_server_observability::RuntimeServerEventPublisher,
-    ) -> Self {
-        self.events = Some(events);
-        self
-    }
-
-    pub fn with_runtime_telemetry_sender(
-        mut self,
-        sender: crate::runtime_telemetry_bus::RuntimeTelemetryBusSender,
-    ) -> Self {
-        self.telemetry_sender = Some(sender);
-        self
-    }
-
-    pub fn with_runtime_search_service(
-        mut self,
-        service: crate::runtime_search_service::RuntimeSearchServiceHandle,
-    ) -> Self {
-        self.runtime_search_service = Some(service);
-        self
-    }
-
-    pub fn with_asp_python_graphs_status(mut self, status: AspPythonGraphsStatusHandle) -> Self {
-        self.status_memory.set_asp_python_graphs(status.shared());
-        self.asp_python_graphs_status = Some(status);
-        self
-    }
-
-    /// Compose the server with an already-owned generation admission plane.
-    pub fn with_workspace_generation_admission(
-        mut self,
-        admission: Arc<crate::runtime_server_admission::WorkspaceGenerationAdmission>,
-    ) -> Self {
-        self.generation_admission = Some(admission);
-        self
-    }
-
     pub(crate) fn configure_workspace_generation_builder(
         mut self,
         source_builder: impl Into<
@@ -241,10 +148,28 @@ impl RuntimeServer {
         let ready_validator = provider_binding_generation_probe.map(|probe| {
             let memory_registry = Arc::clone(&memory_registry);
             std::sync::Arc::new(
-                move |workspace_identity: &str, project_root: &std::path::Path| {
+                move |
+                    workspace_identity: &str,
+                    project_root: &std::path::Path,
+                    receipt: &crate::runtime_server_admission::WorkspaceGenerationAdmissionReceipt,
+                | {
                     let expected = probe()?;
                     let lease = memory_registry.lease(workspace_identity, project_root)?;
                     let generation = lease.generation();
+                    let committed_generation_digest = receipt
+                        .commit
+                        .as_ref()
+                        .ok_or_else(|| {
+                            "ready Runtime generation admission lacks its commit".to_owned()
+                        })?
+                        .generation_digest
+                        .as_str();
+                    if generation.generation_digest != committed_generation_digest {
+                        return Err(format!(
+                            "Runtime resident generation drift: expected={} observed={}",
+                            committed_generation_digest, generation.generation_digest,
+                        ));
+                    }
                     let observed = match generation.runtime_provider_execution_binding.as_ref() {
                         Some(binding) => {
                             binding.validate()?;
@@ -1043,28 +968,6 @@ impl RuntimeServer {
     }
 }
 
-fn publish_connection_completion(
-    events: Option<&crate::runtime_server_observability::RuntimeServerEventPublisher>,
-    completed: Result<
-        (
-            crate::runtime_server_runtime::RuntimeServerConnectionLease,
-            Result<bool, String>,
-        ),
-        tokio::task::JoinError,
-    >,
-) {
-    match completed {
-        Ok((_lease, Ok(_))) => {}
-        Ok((_lease, Err(error))) => {
-            publish_event(events, RuntimeServerEvent::ConnectionRejected(error))
-        }
-        Err(error) => publish_event(
-            events,
-            RuntimeServerEvent::ConnectionTaskFailed(error.to_string()),
-        ),
-    }
-}
-
 #[cfg(test)]
 #[path = "../../tests/unit/runtime_server_connection_completion.rs"]
 mod connection_completion_tests;
@@ -1072,24 +975,3 @@ mod connection_completion_tests;
 #[cfg(test)]
 #[path = "../../tests/unit/runtime_server_durability_attachment.rs"]
 mod durability_attachment_tests;
-
-#[cfg(unix)]
-pub(super) async fn runtime_server_shutdown_signal() -> Result<(), String> {
-    let mut terminate = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
-        .map_err(|error| {
-        format!("failed to install Runtime Server SIGTERM handler: {error}")
-    })?;
-    tokio::select! {
-        result = tokio::signal::ctrl_c() => {
-            result.map_err(|error| format!("failed to await Runtime Server Ctrl-C signal: {error}"))
-        }
-        _ = terminate.recv() => Ok(()),
-    }
-}
-
-#[cfg(not(unix))]
-pub(super) async fn runtime_server_shutdown_signal() -> Result<(), String> {
-    tokio::signal::ctrl_c()
-        .await
-        .map_err(|error| format!("failed to await Runtime Server Ctrl-C signal: {error}"))
-}

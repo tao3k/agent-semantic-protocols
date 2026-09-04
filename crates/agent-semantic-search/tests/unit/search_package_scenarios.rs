@@ -1,7 +1,9 @@
 use std::collections::BTreeSet;
 use std::fs;
-use std::path::{Path, PathBuf};
-use std::time::{Duration, Instant};
+use std::path::Path;
+use std::path::PathBuf;
+use std::time::Duration;
+use std::time::Instant;
 
 const SCENARIO_ID: &str = "search-package-linear-performance-monitoring";
 const SCENARIO_ROOT: &str = concat!(

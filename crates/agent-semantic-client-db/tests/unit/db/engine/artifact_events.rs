@@ -108,3 +108,10 @@ fn db_engine_artifact_event_writes_survive_concurrent_agent_stress() {
     }
     let _ = fs::remove_dir_all(client_dir.as_ref());
 }
+use super::fixture::temp_root;
+use agent_semantic_client_db::ClientDbArtifactEvent;
+use agent_semantic_client_db::ClientDbEngine;
+use std::fs;
+use std::sync::Arc;
+use std::sync::Barrier;
+use std::thread;

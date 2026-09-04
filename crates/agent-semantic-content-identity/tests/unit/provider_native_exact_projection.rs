@@ -1,5 +1,6 @@
 use agent_semantic_content_identity::callable_skeleton_projection::CallableSkeletonPayload;
 use agent_semantic_content_identity::semantic_projection::SemanticProjection;
+use agent_semantic_content_identity::semantic_projection::SemanticProjectionInput;
 
 fn response() -> SemanticProjection<CallableSkeletonPayload> {
     let mut fixture: serde_json::Value = serde_json::from_str(include_str!(
@@ -13,15 +14,16 @@ fn response() -> SemanticProjection<CallableSkeletonPayload> {
     fixture = fixture["payload"].clone();
     let payload: CallableSkeletonPayload =
         serde_json::from_value(fixture).expect("decode callable skeleton payload");
-    SemanticProjection::new(
-        CallableSkeletonPayload::projection_kind(),
-        "rust",
-        "asp-rust",
-        root_selector,
-        "blake3-256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
-        "agent.semantic-protocols.callable-skeleton",
+    SemanticProjection::new(SemanticProjectionInput {
+        projection_kind: CallableSkeletonPayload::projection_kind().into(),
+        language_id: "rust".into(),
+        provider_id: "asp-rust".into(),
+        root_selector: root_selector.into(),
+        evidence_context_ref:
+            "blake3-256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee".into(),
+        payload_schema_id: "agent.semantic-protocols.callable-skeleton".into(),
         payload,
-    )
+    })
     .expect("decode typed semantic projection")
 }
 

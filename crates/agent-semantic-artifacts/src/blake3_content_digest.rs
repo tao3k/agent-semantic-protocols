@@ -1,10 +1,12 @@
 use std::fmt;
 use std::str::FromStr;
 
-use agent_semantic_content_identity::exact_selector_merkle::{
-    ContentDigestV1, parse_content_digest_v1,
-};
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use agent_semantic_content_identity::exact_selector_merkle::ContentDigestV1;
+use agent_semantic_content_identity::exact_selector_merkle::parse_content_digest_v1;
+use serde::Deserialize;
+use serde::Deserializer;
+use serde::Serialize;
+use serde::Serializer;
 
 const PREFIX: &str = "blake3-256:";
 

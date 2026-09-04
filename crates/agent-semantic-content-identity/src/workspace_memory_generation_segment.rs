@@ -1,7 +1,10 @@
+//! Encodes immutable resident workspace-memory generations as typed binary sections.
+
 /// Binary contract discriminator for an immutable resident generation that
 /// includes the provider relation graph in its content identity.
 pub const WORKSPACE_MEMORY_GENERATION_SEGMENT_MAGIC: &[u8; 16] = b"ASPWSMEMORYRELV1";
 
+/// Schema identifier stored in each workspace-memory generation directory.
 pub const WORKSPACE_MEMORY_GENERATION_SEGMENT_SCHEMA_ID: &str =
     "agent.semantic-protocols.workspace-memory-generation-segment";
 
@@ -9,6 +12,7 @@ pub const WORKSPACE_MEMORY_GENERATION_SEGMENT_SCHEMA_ID: &str =
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
 )]
 #[serde(rename_all = "kebab-case")]
+/// Logical section carried by a workspace-memory generation segment.
 pub enum WorkspaceMemoryGenerationSectionKindV1 {
     GenerationEvidence,
     ProjectResolutions,
@@ -21,6 +25,7 @@ pub enum WorkspaceMemoryGenerationSectionKindV1 {
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "kebab-case")]
+/// Physical representation of one workspace-memory generation section.
 pub enum WorkspaceMemoryGenerationSectionRepresentationV1 {
     FixedLeU64,
     SortedOffsetTable,
@@ -30,6 +35,7 @@ pub enum WorkspaceMemoryGenerationSectionRepresentationV1 {
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+/// Offset, length, and digest metadata for one immutable section.
 pub struct WorkspaceMemoryGenerationSectionV1 {
     pub kind: WorkspaceMemoryGenerationSectionKindV1,
     pub offset: u64,
@@ -41,6 +47,7 @@ pub struct WorkspaceMemoryGenerationSectionV1 {
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+/// Complete typed directory for an immutable workspace-memory generation.
 pub struct WorkspaceMemoryGenerationDirectoryV1 {
     pub schema_id: String,
     pub schema_version: String,
@@ -54,6 +61,11 @@ pub struct WorkspaceMemoryGenerationDirectoryV1 {
 
 impl WorkspaceMemoryGenerationDirectoryV1 {
     pub fn validate(&self) -> Result<(), String> {
+        self.validate_identity()?;
+        self.validate_sections()
+    }
+
+    fn validate_identity(&self) -> Result<(), String> {
         if self.schema_id != WORKSPACE_MEMORY_GENERATION_SEGMENT_SCHEMA_ID
             || self.schema_version != "1"
         {
@@ -72,6 +84,10 @@ impl WorkspaceMemoryGenerationDirectoryV1 {
                     .to_owned(),
             );
         }
+        Ok(())
+    }
+
+    fn validate_sections(&self) -> Result<(), String> {
         let required = [
             WorkspaceMemoryGenerationSectionKindV1::GenerationEvidence,
             WorkspaceMemoryGenerationSectionKindV1::ProjectResolutions,
@@ -135,6 +151,7 @@ fn validate_qualified_blake3(value: &str, subject: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Reports whether bytes begin with the current workspace-memory contract magic.
 pub fn has_current_workspace_memory_generation_contract(bytes: &[u8]) -> bool {
     bytes.starts_with(WORKSPACE_MEMORY_GENERATION_SEGMENT_MAGIC)
 }

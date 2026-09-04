@@ -1,24 +1,48 @@
 use std::future::Future;
-use std::sync::{Arc, Mutex};
-use std::task::{Context, Poll, Waker};
+use std::sync::Arc;
+use std::sync::Mutex;
+use std::task::Context;
+use std::task::Poll;
+use std::task::Waker;
 
-use agent_semantic_context_product::{
-    ActiveProgram, ClosureDisposition, ClosureProof, Digest, EffectClass, EvidenceReceipt,
-    ExecutionAuthority, JoinPolicy, JoinedExecutionGroup, ProtocolId, RouteProgram,
-    StateAuthorityReceipt, UncheckedContextProductStateV1,
-};
+use agent_semantic_context_product::ActiveProgram;
+use agent_semantic_context_product::ClosureDisposition;
+use agent_semantic_context_product::ClosureProof;
+use agent_semantic_context_product::Digest;
+use agent_semantic_context_product::EffectClass;
+use agent_semantic_context_product::EvidenceReceipt;
+use agent_semantic_context_product::ExecutionAuthority;
+use agent_semantic_context_product::JoinPolicy;
+use agent_semantic_context_product::JoinedExecutionGroup;
+use agent_semantic_context_product::ProtocolId;
+use agent_semantic_context_product::RouteProgram;
+use agent_semantic_context_product::StateAuthorityReceipt;
+use agent_semantic_context_product::UncheckedContextProductStateV1;
 
-use crate::ports::{
-    AuthoritativeStateRecord, CompareAndAppendOutcome, PortFuture, RunCommit, RunCommitReceipt,
-};
-use crate::search_loop::{SearchLoopDirective, SearchLoopReducer, SearchLoopSnapshot};
-use crate::{
-    AdmitSearchLoopDirectiveRequest, ExecutionDispatchAdmission, FinalizeClosureRequest,
-    GraphRouter, GraphRouterError, JoinExecutionGroupRequest, ProofResolver,
-    ProviderExecutionDispatch, ProviderExecutionResult, RunCommitStore, SearchExecutionDriver,
-    SearchLoopAdvanceDispatch, SearchLoopAdvanceRequest, SearchLoopPollDispatch,
-    SearchLoopPollRequest, TrustedClock,
-};
+use crate::AdmitSearchLoopDirectiveRequest;
+use crate::ExecutionDispatchAdmission;
+use crate::FinalizeClosureRequest;
+use crate::GraphRouter;
+use crate::GraphRouterError;
+use crate::JoinExecutionGroupRequest;
+use crate::ProofResolver;
+use crate::ProviderExecutionDispatch;
+use crate::ProviderExecutionResult;
+use crate::RunCommitStore;
+use crate::SearchExecutionDriver;
+use crate::SearchLoopAdvanceDispatch;
+use crate::SearchLoopAdvanceRequest;
+use crate::SearchLoopPollDispatch;
+use crate::SearchLoopPollRequest;
+use crate::TrustedClock;
+use crate::ports::AuthoritativeStateRecord;
+use crate::ports::CompareAndAppendOutcome;
+use crate::ports::PortFuture;
+use crate::ports::RunCommit;
+use crate::ports::RunCommitReceipt;
+use crate::search_loop::SearchLoopDirective;
+use crate::search_loop::SearchLoopReducer;
+use crate::search_loop::SearchLoopSnapshot;
 
 struct MemoryStore {
     record: Mutex<AuthoritativeStateRecord>,

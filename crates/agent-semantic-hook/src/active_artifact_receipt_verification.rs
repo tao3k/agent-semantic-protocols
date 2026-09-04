@@ -1,20 +1,19 @@
-use std::{
-    fs,
-    path::{Path, PathBuf},
-    sync::Mutex,
-    time::UNIX_EPOCH,
-};
+use std::fs;
+use std::path::Path;
+use std::path::PathBuf;
+use std::sync::Mutex;
+use std::time::UNIX_EPOCH;
 
-use agent_semantic_content_identity::active_artifact_merkle::{
-    ActiveArtifactLeaf, ActiveAspArtifactReceipt,
-};
+use agent_semantic_content_identity::active_artifact_merkle::ActiveArtifactLeaf;
+use agent_semantic_content_identity::active_artifact_merkle::ActiveAspArtifactReceipt;
 use agent_semantic_content_identity::exact_selector_merkle::blake3_content_digest_v1;
 
-use super::{
-    ActiveArtifactMetadataFingerprint, VERIFIED_ACTIVE_ASP_ARTIFACT_RECEIPT_CACHE,
-    VerifiedActiveAspArtifactReceiptCacheEntry, active_asp_artifact_receipt_path,
-    canonical_regular_file, utf8_path,
-};
+use super::ActiveArtifactMetadataFingerprint;
+use super::VERIFIED_ACTIVE_ASP_ARTIFACT_RECEIPT_CACHE;
+use super::VerifiedActiveAspArtifactReceiptCacheEntry;
+use super::active_asp_artifact_receipt_path;
+use super::canonical_regular_file;
+use super::utf8_path;
 
 pub fn verify_active_asp_artifact_receipt(
     activation_path: &Path,

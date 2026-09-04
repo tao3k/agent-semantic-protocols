@@ -1,15 +1,20 @@
-use super::model::{OrgPlanCandidate, RankedOrgPlan};
+use super::model::OrgPlanCandidate;
+use super::model::RankedOrgPlan;
 use agent_semantic_runtime::project_state_paths;
-use serde::{Deserialize, Serialize};
-use std::{
-    collections::BTreeMap,
-    env, fs,
-    io::{BufRead, BufReader, Write},
-    path::{Path, PathBuf},
-    process::{Command, Stdio},
-    thread,
-    time::Duration,
-};
+use serde::Deserialize;
+use serde::Serialize;
+use std::collections::BTreeMap;
+use std::env;
+use std::fs;
+use std::io::BufRead;
+use std::io::BufReader;
+use std::io::Write;
+use std::path::Path;
+use std::path::PathBuf;
+use std::process::Command;
+use std::process::Stdio;
+use std::thread;
+use std::time::Duration;
 
 #[derive(Serialize)]
 struct MemoryRankRequest {

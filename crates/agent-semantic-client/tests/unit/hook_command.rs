@@ -1,7 +1,8 @@
 #[path = "../../src/command/hook.rs"]
 mod hook;
 use std::process::Command;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::SystemTime;
+use std::time::UNIX_EPOCH;
 
 mod hook_runtime {
     pub(crate) async fn run_hook_runtime_args(_args: Vec<String>) -> Result<(), String> {

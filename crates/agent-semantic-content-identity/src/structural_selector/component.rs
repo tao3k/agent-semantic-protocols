@@ -1,5 +1,8 @@
+//! Encodes selector components and owner paths without ambiguous aliases.
+
 use super::StructuralSelectorCodecError;
 
+/// Percent-encodes one structural-selector component canonically.
 pub fn encode_structural_selector_component(value: &str) -> String {
     let mut encoded = String::with_capacity(value.len());
     for byte in value.bytes() {
@@ -14,6 +17,7 @@ pub fn encode_structural_selector_component(value: &str) -> String {
     encoded
 }
 
+/// Decodes one canonical structural-selector component.
 pub fn decode_structural_selector_component(
     value: &str,
 ) -> Result<String, StructuralSelectorCodecError> {
@@ -51,6 +55,7 @@ pub fn decode_structural_selector_component(
     })
 }
 
+/// Encodes a normalized owner path for structural-selector transport.
 pub fn encode_structural_selector_owner_path(value: &str) -> String {
     value
         .split('/')
@@ -59,6 +64,7 @@ pub fn encode_structural_selector_owner_path(value: &str) -> String {
         .join("/")
 }
 
+/// Decodes and validates a structural-selector owner path.
 pub fn decode_structural_selector_owner_path(
     value: &str,
 ) -> Result<String, StructuralSelectorCodecError> {

@@ -1,11 +1,19 @@
 //! Lossless conversion between the shared protocol model and its canonical
 //! Schema Manager-owned protobuf wire projection.
 
-use agent_semantic_client_protocol::{
-    ClientCapabilities, ClientFrame, ClientFrameBase, ClientInfo, ClientMethod, ClientOutcome,
-    ClientParameter, ClientParameterCardinality, ClientParameterSource, ClientParameterType,
-    ClientProtocolCatalog, ClientTransport, TraceContext,
-};
+use agent_semantic_client_protocol::ClientCapabilities;
+use agent_semantic_client_protocol::ClientFrame;
+use agent_semantic_client_protocol::ClientFrameBase;
+use agent_semantic_client_protocol::ClientInfo;
+use agent_semantic_client_protocol::ClientMethod;
+use agent_semantic_client_protocol::ClientOutcome;
+use agent_semantic_client_protocol::ClientParameter;
+use agent_semantic_client_protocol::ClientParameterCardinality;
+use agent_semantic_client_protocol::ClientParameterSource;
+use agent_semantic_client_protocol::ClientParameterType;
+use agent_semantic_client_protocol::ClientProtocolCatalog;
+use agent_semantic_client_protocol::ClientTransport;
+use agent_semantic_client_protocol::TraceContext;
 use serde_json::Value;
 
 use super::generated as wire;
@@ -257,10 +265,14 @@ fn decode_catalog(catalog: wire::ClientProtocolCatalog) -> Result<ClientProtocol
 fn encode_method(method: ClientMethod) -> wire::ClientMethod {
     wire::ClientMethod {
         method: method.method,
-        route_id: method.route_id,
-        request_schema_id: method.request_schema_id,
-        response_schema_id: method.response_schema_id,
-        error_schema_ids: method.error_schema_ids,
+        route_id: method.route_id.into_inner(),
+        request_schema_id: method.request_schema_id.into_inner(),
+        response_schema_id: method.response_schema_id.into_inner(),
+        error_schema_ids: method
+            .error_schema_ids
+            .into_iter()
+            .map(agent_semantic_client_protocol::ClientSchemaId::into_inner)
+            .collect(),
         parameters: method
             .parameters
             .into_iter()
@@ -274,10 +286,23 @@ fn encode_method(method: ClientMethod) -> wire::ClientMethod {
 fn decode_method(method: wire::ClientMethod) -> Result<ClientMethod, String> {
     Ok(ClientMethod {
         method: required(method.method, "catalog.method.method")?,
-        route_id: required(method.route_id, "catalog.method.routeId")?,
-        request_schema_id: required(method.request_schema_id, "catalog.method.requestSchemaId")?,
-        response_schema_id: required(method.response_schema_id, "catalog.method.responseSchemaId")?,
-        error_schema_ids: method.error_schema_ids,
+        route_id: agent_semantic_client_protocol::ClientRouteId::new(required(
+            method.route_id,
+            "catalog.method.routeId",
+        )?)?,
+        request_schema_id: agent_semantic_client_protocol::ClientSchemaId::new(required(
+            method.request_schema_id,
+            "catalog.method.requestSchemaId",
+        )?)?,
+        response_schema_id: agent_semantic_client_protocol::ClientSchemaId::new(required(
+            method.response_schema_id,
+            "catalog.method.responseSchemaId",
+        )?)?,
+        error_schema_ids: method
+            .error_schema_ids
+            .into_iter()
+            .map(agent_semantic_client_protocol::ClientSchemaId::new)
+            .collect::<Result<_, _>>()?,
         parameters: method
             .parameters
             .into_iter()

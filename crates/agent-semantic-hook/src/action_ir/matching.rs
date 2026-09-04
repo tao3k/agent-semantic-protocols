@@ -1,4 +1,5 @@
-use super::{AgentActionKind, HostInvocationKind};
+use super::AgentActionKind;
+use super::HostInvocationKind;
 
 pub(crate) fn action_kind_matches(
     candidate: AgentActionKind,

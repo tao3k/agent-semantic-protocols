@@ -1,8 +1,10 @@
 use std::collections::BTreeSet;
 use std::fmt;
 
-use agent_semantic_context_product::{Digest, ProtocolId};
-use serde::{Deserialize, Serialize};
+use agent_semantic_context_product::Digest;
+use agent_semantic_context_product::ProtocolId;
+use serde::Deserialize;
+use serde::Serialize;
 
 pub const SEARCH_LOOP_OPEN_ENVELOPE_SCHEMA_ID: &str =
     "agent.semantic-protocols.search-loop-open-envelope";

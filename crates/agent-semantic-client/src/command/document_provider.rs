@@ -1,7 +1,12 @@
 //! Document language provider facade backed by orgize.
 
-use super::{org_archive, org_capture, org_recall, search_config::AspConfig};
-use orgize::agent::{self, DocumentLanguage, DocumentWalkConfig};
+use super::org_archive;
+use super::org_capture;
+use super::org_recall;
+use super::search_config::AspConfig;
+use orgize::agent::DocumentLanguage;
+use orgize::agent::DocumentWalkConfig;
+use orgize::agent::{self};
 use std::ffi::OsString;
 
 const DOCUMENT_LANGUAGES: &[&str] = &["org", "md"];

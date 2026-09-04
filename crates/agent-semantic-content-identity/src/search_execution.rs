@@ -1,11 +1,14 @@
 //! Exact-content execution identity for every public search operation.
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 
-use crate::content_binding::{
-    CONTENT_BINDING_SCHEMA_VERSION, ContentBinding, ContentBindingError, ContentPublicationCommit,
-};
-use crate::runtime_execution::{RuntimeExecutionBinding, RuntimeExecutionBindingError};
+use crate::content_binding::CONTENT_BINDING_SCHEMA_VERSION;
+use crate::content_binding::ContentBinding;
+use crate::content_binding::ContentBindingError;
+use crate::content_binding::ContentPublicationCommit;
+use crate::runtime_execution::RuntimeExecutionBinding;
+use crate::runtime_execution::RuntimeExecutionBindingError;
 
 /// Stable schema identifier for search execution frames.
 pub const SEARCH_EXECUTION_SCHEMA_ID: &str = "asp.search-execution";

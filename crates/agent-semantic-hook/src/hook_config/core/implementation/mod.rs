@@ -8,10 +8,10 @@ mod dispatch_fields;
 mod materialized_decision_shards;
 mod profile_provider_projection;
 
-pub use compiled_rule::{ClientHookConfig, DurableHookConfigArtifact};
-pub(in crate::hook_config) use compiled_rule::{
-    compile_config, compile_config_with_executable_capabilities,
-};
+pub use compiled_rule::ClientHookConfig;
+pub use compiled_rule::DurableHookConfigArtifact;
+pub(in crate::hook_config) use compiled_rule::compile_config;
+pub(in crate::hook_config) use compiled_rule::compile_config_with_executable_capabilities;
 pub use materialized_decision_shards::MaterializedDecisionShards;
 #[cfg(test)]
 #[path = "../../../../tests/unit/hook_config_core.rs"]

@@ -1,20 +1,30 @@
-use serde::{Deserialize, Serialize};
+//! Typed Host session lineage used to bind Runtime observations without inference.
 
+use serde::Deserialize;
+use serde::Serialize;
+
+use crate::HostPlatformV1;
+use crate::HostSessionIdV1;
+
+/// Schema identifier for a typed Host session-lineage binding.
 pub const HOST_SESSION_SCHEMA_ID: &str = "asp.host-session-binding";
+/// Schema version for Host session-lineage bindings.
 pub const HOST_SESSION_SCHEMA_VERSION: &str = "1";
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
+/// Explicit root, parent, and current Host session identities.
 pub struct HostSessionBinding {
     pub schema_id: String,
     pub schema_version: String,
-    pub platform: String,
-    pub root_session_id: String,
-    pub parent_session_id: String,
-    pub current_session_id: String,
+    pub platform: HostPlatformV1,
+    pub root_session_id: HostSessionIdV1,
+    pub parent_session_id: HostSessionIdV1,
+    pub current_session_id: HostSessionIdV1,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+/// Deterministic validation error for a Host session binding.
 pub enum HostSessionBindingError {
     SchemaMismatch,
     MissingField(&'static str),
@@ -24,10 +34,10 @@ pub enum HostSessionBindingError {
 
 impl HostSessionBinding {
     pub fn new(
-        platform: impl Into<String>,
-        root_session_id: impl Into<String>,
-        parent_session_id: impl Into<String>,
-        current_session_id: impl Into<String>,
+        platform: impl Into<HostPlatformV1>,
+        root_session_id: impl Into<HostSessionIdV1>,
+        parent_session_id: impl Into<HostSessionIdV1>,
+        current_session_id: impl Into<HostSessionIdV1>,
     ) -> Result<Self, HostSessionBindingError> {
         let binding = Self {
             schema_id: HOST_SESSION_SCHEMA_ID.into(),
@@ -48,10 +58,10 @@ impl HostSessionBinding {
             return Err(HostSessionBindingError::SchemaMismatch);
         }
         for (name, value) in [
-            ("platform", &self.platform),
-            ("rootSessionId", &self.root_session_id),
-            ("parentSessionId", &self.parent_session_id),
-            ("currentSessionId", &self.current_session_id),
+            ("platform", self.platform.as_str()),
+            ("rootSessionId", self.root_session_id.as_str()),
+            ("parentSessionId", self.parent_session_id.as_str()),
+            ("currentSessionId", self.current_session_id.as_str()),
         ] {
             if value.is_empty() {
                 return Err(HostSessionBindingError::MissingField(name));

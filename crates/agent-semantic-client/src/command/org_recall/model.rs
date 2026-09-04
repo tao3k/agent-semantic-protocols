@@ -1,5 +1,6 @@
 use serde::Serialize;
-use std::{collections::BTreeMap, path::PathBuf};
+use std::collections::BTreeMap;
+use std::path::PathBuf;
 
 #[derive(Clone, Serialize)]
 pub(super) struct OrgPlanCandidate {

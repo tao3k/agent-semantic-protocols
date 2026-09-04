@@ -1,10 +1,16 @@
-use agent_semantic_search::{
-    AdmittedLexicalOwner, COLD_RG_QUERY_RECEIPT_SCHEMA_ID, ColdRgQueryReceipt,
-    ContentSearchGenerationReceipt, LexicalAcceleratorReceipt, LexicalOwnerFact,
-    LexicalRecallRoute, LexicalRouteEquivalenceCase, SearchGenerationConstructionStage,
-    SearchGenerationIdentity, SearchGenerationStageReceipt, plan_lexical_generation,
-    plan_lexical_recall_route,
-};
+use agent_semantic_search::AdmittedLexicalOwner;
+use agent_semantic_search::COLD_RG_QUERY_RECEIPT_SCHEMA_ID;
+use agent_semantic_search::ColdRgQueryReceipt;
+use agent_semantic_search::ContentSearchGenerationReceipt;
+use agent_semantic_search::LexicalAcceleratorReceipt;
+use agent_semantic_search::LexicalOwnerFact;
+use agent_semantic_search::LexicalRecallRoute;
+use agent_semantic_search::LexicalRouteEquivalenceCase;
+use agent_semantic_search::SearchGenerationConstructionStage;
+use agent_semantic_search::SearchGenerationIdentity;
+use agent_semantic_search::SearchGenerationStageReceipt;
+use agent_semantic_search::plan_lexical_generation;
+use agent_semantic_search::plan_lexical_recall_route;
 
 fn digest(value: &str) -> String {
     format!("blake3-256:{}", blake3::hash(value.as_bytes()).to_hex())

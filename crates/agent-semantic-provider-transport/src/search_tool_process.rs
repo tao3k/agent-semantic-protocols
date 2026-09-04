@@ -2,15 +2,27 @@
 
 #[cfg(test)]
 use std::collections::BTreeSet;
-use std::path::{Component, Path, PathBuf};
-use std::time::{Duration, Instant};
+use std::path::Component;
+use std::path::Path;
+use std::path::PathBuf;
+use std::sync::Arc;
+use std::sync::Mutex;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
+use std::time::Duration;
+use std::time::Instant;
 
-use bytes::{Bytes, BytesMut};
-use sha2::{Digest, Sha256};
+use bytes::Bytes;
+use bytes::BytesMut;
+use sha2::Digest;
+use sha2::Sha256;
 #[cfg(test)]
 use std::process::Stdio;
 #[cfg(test)]
-use tokio::io::{AsyncRead, AsyncReadExt};
+use tokio::io::AsyncRead;
+#[cfg(test)]
+use tokio::io::AsyncReadExt;
 
 const MAX_INVENTORY_BYTES: usize = 16 * 1024 * 1024;
 const MAX_RG_OUTPUT_BYTES: usize = 16 * 1024 * 1024;
@@ -92,7 +104,7 @@ pub async fn run_fd_inventory(
     Ok(FdInventoryOutput {
         owner_paths,
         receipt: FdInventoryReceipt {
-            backend: "resident-fd-ignore-walk",
+            backend: "resident-fd-ignore-parallel",
             elapsed: started.elapsed(),
             owner_count,
         },
@@ -104,43 +116,113 @@ fn build_resident_fd_inventory(
     timeout: Duration,
 ) -> Result<Vec<String>, String> {
     let started = Instant::now();
-    let mut paths = Vec::new();
-    let mut retained_bytes = 0_usize;
+    let paths = Arc::new(Mutex::new(Vec::new()));
+    let retained_bytes = Arc::new(AtomicUsize::new(0));
+    let cancelled = Arc::new(AtomicBool::new(false));
+    let failure = Arc::new(Mutex::new(None));
     let walker = ignore::WalkBuilder::new(workspace_root)
         .hidden(false)
         .follow_links(false)
         .filter_entry(|entry| entry.file_name() != ".git")
-        .build();
-    for entry in walker {
-        if started.elapsed() >= timeout {
-            return Err(format!(
-                "resident fd inventory timed out after {}ms",
-                timeout.as_millis()
-            ));
-        }
-        let entry = entry.map_err(|error| format!("walk resident fd inventory: {error}"))?;
-        if !entry
-            .file_type()
-            .is_some_and(|file_type| file_type.is_file())
-        {
-            continue;
-        }
-        let relative = entry.path().strip_prefix(workspace_root).map_err(|error| {
-            format!(
-                "resident fd inventory path escaped workspace: path={} error={error}",
-                entry.path().display()
-            )
-        })?;
-        let relative = relative
-            .to_str()
-            .ok_or_else(|| "resident fd inventory path is not UTF-8".to_owned())?;
-        validate_relative_path(relative)?;
-        retained_bytes = retained_bytes.saturating_add(relative.len().saturating_add(1));
-        paths.push(relative.to_owned());
-        if retained_bytes > MAX_INVENTORY_BYTES {
-            return Err("resident fd inventory exceeds its byte envelope".to_owned());
-        }
+        .threads(
+            std::thread::available_parallelism()
+                .map_or(1, std::num::NonZeroUsize::get)
+                .clamp(1, 32),
+        )
+        .build_parallel();
+    walker.run(|| {
+        let paths = Arc::clone(&paths);
+        let retained_bytes = Arc::clone(&retained_bytes);
+        let cancelled = Arc::clone(&cancelled);
+        let failure = Arc::clone(&failure);
+        let workspace_root = workspace_root.to_path_buf();
+        Box::new(move |entry| {
+            if cancelled.load(Ordering::Acquire) || started.elapsed() >= timeout {
+                cancelled.store(true, Ordering::Release);
+                let mut failure = failure.lock().expect("fd inventory failure mutex poisoned");
+                failure.get_or_insert_with(|| {
+                    format!(
+                        "resident fd inventory timed out after {}ms",
+                        timeout.as_millis()
+                    )
+                });
+                return ignore::WalkState::Quit;
+            }
+            let entry = match entry {
+                Ok(entry) => entry,
+                Err(error) => {
+                    cancelled.store(true, Ordering::Release);
+                    let mut failure = failure.lock().expect("fd inventory failure mutex poisoned");
+                    failure.get_or_insert_with(|| format!("walk resident fd inventory: {error}"));
+                    return ignore::WalkState::Quit;
+                }
+            };
+            if !entry
+                .file_type()
+                .is_some_and(|file_type| file_type.is_file())
+            {
+                return ignore::WalkState::Continue;
+            }
+            let relative = match entry.path().strip_prefix(&workspace_root) {
+                Ok(relative) => relative,
+                Err(error) => {
+                    cancelled.store(true, Ordering::Release);
+                    let mut failure = failure.lock().expect("fd inventory failure mutex poisoned");
+                    failure.get_or_insert_with(|| {
+                        format!(
+                            "resident fd inventory path escaped workspace: path={} error={error}",
+                            entry.path().display()
+                        )
+                    });
+                    return ignore::WalkState::Quit;
+                }
+            };
+            let relative = match relative.to_str() {
+                Some(relative) => relative,
+                None => {
+                    cancelled.store(true, Ordering::Release);
+                    let mut failure = failure.lock().expect("fd inventory failure mutex poisoned");
+                    failure.get_or_insert_with(|| {
+                        "resident fd inventory path is not UTF-8".to_owned()
+                    });
+                    return ignore::WalkState::Quit;
+                }
+            };
+            if let Err(error) = validate_relative_path(relative) {
+                cancelled.store(true, Ordering::Release);
+                let mut failure = failure.lock().expect("fd inventory failure mutex poisoned");
+                failure.get_or_insert(error);
+                return ignore::WalkState::Quit;
+            }
+            let next_bytes = retained_bytes
+                .fetch_add(relative.len().saturating_add(1), Ordering::AcqRel)
+                .saturating_add(relative.len().saturating_add(1));
+            if next_bytes > MAX_INVENTORY_BYTES {
+                cancelled.store(true, Ordering::Release);
+                let mut failure = failure.lock().expect("fd inventory failure mutex poisoned");
+                failure.get_or_insert_with(|| {
+                    "resident fd inventory exceeds its byte envelope".to_owned()
+                });
+                return ignore::WalkState::Quit;
+            }
+            paths
+                .lock()
+                .expect("fd inventory path mutex poisoned")
+                .push(relative.to_owned());
+            ignore::WalkState::Continue
+        })
+    });
+    if let Some(error) = failure
+        .lock()
+        .expect("fd inventory failure mutex poisoned")
+        .take()
+    {
+        return Err(error);
     }
+    let mut paths = Arc::into_inner(paths)
+        .expect("fd inventory path handles released")
+        .into_inner()
+        .expect("fd inventory path mutex poisoned");
     paths.sort_unstable();
     if paths.is_empty() {
         return Err("resident fd inventory is empty".to_owned());

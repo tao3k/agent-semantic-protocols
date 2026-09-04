@@ -1,13 +1,17 @@
 //! Runtime-owned graph ranking for one admitted resident search generation.
 
 use agent_semantic_client_db::runtime_resident_read::RuntimeResidentReadClient;
-use agent_semantic_search::{
-    ResidentGraphEvaluationBudget, ResidentGraphEvaluationRequest, ResidentGraphSearchBudget,
-    ResidentGraphSearchRequest, ResidentGraphSearchStage, ResidentSearchIntent,
-    evaluate_resident_graph_generation, stable_graph_node_id,
-};
+use agent_semantic_search::ResidentGraphEvaluationBudget;
+use agent_semantic_search::ResidentGraphEvaluationRequest;
+use agent_semantic_search::ResidentGraphSearchBudget;
+use agent_semantic_search::ResidentGraphSearchRequest;
+use agent_semantic_search::ResidentGraphSearchStage;
+use agent_semantic_search::ResidentSearchIntent;
+use agent_semantic_search::evaluate_resident_graph_generation;
+use agent_semantic_search::stable_graph_node_id;
 use agent_semantic_search_projection::ResidentSearchHit;
-use serde_json::{Value, json};
+use serde_json::Value;
+use serde_json::json;
 
 /// Lazily retain and evaluate the optional Python graph for relationship
 /// intent under the exact immutable generation request already held by Rust.
@@ -268,7 +272,7 @@ pub(crate) fn evaluate_resident_search_graph(
         "surface": surface,
         "workspaceIdentity": workspace_identity,
         "generationDigest": generation_digest,
-        "rootDigest": resident.owner_merkle_root_digest(),
+        "rootDigest": resident.source_root_digest(),
         "profile": profile,
         "entryNodeIds": entry_node_ids,
         "rankedNodes": ranked_nodes,

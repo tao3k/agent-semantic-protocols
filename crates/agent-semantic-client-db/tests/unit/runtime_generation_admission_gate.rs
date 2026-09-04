@@ -1,11 +1,12 @@
 use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
 use std::time::Duration;
 
-use agent_semantic_client_db::runtime_server_admission::{
-    WorkspaceGenerationAdmission, WorkspaceGenerationAdmissionState,
-    WorkspaceGenerationBuildFailure, WorkspaceGenerationFailureStage,
-};
+use agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmission;
+use agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmissionState;
+use agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationBuildFailure;
+use agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationFailureStage;
 
 #[tokio::test(flavor = "multi_thread")]
 async fn multi_workspace_multi_session_admission_is_single_flight_and_sub_millisecond() {

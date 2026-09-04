@@ -1,10 +1,14 @@
-use super::{
-    SEARCH_EXECUTION_SCHEMA_ID, SEARCH_EXECUTION_SCHEMA_VERSION, SearchClientFrame,
-    SearchExecution, SearchExecutionError, SearchOperation, TerminalStatus,
-};
-use crate::content_binding::{
-    AuthorityStamp, ContentBinding, ContentIdentity, ContentPublicationCommit,
-};
+use super::SEARCH_EXECUTION_SCHEMA_ID;
+use super::SEARCH_EXECUTION_SCHEMA_VERSION;
+use super::SearchClientFrame;
+use super::SearchExecution;
+use super::SearchExecutionError;
+use super::SearchOperation;
+use super::TerminalStatus;
+use crate::content_binding::AuthorityStamp;
+use crate::content_binding::ContentBinding;
+use crate::content_binding::ContentIdentity;
+use crate::content_binding::ContentPublicationCommit;
 
 fn identity() -> ContentIdentity {
     let digest = "blake3-256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";

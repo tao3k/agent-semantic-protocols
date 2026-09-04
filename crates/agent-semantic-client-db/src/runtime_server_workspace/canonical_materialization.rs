@@ -1,5 +1,9 @@
 use serde::{Deserialize, Serialize};
 
+#[path = "canonical_materialization_observability.rs"]
+mod observability;
+use observability::{prepare_canonical_index, record_canonical_materialization_observations};
+
 use super::{
     WorkspaceMemoryGeneration, WorkspaceOwnerSnapshot, WorkspaceSelectorSnapshot,
     canonical_snapshot::{validate_canonical_snapshot, validate_owner_snapshot_membership},
@@ -130,112 +134,6 @@ pub enum WorkspaceCanonicalMaterializationLoad {
 pub struct ValidatedWorkspaceCanonicalMaterialization {
     materialization: WorkspaceCanonicalMaterialization,
     index: std::sync::Arc<super::memory_backend::WorkspaceMemoryIndex>,
-}
-
-#[derive(Clone, Copy)]
-struct CanonicalMaterializationMetrics {
-    owner_count: u64,
-    selector_count: u64,
-    relation_count: u64,
-    source_bytes: u64,
-    projection_bytes: u64,
-}
-
-fn canonical_materialization_metrics(
-    materialization: &WorkspaceCanonicalMaterialization,
-) -> CanonicalMaterializationMetrics {
-    CanonicalMaterializationMetrics {
-        owner_count: materialization.owners.len() as u64,
-        selector_count: materialization
-            .owners
-            .iter()
-            .map(|owner| owner.selectors.len() as u64)
-            .sum(),
-        relation_count: materialization.relations.len() as u64,
-        source_bytes: materialization
-            .owners
-            .iter()
-            .map(|owner| owner.bytes.len() as u64)
-            .sum(),
-        projection_bytes: materialization
-            .owners
-            .iter()
-            .flat_map(|owner| &owner.selectors)
-            .flat_map(|selector| &selector.derived_projections)
-            .map(|projection| projection.bytes.len() as u64)
-            .sum(),
-    }
-}
-
-fn prepare_canonical_index(
-    materialization: &WorkspaceCanonicalMaterialization,
-) -> (
-    std::sync::Arc<super::memory_backend::WorkspaceMemoryIndex>,
-    u64,
-) {
-    let started = std::time::Instant::now();
-    let index = super::WorkspaceMemoryBackend::prepare_index(
-        &materialization.owners,
-        &materialization.relations,
-    );
-    (index, elapsed_micros(started))
-}
-
-fn elapsed_micros(started: std::time::Instant) -> u64 {
-    started.elapsed().as_micros().min(u128::from(u64::MAX)) as u64
-}
-
-fn record_canonical_materialization_observations(
-    materialization: &WorkspaceCanonicalMaterialization,
-    prepare_index_elapsed_micros: u64,
-) {
-    const OBSERVATION_BUDGET_MICROS: u64 = 800_000;
-    let observation_started = std::time::Instant::now();
-    let metrics = canonical_materialization_metrics(materialization);
-    record_canonical_materialization_observation(
-        materialization,
-        "prepare-index",
-        prepare_index_elapsed_micros,
-        OBSERVATION_BUDGET_MICROS,
-        metrics,
-    );
-    record_canonical_materialization_observation(
-        materialization,
-        "payload-accounting",
-        elapsed_micros(observation_started),
-        OBSERVATION_BUDGET_MICROS,
-        metrics,
-    );
-}
-
-fn record_canonical_materialization_observation(
-    materialization: &WorkspaceCanonicalMaterialization,
-    operation: &str,
-    elapsed_micros: u64,
-    budget_micros: u64,
-    metrics: CanonicalMaterializationMetrics,
-) {
-    let status = if elapsed_micros < budget_micros {
-        "within-budget"
-    } else {
-        "budget-exceeded"
-    };
-    let mut observation = crate::runtime_server_opentelemetry::RuntimePerformanceObservation::new(
-        "workspace-canonical-materialization",
-        operation,
-        elapsed_micros,
-        budget_micros,
-        status,
-    )
-    .with_materialization_metrics(
-        metrics.owner_count,
-        metrics.selector_count,
-        metrics.relation_count,
-        metrics.source_bytes,
-        metrics.projection_bytes,
-    );
-    observation.workspace_identity = Some(materialization.workspace_identity.to_string());
-    let _ = crate::runtime_server_opentelemetry::try_record_to_active_runtime(observation);
 }
 
 impl ValidatedWorkspaceCanonicalMaterialization {
@@ -477,6 +375,7 @@ impl WorkspaceCanonicalMaterialization {
                     owner_path: owner_path.to_owned(),
                     authority: owner_authorities.get(owner_path).cloned(),
                     content_digest: format!("blake3-256:{}", blake3::hash(bytes).to_hex()),
+                    native_syntax_diagnostic: None,
                     bytes: bytes.to_vec(),
                     selectors: Vec::new(),
                 },
@@ -855,6 +754,18 @@ impl WorkspaceCanonicalMaterialization {
                 return Err(format!(
                     "workspace canonical materialization owner digest drift: ownerPath={} expected={} actual={}",
                     owner.owner_path, expected_content_digest, owner.content_digest
+                ));
+            }
+            if let Some(diagnostic) = &owner.native_syntax_diagnostic
+                && (diagnostic.owner_path != owner.owner_path
+                    || diagnostic.content_digest != owner.content_digest
+                    || diagnostic.reason_kind != "source-syntax-unavailable"
+                    || diagnostic.message.trim().is_empty()
+                    || !owner.selectors.is_empty())
+            {
+                return Err(format!(
+                    "workspace canonical materialization native syntax diagnostic drift: ownerPath={}",
+                    owner.owner_path
                 ));
             }
             for selector in &owner.selectors {

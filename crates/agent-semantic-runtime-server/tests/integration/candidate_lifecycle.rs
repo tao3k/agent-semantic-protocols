@@ -1,11 +1,13 @@
+//! Candidate Runtime lifecycle integration tests.
+
 use agent_semantic_artifacts::runtime_artifact_retention::RuntimeArtifactMutationGuard;
-use agent_semantic_runtime::runtime_process_lifecycle::{
-    RuntimeProcessLaunchSpec, launch_monitored,
-};
-use agent_semantic_runtime_server::readiness::{
-    RuntimeServerReadinessListener, RuntimeServerReadinessReceipt, RuntimeServerReadinessState,
-    await_monitored_candidate_readiness, launch_candidate_and_await_readiness,
-};
+use agent_semantic_runtime::runtime_process_lifecycle::RuntimeProcessLaunchSpec;
+use agent_semantic_runtime::runtime_process_lifecycle::launch_monitored;
+use agent_semantic_runtime_server::readiness::RuntimeServerReadinessListener;
+use agent_semantic_runtime_server::readiness::RuntimeServerReadinessReceipt;
+use agent_semantic_runtime_server::readiness::RuntimeServerReadinessState;
+use agent_semantic_runtime_server::readiness::await_monitored_candidate_readiness;
+use agent_semantic_runtime_server::readiness::launch_candidate_and_await_readiness;
 use agent_semantic_runtime_server::resident_publication::resident_readiness_root;
 use std::path::Path;
 

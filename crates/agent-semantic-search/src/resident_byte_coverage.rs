@@ -4,7 +4,8 @@
 //! resident trigram postings and return a bounded owner set for exact mmap
 //! verification by the Runtime data plane.
 
-use std::collections::{BTreeSet, HashMap};
+use std::collections::BTreeSet;
+use std::collections::HashMap;
 
 use crate::ResidentSearchAuthority;
 

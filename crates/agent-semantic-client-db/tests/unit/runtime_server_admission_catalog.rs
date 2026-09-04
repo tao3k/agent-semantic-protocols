@@ -1,11 +1,10 @@
-use agent_semantic_client_db::runtime_server_admission::{
-    WorkspaceGenerationBuildFailure, WorkspaceGenerationFailureStage,
-};
-use agent_semantic_client_db::runtime_server_admission_catalog::{
-    RuntimeWorkspaceAdmissionCatalog, RuntimeWorkspaceAdmissionCatalogEntry,
-};
+use agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationBuildFailure;
+use agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationFailureStage;
+use agent_semantic_client_db::runtime_server_admission_catalog::RuntimeWorkspaceAdmissionCatalog;
+use agent_semantic_client_db::runtime_server_admission_catalog::RuntimeWorkspaceAdmissionCatalogEntry;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::AtomicU64;
+use std::sync::atomic::Ordering;
 
 static FIXTURE_ID: AtomicU64 = AtomicU64::new(0);
 

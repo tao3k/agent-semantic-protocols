@@ -1,4 +1,5 @@
-use super::{RuleMatch, structured_document_format};
+use super::RuleMatch;
+use super::structured_document_format;
 use crate::tool_action::ToolAction;
 
 impl RuleMatch {

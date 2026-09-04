@@ -1,9 +1,11 @@
 //! Semantic validation for provider-scoped incremental search generation packets.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 use std::fmt;
 
-use serde_json::{Map, Value};
+use serde_json::Map;
+use serde_json::Value;
 
 /// Cross-field validation failure for an incremental search generation packet.
 #[derive(Clone, Debug, Eq, PartialEq)]

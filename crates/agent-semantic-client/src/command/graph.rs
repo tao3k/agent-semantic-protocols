@@ -1,8 +1,10 @@
 //! `asp graph` command adapter.
 
 use std::fs;
-use std::io::{self, Read};
-use std::path::{Path, PathBuf};
+use std::io::Read;
+use std::io::{self};
+use std::path::Path;
+use std::path::PathBuf;
 
 use serde_json::Value;
 
@@ -22,21 +24,16 @@ pub(crate) async fn run_graph_command(args: &[String]) -> Result<(), String> {
 
 async fn run_graph_render_command(args: &[String]) -> Result<(), String> {
     let request = GraphRenderRequest::parse(args)?;
-    if request.view != "seeds" {
-        return Err("graph render currently supports only --view seeds".to_string());
-    }
     let packet_bytes = read_packet_bytes(&request.packet_path)?;
     let packet = parse_packet(&packet_bytes)?;
     if is_resident_graph_evaluation_request(&packet) {
         let project_root = std::env::current_dir()
             .map_err(|error| format!("failed to resolve graph project root: {error}"))?;
         let ranked_packet = evaluate_resident_graph_packet(&project_root, &packet_bytes).await?;
-        let mut projection_request =
-            agent_semantic_search_projection::SearchProjectionRequestV1::new(
-                "ranked-frontier",
-                agent_semantic_search_projection::SearchProjectionDensityV1::Terse,
-            );
-        projection_request.max_rows = request.seed_limit;
+        let projection_request = agent_semantic_search_projection::SearchProjectionRequestV1::new(
+            "ranked-frontier",
+            agent_semantic_search_projection::SearchProjectionDensityV1::Terse,
+        );
         let output = agent_semantic_search_projection::SearchProjectionRenderer::render(
             &agent_semantic_search_projection::RankedFrontierSearchProjectionRenderer,
             &ranked_packet,
@@ -48,11 +45,10 @@ async fn run_graph_render_command(args: &[String]) -> Result<(), String> {
     }
     let packet = agent_semantic_search_projection::SemanticSearchPacketV1::from_value(packet)
         .map_err(|error| error.to_string())?;
-    let mut projection_request = agent_semantic_search_projection::SearchProjectionRequestV1::new(
+    let projection_request = agent_semantic_search_projection::SearchProjectionRequestV1::new(
         "topology",
         agent_semantic_search_projection::SearchProjectionDensityV1::Terse,
     );
-    projection_request.max_rows = request.seed_limit;
     let output = agent_semantic_search_projection::SearchProjectionRenderer::render(
         &agent_semantic_search_projection::TopologySearchProjectionRenderer,
         &packet,
@@ -65,26 +61,23 @@ async fn run_graph_render_command(args: &[String]) -> Result<(), String> {
 
 struct GraphRenderRequest {
     packet_path: PathBuf,
-    view: String,
-    seed_limit: Option<usize>,
 }
 
 impl GraphRenderRequest {
     fn parse(args: &[String]) -> Result<Self, String> {
+        if let Some(option) = args.iter().find(|argument| {
+            matches!(argument.as_str(), "--view" | "--seeds")
+                || argument.starts_with("--view=")
+                || argument.starts_with("--seeds=")
+        }) {
+            return Err(format!(
+                "graph render removed legacy option `{option}`; render the typed packet directly"
+            ));
+        }
         let packet_path = flag_value(args, "--packet")
             .ok_or_else(|| "missing required --packet <path-or->".to_string())?;
-        let view = flag_value(args, "--view").unwrap_or_else(|| "seeds".to_string());
-        let seed_limit = flag_value(args, "--seeds")
-            .map(|value| {
-                value
-                    .parse::<usize>()
-                    .map_err(|error| format!("invalid --seeds value: {error}"))
-            })
-            .transpose()?;
         Ok(Self {
             packet_path: PathBuf::from(packet_path),
-            view,
-            seed_limit,
         })
     }
 }
@@ -143,5 +136,5 @@ fn flag_value(args: &[String], flag: &str) -> Option<String> {
 }
 
 fn usage() -> String {
-    "usage: asp graph render --packet <path-or-> [--view seeds] [--seeds N]".to_string()
+    "usage: asp graph render --packet <path-or->".to_string()
 }

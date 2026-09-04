@@ -9,9 +9,13 @@ provider-specific view.  It reads one Runtime-owned ProjectId/WorkspaceId,
 one immutable content-generation identity, and one admitted provider registry
 snapshot, then emits a deterministic set of language-scoped routes.
 
+=--language= is an optional typed route filter.  Its absence means "plan every
+admitted route"; it is never a client-side error and never authorizes suffix
+inference.  The Runtime owns both the unfiltered plan and this filter.
+
 The executable leaves are:
 
-- =asp <language> search playbook <query> ...= for discovery;
+- =asp search playbook <query> --language <language> ...= for discovery;
 - =asp <language> query --selector <exact-selector> ...= for exact projection.
 
 There is no public =pipe=, =prime=, =ingest=, =rg=, =lexical=, provider-local
@@ -88,8 +92,7 @@ Acceptance requires all of the following:
 - Lean proves language filtering cannot alter ProjectId/WorkspaceId/content
   identity and stale derived capabilities cannot attach;
 - =asp search playbook= produces a typed plan from the live Runtime;
-- every selected =asp <language> search playbook= and exact query returns one
+- every selected =asp search playbook --language <language>= and exact query returns one
   terminal without replay;
 - cold/warm, ten sequential, thirty-two concurrent, cache-clear/load, and
   failure-injection receipts are captured on real per-language corpora.
-

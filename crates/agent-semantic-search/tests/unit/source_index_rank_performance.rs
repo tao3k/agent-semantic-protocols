@@ -1,8 +1,9 @@
-use std::time::{Duration, Instant};
+use std::time::Duration;
+use std::time::Instant;
 
-use agent_semantic_search::{
-    SourceIndexRankCandidate, SourceIndexRankRequest, rank_source_index_report,
-};
+use agent_semantic_search::SourceIndexRankCandidate;
+use agent_semantic_search::SourceIndexRankRequest;
+use agent_semantic_search::rank_source_index_report;
 
 const INTERACTIVE_RANK_CANDIDATE_COUNT: usize = 1_024;
 #[cfg(not(debug_assertions))]

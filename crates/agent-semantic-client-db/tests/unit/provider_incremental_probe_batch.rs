@@ -1,9 +1,14 @@
-use agent_semantic_client_db::{
-    ProviderOwnerBatchProbeRequest, ProviderOwnerDecision, ProviderOwnerInventoryState,
-    ProviderOwnerInventoryWrite, ProviderOwnerMetadata, WorkspaceDbRegistry,
-};
+use agent_semantic_client_db::ProviderOwnerBatchProbeRequest;
+use agent_semantic_client_db::ProviderOwnerDecision;
+use agent_semantic_client_db::ProviderOwnerInventoryState;
+use agent_semantic_client_db::ProviderOwnerInventoryWrite;
+use agent_semantic_client_db::ProviderOwnerMetadata;
+use agent_semantic_client_db::WorkspaceDbRegistry;
 
-use crate::test_support::{StateHomeGuard, TestDir, environment_lock, workspace};
+use crate::test_support::StateHomeGuard;
+use crate::test_support::TestDir;
+use crate::test_support::environment_lock;
+use crate::test_support::workspace;
 
 fn requests(count: usize) -> Vec<ProviderOwnerBatchProbeRequest> {
     (0..count)

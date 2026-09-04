@@ -1,19 +1,34 @@
-use std::collections::{BTreeMap, HashSet};
+use std::collections::BTreeMap;
+use std::collections::HashSet;
 use std::ffi::OsString;
-use std::fs::{self, OpenOptions};
+use std::fs::OpenOptions;
+use std::fs::{self};
 use std::path::PathBuf;
 use std::sync::MutexGuard;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::AtomicU64;
+use std::sync::atomic::Ordering;
 use std::thread;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
+use std::time::Instant;
+use std::time::SystemTime;
+use std::time::UNIX_EPOCH;
 
-use agent_semantic_hook::{
-    DecisionKind, DecisionRoute, DecisionRouteKind, DecisionSubject, HOOK_DECISION_SCHEMA_ID,
-    HOOK_DECISION_SCHEMA_VERSION, HOOK_PROTOCOL_ID, HOOK_PROTOCOL_VERSION, HookDecision,
-    ReasonKind, StdinMode, append_hook_event_state, has_recorded_subagent_context,
-    latest_hook_session_agent_route, latest_hook_session_agent_route_for_root,
-    latest_hook_session_agent_route_for_root_matching_rules,
-};
+use agent_semantic_hook::DecisionKind;
+use agent_semantic_hook::DecisionRoute;
+use agent_semantic_hook::DecisionRouteKind;
+use agent_semantic_hook::DecisionSubject;
+use agent_semantic_hook::HOOK_DECISION_SCHEMA_ID;
+use agent_semantic_hook::HOOK_DECISION_SCHEMA_VERSION;
+use agent_semantic_hook::HOOK_PROTOCOL_ID;
+use agent_semantic_hook::HOOK_PROTOCOL_VERSION;
+use agent_semantic_hook::HookDecision;
+use agent_semantic_hook::ReasonKind;
+use agent_semantic_hook::StdinMode;
+use agent_semantic_hook::append_hook_event_state;
+use agent_semantic_hook::has_recorded_subagent_context;
+use agent_semantic_hook::latest_hook_session_agent_route;
+use agent_semantic_hook::latest_hook_session_agent_route_for_root;
+use agent_semantic_hook::latest_hook_session_agent_route_for_root_matching_rules;
 use fs2::FileExt;
 use serde_json::Value;
 
@@ -595,7 +610,7 @@ fn source_access_replay_preserves_exact_parser_route_message() {
     let project_root = unique_project_root();
     let mut first = decision("parser-route-replay", 0);
     first.message =
-        "Use parser evidence. ASP route: asp rust search playbook source --scope owner:src/lib.rs"
+        "Use parser evidence. ASP route: asp search playbook --language rust source --scope owner:src/lib.rs"
             .to_string();
     let original_message = first.message.clone();
 

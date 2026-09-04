@@ -1,6 +1,5 @@
-use agent_semantic_client_db::runtime_server_runtime::{
-    RuntimeServerOwnedTask, RuntimeServerRuntimeBuilder,
-};
+use agent_semantic_client_db::runtime_server_runtime::RuntimeServerOwnedTask;
+use agent_semantic_client_db::runtime_server_runtime::RuntimeServerRuntimeBuilder;
 
 #[test]
 fn daemon_profile_owns_spawn_and_join_lifecycle() {
@@ -119,15 +118,14 @@ fn client_profile_completes_bounded_control_work() {
 }
 
 #[test]
-fn interactive_client_profile_uses_the_host_tokio_capacity() {
-    let expected = agent_semantic_client_db::runtime_server_runtime::adaptive_tokio_worker_count();
+fn interactive_client_profile_is_a_single_server_first_scheduler() {
     let runtime = RuntimeServerRuntimeBuilder::new_client()
         .enable_all()
         .build()
         .expect("interactive client runtime");
     let workers =
         runtime.block_on(async { tokio::runtime::Handle::current().metrics().num_workers() });
-    assert_eq!(workers, expected);
+    assert_eq!(workers, 1);
 }
 
 #[test]
@@ -248,9 +246,8 @@ fn connection_limit_adapts_to_runtime_worker_count_and_remains_bounded() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn stalled_connection_io_fails_inside_the_runtime_budget() {
-    use agent_semantic_client_db::runtime_server_runtime::{
-        RUNTIME_SERVER_CONNECTION_IO_BUDGET, within_connection_io_budget,
-    };
+    use agent_semantic_client_db::runtime_server_runtime::RUNTIME_SERVER_CONNECTION_IO_BUDGET;
+    use agent_semantic_client_db::runtime_server_runtime::within_connection_io_budget;
 
     let started = tokio::time::Instant::now();
     let error = within_connection_io_budget(

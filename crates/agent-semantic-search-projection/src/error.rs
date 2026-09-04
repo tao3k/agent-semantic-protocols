@@ -1,5 +1,7 @@
 use std::error::Error;
-use std::fmt::{self, Display, Formatter};
+use std::fmt::Display;
+use std::fmt::Formatter;
+use std::fmt::{self};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum SearchProjectionError {

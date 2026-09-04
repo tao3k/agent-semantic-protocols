@@ -12,8 +12,8 @@ use super::types::client_db_source_index_registry_evidence_hash;
 use super::types::{
     ClientDbSourceIndexImport, ClientDbSourceIndexImportAssemblyRequest,
     ClientDbSourceIndexImportFile, ClientDbSourceIndexImportRequest, ClientDbSourceIndexOwner,
-    ClientDbSourceIndexPath, ClientDbSourceIndexQueryKey, ClientDbSourceIndexScopeFile,
-    ClientDbSourceIndexSource,
+    ClientDbSourceIndexPath, ClientDbSourceIndexProjectionCoverage, ClientDbSourceIndexQueryKey,
+    ClientDbSourceIndexScopeFile, ClientDbSourceIndexSource,
 };
 
 /// Build source-index file hashes and import rows from collected workspace
@@ -333,6 +333,23 @@ fn source_index_selector_evidence_hash(file: &ClientDbSourceIndexScopeFile) -> C
     push_component(&mut canonical, "path", file.path.to_string_lossy().as_ref());
     push_component(&mut canonical, "language", file.language_id.as_str());
     push_component(&mut canonical, "provider", file.provider_id.as_str());
+    push_component(
+        &mut canonical,
+        "projectionCoverage",
+        match file.projection_coverage {
+            ClientDbSourceIndexProjectionCoverage::NotDeclared => "not-declared",
+            ClientDbSourceIndexProjectionCoverage::Complete => "complete",
+            ClientDbSourceIndexProjectionCoverage::SyntaxUnavailable => "syntax-unavailable",
+        },
+    );
+    if let Some(diagnostic) = &file.projection_diagnostic {
+        push_component(
+            &mut canonical,
+            "projectionDiagnostic",
+            &serde_json::to_string(diagnostic)
+                .expect("projection diagnostic serialization is infallible"),
+        );
+    }
     for selector in selectors {
         push_component(&mut canonical, "owner", selector.owner_path.as_str());
         push_component(&mut canonical, "selector", selector.selector_id.as_str());

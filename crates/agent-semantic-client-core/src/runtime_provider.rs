@@ -4,7 +4,8 @@ use std::collections::BTreeSet;
 use std::path::Path;
 
 use crate::receipt::NativeProvenance;
-use crate::types::{LanguageId, ProviderId};
+use crate::types::LanguageId;
+use crate::types::ProviderId;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RuntimeProviderOperation {

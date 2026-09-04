@@ -2,10 +2,13 @@ use std::fmt;
 use std::future::Future;
 use std::pin::Pin;
 
-use agent_semantic_context_product::{
-    ContextProductEvent, Digest, EffectClass, EvidenceReceipt, ProtocolId, StateAuthorityReceipt,
-    UncheckedContextProductStateV1,
-};
+use agent_semantic_context_product::ContextProductEvent;
+use agent_semantic_context_product::Digest;
+use agent_semantic_context_product::EffectClass;
+use agent_semantic_context_product::EvidenceReceipt;
+use agent_semantic_context_product::ProtocolId;
+use agent_semantic_context_product::StateAuthorityReceipt;
+use agent_semantic_context_product::UncheckedContextProductStateV1;
 
 pub type PortFuture<'a, T, E> = Pin<Box<dyn Future<Output = Result<T, E>> + Send + 'a>>;
 

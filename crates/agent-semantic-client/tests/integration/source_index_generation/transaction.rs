@@ -1,7 +1,7 @@
-use agent_semantic_client_db::server_source_index::{
-    PublishedSourceIndexGenerationV1, SourceIndexCollectionScope,
-    WorkspaceSearchGenerationPublicationRequestV1, publish_workspace_search_generation_v1,
-};
+use agent_semantic_client_db::server_source_index::PublishedSourceIndexGenerationV1;
+use agent_semantic_client_db::server_source_index::SourceIndexCollectionScope;
+use agent_semantic_client_db::server_source_index::WorkspaceSearchGenerationPublicationRequestV1;
+use agent_semantic_client_db::server_source_index::publish_workspace_search_generation_v1;
 
 #[test]
 fn publication_has_one_typed_transaction_entry() {

@@ -1,14 +1,15 @@
 use std::path::Path;
 
-use super::{
-    IsolatedBenchmarkWorkspace, parse_args, qualification_receipt_path, select_qualification_cases,
-};
-use crate::command::live_corpus::qualification::client_protocol::{
-    PublicRouteTerminal, typed_terminal,
-};
-use crate::command::live_corpus::qualification::contract::{
-    LatencyDistribution, QualificationCase, QualificationQuery, QualificationSearch,
-};
+use super::IsolatedBenchmarkWorkspace;
+use super::parse_args;
+use super::qualification_receipt_path;
+use super::select_qualification_cases;
+use crate::command::live_corpus::qualification::client_protocol::PublicRouteTerminal;
+use crate::command::live_corpus::qualification::client_protocol::typed_terminal;
+use crate::command::live_corpus::qualification::contract::LatencyDistribution;
+use crate::command::live_corpus::qualification::contract::QualificationCase;
+use crate::command::live_corpus::qualification::contract::QualificationQuery;
+use crate::command::live_corpus::qualification::contract::QualificationSearch;
 
 fn case(case_id: &str, language_id: &str, resource_id: &str) -> QualificationCase {
     QualificationCase {

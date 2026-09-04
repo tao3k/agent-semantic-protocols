@@ -1,11 +1,17 @@
 use std::ffi::OsString;
-use std::path::{Path, PathBuf};
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::path::Path;
+use std::path::PathBuf;
+use std::time::Duration;
+use std::time::Instant;
+use std::time::SystemTime;
+use std::time::UNIX_EPOCH;
 
-use agent_semantic_client_db::{
-    DEFAULT_GERBIL_DEPS_SEARCH_LIMIT, GerbilDepsQueryRequest, GerbilDepsSearchRequest,
-    gerbil_deps_query_export, gerbil_deps_query_terms, gerbil_deps_search_exports,
-};
+use agent_semantic_client_db::DEFAULT_GERBIL_DEPS_SEARCH_LIMIT;
+use agent_semantic_client_db::GerbilDepsQueryRequest;
+use agent_semantic_client_db::GerbilDepsSearchRequest;
+use agent_semantic_client_db::gerbil_deps_query_export;
+use agent_semantic_client_db::gerbil_deps_query_terms;
+use agent_semantic_client_db::gerbil_deps_search_exports;
 
 use crate::env::ENV_LOCK;
 

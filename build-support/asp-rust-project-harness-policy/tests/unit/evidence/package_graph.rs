@@ -1,9 +1,8 @@
 use std::path::PathBuf;
 
-use asp_rust_project_harness_policy::{
-    AspRustProjectHarnessEvidenceGraphInput, AspRustProjectHarnessPackageEvidenceGraphRequest,
-    build_package_evidence_graph_receipt,
-};
+use asp_rust_project_harness_policy::AspRustProjectHarnessEvidenceGraphInput;
+use asp_rust_project_harness_policy::AspRustProjectHarnessPackageEvidenceGraphRequest;
+use asp_rust_project_harness_policy::build_package_evidence_graph_receipt;
 
 #[test]
 fn package_receipt_summarizes_client_db_evidence_graph() {

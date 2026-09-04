@@ -1,5 +1,6 @@
 use orgize::Org;
-use std::{fs, path::Path};
+use std::fs;
+use std::path::Path;
 
 pub(crate) struct AgentInteractiveChoice {
     pub(crate) id: String,

@@ -1,10 +1,13 @@
 //! Reachability retention and mutation locking owned by the Artifacts package.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 
 const SCHEMA_ID: &str = "agent.semantic-protocols.runtime-artifact-retention-receipt";
 

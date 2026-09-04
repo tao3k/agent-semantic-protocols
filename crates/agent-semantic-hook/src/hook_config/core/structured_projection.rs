@@ -1,8 +1,7 @@
 //! Evaluates config-declared structured projection matchers after Bash parsing.
 
-use agent_semantic_config::{
-    HookClientStructuredFilterGrammar, HookClientStructuredProjectionMatchConfig,
-};
+use agent_semantic_config::HookClientStructuredFilterGrammar;
+use agent_semantic_config::HookClientStructuredProjectionMatchConfig;
 
 use crate::tool_action::ToolAction;
 

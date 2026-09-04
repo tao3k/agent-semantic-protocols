@@ -1,20 +1,21 @@
-use agent_semantic_client_db::runtime_server_admission::{
-    WorkspaceGenerationBuildFailure, WorkspaceGenerationFailureStage,
-};
+use agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationBuildFailure;
+use agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationFailureStage;
 use std::sync::Arc;
 
-use agent_semantic_client_db::runtime_server_admission::{
-    WORKSPACE_GENERATION_ADMISSION_RECEIPT_SCHEMA_ID,
-    WORKSPACE_GENERATION_MUTATION_ADMISSION_RECEIPT_SCHEMA_ID, WorkspaceGenerationAdmission,
-    WorkspaceGenerationAdmissionReceipt, WorkspaceGenerationAdmissionState,
-    WorkspaceGenerationBuildMode, WorkspaceGenerationCandidateIdentity,
-    WorkspaceGenerationMutationAdmissionReceipt,
-};
-use agent_semantic_client_db::runtime_server_admission_catalog::{
-    RuntimeWorkspaceAdmissionCatalog, RuntimeWorkspaceAdmissionCatalogEntry,
-};
-use agent_semantic_client_db::runtime_telemetry_bus::{RuntimeTelemetryBus, RuntimeTelemetryEvent};
-use tokio::sync::{Barrier, Mutex};
+use agent_semantic_client_db::runtime_server_admission::WORKSPACE_GENERATION_ADMISSION_RECEIPT_SCHEMA_ID;
+use agent_semantic_client_db::runtime_server_admission::WORKSPACE_GENERATION_MUTATION_ADMISSION_RECEIPT_SCHEMA_ID;
+use agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmission;
+use agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmissionReceipt;
+use agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmissionState;
+use agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationBuildMode;
+use agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationCandidateIdentity;
+use agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationMutationAdmissionReceipt;
+use agent_semantic_client_db::runtime_server_admission_catalog::RuntimeWorkspaceAdmissionCatalog;
+use agent_semantic_client_db::runtime_server_admission_catalog::RuntimeWorkspaceAdmissionCatalogEntry;
+use agent_semantic_client_db::runtime_telemetry_bus::RuntimeTelemetryBus;
+use agent_semantic_client_db::runtime_telemetry_bus::RuntimeTelemetryEvent;
+use tokio::sync::Barrier;
+use tokio::sync::Mutex;
 
 pub(super) fn candidate_identity() -> WorkspaceGenerationCandidateIdentity {
     candidate_identity_for(

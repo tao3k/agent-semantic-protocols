@@ -1,9 +1,10 @@
 use serde_json::json;
 
-use crate::provider_candidate_annotations::{
-    compact_provider_fact_nodes, compact_provider_fact_value, provider_candidate_annotation_nodes,
-    provider_facts_envelope_from_stdout, provider_facts_envelope_from_value,
-};
+use crate::provider_candidate_annotations::compact_provider_fact_nodes;
+use crate::provider_candidate_annotations::compact_provider_fact_value;
+use crate::provider_candidate_annotations::provider_candidate_annotation_nodes;
+use crate::provider_candidate_annotations::provider_facts_envelope_from_stdout;
+use crate::provider_candidate_annotations::provider_facts_envelope_from_value;
 
 #[test]
 fn provider_facts_envelope_parses_nodes_edges_and_candidate_annotations() {

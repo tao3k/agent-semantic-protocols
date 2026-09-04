@@ -119,7 +119,7 @@
       "uniqueItems": true
     },
     "source": {
-      "description": "Candidate source selection requested by search pipe. This selects candidate acquisition only; it is not an output projection.",
+      "description": "Candidate source selection chosen internally by the search playbook planner. This selects candidate acquisition only; it is not a public command or output projection.",
       "enum": [
         "auto",
         "provider",

@@ -141,21 +141,12 @@ fn graph_command() -> Command {
         .bin_name("asp graph")
         .about("Render ASP evidence graphs")
         .subcommand(
-            Command::new("render")
-                .about("Render a graph packet")
-                .arg(
-                    Arg::new("packet")
-                        .long("packet")
-                        .value_name("PATH_OR_STDIN")
-                        .required(true),
-                )
-                .arg(
-                    Arg::new("view")
-                        .long("view")
-                        .value_name("VIEW")
-                        .value_parser(["seeds"]),
-                )
-                .arg(Arg::new("seeds").long("seeds").value_name("N")),
+            Command::new("render").about("Render a graph packet").arg(
+                Arg::new("packet")
+                    .long("packet")
+                    .value_name("PATH_OR_STDIN")
+                    .required(true),
+            ),
         )
         .subcommand(
             Command::new("artifact")
@@ -188,7 +179,7 @@ fn graph_command() -> Command {
 fn workspace_search_playbook_command() -> Command {
     Command::new("playbook")
         .bin_name("asp search playbook")
-        .about("Plan deterministic language-scoped Search routes from Runtime authority")
+        .about("Plan deterministic workspace Search routes from Runtime authority")
         .arg(Arg::new("query").value_name("QUERY").required(true))
         .arg(Arg::new("intent").long("intent").value_name("INTENT"))
         .arg(Arg::new("scope").long("scope").value_name("SCOPE"))
@@ -508,7 +499,9 @@ fn selected_command_default(args: &[String]) -> Command {
             .bin_name("asp search")
             .about("Plan workspace Search routes")
             .subcommand(workspace_search_playbook_command()),
-        (Some("query"), _) => facade_leaf_command("query", "asp query"),
+        (Some("query"), _) => Command::new("query")
+            .bin_name("asp query")
+            .about("Removed root command; use asp <language> query after asp search playbook"),
         (Some(document), Some(command))
             if is_document_facade(document)
                 && DOCUMENT_COMMANDS

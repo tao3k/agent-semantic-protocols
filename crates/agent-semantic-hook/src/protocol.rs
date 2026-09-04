@@ -1,10 +1,12 @@
 //! Shared semantic agent hook protocol models and renderers.
 
+use serde::Deserialize;
+use serde::Serialize;
 use serde::de;
-use serde::{Deserialize, Serialize};
 
 pub(crate) const HOOK_POLICY_KERNEL_VERSION: &str = "1";
-use serde_json::{Value, json};
+use serde_json::Value;
+use serde_json::json;
 use std::borrow::Cow;
 use std::collections::BTreeMap;
 
@@ -612,9 +614,9 @@ pub fn subagent_deny_message(message: &str) -> String {
 
 fn user_prompt_search_first_context(locator_only: bool) -> &'static str {
     if locator_only {
-        return "ASP Search playbook routing is active for this locator question. Invoke `asp <language> search playbook '<question>' --intent conceptual --scope workspace --coverage candidates --explain compact --workspace <workspace-root>`. When an owner path is already known, use `--scope owner:<path>` instead of a separate owner-search command. The server executes one ordered resident generation: rg acquisition, Tantivy lexical retrieval, then the admitted asp-python-graphs projection. Do not use removed prime, pipe, lexical, owner, seeds, or `--view` routes. Materialize source only from an exact structural selector with `asp <language> query --selector <exact-selector> --workspace . --projection source`; use `--projection callable-skeleton` for a callable skeleton. Exact query has no implicit projection. ASP facades are language IDs, not package names; for Effect use `asp typescript ...`.";
+        return "ASP Search playbook routing is active for this locator question. Invoke `asp search playbook '<question>' --language <language> --intent conceptual --scope workspace --coverage candidates --explain compact --workspace <workspace-root>`. When an owner path is already known, use `--scope owner:<path>`. The server executes one ordered resident generation: rg acquisition, Tantivy lexical retrieval, then the admitted asp-python-graphs projection. Materialize source only from an exact structural selector with `asp <language> query --selector <exact-selector> --workspace . --projection source`; use `--projection callable-skeleton` for a callable skeleton. Exact query has no implicit projection. The root playbook accepts language IDs through `--language`; for Effect use `--language typescript`.";
     }
-    "ASP Search playbook routing is active for this prompt. Before direct source reads, invoke `asp <language> search playbook '<question>' --intent <conceptual|relationship|exact-literal|absence-proof> --scope <workspace|owner:path> --coverage <candidates|complete> --explain compact --workspace <workspace-root>`. Complete coverage is admitted only for absence-proof intent. The server uses one ordered resident generation: rg acquisition, Tantivy lexical retrieval, then admitted asp-python-graphs projection. Do not use removed prime, pipe, lexical, owner, seeds, or `--view` routes. Follow the returned structural evidence and materialize source with `asp <language> query --selector <exact-selector> --workspace . --projection source`, or `--projection callable-skeleton`. Exact query has no implicit projection. ASP facades are language IDs, not package names; for Effect use `asp typescript ...`."
+    "ASP Search playbook routing is active for this prompt. Before direct source reads, invoke `asp search playbook '<question>' --language <language> --intent <conceptual|relationship|exact-literal|absence-proof> --scope <workspace|owner:path> --coverage <candidates|complete> --explain compact --workspace <workspace-root>`. Complete coverage is admitted only for absence-proof intent. The server uses one ordered resident generation: rg acquisition, Tantivy lexical retrieval, then admitted asp-python-graphs projection. Follow the returned structural evidence and materialize source with `asp <language> query --selector <exact-selector> --workspace . --projection source`, or `--projection callable-skeleton`. Exact query has no implicit projection. The root playbook accepts language IDs through `--language`; for Effect use `--language typescript`."
 }
 
 pub(crate) fn normalize_source_selector(selector: &str) -> &str {

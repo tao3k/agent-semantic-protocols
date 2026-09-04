@@ -1,4 +1,5 @@
-use std::process::{Command, Output};
+use std::process::Command;
+use std::process::Output;
 
 #[test]
 fn root_help_exposes_the_global_server_lifecycle_adapter() {

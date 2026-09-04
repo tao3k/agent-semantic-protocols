@@ -6,11 +6,11 @@
 
 use std::collections::BTreeSet;
 
-pub use agent_semantic_provider_protocol::{
-    SyntaxQueryPattern as SyntaxQueryAbiPattern, SyntaxQueryPlan as SyntaxQueryAbiPlan,
-    SyntaxQueryPredicate as SyntaxQueryAbiPredicate, SyntaxQueryPredicateOp,
-    SyntaxQueryPredicateValue,
-};
+pub use agent_semantic_provider_protocol::SyntaxQueryPattern as SyntaxQueryAbiPattern;
+pub use agent_semantic_provider_protocol::SyntaxQueryPlan as SyntaxQueryAbiPlan;
+pub use agent_semantic_provider_protocol::SyntaxQueryPredicate as SyntaxQueryAbiPredicate;
+pub use agent_semantic_provider_protocol::SyntaxQueryPredicateOp;
+pub use agent_semantic_provider_protocol::SyntaxQueryPredicateValue;
 
 /// Error returned when grammarless query ABI planning rejects a source string.
 #[derive(Clone, Debug, Eq, PartialEq)]

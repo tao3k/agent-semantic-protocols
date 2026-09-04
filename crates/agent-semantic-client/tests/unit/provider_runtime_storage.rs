@@ -1,14 +1,15 @@
 use std::sync::Arc;
 
-use agent_semantic_client_db::storage_contract::{
-    AgentStorage, InMemoryAgentStorage, SessionEventPageRequest, StorageOptimizationProfile,
-    StoragePartitionKey,
-};
+use agent_semantic_client_db::storage_contract::AgentStorage;
+use agent_semantic_client_db::storage_contract::InMemoryAgentStorage;
+use agent_semantic_client_db::storage_contract::SessionEventPageRequest;
+use agent_semantic_client_db::storage_contract::StorageOptimizationProfile;
+use agent_semantic_client_db::storage_contract::StoragePartitionKey;
 
-use crate::provider_runtime_storage::{
-    ProviderExecutionStorageEvent, ProviderRuntimeStorageAdapter, ProviderRuntimeStorageBinding,
-    ProviderRuntimeStorageContext,
-};
+use crate::provider_runtime_storage::ProviderExecutionStorageEvent;
+use crate::provider_runtime_storage::ProviderRuntimeStorageAdapter;
+use crate::provider_runtime_storage::ProviderRuntimeStorageBinding;
+use crate::provider_runtime_storage::ProviderRuntimeStorageContext;
 
 struct TestProject(std::path::PathBuf);
 

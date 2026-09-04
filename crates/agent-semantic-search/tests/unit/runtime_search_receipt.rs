@@ -1,14 +1,17 @@
-use agent_semantic_search_projection::{
-    RESIDENT_SEARCH_RESULT_SCHEMA_ID, RESIDENT_SEARCH_RESULT_SCHEMA_VERSION, ResidentSearchHit,
-    ResidentSearchProjectionTier, ResidentSearchReadyResult, ResidentSearchReadyState,
-    ResidentSearchWorkCounters,
-};
+use agent_semantic_search_projection::RESIDENT_SEARCH_RESULT_SCHEMA_ID;
+use agent_semantic_search_projection::RESIDENT_SEARCH_RESULT_SCHEMA_VERSION;
+use agent_semantic_search_projection::ResidentSearchHit;
+use agent_semantic_search_projection::ResidentSearchProjectionTier;
+use agent_semantic_search_projection::ResidentSearchReadyResult;
+use agent_semantic_search_projection::ResidentSearchReadyState;
+use agent_semantic_search_projection::ResidentSearchWorkCounters;
 
-use crate::{
-    RUNTIME_SEARCH_SELECTOR_OWNER_LIMIT, ResidentGraphSearchStage,
-    bounded_ranked_selector_owner_paths, bounded_runtime_search_source,
-    build_runtime_provider_search_receipt, build_runtime_provider_search_receipt_with_graph,
-};
+use crate::RUNTIME_SEARCH_SELECTOR_OWNER_LIMIT;
+use crate::ResidentGraphSearchStage;
+use crate::bounded_ranked_selector_owner_paths;
+use crate::bounded_runtime_search_source;
+use crate::build_runtime_provider_search_receipt;
+use crate::build_runtime_provider_search_receipt_with_graph;
 
 fn attachment_identity(
     token: u64,
@@ -27,7 +30,9 @@ fn attachment_identity(
 #[tokio::test]
 async fn attachment_hub_is_bounded_and_suppresses_late_generation_events() {
     use crate::RuntimeSearchDerivedAttachmentKind::Graph;
-    use crate::RuntimeSearchDerivedAttachmentState::{Building, Queued, Ready};
+    use crate::RuntimeSearchDerivedAttachmentState::Building;
+    use crate::RuntimeSearchDerivedAttachmentState::Queued;
+    use crate::RuntimeSearchDerivedAttachmentState::Ready;
     use tokio_stream::StreamExt;
 
     let hub = crate::RuntimeSearchDerivedAttachmentHub::new();
@@ -61,7 +66,9 @@ async fn attachment_hub_is_bounded_and_suppresses_late_generation_events() {
 #[test]
 fn attachment_hub_rejects_invalid_transition_and_cross_digest_alias() {
     use crate::RuntimeSearchDerivedAttachmentKind::Tantivy;
-    use crate::RuntimeSearchDerivedAttachmentState::{Building, Queued, Ready};
+    use crate::RuntimeSearchDerivedAttachmentState::Building;
+    use crate::RuntimeSearchDerivedAttachmentState::Queued;
+    use crate::RuntimeSearchDerivedAttachmentState::Ready;
 
     let hub = crate::RuntimeSearchDerivedAttachmentHub::new();
     let first = attachment_identity(1, 'a', Tantivy);

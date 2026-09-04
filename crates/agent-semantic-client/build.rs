@@ -1,6 +1,8 @@
 use std::path::PathBuf;
 
 fn main() {
+    let _policy_receipt =
+        asp_rust_project_harness_policy::assert_asp_rust_project_harness_member_policy_from_env();
     println!("cargo:rerun-if-changed=../../org/contracts/asp.skill.v1.org");
     println!(
         "cargo:rerun-if-changed=../../org/contracts/agent.multi-agent-session-control-plane.v1.org"

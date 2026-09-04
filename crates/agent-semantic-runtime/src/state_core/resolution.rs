@@ -1,18 +1,26 @@
 //! Resolve checkout identity into one canonical State Core instance.
 
-use super::identity::{
-    CheckoutIdentity, RepoId, RepoIdentity, ScopeId, WorkspaceId, WorkspaceIdentity,
-};
-use super::layout::{
-    ASP_STATE_HOME_ENV, DEFAULT_SCOPE_ID, STATE_LAYOUT_VERSION, StatePaths, TURSO_BACKEND,
-    canonicalize_parent, resolve_state_home_from,
-};
-use crate::git::{GitIdentity, RemoteUrl, canonicalize_if_possible};
-use serde::{Deserialize, Serialize};
-use std::{
-    env,
-    path::{Path, PathBuf},
-};
+use super::identity::CheckoutIdentity;
+use super::identity::RepoId;
+use super::identity::RepoIdentity;
+use super::identity::ScopeId;
+use super::identity::WorkspaceId;
+use super::identity::WorkspaceIdentity;
+use super::layout::ASP_STATE_HOME_ENV;
+use super::layout::DEFAULT_SCOPE_ID;
+use super::layout::STATE_LAYOUT_VERSION;
+use super::layout::StatePaths;
+use super::layout::TURSO_BACKEND;
+use super::layout::canonicalize_parent;
+use super::layout::resolve_state_home_from;
+use crate::git::GitIdentity;
+use crate::git::RemoteUrl;
+use crate::git::canonicalize_if_possible;
+use serde::Deserialize;
+use serde::Serialize;
+use std::env;
+use std::path::Path;
+use std::path::PathBuf;
 
 /// Fully resolved State Core identity and paths.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]

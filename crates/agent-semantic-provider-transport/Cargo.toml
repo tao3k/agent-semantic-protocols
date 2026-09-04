@@ -48,3 +48,7 @@ tonic-prost-build = { workspace = true, optional = true }
 
 [dev-dependencies]
 criterion = "0.8.2"
+
+[[bench]]
+name = "transport_hot_path"
+harness = false

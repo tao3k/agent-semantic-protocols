@@ -1,4 +1,5 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use agent_semantic_content_identity::exact_selector_generation_fixture::ExactSelectorGenerationFixtureViewV1;

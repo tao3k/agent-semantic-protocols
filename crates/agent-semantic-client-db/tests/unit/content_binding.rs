@@ -1,7 +1,8 @@
 use agent_semantic_client_db::runtime_server_workspace::content_binding::ContentPublicationLedger;
-use agent_semantic_content_identity::content_binding::{
-    AuthorityStamp, ContentBinding, ContentBindingError, ContentIdentity,
-};
+use agent_semantic_content_identity::content_binding::AuthorityStamp;
+use agent_semantic_content_identity::content_binding::ContentBinding;
+use agent_semantic_content_identity::content_binding::ContentBindingError;
+use agent_semantic_content_identity::content_binding::ContentIdentity;
 
 fn identity(seed: char) -> ContentIdentity {
     let digest = format!("blake3-256:{}", seed.to_string().repeat(64));

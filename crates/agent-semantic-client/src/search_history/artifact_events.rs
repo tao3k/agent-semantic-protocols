@@ -1,10 +1,12 @@
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 use std::time::UNIX_EPOCH;
 
 use agent_semantic_client_db::ClientDbArtifactEvent;
 
-use super::search_history_paths::{target_or_query, target_path};
+use super::search_history_paths::target_or_query;
+use super::search_history_paths::target_path;
 
 const ARTIFACT_EVENT_DIRS: &[&str] = &[
     "prompt-output",

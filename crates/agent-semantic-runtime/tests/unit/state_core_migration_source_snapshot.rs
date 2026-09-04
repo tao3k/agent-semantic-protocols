@@ -1,6 +1,9 @@
-use super::{merge_immutable_tree, normalize_source_snapshot_envelope_tree};
+use super::merge_immutable_tree;
+use super::normalize_source_snapshot_envelope_tree;
 use serde_json::json;
-use std::{fs, path::PathBuf, process::Command};
+use std::fs;
+use std::path::PathBuf;
+use std::process::Command;
 
 #[test]
 fn migration_preserves_provider_versions_and_rewrites_cas_root() {

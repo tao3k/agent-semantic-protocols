@@ -1,7 +1,8 @@
 use agent_semantic_content_identity::exact_selector_merkle::ContentDigestV1;
-use agent_semantic_content_identity::workspace_merkle_v1::{
-    WorkspaceMerkleV1Error, WorkspacePathMerkleTreeV1, verify_owner_inclusion_v1,
-};
+use agent_semantic_content_identity::workspace_merkle_v1::WorkspaceMerkleV1Error;
+use agent_semantic_content_identity::workspace_merkle_v1::WorkspaceOwnerInclusionV1;
+use agent_semantic_content_identity::workspace_merkle_v1::WorkspacePathMerkleTreeV1;
+use agent_semantic_content_identity::workspace_merkle_v1::verify_owner_inclusion_v1;
 
 fn digest(character: char) -> ContentDigestV1 {
     ContentDigestV1::parse(character.to_string().repeat(64)).expect("valid digest")
@@ -24,13 +25,13 @@ fn root_is_order_independent_and_every_leaf_has_a_valid_proof() {
     assert_eq!(forward.root_digest(), reversed.root_digest());
 
     for (path, source_digest) in entries() {
-        assert!(verify_owner_inclusion_v1(
-            &path,
-            &source_digest,
-            forward.owner_subtree_digest(&path).expect("owner leaf"),
-            &forward.inclusion_proof(&path).expect("owner proof"),
-            forward.root_digest(),
-        ));
+        assert!(verify_owner_inclusion_v1(WorkspaceOwnerInclusionV1 {
+            owner_path: &path,
+            source_blob_digest: &source_digest,
+            expected_owner_subtree_digest: forward.owner_subtree_digest(&path).expect("owner leaf"),
+            inclusion_proof: &forward.inclusion_proof(&path).expect("owner proof"),
+            expected_workspace_root_digest: forward.root_digest(),
+        }));
     }
 }
 
@@ -40,20 +41,20 @@ fn changed_source_or_root_fails_closed() {
     let path = "crates/a/src/lib.rs";
     let proof = tree.inclusion_proof(path).expect("proof");
     let owner_digest = tree.owner_subtree_digest(path).expect("owner leaf");
-    assert!(!verify_owner_inclusion_v1(
-        path,
-        &digest('9'),
-        owner_digest,
-        &proof,
-        tree.root_digest(),
-    ));
-    assert!(!verify_owner_inclusion_v1(
-        path,
-        &digest('a'),
-        owner_digest,
-        &proof,
-        &digest('9'),
-    ));
+    assert!(!verify_owner_inclusion_v1(WorkspaceOwnerInclusionV1 {
+        owner_path: path,
+        source_blob_digest: &digest('9'),
+        expected_owner_subtree_digest: owner_digest,
+        inclusion_proof: &proof,
+        expected_workspace_root_digest: tree.root_digest(),
+    }));
+    assert!(!verify_owner_inclusion_v1(WorkspaceOwnerInclusionV1 {
+        owner_path: path,
+        source_blob_digest: &digest('a'),
+        expected_owner_subtree_digest: owner_digest,
+        inclusion_proof: &proof,
+        expected_workspace_root_digest: &digest('9'),
+    }));
 }
 
 #[test]
@@ -86,13 +87,13 @@ fn all_owner_proofs_reuse_precomputed_levels_within_wall_budget() {
 
     for (path, source_digest) in entries {
         let proof = tree.inclusion_proof(&path).expect("owner proof");
-        assert!(verify_owner_inclusion_v1(
-            &path,
-            &source_digest,
-            tree.owner_subtree_digest(&path).expect("owner leaf"),
-            &proof,
-            tree.root_digest(),
-        ));
+        assert!(verify_owner_inclusion_v1(WorkspaceOwnerInclusionV1 {
+            owner_path: &path,
+            source_blob_digest: &source_digest,
+            expected_owner_subtree_digest: tree.owner_subtree_digest(&path).expect("owner leaf"),
+            inclusion_proof: &proof,
+            expected_workspace_root_digest: tree.root_digest(),
+        }));
     }
 
     assert!(

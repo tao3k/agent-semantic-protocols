@@ -4,6 +4,8 @@ namespace ASPProof.Audit.ExactSelectorGenerationAdmission
 
 open ASPProof.ExactSelectorGenerationAdmission
 
+#print axioms exact_query_terminal_uses_active_source_root
+
 theorem a_daemon_registry_sync_bridge_cannot_be_admitted
     (runtimeOwnerCount : Nat) :
     registryBootstrapAdmitted runtimeOwnerCount .synchronousNestedRuntime = false := by

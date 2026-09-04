@@ -1,14 +1,17 @@
 //! Serializable artifact inputs, child and root references, and identity documents.
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 
-use crate::domain::{
-    ARTIFACT_IDENTITY_SCHEMA_ID, ARTIFACT_IDENTITY_SCHEMA_VERSION, HASH_ALGORITHM_BLAKE3,
-};
-use crate::value::{
-    ArtifactGeneration, ArtifactHash, ArtifactKind, ArtifactRepoId, ArtifactScopeId,
-    ArtifactWorkspaceId,
-};
+use crate::domain::ARTIFACT_IDENTITY_SCHEMA_ID;
+use crate::domain::ARTIFACT_IDENTITY_SCHEMA_VERSION;
+use crate::domain::HASH_ALGORITHM_BLAKE3;
+use crate::value::ArtifactGeneration;
+use crate::value::ArtifactHash;
+use crate::value::ArtifactKind;
+use crate::value::ArtifactRepoId;
+use crate::value::ArtifactScopeId;
+use crate::value::ArtifactWorkspaceId;
 
 /// Raw payload leaf hash input.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]

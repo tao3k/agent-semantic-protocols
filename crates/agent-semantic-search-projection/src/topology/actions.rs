@@ -1,8 +1,10 @@
 use serde_json::Value;
 
-use super::packet::{
-    graph_root, header_field_scalar, is_owner_item_query_packet, packet_query, packet_view,
-};
+use super::packet::graph_root;
+use super::packet::header_field_scalar;
+use super::packet::is_owner_item_query_packet;
+use super::packet::packet_query;
+use super::packet::packet_view;
 
 /// Action facts consumed by the topology projection pipeline.
 #[derive(Clone, Copy)]

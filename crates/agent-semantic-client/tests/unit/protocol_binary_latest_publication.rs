@@ -1,13 +1,15 @@
-use super::{
-    ProtocolBinaryInstallPlan, SEMANTIC_AGENT_PROTOCOL_BIN, ensure_protocol_binary_installed,
-    install_protocol_binary_alias, install_protocol_binary_target,
-    next_protocol_binary_publish_sequence, protocol_binary_artifact_path_digest,
-};
-use std::{
-    env, fs,
-    path::{Path, PathBuf},
-    process,
-};
+use super::ProtocolBinaryInstallPlan;
+use super::SEMANTIC_AGENT_PROTOCOL_BIN;
+use super::ensure_protocol_binary_installed;
+use super::install_protocol_binary_alias;
+use super::install_protocol_binary_target;
+use super::next_protocol_binary_publish_sequence;
+use super::protocol_binary_artifact_path_digest;
+use std::env;
+use std::fs;
+use std::path::Path;
+use std::path::PathBuf;
+use std::process;
 
 fn fixture_root(name: &str) -> PathBuf {
     let root = env::temp_dir().join(format!(

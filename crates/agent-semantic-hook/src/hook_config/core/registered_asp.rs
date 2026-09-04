@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 
-use crate::protocol_activation::protocol_activation_manifest::{ActivatedProvider, HookRuntime};
+use crate::protocol_activation::protocol_activation_manifest::ActivatedProvider;
+use crate::protocol_activation::protocol_activation_manifest::HookRuntime;
 use crate::tool_action::ToolAction;
 
 pub(super) struct RegisteredAspMatch<'a> {

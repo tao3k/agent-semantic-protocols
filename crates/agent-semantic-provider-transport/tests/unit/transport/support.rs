@@ -1,10 +1,15 @@
 use std::collections::BTreeMap;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
-use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::path::Path;
+use std::path::PathBuf;
+use std::time::SystemTime;
+use std::time::UNIX_EPOCH;
 
-use crate::{OutputMode, ProviderProcessLimits, ProviderProcessSpec, StdinMode};
+use crate::OutputMode;
+use crate::ProviderProcessLimits;
+use crate::ProviderProcessSpec;
+use crate::StdinMode;
 
 pub(super) fn temp_dir(name: &str) -> PathBuf {
     let unique = SystemTime::now()

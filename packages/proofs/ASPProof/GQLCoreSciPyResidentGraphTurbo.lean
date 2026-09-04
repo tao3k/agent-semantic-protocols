@@ -71,6 +71,70 @@ structure NativeSyntaxRelationProjection where
   relationDigest : String
   deriving Repr, DecidableEq, BEq
 
+structure NativeSyntaxUnavailableDiagnostic where
+  ownerPath : String
+  contentDigest : String
+  reasonKind : String
+  message : String
+  deriving Repr, DecidableEq, BEq
+
+def nativeSyntaxDiagnosticValid
+    (diagnostic : NativeSyntaxUnavailableDiagnostic) : Bool :=
+  !diagnostic.ownerPath.isEmpty &&
+    !diagnostic.contentDigest.isEmpty &&
+    diagnostic.reasonKind == "source-syntax-unavailable" &&
+    !diagnostic.message.isEmpty
+
+def nativeSyntaxOwnerAccountingComplete
+    (selectedOwners : List String)
+    (projections : List NativeSyntaxOwnerProjection)
+    (diagnostics : List NativeSyntaxUnavailableDiagnostic) : Bool :=
+  let projectedOwners : List String := projections.map (·.ownerPath)
+  let diagnosedOwners : List String := diagnostics.map (·.ownerPath)
+  decide selectedOwners.Nodup &&
+    decide projectedOwners.Nodup &&
+    decide diagnosedOwners.Nodup &&
+    projectedOwners.all (fun owner => !diagnosedOwners.contains owner) &&
+    diagnostics.all nativeSyntaxDiagnosticValid &&
+    selectedOwners.all (fun owner =>
+      projectedOwners.contains owner || diagnosedOwners.contains owner) &&
+    projectedOwners.all selectedOwners.contains &&
+    diagnosedOwners.all selectedOwners.contains
+
+theorem one_unavailable_owner_can_complete_total_accounting :
+    nativeSyntaxOwnerAccountingComplete
+      ["src/ready.rs", "src/unavailable.rs"]
+      [ { ownerPath := "src/ready.rs"
+          contentDigest := "blake3-256:ready"
+          selectors := [] } ]
+      [ { ownerPath := "src/unavailable.rs"
+          contentDigest := "blake3-256:unavailable"
+          reasonKind := "source-syntax-unavailable"
+          message := "bounded parser diagnostic" } ] = true := by
+  decide
+
+theorem unreported_owner_cannot_complete_total_accounting :
+    nativeSyntaxOwnerAccountingComplete
+      ["src/ready.rs", "src/missing.rs"]
+      [ { ownerPath := "src/ready.rs"
+          contentDigest := "blake3-256:ready"
+          selectors := [] } ]
+      [] = false := by
+  decide
+
+def independentSearchEvidenceSurvivesNativeDiagnostic
+    (rg lexical graph : Bool)
+    (_diagnostics : List NativeSyntaxUnavailableDiagnostic) : Bool :=
+  rg && lexical && graph
+
+theorem one_native_diagnostic_cannot_revoke_independent_search_evidence :
+    independentSearchEvidenceSurvivesNativeDiagnostic true true true
+      [ { ownerPath := "src/unavailable.rs"
+          contentDigest := "blake3-256:unavailable"
+          reasonKind := "source-syntax-unavailable"
+          message := "bounded parser diagnostic" } ] = true := by
+  rfl
+
 def nativeSyntaxSelectorProjectionValid
     (selector : NativeSyntaxSelectorProjection) : Bool :=
   !selector.selector.isEmpty &&
@@ -149,6 +213,33 @@ theorem canonical_search_pipeline_order_is_admitted :
 theorem peer_lane_or_reversed_search_composition_is_rejected :
     searchPipelineOrderAdmitted
       [.rgAcquisition, .tantivyLexical, .nativeSyntaxPlaybook, .residentGraph] = false := by
+  decide
+
+/- A ClientFrame terminal is bound to the admitted source snapshot root.
+The owner-index Merkle root is a derived attachment identity and cannot be
+substituted even when both values are valid BLAKE3 digests. -/
+structure SearchGenerationRootIdentity where
+  sourceRootDigest : String
+  ownerIndexRootDigest : String
+  deriving Repr, DecidableEq, BEq
+
+def clientTerminalRootAdmitted
+    (identity : SearchGenerationRootIdentity)
+    (terminalRootDigest : String) : Bool :=
+  terminalRootDigest == identity.sourceRootDigest
+
+def distinctSearchGenerationRoots : SearchGenerationRootIdentity :=
+  { sourceRootDigest := "source-root"
+    ownerIndexRootDigest := "owner-index-root" }
+
+theorem admitted_source_root_is_a_valid_client_terminal_identity :
+    clientTerminalRootAdmitted distinctSearchGenerationRoots
+      distinctSearchGenerationRoots.sourceRootDigest = true := by
+  rfl
+
+theorem derived_owner_index_root_cannot_replace_source_root_in_client_terminal :
+    clientTerminalRootAdmitted distinctSearchGenerationRoots
+      distinctSearchGenerationRoots.ownerIndexRootDigest = false := by
   decide
 
 def searchPipelineStageDirectlyToolAddressable (_stage : SearchPipelineStage) : Bool :=

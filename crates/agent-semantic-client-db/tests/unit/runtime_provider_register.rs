@@ -1,9 +1,10 @@
 use agent_semantic_client_db::runtime_provider_register::RuntimeProviderRegister;
-use agent_semantic_provider_protocol::{
-    PROVIDER_REGISTER_REQUEST_SCHEMA_ID, PROVIDER_REGISTER_SCHEMA_VERSION,
-    ProviderRegisterOperation, ProviderRegisterRequest, ProviderRegisterResult,
-    ProviderRegistrationDocument,
-};
+use agent_semantic_provider_protocol::PROVIDER_REGISTER_REQUEST_SCHEMA_ID;
+use agent_semantic_provider_protocol::PROVIDER_REGISTER_SCHEMA_VERSION;
+use agent_semantic_provider_protocol::ProviderRegisterOperation;
+use agent_semantic_provider_protocol::ProviderRegisterRequest;
+use agent_semantic_provider_protocol::ProviderRegisterResult;
+use agent_semantic_provider_protocol::ProviderRegistrationDocument;
 use serde_json::json;
 
 fn identity_provider(language_id: &str, provider_id: &str) -> ProviderRegistrationDocument {

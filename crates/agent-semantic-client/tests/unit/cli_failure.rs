@@ -12,6 +12,19 @@ fn runtime_transport_unavailable_is_a_typed_pre_frame_terminal() {
 }
 
 #[test]
+fn unauthenticated_runtime_status_observation_is_typed_without_lifecycle_claim() {
+    let rendered = materialize_cli_failure(
+        "state=blocked reasonKind=runtime-status-observation-failed operation=status originalError=early eof",
+    );
+    let receipt: serde_json::Value = serde_json::from_str(&rendered).expect("typed receipt");
+
+    assert_eq!(receipt["reasonKind"], "runtime-status-observation-failed");
+    assert_eq!(receipt["failureLayer"], "runtime-status-observation");
+    assert_eq!(receipt["state"], "blocked");
+    assert!(receipt.get("lifecycleState").is_none());
+}
+
+#[test]
 fn bare_eperm_becomes_an_explicit_agent_facing_boundary_receipt() {
     let rendered = materialize_cli_failure("Operation not permitted (os error 1)");
     let receipt: serde_json::Value = serde_json::from_str(&rendered).expect("typed CLI failure");
@@ -24,6 +37,26 @@ fn bare_eperm_becomes_an_explicit_agent_facing_boundary_receipt() {
         receipt["message"]
             .as_str()
             .is_some_and(|message| message.contains("not a Hook policy denial"))
+    );
+}
+
+#[test]
+fn verified_runtime_endpoint_eperm_preserves_the_transport_boundary() {
+    let rendered = materialize_cli_failure(
+        "reasonKind=host-operation-not-permitted failureLayer=runtime-verified-endpoint-transport osError=EPERM originalError=Operation not permitted (os error 1)",
+    );
+    let receipt: serde_json::Value = serde_json::from_str(&rendered).expect("typed CLI failure");
+
+    assert_eq!(receipt["reasonKind"], "host-operation-not-permitted");
+    assert_eq!(
+        receipt["failureLayer"],
+        "runtime-verified-endpoint-transport"
+    );
+    assert_eq!(receipt["osError"], "EPERM");
+    assert!(
+        receipt["message"]
+            .as_str()
+            .is_some_and(|message| message.contains("proved the Runtime serving identity"))
     );
 }
 

@@ -1,6 +1,6 @@
-use super::{
-    CodexPluginInstallOperation, CodexPluginSourceRootSource, parse_codex_plugin_install_args,
-};
+use super::CodexPluginInstallOperation;
+use super::CodexPluginSourceRootSource;
+use super::parse_codex_plugin_install_args;
 
 #[test]
 fn clap_rejects_removed_project_scope() {

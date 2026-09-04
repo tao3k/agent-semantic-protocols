@@ -1,24 +1,6 @@
-use agent_semantic_hook::HookRuntime;
-
+mod fixtures;
 mod platform;
-
-pub(crate) fn registry() -> HookRuntime {
-    HookRuntime {
-        project_root: ".".to_owned(),
-        rankers: Vec::new(),
-        providers: Vec::new(),
-        policy_providers: Vec::new(),
-    }
-}
-
-pub(crate) fn registry_without_providers() -> HookRuntime {
-    registry()
-}
-
-pub(crate) fn rust_registry() -> HookRuntime {
-    registry()
-}
-
-pub(crate) fn builtin_programming_runtime() -> HookRuntime {
-    registry()
-}
+pub(crate) use fixtures::builtin_programming_runtime;
+pub(crate) use fixtures::registry;
+pub(crate) use fixtures::registry_without_providers;
+pub(crate) use fixtures::rust_registry;

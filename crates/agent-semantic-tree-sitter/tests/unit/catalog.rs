@@ -1,11 +1,15 @@
 use std::fs;
-use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::path::Path;
+use std::path::PathBuf;
+use std::time::SystemTime;
+use std::time::UNIX_EPOCH;
 
-use crate::{
-    SyntaxCatalogDescriptor, builtin_catalog_source, compile_query_abi_source,
-    extract_capture_names, load_grammar_profile, load_syntax_catalog,
-};
+use crate::SyntaxCatalogDescriptor;
+use crate::builtin_catalog_source;
+use crate::compile_query_abi_source;
+use crate::extract_capture_names;
+use crate::load_grammar_profile;
+use crate::load_syntax_catalog;
 
 #[test]
 fn extracts_and_normalizes_capture_names_from_scm() {

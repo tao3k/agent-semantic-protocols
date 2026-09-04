@@ -1,5 +1,7 @@
 use agent_semantic_provider_transport::byte_text;
-use criterion::{Criterion, criterion_group, criterion_main};
+use criterion::Criterion;
+use criterion::criterion_group;
+use criterion::criterion_main;
 use std::hint::black_box;
 
 fn transport_hot_path(c: &mut Criterion) {

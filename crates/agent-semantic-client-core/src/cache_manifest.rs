@@ -1,13 +1,21 @@
 //! Cache manifest model and path resolution for `agent-semantic-client`.
 
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 
-use crate::types::{
-    CacheArtifactId, CacheGenerationId, CacheStatus, ClientCachePath, LanguageId, ProviderId,
-    SemanticProtocolId, SemanticProtocolVersion, SemanticSchemaId, SemanticSchemaVersion,
-};
-use serde::{Deserialize, Serialize};
+use crate::types::CacheArtifactId;
+use crate::types::CacheGenerationId;
+use crate::types::CacheStatus;
+use crate::types::ClientCachePath;
+use crate::types::LanguageId;
+use crate::types::ProviderId;
+use crate::types::SemanticProtocolId;
+use crate::types::SemanticProtocolVersion;
+use crate::types::SemanticSchemaId;
+use crate::types::SemanticSchemaVersion;
+use serde::Deserialize;
+use serde::Serialize;
 
 /// Schema id for `agent-semantic-client-cache-manifest.v1`.
 pub const AGENT_SEMANTIC_CLIENT_CACHE_MANIFEST_SCHEMA_ID: &str =

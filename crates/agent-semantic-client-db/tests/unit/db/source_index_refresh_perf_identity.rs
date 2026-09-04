@@ -1,7 +1,12 @@
-use super::{
-    Instant, LanguageId, ProviderId, SOURCE_INDEX_HASH_REUSE_GATE, commit_fixture_generation,
-    refresh_request, run_git, source_index_refresh_test_guard, temp_project_root,
-};
+use super::Instant;
+use super::LanguageId;
+use super::ProviderId;
+use super::SOURCE_INDEX_HASH_REUSE_GATE;
+use super::commit_fixture_generation;
+use super::refresh_request;
+use super::run_git;
+use super::source_index_refresh_test_guard;
+use super::temp_project_root;
 
 #[test]
 fn source_index_hash_reuse_ignores_scope_dir_mtime() {
@@ -19,6 +24,7 @@ fn source_index_hash_reuse_ignores_scope_dir_mtime() {
         provider_id: ProviderId::from("asp-rust"),
         projection_coverage:
             agent_semantic_client_db::ClientDbSourceIndexProjectionCoverage::NotDeclared,
+        projection_diagnostic: None,
         selector_receipts: Vec::new(),
     }];
     let source_blobs =
@@ -93,6 +99,7 @@ fn source_index_dirty_git_path_forces_content_hash_despite_metadata_collision() 
         provider_id: ProviderId::from("asp-rust"),
         projection_coverage:
             agent_semantic_client_db::ClientDbSourceIndexProjectionCoverage::NotDeclared,
+        projection_diagnostic: None,
         selector_receipts: Vec::new(),
     }];
     let first_source_blobs =

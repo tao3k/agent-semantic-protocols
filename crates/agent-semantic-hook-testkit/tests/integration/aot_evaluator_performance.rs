@@ -1,11 +1,13 @@
 //! Performance contracts for the borrowed AOT evaluator.
 
 use std::sync::mpsc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
+use std::time::Instant;
 
 use agent_semantic_hook::aot_evaluator::evaluate_pre_tool;
 
-use super::aot_evaluator_contract::{GENERATION, canonical_generation};
+use super::aot_evaluator_contract::GENERATION;
+use super::aot_evaluator_contract::canonical_generation;
 
 #[cfg(unix)]
 fn current_thread_cpu_nanos() -> u128 {

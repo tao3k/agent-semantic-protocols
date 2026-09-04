@@ -1,5 +1,7 @@
 //! Bounded shell-stage and prefix matching contracts.
 
+use std::collections::HashSet;
+
 use crate::bash_parser;
 
 /// Maximum tokens inspected in one parsed command stage.
@@ -91,30 +93,38 @@ pub fn command_stages_match_wrapped_prefix(
     stages: &[CommandStage],
     prefix: &[String],
 ) -> PrefixMatch {
+    command_stages_match_wrapped_prefix_impl(stages, prefix)
+}
+
+fn command_stages_match_wrapped_prefix_impl(
+    stages: &[CommandStage],
+    prefix: &[String],
+) -> PrefixMatch {
     if prefix.is_empty() {
         return PrefixMatch::Matched;
     }
-    let mut inspected_candidates = 0usize;
-    for stage in stages {
-        let words = stage.words();
-        if words.len() > MAX_STAGE_TOKENS {
-            return PrefixMatch::BudgetExceeded;
-        }
-        if words.len() < prefix.len() {
-            continue;
-        }
-        if inspected_candidates == MAX_COMMAND_CANDIDATES {
-            return PrefixMatch::BudgetExceeded;
-        }
-        inspected_candidates += 1;
-        if words
-            .windows(prefix.len())
-            .any(|candidate| candidate_matches_prefix(candidate, prefix))
-        {
-            return PrefixMatch::Matched;
-        }
-    }
-    PrefixMatch::NotMatched
+    stages
+        .iter()
+        .try_fold(0usize, |inspected_candidates, stage| {
+            let words = stage.words();
+            if words.len() > MAX_STAGE_TOKENS {
+                return Err(PrefixMatch::BudgetExceeded);
+            }
+            if words.len() < prefix.len() {
+                return Ok(inspected_candidates);
+            }
+            if inspected_candidates == MAX_COMMAND_CANDIDATES {
+                return Err(PrefixMatch::BudgetExceeded);
+            }
+            if words
+                .windows(prefix.len())
+                .any(|candidate| candidate_matches_prefix(candidate, prefix))
+            {
+                return Err(PrefixMatch::Matched);
+            }
+            Ok(inspected_candidates + 1)
+        })
+        .map_or_else(|outcome| outcome, |_| PrefixMatch::NotMatched)
 }
 
 /// Match an exact process-environment assignment carried by one of the three
@@ -478,17 +488,14 @@ fn parse_bash_command_candidates_impl(command: &str) -> Result<Vec<CommandStage>
     let tokens = bash_parser::bash_ast_tokens(command)
         .ok_or_else(|| "bash-tree-sitter-parse-failed".to_string())?;
     let mut candidates = Vec::new();
+    let mut executable_stage_keys = HashSet::new();
     let mut executable_candidates = 0usize;
     for words in bash_parser::split_command_stages(tokens) {
         if words.is_empty() {
             continue;
         }
         let is_separator_stage = words.len() == 1 && bash_parser::is_separator(words[0].as_str());
-        if !is_separator_stage
-            && candidates
-                .iter()
-                .any(|candidate: &CommandStage| candidate.words == words)
-        {
+        if !is_separator_stage && !executable_stage_keys.insert(words.clone()) {
             continue;
         }
         if !is_separator_stage {

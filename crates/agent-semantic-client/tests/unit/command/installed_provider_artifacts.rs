@@ -1,15 +1,22 @@
-use std::{path::Path, sync::Arc};
+use std::path::Path;
+use std::sync::Arc;
 
 use agent_semantic_provider_protocol::ProviderRegistrationDocument;
 use serde_json::json;
 
-use super::{
-    InstalledProviderArtifact, InstalledProviderArtifactsDocument, RuntimeProviderArtifacts,
-    SCHEMA_ID, SCHEMA_VERSION, document_path, generation, integrity_ref,
-    load_authoritative_runtime_projection, load_runtime_provider_artifacts,
-    publish_current_installed_provider_artifacts, runtime_source_index_provider_projection,
-    workspace_required_provider_languages_for_paths,
-};
+use super::InstalledProviderArtifact;
+use super::InstalledProviderArtifactsDocument;
+use super::RuntimeProviderArtifacts;
+use super::SCHEMA_ID;
+use super::SCHEMA_VERSION;
+use super::document_path;
+use super::generation;
+use super::integrity_ref;
+use super::load_authoritative_runtime_projection;
+use super::load_runtime_provider_artifacts;
+use super::publish_current_installed_provider_artifacts;
+use super::runtime_source_index_provider_projection;
+use super::workspace_required_provider_languages_for_paths;
 
 #[test]
 fn runtime_source_index_projection_is_derived_from_live_register() {
@@ -240,7 +247,7 @@ async fn guarded_install_publication_is_atomic_and_rejects_receipt_drift() {
     let registry_digest =
         crate::command::provider_install_registry::provider_install_registry_digest()
             .expect("provider registry digest");
-    agent_semantic_artifacts::runtime_artifact_catalog::publish_runtime_provider_catalog(
+    agent_semantic_artifacts::runtime_provider_catalog::publish_runtime_provider_catalog(
         &root,
         &format!("blake3-256:{}", "a".repeat(64)),
         &registry_digest,
@@ -334,7 +341,7 @@ async fn guarded_install_publication_is_atomic_and_rejects_receipt_drift() {
         next_artifact_digest
     );
 
-    agent_semantic_artifacts::runtime_artifact_catalog::publish_runtime_provider_catalog(
+    agent_semantic_artifacts::runtime_provider_catalog::publish_runtime_provider_catalog(
         &root,
         &format!("blake3-256:{}", "a".repeat(64)),
         &format!("blake3-256:{}", "9".repeat(64)),
@@ -348,7 +355,7 @@ async fn guarded_install_publication_is_atomic_and_rejects_receipt_drift() {
         .expect("normal authority drift must refresh automatically");
     assert_eq!(refreshed.document.providers.len(), 1);
     assert_eq!(
-        agent_semantic_artifacts::runtime_artifact_catalog::load_runtime_provider_catalog_identity(
+        agent_semantic_artifacts::runtime_provider_catalog::load_runtime_provider_catalog_identity(
             &root,
         )
         .expect("load refreshed catalog")

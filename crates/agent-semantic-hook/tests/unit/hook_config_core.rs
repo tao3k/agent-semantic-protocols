@@ -1,5 +1,7 @@
 use super::compiled_rule::RuleMatch;
-use crate::tool_action::{OperationIntent, ToolAction, ToolSurface};
+use crate::tool_action::OperationIntent;
+use crate::tool_action::ToolAction;
+use crate::tool_action::ToolSurface;
 
 fn configured_projection_rule(
     document_format: agent_semantic_config::HookClientStructuredFormat,

@@ -1,7 +1,11 @@
-use crate::source_snapshot::{
-    ResolutionAuthority, ResolutionEvidence, ResolutionState, SOURCE_SNAPSHOT_ALGORITHM,
-    SOURCE_SNAPSHOT_SCHEMA_ID, SnapshotBoundResolution, SourceSnapshotKind, WorkspaceSnapshot,
-};
+use crate::source_snapshot::ResolutionAuthority;
+use crate::source_snapshot::ResolutionEvidence;
+use crate::source_snapshot::ResolutionState;
+use crate::source_snapshot::SOURCE_SNAPSHOT_ALGORITHM;
+use crate::source_snapshot::SOURCE_SNAPSHOT_SCHEMA_ID;
+use crate::source_snapshot::SnapshotBoundResolution;
+use crate::source_snapshot::SourceSnapshotKind;
+use crate::source_snapshot::WorkspaceSnapshot;
 
 #[test]
 fn evidence_binds_the_canonical_merkle_algorithm_and_leaf_count() {
@@ -104,8 +108,7 @@ fn materialized_overlay_evidence_matches_canonical_delta_evidence() {
             SourceSnapshotKind::Filesystem,
             "d".repeat(64),
             base.root_digest(),
-            ["src/a.rs"],
-            ["src/b.rs"],
+            crate::WorkspaceOverlayPaths::new(["src/a.rs"], ["src/b.rs"]),
         )
         .expect("materialized overlay evidence");
 

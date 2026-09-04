@@ -1,13 +1,18 @@
 use std::sync::Arc;
 
-use super::{
-    Mutex, RuntimeWorkspaceAdmissionCatalog, RuntimeWorkspaceAdmissionCatalogEntry,
-    WORKSPACE_GENERATION_MUTATION_ADMISSION_RECEIPT_SCHEMA_ID, WorkspaceGenerationAdmission,
-    WorkspaceGenerationAdmissionState, WorkspaceGenerationBuildFailure,
-    WorkspaceGenerationBuildMode, WorkspaceGenerationFailureStage,
-    WorkspaceGenerationMutationAdmissionReceipt, candidate_identity, completed_generation,
-    ready_receipt,
-};
+use super::Mutex;
+use super::RuntimeWorkspaceAdmissionCatalog;
+use super::RuntimeWorkspaceAdmissionCatalogEntry;
+use super::WORKSPACE_GENERATION_MUTATION_ADMISSION_RECEIPT_SCHEMA_ID;
+use super::WorkspaceGenerationAdmission;
+use super::WorkspaceGenerationAdmissionState;
+use super::WorkspaceGenerationBuildFailure;
+use super::WorkspaceGenerationBuildMode;
+use super::WorkspaceGenerationFailureStage;
+use super::WorkspaceGenerationMutationAdmissionReceipt;
+use super::candidate_identity;
+use super::completed_generation;
+use super::ready_receipt;
 
 #[test]
 fn mutation_rebuild_does_not_attempt_to_restore_the_superseded_materialization() {

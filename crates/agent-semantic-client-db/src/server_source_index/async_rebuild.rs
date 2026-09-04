@@ -91,6 +91,7 @@ async fn prepare_runtime_server_owner_projection_async(
         language_id: provider.language_id.clone(),
         provider_id: provider.provider_id.clone(),
         projection_coverage: crate::ClientDbSourceIndexProjectionCoverage::NotDeclared,
+        projection_diagnostic: None,
         selector_receipts: Vec::new(),
         relations: Vec::new(),
     }];
@@ -127,6 +128,15 @@ async fn prepare_runtime_server_owner_projection_async(
         .ok_or_else(|| {
             format!("runtime owner projection omitted source bytes: ownerPath={owner_path}")
         })?;
+    let content_digest = format!("blake3-256:{}", blake3::hash(&bytes).to_hex());
+    let native_syntax_diagnostic = projected.projection_diagnostic.map(|diagnostic| {
+        agent_semantic_search::NativeSyntaxDiagnostic {
+            owner_path: owner_path.clone(),
+            content_digest: content_digest.clone(),
+            reason_kind: diagnostic.reason_kind,
+            message: diagnostic.message,
+        }
+    });
     let mut selectors = projected
         .selector_receipts
         .into_iter()
@@ -180,7 +190,8 @@ async fn prepare_runtime_server_owner_projection_async(
         owner: crate::runtime_server_workspace::WorkspaceOwnerSnapshot {
             owner_path,
             authority: Some(authority),
-            content_digest: format!("blake3-256:{}", blake3::hash(&bytes).to_hex()),
+            content_digest,
+            native_syntax_diagnostic,
             bytes,
             selectors,
         },

@@ -386,7 +386,8 @@ async fn agent_session_registration_retains_archived_child_and_adds_new_instance
     assert!(
         registry
             .archive_session(project_id, first_child_id, 2)
-.await.expect("archive first resident child")
+            .await
+            .expect("archive first resident child")
     );
 
     let replacement = registry
@@ -429,3 +430,17 @@ async fn agent_session_registration_retains_archived_child_and_adds_new_instance
     drop(registry);
     std::fs::remove_dir_all(state).expect("remove temporary state root");
 }
+use super::fixture::init_git_repository;
+use super::fixture::temp_root;
+use agent_semantic_client_core::CacheExportMethod;
+use agent_semantic_client_core::ClientCacheManifest;
+use agent_semantic_client_core::LanguageId;
+use agent_semantic_client_core::ProviderId;
+use agent_semantic_client_core::state_core::ResolvedState;
+use agent_semantic_client_db::ClientDbEngine;
+use serde_json::json;
+use std::fs;
+use std::path::Path;
+use std::sync::Arc;
+use std::sync::Barrier;
+use std::thread;

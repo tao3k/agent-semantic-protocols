@@ -1,4 +1,5 @@
-use super::{AgentSessionDispatchLeaseRecord, dispatch_claim_action};
+use super::AgentSessionDispatchLeaseRecord;
+use super::dispatch_claim_action;
 
 fn lease(status: &str, digest: &str) -> AgentSessionDispatchLeaseRecord {
     AgentSessionDispatchLeaseRecord {

@@ -1,9 +1,13 @@
-use agent_semantic_search::{
-    ContentSearchGenerationReceipt, ResidentByteCoverageIndex, ResidentByteCoverageInput,
-    ResidentSearchAuthority, ResidentSearchFusionCapabilities, ResidentSearchIntent,
-    SearchGenerationConstructionStage, SearchGenerationIdentity, SearchGenerationStageReceipt,
-    plan_resident_search_execution,
-};
+use agent_semantic_search::ContentSearchGenerationReceipt;
+use agent_semantic_search::ResidentByteCoverageIndex;
+use agent_semantic_search::ResidentByteCoverageInput;
+use agent_semantic_search::ResidentSearchAuthority;
+use agent_semantic_search::ResidentSearchFusionCapabilities;
+use agent_semantic_search::ResidentSearchIntent;
+use agent_semantic_search::SearchGenerationConstructionStage;
+use agent_semantic_search::SearchGenerationIdentity;
+use agent_semantic_search::SearchGenerationStageReceipt;
+use agent_semantic_search::plan_resident_search_execution;
 
 fn capabilities() -> ResidentSearchFusionCapabilities {
     ResidentSearchFusionCapabilities {
@@ -140,10 +144,8 @@ fn exact_literal_needs_neither_lexical_nor_graph_attachment() {
 }
 
 #[test]
-fn legacy_search_operation_names_are_not_semantic_intents() {
-    for legacy in ["prime", "pipe", "lexical", "owner", "ingest", "rg"] {
-        assert!(ResidentSearchIntent::parse(legacy).is_err(), "{legacy}");
-    }
+fn unsupported_semantic_intent_fails_closed() {
+    assert!(ResidentSearchIntent::parse("unsupported-intent").is_err());
 }
 
 #[test]

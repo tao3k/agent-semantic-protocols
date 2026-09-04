@@ -1,14 +1,13 @@
-use std::{
-    sync::{
-        Arc,
-        atomic::{AtomicUsize, Ordering},
-    },
-    time::Duration,
-};
+use std::sync::Arc;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
+use std::time::Duration;
 
-use agent_semantic_hook_testkit::{
-    HookProcessSpec, HookScenario, HookTestKitError, run_hook_process, run_scenarios_with,
-};
+use agent_semantic_hook_testkit::HookProcessSpec;
+use agent_semantic_hook_testkit::HookScenario;
+use agent_semantic_hook_testkit::HookTestKitError;
+use agent_semantic_hook_testkit::run_hook_process;
+use agent_semantic_hook_testkit::run_scenarios_with;
 use serde_json::json;
 
 fn scenario(index: usize) -> HookScenario {

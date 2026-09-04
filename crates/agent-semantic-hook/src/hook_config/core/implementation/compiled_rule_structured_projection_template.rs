@@ -1,6 +1,9 @@
 //! Builds structured-projection decision templates inside the compiled-rule owner.
 
-use super::{CompiledHookRule, HookDecision, HookRuntime, ToolAction};
+use super::CompiledHookRule;
+use super::HookDecision;
+use super::HookRuntime;
+use super::ToolAction;
 
 impl CompiledHookRule {
     pub(super) fn structured_projection_decision_template(

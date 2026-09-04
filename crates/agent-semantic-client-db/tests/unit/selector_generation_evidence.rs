@@ -1,12 +1,16 @@
 use std::path::PathBuf;
 
 use agent_semantic_client_core::ProviderId;
-use agent_semantic_client_db::{
-    ClientDbSourceIndexPath, ClientDbSourceIndexQueryKey, ClientDbSourceIndexScopeFile,
-    ClientDbSourceIndexSelector, ClientDbSourceIndexSelectorId, ClientDbSourceIndexSelectorKind,
-    ClientDbSourceIndexSelectorSymbol, ClientDbSourceIndexSource, ClientDbSourceIndexSourceBlobs,
-    source_index_file_hashes,
-};
+use agent_semantic_client_db::ClientDbSourceIndexPath;
+use agent_semantic_client_db::ClientDbSourceIndexQueryKey;
+use agent_semantic_client_db::ClientDbSourceIndexScopeFile;
+use agent_semantic_client_db::ClientDbSourceIndexSelector;
+use agent_semantic_client_db::ClientDbSourceIndexSelectorId;
+use agent_semantic_client_db::ClientDbSourceIndexSelectorKind;
+use agent_semantic_client_db::ClientDbSourceIndexSelectorSymbol;
+use agent_semantic_client_db::ClientDbSourceIndexSource;
+use agent_semantic_client_db::ClientDbSourceIndexSourceBlobs;
+use agent_semantic_client_db::source_index_file_hashes;
 
 fn selector(selector_id: &str) -> ClientDbSourceIndexSelector {
     let (item_kind, source): (&str, &[u8]) = if selector_id.contains("#item/method/") {
@@ -52,6 +56,7 @@ fn selector_generation_hash(selectors: Vec<ClientDbSourceIndexSelector>) -> Stri
         provider_id: "asp-rust".into(),
         projection_coverage:
             agent_semantic_client_db::ClientDbSourceIndexProjectionCoverage::Complete,
+        projection_diagnostic: None,
         selector_receipts: selectors,
     }];
     let source_blobs = ClientDbSourceIndexSourceBlobs::from_normalized(vec![(

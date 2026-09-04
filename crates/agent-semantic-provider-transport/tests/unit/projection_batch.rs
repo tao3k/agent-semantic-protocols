@@ -1,12 +1,20 @@
-use super::{
-    MAX_PROVIDER_PROJECTION_BATCH_OWNERS, MAX_PROVIDER_PROJECTION_BATCH_SOURCE_BYTES,
-    MAX_PROVIDER_PROJECTION_SINGLE_OWNER_SOURCE_BYTES, PROJECTION_BATCH_RESPONSE_SCHEMA_ID,
-    PROJECTION_DIAGNOSTIC_SCHEMA_ID, ProviderProjectedItem, ProviderProjectedItemIdentity,
-    ProviderProjectedOwner, ProviderProjectionBatchRequest, ProviderProjectionBatchResponse,
-    ProviderProjectionDiagnostic, ProviderProjectionOwner, ProviderProjectionState,
-    SOURCE_SYNTAX_UNAVAILABLE_REASON_KIND, provider_projection_batch_ranges,
-    provider_projection_batch_ranges_with_auxiliary_bytes, validate_response,
-};
+use super::MAX_PROVIDER_PROJECTION_BATCH_OWNERS;
+use super::MAX_PROVIDER_PROJECTION_BATCH_SOURCE_BYTES;
+use super::MAX_PROVIDER_PROJECTION_SINGLE_OWNER_SOURCE_BYTES;
+use super::PROJECTION_BATCH_RESPONSE_SCHEMA_ID;
+use super::PROJECTION_DIAGNOSTIC_SCHEMA_ID;
+use super::ProviderProjectedItem;
+use super::ProviderProjectedItemIdentity;
+use super::ProviderProjectedOwner;
+use super::ProviderProjectionBatchRequest;
+use super::ProviderProjectionBatchResponse;
+use super::ProviderProjectionDiagnostic;
+use super::ProviderProjectionOwner;
+use super::ProviderProjectionState;
+use super::SOURCE_SYNTAX_UNAVAILABLE_REASON_KIND;
+use super::provider_projection_batch_ranges;
+use super::provider_projection_batch_ranges_with_auxiliary_bytes;
+use super::validate_response;
 
 fn request() -> ProviderProjectionBatchRequest {
     ProviderProjectionBatchRequest {
@@ -182,12 +190,12 @@ fn syntax_unavailable_owner_cannot_forge_semantic_facts() {
     response.owners[0].relations.push(
         agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelation {
             from: agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelationEndpoint {
-                kind: "owner".to_string(),
+                kind: agent_semantic_content_identity::ProviderRelationEndpointKindV1::Owner,
                 id: "owner:src/lib.rs".to_string(),
             },
-            kind: "contains".to_string(),
+            kind: "contains".into(),
             to: agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelationEndpoint {
-                kind: "item".to_string(),
+                kind: agent_semantic_content_identity::ProviderRelationEndpointKindV1::Item,
                 id: "item:function:forged".to_string(),
             },
         },

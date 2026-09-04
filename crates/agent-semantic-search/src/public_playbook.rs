@@ -56,13 +56,6 @@ pub fn parse_search_playbook_args(args: &[String]) -> Result<SearchPlaybookReque
             }
             "--query" => query_terms.push(value(args, &mut index, "--query")?),
             "--workspace" => request.workspace = value(args, &mut index, "--workspace")?,
-            "--view" | "--seeds" | "--query-set" | "--owner" | "--from-hook" | "--projection"
-            | "--context" => {
-                return Err(format!(
-                    "search playbook removed legacy option `{}`",
-                    args[index]
-                ));
-            }
             option if option.starts_with('-') => {
                 return Err(format!(
                     "search playbook does not support option `{option}`"

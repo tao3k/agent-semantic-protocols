@@ -2,13 +2,15 @@ use std::fs;
 use std::process::Command;
 use std::sync::Arc;
 
-use agent_semantic_client_db::runtime_server_admission::{
-    WorkspaceGenerationAdmission, WorkspaceGenerationAdmissionMode,
-    WorkspaceGenerationAdmissionState, discover_workspace_generation_candidate,
-};
-use tokio::sync::{Barrier, Mutex};
+use agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmission;
+use agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmissionMode;
+use agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmissionState;
+use agent_semantic_client_db::runtime_server_admission::discover_workspace_generation_candidate;
+use tokio::sync::Barrier;
+use tokio::sync::Mutex;
 
-use super::{candidate_identity_for, completed_generation};
+use super::candidate_identity_for;
+use super::completed_generation;
 
 #[tokio::test]
 async fn workspace_identity_cannot_split_admission_by_absolute_root() {
@@ -53,7 +55,7 @@ fn run_git(root: &std::path::Path, args: &[&str]) {
 }
 
 #[tokio::test]
-async fn ensure_runtime_generation_ready_upgrades_targeted_state_once() {
+async fn ready_receipt_is_reused_only_while_resident_digest_matches() {
     let fixture = tempfile::tempdir().expect("complete generation barrier fixture");
     let project_root = fixture.path();
     run_git(project_root, &["init", "--quiet"]);
@@ -67,12 +69,18 @@ async fn ensure_runtime_generation_ready_upgrades_targeted_state_once() {
     let candidate = discover_workspace_generation_candidate(project_root)
         .await
         .expect("discover complete generation candidate");
+    let workspace_identity =
+        agent_semantic_client_core::state_core::ResolvedState::resolve(project_root)
+            .expect("resolve complete generation workspace")
+            .workspace
+            .workspace_id
+            .to_string();
 
     let builds = Arc::new(Mutex::new(0_u8));
-    let binding_fresh = Arc::new(std::sync::atomic::AtomicBool::new(true));
+    let resident_generation_digest = Arc::new(std::sync::Mutex::new(String::new()));
     let admission = WorkspaceGenerationAdmission::new(Arc::new({
         let builds = Arc::clone(&builds);
-        let binding_fresh = Arc::clone(&binding_fresh);
+        let resident_generation_digest = Arc::clone(&resident_generation_digest);
         move |_workspace_identity,
               _project_root,
               candidate,
@@ -81,78 +89,83 @@ async fn ensure_runtime_generation_ready_upgrades_targeted_state_once() {
               _provider_target,
               _cancellation| {
             let builds = Arc::clone(&builds);
-            let binding_fresh = Arc::clone(&binding_fresh);
+            let resident_generation_digest = Arc::clone(&resident_generation_digest);
             Box::pin(async move {
                 *builds.lock().await += 1;
-                binding_fresh.store(true, std::sync::atomic::Ordering::Release);
-                completed_generation(candidate)
+                let completion = completed_generation(candidate)?;
+                *resident_generation_digest
+                    .lock()
+                    .expect("resident generation digest fixture lock") =
+                    completion.commit.generation_digest.clone();
+                Ok(completion)
             })
         }
     }))
     .with_ready_validator(Arc::new({
-        let binding_fresh = Arc::clone(&binding_fresh);
-        move |_workspace_identity, _project_root| {
-            binding_fresh
-                .load(std::sync::atomic::Ordering::Acquire)
-                .then_some(())
-                .ok_or_else(|| "provider binding generation drift".to_owned())
+        let resident_generation_digest = Arc::clone(&resident_generation_digest);
+        move |_workspace_identity, _project_root, receipt| {
+            let expected = &receipt
+                .commit
+                .as_ref()
+                .expect("ready fixture receipt has a commit")
+                .generation_digest;
+            let actual = resident_generation_digest
+                .lock()
+                .expect("resident generation digest fixture lock")
+                .clone();
+            (actual == expected.as_str()).then_some(()).ok_or_else(|| {
+                format!("Runtime resident generation drift: expected={expected} observed={actual}")
+            })
         }
     }));
 
-    let targeted = admission
+    let initial = admission
         .admit(
-            "workspace-complete-generation-barrier",
+            workspace_identity.clone(),
             project_root.to_path_buf(),
             candidate,
         )
         .await
-        .expect("admit targeted candidate");
-    assert_eq!(targeted.state, WorkspaceGenerationAdmissionState::Queued);
-    let targeted = admission
-        .wait_terminal("workspace-complete-generation-barrier", project_root)
+        .expect("admit complete generation candidate");
+    assert_eq!(initial.state, WorkspaceGenerationAdmissionState::Queued);
+    let initial = admission
+        .wait_terminal(&workspace_identity, project_root)
         .await
-        .expect("targeted admission reaches terminal");
+        .expect("complete generation admission reaches terminal");
     assert_eq!(
-        targeted.admission_mode,
+        initial.admission_mode,
         WorkspaceGenerationAdmissionMode::CompleteGeneration
     );
 
     let complete = admission
-        .ensure_runtime_generation_ready(
-            "workspace-complete-generation-barrier".to_owned(),
-            project_root.to_path_buf(),
-        )
+        .ensure_runtime_generation_ready(workspace_identity.clone(), project_root.to_path_buf())
         .await
-        .expect("upgrade targeted state to complete generation");
+        .expect("reuse current complete generation");
     assert_eq!(complete.state, WorkspaceGenerationAdmissionState::Ready);
     assert_eq!(
         complete.admission_mode,
-        WorkspaceGenerationAdmissionMode::FullRecovery
+        WorkspaceGenerationAdmissionMode::CompleteGeneration
     );
     assert!(complete.commit.is_some());
-    assert_eq!(*builds.lock().await, 2);
+    assert_eq!(*builds.lock().await, 1);
 
     let replay = admission
-        .ensure_runtime_generation_ready(
-            "workspace-complete-generation-barrier".to_owned(),
-            project_root.to_path_buf(),
-        )
+        .ensure_runtime_generation_ready(workspace_identity.clone(), project_root.to_path_buf())
         .await
         .expect("replay complete generation barrier");
     assert_eq!(replay.attempt, complete.attempt);
     assert_eq!(replay.commit, complete.commit);
-    assert_eq!(*builds.lock().await, 2);
+    assert_eq!(*builds.lock().await, 1);
 
-    binding_fresh.store(false, std::sync::atomic::Ordering::Release);
+    *resident_generation_digest
+        .lock()
+        .expect("resident generation digest fixture lock") = "blake3-256:stale".to_owned();
     let refreshed = admission
-        .ensure_runtime_generation_ready(
-            "workspace-complete-generation-barrier".to_owned(),
-            project_root.to_path_buf(),
-        )
+        .ensure_runtime_generation_ready(workspace_identity, project_root.to_path_buf())
         .await
-        .expect("stale provider binding rebuilds the complete generation");
+        .expect("stale resident digest rebuilds the complete generation");
     assert!(refreshed.attempt > replay.attempt);
-    assert_eq!(*builds.lock().await, 3);
+    assert_eq!(*builds.lock().await, 2);
     admission.shutdown().await.expect("drain admission lane");
 }
 

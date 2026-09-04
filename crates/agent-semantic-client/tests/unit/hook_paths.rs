@@ -1,5 +1,6 @@
 use std::process::Command;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::SystemTime;
+use std::time::UNIX_EPOCH;
 
 #[test]
 fn hook_paths_reports_runtime_layout_without_materializing_state() {

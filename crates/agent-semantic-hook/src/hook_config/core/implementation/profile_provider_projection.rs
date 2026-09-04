@@ -1,10 +1,13 @@
 use std::collections::BTreeMap;
 
-use agent_semantic_config::{
-    HookClientProfileConfig, HookClientProviderRouteIdentity, LanguageId, ProviderId,
-};
+use agent_semantic_config::HookClientProfileConfig;
+use agent_semantic_config::HookClientProviderRouteIdentity;
+use agent_semantic_config::LanguageId;
+use agent_semantic_config::ProviderId;
 
-use crate::protocol::{ActionPolicy, CommandTemplate, HookPolicy};
+use crate::protocol::ActionPolicy;
+use crate::protocol::CommandTemplate;
+use crate::protocol::HookPolicy;
 use crate::protocol_activation::protocol_activation_manifest::HookProviderProjection;
 
 pub(super) fn extend_profile_provider_projections(

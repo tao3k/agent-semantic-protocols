@@ -1,21 +1,25 @@
 //! Installation owner for hook runtime and Codex plugin surfaces.
 
-use super::hook_runtime_skill::{
-    install_agent_semantic_protocols_agent_config, install_agent_semantic_protocols_skill,
-};
-use super::hook_runtime_subagent::{install_claude_resident_agents, subagent_model_arg};
-use super::{
-    display_path, ensure_supported_client, flag_value, optional_flag_value, project_root_arg,
-};
+use super::display_path;
+use super::ensure_supported_client;
+use super::flag_value;
+use super::hook_runtime_skill::install_agent_semantic_protocols_agent_config;
+use super::hook_runtime_skill::install_agent_semantic_protocols_skill;
+use super::hook_runtime_subagent::install_claude_resident_agents;
+use super::hook_runtime_subagent::subagent_model_arg;
+use super::optional_flag_value;
+use super::project_root_arg;
 use crate::command::ProtocolBinaryInstallPlan;
-use agent_semantic_hook::{
-    claude_hook_block, default_claude_settings_path, merge_claude_settings,
-    remove_incompatible_hook_event_state, validate_claude_settings_json,
-};
+use agent_semantic_hook::claude_hook_block;
+use agent_semantic_hook::default_claude_settings_path;
+use agent_semantic_hook::merge_claude_settings;
+use agent_semantic_hook::remove_incompatible_hook_event_state;
+use agent_semantic_hook::validate_claude_settings_json;
 use agent_semantic_runtime::project_runtime_state;
 use std::env;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 use std::time::Instant;
 
 pub(super) async fn run_install(args: &[String]) -> Result<(), String> {

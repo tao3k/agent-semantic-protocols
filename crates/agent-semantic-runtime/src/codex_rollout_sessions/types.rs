@@ -1,8 +1,10 @@
 //! Codex rollout JSONL session index parser.
 
-use std::{collections::BTreeMap, path::PathBuf};
+use std::collections::BTreeMap;
+use std::path::PathBuf;
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 
 use crate::CodexRolloutSessionMetadata;
 

@@ -181,3 +181,88 @@ fn registered_org_and_markdown_operands_require_a_reader_fact() {
         assert_eq!(evaluate_pre_tool(GENERATION, &payload, "Bash"), Ok(None));
     }
 }
+
+#[test]
+fn search_recovery_shell_quotes_globbed_owner_scope_and_workspace() {
+    let payload = serde_json::json!({
+        "tool_name": "Bash",
+        "tool_input": {
+            "command": "cat src/*.rs",
+            "_aspReaderProbe": {
+                "schemaId": "agent.semantic-protocols.reader-probe-observation",
+                "schemaVersion": 1,
+                "subject": "src/*.rs",
+                "access": "read",
+                "accessMode": "read-permission",
+                "backend": "hook-policy-bundle-reader-catalog",
+                "terminal": "reader-behavior-catalog-hit",
+                "elapsedMicros": 1,
+                "processLaunched": false,
+                "probeProcessLaunched": false,
+                "timeout": false,
+                "policyFastPath": true,
+                "cleanupVerified": true
+            }
+        },
+        "session_id": "parent-session-1",
+        "cwd": "/workspace with spaces"
+    })
+    .to_string();
+    let decision = evaluate_pre_tool(GENERATION, &payload, "Bash")
+        .expect("evaluate registered source read")
+        .expect("deny direct registered source read");
+
+    let recovery = decision
+        .recovery_command
+        .expect("deny carries an executable Search recovery command");
+    assert!(
+        recovery.starts_with("asp search playbook 'src/*.rs' --language rust "),
+        "{recovery}"
+    );
+    assert!(recovery.contains("--scope 'owner:src/*.rs'"), "{recovery}");
+    assert!(
+        recovery.contains("--workspace '/workspace with spaces'"),
+        "{recovery}"
+    );
+}
+
+#[test]
+fn markdown_read_recovery_uses_runtime_owned_root_playbook() {
+    let generation = GENERATION
+        .replace("\"profile\":\"rust\"", "\"profile\":\"markdown\"")
+        .replace("\"language\":\"rust\"", "\"language\":\"md\"");
+    let payload = serde_json::json!({
+        "tool_name": "Bash",
+        "tool_input": {
+            "command": "sed -n '1,80p' README.md",
+            "_aspReaderProbe": {
+                "schemaId": "agent.semantic-protocols.reader-probe-observation",
+                "schemaVersion": 1,
+                "subject": "README.md",
+                "access": "read",
+                "accessMode": "read-permission",
+                "backend": "hook-policy-bundle-reader-catalog",
+                "terminal": "reader-behavior-catalog-hit",
+                "elapsedMicros": 1,
+                "processLaunched": false,
+                "probeProcessLaunched": false,
+                "timeout": false,
+                "policyFastPath": true,
+                "cleanupVerified": true
+            }
+        },
+        "session_id": "parent-session-1",
+        "cwd": "/workspace"
+    })
+    .to_string();
+
+    let decision = evaluate_pre_tool(&generation, &payload, "Bash")
+        .expect("evaluate Markdown read")
+        .expect("deny direct Markdown read");
+    assert_eq!(
+        decision.recovery_command.as_deref(),
+        Some(
+            "asp search playbook README.md --language md --intent conceptual --scope owner:README.md --coverage candidates --explain compact --workspace /workspace"
+        )
+    );
+}

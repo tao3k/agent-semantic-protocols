@@ -1,7 +1,8 @@
 //! Compiler-only materialization of the behavior-probe fixture.
 
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::AtomicU64;
+use std::sync::atomic::Ordering;
 
 static MATERIALIZATION_NONCE: AtomicU64 = AtomicU64::new(0);
 

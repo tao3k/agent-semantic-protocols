@@ -116,10 +116,10 @@ impl MappedWorkspaceExactProjection {
             .map_err(|error| format!("validate resident callable-skeleton payload: {error}"))?;
         envelope
             .payload
-            .validate_scope(&envelope.root_selector)
+            .validate_scope(envelope.root_selector.as_str())
             .map_err(|error| format!("validate resident callable-skeleton scope: {error}"))?;
         let context = self
-            .projection_evidence_context(&envelope.evidence_context_ref)?
+            .projection_evidence_context(envelope.evidence_context_ref.as_str())?
             .ok_or_else(|| "resident callable-skeleton evidence context is missing".to_owned())?;
         let context: agent_semantic_content_identity::projection_evidence_context::ProjectionEvidenceContext = serde_json::from_slice(&context)
             .map_err(|error| format!("decode resident projection evidence context: {error}"))?;

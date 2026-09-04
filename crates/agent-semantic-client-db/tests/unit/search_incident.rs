@@ -1,8 +1,18 @@
-use agent_semantic_client_db::search_incident::{
-    IncidentIdentity, IncidentObservation, IncidentState, IncidentSurface, ReplayReceipt,
-    RequestedProjection, ResourceObservation, TransitionError, apply_replay, begin_repair, compact,
-    observe, reopen_failed_verification, request_verification, should_record,
-};
+use agent_semantic_client_db::search_incident::IncidentIdentity;
+use agent_semantic_client_db::search_incident::IncidentObservation;
+use agent_semantic_client_db::search_incident::IncidentState;
+use agent_semantic_client_db::search_incident::IncidentSurface;
+use agent_semantic_client_db::search_incident::ReplayReceipt;
+use agent_semantic_client_db::search_incident::RequestedProjection;
+use agent_semantic_client_db::search_incident::ResourceObservation;
+use agent_semantic_client_db::search_incident::TransitionError;
+use agent_semantic_client_db::search_incident::apply_replay;
+use agent_semantic_client_db::search_incident::begin_repair;
+use agent_semantic_client_db::search_incident::compact;
+use agent_semantic_client_db::search_incident::observe;
+use agent_semantic_client_db::search_incident::reopen_failed_verification;
+use agent_semantic_client_db::search_incident::request_verification;
+use agent_semantic_client_db::search_incident::should_record;
 
 fn observation(
     projection: RequestedProjection,
@@ -37,10 +47,12 @@ fn observation(
 fn telemetry_event(
     workspace_identity: &str,
 ) -> agent_semantic_client_db::search_incident::IncidentTelemetryEvent {
-    use agent_semantic_client_db::search_incident::{
-        IncidentIdentity, IncidentObservation, IncidentState, IncidentSurface, RequestedProjection,
-        ResourceObservation,
-    };
+    use agent_semantic_client_db::search_incident::IncidentIdentity;
+    use agent_semantic_client_db::search_incident::IncidentObservation;
+    use agent_semantic_client_db::search_incident::IncidentState;
+    use agent_semantic_client_db::search_incident::IncidentSurface;
+    use agent_semantic_client_db::search_incident::RequestedProjection;
+    use agent_semantic_client_db::search_incident::ResourceObservation;
 
     agent_semantic_client_db::search_incident::IncidentTelemetryEvent {
         observation: IncidentObservation {
@@ -79,9 +91,8 @@ fn telemetry_event(
 
 #[tokio::test]
 async fn telemetry_bus_delivers_terminal_incidents_losslessly() {
-    use agent_semantic_client_db::runtime_telemetry_bus::{
-        RuntimeTelemetryBus, RuntimeTelemetryEvent,
-    };
+    use agent_semantic_client_db::runtime_telemetry_bus::RuntimeTelemetryBus;
+    use agent_semantic_client_db::runtime_telemetry_bus::RuntimeTelemetryEvent;
 
     let mut bus = RuntimeTelemetryBus::new();
     let event = telemetry_event("workspace-a");
@@ -149,10 +160,10 @@ async fn telemetry_bus_rejects_unsequenced_incident_transitions() {
 
 #[tokio::test]
 async fn terminal_incident_lane_is_not_starved_by_transition_pressure() {
-    use agent_semantic_client_db::{
-        runtime_server_opentelemetry::RuntimeLifecycleEvent,
-        runtime_telemetry_bus::{CAPACITY, RuntimeTelemetryBus, RuntimeTelemetryEvent},
-    };
+    use agent_semantic_client_db::runtime_server_opentelemetry::RuntimeLifecycleEvent;
+    use agent_semantic_client_db::runtime_telemetry_bus::CAPACITY;
+    use agent_semantic_client_db::runtime_telemetry_bus::RuntimeTelemetryBus;
+    use agent_semantic_client_db::runtime_telemetry_bus::RuntimeTelemetryEvent;
 
     let mut bus = RuntimeTelemetryBus::new();
     for sequence in 0..CAPACITY {
@@ -181,10 +192,13 @@ async fn terminal_incident_lane_is_not_starved_by_transition_pressure() {
 
 #[test]
 fn lifecycle_owns_monotonic_transition_sequence_and_event_identity() {
-    use agent_semantic_client_db::search_incident::{
-        IncidentTelemetryEvent, ReplayReceipt, apply_replay, begin_repair, observe,
-        reopen_failed_verification, request_verification,
-    };
+    use agent_semantic_client_db::search_incident::IncidentTelemetryEvent;
+    use agent_semantic_client_db::search_incident::ReplayReceipt;
+    use agent_semantic_client_db::search_incident::apply_replay;
+    use agent_semantic_client_db::search_incident::begin_repair;
+    use agent_semantic_client_db::search_incident::observe;
+    use agent_semantic_client_db::search_incident::reopen_failed_verification;
+    use agent_semantic_client_db::search_incident::request_verification;
 
     let observation = telemetry_event("workspace-sequence").observation;
     let mut record = observe(None, observation.clone())
@@ -225,7 +239,8 @@ fn terminal_context(
     workspace_identity: &str,
     requested_projection: agent_semantic_client_db::search_incident::RequestedProjection,
 ) -> agent_semantic_client_db::search_incident::SearchIncidentTerminalContext {
-    use agent_semantic_client_db::search_incident::{IncidentSurface, ResourceObservation};
+    use agent_semantic_client_db::search_incident::IncidentSurface;
+    use agent_semantic_client_db::search_incident::ResourceObservation;
 
     agent_semantic_client_db::search_incident::SearchIncidentTerminalContext {
         workspace_identity: workspace_identity.to_owned(),
@@ -246,9 +261,9 @@ fn terminal_context(
 
 #[test]
 fn typed_terminal_adapter_covers_all_failure_classes_without_false_success_incidents() {
-    use agent_semantic_client_db::search_incident::{
-        RequestedProjection, SearchIncidentTerminalOutcome, observe_terminal,
-    };
+    use agent_semantic_client_db::search_incident::RequestedProjection;
+    use agent_semantic_client_db::search_incident::SearchIncidentTerminalOutcome;
+    use agent_semantic_client_db::search_incident::observe_terminal;
 
     assert!(
         observe_terminal(
@@ -303,9 +318,9 @@ fn typed_terminal_adapter_covers_all_failure_classes_without_false_success_incid
 
 #[test]
 fn repeated_terminal_failure_reuses_identity_and_advances_sequence() {
-    use agent_semantic_client_db::search_incident::{
-        RequestedProjection, SearchIncidentTerminalOutcome, observe_terminal,
-    };
+    use agent_semantic_client_db::search_incident::RequestedProjection;
+    use agent_semantic_client_db::search_incident::SearchIncidentTerminalOutcome;
+    use agent_semantic_client_db::search_incident::observe_terminal;
 
     let outcome = SearchIncidentTerminalOutcome::Blocked {
         reason_kind: "generation-unavailable".to_owned(),

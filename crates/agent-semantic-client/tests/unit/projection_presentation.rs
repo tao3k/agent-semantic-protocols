@@ -1,8 +1,8 @@
-use agent_semantic_client::projection_presentation::{
-    ProjectionPresentation, render_exact_projection_response,
-};
+use agent_semantic_client::projection_presentation::ProjectionPresentation;
+use agent_semantic_client::projection_presentation::render_exact_projection_response;
 use agent_semantic_client_protocol::ClientFrame;
-use serde_json::{Value, json};
+use serde_json::Value;
+use serde_json::json;
 
 fn response(result: Value) -> ClientFrame {
     serde_json::from_value(json!({

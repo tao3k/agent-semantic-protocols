@@ -6,6 +6,7 @@ fn owner(path: &str, bytes: &[u8]) -> WorkspaceOwnerSnapshot {
         authority: None,
         owner_path: path.to_owned(),
         content_digest: format!("blake3-256:{}", blake3::hash(bytes).to_hex()),
+        native_syntax_diagnostic: None,
         bytes: bytes.to_vec(),
         selectors: Vec::new(),
     }

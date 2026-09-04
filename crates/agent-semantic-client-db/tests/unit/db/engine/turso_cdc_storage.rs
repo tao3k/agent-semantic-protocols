@@ -1,10 +1,12 @@
 mod turso_cdc_storage_tests {
     use std::path::PathBuf;
-    use std::time::{SystemTime, UNIX_EPOCH};
+    use std::time::SystemTime;
+    use std::time::UNIX_EPOCH;
 
-    use agent_semantic_client_db::turso_cdc_storage::{
-        TursoCdcCaptureMode, TursoCdcChangeKind, TursoCdcProfileConfig, TursoCdcStorage,
-    };
+    use agent_semantic_client_db::turso_cdc_storage::TursoCdcCaptureMode;
+    use agent_semantic_client_db::turso_cdc_storage::TursoCdcChangeKind;
+    use agent_semantic_client_db::turso_cdc_storage::TursoCdcProfileConfig;
+    use agent_semantic_client_db::turso_cdc_storage::TursoCdcStorage;
     use turso::transaction::TransactionBehavior;
 
     fn temp_db(name: &str) -> PathBuf {
@@ -55,7 +57,7 @@ mod turso_cdc_storage_tests {
             .await
             .expect("create CDC fixture table");
         let before = storage
-    .read_page(None, 1_000.into())
+            .read_page(None, 1_000.into())
             .await
             .expect("read CDC setup cursor")
             .next_change_id;
@@ -89,10 +91,13 @@ mod turso_cdc_storage_tests {
             .execute("DELETE FROM cdc_fixture WHERE id = ?1", [2_i64])
             .await
             .expect("delete captured row");
-        transaction.commit().await.expect("commit captured transaction");
+        transaction
+            .commit()
+            .await
+            .expect("commit captured transaction");
 
         let committed = storage
-    .read_page(before.map(Into::into), 1_000.into())
+            .read_page(before.map(Into::into), 1_000.into())
             .await
             .expect("read committed CDC changes");
         let fixture_changes: Vec<_> = committed
@@ -136,7 +141,7 @@ mod turso_cdc_storage_tests {
             .expect("write rolled-back row");
         rollback.rollback().await.expect("roll back CDC fixture");
         let after_rollback = storage
-    .read_page(committed_cursor.map(Into::into), 1_000.into())
+            .read_page(committed_cursor.map(Into::into), 1_000.into())
             .await
             .expect("read CDC after rollback");
         assert!(
@@ -175,7 +180,7 @@ mod turso_cdc_storage_tests {
             .await
             .expect("create CDC keyset fixture");
         let after_setup = storage
-    .read_page(None, 1_000.into())
+            .read_page(None, 1_000.into())
             .await
             .expect("read CDC setup cursor")
             .next_change_id;
@@ -190,19 +195,18 @@ mod turso_cdc_storage_tests {
         }
 
         let first = storage
-    .read_page(after_setup.map(Into::into), 2.into())
+            .read_page(after_setup.map(Into::into), 2.into())
             .await
             .expect("read first CDC keyset page");
         assert_eq!(first.changes.len(), 2);
         assert!(first.has_more);
         let second = storage
-    .read_page(first.next_change_id.map(Into::into), 2.into())
+            .read_page(first.next_change_id.map(Into::into), 2.into())
             .await
             .expect("read second CDC keyset page");
         assert_eq!(second.changes.len(), 2);
         assert!(
-            second.changes.first().unwrap().change_id
-                > first.changes.last().unwrap().change_id
+            second.changes.first().unwrap().change_id > first.changes.last().unwrap().change_id
         );
     }
 }

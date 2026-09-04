@@ -1,6 +1,7 @@
 //! Compact config-compiled decision table selected by normalized argv prefix.
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 
 use crate::HookDecision;
 

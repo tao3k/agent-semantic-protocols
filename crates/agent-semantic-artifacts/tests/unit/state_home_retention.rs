@@ -1,8 +1,10 @@
 //! State Home retention tests.
 
-use crate::{
-    CleanupDisposition, RetainedObject, RetentionLease, RetentionObjectKind, RetentionPlanner,
-};
+use crate::CleanupDisposition;
+use crate::RetainedObject;
+use crate::RetentionLease;
+use crate::RetentionObjectKind;
+use crate::RetentionPlanner;
 
 fn object(id: &str, observed: u64, bytes: u64) -> RetainedObject {
     RetainedObject {

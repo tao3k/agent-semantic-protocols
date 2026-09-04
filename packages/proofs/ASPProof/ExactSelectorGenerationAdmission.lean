@@ -82,6 +82,22 @@ theorem every_resolution_is_active_generation_bound
       · simp [resolve, stale, ownerPresent, selectorPresent, resolutionGeneration, resolutionRoot]
     · simp [resolve, stale, ownerPresent, resolutionGeneration, resolutionRoot]
 
+structure ExactQueryTerminal where
+  generationId : GenerationId
+  rootDigest : RootDigest
+  deriving DecidableEq, Repr
+
+def terminalFromActiveGeneration (active : ActiveGeneration) : ExactQueryTerminal :=
+  { generationId := active.generationId
+    rootDigest := active.rootDigest }
+
+theorem exact_query_terminal_uses_active_source_root
+    (active : ActiveGeneration)
+    (_request : SelectorRequest) :
+    (terminalFromActiveGeneration active).generationId = active.generationId ∧
+      (terminalFromActiveGeneration active).rootDigest = active.rootDigest := by
+  exact ⟨rfl, rfl⟩
+
 theorem absent_owner_in_active_generation_is_owner_missing
     (active : ActiveGeneration)
     (request : SelectorRequest)

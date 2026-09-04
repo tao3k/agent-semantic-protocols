@@ -1,4 +1,5 @@
-use super::{ValidatedSortedRecordTable, encode_sorted_record_table};
+use super::ValidatedSortedRecordTable;
+use super::encode_sorted_record_table;
 
 #[test]
 fn touched_record_digest_rejects_payload_corruption_without_full_table_scan() {

@@ -1,11 +1,10 @@
 use agent_semantic_content_identity::exact_selector_cache::ExactSelectorMerkleLookupKeyV1;
-use agent_semantic_content_identity::exact_selector_merkle::{
-    ContentDigestV1, ExactProjectionModeV1,
-};
-use agent_semantic_content_identity::exact_selector_projection_packet::{
-    ExactSelectorProjectionPacketV1, ExactSelectorProjectionPacketV1Error,
-    derive_parser_identity_digest_v1, derive_query_pack_identity_digest_v1,
-};
+use agent_semantic_content_identity::exact_selector_merkle::ContentDigestV1;
+use agent_semantic_content_identity::exact_selector_merkle::ExactProjectionModeV1;
+use agent_semantic_content_identity::exact_selector_projection_packet::ExactSelectorProjectionPacketV1;
+use agent_semantic_content_identity::exact_selector_projection_packet::ExactSelectorProjectionPacketV1Error;
+use agent_semantic_content_identity::exact_selector_projection_packet::derive_parser_identity_digest_v1;
+use agent_semantic_content_identity::exact_selector_projection_packet::derive_query_pack_identity_digest_v1;
 use agent_semantic_content_identity::workspace_merkle_v1::WorkspacePathMerkleTreeV1;
 
 fn digest(character: char) -> ContentDigestV1 {

@@ -1,15 +1,20 @@
-use crate::exact_selector_merkle::{
-    ContentDigestV1, MerkleInclusionSideV1, MerkleInclusionStepV1, canonical_digest_v1,
-};
+//! Binds normalized workspace paths and source blobs into one V1 Merkle root.
+
+use crate::ContentDigestV1;
+use crate::MerkleInclusionSideV1;
+use crate::MerkleInclusionStepV1;
+use crate::canonical_digest_v1;
 use std::collections::BTreeSet;
 use std::fmt;
-use std::path::{Component, Path};
+use std::path::Component;
+use std::path::Path;
 
 const EMPTY_DOMAIN: &[u8] = b"asp.workspace-merkle-empty.v1";
 const LEAF_DOMAIN: &[u8] = b"asp.workspace-file-leaf.v1";
 const NODE_DOMAIN: &[u8] = b"asp.workspace-merkle-node.v1";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// Immutable Merkle tree over normalized workspace source paths.
 pub struct WorkspacePathMerkleTreeV1 {
     leaves: Vec<WorkspaceMerkleLeafV1>,
     /// Immutable Merkle levels, from owner leaves through the root.
@@ -113,6 +118,7 @@ struct WorkspaceMerkleLeafV1 {
     owner_subtree_digest: ContentDigestV1,
 }
 
+/// Derives the owner-subtree digest committed by one workspace leaf.
 pub fn derive_owner_subtree_digest_v1(
     owner_path: &str,
     source_blob_digest: &ContentDigestV1,
@@ -126,13 +132,24 @@ pub fn derive_owner_subtree_digest_v1(
     )
 }
 
-pub fn verify_owner_inclusion_v1(
-    owner_path: &str,
-    source_blob_digest: &ContentDigestV1,
-    expected_owner_subtree_digest: &ContentDigestV1,
-    inclusion_proof: &[MerkleInclusionStepV1],
-    expected_workspace_root_digest: &ContentDigestV1,
-) -> bool {
+/// Verifies one owner and source blob against an admitted workspace root.
+pub struct WorkspaceOwnerInclusionV1<'a> {
+    pub owner_path: &'a str,
+    pub source_blob_digest: &'a ContentDigestV1,
+    pub expected_owner_subtree_digest: &'a ContentDigestV1,
+    pub inclusion_proof: &'a [MerkleInclusionStepV1],
+    pub expected_workspace_root_digest: &'a ContentDigestV1,
+}
+
+/// Verifies one named owner inclusion request against its admitted workspace root.
+pub fn verify_owner_inclusion_v1(input: WorkspaceOwnerInclusionV1<'_>) -> bool {
+    let WorkspaceOwnerInclusionV1 {
+        owner_path,
+        source_blob_digest,
+        expected_owner_subtree_digest,
+        inclusion_proof,
+        expected_workspace_root_digest,
+    } = input;
     let mut current = canonical_digest_bytes_v1(
         LEAF_DOMAIN,
         &[
@@ -233,6 +250,7 @@ fn validate_path(path: &str) -> Result<(), WorkspaceMerkleV1Error> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Deterministic construction or inclusion failure for a workspace Merkle tree.
 pub enum WorkspaceMerkleV1Error {
     InvalidPath,
     DuplicatePath,
@@ -250,10 +268,13 @@ impl fmt::Display for WorkspaceMerkleV1Error {
 impl std::error::Error for WorkspaceMerkleV1Error {}
 #[path = "workspace_merkle_incremental_v1.rs"]
 mod incremental_v1;
-pub use incremental_v1::{
-    WorkspaceMerkleDeltaMetricsIncrementalV1, WorkspaceMerkleDeltaOperationIncrementalV1,
-    WorkspaceMerkleIncrementalV1Error, WorkspaceMerkleNodeRecordIncrementalV1,
-    WorkspaceMerkleProofIncrementalV1, WorkspaceMerkleProofSiblingIncrementalV1,
-    WorkspaceMerkleProofStepIncrementalV1, WorkspacePathMerkleTreeIncrementalV1,
-    derive_owner_subtree_digest_incremental_v1, verify_owner_inclusion_incremental_v1,
-};
+pub use incremental_v1::WorkspaceMerkleDeltaMetricsIncrementalV1;
+pub use incremental_v1::WorkspaceMerkleDeltaOperationIncrementalV1;
+pub use incremental_v1::WorkspaceMerkleIncrementalV1Error;
+pub use incremental_v1::WorkspaceMerkleNodeRecordIncrementalV1;
+pub use incremental_v1::WorkspaceMerkleProofIncrementalV1;
+pub use incremental_v1::WorkspaceMerkleProofSiblingIncrementalV1;
+pub use incremental_v1::WorkspaceMerkleProofStepIncrementalV1;
+pub use incremental_v1::WorkspacePathMerkleTreeIncrementalV1;
+pub use incremental_v1::derive_owner_subtree_digest_incremental_v1;
+pub use incremental_v1::verify_owner_inclusion_incremental_v1;

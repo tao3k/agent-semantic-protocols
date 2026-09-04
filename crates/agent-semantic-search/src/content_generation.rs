@@ -2,7 +2,8 @@
 
 use std::collections::BTreeSet;
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 
 pub const CONTENT_SEARCH_GENERATION_RECEIPT_SCHEMA_ID: &str =
     "agent.semantic-protocols.content-search-generation-receipt";
@@ -84,6 +85,20 @@ pub struct NativeSyntaxRelation {
     pub relation_digest: String,
 }
 
+/// Provider-owned evidence that one admitted owner could not be projected.
+///
+/// This is generation evidence, not a synthetic selector.  It keeps owner
+/// accounting total while allowing the independent rg, lexical, and graph
+/// lanes to retain their valid results.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NativeSyntaxDiagnostic {
+    pub owner_path: String,
+    pub content_digest: String,
+    pub reason_kind: String,
+    pub message: String,
+}
+
 /// Commit complete byte membership for the resident source lane.
 ///
 /// This is constructed once from the same immutable owner bytes as the
@@ -129,6 +144,32 @@ pub fn build_native_syntax_stage(
     projections: impl IntoIterator<Item = NativeSyntaxProjection>,
     relations: impl IntoIterator<Item = NativeSyntaxRelation>,
 ) -> Result<SearchGenerationStageReceipt, String> {
+    build_native_syntax_stage_with_diagnostics(identity, projections, relations, [])
+}
+
+pub fn build_native_syntax_stage_with_diagnostics(
+    identity: SearchGenerationIdentity,
+    projections: impl IntoIterator<Item = NativeSyntaxProjection>,
+    relations: impl IntoIterator<Item = NativeSyntaxRelation>,
+    diagnostics: impl IntoIterator<Item = NativeSyntaxDiagnostic>,
+) -> Result<SearchGenerationStageReceipt, String> {
+    let (projections, owner_paths) = canonical_native_syntax_projections(projections)?;
+    let relations = canonical_native_syntax_relations(relations, &owner_paths)?;
+    let diagnostics = canonical_native_syntax_diagnostics(diagnostics, &owner_paths)?;
+    let bytes = serde_json::to_vec(&(projections, relations, diagnostics))
+        .map_err(|error| format!("encode native syntax playbook: {error}"))?;
+    Ok(SearchGenerationStageReceipt {
+        stage: SearchGenerationConstructionStage::NativeSyntax,
+        identity,
+        artifact_digest: format!("blake3-256:{}", blake3::hash(&bytes).to_hex()),
+        worker_id: "provider-native-syntax-playbook-v1".to_owned(),
+        complete: true,
+    })
+}
+
+fn canonical_native_syntax_projections(
+    projections: impl IntoIterator<Item = NativeSyntaxProjection>,
+) -> Result<(Vec<NativeSyntaxProjection>, BTreeSet<String>), String> {
     let mut projections = projections.into_iter().collect::<Vec<_>>();
     projections.sort_by(|left, right| left.owner_path.cmp(&right.owner_path));
     if projections
@@ -138,41 +179,59 @@ pub fn build_native_syntax_stage(
         return Err("native syntax playbook contains duplicate owner paths".to_owned());
     }
     for projection in &mut projections {
-        if projection.owner_path.trim().is_empty() {
-            return Err("native syntax playbook contains an incomplete owner".to_owned());
-        }
-        validate_digest("contentDigest", &projection.content_digest)?;
-        projection
-            .selectors
-            .sort_by(|left, right| left.selector.cmp(&right.selector));
-        if projection
-            .selectors
-            .windows(2)
-            .any(|window| window[0].selector == window[1].selector)
-        {
-            return Err("native syntax playbook contains duplicate selectors".to_owned());
-        }
-        for selector in &mut projection.selectors {
-            if selector.selector.trim().is_empty() || selector.byte_start >= selector.byte_end {
-                return Err("native syntax playbook contains an invalid selector".to_owned());
-            }
-            validate_digest(
-                "derivedProjectionDigest",
-                &selector.derived_projection_digest,
-            )?;
-            selector.query_keys.sort_unstable();
-            selector.query_keys.dedup();
-            if selector.query_keys.is_empty()
-                || selector.query_keys.iter().any(|key| key.trim().is_empty())
-            {
-                return Err("native syntax playbook selector has no query keys".to_owned());
-            }
-        }
+        canonicalize_native_syntax_projection(projection)?;
     }
     let owner_paths = projections
         .iter()
-        .map(|owner| owner.owner_path.as_str())
+        .map(|owner| owner.owner_path.clone())
         .collect::<BTreeSet<_>>();
+    Ok((projections, owner_paths))
+}
+
+fn canonicalize_native_syntax_projection(
+    projection: &mut NativeSyntaxProjection,
+) -> Result<(), String> {
+    if projection.owner_path.trim().is_empty() {
+        return Err("native syntax playbook contains an incomplete owner".to_owned());
+    }
+    validate_digest("contentDigest", &projection.content_digest)?;
+    projection
+        .selectors
+        .sort_by(|left, right| left.selector.cmp(&right.selector));
+    if projection
+        .selectors
+        .windows(2)
+        .any(|window| window[0].selector == window[1].selector)
+    {
+        return Err("native syntax playbook contains duplicate selectors".to_owned());
+    }
+    for selector in &mut projection.selectors {
+        canonicalize_native_syntax_selector(selector)?;
+    }
+    Ok(())
+}
+
+fn canonicalize_native_syntax_selector(selector: &mut NativeSyntaxSelector) -> Result<(), String> {
+    if selector.selector.trim().is_empty() || selector.byte_start >= selector.byte_end {
+        return Err("native syntax playbook contains an invalid selector".to_owned());
+    }
+    validate_digest(
+        "derivedProjectionDigest",
+        &selector.derived_projection_digest,
+    )?;
+    selector.query_keys.sort_unstable();
+    selector.query_keys.dedup();
+    if selector.query_keys.is_empty() || selector.query_keys.iter().any(|key| key.trim().is_empty())
+    {
+        return Err("native syntax playbook selector has no query keys".to_owned());
+    }
+    Ok(())
+}
+
+fn canonical_native_syntax_relations(
+    relations: impl IntoIterator<Item = NativeSyntaxRelation>,
+    owner_paths: &BTreeSet<String>,
+) -> Result<Vec<NativeSyntaxRelation>, String> {
     let mut relations = relations.into_iter().collect::<Vec<_>>();
     relations.sort_by(|left, right| {
         left.owner_path
@@ -186,20 +245,37 @@ pub fn build_native_syntax_stage(
         if relation.owner_path.trim().is_empty() {
             return Err("native syntax playbook contains an incomplete relation owner".to_owned());
         }
-        if !owner_paths.contains(relation.owner_path.as_str()) {
+        if !owner_paths.contains(&relation.owner_path) {
             return Err("native syntax playbook relation references an unknown owner".to_owned());
         }
         validate_digest("relationDigest", &relation.relation_digest)?;
     }
-    let bytes = serde_json::to_vec(&(projections, relations))
-        .map_err(|error| format!("encode native syntax playbook: {error}"))?;
-    Ok(SearchGenerationStageReceipt {
-        stage: SearchGenerationConstructionStage::NativeSyntax,
-        identity,
-        artifact_digest: format!("blake3-256:{}", blake3::hash(&bytes).to_hex()),
-        worker_id: "provider-native-syntax-playbook-v1".to_owned(),
-        complete: true,
-    })
+    Ok(relations)
+}
+
+fn canonical_native_syntax_diagnostics(
+    diagnostics: impl IntoIterator<Item = NativeSyntaxDiagnostic>,
+    owner_paths: &BTreeSet<String>,
+) -> Result<Vec<NativeSyntaxDiagnostic>, String> {
+    let mut diagnostics = diagnostics.into_iter().collect::<Vec<_>>();
+    diagnostics.sort_by(|left, right| left.owner_path.cmp(&right.owner_path));
+    if diagnostics
+        .windows(2)
+        .any(|window| window[0].owner_path == window[1].owner_path)
+    {
+        return Err("native syntax playbook contains duplicate diagnostics".to_owned());
+    }
+    for diagnostic in &diagnostics {
+        if diagnostic.owner_path.trim().is_empty()
+            || owner_paths.contains(&diagnostic.owner_path)
+            || diagnostic.reason_kind != "source-syntax-unavailable"
+            || diagnostic.message.trim().is_empty()
+        {
+            return Err("native syntax playbook contains an invalid diagnostic".to_owned());
+        }
+        validate_digest("contentDigest", &diagnostic.content_digest)?;
+    }
+    Ok(diagnostics)
 }
 
 impl SearchGenerationStageReceipt {

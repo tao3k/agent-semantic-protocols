@@ -1,8 +1,10 @@
-use agent_semantic_content_identity::exact_selector_merkle::{
-    ContentDigestV1, EXACT_SELECTOR_MERKLE_DIGEST_ALGORITHM, EXACT_SELECTOR_MERKLE_PROOF_SCHEMA_ID,
-    EXACT_SELECTOR_MERKLE_PROOF_SCHEMA_VERSION, ExactProjectionModeV1,
-    ExactSelectorMerkleProofError, ExactSelectorMerkleProofV1,
-};
+use agent_semantic_content_identity::exact_selector_merkle::ContentDigestV1;
+use agent_semantic_content_identity::exact_selector_merkle::EXACT_SELECTOR_MERKLE_DIGEST_ALGORITHM;
+use agent_semantic_content_identity::exact_selector_merkle::EXACT_SELECTOR_MERKLE_PROOF_SCHEMA_ID;
+use agent_semantic_content_identity::exact_selector_merkle::EXACT_SELECTOR_MERKLE_PROOF_SCHEMA_VERSION;
+use agent_semantic_content_identity::exact_selector_merkle::ExactProjectionModeV1;
+use agent_semantic_content_identity::exact_selector_merkle::ExactSelectorMerkleProofError;
+use agent_semantic_content_identity::exact_selector_merkle::ExactSelectorMerkleProofV1;
 use agent_semantic_content_identity::workspace_merkle_v1::WorkspacePathMerkleTreeV1;
 
 fn digest(character: char) -> ContentDigestV1 {
@@ -121,7 +123,8 @@ fn parser_fact_and_projection_digests_are_domain_separated_and_recomputable() {
         Ok(false)
     );
 }
-use agent_semantic_content_identity::exact_selector_merkle::{
-    ParserFactDigestInputV1, ProjectionDigestInputV1, derive_parser_fact_digest_v1,
-    derive_projection_digest_v1, verify_projection_digest_v1,
-};
+use agent_semantic_content_identity::exact_selector_merkle::ParserFactDigestInputV1;
+use agent_semantic_content_identity::exact_selector_merkle::ProjectionDigestInputV1;
+use agent_semantic_content_identity::exact_selector_merkle::derive_parser_fact_digest_v1;
+use agent_semantic_content_identity::exact_selector_merkle::derive_projection_digest_v1;
+use agent_semantic_content_identity::exact_selector_merkle::verify_projection_digest_v1;

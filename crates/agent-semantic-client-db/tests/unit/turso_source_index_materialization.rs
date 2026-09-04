@@ -1,14 +1,22 @@
-use agent_semantic_client_core::{
-    CacheGenerationId, ClientCacheFileHash, LanguageId, ProviderId, SemanticSchemaId,
-    SemanticSchemaVersion,
-};
-use agent_semantic_client_db::{
-    CLIENT_DB_SOURCE_INDEX_PROVIDER_ID, CLIENT_DB_SOURCE_INDEX_SCHEMA_ID,
-    CLIENT_DB_SOURCE_INDEX_SCHEMA_VERSION, ClientDbSourceIndexImport,
-    ClientDbSourceIndexImportFile, ClientDbSourceIndexImportRequest, ClientDbSourceIndexOwner,
-    ClientDbSourceIndexPath, ClientDbSourceIndexQueryKey, ClientDbSourceIndexRefreshRequest,
-    ClientDbSourceIndexSelector, ClientDbSourceIndexSource, ClientDbSourceIndexSourceBlobs,
-};
+use agent_semantic_client_core::CacheGenerationId;
+use agent_semantic_client_core::ClientCacheFileHash;
+use agent_semantic_client_core::LanguageId;
+use agent_semantic_client_core::ProviderId;
+use agent_semantic_client_core::SemanticSchemaId;
+use agent_semantic_client_core::SemanticSchemaVersion;
+use agent_semantic_client_db::CLIENT_DB_SOURCE_INDEX_PROVIDER_ID;
+use agent_semantic_client_db::CLIENT_DB_SOURCE_INDEX_SCHEMA_ID;
+use agent_semantic_client_db::CLIENT_DB_SOURCE_INDEX_SCHEMA_VERSION;
+use agent_semantic_client_db::ClientDbSourceIndexImport;
+use agent_semantic_client_db::ClientDbSourceIndexImportFile;
+use agent_semantic_client_db::ClientDbSourceIndexImportRequest;
+use agent_semantic_client_db::ClientDbSourceIndexOwner;
+use agent_semantic_client_db::ClientDbSourceIndexPath;
+use agent_semantic_client_db::ClientDbSourceIndexQueryKey;
+use agent_semantic_client_db::ClientDbSourceIndexRefreshRequest;
+use agent_semantic_client_db::ClientDbSourceIndexSelector;
+use agent_semantic_client_db::ClientDbSourceIndexSource;
+use agent_semantic_client_db::ClientDbSourceIndexSourceBlobs;
 
 #[test]
 fn same_pass_auxiliary_blobs_receive_hashes_without_becoming_searchable_owners() {
@@ -412,12 +420,12 @@ fn relation_admission_failure_does_not_publish_a_partial_generation() {
                 agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelation {
             from: agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelationEndpoint {
                 kind: agent_semantic_content_identity::provider_projection_relation::PROVIDER_RELATION_ITEM_ENDPOINT_KIND.to_owned(),
-                id: "rust://src/missing.rs#item/function/missing".to_owned(),
+                id: "rust://src/missing.rs#item/function/missing".into(),
             },
-            kind: "calls".to_owned(),
+            kind: "calls".into(),
             to: agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelationEndpoint {
                 kind: agent_semantic_content_identity::provider_projection_relation::PROVIDER_RELATION_ITEM_ENDPOINT_KIND.to_owned(),
-                id: "rust://src/materialized.rs#item/function/materialized".to_owned(),
+                id: "rust://src/materialized.rs#item/function/materialized".into(),
             },
                 },
         });
@@ -455,12 +463,12 @@ fn relation_generation_transaction_preserves_replaces_and_deletes() {
             agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelation {
                 from: agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelationEndpoint {
                     kind: agent_semantic_content_identity::provider_projection_relation::PROVIDER_RELATION_ITEM_ENDPOINT_KIND.to_owned(),
-                    id: "rust://src/materialized.rs#item/function/materialized".to_owned(),
+                    id: "rust://src/materialized.rs#item/function/materialized".into(),
                 },
-                kind: kind.to_owned(),
+                kind: kind.into(),
                 to: agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelationEndpoint {
                     kind: agent_semantic_content_identity::provider_projection_relation::PROVIDER_RELATION_ITEM_ENDPOINT_KIND.to_owned(),
-                    id: "rust://src/materialized.rs#item/function/materialized".to_owned(),
+                    id: "rust://src/materialized.rs#item/function/materialized".into(),
                 },
             },
     }

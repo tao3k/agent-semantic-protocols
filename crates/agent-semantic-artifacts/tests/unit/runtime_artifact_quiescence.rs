@@ -1,7 +1,8 @@
-use super::{
-    Blake3ContentDigest, RuntimeArtifactQuiescenceLease, prepare_runtime_artifact_quiescence_lease,
-    producer_process_started_at_unix_millis, runtime_artifact_quiescence_lease_path,
-};
+use super::Blake3ContentDigest;
+use super::RuntimeArtifactQuiescenceLease;
+use super::prepare_runtime_artifact_quiescence_lease;
+use super::producer_process_started_at_unix_millis;
+use super::runtime_artifact_quiescence_lease_path;
 use crate::runtime_artifact_retention::RuntimeArtifactMutationGuard;
 
 fn digest(byte: char) -> Blake3ContentDigest {

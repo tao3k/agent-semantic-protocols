@@ -1,9 +1,8 @@
 use serde_json::json;
-use std::{
-    collections::BTreeSet,
-    ffi::OsString,
-    path::{Path, PathBuf},
-};
+use std::collections::BTreeSet;
+use std::ffi::OsString;
+use std::path::Path;
+use std::path::PathBuf;
 
 const SYNC_SCHEMA_ID: &str = "agent.semantic-protocols.agent-config-sync-receipt";
 

@@ -1,6 +1,7 @@
 //! Snapshot-bound evidence for disposable derived source artifacts.
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 
 use crate::SourceSnapshotEvidence;
 

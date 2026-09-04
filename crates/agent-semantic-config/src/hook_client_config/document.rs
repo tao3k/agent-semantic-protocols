@@ -1,19 +1,16 @@
 //! Parses global `asp` hook client configuration from TOML.
 
-use figment::{
-    Figment,
-    providers::{Format, Toml},
-};
-use serde::{Deserialize, Serialize};
-use std::{
-    collections::{BTreeMap, HashSet},
-    fmt::Write as _,
-    path::Path,
-};
+use figment::Figment;
+use figment::providers::Format;
+use figment::providers::Toml;
+use serde::Deserialize;
+use serde::Serialize;
+use std::collections::BTreeMap;
+use std::fmt::Write as _;
+use std::path::Path;
 
-use super::validation::validate_config;
-
-use super::routing::{HookClientCapabilityPolicyConfig, HookClientRuleConfig};
+use super::routing::HookClientCapabilityPolicyConfig;
+use super::routing::HookClientRuleConfig;
 
 /// Schema id for hook client config.
 pub const CLIENT_HOOK_CONFIG_SCHEMA_ID: &str = "agent.semantic-protocols.hook.client-config";
@@ -157,7 +154,9 @@ fn canonical_provider_route_identities() -> Vec<HookClientProviderRouteIdentity>
         .collect()
 }
 
-fn admit_canonical_provider_routes(config: &mut HookClientConfigFile) -> Result<(), String> {
+pub(super) fn admit_canonical_provider_routes(
+    config: &mut HookClientConfigFile,
+) -> Result<(), String> {
     let canonical = canonical_provider_route_identities();
     if config.provider_routes.is_empty() {
         config.provider_routes = canonical;
@@ -221,92 +220,65 @@ pub struct AspProjectHookConfig {
 /// `agents/config.toml` plus the platform projection files and cannot be overlaid here.
 pub fn materialize_profile_rule_ir(config: &mut HookClientConfigFile) -> Result<(), String> {
     for rule in &mut config.rules {
-        if let Some(matcher) = &rule.matcher {
-            if !rule
-                .match_config
-                .native_matcher_any
-                .iter()
-                .any(|existing| existing == matcher)
-            {
-                rule.match_config
-                    .native_matcher_any
-                    .push(matcher.to_owned());
-            }
-        }
-
-        if rule.profiles_list.is_empty() {
-            continue;
-        }
-
-        for profile_id in &rule.profiles_list {
-            let profile = config.profiles.get(profile_id).ok_or_else(|| {
-                format!(
-                    "rule {} profilesList references unknown profile {profile_id:?}",
-                    rule.id
-                )
-            })?;
-            if !rule.match_config.profile_any.contains(profile) {
-                rule.match_config.profile_any.push(profile.clone());
-            }
-            for extension in &profile.extension_any {
-                let extension = extension.trim().to_ascii_lowercase();
-                if !rule.match_config.profile_extension_any.contains(&extension) {
-                    rule.match_config
-                        .profile_extension_any
-                        .push(extension.clone());
-                }
-            }
-            for source_root in &profile.source_root_any {
-                let source_root = source_root.trim().trim_end_matches('/').to_owned();
-                if !rule.match_config.path_any.contains(&source_root) {
-                    rule.match_config.path_any.push(source_root.clone());
-                }
-                let descendant_glob = format!("{source_root}/**");
-                if !rule.match_config.path_glob_any.contains(&descendant_glob) {
-                    rule.match_config.path_glob_any.push(descendant_glob);
-                }
-            }
-        }
+        materialize_native_matcher(rule);
+        materialize_rule_profiles(rule, &config.profiles)?;
     }
     Ok(())
 }
 
-impl HookClientConfigFile {
-    pub fn validate(&self) -> Result<(), String> {
-        validate_config(self)
-    }
+fn materialize_native_matcher(rule: &mut HookClientRuleConfig) {
+    let Some(matcher) = &rule.matcher else {
+        return;
+    };
+    push_unique(&mut rule.match_config.native_matcher_any, matcher.clone());
+}
 
-    pub fn materialize_profile_rule_ir(&mut self) -> Result<(), String> {
-        materialize_profile_rule_ir(self)
+fn materialize_rule_profiles(
+    rule: &mut HookClientRuleConfig,
+    profiles: &BTreeMap<String, HookClientProfileConfig>,
+) -> Result<(), String> {
+    for profile_id in rule.profiles_list.clone() {
+        let profile = profiles.get(&profile_id).ok_or_else(|| {
+            format!(
+                "rule {} profilesList references unknown profile {profile_id:?}",
+                rule.id
+            )
+        })?;
+        materialize_rule_profile(rule, profile);
+    }
+    Ok(())
+}
+
+fn materialize_rule_profile(rule: &mut HookClientRuleConfig, profile: &HookClientProfileConfig) {
+    if !rule.match_config.profile_any.contains(profile) {
+        rule.match_config.profile_any.push(profile.clone());
+    }
+    for extension in &profile.extension_any {
+        push_unique(
+            &mut rule.match_config.profile_extension_any,
+            extension.trim().to_ascii_lowercase(),
+        );
+    }
+    for source_root in &profile.source_root_any {
+        let source_root = source_root.trim().trim_end_matches('/').to_owned();
+        push_unique(&mut rule.match_config.path_any, source_root.clone());
+        push_unique(
+            &mut rule.match_config.path_glob_any,
+            format!("{source_root}/**"),
+        );
     }
 }
 
-pub fn merge_asp_project_hook_config(
-    mut base: HookClientConfigFile,
-    project: AspProjectConfigFile,
-) -> Result<HookClientConfigFile, String> {
-    let mut rule_ids = HashSet::new();
-    for rule in &project.hook.rules {
-        if !rule_ids.insert(rule.id.as_str()) {
-            return Err(format!(
-                "project hook declares rule `{}` more than once",
-                rule.id
-            ));
-        }
+fn push_unique(values: &mut Vec<String>, candidate: String) {
+    if !values.contains(&candidate) {
+        values.push(candidate);
     }
-    for rule in project.hook.rules {
-        if let Some(index) = base
-            .rules
-            .iter()
-            .position(|existing| existing.id == rule.id)
-        {
-            base.rules[index] = rule;
-        } else {
-            base.rules.push(rule);
-        }
+}
+
+impl HookClientConfigFile {
+    pub fn materialize_profile_rule_ir(&mut self) -> Result<(), String> {
+        materialize_profile_rule_ir(self)
     }
-    validate_config(&base)?;
-    Ok(base)
 }
 
 /// Agent-facing Org artifact workflow guard from project-local hook config.
@@ -433,16 +405,9 @@ pub fn render_hook_client_message_template(template: &str, values: &[(&str, &str
 }
 
 /// Load, parse, and validate project-local hook config.
-pub fn load_hook_client_config_file(path: &Path) -> Result<HookClientConfigFile, String> {
-    let mut parsed = parse_hook_client_config_file(path)?;
-    admit_canonical_provider_routes(&mut parsed)?;
-    validate_config(&parsed)?;
-    Ok(parsed)
-}
-
 /// Load a managed hook config while taking agent identities from the canonical
 /// project agent-route registry projection.
-fn parse_hook_client_config_file(path: &Path) -> Result<HookClientConfigFile, String> {
+pub(super) fn parse_hook_client_config_file(path: &Path) -> Result<HookClientConfigFile, String> {
     if !path.is_file() {
         return Err(format!(
             "hook client config does not exist: {}",
@@ -457,15 +422,11 @@ fn parse_hook_client_config_file(path: &Path) -> Result<HookClientConfigFile, St
 /// Load an explicit hook config as a typed overlay on the embedded TOML
 /// defaults. Complete managed configs continue to use
 /// [`load_hook_client_config_file`] and remain strict about required tables.
-pub fn load_hook_client_config_overlay_file(path: &Path) -> Result<HookClientConfigFile, String> {
-    let parsed = parse_hook_client_config_overlay_file(path)?;
-    validate_config(&parsed)?;
-    Ok(parsed)
-}
-
 /// Load a hook overlay while taking agent identities from the canonical
 /// project agent-route registry projection.
-fn parse_hook_client_config_overlay_file(path: &Path) -> Result<HookClientConfigFile, String> {
+pub(super) fn parse_hook_client_config_overlay_file(
+    path: &Path,
+) -> Result<HookClientConfigFile, String> {
     if !path.is_file() {
         return Err(format!(
             "hook client config does not exist: {}",
@@ -572,8 +533,11 @@ impl Default for HookClientAgentOrgArtifactsArchiveWarningConfig {
 }
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
+/// Controls whether wrapped commands participate in declarative matching.
 pub enum WrapperMatchMode {
+    /// Inspect wrapper layers and match the effective inner command.
     #[default]
     Enable,
+    /// Match only the direct command invocation.
     Off,
 }

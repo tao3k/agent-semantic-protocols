@@ -3,8 +3,10 @@ use std::path::Path;
 use agent_semantic_client_core::state_core::ResolvedState;
 use agent_semantic_client_db::ClientDbEngine;
 
-use crate::search_history::{artifact_events_packet, run_search_history};
-use crate::test_support::{CACHE_TEST_LOCK, EnvVarGuard};
+use crate::search_history::artifact_events_packet;
+use crate::search_history::run_search_history;
+use crate::test_support::CACHE_TEST_LOCK;
+use crate::test_support::EnvVarGuard;
 
 #[tokio::test]
 async fn search_history_rejects_unknown_subcommand() {

@@ -10,7 +10,7 @@ fn workspace_root() -> PathBuf {
 }
 
 #[test]
-fn release_publication_owns_the_single_workspace_policy_gate() {
+fn release_and_developer_publication_share_the_single_workspace_policy_gate() {
     let justfile =
         std::fs::read_to_string(workspace_root().join("Justfile")).expect("read root Justfile");
 
@@ -20,12 +20,8 @@ fn release_publication_owns_the_single_workspace_policy_gate() {
         "release publication must depend on the one-shot workspace policy gate"
     );
     assert!(
-        justfile.contains("agent-tools-install-protocol-debug:\n"),
-        "developer publication must remain an explicit recipe"
-    );
-    assert!(
-        !justfile.contains("agent-tools-install-protocol-debug: check-rust-workspace-policy"),
-        "developer publication must rely on O(1) package build gates, not a full workspace scan"
+        justfile.contains("agent-tools-install-protocol-debug: check-rust-workspace-policy"),
+        "developer publication must admit the Cargo-derived workspace policy exactly once before publishing"
     );
     assert_eq!(
         justfile.matches("check-rust-workspace-policy:").count(),

@@ -1,22 +1,38 @@
 //! Typed `ClientFrame` transport for commands sent to an existing ASP Runtime Server.
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::HashMap;
+use std::collections::VecDeque;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, OnceLock};
+use std::sync::Arc;
+use std::sync::OnceLock;
+use std::sync::atomic::AtomicU64;
+use std::sync::atomic::Ordering;
 
-use agent_semantic_client_db::runtime_server_control::RuntimeServerEndpoint;
-use agent_semantic_client_protocol::{
-    CANCELLATION_PROBE_METHOD, CLIENT_FRAME_SCHEMA_ID, CLIENT_PROTOCOL_ID, CLIENT_PROTOCOL_VERSION,
-    ClientFrame, ClientFrameBase, ClientInfo, ClientProjectId, ClientProtocolCatalog,
-    ClientRequestId, ClientSessionId, ClientWorkspaceIdentity, GRAPH_EVALUATE_METHOD,
-    GRAPH_TIMELINE_METHOD, LIVE_CORPUS_CACHE_STATE_METHOD, LiveCorpusCacheStateReceipt,
-    LiveCorpusCacheStateRequest, SCHEMA_BUNDLE_METHOD, SCHEMA_BUNDLE_REQUEST_SCHEMA_ID,
-    SCHEMA_VERSION, SchemaBundleRequest, SchemaBundleResponse,
-};
-use agent_semantic_client_server::{
-    AspClientGrpcTransport, CLIENT_FRAME_SESSION_CAPACITY, CLIENT_FRAME_SESSION_CONTROL_RESERVE,
-};
+use agent_semantic_client_protocol::CANCELLATION_PROBE_METHOD;
+use agent_semantic_client_protocol::ClientFrame;
+use agent_semantic_client_protocol::ClientFrameBase;
+use agent_semantic_client_protocol::ClientInfo;
+use agent_semantic_client_protocol::ClientProjectId;
+use agent_semantic_client_protocol::ClientProtocolCatalog;
+use agent_semantic_client_protocol::ClientRequestId;
+use agent_semantic_client_protocol::ClientSessionId;
+use agent_semantic_client_protocol::ClientWorkspaceIdentity;
+use agent_semantic_client_protocol::GRAPH_EVALUATE_METHOD;
+use agent_semantic_client_protocol::GRAPH_TIMELINE_METHOD;
+use agent_semantic_client_protocol::LIVE_CORPUS_CACHE_STATE_METHOD;
+use agent_semantic_client_protocol::LiveCorpusCacheStateReceipt;
+use agent_semantic_client_protocol::LiveCorpusCacheStateRequest;
+use agent_semantic_client_protocol::SCHEMA_BUNDLE_METHOD;
+use agent_semantic_client_protocol::SCHEMA_BUNDLE_REQUEST_SCHEMA_ID;
+use agent_semantic_client_protocol::SchemaBundleRequest;
+use agent_semantic_client_protocol::SchemaBundleResponse;
+use agent_semantic_client_protocol::protocol_identity::CLIENT_FRAME_SCHEMA_ID;
+use agent_semantic_client_protocol::protocol_identity::CLIENT_PROTOCOL_ID;
+use agent_semantic_client_protocol::protocol_identity::CLIENT_PROTOCOL_VERSION;
+use agent_semantic_client_protocol::protocol_identity::SCHEMA_VERSION;
+use agent_semantic_client_server::AspClientGrpcTransport;
+use agent_semantic_client_server::CLIENT_FRAME_SESSION_CAPACITY;
+use agent_semantic_client_server::CLIENT_FRAME_SESSION_CONTROL_RESERVE;
 
 /// Monotonic request identity shared by all warm client sessions in a process.
 static REQUEST_SEQUENCE: AtomicU64 = AtomicU64::new(1);
@@ -28,6 +44,18 @@ pub const ASP_RUNTIME_CLIENT_FD_ENV: &str = "ASP_RUNTIME_CLIENT_FD";
 
 fn transport_unavailable(message: &str) -> String {
     format!("reasonKind=transport-unavailable {message}")
+}
+
+fn verified_runtime_endpoint_connect_failure(error: String) -> String {
+    let lower = error.to_ascii_lowercase();
+    if lower.contains("operation not permitted") || lower.contains("os error 1") {
+        return format!(
+            "reasonKind=host-operation-not-permitted failureLayer=runtime-verified-endpoint-transport osError=EPERM originalError={error}"
+        );
+    }
+    transport_unavailable(&format!(
+        "Runtime serving endpoint was content-proven but could not be connected: {error}"
+    ))
 }
 
 /// A multiplexed gRPC session pinned to one published Runtime endpoint.
@@ -101,6 +129,7 @@ pub(crate) fn validate_cancelled_terminal(
 pub(crate) struct SessionKey {
     project_id: String,
     workspace_id: String,
+    publication_nonce: String,
     binary_content_digest: String,
 }
 
@@ -113,15 +142,16 @@ pub struct ClientBackpressureProbeReceipt {
 }
 
 impl SessionKey {
-    fn from_endpoint(
-        endpoint: &RuntimeServerEndpoint,
+    fn from_publication(
+        publication: &agent_semantic_runtime::runtime_serving_endpoint::RuntimeServingEndpoint,
         project_id: String,
         workspace_id: String,
     ) -> Self {
         Self {
             project_id,
             workspace_id,
-            binary_content_digest: endpoint.binary_content_digest.clone(),
+            publication_nonce: publication.publication_nonce.clone(),
+            binary_content_digest: publication.artifact_digest.to_string(),
         }
     }
 
@@ -130,6 +160,7 @@ impl SessionKey {
         Self {
             project_id: format!("repo-{identity}"),
             workspace_id: format!("workspace-{identity}"),
+            publication_nonce: format!("publication-{identity}"),
             binary_content_digest: format!("blake3-256:{:064x}", identity + 2),
         }
     }
@@ -137,7 +168,7 @@ impl SessionKey {
     #[cfg(test)]
     pub(crate) fn fixture_successor(identity: u64) -> Self {
         let mut key = Self::fixture(identity);
-        key.binary_content_digest = format!("blake3-256:{}", "f".repeat(64));
+        key.publication_nonce = format!("publication-successor-{identity}");
         key
     }
 }
@@ -315,7 +346,9 @@ async fn session_for_endpoint(
     session_for_key(session_registry(), key, || async {
         let transport = Arc::new(match transport_capability {
             AspClientTransportCapability::PublishedLoopbackTcp => {
-                AspClientGrpcTransport::connect_tcp(published_endpoint).await?
+                AspClientGrpcTransport::connect_tcp(published_endpoint)
+                    .await
+                    .map_err(verified_runtime_endpoint_connect_failure)?
             }
             #[cfg(unix)]
             AspClientTransportCapability::InheritedDescriptor(descriptor) => {
@@ -373,19 +406,31 @@ impl AspClient {
         }
     }
 
-    /// Select the Host-published transport capability exactly once.
+    /// Select an optional Host-published transport capability exactly once.
     ///
-    /// Outside a restricted network sandbox, absence of
-    /// `ASP_RUNTIME_CLIENT_FD` selects the published loopback TCP binding. A
-    /// sandbox Host transfers an already connected descriptor and sets the
-    /// variable to that descriptor number; malformed, closed, or replayed
-    /// capabilities fail before socket I/O.
+    /// A descriptor is an additional Host capability, not the normal CLI
+    /// transport authority.  Without it, the client resolves the Runtime's
+    /// published endpoint through the State Home serving receipt before it
+    /// attempts loopback I/O.  A supplied descriptor remains strict: malformed,
+    /// closed, or replayed descriptors fail before socket I/O.
     #[cfg(unix)]
     pub fn new_from_host_capability(
         state_home: impl Into<PathBuf>,
         project_root: impl Into<PathBuf>,
     ) -> Result<Self, String> {
-        let Ok(raw_descriptor) = std::env::var(ASP_RUNTIME_CLIENT_FD_ENV) else {
+        let raw_descriptor = std::env::var(ASP_RUNTIME_CLIENT_FD_ENV).ok();
+        Self::new_from_host_descriptor_value(state_home, project_root, raw_descriptor.as_deref())
+    }
+
+    /// Build the optional Host descriptor boundary from its already-read value.
+    /// Keeping the parser independent from process environment makes the
+    /// descriptor semantics deterministic and testable.
+    pub(crate) fn new_from_host_descriptor_value(
+        state_home: impl Into<PathBuf>,
+        project_root: impl Into<PathBuf>,
+        raw_descriptor: Option<&str>,
+    ) -> Result<Self, String> {
+        let Some(raw_descriptor) = raw_descriptor else {
             return Ok(Self::new(state_home, project_root));
         };
         let raw_descriptor = raw_descriptor.parse::<std::os::fd::RawFd>().map_err(|_| {
@@ -441,6 +486,14 @@ impl AspClient {
         }
     }
 
+    #[cfg(test)]
+    pub(crate) fn uses_published_loopback_transport(&self) -> bool {
+        matches!(
+            self.transport_capability,
+            AspClientTransportCapability::PublishedLoopbackTcp
+        )
+    }
+
     /// Drop every idle cached session during an explicit client drain.
     /// Active leases remain available until their in-flight calls complete.
     pub async fn drain_cached_sessions(&self) -> usize {
@@ -455,12 +508,14 @@ impl AspClient {
         request: LiveCorpusCacheStateRequest,
     ) -> Result<LiveCorpusCacheStateReceipt, String> {
         request.validate()?;
-        let endpoint = agent_semantic_client_db::read_runtime_server_endpoint(&self.state_home)
-            .await?
-            .ok_or_else(|| transport_unavailable("ASP Server endpoint is unavailable"))?;
-        endpoint.validate()?;
+        let publication =
+            agent_semantic_runtime::runtime_serving_endpoint::resolve_runtime_serving_endpoint(
+                &self.state_home,
+            )
+            .await
+            .map_err(|error| transport_unavailable(&error))?;
         let (project_id, workspace_id) = project_workspace_ids(&self.project_root)?;
-        let session_key = SessionKey::from_endpoint(&endpoint, project_id, workspace_id);
+        let session_key = SessionKey::from_publication(&publication, project_id, workspace_id);
         let cache_state = request.cache_state.clone();
         let frame = self
             .dispatch_method(
@@ -534,21 +589,19 @@ impl AspClient {
         ),
         String,
     > {
-        let endpoint =
-            match agent_semantic_client_db::read_runtime_server_endpoint(&self.state_home).await? {
-                Some(endpoint) => endpoint,
-                None => {
-                    self.drain_cached_sessions().await;
-                    return Err(transport_unavailable("ASP Server endpoint is unavailable"));
-                }
-            };
-        endpoint.validate()?;
+        let publication = match agent_semantic_runtime::runtime_serving_endpoint::resolve_runtime_serving_endpoint(&self.state_home).await {
+            Ok(publication) => publication,
+            Err(error) => {
+                self.drain_cached_sessions().await;
+                return Err(transport_unavailable(&error));
+            }
+        };
         let (project_id, workspace_id) = project_workspace_ids(&self.project_root)?;
         let session_key =
-            SessionKey::from_endpoint(&endpoint, project_id.clone(), workspace_id.clone());
+            SessionKey::from_publication(&publication, project_id.clone(), workspace_id.clone());
         let (session, session_cell) = session_for_endpoint(
             &session_key,
-            endpoint.data_endpoint.socket_addr(),
+            publication.data_socket_addr,
             &self.transport_capability,
         )
         .await?;
@@ -559,17 +612,6 @@ impl AspClient {
         let initialize_result = session
             .initialized
             .get_or_try_init(|| async {
-                if matches!(
-                    &self.transport_capability,
-                    AspClientTransportCapability::PublishedLoopbackTcp
-                ) {
-                    agent_semantic_client_db::runtime_server_control::ensure_runtime_server_workspace(
-                        &endpoint,
-                        &self.project_root,
-                        request_id("ensure-workspace")?.into_inner(),
-                    )
-                    .await?;
-                }
                 let base = frame_base(session.session_id.clone(), &project_id, &workspace_id)?;
                 let terminal = session
                     .transport
@@ -681,13 +723,16 @@ impl AspClient {
     /// rejected deterministically and every admitted call can still receive a
     /// correlated Cancelled terminal.
     pub async fn backpressure_probe(&self) -> Result<ClientBackpressureProbeReceipt, String> {
-        let endpoint = agent_semantic_client_db::read_runtime_server_endpoint(&self.state_home)
-            .await?
-            .ok_or_else(|| transport_unavailable("ASP Server endpoint is unavailable"))?;
-        endpoint.validate()?;
+        let endpoint =
+            agent_semantic_runtime::runtime_serving_endpoint::resolve_runtime_serving_endpoint(
+                &self.state_home,
+            )
+            .await
+            .map_err(|error| transport_unavailable(&error))?;
         let (project_id, workspace_id) = project_workspace_ids(&self.project_root)?;
-        let transport =
-            AspClientGrpcTransport::connect_tcp(endpoint.data_endpoint.socket_addr()).await?;
+        let transport = AspClientGrpcTransport::connect_tcp(endpoint.data_socket_addr)
+            .await
+            .map_err(verified_runtime_endpoint_connect_failure)?;
         let session_id = ClientSessionId::new(format!(
             "asp-client-backpressure-probe-{}-{}",
             std::process::id(),

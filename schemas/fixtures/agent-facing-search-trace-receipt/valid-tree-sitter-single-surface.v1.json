@@ -28,6 +28,6 @@
   "nextActionEmissionCount": 1,
   "recommendedNext": {
     "kind": "refine-query",
-    "command": "asp rust search owner <owner> items --query '<terms>' --workspace . --view seeds"
+    "command": "asp search playbook --language rust '<terms>' --intent conceptual --scope owner:<owner> --coverage candidates --explain compact --workspace ."
   }
 }

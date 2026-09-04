@@ -1,6 +1,5 @@
-use agent_semantic_client_db::runtime_server_workspace::{
-    WorkspaceGenerationDurabilityReceipt, WorkspaceGenerationDurabilityState,
-};
+use agent_semantic_client_db::runtime_server_workspace::WorkspaceGenerationDurabilityReceipt;
+use agent_semantic_client_db::runtime_server_workspace::WorkspaceGenerationDurabilityState;
 
 #[test]
 fn durability_receipt_requires_failure_only_for_failed_state() {

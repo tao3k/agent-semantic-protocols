@@ -1,4 +1,5 @@
-use crate::canonical_item_identity::{CanonicalItemIdentity, CanonicalItemSelector};
+use crate::canonical_item_identity::CanonicalItemIdentity;
+use crate::canonical_item_identity::CanonicalItemSelector;
 
 #[test]
 fn canonical_item_identity_keeps_language_owned_scopes_generic() {

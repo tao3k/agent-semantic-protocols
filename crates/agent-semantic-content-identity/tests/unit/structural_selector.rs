@@ -1,7 +1,6 @@
 use agent_semantic_content_identity::canonical_item_identity::CanonicalItemIdentity;
-use agent_semantic_content_identity::structural_selector::{
-    decode_canonical_item_identity_path, encode_canonical_item_identity_path,
-};
+use agent_semantic_content_identity::structural_selector::decode_canonical_item_identity_path;
+use agent_semantic_content_identity::structural_selector::encode_canonical_item_identity_path;
 
 #[test]
 fn canonical_item_identity_path_round_trips_ordered_cfg_scopes() {

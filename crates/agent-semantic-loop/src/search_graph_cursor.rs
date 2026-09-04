@@ -4,7 +4,8 @@ use std::collections::BTreeSet;
 use std::fmt;
 
 use agent_semantic_context_product::ProtocolId;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 
 use crate::search_runtime::SearchLoopArtifactBindingV1;
 

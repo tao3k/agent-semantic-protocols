@@ -1,6 +1,8 @@
-use agent_semantic_hook::{ClientHookConfig, HookRuntime};
+use agent_semantic_hook::ClientHookConfig;
+use agent_semantic_hook::HookRuntime;
 use agent_semantic_hook_testkit::classify_hook_scenario;
-use serde_json::{Value, json};
+use serde_json::Value;
+use serde_json::json;
 
 fn empty_runtime() -> HookRuntime {
     HookRuntime {

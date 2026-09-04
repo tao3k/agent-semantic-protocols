@@ -1,15 +1,18 @@
-use agent_semantic_content_identity::{
-    CanonicalItemSelector, ExactSelectorProjectionRecordV1,
-    exact_selector_merkle::{ExactProjectionModeV1, blake3_content_digest_v1},
-    exact_selector_projection_packet::{
-        ExactSelectorProjectionPacketV1Input, ProjectionPacketExecutionCommandDigestV1,
-        ProjectionPacketLanguageIdV1, ProjectionPacketOwnerPathV1, ProjectionPacketProviderIdV1,
-        ProjectionPacketSemanticRegistryDigestV1, ProjectionPacketStructuralSelectorV1,
-        build_exact_selector_projection_packet_v1, derive_parser_identity_digest_v1,
-        derive_query_pack_identity_digest_v1,
-    },
-    workspace_merkle_v1::WorkspacePathMerkleTreeV1,
-};
+use agent_semantic_content_identity::CanonicalItemSelector;
+use agent_semantic_content_identity::ExactSelectorProjectionRecordV1;
+use agent_semantic_content_identity::exact_selector_merkle::ExactProjectionModeV1;
+use agent_semantic_content_identity::exact_selector_merkle::blake3_content_digest_v1;
+use agent_semantic_content_identity::exact_selector_projection_packet::ExactSelectorProjectionPacketV1Input;
+use agent_semantic_content_identity::exact_selector_projection_packet::ProjectionPacketExecutionCommandDigestV1;
+use agent_semantic_content_identity::exact_selector_projection_packet::ProjectionPacketLanguageIdV1;
+use agent_semantic_content_identity::exact_selector_projection_packet::ProjectionPacketOwnerPathV1;
+use agent_semantic_content_identity::exact_selector_projection_packet::ProjectionPacketProviderIdV1;
+use agent_semantic_content_identity::exact_selector_projection_packet::ProjectionPacketSemanticRegistryDigestV1;
+use agent_semantic_content_identity::exact_selector_projection_packet::ProjectionPacketStructuralSelectorV1;
+use agent_semantic_content_identity::exact_selector_projection_packet::build_exact_selector_projection_packet_v1;
+use agent_semantic_content_identity::exact_selector_projection_packet::derive_parser_identity_digest_v1;
+use agent_semantic_content_identity::exact_selector_projection_packet::derive_query_pack_identity_digest_v1;
+use agent_semantic_content_identity::workspace_merkle_v1::WorkspacePathMerkleTreeV1;
 
 pub(crate) struct ProjectionFixtureInput<'a> {
     pub language_id: &'a str,
@@ -125,13 +128,15 @@ pub(crate) fn callable_skeleton_projection_fixture(
     }
     let evidence_context_ref = format!("blake3-256:{}", hasher.finalize().to_hex());
     let envelope = agent_semantic_content_identity::semantic_projection::SemanticProjection::new(
-        "callable-skeleton",
-        "rust",
-        "asp-rust",
-        structural_selector,
-        evidence_context_ref.clone(),
-        "agent.semantic-protocols.callable-skeleton",
-        payload,
+        agent_semantic_content_identity::semantic_projection::SemanticProjectionInput {
+            projection_kind: "callable-skeleton".into(),
+            language_id: "rust".into(),
+            provider_id: "asp-rust".into(),
+            root_selector: structural_selector.into(),
+            evidence_context_ref: evidence_context_ref.clone().into(),
+            payload_schema_id: "agent.semantic-protocols.callable-skeleton".into(),
+            payload,
+        },
     )
     .expect("build semantic projection fixture");
     let mut envelope = serde_json::to_value(envelope).expect("encode semantic projection value");
@@ -148,9 +153,9 @@ pub(crate) fn callable_skeleton_projection_fixture(
             agent_semantic_content_identity::projection_evidence_context::ProjectionEvidenceContext {
                 schema_id: "agent.semantic-protocols.projection-evidence-context".to_owned(),
                 schema_version: "1".to_owned(),
-                evidence_context_ref,
-                language_id: "rust".to_owned(),
-                provider_id: "asp-rust".to_owned(),
+                evidence_context_ref: evidence_context_ref.into(),
+                language_id: "rust".into(),
+                provider_id: "asp-rust".into(),
                 generation_identity_digest: "0".repeat(64),
                 parser_identity_digest: "1".repeat(64),
                 query_pack_digest: "2".repeat(64),

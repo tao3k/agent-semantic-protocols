@@ -1,8 +1,8 @@
-use super::{
-    admit_embedded_hook_config, admit_embedded_hook_runtime_candidate,
-    publish_embedded_hook_config, resolve_hook_binary_candidate,
-    retire_legacy_hook_generation_pointer,
-};
+use super::admit_embedded_hook_config;
+use super::admit_embedded_hook_runtime_candidate;
+use super::publish_embedded_hook_config;
+use super::resolve_hook_binary_candidate;
+use super::retire_legacy_hook_generation_pointer;
 
 #[test]
 fn canonical_binary_publication_materializes_its_matching_hook_contract() {
@@ -119,7 +119,8 @@ fn hook_runtime_binary_is_an_executable_sibling_of_the_installing_binary() {
 #[cfg(unix)]
 #[test]
 fn hook_binary_candidate_rejects_missing_symlink_and_non_executable_inputs() {
-    use std::os::unix::fs::{PermissionsExt, symlink};
+    use std::os::unix::fs::PermissionsExt;
+    use std::os::unix::fs::symlink;
 
     let root = tempfile::tempdir().expect("isolated build directory");
     let asp = root.path().join("asp");

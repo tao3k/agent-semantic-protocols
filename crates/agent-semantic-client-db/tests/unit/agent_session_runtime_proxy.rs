@@ -1,9 +1,12 @@
-use agent_semantic_client_db::{
-    AgentSessionRegistry, publish_runtime_server_endpoint, runtime_server_endpoint_path,
-};
+use agent_semantic_client_db::AgentSessionRegistry;
+use agent_semantic_client_db::publish_runtime_server_endpoint;
+use agent_semantic_client_db::runtime_server_endpoint_path;
 use std::os::unix::fs::PermissionsExt;
 
-use crate::test_support::{StateHomeGuard, TestDir, environment_lock, workspace};
+use crate::test_support::StateHomeGuard;
+use crate::test_support::TestDir;
+use crate::test_support::environment_lock;
+use crate::test_support::workspace;
 
 #[tokio::test]
 async fn project_registry_rejects_invalid_runtime_endpoint_descriptor() {

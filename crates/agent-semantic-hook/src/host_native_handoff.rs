@@ -1,9 +1,13 @@
-use std::fs::{self, OpenOptions};
+use std::fs::OpenOptions;
+use std::fs::{self};
 use std::io::Write;
-use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::path::Path;
+use std::path::PathBuf;
+use std::time::SystemTime;
+use std::time::UNIX_EPOCH;
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 use serde_json::Value;
 
 const CAPABILITY_SCHEMA_ID: &str = "agent.semantic-protocols.hook-host-native-handoff";

@@ -1,8 +1,9 @@
 fn shallow_database_route() -> agent_semantic_search_projection::SemanticSearchRouteDecision {
-    use agent_semantic_search_projection::{
-        SemanticMutationClass, SemanticSearchAlgorithmEvidence, SemanticSearchRouteDecision,
-        SemanticSearchStorageProfile, SemanticSharingScope,
-    };
+    use agent_semantic_search_projection::SemanticMutationClass;
+    use agent_semantic_search_projection::SemanticSearchAlgorithmEvidence;
+    use agent_semantic_search_projection::SemanticSearchRouteDecision;
+    use agent_semantic_search_projection::SemanticSearchStorageProfile;
+    use agent_semantic_search_projection::SemanticSharingScope;
 
     SemanticSearchRouteDecision::shallow_database(SemanticSearchStorageProfile {
         mutation_class: SemanticMutationClass::GenerationBound,
@@ -225,3 +226,9 @@ async fn turso_backend_bootstrap_is_idempotent_across_two_sequential_calls() {
     let _ = std::fs::remove_dir_all(project_root);
     let _ = std::fs::remove_dir_all(state_home);
 }
+use super::fixture::init_git_repository;
+use super::fixture::temp_root;
+use agent_semantic_client_core::state_core::ResolvedState;
+use agent_semantic_client_core::state_core::TURSO_BACKEND;
+use agent_semantic_client_db::ClientDbBackend;
+use agent_semantic_client_db::ClientDbEngine;

@@ -1,9 +1,8 @@
 use agent_semantic_content_identity::exact_selector_merkle::blake3_content_digest_v1;
 use agent_semantic_hook::materialize_active_asp_artifact_receipt;
-use std::{
-    fs,
-    time::{SystemTime, UNIX_EPOCH},
-};
+use std::fs;
+use std::time::SystemTime;
+use std::time::UNIX_EPOCH;
 
 #[test]
 fn unchanged_asp_artifacts_are_zero_byte_read_and_zero_write() {

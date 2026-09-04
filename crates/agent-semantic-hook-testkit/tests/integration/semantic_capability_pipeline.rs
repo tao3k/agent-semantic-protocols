@@ -1,9 +1,14 @@
-use agent_semantic_config::{LanguageId, ProviderId};
-use agent_semantic_hook::{
-    ClientHookConfig, CommandTemplate, HookPolicy, HookProviderProjection, HookRuntime,
-};
-use agent_semantic_hook_testkit::{classify_codex_plugin_scenario, classify_hook_scenario};
-use serde_json::{Value, json};
+use agent_semantic_config::LanguageId;
+use agent_semantic_config::ProviderId;
+use agent_semantic_hook::ClientHookConfig;
+use agent_semantic_hook::CommandTemplate;
+use agent_semantic_hook::HookPolicy;
+use agent_semantic_hook::HookProviderProjection;
+use agent_semantic_hook::HookRuntime;
+use agent_semantic_hook_testkit::classify_codex_plugin_scenario;
+use agent_semantic_hook_testkit::classify_hook_scenario;
+use serde_json::Value;
+use serde_json::json;
 
 fn runtime(project_root: &str) -> HookRuntime {
     HookRuntime {
@@ -181,7 +186,7 @@ fn emitted_action_ir_conforms_to_the_v1_schema() {
 fn registered_search_denial_emits_role_receipt_without_legacy_target_identity() {
     let decision = classify(
         &runtime("."),
-        "asp typescript search playbook projectRoot --workspace .",
+        "asp search playbook --language typescript projectRoot --workspace .",
     );
     assert_eq!(decision["decision"], "deny");
     assert_eq!(
@@ -232,7 +237,7 @@ fn only_playbook_is_routed_as_the_public_search_operation() {
 
     let playbook = classify(
         &runtime("."),
-        "asp rust search playbook 'source structure' --scope owner:src/lib.rs --workspace .",
+        "asp search playbook --language rust 'source structure' --scope owner:src/lib.rs --workspace .",
     );
     assert_eq!(
         playbook["fields"]["configRuleId"],
@@ -244,7 +249,7 @@ fn only_playbook_is_routed_as_the_public_search_operation() {
 fn agent_search_json_denial_is_owned_by_the_declared_rule() {
     let decision = classify(
         &runtime("."),
-        "asp typescript search playbook projectRoot --workspace . --json",
+        "asp search playbook --language typescript projectRoot --workspace . --json",
     );
     assert_eq!(decision["decision"], "deny");
     assert_eq!(decision["fields"]["configRuleId"], "deny-agent-search-json");
@@ -328,7 +333,7 @@ fn verified_explorer_search_is_authorized_once_and_post_tool_remains_observation
         "agent_role": "asp_explorer",
         "tool_name": "Bash",
         "tool_input": {
-            "command": "rtk --ultra-compact err asp rust search playbook 'HookDecision' --workspace ."
+            "command": "rtk --ultra-compact err asp search playbook --language rust 'HookDecision' --workspace ."
         }
     })];
 
@@ -358,7 +363,7 @@ fn config_agent_roles_satisfy_only_their_declared_dispatch_routes() {
     let cases = [
         (
             "asp_explorer",
-            "asp typescript search playbook projectRoot --workspace .",
+            "asp search playbook --language typescript projectRoot --workspace .",
             "allow",
             "reasoning-search",
         ),
@@ -382,7 +387,7 @@ fn config_agent_roles_satisfy_only_their_declared_dispatch_routes() {
         ),
         (
             "asp_testing",
-            "asp typescript search playbook projectRoot --workspace .",
+            "asp search playbook --language typescript projectRoot --workspace .",
             "deny",
             "reasoning-search",
         ),

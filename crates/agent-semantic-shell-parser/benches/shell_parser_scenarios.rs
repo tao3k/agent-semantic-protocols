@@ -1,4 +1,5 @@
-use std::{hint::black_box, time::Instant};
+use std::hint::black_box;
+use std::time::Instant;
 
 #[path = "../tests/support/match_config.rs"]
 mod match_config;

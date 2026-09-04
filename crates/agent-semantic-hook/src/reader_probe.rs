@@ -6,10 +6,11 @@ use serde_json::Value;
 #[path = "reader_probe_core.rs"]
 mod core;
 
-pub use core::{
-    ReaderProbeAccess, ReaderProbeObservation, bind_reader_probe_observation,
-    diagnose_reader_probe, diagnose_reader_probe_with_state_home,
-};
+pub use core::ReaderProbeAccess;
+pub use core::ReaderProbeObservation;
+pub use core::bind_reader_probe_observation;
+pub use core::diagnose_reader_probe;
+pub use core::diagnose_reader_probe_with_state_home;
 
 #[cfg(target_os = "macos")]
 #[doc(hidden)]

@@ -1,6 +1,7 @@
 //! Exact ProjectId and WorkspaceId partition for Runtime query generations.
 
-use agent_semantic_client_protocol::{ClientProjectId, ClientWorkspaceIdentity};
+use agent_semantic_client_protocol::ClientProjectId;
+use agent_semantic_client_protocol::ClientWorkspaceIdentity;
 
 use crate::runtime_query_generation::RuntimeQueryGeneration;
 

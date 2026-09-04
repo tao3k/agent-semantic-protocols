@@ -17,3 +17,5 @@ harness = false
 globset.workspace = true
 tree-sitter = "0.26"
 tree-sitter-bash = "0.25"
+[build-dependencies]
+asp-rust-project-harness-policy.workspace = true

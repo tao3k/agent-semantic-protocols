@@ -1,98 +1,26 @@
 //! Runtime Server generation overlays and process-cold exact projection gates.
 
-use agent_semantic_client_db::runtime_server_workspace::{
-    ExactProjectionKind, RuntimeServerWorkspaceRegistry, WorkspaceExactProjectionDataPlaneClient,
-    WorkspaceExactProjectionDataPlaneOpen, WorkspaceMemoryGeneration, WorkspaceOwnerSnapshot,
-    WorkspaceRuntimeSelectorOverlay, WorkspaceRuntimeSelectorRead, WorkspaceSelectorSnapshot,
-    workspace_generation_pointer_path,
-};
+use agent_semantic_client_db::runtime_server_workspace::ExactProjectionKind;
+use agent_semantic_client_db::runtime_server_workspace::RuntimeServerWorkspaceRegistry;
+use agent_semantic_client_db::runtime_server_workspace::WorkspaceExactProjectionDataPlaneClient;
+use agent_semantic_client_db::runtime_server_workspace::WorkspaceExactProjectionDataPlaneOpen;
+use agent_semantic_client_db::runtime_server_workspace::WorkspaceMemoryGeneration;
+use agent_semantic_client_db::runtime_server_workspace::WorkspaceRuntimeSelectorOverlay;
+use agent_semantic_client_db::runtime_server_workspace::WorkspaceRuntimeSelectorRead;
+use agent_semantic_client_db::runtime_server_workspace::WorkspaceSelectorSnapshot;
 use std::time::Instant;
 use tempfile::tempdir;
 
+#[path = "overlay_projection_fixture.rs"]
+mod fixture;
+use fixture::generation;
+use fixture::generation_with_owners;
+use fixture::owner;
+use fixture::project_root;
+use fixture::resident_pointer;
+
 #[path = "selector_query_keys.rs"]
 mod selector_query_keys;
-
-fn project_root(workspace_identity: &str) -> std::path::PathBuf {
-    std::path::PathBuf::from("/runtime-server-workspace-fixture").join(workspace_identity)
-}
-
-fn resident_pointer(
-    runtime_root: &std::path::Path,
-    workspace_identity: &str,
-) -> std::path::PathBuf {
-    workspace_generation_pointer_path(
-        runtime_root,
-        workspace_identity,
-        &project_root(workspace_identity),
-    )
-    .unwrap()
-}
-
-fn owner(path: &str, selector: &str, bytes: &[u8]) -> WorkspaceOwnerSnapshot {
-    WorkspaceOwnerSnapshot {
-        authority: None,
-        owner_path: path.to_owned(),
-        content_digest: format!("blake3-256:{}", blake3::hash(bytes).to_hex()),
-        bytes: bytes.to_vec(),
-        selectors: vec![WorkspaceSelectorSnapshot {
-            selector: selector.to_owned(),
-            byte_start: 0,
-            byte_end: bytes.len(),
-            query_keys: Vec::new(),
-            derived_projections: Vec::new(),
-        }],
-    }
-}
-
-fn generation(
-    workspace_identity: &str,
-    epoch: u64,
-    owner: WorkspaceOwnerSnapshot,
-) -> WorkspaceMemoryGeneration {
-    generation_with_owners(workspace_identity, epoch, vec![owner])
-}
-
-fn generation_with_owners(
-    workspace_identity: &str,
-    epoch: u64,
-    owners: Vec<WorkspaceOwnerSnapshot>,
-) -> WorkspaceMemoryGeneration {
-    let workspace_snapshot = agent_semantic_content_identity::WorkspaceSnapshot::from_file_hashes(
-        owners
-            .iter()
-            .map(|owner| (owner.owner_path.clone(), owner.content_digest.clone())),
-    );
-    let source_snapshot = workspace_snapshot.evidence(
-        agent_semantic_content_identity::SourceSnapshotKind::Filesystem,
-        format!(
-            "blake3-256:{}",
-            blake3::hash(b"runtime-workspace-fixture-provider").to_hex()
-        ),
-    );
-    WorkspaceMemoryGeneration::try_from_build(
-        agent_semantic_client_db::runtime_server_workspace::WorkspaceGenerationBuild {
-            projection_capability: crate::fixture::overlay_projection_capability_manifest_fixture(),
-            relations: Vec::new(),
-            workspace_identity: workspace_identity.to_owned(),
-            project_root: project_root(workspace_identity).display().to_string(),
-            active_epoch: epoch,
-            workspace_snapshot,
-            content_search_generation: crate::fixture::content_search_generation_receipt(
-                workspace_identity,
-                &source_snapshot,
-            ),
-            source_snapshot,
-            module_graph_digest: format!(
-                "blake3-256:{}",
-                blake3::hash(b"runtime-workspace-fixture-module-graph").to_hex()
-            ),
-            runtime_provider_execution_binding: None,
-            project_resolutions: Vec::new(),
-            owners,
-        },
-    )
-    .expect("typed runtime workspace generation")
-}
 
 #[tokio::test(flavor = "multi_thread")]
 async fn process_cold_exact_projection_relocates_by_canonical_item_identity() {

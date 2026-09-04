@@ -641,7 +641,7 @@ pub(super) fn materialize_turso_source_index_generation_snapshot(
             }
         })?;
         let source_identity = (
-            attributed.relation.from.kind.clone(),
+            attributed.relation.from.kind.to_string(),
             attributed.relation.from.id.clone(),
         );
         if source_owners.get(&source_identity) != Some(&attributed.owner_path) {

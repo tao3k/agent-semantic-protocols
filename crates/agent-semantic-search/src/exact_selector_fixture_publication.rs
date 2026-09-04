@@ -1,14 +1,18 @@
-use std::fs::{File, OpenOptions};
+use std::fs::File;
+use std::fs::OpenOptions;
 use std::io::Write;
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{LazyLock, Mutex};
+use std::path::Path;
+use std::path::PathBuf;
+use std::sync::LazyLock;
+use std::sync::Mutex;
+use std::sync::atomic::AtomicU64;
+use std::sync::atomic::Ordering;
 
 use agent_semantic_content_identity::exact_selector_cache::ExactSelectorProjectionRecordV1;
-use agent_semantic_content_identity::exact_selector_generation_fixture::{
-    ExactSelectorGenerationIdentityV1, ExactSelectorGenerationRecordV1,
-    ExactSelectorProjectionModeV1, build_exact_selector_generation_fixture_v1,
-};
+use agent_semantic_content_identity::exact_selector_generation_fixture::ExactSelectorGenerationIdentityV1;
+use agent_semantic_content_identity::exact_selector_generation_fixture::ExactSelectorGenerationRecordV1;
+use agent_semantic_content_identity::exact_selector_generation_fixture::ExactSelectorProjectionModeV1;
+use agent_semantic_content_identity::exact_selector_generation_fixture::build_exact_selector_generation_fixture_v1;
 use agent_semantic_content_identity::exact_selector_merkle::ExactProjectionModeV1;
 
 use crate::active_exact_selector_fixture::ExactSelectorFixtureArtifactInput;

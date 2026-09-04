@@ -1,17 +1,25 @@
-use std::fmt;
-use std::path::{Component, Path, PathBuf};
+//! Admits one ProjectId/WorkspaceId search scope against exact source identity.
 
+use std::fmt;
+use std::path::Component;
+use std::path::Path;
+use std::path::PathBuf;
+
+/// Schema identifier for an admitted workspace Search identity.
 pub const WORKSPACE_SEARCH_IDENTITY_SCHEMA_ID: &str =
     "agent.semantic-protocols.workspace-search-identity";
+/// Schema version for admitted workspace Search identities.
 pub const WORKSPACE_SEARCH_IDENTITY_SCHEMA_VERSION: &str = "1";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+/// Whether Search is bound to the workspace or one selected package.
 pub enum WorkspaceSearchScopeKindV1 {
     Package,
     Workspace,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+/// Candidate roots and counters supplied to Search identity admission.
 pub struct WorkspaceSearchIdentityInputV1 {
     pub language_id: String,
     pub provider_id: String,
@@ -29,6 +37,7 @@ pub struct WorkspaceSearchIdentityInputV1 {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+/// Validated ProjectId/WorkspaceId Search scope and content root.
 pub struct WorkspaceSearchIdentityV1 {
     language_id: String,
     provider_id: String,
@@ -187,6 +196,7 @@ impl WorkspaceSearchIdentityV1 {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+/// Deterministic failure while admitting a workspace Search identity.
 pub enum WorkspaceSearchIdentityErrorV1 {
     IncompleteOwnerEnvelope {
         root_count: u32,
@@ -225,6 +235,7 @@ impl fmt::Display for WorkspaceSearchIdentityErrorV1 {
 
 impl std::error::Error for WorkspaceSearchIdentityErrorV1 {}
 
+/// Resolves a requested discovery root to one canonical workspace member root.
 pub fn resolve_workspace_member_root_v1(
     cargo_workspace_root: &Path,
     package_root: &Path,

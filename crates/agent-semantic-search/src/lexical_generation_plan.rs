@@ -4,9 +4,11 @@
 //! indexing are separate authorities. This module joins their immutable
 //! receipts without walking the filesystem or launching tools.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 
 pub const LEXICAL_GENERATION_PLAN_SCHEMA_ID: &str =
     "agent.semantic-protocols.lexical-generation-plan";

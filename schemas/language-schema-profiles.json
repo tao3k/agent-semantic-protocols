@@ -26,6 +26,7 @@
       "asp-client-frame.schema.json",
       "asp-client-conformance.schema.json",
       "asp-client-search-request.schema.json",
+      "asp-client-workspace-search-playbook-request.v1.schema.json",
       "semantic-agent-search-playbook-receipt.v1.schema.json",
       "large-search-playbook-performance-receipt.v1.schema.json",
       "workspace-search-playbook-plan.v1.schema.json",
@@ -528,6 +529,7 @@
           "schemas/projection-evidence-context.v1.schema.json",
           "schemas/lexical-postings-work-reduction-receipt.schema.json",
           "schemas/rg-coverage-receipt.schema.json",
+          "schemas/asp-client-workspace-search-playbook-request.v1.schema.json",
           "schemas/workspace-search-playbook-plan.v1.schema.json"
         ]
       }

@@ -1,11 +1,10 @@
-use orgize::{
-    Org,
-    ast::{
-        OrgContractEvaluationContext, OrgContractEvaluationScope, OrgContractSeverity,
-        evaluate_org_contract_with_context, parse_contract_reference,
-        parse_contracts_from_document,
-    },
-};
+use orgize::Org;
+use orgize::ast::OrgContractEvaluationContext;
+use orgize::ast::OrgContractEvaluationScope;
+use orgize::ast::OrgContractSeverity;
+use orgize::ast::evaluate_org_contract_with_context;
+use orgize::ast::parse_contract_reference;
+use orgize::ast::parse_contracts_from_document;
 use std::path::Path;
 
 const ASP_SKILL_CONTRACT_SOURCE_PATH: &str = "org/contracts/asp.skill.v1.org";

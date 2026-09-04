@@ -1,6 +1,7 @@
 //! Typed artifact retention planning and leases.
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 
 pub const RETENTION_PLAN_SCHEMA_ID: &str = "agent.semantic-protocols.state-home-retention-plan";
 pub const RETENTION_PLAN_SCHEMA_VERSION: u32 = 1;

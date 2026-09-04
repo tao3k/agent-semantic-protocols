@@ -1,4 +1,10 @@
-use serde::{Deserialize, Serialize};
+//! Typed admission contract for delegating work from one Agent session to a child.
+//!
+//! The product records identity, capability, and decision facts only; Host execution and
+//! lifecycle mutation remain with their respective control-plane owners.
+
+use serde::Deserialize;
+use serde::Serialize;
 
 pub const AGENT_SESSION_DELEGATION_ADMISSION_SCHEMA_ID: &str =
     "agent.semantic-protocols.agent-session-delegation-admission";

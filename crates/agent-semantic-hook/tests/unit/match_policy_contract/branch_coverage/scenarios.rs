@@ -1,11 +1,16 @@
 use std::fs;
 
-use serde_json::{Value, json};
+use serde_json::Value;
+use serde_json::json;
 
-use super::{
-    classify, default_client_config_template, load_policy_with_configured_capabilities,
-    normalized_agent_action, registry, shell, shell_surface, temp_project_root,
-};
+use super::classify;
+use super::default_client_config_template;
+use super::load_policy_with_configured_capabilities;
+use super::normalized_agent_action;
+use super::registry;
+use super::shell;
+use super::shell_surface;
+use super::temp_project_root;
 
 struct Scenario {
     name: &'static str,
@@ -16,7 +21,7 @@ struct Scenario {
 
 #[test]
 fn registered_asp_search_intent_is_stable_across_native_wrapped_and_nested_surfaces() {
-    let command = "asp rust search playbook 'HookDecision' --workspace .";
+    let command = "asp search playbook --language rust 'HookDecision' --workspace .";
     run_scenarios(
         "registered ASP search surfaces",
         &[
@@ -31,7 +36,7 @@ fn registered_asp_search_intent_is_stable_across_native_wrapped_and_nested_surfa
                 payload: shell_surface(
                     "Bash",
                     "command",
-                    "asp rust search playbook 'HookDecision' --workspace .",
+                    "asp search playbook --language rust 'HookDecision' --workspace .",
                 ),
                 expected_rule: Some("registered-asp-reasoning-search"),
                 forbidden_rule: None,
@@ -41,7 +46,7 @@ fn registered_asp_search_intent_is_stable_across_native_wrapped_and_nested_surfa
                 payload: shell_surface(
                     "Bash",
                     "command",
-                    "rtk --ultra-compact err asp rust search playbook 'HookDecision' --workspace .",
+                    "rtk --ultra-compact err asp search playbook --language rust 'HookDecision' --workspace .",
                 ),
                 expected_rule: Some("registered-asp-reasoning-search"),
                 forbidden_rule: None,
@@ -51,7 +56,7 @@ fn registered_asp_search_intent_is_stable_across_native_wrapped_and_nested_surfa
                 payload: serde_json::json!({
                     "tool_name": "functions.exec",
                     "tool_input": {
-                        "code": "const r = await tools.exec_command({cmd: \"asp rust search playbook 'HookDecision' --workspace .\"});"
+                        "code": "const r = await tools.exec_command({cmd: \"asp search playbook --language rust 'HookDecision' --workspace .\"});"
                     }
                 }),
                 expected_rule: Some("registered-asp-reasoning-search"),

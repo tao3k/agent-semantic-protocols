@@ -1,7 +1,9 @@
 use std::fs;
 use std::process::Command;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::sync::atomic::AtomicU64;
+use std::sync::atomic::Ordering;
+use std::time::SystemTime;
+use std::time::UNIX_EPOCH;
 
 use serde_json::json;
 
@@ -94,14 +96,7 @@ fn graph_render_cli_reads_packet_file() {
     let packet_path = temp_packet_path();
     fs::write(&packet_path, sample_packet().to_string()).unwrap();
     let output = Command::new(env!("CARGO_BIN_EXE_asp"))
-        .args([
-            "graph",
-            "render",
-            "--packet",
-            packet_path.to_str().unwrap(),
-            "--view",
-            "seeds",
-        ])
+        .args(["graph", "render", "--packet", packet_path.to_str().unwrap()])
         .output()
         .unwrap();
     fs::remove_file(&packet_path).unwrap();
@@ -119,7 +114,7 @@ fn graph_render_cli_reads_packet_file() {
 }
 
 #[test]
-fn graph_render_cli_rejects_non_seed_view() {
+fn graph_render_cli_rejects_removed_view_surface() {
     let packet_path = temp_packet_path();
     fs::write(&packet_path, sample_packet().to_string()).unwrap();
 
@@ -138,7 +133,7 @@ fn graph_render_cli_rejects_non_seed_view() {
     fs::remove_file(&packet_path).unwrap();
 
     assert!(!output.status.success());
-    assert!(String::from_utf8_lossy(&output.stderr).contains("supports only --view seeds"));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("removed legacy option `--view`"));
 }
 
 fn temp_packet_path() -> std::path::PathBuf {

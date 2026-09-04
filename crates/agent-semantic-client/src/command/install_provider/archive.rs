@@ -1,10 +1,12 @@
 //! Archive download and executable installation helpers for pinned providers.
 
 use agent_semantic_runtime::ensure_project_provider_lock_dir;
-use sha2::{Digest, Sha256};
+use sha2::Digest;
+use sha2::Sha256;
 use std::fs;
 use std::io::Read;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 use std::process::Command;
 
 // Branch-private archive materialization consumes the shared release specification.

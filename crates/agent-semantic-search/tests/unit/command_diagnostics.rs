@@ -1,6 +1,5 @@
-use agent_semantic_search::command_diagnostics::{
-    SearchCommandDiagnostics, take_search_command_diagnostic_options,
-};
+use agent_semantic_search::command_diagnostics::SearchCommandDiagnostics;
+use agent_semantic_search::command_diagnostics::take_search_command_diagnostic_options;
 
 #[test]
 fn search_and_query_share_one_diagnostics_flag_parser() {

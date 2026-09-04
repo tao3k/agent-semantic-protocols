@@ -1,6 +1,7 @@
 //! Complete workspace-generation identity and graph admission receipts.
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 
 /// Canonical authority carried by every consumer of a published workspace
 /// generation.
@@ -70,8 +71,16 @@ pub enum WorkspaceGenerationAuthority {
         evidence: WorkspaceGenerationEvidenceV1,
     },
     Unavailable {
-        reason_kind: String,
+        reason_kind: WorkspaceGenerationUnavailableReason,
     },
+}
+
+/// Closed reason domain for an unavailable workspace generation authority.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum WorkspaceGenerationUnavailableReason {
+    /// No active generation has been admitted for the ProjectId/WorkspaceId pair.
+    ActiveWorkspaceGenerationRequired,
 }
 
 impl WorkspaceGenerationAuthority {
@@ -79,7 +88,7 @@ impl WorkspaceGenerationAuthority {
     /// bound to an acquisition.
     pub fn unavailable() -> Self {
         Self::Unavailable {
-            reason_kind: "active-workspace-generation-required".to_owned(),
+            reason_kind: WorkspaceGenerationUnavailableReason::ActiveWorkspaceGenerationRequired,
         }
     }
 

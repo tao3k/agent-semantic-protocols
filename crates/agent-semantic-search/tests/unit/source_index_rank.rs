@@ -1,7 +1,7 @@
-use crate::{
-    SourceIndexRankCandidate, rank_source_index_candidates, reorder_source_index_candidates,
-    source_index_lookup_terms,
-};
+use crate::SourceIndexRankCandidate;
+use crate::rank_source_index_candidates;
+use crate::reorder_source_index_candidates;
+use crate::source_index_lookup_terms;
 
 #[test]
 fn source_index_lookup_terms_keep_full_query_and_split_terms() {

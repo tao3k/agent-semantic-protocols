@@ -1,3 +1,4 @@
+use agent_semantic_content_identity::ProviderRelationEndpointKindV1;
 use agent_semantic_content_identity::provider_projection_relation::{
     ProviderProjectedRelation, ProviderProjectedRelationEndpoint,
 };
@@ -138,23 +139,44 @@ pub(super) async fn load_turso_source_index_relations(
                 })?,
                 relation: ProviderProjectedRelation {
                     from: ProviderProjectedRelationEndpoint {
-                        kind: row.get::<String>(1).map_err(|error| {
-                            format!("failed to decode source-index relation from kind: {error}")
-                        })?,
-                        id: row.get::<String>(2).map_err(|error| {
-                            format!("failed to decode source-index relation from id: {error}")
-                        })?,
+                        kind: ProviderRelationEndpointKindV1::try_from(
+                            row.get::<String>(1)
+                                .map_err(|error| {
+                                    format!(
+                                        "failed to decode source-index relation from kind: {error}"
+                                    )
+                                })?
+                                .as_str(),
+                        )?,
+                        id: row
+                            .get::<String>(2)
+                            .map_err(|error| {
+                                format!("failed to decode source-index relation from id: {error}")
+                            })?
+                            .into(),
                     },
-                    kind: row.get::<String>(3).map_err(|error| {
-                        format!("failed to decode source-index relation kind: {error}")
-                    })?,
+                    kind: row
+                        .get::<String>(3)
+                        .map_err(|error| {
+                            format!("failed to decode source-index relation kind: {error}")
+                        })?
+                        .into(),
                     to: ProviderProjectedRelationEndpoint {
-                        kind: row.get::<String>(4).map_err(|error| {
-                            format!("failed to decode source-index relation to kind: {error}")
-                        })?,
-                        id: row.get::<String>(5).map_err(|error| {
-                            format!("failed to decode source-index relation to id: {error}")
-                        })?,
+                        kind: ProviderRelationEndpointKindV1::try_from(
+                            row.get::<String>(4)
+                                .map_err(|error| {
+                                    format!(
+                                        "failed to decode source-index relation to kind: {error}"
+                                    )
+                                })?
+                                .as_str(),
+                        )?,
+                        id: row
+                            .get::<String>(5)
+                            .map_err(|error| {
+                                format!("failed to decode source-index relation to id: {error}")
+                            })?
+                            .into(),
                     },
                 },
             },

@@ -1,6 +1,7 @@
-use crate::provider_registry::{
-    provider_register, registered_language_ids, registered_provider_id, semantic_registry_digest,
-};
+use crate::provider_registry::provider_register;
+use crate::provider_registry::registered_language_ids;
+use crate::provider_registry::registered_provider_id;
+use crate::provider_registry::semantic_registry_digest;
 
 #[test]
 fn provider_register_has_unique_language_and_provider_identities() {

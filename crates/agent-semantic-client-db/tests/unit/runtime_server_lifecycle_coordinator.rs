@@ -1,9 +1,9 @@
 use agent_semantic_artifacts::runtime_artifact_catalog::RuntimeBinaryIdentity;
 use agent_semantic_client_db::RuntimeServerEndpoint;
-use agent_semantic_client_db::runtime_server_lifecycle_coordinator::{
-    OwnerClassification, RuntimeServerLifecycleCoordinator,
-};
-use agent_semantic_client_db::{RuntimeServerExitReceipt, RuntimeServerSpawnReceipt};
+use agent_semantic_client_db::RuntimeServerExitReceipt;
+use agent_semantic_client_db::RuntimeServerSpawnReceipt;
+use agent_semantic_client_db::runtime_server_lifecycle_coordinator::OwnerClassification;
+use agent_semantic_client_db::runtime_server_lifecycle_coordinator::RuntimeServerLifecycleCoordinator;
 use std::os::unix::fs::PermissionsExt;
 use tempfile::tempdir;
 
@@ -538,6 +538,23 @@ async fn resident_transaction_requires_the_matching_previous_owner_drain() {
     )
     .await
     .expect("publish owner receipt");
+
+    let serving_publication = agent_semantic_client_db::runtime_server_lifecycle::
+        resolve_runtime_server_serving_publication(&state_home)
+        .await
+        .expect("content-bound serving endpoint does not require drain observation");
+    assert_eq!(
+        serving_publication.endpoint.data_endpoint,
+        endpoint.data_endpoint
+    );
+    assert_eq!(
+        serving_publication.publication_nonce,
+        activation.publication_nonce
+    );
+    assert_eq!(
+        serving_publication.artifact_digest,
+        activation.artifact_digest
+    );
 
     let missing = agent_semantic_client_db::runtime_server_lifecycle::observe_resident_transaction(
         &state_home,

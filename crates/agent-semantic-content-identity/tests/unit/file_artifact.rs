@@ -1,8 +1,8 @@
-use super::{file_artifact_metadata_digest_v1, file_content_digest_v1};
-use std::{
-    fs,
-    time::{SystemTime, UNIX_EPOCH},
-};
+use super::file_artifact_metadata_digest_v1;
+use super::file_content_digest_v1;
+use std::fs;
+use std::time::SystemTime;
+use std::time::UNIX_EPOCH;
 
 #[test]
 fn file_identity_streams_content_and_detects_metadata_drift() {

@@ -3,14 +3,18 @@
 //! Protocol versioning belongs to the shared schema. This Rust module keeps
 //! the type namespace stable while exposing the schema version as a constant.
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 
+/// Schema identifier for a complete Runtime content binding.
 pub const CONTENT_BINDING_SCHEMA_ID: &str = "asp.content-binding";
+/// Schema version for Runtime content bindings.
 pub const CONTENT_BINDING_SCHEMA_VERSION: &str = "1";
 const DIGEST_PREFIX: &str = "blake3-256:";
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
+/// Immutable Runtime artifact identity admitted for execution.
 pub struct RuntimeArtifactReference {
     pub schema_digest: String,
     pub artifact_digest: String,
@@ -21,6 +25,7 @@ pub struct RuntimeArtifactReference {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
+/// Immutable workspace snapshot identity admitted for execution.
 pub struct WorkspaceSnapshotReference {
     pub workspace_id: String,
     pub workspace_catalog_digest: String,
@@ -30,6 +35,7 @@ pub struct WorkspaceSnapshotReference {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
+/// Source-index generation identity bound to its snapshot root.
 pub struct SourceGenerationReference {
     pub source_generation_id: String,
     pub source_snapshot_digest: String,
@@ -40,6 +46,7 @@ pub struct SourceGenerationReference {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
+/// Authority and publication epoch that linearized a binding.
 pub struct AuthorityStamp {
     pub key_id: String,
     pub canonical_digest: String,
@@ -64,6 +71,7 @@ pub struct ContentBinding {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
+/// Canonical digest and complete component references for one content state.
 pub struct ContentIdentity {
     pub runtime_artifact_digest: String,
     pub workspace_snapshot_digest: String,
@@ -75,6 +83,7 @@ pub struct ContentIdentity {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
+/// Linearized publication commit for a canonical content identity.
 pub struct ContentPublicationCommit {
     pub identity: ContentIdentity,
     pub commit_digest: String,
@@ -87,12 +96,14 @@ pub struct ContentPublicationCommit {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
+/// Read-only observation checked against a publication commit.
 pub struct ActivationObservation {
     pub publication_nonce: String,
     pub commit_digest: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+/// Deterministic failure while validating or admitting a content binding.
 pub enum ContentBindingError {
     InvalidDigest { field: &'static str },
     NonDurableCommit,

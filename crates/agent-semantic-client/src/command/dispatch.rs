@@ -1,6 +1,7 @@
 //! Top-level command dispatch for protocol subcommands.
 
-use std::{env, path::PathBuf};
+use std::env;
+use std::path::PathBuf;
 
 use super::agent_control_plane::run_config_command;
 use super::ast_patch::run_ast_patch_command;
@@ -13,7 +14,7 @@ use super::install_provider::run_install_command;
 use super::live_corpus::run_live_corpus_command;
 use super::paths::run_paths_command;
 use super::provider_dispatch::run_language_command;
-use super::root_language_facade::{run_root_language_facade, run_workspace_search_playbook};
+use super::root_language_facade::run_workspace_search_playbook;
 use super::run_protocol_version_command;
 use super::runtime_server::run_runtime_server_command;
 use super::schema::run_schema_command;
@@ -60,14 +61,10 @@ pub(crate) async fn run_protocol_command_started(
             run_client_command(args).await
         }
         Some("search") => run_workspace_search_playbook(&args[1..]).await,
-        Some("query") => {
-            match super::provider_selector::root_structural_selector_language(&args[1..])? {
-                Some(language_id) => {
-                    run_language_command(&language_id, &args[1..], process_started).await
-                }
-                None => run_root_language_facade("query", &args[1..]).await,
-            }
-        }
+        Some("query") => Err(
+            "asp query is not a public command surface; use `asp <language> query --selector <exact-selector>` after `asp search playbook` returns an exact selector."
+                .to_string(),
+        ),
         Some("check") => Err(
             "asp check is not a public command surface; use asp <rust|typescript|python|julia> check ..."
                 .to_string(),
@@ -94,12 +91,11 @@ pub(crate) async fn run_protocol_command_started(
 fn reject_agent_platform_json_output(args: &[String]) -> Result<(), String> {
     if !has_json_output_arg(args)
         || !agent_platform_session_active()
-        || explicit_no_agent_output()
         || is_agent_session_control_json_command(args)
     {
         return Ok(());
     }
-    Err("warning: --json output is disabled inside agent platform sessions because it is a debug/programmatic format. Normal ASP Explorer search uses compact output without `--json`. For explicit non-agent debug automation only, set ASP_NO_AGENT=1 and filter the JSON with jq. ASP_NO_AGENT is a complete Hook pass-through and must be used only for explicitly authorized recovery or automation."
+    Err("warning: --json output is disabled inside agent platform sessions because it is a debug/programmatic format. Normal ASP Explorer search and query use the typed compact receipt without `--json`."
         .to_string())
 }
 
@@ -122,19 +118,8 @@ fn agent_platform_session_active() -> bool {
         .any(|name| env_var_nonempty(name))
 }
 
-fn explicit_no_agent_output() -> bool {
-    env_var_enabled("ASP_NO_AGENT")
-}
-
 fn env_var_nonempty(name: &str) -> bool {
     std::env::var_os(name).is_some_and(|value| !value.is_empty())
-}
-
-fn env_var_enabled(name: &str) -> bool {
-    std::env::var_os(name).is_some_and(|value| {
-        let value = value.to_string_lossy();
-        !value.is_empty() && value != "0" && !value.eq_ignore_ascii_case("false")
-    })
 }
 
 fn reject_file_workspace_for_search(args: &[String]) -> Result<(), String> {

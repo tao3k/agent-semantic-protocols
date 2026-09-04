@@ -227,6 +227,7 @@ impl RuntimeResidentReadClient {
         (
             Vec<agent_semantic_search::NativeSyntaxProjection>,
             Vec<agent_semantic_search::NativeSyntaxRelation>,
+            Vec<agent_semantic_search::NativeSyntaxDiagnostic>,
         ),
         String,
     > {

@@ -1,7 +1,8 @@
-use super::{
-    ReasoningEvidence, ReasoningEvidenceSource, ReasoningEvidenceVisibility, ReasoningVerdict,
-    reduce_reasoning_evidence,
-};
+use super::ReasoningEvidence;
+use super::ReasoningEvidenceSource;
+use super::ReasoningEvidenceVisibility;
+use super::ReasoningVerdict;
+use super::reduce_reasoning_evidence;
 
 fn evidence(
     source: ReasoningEvidenceSource,

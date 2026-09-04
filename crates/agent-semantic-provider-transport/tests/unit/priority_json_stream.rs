@@ -1,4 +1,5 @@
-use super::*;
+use super::PriorityJsonStream;
+use super::PriorityJsonStreamTerminal;
 use serde_json::json;
 use tokio_stream::StreamExt;
 

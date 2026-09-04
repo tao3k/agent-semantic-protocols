@@ -1,7 +1,7 @@
-use super::{
-    AgentSessionLifetime, compile_agent_route, load_agent_route_registry,
-    load_agent_route_registry_for_platform,
-};
+use super::AgentSessionLifetime;
+use super::compile_agent_route;
+use super::load_agent_route_registry;
+use super::load_agent_route_registry_for_platform;
 
 fn canonical_registry_path() -> std::path::PathBuf {
     std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../agents/config.toml")
@@ -80,7 +80,10 @@ fn codex_worker_and_default_roles_resolve_only_to_owner_scoped_coding() {
         assert_eq!(coding.route_key.as_str(), "asp_coding");
         assert_eq!(coding.platform_host_agent_name.as_str(), "asp_coding");
         assert_eq!(coding.allowed_rule_intents, ["owner-scoped-mutation"]);
-        assert_eq!(coding.sandbox_mode.as_deref(), Some("workspace-write"));
+        assert_eq!(
+            coding.sandbox_mode.map(|mode| mode.as_str()),
+            Some("workspace-write")
+        );
     }
 }
 
@@ -123,7 +126,10 @@ fn canonical_registry_compiles_host_routes() {
         explorer_role.allowed_rule_intents,
         ["reasoning-search", "structured-projection"]
     );
-    assert_eq!(explorer_role.sandbox_mode.as_deref(), Some("read-only"));
+    assert_eq!(
+        explorer_role.sandbox_mode.map(|mode| mode.as_str()),
+        Some("read-only")
+    );
     let testing_role = loaded
         .compile_route_for_platform_host_role("codex", "testing")
         .expect("Codex testing role lookup")
@@ -217,11 +223,14 @@ fn canonical_registry_compiles_host_routes() {
         codex.allowed_rule_intents,
         vec!["reasoning-search", "structured-projection"]
     );
-    assert_eq!(codex.agent_kind, "agent");
+    assert_eq!(codex.agent_kind.as_str(), "agent");
     assert_eq!(codex.display_role, "Evidence Explorer");
     assert_eq!(codex.description, "for code and evidence search");
     assert_eq!(claude.description, codex.description);
-    assert_eq!(codex.sandbox_mode.as_deref(), Some("read-only"));
+    assert_eq!(
+        codex.sandbox_mode.map(|mode| mode.as_str()),
+        Some("read-only")
+    );
     assert!(
         codex
             .effective_permissions
@@ -240,7 +249,7 @@ fn canonical_registry_compiles_host_routes() {
         compile_agent_route(&loaded, "asp_testing", "codex").expect("Codex testing route");
     assert_eq!(testing.platform_host_agent_name.as_str(), "asp_testing");
     assert_eq!(testing.focus_mode, super::AgentFocusMode::Leaf);
-    assert_eq!(testing.agent_kind, "agent");
+    assert_eq!(testing.agent_kind.as_str(), "agent");
     assert!(testing.is_resident_agent());
     assert_eq!(testing.display_role, "Test Runner");
     assert_eq!(
@@ -254,11 +263,14 @@ fn canonical_registry_compiles_host_routes() {
     );
     assert_eq!(testing.description, "for build and test jobs");
     assert!(testing.profile_path.ends_with("asp_testing_codex.toml"));
-    assert_eq!(testing.sandbox_mode.as_deref(), Some("read-only"));
+    assert_eq!(
+        testing.sandbox_mode.map(|mode| mode.as_str()),
+        Some("read-only")
+    );
     let coding = compile_agent_route(&loaded, "asp_coding", "codex").expect("Codex coding route");
     assert_eq!(coding.platform_host_agent_name.as_str(), "asp_coding");
     assert_eq!(coding.focus_mode, super::AgentFocusMode::Leaf);
-    assert_eq!(coding.agent_kind, "agent");
+    assert_eq!(coding.agent_kind.as_str(), "agent");
     assert!(coding.is_resident_agent());
     assert_eq!(coding.display_role, "Owner-scoped Coding Worker");
     assert_eq!(
@@ -271,7 +283,10 @@ fn canonical_registry_compiles_host_routes() {
         "for edits restricted to explicitly registered owner paths"
     );
     assert!(coding.profile_path.ends_with("asp_coding_codex.toml"));
-    assert_eq!(coding.sandbox_mode.as_deref(), Some("workspace-write"));
+    assert_eq!(
+        coding.sandbox_mode.map(|mode| mode.as_str()),
+        Some("workspace-write")
+    );
     assert!(
         !coding
             .effective_permissions
@@ -330,7 +345,7 @@ developer_instructions = "Return a bounded receipt."
         .expect("resolve temporary Host identity")
         .expect("temporary route exists");
 
-    assert_eq!(route.agent_kind, "subagent");
+    assert_eq!(route.agent_kind.as_str(), "subagent");
     assert_eq!(route.session_lifetime, AgentSessionLifetime::Temporary);
     assert!(!route.is_resident_agent());
 }
@@ -392,7 +407,7 @@ display_role = "Probe"
         "invalid agent kind fixture",
     )
     .expect_err("agent_kind outside the schema enum must fail closed");
-    assert!(error.contains("agent_kind must be `agent` or `subagent`"));
+    assert!(error.contains("unknown variant `worker`"), "{error}");
 }
 
 #[test]

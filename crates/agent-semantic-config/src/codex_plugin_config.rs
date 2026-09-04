@@ -4,9 +4,11 @@ use std::fs;
 use std::path::Path;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+/// Stable identifier used as a key in Codex's global plugin table.
 pub struct CodexPluginId(String);
 
 impl CodexPluginId {
+    /// Returns the exact plugin-table key without changing its spelling.
     pub fn as_str(&self) -> &str {
         &self.0
     }
@@ -25,6 +27,7 @@ impl From<&str> for CodexPluginId {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+/// Typed failure returned while decoding Codex's plugin configuration.
 pub struct CodexPluginConfigError(String);
 
 impl std::fmt::Display for CodexPluginConfigError {
@@ -41,6 +44,10 @@ impl From<String> for CodexPluginConfigError {
     }
 }
 
+/// Reports whether `plugin_id` is explicitly enabled in a Codex config file.
+///
+/// A missing file, plugin table, plugin entry, or `enabled` field is treated as
+/// disabled. Malformed TOML remains a typed error rather than being accepted.
 pub fn codex_config_plugin_enabled(
     config_path: &Path,
     plugin_id: CodexPluginId,

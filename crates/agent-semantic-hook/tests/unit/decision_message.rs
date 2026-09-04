@@ -1,8 +1,14 @@
-use agent_semantic_hook::{
-    DecisionKind, DecisionRoute, DecisionRouteKind, DecisionSubject, HOOK_DECISION_SCHEMA_ID,
-    HOOK_DECISION_SCHEMA_VERSION, HOOK_PROTOCOL_ID, HOOK_PROTOCOL_VERSION, HookDecision,
-    ReasonKind, materialize_source_access_deny_message,
-};
+use agent_semantic_hook::DecisionKind;
+use agent_semantic_hook::DecisionRoute;
+use agent_semantic_hook::DecisionRouteKind;
+use agent_semantic_hook::DecisionSubject;
+use agent_semantic_hook::HOOK_DECISION_SCHEMA_ID;
+use agent_semantic_hook::HOOK_DECISION_SCHEMA_VERSION;
+use agent_semantic_hook::HOOK_PROTOCOL_ID;
+use agent_semantic_hook::HOOK_PROTOCOL_VERSION;
+use agent_semantic_hook::HookDecision;
+use agent_semantic_hook::ReasonKind;
+use agent_semantic_hook::materialize_source_access_deny_message;
 
 #[test]
 fn configured_message_binds_language_and_appends_executable_provider_route() {
@@ -50,7 +56,7 @@ fn configured_message_binds_language_and_appends_executable_provider_route() {
         decision
             .message
             .contains(
-                "ASP route: `asp rust search playbook 'source structure' --scope 'owner:src/a file.rs' --workspace .`"
+                "ASP route: `asp search playbook --language rust 'source structure' --scope 'owner:src/a file.rs' --workspace .`"
             )
     );
 }

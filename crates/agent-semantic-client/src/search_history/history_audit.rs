@@ -1,13 +1,16 @@
 //! Search command history audit via the graph-turbo artifact timeline.
 
 use std::collections::HashSet;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 
 use agent_semantic_client_core::ProjectContext;
-use agent_semantic_client_db::{ClientDbArtifactEvent, ClientDbEngine};
+use agent_semantic_client_db::ClientDbArtifactEvent;
+use agent_semantic_client_db::ClientDbEngine;
 use bytes::Bytes;
 
-use super::artifact_events::{artifact_file_count, scan_artifact_events_for_db};
+use super::artifact_events::artifact_file_count;
+use super::artifact_events::scan_artifact_events_for_db;
 
 pub(crate) async fn run_search_history(project_root: &Path, args: &[String]) -> Result<(), String> {
     let (audit_root, forwarded_args) = parse_history_audit_args(project_root, args)?;
@@ -49,7 +52,7 @@ async fn print_history_audit(audit_root: &Path, forwarded_args: &[String]) -> Re
     let report = client
         .graphs_timeline(serde_json::json!({
             "schemaId": agent_semantic_client_protocol::GRAPH_TIMELINE_REQUEST_SCHEMA_ID,
-            "schemaVersion": agent_semantic_client_protocol::SCHEMA_VERSION,
+        "schemaVersion": agent_semantic_client_protocol::protocol_identity::SCHEMA_VERSION,
             "eventPacket": event_packet,
             "arguments": forwarded_args,
         }))

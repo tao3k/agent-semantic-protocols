@@ -1,6 +1,8 @@
 //! Parser-backed workspace projection for Hook lifecycle events.
 
-use std::path::{Component, Path, PathBuf};
+use std::path::Component;
+use std::path::Path;
+use std::path::PathBuf;
 
 /// Resolve the workspace identity carried by a Hook payload without filesystem I/O.
 pub fn hook_workspace_candidate(payload: &serde_json::Value, project_root: &Path) -> PathBuf {

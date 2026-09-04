@@ -1,7 +1,8 @@
-use super::{
-    ActiveArtifactKind, ActiveArtifactLeaf, ActiveArtifactLeafInput, ActiveAspArtifactReceipt,
-    ActiveAspArtifactReceiptError,
-};
+use super::ActiveArtifactKind;
+use super::ActiveArtifactLeaf;
+use super::ActiveArtifactLeafInput;
+use super::ActiveAspArtifactReceipt;
+use super::ActiveAspArtifactReceiptError;
 use crate::exact_selector_merkle::blake3_content_digest_v1;
 
 fn leaf(logical_path: &str, artifact_kind: ActiveArtifactKind, bytes: &[u8]) -> ActiveArtifactLeaf {

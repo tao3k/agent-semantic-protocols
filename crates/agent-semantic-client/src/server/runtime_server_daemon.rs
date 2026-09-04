@@ -1,9 +1,11 @@
 //! Owns assembly and coordinated shutdown of the long-lived Runtime Server.
 
-use super::{
-    daemon_identity, runtime_server_identity_handoff, runtime_server_search_service,
-    runtime_server_telemetry_query_socket_path, runtime_server_telemetry_socket_path, state_home,
-};
+use super::daemon_identity;
+use super::runtime_server_identity_handoff;
+use super::runtime_server_search_service;
+use super::runtime_server_telemetry_query_socket_path;
+use super::runtime_server_telemetry_socket_path;
+use super::state_home;
 use agent_semantic_client_db::WorkspaceDbRegistry;
 use agent_semantic_client_db::runtime_server::RuntimeServer;
 use agent_semantic_client_db::runtime_server_control::remove_stale_socket;
@@ -159,6 +161,10 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
         .await?
     };
     let provider_register = std::sync::Arc::new(provider_register);
+    let workspace_search_providers =
+        agent_semantic_runtime_server::workspace_search_providers_from_provider_register(
+            provider_register.as_ref(),
+        )?;
     let telemetry_socket_path = runtime_server_telemetry_socket_path(&state_home)?;
     let telemetry_query_socket_path = runtime_server_telemetry_query_socket_path(&state_home)?;
     remove_stale_socket(&telemetry_socket_path).await?;
@@ -383,6 +389,7 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
         std::sync::Arc::clone(server.workspace_registry()),
         runtime_provider_catalog.generation().to_owned(),
         std::sync::Arc::from(runtime_provider_catalog.installed_provider_targets()),
+        workspace_search_providers,
         workspace_store_root,
         query_generation_authority.clone(),
         lifecycle_bus.sender.clone(),

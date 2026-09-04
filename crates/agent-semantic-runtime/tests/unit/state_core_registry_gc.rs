@@ -1,11 +1,11 @@
-use std::{
-    fs,
-    path::Path,
-    process::Command,
-    time::{SystemTime, UNIX_EPOCH},
-};
+use std::fs;
+use std::path::Path;
+use std::process::Command;
+use std::time::SystemTime;
+use std::time::UNIX_EPOCH;
 
-use super::{ProjectRegistryGcOptions, ResolvedState};
+use super::ProjectRegistryGcOptions;
+use super::ResolvedState;
 
 #[test]
 fn project_gc_is_dry_run_by_default_and_revalidates_apply() {

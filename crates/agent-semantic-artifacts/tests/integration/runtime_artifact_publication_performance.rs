@@ -1,8 +1,7 @@
 use std::os::unix::fs::PermissionsExt;
 
-use agent_semantic_artifacts::runtime_artifact_activation::{
-    commit_runtime_artifact_activation, read_runtime_artifact_activation_event,
-};
+use agent_semantic_artifacts::runtime_artifact_activation::commit_runtime_artifact_activation;
+use agent_semantic_artifacts::runtime_artifact_activation::read_runtime_artifact_activation_event;
 use agent_semantic_artifacts::runtime_artifact_publication::publish_runtime_artifact;
 
 const SAMPLE_COUNT: usize = 32;

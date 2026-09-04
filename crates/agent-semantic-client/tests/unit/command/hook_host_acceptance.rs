@@ -1,7 +1,8 @@
 use super::inspect_host_rollout;
 use serde_json::json;
 use std::io::Write;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::SystemTime;
+use std::time::UNIX_EPOCH;
 
 const SENTINEL: &str = "ASP_NORMAL_TASK_SOURCE_SENTINEL_7F21";
 const PROBE_PATH: &str = "tests/fixtures/hook-host-acceptance/probe.rs";

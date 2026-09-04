@@ -1,24 +1,28 @@
-use std::{
-    collections::BTreeSet,
-    path::Path,
-    time::{SystemTime, UNIX_EPOCH},
-};
+use std::collections::BTreeSet;
+use std::path::Path;
+use std::time::SystemTime;
+use std::time::UNIX_EPOCH;
 
-use agent_semantic_artifacts::{
-    CatalogObservation, CleanupDisposition, CleanupPlan, ProjectBinding, RetainedObject,
-    RetentionLease, RetentionObjectKind, StateHomeLayout,
-};
+use agent_semantic_artifacts::CatalogObservation;
+use agent_semantic_artifacts::CleanupDisposition;
+use agent_semantic_artifacts::CleanupPlan;
+use agent_semantic_artifacts::ProjectBinding;
+use agent_semantic_artifacts::RetainedObject;
+use agent_semantic_artifacts::RetentionLease;
+use agent_semantic_artifacts::RetentionObjectKind;
+use agent_semantic_artifacts::StateHomeLayout;
 use agent_semantic_client_db::StateHomeCatalog;
 
-use agent_semantic_runtime::state_core::{
-    ProjectRegistryGcCandidate, ProjectRegistryGcOptions, ProjectRegistryGcReport, ResolvedState,
-    TemporaryWorkspaceCacheGcCandidate, TemporaryWorkspaceCacheGcOptions,
-    TemporaryWorkspaceCacheGcReport,
-};
+use agent_semantic_runtime::state_core::ProjectRegistryGcCandidate;
+use agent_semantic_runtime::state_core::ProjectRegistryGcOptions;
+use agent_semantic_runtime::state_core::ProjectRegistryGcReport;
+use agent_semantic_runtime::state_core::ResolvedState;
+use agent_semantic_runtime::state_core::TemporaryWorkspaceCacheGcCandidate;
+use agent_semantic_runtime::state_core::TemporaryWorkspaceCacheGcOptions;
+use agent_semantic_runtime::state_core::TemporaryWorkspaceCacheGcReport;
 
-use super::project_registry_gc_args::{
-    parse_project_registry_clean_args, parse_project_registry_gc_args,
-};
+use super::project_registry_gc_args::parse_project_registry_clean_args;
+use super::project_registry_gc_args::parse_project_registry_gc_args;
 
 pub(crate) fn run_project_registry_gc(
     project_root: &Path,

@@ -1,4 +1,16 @@
+use super::fixture::temp_root;
+use agent_semantic_client_db::storage_contract::AgentStorage;
+use agent_semantic_client_db::storage_contract::SESSION_EVENT_BATCH_SCHEMA_ID;
+use agent_semantic_client_db::storage_contract::SessionEvent;
+use agent_semantic_client_db::storage_contract::SessionEventBatch;
+use agent_semantic_client_db::storage_contract::SessionEventPageRequest;
+use agent_semantic_client_db::storage_contract::StorageOptimizationProfile;
+use agent_semantic_client_db::storage_contract::StoragePartitionKey;
+use agent_semantic_client_db::storage_contract::StorageRetryPolicy;
+use agent_semantic_client_db::storage_contract::StorageTransactionMode;
+use agent_semantic_client_db::storage_contract::StorageTransactionState;
 use agent_semantic_client_db::turso_agent_storage::TursoMvccAgentStorage;
+use agent_semantic_client_db::turso_mvcc_store::TursoMvccStoreConfig;
 
 fn turso_agent_storage_partition() -> StoragePartitionKey {
     StoragePartitionKey {

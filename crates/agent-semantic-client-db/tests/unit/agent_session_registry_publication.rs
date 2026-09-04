@@ -1,4 +1,5 @@
-use agent_semantic_client_db::{AGENT_SESSION_REGISTRY_DB_NAME, AgentSessionRegistry};
+use agent_semantic_client_db::AGENT_SESSION_REGISTRY_DB_NAME;
+use agent_semantic_client_db::AgentSessionRegistry;
 
 #[tokio::test]
 async fn route_slot_database_is_preserved_while_current_instance_registry_is_published() {

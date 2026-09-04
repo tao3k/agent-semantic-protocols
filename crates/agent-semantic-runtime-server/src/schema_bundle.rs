@@ -1,16 +1,21 @@
 //! Immutable Runtime projection of SchemaManager-owned language bundles.
 
-use std::collections::{BTreeMap, HashMap};
-use std::path::{Path, PathBuf};
+use std::collections::BTreeMap;
+use std::collections::HashMap;
+use std::path::Path;
+use std::path::PathBuf;
 use std::sync::Arc;
 
-use agent_semantic_client_protocol::{
-    SCHEMA_BUNDLE_RESPONSE_SCHEMA_ID, SCHEMA_VERSION, SchemaBundleDocument, SchemaBundleEntry,
-    SchemaBundleReceipt, SchemaBundleRequest, SchemaBundleResponse,
-};
-use agent_semantic_schema_manager::{
-    BUNDLE_RECEIPT_FILE, SchemaManager, load_verified_bundle_receipt,
-};
+use agent_semantic_client_protocol::SCHEMA_BUNDLE_RESPONSE_SCHEMA_ID;
+use agent_semantic_client_protocol::SchemaBundleDocument;
+use agent_semantic_client_protocol::SchemaBundleEntry;
+use agent_semantic_client_protocol::SchemaBundleReceipt;
+use agent_semantic_client_protocol::SchemaBundleRequest;
+use agent_semantic_client_protocol::SchemaBundleResponse;
+use agent_semantic_client_protocol::protocol_identity::SCHEMA_VERSION;
+use agent_semantic_schema_manager::BUNDLE_RECEIPT_FILE;
+use agent_semantic_schema_manager::SchemaManager;
+use agent_semantic_schema_manager::load_verified_bundle_receipt;
 use serde::Deserialize;
 
 const EMBEDDED_SCHEMA_CATALOG: &[u8] =
@@ -301,30 +306,8 @@ impl RuntimeSchemaBundleCatalog {
 }
 
 #[cfg(test)]
-mod binding_tests {
-    use super::RuntimeSchemaBundleCatalog;
-
-    #[test]
-    fn embedded_bundle_binding_is_v1_deterministic_and_complete() {
-        let catalog = RuntimeSchemaBundleCatalog::load_embedded().expect("embedded schema catalog");
-        let once = catalog
-            .binding_digest(["rust"])
-            .expect("Rust schema bundle binding");
-        let duplicated = catalog
-            .binding_digest(["rust", "rust"])
-            .expect("deduplicated Rust schema bundle binding");
-        assert_eq!(once, duplicated);
-        assert!(once.starts_with("blake3-256:"));
-
-        let missing = catalog
-            .binding_digest(["not-a-registered-language"])
-            .expect_err("missing required schema bundle must fail closed");
-        assert!(
-            missing.contains("absent for required language"),
-            "{missing}"
-        );
-    }
-}
+#[path = "../tests/unit/schema_bundle.rs"]
+mod binding_tests;
 
 fn read_schema_document(schema_root: &Path, name: &str) -> Result<serde_json::Value, String> {
     if name == BUNDLE_RECEIPT_FILE || name.contains('/') {

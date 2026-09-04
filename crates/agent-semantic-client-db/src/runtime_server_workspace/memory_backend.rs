@@ -129,7 +129,7 @@ impl WorkspaceMemoryBackend {
             for (relation_position, owned) in self.generation.relations.iter().enumerate() {
                 let relation = &owned.relation;
                 index
-                    .entry((relation.from.kind.clone(), relation.from.id.clone()))
+                    .entry((relation.from.kind.to_string(), relation.from.id.clone()))
                     .or_default()
                     .push(relation_position);
             }

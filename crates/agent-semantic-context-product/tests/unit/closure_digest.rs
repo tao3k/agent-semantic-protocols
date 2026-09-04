@@ -1,7 +1,9 @@
-use crate::{
-    ClosureDisposition, Digest, ProtocolId, SearchClosureReceipt, UncheckedContextProductStateV1,
-    ValidationError,
-};
+use crate::ClosureDisposition;
+use crate::Digest;
+use crate::ProtocolId;
+use crate::SearchClosureReceipt;
+use crate::UncheckedContextProductStateV1;
+use crate::ValidationError;
 
 #[test]
 fn closure_receipt_digest_excludes_post_transition_digests() {

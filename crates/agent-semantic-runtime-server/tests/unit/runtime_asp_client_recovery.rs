@@ -1,11 +1,12 @@
 use std::sync::Arc;
 
-use agent_semantic_client_protocol::{ClientProjectId, ClientWorkspaceIdentity};
+use agent_semantic_client_protocol::ClientProjectId;
+use agent_semantic_client_protocol::ClientWorkspaceIdentity;
 
-use super::{
-    RuntimeProjectWorkspaceKey, RuntimeQueryGenerationState, wait_for_runtime_query_generation,
-    wait_for_runtime_query_generation_change,
-};
+use super::RuntimeProjectWorkspaceKey;
+use super::RuntimeQueryGenerationState;
+use super::wait_for_runtime_query_generation;
+use super::wait_for_runtime_query_generation_change;
 
 fn key() -> RuntimeProjectWorkspaceKey {
     RuntimeProjectWorkspaceKey::new(
@@ -24,7 +25,7 @@ async fn absent_first_search_waits_only_for_the_new_byte_generation_terminal() {
         >::new()));
     let next_key = key.clone();
     tokio::spawn(async move {
-        tokio::task::yield_now().await;
+        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
         sender.send_replace(Arc::new(std::collections::HashMap::from([(
             next_key,
             RuntimeQueryGenerationState::Failed {
@@ -33,10 +34,13 @@ async fn absent_first_search_waits_only_for_the_new_byte_generation_terminal() {
             },
         )])));
     });
-    let observed =
-        wait_for_runtime_query_generation(&mut receiver, &key, std::time::Duration::from_secs(1))
-            .await
-            .expect("new byte-generation terminal");
+    let observed = tokio::time::timeout(
+        std::time::Duration::from_secs(1),
+        wait_for_runtime_query_generation(&mut receiver, &key),
+    )
+    .await
+    .expect("first Search waits for the generation terminal")
+    .expect("new byte-generation terminal");
     assert!(matches!(
         observed,
         RuntimeQueryGenerationState::Failed { .. }
@@ -55,7 +59,7 @@ async fn failed_first_search_does_not_reuse_the_stale_failure_terminal() {
     ));
     let next_key = key.clone();
     tokio::spawn(async move {
-        tokio::task::yield_now().await;
+        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
         sender.send_replace(Arc::new(std::collections::HashMap::from([(
             next_key,
             RuntimeQueryGenerationState::Failed {
@@ -64,12 +68,12 @@ async fn failed_first_search_does_not_reuse_the_stale_failure_terminal() {
             },
         )])));
     });
-    let observed = wait_for_runtime_query_generation_change(
-        &mut receiver,
-        &key,
+    let observed = tokio::time::timeout(
         std::time::Duration::from_secs(1),
+        wait_for_runtime_query_generation_change(&mut receiver, &key),
     )
     .await
+    .expect("recovery waits for a fresh generation terminal")
     .expect("fresh recovery terminal");
     let RuntimeQueryGenerationState::Failed { reason, .. } = observed else {
         panic!("fixture publishes a replacement failure")

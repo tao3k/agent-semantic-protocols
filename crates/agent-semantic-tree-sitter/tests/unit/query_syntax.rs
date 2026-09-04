@@ -1,4 +1,6 @@
-use crate::{SyntaxQueryPredicateOp, SyntaxQueryPredicateValue, compile_query_abi_source};
+use crate::SyntaxQueryPredicateOp;
+use crate::SyntaxQueryPredicateValue;
+use crate::compile_query_abi_source;
 
 #[test]
 fn compiles_function_name_query_to_abi_plan() {

@@ -1,19 +1,32 @@
 use std::collections::BTreeSet;
 
-use agent_semantic_context_product::{
-    ContextProductEvent, Digest, ExecutionAuthority, ExecutionConsumed, ExecutionConsumedEventType,
-    ExecutionRevoked, ExecutionRevokedEventType, ExecutionStarted, ExecutionStartedEventType,
-    JSON_SAFE_INTEGER_MAX, ProtocolId, UncheckedContextProductStateV1, ValidationError,
-    chained_event_log_digest,
-};
+use agent_semantic_context_product::ContextProductEvent;
+use agent_semantic_context_product::Digest;
+use agent_semantic_context_product::ExecutionAuthority;
+use agent_semantic_context_product::ExecutionConsumed;
+use agent_semantic_context_product::ExecutionConsumedEventType;
+use agent_semantic_context_product::ExecutionRevoked;
+use agent_semantic_context_product::ExecutionRevokedEventType;
+use agent_semantic_context_product::ExecutionStarted;
+use agent_semantic_context_product::ExecutionStartedEventType;
+use agent_semantic_context_product::JSON_SAFE_INTEGER_MAX;
+use agent_semantic_context_product::ProtocolId;
+use agent_semantic_context_product::UncheckedContextProductStateV1;
+use agent_semantic_context_product::ValidationError;
+use agent_semantic_context_product::chained_event_log_digest;
 
-use super::transition_core::{
-    canonical_digest, commit_events, derived_id, next_clock, require_expected_head,
-};
-use crate::{
-    GraphRouter, GraphRouterError, ProofResolver, RunCommitStore, TrustedClock,
-    ValidatedContextProductStateV1, graph_router::authority_receipt_id,
-};
+use super::transition_core::canonical_digest;
+use super::transition_core::commit_events;
+use super::transition_core::derived_id;
+use super::transition_core::next_clock;
+use super::transition_core::require_expected_head;
+use crate::GraphRouter;
+use crate::GraphRouterError;
+use crate::ProofResolver;
+use crate::RunCommitStore;
+use crate::TrustedClock;
+use crate::ValidatedContextProductStateV1;
+use crate::graph_router::authority_receipt_id;
 
 #[derive(Clone, Debug)]
 pub struct ExecutionStartSpec {

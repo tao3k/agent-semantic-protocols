@@ -1,9 +1,12 @@
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::AtomicU64;
+use std::sync::atomic::Ordering;
 
-use agent_semantic_client::provider_runtime_storage::{
-    ProviderExecutionStorageEvent, ProviderRuntimeStorageBinding,
-};
-use criterion::{Criterion, Throughput, criterion_group, criterion_main};
+use agent_semantic_client::provider_runtime_storage::ProviderExecutionStorageEvent;
+use agent_semantic_client::provider_runtime_storage::ProviderRuntimeStorageBinding;
+use criterion::Criterion;
+use criterion::Throughput;
+use criterion::criterion_group;
+use criterion::criterion_main;
 
 struct BenchProject(std::path::PathBuf);
 

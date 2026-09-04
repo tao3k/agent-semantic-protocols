@@ -1,15 +1,16 @@
 //! Typed callable skeleton projections bound to exact structural selectors.
 
-use crate::exact_structural_selector::{
-    ExactStructuralSelectorV1, ExactStructuralSelectorValidationError,
-};
-use crate::projection_evidence_context::{
-    ExactStructuralSelectorReferenceV1, ProjectionEvidenceContextValidationError,
-};
-use base64::{Engine as _, engine::general_purpose::STANDARD};
-use serde::{Deserialize, Serialize};
+use crate::exact_structural_selector::ExactStructuralSelectorV1;
+use crate::exact_structural_selector::ExactStructuralSelectorValidationError;
+use crate::projection_evidence_context::ExactStructuralSelectorReferenceV1;
+use crate::projection_evidence_context::ProjectionEvidenceContextValidationError;
+use base64::Engine as _;
+use base64::engine::general_purpose::STANDARD;
+use serde::Deserialize;
+use serde::Serialize;
 use serde_json::Value;
-use std::collections::{BTreeMap, HashSet};
+use std::collections::BTreeMap;
+use std::collections::HashSet;
 use std::fmt;
 
 /// Stable schema identity for callable-skeleton projection payloads.

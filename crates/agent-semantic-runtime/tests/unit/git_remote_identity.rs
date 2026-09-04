@@ -1,7 +1,9 @@
-use super::{RemoteUrl, select_canonical_remote};
+use super::RemoteUrl;
+use super::select_canonical_remote;
 
 use super::GitIdentity;
-use std::{path::Path, process::Command};
+use std::path::Path;
+use std::process::Command;
 
 #[test]
 fn canonical_remote_identity_is_scheme_independent() {

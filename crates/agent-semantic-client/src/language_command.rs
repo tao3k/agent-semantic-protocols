@@ -5,11 +5,13 @@ use std::path::PathBuf;
 use std::pin::Pin;
 
 use crate::AspClient;
-use crate::projection_presentation::{ProjectionPresentation, render_exact_projection_response};
+use crate::projection_presentation::ProjectionPresentation;
+use crate::projection_presentation::render_exact_projection_response;
 use agent_semantic_client_core::LanguageId;
-use agent_semantic_client_protocol::{
-    AspClientExactQueryRequest, AspClientSearchRequest, ClientFrame, ClientOutcome,
-};
+use agent_semantic_client_protocol::AspClientExactQueryRequest;
+use agent_semantic_client_protocol::AspClientSearchRequest;
+use agent_semantic_client_protocol::ClientFrame;
+use agent_semantic_client_protocol::ClientOutcome;
 
 /// Typed language operation admitted by the shared client protocol.
 #[derive(Clone, Debug, Eq, PartialEq)]

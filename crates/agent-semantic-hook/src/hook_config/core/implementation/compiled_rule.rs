@@ -2,21 +2,30 @@
 
 use super::action_match_facade as action_match;
 
-use agent_semantic_config::{
-    HookClientConfigDecision, HookClientConfigFile, HookClientConfigRouteKind,
-    HookClientRuleConfig, HookClientRuleMatchConfig, HookClientRuleRouteConfig,
-};
+use agent_semantic_config::HookClientConfigDecision;
+use agent_semantic_config::HookClientConfigFile;
+use agent_semantic_config::HookClientConfigRouteKind;
+use agent_semantic_config::HookClientRuleConfig;
+use agent_semantic_config::HookClientRuleMatchConfig;
+use agent_semantic_config::HookClientRuleRouteConfig;
 
+use crate::AgentOrgArtifactsArchiveWarning;
+use crate::AgentOrgArtifactsRecovery;
+use crate::CompiledAgentOrgArtifactsConfig;
+use crate::HookRuntime;
+use crate::collect_source_selector_matches;
 use crate::hook_config::compile_agent_org_artifacts_config;
-use crate::protocol::{
-    DecisionKind, DecisionRouteKind, HOOK_DECISION_SCHEMA_ID, HOOK_DECISION_SCHEMA_VERSION,
-    HOOK_PROTOCOL_ID, HOOK_PROTOCOL_VERSION, HookDecision, ReasonKind, StdinMode,
-};
-use crate::tool_action::{ToolAction, subject_for_action};
-use crate::{
-    AgentOrgArtifactsArchiveWarning, AgentOrgArtifactsRecovery, CompiledAgentOrgArtifactsConfig,
-    HookRuntime, collect_source_selector_matches,
-};
+use crate::protocol::DecisionKind;
+use crate::protocol::DecisionRouteKind;
+use crate::protocol::HOOK_DECISION_SCHEMA_ID;
+use crate::protocol::HOOK_DECISION_SCHEMA_VERSION;
+use crate::protocol::HOOK_PROTOCOL_ID;
+use crate::protocol::HOOK_PROTOCOL_VERSION;
+use crate::protocol::HookDecision;
+use crate::protocol::ReasonKind;
+use crate::protocol::StdinMode;
+use crate::tool_action::ToolAction;
+use crate::tool_action::subject_for_action;
 
 #[path = "compiled_rule_conversion.rs"]
 mod conversion;
@@ -26,7 +35,9 @@ mod environment_assignment;
 mod matcher_helpers;
 #[path = "compiled_rule_structured_projection_template.rs"]
 mod structured_projection_template;
-use matcher_helpers::{fast_path_token, path_without_line_range, structured_document_format};
+use matcher_helpers::fast_path_token;
+use matcher_helpers::path_without_line_range;
+use matcher_helpers::structured_document_format;
 #[path = "compiled_hook_rule.rs"]
 mod compiled_hook_rule;
 #[path = "compiled_rule_match.rs"]
@@ -771,16 +782,17 @@ mod client_config;
 #[path = "compiled_rule_durable_artifact.rs"]
 mod durable_artifact;
 
-pub(in crate::hook_config) use client_config::{
-    compile_config, compile_config_with_executable_capabilities,
-};
+pub(in crate::hook_config) use client_config::compile_config;
+pub(in crate::hook_config) use client_config::compile_config_with_executable_capabilities;
+use durable_artifact::DURABLE_HOOK_MATCHER_SCHEMA_ID;
+use durable_artifact::DURABLE_HOOK_MATCHER_SCHEMA_VERSION;
 pub use durable_artifact::DurableHookConfigArtifact;
-use durable_artifact::{
-    DURABLE_HOOK_MATCHER_SCHEMA_ID, DURABLE_HOOK_MATCHER_SCHEMA_VERSION, DurableRuleMatcherArtifact,
-};
+use durable_artifact::DurableRuleMatcherArtifact;
 
-use crate::hook_config::core::match_types::{CompiledCommandContains, CompiledPathGlobs};
-use crate::hook_config::core::{compile_command_contains, compile_globs};
+use crate::hook_config::core::compile_command_contains;
+use crate::hook_config::core::compile_globs;
+use crate::hook_config::core::match_types::CompiledCommandContains;
+use crate::hook_config::core::match_types::CompiledPathGlobs;
 
 fn canonical_event(value: &str) -> String {
     value.to_ascii_lowercase().replace('_', "-")

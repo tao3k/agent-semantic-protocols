@@ -1,7 +1,12 @@
-use super::{
-    ProviderArtifactAuthority, ProviderInstallLock, asset_name, checksum_name,
-    parse_sha256_checksum, path_segment, provider_release, validate_target, write_provider_lock,
-};
+use super::ProviderArtifactAuthority;
+use super::ProviderInstallLock;
+use super::asset_name;
+use super::checksum_name;
+use super::parse_sha256_checksum;
+use super::path_segment;
+use super::provider_release;
+use super::validate_target;
+use super::write_provider_lock;
 
 #[test]
 fn provider_lock_serializes_canonical_artifact_digest_without_legacy_generation_key() {

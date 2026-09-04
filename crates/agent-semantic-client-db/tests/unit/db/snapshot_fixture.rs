@@ -1,4 +1,5 @@
-use agent_semantic_content_identity::{SourceSnapshotEvidence, SourceSnapshotKind};
+use agent_semantic_content_identity::SourceSnapshotEvidence;
+use agent_semantic_content_identity::SourceSnapshotKind;
 
 pub(crate) fn source_snapshot_evidence() -> SourceSnapshotEvidence {
     source_snapshot_evidence_for(1)

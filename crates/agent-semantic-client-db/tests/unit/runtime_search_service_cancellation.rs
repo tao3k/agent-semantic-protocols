@@ -1,7 +1,6 @@
 use agent_semantic_client_db::runtime_generation_cancellation::GenerationCancellation;
-use agent_semantic_client_db::runtime_search_service::{
-    RuntimeSearchServiceRequest, runtime_search_service_channel,
-};
+use agent_semantic_client_db::runtime_search_service::RuntimeSearchServiceRequest;
+use agent_semantic_client_db::runtime_search_service::runtime_search_service_channel;
 use tokio_stream::StreamExt;
 
 #[tokio::test]

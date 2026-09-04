@@ -1,7 +1,7 @@
-use agent_semantic_hook::{
-    HookRuntime, bind_plugin_host_matcher, classify_hook,
-    codex_tool_event_requires_policy_evaluation,
-};
+use agent_semantic_hook::HookRuntime;
+use agent_semantic_hook::bind_plugin_host_matcher;
+use agent_semantic_hook::classify_hook;
+use agent_semantic_hook::codex_tool_event_requires_policy_evaluation;
 use serde_json::json;
 
 #[test]

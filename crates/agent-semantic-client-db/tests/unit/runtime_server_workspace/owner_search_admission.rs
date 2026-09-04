@@ -1,4 +1,7 @@
-use super::*;
+use super::{
+    ExactProjectionKind, WorkspaceOwnerSearchSeedSnapshot, finish_owner_search,
+    selector_is_admitted,
+};
 
 fn seed(selector: &str) -> WorkspaceOwnerSearchSeedSnapshot {
     WorkspaceOwnerSearchSeedSnapshot {

@@ -1,7 +1,8 @@
-use agent_semantic_shell_parser::{
-    MAX_COMMAND_CANDIDATES, PrefixMatch, bash::parse_bash_command_candidates,
-    command_stages_match_process_environment_assignment, command_stages_match_wrapped_prefix,
-};
+use agent_semantic_shell_parser::MAX_COMMAND_CANDIDATES;
+use agent_semantic_shell_parser::PrefixMatch;
+use agent_semantic_shell_parser::bash::parse_bash_command_candidates;
+use agent_semantic_shell_parser::command_stages_match_process_environment_assignment;
+use agent_semantic_shell_parser::command_stages_match_wrapped_prefix;
 
 #[test]
 fn process_environment_assignment_is_parser_owned_and_stage_bounded() {

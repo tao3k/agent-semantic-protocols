@@ -1,14 +1,25 @@
-use agent_semantic_context_product::{
-    ActiveProgram, ContextProductEvent, Digest, ExecutionAuthority, ExecutionGroupJoined,
-    ExecutionGroupJoinedEventType, JoinedExecutionGroup, ProtocolId,
-    UncheckedContextProductStateV1, ValidationError, chained_event_log_digest,
-};
+use agent_semantic_context_product::ActiveProgram;
+use agent_semantic_context_product::ContextProductEvent;
+use agent_semantic_context_product::Digest;
+use agent_semantic_context_product::ExecutionAuthority;
+use agent_semantic_context_product::ExecutionGroupJoined;
+use agent_semantic_context_product::ExecutionGroupJoinedEventType;
+use agent_semantic_context_product::JoinedExecutionGroup;
+use agent_semantic_context_product::ProtocolId;
+use agent_semantic_context_product::UncheckedContextProductStateV1;
+use agent_semantic_context_product::ValidationError;
+use agent_semantic_context_product::chained_event_log_digest;
 
-use super::transition_core::{commit_state, next_clock, require_expected_head};
-use crate::{
-    GraphRouter, GraphRouterError, ProofResolver, RunCommitStore, TrustedClock,
-    ValidatedContextProductStateV1, graph_router::authority_receipt_id,
-};
+use super::transition_core::commit_state;
+use super::transition_core::next_clock;
+use super::transition_core::require_expected_head;
+use crate::GraphRouter;
+use crate::GraphRouterError;
+use crate::ProofResolver;
+use crate::RunCommitStore;
+use crate::TrustedClock;
+use crate::ValidatedContextProductStateV1;
+use crate::graph_router::authority_receipt_id;
 
 #[derive(Clone, Debug)]
 pub struct JoinExecutionGroupRequest {

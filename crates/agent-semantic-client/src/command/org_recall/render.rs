@@ -1,9 +1,10 @@
-use super::{checkpoint::CheckpointSyncResult, memory::MemoryRankedPlans, model::RankedOrgPlan};
+use super::checkpoint::CheckpointSyncResult;
+use super::memory::MemoryRankedPlans;
+use super::model::RankedOrgPlan;
 use serde_json::json;
-use std::{
-    env,
-    path::{Path, PathBuf},
-};
+use std::env;
+use std::path::Path;
+use std::path::PathBuf;
 
 pub(super) fn print_text_report(
     root: &Path,

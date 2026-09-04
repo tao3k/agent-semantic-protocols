@@ -1,7 +1,8 @@
 use super::{
-    ExactProjectionKind, WorkspaceDerivedProjectionSnapshot, WorkspaceOwnerSnapshot,
-    WorkspaceSelectorSnapshot, projection_validation::validate_selector, typed_digest,
+    ExactProjectionKind, WorkspaceOwnerSnapshot, WorkspaceSelectorSnapshot,
+    projection_validation::validate_selector, typed_digest,
 };
+use crate::runtime_server_workspace::WorkspaceDerivedProjectionSnapshot;
 
 #[test]
 fn streaming_digest_preserves_the_existing_json_digest_contract() {
@@ -22,6 +23,7 @@ fn selector_owner_validation_uses_the_shared_canonical_owner_codec() {
         authority: None,
         owner_path: "src/genport#.scm".to_owned(),
         content_digest: "blake3-256:fixture".to_owned(),
+        native_syntax_diagnostic: None,
         bytes: b"(defstruct genport ())".to_vec(),
         selectors: Vec::new(),
     };
@@ -50,6 +52,7 @@ fn signature_text_cannot_masquerade_as_callable_skeleton_json() {
         authority: None,
         owner_path: "src/lib.rs".to_owned(),
         content_digest: "blake3-256:unused-by-selector-validation".to_owned(),
+        native_syntax_diagnostic: None,
         bytes: b"fn f() {}".to_vec(),
         selectors: Vec::new(),
     };
@@ -89,14 +92,14 @@ fn referenced_projection_rejects_context_identity_drift() {
         agent_semantic_content_identity::projection_evidence_context::ProjectionEvidenceContext {
             schema_id: "agent.semantic-protocols.projection-evidence-context".to_owned(),
             schema_version: "1".to_owned(),
-            evidence_context_ref: format!("blake3-256:{}", "e".repeat(64)),
-            language_id: "rust".to_owned(),
-            provider_id: "asp-rust".to_owned(),
+            evidence_context_ref: format!("blake3-256:{}", "e".repeat(64)).into(),
+            language_id: "rust".into(),
+            provider_id: "asp-rust".into(),
             generation_identity_digest: format!("blake3-256:{}", "0".repeat(64)),
             parser_identity_digest: format!("blake3-256:{}", "1".repeat(64)),
             query_pack_digest: format!("blake3-256:{}", "2".repeat(64)),
         };
-    context.provider_id = "asp-other".to_owned();
+    context.provider_id = "asp-other".into();
     projection.evidence_context = Some(context);
 
     let error = validate_selector(&owner, &selector)
@@ -115,9 +118,9 @@ fn inline_projection_rejects_runtime_only_context() {
         agent_semantic_content_identity::projection_evidence_context::ProjectionEvidenceContext {
             schema_id: "agent.semantic-protocols.projection-evidence-context".to_owned(),
             schema_version: "1".to_owned(),
-            evidence_context_ref: format!("blake3-256:{}", "e".repeat(64)),
-            language_id: "rust".to_owned(),
-            provider_id: "asp-rust".to_owned(),
+            evidence_context_ref: format!("blake3-256:{}", "e".repeat(64)).into(),
+            language_id: "rust".into(),
+            provider_id: "asp-rust".into(),
             generation_identity_digest: format!("blake3-256:{}", "0".repeat(64)),
             parser_identity_digest: format!("blake3-256:{}", "1".repeat(64)),
             query_pack_digest: format!("blake3-256:{}", "2".repeat(64)),
@@ -181,6 +184,7 @@ fn callable_fixture() -> (WorkspaceOwnerSnapshot, WorkspaceSelectorSnapshot) {
         authority: None,
         owner_path: owner_path.to_owned(),
         content_digest: "blake3-256:fixture".to_owned(),
+        native_syntax_diagnostic: None,
         bytes,
         selectors: Vec::new(),
     };

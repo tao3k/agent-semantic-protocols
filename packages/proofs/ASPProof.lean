@@ -214,6 +214,7 @@ import ASPProof.SearchRouteAppendOnlyForecastCalibration
 import ASPProof.SearchRouteRobustWindowedCalibrationHysteresis
 import ASPProof.RuntimeServerSearchGeneration
 import ASPProof.WorkspaceSearchPlaybookPlanner
+import ASPProof.Audit.WorkspaceSearchPlaybookPlanner
 import ASPProof.RuntimeServerRestoreAuthority
 import ASPProof.RuntimeServerIncrementalIndex
 import ASPProof.RuntimeOwnerIdentityJournal

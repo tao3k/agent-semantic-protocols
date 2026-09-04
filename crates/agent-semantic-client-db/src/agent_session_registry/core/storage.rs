@@ -1,21 +1,23 @@
 //! DB-owned storage for agent session registry rows.
 
 use agent_semantic_client_core::state_core::ResolvedState;
-use std::{
-    fs,
-    path::{Path, PathBuf},
-    sync::atomic::{AtomicBool, Ordering},
-    time::Duration,
-};
+use std::fs;
+use std::path::Path;
+use std::path::PathBuf;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
+use std::time::Duration;
 
-use crate::engine::turso_statement::{execute_turso_operation, run_turso_operation};
+use crate::engine::turso_statement::execute_turso_operation;
+use crate::engine::turso_statement::run_turso_operation;
 
-use super::types::{AgentSessionRecord, AgentSessionRegisterRequest, AgentSessionToolEventRequest};
+use super::types::AgentSessionRecord;
+use super::types::AgentSessionRegisterRequest;
+use super::types::AgentSessionToolEventRequest;
 use crate::agent_session_registry::publication;
+pub(in crate::agent_session_registry) use crate::agent_session_registry::schema::block_on_agent_session_registry_async;
 use crate::agent_session_registry::schema::bootstrap_turso_agent_session_schema;
-pub(in crate::agent_session_registry) use crate::agent_session_registry::schema::{
-    block_on_agent_session_registry_async, connect_turso_agent_session_registry,
-};
+pub(in crate::agent_session_registry) use crate::agent_session_registry::schema::connect_turso_agent_session_registry;
 
 const AGENT_SESSION_EXPIRED_REFRESH_LOCK_STALE_AFTER: Duration = Duration::from_secs(60);
 static AGENT_SESSION_REGISTRY_RUNTIME_OWNER_PROCESS: AtomicBool = AtomicBool::new(false);

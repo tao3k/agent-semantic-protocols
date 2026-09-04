@@ -1,8 +1,8 @@
-use serde::{Deserialize, Serialize};
-use std::{
-    sync::atomic::{AtomicU64, Ordering},
-    time::Instant,
-};
+use serde::Deserialize;
+use serde::Serialize;
+use std::sync::atomic::AtomicU64;
+use std::sync::atomic::Ordering;
+use std::time::Instant;
 
 pub const SEARCH_COMMAND_DIAGNOSTICS_SCHEMA_ID: &str =
     "agent.semantic-protocols.search-command-diagnostics";

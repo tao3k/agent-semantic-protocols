@@ -2,17 +2,19 @@
 
 use super::provider_usage;
 
-use agent_semantic_client::{
-    LanguageCommandApplication, LanguageCommandOperation, LanguageCommandRequest,
-};
-use agent_semantic_client_protocol::{AspClientExactQueryRequest, AspClientSearchRequest};
+use agent_semantic_client::LanguageCommandApplication;
+use agent_semantic_client::LanguageCommandOperation;
+use agent_semantic_client::LanguageCommandRequest;
+use agent_semantic_client_protocol::AspClientExactQueryRequest;
+use agent_semantic_client_protocol::AspClientSearchRequest;
 use std::env;
 
 use super::protocol_version_line;
-pub(crate) use super::provider_selector::{
-    is_language_facade, unsupported_language_facade_message,
-};
-use provider_usage::{guide_usage, is_guide, provider_usage};
+pub(crate) use super::provider_selector::is_language_facade;
+pub(crate) use super::provider_selector::unsupported_language_facade_message;
+use provider_usage::guide_usage;
+use provider_usage::is_guide;
+use provider_usage::provider_usage;
 
 /// Observational target only; it never controls or cancels search execution.
 const SEARCH_DIAGNOSTIC_SLOW_TARGET_MICROS: u64 = 500_000;
@@ -40,14 +42,6 @@ async fn forward_runtime_language_command(
     project_root: std::path::PathBuf,
     machine_readable: bool,
 ) -> Result<(), String> {
-    let state_home = agent_semantic_runtime::state_core::resolve_state_home()?;
-    if agent_semantic_client_db::read_runtime_server_endpoint(&state_home)
-        .await?
-        .is_none()
-    {
-        crate::server::runtime_server::ensure_healthy_runtime_server_for_bounded_operation()
-            .await?;
-    }
     forward_language_command(
         &agent_semantic_client::RuntimeLanguageCommandApplication,
         language_id,

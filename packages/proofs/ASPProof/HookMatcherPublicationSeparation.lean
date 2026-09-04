@@ -282,6 +282,7 @@ inductive CommandEnvironmentEvidence where
   | directAssignment
   | envUtility
   | exportedCommand
+  | noncanonicalAssignment
   | unboundText
   deriving DecidableEq
 
@@ -289,6 +290,7 @@ def commandEnvironmentHasRecoveryAuthority : CommandEnvironmentEvidence → Bool
   | .directAssignment => true
   | .envUtility => true
   | .exportedCommand => true
+  | .noncanonicalAssignment => false
   | .unboundText => false
 
 /-- The command-local guard is evaluated before evaluator resolution. -/
@@ -308,6 +310,13 @@ theorem exported_assignment_is_recovery_authority :
     commandEnvironmentHasRecoveryAuthority .exportedCommand = true := by
   rfl
 
+/-- Lookalike environment variables and non-`1` values never become recovery
+authority.  The production parser binds only the exact `ASP_NO_AGENT=1`
+process assignment. -/
+theorem noncanonical_assignment_is_not_recovery_authority :
+    commandEnvironmentHasRecoveryAuthority .noncanonicalAssignment = false := by
+  rfl
+
 theorem unbound_payload_text_is_not_recovery_authority :
     commandEnvironmentHasRecoveryAuthority .unboundText = false := by
   rfl
@@ -318,6 +327,10 @@ theorem exported_command_escape_survives_missing_evaluator :
 
 theorem unbound_text_cannot_escape_missing_evaluator :
     commandEscapeBeforeEvaluator .unboundText false = false := by
+  rfl
+
+theorem noncanonical_assignment_cannot_escape_missing_evaluator :
+    commandEscapeBeforeEvaluator .noncanonicalAssignment false = false := by
   rfl
 
 theorem command_environment_override_makes_deadlock_unreachable :

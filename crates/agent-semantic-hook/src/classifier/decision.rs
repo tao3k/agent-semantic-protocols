@@ -1,9 +1,13 @@
 use std::collections::BTreeMap;
 
-use crate::{
-    DecisionKind, DecisionSubject, HOOK_DECISION_SCHEMA_ID, HOOK_DECISION_SCHEMA_VERSION,
-    HOOK_PROTOCOL_ID, HOOK_PROTOCOL_VERSION, HookDecision, ReasonKind,
-};
+use crate::DecisionKind;
+use crate::DecisionSubject;
+use crate::HOOK_DECISION_SCHEMA_ID;
+use crate::HOOK_DECISION_SCHEMA_VERSION;
+use crate::HOOK_PROTOCOL_ID;
+use crate::HOOK_PROTOCOL_VERSION;
+use crate::HookDecision;
+use crate::ReasonKind;
 
 pub(super) fn allow(platform: &str, event: &str, subject: DecisionSubject) -> HookDecision {
     HookDecision {

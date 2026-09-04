@@ -1,15 +1,22 @@
 use serde_json::Value;
 
 use super::actions::query_term_count;
-use super::aliases::{
-    self, graph_aliases, graph_edge_lines, graph_frontier, graph_legend_line, graph_rank,
-    graph_syntax_lines, is_owner_item_query,
-};
-use super::api::{TERSE_GRAPH_MICRO_LEGEND, TopologyProjectionOptions};
+use super::aliases::graph_aliases;
+use super::aliases::graph_edge_lines;
+use super::aliases::graph_frontier;
+use super::aliases::graph_legend_line;
+use super::aliases::graph_rank;
+use super::aliases::graph_syntax_lines;
+use super::aliases::is_owner_item_query;
+use super::aliases::{self};
+use super::api::TERSE_GRAPH_MICRO_LEGEND;
+use super::api::TopologyProjectionOptions;
 use super::header::graph_header;
-use super::packet::{
-    fallback_algorithm, graph_root, is_owner_item_query_packet, packet_string, packet_view,
-};
+use super::packet::fallback_algorithm;
+use super::packet::graph_root;
+use super::packet::is_owner_item_query_packet;
+use super::packet::packet_string;
+use super::packet::packet_view;
 use super::profiles::graph_profiles_line;
 
 const DEFAULT_SEED_LIMIT: usize = 12;

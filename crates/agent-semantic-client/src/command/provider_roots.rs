@@ -1,7 +1,8 @@
 //! Workspace selector validation for server-routed provider requests.
 
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 
 pub(super) fn explicit_workspace_project_root(
     language_id: &str,

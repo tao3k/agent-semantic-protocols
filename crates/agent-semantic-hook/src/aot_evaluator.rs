@@ -1,6 +1,7 @@
 use std::borrow::Cow;
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 
 pub const HOOK_POLICY_BUNDLE_SCHEMA_ID: &str = "agent.semantic-protocols.hook-policy-bundle";
 pub const HOOK_POLICY_BUNDLE_SCHEMA_VERSION: u32 = 1;
@@ -454,9 +455,11 @@ pub fn evaluate_pre_tool<'a>(
             .language
             .zip(subject.as_deref())
             .map(|(language, subject)| {
+                let query = crate::classifier::shell_quote_arg(subject);
+                let scope = crate::classifier::shell_quote_arg(&format!("owner:{subject}"));
+                let workspace = crate::classifier::shell_quote_arg(payload.cwd.unwrap_or("."));
                 format!(
-                    "asp {language} search playbook '{subject}' --intent conceptual --scope owner:{subject} --coverage candidates --explain compact --workspace {}",
-                    payload.cwd.unwrap_or(".")
+                    "asp search playbook {query} --language {language} --intent conceptual --scope {scope} --coverage candidates --explain compact --workspace {workspace}"
                 )
             });
         let parent_task = recovery_command.as_deref().map_or_else(

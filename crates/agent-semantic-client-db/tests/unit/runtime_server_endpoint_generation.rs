@@ -1,9 +1,8 @@
 use std::path::Path;
 
 use agent_semantic_artifacts::runtime_artifact_catalog::RuntimeBinaryIdentity;
-use agent_semantic_client_db::runtime_server_control::{
-    RuntimeServerEndpoint, runtime_server_transport_contract_digest,
-};
+use agent_semantic_client_db::runtime_server_control::RuntimeServerEndpoint;
+use agent_semantic_client_db::runtime_server_control::runtime_server_transport_contract_digest;
 
 struct TestListeners {
     _control: tokio::net::TcpListener,

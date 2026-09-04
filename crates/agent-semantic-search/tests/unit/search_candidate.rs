@@ -1,10 +1,15 @@
-use crate::{
-    LexicalOverlayDocument, LexicalOverlaySearchRequest, SourceIndexRankCandidate,
-    lexical_overlay_hit_to_search_candidate, merge_search_candidates,
-    merge_search_candidates_with_receipt, search_candidate_has_executable_line_identity,
-    search_lexical_overlay, source_index_candidate_to_search_candidate, source_index_lookup_terms,
-};
-use crate::{StructuralIndexSearchHit, structural_index_hit_to_search_candidate};
+use crate::LexicalOverlayDocument;
+use crate::LexicalOverlaySearchRequest;
+use crate::SourceIndexRankCandidate;
+use crate::StructuralIndexSearchHit;
+use crate::lexical_overlay_hit_to_search_candidate;
+use crate::merge_search_candidates;
+use crate::merge_search_candidates_with_receipt;
+use crate::search_candidate_has_executable_line_identity;
+use crate::search_lexical_overlay;
+use crate::source_index_candidate_to_search_candidate;
+use crate::source_index_lookup_terms;
+use crate::structural_index_hit_to_search_candidate;
 
 #[test]
 fn source_index_candidate_projects_to_shared_search_candidate_contract() {

@@ -1,8 +1,7 @@
 use agent_semantic_context_product::agent_session_delegation_admission::AgentSessionDelegationCapability;
-use agent_semantic_context_product::agent_session_delegation_intent::{
-    AGENT_SESSION_DELEGATION_INTENT_SCHEMA_ID, AGENT_SESSION_DELEGATION_INTENT_SCHEMA_VERSION,
-    AgentSessionDelegationIntent,
-};
+use agent_semantic_context_product::agent_session_delegation_intent::AGENT_SESSION_DELEGATION_INTENT_SCHEMA_ID;
+use agent_semantic_context_product::agent_session_delegation_intent::AGENT_SESSION_DELEGATION_INTENT_SCHEMA_VERSION;
+use agent_semantic_context_product::agent_session_delegation_intent::AgentSessionDelegationIntent;
 
 fn intent() -> AgentSessionDelegationIntent {
     AgentSessionDelegationIntent {

@@ -1,18 +1,24 @@
 //! Validation rules for hook client config files.
 
-use std::collections::{BTreeMap, HashSet};
+use std::collections::BTreeMap;
+use std::collections::HashSet;
 
-use super::document::{
-    CLIENT_HOOK_CONFIG_SCHEMA_ID, CLIENT_HOOK_CONFIG_SCHEMA_VERSION, HOOK_PROTOCOL_ID,
-    HOOK_PROTOCOL_VERSION, HookClientAgentCallingConfig,
-    HookClientAgentOrgArtifactsArchiveWarningConfig, HookClientAgentOrgArtifactsConfig,
-    HookClientConfigFile, HookClientRecoveryPromptConfig,
-};
-use super::routing::{HookClientRuleConfig, HookClientRuleMatchConfig, HookClientRuleRouteConfig};
-use super::{
-    HookClientCommandProfileConfig, HookClientCommandSetConfig, expand_command_profile_prefixes,
-    expand_command_set_prefixes,
-};
+use super::HookClientCommandProfileConfig;
+use super::HookClientCommandSetConfig;
+use super::document::CLIENT_HOOK_CONFIG_SCHEMA_ID;
+use super::document::CLIENT_HOOK_CONFIG_SCHEMA_VERSION;
+use super::document::HOOK_PROTOCOL_ID;
+use super::document::HOOK_PROTOCOL_VERSION;
+use super::document::HookClientAgentCallingConfig;
+use super::document::HookClientAgentOrgArtifactsArchiveWarningConfig;
+use super::document::HookClientAgentOrgArtifactsConfig;
+use super::document::HookClientConfigFile;
+use super::document::HookClientRecoveryPromptConfig;
+use super::expand_command_profile_prefixes;
+use super::expand_command_set_prefixes;
+use super::routing::HookClientRuleConfig;
+use super::routing::HookClientRuleMatchConfig;
+use super::routing::HookClientRuleRouteConfig;
 
 pub(super) fn validate_config(config: &HookClientConfigFile) -> Result<(), String> {
     validate_protocol(config)?;
@@ -26,7 +32,7 @@ pub(super) fn validate_config(config: &HookClientConfigFile) -> Result<(), Strin
     validate_agent_calling(&config.agent_calling)?;
     validate_profiles(&config.profiles)?;
     validate_provider_routes(&config.provider_routes)?;
-    validate_rule_profile_references(&config.rules, &config.profiles)?;
+    validate_rule_profile_references(&config.rules, &config.profiles, &config.provider_routes)?;
     validate_command_profiles(&config.command_profiles)?;
     validate_command_sets(&config.command_sets)?;
     validate_reader_behavior_patterns(&config.reader_behavior_patterns)?;
@@ -83,6 +89,7 @@ fn validate_codex_host_matchers(config: &HookClientConfigFile) -> Result<(), Str
     Ok(())
 }
 
+/// Validates the bounded Codex matcher-alias grammar accepted by Hook config.
 pub fn validate_codex_host_matcher_expression(matcher: &str) -> Result<(), String> {
     if matcher.is_empty() || matcher == "*" {
         return Ok(());
@@ -153,47 +160,102 @@ fn validate_provider_routes(
 fn validate_rule_profile_references(
     rules: &[HookClientRuleConfig],
     profiles: &BTreeMap<String, super::document::HookClientProfileConfig>,
+    provider_routes: &[super::document::HookClientProviderRouteIdentity],
 ) -> Result<(), String> {
     for rule in rules {
-        let mut profile_ids = HashSet::new();
-        let mut extension_targets = BTreeMap::<String, (&str, &str)>::new();
-        for profile_id in &rule.profiles_list {
-            if !profile_ids.insert(profile_id) {
+        validate_rule_profiles(rule, profiles)?;
+        validate_lazy_provider_profiles(rule, profiles, provider_routes)?;
+        validate_rule_matcher_policies(rule)?;
+    }
+    Ok(())
+}
+
+fn validate_lazy_provider_profiles(
+    rule: &HookClientRuleConfig,
+    profiles: &BTreeMap<String, super::document::HookClientProfileConfig>,
+    provider_routes: &[super::document::HookClientProviderRouteIdentity],
+) -> Result<(), String> {
+    if !rule.dispatch.as_ref().is_some_and(|dispatch| {
+        matches!(
+            dispatch.lazy_provider,
+            Some(super::routing::HookClientLazyProviderPolicy::MatchedLanguage)
+        )
+    }) {
+        return Ok(());
+    }
+    for profile_id in &rule.profiles_list {
+        let profile = profiles
+            .get(profile_id)
+            .expect("profile existence is validated before provider reachability");
+        if !provider_routes.iter().any(|route| {
+            route.language_id == profile.language_id && route.provider_id == profile.provider_id
+        }) {
+            return Err(format!(
+                "rule {} profilesList profile {profile_id:?} selects unregistered lazy provider {}/{}",
+                rule.id, profile.language_id, profile.provider_id
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_rule_profiles<'a>(
+    rule: &HookClientRuleConfig,
+    profiles: &'a BTreeMap<String, super::document::HookClientProfileConfig>,
+) -> Result<(), String> {
+    let mut profile_ids = HashSet::new();
+    let mut extension_targets = BTreeMap::<String, (&'a str, &'a str)>::new();
+    for profile_id in &rule.profiles_list {
+        if !profile_ids.insert(profile_id) {
+            return Err(format!(
+                "rule {} profilesList contains duplicate profile {profile_id:?}",
+                rule.id
+            ));
+        }
+        let profile = profiles.get(profile_id).ok_or_else(|| {
+            format!(
+                "rule {} profilesList references unknown profile {profile_id:?}",
+                rule.id
+            )
+        })?;
+        validate_profile_extension_targets(rule, profile, &mut extension_targets)?;
+    }
+    Ok(())
+}
+
+fn validate_profile_extension_targets<'a>(
+    rule: &HookClientRuleConfig,
+    profile: &'a super::document::HookClientProfileConfig,
+    targets: &mut BTreeMap<String, (&'a str, &'a str)>,
+) -> Result<(), String> {
+    for extension in &profile.extension_any {
+        let extension = extension.trim().to_ascii_lowercase();
+        match targets.get(&extension) {
+            Some((language_id, provider_id))
+                if *language_id != profile.language_id || *provider_id != profile.provider_id =>
+            {
                 return Err(format!(
-                    "rule {} profilesList contains duplicate profile {profile_id:?}",
-                    rule.id
+                    "rule {} profilesList maps extension {extension:?} to both {language_id}/{provider_id} and {}/{}",
+                    rule.id, profile.language_id, profile.provider_id
                 ));
             }
-            if !profiles.contains_key(profile_id) {
-                return Err(format!(
-                    "rule {} profilesList references unknown profile {profile_id:?}",
-                    rule.id
-                ));
-            }
-            let profile = &profiles[profile_id];
-            for extension in &profile.extension_any {
-                let extension = extension.trim().to_ascii_lowercase();
-                if let Some((language_id, provider_id)) = extension_targets.get(&extension) {
-                    if *language_id != profile.language_id || *provider_id != profile.provider_id {
-                        return Err(format!(
-                            "rule {} profilesList maps extension {extension:?} to both {language_id}/{provider_id} and {}/{}",
-                            rule.id, profile.language_id, profile.provider_id
-                        ));
-                    }
-                } else {
-                    extension_targets
-                        .insert(extension, (&profile.language_id, &profile.provider_id));
-                }
+            Some(_) => {}
+            None => {
+                targets.insert(extension, (&profile.language_id, &profile.provider_id));
             }
         }
-        let mut matcher_policies = HashSet::new();
-        for matcher_policy in &rule.matcher_policies {
-            if !matcher_policies.insert(matcher_policy) {
-                return Err(format!(
-                    "rule {} matcherPolicies contains duplicate policy {matcher_policy:?}",
-                    rule.id
-                ));
-            }
+    }
+    Ok(())
+}
+
+fn validate_rule_matcher_policies(rule: &HookClientRuleConfig) -> Result<(), String> {
+    let mut matcher_policies = HashSet::new();
+    for matcher_policy in &rule.matcher_policies {
+        if !matcher_policies.insert(matcher_policy) {
+            return Err(format!(
+                "rule {} matcherPolicies contains duplicate policy {matcher_policy:?}",
+                rule.id
+            ));
         }
     }
     Ok(())
@@ -472,7 +534,7 @@ fn validate_match_schema_shape(
         validate_non_empty_values(&format!("rules[].match.{axis}[]"), references)?;
         validate_unique_values(&format!("rules[].match.{axis}"), references)?;
         for reference in references {
-            if !capability_policy_ids.contains(reference.as_str()) {
+            if capability_policy_ids.get(reference.as_str()).is_none() {
                 return Err(format!(
                     "rules[].match.{axis} references unknown capability policy `{reference}`"
                 ));
@@ -483,11 +545,11 @@ fn validate_match_schema_shape(
     for reference in &match_config.command_profile_any {
         validate_identifier(
             "rules[].match.commandProfileAny[].profile",
-            &reference.profile,
+            reference.profile.as_str(),
         )?;
         validate_identifier(
             "rules[].match.commandProfileAny[].category",
-            &reference.category,
+            reference.category.as_str(),
         )?;
         if !profile_references.insert((reference.profile.as_str(), reference.category.as_str())) {
             return Err(format!(
@@ -566,13 +628,18 @@ fn validate_match_schema_shape(
                 ));
             }
         }
+        let value_free_options = projection
+            .option_any
+            .iter()
+            .map(String::as_str)
+            .collect::<HashSet<_>>();
         for (option, arity) in &projection.option_value_arity {
             if !option.starts_with('-') || *arity == 0 {
                 return Err(format!(
                     "rules[].match.structuredProjection.optionValueArity `{option}` must start with `-` and have positive arity"
                 ));
             }
-            if projection.option_any.iter().any(|flag| flag == option) {
+            if value_free_options.get(option.as_str()).is_some() {
                 return Err(format!(
                     "rules[].match.structuredProjection option `{option}` cannot be both value-free and value-owning"
                 ));
@@ -585,23 +652,31 @@ fn validate_match_schema_shape(
 fn validate_argv_pattern_bindings(patterns: &[Vec<String>]) -> Result<(), String> {
     validate_argv_prefix_patterns("rules[].match.argvPatternAny", patterns)?;
     for pattern in patterns {
-        let bindings = pattern
-            .iter()
-            .filter(|token| token.as_str() == "<registered-language>")
-            .count();
-        if bindings > 1 {
-            return Err(
-                "rules[].match.argvPatternAny[] may contain at most one `<registered-language>` binding"
-                    .to_string(),
-            );
+        validate_argv_pattern_binding(pattern)?;
+    }
+    Ok(())
+}
+
+fn validate_argv_pattern_binding(pattern: &[String]) -> Result<(), String> {
+    let mut bindings = 0usize;
+    let mut has_unknown_binding = false;
+    for token in pattern {
+        if token == "<registered-language>" {
+            bindings += 1;
+        } else if token.starts_with('<') && token.ends_with('>') {
+            has_unknown_binding = true;
         }
-        if pattern.iter().any(|token| {
-            token.starts_with('<') && token.ends_with('>') && token != "<registered-language>"
-        }) {
-            return Err(
-                "rules[].match.argvPatternAny[] contains an unknown schema binding".to_string(),
-            );
-        }
+    }
+    if bindings > 1 {
+        return Err(
+            "rules[].match.argvPatternAny[] may contain at most one `<registered-language>` binding"
+                .to_string(),
+        );
+    }
+    if has_unknown_binding {
+        return Err(
+            "rules[].match.argvPatternAny[] contains an unknown schema binding".to_string(),
+        );
     }
     Ok(())
 }

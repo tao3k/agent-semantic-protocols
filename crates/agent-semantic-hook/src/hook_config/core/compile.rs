@@ -1,9 +1,10 @@
 use std::collections::HashSet;
 
-use super::match_types::{
-    CompiledCommandContains, CompiledPathGlobs, DurableCommandContainsMatcher,
-    build_command_contains, build_globset,
-};
+use super::match_types::CompiledCommandContains;
+use super::match_types::CompiledPathGlobs;
+use super::match_types::DurableCommandContainsMatcher;
+use super::match_types::build_command_contains;
+use super::match_types::build_globset;
 
 pub(crate) fn compile_globs(
     label: &str,

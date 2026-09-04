@@ -1,6 +1,7 @@
 //! Language-neutral workspace source mutation contract.
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 use std::collections::BTreeSet;
 
 /// Canonical schema identity for workspace source mutations.

@@ -6,12 +6,17 @@ use serde::Deserialize;
 use std::collections::BTreeMap;
 use std::env;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 
-use super::archive::{
-    asset_name, binary_file_name, checksum_for_archive, download_release_archive,
-    install_archive_binary, path_segment, release_asset_url, sha256_file,
-};
+use super::archive::asset_name;
+use super::archive::binary_file_name;
+use super::archive::checksum_for_archive;
+use super::archive::download_release_archive;
+use super::archive::install_archive_binary;
+use super::archive::path_segment;
+use super::archive::release_asset_url;
+use super::archive::sha256_file;
 use super::binary as install_provider_binary;
 use super::release::ProviderReleaseSpec;
 use super::target::resolve_provider_binary_install_target;
@@ -21,7 +26,9 @@ use super::cli_support as install_provider_cli_support;
 use install_provider_cli_support::usage;
 
 #[cfg(test)]
-use super::archive::{checksum_name, parse_sha256_checksum};
+use super::archive::checksum_name;
+#[cfg(test)]
+use super::archive::parse_sha256_checksum;
 
 const PINNED_LANGUAGE_RELEASES_TOML: &str = include_str!("../../../pinned-language-releases.toml");
 

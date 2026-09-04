@@ -1,5 +1,6 @@
 use std::ffi::OsString;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 use std::sync::Mutex;
 
 use super::resolve_provider_binary_install_target;

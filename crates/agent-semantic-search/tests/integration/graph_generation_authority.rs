@@ -1,12 +1,11 @@
-use agent_semantic_content_identity::{
-    SourceSnapshotEvidence, SourceSnapshotKind,
-    workspace_generation_evidence::{
-        ValidatedWorkspaceGenerationV1, WorkspaceGenerationEvidenceError,
-        WorkspaceGenerationEvidenceV1,
-    },
-};
+use agent_semantic_content_identity::SourceSnapshotEvidence;
+use agent_semantic_content_identity::SourceSnapshotKind;
+use agent_semantic_content_identity::workspace_generation_evidence::ValidatedWorkspaceGenerationV1;
+use agent_semantic_content_identity::workspace_generation_evidence::WorkspaceGenerationEvidenceError;
+use agent_semantic_content_identity::workspace_generation_evidence::WorkspaceGenerationEvidenceV1;
 use agent_semantic_search::graph_generation_authority::AdmittedGraphGenerationV1;
-use std::time::{Duration, Instant};
+use std::time::Duration;
+use std::time::Instant;
 
 fn generation(root: &str, leaf_count: u64) -> ValidatedWorkspaceGenerationV1 {
     ValidatedWorkspaceGenerationV1::new(WorkspaceGenerationEvidenceV1 {

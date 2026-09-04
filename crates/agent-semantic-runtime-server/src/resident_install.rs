@@ -1,4 +1,5 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ResidentRuntimeInstallReceipt {
@@ -122,33 +123,5 @@ pub async fn install_resident_runtime_bundle_members(
 }
 
 #[cfg(all(test, unix))]
-mod tests {
-    use std::os::unix::fs::PermissionsExt;
-
-    use agent_semantic_artifacts::runtime_artifact_retention::RuntimeArtifactMutationGuard;
-
-    use super::*;
-
-    #[tokio::test]
-    async fn install_publishes_without_a_runtime_child_and_releases_the_lock() {
-        let temporary = tempfile::tempdir().expect("temporary directory");
-        let state_home = temporary.path().join("state");
-        let source = temporary.path().join("target-debug-asp");
-        let target = temporary.path().join("bin/asp");
-        tokio::fs::write(&source, b"#!/bin/sh\nexit 2\n")
-            .await
-            .expect("write candidate");
-        std::fs::set_permissions(&source, std::fs::Permissions::from_mode(0o755))
-            .expect("candidate permissions");
-
-        let receipt = install_resident_runtime(&state_home, &source, &target, "dev", None)
-            .await
-            .expect("publication must not depend on candidate readiness");
-
-        assert_eq!(receipt.status, "published-active-awaiting-health");
-        let artifact_root = state_home.join("runtime/artifacts");
-        let guard = RuntimeArtifactMutationGuard::try_acquire(&artifact_root)
-            .expect("publication must release the artifact lock before return");
-        drop(guard);
-    }
-}
+#[path = "../tests/unit/resident_install.rs"]
+mod tests;

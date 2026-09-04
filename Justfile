@@ -149,10 +149,11 @@ agent-tools-install-protocol bin_dir="": check-rust-workspace-policy
       "${destination}" --version --require-release >/dev/null
 
 # Install the debug protocol binary into the canonical State Home runtime.
-# Developer publication relies on each compiled package's O(1) build-policy
-# identity gate. The whole-workspace advisory audit belongs to release/CI and
-# must never rescan all package sources on the developer hot path.
-agent-tools-install-protocol-debug:
+# Developer publication keeps member build scripts O(1), then admits the
+# complete Cargo-derived workspace policy exactly once before publishing.
+# ASP Rust owns content-addressed package evidence, so unchanged packages are
+# reused instead of being rescanned by every downstream build script.
+agent-tools-install-protocol-debug: check-rust-workspace-policy
     @asp_artifact="target/debug/asp"; \
       cargo build --manifest-path Cargo.toml --package agent-semantic-client --bin asp --package agent-semantic-hook --bin asp-hook || exit $?; \
       destination="$("${asp_artifact}" paths --get runtimeBinDir)/asp"; \
@@ -346,7 +347,7 @@ provider-gate: check-rust-workspace-policy check-rust-warnings check-schema-prof
 # builds keep the O(1) manifest/policy-identity dependency and never rescan the
 # crate source tree.
 check-rust-workspace-policy:
-    rtk cargo test -p asp-rust-project-harness-policy --features workspace-policy --test workspace_policy -- --nocapture
+    rtk cargo test -p asp-rust-project-harness-policy --features workspace-policy --test integration_test workspace_policy::asp_workspace_source_policy_is_clean -- --exact --nocapture
 
 check-rust-warnings:
     env RUSTFLAGS="-D warnings" cargo check -q -p agent-semantic-client
@@ -489,9 +490,9 @@ provider-gate-typescript:
       {{typescript_harness_project}}/dist/tests/unit/semantic_search_schema.test.js
 
 provider-gate-python:
-    uv run --project {{python_harness_project}} --frozen asp-python search policy PY-PROJ-R001 owner tests --workspace {{python_harness_project}} --view seeds
-    uv run --project {{python_harness_project}} --frozen asp-python search policy PY-AGENT-R008 owner tests --workspace {{python_harness_project}} --view seeds
-    uv run --project {{python_harness_project}} --frozen asp-python search owner src/asp_python/_semantic_language.py items --query semantic_language_registry_document --workspace {{python_harness_project}} --view seeds
+    uv run --project {{python_harness_project}} --frozen asp-python search playbook PY-PROJ-R001 --intent exact-literal --scope workspace --coverage candidates --explain compact --workspace {{python_harness_project}}
+    uv run --project {{python_harness_project}} --frozen asp-python search playbook PY-AGENT-R008 --intent exact-literal --scope workspace --coverage candidates --explain compact --workspace {{python_harness_project}}
+    uv run --project {{python_harness_project}} --frozen asp-python search playbook semantic_language_registry_document --intent conceptual --scope owner:src/asp_python/_semantic_language.py --coverage candidates --explain compact --workspace {{python_harness_project}}
     uv run --project {{python_harness_project}} --frozen python -m pytest \
       {{python_harness_project}}/tests/unit/harness/test_semantic_cli_query_set.py \
       {{python_harness_project}}/tests/unit/harness/test_semantic_cli_owner_items.py \

@@ -1,22 +1,28 @@
 //! Qualify and atomically publish provider live-corpus artifacts.
 
-use agent_semantic_provider_protocol::{
-    ProviderRegisterOperation, ProviderRegisterRequest, ProviderRegisterResult,
-    ProviderRegistrationDocument,
-};
-use agent_semantic_runtime::{
-    LiveCorpusArtifactIdentity, LiveCorpusGitCheckoutQualification,
-    LiveCorpusLanguageExtensionEvidence, live_corpus_artifact_manifest, live_corpus_artifact_paths,
-    live_corpus_git_checkout_is_clean, live_corpus_git_repository_paths, live_corpus_lock_digest,
-    qualify_live_corpus_git_checkout, qualify_live_corpus_language_extensions, resolve_state_home,
-    sync_live_corpus_git_checkout,
-};
-use serde::{Deserialize, Serialize};
-use std::{
-    env, fs,
-    io::Write,
-    path::{Path, PathBuf},
-};
+use agent_semantic_provider_protocol::ProviderRegisterOperation;
+use agent_semantic_provider_protocol::ProviderRegisterRequest;
+use agent_semantic_provider_protocol::ProviderRegisterResult;
+use agent_semantic_provider_protocol::ProviderRegistrationDocument;
+use agent_semantic_runtime::LiveCorpusArtifactIdentity;
+use agent_semantic_runtime::LiveCorpusGitCheckoutQualification;
+use agent_semantic_runtime::LiveCorpusLanguageExtensionEvidence;
+use agent_semantic_runtime::live_corpus_artifact_manifest;
+use agent_semantic_runtime::live_corpus_artifact_paths;
+use agent_semantic_runtime::live_corpus_git_checkout_is_clean;
+use agent_semantic_runtime::live_corpus_git_repository_paths;
+use agent_semantic_runtime::live_corpus_lock_digest;
+use agent_semantic_runtime::qualify_live_corpus_git_checkout;
+use agent_semantic_runtime::qualify_live_corpus_language_extensions;
+use agent_semantic_runtime::resolve_state_home;
+use agent_semantic_runtime::sync_live_corpus_git_checkout;
+use serde::Deserialize;
+use serde::Serialize;
+use std::env;
+use std::fs;
+use std::io::Write;
+use std::path::Path;
+use std::path::PathBuf;
 
 const DEFAULT_LOCK_PATH: &str = "benchmarks/large-library-runtime-corpora.json";
 

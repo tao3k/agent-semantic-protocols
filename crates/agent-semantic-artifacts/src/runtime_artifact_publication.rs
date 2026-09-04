@@ -1,27 +1,35 @@
 //! Millisecond immutable bundle publication and launcher switching.
 
-use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::path::Path;
+use std::path::PathBuf;
+use std::time::SystemTime;
+use std::time::UNIX_EPOCH;
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 
 use crate::blake3_content_digest::Blake3ContentDigest;
-use crate::runtime_artifact_activation::{
-    RuntimeArtifactActivationEvent, RuntimeArtifactCandidateIdentityReceipt,
-    canonicalize_legacy_activation_receipts_under_guard,
-    commit_staged_pending_runtime_artifact_activation, decode_runtime_artifact_activation_event,
-    prepare_active_slot_snapshot, prepare_runtime_artifact_serving_snapshot, read_optional_symlink,
-    restore_pending_runtime_artifact_activation, restore_runtime_artifact_symlink,
-    runtime_artifact_activation_event_path, runtime_artifact_activation_socket_path,
-    stage_pending_runtime_artifact_activation,
-};
+use crate::runtime_artifact_activation::RuntimeArtifactActivationEvent;
+use crate::runtime_artifact_activation::RuntimeArtifactCandidateIdentityReceipt;
+use crate::runtime_artifact_activation::canonicalize_legacy_activation_receipts_under_guard;
+use crate::runtime_artifact_activation::commit_staged_pending_runtime_artifact_activation;
+use crate::runtime_artifact_activation::decode_runtime_artifact_activation_event;
+use crate::runtime_artifact_activation::prepare_active_slot_snapshot;
+use crate::runtime_artifact_activation::prepare_runtime_artifact_serving_snapshot;
+use crate::runtime_artifact_activation::read_optional_symlink;
+use crate::runtime_artifact_activation::restore_pending_runtime_artifact_activation;
+use crate::runtime_artifact_activation::restore_runtime_artifact_symlink;
+use crate::runtime_artifact_activation::runtime_artifact_activation_event_path;
+use crate::runtime_artifact_activation::runtime_artifact_activation_socket_path;
+use crate::runtime_artifact_activation::stage_pending_runtime_artifact_activation;
 use crate::runtime_artifact_quiescence::prepare_runtime_artifact_quiescence_lease;
 use crate::runtime_artifact_retention::RuntimeArtifactMutationGuard;
-use crate::runtime_artifact_slots::{
-    PreparedRuntimeArtifact, RuntimeArtifactSlotAuthority, discard_prepared_runtime_artifact,
-    prepare_runtime_artifact_candidate_for_kind, runtime_artifact_bundle_digest,
-    runtime_artifact_candidate_digest,
-};
+use crate::runtime_artifact_slots::PreparedRuntimeArtifact;
+use crate::runtime_artifact_slots::RuntimeArtifactSlotAuthority;
+use crate::runtime_artifact_slots::discard_prepared_runtime_artifact;
+use crate::runtime_artifact_slots::prepare_runtime_artifact_candidate_for_kind;
+use crate::runtime_artifact_slots::runtime_artifact_bundle_digest;
+use crate::runtime_artifact_slots::runtime_artifact_candidate_digest;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct RuntimeArtifactBundleMemberSource<'a> {
@@ -657,3 +665,7 @@ async fn notify_runtime_artifact_activation(state_home: &Path, event_bytes: &[u8
 #[cfg(test)]
 #[path = "../tests/unit/runtime_artifact_publication.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "../tests/unit/runtime_artifact_activation_migration.rs"]
+mod activation_migration_tests;

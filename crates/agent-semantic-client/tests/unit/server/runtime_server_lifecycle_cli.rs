@@ -34,6 +34,24 @@ fn public_server_lifecycle_rejects_workspace_identity() {
 }
 
 #[test]
+fn status_transport_failure_never_fabricates_stopped_lifecycle() {
+    let failure = super::status_observation_failure(
+        "Runtime Server control listener is unreachable: Operation not permitted (os error 1)",
+    );
+
+    assert!(failure.contains("reasonKind=transport-unavailable"));
+    assert!(!failure.contains("state=stopped"));
+}
+
+#[test]
+fn unauthenticated_status_failure_never_fabricates_stopped_lifecycle() {
+    let failure = super::status_observation_failure("Runtime Server control listener closed early");
+
+    assert!(failure.contains("reasonKind=runtime-status-observation-failed"));
+    assert!(!failure.contains("state=stopped"));
+}
+
+#[test]
 fn activation_authority_separates_operator_start_from_client_bootstrap() {
     use crate::server::runtime_server_wire_adapter::RuntimeServerActivationAuthority;
 
@@ -50,9 +68,8 @@ fn activation_authority_separates_operator_start_from_client_bootstrap() {
 #[tokio::test]
 async fn operator_start_recovers_the_durable_applied_activation_without_pending_state() {
     use agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest;
-    use agent_semantic_artifacts::runtime_artifact_activation::{
-        RuntimeArtifactActivationEvent, RuntimeArtifactCandidateIdentityReceipt,
-    };
+    use agent_semantic_artifacts::runtime_artifact_activation::RuntimeArtifactActivationEvent;
+    use agent_semantic_artifacts::runtime_artifact_activation::RuntimeArtifactCandidateIdentityReceipt;
 
     let state_home = tempfile::tempdir().expect("temporary ASP State Home");
     let artifact_path = state_home.path().join("runtime/artifacts/candidate/asp");

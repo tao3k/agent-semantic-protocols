@@ -1,10 +1,13 @@
 mod turso_sync_storage_tests {
     use std::path::PathBuf;
-    use std::time::{Duration, SystemTime, UNIX_EPOCH};
+    use std::time::Duration;
+    use std::time::SystemTime;
+    use std::time::UNIX_EPOCH;
 
-use agent_semantic_client_db::turso_sync_storage::{
-    TursoSyncProfileConfig, TursoSyncProfileMode, TursoSyncStorage, TursoSyncStorageErrorCode,
-};
+    use agent_semantic_client_db::turso_sync_storage::TursoSyncProfileConfig;
+    use agent_semantic_client_db::turso_sync_storage::TursoSyncProfileMode;
+    use agent_semantic_client_db::turso_sync_storage::TursoSyncStorage;
+    use agent_semantic_client_db::turso_sync_storage::TursoSyncStorageErrorCode;
 
     fn temp_db(name: &str) -> PathBuf {
         let nonce = SystemTime::now()
@@ -20,11 +23,11 @@ use agent_semantic_client_db::turso_sync_storage::{
     fn offline_config(path: PathBuf) -> TursoSyncProfileConfig {
         TursoSyncProfileConfig {
             path,
-        mode: TursoSyncProfileMode::Remote {
-            remote_url: "http://127.0.0.1:1".into(),
-            auth_token: "fixed-test-token".into(),
-            bootstrap_if_empty: false,
-        },
+            mode: TursoSyncProfileMode::Remote {
+                remote_url: "http://127.0.0.1:1".into(),
+                auth_token: "fixed-test-token".into(),
+                bootstrap_if_empty: false,
+            },
             operation_timeout: Duration::from_millis(100),
         }
     }
@@ -33,11 +36,11 @@ use agent_semantic_client_db::turso_sync_storage::{
     async fn sync_profile_rejects_missing_remote_identity_before_open() {
         let result = TursoSyncStorage::open(TursoSyncProfileConfig {
             path: temp_db("invalid"),
-        mode: TursoSyncProfileMode::Remote {
-            remote_url: String::new().into(),
-            auth_token: String::new().into(),
-            bootstrap_if_empty: false,
-        },
+            mode: TursoSyncProfileMode::Remote {
+                remote_url: String::new().into(),
+                auth_token: String::new().into(),
+                bootstrap_if_empty: false,
+            },
             operation_timeout: Duration::from_millis(100),
         })
         .await;

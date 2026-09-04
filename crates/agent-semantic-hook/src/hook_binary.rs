@@ -2,8 +2,6 @@
 
 use std::ffi::OsString;
 
-const NO_AGENT_ENV: &str = "ASP_NO_AGENT";
-
 /// Run the Hook evaluator while guaranteeing one valid Host JSON terminal.
 ///
 /// The inherited no-agent lane is deliberately checked before payload,
@@ -29,7 +27,7 @@ pub fn run_from_env() -> std::process::ExitCode {
 }
 
 fn inherited_no_agent_bypass() -> bool {
-    std::env::var_os(NO_AGENT_ENV).is_some_and(|value| value == "1")
+    crate::no_agent_escape::inherited()
 }
 
 fn hook_event(arguments: &[OsString]) -> Option<&str> {

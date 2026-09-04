@@ -2,16 +2,18 @@
 
 use std::collections::BTreeMap;
 use std::fs;
-use std::path::{Component, Path, PathBuf};
+use std::path::Component;
+use std::path::Path;
+use std::path::PathBuf;
 
-use agent_semantic_provider_protocol::{
-    ProviderWorkspaceInstallDescriptor, WorkspaceLaunchDescriptor,
-    WorkspaceRuntimeDependencyDescriptor,
-};
-use agent_semantic_provider_transport::{
-    OutputMode, ProviderProcessSpec, ProviderProcessSupervisor, StdinMode,
-    provider_process_limits_from_environment,
-};
+use agent_semantic_provider_protocol::ProviderWorkspaceInstallDescriptor;
+use agent_semantic_provider_protocol::WorkspaceLaunchDescriptor;
+use agent_semantic_provider_protocol::WorkspaceRuntimeDependencyDescriptor;
+use agent_semantic_provider_transport::OutputMode;
+use agent_semantic_provider_transport::ProviderProcessSpec;
+use agent_semantic_provider_transport::ProviderProcessSupervisor;
+use agent_semantic_provider_transport::StdinMode;
+use agent_semantic_provider_transport::provider_process_limits_from_environment;
 
 use super::workspace_receipt as receipt;
 pub(super) use receipt::record_registered_provider_workspace_install;

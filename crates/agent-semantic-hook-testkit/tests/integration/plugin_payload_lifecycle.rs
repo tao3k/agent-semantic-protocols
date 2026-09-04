@@ -1,10 +1,11 @@
 use std::path::Path;
 
-use agent_semantic_config::{
-    CODEX_PLUGIN_HOOKS_RELATIVE_PATH, CODEX_PLUGIN_LAUNCHER_RELATIVE_PATH,
-    CODEX_PLUGIN_MANIFEST_RELATIVE_PATH, CodexPluginPayloadState, inspect_codex_plugin_payload,
-    load_codex_plugin_payload_identity,
-};
+use agent_semantic_config::CODEX_PLUGIN_HOOKS_RELATIVE_PATH;
+use agent_semantic_config::CODEX_PLUGIN_LAUNCHER_RELATIVE_PATH;
+use agent_semantic_config::CODEX_PLUGIN_MANIFEST_RELATIVE_PATH;
+use agent_semantic_config::CodexPluginPayloadState;
+use agent_semantic_config::inspect_codex_plugin_payload;
+use agent_semantic_config::load_codex_plugin_payload_identity;
 
 const SOURCE_MANIFEST: &[u8] =
     include_bytes!("../../../../asp-codex-plugin/.codex-plugin/plugin.json");

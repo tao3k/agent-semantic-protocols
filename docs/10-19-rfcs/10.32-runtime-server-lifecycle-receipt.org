@@ -54,12 +54,18 @@ not liveness authority.  In particular, existence of the State-Home control
 are discovery hints and recovery evidence only.
 
 The authoritative liveness observation is a successful control-protocol
-handshake over the canonical State-Home =.sock= endpoint.  The handshake MUST
-bind the responding server to the requesting ASP State Home and validate the
-control protocol identity, protocol/contract digest, current =ownerEpoch=, and a
-fresh request nonce.  Its response MUST distinguish at least =ready= from
-=draining=.  A response is live only when all identity and digest checks pass
-and the nonce is echoed by the current owner epoch.
+handshake over the one Host-published transport capability.  The capability is
+selected before socket I/O and may bind Host loopback HTTP/2 or an inherited
+connected descriptor for a restricted sandbox.  A sandbox MUST NOT probe the
+Host loopback address or a State-Home pathname before consuming its inherited
+descriptor.  All bindings carry the same =ClientFrame= service and endpoint
+identity; none creates a second lifecycle authority.
+
+The handshake MUST bind the responding server to the requesting ASP State Home
+and validate the control protocol identity, protocol/contract digest, current
+=ownerEpoch=, and a fresh request nonce.  Its response MUST distinguish at
+least =ready= from =draining=.  A response is live only when all identity and
+digest checks pass and the nonce is echoed by the current owner epoch.
 
 An authenticated =ready= response admits normal request dispatch.  An
 authenticated =draining= response proves a live owner but rejects new
@@ -68,13 +74,15 @@ intent has priority over Hook =ensure=, including when the endpoint is missing
 or refusing connections.  Hook recovery MUST NOT recreate a server that an
 operator is stopping or has explicitly stopped.
 
-A missing endpoint or refused connection is an absence candidate, not immediate
-spawn authority.  The caller MUST enter the State-Home election, acquire the
-single lifecycle start right, re-check operator-stop intent, and repeat the
-handshake observation before spawning one detached server.  Losing callers join
-the elected generation.  A handshake identity, State-Home binding, owner epoch,
-nonce, protocol version, or contract-digest mismatch fails closed and MUST NOT
-fall through to spawn.
+A missing capability or failed connection is an observation failure, not a
+lifecycle state and not immediate spawn authority.  =EPERM=, timeout, early EOF,
+or an unauthenticated response MUST return one typed transport/observation
+terminal and MUST NOT be rendered as =starting=, =stopped=, or =failed=.  Only
+the Host supervisor may enter the State-Home election, acquire the single
+lifecycle start right, re-check operator-stop intent, and repeat the handshake
+before spawning one detached server.  Losing supervisors join the elected
+generation.  A sandbox client never becomes the supervisor and never falls
+through to pathname, loopback, spawn, restart, retry, or =ASP_NO_AGENT=.
 
 Hook probes use a short, independently bounded latency budget suitable for
 command interception.  An explicit operator =asp server start= or =restart=

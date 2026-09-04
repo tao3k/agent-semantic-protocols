@@ -1,9 +1,12 @@
 //! Immutable Merkle generation shared by lexical and graph projections.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 use std::sync::Arc;
 
-use crate::{ResidentSearchAuthority, ResidentSourceDocument, ResidentSourceIndex};
+use crate::ResidentSearchAuthority;
+use crate::ResidentSourceDocument;
+use crate::ResidentSourceIndex;
 
 const SEARCH_PROJECTION_ANALYZER_ID: &str =
     "agent.semantic-protocols.search-projection-analyzer.rg-lexical-graph.v1";

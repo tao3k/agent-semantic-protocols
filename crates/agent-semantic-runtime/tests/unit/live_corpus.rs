@@ -1,11 +1,16 @@
-use std::{fs, path::Path};
+use std::fs;
+use std::path::Path;
 
-use super::{
-    LIVE_CORPUS_ARTIFACT_SCHEMA_ID, LiveCorpusArtifactIdentity,
-    language_extension_evidence_from_paths, live_corpus_artifact_manifest,
-    live_corpus_artifact_paths, live_corpus_git_repository_paths, live_corpus_lock_digest,
-    normalize_extension_set, qualify_reusable_checkout, sync_live_corpus_git_checkout,
-};
+use super::LIVE_CORPUS_ARTIFACT_SCHEMA_ID;
+use super::LiveCorpusArtifactIdentity;
+use super::language_extension_evidence_from_paths;
+use super::live_corpus_artifact_manifest;
+use super::live_corpus_artifact_paths;
+use super::live_corpus_git_repository_paths;
+use super::live_corpus_lock_digest;
+use super::normalize_extension_set;
+use super::qualify_reusable_checkout;
+use super::sync_live_corpus_git_checkout;
 
 fn artifact_identity<'a>(revision: &'a str) -> LiveCorpusArtifactIdentity<'a> {
     LiveCorpusArtifactIdentity {

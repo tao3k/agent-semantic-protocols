@@ -1,17 +1,17 @@
-use agent_semantic_content_identity::provider_projection_relation::{
-    ProviderProjectedRelation, ProviderProjectedRelationEndpoint,
-};
+use agent_semantic_content_identity::provider_projection_relation::PROVIDER_RELATION_ITEM_ENDPOINT_KIND;
+use agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelation;
+use agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelationEndpoint;
 
 fn relation() -> ProviderProjectedRelation {
     ProviderProjectedRelation {
         from: ProviderProjectedRelationEndpoint {
-            kind: "item".to_owned(),
-            id: "item:caller".to_owned(),
+            kind: PROVIDER_RELATION_ITEM_ENDPOINT_KIND,
+            id: "item:caller".into(),
         },
-        kind: "calls".to_owned(),
+        kind: "calls".into(),
         to: ProviderProjectedRelationEndpoint {
-            kind: "item".to_owned(),
-            id: "item:callee".to_owned(),
+            kind: PROVIDER_RELATION_ITEM_ENDPOINT_KIND,
+            id: "item:callee".into(),
         },
     }
 }
@@ -30,20 +30,13 @@ fn provider_projected_relation_accepts_schema_v1_shape() {
 fn provider_projected_relation_rejects_empty_endpoint_or_kind() {
     for invalid in [
         ProviderProjectedRelation {
-            from: ProviderProjectedRelationEndpoint {
-                kind: String::new(),
-                id: "item:caller".to_owned(),
-            },
-            ..relation()
-        },
-        ProviderProjectedRelation {
-            kind: String::new(),
+            kind: "".into(),
             ..relation()
         },
         ProviderProjectedRelation {
             to: ProviderProjectedRelationEndpoint {
-                kind: "item".to_owned(),
-                id: String::new(),
+                kind: PROVIDER_RELATION_ITEM_ENDPOINT_KIND,
+                id: "".into(),
             },
             ..relation()
         },

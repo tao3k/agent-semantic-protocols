@@ -2,20 +2,26 @@
 
 use std::fs;
 use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 
-use agent_semantic_config::{
-    CODEX_PLUGIN_HOOKS_RELATIVE_PATH, CODEX_PLUGIN_LAUNCHER_RELATIVE_PATH,
-    CODEX_PLUGIN_MANIFEST_RELATIVE_PATH, CodexPluginPayloadInspection, CodexPluginPayloadState,
-    codex_plugin_cache_root, inspect_codex_plugin_payload, load_codex_plugin_payload_identity,
-};
+use agent_semantic_config::CODEX_PLUGIN_HOOKS_RELATIVE_PATH;
+use agent_semantic_config::CODEX_PLUGIN_LAUNCHER_RELATIVE_PATH;
+use agent_semantic_config::CODEX_PLUGIN_MANIFEST_RELATIVE_PATH;
+use agent_semantic_config::CodexPluginPayloadInspection;
+use agent_semantic_config::CodexPluginPayloadState;
+use agent_semantic_config::codex_plugin_cache_root;
+use agent_semantic_config::inspect_codex_plugin_payload;
+use agent_semantic_config::load_codex_plugin_payload_identity;
 use fs2::FileExt;
 
-use super::{
-    ASP_CODEX_PLUGIN_MARKETPLACE_NAME, ASP_CODEX_PLUGIN_NAME, codex_plugin_installed_path,
-    codex_plugin_source_root, ensure_codex_plugin_marketplace_registered, global_codex_config_path,
-    run_codex_plugin_command,
-};
+use super::ASP_CODEX_PLUGIN_MARKETPLACE_NAME;
+use super::ASP_CODEX_PLUGIN_NAME;
+use super::codex_plugin_installed_path;
+use super::codex_plugin_source_root;
+use super::ensure_codex_plugin_marketplace_registered;
+use super::global_codex_config_path;
+use super::run_codex_plugin_command;
 
 const PLUGIN_ID: &str = "asp-codex-plugin@asp-project";
 const PAYLOAD_FILES: [&str; 3] = [

@@ -1,9 +1,13 @@
 use super::agent_session::current_agent_session;
-use super::org_capture_interactive::{AgentInteractiveChoice, choice_arg_value, strip_choice_args};
+use super::org_capture_interactive::AgentInteractiveChoice;
+use super::org_capture_interactive::choice_arg_value;
+use super::org_capture_interactive::strip_choice_args;
 use orgize::Org;
 use orgize::rowan::ast::AstNode;
-use orgize::syntax_ast::{Headline, PropertyDrawer};
-use std::{fs, path::Path};
+use orgize::syntax_ast::Headline;
+use orgize::syntax_ast::PropertyDrawer;
+use std::fs;
+use std::path::Path;
 
 pub(super) enum ContractCaptureArgs {
     Continue(Vec<String>),

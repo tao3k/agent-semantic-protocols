@@ -1,15 +1,24 @@
 //! Runtime artifact activation event validation, commit, acknowledgement, and rollback.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 
 use crate::blake3_content_digest::Blake3ContentDigest;
 use crate::runtime_artifact_retention::RuntimeArtifactMutationGuard;
-use crate::runtime_artifact_slots::{
-    RuntimeArtifactSlotAuthority, runtime_artifact_bundle_digest,
-    runtime_artifact_candidate_bundle_digest, runtime_artifact_candidate_digest,
-};
+use crate::runtime_artifact_slots::RuntimeArtifactSlotAuthority;
+use crate::runtime_artifact_slots::runtime_artifact_bundle_digest;
+use crate::runtime_artifact_slots::runtime_artifact_candidate_bundle_digest;
+use crate::runtime_artifact_slots::runtime_artifact_candidate_digest;
+
+#[path = "runtime_artifact_pending_receipt.rs"]
+mod pending_receipt;
+
+pub(crate) use pending_receipt::commit_staged_pending_runtime_artifact_activation;
+pub(crate) use pending_receipt::publish_pending_runtime_artifact_activation;
+pub(crate) use pending_receipt::stage_pending_runtime_artifact_activation;
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -70,39 +79,6 @@ struct LegacyCandidateSlotActivationReceipt {
 
 pub fn runtime_artifact_activation_event_path(state_home: &Path) -> PathBuf {
     state_home.join("runtime/activation/pending.json")
-}
-
-pub(crate) fn publish_pending_runtime_artifact_activation(
-    path: &Path,
-    bytes: &[u8],
-    publication_nonce: &str,
-) -> Result<(), String> {
-    let staged = stage_pending_runtime_artifact_activation(path, bytes, publication_nonce)?;
-    commit_staged_pending_runtime_artifact_activation(&staged, path)
-}
-
-pub(crate) fn stage_pending_runtime_artifact_activation(
-    path: &Path,
-    bytes: &[u8],
-    publication_nonce: &str,
-) -> Result<PathBuf, String> {
-    let parent = path
-        .parent()
-        .ok_or_else(|| "Runtime artifact activation path has no parent".to_owned())?;
-    std::fs::create_dir_all(parent)
-        .map_err(|error| format!("create Runtime artifact activation directory: {error}"))?;
-    let staged = parent.join(format!(".pending-{publication_nonce}.json.tmp"));
-    std::fs::write(&staged, bytes)
-        .map_err(|error| format!("stage Runtime artifact activation event: {error}"))?;
-    Ok(staged)
-}
-
-pub(crate) fn commit_staged_pending_runtime_artifact_activation(
-    staged: &Path,
-    path: &Path,
-) -> Result<(), String> {
-    std::fs::rename(staged, path)
-        .map_err(|error| format!("publish Runtime artifact activation event: {error}"))
 }
 
 pub fn runtime_artifact_activation_socket_path(state_home: &Path) -> PathBuf {

@@ -1,6 +1,6 @@
-use agent_semantic_search::{
-    GraphOwnerRankCandidate, GraphOwnerRankRequest, rank_graph_owner_report,
-};
+use agent_semantic_search::GraphOwnerRankCandidate;
+use agent_semantic_search::GraphOwnerRankRequest;
+use agent_semantic_search::rank_graph_owner_report;
 
 #[test]
 fn graph_owner_rank_report_is_public_and_constructible() {

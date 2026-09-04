@@ -1,7 +1,8 @@
-use agent_semantic_client_db::turso_sync_storage::{
-    DEFAULT_TURSO_SYNC_OPERATION_TIMEOUT, TursoSyncOperationOutcome, TursoSyncProfileConfig,
-    TursoSyncProfileMode, TursoSyncStorage,
-};
+use agent_semantic_client_db::turso_sync_storage::DEFAULT_TURSO_SYNC_OPERATION_TIMEOUT;
+use agent_semantic_client_db::turso_sync_storage::TursoSyncOperationOutcome;
+use agent_semantic_client_db::turso_sync_storage::TursoSyncProfileConfig;
+use agent_semantic_client_db::turso_sync_storage::TursoSyncProfileMode;
+use agent_semantic_client_db::turso_sync_storage::TursoSyncStorage;
 
 struct SyncServerGuard {
     child: std::process::Child,
@@ -17,8 +18,7 @@ impl Drop for SyncServerGuard {
 fn start_sync_server(database_path: &std::path::Path) -> (SyncServerGuard, String) {
     let binary = std::env::var_os("TURSO_SYNC_SERVER_BIN")
         .expect("TURSO_SYNC_SERVER_BIN must point to the pinned tursodb 0.7 binary");
-    let listener = std::net::TcpListener::bind("127.0.0.1:0")
-        .expect("reserve sync server port");
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("reserve sync server port");
     let address = listener.local_addr().expect("read reserved address");
     drop(listener);
 
@@ -62,18 +62,14 @@ fn sync_server_config(path: &std::path::Path, remote_url: &str) -> TursoSyncProf
 async fn pinned_v0_7_sync_server_push_pull_checkpoint_and_stats() {
     let root = temp_root("turso-sync-server-e2e");
     let (_server, remote_url) = start_sync_server(&root.join("server.db"));
-    let client_a = TursoSyncStorage::open(sync_server_config(
-        &root.join("client-a.db"),
-        &remote_url,
-    ))
-    .await
-    .expect("open sync client A");
-    let client_b = TursoSyncStorage::open(sync_server_config(
-        &root.join("client-b.db"),
-        &remote_url,
-    ))
-    .await
-    .expect("open sync client B");
+    let client_a =
+        TursoSyncStorage::open(sync_server_config(&root.join("client-a.db"), &remote_url))
+            .await
+            .expect("open sync client A");
+    let client_b =
+        TursoSyncStorage::open(sync_server_config(&root.join("client-b.db"), &remote_url))
+            .await
+            .expect("open sync client B");
 
     let connection_a = client_a.connect().await.expect("connect client A");
     connection_a
@@ -100,10 +96,7 @@ async fn pinned_v0_7_sync_server_push_pull_checkpoint_and_stats() {
 
     let connection_b = client_b.connect().await.expect("connect client B");
     let mut rows = connection_b
-        .query(
-            "SELECT body FROM sync_notes WHERE id = ?1",
-            ["note-1"],
-        )
+        .query("SELECT body FROM sync_notes WHERE id = ?1", ["note-1"])
         .await
         .expect("query pulled row");
     let row = rows
@@ -125,6 +118,11 @@ async fn pinned_v0_7_sync_server_push_pull_checkpoint_and_stats() {
         "{checkpoint:?}"
     );
     let stats = client_b.stats().await;
-    assert_eq!(stats.outcome, TursoSyncOperationOutcome::Observed, "{stats:?}");
+    assert_eq!(
+        stats.outcome,
+        TursoSyncOperationOutcome::Observed,
+        "{stats:?}"
+    );
     assert!(stats.stats.is_some(), "{stats:?}");
 }
+use super::fixture::temp_root;

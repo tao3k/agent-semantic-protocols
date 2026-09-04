@@ -1,6 +1,7 @@
 //! Immutable, content-addressed corpus for the single-process cold `rg` lane.
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 
 pub const COLD_RG_CORPUS_RECEIPT_SCHEMA_ID: &str =
     "agent.semantic-protocols.cold-rg-corpus-receipt";

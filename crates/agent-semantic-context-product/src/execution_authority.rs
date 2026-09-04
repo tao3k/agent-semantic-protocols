@@ -1,6 +1,8 @@
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 
-use crate::primitives::{Digest, ProtocolId};
+use crate::primitives::Digest;
+use crate::primitives::ProtocolId;
 
 macro_rules! execution_protocol_id {
     ($name:ident) => {

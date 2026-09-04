@@ -1,15 +1,17 @@
 //! Runtime status helpers for agent sessions and resident child activity.
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 
 use super::runtime_session::RuntimeSessionId;
 use crate::codex_rollout_sessions::codex_rollout_paths_for_session_id;
-use std::{
-    env, fs,
-    io::{BufRead, BufReader},
-    path::{Path, PathBuf},
-    time::UNIX_EPOCH,
-};
+use std::env;
+use std::fs;
+use std::io::BufRead;
+use std::io::BufReader;
+use std::path::Path;
+use std::path::PathBuf;
+use std::time::UNIX_EPOCH;
 
 /// Maximum rollout-header lines inspected before metadata is considered absent.
 const CODEX_ROLLOUT_METADATA_HEADER_LINE_LIMIT: usize = 32;

@@ -1,9 +1,14 @@
-use agent_semantic_context_product::{
-    ActiveProgram, ClosureDisposition, Digest, ExecutionAuthority, ProtocolId,
-    StateAuthorityReceipt, UncheckedContextProductStateV1, ValidationError,
-};
+use agent_semantic_context_product::ActiveProgram;
+use agent_semantic_context_product::ClosureDisposition;
+use agent_semantic_context_product::Digest;
+use agent_semantic_context_product::ExecutionAuthority;
+use agent_semantic_context_product::ProtocolId;
+use agent_semantic_context_product::StateAuthorityReceipt;
+use agent_semantic_context_product::UncheckedContextProductStateV1;
+use agent_semantic_context_product::ValidationError;
 
-use crate::ports::{AuthoritativeStateRecord, StateHead};
+use crate::ports::AuthoritativeStateRecord;
+use crate::ports::StateHead;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum AuthoritativeStateValidationError {

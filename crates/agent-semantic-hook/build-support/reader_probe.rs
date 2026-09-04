@@ -1,5 +1,7 @@
-use std::path::{Path, PathBuf};
-use std::process::{Command, ExitStatus};
+use std::path::Path;
+use std::path::PathBuf;
+use std::process::Command;
+use std::process::ExitStatus;
 
 pub(crate) fn compile_reader_probe_artifacts() {
     println!("cargo:rerun-if-changed=reader-probe/reader_probe_fixture.c");

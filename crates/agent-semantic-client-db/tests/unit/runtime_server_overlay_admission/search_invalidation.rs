@@ -1,12 +1,16 @@
 //! Atomic invalidation tests for owner-derived lexical and graph search state.
 
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::AtomicU64;
+use std::sync::atomic::Ordering;
 
-use agent_semantic_client_db::runtime_server_workspace::{
-    RuntimeServerWorkspaceRegistry, WORKSPACE_GENERATION_DELTA_SCHEMA_ID, WorkspaceGenerationBuild,
-    WorkspaceGenerationDelta, WorkspaceMemoryGeneration, WorkspaceOwnerSnapshot,
-    WorkspaceRecoverySource, WorkspaceSelectorSnapshot,
-};
+use agent_semantic_client_db::runtime_server_workspace::RuntimeServerWorkspaceRegistry;
+use agent_semantic_client_db::runtime_server_workspace::WORKSPACE_GENERATION_DELTA_SCHEMA_ID;
+use agent_semantic_client_db::runtime_server_workspace::WorkspaceGenerationBuild;
+use agent_semantic_client_db::runtime_server_workspace::WorkspaceGenerationDelta;
+use agent_semantic_client_db::runtime_server_workspace::WorkspaceMemoryGeneration;
+use agent_semantic_client_db::runtime_server_workspace::WorkspaceOwnerSnapshot;
+use agent_semantic_client_db::runtime_server_workspace::WorkspaceRecoverySource;
+use agent_semantic_client_db::runtime_server_workspace::WorkspaceSelectorSnapshot;
 
 static NEXT_FIXTURE_ID: AtomicU64 = AtomicU64::new(1);
 
@@ -22,10 +26,11 @@ fn content_search_generation_receipt(
     workspace_identity: &str,
     source_snapshot: &agent_semantic_content_identity::SourceSnapshotEvidence,
 ) -> agent_semantic_search::ContentSearchGenerationReceipt {
-    use agent_semantic_search::{
-        ContentSearchGenerationReceipt, SearchGenerationConstructionStage,
-        SearchGenerationIdentity, SearchGenerationStageReceipt, canonical_blake3_digest,
-    };
+    use agent_semantic_search::ContentSearchGenerationReceipt;
+    use agent_semantic_search::SearchGenerationConstructionStage;
+    use agent_semantic_search::SearchGenerationIdentity;
+    use agent_semantic_search::SearchGenerationStageReceipt;
+    use agent_semantic_search::canonical_blake3_digest;
     let identity = SearchGenerationIdentity {
         project_id: "project-overlay-fixture".to_owned(),
         workspace_id: workspace_identity.to_owned(),
@@ -91,6 +96,7 @@ fn generation(
             owner_path: "src/lib.rs".to_owned(),
             content_digest,
             bytes: bytes.to_vec(),
+            native_syntax_diagnostic: None,
             selectors: vec![selector],
         }],
     })
@@ -115,13 +121,13 @@ async fn owner_delta_invalidates_lexical_postings_and_graph_edges_in_one_epoch()
         relation:
             agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelation {
                 from: agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelationEndpoint {
-                    kind: "item".to_owned(),
-                    id: stale_selector.selector.clone(),
+                    kind: agent_semantic_content_identity::ProviderRelationEndpointKindV1::Item,
+                    id: stale_selector.selector.clone().into(),
                 },
-                kind: "calls".to_owned(),
+                kind: "calls".into(),
                 to: agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelationEndpoint {
-                    kind: "item".to_owned(),
-                    id: "rust://src/lib.rs#item/function/dependency".to_owned(),
+                    kind: agent_semantic_content_identity::ProviderRelationEndpointKindV1::Item,
+                    id: "rust://src/lib.rs#item/function/dependency".into(),
                 },
             },
     };
@@ -163,6 +169,7 @@ async fn owner_delta_invalidates_lexical_postings_and_graph_edges_in_one_epoch()
         owner_path: "src/lib.rs".to_owned(),
         content_digest: format!("blake3-256:{}", blake3::hash(fresh_bytes).to_hex()),
         bytes: fresh_bytes.to_vec(),
+        native_syntax_diagnostic: None,
         selectors: vec![WorkspaceSelectorSnapshot {
             selector: "rust://src/lib.rs#item/function/fresh".to_owned(),
             byte_start: 0,

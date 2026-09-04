@@ -1,6 +1,7 @@
 //! Provider-neutral exact structural-selector wire identities and validation.
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 use std::fmt;
 
 /// Schema identifier for exact structural selectors.

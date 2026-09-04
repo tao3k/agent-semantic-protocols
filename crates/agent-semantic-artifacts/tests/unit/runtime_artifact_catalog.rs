@@ -1,13 +1,16 @@
 //! Runtime artifact catalog tests.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 
-use agent_semantic_artifacts::runtime_artifact_catalog::{
-    RuntimeArtifactCatalog, RuntimeArtifactReceipt, load_runtime_artifact_catalog,
-    load_runtime_provider_catalog_identity, publish_runtime_provider_catalog,
-    publish_runtime_provider_catalog_cas,
-};
-use agent_semantic_config::runtime_dev::{ArtifactOrigin, RuntimeArtifactMode};
+use agent_semantic_artifacts::runtime_artifact_catalog::RuntimeArtifactCatalog;
+use agent_semantic_artifacts::runtime_artifact_catalog::RuntimeArtifactReceipt;
+use agent_semantic_artifacts::runtime_artifact_catalog::load_runtime_artifact_catalog;
+use agent_semantic_artifacts::runtime_provider_catalog::load_runtime_provider_catalog_identity;
+use agent_semantic_artifacts::runtime_provider_catalog::publish_runtime_provider_catalog;
+use agent_semantic_artifacts::runtime_provider_catalog::publish_runtime_provider_catalog_cas;
+use agent_semantic_config::runtime_dev::ArtifactOrigin;
+use agent_semantic_config::runtime_dev::RuntimeArtifactMode;
 
 #[tokio::test]
 async fn tokio_loader_constructs_one_dev_catalog_generation() {

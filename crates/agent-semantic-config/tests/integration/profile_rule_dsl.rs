@@ -1,7 +1,7 @@
-use agent_semantic_config::{
-    HookClientActionKind, HookClientCapabilityPolicyConfig, HookClientHostInvocationKind,
-    HookClientRuleConfig,
-};
+use agent_semantic_config::HookClientActionKind;
+use agent_semantic_config::HookClientCapabilityPolicyConfig;
+use agent_semantic_config::HookClientHostInvocationKind;
+use agent_semantic_config::HookClientRuleConfig;
 
 #[test]
 fn native_matcher_is_the_only_public_rule_host_axis() {
@@ -100,15 +100,7 @@ fn language_route_materializes_default_wrapped_read_action_in_internal_ir() {
     assert!(public_rule.matcher_policies.is_empty());
     assert_eq!(
         public_rule.profiles_list,
-        [
-            "rust",
-            "typescript",
-            "python",
-            "julia",
-            "gerbil-scheme",
-            "org",
-            "markdown"
-        ]
+        ["rust", "typescript", "python", "julia", "gerbil-scheme"]
     );
     config
         .materialize_profile_rule_ir()
@@ -150,6 +142,26 @@ fn unknown_profile_reference_fails_closed() {
         .validate()
         .expect_err("unknown profile must fail closed");
     assert!(error.contains("unknown profile"), "error={error}");
+}
+
+#[test]
+fn matched_language_dispatch_rejects_profiles_without_provider_routes() {
+    let mut config = agent_semantic_config::default_hook_client_config_file()
+        .expect("parse canonical hook config");
+    config
+        .rules
+        .iter_mut()
+        .find(|rule| rule.id == "route-read-to-asp-languages")
+        .expect("language route rule")
+        .profiles_list
+        .push("markdown".to_owned());
+    let error = config
+        .validate()
+        .expect_err("unregistered lazy provider must fail closed");
+    assert!(
+        error.contains("selects unregistered lazy provider md/asp-md"),
+        "error={error}"
+    );
 }
 
 #[test]

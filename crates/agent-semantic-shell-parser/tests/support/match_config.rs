@@ -1,6 +1,6 @@
-use agent_semantic_shell_parser::{
-    BashCommandMatch, match_bash_command_prefix, match_bash_wrapped_command_prefix,
-};
+use agent_semantic_shell_parser::BashCommandMatch;
+use agent_semantic_shell_parser::match_bash_command_prefix;
+use agent_semantic_shell_parser::match_bash_wrapped_command_prefix;
 
 const HOOK_CONFIG_TEMPLATE: &str =
     include_str!("../../../agent-semantic-config/templates/hooks/config.toml");

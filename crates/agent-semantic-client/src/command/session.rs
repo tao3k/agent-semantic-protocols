@@ -5,10 +5,19 @@
 //! from the child process environment. Natural-language prose is never parsed
 //! as identity evidence.
 
-use agent_semantic_client_protocol::{
-    AGENT_SESSION_REGISTER_METHOD, AGENT_SESSION_REGISTER_REQUEST_SCHEMA_ID,
-    AgentSessionRegisterReceipt, AgentSessionRegisterRequest, ClientFrame, ClientOutcome,
-};
+use agent_semantic_client_protocol::AGENT_SESSION_REGISTER_METHOD;
+use agent_semantic_client_protocol::AGENT_SESSION_REGISTER_REQUEST_SCHEMA_ID;
+use agent_semantic_client_protocol::AgentChildThreadId;
+use agent_semantic_client_protocol::AgentName;
+use agent_semantic_client_protocol::AgentParentThreadId;
+use agent_semantic_client_protocol::AgentPath;
+use agent_semantic_client_protocol::AgentRootSessionId;
+use agent_semantic_client_protocol::AgentRouteKey;
+use agent_semantic_client_protocol::AgentSessionRegisterReceipt;
+use agent_semantic_client_protocol::AgentSessionRegisterRequest;
+use agent_semantic_client_protocol::ClientFrame;
+use agent_semantic_client_protocol::ClientOutcome;
+use agent_semantic_client_protocol::ClientSchemaId;
 
 pub(super) async fn run_session_command(args: &[String]) -> Result<(), String> {
     match args.first().map(String::as_str) {
@@ -122,14 +131,14 @@ async fn register_session_binding(
     let route_name = route.route_key.as_str();
     let agent_path = format!("/root/{agent_name}");
     let request = AgentSessionRegisterRequest {
-        schema_id: AGENT_SESSION_REGISTER_REQUEST_SCHEMA_ID.to_owned(),
+        schema_id: ClientSchemaId::new(AGENT_SESSION_REGISTER_REQUEST_SCHEMA_ID)?,
         schema_version: 1,
-        root_session_id: binding.root_session_id,
-        parent_thread_id: binding.parent_thread_id,
-        child_thread_id: binding.child_thread_id,
-        agent_name,
-        agent_path,
-        route_key: route_name.to_owned(),
+        root_session_id: AgentRootSessionId::new(binding.root_session_id)?,
+        parent_thread_id: AgentParentThreadId::new(binding.parent_thread_id)?,
+        child_thread_id: AgentChildThreadId::new(binding.child_thread_id)?,
+        agent_name: AgentName::new(agent_name)?,
+        agent_path: AgentPath::new(agent_path)?,
+        route_key: AgentRouteKey::new(route_name)?,
     };
     request.validate()?;
     let params = serde_json::to_value(&request)

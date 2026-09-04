@@ -101,7 +101,7 @@
         },
         "nextCommand": {
           "type": ["string", "null"],
-          "pattern": "^asp\\s+[^\\s]+\\s+(search\\s+playbook|query)\\b(?!.*<[^>]+>).*$"
+      "pattern": "^(?:asp\\s+search\\s+playbook|asp\\s+[^\\s]+\\s+(?:search\\s+playbook|query))\\b(?!.*<[^>]+>).*$"
         },
         "selectors": {
           "type": "array",
@@ -195,7 +195,7 @@
     "nativeSyntax": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["state", "stageArtifactDigest", "projections", "relations", "properByteRanges", "nonEmptyQueryKeys", "relationsBoundToOwners", "complete"],
+      "required": ["state", "stageArtifactDigest", "projections", "relations", "diagnostics", "properByteRanges", "nonEmptyQueryKeys", "relationsBoundToOwners", "complete"],
       "properties": {
         "state": {"enum": ["queued", "building", "ready", "failed"]},
         "stageArtifactDigest": {"type": "string", "pattern": "^blake3-256:[0-9a-f]{64}$"},
@@ -207,6 +207,10 @@
           "type": "array",
           "items": {"$ref": "#/$defs/nativeSyntaxRelation"}
         },
+        "diagnostics": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/nativeSyntaxDiagnostic"}
+        },
         "properByteRanges": {"type": "boolean"},
         "nonEmptyQueryKeys": {"type": "boolean"},
         "relationsBoundToOwners": {"type": "boolean"},
@@ -216,7 +220,7 @@
         {
           "if": {"properties": {"state": {"const": "ready"}}},
           "then": {"properties": {"properByteRanges": {"const": true}, "nonEmptyQueryKeys": {"const": true}, "relationsBoundToOwners": {"const": true}, "complete": {"const": true}}},
-          "else": {"properties": {"projections": {"maxItems": 0}, "relations": {"maxItems": 0}, "properByteRanges": {"const": false}, "nonEmptyQueryKeys": {"const": false}, "relationsBoundToOwners": {"const": false}, "complete": {"const": false}}}
+          "else": {"properties": {"projections": {"maxItems": 0}, "relations": {"maxItems": 0}, "diagnostics": {"maxItems": 0}, "properByteRanges": {"const": false}, "nonEmptyQueryKeys": {"const": false}, "relationsBoundToOwners": {"const": false}, "complete": {"const": false}}}
         }
       ]
     },
@@ -258,6 +262,17 @@
       "properties": {
         "ownerPath": {"type": "string", "minLength": 1},
         "relationDigest": {"type": "string", "pattern": "^blake3-256:[0-9a-f]{64}$"}
+      }
+    },
+    "nativeSyntaxDiagnostic": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ownerPath", "contentDigest", "reasonKind", "message"],
+      "properties": {
+        "ownerPath": {"type": "string", "minLength": 1},
+        "contentDigest": {"type": "string", "pattern": "^blake3-256:[0-9a-f]{64}$"},
+        "reasonKind": {"const": "source-syntax-unavailable"},
+        "message": {"type": "string", "minLength": 1, "maxLength": 4096}
       }
     },
     "indexedLexical": {

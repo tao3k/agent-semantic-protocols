@@ -1,6 +1,7 @@
 //! Exact-selector Merkle proofs and domain-separated content digests.
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 use std::fmt;
 
 /// Schema identifier for an exact-selector Merkle proof.
@@ -126,11 +127,13 @@ impl ExactSelectorMerkleProofV1 {
         }
         validate_owner_path(&self.owner_path)?;
         if !crate::workspace_merkle_v1::verify_owner_inclusion_v1(
-            &self.owner_path,
-            &self.source_blob_digest,
-            &self.owner_subtree_digest,
-            &self.owner_inclusion_proof,
-            &self.workspace_root_digest,
+            crate::workspace_merkle_v1::WorkspaceOwnerInclusionV1 {
+                owner_path: &self.owner_path,
+                source_blob_digest: &self.source_blob_digest,
+                expected_owner_subtree_digest: &self.owner_subtree_digest,
+                inclusion_proof: &self.owner_inclusion_proof,
+                expected_workspace_root_digest: &self.workspace_root_digest,
+            },
         ) {
             return Err(ExactSelectorMerkleProofError::OwnerInclusion);
         }

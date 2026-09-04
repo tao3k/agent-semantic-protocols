@@ -2,7 +2,8 @@
 
 use std::collections::BTreeSet;
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 use tokio::sync::watch;
 
 /// Stable schema identifier for the projection-capability publication receipt.

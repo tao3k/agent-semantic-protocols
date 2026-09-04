@@ -1,6 +1,6 @@
-use agent_semantic_shell_parser::{
-    PrefixMatch, bash::parse_bash_command_candidates, command_stages_match_wrapped_prefix,
-};
+use agent_semantic_shell_parser::PrefixMatch;
+use agent_semantic_shell_parser::bash::parse_bash_command_candidates;
+use agent_semantic_shell_parser::command_stages_match_wrapped_prefix;
 
 fn tokens(values: &[&str]) -> Vec<String> {
     values.iter().map(|value| (*value).to_owned()).collect()

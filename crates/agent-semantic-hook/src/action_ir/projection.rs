@@ -1,9 +1,12 @@
-use super::{
-    AgentAction, AgentActionKind, AgentActionSubjectKind, HostInvocationKind, SemanticCapability,
-    SemanticCapabilityEvidence,
-};
+use super::AgentAction;
+use super::AgentActionKind;
+use super::AgentActionSubjectKind;
+use super::HostInvocationKind;
+use super::SemanticCapability;
+use super::SemanticCapabilityEvidence;
 use crate::HookRuntime;
-use crate::tool_action::{OperationIntent, ToolAction};
+use crate::tool_action::OperationIntent;
+use crate::tool_action::ToolAction;
 
 /// Projects host and parser facts into the Action IR before any rule is evaluated.
 ///

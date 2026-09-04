@@ -1,12 +1,13 @@
 //! State-root and durable path layout.
 
-use super::identity::{RepoId, WorkspaceId};
+use super::identity::RepoId;
+use super::identity::WorkspaceId;
 use crate::git::canonicalize_if_possible;
-use serde::{Deserialize, Serialize};
-use std::{
-    env,
-    path::{Path, PathBuf},
-};
+use serde::Deserialize;
+use serde::Serialize;
+use std::env;
+use std::path::Path;
+use std::path::PathBuf;
 
 /// Environment variable that overrides the ASP v2 state root.
 pub const ASP_STATE_HOME_ENV: &str = "ASP_STATE_HOME";

@@ -1,4 +1,5 @@
-use super::{hook_event, panic_terminal};
+use super::hook_event;
+use super::panic_terminal;
 use std::ffi::OsString;
 
 #[test]

@@ -1,25 +1,44 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
+use std::time::Instant;
 
-use agent_semantic_content_identity::{
-    SourceSnapshotEvidence, SourceSnapshotKind, hash_blob,
-    provider_projection_relation::{ProviderProjectedRelation, ProviderProjectedRelationEndpoint},
-    workspace_generation_evidence::WorkspaceGenerationEvidenceV1,
-};
-use agent_semantic_search_projection::{ResidentSearchWorkCounters, RuntimeProviderSearchReceipt};
+use agent_semantic_content_identity::SourceSnapshotEvidence;
+use agent_semantic_content_identity::SourceSnapshotKind;
+use agent_semantic_content_identity::hash_blob;
+use agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelation;
+use agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelationEndpoint;
+use agent_semantic_content_identity::workspace_generation_evidence::WorkspaceGenerationEvidenceV1;
+use agent_semantic_search_projection::ResidentSearchWorkCounters;
+use agent_semantic_search_projection::RuntimeProviderSearchReceipt;
 
-use crate::{
-    NativeSyntaxProjection, NativeSyntaxRelation, NativeSyntaxSelector, ResidentGraphSearchBudget,
-    ResidentGraphSearchRequest, ResidentGraphSearchWork, ResidentIndexBuildResources,
-    ResidentIndexBuildStrategy, ResidentLexicalCoverageInput, ResidentSearchAuthority,
-    ResidentSourceDocument, ResidentSourceIndex, SEARCH_GENERATION_GRAPH_RECEIPT_SCHEMA_ID,
-    SearchGenerationGraphReceipt, SearchGenerationGraphRequest, SearchGenerationIdentity,
-    SearchPlaybookPythonGraphExecution, SearchPlaybookReceiptInput, SourceByteOwner,
-    build_native_syntax_stage, build_resident_graph_generation, build_search_playbook_receipt,
-    build_source_byte_acquisition_stage, canonical_blake3_digest, rank_resident_graph_generation,
-    resident_lexical_coverage_batch, stable_graph_node_id,
-};
+use crate::NativeSyntaxProjection;
+use crate::NativeSyntaxRelation;
+use crate::NativeSyntaxSelector;
+use crate::ResidentGraphSearchBudget;
+use crate::ResidentGraphSearchRequest;
+use crate::ResidentGraphSearchWork;
+use crate::ResidentIndexBuildResources;
+use crate::ResidentIndexBuildStrategy;
+use crate::ResidentLexicalCoverageInput;
+use crate::ResidentSearchAuthority;
+use crate::ResidentSourceDocument;
+use crate::ResidentSourceIndex;
+use crate::SEARCH_GENERATION_GRAPH_RECEIPT_SCHEMA_ID;
+use crate::SearchGenerationGraphReceipt;
+use crate::SearchGenerationGraphRequest;
+use crate::SearchGenerationIdentity;
+use crate::SearchPlaybookPythonGraphExecution;
+use crate::SearchPlaybookReceiptInput;
+use crate::SourceByteOwner;
+use crate::build_native_syntax_stage;
+use crate::build_resident_graph_generation;
+use crate::build_search_playbook_receipt;
+use crate::build_source_byte_acquisition_stage;
+use crate::canonical_blake3_digest;
+use crate::rank_resident_graph_generation;
+use crate::resident_lexical_coverage_batch;
+use crate::stable_graph_node_id;
 
 const OWNER_COUNT: usize = 4_096;
 const COHORT_COUNT: usize = 64;
@@ -131,12 +150,12 @@ fn owner_relations(owners: &[LargeOwner]) -> Vec<ProviderProjectedRelation> {
         })
         .map(|(from, to)| ProviderProjectedRelation {
             from: ProviderProjectedRelationEndpoint {
-                kind: "owner".to_owned(),
+                kind: agent_semantic_content_identity::ProviderRelationEndpointKindV1::Owner,
                 id: from,
             },
-            kind: "next-in-cohort".to_owned(),
+            kind: "next-in-cohort".into(),
             to: ProviderProjectedRelationEndpoint {
-                kind: "owner".to_owned(),
+                kind: agent_semantic_content_identity::ProviderRelationEndpointKindV1::Owner,
                 id: to,
             },
         })
@@ -676,6 +695,7 @@ fn large_workspace_playbook_measures_cold_warm_and_concurrent_triad() {
         native_syntax_stage_artifact_digest: generation.syntax_digest.clone(),
         native_syntax_projections: projections,
         native_syntax_relations: Vec::new(),
+        native_syntax_diagnostics: Vec::new(),
         native_syntax_elapsed_micros: native_syntax_elapsed.as_micros() as u64,
         runtime,
         graph,

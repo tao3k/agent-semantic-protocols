@@ -11,20 +11,59 @@
     "state",
     "reasonKind",
     "failureLayer",
-    "osError",
     "message",
-    "recovery",
     "originalError"
   ],
   "properties": {
     "schemaId": { "const": "agent.semantic-protocols.cli-failure" },
     "schemaVersion": { "const": 1 },
     "state": { "const": "blocked" },
-    "reasonKind": { "const": "host-operation-not-permitted" },
-    "failureLayer": { "const": "asp-cli-startup-or-ipc-boundary" },
-    "osError": { "const": "EPERM" },
+    "reasonKind": {
+      "enum": [
+        "host-operation-not-permitted",
+        "transport-unavailable",
+        "runtime-status-observation-failed"
+      ]
+    },
+    "failureLayer": {
+      "enum": [
+        "asp-cli-startup-or-ipc-boundary",
+        "runtime-verified-endpoint-transport",
+        "runtime-transport-capability",
+        "runtime-status-observation"
+      ]
+    },
     "message": { "type": "string", "minLength": 1 },
+    "osError": { "type": "string", "minLength": 1 },
     "recovery": { "type": "string", "minLength": 1 },
     "originalError": { "type": "string", "minLength": 1 }
-  }
+  },
+  "oneOf": [
+    {
+      "properties": {
+        "reasonKind": { "const": "host-operation-not-permitted" },
+        "failureLayer": {
+          "enum": [
+            "asp-cli-startup-or-ipc-boundary",
+            "runtime-verified-endpoint-transport"
+          ]
+        },
+        "osError": { "const": "EPERM" },
+        "recovery": { "type": "string", "minLength": 1 }
+      },
+      "required": ["osError", "recovery"]
+    },
+    {
+      "properties": {
+        "reasonKind": { "const": "transport-unavailable" },
+        "failureLayer": { "const": "runtime-transport-capability" }
+      }
+    },
+    {
+      "properties": {
+        "reasonKind": { "const": "runtime-status-observation-failed" },
+        "failureLayer": { "const": "runtime-status-observation" }
+      }
+    }
+  ]
 }

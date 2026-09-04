@@ -1,6 +1,7 @@
 //! User and project configuration model for `agent-semantic-client`.
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 
 /// Backend mode selected outside the agent prompt command.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]

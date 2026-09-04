@@ -1,9 +1,9 @@
 use std::collections::BTreeSet;
 
-use super::{
-    HookPolicyCombinatorialStrategy, HookPolicyWitnessPolarity, combinatorial_policy_witnesses,
-    combinatorial_positional_shell_witnesses,
-};
+use super::HookPolicyCombinatorialStrategy;
+use super::HookPolicyWitnessPolarity;
+use super::combinatorial_policy_witnesses;
+use super::combinatorial_positional_shell_witnesses;
 
 #[test]
 fn compiled_policy_axes_generate_balanced_complex_black_and_white_witnesses() {

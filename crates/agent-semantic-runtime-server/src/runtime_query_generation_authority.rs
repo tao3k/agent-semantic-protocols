@@ -3,17 +3,18 @@
 use std::collections::HashMap;
 use std::pin::Pin;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::AtomicU64;
+use std::sync::atomic::Ordering;
 
 use tokio::sync::watch;
 use tokio_stream::Stream;
 
 use crate::query_generation::RuntimeSearchGenerationBuilder;
 use crate::runtime_query_generation::RuntimeQueryGeneration;
-use crate::runtime_query_generation_key::{RuntimeProjectWorkspaceKey, validate_ready_identity};
-use agent_semantic_search::{
-    RuntimeSearchDerivedAttachmentEvent, RuntimeSearchDerivedAttachmentSnapshot,
-};
+use crate::runtime_query_generation_key::RuntimeProjectWorkspaceKey;
+use crate::runtime_query_generation_key::validate_ready_identity;
+use agent_semantic_search::RuntimeSearchDerivedAttachmentEvent;
+use agent_semantic_search::RuntimeSearchDerivedAttachmentSnapshot;
 
 #[derive(Clone)]
 pub enum RuntimeQueryGenerationState {

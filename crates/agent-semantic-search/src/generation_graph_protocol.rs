@@ -4,16 +4,17 @@
 
 use std::collections::BTreeSet;
 
-use agent_semantic_content_identity::{
-    SourceSnapshotEvidence, provider_projection_relation::ProviderProjectedRelation,
-    workspace_generation_evidence::WorkspaceGenerationEvidenceV1,
-};
-use serde::{Deserialize, Serialize};
+use agent_semantic_content_identity::ProviderRelationEndpointKindV1;
+use agent_semantic_content_identity::SourceSnapshotEvidence;
+use agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelation;
+use agent_semantic_content_identity::workspace_generation_evidence::WorkspaceGenerationEvidenceV1;
+use serde::Deserialize;
+use serde::Serialize;
 
-use crate::{
-    ContentSearchGenerationReceipt, SearchGenerationIdentity, canonical_blake3_digest,
-    stable_graph_node_id,
-};
+use crate::ContentSearchGenerationReceipt;
+use crate::SearchGenerationIdentity;
+use crate::canonical_blake3_digest;
+use crate::stable_graph_node_id;
 
 pub const SEARCH_GENERATION_GRAPH_REQUEST_SCHEMA_ID: &str =
     "agent.semantic-protocols.search-generation-graph-request";
@@ -111,7 +112,9 @@ impl SearchGenerationGraphRequest {
         for relation in &self.relations {
             relation.validate()?;
             for endpoint in [&relation.from, &relation.to] {
-                if endpoint.kind == "owner" && !owners.contains(endpoint.id.as_str()) {
+                if endpoint.kind == ProviderRelationEndpointKindV1::Owner
+                    && !owners.contains(endpoint.id.as_str())
+                {
                     return Err(format!(
                         "search generation graph relation references an unadmitted owner: {}",
                         endpoint.id

@@ -1,13 +1,18 @@
-use agent_semantic_context_product::{
-    ContextProductEvent, Digest, JSON_SAFE_INTEGER_MAX, ProtocolId, UncheckedContextProductStateV1,
-    ValidationError,
-};
+use agent_semantic_context_product::ContextProductEvent;
+use agent_semantic_context_product::Digest;
+use agent_semantic_context_product::JSON_SAFE_INTEGER_MAX;
+use agent_semantic_context_product::ProtocolId;
+use agent_semantic_context_product::UncheckedContextProductStateV1;
+use agent_semantic_context_product::ValidationError;
 use serde::Serialize;
 
-use crate::{
-    AuthoritativeStateRecord, CompareAndAppendOutcome, GraphRouterError, RunCommit, RunCommitStore,
-    TrustedClock, ValidatedContextProductStateV1,
-};
+use crate::AuthoritativeStateRecord;
+use crate::CompareAndAppendOutcome;
+use crate::GraphRouterError;
+use crate::RunCommit;
+use crate::RunCommitStore;
+use crate::TrustedClock;
+use crate::ValidatedContextProductStateV1;
 
 pub(super) fn require_expected_head(
     current: &ValidatedContextProductStateV1,

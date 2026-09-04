@@ -1,9 +1,9 @@
 use std::collections::BTreeMap;
 
-use agent_semantic_shell_parser::structured::{
-    BoundedPathCommandSpec, BoundedPathSegment, StructuredFilterClassification,
-    classify_single_bounded_path_command,
-};
+use agent_semantic_shell_parser::structured::BoundedPathCommandSpec;
+use agent_semantic_shell_parser::structured::BoundedPathSegment;
+use agent_semantic_shell_parser::structured::StructuredFilterClassification;
+use agent_semantic_shell_parser::structured::classify_single_bounded_path_command;
 
 #[test]
 fn configured_projection_retains_only_the_typed_source_operand() {

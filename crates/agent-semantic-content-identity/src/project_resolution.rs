@@ -1,9 +1,14 @@
 //! Provider-neutral project-resolution receipts and immutable package-graph facts.
 
 use std::collections::HashSet;
-use std::path::{Component, Path};
+use std::path::Component;
+use std::path::Path;
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
+
+use crate::LanguageIdV1;
+use crate::ProviderIdV1;
 
 /// Schema identifier for provider project-resolution receipts.
 pub const PROJECT_RESOLUTION_SCHEMA_ID: &str = "agent.semantic-protocols.project-resolution";
@@ -215,8 +220,8 @@ impl ProjectResolutionReceipt {
     /// registry and are compared without rewriting their wire representation.
     pub fn validate(
         &self,
-        expected_language_id: &str,
-        expected_provider_id: &str,
+        expected_language_id: &LanguageIdV1,
+        expected_provider_id: &ProviderIdV1,
         expected_candidate_generation: &str,
     ) -> Result<(), String> {
         if self.schema_id != PROJECT_RESOLUTION_SCHEMA_ID
@@ -226,8 +231,8 @@ impl ProjectResolutionReceipt {
         {
             return Err("provider ProjectResolution identity/state is not complete v1".to_owned());
         }
-        if self.language_id != expected_language_id
-            || self.provider_id != expected_provider_id
+        if self.language_id != expected_language_id.as_str()
+            || self.provider_id != expected_provider_id.as_str()
             || self.candidate_generation_digest != expected_candidate_generation
         {
             return Err(format!(
@@ -293,8 +298,8 @@ impl AdmittedProjectResolution {
             return Err("ASP ProjectResolution receipt digest drift".to_owned());
         }
         self.resolution.validate(
-            &self.resolution.language_id,
-            &self.resolution.provider_id,
+            &self.resolution.language_id.as_str().into(),
+            &self.resolution.provider_id.as_str().into(),
             &self.resolution.candidate_generation_digest,
         )
     }

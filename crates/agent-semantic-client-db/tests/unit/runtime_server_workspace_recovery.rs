@@ -1,10 +1,13 @@
-use agent_semantic_client_db::runtime_server_workspace::{
-    RuntimeServerWorkspaceRegistry, WorkspaceCanonicalMaterialization,
-    WorkspaceExactProjectionDataPlaneClient, WorkspaceExactProjectionDataPlaneOpen,
-    WorkspaceGenerationDataPlaneClient, WorkspaceGenerationDataPlaneOpen,
-    WorkspaceGenerationPointerReader, WorkspaceMemoryGeneration, WorkspaceOwnerSnapshot,
-    WorkspaceRecoverySource,
-};
+use agent_semantic_client_db::runtime_server_workspace::RuntimeServerWorkspaceRegistry;
+use agent_semantic_client_db::runtime_server_workspace::WorkspaceCanonicalMaterialization;
+use agent_semantic_client_db::runtime_server_workspace::WorkspaceExactProjectionDataPlaneClient;
+use agent_semantic_client_db::runtime_server_workspace::WorkspaceExactProjectionDataPlaneOpen;
+use agent_semantic_client_db::runtime_server_workspace::WorkspaceGenerationDataPlaneClient;
+use agent_semantic_client_db::runtime_server_workspace::WorkspaceGenerationDataPlaneOpen;
+use agent_semantic_client_db::runtime_server_workspace::WorkspaceGenerationPointerReader;
+use agent_semantic_client_db::runtime_server_workspace::WorkspaceMemoryGeneration;
+use agent_semantic_client_db::runtime_server_workspace::WorkspaceOwnerSnapshot;
+use agent_semantic_client_db::runtime_server_workspace::WorkspaceRecoverySource;
 
 fn project_root(workspace_identity: &str) -> std::path::PathBuf {
     std::path::PathBuf::from("/runtime-server-recovery-fixture").join(workspace_identity)
@@ -47,6 +50,7 @@ fn generation(workspace_identity: &str) -> WorkspaceMemoryGeneration {
                 owner_path: "src/lib.rs".to_owned(),
                 content_digest,
                 bytes: bytes.to_vec(),
+                native_syntax_diagnostic: None,
                 selectors: Vec::new(),
             }],
         },
@@ -103,6 +107,7 @@ fn canonical_materialization(
             owner_path: "src/lib.rs".to_owned(),
             content_digest,
             bytes: bytes.to_vec(),
+            native_syntax_diagnostic: None,
             selectors: Vec::new(),
         }],
         Vec::new(),

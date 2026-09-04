@@ -2,7 +2,9 @@ use std::path::Path;
 
 // Workspace-owned client database layout contract.
 
-use agent_semantic_runtime::state_core::{RepoId, StatePaths, WorkspaceId};
+use agent_semantic_runtime::state_core::RepoId;
+use agent_semantic_runtime::state_core::StatePaths;
+use agent_semantic_runtime::state_core::WorkspaceId;
 
 #[test]
 fn workspace_client_database_path_is_unique_per_workspace() {

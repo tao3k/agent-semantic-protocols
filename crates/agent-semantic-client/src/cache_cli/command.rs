@@ -1,11 +1,12 @@
 //! Runtime Server-backed cache CLI adapter.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 
 use agent_semantic_client_core::LanguageId;
-use agent_semantic_client_protocol::{
-    AspClientSourceIndexLookupRequest, ClientFrame, ClientOutcome,
-};
+use agent_semantic_client_protocol::AspClientSourceIndexLookupRequest;
+use agent_semantic_client_protocol::ClientFrame;
+use agent_semantic_client_protocol::ClientOutcome;
 use serde_json::json;
 
 struct SourceIndexLookupSpec {

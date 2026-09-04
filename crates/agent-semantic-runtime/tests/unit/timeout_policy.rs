@@ -1,4 +1,5 @@
-use crate::{RuntimeOperationTimeoutPolicy, runtime_operation_timeout_receipt};
+use crate::RuntimeOperationTimeoutPolicy;
+use crate::runtime_operation_timeout_receipt;
 
 #[test]
 fn runtime_timeout_receipt_records_within_budget_operation() {

@@ -1,14 +1,17 @@
 use std::collections::BTreeMap;
 
-use agent_semantic_content_identity::{
-    SourceSnapshotEvidence, SourceSnapshotKind, WorkspaceSnapshot, hash_blob,
-};
+use agent_semantic_content_identity::SourceSnapshotEvidence;
+use agent_semantic_content_identity::SourceSnapshotKind;
+use agent_semantic_content_identity::WorkspaceSnapshot;
+use agent_semantic_content_identity::hash_blob;
 
-use crate::{
-    ResidentIndexBuildResources, ResidentIndexBuildStrategy, ResidentSearchAuthority,
-    ResidentSourceDocument, ResidentSourceIndex, resident_lexical_coverage_keys,
-    resident_navigation_keys,
-};
+use crate::ResidentIndexBuildResources;
+use crate::ResidentIndexBuildStrategy;
+use crate::ResidentSearchAuthority;
+use crate::ResidentSourceDocument;
+use crate::ResidentSourceIndex;
+use crate::resident_lexical_coverage_keys;
+use crate::resident_navigation_keys;
 
 fn build_resources() -> ResidentIndexBuildResources {
     ResidentIndexBuildResources::new(

@@ -1,5 +1,7 @@
 #[cfg(feature = "grpc-session")]
 fn main() {
+    let _policy_receipt =
+        asp_rust_project_harness_policy::assert_asp_rust_project_harness_member_policy_from_env();
     println!(
         "cargo:rerun-if-changed=../agent-semantic-runtime-server/proto/asp-provider-stream.proto"
     );

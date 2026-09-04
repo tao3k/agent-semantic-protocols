@@ -1,15 +1,16 @@
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::SystemTime;
+use std::time::UNIX_EPOCH;
 
-use super::{
-    ActiveAspArtifactReconciliation, atomic_write_compare_exchange,
-    materialize_active_asp_artifact_receipt, rebind_active_asp_binary_receipt_if_present,
-    verify_active_asp_artifact_receipt,
-};
-use crate::{registered_language_ids, registered_provider_id};
+use super::ActiveAspArtifactReconciliation;
+use super::atomic_write_compare_exchange;
+use super::materialize_active_asp_artifact_receipt;
+use super::rebind_active_asp_binary_receipt_if_present;
+use super::verify_active_asp_artifact_receipt;
+use crate::registered_language_ids;
+use crate::registered_provider_id;
 use agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest;
-use agent_semantic_content_identity::active_artifact_merkle::{
-    ActiveArtifactKind, ActiveAspArtifactReceipt,
-};
+use agent_semantic_content_identity::active_artifact_merkle::ActiveArtifactKind;
+use agent_semantic_content_identity::active_artifact_merkle::ActiveAspArtifactReceipt;
 
 fn fixture_binary_digest(path: &std::path::Path) -> String {
     let bytes = std::fs::read(path).expect("read binary fixture");

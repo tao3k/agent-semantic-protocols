@@ -1,9 +1,12 @@
 use std::fs;
-use std::time::{Duration, Instant};
+use std::time::Duration;
+use std::time::Instant;
 
 use crate::ProviderProcessSupervisor;
 
-use super::support::{script, spec, temp_dir};
+use super::support::script;
+use super::support::spec;
+use super::support::temp_dir;
 
 #[tokio::test]
 async fn provider_process_hot_path_stays_inside_performance_gate() {

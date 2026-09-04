@@ -1,6 +1,7 @@
 //! Refines agent-facing recovery text without changing policy decisions.
 
-use crate::{DecisionKind, HookDecision};
+use crate::DecisionKind;
+use crate::HookDecision;
 
 pub fn materialize_source_access_deny_message(decision: &mut HookDecision) {
     if decision.decision != DecisionKind::Deny {

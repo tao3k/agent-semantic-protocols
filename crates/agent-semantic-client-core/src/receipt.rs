@@ -1,17 +1,36 @@
 //! Execution receipts emitted by the `agent-semantic-client` command layer.
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 
-use crate::cache_manifest::{CacheManifestReport, CacheManifestStatus};
+use crate::cache_manifest::CacheManifestReport;
+use crate::cache_manifest::CacheManifestStatus;
 use crate::request::ClientMethod;
-use crate::types::{
-    ByteCount, CacheArtifactId, CacheStatus, ClientCachePath, ClientDbBackend,
-    ClientDbEngineDurability, ClientDbFileName, ClientDbJournalMode, ClientDbStatus, ClientRepoId,
-    ClientScopeId, ClientStateLayoutVersion, ClientWorkspaceId, CompactArtifactId, ElapsedMillis,
-    LanguageId, ProviderId, SemanticProtocolId, SemanticProtocolVersion, SemanticSchemaId,
-    SemanticSchemaVersion, SyntaxQueryAstAbiFingerprint, SyntaxQueryGrammarId,
-    SyntaxQueryGrammarProfileVersion, SyntaxQuerySelector,
-};
+use crate::types::ByteCount;
+use crate::types::CacheArtifactId;
+use crate::types::CacheStatus;
+use crate::types::ClientCachePath;
+use crate::types::ClientDbBackend;
+use crate::types::ClientDbEngineDurability;
+use crate::types::ClientDbFileName;
+use crate::types::ClientDbJournalMode;
+use crate::types::ClientDbStatus;
+use crate::types::ClientRepoId;
+use crate::types::ClientScopeId;
+use crate::types::ClientStateLayoutVersion;
+use crate::types::ClientWorkspaceId;
+use crate::types::CompactArtifactId;
+use crate::types::ElapsedMillis;
+use crate::types::LanguageId;
+use crate::types::ProviderId;
+use crate::types::SemanticProtocolId;
+use crate::types::SemanticProtocolVersion;
+use crate::types::SemanticSchemaId;
+use crate::types::SemanticSchemaVersion;
+use crate::types::SyntaxQueryAstAbiFingerprint;
+use crate::types::SyntaxQueryGrammarId;
+use crate::types::SyntaxQueryGrammarProfileVersion;
+use crate::types::SyntaxQuerySelector;
 
 /// Schema id for `agent-semantic-client-receipt.v1`.
 pub const AGENT_SEMANTIC_CLIENT_RECEIPT_SCHEMA_ID: &str = "agent.semantic-protocols.client-receipt";

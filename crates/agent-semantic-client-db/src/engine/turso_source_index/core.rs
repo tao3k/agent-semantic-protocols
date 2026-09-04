@@ -317,8 +317,10 @@ async fn prepare_turso_source_index_overlay(
         agent_semantic_content_identity::SourceSnapshotKind::Filesystem,
         requested_source_snapshot.provider_digest.clone(),
         previous.source_snapshot.root_digest.clone(),
-        changed_owner_paths.iter().cloned(),
-        removed_owner_paths.iter().cloned(),
+        agent_semantic_content_identity::WorkspaceOverlayPaths::new(
+            changed_owner_paths.iter().cloned(),
+            removed_owner_paths.iter().cloned(),
+        ),
     )?;
     let active_blobs =
         super::generation_snapshot::load_turso_source_index_generation_blobs_on_connection(
@@ -554,6 +556,7 @@ pub async fn latest_turso_source_index_scope_files(
                     language_id: LanguageId::from(language_id),
                     provider_id: ProviderId::from(provider_id),
                     projection_coverage: crate::ClientDbSourceIndexProjectionCoverage::NotDeclared,
+                    projection_diagnostic: None,
                     selector_receipts: Vec::new(),
                     relations: Vec::new(),
                 })

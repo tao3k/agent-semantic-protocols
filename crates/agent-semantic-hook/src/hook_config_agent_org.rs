@@ -1,13 +1,17 @@
 //! Compiles `agentOrgArtifacts` hook policy and caches filesystem-derived Org artifact state.
 
-use agent_semantic_config::{
-    HookClientAgentOrgArtifactsArchiveWarningConfig, HookClientAgentOrgArtifactsConfig,
-};
+use agent_semantic_config::HookClientAgentOrgArtifactsArchiveWarningConfig;
+use agent_semantic_config::HookClientAgentOrgArtifactsConfig;
 use std::collections::HashMap;
 use std::fs;
-use std::path::{Path, PathBuf};
-use std::sync::{Mutex, OnceLock};
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::path::Path;
+use std::path::PathBuf;
+use std::sync::Mutex;
+use std::sync::OnceLock;
+use std::time::Duration;
+use std::time::Instant;
+use std::time::SystemTime;
+use std::time::UNIX_EPOCH;
 
 const ARCHIVE_WARNING_CACHE_TTL: Duration = Duration::from_secs(5);
 const RECOVERY_ACTIVE_CACHE_TTL: Duration = Duration::from_secs(1);

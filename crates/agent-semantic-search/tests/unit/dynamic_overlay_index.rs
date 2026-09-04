@@ -1,7 +1,8 @@
-use crate::dynamic_overlay::{
-    DynamicOverlayDocument, DynamicOverlayNamespace, DynamicOverlayQuery,
-    DynamicOverlaySearchBackend, InMemoryDynamicOverlaySearch,
-};
+use crate::dynamic_overlay::DynamicOverlayDocument;
+use crate::dynamic_overlay::DynamicOverlayNamespace;
+use crate::dynamic_overlay::DynamicOverlayQuery;
+use crate::dynamic_overlay::DynamicOverlaySearchBackend;
+use crate::dynamic_overlay::InMemoryDynamicOverlaySearch;
 
 fn document(entity_id: &str, text: &str) -> DynamicOverlayDocument {
     DynamicOverlayDocument {

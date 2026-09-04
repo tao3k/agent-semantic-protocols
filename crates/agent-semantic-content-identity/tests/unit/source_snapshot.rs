@@ -1,7 +1,10 @@
-use crate::source_snapshot::{
-    ResolutionAuthority, ResolutionEvidence, ResolutionState, SOURCE_RESOLUTION_SCHEMA_ID,
-    SOURCE_SNAPSHOT_SCHEMA_ID, SourceSnapshotKind, WorkspaceSnapshot,
-};
+use crate::source_snapshot::ResolutionAuthority;
+use crate::source_snapshot::ResolutionEvidence;
+use crate::source_snapshot::ResolutionState;
+use crate::source_snapshot::SOURCE_RESOLUTION_SCHEMA_ID;
+use crate::source_snapshot::SOURCE_SNAPSHOT_SCHEMA_ID;
+use crate::source_snapshot::SourceSnapshotKind;
+use crate::source_snapshot::WorkspaceSnapshot;
 
 #[test]
 fn snapshot_root_is_order_independent() {

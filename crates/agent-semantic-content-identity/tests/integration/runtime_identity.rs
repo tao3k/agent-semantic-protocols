@@ -1,17 +1,17 @@
-use agent_semantic_content_identity::content_binding::{
-    AuthorityStamp, ContentBinding, ContentIdentity, ContentPublicationCommit,
-};
-use agent_semantic_content_identity::host_session_binding::{
-    HostSessionBinding, HostSessionBindingError,
-};
-use agent_semantic_content_identity::runtime_execution::{
-    RuntimeExecutionBinding, RuntimeExecutionBindingError,
-};
+use agent_semantic_content_identity::content_binding::AuthorityStamp;
+use agent_semantic_content_identity::content_binding::ContentBinding;
+use agent_semantic_content_identity::content_binding::ContentIdentity;
+use agent_semantic_content_identity::content_binding::ContentPublicationCommit;
+use agent_semantic_content_identity::host_session_binding::HostSessionBinding;
+use agent_semantic_content_identity::host_session_binding::HostSessionBindingError;
+use agent_semantic_content_identity::runtime_execution::RuntimeExecutionBinding;
+use agent_semantic_content_identity::runtime_execution::RuntimeExecutionBindingError;
+use agent_semantic_content_identity::runtime_execution::RuntimeExecutionBindingInput;
 
-fn identity(seed: char) -> ContentIdentity {
+fn identity(digest_char: char) -> ContentIdentity {
     let digest = format!(
         "blake3-256:{}",
-        std::iter::repeat(seed).take(64).collect::<String>()
+        std::iter::repeat_n(digest_char, 64).collect::<String>()
     );
     ContentIdentity {
         runtime_artifact_digest: digest.clone(),
@@ -49,18 +49,24 @@ fn binding(commit: &ContentPublicationCommit) -> ContentBinding {
     .expect("valid content binding")
 }
 
-fn runtime_binding(commit: &ContentPublicationCommit, seed: char) -> RuntimeExecutionBinding {
+fn runtime_binding(
+    commit: &ContentPublicationCommit,
+    digest_char: char,
+) -> RuntimeExecutionBinding {
     let digest = format!(
         "blake3-256:{}",
-        std::iter::repeat(seed).take(64).collect::<String>()
+        std::iter::repeat_n(digest_char, 64).collect::<String>()
     );
-    RuntimeExecutionBinding::new(
-        binding(commit),
-        digest.clone(),
-        digest.clone(),
-        digest.clone(),
-        digest,
-    )
+    RuntimeExecutionBinding::new(RuntimeExecutionBindingInput {
+        project_id: "project-a".into(),
+        workspace_id: "workspace-a".into(),
+        publication_nonce: "publication-a".into(),
+        content_binding: binding(commit),
+        runtime_artifact_digest: commit.identity.runtime_artifact_digest.clone().into(),
+        evaluator_policy_digest: digest.clone().into(),
+        active_artifact_receipt_digest: digest.clone().into(),
+        evaluator_abi_digest: digest.into(),
+    })
     .expect("valid runtime binding")
 }
 
@@ -80,17 +86,63 @@ fn same_content_keeps_identity_when_publication_sequence_changes() {
 fn same_policy_with_different_runtime_binary_is_rejected() {
     let commit = commit(identity('a'), None);
     let left = runtime_binding(&commit, 'a');
-    let right = RuntimeExecutionBinding::new(
-        binding(&commit),
-        "blake3-256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-        left.evaluator_policy_digest.clone(),
-        left.active_artifact_receipt_digest.clone(),
-        left.evaluator_abi_digest.clone(),
-    )
-    .expect("valid alternate runtime binding");
+    let error = RuntimeExecutionBinding::new(RuntimeExecutionBindingInput {
+        project_id: left.project_id.clone(),
+        workspace_id: left.workspace_id.clone(),
+        publication_nonce: left.publication_nonce.clone(),
+        content_binding: binding(&commit),
+        runtime_artifact_digest:
+            "blake3-256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".into(),
+        evaluator_policy_digest: left.evaluator_policy_digest.clone(),
+        active_artifact_receipt_digest: left.active_artifact_receipt_digest.clone(),
+        evaluator_abi_digest: left.evaluator_abi_digest.clone(),
+    })
+    .expect_err("content binding and Runtime artifact must be one identity");
+    assert_eq!(error, RuntimeExecutionBindingError::RuntimeArtifactMismatch);
+}
+
+#[test]
+fn project_workspace_and_publication_nonce_are_part_of_runtime_identity() {
+    let commit = commit(identity('a'), None);
+    let expected = runtime_binding(&commit, 'b');
+    for observed in [
+        RuntimeExecutionBinding {
+            project_id: "project-b".into(),
+            ..expected.clone()
+        },
+        RuntimeExecutionBinding {
+            workspace_id: "workspace-b".into(),
+            ..expected.clone()
+        },
+        RuntimeExecutionBinding {
+            publication_nonce: "publication-b".into(),
+            ..expected.clone()
+        },
+    ] {
+        assert_eq!(
+            expected.admits(&observed),
+            Err(RuntimeExecutionBindingError::ContentMismatch)
+        );
+    }
+}
+
+#[test]
+fn legacy_v1_binding_decodes_but_requires_runtime_refresh() {
+    let commit = commit(identity('a'), None);
+    let canonical = runtime_binding(&commit, 'b');
+    let mut legacy = serde_json::to_value(&canonical).expect("encode canonical binding");
+    let object = legacy
+        .as_object_mut()
+        .expect("runtime binding is a JSON object");
+    object.remove("projectId");
+    object.remove("workspaceId");
+    object.remove("publicationNonce");
+    let decoded: RuntimeExecutionBinding =
+        serde_json::from_value(legacy).expect("legacy V1 document remains decodable");
+    assert!(decoded.refresh_required());
     assert_eq!(
-        left.admits(&right),
-        Err(RuntimeExecutionBindingError::ContentMismatch)
+        decoded.validate(),
+        Err(RuntimeExecutionBindingError::MissingIdentity { field: "projectId" })
     );
 }
 

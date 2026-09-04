@@ -1,7 +1,9 @@
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 use std::fmt;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 
 use agent_semantic_config::load_asp_project_config_file;
 
@@ -83,12 +85,17 @@ struct GitWorkspaceFileScope {
 
 #[path = "git_candidate_model.rs"]
 mod candidate_model;
-pub use candidate_model::{
-    RepositoryCandidate, RepositoryCandidateAuthority, RepositoryCandidateGeneration,
-    RepositoryCandidateMetrics, RepositoryCandidateMode, RepositoryCandidatePolicyExclusion,
-    RepositoryCandidateScope, RepositoryCandidateSnapshot, RepositoryCandidateState,
-    RepositoryIdentity, WorktreeIdentity,
-};
+pub use candidate_model::RepositoryCandidate;
+pub use candidate_model::RepositoryCandidateAuthority;
+pub use candidate_model::RepositoryCandidateGeneration;
+pub use candidate_model::RepositoryCandidateMetrics;
+pub use candidate_model::RepositoryCandidateMode;
+pub use candidate_model::RepositoryCandidatePolicyExclusion;
+pub use candidate_model::RepositoryCandidateScope;
+pub use candidate_model::RepositoryCandidateSnapshot;
+pub use candidate_model::RepositoryCandidateState;
+pub use candidate_model::RepositoryIdentity;
+pub use candidate_model::WorktreeIdentity;
 
 #[derive(Debug)]
 pub enum GitWorkspaceFileScopeError {

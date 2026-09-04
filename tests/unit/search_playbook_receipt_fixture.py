@@ -21,6 +21,7 @@ def search_playbook_receipt():
         "schedulerTaskCount": 0,
     }
     native_syntax = {
+        "state": "ready",
         "stageArtifactDigest": digest("a"),
         "projections": [
             {
@@ -38,6 +39,7 @@ def search_playbook_receipt():
             }
         ],
         "relations": [{"ownerPath": owners[0], "relationDigest": digest("d")}],
+        "diagnostics": [],
         "properByteRanges": True,
         "nonEmptyQueryKeys": True,
         "relationsBoundToOwners": True,

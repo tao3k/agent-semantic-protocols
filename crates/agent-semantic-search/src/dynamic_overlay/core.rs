@@ -1,7 +1,8 @@
 //! Dirty-source overlay search for session-scoped dynamic evidence.
 
 use std::cmp::Ordering;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 
 pub const QUERY_OVERLAY_ROUTE_SOURCE: &str = "query-overlay";
 pub const SEARCH_OVERLAY_ROUTE_SOURCE: &str = "search-overlay";

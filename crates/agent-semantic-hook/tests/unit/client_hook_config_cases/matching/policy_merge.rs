@@ -1,7 +1,13 @@
-use super::{
-    ClientHookConfig, DecisionKind, HookClassificationRequest, classify_hook_with_config, fs, json,
-    load_client_config, load_client_config_for_project, registry, temp_root,
-};
+use super::ClientHookConfig;
+use super::DecisionKind;
+use super::HookClassificationRequest;
+use super::classify_hook_with_config;
+use super::fs;
+use super::json;
+use super::load_client_config;
+use super::load_client_config_for_project;
+use super::registry;
+use super::temp_root;
 
 #[test]
 fn project_hook_rule_replaces_managed_rule_as_one_policy_unit() {
@@ -41,7 +47,7 @@ argvPatternAny = [["asp", "<registered-language>", "search"]]
         event: "pre-tool",
         payload: &json!({
             "tool_name": "Bash",
-            "tool_input": {"command": "asp rust search playbook ownership --workspace ."}
+            "tool_input": {"command": "asp search playbook --language rust ownership --workspace ."}
         }),
     });
 
@@ -255,6 +261,7 @@ fn registered_reasoning_search_dispatches_before_raw_search_rules_and_lazy_loads
             "asp".to_owned(),
             "<registered-language>".to_owned(),
             "search".to_owned(),
+            "playbook".to_owned(),
         ]]
     );
     config
@@ -267,7 +274,7 @@ fn registered_reasoning_search_dispatches_before_raw_search_rules_and_lazy_loads
             .any(|provider| provider.language_id.as_str() == "rust"),
         "canonical projection must register Rust"
     );
-    let search_command = "asp rust search playbook 'HookDecision' --workspace .";
+    let search_command = "asp search playbook --language rust 'HookDecision' --workspace .";
     let stages = agent_semantic_shell_parser::parse_bash_command_candidates(search_command)
         .expect("parse direct ASP search command");
     assert!(
@@ -311,7 +318,7 @@ fn registered_reasoning_search_dispatches_before_raw_search_rules_and_lazy_loads
     assert!(
         asp_search_decision
             .message
-            .contains("Delegate the denied search to ASP Explorer"),
+            .contains("Delegate the exact `search playbook` request to ASP Explorer"),
         "registered search dispatch must explain the Explorer evidence path: {}",
         asp_search_decision.message
     );
@@ -325,8 +332,8 @@ fn registered_reasoning_search_dispatches_before_raw_search_rules_and_lazy_loads
     assert!(
         asp_search_decision
             .message
-            .contains("Use `--json` only for explicitly requested debugging"),
-        "registered search dispatch must keep JSON outside normal Explorer search: {}",
+            .contains("ASP Server will use the admitted rg acquisition, Tantivy lexical, and asp-python-graphs generation"),
+        "registered search dispatch must describe the canonical server-side playbook: {}",
         asp_search_decision.message
     );
     assert_eq!(
@@ -369,11 +376,11 @@ fn registered_reasoning_search_dispatches_before_raw_search_rules_and_lazy_loads
     for (language_id, command) in [
         (
             "org",
-            "asp org search playbook capability --scope owner:docs/spec.org --workspace .",
+            "asp search playbook --language org capability --scope owner:docs/spec.org --workspace .",
         ),
         (
             "md",
-            "asp md search playbook runtime --scope owner:README.md --workspace .",
+            "asp search playbook --language md runtime --scope owner:README.md --workspace .",
         ),
     ] {
         let provider_route_decision = classify_hook_with_config(HookClassificationRequest {

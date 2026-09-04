@@ -73,11 +73,22 @@ fn publish_complete_workspace_search_generation_v1(
             publication.provider_id
         ));
     }
-    if provider_files.iter().any(|file| {
-        file.projection_coverage != crate::ClientDbSourceIndexProjectionCoverage::Complete
+    if provider_files.iter().any(|file| match file.projection_coverage {
+        crate::ClientDbSourceIndexProjectionCoverage::Complete => {
+            file.projection_diagnostic.is_some()
+        }
+        crate::ClientDbSourceIndexProjectionCoverage::SyntaxUnavailable => {
+            file.projection_diagnostic.as_ref().is_none_or(|diagnostic| {
+                diagnostic.reason_kind != agent_semantic_provider_transport::projection_batch::SOURCE_SYNTAX_UNAVAILABLE_REASON_KIND
+                    || diagnostic.message.trim().is_empty()
+                    || !file.selector_receipts.is_empty()
+                    || !file.relations.is_empty()
+            })
+        }
+        crate::ClientDbSourceIndexProjectionCoverage::NotDeclared => true,
     }) {
         return Err(format!(
-            "complete generation owner is missing its provider projection receipt: providerId={}",
+            "complete generation owner is missing its provider projection or diagnostic receipt: providerId={}",
             publication.provider_id
         ));
     }

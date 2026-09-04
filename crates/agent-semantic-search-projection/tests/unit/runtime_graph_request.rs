@@ -1,4 +1,7 @@
-use agent_semantic_search_projection::{adapt_graph_evaluate_payload, validate_graph_source_root};
+use agent_semantic_search_projection::adapt_graph_evaluate_payload;
+use agent_semantic_search_projection::bind_graph_generation_identity;
+use agent_semantic_search_projection::validate_graph_generation_receipt_identity;
+use agent_semantic_search_projection::validate_graph_source_root;
 
 #[test]
 fn graph_request_binds_source_root_not_runtime_generation_digest() {
@@ -35,4 +38,42 @@ fn graph_adapter_preserves_the_admitted_query_budget_inside_rank_controls() {
         "owner:src/lib.rs"
     );
     assert!(adapted.get("graph").is_none());
+}
+
+#[test]
+fn generation_identity_is_bound_from_the_exact_graph_payload() {
+    let mut request = serde_json::json!({
+        "payload": {
+            "identity": {
+                "workspaceId": "workspace-a",
+                "generationCandidateDigest": "blake3-256:abc"
+            }
+        }
+    });
+
+    bind_graph_generation_identity(&mut request).unwrap();
+
+    assert_eq!(request["workspaceIdentity"], "workspace-a");
+    assert_eq!(request["generationDigest"], "blake3-256:abc");
+}
+
+#[test]
+fn generation_receipt_rejects_cross_generation_replay() {
+    let receipt = serde_json::json!({
+        "requestId": "request-a",
+        "payload": { "state": "completed" },
+        "workspaceIdentity": "workspace-a",
+        "generationDigest": "blake3-256:old"
+    });
+
+    assert!(
+        validate_graph_generation_receipt_identity(
+            &receipt,
+            "request-a",
+            "completed",
+            "workspace-a",
+            "blake3-256:new",
+        )
+        .is_err()
+    );
 }

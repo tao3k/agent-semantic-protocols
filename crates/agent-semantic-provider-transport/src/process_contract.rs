@@ -1,6 +1,7 @@
 //! Public process execution contract for provider transport.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 use std::error::Error;
 use std::fmt;
 use std::io;

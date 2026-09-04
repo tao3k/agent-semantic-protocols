@@ -1,6 +1,7 @@
 //! State Home layout tests.
 
-use crate::{ProjectBinding, StateHomeLayout};
+use crate::ProjectBinding;
+use crate::StateHomeLayout;
 
 #[test]
 fn physical_namespace_has_no_schema_version_suffix() {

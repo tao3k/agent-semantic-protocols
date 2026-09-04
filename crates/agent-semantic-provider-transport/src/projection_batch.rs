@@ -1,12 +1,14 @@
 //! Typed, framed language-projection batches for generation-time provider work.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 use std::fmt;
 use std::ops::Range;
 
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 
 pub const PROJECTION_BATCH_REQUEST_SCHEMA_ID: &str =
     "agent.semantic-protocols.provider-language-projection-batch-request";

@@ -1,7 +1,11 @@
-use super::{
-    DecisionKind, HookClassificationRequest, classify_hook_with_config, fs, json,
-    load_client_config, temp_root, with_direct_dispatch_roles,
-};
+use super::DecisionKind;
+use super::HookClassificationRequest;
+use super::classify_hook_with_config;
+use super::fs;
+use super::json;
+use super::load_client_config;
+use super::temp_root;
+use super::with_direct_dispatch_roles;
 
 #[test]
 fn nested_payload_shape_does_not_invent_a_native_read_matcher() {

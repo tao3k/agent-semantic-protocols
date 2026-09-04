@@ -1,6 +1,7 @@
-use agent_semantic_config::{
-    CodexThreadOperation, CodexThreadReference, CodexThreadToolCall, SendMessageToThreadInput,
-};
+use agent_semantic_config::CodexThreadOperation;
+use agent_semantic_config::CodexThreadReference;
+use agent_semantic_config::CodexThreadToolCall;
+use agent_semantic_config::SendMessageToThreadInput;
 
 const THREAD_ID: &str = "01a055c3-6a84-7332-b76c-70b07801f029";
 const REFERENCE_SCHEMA: &str =
@@ -78,7 +79,7 @@ fn thread_message_is_not_an_agent_dispatch_or_deeplink_side_effect() {
         schema_version: "1".to_owned(),
         namespace: "codex_app".to_owned(),
         operation: CodexThreadOperation::SendMessageToThread(SendMessageToThreadInput {
-            thread_id: THREAD_ID.to_owned(),
+            thread_id: THREAD_ID.into(),
             prompt: "Run the focused lifecycle validation.".to_owned(),
             host_id: None,
             model: None,

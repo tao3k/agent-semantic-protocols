@@ -1,12 +1,14 @@
-#[path = "../agent-semantic-schema-manager/src/build_support/provider_registry.rs"]
-mod provider_registry;
-
 fn main() {
+    asp_rust_project_harness_policy::assert_asp_rust_project_harness_member_policy_from_env();
+
     let manifest =
         std::path::PathBuf::from(std::env::var_os("CARGO_MANIFEST_DIR").expect("manifest dir"));
     let root = manifest.join("../..");
     let resolved =
-        provider_registry::resolve_provider_register(&root).expect("resolve provider register");
+        agent_semantic_schema_manager::build_support::provider_registry::resolve_provider_register(
+            &root,
+        )
+        .expect("resolve provider register");
     for path in &resolved.input_paths {
         println!("cargo:rerun-if-changed={}", path.display());
     }

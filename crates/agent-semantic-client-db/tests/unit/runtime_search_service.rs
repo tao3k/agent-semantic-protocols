@@ -1,8 +1,10 @@
-use agent_semantic_search::{RuntimeSearchSource, build_runtime_provider_search_receipt};
-use agent_semantic_search_projection::{
-    RESIDENT_SEARCH_RESULT_SCHEMA_ID, RESIDENT_SEARCH_RESULT_SCHEMA_VERSION,
-    ResidentSearchReadyResult, ResidentSearchReadyState, ResidentSearchWorkCounters,
-};
+use agent_semantic_search::RuntimeSearchSource;
+use agent_semantic_search::build_runtime_provider_search_receipt;
+use agent_semantic_search_projection::RESIDENT_SEARCH_RESULT_SCHEMA_ID;
+use agent_semantic_search_projection::RESIDENT_SEARCH_RESULT_SCHEMA_VERSION;
+use agent_semantic_search_projection::ResidentSearchReadyResult;
+use agent_semantic_search_projection::ResidentSearchReadyState;
+use agent_semantic_search_projection::ResidentSearchWorkCounters;
 
 fn resident_result(
     generation_digest: &str,

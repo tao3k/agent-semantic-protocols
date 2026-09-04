@@ -1,6 +1,11 @@
-use serde::{Deserialize, Serialize};
+//! Canonical typed identities for parser-owned items and structural selectors.
 
+use serde::Deserialize;
+use serde::Serialize;
+
+/// Schema identifier for canonical parser-owned item selectors.
 pub const CANONICAL_ITEM_SELECTOR_SCHEMA_ID: &str = "asp.canonical-item-selector.v1";
+/// Schema version for canonical parser-owned item selectors.
 pub const CANONICAL_ITEM_SELECTOR_SCHEMA_VERSION: &str = "1";
 
 macro_rules! canonical_item_text {
@@ -56,6 +61,7 @@ canonical_item_text!(
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+/// One typed scope segment in a canonical parser item identity.
 pub struct CanonicalItemScope {
     pub relation: CanonicalItemScopeRelation,
     pub kind: CanonicalItemScopeKind,
@@ -78,6 +84,7 @@ impl CanonicalItemScope {
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+/// Language-neutral identity of one parser-owned source item.
 pub struct CanonicalItemIdentity {
     pub language_id: CanonicalItemLanguageId,
     pub kind: CanonicalItemKind,
@@ -139,6 +146,7 @@ impl CanonicalItemIdentity {
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+/// Structural selector paired with its decoded canonical item identity.
 pub struct CanonicalItemSelector {
     pub schema_id: String,
     pub schema_version: String,
@@ -262,6 +270,13 @@ impl CanonicalItemSelector {
     }
 
     pub fn validate(&self) -> Result<(), String> {
+        self.validate_schema_identity()?;
+        self.validate_required_identity_fields()?;
+        self.validate_scope_fields()?;
+        self.validate_structural_identity()
+    }
+
+    fn validate_schema_identity(&self) -> Result<(), String> {
         if self.schema_id != CANONICAL_ITEM_SELECTOR_SCHEMA_ID {
             return Err(format!(
                 "canonical item selector schemaId must be {CANONICAL_ITEM_SELECTOR_SCHEMA_ID}"
@@ -272,6 +287,10 @@ impl CanonicalItemSelector {
                 "canonical item selector schemaVersion must be {CANONICAL_ITEM_SELECTOR_SCHEMA_VERSION}"
             ));
         }
+        Ok(())
+    }
+
+    fn validate_required_identity_fields(&self) -> Result<(), String> {
         for (field, value) in [
             ("languageId", self.language_id.as_str()),
             ("kind", self.kind.as_str()),
@@ -282,6 +301,10 @@ impl CanonicalItemSelector {
                 return Err(format!("canonical item selector {field} must not be empty"));
             }
         }
+        Ok(())
+    }
+
+    fn validate_scope_fields(&self) -> Result<(), String> {
         for scope in &self.scopes {
             for (field, value) in [
                 ("relation", scope.relation.as_str()),
@@ -295,6 +318,10 @@ impl CanonicalItemSelector {
                 }
             }
         }
+        Ok(())
+    }
+
+    fn validate_structural_identity(&self) -> Result<(), String> {
         let (language_id, selector_body) =
             self.structural_selector.split_once("://").ok_or_else(|| {
                 "canonical item structuralSelector must include <language>://".to_string()

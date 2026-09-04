@@ -32,7 +32,8 @@ pub(crate) use protocol_binary_identity::protocol_binary_digest_from_canonical_a
 
 use std::env;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 use std::process;
 
 pub(crate) const SEMANTIC_AGENT_PROTOCOL_BIN: &str = "asp";

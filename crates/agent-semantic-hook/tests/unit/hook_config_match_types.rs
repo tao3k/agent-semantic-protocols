@@ -1,4 +1,5 @@
-use super::{CompiledCommandContains, CompiledPathGlobs};
+use super::CompiledCommandContains;
+use super::CompiledPathGlobs;
 
 #[cfg(unix)]
 fn current_thread_cpu_nanos() -> u128 {

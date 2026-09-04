@@ -1,4 +1,7 @@
-use serde::{Deserialize, Serialize};
+//! Declarative Hook routing rules and their typed dispatch projections.
+
+use serde::Deserialize;
+use serde::Serialize;
 
 /// One declarative hook rule from project-local config.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -50,20 +53,24 @@ pub struct HookClientRuleConfig {
 pub struct HookClientAgentSelector(String);
 
 impl HookClientAgentSelector {
+    /// Returns the exact agent-registry route key.
     pub fn as_str(&self) -> &str {
         &self.0
     }
 }
 
+/// Typed receipt category emitted by a config-driven dispatch.
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct HookClientReceiptKind(String);
 
 impl HookClientReceiptKind {
+    /// Returns the exact receipt category spelling.
     pub fn as_str(&self) -> &str {
         &self.0
     }
 }
 
+/// Declarative dispatch selected after a Hook rule denies the current Agent.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct HookClientRuleDispatchConfig {
@@ -100,6 +107,7 @@ impl HookClientRuleDispatchTransport {
 }
 
 /// Shared host action spelling used by declarative hook rules.
+/// Semantic action classified from an admitted Host invocation.
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "kebab-case")]
 #[derive(Hash)]
@@ -114,6 +122,7 @@ pub enum HookClientActionKind {
     Unknown,
 }
 
+/// Host invocation shape admitted by a declarative matcher.
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "kebab-case")]
 #[derive(Hash)]
@@ -126,12 +135,14 @@ pub enum HookClientHostInvocationKind {
     Unknown,
 }
 
+/// Policy controlling how native Host matcher evidence is interpreted.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum HookClientMatcherPolicy {
     WrappedCommand,
 }
 
+/// Subject class attached to a semantic Hook action.
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "kebab-case")]
 pub enum HookClientActionSubjectKind {
@@ -235,7 +246,7 @@ pub struct HookClientCapabilityPolicyConfig {
     pub subject_kind_any: Vec<HookClientActionSubjectKind>,
 }
 
-/// Structured document formats understood by hook projector capabilities.
+/// Structured document formats understood by Hook projector capabilities.
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, Hash, PartialEq)]
 #[serde(rename_all = "kebab-case")]
 pub enum HookClientStructuredFormat {
@@ -243,6 +254,7 @@ pub enum HookClientStructuredFormat {
     Toml,
 }
 
+/// Bounded structured-document projection recognized by a Hook rule.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct HookClientStructuredProjectionMatchConfig {
@@ -259,6 +271,7 @@ pub struct HookClientStructuredProjectionMatchConfig {
     pub option_value_arity: std::collections::BTreeMap<String, u8>,
 }
 
+/// Filter grammar admitted for a structured-document projection.
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, Hash, PartialEq)]
 #[serde(rename_all = "kebab-case")]
 pub enum HookClientStructuredFilterGrammar {

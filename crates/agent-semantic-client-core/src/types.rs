@@ -1,8 +1,11 @@
 //! Shared semantic scalar types used by the agent semantic client.
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 use std::fmt;
-use std::path::{Component, Path, PathBuf};
+use std::path::Component;
+use std::path::Path;
+use std::path::PathBuf;
 use std::time::Duration;
 
 macro_rules! semantic_string_type {
@@ -76,7 +79,8 @@ macro_rules! semantic_string_type {
     };
 }
 
-pub use agent_semantic_config::{LanguageId, ProviderId};
+pub use agent_semantic_config::LanguageId;
+pub use agent_semantic_config::ProviderId;
 semantic_string_type!(
     /// JSON schema id carried by a client envelope.
     SemanticSchemaId

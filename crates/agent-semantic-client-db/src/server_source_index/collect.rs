@@ -48,11 +48,11 @@ fn collect_source_index_scope_from_paths(
                 provider.language_id, provider.provider_id
             ));
         }
-        append_provider_scope_files(
-            &mut files,
+        files.extend(declarative_source_scope_files(
+            project_root,
             provider,
-            declarative_source_scope_files(project_root, provider, candidate_paths),
-        )?;
+            candidate_paths,
+        ));
     }
     files.sort_by(|left, right| {
         (&left.path, &left.language_id, &left.provider_id).cmp(&(
@@ -77,22 +77,23 @@ fn declarative_source_scope_files(
     project_root: &std::path::Path,
     provider: &agent_semantic_client_core::RuntimeProvider,
     candidate_paths: &[std::path::PathBuf],
-) -> agent_semantic_client_server::ProviderProjectResolutionFiles {
-    let files = collect_declarative_source_paths(
+) -> Vec<crate::ClientDbSourceIndexScopeFile> {
+    collect_declarative_source_paths(
         project_root,
         candidate_paths.iter().map(std::path::PathBuf::as_path),
         &provider.source_extensions,
     )
     .into_iter()
-    .map(
-        |path| agent_semantic_client_server::ProviderProjectResolutionPathFile {
-            path,
-            language_id: provider.language_id.clone(),
-            provider_id: provider.provider_id.clone(),
-        },
-    )
-    .collect();
-    agent_semantic_client_server::ProviderProjectResolutionFiles::Supported(files)
+    .map(|path| crate::ClientDbSourceIndexScopeFile {
+        path,
+        language_id: provider.language_id.clone(),
+        provider_id: provider.provider_id.clone(),
+        projection_coverage: crate::ClientDbSourceIndexProjectionCoverage::NotDeclared,
+        projection_diagnostic: None,
+        selector_receipts: Vec::new(),
+        relations: Vec::new(),
+    })
+    .collect()
 }
 
 fn collect_declarative_source_paths<'a>(
@@ -114,49 +115,6 @@ fn collect_declarative_source_paths<'a>(
             path.is_file().then_some(path)
         })
         .collect()
-}
-
-fn append_provider_scope_files(
-    files: &mut Vec<crate::ClientDbSourceIndexScopeFile>,
-    provider: &agent_semantic_client_core::RuntimeProvider,
-    receipt: agent_semantic_client_server::ProviderProjectResolutionFiles,
-) -> Result<(), String> {
-    match receipt {
-        agent_semantic_client_server::ProviderProjectResolutionFiles::Supported(provider_files) => {
-            for provider_file in provider_files {
-                let agent_semantic_client_server::ProviderProjectResolutionPathFile {
-                    path,
-                    language_id,
-                    provider_id: reported_provider_id,
-                } = provider_file;
-                if language_id != provider.language_id {
-                    return Err(format!(
-                        "provider workspace scope language identity mismatch: admitted={} reported={} providerId={}",
-                        provider.language_id, language_id, provider.provider_id
-                    ));
-                }
-                if reported_provider_id != provider.provider_id {
-                    return Err(format!(
-                        "provider workspace scope provider identity mismatch: admitted={} reported={}",
-                        provider.provider_id, reported_provider_id
-                    ));
-                }
-                files.push(crate::ClientDbSourceIndexScopeFile {
-                    path,
-                    language_id,
-                    provider_id: reported_provider_id,
-                    projection_coverage: crate::ClientDbSourceIndexProjectionCoverage::NotDeclared,
-                    selector_receipts: Vec::new(),
-                    relations: Vec::new(),
-                });
-            }
-            Ok(())
-        }
-        agent_semantic_client_server::ProviderProjectResolutionFiles::Unsupported => Err(format!(
-            "provider workspace scope is unsupported: languageId={} providerId={}",
-            provider.language_id, provider.provider_id
-        )),
-    }
 }
 
 #[cfg(test)]

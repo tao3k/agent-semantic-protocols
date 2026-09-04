@@ -1,6 +1,6 @@
-use agent_semantic_client_db::turso_mvcc_store::{
-    TursoMvccEvent, TursoMvccStore, TursoMvccStoreConfig,
-};
+use agent_semantic_client_db::turso_mvcc_store::TursoMvccEvent;
+use agent_semantic_client_db::turso_mvcc_store::TursoMvccStore;
+use agent_semantic_client_db::turso_mvcc_store::TursoMvccStoreConfig;
 
 fn turso_mvcc_event(partition: &str, id: usize) -> TursoMvccEvent {
     TursoMvccEvent::new(
@@ -143,3 +143,4 @@ async fn turso_mvcc_store_rolls_back_the_whole_batch_on_duplicate_identity() {
     assert_eq!(persisted, vec![turso_mvcc_event("agent-a", 1)]);
     let _ = std::fs::remove_dir_all(temp);
 }
+use super::fixture::temp_root;

@@ -1,186 +1,42 @@
 //! Generation-bound graph request projection for the resident lexical frontier.
 
-use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
-use std::sync::{Arc, Mutex};
+use std::collections::BTreeMap;
+use std::collections::BTreeSet;
+use std::collections::HashMap;
+use std::collections::VecDeque;
+use std::sync::Arc;
+use std::sync::Mutex;
 
-use agent_semantic_content_identity::{
-    ArtifactJson, SourceSnapshotEvidence, hash_normalized_json,
-    provider_projection_relation::{ProviderProjectedRelation, ProviderProjectedRelationEndpoint},
-    workspace_generation_evidence::WorkspaceGenerationEvidenceV1,
-};
-use agent_semantic_search_projection::ResidentSearchHit;
+use agent_semantic_content_identity::ArtifactJson;
+use agent_semantic_content_identity::ProviderRelationEndpointKindV1;
+use agent_semantic_content_identity::SourceSnapshotEvidence;
+use agent_semantic_content_identity::hash_normalized_json;
+use agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelation;
+use agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelationEndpoint;
+use agent_semantic_content_identity::workspace_generation_evidence::WorkspaceGenerationEvidenceV1;
 use serde_json::json;
 
-use crate::{
-    SearchGenerationConstructionStage, SearchGenerationGraphRequest, SearchGenerationStageReceipt,
-    canonical_blake3_digest, stable_graph_node_id,
-};
+use crate::SearchGenerationConstructionStage;
+use crate::SearchGenerationGraphRequest;
+use crate::SearchGenerationStageReceipt;
+use crate::canonical_blake3_digest;
+use crate::stable_graph_node_id;
 
-/// Inputs admitted by one immutable Runtime search generation.
-pub struct ResidentGraphSearchRequest<'a> {
-    pub operation_id: &'a str,
-    pub operation: &'a str,
-    pub query: &'a str,
-    pub language_id: &'a str,
-    pub provider_id: &'a str,
-    pub generation_digest: &'a str,
-    pub source_snapshot: &'a SourceSnapshotEvidence,
-    pub workspace_generation: &'a WorkspaceGenerationEvidenceV1,
-    pub lexical_hits: &'a [ResidentSearchHit],
-    /// Immutable whole-generation graph admitted with the resident mmap.
-    /// Query-specific lexical hits are represented only by `entryNodeIds`.
-    pub generation_graph: &'a ResidentGraphGeneration,
-}
+#[path = "resident_graph_search_model.rs"]
+mod model;
 
-/// Compact graph stage evidence retained by the v1 Runtime search receipt.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct ResidentGraphSearchStage {
-    pub generation_digest: String,
-    pub result_digest: String,
-    pub ranked_owner_paths: Vec<String>,
-    pub elapsed_micros: u64,
-    pub work: ResidentGraphSearchWork,
-}
-
-/// Explicit upper bounds for one warm resident graph traversal.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct ResidentGraphSearchBudget {
-    pub max_nodes: usize,
-    pub max_edges: usize,
-    pub max_frontier: usize,
-    pub max_results: usize,
-}
-
-/// Intent-only graph evaluation admitted against one immutable generation.
-pub struct ResidentGraphEvaluationRequest<'a> {
-    pub operation_id: &'a str,
-    pub generation_digest: &'a str,
-    pub source_snapshot: &'a SourceSnapshotEvidence,
-    pub workspace_generation: &'a WorkspaceGenerationEvidenceV1,
-    pub entry_node_ids: &'a [String],
-    pub generation_graph: &'a ResidentGraphGeneration,
-}
-
-/// Explicit upper bounds for a public resident graph evaluation.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct ResidentGraphEvaluationBudget {
-    pub max_depth: usize,
-    pub max_nodes: usize,
-    pub max_edges: usize,
-    pub max_results: usize,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct ResidentGraphRankedNode {
-    pub id: String,
-    pub kind: String,
-    pub owner_path: Option<String>,
-    pub score: usize,
-    pub distance: usize,
-}
-
-#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
-pub struct ResidentGraphEvaluatedEdge {
-    pub source: String,
-    pub target: String,
-    pub relation: String,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct ResidentGraphEvaluation {
-    pub ranked_nodes: Vec<ResidentGraphRankedNode>,
-    pub edges: Vec<ResidentGraphEvaluatedEdge>,
-    pub work: ResidentGraphSearchWork,
-}
-
-/// Machine-readable work counters for the Ready-path graph stage.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub struct ResidentGraphSearchWork {
-    pub visited_nodes: usize,
-    pub visited_edges: usize,
-    pub frontier_peak: usize,
-    pub provider_rpc_count: usize,
-    pub cache_hit_count: usize,
-    pub cache_miss_count: usize,
-    pub cache_entry_count: usize,
-    pub cache_value_bytes: usize,
-    pub cache_capacity: usize,
-    pub cache_shard_count: usize,
-}
-
-/// Measured construction phases for one immutable graph attachment.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub struct ResidentGraphBuildMetrics {
-    pub owner_projection_nanos: u64,
-    pub relation_projection_nanos: u64,
-    pub identity_hash_nanos: u64,
-}
-
-/// Canonical whole-generation graph shared by all warm queries.
-#[derive(Clone, Debug)]
-pub struct ResidentGraphGeneration {
-    generation_request: Option<Arc<SearchGenerationGraphRequest>>,
-    digest: String,
-    source_root_digest: String,
-    leaf_count: u64,
-    owner_count: u64,
-    owner_node_ids: Arc<BTreeSet<String>>,
-    owner_paths_by_node_id: Arc<BTreeMap<String, String>>,
-    nodes_by_id: Arc<BTreeMap<String, ResidentGraphNode>>,
-    adjacency: Arc<BTreeMap<String, Vec<ResidentGraphEvaluatedEdge>>>,
-    rank_cache: Arc<Vec<Mutex<Vec<(String, Arc<ResidentGraphSearchStage>)>>>>,
-    build_metrics: ResidentGraphBuildMetrics,
-}
-
-#[derive(Clone, Debug)]
-struct ResidentGraphNode {
-    kind: String,
-    owner_path: Option<String>,
-}
-
-impl ResidentGraphGeneration {
-    #[must_use]
-    pub fn node_count(&self) -> usize {
-        self.nodes_by_id.len()
-    }
-
-    #[must_use]
-    pub fn edge_count(&self) -> usize {
-        self.adjacency.values().map(Vec::len).sum()
-    }
-
-    #[must_use]
-    pub fn digest(&self) -> &str {
-        &self.digest
-    }
-
-    #[must_use]
-    pub fn build_metrics(&self) -> ResidentGraphBuildMetrics {
-        self.build_metrics
-    }
-
-    /// Return the exact provider-fact request that produced this generation.
-    ///
-    /// Published generations always retain this immutable request so an
-    /// optional graph worker can be started lazily without rereading source,
-    /// invoking a provider, or inventing a second generation identity.
-    pub fn generation_request(&self) -> Result<&SearchGenerationGraphRequest, String> {
-        self.generation_request
-            .as_deref()
-            .ok_or_else(|| "resident graph lacks its generation request authority".to_owned())
-    }
-
-    fn matches_generation_binding(
-        &self,
-        source_snapshot: &SourceSnapshotEvidence,
-        workspace_generation: &WorkspaceGenerationEvidenceV1,
-    ) -> bool {
-        self.source_root_digest == source_snapshot.root_digest
-            && self.source_root_digest == workspace_generation.root_digest
-            && self.leaf_count == workspace_generation.leaf_count
-            && self.owner_count == workspace_generation.owner_count
-    }
-}
+pub use model::ResidentGraphBuildMetrics;
+pub use model::ResidentGraphEvaluatedEdge;
+pub use model::ResidentGraphEvaluation;
+pub use model::ResidentGraphEvaluationBudget;
+pub use model::ResidentGraphEvaluationRequest;
+pub use model::ResidentGraphGeneration;
+use model::ResidentGraphNode;
+pub use model::ResidentGraphRankedNode;
+pub use model::ResidentGraphSearchBudget;
+pub use model::ResidentGraphSearchRequest;
+pub use model::ResidentGraphSearchStage;
+pub use model::ResidentGraphSearchWork;
 
 /// Build the immutable graph payload loaded once per Runtime generation.
 ///
@@ -206,7 +62,9 @@ pub(crate) fn materialize_resident_graph_generation(
     for relation in &relations {
         relation.validate()?;
         for endpoint in [&relation.from, &relation.to] {
-            if endpoint.kind == "owner" && !owner_paths.contains(&endpoint.id) {
+            if endpoint.kind == ProviderRelationEndpointKindV1::Owner
+                && !owner_paths.contains(&endpoint.id)
+            {
                 return Err(format!(
                     "resident generation graph relation references an unadmitted owner: {}",
                     endpoint.id
@@ -256,7 +114,7 @@ fn materialize_canonical_resident_graph_generation(
         let from_id =
             insert_relation_node(&mut nodes_by_id, &owner_node_ids_by_path, &relation.from);
         let to_id = insert_relation_node(&mut nodes_by_id, &owner_node_ids_by_path, &relation.to);
-        edges.push((from_id, to_id, relation.kind.clone()));
+        edges.push((from_id, to_id, relation.kind.to_string()));
     }
     let mut adjacency = BTreeMap::<String, Vec<ResidentGraphEvaluatedEdge>>::new();
     for (source, target, relation) in &edges {
@@ -727,14 +585,14 @@ fn insert_relation_node(
     owner_node_ids_by_path: &HashMap<String, String>,
     endpoint: &ProviderProjectedRelationEndpoint,
 ) -> String {
-    if endpoint.kind == "owner" {
+    if endpoint.kind == ProviderRelationEndpointKindV1::Owner {
         return owner_node_ids_by_path[&endpoint.id].clone();
     }
-    let node_id = stable_graph_node_id(&endpoint.kind, &endpoint.id);
+    let node_id = stable_graph_node_id(endpoint.kind.as_str(), &endpoint.id);
     nodes_by_id
         .entry(node_id.clone())
         .or_insert_with(|| ResidentGraphNode {
-            kind: endpoint.kind.clone(),
+            kind: endpoint.kind.to_string(),
             owner_path: None,
         });
     node_id
@@ -763,7 +621,13 @@ fn resident_graph_digest(
     for (node_id, node) in nodes {
         hash_graph_component(&mut hasher, node_id);
         hash_graph_component(&mut hasher, &node.kind);
-        hash_graph_component(&mut hasher, node.owner_path.as_deref().unwrap_or_default());
+        match node.owner_path.as_deref() {
+            Some(owner_path) => {
+                hash_graph_component(&mut hasher, "owner-path");
+                hash_graph_component(&mut hasher, owner_path);
+            }
+            None => hash_graph_component(&mut hasher, "non-owner-node"),
+        }
     }
     for (source, target, relation) in edges {
         hash_graph_component(&mut hasher, source);

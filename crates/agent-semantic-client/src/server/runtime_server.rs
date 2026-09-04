@@ -1,11 +1,17 @@
+use agent_semantic_client_db::RuntimeServerControlReceipt;
+use agent_semantic_client_db::RuntimeServerOperation;
+use agent_semantic_client_db::call_runtime_server_for_state_home;
 use agent_semantic_client_db::runtime_server_control::prewarm_runtime_server_status_memory;
-use agent_semantic_client_db::{
-    RuntimeServerControlReceipt, RuntimeServerOperation, call_runtime_server_for_state_home,
-};
-use clap::{Command, CommandFactory, Parser, Subcommand};
-use sha2::{Digest, Sha256};
-use std::path::{Path, PathBuf};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use clap::Command;
+use clap::CommandFactory;
+use clap::Parser;
+use clap::Subcommand;
+use sha2::Digest;
+use sha2::Sha256;
+use std::path::Path;
+use std::path::PathBuf;
+use tokio::io::AsyncReadExt;
+use tokio::io::AsyncWriteExt;
 
 #[path = "runtime_server_daemon.rs"]
 mod runtime_server_daemon;
@@ -214,32 +220,20 @@ async fn operator_start_activation_event(
 }
 
 async fn run_status() -> Result<(), String> {
-    let state_home = state_home()?;
     match run_control_status().await {
         Ok(()) => Ok(()),
-        Err(reason) => {
-            let spawn =
-                super::runtime_server_wire_adapter::read_runtime_server_spawn_receipt(&state_home)
-                    .await?;
-            let receipt = serde_json::json!({
-                "schemaId": "agent.semantic-protocols.runtime-server-lifecycle-receipt.v1",
-                "schemaVersion": "1",
-                "state": "stopped",
-                "processId": spawn.as_ref().map(|receipt| receipt.process_id),
-                "nonce": spawn.as_ref().map(|receipt| receipt.nonce.as_str()),
-                "reason": reason,
-            });
-            let mut stdout = tokio::io::stdout();
-            stdout
-                .write_all(format!("{receipt}\n").as_bytes())
-                .await
-                .map_err(|error| format!("write Runtime Server status receipt: {error}"))?;
-            stdout
-                .flush()
-                .await
-                .map_err(|error| format!("flush Runtime Server status receipt: {error}"))
-        }
+        Err(reason) => Err(status_observation_failure(&reason)),
     }
+}
+
+fn status_observation_failure(reason: &str) -> String {
+    let lower = reason.to_ascii_lowercase();
+    let reason_kind = if lower.contains("operation not permitted") || lower.contains("os error 1") {
+        "transport-unavailable"
+    } else {
+        "runtime-status-observation-failed"
+    };
+    format!("state=blocked reasonKind={reason_kind} operation=status originalError={reason}")
 }
 
 pub(crate) async fn ensure_runtime_server_for_healthcheck(
@@ -266,20 +260,19 @@ pub(super) async fn observe_runtime_server_readiness(
     if receipt.state
         == agent_semantic_client_db::runtime_server_control::RuntimeServerState::Healthy
     {
-        let committed_readiness = async {
-            validate_runtime_server_service_publication(&endpoint).await?;
+        validate_runtime_server_service_publication(&endpoint)
+            .await
+            .map_err(|error| status_observation_failure(&error))?;
+        if let Err(error) =
             agent_semantic_client_db::runtime_server_lifecycle::observe_resident_transaction(
                 state_home,
             )
             .await
-            .map(|_| ())
-        }
-        .await;
-        if let Err(error) = committed_readiness {
+        {
             receipt.state =
                 agent_semantic_client_db::runtime_server_control::RuntimeServerState::Starting;
             receipt.reason = Some(format!(
-                "Runtime endpoint is reachable but its resident transaction is not committed: {error}"
+                "Runtime endpoint is authenticated but its resident transaction is not committed: {error}"
             ));
         }
     }
@@ -396,7 +389,8 @@ async fn os_entropy() -> Result<[u8; 32], String> {
         .map_err(|error| format!("failed to read OS entropy: {error}"))?;
     Ok(entropy)
 }
-use agent_semantic_client_db::runtime_server_control::{read_endpoint, read_supervisor_endpoint};
+use agent_semantic_client_db::runtime_server_control::read_endpoint;
+use agent_semantic_client_db::runtime_server_control::read_supervisor_endpoint;
 
 #[cfg(test)]
 #[path = "../../tests/unit/server/runtime_server_lifecycle_cli.rs"]

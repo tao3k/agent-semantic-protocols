@@ -3,6 +3,22 @@ name = "agent-semantic-runtime-server"
 version.workspace = true
 edition.workspace = true
 
+[[test]]
+name = "candidate_lifecycle"
+path = "tests/integration/candidate_lifecycle.rs"
+
+[[test]]
+name = "readiness_socket_identity"
+path = "tests/integration/readiness_socket_identity.rs"
+
+[[test]]
+name = "agent_session_registration"
+path = "tests/integration/agent_session_registration.rs"
+
+[[bench]]
+name = "runtime_schema_bundle_catalog"
+harness = false
+
 [dependencies]
 agent-semantic-artifacts.workspace = true
 agent-semantic-runtime.workspace = true
@@ -35,4 +51,5 @@ tokio.workspace = true
 tonic-prost-build.workspace = true
 
 [dev-dependencies]
+criterion.workspace = true
 tempfile.workspace = true

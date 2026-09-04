@@ -1,22 +1,36 @@
 //! Bounded permission-differential probe for otherwise unknown Bash readers.
 
-use crate::{ReaderProbeAccess, ReaderProbeObservation};
+use crate::ReaderProbeAccess;
+use crate::ReaderProbeObservation;
 #[cfg(target_os = "macos")]
 use fs2::FileExt as _;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 #[cfg(target_os = "macos")]
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 #[cfg(target_os = "macos")]
-use std::sync::{Arc, OnceLock};
-use std::time::{Duration, Instant};
+use std::sync::OnceLock;
+#[cfg(target_os = "macos")]
+use std::sync::atomic::AtomicU64;
+#[cfg(target_os = "macos")]
+use std::sync::atomic::Ordering;
+use std::time::Duration;
+use std::time::Instant;
 
 #[cfg(target_os = "macos")]
 use super::filesystem::ensure_secure_directory;
 #[cfg(target_os = "macos")]
-use super::process::{
-    ProbeOutcome, exit_signature, materialize_probe_root, materialize_profile_sentinels,
-    replace_subject_operand, run_permission_candidate,
-};
+use super::process::ProbeOutcome;
+#[cfg(target_os = "macos")]
+use super::process::exit_signature;
+#[cfg(target_os = "macos")]
+use super::process::materialize_probe_root;
+#[cfg(target_os = "macos")]
+use super::process::materialize_profile_sentinels;
+#[cfg(target_os = "macos")]
+use super::process::replace_subject_operand;
+#[cfg(target_os = "macos")]
+use super::process::run_permission_candidate;
 
 // One cold observation owns a single end-to-end deadline covering secure cache
 // preparation, candidate launch, permission observation, termination, and reap. Cache hits do
@@ -649,7 +663,8 @@ fn dynamic_cache_record_path(root: &Path, key: &blake3::Hash) -> PathBuf {
 #[cfg(target_os = "macos")]
 fn dynamic_cache_hit(root: &Path, key: &blake3::Hash) -> bool {
     use std::io::Read as _;
-    use std::os::unix::fs::{MetadataExt as _, OpenOptionsExt as _};
+    use std::os::unix::fs::MetadataExt as _;
+    use std::os::unix::fs::OpenOptionsExt as _;
 
     let path = dynamic_cache_record_path(root, key);
     let Ok(mut file) = std::fs::OpenOptions::new()

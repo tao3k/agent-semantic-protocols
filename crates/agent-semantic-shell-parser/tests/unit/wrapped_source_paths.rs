@@ -1,4 +1,5 @@
-use agent_semantic_shell_parser::{command_source_paths, embedded_literal_candidates};
+use agent_semantic_shell_parser::command_source_paths;
+use agent_semantic_shell_parser::embedded_literal_candidates;
 
 #[test]
 fn arbitrary_wrappers_preserve_nested_source_read_operands() {

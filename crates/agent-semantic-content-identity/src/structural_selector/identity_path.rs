@@ -1,11 +1,14 @@
-use crate::canonical_item_identity::{CanonicalItemIdentity, CanonicalItemScope};
+//! Maps canonical item identities to reversible structural-selector paths.
 
-use super::{
-    StructuralSelectorCodecError, decode_structural_selector_component,
-    encode_structural_selector_component,
-};
+use crate::canonical_item_identity::CanonicalItemIdentity;
+use crate::canonical_item_identity::CanonicalItemScope;
+
+use super::StructuralSelectorCodecError;
+use super::decode_structural_selector_component;
+use super::encode_structural_selector_component;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+/// Validated language identifier embedded in a structural-selector path.
 pub struct StructuralSelectorLanguageId(String);
 
 impl StructuralSelectorLanguageId {
@@ -27,6 +30,7 @@ impl From<&str> for StructuralSelectorLanguageId {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+/// Canonical reversible path encoding of one parser item identity.
 pub struct CanonicalItemIdentityPath(String);
 
 impl CanonicalItemIdentityPath {
@@ -47,6 +51,7 @@ impl From<&str> for CanonicalItemIdentityPath {
     }
 }
 
+/// Encodes one canonical item identity as a selector path.
 pub fn encode_canonical_item_identity_path(identity: &CanonicalItemIdentity) -> String {
     let mut encoded = format!(
         "item/{}/{}",
@@ -66,6 +71,7 @@ pub fn encode_canonical_item_identity_path(identity: &CanonicalItemIdentity) -> 
     encoded
 }
 
+/// Decodes a selector path into its canonical item identity.
 pub fn decode_canonical_item_identity_path(
     language_id: &StructuralSelectorLanguageId,
     encoded: &CanonicalItemIdentityPath,

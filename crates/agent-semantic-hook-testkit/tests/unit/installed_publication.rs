@@ -1,6 +1,7 @@
 use serde_json::json;
 
-use super::{InstalledHookExpectation, verify_installed_hook_receipt};
+use super::InstalledHookExpectation;
+use super::verify_installed_hook_receipt;
 
 const GENERATION: &str =
     "blake3-256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";

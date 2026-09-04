@@ -1,7 +1,8 @@
-use super::{
-    AdmittedProjectResolution, LANGUAGE_PACKAGE_GRAPH_SCHEMA_ID, PROJECT_RESOLUTION_SCHEMA_ID,
-    ProjectResolutionReceipt, workspace_source_scope_generation_digest,
-};
+use super::AdmittedProjectResolution;
+use super::LANGUAGE_PACKAGE_GRAPH_SCHEMA_ID;
+use super::PROJECT_RESOLUTION_SCHEMA_ID;
+use super::ProjectResolutionReceipt;
+use super::workspace_source_scope_generation_digest;
 
 fn scope(package_name: &str) -> ProjectResolutionReceipt {
     serde_json::from_value(serde_json::json!({
@@ -72,7 +73,11 @@ fn scope(package_name: &str) -> ProjectResolutionReceipt {
 fn project_resolution_is_provider_semantics_without_workspace_identity() {
     let scope = scope("fixture");
     scope
-        .validate("rust", "asp-rust", "blake3-256:candidates")
+        .validate(
+            &agent_semantic_content_identity::LanguageIdV1::from("rust"),
+            &agent_semantic_content_identity::ProviderIdV1::from("asp-rust"),
+            "blake3-256:candidates",
+        )
         .expect("valid provider ProjectResolution");
     let encoded = serde_json::to_value(&scope).expect("encode ProjectResolution");
     for forbidden in [

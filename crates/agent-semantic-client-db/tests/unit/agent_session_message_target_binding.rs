@@ -1,4 +1,5 @@
-use super::{AgentSessionRecord, agent_session_message_target_is_live_bound};
+use super::AgentSessionRecord;
+use super::agent_session_message_target_is_live_bound;
 
 fn record_with_binding_source(source: &str) -> AgentSessionRecord {
     AgentSessionRecord {

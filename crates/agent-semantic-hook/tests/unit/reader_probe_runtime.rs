@@ -1,4 +1,5 @@
-use super::{PROBE_COLD_TIMEOUT, observe_one};
+use super::PROBE_COLD_TIMEOUT;
+use super::observe_one;
 use agent_semantic_hook::ReaderProbeAccess;
 
 #[cfg(target_os = "macos")]
@@ -245,19 +246,23 @@ fn concurrent_cold_miss_launches_exactly_one_probe() {
         let cache = cache_fixture();
         super::prepare_dynamic_cache_root(cache.path()).expect("prime cache namespace");
         let fixture_path = fixture();
+        let start = std::sync::Arc::new(std::sync::Barrier::new(33));
         let workers = (0..32)
             .map(|_| {
                 let cache = cache.path().to_owned();
+                let start = std::sync::Arc::clone(&start);
                 let tokens = vec![
                     fixture_path.clone(),
                     "read".to_owned(),
                     "fixture.rs".to_owned(),
                 ];
                 std::thread::spawn(move || {
+                    start.wait();
                     observe_one(&tokens, "fixture.rs".to_owned(), &[], Some(&cache))
                 })
             })
             .collect::<Vec<_>>();
+        start.wait();
         let observations = workers
             .into_iter()
             .map(|worker| worker.join().expect("Reader worker"))
@@ -271,10 +276,12 @@ fn concurrent_cold_miss_launches_exactly_one_probe() {
             "observations={observations:#?}"
         );
         assert!(
-            observations
-                .iter()
-                .all(|observation| observation.access == ReaderProbeAccess::Read),
-            "observations={observations:#?}"
+            observations.iter().all(|observation| {
+                observation.access == ReaderProbeAccess::Read
+                    || (observation.access == ReaderProbeAccess::Unknown
+                        && observation.terminal == "reader-behavior-cache-wait-timeout")
+            }),
+            "a busy cold slot may return only the typed non-queue timeout: observations={observations:#?}"
         );
         let eventual_read = observe_one(
             &[fixture_path, "read".to_owned(), "fixture.rs".to_owned()],

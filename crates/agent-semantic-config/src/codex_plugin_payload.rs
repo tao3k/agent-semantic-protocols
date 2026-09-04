@@ -1,7 +1,8 @@
 //! Codex plugin payload identity and installed-cache comparison.
 
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 
 /// Relative path of the canonical Codex plugin manifest.
 pub const CODEX_PLUGIN_MANIFEST_RELATIVE_PATH: &str = ".codex-plugin/plugin.json";
@@ -120,9 +121,37 @@ pub fn inspect_codex_plugin_payload(
 pub fn load_codex_plugin_payload_identity(
     plugin_root: &Path,
 ) -> Result<CodexPluginPayloadIdentity, String> {
-    let manifest_bytes = read_payload_file(plugin_root, CODEX_PLUGIN_MANIFEST_RELATIVE_PATH)?;
+    let payload = read_plugin_payload(plugin_root)?;
+    let (plugin_name, version) = decode_manifest_identity(plugin_root, &payload.manifest)?;
+    validate_hooks_payload(plugin_root, &payload.hooks)?;
+    validate_launcher_payload(plugin_root, &payload.launcher)?;
+    Ok(CodexPluginPayloadIdentity {
+        plugin_name,
+        version,
+        digest: digest_plugin_payload(&payload),
+    })
+}
+
+struct CodexPluginPayloadFiles {
+    manifest: Vec<u8>,
+    hooks: Vec<u8>,
+    launcher: Vec<u8>,
+}
+
+fn read_plugin_payload(plugin_root: &Path) -> Result<CodexPluginPayloadFiles, String> {
+    Ok(CodexPluginPayloadFiles {
+        manifest: read_payload_file(plugin_root, CODEX_PLUGIN_MANIFEST_RELATIVE_PATH)?,
+        hooks: read_payload_file(plugin_root, CODEX_PLUGIN_HOOKS_RELATIVE_PATH)?,
+        launcher: read_payload_file(plugin_root, CODEX_PLUGIN_LAUNCHER_RELATIVE_PATH)?,
+    })
+}
+
+fn decode_manifest_identity(
+    plugin_root: &Path,
+    manifest_bytes: &[u8],
+) -> Result<(String, String), String> {
     let manifest =
-        serde_json::from_slice::<serde_json::Value>(&manifest_bytes).map_err(|error| {
+        serde_json::from_slice::<serde_json::Value>(manifest_bytes).map_err(|error| {
             format!(
                 "invalid {}: {error}",
                 plugin_root
@@ -140,8 +169,11 @@ pub fn load_codex_plugin_payload_identity(
                 .display()
         ));
     }
-    let hooks = read_payload_file(plugin_root, CODEX_PLUGIN_HOOKS_RELATIVE_PATH)?;
-    let hooks_value = serde_json::from_slice::<serde_json::Value>(&hooks).map_err(|error| {
+    Ok((plugin_name, version))
+}
+
+fn validate_hooks_payload(plugin_root: &Path, hooks: &[u8]) -> Result<(), String> {
+    let hooks_value = serde_json::from_slice::<serde_json::Value>(hooks).map_err(|error| {
         format!(
             "invalid {}: {error}",
             plugin_root.join(CODEX_PLUGIN_HOOKS_RELATIVE_PATH).display()
@@ -176,8 +208,11 @@ pub fn load_codex_plugin_payload_identity(
             ));
         }
     }
-    let launcher = read_payload_file(plugin_root, CODEX_PLUGIN_LAUNCHER_RELATIVE_PATH)?;
-    let launcher_text = std::str::from_utf8(&launcher).map_err(|error| {
+    Ok(())
+}
+
+fn validate_launcher_payload(plugin_root: &Path, launcher: &[u8]) -> Result<(), String> {
+    let launcher_text = std::str::from_utf8(launcher).map_err(|error| {
         format!(
             "{} is not UTF-8: {error}",
             plugin_root
@@ -200,24 +235,23 @@ pub fn load_codex_plugin_payload_identity(
                 .display()
         ));
     }
+    Ok(())
+}
 
+fn digest_plugin_payload(payload: &CodexPluginPayloadFiles) -> String {
     let mut hasher = blake3::Hasher::new();
     hasher.update(PAYLOAD_DIGEST_DOMAIN);
     for (relative, bytes) in [
-        (CODEX_PLUGIN_MANIFEST_RELATIVE_PATH, manifest_bytes),
-        (CODEX_PLUGIN_HOOKS_RELATIVE_PATH, hooks),
-        (CODEX_PLUGIN_LAUNCHER_RELATIVE_PATH, launcher),
+        (CODEX_PLUGIN_MANIFEST_RELATIVE_PATH, &payload.manifest),
+        (CODEX_PLUGIN_HOOKS_RELATIVE_PATH, &payload.hooks),
+        (CODEX_PLUGIN_LAUNCHER_RELATIVE_PATH, &payload.launcher),
     ] {
         hasher.update(relative.as_bytes());
         hasher.update(&[0]);
         hasher.update(&(bytes.len() as u64).to_le_bytes());
-        hasher.update(&bytes);
+        hasher.update(bytes);
     }
-    Ok(CodexPluginPayloadIdentity {
-        plugin_name,
-        version,
-        digest: format!("blake3-256:{}", hasher.finalize().to_hex()),
-    })
+    format!("blake3-256:{}", hasher.finalize().to_hex())
 }
 
 fn required_manifest_string<'a>(

@@ -1,4 +1,5 @@
-use serde_json::{Value, json};
+use serde_json::Value;
+use serde_json::json;
 
 pub fn stable_graph_node_id(kind: &str, value: &str) -> String {
     let mut rendered = String::with_capacity(kind.len() + value.len() + 1);

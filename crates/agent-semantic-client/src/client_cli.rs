@@ -3,7 +3,8 @@
 use std::env;
 use std::path::PathBuf;
 
-use crate::cli_args::{ParsedArgs, parse_client_args};
+use crate::cli_args::ParsedArgs;
+use crate::cli_args::parse_client_args;
 
 /// Runs the agent semantic client CLI from process arguments.
 pub async fn run_cli_from_env() -> Result<(), String> {

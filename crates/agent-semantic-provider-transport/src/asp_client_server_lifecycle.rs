@@ -1,8 +1,10 @@
 //! Typed lifecycle receipt for the Runtime-owned ASP Client Server authority.
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 
-use crate::{ProviderRuntimeActorState, ProviderRuntimeContractReceipt};
+use crate::ProviderRuntimeActorState;
+use crate::ProviderRuntimeContractReceipt;
 
 pub const ASP_CLIENT_SERVER_LIFECYCLE_RECEIPT_SCHEMA_ID: &str =
     "agent.semantic-protocols.asp-client-server-lifecycle-receipt";

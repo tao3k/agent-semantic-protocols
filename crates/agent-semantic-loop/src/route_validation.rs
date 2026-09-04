@@ -1,10 +1,16 @@
-use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::collections::BTreeMap;
+use std::collections::BTreeSet;
+use std::collections::VecDeque;
 use std::fmt;
 
-use agent_semantic_context_product::{
-    JSON_SAFE_INTEGER_MAX, ProtocolId, RouteEdge, RouteExecutionMode, RouteProgram, RouteProposal,
-    RouteProposalExecutionGroup, UncheckedContextProductStateV1,
-};
+use agent_semantic_context_product::JSON_SAFE_INTEGER_MAX;
+use agent_semantic_context_product::ProtocolId;
+use agent_semantic_context_product::RouteEdge;
+use agent_semantic_context_product::RouteExecutionMode;
+use agent_semantic_context_product::RouteProgram;
+use agent_semantic_context_product::RouteProposal;
+use agent_semantic_context_product::RouteProposalExecutionGroup;
+use agent_semantic_context_product::UncheckedContextProductStateV1;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum RouteValidationError {

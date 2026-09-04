@@ -1,11 +1,16 @@
-use agent_semantic_content_identity::content_binding::{
-    AuthorityStamp, ContentBinding, ContentIdentity, ContentPublicationCommit,
-};
+use agent_semantic_content_identity::content_binding::AuthorityStamp;
+use agent_semantic_content_identity::content_binding::ContentBinding;
+use agent_semantic_content_identity::content_binding::ContentIdentity;
+use agent_semantic_content_identity::content_binding::ContentPublicationCommit;
 use agent_semantic_content_identity::runtime_execution::RuntimeExecutionBinding;
-use agent_semantic_content_identity::search_execution::{
-    SEARCH_EXECUTION_SCHEMA_ID, SEARCH_EXECUTION_SCHEMA_VERSION, SearchClientFrame,
-    SearchExecution, SearchExecutionError, SearchOperation, TerminalStatus,
-};
+use agent_semantic_content_identity::runtime_execution::RuntimeExecutionBindingInput;
+use agent_semantic_content_identity::search_execution::SEARCH_EXECUTION_SCHEMA_ID;
+use agent_semantic_content_identity::search_execution::SEARCH_EXECUTION_SCHEMA_VERSION;
+use agent_semantic_content_identity::search_execution::SearchClientFrame;
+use agent_semantic_content_identity::search_execution::SearchExecution;
+use agent_semantic_content_identity::search_execution::SearchExecutionError;
+use agent_semantic_content_identity::search_execution::SearchOperation;
+use agent_semantic_content_identity::search_execution::TerminalStatus;
 
 fn identity(seed: char) -> ContentIdentity {
     let digest = format!(
@@ -127,8 +132,11 @@ fn cancellation_emits_the_only_terminal_and_blocks_late_success() {
 fn binding_can_pin_the_exact_runtime_and_evaluator_binding() {
     let commit = commit('a');
     let digest = "blake3-256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
-    let runtime_binding = RuntimeExecutionBinding::new(
-        ContentBinding::new(
+    let runtime_binding = RuntimeExecutionBinding::new(RuntimeExecutionBindingInput {
+        project_id: "project-a".into(),
+        workspace_id: "workspace-a".into(),
+        publication_nonce: "publication-a".into(),
+        content_binding: ContentBinding::new(
             commit.identity.clone(),
             AuthorityStamp {
                 key_id: "test-key".into(),
@@ -137,11 +145,11 @@ fn binding_can_pin_the_exact_runtime_and_evaluator_binding() {
             },
         )
         .expect("valid binding"),
-        digest,
-        digest,
-        digest,
-        digest,
-    )
+        runtime_artifact_digest: commit.identity.runtime_artifact_digest.clone().into(),
+        evaluator_policy_digest: digest.into(),
+        active_artifact_receipt_digest: digest.into(),
+        evaluator_abi_digest: digest.into(),
+    })
     .expect("valid runtime binding");
     let execution = SearchExecution::bind_with_runtime_binding(
         ContentBinding::new(

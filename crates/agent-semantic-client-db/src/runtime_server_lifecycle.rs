@@ -306,20 +306,41 @@ pub async fn read_latest_drain(home: &Path) -> Result<Option<RuntimeServerDrainR
     }
 }
 
-pub async fn observe_resident_transaction(
+struct CurrentRuntimeServingIdentity {
+    spawn: RuntimeServerSpawnReceipt,
+    applied: agent_semantic_artifacts::runtime_artifact_activation::RuntimeArtifactActivationEvent,
+    endpoint: crate::runtime_server_control::RuntimeServerEndpoint,
+    endpoint_binary_content_digest:
+        agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest,
+}
+
+/// Content-proven Runtime publication consumed by normal clients.
+///
+/// Keeping the publication nonce beside the endpoint prevents a client cache
+/// from reusing a session across an otherwise byte-identical atomic switch.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RuntimeServerServingPublication {
+    pub endpoint: crate::runtime_server_control::RuntimeServerEndpoint,
+    pub publication_nonce: String,
+    pub artifact_digest: agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest,
+}
+
+/// Resolves the Runtime endpoint only after proving that the published owner,
+/// applied artifact, and endpoint name the same serving artifact.  This is a
+/// pure receipt check: it deliberately does not connect to the endpoint.
+async fn resolve_current_runtime_serving_identity(
     home: &Path,
-) -> Result<RuntimeServerResidentTransactionReceipt, String> {
+) -> Result<CurrentRuntimeServingIdentity, String> {
     let spawn = read_owner_receipt(home)
         .await?
-        .ok_or_else(|| "Runtime resident transaction requires an owner-spawn receipt".to_owned())?;
+        .ok_or_else(|| "Runtime serving endpoint requires an owner-spawn receipt".to_owned())?;
     let applied = agent_semantic_artifacts::runtime_artifact_activation::
         read_applied_runtime_artifact_activation_event(home)
         .await?
-        .ok_or_else(|| "Runtime resident transaction requires an applied activation".to_owned())?;
+        .ok_or_else(|| "Runtime serving endpoint requires an applied activation".to_owned())?;
     let endpoint = crate::runtime_server_control::read_runtime_server_supervisor_endpoint(home)
         .await?
-        .ok_or_else(|| "Runtime resident transaction requires a published endpoint".to_owned())?;
-    endpoint.validate_service_reachability().await?;
+        .ok_or_else(|| "Runtime serving endpoint requires a published endpoint".to_owned())?;
 
     if spawn.publication_nonce != applied.publication_nonce
         || spawn.launcher_artifact_digest != applied.artifact_digest
@@ -348,8 +369,51 @@ pub async fn observe_resident_transaction(
         );
     }
     if spawn.previous_serving_digest != applied.previous_artifact_digest {
-        return Err("Runtime resident transaction previous serving identities differ".to_owned());
+        return Err("Runtime serving endpoint previous serving identities differ".to_owned());
     }
+
+    Ok(CurrentRuntimeServingIdentity {
+        spawn,
+        applied,
+        endpoint,
+        endpoint_binary_content_digest,
+    })
+}
+
+/// Resolves the content-proven Runtime serving endpoint for a normal client.
+/// Socket connection is intentionally a separate operation so an OS-level
+/// refusal remains a typed transport result rather than a lifecycle failure.
+pub async fn resolve_runtime_server_serving_endpoint(
+    home: &Path,
+) -> Result<crate::runtime_server_control::RuntimeServerEndpoint, String> {
+    Ok(resolve_runtime_server_serving_publication(home)
+        .await?
+        .endpoint)
+}
+
+/// Resolves the complete serving publication after jointly validating the
+/// Runtime owner, applied activation, artifact digest, endpoint, and nonce.
+pub async fn resolve_runtime_server_serving_publication(
+    home: &Path,
+) -> Result<RuntimeServerServingPublication, String> {
+    let current = resolve_current_runtime_serving_identity(home).await?;
+    Ok(RuntimeServerServingPublication {
+        publication_nonce: current.applied.publication_nonce.clone(),
+        artifact_digest: current.endpoint_binary_content_digest.clone(),
+        endpoint: current.endpoint,
+    })
+}
+
+pub async fn observe_resident_transaction(
+    home: &Path,
+) -> Result<RuntimeServerResidentTransactionReceipt, String> {
+    let CurrentRuntimeServingIdentity {
+        spawn,
+        applied,
+        endpoint,
+        endpoint_binary_content_digest,
+    } = resolve_current_runtime_serving_identity(home).await?;
+    endpoint.validate_service_reachability().await?;
 
     let previous_drain_state = match spawn.previous_owner_epoch {
         Some(previous_owner_epoch) => {

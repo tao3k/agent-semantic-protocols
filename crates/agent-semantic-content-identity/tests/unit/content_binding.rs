@@ -1,8 +1,12 @@
-use super::{
-    ActivationObservation, AuthorityStamp, ContentBindingError, ContentIdentity,
-    ContentPublicationCommit, DIGEST_PREFIX, RuntimeArtifactReference, SourceGenerationReference,
-    WorkspaceSnapshotReference,
-};
+use super::ActivationObservation;
+use super::AuthorityStamp;
+use super::ContentBindingError;
+use super::ContentIdentity;
+use super::ContentPublicationCommit;
+use super::DIGEST_PREFIX;
+use super::RuntimeArtifactReference;
+use super::SourceGenerationReference;
+use super::WorkspaceSnapshotReference;
 
 fn identity(seed: char) -> ContentIdentity {
     let digest = format!("{DIGEST_PREFIX}{}", seed.to_string().repeat(64));

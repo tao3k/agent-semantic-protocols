@@ -1,12 +1,16 @@
 //! Repository, workspace, and scope identities.
 
-use crate::git::{GitIdentity, RemoteUrl, canonicalize_if_possible, path_identity};
-use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
-use std::{
-    fmt,
-    path::{Path, PathBuf},
-};
+use crate::git::GitIdentity;
+use crate::git::RemoteUrl;
+use crate::git::canonicalize_if_possible;
+use crate::git::path_identity;
+use serde::Deserialize;
+use serde::Serialize;
+use sha2::Digest;
+use sha2::Sha256;
+use std::fmt;
+use std::path::Path;
+use std::path::PathBuf;
 
 /// Stable executable identity for a repository.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]

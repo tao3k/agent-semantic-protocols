@@ -1,9 +1,12 @@
 use std::fs;
 use std::time::Duration;
 
-use crate::{ProviderProcessError, ProviderProcessSupervisor};
+use crate::ProviderProcessError;
+use crate::ProviderProcessSupervisor;
 
-use super::support::{script, spec, temp_dir};
+use super::support::script;
+use super::support::spec;
+use super::support::temp_dir;
 
 #[tokio::test]
 async fn times_out_and_kills_child_process() {

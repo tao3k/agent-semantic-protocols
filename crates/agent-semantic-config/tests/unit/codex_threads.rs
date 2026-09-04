@@ -1,4 +1,10 @@
-use super::*;
+use super::CODEX_THREAD_NAMESPACE;
+use super::CODEX_THREAD_TOOL_CALL_SCHEMA_ID;
+use super::CODEX_THREAD_TOOL_CALL_SCHEMA_VERSION;
+use super::CodexThreadOperation;
+use super::CodexThreadReference;
+use super::CodexThreadToolCall;
+use super::SendMessageToThreadInput;
 
 const THREAD_ID: &str = "01a055c3-6a84-7332-b76c-70b07801f029";
 
@@ -27,7 +33,7 @@ fn thread_tool_calls_use_thread_id_not_agent_path_or_session_id() {
         schema_version: CODEX_THREAD_TOOL_CALL_SCHEMA_VERSION.to_owned(),
         namespace: CODEX_THREAD_NAMESPACE.to_owned(),
         operation: CodexThreadOperation::SendMessageToThread(SendMessageToThreadInput {
-            thread_id: THREAD_ID.to_owned(),
+            thread_id: THREAD_ID.into(),
             prompt: "Continue the existing task.".to_owned(),
             host_id: None,
             model: None,

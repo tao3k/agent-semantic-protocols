@@ -1,5 +1,6 @@
 use serde_json::Value;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 
 #[test]
 fn tracked_sandtable_fixtures_do_not_embed_absolute_local_paths() {

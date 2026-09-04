@@ -1,11 +1,13 @@
 use serde_json::Value;
 
-use super::{
-    RENDERED_SEARCH_PROJECTION_SCHEMA_ID, RenderedSearchProjectionV1,
-    SEARCH_PROJECTION_SCHEMA_VERSION, SearchProjectionDensityV1, SearchProjectionError,
-    SearchProjectionRequestV1,
-    topology::{self, TopologyProjectionOptions},
-};
+use super::RENDERED_SEARCH_PROJECTION_SCHEMA_ID;
+use super::RenderedSearchProjectionV1;
+use super::SEARCH_PROJECTION_SCHEMA_VERSION;
+use super::SearchProjectionDensityV1;
+use super::SearchProjectionError;
+use super::SearchProjectionRequestV1;
+use super::topology::TopologyProjectionOptions;
+use super::topology::{self};
 
 pub trait SearchProjectionRenderer {
     fn render(

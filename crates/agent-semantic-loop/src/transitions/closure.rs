@@ -1,18 +1,30 @@
-use agent_semantic_context_product::{
-    ActiveProgram, ClosureDisposition, ClosureFinalizedEventType, ClosureProof,
-    ContextProductEvent, DecisionRequirement, Digest, ExecutionAuthority, ObligationDisposition,
-    ProtocolId, SearchClosureReceipt, UncheckedContextProductStateV1, chained_event_log_digest,
-};
+use agent_semantic_context_product::ActiveProgram;
+use agent_semantic_context_product::ClosureDisposition;
+use agent_semantic_context_product::ClosureFinalizedEventType;
+use agent_semantic_context_product::ClosureProof;
+use agent_semantic_context_product::ContextProductEvent;
+use agent_semantic_context_product::DecisionRequirement;
+use agent_semantic_context_product::Digest;
+use agent_semantic_context_product::ExecutionAuthority;
+use agent_semantic_context_product::ObligationDisposition;
+use agent_semantic_context_product::ProtocolId;
+use agent_semantic_context_product::SearchClosureReceipt;
+use agent_semantic_context_product::UncheckedContextProductStateV1;
+use agent_semantic_context_product::chained_event_log_digest;
 
+use crate::GraphRouter;
+use crate::GraphRouterError;
+use crate::ProofResolver;
+use crate::RunCommitStore;
+use crate::TrustedClock;
+use crate::ValidatedContextProductStateV1;
 use crate::graph_router::authority_receipt_id;
-use crate::{
-    GraphRouter, GraphRouterError, ProofResolver, RunCommitStore, TrustedClock,
-    ValidatedContextProductStateV1,
-};
 
-use super::transition_core::{
-    canonical_digest, commit_state, derived_id, next_clock, require_expected_head,
-};
+use super::transition_core::canonical_digest;
+use super::transition_core::commit_state;
+use super::transition_core::derived_id;
+use super::transition_core::next_clock;
+use super::transition_core::require_expected_head;
 
 #[derive(Clone, Debug)]
 pub struct FinalizeClosureRequest {

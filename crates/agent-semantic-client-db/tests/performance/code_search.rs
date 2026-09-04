@@ -1,15 +1,24 @@
-use agent_semantic_client_core::{
-    ClientCacheFileHash, LanguageId, ProviderId, SemanticSchemaId, SemanticSchemaVersion,
-};
-use agent_semantic_client_db::{
-    CLIENT_DB_SOURCE_INDEX_SCHEMA_ID, CLIENT_DB_SOURCE_INDEX_SCHEMA_VERSION, ClientDbEngine,
-    ClientDbLiveSourceIndexFacts, ClientDbSourceIndexClientDirLookupRequest,
-    ClientDbSourceIndexImport, ClientDbSourceIndexImportFile, ClientDbSourceIndexImportRequest,
-    ClientDbSourceIndexLookupState, ClientDbSourceIndexOwner, ClientDbSourceIndexRefreshRequest,
-    build_source_index_import, client_db_source_index_generation_id_for_snapshot,
-};
+use agent_semantic_client_core::ClientCacheFileHash;
+use agent_semantic_client_core::LanguageId;
+use agent_semantic_client_core::ProviderId;
+use agent_semantic_client_core::SemanticSchemaId;
+use agent_semantic_client_core::SemanticSchemaVersion;
+use agent_semantic_client_db::CLIENT_DB_SOURCE_INDEX_SCHEMA_ID;
+use agent_semantic_client_db::CLIENT_DB_SOURCE_INDEX_SCHEMA_VERSION;
+use agent_semantic_client_db::ClientDbEngine;
+use agent_semantic_client_db::ClientDbLiveSourceIndexFacts;
+use agent_semantic_client_db::ClientDbSourceIndexClientDirLookupRequest;
+use agent_semantic_client_db::ClientDbSourceIndexImport;
+use agent_semantic_client_db::ClientDbSourceIndexImportFile;
+use agent_semantic_client_db::ClientDbSourceIndexImportRequest;
+use agent_semantic_client_db::ClientDbSourceIndexLookupState;
+use agent_semantic_client_db::ClientDbSourceIndexOwner;
+use agent_semantic_client_db::ClientDbSourceIndexRefreshRequest;
+use agent_semantic_client_db::build_source_index_import;
+use agent_semantic_client_db::client_db_source_index_generation_id_for_snapshot;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 use std::sync::Mutex;
 
 const SCENARIO_ROOT: &str = "tests/unit/scenarios/code_search_merkle_memory_warm_path";
@@ -146,6 +155,7 @@ async fn code_search_turso_resident_session_warm_path_is_a_strong_gate() {
             owner_path: fixture_owner_path.clone(),
             bytes: fixture_source.clone(),
             content_digest: format!("blake3-256:{}", blake3::hash(&fixture_source).to_hex()),
+            native_syntax_diagnostic: None,
             selectors: Vec::new(),
         };
     fixture
@@ -290,6 +300,7 @@ async fn code_search_turso_resident_session_warm_path_is_a_strong_gate() {
                 owner_path: fixture_owner_path.clone(),
                 bytes: fixture_source.clone(),
                 content_digest: format!("blake3-256:{}", blake3::hash(&fixture_source).to_hex()),
+                native_syntax_diagnostic: None,
                 selectors: Vec::new(),
             };
         let sample_materialization =

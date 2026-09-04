@@ -53,9 +53,12 @@ pub(super) fn validate_selector(
         envelope.payload.validate().map_err(|error| {
             format!("workspace callable-skeleton payload failed shared validation: selector={} error={error}", selector.selector)
         })?;
-        envelope.payload.validate_scope(&envelope.root_selector).map_err(|error| {
+        envelope
+            .payload
+            .validate_scope(envelope.root_selector.as_str())
+            .map_err(|error| {
             format!("workspace callable-skeleton scope failed shared validation: selector={} error={error}", selector.selector)
-        })?;
+            })?;
         let context = projection.evidence_context.as_ref().ok_or_else(|| {
             "callable-skeleton projection is missing its evidence context".to_owned()
         })?;
@@ -68,7 +71,7 @@ pub(super) fn validate_selector(
         {
             return Err("workspace callable-skeleton evidence context identity drift".to_owned());
         }
-        if envelope.root_selector != selector.selector {
+        if envelope.root_selector.as_str() != selector.selector {
             return Err(format!(
                 "workspace callable-skeleton root selector drift: expected={} actual={}",
                 selector.selector, envelope.root_selector

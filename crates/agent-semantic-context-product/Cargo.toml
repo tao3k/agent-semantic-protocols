@@ -9,3 +9,5 @@ description = "Language-neutral ASP context product wire contract and structural
 agent-semantic-content-identity = { path = "../agent-semantic-content-identity" }
 serde.workspace = true
 serde_json.workspace = true
+[build-dependencies]
+asp-rust-project-harness-policy.workspace = true

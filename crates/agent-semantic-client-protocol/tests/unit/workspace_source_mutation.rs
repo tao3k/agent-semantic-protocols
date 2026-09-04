@@ -1,7 +1,11 @@
-use crate::workspace_source_mutation::{
-    ChangedSourceOwner, RemovedSourceOwner, SourceOwnerPath, SourceSnapshotDigest,
-    WorkspaceIdentity, WorkspaceMutationId, WorkspaceSourceMutation, WorkspaceSourceMutationError,
-};
+use crate::workspace_source_mutation::ChangedSourceOwner;
+use crate::workspace_source_mutation::RemovedSourceOwner;
+use crate::workspace_source_mutation::SourceOwnerPath;
+use crate::workspace_source_mutation::SourceSnapshotDigest;
+use crate::workspace_source_mutation::WorkspaceIdentity;
+use crate::workspace_source_mutation::WorkspaceMutationId;
+use crate::workspace_source_mutation::WorkspaceSourceMutation;
+use crate::workspace_source_mutation::WorkspaceSourceMutationError;
 
 fn owner_path(value: &str) -> SourceOwnerPath {
     SourceOwnerPath::new(value).expect("owner path")

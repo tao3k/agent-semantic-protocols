@@ -101,10 +101,9 @@ impl WorkspaceGenerationAdmission {
             if observed.state == WorkspaceGenerationAdmissionState::Ready
                 && observed.admission_mode.is_complete_generation()
                 && observed.commit.is_some()
-                && self
-                    .ready_validator
-                    .as_ref()
-                    .is_none_or(|validator| validator(&workspace_identity, &project_root).is_ok())
+                && self.ready_validator.as_ref().is_none_or(|validator| {
+                    validator(&workspace_identity, &project_root, &observed).is_ok()
+                })
             {
                 observed.validate()?;
                 Some(observed)
@@ -206,7 +205,7 @@ impl WorkspaceGenerationAdmission {
                     && observed.admission_mode.is_complete_generation()
                     && observed.commit.is_some()
                     && self.ready_validator.as_ref().is_none_or(|validator| {
-                        validator(&workspace_identity, &project_root).is_ok()
+                        validator(&workspace_identity, &project_root, &observed).is_ok()
                     })
                 {
                     observed.validate()?;

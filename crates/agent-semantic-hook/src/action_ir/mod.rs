@@ -7,12 +7,17 @@ mod projection;
 mod receipt;
 mod subject;
 
-pub(crate) use capability::{
-    FilesystemPermissionFact, FilesystemPermissionKind, FilesystemPermissionSource,
-    SemanticCapability, SemanticCapabilityEvidence,
-};
-pub(crate) use host::{AgentActionKind, HostInvocationFact, HostInvocationKind};
-pub(crate) use matching::{action_kind_matches, host_invocation_kind_matches};
+pub(crate) use capability::FilesystemPermissionFact;
+pub(crate) use capability::FilesystemPermissionKind;
+pub(crate) use capability::FilesystemPermissionSource;
+pub(crate) use capability::SemanticCapability;
+pub(crate) use capability::SemanticCapabilityEvidence;
+pub(crate) use host::AgentActionKind;
+pub(crate) use host::HostInvocationFact;
+pub(crate) use host::HostInvocationKind;
+pub(crate) use matching::action_kind_matches;
+pub(crate) use matching::host_invocation_kind_matches;
 pub(crate) use projection::project_agent_action;
 pub(crate) use receipt::AgentAction;
-pub(crate) use subject::{AgentActionSubject, AgentActionSubjectKind};
+pub(crate) use subject::AgentActionSubject;
+pub(crate) use subject::AgentActionSubjectKind;

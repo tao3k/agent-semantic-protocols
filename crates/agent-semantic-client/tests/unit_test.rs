@@ -48,8 +48,6 @@ mod paths_command;
 mod projection_presentation;
 #[path = "unit/command/provider_language_facade.rs"]
 mod provider_language_facade;
-#[path = "unit/provider_root_profile.rs"]
-mod provider_root_profile;
 #[path = "unit/rfc_search_frame.rs"]
 mod rfc_search_frame;
 #[path = "unit/runtime_server_start_readiness.rs"]

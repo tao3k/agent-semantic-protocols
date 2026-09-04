@@ -1,9 +1,12 @@
 use std::path::Path;
 
-use super::{
-    RuntimeProvider, normalize_project_path, project_child_path, provider_supports_source_file,
-    relative_project_path, scoped_child_path, test_support::runtime_provider,
-};
+use super::RuntimeProvider;
+use super::normalize_project_path;
+use super::project_child_path;
+use super::provider_supports_source_file;
+use super::relative_project_path;
+use super::scoped_child_path;
+use super::test_support::runtime_provider;
 
 #[test]
 fn scoped_child_path_rejects_absolute_and_parent_escape() {

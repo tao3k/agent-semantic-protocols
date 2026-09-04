@@ -1,17 +1,30 @@
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::AtomicU64;
+use std::sync::atomic::Ordering;
 
 use agent_semantic_client_db::context_run_mvcc::TursoMvccContextRunStore;
-use agent_semantic_client_db::turso_mvcc_store::{TursoMvccStore, TursoMvccStoreConfig};
-use agent_semantic_context_product::{
-    ActiveProgram, Digest, EffectClass, EvidenceReceipt, ProtocolId, RouteProgram,
-    UncheckedContextProductStateV1,
-};
+use agent_semantic_client_db::turso_mvcc_store::TursoMvccStore;
+use agent_semantic_client_db::turso_mvcc_store::TursoMvccStoreConfig;
+use agent_semantic_context_product::ActiveProgram;
+use agent_semantic_context_product::Digest;
+use agent_semantic_context_product::EffectClass;
+use agent_semantic_context_product::EvidenceReceipt;
+use agent_semantic_context_product::ProtocolId;
+use agent_semantic_context_product::RouteProgram;
+use agent_semantic_context_product::UncheckedContextProductStateV1;
+use agent_semantic_loop::GraphRouter;
+use agent_semantic_loop::PortFuture;
+use agent_semantic_loop::ProofResolver;
+use agent_semantic_loop::ProviderExecutionDispatch;
+use agent_semantic_loop::ProviderExecutionResult;
+use agent_semantic_loop::SearchExecutionDriver;
+use agent_semantic_loop::SearchLoopAdvanceDispatch;
+use agent_semantic_loop::SearchLoopAdvanceRequest;
+use agent_semantic_loop::TrustedClock;
 use agent_semantic_loop::search_loop::SearchLoopDirective;
-use agent_semantic_loop::{
-    GraphRouter, PortFuture, ProofResolver, ProviderExecutionDispatch, ProviderExecutionResult,
-    SearchExecutionDriver, SearchLoopAdvanceDispatch, SearchLoopAdvanceRequest, TrustedClock,
-};
-use criterion::{BatchSize, Criterion, criterion_group, criterion_main};
+use criterion::BatchSize;
+use criterion::Criterion;
+use criterion::criterion_group;
+use criterion::criterion_main;
 
 const PARALLEL_DISPATCHES: usize = 2;
 

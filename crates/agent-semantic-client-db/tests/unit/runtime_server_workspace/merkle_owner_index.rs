@@ -41,7 +41,7 @@ fn search_segment_publishes_a_verified_owner_inclusion_proof() {
         active_epoch: 1,
         workspace_snapshot,
         content_search_generation:
-            crate::runtime_server_workspace::test_content_search_generation_receipt(
+            crate::runtime_server_workspace::test_fixture::content_search_generation_receipt(
                 &runtime_provider_execution_binding.project_id,
                 "workspace-merkle-proof",
                 &source_snapshot,
@@ -55,6 +55,7 @@ fn search_segment_publishes_a_verified_owner_inclusion_proof() {
                 authority: None,
                 owner_path: "src/lib.rs".to_owned(),
                 content_digest: format!("blake3-256:{}", blake3::hash(&bytes).to_hex()),
+                native_syntax_diagnostic: None,
                 bytes,
                 selectors: Vec::new(),
             },
@@ -62,6 +63,7 @@ fn search_segment_publishes_a_verified_owner_inclusion_proof() {
                 authority: None,
                 owner_path: "src/sibling.rs".to_owned(),
                 content_digest: format!("blake3-256:{}", blake3::hash(&sibling_bytes).to_hex()),
+                native_syntax_diagnostic: None,
                 bytes: sibling_bytes,
                 selectors: Vec::new(),
             },
@@ -112,11 +114,13 @@ fn search_segment_publishes_a_verified_owner_inclusion_proof() {
         .expect("root digest");
     assert!(
         agent_semantic_content_identity::workspace_merkle_v1::verify_owner_inclusion_v1(
-            &record.owner_path,
-            &source_blob_digest,
-            &owner_subtree_digest,
-            &record.inclusion_proof,
-            &root_digest,
+            agent_semantic_content_identity::workspace_merkle_v1::WorkspaceOwnerInclusionV1 {
+                owner_path: &record.owner_path,
+                source_blob_digest: &source_blob_digest,
+                expected_owner_subtree_digest: &owner_subtree_digest,
+                inclusion_proof: &record.inclusion_proof,
+                expected_workspace_root_digest: &root_digest,
+            },
         )
     );
     let scenario_receipt = crate::runtime_merkle_owner_proof_qualification::RuntimeMerkleOwnerProofQualificationReceipt::qualified(

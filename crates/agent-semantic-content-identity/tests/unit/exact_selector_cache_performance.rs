@@ -1,4 +1,5 @@
-use super::exact_selector_cache_contract::{key, record};
+use super::exact_selector_cache_contract::key;
+use super::exact_selector_cache_contract::record;
 use agent_semantic_content_identity::exact_selector_cache::ExactSelectorWarmSideEffectsV1;
 use std::hint::black_box;
 use std::time::Instant;

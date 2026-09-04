@@ -1,7 +1,8 @@
 use std::collections::BTreeSet;
 
 use agent_semantic_content_identity::exact_selector_merkle::canonical_content_digest;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 
 pub const SEARCH_ARCHITECTURE_INVENTORY_SCHEMA_ID: &str =
     "agent.semantic-protocols.search-architecture-inventory";

@@ -1,6 +1,8 @@
 use std::os::unix::fs::PermissionsExt as _;
-use std::path::{Path, PathBuf};
-use std::process::{Command, Output};
+use std::path::Path;
+use std::path::PathBuf;
+use std::process::Command;
+use std::process::Output;
 use std::thread;
 
 use agent_semantic_artifacts::runtime_artifact_activation::read_runtime_artifact_activation_event;

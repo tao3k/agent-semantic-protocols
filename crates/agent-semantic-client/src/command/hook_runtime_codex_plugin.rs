@@ -4,10 +4,13 @@ use std::env;
 use std::fs;
 #[cfg(test)]
 use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 use std::process::Command;
 #[cfg(test)]
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::AtomicU64;
+#[cfg(test)]
+use std::sync::atomic::Ordering;
 
 const ASP_CODEX_PLUGIN_NAME: &str = "asp-codex-plugin";
 const ASP_CODEX_PLUGIN_MARKETPLACE_NAME: &str = "asp-project";
@@ -15,14 +18,17 @@ const ASP_CODEX_PLUGIN_MARKETPLACE_NAME: &str = "asp-project";
 #[path = "../../tests/unit/hook_runtime_codex_plugin_authority.rs"]
 mod authority;
 #[cfg(test)]
-pub(in crate::command) use authority::{
-    ASP_CODEX_PLUGIN_HOOK_LAUNCHER, ASP_CODEX_PLUGIN_HOOKS_JSON, ASP_CODEX_PLUGIN_MANIFEST_JSON,
-    ASP_CODEX_PLUGIN_MARKETPLACE_JSON,
-};
+pub(in crate::command) use authority::ASP_CODEX_PLUGIN_HOOK_LAUNCHER;
 #[cfg(test)]
-pub(in crate::command) use authority::{
-    remove_codex_managed_global_hook_config, validate_codex_plugin_source_payload,
-};
+pub(in crate::command) use authority::ASP_CODEX_PLUGIN_HOOKS_JSON;
+#[cfg(test)]
+pub(in crate::command) use authority::ASP_CODEX_PLUGIN_MANIFEST_JSON;
+#[cfg(test)]
+pub(in crate::command) use authority::ASP_CODEX_PLUGIN_MARKETPLACE_JSON;
+#[cfg(test)]
+pub(in crate::command) use authority::remove_codex_managed_global_hook_config;
+#[cfg(test)]
+pub(in crate::command) use authority::validate_codex_plugin_source_payload;
 
 #[cfg(test)]
 #[path = "../../tests/unit/plugin_hook_authority.rs"]
@@ -38,7 +44,8 @@ pub(super) struct CodexHookConfigInstallReceipt {
 
 #[path = "hook_runtime_codex_plugin_install.rs"]
 mod install;
-pub(super) use install::{inspect_codex_plugin_publication, publish_codex_plugin_payload};
+pub(super) use install::inspect_codex_plugin_publication;
+pub(super) use install::publish_codex_plugin_payload;
 
 #[cfg(test)]
 fn write_codex_config_atomically(path: &Path, bytes: &[u8]) -> Result<bool, String> {

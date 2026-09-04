@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
-use agent_semantic_client_db::runtime_server_admission::{
-    WorkspaceGenerationAdmission, WorkspaceGenerationAdmissionState,
-};
+use agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmission;
+use agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmissionState;
 
-use super::{candidate_identity, completed_generation};
+use super::candidate_identity;
+use super::completed_generation;
 
 #[tokio::test(flavor = "multi_thread")]
 async fn concurrent_generation_rebuild_admission_is_single_flight_and_sub_millisecond() {

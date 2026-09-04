@@ -1,4 +1,5 @@
-use agent_semantic_client_core::{ClientMethod, ClientRequest};
+use agent_semantic_client_core::ClientMethod;
+use agent_semantic_client_core::ClientRequest;
 
 use crate::syntax_query_preflight::validate_syntax_query_request;
 

@@ -1,6 +1,6 @@
-use crate::runtime_process_lifecycle::{
-    RuntimeProcessLaunchSpec, current_process_id, process_id_is_alive,
-};
+use crate::runtime_process_lifecycle::RuntimeProcessLaunchSpec;
+use crate::runtime_process_lifecycle::current_process_id;
+use crate::runtime_process_lifecycle::process_id_is_alive;
 
 #[test]
 fn launch_spec_is_runtime_owned_and_pid_is_positive() {

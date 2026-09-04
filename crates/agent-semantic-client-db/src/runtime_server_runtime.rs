@@ -344,10 +344,11 @@ impl Drop for RuntimeServerConnectionLease {
 
 impl RuntimeServerRuntimeBuilder {
     pub fn new_client() -> Self {
-        let mut builder = tokio::runtime::Builder::new_multi_thread();
-        builder
-            .worker_threads(adaptive_tokio_worker_count())
-            .thread_name("asp-client");
+        // The public CLI is a framed client of the resident Runtime Server.
+        // It does not own parallel search, indexing, or provider work, so a
+        // transient command must not create a client worker pool.
+        let mut builder = tokio::runtime::Builder::new_current_thread();
+        builder.thread_name("asp-client");
         Self { builder }
     }
 
@@ -360,18 +361,6 @@ impl RuntimeServerRuntimeBuilder {
     pub fn new_hook_client() -> Self {
         let mut builder = tokio::runtime::Builder::new_current_thread();
         builder.thread_name("asp-hook-client");
-        Self { builder }
-    }
-
-    /// Minimal server-first CLI runtime for an explicitly authorized
-    /// `ASP_NO_AGENT=1` recovery invocation.
-    ///
-    /// This lane retains only the I/O driver needed to reach the resident ASP
-    /// Server. It creates no worker pool; the binary also omits signal-driver
-    /// registration so Host sandboxes still have one bounded IPC route.
-    pub fn new_no_agent_client() -> Self {
-        let mut builder = tokio::runtime::Builder::new_current_thread();
-        builder.thread_name("asp-no-agent-client");
         Self { builder }
     }
 

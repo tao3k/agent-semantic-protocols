@@ -1,8 +1,8 @@
 use crate::HookRuntime;
 use crate::tool_action::ToolAction;
-use agent_semantic_config::{
-    HookClientActionKind, HookClientActionSubjectKind, HookClientHostInvocationKind,
-};
+use agent_semantic_config::HookClientActionKind;
+use agent_semantic_config::HookClientActionSubjectKind;
+use agent_semantic_config::HookClientHostInvocationKind;
 
 #[derive(Debug)]
 pub(super) struct AgentActionMatch {

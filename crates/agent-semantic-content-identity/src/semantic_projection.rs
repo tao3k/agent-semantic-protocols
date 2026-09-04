@@ -1,20 +1,44 @@
-use serde::{Deserialize, Serialize};
+//! Carries a semantic payload with exact workspace and generation identity.
 
+use serde::Deserialize;
+use serde::Serialize;
+
+use crate::LanguageIdV1;
+use crate::ProjectionEvidenceContextRefV1;
+use crate::ProviderIdV1;
+use crate::SchemaIdV1;
+use crate::SemanticProjectionKindV1;
+use crate::SemanticProjectionRootSelectorV1;
+
+/// Schema identifier for a typed semantic projection envelope.
 pub const SEMANTIC_PROJECTION_SCHEMA_ID: &str = "agent.semantic-protocols.semantic-projection";
+/// Schema version for semantic projection envelopes.
 pub const SEMANTIC_PROJECTION_SCHEMA_VERSION: &str = "1";
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+/// Content-bound semantic payload produced by one provider generation.
 pub struct SemanticProjection<Payload> {
     pub schema_id: String,
     pub schema_version: String,
-    pub projection_kind: String,
-    pub language_id: String,
-    pub provider_id: String,
-    pub root_selector: String,
-    pub evidence_context_ref: String,
-    pub payload_schema_id: String,
+    pub projection_kind: SemanticProjectionKindV1,
+    pub language_id: LanguageIdV1,
+    pub provider_id: ProviderIdV1,
+    pub root_selector: SemanticProjectionRootSelectorV1,
+    pub evidence_context_ref: ProjectionEvidenceContextRefV1,
+    pub payload_schema_id: SchemaIdV1,
     pub payload_digest: String,
+    pub payload: Payload,
+}
+
+/// Named construction boundary for a semantic projection envelope.
+pub struct SemanticProjectionInput<Payload> {
+    pub projection_kind: SemanticProjectionKindV1,
+    pub language_id: LanguageIdV1,
+    pub provider_id: ProviderIdV1,
+    pub root_selector: SemanticProjectionRootSelectorV1,
+    pub evidence_context_ref: ProjectionEvidenceContextRefV1,
+    pub payload_schema_id: SchemaIdV1,
     pub payload: Payload,
 }
 
@@ -22,27 +46,28 @@ impl<Payload> SemanticProjection<Payload>
 where
     Payload: Serialize,
 {
-    pub fn new(
-        projection_kind: impl Into<String>,
-        language_id: impl Into<String>,
-        provider_id: impl Into<String>,
-        root_selector: impl Into<String>,
-        evidence_context_ref: impl Into<String>,
-        payload_schema_id: impl Into<String>,
-        payload: Payload,
-    ) -> Result<Self, String> {
+    pub fn new(input: SemanticProjectionInput<Payload>) -> Result<Self, String> {
+        let SemanticProjectionInput {
+            projection_kind,
+            language_id,
+            provider_id,
+            root_selector,
+            evidence_context_ref,
+            payload_schema_id,
+            payload,
+        } = input;
         let encoded = serde_json::to_vec(&payload)
             .map_err(|error| format!("encode semantic projection payload: {error}"))?;
         let payload_digest = format!("blake3-256:{}", blake3::hash(&encoded).to_hex());
         let projection = Self {
             schema_id: SEMANTIC_PROJECTION_SCHEMA_ID.to_owned(),
             schema_version: SEMANTIC_PROJECTION_SCHEMA_VERSION.to_owned(),
-            projection_kind: projection_kind.into(),
-            language_id: language_id.into(),
-            provider_id: provider_id.into(),
-            root_selector: root_selector.into(),
-            evidence_context_ref: evidence_context_ref.into(),
-            payload_schema_id: payload_schema_id.into(),
+            projection_kind,
+            language_id,
+            provider_id,
+            root_selector,
+            evidence_context_ref,
+            payload_schema_id,
             payload_digest,
             payload,
         };
@@ -68,10 +93,10 @@ where
                 return Err(format!("semantic projection {field} is required"));
             }
         }
-        if !self.provider_id.starts_with("asp-") {
+        if !self.provider_id.as_str().starts_with("asp-") {
             return Err("semantic projection providerId must use asp-<language>".to_owned());
         }
-        validate_digest("evidenceContextRef", &self.evidence_context_ref)?;
+        validate_digest("evidenceContextRef", self.evidence_context_ref.as_str())?;
         validate_digest("payloadDigest", &self.payload_digest)?;
         let encoded = serde_json::to_vec(&self.payload)
             .map_err(|error| format!("encode semantic projection payload: {error}"))?;

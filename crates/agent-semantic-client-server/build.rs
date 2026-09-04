@@ -1,4 +1,6 @@
 fn main() {
+    let _policy_receipt =
+        asp_rust_project_harness_policy::assert_asp_rust_project_harness_member_policy_from_env();
     let workspace_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let canonical_proto = agent_semantic_schema_manager::SchemaManager::new(&workspace_root)
         .canonical_wire_artifact_path("asp-client-protocol-v1")

@@ -13,18 +13,20 @@ pub mod schema_bundle;
 mod runtime_asp_client;
 mod runtime_query_generation;
 mod runtime_query_generation_authority;
-pub use runtime_query_generation_authority::{
-    RuntimeQueryGenerationAuthority, RuntimeQueryGenerationState,
-};
+pub use runtime_query_generation_authority::RuntimeQueryGenerationAuthority;
+pub use runtime_query_generation_authority::RuntimeQueryGenerationState;
 mod runtime_cold_rg;
 mod runtime_query_generation_key;
 mod runtime_search_graph;
 
-pub use agent_semantic_client_server::{
-    AspClientGrpcTransport, bind_asp_client_grpc_tcp, serve_asp_client_grpc_tcp,
-};
-pub use provider_stream::{bind_provider_stream_tcp, serve_provider_stream_tcp};
-pub use runtime_asp_client::{RuntimeAspClientDispatcher, build_frame_service};
+pub use agent_semantic_client_server::AspClientGrpcTransport;
+pub use agent_semantic_client_server::bind_asp_client_grpc_tcp;
+pub use agent_semantic_client_server::serve_asp_client_grpc_tcp;
+pub use provider_stream::bind_provider_stream_tcp;
+pub use provider_stream::serve_provider_stream_tcp;
+pub use runtime_asp_client::RuntimeAspClientDispatcher;
+pub use runtime_asp_client::build_frame_service;
+pub use runtime_asp_client::workspace_search_providers_from_provider_register;
 pub use schema_bundle::RuntimeSchemaBundleCatalog;
 pub mod artifact_activation;
 pub mod asp_python_graphs_artifact;

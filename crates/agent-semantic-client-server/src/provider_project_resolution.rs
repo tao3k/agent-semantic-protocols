@@ -1,8 +1,11 @@
 //! Provider ProjectResolution execution and source-file projection.
 
-use agent_semantic_client_core::{LanguageId, ProviderId, scoped_child_path};
+use agent_semantic_client_core::LanguageId;
+use agent_semantic_client_core::ProviderId;
+use agent_semantic_client_core::scoped_child_path;
 use serde::Deserialize;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 
 const PROVIDER_PROJECT_RESOLUTION_RESPONSE_SCHEMA_ID: &str =
     "agent.semantic-protocols.provider-project-resolution-response";
@@ -286,10 +289,14 @@ pub fn project_resolution_from_stdout(
     let scope = packet
         .scope
         .ok_or_else(|| "resolved provider project-resolution response omitted scope".to_string())?;
+    let expected_language_identity =
+        agent_semantic_content_identity::LanguageIdV1::from(expected_language_id.as_str());
+    let expected_provider_identity =
+        agent_semantic_content_identity::ProviderIdV1::from(expected_provider_id.as_str());
     scope
         .validate(
-            expected_language_id.as_str(),
-            expected_provider_id.as_str(),
+            &expected_language_identity,
+            &expected_provider_identity,
             &candidates.generation_digest,
         )
         .map_err(|error| format!("invalid project-resolution contract: {error}"))?;

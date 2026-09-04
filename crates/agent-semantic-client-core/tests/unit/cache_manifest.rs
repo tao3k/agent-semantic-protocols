@@ -1,7 +1,9 @@
-use std::{fs, path::PathBuf};
+use std::fs;
+use std::path::PathBuf;
 
 use crate::project_client_cache_dir;
-use crate::test_support::{IsolatedAspStateHome, init_durable_repo};
+use crate::test_support::IsolatedAspStateHome;
+use crate::test_support::init_durable_repo;
 
 #[test]
 fn package_root_uses_git_toplevel_client_cache_root() {

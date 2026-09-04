@@ -1,4 +1,6 @@
-use crate::{SourceSnapshotKind, WorkspaceSnapshot, hash_blob};
+use crate::SourceSnapshotKind;
+use crate::WorkspaceSnapshot;
+use crate::hash_blob;
 
 #[test]
 fn overlay_delta_upserts_and_deletes_snapshot_leaves() {

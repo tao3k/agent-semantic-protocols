@@ -1,11 +1,14 @@
 //! Runtime bootstrap artifacts admitted by immutable provider install receipts.
 
 use std::collections::BTreeSet;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 use std::sync::Arc;
 
-use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
+use serde::Deserialize;
+use serde::Serialize;
+use sha2::Digest;
+use sha2::Sha256;
 
 const SCHEMA_ID: &str = "agent.semantic-protocols.installed-provider-artifacts";
 const SCHEMA_VERSION: &str = "1";
@@ -165,17 +168,17 @@ fn reconcile_authoritative_binding(
     let registry_digest =
         super::super::provider_install_registry::provider_install_registry_digest()?;
     let mut catalog =
-        agent_semantic_artifacts::runtime_artifact_catalog::load_runtime_provider_catalog_identity(
+        agent_semantic_artifacts::runtime_provider_catalog::load_runtime_provider_catalog_identity(
             state_home,
         )?
         .ok_or_else(|| "runtime provider catalog identity is not published".to_owned())?;
     if catalog.install_registry_digest != registry_digest {
-        agent_semantic_artifacts::runtime_artifact_catalog::publish_runtime_provider_catalog(
+        agent_semantic_artifacts::runtime_provider_catalog::publish_runtime_provider_catalog(
             state_home,
             &catalog.binary_artifact_digest,
             &registry_digest,
         )?;
-        catalog = agent_semantic_artifacts::runtime_artifact_catalog::load_runtime_provider_catalog_identity(
+        catalog = agent_semantic_artifacts::runtime_provider_catalog::load_runtime_provider_catalog_identity(
             state_home,
         )?
         .ok_or_else(|| "runtime provider catalog identity disappeared after refresh".to_owned())?;
@@ -224,7 +227,7 @@ pub(crate) fn reconcile_runtime_provider_catalog_for_binary(
 ) -> Result<String, String> {
     let registry_digest =
         super::super::provider_install_registry::provider_install_registry_digest()?;
-    agent_semantic_artifacts::runtime_artifact_catalog::publish_runtime_provider_catalog(
+    agent_semantic_artifacts::runtime_provider_catalog::publish_runtime_provider_catalog(
         state_home,
         binary_artifact_digest,
         &registry_digest,
@@ -348,7 +351,7 @@ fn load_authoritative_runtime_projection(
         return Ok((empty_document()?, None));
     };
     let catalog =
-        agent_semantic_artifacts::runtime_artifact_catalog::load_runtime_provider_catalog_identity(
+        agent_semantic_artifacts::runtime_provider_catalog::load_runtime_provider_catalog_identity(
             state_home,
         )?
         .ok_or_else(|| "runtime provider catalog identity is not published".to_owned())?;

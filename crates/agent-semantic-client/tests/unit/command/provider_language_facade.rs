@@ -238,7 +238,7 @@ fn document_exact_selector_crosses_the_language_neutral_owner_boundary() {
 }
 
 #[test]
-fn language_query_never_claims_runtime_lifecycle_authority() {
+fn language_query_never_claims_runtime_lifecycle_authority_even_with_hook_escape_present() {
     let temporary = tempfile::tempdir().expect("isolated client State Home");
     let project_root = temporary.path().join("workspace");
     std::fs::create_dir_all(&project_root).expect("create fixture workspace");
@@ -248,6 +248,7 @@ fn language_query_never_claims_runtime_lifecycle_authority() {
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_asp"))
         .env_remove("ASP_STATE_HOME")
         .env_remove("ASP_RUNTIME_CLIENT_FD")
+        .env("ASP_NO_AGENT", "1")
         .env("HOME", temporary.path())
         .current_dir(&project_root)
         .args([

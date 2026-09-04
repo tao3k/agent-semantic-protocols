@@ -758,10 +758,46 @@ Every selector has a proper non-empty byte range and at least one normalized
 query key; every relation is bound to an owner in the same content-proven
 projection.  Duplicate owners, selectors, or relations make the candidate
 incomplete and therefore unpublishable.
+Parser availability is accounted per owner.  A selected owner contributes
+either the complete projection above or one typed
+=source-syntax-unavailable= diagnostic bound to its exact owner path and
+content digest.  These alternatives are disjoint and their union MUST equal
+the selected owner set.  A diagnosed owner never manufactures a selector and
+never invalidates independent rg acquisition, Tantivy lexical, byte-evidence,
+or resident/Python graph results.  Missing both alternatives remains an
+unpublishable gap, and the native-syntax stage digest commits the canonical
+projection and diagnostic collections together.
+
+At request time, an admitted rg or lexical owner with zero parser selectors is
+the diagnosed alternative, not a pipeline failure.  Runtime MUST emit the
+owner-bound =source-syntax-unavailable= evidence and continue the fixed stage
+order.  It MUST NOT convert that condition into
+=client-method-dispatch-failed=, skip Tantivy, or suppress an independently
+admitted Rust/Python graph result.  Only an identity mismatch, an owner absent
+from the admitted generation, or malformed parser evidence aborts the request.
+This distinction is part of v1; it is not a compatibility fallback.
 The agent-facing receipt projects those facts as bounded
 =nativeSyntax.projections[]= records.  It MUST NOT collapse them back into an
 owner list or selector count: owner is identity, while the selector/range/key/
 derived-projection/relation tuple is the semantic capability.
+
+The public =rootDigest= is always the admitted source-snapshot Merkle root.
+The Merkle root over projected owner/index records is a derived-attachment
+identity and MUST NOT occupy that field in Search, Query, resident-graph, or
+failure terminals.  Both values may be valid BLAKE3 digests, so syntax-level
+digest validation cannot detect this substitution; Runtime must select the
+source-root field by type/owner before encoding the exactly-one ClientFrame
+terminal.  Owner-index roots remain private to accelerator validation and
+never become an alias for source-generation identity.
+
+The exact-query producer copies =rootDigest= from the same resident generation
+lease used to resolve the selector.  The client validates the canonical digest
+form but never derives, prefixes, strips, or substitutes the value.  Therefore
+every success, owner miss, item miss, stale-generation terminal, and typed
+failure that claims a generation is bound to the same
+=(ProjectId, WorkspaceId, generationDigest, rootDigest)= tuple.  A response
+whose root is not the admitted source root is a producer bug and fails before
+projection bytes are exposed.
 
 The indexed lexical stage owns broad candidate recall for identifiers,
 qualified names, documentation, package paths, dependency names, and error
@@ -985,7 +1021,7 @@ authority.
 The agent-facing discovery command converges on one public surface:
 
 #+begin_src shell
-asp <language> search playbook '<query>' \
+asp search playbook '<query>' --language <language> \
   [--intent conceptual|relationship|exact-literal|absence-proof] \
   [--scope workspace|owner:<path>] \
   [--coverage candidates|complete] \

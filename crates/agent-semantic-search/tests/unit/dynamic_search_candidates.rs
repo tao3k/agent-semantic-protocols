@@ -1,10 +1,13 @@
 use std::fs;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::SystemTime;
+use std::time::UNIX_EPOCH;
 
-use crate::{
-    DynamicSearchRootCandidateRequest, RgCoverageBudget, RgCoverageOwner, RgCoverageRequest,
-    collect_dynamic_lexical_overlay_candidates_from_roots, collect_rg_coverage_candidates,
-};
+use crate::DynamicSearchRootCandidateRequest;
+use crate::RgCoverageBudget;
+use crate::RgCoverageOwner;
+use crate::RgCoverageRequest;
+use crate::collect_dynamic_lexical_overlay_candidates_from_roots;
+use crate::collect_rg_coverage_candidates;
 
 #[test]
 fn committed_lexical_overlay_projects_path_and_content_without_executable_ranges() {

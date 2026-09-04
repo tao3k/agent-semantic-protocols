@@ -1,4 +1,6 @@
-use super::*;
+use super::ColdRgCorpusOwner;
+use super::build_cold_rg_corpus;
+use super::owner_for_corpus_line;
 
 fn digest(bytes: &[u8]) -> String {
     format!("blake3-256:{}", blake3::hash(bytes).to_hex())

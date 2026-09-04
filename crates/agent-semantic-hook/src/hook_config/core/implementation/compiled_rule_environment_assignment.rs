@@ -1,7 +1,8 @@
 //! Parser-owned environment-assignment predicate for compiled Hook rules.
 
 use super::ClientHookConfig;
-use crate::{HookDecision, HookRuntime};
+use crate::HookDecision;
+use crate::HookRuntime;
 
 pub(super) fn matches(command: &str, expected: &[String]) -> bool {
     expected.is_empty()

@@ -1,7 +1,8 @@
-use agent_semantic_search_projection::{
-    SearchProjectionDensityV1, SearchProjectionRenderer, SearchProjectionRequestV1,
-    SemanticSearchPacketV1, TopologySearchProjectionRenderer,
-};
+use agent_semantic_search_projection::SearchProjectionDensityV1;
+use agent_semantic_search_projection::SearchProjectionRenderer;
+use agent_semantic_search_projection::SearchProjectionRequestV1;
+use agent_semantic_search_projection::SemanticSearchPacketV1;
+use agent_semantic_search_projection::TopologySearchProjectionRenderer;
 use serde_json::json;
 
 fn packet() -> SemanticSearchPacketV1 {

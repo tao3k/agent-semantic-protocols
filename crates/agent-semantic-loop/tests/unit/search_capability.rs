@@ -2,15 +2,17 @@ use std::collections::BTreeSet;
 
 use serde_json::Value;
 
-use crate::search_capability::{
-    SearchLoopCapabilityConsumption, SearchLoopCapabilityMutation, SearchLoopCapabilityToken,
-    apply_capability_mutations,
-};
+use crate::search_capability::SearchLoopCapabilityConsumption;
+use crate::search_capability::SearchLoopCapabilityMutation;
+use crate::search_capability::SearchLoopCapabilityToken;
+use crate::search_capability::apply_capability_mutations;
 
-use crate::search_capability::{
-    SearchLoopCapabilityCommand, SearchLoopCapabilityReplayPolicy, SearchLoopCapabilityStatus,
-    SearchLoopCapabilityV1, SearchLoopCapabilityValidationError, UncheckedSearchLoopCapabilityV1,
-};
+use crate::search_capability::SearchLoopCapabilityCommand;
+use crate::search_capability::SearchLoopCapabilityReplayPolicy;
+use crate::search_capability::SearchLoopCapabilityStatus;
+use crate::search_capability::SearchLoopCapabilityV1;
+use crate::search_capability::SearchLoopCapabilityValidationError;
+use crate::search_capability::UncheckedSearchLoopCapabilityV1;
 
 const ADVANCE_FIXTURE: &str =
     include_str!("../../../../schemas/fixtures/search-interactive-loop/advance-capability.v1.json");

@@ -1,7 +1,6 @@
-use crate::workspace_generation_qualification::{
-    WorkspaceGenerationQualificationEvidence, WorkspaceGenerationReadiness,
-    WorkspaceGenerationRejection,
-};
+use crate::workspace_generation_qualification::WorkspaceGenerationQualificationEvidence;
+use crate::workspace_generation_qualification::WorkspaceGenerationReadiness;
+use crate::workspace_generation_qualification::WorkspaceGenerationRejection;
 
 #[test]
 fn admits_a_complete_non_empty_generation() {

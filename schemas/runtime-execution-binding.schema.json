@@ -16,6 +16,9 @@
   "properties": {
     "schemaId": { "const": "asp.runtime-execution-binding" },
     "schemaVersion": { "const": "1" },
+    "projectId": { "type": "string" },
+    "workspaceId": { "type": "string" },
+    "publicationNonce": { "type": "string" },
     "contentBinding": { "$ref": "content-binding" },
     "runtimeArtifactDigest": { "$ref": "#/$defs/contentDigest" },
     "evaluatorPolicyDigest": { "$ref": "#/$defs/contentDigest" },

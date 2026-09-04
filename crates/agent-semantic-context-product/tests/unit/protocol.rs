@@ -1,4 +1,5 @@
-use super::{RouteExecutionMode, RouteProposal};
+use super::RouteExecutionMode;
+use super::RouteProposal;
 
 fn proposal_from_fixture(source: &str) -> RouteProposal {
     let packet: serde_json::Value =

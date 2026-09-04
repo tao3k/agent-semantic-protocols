@@ -1,18 +1,24 @@
-use std::{
-    collections::BTreeSet,
-    fs,
-    path::{Path, PathBuf},
-    time::{SystemTime, UNIX_EPOCH},
-};
+use std::collections::BTreeSet;
+use std::fs;
+use std::path::Path;
+use std::path::PathBuf;
+use std::time::SystemTime;
+use std::time::UNIX_EPOCH;
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 use serde_json::Value;
 
-use agent_semantic_artifacts::{
-    CleanupDisposition, RetainedObject, RetentionLease, RetentionObjectKind, RetentionPlanner,
-};
+use agent_semantic_artifacts::CleanupDisposition;
+use agent_semantic_artifacts::RetainedObject;
+use agent_semantic_artifacts::RetentionLease;
+use agent_semantic_artifacts::RetentionObjectKind;
+use agent_semantic_artifacts::RetentionPlanner;
 
-use super::{ResolvedState, WorkspaceId, WorkspaceLifecycle, is_temporary_checkout_path};
+use super::ResolvedState;
+use super::WorkspaceId;
+use super::WorkspaceLifecycle;
+use super::is_temporary_checkout_path;
 
 const LAST_SEEN_FILE: &str = ".last-seen-ms";
 

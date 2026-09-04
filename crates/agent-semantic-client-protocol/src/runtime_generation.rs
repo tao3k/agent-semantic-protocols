@@ -1,5 +1,6 @@
 use agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 
 pub const RUNTIME_SERVER_GENERATION_MISMATCH: &str = "runtime-server-generation-mismatch";
 
@@ -65,31 +66,5 @@ impl std::fmt::Display for RuntimeServerGenerationMismatch {
 impl std::error::Error for RuntimeServerGenerationMismatch {}
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn identity(binary: &str, owner_epoch: u64) -> RuntimeServerGenerationIdentity {
-        RuntimeServerGenerationIdentity::derive(
-            binary,
-            "agent.semantic-protocols.runtime-server-endpoint",
-            "1",
-            "transport",
-            "catalog",
-            owner_epoch,
-        )
-    }
-
-    #[test]
-    fn new_client_cannot_bind_an_old_server_generation() {
-        let error = identity("new", 2)
-            .validate(&identity("old", 1))
-            .unwrap_err();
-        assert_eq!(error.reason_kind, RUNTIME_SERVER_GENERATION_MISMATCH);
-    }
-
-    #[test]
-    fn exact_generation_identity_is_admitted() {
-        let expected = identity("same", 7);
-        expected.validate(&expected).unwrap();
-    }
-}
+#[path = "../tests/unit/runtime_generation.rs"]
+mod tests;

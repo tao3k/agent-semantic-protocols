@@ -1,12 +1,15 @@
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 use std::process::Command;
-use std::sync::{Arc, Barrier};
+use std::sync::Arc;
+use std::sync::Barrier;
 
-use super::{
-    ensure_dir, project_root_for_activation_path, project_runtime_state_with_state_home,
-    project_state_paths_with_state_home, provider_receipt_dir,
-};
+use super::ensure_dir;
+use super::project_root_for_activation_path;
+use super::project_runtime_state_with_state_home;
+use super::project_state_paths_with_state_home;
+use super::provider_receipt_dir;
 
 #[test]
 fn runtime_state_materializes_state_core_layout() {

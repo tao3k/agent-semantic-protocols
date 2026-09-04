@@ -237,9 +237,9 @@ message = "Allowed a path-bearing native Edit action in the registered coding la
 [rules.match]
 pathGlobAny = ["**"]
 
-# Registered-language reasoning search dispatch. The matcher expands
-# `<registered-language>` from the provider registry; the rule owns the complete
-# match, intent, decision, and Host role-dispatch policy. Exact selector-bearing
+# Runtime-owned reasoning search dispatch. The public playbook accepts an
+# optional `--language` filter; provider admission remains inside Runtime. The
+# rule owns the complete match, intent, decision, and Host role-dispatch policy. Exact selector-bearing
 # query is the main-thread QueryHandoff materialization boundary and is not
 # dispatched back into the Explorer.
 [[rules]]
@@ -254,14 +254,13 @@ event = "pre-tool"
 
 [rules.match]
 argvPatternAny = [
-  ["asp", "<registered-language>", "search", "playbook"],
+  ["asp", "search", "playbook"],
 ]
 
 [rules.dispatch]
 transport = "host-agent"
 agent = "asp_explorer"
 receiptKind = "asp-explore-search-v1"
-lazyProvider = "matched-language"
 
 [[rules]]
 id = "registered-asp-structured-projection"
@@ -452,7 +451,7 @@ commandContainsAny = ["--json"]
 id = "route-read-to-asp-languages"
 priority = 40000
 actions = ["read"]
-profilesList = ["rust", "typescript", "python", "julia", "gerbil-scheme", "org", "markdown"]
+profilesList = ["rust", "typescript", "python", "julia", "gerbil-scheme"]
 decision = "deny"
 reasonKind = "registered-source-route-required"
 message = "The current Agent cannot read this confirmed {{languageId}} source directly. Delegate the denied read to ASP Explorer and continue from its exact selector receipt. {{agentDispatchMessage}}"

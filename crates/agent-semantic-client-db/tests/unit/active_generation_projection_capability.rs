@@ -2,13 +2,15 @@
 
 use std::collections::BTreeSet;
 
-use agent_semantic_client_db::active_generation_projection_capability::{
-    ACTIVE_GENERATION_PROJECTION_CAPABILITY_SCHEMA_ID,
-    ACTIVE_GENERATION_PROJECTION_CAPABILITY_SCHEMA_VERSION, ActiveGenerationCapabilityState,
-    ActiveGenerationProjectionCapabilityPublisher, ActiveGenerationProjectionCapabilityReader,
-    ActiveGenerationProjectionCapabilityReceipt, ActiveGenerationProjectionMode,
-    ActiveGenerationSelectorCapability, active_generation_projection_capability_channel,
-};
+use agent_semantic_client_db::active_generation_projection_capability::ACTIVE_GENERATION_PROJECTION_CAPABILITY_SCHEMA_ID;
+use agent_semantic_client_db::active_generation_projection_capability::ACTIVE_GENERATION_PROJECTION_CAPABILITY_SCHEMA_VERSION;
+use agent_semantic_client_db::active_generation_projection_capability::ActiveGenerationCapabilityState;
+use agent_semantic_client_db::active_generation_projection_capability::ActiveGenerationProjectionCapabilityPublisher;
+use agent_semantic_client_db::active_generation_projection_capability::ActiveGenerationProjectionCapabilityReader;
+use agent_semantic_client_db::active_generation_projection_capability::ActiveGenerationProjectionCapabilityReceipt;
+use agent_semantic_client_db::active_generation_projection_capability::ActiveGenerationProjectionMode;
+use agent_semantic_client_db::active_generation_projection_capability::ActiveGenerationSelectorCapability;
+use agent_semantic_client_db::active_generation_projection_capability::active_generation_projection_capability_channel;
 
 fn ready_receipt(epoch: u64) -> ActiveGenerationProjectionCapabilityReceipt {
     ActiveGenerationProjectionCapabilityReceipt {

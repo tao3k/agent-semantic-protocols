@@ -1,3 +1,5 @@
+//! Agent session registration integration tests.
+
 use std::sync::Arc;
 
 async fn test_generation_admission(
@@ -7,10 +9,9 @@ async fn test_generation_admission(
     Arc<agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmission>,
     String,
 ) {
-    use agent_semantic_client_db::runtime_server_admission::{
-        WorkspaceGenerationAdmission, WorkspaceGenerationBuildFailure,
-        WorkspaceGenerationFailureStage,
-    };
+    use agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmission;
+    use agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationBuildFailure;
+    use agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationFailureStage;
 
     let project_id = agent_semantic_client_core::state_core::ResolvedState::resolve(project_root)
         .expect("resolve fixture ProjectId")
@@ -53,15 +54,32 @@ async fn test_generation_admission(
     (Arc::new(admission), project_id)
 }
 
-use agent_semantic_client_protocol::{
-    AGENT_SESSION_REGISTER_METHOD, AGENT_SESSION_REGISTER_REQUEST_SCHEMA_ID,
-    AgentSessionRegisterReceipt, AgentSessionRegisterRequest, CLIENT_FRAME_SCHEMA_ID,
-    CLIENT_PROTOCOL_ID, CLIENT_PROTOCOL_VERSION, ClientFrame, ClientFrameBase, ClientInfo,
-    ClientProjectId, ClientRequestId, ClientSessionId, ClientWorkspaceIdentity, SCHEMA_VERSION,
-};
-use agent_semantic_client_server::{
-    AspClientGrpcTransport, bind_asp_client_grpc_tcp, serve_asp_client_grpc_tcp,
-};
+use agent_semantic_client_protocol::AGENT_SESSION_REGISTER_METHOD;
+use agent_semantic_client_protocol::AGENT_SESSION_REGISTER_REQUEST_SCHEMA_ID;
+use agent_semantic_client_protocol::AgentChildThreadId;
+use agent_semantic_client_protocol::AgentName;
+use agent_semantic_client_protocol::AgentParentThreadId;
+use agent_semantic_client_protocol::AgentPath;
+use agent_semantic_client_protocol::AgentRootSessionId;
+use agent_semantic_client_protocol::AgentRouteKey;
+use agent_semantic_client_protocol::AgentSessionRegisterReceipt;
+use agent_semantic_client_protocol::AgentSessionRegisterRequest;
+use agent_semantic_client_protocol::AgentSessionTransport;
+use agent_semantic_client_protocol::ClientFrame;
+use agent_semantic_client_protocol::ClientFrameBase;
+use agent_semantic_client_protocol::ClientInfo;
+use agent_semantic_client_protocol::ClientProjectId;
+use agent_semantic_client_protocol::ClientRequestId;
+use agent_semantic_client_protocol::ClientSchemaId;
+use agent_semantic_client_protocol::ClientSessionId;
+use agent_semantic_client_protocol::ClientWorkspaceIdentity;
+use agent_semantic_client_protocol::protocol_identity::CLIENT_FRAME_SCHEMA_ID;
+use agent_semantic_client_protocol::protocol_identity::CLIENT_PROTOCOL_ID;
+use agent_semantic_client_protocol::protocol_identity::CLIENT_PROTOCOL_VERSION;
+use agent_semantic_client_protocol::protocol_identity::SCHEMA_VERSION;
+use agent_semantic_client_server::AspClientGrpcTransport;
+use agent_semantic_client_server::bind_asp_client_grpc_tcp;
+use agent_semantic_client_server::serve_asp_client_grpc_tcp;
 use agent_semantic_schema_manager::SchemaManager;
 
 fn digest(character: char) -> String {
@@ -120,6 +138,7 @@ async fn child_registration_uses_the_grpc_client_frame_and_runtime_registry_owne
         workspace_registry,
         digest('a'),
         Arc::from(registered_language_provider_pairs()),
+        Arc::from([]),
         directory.path().join("workspace-store"),
         agent_semantic_runtime_server::RuntimeQueryGenerationAuthority::new(),
         telemetry.sender,
@@ -150,14 +169,15 @@ async fn child_registration_uses_the_grpc_client_frame_and_runtime_registry_owne
         trace_context: None,
     };
     let params = serde_json::to_value(AgentSessionRegisterRequest {
-        schema_id: AGENT_SESSION_REGISTER_REQUEST_SCHEMA_ID.to_owned(),
+        schema_id: ClientSchemaId::new(AGENT_SESSION_REGISTER_REQUEST_SCHEMA_ID)
+            .expect("request schema id"),
         schema_version: 1,
-        root_session_id: "root-1".to_owned(),
-        parent_thread_id: "parent-1".to_owned(),
-        child_thread_id: "child-1".to_owned(),
-        agent_name: "asp_testing".to_owned(),
-        agent_path: "/root/asp_testing".to_owned(),
-        route_key: "asp_testing".to_owned(),
+        root_session_id: AgentRootSessionId::new("root-1").expect("root session id"),
+        parent_thread_id: AgentParentThreadId::new("parent-1").expect("parent thread id"),
+        child_thread_id: AgentChildThreadId::new("child-1").expect("child thread id"),
+        agent_name: AgentName::new("asp_testing").expect("agent name"),
+        agent_path: AgentPath::new("/root/asp_testing").expect("agent path"),
+        route_key: AgentRouteKey::new("asp_testing").expect("route key"),
     })
     .expect("encode registration request");
     let initialized = client
@@ -202,12 +222,12 @@ async fn child_registration_uses_the_grpc_client_frame_and_runtime_registry_owne
     let receipt: AgentSessionRegisterReceipt =
         serde_json::from_value(result).expect("decode registration receipt");
     receipt.validate().expect("valid registration receipt");
-    assert_eq!(receipt.project_id, project_id);
-    assert_eq!(receipt.root_session_id, "root-1");
-    assert_eq!(receipt.parent_thread_id, "parent-1");
-    assert_eq!(receipt.child_thread_id, "child-1");
-    assert_eq!(receipt.agent_path, "/root/asp_testing");
-    assert_eq!(receipt.transport, "grpc-client-frame");
+    assert_eq!(receipt.project_id.as_str(), project_id);
+    assert_eq!(receipt.root_session_id.as_str(), "root-1");
+    assert_eq!(receipt.parent_thread_id.as_str(), "parent-1");
+    assert_eq!(receipt.child_thread_id.as_str(), "child-1");
+    assert_eq!(receipt.agent_path.as_str(), "/root/asp_testing");
+    assert_eq!(receipt.transport, AgentSessionTransport::GrpcClientFrame);
     let stored = agent_session_registry
         .session_by_id(&project_id, "child-1")
         .await

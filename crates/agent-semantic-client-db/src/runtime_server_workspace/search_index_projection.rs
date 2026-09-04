@@ -9,7 +9,7 @@ use tokio::fs;
 use super::{
     SearchGenerationSection, SearchGenerationSectionKind, SearchGenerationSectionRepresentation,
     ValidatedSearchGenerationSegment, ValidatedSortedRecordTable, WorkspaceGenerationPointerReader,
-    WorkspaceMemoryGeneration, WorkspaceOwnerSnapshot, WorkspaceSearchGenerationAuthority,
+    WorkspaceMemoryGeneration, WorkspaceSearchGenerationAuthority,
     encode_search_generation_segment, encode_sorted_record_table,
 };
 
@@ -19,6 +19,7 @@ struct SearchOwnerRecord {
     owner_path: String,
     authority: Option<agent_semantic_search::ResidentSearchAuthority>,
     content_digest: String,
+    native_syntax_diagnostic: Option<agent_semantic_search::NativeSyntaxDiagnostic>,
     byte_offset: u64,
     byte_length: u64,
     line_count: u32,
@@ -242,11 +243,13 @@ pub(super) fn encode_workspace_search_generation_segment_with_authority(
                 })?;
             let root_digest = merkle_tree.root_digest();
             if !agent_semantic_content_identity::workspace_merkle_v1::verify_owner_inclusion_v1(
-                &record.owner_path,
-                &source_blob_digest,
-                &owner_subtree_digest,
-                &record.inclusion_proof,
-                root_digest,
+                agent_semantic_content_identity::workspace_merkle_v1::WorkspaceOwnerInclusionV1 {
+                    owner_path: &record.owner_path,
+                    source_blob_digest: &source_blob_digest,
+                    expected_owner_subtree_digest: &owner_subtree_digest,
+                    inclusion_proof: &record.inclusion_proof,
+                    expected_workspace_root_digest: root_digest,
+                },
             ) {
                 return Err(format!(
                     "workspace search Merkle owner proof self-check failed: ownerPath={}",
@@ -289,6 +292,7 @@ pub(super) fn encode_workspace_search_generation_segment_with_authority(
             owner_path: owner.owner_path.clone(),
             authority: owner.authority.clone(),
             content_digest: owner.content_digest.clone(),
+            native_syntax_diagnostic: owner.native_syntax_diagnostic.clone(),
             byte_offset,
             byte_length,
             line_count: text.lines().count().max(1).min(u32::MAX as usize) as u32,
@@ -305,7 +309,7 @@ pub(super) fn encode_workspace_search_generation_segment_with_authority(
     for owned in &generation.relations {
         let relation = &owned.relation;
         graph
-            .entry(graph_key(&relation.from.kind, &relation.from.id))
+            .entry(graph_key(relation.from.kind.as_str(), &relation.from.id))
             .or_default()
             .push(owned.clone());
     }
@@ -496,52 +500,9 @@ fn build_resident_byte_coverage_index(
     Ok(agent_semantic_search::ResidentByteCoverageIndex::new(seeds))
 }
 
-fn build_cold_rg_corpus(
-    mapping: &[u8],
-    owner_bytes_range: &std::ops::Range<usize>,
-    owner_directory_records: &BTreeMap<String, Arc<SearchOwnerRecord>>,
-    content_generation_digest: &str,
-) -> Result<agent_semantic_search::ColdRgCorpusArtifact, String> {
-    let owners = owner_directory_records
-        .values()
-        .map(|record| {
-            let start = owner_bytes_range
-                .start
-                .checked_add(record.byte_offset as usize)
-                .ok_or_else(|| "cold rg corpus owner offset overflows".to_owned())?;
-            let end = start
-                .checked_add(record.byte_length as usize)
-                .ok_or_else(|| "cold rg corpus owner range overflows".to_owned())?;
-            let bytes = mapping
-                .get(start..end)
-                .ok_or_else(|| "cold rg corpus owner exceeds mapped generation".to_owned())?;
-            Ok(agent_semantic_search::ColdRgCorpusOwner {
-                owner_path: &record.owner_path,
-                content_digest: &record.content_digest,
-                bytes,
-            })
-        })
-        .collect::<Result<Vec<_>, String>>()?;
-    agent_semantic_search::build_cold_rg_corpus(content_generation_digest, owners)
-}
-
-fn build_resident_graph_generation(
-    authority: &WorkspaceSearchGenerationAuthority,
-    owner_paths: Vec<String>,
-    graph_relations: Vec<
-        agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelation,
-    >,
-) -> Result<agent_semantic_search::ResidentGraphGeneration, String> {
-    let graph_request = Arc::new(agent_semantic_search::SearchGenerationGraphRequest::new(
-        &authority.content_search_generation,
-        authority.source_snapshot.clone(),
-        authority.workspace_generation.clone(),
-        owner_paths,
-        graph_relations,
-    )?);
-    agent_semantic_search::build_resident_graph_generation(graph_request)
-}
-
+#[path = "search_index_projection_builders.rs"]
+mod builders;
+use builders::{build_cold_rg_corpus, build_resident_graph_generation};
 impl WorkspaceSearchGenerationDataPlaneClient {
     pub async fn open(pointer_path: &Path, project_root: &Path) -> Result<Self, String> {
         Self::open_inner(pointer_path, project_root).await
@@ -620,6 +581,7 @@ impl WorkspaceSearchGenerationDataPlaneClient {
                     owner_path: owner.owner_path.clone(),
                     authority: owner.authority.clone(),
                     content_digest: owner.content_digest.clone(),
+                    native_syntax_diagnostic: owner.native_syntax_diagnostic.clone(),
                     byte_offset: 0,
                     byte_length: owner.bytes.len() as u64,
                     line_count: text.lines().count().max(1).min(u32::MAX as usize) as u32,
@@ -652,7 +614,7 @@ impl WorkspaceSearchGenerationDataPlaneClient {
             let relation = &owned.relation;
             relation.validate()?;
             graph_relation_records
-                .entry((relation.from.kind.clone(), relation.from.id.clone()))
+                .entry((relation.from.kind.to_string(), relation.from.id.clone()))
                 .or_default()
                 .push(relation.clone());
         }
@@ -781,11 +743,11 @@ impl WorkspaceSearchGenerationDataPlaneClient {
                     .map_err(|error| format!("decode workspace search graph relations: {error}"))?;
             for owned in &owned_relations {
                 let relation = &owned.relation;
-                if graph_key(&relation.from.kind, &relation.from.id) != key {
+                if graph_key(relation.from.kind.as_str(), &relation.from.id) != key {
                     return Err("workspace search graph relation key drift".to_owned());
                 }
                 graph_relation_records
-                    .entry((relation.from.kind.clone(), relation.from.id.clone()))
+                    .entry((relation.from.kind.to_string(), relation.from.id.clone()))
                     .or_default()
                     .push(relation.clone());
             }
@@ -1008,450 +970,10 @@ impl WorkspaceSearchGenerationDataPlaneClient {
         };
         (owner_count, lexical_bytes, changed_owner_count)
     }
-
-    pub fn read_source_index(
-        &self,
-        query: &str,
-        authority: Option<&agent_semantic_search::ResidentSearchAuthority>,
-        limit: u32,
-    ) -> Result<Arc<agent_semantic_search_projection::ResidentSearchReadyResult>, String> {
-        self.cold_lexical_result(query, None, authority, limit)
-    }
-
-    pub fn read_source_index_for_owner_scope(
-        &self,
-        query: &str,
-        owner_path: &str,
-        authority: Option<&agent_semantic_search::ResidentSearchAuthority>,
-        limit: u32,
-    ) -> Result<Arc<agent_semantic_search_projection::ResidentSearchReadyResult>, String> {
-        self.cold_lexical_result(query, Some(&[owner_path.to_owned()]), authority, limit)
-    }
-
-    pub fn read_cold_rg_candidates(
-        &self,
-        query: &str,
-        owner_paths: &[String],
-        authority: Option<&agent_semantic_search::ResidentSearchAuthority>,
-        limit: u32,
-    ) -> Result<Arc<agent_semantic_search_projection::ResidentSearchReadyResult>, String> {
-        self.cold_lexical_result(query, Some(owner_paths), authority, limit)
-    }
-
-    #[must_use]
-    pub fn cold_rg_corpus(&self) -> &agent_semantic_search::ColdRgCorpusArtifact {
-        &self.cold_rg_corpus
-    }
-
-    pub fn read_byte_evidence(
-        &self,
-        query: &str,
-        authority: Option<&agent_semantic_search::ResidentSearchAuthority>,
-        limit: u32,
-    ) -> Result<Arc<agent_semantic_search_projection::ResidentSearchReadyResult>, String> {
-        let candidates = self.resident_byte_coverage.candidate_owner_paths(
-            query.as_bytes(),
-            authority,
-            usize::try_from(limit).map_err(|_| "byte-evidence limit overflows".to_owned())?,
-        )?;
-        let mut exact_matches = Vec::new();
-        for owner_path in candidates {
-            let record = self
-                .resident_owner_record(&owner_path)?
-                .ok_or_else(|| "byte-evidence candidate owner is missing".to_owned())?;
-            let bytes = self.resident_owner_bytes(&record)?;
-            if bytes
-                .windows(query.len())
-                .any(|window| window == query.as_bytes())
-            {
-                exact_matches.push(owner_path);
-            }
-        }
-        self.cold_lexical_result(query, Some(&exact_matches), authority, limit)
-    }
-
-    pub fn read_byte_evidence_for_owner_scope(
-        &self,
-        query: &str,
-        owner_path: &str,
-        authority: Option<&agent_semantic_search::ResidentSearchAuthority>,
-        limit: u32,
-    ) -> Result<Arc<agent_semantic_search_projection::ResidentSearchReadyResult>, String> {
-        let result = self.read_byte_evidence(query, authority, limit)?;
-        let owner_paths = result
-            .hits
-            .iter()
-            .filter(|hit| hit.owner_path == owner_path)
-            .map(|hit| hit.owner_path.clone())
-            .collect::<Vec<_>>();
-        self.cold_lexical_result(query, Some(&owner_paths), authority, limit)
-    }
-
-    pub fn read_source_index_for_language(
-        &self,
-        query: &str,
-        language_id: &agent_semantic_client_core::LanguageId,
-        limit: u32,
-    ) -> Result<Arc<agent_semantic_search_projection::ResidentSearchReadyResult>, String> {
-        let mut authorities = self
-            .source_documents
-            .iter()
-            .filter_map(|document| document.authority.as_ref())
-            .filter(|authority| &authority.language_id == language_id);
-        let authority = authorities.next().cloned().ok_or_else(|| {
-            format!(
-                "resident source-index language authority is missing: languageId={}",
-                language_id.as_str()
-            )
-        })?;
-        if authorities.any(|candidate| candidate.provider_id != authority.provider_id) {
-            return Err(format!(
-                "resident source-index language authority is ambiguous: languageId={}",
-                language_id.as_str()
-            ));
-        }
-        self.cold_lexical_result(query, None, Some(&authority), limit)
-    }
-
-    fn cold_lexical_result(
-        &self,
-        query: &str,
-        admitted_owner_paths: Option<&[String]>,
-        authority: Option<&agent_semantic_search::ResidentSearchAuthority>,
-        limit: u32,
-    ) -> Result<Arc<agent_semantic_search_projection::ResidentSearchReadyResult>, String> {
-        if query.trim().is_empty() || !(1..=100).contains(&limit) {
-            return Err(
-                "cold resident search requires a non-empty query and limit in 1..=100".to_owned(),
-            );
-        }
-        if admitted_owner_paths.is_none()
-            && let Some(Ok(accelerator)) = self.lexical_accelerator.get()
-        {
-            return accelerator.query(query, authority, limit);
-        }
-        let admitted = admitted_owner_paths.map(|paths| paths.iter().collect::<BTreeSet<_>>());
-        let query_terms = agent_semantic_search::source_index_lookup_terms(query)
-            .into_iter()
-            .filter(|term| !term.chars().any(char::is_whitespace))
-            .collect::<BTreeSet<_>>();
-        let mut ranked = self
-            .source_documents
-            .iter()
-            .filter(|document| {
-                admitted
-                    .as_ref()
-                    .is_none_or(|paths| paths.contains(&document.owner_path))
-                    && authority
-                        .is_none_or(|required| document.authority.as_ref() == Some(required))
-            })
-            .filter_map(|document| {
-                let matched_terms = query_terms
-                    .iter()
-                    .filter(|term| document.query_keys.binary_search(term).is_ok())
-                    .cloned()
-                    .collect::<Vec<_>>();
-                (admitted.is_some() || !matched_terms.is_empty())
-                    .then_some((document, matched_terms))
-            })
-            .collect::<Vec<_>>();
-        ranked.sort_by(|(left, left_terms), (right, right_terms)| {
-            right_terms
-                .len()
-                .cmp(&left_terms.len())
-                .then_with(|| left.owner_path.cmp(&right.owner_path))
-        });
-        let hits = ranked
-            .into_iter()
-            .take(limit as usize)
-            .map(|(document, matched_terms)| {
-                agent_semantic_search_projection::ResidentSearchHit {
-                    owner_path: document.owner_path.clone(),
-                    owner_content_digest: document.owner_content_digest.clone(),
-                    language_id: document
-                        .authority
-                        .as_ref()
-                        .map(|value| value.language_id.as_str().to_owned()),
-                    projection_tier: agent_semantic_search_projection::ResidentSearchProjectionTier::ShallowNavigation,
-                    line_count: document.line_count,
-                    query_keys: matched_terms,
-                    selector: None,
-                    score: None,
-                }
-            })
-            .collect();
-        Ok(Arc::new(
-            agent_semantic_search_projection::ResidentSearchReadyResult::new(
-                self.authority.generation_digest.clone(),
-                &self.authority.source_snapshot,
-                self.authority.search_projection_manifest_digest.clone(),
-                hits,
-            )?,
-        ))
-    }
-
-    pub fn parser_owned_callable_selector_pairs(
-        &self,
-        owner_paths: &[String],
-    ) -> Result<Vec<(String, String)>, String> {
-        owner_paths
-            .iter()
-            .map(|owner_path| {
-                if !self.owner_directory_records.contains_key(owner_path) {
-                    return Err("workspace search result references a missing owner".to_owned());
-                }
-                Ok(self
-                    .callable_selector_by_owner
-                    .get(owner_path)
-                    .map(|selector| (selector.clone(), owner_path.clone())))
-            })
-            .collect::<Result<Vec<_>, String>>()
-            .map(|pairs| pairs.into_iter().flatten().collect())
-    }
-
-    /// Project bounded provider-native syntax facts from the immutable resident generation.
-    ///
-    /// Owner paths are identities only. A projected owner must carry the parser-owned
-    /// selectors, byte ranges, query keys, and derived projection digests that make it
-    /// actionable to the single public Search playbook.
-    pub fn native_syntax_playbook_projection(
-        &self,
-        owner_paths: &[String],
-    ) -> Result<
-        (
-            Vec<agent_semantic_search::NativeSyntaxProjection>,
-            Vec<agent_semantic_search::NativeSyntaxRelation>,
-        ),
-        String,
-    > {
-        let admitted = owner_paths
-            .iter()
-            .map(String::as_str)
-            .collect::<BTreeSet<_>>();
-        let mut projections = Vec::with_capacity(admitted.len());
-        for owner_path in &admitted {
-            let record = self
-                .resident_owner_record(owner_path)?
-                .ok_or_else(|| "native syntax playbook owner is absent".to_owned())?;
-            let selectors = record
-                .selectors
-                .iter()
-                .map(|selector| {
-                    let derived_projection_bytes =
-                        serde_json::to_vec(&selector.derived_projections).map_err(|error| {
-                            format!("encode resident native syntax projections: {error}")
-                        })?;
-                    Ok(agent_semantic_search::NativeSyntaxSelector {
-                        selector: selector.selector.clone(),
-                        byte_start: selector.byte_start,
-                        byte_end: selector.byte_end,
-                        query_keys: selector.query_keys.clone(),
-                        derived_projection_digest: format!(
-                            "blake3-256:{}",
-                            blake3::hash(&derived_projection_bytes).to_hex()
-                        ),
-                    })
-                })
-                .collect::<Result<Vec<_>, String>>()?;
-            if selectors.is_empty() {
-                return Err(format!(
-                    "native syntax playbook owner has no parser selectors: {owner_path}"
-                ));
-            }
-            projections.push(agent_semantic_search::NativeSyntaxProjection {
-                owner_path: record.owner_path.clone(),
-                content_digest: record.content_digest.clone(),
-                selectors,
-            });
-        }
-        let mut relations = Vec::new();
-        for ((owner_path, _), projected_relations) in &self.graph_relation_records {
-            if !admitted.contains(owner_path.as_str()) {
-                continue;
-            }
-            for relation in projected_relations {
-                let relation_bytes = serde_json::to_vec(relation)
-                    .map_err(|error| format!("encode resident native syntax relation: {error}"))?;
-                relations.push(agent_semantic_search::NativeSyntaxRelation {
-                    owner_path: owner_path.clone(),
-                    relation_digest: format!(
-                        "blake3-256:{}",
-                        blake3::hash(&relation_bytes).to_hex()
-                    ),
-                });
-            }
-        }
-        projections.sort_by(|left, right| left.owner_path.cmp(&right.owner_path));
-        relations.sort_by(|left, right| {
-            left.owner_path
-                .cmp(&right.owner_path)
-                .then_with(|| left.relation_digest.cmp(&right.relation_digest))
-        });
-        Ok((projections, relations))
-    }
-
-    #[must_use]
-    pub fn indexed_owner_count(&self) -> usize {
-        self.owner_directory_records.len()
-    }
-
-    #[must_use]
-    pub fn indexed_owner_paths(&self) -> Vec<String> {
-        self.owner_directory_records.keys().cloned().collect()
-    }
-
-    fn resident_owner_record(
-        &self,
-        owner_path: &str,
-    ) -> Result<Option<Arc<SearchOwnerRecord>>, String> {
-        Ok(self.owner_directory_records.get(owner_path).map(Arc::clone))
-    }
-
-    fn resident_owner_bytes<'a>(&'a self, record: &SearchOwnerRecord) -> Result<&'a [u8], String> {
-        if let Some(generation) = &self.resident_generation {
-            let position = self
-                .resident_owner_positions
-                .get(&record.owner_path)
-                .ok_or_else(|| "resident owner position is missing".to_owned())?;
-            return generation
-                .owners
-                .get(*position)
-                .map(|owner| owner.bytes.as_slice())
-                .ok_or_else(|| "resident owner position is out of range".to_owned());
-        }
-        let owner_bytes_range = self
-            .owner_bytes_range
-            .as_ref()
-            .ok_or_else(|| "mapped owner byte range is missing".to_owned())?;
-        let start = owner_bytes_range
-            .start
-            .checked_add(record.byte_offset as usize)
-            .ok_or_else(|| "workspace search owner byte offset overflows".to_owned())?;
-        let end = start
-            .checked_add(record.byte_length as usize)
-            .ok_or_else(|| "workspace search owner byte range overflows".to_owned())?;
-        if end > owner_bytes_range.end {
-            return Err("workspace search owner bytes exceed section bounds".to_owned());
-        }
-        self.mapping
-            .as_ref()
-            .ok_or_else(|| "mapped workspace search generation is missing".to_owned())?
-            .get(start..end)
-            .ok_or_else(|| "workspace search owner bytes exceed section bounds".to_owned())
-    }
-
-    pub fn read_merkle_owner(
-        &self,
-        owner_path: &str,
-    ) -> Result<super::WorkspaceRuntimeMerkleOwnerRead, String> {
-        let root_digest = if self
-            .authority
-            .owner_merkle_root_digest
-            .starts_with("blake3-256:")
-        {
-            self.authority.owner_merkle_root_digest.clone()
-        } else {
-            format!("blake3-256:{}", self.authority.owner_merkle_root_digest)
-        };
-        let Some(value) = self.merkle_owner_records.get(owner_path) else {
-            return Ok(super::WorkspaceRuntimeMerkleOwnerRead::OwnerMissing {
-                schema_id: super::RUNTIME_MERKLE_OWNER_READ_RECEIPT_SCHEMA_ID.to_owned(),
-                schema_version: "1".to_owned(),
-                workspace_identity: self.authority.workspace_id.clone(),
-                project_root: self.project_root.clone(),
-                active_epoch: self.authority.active_epoch,
-                generation_digest: self.authority.generation_digest.clone(),
-                root_digest,
-                owner_path: owner_path.to_owned(),
-            });
-        };
-        let record = Arc::clone(value);
-        if record.owner_path != owner_path {
-            return Err("workspace search Merkle owner key drift".to_owned());
-        }
-        let source_blob_digest =
-            agent_semantic_content_identity::exact_selector_merkle::parse_content_digest_v1(
-                &record.source_blob_digest,
-            )
-            .map_err(|error| format!("decode workspace search Merkle source digest: {error}"))?;
-        let owner_subtree_digest =
-            agent_semantic_content_identity::exact_selector_merkle::parse_content_digest_v1(
-                &record.owner_subtree_digest,
-            )
-            .map_err(|error| format!("decode workspace search Merkle subtree digest: {error}"))?;
-        let parsed_root_digest =
-            agent_semantic_content_identity::exact_selector_merkle::parse_content_digest_v1(
-                root_digest
-                    .strip_prefix("blake3-256:")
-                    .unwrap_or(&root_digest),
-            )
-            .map_err(|error| format!("decode workspace search Merkle root digest: {error}"))?;
-        if !agent_semantic_content_identity::workspace_merkle_v1::verify_owner_inclusion_v1(
-            &record.owner_path,
-            &source_blob_digest,
-            &owner_subtree_digest,
-            &record.inclusion_proof,
-            &parsed_root_digest,
-        ) {
-            return Err(format!(
-                "workspace search Merkle owner proof drift: ownerPath={owner_path}"
-            ));
-        }
-        Ok(super::WorkspaceRuntimeMerkleOwnerRead::Owner {
-            schema_id: super::RUNTIME_MERKLE_OWNER_READ_RECEIPT_SCHEMA_ID.to_owned(),
-            schema_version: "1".to_owned(),
-            workspace_identity: self.authority.workspace_id.clone(),
-            project_root: self.project_root.clone(),
-            active_epoch: self.authority.active_epoch,
-            generation_digest: self.authority.generation_digest.clone(),
-            root_digest,
-            owner_path: record.owner_path.clone(),
-            source_blob_digest: record.source_blob_digest.clone(),
-            owner_subtree_digest: record.owner_subtree_digest.clone(),
-            inclusion_proof: record.inclusion_proof.clone(),
-        })
-    }
-
-    pub fn read_owner(&self, owner_path: &str) -> Result<super::WorkspaceRuntimeOwnerRead, String> {
-        let Some(record) = self.resident_owner_record(owner_path)? else {
-            return Ok(super::WorkspaceRuntimeOwnerRead::OwnerMissing {
-                generation_digest: self.authority.generation_digest.clone(),
-                root_digest: self.authority.source_snapshot.root_digest.clone(),
-            });
-        };
-        let owner_bytes = self.resident_owner_bytes(&record)?;
-        Ok(super::WorkspaceRuntimeOwnerRead::Owner {
-            generation_digest: self.authority.generation_digest.clone(),
-            root_digest: self.authority.source_snapshot.root_digest.clone(),
-            owner: WorkspaceOwnerSnapshot {
-                authority: None,
-                owner_path: record.owner_path.clone(),
-                content_digest: record.content_digest.clone(),
-                bytes: owner_bytes.to_vec(),
-                selectors: record.selectors.clone(),
-            },
-        })
-    }
-
-    pub fn read_graph_facts(
-        &self,
-        sources: &[crate::workspace_db_ipc::RuntimeGraphFactSource],
-    ) -> Result<crate::workspace_db_ipc::RuntimeGraphFactsRead, String> {
-        let mut relations = Vec::new();
-        for source in sources {
-            if let Some(values) = self.graph_relation_records.get(&(
-                source.kind.as_str().to_owned(),
-                source.id.as_str().to_owned(),
-            )) {
-                relations.extend(values.iter().cloned());
-            }
-        }
-        crate::workspace_db_ipc::RuntimeGraphFactsRead::new(
-            self.authority.generation_digest.clone(),
-            relations,
-        )
-    }
 }
+
+#[path = "search_index_projection_reads.rs"]
+mod reads;
 
 fn section(
     kind: SearchGenerationSectionKind,

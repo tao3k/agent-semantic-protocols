@@ -1,8 +1,9 @@
 use agent_semantic_client_db::runtime_server_opentelemetry::RuntimeLifecycleEvent;
-use agent_semantic_client_db::runtime_telemetry_bus::{
-    CAPACITY, ResidentReadTerminalContext, ResidentReadTerminalOutcome, RuntimeTelemetryBus,
-    RuntimeTelemetryEvent,
-};
+use agent_semantic_client_db::runtime_telemetry_bus::CAPACITY;
+use agent_semantic_client_db::runtime_telemetry_bus::ResidentReadTerminalContext;
+use agent_semantic_client_db::runtime_telemetry_bus::ResidentReadTerminalOutcome;
+use agent_semantic_client_db::runtime_telemetry_bus::RuntimeTelemetryBus;
+use agent_semantic_client_db::runtime_telemetry_bus::RuntimeTelemetryEvent;
 use agent_semantic_client_db::workspace_db_ipc::WorkspaceIpcResidentReadWorkCounters;
 
 fn event(transition: &str, state: &str) -> RuntimeLifecycleEvent {

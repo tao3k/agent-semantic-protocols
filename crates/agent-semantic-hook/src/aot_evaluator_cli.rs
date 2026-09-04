@@ -1,7 +1,8 @@
 use std::io::Read as _;
 use std::path::PathBuf;
 
-use crate::{aot_evaluator, reader_probe};
+use crate::aot_evaluator;
+use crate::reader_probe;
 
 /// Runs the Hook evaluator embedded in the canonical ASP binary.
 pub fn main_entry() {
@@ -114,7 +115,7 @@ fn emit_permission_request_terminal() {
 }
 
 fn inherited_no_agent_bypass() -> bool {
-    std::env::var_os("ASP_NO_AGENT").is_some_and(|value| value == "1")
+    crate::no_agent_escape::inherited()
 }
 
 enum EvaluationFailure {
@@ -213,22 +214,7 @@ fn command_local_no_agent_bypass(payload: &serde_json::Value, host_matcher: &str
 /// narrower than textual matching: only an actual Bash command stage with the
 /// exact environment assignment can activate it.
 pub fn payload_has_process_no_agent_assignment(payload: &serde_json::Value) -> bool {
-    if payload.get("tool_name").and_then(serde_json::Value::as_str) != Some("Bash") {
-        return false;
-    }
-    let Some(command) = payload
-        .get("tool_input")
-        .and_then(|input| input.get("command").or_else(|| input.get("cmd")))
-        .and_then(serde_json::Value::as_str)
-    else {
-        return false;
-    };
-    agent_semantic_shell_parser::parse_bash_command_candidates(command).is_ok_and(|stages| {
-        agent_semantic_shell_parser::command_stages_match_process_environment_assignment(
-            &stages,
-            &["ASP_NO_AGENT=1"],
-        )
-    })
+    crate::no_agent_escape::payload_declares_process_escape(payload)
 }
 
 fn evaluate_payload_at_policy_bundle(

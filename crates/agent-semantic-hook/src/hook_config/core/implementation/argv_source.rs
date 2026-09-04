@@ -3,7 +3,8 @@
 use std::collections::BTreeSet;
 
 use super::compiled_rule::RuleMatch;
-use crate::{HookRuntime, source_selector::collect_source_selector_matches};
+use crate::HookRuntime;
+use crate::source_selector::collect_source_selector_matches;
 
 impl RuleMatch {
     pub(in crate::hook_config) fn matching_argv_source_paths(

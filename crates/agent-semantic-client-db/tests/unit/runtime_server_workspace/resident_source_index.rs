@@ -2,10 +2,12 @@
 
 use std::time::Instant;
 
-use agent_semantic_client_db::runtime_server_workspace::{
-    RuntimeServerWorkspaceRegistry, WorkspaceGenerationBuild, WorkspaceMemoryGeneration,
-    WorkspaceOwnerSnapshot, WorkspaceRecoverySource, WorkspaceSelectorSnapshot,
-};
+use agent_semantic_client_db::runtime_server_workspace::RuntimeServerWorkspaceRegistry;
+use agent_semantic_client_db::runtime_server_workspace::WorkspaceGenerationBuild;
+use agent_semantic_client_db::runtime_server_workspace::WorkspaceMemoryGeneration;
+use agent_semantic_client_db::runtime_server_workspace::WorkspaceOwnerSnapshot;
+use agent_semantic_client_db::runtime_server_workspace::WorkspaceRecoverySource;
+use agent_semantic_client_db::runtime_server_workspace::WorkspaceSelectorSnapshot;
 
 const SAMPLE_COUNT: usize = 2_048;
 const P95_BUDGET_NS: u128 = 1_000_000;
@@ -65,6 +67,7 @@ fn generation() -> WorkspaceMemoryGeneration {
             owner_path: owner_path.to_owned(),
             content_digest: format!("blake3-256:{}", blake3::hash(bytes).to_hex()),
             bytes: bytes.to_vec(),
+            native_syntax_diagnostic: None,
             selectors: vec![WorkspaceSelectorSnapshot {
                 selector: "rust://src/projection.rs#item/function/run_provider_projection_batch"
                     .to_owned(),

@@ -1,10 +1,19 @@
-use agent_semantic_client::agent_session_lifecycle_projection::{
-    AGENT_SESSION_LIFECYCLE_PROJECTION_SCHEMA_ID, AgentSessionLifecycleProjection, BindingPhase,
-    DispatchObservation, DispatchPhase, HostBindingFacts, HostBindingObservation,
-    HostBindingProjection, RequiredDispatchAction, ServerHealth, SessionLifecycleProjection,
-    SessionPhase, WorkspaceServerProjection, project_dispatch, project_host_binding,
-    session_phase_from_registry_status,
-};
+use agent_semantic_client::agent_session_lifecycle_projection::AGENT_SESSION_LIFECYCLE_PROJECTION_SCHEMA_ID;
+use agent_semantic_client::agent_session_lifecycle_projection::AgentSessionLifecycleProjection;
+use agent_semantic_client::agent_session_lifecycle_projection::BindingPhase;
+use agent_semantic_client::agent_session_lifecycle_projection::DispatchObservation;
+use agent_semantic_client::agent_session_lifecycle_projection::DispatchPhase;
+use agent_semantic_client::agent_session_lifecycle_projection::HostBindingFacts;
+use agent_semantic_client::agent_session_lifecycle_projection::HostBindingObservation;
+use agent_semantic_client::agent_session_lifecycle_projection::HostBindingProjection;
+use agent_semantic_client::agent_session_lifecycle_projection::RequiredDispatchAction;
+use agent_semantic_client::agent_session_lifecycle_projection::ServerHealth;
+use agent_semantic_client::agent_session_lifecycle_projection::SessionLifecycleProjection;
+use agent_semantic_client::agent_session_lifecycle_projection::SessionPhase;
+use agent_semantic_client::agent_session_lifecycle_projection::WorkspaceServerProjection;
+use agent_semantic_client::agent_session_lifecycle_projection::project_dispatch;
+use agent_semantic_client::agent_session_lifecycle_projection::project_host_binding;
+use agent_semantic_client::agent_session_lifecycle_projection::session_phase_from_registry_status;
 
 fn server(health: ServerHealth) -> WorkspaceServerProjection {
     WorkspaceServerProjection {
@@ -188,6 +197,5 @@ fn serialized_projection_uses_v1_contract_names() {
         serde_json::from_value(value).expect("deserialize projection");
     assert_eq!(round_trip, projection);
 }
-use agent_semantic_client::agent_session_lifecycle_projection::{
-    AgentSessionLifecycleFacts, project_agent_session_lifecycle,
-};
+use agent_semantic_client::agent_session_lifecycle_projection::AgentSessionLifecycleFacts;
+use agent_semantic_client::agent_session_lifecycle_projection::project_agent_session_lifecycle;

@@ -1,9 +1,12 @@
-use super::{
-    ProviderWorkspaceInstallDescriptor, WorkspaceLaunchDescriptor,
-    WorkspaceRuntimeDependencyDescriptor, artifact_snapshot, copy_artifact_root,
-    materialize_runtime_dependencies, resolve_runtime_dependencies,
-};
-use std::path::{Path, PathBuf};
+use super::ProviderWorkspaceInstallDescriptor;
+use super::WorkspaceLaunchDescriptor;
+use super::WorkspaceRuntimeDependencyDescriptor;
+use super::artifact_snapshot;
+use super::copy_artifact_root;
+use super::materialize_runtime_dependencies;
+use super::resolve_runtime_dependencies;
+use std::path::Path;
+use std::path::PathBuf;
 
 struct Fixture {
     root: PathBuf,

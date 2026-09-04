@@ -61,7 +61,12 @@ process over the immutable content-generation corpus; a warm receipt records
 Tantivy and must not fabricate ripgrep execution.
 Its `nativeSyntax.projections` records expose bounded provider-native selectors,
 byte ranges, query keys, derived projection digests, and owner-bound relation
-digests; an owner list or count alone is invalid native-syntax evidence.
+digests. `nativeSyntax.diagnostics` binds a provider-owned
+`source-syntax-unavailable` result to an exact owner/content identity. The two
+collections are disjoint and their union accounts for every selected owner;
+diagnostics never synthesize selectors or erase independent rg, Tantivy, byte,
+or graph evidence. An owner list or count alone is invalid native-syntax
+evidence.
 Legacy seed products and multi-command route scripts are not admitted.
 
 `search-owner-missing-topology.v1.schema.json` owns the bounded graph returned
@@ -78,10 +83,11 @@ shapes. `semantic-document-search-packet.v1.schema.json` owns metadata search
 facts for headings, TOC outlines, properties, tables, blocks, links, and
 selectors.
 `semantic-document-query-packet.v1.schema.json` owns document query metadata
-and filtered `--content` element projections, with explicit `queryKind`,
-`querySurface`, and `contentBlocks` fields. Document hook recovery must use
-document `query` routes, not source `search owner` or owner/items routes. These
-providers must not report document facts through source-language
+and filtered element projections, with explicit `queryKind`, `querySurface`,
+and `contentBlocks` fields. Document discovery enters the same public
+`search playbook` operation as source discovery; exact document
+materialization consumes a returned selector through `query --selector`.
+Providers must not report document facts through source-language
 `nativeSyntaxFacts`.
 `semantic-org-elements-query-packet.v1.schema.json` owns the host-facing
 org-elements index query input used by `orgize elements-query --packet ...`.
@@ -101,11 +107,9 @@ bounded callable structure. Query
 render profiles such as the `compact-graph-frontier` profile and
 `corpus-locator` profile project an ASP-compiled tree-sitter query plan over
 provider-native projection; they do not introduce a new packet surface.
-RFC 009 adds optional `reasoningProfiles` to this packet as a typed return-entry
-surface for `search prime` and `search reasoning <profile>`. Those entries
-describe profile names, selector slots, returns, and frontier actions; they
-deliberately reject natural-language `goal` or `intent` fields so planning stays
-in the agent.
+RFC 009 adds optional `reasoningProfiles` as typed internal planning facts.
+They are projected only through the single public `search playbook` receipt;
+they are not independently addressable command routes.
 
 `semantic-graph.v1.schema.json` is the shared embeddable graph vocabulary behind
 search packets. It owns parser-proved graph nodes, graph edges, bounded
@@ -174,7 +178,7 @@ Language providers under `languages/` may call `asp graph render` for retired
 stdout compatibility instead of adding renderer library dependencies. Input
 packets use one canonical field vocabulary: query-set count comes from
 root-level `querySet`, and graph frontier source locators use
-`searchSynthesis.seeds[].read`; provider-specific field aliases are schema
+the playbook receipt's exact-selector action; provider-specific field aliases are schema
 violations rather than renderer compatibility cases.
 Owner-local item search must retain `owner=`, `selector=items`, term count,
 and `view=seeds` in the header, declare every packet-local alias id in the
@@ -255,11 +259,10 @@ selector when present; artifact ids remain provenance rather than cache facts.
 Providers may supply
 `/cache/fileHashes`; when they do not, the client may hash validated syntax
 locator paths from the packet, storing only path+sha256 and no raw source.
-The client may also capture successful replay-safe `search --view seeds`
-provider stdout as `prompt-output/*.txt` write-back artifacts for the next
-identical request. `prompt-output/*.command.json` stores the matching
-provider-command provenance when stdout replay has no packet-level command
-field. This path deliberately excludes query/code windows.
+The client may cache only a typed, identity-bound `search playbook` receipt for
+an identical request. Legacy prompt stdout and provider-command replay are not
+search authorities. Exact query projections remain separately bound to their
+canonical selector and generation.
 `semantic-search-stage-receipt.v1.schema.json` owns search/router stage receipts
 such as `search-candidate-merge`. It records route sources, candidate counts,
 line-identity filtering, fallback reason, and optional latency/proof-gain fields
@@ -426,15 +429,11 @@ language-provider capability, not a root hook capability: Rust, TypeScript,
 Python, and future providers own AST/parser lookup, exact item matching,
 multi-term expressions such as `fun1|fun2|fun3`, and compact code extraction.
 Document providers use `semantic-document-query-packet.v1.schema.json` instead
-of this source-language packet: `asp org query --term <term> --view metadata`
-and `asp md query --term <term> --view metadata` return bounded document fact
-frontiers, while `asp org query --term <term> --content` and
-`asp md query --selector <path:start-end> --content` keep stdout as pure
-matched element content. Source-preserved document reads stay on
-`query --from-hook direct-source-read --selector <path-or-range>` and must not
-be combined with `--content`.
-Root hooks should route source access back to provider `search owner <path>
-items [--query SYMBOL]`; they should not maintain a parallel read/query engine.
+of this source-language packet. Discovery is always
+`asp search playbook <query> --language <language> --scope owner:<path>`, and exact
+materialization is always `asp <language> query --selector <exact-selector>
+--projection <source|callable-skeleton>`. Root hooks must use those two public
+operations and must not maintain a parallel read/query engine.
 The query packet also supports owner-local discovery without source windows:
 `outputMode=names` or `outline` may omit match `code`, while `queryCoverage`
 and bounded `candidateItems` explain missed terms and parser-owned repair
@@ -608,15 +607,12 @@ Org, Markdown, and future providers own their concrete fact builders and
 provider-local schema refinements. Search and query packets may embed these
 facts as optional `nativeSyntaxFacts`.
 
-`semantic-finder-tools.v1.schema.json` is the shared contract for
-provider-approved finder pipelines behind `search lexical`, compatibility
-`search lexical`, `search ingest`, and `search pattern`. It describes tool catalogs
-and pipelines such as `rg+lexical` without exposing raw shell argv to agents. `rg`
-owns lexical candidate generation, `lexical` owns headless filtering/ranking,
-and the language provider owns path normalization, owner resolution,
-nearest-item resolution, test frontier selection, deduplication, caps, and
-packet rendering. `ast-grep` is modeled as a structural recipe/search tool, not
-as a fuzzy text backend or a replacement for native provider `query`.
+`semantic-finder-tools.v1.schema.json` is the shared contract for internal
+provider-approved acquisition stages used by `search playbook`. It describes
+tool catalogs and pipelines such as `rg+lexical` without exposing stage argv as
+public Agent commands. The language provider owns path normalization, owner
+resolution, nearest-item resolution, test frontier selection, deduplication,
+caps, and packet rendering.
 
 `semantic-sandtable-scenario.v1.schema.json` is the shared scenario descriptor
 for replaying bounded search flows against real harness binaries. It owns the
@@ -821,13 +817,10 @@ precedes read packets. `searchSynthesis.editFrontier` names source owners,
 `searchSynthesis.windowSet` names typed `{kind,target}` owner/test/read windows
 that an agent may inspect with bounded read transport after the provider has
 selected the semantic axis. Julia remains workspace-managed for startup-cost
-reasons, but `search ... --json` still emits this shared packet so agent semantic clients
-can cache search frontiers without parsing Julia-specific line text. Julia's
-hook wildcard `query --from-hook direct-source-read --selector <glob>
---term <term> --surface owners,tests --view seeds --json` form uses the same packet with `querySet`,
-`queryCoverage`, `sourceCoverage`, hits, frontier owners, and native syntax
-facts; exact source-window JSON remains a provider `query/*` read/query packet,
-not a search packet.
+reasons, but its parser facts enter the same Runtime-owned playbook so clients
+do not parse provider-specific line text. Exact Julia source materialization
+uses a canonical selector and explicit projection; wildcard hook queries and
+view flags are not public surfaces.
 
 The TypeScript provider registers as:
 
@@ -899,14 +892,11 @@ The common registry schema only standardizes their shape:
 Julia, or JavaScript capability vocabularies. Language-specific harness
 repositories own those schemas under their local `schemas/` directories and may
 advertise them through the provider `schemas` list.
-`capabilities` is the machine-readable answer to "what can this method search
-directly"; `ingestRequiredFor` is the machine-readable answer to "what must be
-expanded through `rg`/`fd` or another external source and normalized through
-`search ingest`." Agents should consult these fields before interpreting packet
-notes or falling back to raw shell output.
-Search descriptors can also carry `acceptedPipes`, a provider-advertised list of
-final-only pipe names accepted by that method, such as TypeScript's
-`search/lexical` accepting `owner` and `tests`.
+`capabilities` is the machine-readable answer to what the provider contributes
+to the Runtime-owned playbook. `ingestRequiredFor` describes content classes
+that the internal acquisition stage must include. It never instructs an Agent
+to invoke an internal stage or fall back to raw shell output. Legacy pipe
+metadata is provider-internal and cannot become a public command surface.
 
 Registry invariants mirror Language Server Protocol naming discipline without
 copying LSP transport. `languageId` identifies the source language,
@@ -979,47 +969,18 @@ local usage should only be attributed when `versionScope` is `current`. When
 `versionScope` is `external`, owner evidence belongs to the workspace version
 and must not be presented as evidence for the requested external version.
 
-Query-set packets are for repeated same-axis searches, such as multiple
-dependencies or multiple owner paths in one package/scope context. Providers
-should set `queryComposition.mode` to `query-set`, list normalized terms in
-`querySet`, include `queryComposition.scope` when the query-set is owner- or
-package-scoped, and advertise support through registry method descriptors.
-Descriptor `querySetScopes` uses `project`, `package`, and `owner` to show which
-scope forms are accepted. Query sets are not a general command batch surface;
-distinct axes should remain separate search packets.
+The Runtime may combine repeated same-axis terms inside one internal query-set,
+but query-set packets are not a public command batch surface. The public input
+remains one `search playbook` request with an explicit intent, scope, coverage,
+and budget. Provider acquisition, lexical recall, parser projection, and graph
+ranking remain ordered internal stages.
 
-Owner-scoped TypeScript text searches are the motivating case: once
-`search owner src/cli/semantic-search/render.ts .` has selected the owner,
-repeated text probes such as `location.path`, `location.column`,
-`location.line`, and `renderLocation` should become one
-`search/lexical` query-set packet with `scope.ownerPath`, not several separate
-text packets or a comma-joined literal query.
-Project-scoped TypeScript text query-sets are also valid when the owner has not
-been selected yet and the repeated probes are still the same text axis.
-
-Query-set packets must not only merge terms; they must preserve the meaning of
-each term. When a text hit is a test fixture string such as
-`"src/cli/agent-hooks.ts"` inside `tests/unit/cli.test.ts`, the packet should
-classify the hit as `surface="test-fixture-string"`, set `realOwner=false`,
-record `fixturePath` and `fixtureOwner`, add `queryCoverage` for every term,
-and add `ownerResolution` so the agent knows not to run
-`search owner src/cli/agent-hooks.ts`. If the provider can infer a real
-implementation axis from the fixture context, it should emit
-`searchSynthesis.seeds` such as `text:runProtocolCli` or
-`owner:src/cli/protocol.ts`, and put the false follow-up in `avoidNextActions`.
-
-Providers may also use `searchSynthesis` for bounded graph-derived planning
-facts. The shared schema owns the graph algorithm name, scope, high-impact
-owners, frontier owners, and finding owners as explicit `searchSynthesis`
-properties; derived follow-up routes belong in `searchSynthesis.seeds`. These
-facts rank and explain parser-owned owner/dependency/test edges but do not
-introduce a second source of truth. In agent-facing `--view seeds` output,
-providers render derived follow-up routes through the RFC 006 compact graph
-projection: the view-native `[search-<view>]` header, the micro-legend,
-`aliases=...`, role-typed aliases, `G>{...}` edges, `rank=`, and
-`frontier=`.
-Providers should not render seed or synthesis as a second independent prompt
-protocol.
+Provider results must preserve the meaning and provenance of each matched term.
+A fixture string that resembles a source path is classified as fixture evidence,
+not promoted to a real owner. Graph-derived planning facts may rank exact owner
+and selector evidence, but they cannot emit another search command. The
+agent-facing receipt returns bounded evidence and canonical selectors; the only
+follow-up that materializes source is `query --selector ... --projection ...`.
 
 `semantic-graph-resident-evaluation-request.v1.schema.json` is the intent-only
 northbound graph request for `asp.graph.evaluate`. It contains no graph,
@@ -1034,17 +995,15 @@ input packet for the cold/offline `asp-python-graphs` service project. It never
 serves the Ready `search`, `query`, or `asp.graph.evaluate` routes. It carries
 the requested reasoning profile, algorithm id, seed node ids, ranking budget,
 optional per-kind budgets, optional window-merge controls, and typed graph
-facts under `graph.nodes[]` and `graph.edges[]`. Fast-search request nodes may
+facts under `graph.nodes[]` and `graph.edges[]`. Internal playbook request nodes may
 carry parser-owned `syntaxQuery` locators for candidate symbols, hot range
 nodes for direct code follow-ups, and dependency package nodes connected by
-`owner -> dependency` import edges for query-deps routing. Fast-search request
-packets from `search pipe`, `asp fd -query`, and `asp rg -query` may also carry
-`actionFrontier[]`: typed action facts with action id, kind, capability id,
+`owner -> dependency` import edges for query-deps routing. Internal playbook
+packets may also carry `actionFrontier[]`: typed action facts with action id, kind, capability id,
 target, target role, and fields such as selector, owner path, query, query
 clauses, scope, recipe, or names. These action facts are materializer input for
 display-only `nextCommand` text and intentionally reject materialized `command`
-or `argv` fields. `search pipe --view graph-turbo-request` is the typed packet
-spelling for this migration.
+or `argv` fields. This packet is never an Agent-facing CLI spelling.
 `semantic-graph-turbo-result.v1.schema.json` is the matching schema-owned
 response packet. It records the effective profile, algorithm, seed nodes,
 budget, per-kind budgets, ranked node ids, frontier actions, relation edges,
@@ -1114,9 +1073,9 @@ reports coarse cache and parser reuse facts such as `cacheStatus`, `elapsedMs`,
 follow-up search planning; provider-specific compiler details still belong in
 `fields`.
 
-For `search lexical`, a flag-like first query positional remains literal. For
-example, `asp-typescript search lexical --json --workspace . --view seeds` searches for the token
-`--json`; request JSON output by placing `--json` after the query.
+`search playbook` parses an explicit option grammar. A query term that begins
+with `-` must be supplied with `--query`; legacy view, seed, query-set, owner,
+and pipe options are rejected instead of being reinterpreted.
 
 This repository's `schemas/` directory is the protocol source of truth.
 It contains common protocol schemas only. Provider packages that run CI from
@@ -1155,74 +1114,35 @@ such as a new versioned semantic search packet schema. Provider packages must up
 their package-local copies and sync tests in the same change that advertises a
 new schema version.
 
-The current TypeScript slice emits conforming packets from:
+The current TypeScript public discovery and materialization surfaces are:
 
 ```shell
-asp-typescript search prime --json .
-asp-typescript search prime packages/core --json .
-asp-typescript search owner src/index.ts --json .
-asp-typescript search dependency react --json .
-asp-typescript search deps react/jsx-runtime@19.0.0::jsx --json .
-asp-typescript search api OrderStatus --json .
-asp-typescript search public-external-types react --json .
-asp-typescript search symbol OrderStatus --json .
-asp-typescript search callsite OrderStatus --json .
-asp-typescript search import ./order --json .
-asp-typescript search tests src/domain/order.ts --json .
-asp-typescript search lexical OrderStatus --json .
-rg -n "OrderStatus" src tests | asp-typescript search ingest --json .
+asp search playbook 'OrderStatus' --language typescript --intent conceptual --scope workspace --coverage candidates --explain compact --workspace .
+asp search playbook 'OrderStatus' --language typescript --intent relationship --scope owner:src/index.ts --coverage candidates --explain compact --workspace .
+asp typescript query --selector <exact-selector> --projection source --workspace .
 ```
 
-Those JSON examples are contract checks, not an agent exploration recipe. A
-prompt-facing agent should use compact line protocol, for example
-`asp-typescript search lexical OrderStatus --workspace . --view seeds`, and reserve `--json` for
-tests, receipts, validators, IDE/Flowhub, or other machine consumers.
-
-For TypeScript, `search owner` resolves reasoning owners first, then
-parser-visible modules, then existing project paths. Parser-visible modules
+Provider-internal parser and lexical stages may resolve reasoning owners,
+parser-visible modules, and existing project paths. Parser-visible modules
 outside the reasoning owner graph are represented with
 `fields.source=parser-visible-module`, `fields.parserOwner=false`, role/layer
 metadata, line counts, validity, and diagnostic counts. Existing paths outside
 the parser module set are still represented as path-only owners with
 `fields.source=path-only`, `fields.parserOwner=false`, and
-`nextActions=[{kind:"ingest", target:<path>}]`. `search lexical` indexes
-parser-visible source text, owner paths, and exports; docs, schema files, and
-other non-parser text should be expanded with `rg` or `fd` and normalized
-through `search ingest`. The TypeScript registry advertises this directly:
-`search/owner` carries TypeScript-scoped
-`parser-visible-module-owner-search`, `test-owner-search`, and
-`ingestRequiredFor=[{languageId:"typescript",namespace:"typescript",name:"non-parser-path"}]`;
-`search/lexical` carries TypeScript-scoped
-`parser-visible-source-text-search` and TypeScript-scoped ingest surfaces for
-non-parser text, docs text, schema JSON, and generated artifacts.
-`search/api` projects TypeScript parser-owned exported/public API facts from the
-current provider path context. Dependency-prefixed or external-version API
-queries require a separate docs/API source and must not present current project
-parser facts as dependency-version documentation.
-`search/public-external-types` projects TypeScript parser-owned public type
-surfaces that expose a dependency package. Direct import-type text is confirmed;
-owner-level external import plus unbound type text is marked possible until the
-provider exposes named import binding attribution.
+typed unavailable diagnostics. These facts are all projected through the one
+playbook receipt. Dependency-version documentation remains a separate admitted
+source and cannot be synthesized from current-workspace parser facts.
 
 The Rust slice emits the same envelope from `asp-rust search ... --json`,
 including Cargo, owner, dependency, symbol, callsite, import, cfg, pattern,
 docs, api, public-external-types, tests, and ingest views.
 
-The current Python slice emits conforming packets from:
+The current Python public discovery and materialization surfaces are:
 
 ```shell
-asp-python search prime --json .
-asp-python search owner src/asp_python/_cli.py --json .
-asp-python search dependency pytest --json .
-asp-python search deps pytest::fixture --json .
-asp-python search api PythonHarnessReport --json .
-asp-python search public-external-types pytest --json .
-asp-python search symbol PythonHarnessReport --json .
-asp-python search callsite PythonHarnessReport --json .
-asp-python search import asp_python --json .
-asp-python search tests src/asp_python/_cli.py --json .
-asp-python search lexical PythonHarnessReport --json .
-rg -n "PythonHarnessReport" src tests | asp-python search ingest --json .
+asp search playbook 'PythonHarnessReport' --language python --intent conceptual --scope workspace --coverage candidates --explain compact --workspace .
+asp search playbook 'PythonHarnessReport' --language python --intent relationship --scope owner:src/asp_python/_cli.py --coverage candidates --explain compact --workspace .
+asp python query --selector <exact-selector> --projection source --workspace .
 ```
 
 `runtime-selector-overlay-receipt.v1.schema.json` records a selector-only

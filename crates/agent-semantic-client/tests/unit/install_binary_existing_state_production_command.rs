@@ -1,6 +1,7 @@
 use std::fs;
 use std::path::Path;
-use std::process::{Command, Output};
+use std::process::Command;
+use std::process::Output;
 
 #[tokio::test]
 async fn built_asp_install_canonicalizes_pending_identity_and_publishes_a_new_generation() {

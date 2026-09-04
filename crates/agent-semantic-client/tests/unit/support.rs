@@ -1,4 +1,5 @@
-use std::ffi::{OsStr, OsString};
+use std::ffi::OsStr;
+use std::ffi::OsString;
 use std::path::PathBuf;
 
 pub(crate) struct CacheTestLock(std::sync::Mutex<()>);

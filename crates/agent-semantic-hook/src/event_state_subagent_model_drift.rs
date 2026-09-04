@@ -5,7 +5,8 @@ use std::path::Path;
 use agent_semantic_runtime::ensure_project_hook_state_dir;
 use serde_json::Value;
 
-use crate::event_state::{HOOK_EVENT_STATE_FILE, read_hook_event_state_tail};
+use crate::event_state::HOOK_EVENT_STATE_FILE;
+use crate::event_state::read_hook_event_state_tail;
 
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize)]
 pub struct SubagentRuntimeRootSessionId(String);

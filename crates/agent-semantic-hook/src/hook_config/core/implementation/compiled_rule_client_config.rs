@@ -1,15 +1,21 @@
 //! Implements runtime accessors and classification for compiled hook config.
 
-use std::{borrow::Cow, path::Path};
+use std::borrow::Cow;
+use std::path::Path;
 
-use super::{
-    AgentOrgArtifactsArchiveWarning, AgentOrgArtifactsRecovery, ClientHookConfig, CompiledHookRule,
-    DURABLE_HOOK_MATCHER_SCHEMA_ID, DURABLE_HOOK_MATCHER_SCHEMA_VERSION, DurableHookConfigArtifact,
-    HookClientConfigFile, HookRuntime, ToolAction, compile_agent_org_artifacts_config,
-};
-use crate::hook_config::core::implementation::profile_provider_projection::{
-    extend_profile_provider_projections, extend_registered_provider_route_projections,
-};
+use super::AgentOrgArtifactsArchiveWarning;
+use super::AgentOrgArtifactsRecovery;
+use super::ClientHookConfig;
+use super::CompiledHookRule;
+use super::DURABLE_HOOK_MATCHER_SCHEMA_ID;
+use super::DURABLE_HOOK_MATCHER_SCHEMA_VERSION;
+use super::DurableHookConfigArtifact;
+use super::HookClientConfigFile;
+use super::HookRuntime;
+use super::ToolAction;
+use super::compile_agent_org_artifacts_config;
+use crate::hook_config::core::implementation::profile_provider_projection::extend_profile_provider_projections;
+use crate::hook_config::core::implementation::profile_provider_projection::extend_registered_provider_route_projections;
 
 impl Default for ClientHookConfig {
     fn default() -> Self {

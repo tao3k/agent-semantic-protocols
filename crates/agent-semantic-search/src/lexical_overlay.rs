@@ -1,9 +1,9 @@
 //! Reusable lexical overlay search for high-churn candidate evidence.
 
-use crate::dynamic_overlay::{
-    DynamicOverlayDocument, DynamicOverlayNamespace, DynamicOverlayQuery,
-    default_dynamic_overlay_search_backend,
-};
+use crate::dynamic_overlay::DynamicOverlayDocument;
+use crate::dynamic_overlay::DynamicOverlayNamespace;
+use crate::dynamic_overlay::DynamicOverlayQuery;
+use crate::dynamic_overlay::default_dynamic_overlay_search_backend;
 
 /// Request for session-local lexical overlay search.
 #[derive(Debug, Clone)]

@@ -3,7 +3,9 @@
 use serde_json::Value;
 
 use super::decision::allow;
-use crate::{DecisionSubject, HookDecision, payload_string};
+use crate::DecisionSubject;
+use crate::HookDecision;
+use crate::payload_string;
 
 pub(crate) fn classify_user_prompt(
     platform: &str,

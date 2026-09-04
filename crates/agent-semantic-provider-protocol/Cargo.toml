@@ -8,4 +8,6 @@ license = "MIT"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 [build-dependencies]
+agent-semantic-schema-manager.workspace = true
+asp-rust-project-harness-policy.workspace = true
 serde_json = "1"

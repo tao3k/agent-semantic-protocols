@@ -1,15 +1,21 @@
-use super::{
-    RuntimeProjectWorkspaceKey, RuntimeSearchDerivedAttachmentIdentity,
-    RuntimeSearchDerivedAttachmentKind, RuntimeSearchDerivedAttachmentState,
-    RuntimeSearchGenerationBuildJob, RuntimeSearchGenerationBuildOperation,
-    RuntimeSearchGenerationBuildResourceInput, RuntimeSearchGenerationBuilder,
-};
-use crate::query_generation_calibration::{
-    RuntimeSearchCalibrationDecision, RuntimeSearchCalibrationStore, cached_calibration_decisions,
-    runtime_search_calibration_key, select_runtime_search_build_resources,
-    select_single_segment_bulk, upsert_runtime_search_calibration_decision, workload_bucket,
-};
-use crate::{RuntimeQueryGenerationAuthority, RuntimeQueryGenerationState};
+use super::RuntimeProjectWorkspaceKey;
+use super::RuntimeSearchDerivedAttachmentIdentity;
+use super::RuntimeSearchDerivedAttachmentKind;
+use super::RuntimeSearchDerivedAttachmentState;
+use super::RuntimeSearchGenerationBuildJob;
+use super::RuntimeSearchGenerationBuildOperation;
+use super::RuntimeSearchGenerationBuildResourceInput;
+use super::RuntimeSearchGenerationBuilder;
+use crate::RuntimeQueryGenerationAuthority;
+use crate::RuntimeQueryGenerationState;
+use crate::query_generation_calibration::RuntimeSearchCalibrationDecision;
+use crate::query_generation_calibration::RuntimeSearchCalibrationStore;
+use crate::query_generation_calibration::cached_calibration_decisions;
+use crate::query_generation_calibration::runtime_search_calibration_key;
+use crate::query_generation_calibration::select_runtime_search_build_resources;
+use crate::query_generation_calibration::select_single_segment_bulk;
+use crate::query_generation_calibration::upsert_runtime_search_calibration_decision;
+use crate::query_generation_calibration::workload_bucket;
 
 fn key(project_id: &str, workspace_id: &str) -> RuntimeProjectWorkspaceKey {
     RuntimeProjectWorkspaceKey::new(
@@ -368,8 +374,11 @@ async fn identical_workspace_ids_in_distinct_projects_never_alias() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn runtime_builder_owns_independent_non_blocking_derived_jobs() {
-    use std::sync::atomic::{AtomicUsize, Ordering};
-    use std::sync::{Arc, Barrier, mpsc};
+    use std::sync::Arc;
+    use std::sync::Barrier;
+    use std::sync::atomic::AtomicUsize;
+    use std::sync::atomic::Ordering;
+    use std::sync::mpsc;
     use std::time::Duration;
 
     let task_scope = agent_semantic_client_db::runtime_server_runtime::RuntimeServerTaskScope::new(

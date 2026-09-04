@@ -1,8 +1,10 @@
 //! Canonical physical State Home layout owned by Artifacts.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 
 use crate::WorkspaceIdentity;
 

@@ -1,6 +1,6 @@
-use super::{
-    discard_prepared_runtime_artifact, prepare_runtime_artifact_candidate, stage_runtime_artifact,
-};
+use super::discard_prepared_runtime_artifact;
+use super::prepare_runtime_artifact_candidate;
+use super::stage_runtime_artifact;
 
 #[tokio::test]
 async fn dev_candidate_is_digest_materialized_reused_and_removed_on_abort() {

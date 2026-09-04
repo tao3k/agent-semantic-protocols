@@ -1,6 +1,8 @@
-use agent_semantic_config::{HookClientConfigReasonKind, HookClientConfigStdinMode};
+use agent_semantic_config::HookClientConfigReasonKind;
+use agent_semantic_config::HookClientConfigStdinMode;
 
-use crate::protocol::{ReasonKind, StdinMode};
+use crate::protocol::ReasonKind;
+use crate::protocol::StdinMode;
 
 impl From<HookClientConfigReasonKind> for ReasonKind {
     fn from(kind: HookClientConfigReasonKind) -> Self {

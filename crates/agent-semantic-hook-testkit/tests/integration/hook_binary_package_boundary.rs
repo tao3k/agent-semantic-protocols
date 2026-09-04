@@ -4,7 +4,7 @@ const HOOK_ENTRY: &str = include_str!("../../../agent-semantic-hook/src/bin/asp_
 const PLUGIN_LAUNCHER: &str = include_str!("../../../../asp-codex-plugin/bin/asp-hook-exec");
 const TESTKIT_MANIFEST: &str = include_str!("../../Cargo.toml");
 const CENTRAL_BUILD_GATE: &str =
-    include_str!("../../../../build-support/asp-rust-project-harness-policy/build.rs");
+    include_str!("../../../../build-support/asp-rust-project-harness-policy/src/build_gate.rs");
 
 #[test]
 fn hook_crate_is_the_only_asp_hook_binary_owner() {
@@ -40,6 +40,7 @@ fn plugin_launcher_forwards_the_event_without_a_repeated_hook_namespace() {
 fn testkit_builds_under_the_central_rust_project_policy() {
     assert!(TESTKIT_MANIFEST.contains("[build-dependencies]"));
     assert!(TESTKIT_MANIFEST.contains("asp-rust-project-harness-policy.workspace = true"));
-    assert!(CENTRAL_BUILD_GATE.contains("asp_rust_workspace_build_dag_from_env"));
-    assert!(CENTRAL_BUILD_GATE.contains("policyCatalogDigest"));
+    assert!(CENTRAL_BUILD_GATE.contains("assert_asp_rust_project_harness_member_policy_from_env"));
+    assert!(CENTRAL_BUILD_GATE.contains("one full source scan for Cargo's DAG"));
+    assert!(!CENTRAL_BUILD_GATE.contains("asp_rust_workspace_build_dag_from_env"));
 }

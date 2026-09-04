@@ -1,7 +1,8 @@
-use agent_semantic_search::{
-    AdmittedLexicalOwner, LexicalOwnerFact, LexicalShardArtifact, LexicalShardDisposition,
-    plan_lexical_generation,
-};
+use agent_semantic_search::AdmittedLexicalOwner;
+use agent_semantic_search::LexicalOwnerFact;
+use agent_semantic_search::LexicalShardArtifact;
+use agent_semantic_search::LexicalShardDisposition;
+use agent_semantic_search::plan_lexical_generation;
 
 fn digest(value: &str) -> String {
     format!("blake3-256:{}", blake3::hash(value.as_bytes()).to_hex())

@@ -1,8 +1,12 @@
 use std::fs;
 
-use crate::{OutputFraming, ProviderProcessFraming, ProviderProcessSupervisor};
+use crate::OutputFraming;
+use crate::ProviderProcessFraming;
+use crate::ProviderProcessSupervisor;
 
-use super::support::{script, spec, temp_dir};
+use super::support::script;
+use super::support::spec;
+use super::support::temp_dir;
 
 #[tokio::test]
 async fn line_framing_normalizes_line_payloads() {

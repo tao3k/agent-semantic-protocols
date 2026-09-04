@@ -22,7 +22,8 @@ use std::fs;
 use std::path::PathBuf;
 
 use agent_semantic_runtime::project_state_paths;
-use hook_runtime_cli_args::{display_path, optional_flag_value};
+use hook_runtime_cli_args::display_path;
+use hook_runtime_cli_args::optional_flag_value;
 use hook_runtime_doctor::run_doctor;
 pub(super) use hook_runtime_install::run_codex_plugin_install_args;
 use hook_runtime_install::run_install;

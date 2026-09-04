@@ -1,7 +1,6 @@
-use super::{
-    ProviderRuntimeContractOperation, ProviderRuntimeContractReceipt,
-    ProviderRuntimeContractTransport,
-};
+use super::ProviderRuntimeContractOperation;
+use super::ProviderRuntimeContractReceipt;
+use super::ProviderRuntimeContractTransport;
 
 fn operation() -> ProviderRuntimeContractOperation {
     ProviderRuntimeContractOperation {

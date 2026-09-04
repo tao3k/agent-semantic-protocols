@@ -3,10 +3,13 @@
 use std::env;
 
 // Binary installation is a private leaf of the provider-install branch.
-use super::cli_support::{has_help_flag, usage};
-use crate::command::{
-    agent_config_sync, cli_help, hook_runtime, install_binary_config_admission, protocol_binary,
-};
+use super::cli_support::has_help_flag;
+use super::cli_support::usage;
+use crate::command::agent_config_sync;
+use crate::command::cli_help;
+use crate::command::hook_runtime;
+use crate::command::install_binary_config_admission;
+use crate::command::protocol_binary;
 
 pub(crate) async fn run_install_binary(args: &[String]) -> Result<(), String> {
     if !args.is_empty() {
@@ -36,7 +39,7 @@ pub(crate) async fn run_install_binary(args: &[String]) -> Result<(), String> {
     let install_registry_digest =
         crate::command::provider_install_registry::provider_install_registry_digest()?;
     let provider_catalog_generation =
-        agent_semantic_artifacts::runtime_artifact_catalog::publish_runtime_provider_catalog(
+        agent_semantic_artifacts::runtime_provider_catalog::publish_runtime_provider_catalog(
             &runtime_state.protocol_home,
             installed.artifact_digest.as_str(),
             &install_registry_digest,

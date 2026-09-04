@@ -1,7 +1,9 @@
 //! Source-snapshot identity and resolution evidence bound to provider digests.
 
-use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, BTreeSet};
+use serde::Deserialize;
+use serde::Serialize;
+use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 
 /// Schema identifier for deterministic source snapshot evidence.
 pub const SOURCE_SNAPSHOT_SCHEMA_ID: &str = "asp.source-snapshot.v1";
@@ -230,6 +232,29 @@ pub struct WorkspaceSnapshot {
     overlay_base_leaves: BTreeMap<String, Option<String>>,
 }
 
+/// Normalized changed and removed paths for one workspace overlay.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct WorkspaceOverlayPaths {
+    changed: BTreeSet<String>,
+    removed: BTreeSet<String>,
+}
+
+impl WorkspaceOverlayPaths {
+    /// Normalizes the two disjoint path sets used by overlay evidence.
+    pub fn new<I, P, D, Q>(changed_paths: I, removed_paths: D) -> Self
+    where
+        I: IntoIterator<Item = P>,
+        P: Into<String>,
+        D: IntoIterator<Item = Q>,
+        Q: Into<String>,
+    {
+        Self {
+            changed: normalize_snapshot_paths(changed_paths),
+            removed: normalize_snapshot_paths(removed_paths),
+        }
+    }
+}
+
 impl WorkspaceSnapshot {
     /// Build the canonical workspace snapshot directly from source bytes.
     ///
@@ -367,27 +392,19 @@ impl WorkspaceSnapshot {
 
     /// Bind a fully materialized current snapshot to the Merkle delta that
     /// produced it from an already published base root.
-    pub fn overlay_evidence<I, P, D, Q>(
+    pub fn overlay_evidence(
         &self,
         source_kind: SourceSnapshotKind,
         provider_digest: impl Into<String>,
         base_root_digest: impl Into<String>,
-        changed_paths: I,
-        removed_paths: D,
-    ) -> Result<SourceSnapshotEvidence, String>
-    where
-        I: IntoIterator<Item = P>,
-        P: Into<String>,
-        D: IntoIterator<Item = Q>,
-        Q: Into<String>,
-    {
-        let changed_leaves = changed_paths
-            .into_iter()
-            .map(Into::into)
-            .map(|path| normalize_snapshot_path(&path))
+        paths: WorkspaceOverlayPaths,
+    ) -> Result<SourceSnapshotEvidence, String> {
+        let changed_leaves = paths
+            .changed
+            .iter()
             .map(|path| {
                 self.leaves
-                    .get(&path)
+                    .get(path)
                     .cloned()
                     .map(|digest| (path.clone(), digest))
                     .ok_or_else(|| {
@@ -397,12 +414,8 @@ impl WorkspaceSnapshot {
                     })
             })
             .collect::<Result<BTreeMap<_, _>, _>>()?;
-        let removed_paths = removed_paths
-            .into_iter()
-            .map(Into::into)
-            .map(|path| normalize_snapshot_path(&path))
-            .collect::<BTreeSet<_>>();
-        if let Some(path) = removed_paths
+        if let Some(path) = paths
+            .removed
             .iter()
             .find(|path| self.leaves.contains_key(path.as_str()))
         {
@@ -410,7 +423,7 @@ impl WorkspaceSnapshot {
                 "Merkle overlay removed path remains in current snapshot: {path}"
             ));
         }
-        if changed_leaves.is_empty() && removed_paths.is_empty() {
+        if changed_leaves.is_empty() && paths.removed.is_empty() {
             return Err("Merkle overlay evidence requires at least one changed path".to_string());
         }
         let mut evidence = SourceSnapshotEvidence::new(
@@ -421,7 +434,7 @@ impl WorkspaceSnapshot {
         );
         evidence.base_root_digest = Some(base_root_digest.into());
         evidence.dirty_paths_digest =
-            Some(overlay_dirty_paths_digest(&changed_leaves, &removed_paths));
+            Some(overlay_dirty_paths_digest(&changed_leaves, &paths.removed));
         Ok(evidence)
     }
 
@@ -454,26 +467,43 @@ impl WorkspaceSnapshot {
             .map(|path| normalize_snapshot_path(&path))
             .collect::<BTreeSet<_>>();
 
+        let (leaves, overlay_base_leaves) = self.apply_overlay_delta(overlay_leaves, deleted_paths);
+        self.snapshot_from_overlay(leaves, overlay_base_leaves)
+    }
+
+    fn apply_overlay_delta(
+        &self,
+        overlay_leaves: BTreeMap<String, String>,
+        deleted_paths: BTreeSet<String>,
+    ) -> (BTreeMap<String, String>, BTreeMap<String, Option<String>>) {
         let mut leaves = self.leaves.clone();
         let mut overlay_base_leaves = self.overlay_base_leaves.clone();
         for (path, digest) in overlay_leaves {
-            if !overlay_base_leaves.contains_key(&path) {
-                overlay_base_leaves.insert(path.clone(), self.leaves.get(&path).cloned());
-            }
+            overlay_base_leaves
+                .entry(path.clone())
+                .or_insert_with(|| self.leaves.get(&path).cloned());
             leaves.insert(path.clone(), digest);
             if leaves.get(&path) == overlay_base_leaves.get(&path).and_then(Option::as_ref) {
                 overlay_base_leaves.remove(&path);
             }
         }
         for path in deleted_paths {
-            if !overlay_base_leaves.contains_key(&path) {
-                overlay_base_leaves.insert(path.clone(), self.leaves.get(&path).cloned());
-            }
+            overlay_base_leaves
+                .entry(path.clone())
+                .or_insert_with(|| self.leaves.get(&path).cloned());
             leaves.remove(&path);
             if overlay_base_leaves.get(&path).is_some_and(Option::is_none) {
                 overlay_base_leaves.remove(&path);
             }
         }
+        (leaves, overlay_base_leaves)
+    }
+
+    fn snapshot_from_overlay(
+        &self,
+        leaves: BTreeMap<String, String>,
+        overlay_base_leaves: BTreeMap<String, Option<String>>,
+    ) -> Self {
         let root_digest = merkle_root(&leaves);
         let changed_leaves = overlay_base_leaves
             .keys()
@@ -536,6 +566,18 @@ impl WorkspaceSnapshot {
             .collect::<Vec<_>>();
         self.with_overlay_delta(changed_leaves, deleted_paths)
     }
+}
+
+fn normalize_snapshot_paths<I, P>(paths: I) -> BTreeSet<String>
+where
+    I: IntoIterator<Item = P>,
+    P: Into<String>,
+{
+    paths
+        .into_iter()
+        .map(Into::into)
+        .map(|path| normalize_snapshot_path(&path))
+        .collect()
 }
 
 fn normalize_snapshot_path(path: &str) -> String {

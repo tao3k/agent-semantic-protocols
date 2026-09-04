@@ -60,7 +60,7 @@ fn compiled_registered_asp_search_rule_matches_its_production_action() {
         providers: Vec::new(),
     };
     let action = ToolAction::normalized_shell_command_action(
-        "asp rust search playbook 'HookDecision' --workspace .".to_owned(),
+        "asp search playbook --language rust 'HookDecision' --workspace .".to_owned(),
         "Bash".to_owned(),
     );
 

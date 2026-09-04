@@ -1,8 +1,10 @@
-use crate::graph_candidate_projection::{
-    GraphCandidateHotNodesRequest, GraphCandidateItemNodesRequest, GraphProjectionCandidate,
-    graph_candidate_hot_nodes, graph_candidate_item_node_id, graph_candidate_item_nodes,
-    graph_projection_candidate_readiness,
-};
+use crate::graph_candidate_projection::GraphCandidateHotNodesRequest;
+use crate::graph_candidate_projection::GraphCandidateItemNodesRequest;
+use crate::graph_candidate_projection::GraphProjectionCandidate;
+use crate::graph_candidate_projection::graph_candidate_hot_nodes;
+use crate::graph_candidate_projection::graph_candidate_item_node_id;
+use crate::graph_candidate_projection::graph_candidate_item_nodes;
+use crate::graph_candidate_projection::graph_projection_candidate_readiness;
 
 #[test]
 fn graph_candidate_item_nodes_use_language_neutral_structural_identity_without_line_ranges() {

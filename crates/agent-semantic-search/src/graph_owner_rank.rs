@@ -1,10 +1,11 @@
-use std::{
-    cmp::Reverse,
-    collections::{HashMap, HashSet},
-    path::Path,
-};
+use std::cmp::Reverse;
+use std::collections::HashMap;
+use std::collections::HashSet;
+use std::path::Path;
 
-use crate::{GraphProjectionCandidate, graph_path_is_under, graph_project_submodule_paths};
+use crate::GraphProjectionCandidate;
+use crate::graph_path_is_under;
+use crate::graph_project_submodule_paths;
 
 /// Request for the Rust graph-owner ranking engine.
 #[derive(Clone, Debug, Eq, PartialEq)]

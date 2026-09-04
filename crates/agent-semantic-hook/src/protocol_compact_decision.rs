@@ -2,14 +2,21 @@
 
 use std::collections::BTreeMap;
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 use serde_json::Value;
 
-use super::{
-    DecisionKind, DecisionRoute, DecisionRouteKind, DecisionSubject, HOOK_DECISION_SCHEMA_ID,
-    HOOK_DECISION_SCHEMA_VERSION, HOOK_PROTOCOL_ID, HOOK_PROTOCOL_VERSION, HookDecision,
-    ReasonKind, StdinMode,
-};
+use super::DecisionKind;
+use super::DecisionRoute;
+use super::DecisionRouteKind;
+use super::DecisionSubject;
+use super::HOOK_DECISION_SCHEMA_ID;
+use super::HOOK_DECISION_SCHEMA_VERSION;
+use super::HOOK_PROTOCOL_ID;
+use super::HOOK_PROTOCOL_VERSION;
+use super::HookDecision;
+use super::ReasonKind;
+use super::StdinMode;
 
 #[derive(Serialize)]
 struct CompactSubjectRef<'a> {

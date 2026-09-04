@@ -1,7 +1,10 @@
-use crate::{
-    ClientDispatchClass, ResolvedServerClientMethod, ServerClientRoute, classify_client_dispatch,
-    resolve_server_client_method, resolve_server_client_method_owner, server_client_methods,
-};
+use crate::ClientDispatchClass;
+use crate::ResolvedServerClientMethod;
+use crate::ServerClientRoute;
+use crate::classify_client_dispatch;
+use crate::resolve_server_client_method;
+use crate::resolve_server_client_method_owner;
+use crate::server_client_methods;
 
 #[test]
 fn server_catalog_exposes_northbound_search_query_and_schema_bundle_methods() {
@@ -22,6 +25,7 @@ fn server_catalog_exposes_northbound_search_query_and_schema_bundle_methods() {
             "asp.session.host-event",
             "asp.session.register-child",
             "asp.workspace.generation.ensure-ready",
+            "asp.workspace.search.playbook",
             "rust.query",
             "rust.search",
             "rust.source-index.lookup"
@@ -35,8 +39,24 @@ fn server_catalog_exposes_northbound_search_query_and_schema_bundle_methods() {
             .all(|method| {
                 method
                     .request_schema_id
+                    .as_str()
                     .starts_with("agent.semantic-protocols.")
             })
+    );
+}
+
+#[test]
+fn workspace_search_playbook_is_server_owned_and_complete_generation_scoped() {
+    let languages = ["rust".to_owned(), "gerbil-scheme".to_owned()];
+    assert_eq!(
+        resolve_server_client_method_owner(crate::WORKSPACE_SEARCH_PLAYBOOK_METHOD, languages),
+        Ok(ResolvedServerClientMethod::Server(
+            ServerClientRoute::WorkspaceSearchPlaybook,
+        ))
+    );
+    assert_eq!(
+        classify_client_dispatch(crate::WORKSPACE_SEARCH_PLAYBOOK_METHOD),
+        ClientDispatchClass::CompleteGenerationRead,
     );
 }
 
@@ -95,6 +115,14 @@ fn dispatch_class_is_catalog_owned_and_preserved_by_transports() {
     );
     assert_eq!(
         classify_client_dispatch("rust.query"),
+        ClientDispatchClass::CompleteGenerationRead,
+    );
+    assert_eq!(
+        classify_client_dispatch("python.search"),
+        ClientDispatchClass::CompleteGenerationRead,
+    );
+    assert_eq!(
+        classify_client_dispatch("asp.graph.evaluate"),
         ClientDispatchClass::InteractiveRead,
     );
 }
@@ -123,13 +151,13 @@ fn server_catalog_exposes_the_resident_runtime_graph_evaluation_method() {
         .iter()
         .find(|method| method.method == "asp.graph.evaluate")
         .expect("graph evaluation method");
-    assert_eq!(method.route_id, "asp.graph.evaluate");
+    assert_eq!(method.route_id.as_str(), "asp.graph.evaluate");
     assert_eq!(
-        method.request_schema_id,
+        method.request_schema_id.as_str(),
         "agent.semantic-protocols.semantic-graph-resident-evaluation-request"
     );
     assert_eq!(
-        method.response_schema_id,
+        method.response_schema_id.as_str(),
         "agent.semantic-protocols.semantic-graph-resident-evaluation-result"
     );
     assert_eq!(
@@ -172,13 +200,13 @@ fn schema_bundle_method_is_transport_neutral_and_profile_selected() {
         .iter()
         .find(|method| method.method == crate::SCHEMA_BUNDLE_METHOD)
         .expect("schema bundle method");
-    assert_eq!(method.route_id, "asp.schema.bundle");
+    assert_eq!(method.route_id.as_str(), "asp.schema.bundle");
     assert_eq!(
-        method.request_schema_id,
+        method.request_schema_id.as_str(),
         crate::SCHEMA_BUNDLE_REQUEST_SCHEMA_ID
     );
     assert_eq!(
-        method.response_schema_id,
+        method.response_schema_id.as_str(),
         crate::SCHEMA_BUNDLE_RESPONSE_SCHEMA_ID
     );
     assert_eq!(

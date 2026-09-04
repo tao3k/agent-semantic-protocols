@@ -1,7 +1,10 @@
-use super::{
-    CompiledHookRule, DurableRuleMatcherArtifact, HookRuntime, RuleRoute, canonical_event,
-    collect_source_selector_matches, compiled_rule_message,
-};
+use super::CompiledHookRule;
+use super::DurableRuleMatcherArtifact;
+use super::HookRuntime;
+use super::RuleRoute;
+use super::canonical_event;
+use super::collect_source_selector_matches;
+use super::compiled_rule_message;
 use crate::protocol::DecisionRoute;
 use crate::tool_action::ToolAction;
 

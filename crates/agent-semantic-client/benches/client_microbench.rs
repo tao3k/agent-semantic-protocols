@@ -1,5 +1,8 @@
-use agent_semantic_client_core::{ClientMethod, ClientRequest};
-use criterion::{Criterion, criterion_group, criterion_main};
+use agent_semantic_client_core::ClientMethod;
+use agent_semantic_client_core::ClientRequest;
+use criterion::Criterion;
+use criterion::criterion_group;
+use criterion::criterion_main;
 use std::hint::black_box;
 
 /// Measures only the process-local request value construction owned by the

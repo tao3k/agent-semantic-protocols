@@ -1,7 +1,8 @@
 //! Provider install receipt parsing, artifact admission, and atomic publication.
 
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 
 pub(super) fn provider_install_receipt_matches_artifact(
     receipt: &agent_semantic_runtime::ProviderInstallReceipt,

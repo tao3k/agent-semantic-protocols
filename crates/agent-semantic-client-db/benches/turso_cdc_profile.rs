@@ -1,11 +1,16 @@
 use std::hint::black_box;
 use std::path::PathBuf;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::SystemTime;
+use std::time::UNIX_EPOCH;
 
-use agent_semantic_client_db::turso_cdc_storage::{
-    TursoCdcCaptureMode, TursoCdcChangeKind, TursoCdcProfileConfig, TursoCdcStorage,
-};
-use criterion::{Criterion, Throughput, criterion_group, criterion_main};
+use agent_semantic_client_db::turso_cdc_storage::TursoCdcCaptureMode;
+use agent_semantic_client_db::turso_cdc_storage::TursoCdcChangeKind;
+use agent_semantic_client_db::turso_cdc_storage::TursoCdcProfileConfig;
+use agent_semantic_client_db::turso_cdc_storage::TursoCdcStorage;
+use criterion::Criterion;
+use criterion::Throughput;
+use criterion::criterion_group;
+use criterion::criterion_main;
 use turso::transaction::TransactionBehavior;
 
 fn temp_db() -> PathBuf {

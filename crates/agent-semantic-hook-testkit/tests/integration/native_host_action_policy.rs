@@ -1,4 +1,5 @@
-use agent_semantic_hook::aot_evaluator::{evaluate_pre_tool, reader_probe_request};
+use agent_semantic_hook::aot_evaluator::evaluate_pre_tool;
+use agent_semantic_hook::aot_evaluator::reader_probe_request;
 
 use super::aot_evaluator_contract::canonical_generation;
 

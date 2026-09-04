@@ -1,6 +1,7 @@
 //! Publication identity predicates shared by Host acceptance and black-box TestKit assertions.
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 use serde_json::Value;
 
 pub const HOOK_RUNTIME_IDENTITY_SCHEMA_ID: &str = "agent.semantic-protocols.hook-runtime-identity";

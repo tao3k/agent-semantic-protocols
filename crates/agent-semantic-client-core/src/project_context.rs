@@ -1,6 +1,7 @@
 //! Project-facing entry point for ASP state and cache paths.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 
 /// Resolved project identity and state-layout roots for client-owned storage.
 #[derive(Clone, Debug, Eq, PartialEq)]

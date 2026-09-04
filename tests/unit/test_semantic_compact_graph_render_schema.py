@@ -30,7 +30,7 @@ def minimal_render_template() -> dict[str, object]:
         "rendererOwner": {
             "crate": "agent-semantic-protocol",
             "library": "agent_semantic_protocol::graph",
-            "cli": "asp graph render --packet <path-or-> --view seeds",
+            "cli": "asp graph render --packet <path-or->",
             "inputPacketSchemaId": "agent.semantic-protocols.semantic-search-packet",
             "migrationAdapterAllowed": True,
             "providerIntegration": "shell-out",
@@ -40,7 +40,7 @@ def minimal_render_template() -> dict[str, object]:
         },
         "sourcePacketSchemaId": "agent.semantic-protocols.semantic-search-packet",
         "viewHeaderContract": {
-            "appliesWhen": "search --view seeds",
+            "appliesWhen": "asp graph render --packet <path-or->",
             "headerPrefix": "[search-<view>]",
             "headerIsGraphPacket": True,
             "graphBlockRequired": True,

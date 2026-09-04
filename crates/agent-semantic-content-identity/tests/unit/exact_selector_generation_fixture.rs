@@ -1,12 +1,14 @@
-use super::{
-    DIGEST_LEN, ExactSelectorGenerationFixtureErrorV1, ExactSelectorGenerationFixtureViewV1,
-    ExactSelectorGenerationIdentityV1, ExactSelectorGenerationRecordV1,
-    ExactSelectorProjectionModeV1, build_exact_selector_generation_fixture_v1, fixture_digest_v1,
-};
-use crate::{
-    CanonicalItemSelector, ExactSelectorMaterializationProofErrorV1,
-    ExactSelectorMaterializationProofV1,
-};
+use super::DIGEST_LEN;
+use super::ExactSelectorGenerationFixtureErrorV1;
+use super::ExactSelectorGenerationFixtureViewV1;
+use super::ExactSelectorGenerationIdentityV1;
+use super::ExactSelectorGenerationRecordV1;
+use super::ExactSelectorProjectionModeV1;
+use super::build_exact_selector_generation_fixture_v1;
+use super::fixture_digest_v1;
+use crate::CanonicalItemSelector;
+use crate::ExactSelectorMaterializationProofErrorV1;
+use crate::ExactSelectorMaterializationProofV1;
 
 fn digest(byte: u8) -> [u8; DIGEST_LEN] {
     [byte; DIGEST_LEN]

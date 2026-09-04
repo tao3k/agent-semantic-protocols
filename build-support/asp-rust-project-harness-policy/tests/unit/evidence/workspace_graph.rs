@@ -1,12 +1,11 @@
 use std::path::PathBuf;
 
 use asp_rust_project_harness_policy::AspRustProjectHarnessEvidenceGraphInput;
-use asp_rust_project_harness_policy::workspace_evidence_graph::{
-    AspRustProjectHarnessWorkspaceEvidenceGraphEdgeKind,
-    AspRustProjectHarnessWorkspaceEvidenceGraphNodeKind,
-    AspRustProjectHarnessWorkspaceEvidenceGraphRequest, build_asp_workspace_evidence_graph_receipt,
-    build_workspace_evidence_graph_receipt,
-};
+use asp_rust_project_harness_policy::workspace_evidence_graph::AspRustProjectHarnessWorkspaceEvidenceGraphEdgeKind;
+use asp_rust_project_harness_policy::workspace_evidence_graph::AspRustProjectHarnessWorkspaceEvidenceGraphNodeKind;
+use asp_rust_project_harness_policy::workspace_evidence_graph::AspRustProjectHarnessWorkspaceEvidenceGraphRequest;
+use asp_rust_project_harness_policy::workspace_evidence_graph::build_asp_workspace_evidence_graph_receipt;
+use asp_rust_project_harness_policy::workspace_evidence_graph::build_workspace_evidence_graph_receipt;
 
 #[test]
 fn workspace_receipt_projects_member_crates_and_client_db_graph() {

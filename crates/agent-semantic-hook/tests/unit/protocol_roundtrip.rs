@@ -1,8 +1,14 @@
-use agent_semantic_hook::{
-    DecisionKind, DecisionRoute, DecisionRouteKind, DecisionSubject, HOOK_DECISION_SCHEMA_ID,
-    HOOK_DECISION_SCHEMA_VERSION, HOOK_PROTOCOL_ID, HOOK_PROTOCOL_VERSION, HookDecision,
-    ReasonKind, StdinMode,
-};
+use agent_semantic_hook::DecisionKind;
+use agent_semantic_hook::DecisionRoute;
+use agent_semantic_hook::DecisionRouteKind;
+use agent_semantic_hook::DecisionSubject;
+use agent_semantic_hook::HOOK_DECISION_SCHEMA_ID;
+use agent_semantic_hook::HOOK_DECISION_SCHEMA_VERSION;
+use agent_semantic_hook::HOOK_PROTOCOL_ID;
+use agent_semantic_hook::HOOK_PROTOCOL_VERSION;
+use agent_semantic_hook::HookDecision;
+use agent_semantic_hook::ReasonKind;
+use agent_semantic_hook::StdinMode;
 use std::collections::BTreeMap;
 
 fn decision() -> HookDecision {

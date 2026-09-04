@@ -3,10 +3,14 @@
 use std::collections::BTreeMap;
 use std::pin::Pin;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::AtomicU64;
+use std::sync::atomic::Ordering;
 
-use tokio::sync::{broadcast, watch};
-use tokio_stream::{Stream, StreamExt, wrappers::BroadcastStream};
+use tokio::sync::broadcast;
+use tokio::sync::watch;
+use tokio_stream::Stream;
+use tokio_stream::StreamExt;
+use tokio_stream::wrappers::BroadcastStream;
 
 pub const RUNTIME_SEARCH_ATTACHMENT_EVENT_CAPACITY: usize = 256;
 
@@ -151,7 +155,10 @@ fn transition_admitted(
     current: RuntimeSearchDerivedAttachmentState,
     next: RuntimeSearchDerivedAttachmentState,
 ) -> bool {
-    use RuntimeSearchDerivedAttachmentState::{Building, Failed, Queued, Ready};
+    use RuntimeSearchDerivedAttachmentState::Building;
+    use RuntimeSearchDerivedAttachmentState::Failed;
+    use RuntimeSearchDerivedAttachmentState::Queued;
+    use RuntimeSearchDerivedAttachmentState::Ready;
     matches!(
         (current, next),
         (Queued, Queued | Building | Failed)

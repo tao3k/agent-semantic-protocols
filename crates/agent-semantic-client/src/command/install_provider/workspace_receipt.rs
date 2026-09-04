@@ -1,9 +1,9 @@
 use std::path::Path;
 
-use agent_semantic_provider_protocol::{
-    ProviderRegisterOperation, ProviderRegisterRequest, ProviderRegisterResult,
-    ProviderRegistrationDocument,
-};
+use agent_semantic_provider_protocol::ProviderRegisterOperation;
+use agent_semantic_provider_protocol::ProviderRegisterRequest;
+use agent_semantic_provider_protocol::ProviderRegisterResult;
+use agent_semantic_provider_protocol::ProviderRegistrationDocument;
 use agent_semantic_runtime::project_runtime_state;
 
 // Workspace publication receipts remain private to the provider-install branch.

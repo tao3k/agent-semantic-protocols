@@ -5,8 +5,10 @@
 
 use std::collections::BTreeSet;
 use std::fs;
-use std::hash::{Hash, Hasher};
-use std::path::{Path, PathBuf};
+use std::hash::Hash;
+use std::hash::Hasher;
+use std::path::Path;
+use std::path::PathBuf;
 
 use crate::compile_query_abi_source;
 

@@ -7,7 +7,8 @@ mod policy_candidate;
 
 #[doc = "Compiles config match primitives for this owner."]
 mod compile;
-pub(in crate::hook_config::core) use compile::{compile_command_contains, compile_globs};
+pub(in crate::hook_config::core) use compile::compile_command_contains;
+pub(in crate::hook_config::core) use compile::compile_globs;
 #[doc = "Owns compiled matcher value types for this owner."]
 mod match_types;
 #[doc = "Matches activated ASP command capabilities."]
@@ -16,6 +17,9 @@ mod registered_asp;
 #[doc = "Matches structured projection contracts."]
 mod structured_projection;
 
-pub use implementation::{ClientHookConfig, DurableHookConfigArtifact, MaterializedDecisionShards};
-pub(super) use implementation::{compile_config, compile_config_with_executable_capabilities};
+pub use implementation::ClientHookConfig;
+pub use implementation::DurableHookConfigArtifact;
+pub use implementation::MaterializedDecisionShards;
+pub(super) use implementation::compile_config;
+pub(super) use implementation::compile_config_with_executable_capabilities;
 pub(crate) use policy_candidate::HookPolicyCandidate;

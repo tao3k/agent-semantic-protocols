@@ -1,4 +1,8 @@
-use super::*;
+use super::PROVIDER_RUNTIME_FRAME_SCHEMA_VERSION;
+use super::PROVIDER_RUNTIME_RESPONSE_FRAME_SCHEMA_ID;
+use super::ProviderRuntimeRequestFrame;
+use super::ProviderRuntimeResponseFrame;
+use super::ProviderRuntimeResponseOutcome;
 
 #[test]
 fn request_frame_round_trips_with_typed_identity() {

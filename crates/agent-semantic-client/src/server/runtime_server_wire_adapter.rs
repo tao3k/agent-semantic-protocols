@@ -2,14 +2,6 @@
 
 use std::path::Path;
 
-pub(crate) use agent_semantic_client_db::RuntimeServerSpawnReceipt;
-
-pub(crate) async fn read_runtime_server_spawn_receipt(
-    state_home: &Path,
-) -> Result<Option<RuntimeServerSpawnReceipt>, String> {
-    agent_semantic_client_db::runtime_server_lifecycle::read_owner_receipt(state_home).await
-}
-
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum RuntimeServerActivationAuthority {
     OperatorStart,

@@ -3,67 +3,80 @@
 //! Language-neutral Provider Registration Protocol shared by ASP Server and providers.
 
 mod install_register;
+mod provider_stream;
 mod register;
 mod route;
 mod syntax_query;
 mod workspace_install;
-pub use install_register::*;
+pub use install_register::ProviderInstallArtifactDomain;
+pub use install_register::ProviderInstallRegister;
+pub use install_register::ProviderInstallRegistration;
+pub use install_register::parse_provider_install_register;
+pub use provider_stream::PROVIDER_STREAM_SCHEMA_ID;
+pub use provider_stream::PROVIDER_STREAM_SCHEMA_VERSION;
+pub use provider_stream::validate_provider_stream_envelope;
 
-pub const PROVIDER_STREAM_SCHEMA_ID: &str = "agent.semantic-protocols.provider-stream";
-pub const PROVIDER_STREAM_SCHEMA_VERSION: &str = "1";
+pub use register::PROVIDER_REGISTER_REQUEST_SCHEMA_ID;
+pub use register::PROVIDER_REGISTER_RESPONSE_SCHEMA_ID;
+pub use register::PROVIDER_REGISTER_SCHEMA_VERSION;
+pub use register::ProviderDocumentInventory;
+pub use register::ProviderProjectInventory;
+pub use register::ProviderRegisterOperation;
+pub use register::ProviderRegisterRequest;
+pub use register::ProviderRegisterResponse;
+pub use register::ProviderRegisterResult;
+pub use register::ProviderRegisterSnapshot;
+pub use register::ProviderRegistrationDocument;
+pub use register::ProviderSourceInventory;
+pub use register::builtin_provider_register_json;
+pub use register::builtin_provider_registrations;
+pub use route::CompiledProviderRoute;
+pub use route::PROVIDER_ROUTE_SCHEMA_ID;
+pub use route::PROVIDER_ROUTE_SCHEMA_VERSION;
+pub use route::ProviderRouteAccess;
+pub use route::ProviderRouteAuthority;
+pub use route::ProviderRouteCache;
+pub use route::ProviderRouteCacheScope;
+pub use route::ProviderRouteCardinality;
+pub use route::ProviderRouteCompileError;
+pub use route::ProviderRouteConcurrency;
+pub use route::ProviderRouteEffects;
+pub use route::ProviderRouteInputSlot;
+pub use route::ProviderRouteInputSource;
+pub use route::ProviderRouteOutput;
+pub use route::ProviderRouteRequiredState;
+pub use route::ProviderRouteRequirement;
+pub use route::ProviderRouteSpec;
+pub use route::ProviderRouteTarget;
+pub use route::ProviderRouteTelemetry;
+pub use route::ProviderRouteTelemetryPolicy;
+pub use route::ProviderRouteValueType;
+pub use route::ProviderSchemaReference;
+pub use syntax_query::PROVIDER_SYNTAX_QUERY_OPERATION;
+pub use syntax_query::PROVIDER_SYNTAX_QUERY_REQUEST_SCHEMA_ID;
+pub use syntax_query::PROVIDER_SYNTAX_QUERY_RESPONSE_SCHEMA_ID;
+pub use syntax_query::ProviderSyntaxQueryCapture;
+pub use syntax_query::ProviderSyntaxQueryRequest;
+pub use syntax_query::ProviderSyntaxQueryResponse;
+pub use syntax_query::SyntaxQueryPattern;
+pub use syntax_query::SyntaxQueryPlan;
+pub use syntax_query::SyntaxQueryPredicate;
+pub use syntax_query::SyntaxQueryPredicateOp;
+pub use syntax_query::SyntaxQueryPredicateValue;
+pub use workspace_install::PROVIDER_WORKSPACE_INSTALL_SCHEMA_AUTHORITY;
+pub use workspace_install::PROVIDER_WORKSPACE_INSTALL_SCHEMA_FILE;
+pub use workspace_install::PROVIDER_WORKSPACE_INSTALL_SCHEMA_ID;
+pub use workspace_install::PROVIDER_WORKSPACE_INSTALL_SCHEMA_VERSION;
+pub use workspace_install::ProviderWorkspaceInstallDescriptor;
+pub use workspace_install::WorkspaceArtifactDescriptor;
+pub use workspace_install::WorkspaceBuildDescriptor;
+pub use workspace_install::WorkspaceCommandDescriptor;
+pub use workspace_install::WorkspaceLaunchDescriptor;
+pub use workspace_install::WorkspaceRuntimeDependencyDescriptor;
 
-pub fn validate_provider_stream_envelope(
-    schema_id: &str,
-    schema_version: &str,
-    session_id: &str,
-    request_id: &str,
-    workspace_identity: &str,
-    generation_digest: &str,
-    provider_id: &str,
-    language_id: &str,
-    kind: &str,
-    payload_schema_id: &str,
-) -> Result<(), String> {
-    if schema_id != PROVIDER_STREAM_SCHEMA_ID || schema_version != PROVIDER_STREAM_SCHEMA_VERSION {
-        return Err("invalid provider stream schema identity".to_owned());
-    }
-    for (name, value) in [
-        ("sessionId", session_id),
-        ("requestId", request_id),
-        ("workspaceIdentity", workspace_identity),
-        ("generationDigest", generation_digest),
-        ("providerId", provider_id),
-        ("languageId", language_id),
-        ("kind", kind),
-        ("payloadSchemaId", payload_schema_id),
-    ] {
-        if value.is_empty() {
-            return Err(format!("provider stream envelope {name} is empty"));
-        }
-    }
-    Ok(())
-}
-
-pub use register::{
-    PROVIDER_REGISTER_REQUEST_SCHEMA_ID, PROVIDER_REGISTER_RESPONSE_SCHEMA_ID,
-    PROVIDER_REGISTER_SCHEMA_VERSION, ProviderDocumentInventory, ProviderProjectInventory,
-    ProviderRegisterOperation, ProviderRegisterRequest, ProviderRegisterResponse,
-    ProviderRegisterResult, ProviderRegisterSnapshot, ProviderRegistrationDocument,
-    ProviderSourceInventory, builtin_provider_register_json, builtin_provider_registrations,
-};
-pub use route::{
-    CompiledProviderRoute, PROVIDER_ROUTE_SCHEMA_ID, PROVIDER_ROUTE_SCHEMA_VERSION,
-    ProviderRouteAccess, ProviderRouteAuthority, ProviderRouteCache, ProviderRouteCacheScope,
-    ProviderRouteCardinality, ProviderRouteCompileError, ProviderRouteConcurrency,
-    ProviderRouteEffects, ProviderRouteInputSlot, ProviderRouteInputSource, ProviderRouteOutput,
-    ProviderRouteRequiredState, ProviderRouteRequirement, ProviderRouteSpec, ProviderRouteTarget,
-    ProviderRouteTelemetry, ProviderRouteTelemetryPolicy, ProviderRouteValueType,
-    ProviderSchemaReference,
-};
-pub use syntax_query::{
-    PROVIDER_SYNTAX_QUERY_OPERATION, PROVIDER_SYNTAX_QUERY_REQUEST_SCHEMA_ID,
-    PROVIDER_SYNTAX_QUERY_RESPONSE_SCHEMA_ID, ProviderSyntaxQueryCapture,
-    ProviderSyntaxQueryRequest, ProviderSyntaxQueryResponse, SyntaxQueryPattern, SyntaxQueryPlan,
-    SyntaxQueryPredicate, SyntaxQueryPredicateOp, SyntaxQueryPredicateValue,
-};
-pub use workspace_install::*;
+#[cfg(test)]
+#[path = "../tests/unit/route.rs"]
+mod route_tests;
+#[cfg(test)]
+#[path = "../tests/unit/workspace_install.rs"]
+mod workspace_install_tests;

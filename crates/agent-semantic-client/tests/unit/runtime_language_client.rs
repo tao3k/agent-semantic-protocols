@@ -1,14 +1,32 @@
-use agent_semantic_client_protocol::{
-    CLIENT_FRAME_SCHEMA_ID, CLIENT_PROTOCOL_ID, CLIENT_PROTOCOL_VERSION, ClientFrame,
-    ClientFrameBase, ClientOutcome, ClientRequestId, ClientSessionId, ClientWorkspaceIdentity,
-    SCHEMA_BUNDLE_RESPONSE_SCHEMA_ID, SCHEMA_VERSION, SchemaBundleEntry, SchemaBundleReceipt,
-    SchemaBundleResponse,
-};
+use agent_semantic_client_protocol::ClientFrame;
+use agent_semantic_client_protocol::ClientFrameBase;
+use agent_semantic_client_protocol::ClientOutcome;
+use agent_semantic_client_protocol::ClientRequestId;
+use agent_semantic_client_protocol::ClientSessionId;
+use agent_semantic_client_protocol::ClientWorkspaceIdentity;
+use agent_semantic_client_protocol::SCHEMA_BUNDLE_RESPONSE_SCHEMA_ID;
+use agent_semantic_client_protocol::SchemaBundleEntry;
+use agent_semantic_client_protocol::SchemaBundleReceipt;
+use agent_semantic_client_protocol::SchemaBundleResponse;
+use agent_semantic_client_protocol::protocol_identity::CLIENT_FRAME_SCHEMA_ID;
+use agent_semantic_client_protocol::protocol_identity::CLIENT_PROTOCOL_ID;
+use agent_semantic_client_protocol::protocol_identity::CLIENT_PROTOCOL_VERSION;
+use agent_semantic_client_protocol::protocol_identity::SCHEMA_VERSION;
 
-use crate::runtime_language_client::{
-    SessionKey, SessionRegistry, decode_schema_bundle_response, session_for_key,
-    validate_cancelled_terminal,
-};
+use crate::runtime_language_client::AspClient;
+use crate::runtime_language_client::SessionKey;
+use crate::runtime_language_client::SessionRegistry;
+use crate::runtime_language_client::decode_schema_bundle_response;
+use crate::runtime_language_client::session_for_key;
+use crate::runtime_language_client::validate_cancelled_terminal;
+
+#[cfg(unix)]
+#[test]
+fn absent_host_descriptor_uses_the_verified_published_endpoint_path() {
+    let client = AspClient::new_from_host_descriptor_value("/state", "/workspace", None)
+        .expect("an absent optional descriptor must not block normal CLI transport");
+    assert!(client.uses_published_loopback_transport());
+}
 
 fn client_frame_base() -> ClientFrameBase {
     ClientFrameBase {
@@ -157,7 +175,7 @@ async fn registry_is_bounded_and_never_evicts_an_active_or_connecting_lease() {
 }
 
 #[tokio::test]
-async fn generation_identity_change_cannot_reuse_the_previous_session() {
+async fn publication_nonce_change_cannot_reuse_the_previous_session() {
     let mut registry = SessionRegistry::<usize>::new(2);
     let first_key = SessionKey::fixture(20);
     let next_key = SessionKey::fixture_successor(20);

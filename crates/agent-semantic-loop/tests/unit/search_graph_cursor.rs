@@ -1,8 +1,11 @@
-use super::{
-    InteractiveSearchGraphState, SearchGraphCursor, SearchGraphCursorArtifact,
-    SearchGraphCursorBootstrapRequest, SearchGraphCursorError, SearchGraphCursorJumpRequest,
-    UncheckedInteractiveSearchGraphState, UncheckedSearchGraphCursorArtifact,
-};
+use super::InteractiveSearchGraphState;
+use super::SearchGraphCursor;
+use super::SearchGraphCursorArtifact;
+use super::SearchGraphCursorBootstrapRequest;
+use super::SearchGraphCursorError;
+use super::SearchGraphCursorJumpRequest;
+use super::UncheckedInteractiveSearchGraphState;
+use super::UncheckedSearchGraphCursorArtifact;
 
 fn fixture_state(field: &str) -> InteractiveSearchGraphState {
     let fixture: serde_json::Value = serde_json::from_str(include_str!(

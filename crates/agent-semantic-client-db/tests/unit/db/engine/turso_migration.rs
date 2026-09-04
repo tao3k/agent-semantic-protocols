@@ -28,12 +28,10 @@ fn active_turso_0_7_migration_preserves_non_db_artifacts_and_is_idempotent() {
     std::fs::remove_file(client_dir.join("search-projection.turso.format.v1.json"))
         .expect("remove source search receipt");
     let source_db_bytes = std::fs::read(&db_path).expect("snapshot source facts DB");
-    let source_search_bytes =
-        std::fs::read(&search_db_path).expect("snapshot source search DB");
+    let source_search_bytes = std::fs::read(&search_db_path).expect("snapshot source search DB");
     let sentinel_path = client_dir.join("source-blob-cas");
     std::fs::create_dir(&sentinel_path).expect("create non-DB sentinel dir");
-    std::fs::write(sentinel_path.join("sentinel"), b"preserve")
-        .expect("write non-DB sentinel");
+    std::fs::write(sentinel_path.join("sentinel"), b"preserve").expect("write non-DB sentinel");
 
     let migrated = ClientDbEngine::migrate_active_project_client_dir_to_turso_0_7(&client_dir)
         .expect("migrate active client dir");
@@ -50,8 +48,7 @@ fn active_turso_0_7_migration_preserves_non_db_artifacts_and_is_idempotent() {
         b"preserve"
     );
     assert_eq!(
-        std::fs::read(rollback_client_dir.join("facts.turso"))
-            .expect("read rollback facts DB"),
+        std::fs::read(rollback_client_dir.join("facts.turso")).expect("read rollback facts DB"),
         source_db_bytes
     );
     assert_eq!(
@@ -77,3 +74,6 @@ fn active_turso_0_7_migration_preserves_non_db_artifacts_and_is_idempotent() {
 
     std::fs::remove_dir_all(root).expect("remove migration fixture");
 }
+use super::fixture::temp_root;
+use agent_semantic_client_core::ClientCacheManifest;
+use agent_semantic_client_db::ClientDbEngine;

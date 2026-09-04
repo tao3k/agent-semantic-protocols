@@ -2,20 +2,25 @@
 
 use std::io::ErrorKind;
 use std::process::ExitStatus;
-use std::time::{Duration, Instant};
+use std::time::Duration;
+use std::time::Instant;
 
 use tokio::io::AsyncWriteExt;
-use tokio::process::{Child, ChildStdin};
+use tokio::process::Child;
+use tokio::process::ChildStdin;
 use tokio::task::JoinHandle;
-use tracing::{debug, warn};
+use tracing::debug;
+use tracing::warn;
 
 use crate::capture::LimitedRead;
-use crate::process_contract::{
-    ProviderProcessError, ProviderProcessLimits, ProviderProcessReceipt, StdinMode,
-};
+use crate::process_contract::ProviderProcessError;
+use crate::process_contract::ProviderProcessLimits;
+use crate::process_contract::ProviderProcessReceipt;
+use crate::process_contract::StdinMode;
 
+use super::ProviderIoTasks;
+use super::runtime::ProviderChild;
 use super::runtime::ProviderProcessOutput;
-use super::{ProviderIoTasks, runtime::ProviderChild};
 
 const PROVIDER_MEMORY_OBSERVATION_GRACE: Duration = Duration::from_millis(250);
 const PROVIDER_MEMORY_OBSERVATION_POLL_INTERVAL: Duration = Duration::from_millis(50);

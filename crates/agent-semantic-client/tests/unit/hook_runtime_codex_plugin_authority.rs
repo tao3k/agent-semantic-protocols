@@ -1,8 +1,12 @@
 use super::ASP_CODEX_PLUGIN_NAME;
 #[cfg(test)]
-use super::{CodexHookConfigInstallReceipt, write_codex_config_atomically};
+use super::CodexHookConfigInstallReceipt;
 #[cfg(test)]
-use std::{fs, path::Path};
+use super::write_codex_config_atomically;
+#[cfg(test)]
+use std::fs;
+#[cfg(test)]
+use std::path::Path;
 
 pub(in crate::command) const ASP_CODEX_PLUGIN_MANIFEST_JSON: &str =
     include_str!("../../../../asp-codex-plugin/.codex-plugin/plugin.json");

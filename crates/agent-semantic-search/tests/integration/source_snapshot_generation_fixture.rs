@@ -1,9 +1,9 @@
-use agent_semantic_content_identity::workspace_generation_evidence::{
-    ValidatedWorkspaceGenerationV1, WorkspaceGenerationEvidenceV1,
-};
-use agent_semantic_content_identity::{
-    SourceSnapshotEvidence, SourceSnapshotKind, WorkspaceSnapshot, hash_blob,
-};
+use agent_semantic_content_identity::SourceSnapshotEvidence;
+use agent_semantic_content_identity::SourceSnapshotKind;
+use agent_semantic_content_identity::WorkspaceSnapshot;
+use agent_semantic_content_identity::hash_blob;
+use agent_semantic_content_identity::workspace_generation_evidence::ValidatedWorkspaceGenerationV1;
+use agent_semantic_content_identity::workspace_generation_evidence::WorkspaceGenerationEvidenceV1;
 
 fn rust_provider_manifest() -> &'static [u8] {
     agent_semantic_provider_protocol::builtin_provider_register_json().as_bytes()

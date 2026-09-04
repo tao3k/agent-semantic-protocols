@@ -23,12 +23,13 @@ use format::{
 };
 
 // This is an internal mmap layout identity, not a protocol schema version.
-// Layout 0004 commits parser-owned selector query keys. Old segments fail
+// Layout 0005 commits parser-owned selector query keys and owner-local syntax
+// diagnostics. Old segments fail
 // closed so the publisher rebuilds them through the sole CompleteGeneration
 // authority; there is deliberately no legacy decoder.
-const MAGIC: &[u8; 16] = b"ASPEXACTMMAP0004";
+const MAGIC: &[u8; 16] = b"ASPEXACTMMAP0005";
 const HEADER_LEN: usize = 160;
-const OWNER_ENTRY_LEN: usize = 144;
+const OWNER_ENTRY_LEN: usize = 160;
 const SELECTOR_ENTRY_LEN: usize = 120;
 const RELOCATION_ENTRY_LEN: usize = 40;
 
@@ -289,9 +290,27 @@ impl MappedWorkspaceExactProjection {
             owner_path: self.owner_path(owner)?.to_owned(),
             authority: self.owner_authority(owner)?,
             content_digest: self.owner_digest(owner)?.to_owned(),
+            native_syntax_diagnostic: self.owner_native_syntax_diagnostic(owner)?,
             bytes: self.owner_bytes(owner)?.to_vec(),
             selectors: self.owner_selectors(owner_index)?,
         })
+    }
+
+    fn owner_native_syntax_diagnostic(
+        &self,
+        owner: &OwnerEntry,
+    ) -> Result<Option<agent_semantic_search::NativeSyntaxDiagnostic>, String> {
+        if owner.diagnostic_len == 0 {
+            return Ok(None);
+        }
+        serde_json::from_slice(read_slice(
+            &self.mapping,
+            owner.diagnostic_offset,
+            owner.diagnostic_len,
+            "owner native syntax diagnostic",
+        )?)
+        .map(Some)
+        .map_err(|error| format!("decode owner native syntax diagnostic: {error}"))
     }
 
     fn owner_selectors(
@@ -571,7 +590,9 @@ impl MappedWorkspaceExactProjection {
             language_len: read_usize(bytes, 88, "owner language length")?,
             provider_offset: read_usize(bytes, 96, "owner provider offset")?,
             provider_len: read_usize(bytes, 104, "owner provider length")?,
-            projection_digest: bytes[112..144]
+            diagnostic_offset: read_usize(bytes, 112, "owner diagnostic offset")?,
+            diagnostic_len: read_usize(bytes, 120, "owner diagnostic length")?,
+            projection_digest: bytes[128..160]
                 .try_into()
                 .map_err(|_| "workspace exact owner projection digest is invalid".to_owned())?,
         })
@@ -698,6 +719,8 @@ struct OwnerEntry {
     language_len: usize,
     provider_offset: usize,
     provider_len: usize,
+    diagnostic_offset: usize,
+    diagnostic_len: usize,
     projection_digest: [u8; 32],
 }
 
@@ -789,6 +812,17 @@ fn owner_projection_digest(owner: &WorkspaceOwnerSnapshot) -> [u8; 32] {
         hasher.update(authority.language_id.as_str().as_bytes());
         hasher.update(&[0]);
         hasher.update(authority.provider_id.as_str().as_bytes());
+        hasher.update(&[0]);
+    }
+    if let Some(diagnostic) = &owner.native_syntax_diagnostic {
+        hasher.update(b"native-syntax-diagnostic\0");
+        hasher.update(diagnostic.owner_path.as_bytes());
+        hasher.update(&[0]);
+        hasher.update(diagnostic.content_digest.as_bytes());
+        hasher.update(&[0]);
+        hasher.update(diagnostic.reason_kind.as_bytes());
+        hasher.update(&[0]);
+        hasher.update(diagnostic.message.as_bytes());
         hasher.update(&[0]);
     }
     let mut query_key_rows = owner

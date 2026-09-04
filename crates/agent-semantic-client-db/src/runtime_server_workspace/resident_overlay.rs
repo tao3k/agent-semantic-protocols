@@ -506,6 +506,15 @@ fn validate_owner(owner: &WorkspaceOwnerSnapshot) -> Result<(), String> {
     if owner.content_digest != digest {
         return Err("runtime owner overlay content digest drift".to_owned());
     }
+    if let Some(diagnostic) = &owner.native_syntax_diagnostic
+        && (diagnostic.owner_path != owner.owner_path
+            || diagnostic.content_digest != owner.content_digest
+            || diagnostic.reason_kind != "source-syntax-unavailable"
+            || diagnostic.message.trim().is_empty()
+            || !owner.selectors.is_empty())
+    {
+        return Err("runtime owner overlay native syntax diagnostic drift".to_owned());
+    }
     Ok(())
 }
 

@@ -1,9 +1,15 @@
-use agent_semantic_search::{
-    NativeSyntaxProjection, NativeSyntaxRelation, NativeSyntaxSelector, ResidentGraphSearchStage,
-    ResidentGraphSearchWork, SearchPlaybookColdRgExecution, SearchPlaybookPythonGraphExecution,
-    SearchPlaybookReceiptInput, build_search_playbook_receipt,
-};
-use agent_semantic_search_projection::{ResidentSearchWorkCounters, RuntimeProviderSearchReceipt};
+use agent_semantic_search::NativeSyntaxDiagnostic;
+use agent_semantic_search::NativeSyntaxProjection;
+use agent_semantic_search::NativeSyntaxRelation;
+use agent_semantic_search::NativeSyntaxSelector;
+use agent_semantic_search::ResidentGraphSearchStage;
+use agent_semantic_search::ResidentGraphSearchWork;
+use agent_semantic_search::SearchPlaybookColdRgExecution;
+use agent_semantic_search::SearchPlaybookPythonGraphExecution;
+use agent_semantic_search::SearchPlaybookReceiptInput;
+use agent_semantic_search::build_search_playbook_receipt;
+use agent_semantic_search_projection::ResidentSearchWorkCounters;
+use agent_semantic_search_projection::RuntimeProviderSearchReceipt;
 
 fn digest(byte: char) -> String {
     format!("blake3-256:{}", byte.to_string().repeat(64))
@@ -62,6 +68,7 @@ fn input() -> SearchPlaybookReceiptInput {
             owner_path: "src/lib.rs".to_owned(),
             relation_digest: digest('8'),
         }],
+        native_syntax_diagnostics: Vec::new(),
         native_syntax_elapsed_micros: 2,
         runtime: runtime_receipt(),
         graph: ResidentGraphSearchStage {
@@ -216,5 +223,33 @@ fn ready_native_syntax_rejects_owner_only_evidence() {
     assert_eq!(
         error,
         "search playbook native syntax attachment state is invalid"
+    );
+}
+
+#[test]
+fn one_parser_diagnostic_preserves_independent_search_evidence() {
+    let mut input = input();
+    input.runtime.candidate_count = 2;
+    input.runtime.projected_owner_count = 2;
+    input
+        .runtime
+        .owner_paths
+        .push("src/unavailable.rs".to_owned());
+    input.native_syntax_diagnostics = vec![NativeSyntaxDiagnostic {
+        owner_path: "src/unavailable.rs".to_owned(),
+        content_digest: digest('b'),
+        reason_kind: "source-syntax-unavailable".to_owned(),
+        message: "bounded parser diagnostic".to_owned(),
+    }];
+
+    let receipt = build_search_playbook_receipt(input)
+        .expect("a diagnosed owner is completely accounted without erasing other lanes");
+    assert_eq!(receipt.evidence.native_syntax.projections.len(), 1);
+    assert_eq!(receipt.evidence.native_syntax.diagnostics.len(), 1);
+    assert_eq!(receipt.evidence.indexed_lexical.state, "executed");
+    assert_eq!(receipt.evidence.resident_graph.state, "executed");
+    assert_eq!(
+        receipt.evidence.native_syntax.diagnostics[0].owner_path,
+        "src/unavailable.rs"
     );
 }

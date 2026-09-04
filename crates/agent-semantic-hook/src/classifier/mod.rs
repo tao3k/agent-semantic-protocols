@@ -14,19 +14,28 @@ pub(super) use user_prompt::classify_user_prompt;
 #[path = "../classifier_recovery.rs"]
 mod recovery;
 
-pub use command_decision_rebind::{
-    HookMatcherKeys, ShellCommandKey, hook_matcher_keys, rebind_command_decision_to_payload,
-    rebind_command_decision_to_payload_with_keys, rebind_direct_read_decision_to_payload,
-    shell_command_key, shell_command_keys,
-};
-pub use core::{
-    DirectReadSourceKey, HookClassificationRequest, ShellReadSourceKey, classify_hook,
-    classify_hook_with_config, direct_read_source_extension, direct_read_source_key,
-    shell_read_source_key, shell_read_source_keys,
-};
-pub use recovery::{
-    HOOK_TRIGGER_PROMPT_FILE_NAME, default_hook_trigger_prompt_message,
-    hook_trigger_prompt_document, materialize_hook_trigger_prompt_agent_flow_for_client,
-    merge_hook_trigger_prompt_document, render_hook_trigger_prompt_document,
-};
+pub use command_decision_rebind::HookMatcherKeys;
+pub use command_decision_rebind::ShellCommandKey;
+pub use command_decision_rebind::hook_matcher_keys;
+pub use command_decision_rebind::rebind_command_decision_to_payload;
+pub use command_decision_rebind::rebind_command_decision_to_payload_with_keys;
+pub use command_decision_rebind::rebind_direct_read_decision_to_payload;
+pub use command_decision_rebind::shell_command_key;
+pub use command_decision_rebind::shell_command_keys;
+pub use core::DirectReadSourceKey;
+pub use core::HookClassificationRequest;
+pub use core::ShellReadSourceKey;
+pub use core::classify_hook;
+pub use core::classify_hook_with_config;
+pub use core::direct_read_source_extension;
+pub use core::direct_read_source_key;
+pub use core::shell_read_source_key;
+pub use core::shell_read_source_keys;
+pub use recovery::HOOK_TRIGGER_PROMPT_FILE_NAME;
+pub use recovery::default_hook_trigger_prompt_message;
+pub use recovery::hook_trigger_prompt_document;
+pub use recovery::materialize_hook_trigger_prompt_agent_flow_for_client;
+pub use recovery::merge_hook_trigger_prompt_document;
+pub use recovery::render_hook_trigger_prompt_document;
+pub(crate) use recovery::shell_quote_arg;
 mod decision;

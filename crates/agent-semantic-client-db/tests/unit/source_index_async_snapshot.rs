@@ -27,6 +27,7 @@ async fn async_snapshot_reads_each_owner_once_and_preserves_canonical_order() {
                 provider_id: agent_semantic_client_core::ProviderId::from("asp-rust"),
                 projection_coverage:
                     agent_semantic_client_db::ClientDbSourceIndexProjectionCoverage::NotDeclared,
+                projection_diagnostic: None,
                 selector_receipts: Vec::new(),
                 relations: Vec::new(),
             },
@@ -125,6 +126,7 @@ async fn four_thousand_mixed_owner_snapshot_has_subsecond_cold_p95_and_stable_di
             provider_id: agent_semantic_client_core::ProviderId::from("asp-rust"),
             projection_coverage:
                 agent_semantic_client_db::ClientDbSourceIndexProjectionCoverage::NotDeclared,
+            projection_diagnostic: None,
             selector_receipts: Vec::new(),
             relations: Vec::new(),
         });

@@ -1,4 +1,5 @@
-use agent_semantic_config::{HookClientConfigFile, HookClientMatcherPolicy};
+use agent_semantic_config::HookClientConfigFile;
+use agent_semantic_config::HookClientMatcherPolicy;
 
 fn default_config() -> HookClientConfigFile {
     agent_semantic_config::default_hook_client_config_file()

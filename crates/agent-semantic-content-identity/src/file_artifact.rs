@@ -1,9 +1,13 @@
+//! Filesystem artifact identity derived from canonical metadata and content bytes.
+
 use std::fs;
 use std::io::Read;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 use std::time::UNIX_EPOCH;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+/// Canonical filesystem metadata used to bind a file artifact observation.
 pub struct FileArtifactMetadataV1 {
     pub canonical_path: PathBuf,
     pub size_bytes: u64,
@@ -11,6 +15,7 @@ pub struct FileArtifactMetadataV1 {
     pub change_time_unix_nanos: Option<i64>,
 }
 
+/// Hashes canonical regular-file bytes with the V1 content digest algorithm.
 pub fn file_content_digest_v1(path: &Path) -> Result<String, String> {
     let path = canonical_regular_file(path)?;
     let mut file = fs::File::open(&path)
@@ -29,6 +34,7 @@ pub fn file_content_digest_v1(path: &Path) -> Result<String, String> {
     Ok(hasher.finalize().to_hex().to_string())
 }
 
+/// Reads canonical metadata for a regular file without identity aliases.
 pub fn file_artifact_metadata_v1(path: &Path) -> Result<FileArtifactMetadataV1, String> {
     let canonical_path = canonical_regular_file(path)?;
     let metadata = fs::metadata(&canonical_path)
@@ -41,6 +47,7 @@ pub fn file_artifact_metadata_v1(path: &Path) -> Result<FileArtifactMetadataV1, 
     })
 }
 
+/// Hashes canonical metadata independently from file contents.
 pub fn file_artifact_metadata_digest_v1(path: &Path) -> Result<String, String> {
     let metadata = file_artifact_metadata_v1(path)?;
     let canonical = format!(

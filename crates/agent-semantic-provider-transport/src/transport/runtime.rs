@@ -3,19 +3,27 @@
 use std::borrow::Cow;
 use std::env;
 use std::io::ErrorKind;
-use std::process::{ExitStatus, Stdio};
-use std::time::{Duration, Instant};
+use std::process::ExitStatus;
+use std::process::Stdio;
+use std::time::Duration;
+use std::time::Instant;
 
 use bstr::BStr;
 use bytes::Bytes;
-use tokio::process::{Child, Command};
-use tracing::{Instrument, debug, info_span};
+use tokio::process::Child;
+use tokio::process::Command;
+use tracing::Instrument;
+use tracing::debug;
+use tracing::info_span;
 
 use crate::byte_text;
-use crate::process_contract::{
-    DEFAULT_PROVIDER_MEMORY_LIMIT_BYTES, ProviderProcessError, ProviderProcessFraming,
-    ProviderProcessLimits, ProviderProcessReceipt, ProviderProcessSpec, StdinMode,
-};
+use crate::process_contract::DEFAULT_PROVIDER_MEMORY_LIMIT_BYTES;
+use crate::process_contract::ProviderProcessError;
+use crate::process_contract::ProviderProcessFraming;
+use crate::process_contract::ProviderProcessLimits;
+use crate::process_contract::ProviderProcessReceipt;
+use crate::process_contract::ProviderProcessSpec;
+use crate::process_contract::StdinMode;
 
 const EXECUTABLE_BUSY_SPAWN_RETRIES: usize = 5;
 const EXECUTABLE_BUSY_SPAWN_RETRY_DELAY: Duration = Duration::from_millis(10);
@@ -435,7 +443,7 @@ fn configure_provider_process(command: &mut Command, memory_limit_bytes: Option<
 #[cfg(not(unix))]
 fn configure_provider_process(_command: &mut Command, _memory_limit_bytes: Option<u64>) {}
 
-use super::{
-    collect_provider_output, kill_provider_process_group, provider_process_group_id,
-    spawn_provider_io_tasks,
-};
+use super::collect_provider_output;
+use super::kill_provider_process_group;
+use super::provider_process_group_id;
+use super::spawn_provider_io_tasks;

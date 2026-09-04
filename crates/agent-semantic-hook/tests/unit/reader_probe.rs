@@ -1,4 +1,6 @@
-use super::{ReaderProbeAccess, ReaderProbeObservation, bind_reader_probe_observation};
+use super::ReaderProbeAccess;
+use super::ReaderProbeObservation;
+use super::bind_reader_probe_observation;
 use serde_json::json;
 
 #[test]

@@ -1,7 +1,8 @@
 use std::collections::BTreeSet;
 
 use agent_semantic_provider_protocol::ProviderSchemaReference;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 
 const SCHEMA_ID: &str = "agent.semantic-protocols.provider-runtime-contract-receipt";
 const SCHEMA_VERSION: &str = "1";

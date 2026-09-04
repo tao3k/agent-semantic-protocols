@@ -1,9 +1,15 @@
-use agent_semantic_search::{
-    ContentSearchGenerationReceipt, NativeSyntaxProjection, NativeSyntaxRelation,
-    NativeSyntaxSelector, SearchGenerationConstructionStage, SearchGenerationIdentity,
-    SearchGenerationStageReceipt, SourceByteOwner, build_native_syntax_stage,
-    build_source_byte_acquisition_stage,
-};
+use agent_semantic_search::ContentSearchGenerationReceipt;
+use agent_semantic_search::NativeSyntaxDiagnostic;
+use agent_semantic_search::NativeSyntaxProjection;
+use agent_semantic_search::NativeSyntaxRelation;
+use agent_semantic_search::NativeSyntaxSelector;
+use agent_semantic_search::SearchGenerationConstructionStage;
+use agent_semantic_search::SearchGenerationIdentity;
+use agent_semantic_search::SearchGenerationStageReceipt;
+use agent_semantic_search::SourceByteOwner;
+use agent_semantic_search::build_native_syntax_stage;
+use agent_semantic_search::build_native_syntax_stage_with_diagnostics;
+use agent_semantic_search::build_source_byte_acquisition_stage;
 
 fn digest(byte: char) -> String {
     format!("blake3-256:{}", byte.to_string().repeat(64))
@@ -233,5 +239,45 @@ fn native_syntax_playbook_binds_complete_parser_facts_without_public_owner_comma
         )
         .is_err(),
         "relations cannot escape the content-proven native-syntax owner set"
+    );
+}
+
+#[test]
+fn native_syntax_stage_digest_binds_canonical_unavailable_diagnostics() {
+    let diagnostic = |path: &str| NativeSyntaxDiagnostic {
+        owner_path: path.to_owned(),
+        content_digest: digest('7'),
+        reason_kind: "source-syntax-unavailable".to_owned(),
+        message: "bounded parser diagnostic".to_owned(),
+    };
+    let left = build_native_syntax_stage_with_diagnostics(
+        identity(),
+        [],
+        [],
+        [diagnostic("src/z.rs"), diagnostic("src/a.rs")],
+    )
+    .expect("typed diagnostics complete their owner-local stage evidence");
+    let right = build_native_syntax_stage_with_diagnostics(
+        identity(),
+        [],
+        [],
+        [diagnostic("src/a.rs"), diagnostic("src/z.rs")],
+    )
+    .expect("diagnostic order is canonical");
+    assert_eq!(left.artifact_digest, right.artifact_digest);
+
+    assert!(
+        build_native_syntax_stage_with_diagnostics(
+            identity(),
+            [],
+            [],
+            [NativeSyntaxDiagnostic {
+                owner_path: "src/a.rs".to_owned(),
+                content_digest: digest('7'),
+                reason_kind: "unknown".to_owned(),
+                message: "not admitted".to_owned(),
+            }],
+        )
+        .is_err()
     );
 }

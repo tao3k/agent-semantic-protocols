@@ -1,11 +1,25 @@
-use agent_semantic_client::context_product_state::{
-    ActiveProgram, CONTEXT_PRODUCT_CANONICALIZATION_PROFILE, CONTEXT_PRODUCT_SCHEMA_ID,
-    CONTEXT_PRODUCT_SCHEMA_VERSION, ClaimClass, ClosureDisposition, ContextBinding,
-    DecisionRequirement, Digest, FrontierAntichain, FrontierNode, Obligation,
-    ObligationDisposition, ParserOwnedCommandAdmission, ProofReuse, ProofReuseMode, ProtocolId,
-    RecommendedNextCandidate, RetainedProof, SearchBudget, UncheckedContextProductStateV1,
-    ValidationError,
-};
+use agent_semantic_client::context_product_state::ActiveProgram;
+use agent_semantic_client::context_product_state::CONTEXT_PRODUCT_CANONICALIZATION_PROFILE;
+use agent_semantic_client::context_product_state::CONTEXT_PRODUCT_SCHEMA_ID;
+use agent_semantic_client::context_product_state::CONTEXT_PRODUCT_SCHEMA_VERSION;
+use agent_semantic_client::context_product_state::ClaimClass;
+use agent_semantic_client::context_product_state::ClosureDisposition;
+use agent_semantic_client::context_product_state::ContextBinding;
+use agent_semantic_client::context_product_state::DecisionRequirement;
+use agent_semantic_client::context_product_state::Digest;
+use agent_semantic_client::context_product_state::FrontierAntichain;
+use agent_semantic_client::context_product_state::FrontierNode;
+use agent_semantic_client::context_product_state::Obligation;
+use agent_semantic_client::context_product_state::ObligationDisposition;
+use agent_semantic_client::context_product_state::ParserOwnedCommandAdmission;
+use agent_semantic_client::context_product_state::ProofReuse;
+use agent_semantic_client::context_product_state::ProofReuseMode;
+use agent_semantic_client::context_product_state::ProtocolId;
+use agent_semantic_client::context_product_state::RecommendedNextCandidate;
+use agent_semantic_client::context_product_state::RetainedProof;
+use agent_semantic_client::context_product_state::SearchBudget;
+use agent_semantic_client::context_product_state::UncheckedContextProductStateV1;
+use agent_semantic_client::context_product_state::ValidationError;
 
 fn id(value: &str) -> ProtocolId {
     ProtocolId::parse(value).expect("test protocol id")

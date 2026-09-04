@@ -1,14 +1,15 @@
 //! Content-addressed Git and artifact paths for provider live corpora.
 
 use crate::state_core::RemoteUrl;
-use serde::{Deserialize, Serialize};
-use std::{
-    collections::BTreeSet,
-    fs,
-    path::{Path, PathBuf},
-    sync::atomic::AtomicBool,
-    time::{SystemTime, UNIX_EPOCH},
-};
+use serde::Deserialize;
+use serde::Serialize;
+use std::collections::BTreeSet;
+use std::fs;
+use std::path::Path;
+use std::path::PathBuf;
+use std::sync::atomic::AtomicBool;
+use std::time::SystemTime;
+use std::time::UNIX_EPOCH;
 
 const BLAKE3_256: &str = "blake3-256";
 pub const LIVE_CORPUS_ARTIFACT_SCHEMA_ID: &str = "agent.semantic-protocols.live-corpus-artifact";
@@ -208,10 +209,11 @@ fn checkout_pinned_revision(
     revision: &str,
     should_interrupt: &AtomicBool,
 ) -> Result<(), String> {
-    use gix::refs::{
-        Target,
-        transaction::{Change, LogChange, PreviousValue, RefEdit},
-    };
+    use gix::refs::Target;
+    use gix::refs::transaction::Change;
+    use gix::refs::transaction::LogChange;
+    use gix::refs::transaction::PreviousValue;
+    use gix::refs::transaction::RefEdit;
 
     let object_id = gix::ObjectId::from_hex(revision.as_bytes())
         .map_err(|error| format!("invalid live-corpus revision object id: {error}"))?;

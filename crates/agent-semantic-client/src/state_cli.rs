@@ -1,13 +1,16 @@
 //! Thin state-command dispatch for the `asp` binary.
 
-use std::collections::{BTreeMap, BTreeSet};
-use std::ffi::{OsStr, OsString};
+use std::collections::BTreeMap;
+use std::collections::BTreeSet;
+use std::ffi::OsStr;
+use std::ffi::OsString;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 
-use agent_semantic_client_core::state_core::{
-    ResolvedState, is_temporary_checkout_path, resolve_state_home,
-};
+use agent_semantic_client_core::state_core::ResolvedState;
+use agent_semantic_client_core::state_core::is_temporary_checkout_path;
+use agent_semantic_client_core::state_core::resolve_state_home;
 use agent_semantic_client_db::ClientDbEngine;
 
 /// Run the `asp` binary with pre-dispatch for State Core commands.

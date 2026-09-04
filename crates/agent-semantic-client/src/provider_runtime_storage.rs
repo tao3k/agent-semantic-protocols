@@ -6,17 +6,28 @@
 
 use std::path::Path;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::AtomicU64;
+use std::sync::atomic::Ordering;
 
 use agent_semantic_client_core::LanguageId;
-use agent_semantic_client_db::storage_contract::{
-    AgentStorage, SESSION_EVENT_BATCH_SCHEMA_ID, SessionEvent, SessionEventBatch,
-    SessionEventBatchWriteReceipt, StorageAgentId, StorageOptimizationProfile, StoragePartitionKey,
-    StorageRepoId, StorageRetryPolicy, StorageScopeId, StorageSessionId, StorageTransactionMode,
-    StorageWorkspaceId,
-};
-use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
+use agent_semantic_client_db::storage_contract::AgentStorage;
+use agent_semantic_client_db::storage_contract::SESSION_EVENT_BATCH_SCHEMA_ID;
+use agent_semantic_client_db::storage_contract::SessionEvent;
+use agent_semantic_client_db::storage_contract::SessionEventBatch;
+use agent_semantic_client_db::storage_contract::SessionEventBatchWriteReceipt;
+use agent_semantic_client_db::storage_contract::StorageAgentId;
+use agent_semantic_client_db::storage_contract::StorageOptimizationProfile;
+use agent_semantic_client_db::storage_contract::StoragePartitionKey;
+use agent_semantic_client_db::storage_contract::StorageRepoId;
+use agent_semantic_client_db::storage_contract::StorageRetryPolicy;
+use agent_semantic_client_db::storage_contract::StorageScopeId;
+use agent_semantic_client_db::storage_contract::StorageSessionId;
+use agent_semantic_client_db::storage_contract::StorageTransactionMode;
+use agent_semantic_client_db::storage_contract::StorageWorkspaceId;
+use serde::Deserialize;
+use serde::Serialize;
+use sha2::Digest;
+use sha2::Sha256;
 
 use agent_semantic_client_db::ClientDbEngine;
 use agent_semantic_client_db::turso_agent_storage::TursoMvccAgentStorage;

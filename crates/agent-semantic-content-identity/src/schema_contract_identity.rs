@@ -1,19 +1,25 @@
+//! Extracts typed schema-contract identities from canonical schema documents.
+
 use std::collections::BTreeSet;
 
 use serde_json::Value;
 
+use crate::ArtifactJson;
+
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+/// Stable schema identifier and version pair discovered in one contract.
 pub struct SchemaContractIdentity {
     pub schema_id: String,
     pub schema_version: String,
 }
 
+/// Returns every schema identity reachable from the supplied canonical document.
 pub fn schema_contract_identities(
     schema_name: &str,
-    schema: &Value,
+    schema: &ArtifactJson,
 ) -> Result<Vec<SchemaContractIdentity>, String> {
     let mut identities = BTreeSet::new();
-    collect_contract_identities(schema_name, schema, &mut identities)?;
+    collect_contract_identities(schema_name, schema.as_value(), &mut identities)?;
     Ok(identities
         .into_iter()
         .map(|(schema_id, schema_version)| SchemaContractIdentity {

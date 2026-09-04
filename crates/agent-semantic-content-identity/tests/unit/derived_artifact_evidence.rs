@@ -1,8 +1,10 @@
-use crate::{
-    DERIVED_SOURCE_ARTIFACT_CACHE_DISPOSITION, DERIVED_SOURCE_ARTIFACT_EVIDENCE_SCHEMA_ID,
-    DerivedArtifactAuthorityState, DerivedSourceArtifactEvidence, DerivedSourceArtifactKind,
-    SourceSnapshotEvidence, SourceSnapshotKind,
-};
+use crate::DERIVED_SOURCE_ARTIFACT_CACHE_DISPOSITION;
+use crate::DERIVED_SOURCE_ARTIFACT_EVIDENCE_SCHEMA_ID;
+use crate::DerivedArtifactAuthorityState;
+use crate::DerivedSourceArtifactEvidence;
+use crate::DerivedSourceArtifactKind;
+use crate::SourceSnapshotEvidence;
+use crate::SourceSnapshotKind;
 
 fn source_snapshot() -> SourceSnapshotEvidence {
     SourceSnapshotEvidence::new(

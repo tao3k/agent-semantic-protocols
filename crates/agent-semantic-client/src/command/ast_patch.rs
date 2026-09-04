@@ -1,9 +1,11 @@
 //! Verification receipts for `asp ast-patch`.
 
 use serde::Serialize;
-use serde_json::{Map, Value};
+use serde_json::Map;
+use serde_json::Value;
 use std::fs;
-use std::io::{self, Read};
+use std::io::Read;
+use std::io::{self};
 use std::path::PathBuf;
 
 const PACKET_SCHEMA_ID: &str = "agent.semantic-protocols.semantic-ast-patch";

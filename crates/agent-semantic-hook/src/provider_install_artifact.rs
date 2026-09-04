@@ -1,9 +1,9 @@
-use std::{
-    fs,
-    path::{Path, PathBuf},
-};
+use std::fs;
+use std::path::Path;
+use std::path::PathBuf;
 
-use agent_semantic_config::{LanguageId, ProviderId};
+use agent_semantic_config::LanguageId;
+use agent_semantic_config::ProviderId;
 use agent_semantic_content_identity::exact_selector_merkle::parse_content_digest_v1;
 
 #[derive(Debug, serde::Deserialize)]

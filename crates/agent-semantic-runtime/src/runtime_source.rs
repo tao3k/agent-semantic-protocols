@@ -1,11 +1,11 @@
 //! Runtime-source checkout management for ASP-managed language source facts.
 
-use std::{
-    env, fs,
-    io::ErrorKind,
-    path::{Path, PathBuf},
-    process::Command,
-};
+use std::env;
+use std::fs;
+use std::io::ErrorKind;
+use std::path::Path;
+use std::path::PathBuf;
+use std::process::Command;
 
 /// Source checkout request admitted by the ASP Server from a runtime-source packet.
 #[derive(Clone, Debug, Eq, PartialEq)]

@@ -1,8 +1,10 @@
-use agent_semantic_search_projection::{
-    ProviderGraphEvidence, SEMANTIC_SEARCH_STORAGE_ROUTE_SCHEMA_ID, SemanticMutationClass,
-    SemanticSearchAlgorithmEvidence, SemanticSearchRouteDecision, SemanticSearchStorageProfile,
-    SemanticSharingScope,
-};
+use agent_semantic_search_projection::ProviderGraphEvidence;
+use agent_semantic_search_projection::SEMANTIC_SEARCH_STORAGE_ROUTE_SCHEMA_ID;
+use agent_semantic_search_projection::SemanticMutationClass;
+use agent_semantic_search_projection::SemanticSearchAlgorithmEvidence;
+use agent_semantic_search_projection::SemanticSearchRouteDecision;
+use agent_semantic_search_projection::SemanticSearchStorageProfile;
+use agent_semantic_search_projection::SemanticSharingScope;
 
 fn static_profile() -> SemanticSearchStorageProfile {
     SemanticSearchStorageProfile {

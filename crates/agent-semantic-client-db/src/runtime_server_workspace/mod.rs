@@ -78,43 +78,8 @@ pub(crate) use search_generation_authority::{
 };
 
 #[cfg(test)]
-pub(crate) fn test_content_search_generation_receipt(
-    project_id: &str,
-    workspace_identity: &str,
-    source_snapshot: &agent_semantic_content_identity::SourceSnapshotEvidence,
-) -> agent_semantic_search::ContentSearchGenerationReceipt {
-    let identity = agent_semantic_search::SearchGenerationIdentity {
-        project_id: project_id.to_owned(),
-        workspace_id: workspace_identity.to_owned(),
-        source_root_digest: agent_semantic_search::canonical_blake3_digest(
-            &source_snapshot.root_digest,
-        )
-        .expect("test source root digest"),
-        provider_digest: agent_semantic_search::canonical_blake3_digest(
-            &source_snapshot.provider_digest,
-        )
-        .expect("test provider digest"),
-        schema_digest: agent_semantic_search::canonical_blake3_digest(
-            &agent_semantic_content_identity::project_resolution_schema_digest(),
-        )
-        .expect("test schema digest"),
-        generation_candidate_digest: format!("blake3-256:{}", "c".repeat(64)),
-    };
-    let stage =
-        |stage, worker_id: &str, byte: u8| agent_semantic_search::SearchGenerationStageReceipt {
-            stage,
-            identity: identity.clone(),
-            artifact_digest: format!("blake3-256:{}", char::from(byte).to_string().repeat(64)),
-            worker_id: worker_id.to_owned(),
-            complete: true,
-        };
-    agent_semantic_search::ContentSearchGenerationReceipt::new(stage(
-        agent_semantic_search::SearchGenerationConstructionStage::SourceByteAcquisition,
-        "test-source-byte-acquisition",
-        b'd',
-    ))
-    .expect("test content search generation")
-}
+#[path = "../../tests/unit/runtime_server_workspace/generation_receipt.rs"]
+pub(crate) mod test_fixture;
 pub use search_index_projection::{
     RuntimeDerivedAttachmentBuildTiming, WorkspaceSearchGenerationDataPlaneClient,
     encode_workspace_search_generation_segment, workspace_search_generation_segment_path,

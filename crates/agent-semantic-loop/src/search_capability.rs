@@ -1,9 +1,11 @@
 use std::fmt;
 
-use agent_semantic_context_product::{Digest, ProtocolId};
+use agent_semantic_context_product::Digest;
+use agent_semantic_context_product::ProtocolId;
 
 use crate::ValidatedContextProductStateV1;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 
 pub const SEARCH_LOOP_CAPABILITY_SCHEMA_ID: &str =
     "agent.semantic-protocols.search-loop-capability";

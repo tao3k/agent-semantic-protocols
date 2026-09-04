@@ -1,10 +1,15 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 use std::fmt;
 
-use agent_semantic_context_product::{
-    ActiveProgram, Digest, ExecutionAuthority, JoinPolicy, ProtocolId, RouteExecutionMode,
-    RouteProgram, UncheckedContextProductStateV1,
-};
+use agent_semantic_context_product::ActiveProgram;
+use agent_semantic_context_product::Digest;
+use agent_semantic_context_product::ExecutionAuthority;
+use agent_semantic_context_product::JoinPolicy;
+use agent_semantic_context_product::ProtocolId;
+use agent_semantic_context_product::RouteExecutionMode;
+use agent_semantic_context_product::RouteProgram;
+use agent_semantic_context_product::UncheckedContextProductStateV1;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum StageExecutionStatus {

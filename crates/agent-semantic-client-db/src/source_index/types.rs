@@ -317,6 +317,8 @@ pub struct ClientDbSourceIndexScopeFile {
     pub language_id: LanguageId,
     pub provider_id: ProviderId,
     pub projection_coverage: ClientDbSourceIndexProjectionCoverage,
+    pub projection_diagnostic:
+        Option<agent_semantic_provider_transport::projection_batch::ProviderProjectionDiagnostic>,
     pub selector_receipts: Vec<ClientDbSourceIndexSelector>,
     pub relations: Vec<
         agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelation,
@@ -333,6 +335,7 @@ pub struct ClientDbSourceIndexScopeFile {
 pub enum ClientDbSourceIndexProjectionCoverage {
     NotDeclared,
     Complete,
+    SyntaxUnavailable,
 }
 
 /// Source-index lookup state for agent-facing search fallbacks.

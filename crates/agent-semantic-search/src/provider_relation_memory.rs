@@ -4,10 +4,11 @@ use std::fs::File;
 use std::path::Path;
 use std::sync::Arc;
 
-use agent_semantic_content_identity::provider_projection_relation::{
-    ProviderProjectedRelation, ProviderRelationGeneration,
-};
-use memmap2::{Mmap, MmapOptions};
+use agent_semantic_content_identity::ProviderRelationEndpointKindV1;
+use agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelation;
+use agent_semantic_content_identity::provider_projection_relation::ProviderRelationGeneration;
+use memmap2::Mmap;
+use memmap2::MmapOptions;
 
 #[derive(Debug)]
 enum ProviderRelationBytes {
@@ -49,7 +50,7 @@ impl std::error::Error for ProviderRelationMemoryError {}
 pub struct ProviderRelationMemorySearch {
     _bytes: Arc<ProviderRelationBytes>,
     generation: Arc<ProviderRelationGeneration>,
-    source_index: Arc<BTreeMap<(String, String), Vec<usize>>>,
+    source_index: Arc<BTreeMap<(ProviderRelationEndpointKindV1, String), Vec<usize>>>,
 }
 
 impl ProviderRelationMemorySearch {
@@ -120,10 +121,11 @@ impl ProviderRelationMemorySearch {
                 "provider relation generation identity mismatch".to_owned(),
             ));
         }
-        let mut source_index = BTreeMap::<(String, String), Vec<usize>>::new();
+        let mut source_index =
+            BTreeMap::<(ProviderRelationEndpointKindV1, String), Vec<usize>>::new();
         for (index, relation) in generation.relations.iter().enumerate() {
             source_index
-                .entry((relation.from.kind.clone(), relation.from.id.clone()))
+                .entry((relation.from.kind, relation.from.id.clone()))
                 .or_default()
                 .push(index);
         }
@@ -136,11 +138,11 @@ impl ProviderRelationMemorySearch {
 
     pub fn relations_from(
         &self,
-        endpoint_kind: &str,
+        endpoint_kind: ProviderRelationEndpointKindV1,
         endpoint_id: &str,
     ) -> Vec<&ProviderProjectedRelation> {
         self.source_index
-            .get(&(endpoint_kind.to_owned(), endpoint_id.to_owned()))
+            .get(&(endpoint_kind, endpoint_id.to_owned()))
             .into_iter()
             .flatten()
             .filter_map(|index| self.generation.relations.get(*index))

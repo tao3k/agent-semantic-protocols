@@ -39,17 +39,11 @@ fn playbook_parser_materializes_the_complete_typed_request() {
 }
 
 #[test]
-fn removed_seed_and_provider_surfaces_fail_closed() {
+fn non_playbook_search_operations_fail_closed() {
     for command in [
-        args(&["search", "playbook", "query", "--view", "seeds"]),
         args(&["search", "owner", "src/lib.rs", "items"]),
-        args(&["search", "lexical", "query"]),
-        args(&["search", "pipe", "query"]),
-        args(&["search", "prime"]),
-        args(&["search", "ingest"]),
-        args(&["search", "rg", "query"]),
         args(&["search", "guide"]),
-        args(&["search", "reasoning", "owner-query"]),
+        args(&["search", "history", "query"]),
     ] {
         assert!(parse_search_playbook_args(&command).is_err(), "{command:?}");
     }

@@ -2,10 +2,9 @@
 
 use serde::Serialize;
 
-use crate::evidence::{
-    AspRustProjectHarnessEvidenceGraphInput, AspRustProjectHarnessEvidenceGraphSummary,
-    summarize_client_db_evidence_graph,
-};
+use crate::evidence::AspRustProjectHarnessEvidenceGraphInput;
+use crate::evidence::AspRustProjectHarnessEvidenceGraphSummary;
+use crate::evidence::summarize_client_db_evidence_graph;
 
 /// Request for building an ASP package-level evidence graph receipt.
 #[derive(Clone, Debug)]

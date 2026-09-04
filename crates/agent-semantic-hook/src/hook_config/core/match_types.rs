@@ -1,7 +1,11 @@
 use std::collections::HashSet;
 
-use aho_corasick::{AhoCorasick, AhoCorasickBuilder, MatchKind};
-use globset::{GlobBuilder, GlobSet, GlobSetBuilder};
+use aho_corasick::AhoCorasick;
+use aho_corasick::AhoCorasickBuilder;
+use aho_corasick::MatchKind;
+use globset::GlobBuilder;
+use globset::GlobSet;
+use globset::GlobSetBuilder;
 
 /// Durable matcher facts remain declarative strings.  Globset and Aho are
 /// rebuilt once at generation hydration; no regex bytecode is serialized.

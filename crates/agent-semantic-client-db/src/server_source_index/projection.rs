@@ -21,7 +21,7 @@ use agent_semantic_content_identity::{
         derive_query_pack_identity_digest_v1,
     },
     projection_evidence_context::ProjectionEvidenceContext,
-    semantic_projection::SemanticProjection,
+    semantic_projection::{SemanticProjection, SemanticProjectionInput},
     workspace_merkle_v1::WorkspacePathMerkleTreeV1,
 };
 use agent_semantic_provider_transport::ProviderRuntimeActorClient;
@@ -240,16 +240,28 @@ async fn project_provider(
             let source = source_blobs
                 .get(&ClientDbSourceIndexPath::new(&owner_path))
                 .ok_or_else(|| format!("projection source bytes are missing: {owner_path}"))?;
-            file.selector_receipts = selector_receipts(
-                provider,
-                tree,
-                source,
-                projected_owner,
-                &parser_identity_digest,
-                &query_pack_digest,
-            )?;
-            file.relations = projected_owner.relations.clone();
-            file.projection_coverage = ClientDbSourceIndexProjectionCoverage::Complete;
+            match projected_owner.projection_state {
+                agent_semantic_provider_transport::projection_batch::ProviderProjectionState::Ready => {
+                    file.selector_receipts = selector_receipts(
+                        provider,
+                        tree,
+                        source,
+                        projected_owner,
+                        &parser_identity_digest,
+                        &query_pack_digest,
+                    )?;
+                    file.relations = projected_owner.relations.clone();
+                    file.projection_coverage = ClientDbSourceIndexProjectionCoverage::Complete;
+                    file.projection_diagnostic = None;
+                }
+                agent_semantic_provider_transport::projection_batch::ProviderProjectionState::SyntaxUnavailable => {
+                    file.selector_receipts.clear();
+                    file.relations.clear();
+                    file.projection_coverage =
+                        ClientDbSourceIndexProjectionCoverage::SyntaxUnavailable;
+                    file.projection_diagnostic = projected_owner.diagnostic.clone();
+                }
+            }
         }
     }
     Ok(())
@@ -280,29 +292,29 @@ fn encode_semantic_projection(
             .map_err(|error| {
                 format!("decode provider callable-skeleton projection payload: {error}")
             })?;
-            let envelope = SemanticProjection::new(
-                projection_kind.as_str(),
-                language_id,
-                provider_id,
-                selector,
-                evidence_context_ref,
-                "agent.semantic-protocols.callable-skeleton",
+            let envelope = SemanticProjection::new(SemanticProjectionInput {
+                projection_kind: projection_kind.as_str().into(),
+                language_id: language_id.into(),
+                provider_id: provider_id.into(),
+                root_selector: selector.into(),
+                evidence_context_ref: evidence_context_ref.into(),
+                payload_schema_id: "agent.semantic-protocols.callable-skeleton".into(),
                 payload,
-            )
+            })
             .map_err(|error| format!("build callable-skeleton projection envelope: {error}"))?;
             serde_json::to_vec(&envelope)
                 .map_err(|error| format!("encode callable-skeleton projection envelope: {error}"))
         }
         ExactProjectionKind::Source => {
-            let envelope = SemanticProjection::new(
-                projection_kind.as_str(),
-                language_id,
-                provider_id,
-                selector,
-                evidence_context_ref,
-                "agent.semantic-protocols.exact-source",
-                payload.clone(),
-            )
+            let envelope = SemanticProjection::new(SemanticProjectionInput {
+                projection_kind: projection_kind.as_str().into(),
+                language_id: language_id.into(),
+                provider_id: provider_id.into(),
+                root_selector: selector.into(),
+                evidence_context_ref: evidence_context_ref.into(),
+                payload_schema_id: "agent.semantic-protocols.exact-source".into(),
+                payload: payload.clone(),
+            })
             .map_err(|error| format!("build source projection envelope: {error}"))?;
             serde_json::to_vec(&envelope)
                 .map_err(|error| format!("encode source projection envelope: {error}"))

@@ -32,7 +32,7 @@ def plan() -> dict:
                 "languageId": "rust",
                 "providerId": "asp-rust",
                 "generationDigest": digest("a"),
-                "extensions": [".rs"],
+                "extensions": ["rs"],
                 "operation": "search",
                 "normalizedTerms": ["graph", "owner", "runtime"],
                 "selectors": [],

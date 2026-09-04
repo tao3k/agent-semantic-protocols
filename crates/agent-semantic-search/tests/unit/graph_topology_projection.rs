@@ -1,12 +1,13 @@
 use std::fs;
 
 use crate::graph_candidate_projection::GraphProjectionCandidate;
-use crate::graph_topology_projection::{
-    GraphOwnerMissingTopologyRequest, GraphTopologyProjectionRequest,
-    graph_owner_missing_topology_projection, graph_path_is_under,
-    graph_project_submodule_paths_from_content, graph_project_topology_projection,
-    graph_submodule_owner_edges,
-};
+use crate::graph_topology_projection::GraphOwnerMissingTopologyRequest;
+use crate::graph_topology_projection::GraphTopologyProjectionRequest;
+use crate::graph_topology_projection::graph_owner_missing_topology_projection;
+use crate::graph_topology_projection::graph_path_is_under;
+use crate::graph_topology_projection::graph_project_submodule_paths_from_content;
+use crate::graph_topology_projection::graph_project_topology_projection;
+use crate::graph_topology_projection::graph_submodule_owner_edges;
 
 #[test]
 fn graph_topology_projection_does_not_infer_package_graph_from_marker_files() {

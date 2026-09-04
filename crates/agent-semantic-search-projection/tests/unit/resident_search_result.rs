@@ -1,8 +1,11 @@
-use agent_semantic_content_identity::{SourceSnapshotKind, WorkspaceSnapshot, hash_blob};
-use agent_semantic_search_projection::{
-    RESIDENT_SEARCH_RESULT_SCHEMA_ID, ResidentSearchHit, ResidentSearchProjectionTier,
-    ResidentSearchReadyResult, ResidentSearchReadyState,
-};
+use agent_semantic_content_identity::SourceSnapshotKind;
+use agent_semantic_content_identity::WorkspaceSnapshot;
+use agent_semantic_content_identity::hash_blob;
+use agent_semantic_search_projection::RESIDENT_SEARCH_RESULT_SCHEMA_ID;
+use agent_semantic_search_projection::ResidentSearchHit;
+use agent_semantic_search_projection::ResidentSearchProjectionTier;
+use agent_semantic_search_projection::ResidentSearchReadyResult;
+use agent_semantic_search_projection::ResidentSearchReadyState;
 
 #[test]
 fn ready_result_binds_generation_and_proves_zero_request_time_io() {

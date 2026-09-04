@@ -1,4 +1,6 @@
-use super::{HookExecutionFailure, HookExecutionFailureKind, HookExecutionPhase};
+use super::HookExecutionFailure;
+use super::HookExecutionFailureKind;
+use super::HookExecutionPhase;
 
 #[test]
 fn failure_receipt_is_single_valid_json_document() {

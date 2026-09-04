@@ -2,10 +2,12 @@
 
 use std::collections::BTreeSet;
 use std::os::unix::fs::PermissionsExt;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 use std::sync::Arc;
 
-use agent_semantic_hook_testkit::{HookProcessSpec, run_hook_process};
+use agent_semantic_hook_testkit::HookProcessSpec;
+use agent_semantic_hook_testkit::run_hook_process;
 use fs2::FileExt;
 use serde_json::json;
 

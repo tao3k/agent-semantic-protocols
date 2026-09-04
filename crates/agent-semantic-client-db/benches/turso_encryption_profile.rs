@@ -1,11 +1,16 @@
 use std::hint::black_box;
 use std::path::PathBuf;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::SystemTime;
+use std::time::UNIX_EPOCH;
 
-use agent_semantic_client_db::turso_encrypted_storage::{
-    TursoEncryptedProfileConfig, TursoEncryptedStorage, TursoEncryptionCipher, TursoEncryptionKey,
-};
-use criterion::{Criterion, Throughput, criterion_group, criterion_main};
+use agent_semantic_client_db::turso_encrypted_storage::TursoEncryptedProfileConfig;
+use agent_semantic_client_db::turso_encrypted_storage::TursoEncryptedStorage;
+use agent_semantic_client_db::turso_encrypted_storage::TursoEncryptionCipher;
+use agent_semantic_client_db::turso_encrypted_storage::TursoEncryptionKey;
+use criterion::Criterion;
+use criterion::Throughput;
+use criterion::criterion_group;
+use criterion::criterion_main;
 use turso::transaction::TransactionBehavior;
 
 const KEY: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";

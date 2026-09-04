@@ -2,7 +2,8 @@
 
 use std::path::Path;
 
-use crate::{HostProjectReference, ProjectBinding};
+use crate::HostProjectReference;
+use crate::ProjectBinding;
 
 #[test]
 fn host_reference_is_optional_and_never_becomes_workspace_identity() {

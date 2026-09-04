@@ -1,12 +1,13 @@
 mod artifact_pointer_crash_tests {
     use std::path::PathBuf;
     use std::process::Command;
-    use std::time::{SystemTime, UNIX_EPOCH};
+    use std::time::SystemTime;
+    use std::time::UNIX_EPOCH;
 
-    use agent_semantic_client_db::artifact_pointer_store::{
-        ClientDbArtifactPointerCasOutcome, ClientDbArtifactPointerCasRequest,
-        ClientDbArtifactPointerKey, TursoArtifactPointerStore,
-    };
+    use agent_semantic_client_db::artifact_pointer_store::ClientDbArtifactPointerCasOutcome;
+    use agent_semantic_client_db::artifact_pointer_store::ClientDbArtifactPointerCasRequest;
+    use agent_semantic_client_db::artifact_pointer_store::ClientDbArtifactPointerKey;
+    use agent_semantic_client_db::artifact_pointer_store::TursoArtifactPointerStore;
     use agent_semantic_content_identity::hash_blob;
 
     const CHILD_PATH_ENV: &str = "ASP_ARTIFACT_POINTER_CRASH_CHILD_PATH";
@@ -94,7 +95,10 @@ mod artifact_pointer_crash_tests {
                 .expect("read recovered pointer through typed conflict");
             assert_eq!(receipt.outcome, ClientDbArtifactPointerCasOutcome::Conflict);
             assert_eq!(receipt.observed_revision, 1);
-            assert_eq!(receipt.observed_root_hash.as_deref(), Some(durable_root().as_str()));
+            assert_eq!(
+                receipt.observed_root_hash.as_deref(),
+                Some(durable_root().as_str())
+            );
         });
     }
 }

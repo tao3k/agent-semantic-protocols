@@ -1,8 +1,10 @@
-use super::{
-    CLIENT_HOOK_CONFIG_SCHEMA_ID, canonical_default_template, hook_client_contract_fingerprint,
-    load_asp_project_config_file, load_hook_client_config_file, temp_root,
-    write_canonical_config_overlay,
-};
+use super::CLIENT_HOOK_CONFIG_SCHEMA_ID;
+use super::canonical_default_template;
+use super::hook_client_contract_fingerprint;
+use super::load_asp_project_config_file;
+use super::load_hook_client_config_file;
+use super::temp_root;
+use super::write_canonical_config_overlay;
 use std::fs;
 
 #[test]

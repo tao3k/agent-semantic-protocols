@@ -1,12 +1,17 @@
 //! User-level Codex hook config rendering.
 
+use std::fs;
 use std::path::Path;
-use std::{fs, path::PathBuf};
+use std::path::PathBuf;
 
-use serde_json::{Value, json};
-use sha2::{Digest, Sha256};
+use serde_json::Value;
+use serde_json::json;
+use sha2::Digest;
+use sha2::Sha256;
 
-use crate::codex_config::{ALL_TOOL_ACTION_MATCHER, ROOT_BLOCK_BEGIN, ROOT_BLOCK_END};
+use crate::codex_config::ALL_TOOL_ACTION_MATCHER;
+use crate::codex_config::ROOT_BLOCK_BEGIN;
+use crate::codex_config::ROOT_BLOCK_END;
 
 const TRUST_BLOCK_BEGIN_PREFIX: &str = "# BEGIN agent-semantic-protocol trusted hook state: ";
 const TRUST_BLOCK_END: &str = "# END agent-semantic-protocol trusted hook state";

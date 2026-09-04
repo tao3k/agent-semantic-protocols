@@ -1,9 +1,9 @@
 use std::collections::BTreeMap;
 
-use super::{
-    BoundedPathCommandSpec, StructuredFilterClassification, classify_single_bounded_path_command,
-    classify_single_bounded_path_tokens,
-};
+use super::BoundedPathCommandSpec;
+use super::StructuredFilterClassification;
+use super::classify_single_bounded_path_command;
+use super::classify_single_bounded_path_tokens;
 
 fn spec<'a>(
     binary: &'a str,

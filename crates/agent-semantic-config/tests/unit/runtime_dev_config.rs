@@ -2,9 +2,9 @@
 
 use std::path::PathBuf;
 
-use agent_semantic_config::runtime_dev::{
-    ArtifactOrigin, RuntimeArtifactMode, parse_runtime_artifact_mode,
-};
+use agent_semantic_config::runtime_dev::ArtifactOrigin;
+use agent_semantic_config::runtime_dev::RuntimeArtifactMode;
+use agent_semantic_config::runtime_dev::parse_runtime_artifact_mode;
 
 #[test]
 fn dev_model_accepts_only_development_workspace_artifacts() {

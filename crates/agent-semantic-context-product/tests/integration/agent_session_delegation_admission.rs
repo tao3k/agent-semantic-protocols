@@ -1,7 +1,7 @@
-use agent_semantic_context_product::agent_session_delegation_admission::{
-    AgentSessionDelegationAdmissionInput, AgentSessionDelegationAdmissionReceipt,
-    AgentSessionDelegationCapability, AgentSessionDelegationDecision,
-};
+use agent_semantic_context_product::agent_session_delegation_admission::AgentSessionDelegationAdmissionInput;
+use agent_semantic_context_product::agent_session_delegation_admission::AgentSessionDelegationAdmissionReceipt;
+use agent_semantic_context_product::agent_session_delegation_admission::AgentSessionDelegationCapability;
+use agent_semantic_context_product::agent_session_delegation_admission::AgentSessionDelegationDecision;
 
 #[test]
 fn focused_leaf_denial_is_typed_and_preserves_state() {

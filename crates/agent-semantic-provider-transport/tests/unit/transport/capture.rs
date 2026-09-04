@@ -1,8 +1,11 @@
 use std::fs;
 
-use crate::{OutputMode, ProviderProcessSupervisor};
+use crate::OutputMode;
+use crate::ProviderProcessSupervisor;
 
-use super::support::{script, spec, temp_dir};
+use super::support::script;
+use super::support::spec;
+use super::support::temp_dir;
 
 #[tokio::test]
 async fn truncates_captured_streams_but_counts_full_bytes() {

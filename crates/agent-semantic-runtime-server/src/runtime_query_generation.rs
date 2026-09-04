@@ -1,7 +1,8 @@
 //! Immutable Runtime query-generation value opened from resident Search authority.
 
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::AtomicU64;
+use std::sync::atomic::Ordering;
 
 use agent_semantic_client_db::runtime_resident_read::RuntimeResidentReadClient;
 
@@ -120,6 +121,7 @@ impl RuntimeQueryGeneration {
         (
             Vec<agent_semantic_search::NativeSyntaxProjection>,
             Vec<agent_semantic_search::NativeSyntaxRelation>,
+            Vec<agent_semantic_search::NativeSyntaxDiagnostic>,
         ),
         String,
     > {

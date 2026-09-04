@@ -6,4 +6,5 @@ mod filesystem;
 mod process;
 mod runtime;
 
-pub(super) use runtime::{ReaderProbeRequest, observe};
+pub(super) use runtime::ReaderProbeRequest;
+pub(super) use runtime::observe;

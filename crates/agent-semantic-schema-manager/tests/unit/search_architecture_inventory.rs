@@ -1,7 +1,8 @@
-use crate::{
-    SearchArchitectureEdgeKind, SearchArchitectureFactEdge, SearchArchitectureFactInventory,
-    SearchArchitectureFactNode, SearchArchitectureInventoryError,
-};
+use crate::SearchArchitectureEdgeKind;
+use crate::SearchArchitectureFactEdge;
+use crate::SearchArchitectureFactInventory;
+use crate::SearchArchitectureFactNode;
+use crate::SearchArchitectureInventoryError;
 
 fn node(id: &str, owner: &str, capabilities: &[&str]) -> SearchArchitectureFactNode {
     SearchArchitectureFactNode {

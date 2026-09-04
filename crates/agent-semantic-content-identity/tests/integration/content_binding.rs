@@ -1,6 +1,8 @@
-use agent_semantic_content_identity::content_binding::{
-    AuthorityStamp, ContentBinding, ContentBindingError, ContentIdentity, ContentPublicationCommit,
-};
+use agent_semantic_content_identity::content_binding::AuthorityStamp;
+use agent_semantic_content_identity::content_binding::ContentBinding;
+use agent_semantic_content_identity::content_binding::ContentBindingError;
+use agent_semantic_content_identity::content_binding::ContentIdentity;
+use agent_semantic_content_identity::content_binding::ContentPublicationCommit;
 
 fn identity() -> ContentIdentity {
     let digest = "blake3-256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";

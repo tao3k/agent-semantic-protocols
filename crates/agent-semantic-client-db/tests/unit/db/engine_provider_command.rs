@@ -1,10 +1,11 @@
-use std::{
-    env, fs,
-    path::PathBuf,
-    time::{SystemTime, UNIX_EPOCH},
-};
+use std::env;
+use std::fs;
+use std::path::PathBuf;
+use std::time::SystemTime;
+use std::time::UNIX_EPOCH;
 
-use agent_semantic_client_db::{ClientDbEngine, ClientDbProviderCommandSelection};
+use agent_semantic_client_db::ClientDbEngine;
+use agent_semantic_client_db::ClientDbProviderCommandSelection;
 
 #[test]
 fn db_engine_provider_command_selections_use_active_turso_path_without_retired_db_control() {

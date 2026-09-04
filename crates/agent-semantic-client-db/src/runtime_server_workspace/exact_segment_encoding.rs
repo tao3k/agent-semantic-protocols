@@ -25,6 +25,7 @@ type OwnerRow = (
     usize,
     ByteRange,
     ByteRange,
+    ByteRange,
     [u8; 32],
 );
 type SelectorRow = (
@@ -183,6 +184,7 @@ pub(crate) fn encode_exact_projection_segment(
             owner_blob_len,
             language,
             provider,
+            diagnostic,
             projection_digest,
         ),
     ) in owner_rows.into_iter().enumerate()
@@ -195,7 +197,8 @@ pub(crate) fn encode_exact_projection_segment(
         write_usize(&mut segment, start + 72, owner_blob_len)?;
         write_range_entry(&mut segment, start + 80, string_table_offset, language)?;
         write_range_entry(&mut segment, start + 96, string_table_offset, provider)?;
-        segment[start + 112..start + 144].copy_from_slice(&projection_digest);
+        write_range_entry(&mut segment, start + 112, string_table_offset, diagnostic)?;
+        segment[start + 128..start + 160].copy_from_slice(&projection_digest);
     }
     for (
         index,
@@ -286,6 +289,13 @@ fn append_owner_projection_rows(
     } else {
         ((sink.strings.len(), 0), (sink.strings.len(), 0))
     };
+    let diagnostic = if let Some(diagnostic) = &owner.native_syntax_diagnostic {
+        let bytes = serde_json::to_vec(diagnostic)
+            .map_err(|error| format!("encode owner native syntax diagnostic: {error}"))?;
+        push_bytes(sink.strings, &bytes)
+    } else {
+        (sink.strings.len(), 0)
+    };
     let blob_offset = sink.blobs.len();
     sink.blobs.extend_from_slice(&owner.bytes);
     owner_rows.push((
@@ -296,6 +306,7 @@ fn append_owner_projection_rows(
         owner.bytes.len(),
         language,
         provider,
+        diagnostic,
         owner_projection_digest(owner),
     ));
     for selector in &owner.selectors {
@@ -344,10 +355,10 @@ fn append_derived_projection_row(
     if let Some(context) = evidence_context {
         let context_bytes = serde_json::to_vec(&context)
             .map_err(|error| format!("encode projection evidence context: {error}"))?;
-        if let Some(existing) = sink
-            .evidence_contexts
-            .insert(context.evidence_context_ref.clone(), context_bytes.clone())
-            && existing != context_bytes
+        if let Some(existing) = sink.evidence_contexts.insert(
+            context.evidence_context_ref.as_str().to_owned(),
+            context_bytes.clone(),
+        ) && existing != context_bytes
         {
             return Err(
                 "projection evidence context ref resolved to conflicting identity".to_owned(),
@@ -400,7 +411,7 @@ fn resident_projection_payload(
         .map_err(|error| format!("validate callable-skeleton payload: {error}"))?;
     envelope
         .payload
-        .validate_scope(&envelope.root_selector)
+        .validate_scope(envelope.root_selector.as_str())
         .map_err(|error| format!("validate callable-skeleton scope: {error}"))?;
     let context = projection
         .evidence_context

@@ -1,12 +1,9 @@
 //! Active workspace-generation admission for graph consumers.
 
-use agent_semantic_content_identity::{
-    SourceSnapshotEvidence,
-    workspace_generation_evidence::{
-        ValidatedWorkspaceGenerationV1, WorkspaceGenerationEvidenceError,
-        WorkspaceGenerationEvidenceV1,
-    },
-};
+use agent_semantic_content_identity::SourceSnapshotEvidence;
+use agent_semantic_content_identity::workspace_generation_evidence::ValidatedWorkspaceGenerationV1;
+use agent_semantic_content_identity::workspace_generation_evidence::WorkspaceGenerationEvidenceError;
+use agent_semantic_content_identity::workspace_generation_evidence::WorkspaceGenerationEvidenceV1;
 
 /// A graph input whose source snapshot and complete generation have both been
 /// proven to match the active workspace generation.

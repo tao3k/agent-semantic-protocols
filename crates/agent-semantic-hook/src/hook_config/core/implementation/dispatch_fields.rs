@@ -1,6 +1,7 @@
 //! Projects configured Host dispatch metadata onto every Hook decision path.
 
-use sha2::{Digest, Sha256};
+use sha2::Digest;
+use sha2::Sha256;
 
 use super::compiled_rule::CompiledRuleDispatch;
 use crate::tool_action::ToolAction;

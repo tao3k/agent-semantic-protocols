@@ -2,9 +2,16 @@
 
 use std::cmp::Ordering;
 
-use crate::domain::{JSON_DOMAIN_V1, LEAF_DOMAIN_V1, NODE_DOMAIN_V1, ROOT_DOMAIN_V1};
-use crate::model::{ArtifactChildRef, ArtifactLeafInput, ArtifactNodeInput, ArtifactRootInput};
-use crate::value::{ArtifactHash, ArtifactJson};
+use crate::domain::JSON_DOMAIN_V1;
+use crate::domain::LEAF_DOMAIN_V1;
+use crate::domain::NODE_DOMAIN_V1;
+use crate::domain::ROOT_DOMAIN_V1;
+use crate::model::ArtifactChildRef;
+use crate::model::ArtifactLeafInput;
+use crate::model::ArtifactNodeInput;
+use crate::model::ArtifactRootInput;
+use crate::value::ArtifactHash;
+use crate::value::ArtifactJson;
 
 /// Inputs that make a derived cache artifact reproducible from source truth.
 #[derive(Clone, Copy, Debug)]

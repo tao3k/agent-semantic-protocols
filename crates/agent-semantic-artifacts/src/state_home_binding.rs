@@ -1,9 +1,11 @@
 //! Project, repository, and workspace binding identities owned by Artifacts.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 
 use crate::blake3_content_digest::Blake3ContentDigest;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 
 pub const PROJECT_BINDING_SCHEMA_ID: &str = "agent.semantic-protocols.state-home-project-binding";
 pub const PROJECT_BINDING_SCHEMA_VERSION: u32 = 1;

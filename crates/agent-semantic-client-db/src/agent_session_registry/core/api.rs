@@ -1,21 +1,37 @@
 //! Synchronous public registry operations over the Turso-owned core.
 
 use super::AgentSessionRegistry;
-use super::storage::{
-    block_on_agent_session_registry_async, turso_delete_session, turso_query_all_sessions,
-    turso_query_sessions, turso_record_tool_event, turso_refresh_expired_sessions,
-    turso_register_session, turso_session_by_id, turso_session_by_id_any_project,
-    turso_session_by_name, turso_session_for_root_session_id_any_project, turso_session_is_retired,
-    turso_set_archived_status, turso_update_session_status,
-};
-use crate::agent_session_registry::types::{
-    AGENT_SESSION_STATUS_ACTIVE, AGENT_SESSION_STATUS_ARCHIVED, AGENT_SESSION_STATUS_INVALID,
-    AgentSessionDispatchClaimRequest, AgentSessionDispatchClaimResult,
-    AgentSessionDispatchCompleteRequest, AgentSessionDispatchLeaseRecord, AgentSessionId,
-    AgentSessionLookupRequest, AgentSessionProjectId, AgentSessionRecord,
-    AgentSessionRegisterRequest, AgentSessionResidentName, AgentSessionRootSessionId,
-    AgentSessionStatus, AgentSessionToolEventRequest, agent_session_unix_timestamp,
-};
+use super::storage::block_on_agent_session_registry_async;
+use super::storage::turso_delete_session;
+use super::storage::turso_query_all_sessions;
+use super::storage::turso_query_sessions;
+use super::storage::turso_record_tool_event;
+use super::storage::turso_refresh_expired_sessions;
+use super::storage::turso_register_session;
+use super::storage::turso_session_by_id;
+use super::storage::turso_session_by_id_any_project;
+use super::storage::turso_session_by_name;
+use super::storage::turso_session_for_root_session_id_any_project;
+use super::storage::turso_session_is_retired;
+use super::storage::turso_set_archived_status;
+use super::storage::turso_update_session_status;
+use crate::agent_session_registry::types::AGENT_SESSION_STATUS_ACTIVE;
+use crate::agent_session_registry::types::AGENT_SESSION_STATUS_ARCHIVED;
+use crate::agent_session_registry::types::AGENT_SESSION_STATUS_INVALID;
+use crate::agent_session_registry::types::AgentSessionDispatchClaimRequest;
+use crate::agent_session_registry::types::AgentSessionDispatchClaimResult;
+use crate::agent_session_registry::types::AgentSessionDispatchCompleteRequest;
+use crate::agent_session_registry::types::AgentSessionDispatchLeaseRecord;
+use crate::agent_session_registry::types::AgentSessionId;
+use crate::agent_session_registry::types::AgentSessionLookupRequest;
+use crate::agent_session_registry::types::AgentSessionProjectId;
+use crate::agent_session_registry::types::AgentSessionRecord;
+use crate::agent_session_registry::types::AgentSessionRegisterRequest;
+use crate::agent_session_registry::types::AgentSessionResidentName;
+use crate::agent_session_registry::types::AgentSessionRootSessionId;
+use crate::agent_session_registry::types::AgentSessionStatus;
+use crate::agent_session_registry::types::AgentSessionToolEventRequest;
+use crate::agent_session_registry::types::agent_session_unix_timestamp;
 
 impl AgentSessionRegistry {
     pub async fn record_host_execution_observation_async(

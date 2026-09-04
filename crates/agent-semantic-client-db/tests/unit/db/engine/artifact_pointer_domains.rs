@@ -1,11 +1,12 @@
 mod artifact_pointer_domain_tests {
     use std::path::PathBuf;
-    use std::time::{SystemTime, UNIX_EPOCH};
+    use std::time::SystemTime;
+    use std::time::UNIX_EPOCH;
 
-    use agent_semantic_client_db::artifact_pointer_store::{
-        ClientDbArtifactPointerCasOutcome, ClientDbArtifactPointerCasRequest,
-        ClientDbArtifactPointerKey, TursoArtifactPointerStore,
-    };
+    use agent_semantic_client_db::artifact_pointer_store::ClientDbArtifactPointerCasOutcome;
+    use agent_semantic_client_db::artifact_pointer_store::ClientDbArtifactPointerCasRequest;
+    use agent_semantic_client_db::artifact_pointer_store::ClientDbArtifactPointerKey;
+    use agent_semantic_client_db::artifact_pointer_store::TursoArtifactPointerStore;
     use agent_semantic_content_identity::hash_blob;
 
     fn temp_db() -> PathBuf {
@@ -38,13 +39,9 @@ mod artifact_pointer_domain_tests {
         let store = TursoArtifactPointerStore::open(temp_db())
             .await
             .expect("open domain authority store");
-        for (index, pointer_kind) in [
-            "memory-root",
-            "topology-root",
-            "coordination-root",
-        ]
-        .into_iter()
-        .enumerate()
+        for (index, pointer_kind) in ["memory-root", "topology-root", "coordination-root"]
+            .into_iter()
+            .enumerate()
         {
             let receipt = store
                 .compare_and_set(&ClientDbArtifactPointerCasRequest {
@@ -84,7 +81,10 @@ mod artifact_pointer_domain_tests {
                 })
                 .await
                 .expect("other domain retained its own revision");
-            assert_eq!(independent.outcome, ClientDbArtifactPointerCasOutcome::Applied);
+            assert_eq!(
+                independent.outcome,
+                ClientDbArtifactPointerCasOutcome::Applied
+            );
             assert_eq!(
                 independent.current.as_ref().map(|row| row.revision),
                 Some(2)

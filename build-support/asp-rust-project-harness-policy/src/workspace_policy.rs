@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use crate::build_gate::validate_asp_rust_project_harness_member_manifest;
+use crate::build_gate::assert_asp_rust_project_harness_member_policy;
 use crate::member_policy::asp_workspace_member_policy_for;
 
 /// Validate the Cargo-derived identity of the workspace owning this build script.
@@ -16,7 +16,7 @@ pub fn assert_asp_workspace_build_identity_from_env() -> asp_rust::AspRustWorksp
             .unwrap_or_else(|error| panic!("derive ASP Rust workspace Build DAG: {error}"));
     for package in &build_dag.packages {
         if asp_workspace_member_policy_for(&package.package_name).is_some() {
-            validate_asp_rust_project_harness_member_manifest(
+            assert_asp_rust_project_harness_member_policy(
                 &package.package_name,
                 &package.package_root,
             )

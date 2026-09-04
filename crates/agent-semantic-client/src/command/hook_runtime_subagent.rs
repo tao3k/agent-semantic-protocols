@@ -1,5 +1,6 @@
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 
 const CLAUDE_DEFAULT_RESIDENT_AGENT_MODEL: &str = "haiku";
 pub(super) fn subagent_model_arg(client: &str, model: Option<&str>) -> Result<String, String> {

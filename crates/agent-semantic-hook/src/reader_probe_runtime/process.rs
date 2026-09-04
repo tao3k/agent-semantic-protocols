@@ -1,7 +1,9 @@
 //! Bounded child-process lifecycle for permission-differential Reader probes.
 
-use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::path::Path;
+use std::path::PathBuf;
+use std::process::Command;
+use std::process::Stdio;
 use std::time::Instant;
 
 use super::filesystem::ensure_secure_directory;
@@ -78,7 +80,9 @@ pub(super) fn materialize_profile_sentinels(
 }
 
 fn materialize_profile_sentinel(path: &Path, mode: u32) -> Result<(), String> {
-    use std::os::unix::fs::{MetadataExt as _, OpenOptionsExt as _, PermissionsExt as _};
+    use std::os::unix::fs::MetadataExt as _;
+    use std::os::unix::fs::OpenOptionsExt as _;
+    use std::os::unix::fs::PermissionsExt as _;
     match std::fs::OpenOptions::new()
         .write(true)
         .create_new(true)

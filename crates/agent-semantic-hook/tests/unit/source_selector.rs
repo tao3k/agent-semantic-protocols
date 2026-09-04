@@ -1,6 +1,10 @@
 use super::project_shell_subject_paths;
-use crate::{CommandTemplate, HookPolicy, HookProviderProjection, HookRuntime};
-use agent_semantic_config::{LanguageId, ProviderId};
+use crate::CommandTemplate;
+use crate::HookPolicy;
+use crate::HookProviderProjection;
+use crate::HookRuntime;
+use agent_semantic_config::LanguageId;
+use agent_semantic_config::ProviderId;
 
 #[test]
 fn shell_subject_projection_fades_flags_and_non_file_operands() {

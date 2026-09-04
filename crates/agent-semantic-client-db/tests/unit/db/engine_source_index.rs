@@ -1,25 +1,31 @@
-use std::{
-    fs,
-    path::PathBuf,
-    sync::{
-        Arc,
-        atomic::{AtomicUsize, Ordering},
-    },
-};
+use std::fs;
+use std::path::PathBuf;
+use std::sync::Arc;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
 
 use crate::source_index_fixture::build_fixture_source_index_import;
-use agent_semantic_client_core::{
-    CacheGenerationId, ClientCacheFileHash, LanguageId, ProviderId, SemanticSchemaId,
-    SemanticSchemaVersion,
-};
-use agent_semantic_client_db::{
-    CLIENT_DB_SOURCE_INDEX_PROVIDER_ID, CLIENT_DB_SOURCE_INDEX_SCHEMA_ID,
-    CLIENT_DB_SOURCE_INDEX_SCHEMA_VERSION, ClientDbEngine,
-    ClientDbSourceIndexImportAssemblyRequest, ClientDbSourceIndexImportFile,
-    ClientDbSourceIndexImportRequest, ClientDbSourceIndexLookupState, ClientDbSourceIndexPath,
-    ClientDbSourceIndexQueryKey, ClientDbSourceIndexRefreshRequest, ClientDbSourceIndexScopeFile,
-    ClientDbSourceIndexSelector, ClientDbSourceIndexSource, source_index_import_with_file_hashes,
-};
+use agent_semantic_client_core::CacheGenerationId;
+use agent_semantic_client_core::ClientCacheFileHash;
+use agent_semantic_client_core::LanguageId;
+use agent_semantic_client_core::ProviderId;
+use agent_semantic_client_core::SemanticSchemaId;
+use agent_semantic_client_core::SemanticSchemaVersion;
+use agent_semantic_client_db::CLIENT_DB_SOURCE_INDEX_PROVIDER_ID;
+use agent_semantic_client_db::CLIENT_DB_SOURCE_INDEX_SCHEMA_ID;
+use agent_semantic_client_db::CLIENT_DB_SOURCE_INDEX_SCHEMA_VERSION;
+use agent_semantic_client_db::ClientDbEngine;
+use agent_semantic_client_db::ClientDbSourceIndexImportAssemblyRequest;
+use agent_semantic_client_db::ClientDbSourceIndexImportFile;
+use agent_semantic_client_db::ClientDbSourceIndexImportRequest;
+use agent_semantic_client_db::ClientDbSourceIndexLookupState;
+use agent_semantic_client_db::ClientDbSourceIndexPath;
+use agent_semantic_client_db::ClientDbSourceIndexQueryKey;
+use agent_semantic_client_db::ClientDbSourceIndexRefreshRequest;
+use agent_semantic_client_db::ClientDbSourceIndexScopeFile;
+use agent_semantic_client_db::ClientDbSourceIndexSelector;
+use agent_semantic_client_db::ClientDbSourceIndexSource;
+use agent_semantic_client_db::source_index_import_with_file_hashes;
 
 pub use agent_semantic_client_db::ClientDbSourceIndexImport;
 
@@ -293,6 +299,7 @@ async fn db_engine_source_index_scope_selector_receipt_roundtrips_to_lookup_cand
                 provider_id: ProviderId::from("asp-rust"),
                 projection_coverage:
                     agent_semantic_client_db::ClientDbSourceIndexProjectionCoverage::Complete,
+                projection_diagnostic: None,
                 selector_receipts: vec![ClientDbSourceIndexSelector {
                     owner_path: ClientDbSourceIndexPath::from(
                         "src/source_index_scope_payload_proof.rs",

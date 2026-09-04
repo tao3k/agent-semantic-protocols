@@ -1,5 +1,9 @@
-use serde::{Deserialize, Serialize};
+//! Typed manifest for Provider installation inputs.
 
+use serde::Deserialize;
+use serde::Serialize;
+
+/// Filesystem authority that owns a Provider installation artifact.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum ProviderInstallArtifactDomain {
@@ -7,6 +11,9 @@ pub enum ProviderInstallArtifactDomain {
     StateHomeProviderStaging,
 }
 
+/// One Provider installation registration.
+///
+/// This is an intentional raw DTO boundary matching the canonical JSON schema.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProviderInstallRegistration {
@@ -19,6 +26,9 @@ pub struct ProviderInstallRegistration {
     pub artifact_domain: ProviderInstallArtifactDomain,
 }
 
+/// Canonical set of Provider installation registrations.
+///
+/// This is an intentional raw DTO boundary matching the canonical JSON schema.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProviderInstallRegister {
@@ -29,6 +39,7 @@ pub struct ProviderInstallRegister {
     pub providers: Vec<ProviderInstallRegistration>,
 }
 
+/// Decode and validate a canonical Provider installation register.
 pub fn parse_provider_install_register(bytes: &[u8]) -> Result<ProviderInstallRegister, String> {
     let register: ProviderInstallRegister = serde_json::from_slice(bytes)
         .map_err(|error| format!("decode provider install register: {error}"))?;

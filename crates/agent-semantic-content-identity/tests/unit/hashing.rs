@@ -1,7 +1,9 @@
-use crate::{
-    ArtifactLeafInput, DerivedArtifactKeyInput, HASH_ALGORITHM_BLAKE3, hash_blob,
-    hash_derived_artifact_key, hash_leaf,
-};
+use crate::ArtifactLeafInput;
+use crate::DerivedArtifactKeyInput;
+use crate::HASH_ALGORITHM_BLAKE3;
+use crate::hash_blob;
+use crate::hash_derived_artifact_key;
+use crate::hash_leaf;
 
 #[test]
 fn blob_hash_is_stable_blake3_identity() {

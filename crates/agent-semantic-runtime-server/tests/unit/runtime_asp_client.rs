@@ -1,14 +1,22 @@
 use std::sync::Arc;
 
-use agent_semantic_client_protocol::{
-    CLIENT_FRAME_SCHEMA_ID, CLIENT_PROTOCOL_ID, CLIENT_PROTOCOL_VERSION, ClientFrame,
-    ClientFrameBase, ClientInfo, ClientProjectId, ClientRequestId, ClientSessionId,
-    ClientWorkspaceIdentity, SCHEMA_BUNDLE_REQUEST_SCHEMA_ID, SCHEMA_VERSION, SchemaBundleRequest,
-    SchemaBundleResponse,
-};
-use agent_semantic_client_server::{
-    AspClientGrpcTransport, bind_asp_client_grpc_tcp, serve_asp_client_grpc_tcp,
-};
+use agent_semantic_client_protocol::ClientFrame;
+use agent_semantic_client_protocol::ClientFrameBase;
+use agent_semantic_client_protocol::ClientInfo;
+use agent_semantic_client_protocol::ClientProjectId;
+use agent_semantic_client_protocol::ClientRequestId;
+use agent_semantic_client_protocol::ClientSessionId;
+use agent_semantic_client_protocol::ClientWorkspaceIdentity;
+use agent_semantic_client_protocol::SCHEMA_BUNDLE_REQUEST_SCHEMA_ID;
+use agent_semantic_client_protocol::SchemaBundleRequest;
+use agent_semantic_client_protocol::SchemaBundleResponse;
+use agent_semantic_client_protocol::protocol_identity::CLIENT_FRAME_SCHEMA_ID;
+use agent_semantic_client_protocol::protocol_identity::CLIENT_PROTOCOL_ID;
+use agent_semantic_client_protocol::protocol_identity::CLIENT_PROTOCOL_VERSION;
+use agent_semantic_client_protocol::protocol_identity::SCHEMA_VERSION;
+use agent_semantic_client_server::AspClientGrpcTransport;
+use agent_semantic_client_server::bind_asp_client_grpc_tcp;
+use agent_semantic_client_server::serve_asp_client_grpc_tcp;
 use agent_semantic_schema_manager::SchemaManager;
 
 fn digest(character: char) -> String {
@@ -35,10 +43,9 @@ async fn test_generation_admission(
     Arc<agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmission>,
     String,
 ) {
-    use agent_semantic_client_db::runtime_server_admission::{
-        WorkspaceGenerationAdmission, WorkspaceGenerationBuildFailure,
-        WorkspaceGenerationFailureStage,
-    };
+    use agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmission;
+    use agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationBuildFailure;
+    use agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationFailureStage;
 
     let project_id = agent_semantic_client_core::state_core::ResolvedState::resolve(project_root)
         .expect("resolve fixture ProjectId")
@@ -101,10 +108,12 @@ fn assert_exact_query_not_ready_terminal(response_frame: &ClientFrame, params: &
     assert_eq!(terminal["generationDigest"], serde_json::Value::Null);
     assert_eq!(terminal["rootDigest"], serde_json::Value::Null);
     assert_eq!(terminal["requestedSelector"], params["selector"]);
-    assert_eq!(terminal["details"]["generationState"], "unpublished");
-    assert_eq!(
-        terminal["details"]["publicationError"],
-        serde_json::Value::Null
+    assert_eq!(terminal["details"]["generationState"], "failed");
+    assert!(
+        terminal["details"]["publicationError"]
+            .as_str()
+            .is_some_and(|error| error.contains("intentionally unavailable")),
+        "fixture must preserve the deterministic generation-builder failure: {terminal}"
     );
     assert_eq!(
         terminal["recommendedNext"]["action"],
@@ -165,6 +174,7 @@ async fn warm_dispatch_without_resident_generation_returns_query_not_ready(
         workspace_registry,
         digest('a'),
         Arc::from(registered_language_provider_pairs()),
+        Arc::from([]),
         directory.path().join("workspace-store"),
         agent_semantic_runtime_server::RuntimeQueryGenerationAuthority::new(),
         telemetry.sender,
@@ -246,6 +256,27 @@ async fn search_dispatch_requires_a_committed_generation_admission() {
         serde_json::json!({
             "schemaId": "agent.semantic-protocols.asp-client-search-request",
             "schemaVersion": "1",
+            "intent": "conceptual",
+            "query": "ready",
+            "scope": "workspace",
+            "coverage": "candidates",
+            "maxOwners": 16,
+            "deadlineMs": 250,
+            "explain": "compact"
+        }),
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn workspace_search_playbook_requires_a_committed_complete_generation() {
+    warm_dispatch_without_resident_generation_returns_query_not_ready(
+        "request-workspace-search-playbook",
+        agent_semantic_client_protocol::WORKSPACE_SEARCH_PLAYBOOK_METHOD,
+        serde_json::json!({
+            "schemaId": "agent.semantic-protocols.asp-client-workspace-search-playbook-request",
+            "schemaVersion": "1",
+            "language": null,
             "intent": "conceptual",
             "query": "ready",
             "scope": "workspace",
@@ -489,6 +520,7 @@ async fn host_uds_schema_bundle_route_bypasses_workspace_generation() {
         workspace_registry,
         digest('a'),
         Arc::from(registered_language_provider_pairs()),
+        Arc::from([]),
         directory.path().join("workspace-store"),
         agent_semantic_runtime_server::RuntimeQueryGenerationAuthority::new(),
         telemetry.sender,

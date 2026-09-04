@@ -1,8 +1,12 @@
-use agent_semantic_config::{LanguageId, ProviderId};
+use agent_semantic_config::LanguageId;
+use agent_semantic_config::ProviderId;
 
 use super::match_registered_asp_command;
+use crate::CommandTemplate;
+use crate::HookPolicy;
+use crate::HookProviderProjection;
+use crate::HookRuntime;
 use crate::tool_action::ToolAction;
-use crate::{CommandTemplate, HookPolicy, HookProviderProjection, HookRuntime};
 
 fn route() -> CommandTemplate {
     CommandTemplate {
@@ -31,7 +35,7 @@ fn rust_runtime() -> HookRuntime {
 #[test]
 fn direct_registered_asp_search_matches_the_declarative_language_pattern() {
     let action = ToolAction::normalized_shell_command_action(
-        "asp rust search playbook 'HookDecision' --workspace .".to_owned(),
+        "asp search playbook --language rust 'HookDecision' --workspace .".to_owned(),
         "Bash".to_owned(),
     );
     let patterns = vec![vec![

@@ -1,7 +1,9 @@
 //! Materializes agent-facing decisions before matcher publication.
 
 use super::ClientHookConfig;
-use crate::{CommandDecisionShard, HookDecision, materialize_source_access_deny_message};
+use crate::CommandDecisionShard;
+use crate::HookDecision;
+use crate::materialize_source_access_deny_message;
 
 pub struct MaterializedDecisionShards {
     pub direct_read: Vec<(String, Vec<u8>)>,

@@ -1,6 +1,7 @@
 //! Provider installation branch boundary.
 
-use crate::command::{installed_provider_artifacts, protocol_binary};
+use crate::command::installed_provider_artifacts;
+use crate::command::protocol_binary;
 
 mod archive;
 mod binary;

@@ -1,6 +1,5 @@
-use super::project_registry_gc_args::{
-    parse_project_registry_clean_args, parse_project_registry_gc_args,
-};
+use super::project_registry_gc_args::parse_project_registry_clean_args;
+use super::project_registry_gc_args::parse_project_registry_gc_args;
 
 #[test]
 fn parses_gc_flags_with_clap() {

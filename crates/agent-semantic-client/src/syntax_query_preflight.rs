@@ -1,12 +1,12 @@
 //! ASP-side preflight validation for query requests.
 
-use agent_semantic_client_core::{
-    ClientMethod, ClientRequest, builtin_catalog_source, compile_query_abi_source,
-};
-use std::{
-    fs,
-    path::{Path, PathBuf},
-};
+use agent_semantic_client_core::ClientMethod;
+use agent_semantic_client_core::ClientRequest;
+use agent_semantic_client_core::builtin_catalog_source;
+use agent_semantic_client_core::compile_query_abi_source;
+use std::fs;
+use std::path::Path;
+use std::path::PathBuf;
 
 /// Validate client-side syntax query boundaries before provider execution.
 pub fn validate_syntax_query_request(request: &ClientRequest) -> Result<(), String> {

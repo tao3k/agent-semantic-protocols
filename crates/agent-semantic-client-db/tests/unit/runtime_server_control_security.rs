@@ -1,13 +1,13 @@
 use std::sync::Arc;
 
-use agent_semantic_client_db::runtime_server_control::{
-    prepare_runtime_server_endpoint_in, publish_runtime_server_endpoint,
-};
+use agent_semantic_client_db::RuntimeServerOperation;
+use agent_semantic_client_db::WorkspaceDbRegistry;
+use agent_semantic_client_db::call_runtime_server;
+use agent_semantic_client_db::runtime_server::RuntimeServer;
+use agent_semantic_client_db::runtime_server::RuntimeServerExit;
+use agent_semantic_client_db::runtime_server_control::prepare_runtime_server_endpoint_in;
+use agent_semantic_client_db::runtime_server_control::publish_runtime_server_endpoint;
 use agent_semantic_client_db::runtime_server_runtime::RuntimeServerConnectionSupervisor;
-use agent_semantic_client_db::{
-    RuntimeServerOperation, WorkspaceDbRegistry, call_runtime_server,
-    runtime_server::{RuntimeServer, RuntimeServerExit},
-};
 
 async fn fixture_endpoint(
     runtime_dir: &tempfile::TempDir,
@@ -146,7 +146,8 @@ async fn control_request_nonce_is_single_use_for_the_owner_epoch() {
 
 #[tokio::test]
 async fn endpoint_publication_is_private_and_non_symlink() {
-    use std::os::unix::fs::{MetadataExt, PermissionsExt};
+    use std::os::unix::fs::MetadataExt;
+    use std::os::unix::fs::PermissionsExt;
     let runtime_dir = tempfile::tempdir().expect("create isolated runtime server directory");
     let (endpoint, _) = fixture_endpoint(&runtime_dir, 31).await;
     let endpoint_path = runtime_dir.path().join("endpoint.v1.json");

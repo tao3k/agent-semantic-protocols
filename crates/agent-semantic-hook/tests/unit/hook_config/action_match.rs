@@ -1,14 +1,19 @@
-use agent_semantic_config::{
-    HookClientActionKind, HookClientActionSubjectKind, HookClientCapabilityPolicyConfig,
-    HookClientHostInvocationKind, LanguageId, ProviderId,
-};
+use agent_semantic_config::HookClientActionKind;
+use agent_semantic_config::HookClientActionSubjectKind;
+use agent_semantic_config::HookClientCapabilityPolicyConfig;
+use agent_semantic_config::HookClientHostInvocationKind;
+use agent_semantic_config::LanguageId;
+use agent_semantic_config::ProviderId;
 
-use super::{AgentActionMatch, AgentActionMatchConfig};
+use super::AgentActionMatch;
+use super::AgentActionMatchConfig;
 use crate::HookRuntime;
-use crate::action_ir::{
-    AgentAction, AgentActionKind, HostInvocationFact, HostInvocationKind, SemanticCapability,
-    SemanticCapabilityEvidence,
-};
+use crate::action_ir::AgentAction;
+use crate::action_ir::AgentActionKind;
+use crate::action_ir::HostInvocationFact;
+use crate::action_ir::HostInvocationKind;
+use crate::action_ir::SemanticCapability;
+use crate::action_ir::SemanticCapabilityEvidence;
 use crate::tool_action::ToolAction;
 
 fn runtime() -> HookRuntime {

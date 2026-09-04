@@ -1,18 +1,24 @@
 use std::collections::BTreeMap;
 
-use base64::{Engine as _, engine::general_purpose::STANDARD};
+use base64::Engine as _;
+use base64::engine::general_purpose::STANDARD;
 
-use super::{
-    CALLABLE_SKELETON_PAYLOAD_SCHEMA_ID, CallableDescriptorKindV1, CallableDescriptorV1,
-    CallableSkeletonCostV1, CallableSkeletonNodeKindV1, CallableSkeletonNodeV1,
-    CallableSkeletonPayload, CallableSkeletonRelationKindV1, CallableSkeletonRelationV1,
-    CallableSkeletonValidationError,
-};
-use crate::exact_structural_selector::{
-    EXACT_STRUCTURAL_SELECTOR_SCHEMA_ID, EXACT_STRUCTURAL_SELECTOR_SCHEMA_VERSION,
-    ExactCanonicalItemSelectorV1, ExactStructuralSelectorV1,
-};
+use super::CALLABLE_SKELETON_PAYLOAD_SCHEMA_ID;
+use super::CallableDescriptorKindV1;
+use super::CallableDescriptorV1;
+use super::CallableSkeletonCostV1;
+use super::CallableSkeletonNodeKindV1;
+use super::CallableSkeletonNodeV1;
+use super::CallableSkeletonPayload;
+use super::CallableSkeletonRelationKindV1;
+use super::CallableSkeletonRelationV1;
+use super::CallableSkeletonValidationError;
+use crate::exact_structural_selector::EXACT_STRUCTURAL_SELECTOR_SCHEMA_ID;
+use crate::exact_structural_selector::EXACT_STRUCTURAL_SELECTOR_SCHEMA_VERSION;
+use crate::exact_structural_selector::ExactCanonicalItemSelectorV1;
+use crate::exact_structural_selector::ExactStructuralSelectorV1;
 use crate::semantic_projection::SemanticProjection;
+use crate::semantic_projection::SemanticProjectionInput;
 
 fn root_selector() -> ExactStructuralSelectorV1 {
     ExactStructuralSelectorV1 {
@@ -55,7 +61,14 @@ fn shared_json_schema_keeps_wire_identity_at_version_one() {
     assert!(schema["properties"].get("projectionKind").is_none());
     assert_eq!(
         schema["required"],
-        serde_json::json!(["rootNodeId", "callable", "nodes", "relations", "cost"])
+        serde_json::json!([
+            "rootSelector",
+            "rootNodeId",
+            "callable",
+            "nodes",
+            "relations",
+            "cost"
+        ])
     );
 }
 
@@ -148,15 +161,16 @@ fn runtime_reference_interns_authority_and_uses_packet_local_selectors() {
         .expect("encode inline projection")
         .len();
 
-    let envelope = SemanticProjection::new(
-        CallableSkeletonPayload::projection_kind(),
-        "rust",
-        "asp-rust",
-        root,
-        "blake3-256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
-        CALLABLE_SKELETON_PAYLOAD_SCHEMA_ID,
-        value,
-    )
+    let envelope = SemanticProjection::new(SemanticProjectionInput {
+        projection_kind: CallableSkeletonPayload::projection_kind().into(),
+        language_id: "rust".into(),
+        provider_id: "asp-rust".into(),
+        root_selector: root.into(),
+        evidence_context_ref:
+            "blake3-256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee".into(),
+        payload_schema_id: CALLABLE_SKELETON_PAYLOAD_SCHEMA_ID.into(),
+        payload: value,
+    })
     .expect("semantic projection envelope");
     envelope.validate().expect("validate semantic projection");
     assert_eq!(

@@ -1,8 +1,10 @@
 //! Compact config-derived policy shard for structured document projections.
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 
-use crate::{HookDecision, ShellCommandKey};
+use crate::HookDecision;
+use crate::ShellCommandKey;
 
 #[derive(Serialize, Deserialize)]
 struct StructuredProjectionDecisionEntry {

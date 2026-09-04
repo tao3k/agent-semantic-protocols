@@ -1,4 +1,5 @@
-use super::{CALLABLE_SKELETON_PAYLOAD_SCHEMA_ID, CallableSkeletonPayload};
+use super::CALLABLE_SKELETON_PAYLOAD_SCHEMA_ID;
+use super::CallableSkeletonPayload;
 use crate::semantic_projection::SemanticProjection;
 
 #[test]

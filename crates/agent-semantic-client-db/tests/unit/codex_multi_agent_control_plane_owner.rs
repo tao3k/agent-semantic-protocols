@@ -1,14 +1,18 @@
 use agent_semantic_client_db::codex_multi_agent_control_plane_owner::CodexMultiAgentControlPlaneOwner;
 use agent_semantic_client_db::workspace_db_ipc::WorkspaceDbIpcOperation;
-use agent_semantic_context_product::agent_session_lifecycle::{
-    AgentSessionLifecycleProjection, BindingPhase, DispatchLifecycleProjection, DispatchPhase,
-    HostBindingProjection, ServerHealth, SessionLifecycleProjection, SessionPhase,
-    WorkspaceServerProjection,
-};
-use agent_semantic_context_product::codex_multi_agent_v2_control_plane::{
-    CodexAgentNodeProjection, CodexControlPlaneFreshness, CodexControlPlaneMaterialization,
-    CodexMultiAgentV2ControlPlaneProjection,
-};
+use agent_semantic_context_product::agent_session_lifecycle::AgentSessionLifecycleProjection;
+use agent_semantic_context_product::agent_session_lifecycle::BindingPhase;
+use agent_semantic_context_product::agent_session_lifecycle::DispatchLifecycleProjection;
+use agent_semantic_context_product::agent_session_lifecycle::DispatchPhase;
+use agent_semantic_context_product::agent_session_lifecycle::HostBindingProjection;
+use agent_semantic_context_product::agent_session_lifecycle::ServerHealth;
+use agent_semantic_context_product::agent_session_lifecycle::SessionLifecycleProjection;
+use agent_semantic_context_product::agent_session_lifecycle::SessionPhase;
+use agent_semantic_context_product::agent_session_lifecycle::WorkspaceServerProjection;
+use agent_semantic_context_product::codex_multi_agent_v2_control_plane::CodexAgentNodeProjection;
+use agent_semantic_context_product::codex_multi_agent_v2_control_plane::CodexControlPlaneFreshness;
+use agent_semantic_context_product::codex_multi_agent_v2_control_plane::CodexControlPlaneMaterialization;
+use agent_semantic_context_product::codex_multi_agent_v2_control_plane::CodexMultiAgentV2ControlPlaneProjection;
 
 fn server(health: ServerHealth) -> WorkspaceServerProjection {
     WorkspaceServerProjection {

@@ -1,12 +1,22 @@
-use agent_semantic_context_product::{
-    ClaimClass, EvidenceCompleteness, EvidencePredicate, RequiredClosure, RouteEdge,
-    RouteExecutionGroup, RouteStage, SearchBudget,
-};
+use agent_semantic_context_product::ClaimClass;
+use agent_semantic_context_product::EvidenceCompleteness;
+use agent_semantic_context_product::EvidencePredicate;
+use agent_semantic_context_product::RequiredClosure;
+use agent_semantic_context_product::RouteEdge;
+use agent_semantic_context_product::RouteExecutionGroup;
+use agent_semantic_context_product::RouteStage;
+use agent_semantic_context_product::SearchBudget;
 
-use super::{
-    BTreeSet, Digest, JoinPolicy, ProtocolId, RouteExecutionMode, RouteProgram,
-    SearchLoopDirective, SearchLoopReducer, SearchLoopSnapshot, StageExecutionStatus,
-};
+use super::BTreeSet;
+use super::Digest;
+use super::JoinPolicy;
+use super::ProtocolId;
+use super::RouteExecutionMode;
+use super::RouteProgram;
+use super::SearchLoopDirective;
+use super::SearchLoopReducer;
+use super::SearchLoopSnapshot;
+use super::StageExecutionStatus;
 
 fn id(value: &str) -> ProtocolId {
     ProtocolId::parse(value).expect("valid protocol id")

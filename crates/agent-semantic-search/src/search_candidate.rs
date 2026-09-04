@@ -15,7 +15,8 @@ pub struct StructuralIndexSearchHit {
     pub selector: Option<String>,
     pub document: String,
 }
-use crate::{LexicalOverlaySearchHit, SourceIndexRankCandidate};
+use crate::LexicalOverlaySearchHit;
+use crate::SourceIndexRankCandidate;
 
 macro_rules! search_candidate_text {
     ($(#[$meta:meta])* $name:ident) => {

@@ -1,12 +1,14 @@
 use std::sync::Mutex;
 
-use agent_semantic_client::{
-    LanguageCommandApplication, LanguageCommandFuture, LanguageCommandOperation,
-    LanguageCommandRequest,
-};
+use agent_semantic_client::LanguageCommandApplication;
+use agent_semantic_client::LanguageCommandFuture;
+use agent_semantic_client::LanguageCommandOperation;
+use agent_semantic_client::LanguageCommandRequest;
 use agent_semantic_client_protocol::AspClientSearchRequest;
 
-use super::{forward_language_command, runtime_query_intent, runtime_search_intent};
+use super::forward_language_command;
+use super::runtime_query_intent;
+use super::runtime_search_intent;
 
 #[test]
 fn route_intents_are_semantic_and_do_not_forward_argv() {

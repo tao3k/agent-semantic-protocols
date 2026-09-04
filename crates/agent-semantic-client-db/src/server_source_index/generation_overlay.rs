@@ -100,8 +100,10 @@ pub(super) async fn complete_generation_from_optional_active_base(
         partial_source_snapshot.source_kind,
         partial_source_snapshot.provider_digest,
         active.snapshot.source_snapshot.root_digest,
-        present_changed_owners.iter().cloned(),
-        removed_owner_paths.iter().cloned(),
+        agent_semantic_content_identity::WorkspaceOverlayPaths::new(
+            present_changed_owners.iter().cloned(),
+            removed_owner_paths.iter().cloned(),
+        ),
     )?;
     let materialization =
         crate::runtime_server_workspace::WorkspaceCanonicalMaterialization::from_source_index(

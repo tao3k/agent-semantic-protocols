@@ -1,6 +1,7 @@
 //! Tokio-owned process lifecycle primitives.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 
 #[cfg(target_os = "macos")]
 #[link(name = "proc")]
@@ -130,21 +131,8 @@ fn classify_kill_result(result: i32, error: std::io::Error) -> Result<(), String
 }
 
 #[cfg(test)]
-mod tests {
-    use super::classify_kill_result;
-
-    #[test]
-    fn missing_process_is_already_stopped() {
-        classify_kill_result(-1, std::io::Error::from_raw_os_error(libc::ESRCH)).unwrap();
-    }
-
-    #[test]
-    fn other_signal_errors_remain_fail_closed() {
-        let error =
-            classify_kill_result(-1, std::io::Error::from_raw_os_error(libc::EPERM)).unwrap_err();
-        assert!(!error.is_empty());
-    }
-}
+#[path = "../tests/unit/runtime_process_lifecycle_signal.rs"]
+mod tests;
 pub struct RuntimeProcessLaunchHandle {
     process_id: u32,
     child: tokio::process::Child,

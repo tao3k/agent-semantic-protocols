@@ -1,10 +1,12 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 use std::process::Command;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::AtomicU64;
+use std::sync::atomic::Ordering;
 
-use super::{
-    RepositoryCandidateAuthority, RepositoryCandidateState, discover_repository_candidate_snapshot,
-};
+use super::RepositoryCandidateAuthority;
+use super::RepositoryCandidateState;
+use super::discover_repository_candidate_snapshot;
 
 static NEXT_FIXTURE: AtomicU64 = AtomicU64::new(1);
 

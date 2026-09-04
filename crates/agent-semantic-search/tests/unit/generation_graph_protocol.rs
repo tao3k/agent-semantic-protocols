@@ -1,16 +1,21 @@
-use agent_semantic_content_identity::{
-    SourceSnapshotEvidence, SourceSnapshotKind,
-    provider_projection_relation::{ProviderProjectedRelation, ProviderProjectedRelationEndpoint},
-    workspace_generation_evidence::WorkspaceGenerationEvidenceV1,
-};
+use agent_semantic_content_identity::SourceSnapshotEvidence;
+use agent_semantic_content_identity::SourceSnapshotKind;
+use agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelation;
+use agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelationEndpoint;
+use agent_semantic_content_identity::workspace_generation_evidence::WorkspaceGenerationEvidenceV1;
 
+use crate::ContentSearchGenerationReceipt;
+use crate::SEARCH_GENERATION_GRAPH_RECEIPT_SCHEMA_ID;
+use crate::SearchGenerationConstructionStage;
+use crate::SearchGenerationGraphReceipt;
+use crate::SearchGenerationGraphRequest;
+use crate::SearchGenerationIdentity;
+use crate::SearchGenerationStageReceipt;
+use crate::build_resident_graph_generation;
+use crate::canonical_blake3_digest;
+use crate::open_resident_graph_generation;
 use crate::resident_graph_search::materialize_resident_graph_generation;
-use crate::{
-    ContentSearchGenerationReceipt, SEARCH_GENERATION_GRAPH_RECEIPT_SCHEMA_ID,
-    SearchGenerationConstructionStage, SearchGenerationGraphReceipt, SearchGenerationGraphRequest,
-    SearchGenerationIdentity, SearchGenerationStageReceipt, build_resident_graph_generation,
-    canonical_blake3_digest, open_resident_graph_generation, stable_graph_node_id,
-};
+use crate::stable_graph_node_id;
 
 fn digest(byte: char) -> String {
     format!("blake3-256:{}", byte.to_string().repeat(64))
@@ -19,12 +24,12 @@ fn digest(byte: char) -> String {
 fn relation() -> ProviderProjectedRelation {
     ProviderProjectedRelation {
         from: ProviderProjectedRelationEndpoint {
-            kind: "owner".to_owned(),
+            kind: agent_semantic_content_identity::ProviderRelationEndpointKindV1::Owner,
             id: "src/lib.rs".to_owned(),
         },
-        kind: "contains".to_owned(),
+        kind: "contains".into(),
         to: ProviderProjectedRelationEndpoint {
-            kind: "item".to_owned(),
+            kind: agent_semantic_content_identity::ProviderRelationEndpointKindV1::Item,
             id: "SearchGeneration::admit".to_owned(),
         },
     }

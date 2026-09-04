@@ -1,17 +1,27 @@
-use std::path::{Component, Path};
+//! Wire-stable exact-selector packets bound to parser and workspace identities.
 
-use serde::{Deserialize, Serialize};
+use std::path::Component;
+use std::path::Path;
+
+use serde::Deserialize;
+use serde::Serialize;
 
 use crate::exact_selector_cache::ExactSelectorProjectionRecordV1;
-use crate::exact_selector_merkle::{
-    ContentDigestV1, ExactProjectionModeV1, ExactSelectorMerkleProofV1, ProjectionDigestInputV1,
-    canonical_digest_v1, derive_projection_digest_v1,
-};
-use crate::workspace_merkle_v1::{WorkspacePathMerkleTreeV1, derive_owner_subtree_digest_v1};
+use crate::exact_selector_merkle::ContentDigestV1;
+use crate::exact_selector_merkle::ExactProjectionModeV1;
+use crate::exact_selector_merkle::ExactSelectorMerkleProofV1;
+use crate::exact_selector_merkle::ProjectionDigestInputV1;
+use crate::exact_selector_merkle::canonical_digest_v1;
+use crate::exact_selector_merkle::derive_projection_digest_v1;
+use crate::workspace_merkle_v1::WorkspacePathMerkleTreeV1;
+use crate::workspace_merkle_v1::derive_owner_subtree_digest_v1;
 
+/// Schema identifier for a content-bound exact-selector projection packet.
 pub const EXACT_SELECTOR_PROJECTION_PACKET_SCHEMA_ID: &str =
     "agent.semantic-protocols.exact-selector-projection-packet";
+/// Schema version for exact-selector projection packets.
 pub const EXACT_SELECTOR_PROJECTION_PACKET_SCHEMA_VERSION: &str = "1";
+/// Digest algorithm used by projection-packet identities.
 pub const EXACT_SELECTOR_PROJECTION_PACKET_DIGEST_ALGORITHM: &str = "blake3-256";
 const PARSER_IDENTITY_DOMAIN: &[u8] = b"asp.parser-identity.v1";
 const QUERY_PACK_IDENTITY_DOMAIN: &[u8] = b"asp.query-pack-identity.v1";
@@ -75,6 +85,7 @@ projection_packet_text_v1!(
     ProjectionPacketPayloadBase64V1
 );
 
+/// Derives the domain-separated identity of a parser artifact and version.
 pub fn derive_parser_identity_digest_v1(
     provider_id: &ProjectionPacketProviderIdV1,
     execution_command_digest: &ProjectionPacketExecutionCommandDigestV1,
@@ -90,18 +101,21 @@ pub fn derive_parser_identity_digest_v1(
     )
 }
 
+/// Derives the domain-separated identity of a canonical query-pack descriptor.
 pub fn derive_query_pack_identity_digest_v1(canonical_descriptor_json: &[u8]) -> ContentDigestV1 {
     canonical_digest_v1(QUERY_PACK_IDENTITY_DOMAIN, &[canonical_descriptor_json])
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+/// Encoding used for the bounded projection payload.
 pub enum ExactSelectorProjectionEncodingV1 {
     Base64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+/// Wire-stable projection packet admitted by exact content identity.
 pub struct ExactSelectorProjectionPacketV1 {
     pub source_byte_start: u64,
     pub source_byte_end: u64,
@@ -320,11 +334,13 @@ impl ExactSelectorProjectionPacketV1 {
             return Err(ExactSelectorProjectionPacketV1Error::SourceSnapshotMismatch);
         }
         if !crate::workspace_merkle_v1::verify_owner_inclusion_v1(
-            self.owner_path.as_str(),
-            &self.source_blob_digest,
-            &expected_owner_subtree_digest,
-            owner_inclusion_proof,
-            workspace_tree.root_digest(),
+            crate::workspace_merkle_v1::WorkspaceOwnerInclusionV1 {
+                owner_path: self.owner_path.as_str(),
+                source_blob_digest: &self.source_blob_digest,
+                expected_owner_subtree_digest: &expected_owner_subtree_digest,
+                inclusion_proof: owner_inclusion_proof,
+                expected_workspace_root_digest: workspace_tree.root_digest(),
+            },
         ) {
             return Err(ExactSelectorProjectionPacketV1Error::SourceSnapshotMismatch);
         }
@@ -406,6 +422,7 @@ fn base64_value(byte: u8) -> Option<u8> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Deterministic validation failure for an exact-selector projection packet.
 pub enum ExactSelectorProjectionPacketV1Error {
     ContractIdentity,
     RequiredIdentity,

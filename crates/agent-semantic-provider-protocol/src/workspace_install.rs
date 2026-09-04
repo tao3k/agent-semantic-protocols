@@ -1,7 +1,9 @@
 //! Provider-owned workspace build and publication contract.
 
-use std::collections::{BTreeMap, BTreeSet};
-use std::path::{Component, Path};
+use std::collections::BTreeMap;
+use std::collections::BTreeSet;
+use std::path::Component;
+use std::path::Path;
 
 use serde::Deserialize;
 
@@ -144,7 +146,7 @@ impl ProviderWorkspaceInstallDescriptor {
     }
 }
 
-fn validate_environment_removals(
+pub(crate) fn validate_environment_removals(
     field: &str,
     names: &[String],
     prefixes: &[String],
@@ -170,49 +172,4 @@ fn validate_environment_removals(
         }
     }
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn environment_prefix_cannot_be_empty() {
-        let error = validate_environment_removals("workspaceBuild", &[], &[String::new()])
-            .expect_err("empty prefix must fail closed");
-        assert!(error.contains("invalid environment identity"), "{error}");
-    }
-
-    #[test]
-    fn schema_reference_may_follow_the_receipted_bundle_root() {
-        for schema in [
-            "../schemas/provider-workspace-install.schema.json",
-            "org/schemas/provider-workspace-install.schema.json",
-        ] {
-            let descriptor: ProviderWorkspaceInstallDescriptor = serde_json::from_value(
-                serde_json::json!({
-                    "$schema": schema,
-                    "schemaId": PROVIDER_WORKSPACE_INSTALL_SCHEMA_ID,
-                    "schemaVersion": PROVIDER_WORKSPACE_INSTALL_SCHEMA_VERSION,
-                    "schemaAuthority": PROVIDER_WORKSPACE_INSTALL_SCHEMA_AUTHORITY,
-                    "languageId": "fixture",
-                    "providerId": "asp-fixture",
-                    "binary": "asp-fixture",
-                    "providerRegistration": "asp-provider-registration.json",
-                    "schemaBundleReceipt": "schemas/.asp-schema-manager-receipt.json",
-                    "workspaceArtifact": {"root": "build/provider", "entrypoint": "bin/asp-fixture"},
-                    "workspaceBuild": {
-                        "program": "cargo",
-                        "args": ["build"],
-                        "workingDirectory": ".",
-                        "sourceSnapshotAnchors": ["Cargo.toml"],
-                        "derivedPaths": ["build/provider"],
-                        "env": {}
-                    }
-                }),
-            )
-            .expect("descriptor");
-            descriptor.validate().expect("bundle-relative schema");
-        }
-    }
 }

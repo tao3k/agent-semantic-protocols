@@ -4,12 +4,15 @@ use std::fs;
 use std::path::Path;
 
 use agent_semantic_content_identity::exact_selector_merkle::canonical_content_digest;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 
-use crate::manager::{
-    BUNDLE_RECEIPT_SCHEMA_ID, LanguageSchemaBundleReceipt, SCHEMA_VERSION, SchemaBundleEntry,
-};
-use crate::manager_validation::{validate_identity, validate_schema_name};
+use crate::manager::BUNDLE_RECEIPT_SCHEMA_ID;
+use crate::manager::LanguageSchemaBundleReceipt;
+use crate::manager::SCHEMA_VERSION;
+use crate::manager::SchemaBundleEntry;
+use crate::manager_validation::validate_identity;
+use crate::manager_validation::validate_schema_name;
 
 pub(crate) const BUNDLE_MEMBERSHIP_FILE: &str = ".asp-schema-manager-membership.json";
 

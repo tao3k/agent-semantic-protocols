@@ -1,18 +1,17 @@
-use std::{
-    future::Future,
-    path::PathBuf,
-    process::{ExitStatus, Stdio},
-    sync::Arc,
-    time::Duration,
-};
+use std::future::Future;
+use std::path::PathBuf;
+use std::process::ExitStatus;
+use std::process::Stdio;
+use std::sync::Arc;
+use std::time::Duration;
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 use serde_json::Value;
-use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt},
-    sync::Semaphore,
-    task::JoinSet,
-};
+use tokio::io::AsyncReadExt;
+use tokio::io::AsyncWriteExt;
+use tokio::sync::Semaphore;
+use tokio::task::JoinSet;
 
 pub const DEFAULT_HOOK_TIMEOUT: Duration = Duration::from_secs(2);
 pub const DEFAULT_SCENARIO_CONCURRENCY: usize = 8;

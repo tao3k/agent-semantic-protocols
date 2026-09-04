@@ -4,12 +4,21 @@
 //! and proof receipts into artifact roots. DB storage and render expansion stay
 //! outside this crate.
 
-use crate::identity::{
-    ArtifactChildRef, ArtifactGeneration, ArtifactHash, ArtifactJson, ArtifactKind,
-    ArtifactNodeInput, ArtifactRepoId, ArtifactRootInput, ArtifactRootRef, ArtifactScopeId,
-    ArtifactWorkspaceId, hash_node, hash_normalized_json,
-};
-use serde::{Deserialize, Serialize};
+use crate::identity::ArtifactChildRef;
+use crate::identity::ArtifactGeneration;
+use crate::identity::ArtifactHash;
+use crate::identity::ArtifactJson;
+use crate::identity::ArtifactKind;
+use crate::identity::ArtifactNodeInput;
+use crate::identity::ArtifactRepoId;
+use crate::identity::ArtifactRootInput;
+use crate::identity::ArtifactRootRef;
+use crate::identity::ArtifactScopeId;
+use crate::identity::ArtifactWorkspaceId;
+use crate::identity::hash_node;
+use crate::identity::hash_normalized_json;
+use serde::Deserialize;
+use serde::Serialize;
 
 /// Schema id for Merkle repair-chain frame nodes.
 pub const REPAIR_CHAIN_FRAME_SCHEMA_ID: &str = "semantic-artifact-repair-chain-frame";

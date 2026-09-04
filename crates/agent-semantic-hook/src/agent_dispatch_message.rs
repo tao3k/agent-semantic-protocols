@@ -1,6 +1,7 @@
 use std::sync::LazyLock;
 
-use orgize::{Org, ast::NamedSourceBlockTemplate};
+use orgize::Org;
+use orgize::ast::NamedSourceBlockTemplate;
 
 const COLLABORATION_ORG_CONTRACT: &str =
     include_str!("../../../org/contracts/agent.multi-agent-session-control-plane.v1.org");

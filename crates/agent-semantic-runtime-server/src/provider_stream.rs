@@ -1,13 +1,16 @@
 use agent_semantic_provider_protocol::validate_provider_stream_envelope;
-use tokio_stream::{Stream, StreamExt};
-use tonic::{Request, Response, Status, Streaming};
+use tokio_stream::Stream;
+use tokio_stream::StreamExt;
+use tonic::Request;
+use tonic::Response;
+use tonic::Status;
+use tonic::Streaming;
 
-pub mod generated {
-    tonic::include_proto!("asp.provider.stream");
-}
-use generated::{
-    ProviderRegisterPacket, ProviderStreamEnvelope, provider_session_server::ProviderSession,
-};
+#[path = "provider_stream_generated.rs"]
+pub mod generated;
+use generated::ProviderRegisterPacket;
+use generated::ProviderStreamEnvelope;
+use generated::provider_session_server::ProviderSession;
 
 pub struct RuntimeStreamService {
     provider_register: std::sync::Arc<

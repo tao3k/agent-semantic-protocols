@@ -1,10 +1,13 @@
 //! Language-neutral semantic route declarations compiled by ASP Server.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 use std::error::Error;
-use std::fmt::{Display, Formatter};
+use std::fmt::Display;
+use std::fmt::Formatter;
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 
 pub const PROVIDER_ROUTE_SCHEMA_ID: &str = "agent.semantic-protocols.provider-route";
 pub const PROVIDER_ROUTE_SCHEMA_VERSION: &str = "1";
@@ -378,7 +381,10 @@ fn require_kebab_id(field: &str, value: &str) -> Result<(), ProviderRouteCompile
     }
 }
 
-fn require_semantic_id(field: &str, value: &str) -> Result<(), ProviderRouteCompileError> {
+pub(crate) fn require_semantic_id(
+    field: &str,
+    value: &str,
+) -> Result<(), ProviderRouteCompileError> {
     if value.split('.').all(|segment| {
         !segment.is_empty()
             && segment.as_bytes()[0].is_ascii_lowercase()
@@ -394,7 +400,7 @@ fn require_semantic_id(field: &str, value: &str) -> Result<(), ProviderRouteComp
     }
 }
 
-fn require_dotted_id(field: &str, value: &str) -> Result<(), ProviderRouteCompileError> {
+pub(crate) fn require_dotted_id(field: &str, value: &str) -> Result<(), ProviderRouteCompileError> {
     if value.contains('.')
         && value.split('.').all(|segment| {
             !segment.is_empty()
@@ -457,126 +463,4 @@ fn require_unique(field: &str, values: &[String]) -> Result<(), ProviderRouteCom
         }
     }
     Ok(())
-}
-
-#[cfg(test)]
-mod semantic_identifier_tests {
-    use super::{require_dotted_id, require_semantic_id};
-
-    #[test]
-    fn provider_operations_accept_single_or_dotted_semantic_ids() {
-        for operation in ["query", "search", "projection-batch"] {
-            require_semantic_id("operation", operation).unwrap();
-        }
-    }
-
-    #[test]
-    fn route_ids_remain_globally_dotted() {
-        assert!(require_dotted_id("routeId", "query").is_err());
-        require_dotted_id("routeId", "rust.query").unwrap();
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn route() -> ProviderRouteSpec {
-        ProviderRouteSpec {
-            schema_id: PROVIDER_ROUTE_SCHEMA_ID.into(),
-            schema_version: PROVIDER_ROUTE_SCHEMA_VERSION.into(),
-            route_id: "rust.search".into(),
-            operation: "search".into(),
-            authority: ProviderRouteAuthority::AspServer,
-            target: ProviderRouteTarget {
-                language_id: "rust".into(),
-                provider_id: "asp-rust".into(),
-            },
-            request_schema: Some(ProviderSchemaReference {
-                schema_id: "agent.semantic-protocols.runtime-provider-search-request".into(),
-                schema_version: "1".into(),
-            }),
-            inputs: vec![ProviderRouteInputSlot {
-                name: "query".into(),
-                value_type: ProviderRouteValueType::String,
-                cardinality: ProviderRouteCardinality::Required,
-                source: ProviderRouteInputSource::Request,
-                telemetry: ProviderRouteTelemetryPolicy::Identity,
-            }],
-            requirements: vec![ProviderRouteRequirement::State {
-                state: ProviderRouteRequiredState::ProviderReady,
-            }],
-            effects: ProviderRouteEffects {
-                access: ProviderRouteAccess::Read,
-                idempotent: true,
-                cancellable: true,
-                concurrency: ProviderRouteConcurrency::SharedRead,
-                streaming: false,
-            },
-            output: ProviderRouteOutput {
-                schema: ProviderSchemaReference {
-                    schema_id: "agent.semantic-protocols.search-packet".into(),
-                    schema_version: "1".into(),
-                },
-                media_type: "application/json".into(),
-                projection_kind: None,
-            },
-            failure_schema_ids: vec!["agent.semantic-protocols.route-failure".into()],
-            cache: ProviderRouteCache {
-                authority: ProviderRouteAuthority::AspServer,
-                scope: ProviderRouteCacheScope::Workspace,
-                key_slots: vec!["query".into()],
-            },
-            telemetry: ProviderRouteTelemetry {
-                span_name: "asp.route.provider".into(),
-                attribute_slots: vec!["query".into()],
-            },
-        }
-    }
-
-    #[test]
-    fn compiles_a_semantic_route_without_an_argv_projection() {
-        let compiled = route().compile().expect("route should compile");
-        assert_eq!(compiled.spec().route_id, "rust.search");
-        assert!(compiled.input_slot("query").is_some());
-    }
-
-    #[test]
-    fn rejects_unknown_cache_slots() {
-        let mut route = route();
-        route.cache.key_slots = vec!["missing".into()];
-        assert!(
-            route
-                .compile()
-                .unwrap_err()
-                .to_string()
-                .contains("unknown input slot")
-        );
-    }
-
-    #[test]
-    fn rejects_telemetry_for_omitted_slots() {
-        let mut route = route();
-        route.inputs[0].telemetry = ProviderRouteTelemetryPolicy::Omit;
-        assert!(
-            route
-                .compile()
-                .unwrap_err()
-                .to_string()
-                .contains("omitted input slot")
-        );
-    }
-
-    #[test]
-    fn rejects_duplicate_slots() {
-        let mut route = route();
-        route.inputs.push(route.inputs[0].clone());
-        assert!(
-            route
-                .compile()
-                .unwrap_err()
-                .to_string()
-                .contains("duplicate input slot")
-        );
-    }
 }

@@ -1,8 +1,15 @@
-use agent_semantic_client_db::storage_contract::{
-    AgentStorage, InMemoryAgentStorage, SESSION_EVENT_BATCH_SCHEMA_ID, SessionEvent,
-    SessionEventBatch, SessionEventPageRequest, StorageErrorCode, StorageOptimizationProfile,
-    StoragePartitionKey, StorageRetryPolicy, StorageTransactionMode, StorageTransactionState,
-};
+use agent_semantic_client_db::storage_contract::AgentStorage;
+use agent_semantic_client_db::storage_contract::InMemoryAgentStorage;
+use agent_semantic_client_db::storage_contract::SESSION_EVENT_BATCH_SCHEMA_ID;
+use agent_semantic_client_db::storage_contract::SessionEvent;
+use agent_semantic_client_db::storage_contract::SessionEventBatch;
+use agent_semantic_client_db::storage_contract::SessionEventPageRequest;
+use agent_semantic_client_db::storage_contract::StorageErrorCode;
+use agent_semantic_client_db::storage_contract::StorageOptimizationProfile;
+use agent_semantic_client_db::storage_contract::StoragePartitionKey;
+use agent_semantic_client_db::storage_contract::StorageRetryPolicy;
+use agent_semantic_client_db::storage_contract::StorageTransactionMode;
+use agent_semantic_client_db::storage_contract::StorageTransactionState;
 
 fn storage_contract_partition() -> StoragePartitionKey {
     StoragePartitionKey {
@@ -42,7 +49,10 @@ async fn storage_contract_in_memory_batch_is_atomic_and_receipted() {
         .append_session_events_atomically(&request)
         .await
         .expect("append in-memory session batch");
-    assert_eq!(receipt.transaction_state, StorageTransactionState::Committed);
+    assert_eq!(
+        receipt.transaction_state,
+        StorageTransactionState::Committed
+    );
     assert_eq!(receipt.committed_rows, 4);
     assert!(receipt.execution_digest.starts_with("sha256:"));
 
@@ -62,7 +72,10 @@ async fn storage_contract_in_memory_batch_is_atomic_and_receipted() {
         .await
         .expect("list in-memory session events");
     assert_eq!(page.items.len(), 4);
-    assert_eq!(page.items.last().expect("last event").event_id, "event-0003".into());
+    assert_eq!(
+        page.items.last().expect("last event").event_id,
+        "event-0003".into()
+    );
 }
 
 #[tokio::test(flavor = "current_thread")]

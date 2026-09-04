@@ -1,5 +1,6 @@
 use super::registry;
-use agent_semantic_hook::{classify_hook, render_platform_response};
+use agent_semantic_hook::classify_hook;
+use agent_semantic_hook::render_platform_response;
 use serde_json::json;
 
 #[test]
@@ -12,7 +13,7 @@ fn permission_request_allow_renders_explicit_allow_for_claude() {
             "hook_event_name": "PermissionRequest",
             "tool_name": "Bash",
             "tool_input": {
-                "command": "asp typescript search playbook 'ParserService cacheDir' --workspace ."
+                "command": "asp search playbook --language typescript 'ParserService cacheDir' --workspace ."
             }
         }),
     );
@@ -43,7 +44,7 @@ fn permission_request_uses_codex_decision_object_contract() {
             "hook_event_name": "PermissionRequest",
             "tool_name": "Bash",
             "tool_input": {
-                "command": "asp typescript search playbook 'ParserService cacheDir' --workspace ."
+                "command": "asp search playbook --language typescript 'ParserService cacheDir' --workspace ."
             }
         }),
     );
@@ -117,15 +118,15 @@ fn user_prompt_submit_allow_adds_search_first_context_for_claude() {
     );
     assert!(response["hookSpecificOutput"]["permissionDecision"].is_null());
     for expected in [
-        "ASP evidence-state search routing",
-        "Search is not a mandatory pipeline",
-        "Choose the narrowest ASP route",
-        "Do not answer from prime alone",
-        "ASP facades are language IDs",
+        "ASP Search playbook routing is active for this prompt",
+        "search playbook '<question>'",
+        "Complete coverage is admitted only for absence-proof intent",
+        "one ordered resident generation: rg acquisition, Tantivy lexical retrieval",
+        "admitted asp-python-graphs projection",
+        "root playbook accepts language IDs through `--language`",
         "query --selector <exact-selector> --workspace . --projection source",
-        "return one compact `[asp-search-subagent]` graph-route receipt",
-        "never source bodies or line-range selectors",
-        "Do not use direct source reads as the first step",
+        "--projection callable-skeleton",
+        "Exact query has no implicit projection",
     ] {
         assert!(
             context.contains(expected),
@@ -151,12 +152,14 @@ fn user_prompt_submit_locator_questions_do_not_push_code_reads() {
         .as_str()
         .expect("user prompt additional context");
     for expected in [
-        "locator/frontier question",
-        "answer where to look before editing",
-        "Do not answer from prime alone",
-        "ASP facades are language IDs",
+        "ASP Search playbook routing is active for this locator question",
+        "search playbook '<question>' --language <language> --intent conceptual --scope workspace",
+        "--scope owner:<path>",
+        "one ordered resident generation: rg acquisition, Tantivy lexical retrieval",
+        "admitted asp-python-graphs projection",
+        "root playbook accepts language IDs through `--language`",
         "query --selector <exact-selector> --workspace . --projection source",
-        "compact `[asp-search-subagent]` graph-route receipt",
+        "Exact query has no implicit projection",
     ] {
         assert!(
             context.contains(expected),
