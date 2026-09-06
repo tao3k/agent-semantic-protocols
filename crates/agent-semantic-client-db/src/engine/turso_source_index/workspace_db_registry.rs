@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 //! Process-resident Turso resources partitioned by canonical workspace identity.
 
 use std::collections::HashMap;
@@ -245,7 +249,7 @@ impl WorkspaceDbRegistry {
                 ResolvedState::resolve_with_state_home(project_root, state_home)
             })
             .await?;
-        resolved.ensure_minimal_layout_async().await?;
+        resolved.ensure_workspace_state_layout_async().await?;
         Ok(resolved)
     }
 
@@ -316,10 +320,11 @@ impl WorkspaceDbRegistry {
         let resolved = self
             .resolve_workspace_state_async(project_root.as_ref().to_path_buf())
             .await?;
+        let workspace_paths = resolved.workspace_state_paths()?;
         let entry = self
             .entry_for_resolved(
                 resolved.workspace.workspace_id.as_str(),
-                resolved.paths.client_db_path,
+                workspace_paths.facts,
             )
             .await?;
         Ok(ProviderSearchWorkspaceSession { entry })
@@ -415,8 +420,9 @@ impl WorkspaceDbRegistry {
                 canonical_scope_root.display(),
             ));
         }
+        let client_db_path = resolved.workspace_state_paths()?.facts;
         let entry = self
-            .entry_for_resolved(resolved_workspace_identity, resolved.paths.client_db_path)
+            .entry_for_resolved(resolved_workspace_identity, client_db_path)
             .await?;
 
         Ok(ProviderSearchWorkspaceSession { entry })

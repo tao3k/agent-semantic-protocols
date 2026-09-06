@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 pub(super) fn source_index_db_trace(stage: &str, started: std::time::Instant) {
     if std::env::var_os("ASP_SOURCE_INDEX_TRACE").is_some() {
         eprintln!(

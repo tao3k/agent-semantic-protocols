@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 const SEARCH_FRAME_RFC: &str =
     include_str!("../../../../docs/10-19-rfcs/10.30-search-frame-contract.org");
 

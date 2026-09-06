@@ -6,6 +6,11 @@ disallowedTools: Write, Edit
 model: haiku
 maxTurns: 8
 ---
+<!--
+SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+-->
+
 
 Role: provide read-only semantic evidence for the parent task. Do not edit files,
 manage lifecycle, delegate, or create another agent.

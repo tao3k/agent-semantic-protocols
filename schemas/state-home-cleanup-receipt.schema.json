@@ -10,9 +10,9 @@
     "state",
     "retainedForDays",
     "catalogGeneration",
-    "catalogPlan",
-    "temporaryWorkspaceReport",
-    "projectRegistryReport"
+    "canonicalWorkspacesRetired",
+    "retiredStateRoots",
+    "catalogPlan"
   ],
   "properties": {
     "schemaId": { "const": "agent.semantic-protocols.state-home-cleanup-receipt" },
@@ -20,6 +20,8 @@
     "state": { "const": "applied" },
     "retainedForDays": { "type": "integer", "minimum": 1 },
     "catalogGeneration": { "type": "integer", "minimum": 0 },
+    "canonicalWorkspacesRetired": { "type": "integer", "minimum": 0 },
+    "retiredStateRoots": { "type": "integer", "minimum": 0 },
     "catalogPlan": {
       "type": "object",
       "required": [
@@ -37,8 +39,6 @@
         "schemaId": { "const": "agent.semantic-protocols.state-home-retention-plan" },
         "schemaVersion": { "const": 1 }
       }
-    },
-    "temporaryWorkspaceReport": { "type": "object" },
-    "projectRegistryReport": { "type": "object" }
+    }
   }
 }

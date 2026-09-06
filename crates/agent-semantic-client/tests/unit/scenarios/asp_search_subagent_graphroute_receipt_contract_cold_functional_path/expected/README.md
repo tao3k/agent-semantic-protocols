@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+-->
+
 # ASP Search Subagent GraphRoute Receipt Contract
 
 The scenario fixes the managed read-only `asp-explore` stop contract:

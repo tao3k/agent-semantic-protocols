@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 //! Maps canonical item identities to reversible structural-selector paths.
 
 use crate::canonical_item_identity::CanonicalItemIdentity;

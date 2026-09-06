@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 pub(in crate::engine) const SOURCE_INDEX_READ_MODEL_MAX_QUERY_BYTES: usize = 16 * 1024;
 pub(super) const SOURCE_INDEX_READ_MODEL_MAX_CANDIDATES: u32 = 256;
 pub(in crate::engine) const SOURCE_INDEX_READ_MODEL_MAX_TERMS: usize = 32;

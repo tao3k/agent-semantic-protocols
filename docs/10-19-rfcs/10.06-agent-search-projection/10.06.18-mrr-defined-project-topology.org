@@ -1,0 +1,347 @@
+#+TITLE: RFC 10.06.18 - MRR-Defined Project Topology
+#+LANGUAGE: en
+#+DATE: 2026-09-06
+#+AUTHOR: ASP Maintainers
+#+FILETAGS: :asp:rfc:search:topology:mrr:scheme:ascent:gql:
+#+OPTIONS: toc:2 num:nil
+
+:PROPERTIES:
+:CONTRACT_ORG: [[../../../org/contracts/basic.template.v1.org][basic.template.v1]]
+:END:
+
+* SDD MRR-Defined Project Topology
+:PROPERTIES:
+:ID: 3bfb49d0-acde-4de4-a3f1-9d9f1ec8fca8
+:CUSTOM_ID: asp-mrr-defined-project-topology-v1
+:SDD_KIND: system
+:SDD_STATUS: draft
+:SDD_CONCERN: configurable project topology without a parallel extension system
+:SDD_SCOPE: MRR programs topology construction admission incremental materialization and search projection
+:SDD_OWNER: ASP shared topology contract
+:TRACEABILITY_STATUS: formal-model-mapped
+:EVIDENCE_STATUS: local RFC and Lean candidate
+:REVIEW_STATUS: architecture-candidate-revised
+:END:
+
+** Decision
+
+Project Topology is an admitted MRR program and its materialized relation
+closure. It does not sit beside MRR and it does not define an ASP-specific
+extension framework over MRR.
+
+The following six profiles form the standard MRR topology prelude:
+
+1. =mrr.topology.workspace.v1=
+2. =mrr.topology.engineering.v1=
+3. =mrr.topology.domain.v1=
+4. =mrr.topology.file.v1=
+5. =mrr.topology.structure.v1=
+6. =mrr.topology.reference.v1=
+
+They are reusable MRR relation and rule modules, not a closed Rust enum and not
+six monolithic project databases. A project uses Scheme/POO declarations to
+compose, refine, or replace project-owned domain modules. Deployment, security,
+data-flow, runtime authority, and organization-specific concepts are ordinary
+MRR programs rather than extension records in another catalog.
+
+The stable public Rust facade is =meta-relational-reasoning=. MRR owns typed
+identity, relations, query, deduction, explanation, impact analysis, lineage,
+transition, admission, and atomic closure materialization. =gql-core= and =gql=
+are frontend and projection adapters. GQL is not the identity or authority of
+Project Topology.
+
+** One Authority Pipeline
+
+#+begin_example
+native parser facts and source-owned declarations
+  -> standard MRR topology prelude
+  -> project Scheme/POO MRR program
+  -> build.ss ahead-of-time compilation
+  -> typed MRR bundle
+  -> bounded mrr-ascent candidate closure
+  -> MRR lineage, transition, and completeness admission
+  -> immutable Project Topology generation
+  -> GQL Search Playbook projection
+  -> exact Query Playbook MaterializationSet
+#+end_example
+
+There is no extension catalog between the project program and MRR. There is no
+second admission path. There is no Runtime-loaded Scheme interpreter.
+
+Ascent proposes a bounded closure candidate. It cannot admit, publish, relabel,
+or overwrite facts. MRR validates program identity, source bindings,
+provenance, lineage, removals, transition, budget, fixed-point status, and the
+terminal before materialization. GQL renders or queries the admitted result; it
+cannot convert display equivalence into semantic authority.
+
+** MRR Program Composition
+
+The topology kernel contains only universal contracts:
+
+- qualified profile, relation, rule-pack, projection, and node identities;
+- canonical provider selector identity;
+- direct, declared, derived, proposed, contested, and accepted modalities;
+- source, declaration, derivation, and semantic-admission witnesses;
+- snapshot, provider, grammar, program, bundle, and topology bindings;
+- proof dependency, coverage, transition, fixed-point, and terminal receipts.
+
+The kernel does not enumerate Rust methods, Org headings, JSON pointers, Nix
+attributes, deployment units, or project domains. Native providers and MRR
+programs supply qualified relation vocabulary.
+
+MRR program composition supports three explicit operations:
+
+1. =import= reuses an admitted prelude or project module unchanged.
+2. =refine= adds stricter rules or project-owned derived relations while
+   preserving imported fact meanings.
+3. =replace= supersedes only a project-owned module under the same ownership
+   namespace and publishes a new program and bundle identity.
+
+Neither =refine= nor =replace= may reinterpret canonical selectors,
+parser-produced facts, source identity, modality, witness provenance,
+workspace containment, MRR admission, or terminal semantics. A project can
+override its domain policy without overriding the truth kernel.
+
+Gerbil Scheme and POO own the declarative MRR program, outer scheduling,
+resource ordering, retry budgets, and termination policy. =build.ss= compiles
+the declaration ahead of time into a typed native boundary. Scheme does not run
+inside the Rust/Ascent Search or Query hot path.
+
+** Git-Tracked Structured Mapping
+
+The reviewable Project Topology lives under =.agents/asp/topology/=:
+
+#+begin_example
+.agents/asp/topology/
+  manifest.org
+  programs/
+    project.org
+    domains/
+  facts/
+    workspaces/
+    projects/
+    domains/
+    files/
+    references/
+  annotations/
+    admitted/
+    proposed/
+#+end_example
+
+=manifest.org= imports the standard MRR topology prelude and identifies the
+project program modules. =programs/= contains project-owned Scheme/POO MRR
+declarations. It is not an extension registry. =facts/= contains deterministic,
+sharded skeleton materialization. =annotations/= keeps model-assisted semantics
+separate from parser and source-owned facts even when GQL projects them into one
+connected graph.
+
+The standard prelude is referenced by identity from the MRR dependency. It is
+not copied into every repository. Project files contain only project-owned
+composition and specialization.
+
+Runtime databases, Tantivy indexes, rank state, locators, temporary
+transactions, and Hook journals remain outside the Git-tracked topology.
+
+** Identity And Admission
+
+The manifest binds one product identity:
+
+#+begin_example
+(workspaceIdentity,
+ sourceSnapshotDigest,
+ providerCatalogDigest,
+ parserCatalogDigest,
+ mrrPreludeDigest,
+ projectProgramDigest,
+ schemeProgramDigest,
+ compiledProgramAbiDigest,
+ mrrBundleIdentity,
+ ascentProgramDigest,
+ topologyRootDigest)
+#+end_example
+
+There is no =extensionCatalogDigest=. Domain customization is already contained
+in =projectProgramDigest=, its compiled ABI, and =mrrBundleIdentity=.
+
+=mrrBundleIdentity= uses the MRR facade's domain-separated wire form
+=mrr:reasoning-bundle:v1:<sha256>=. A generic content digest cannot impersonate
+this identity, even when the underlying hexadecimal payload happens to match.
+
+No =current= pointer is required. Git exposes the reviewable working state;
+content-addressed objects and the manifest identify the admitted generation.
+Activation or publication generation remains a transaction fence and an
+observability value, never topology freshness identity.
+
+Search imports only an already compiled and admitted MRR bundle. Missing,
+stale, uncompiled, ABI-incompatible, namespace-conflicting, or partially
+composed programs fail before Ascent evaluation.
+
+The ASP-side binding is
+[[file:../../../schemas/project-topology-program-binding.v1.schema.json][project-topology-program-binding.v1]].
+It references the admitted MRR identities and AOT receipt without reproducing
+MRR relation, query, lineage, transition, or bundle semantics.
+
+The Project Topology Library owns shared topology definitions such as coverage
+certificates, semantic annotations, and exactly-one terminal shape. Search
+settlement schemas MUST reference those definitions instead of copying them.
+Validators MUST receive an explicit offline schema registry containing the
+exact topology-library schema identity; remote schema retrieval and silent
+single-file fallback are forbidden admission paths.
+
+The Rust ownership boundary is the independent =agent-semantic-topology=
+package. It owns topology admission, MRR program binding, and incremental
+generation contracts. Search projection depends on that package and owns only
+Search settlement, GQL rendering, and Query handoff. Rust domain type names do
+not carry wire versions; schema identifiers and schema-version constants own
+protocol evolution.
+
+An admitted terminal is success-only evidence: its =reasonKind= MUST be null.
+A failed or blocked attempt is a distinct typed terminal and MUST NOT be
+serialized as an admitted binding carrying a failure reason. The compilation
+receipt MUST be independently admitted and MUST bind the exact Scheme program,
+compiled ABI, and MRR bundle identities from the product tuple.
+
+** Incremental Construction
+
+Native parser output is the factual substrate. A changed owner produces an
+exact predecessor-bound relation delta:
+
+#+begin_example
+successor = (predecessor - removed) union added
+#+end_example
+
+Declaration skeleton identity is separate from body-derived relation identity.
+A body edit may preserve membership while invalidating CALLS, EMITS, RETURNS,
+REFERENCES, or another content-bound relation.
+
+Removing a premise retracts every transitively dependent derived relation. An
+incremental successor is admitted only when it is observationally equivalent
+to a separately verified from-scratch MRR evaluation under the same program and
+source identity. Append-only union is not an incremental topology algorithm.
+
+Neither a nonzero receipt identifier nor an embedded receipt is evidence of an
+independent rebuild. The complete rebuild receipt MUST equal a record in the
+admitted receipt set; ID membership alone is insufficient. That record MUST
+bind the exact source snapshot, MRR program, topology generation, and recomputed
+library identity. A fixed-point receipt has the same replay boundary: its
+complete record MUST be independently admitted and bind the exact source and
+program identities in addition to proving =candidate = next=. A stable closure
+from another generation or program is not reusable evidence, and an admitted
+ID collision cannot authorize forged receipt fields.
+
+The following paths are excluded from topology input:
+
+- =.agents/asp/topology/**=
+- =.cache/**=
+- =.git/**=
+- Runtime transaction journals and staging directories.
+
+This prevents self-indexing and generation feedback loops.
+
+** Model-Assisted Semantics
+
+An Agent or model may propose summaries, domain groupings, architectural roles,
+and cross-domain relations. Every proposal binds the selected topology slice,
+model and prompt identity, premises, output digest, and uncertainty state.
+
+Proposed semantics can affect ranking or open a frontier, but cannot become a
+factual MRR premise. Promotion requires an independent source-owned or
+human-authorized admission receipt and therefore creates a new Semantic
+Topology identity. Natural language explains a proof-connected subgraph; it
+does not replace the subgraph.
+
+** Search And Query Projection
+
+Search Playbook automatically imports the admitted MRR topology bundle. It does
+not expose program loading, Scheme, or Ascent as public flags. The default
+response is one compact Org container with one GQL settlement graph containing:
+
+- native and document nodes with exact selectors;
+- direct and derived relations with preserved modality;
+- request-local fd, rg, Tantivy, native-syntax, and jq projections;
+- topology depth and proof-connected paths;
+- admitted or proposed natural-language annotations;
+- coverage-aware known, missing, and unknown boundaries;
+- one deterministic MaterializationSet for Query Playbook.
+
+The typed receipt carries complete MRR program, bundle, closure, proof-DAG,
+ranking, topology, and terminal identity. GQL is a compact Agent reasoning
+projection, not an admission receipt.
+
+** Migration And Deletion
+
+The current ASP workspace may temporarily consume legacy =gql-catalog=,
+=gql-compiler=, or =gql-ir= dependencies and schemas. This compatibility is a
+migration input only. It MUST NOT become a permanent bridge or alternate
+authority.
+
+A local checkout directory may retain a historical name such as =gql-rust=,
+and a developer's local Git remote may lag the published repository rename.
+Neither value is semantic Project Topology identity. Package metadata, pinned
+source revision, admitted MRR bundle identity, and the canonical repository
+identity are authoritative. Renaming a local directory is not a prerequisite
+for MRR adoption, while production dependency URLs and repository metadata
+must converge during migration.
+
+Migration proceeds as follows:
+
+1. bind existing GQL facts to the new MRR program and bundle identities;
+2. make MRR the only closure and admission authority;
+3. route GQL rendering through the admitted MRR result;
+4. migrate callers to the =meta-relational-reasoning= facade;
+5. delete legacy catalog/compiler authority and compatibility fields;
+6. reject artifacts that still require the removed authority.
+
+The migration is complete only when the old repository identity, old Cargo
+dependencies, old catalog authority, and compatibility path have no production
+callers. A deprecated field with a permanent reader is not deletion.
+
+** Formal Obligations And Counterexamples
+
+The formal model MUST prove:
+
+- open profiles do not require a new kernel variant;
+- project program refinement preserves imported core facts;
+- project-owned replacement cannot shadow a core relation signature;
+- equal GQL shape does not imply equal modality or authority;
+- an Ascent candidate is not an admitted MRR closure;
+- program or compiled-ABI drift invalidates reuse;
+- deletion-complete replacement retracts transitive descendants;
+- budget exhaustion is distinct from fixed point;
+- proposed model semantics cannot become factual premises;
+- topology output cannot become its own parser input.
+- successful admission requires an independently admitted AOT receipt;
+- an admitted terminal cannot carry a failure reason;
+- equal serialized digest shapes cannot substitute across identity domains.
+
+The model MUST retain executable counterexamples for closed profile enums,
+parallel extension admission, core-signature shadowing, GQL authority erasure,
+append-only deletion, activation-generation freshness, uncompiled hot-path
+programs, proposed prose as facts, and fuel exhaustion as fixed point.
+
+The formal model is
+[[file:../../../packages/proofs/ASPProof/ProjectTopologyProgram.lean][ProjectTopologyProgram]].
+Its adversarial countermodels are
+[[file:../../../packages/proofs/ASPProof/Audit/ProjectTopologyProgram.lean][ProjectTopologyProgram Audit]].
+The schema-facing, domain-separated refinement boundary is
+[[file:../../../packages/proofs/ASPProof/ProjectTopologyIdentityRefinement.lean][ProjectTopologyIdentityRefinement]],
+with adversarial checks in
+[[file:../../../packages/proofs/ASPProof/Audit/ProjectTopologyIdentityRefinement.lean][ProjectTopologyIdentityRefinement Audit]].
+
+** Implementation Order
+
+#+begin_example
+RFC and Lean countermodels
+  -> shared MRR topology manifest and bundle schemas
+  -> Org contract and deterministic fixtures
+  -> meta-relational-reasoning facade migration
+  -> provider topology adapters
+  -> incremental Runtime builder and MRR admission
+  -> Search GQL projection and Query handoff
+  -> deletion of legacy catalog authority
+  -> sandtable and representative-project evidence
+#+end_example
+
+No Rust implementation precedes acceptance of the RFC, formal model, and shared
+schemas. Transitional compatibility has an explicit deletion stage and cannot
+publish a second semantic authority.

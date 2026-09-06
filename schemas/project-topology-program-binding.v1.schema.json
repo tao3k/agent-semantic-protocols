@@ -1,0 +1,208 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/project-topology-program-binding.v1.schema.json",
+  "title": "Project Topology Program Binding V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "binding",
+    "profiles",
+    "program",
+    "materialization",
+    "terminal"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.project-topology-program-binding"
+    },
+    "schemaVersion": { "const": "1" },
+    "binding": { "$ref": "#/$defs/binding" },
+    "profiles": {
+      "type": "array",
+      "minItems": 6,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/qualifiedId" }
+    },
+    "program": { "$ref": "#/$defs/program" },
+    "materialization": { "$ref": "#/$defs/materialization" },
+    "terminal": { "$ref": "#/$defs/terminal" }
+  },
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^blake3-256:[0-9a-f]{64}$"
+    },
+    "mrrReasoningBundleIdentity": {
+      "type": "string",
+      "pattern": "^mrr:reasoning-bundle:v1:[0-9a-f]{64}$"
+    },
+    "qualifiedId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)+$"
+    },
+    "relativePath": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[^/]"
+    },
+    "binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "workspaceIdentity",
+        "sourceSnapshotDigest",
+        "providerCatalogDigest",
+        "parserCatalogDigest",
+        "mrrPreludeDigest",
+        "projectProgramDigest",
+        "schemeProgramDigest",
+        "compiledProgramAbiDigest",
+        "mrrBundleIdentity",
+        "ascentProgramDigest",
+        "topologyRootDigest"
+      ],
+      "properties": {
+        "workspaceIdentity": { "type": "string", "minLength": 1 },
+        "sourceSnapshotDigest": { "$ref": "#/$defs/digest" },
+        "providerCatalogDigest": { "$ref": "#/$defs/digest" },
+        "parserCatalogDigest": { "$ref": "#/$defs/digest" },
+        "mrrPreludeDigest": { "$ref": "#/$defs/digest" },
+        "projectProgramDigest": { "$ref": "#/$defs/digest" },
+        "schemeProgramDigest": { "$ref": "#/$defs/digest" },
+        "compiledProgramAbiDigest": { "$ref": "#/$defs/digest" },
+        "mrrBundleIdentity": { "$ref": "#/$defs/mrrReasoningBundleIdentity" },
+        "ascentProgramDigest": { "$ref": "#/$defs/digest" },
+        "topologyRootDigest": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "relationSignature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["namespace", "name", "arity"],
+      "properties": {
+        "namespace": { "$ref": "#/$defs/qualifiedId" },
+        "name": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]*$" },
+        "arity": { "type": "integer", "minimum": 1, "maximum": 32 }
+      }
+    },
+    "programModule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "ownerNamespace",
+        "operation",
+        "imports",
+        "programDigest",
+        "relationSignatures"
+      ],
+      "properties": {
+        "id": { "$ref": "#/$defs/qualifiedId" },
+        "ownerNamespace": { "$ref": "#/$defs/qualifiedId" },
+        "operation": { "enum": ["import", "refine", "replace"] },
+        "imports": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/qualifiedId" }
+        },
+        "programDigest": { "$ref": "#/$defs/digest" },
+        "relationSignatures": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/relationSignature" }
+        }
+      }
+    },
+    "compilationReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "schemaId",
+        "schemaVersion",
+        "state",
+        "schemeProgramDigest",
+        "compiledProgramAbiDigest",
+        "mrrBundleIdentity"
+      ],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "schemaId": {
+          "const": "agent.semantic-protocols.mrr-program-compilation-receipt"
+        },
+        "schemaVersion": { "const": "1" },
+        "state": { "const": "admitted" },
+        "schemeProgramDigest": { "$ref": "#/$defs/digest" },
+        "compiledProgramAbiDigest": { "$ref": "#/$defs/digest" },
+        "mrrBundleIdentity": { "$ref": "#/$defs/mrrReasoningBundleIdentity" }
+      }
+    },
+    "program": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["modules", "compilationReceipt"],
+      "properties": {
+        "modules": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/programModule" }
+        },
+        "compilationReceipt": { "$ref": "#/$defs/compilationReceipt" }
+      }
+    },
+    "materialization": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "root",
+        "manifestPath",
+        "programPaths",
+        "factSegmentPaths",
+        "annotationPaths",
+        "excludedInputs",
+        "gitTracked"
+      ],
+      "properties": {
+        "root": { "const": ".agents/asp/topology" },
+        "manifestPath": { "const": ".agents/asp/topology/manifest.org" },
+        "programPaths": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/relativePath" }
+        },
+        "factSegmentPaths": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/relativePath" }
+        },
+        "annotationPaths": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/relativePath" }
+        },
+        "excludedInputs": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              ".agents/asp/topology/**",
+              ".cache/**",
+              ".git/**"
+            ]
+          }
+        },
+        "gitTracked": { "const": true }
+      }
+    },
+    "terminal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state", "reasonKind"],
+      "properties": {
+        "state": { "const": "admitted" },
+        "reasonKind": { "const": null }
+      }
+    }
+  }
+}

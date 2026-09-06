@@ -1,9 +1,11 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 //! Install command routing and pinned language provider installer.
 
 use agent_semantic_runtime::project_runtime_state;
 use clap::Parser;
-use serde::Deserialize;
-use std::collections::BTreeMap;
 use std::env;
 use std::fs;
 use std::path::Path;
@@ -11,9 +13,9 @@ use std::path::PathBuf;
 
 use super::archive::asset_name;
 use super::archive::binary_file_name;
-use super::archive::checksum_for_archive;
-use super::archive::download_release_archive;
+use super::archive::download_release_archive_to;
 use super::archive::install_archive_binary;
+use super::archive::materialize_archive_binary;
 use super::archive::path_segment;
 use super::archive::release_asset_url;
 use super::archive::sha256_file;
@@ -25,36 +27,114 @@ use super::workspace as install_provider_workspace;
 use super::cli_support as install_provider_cli_support;
 use install_provider_cli_support::usage;
 
-#[cfg(test)]
-use super::archive::checksum_name;
-#[cfg(test)]
-use super::archive::parse_sha256_checksum;
-
-const PINNED_LANGUAGE_RELEASES_TOML: &str = include_str!("../../../pinned-language-releases.toml");
-
-#[derive(Deserialize)]
-struct PinnedLanguageReleaseManifest {
-    languages: BTreeMap<String, PinnedLanguageReleaseEntry>,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct PinnedLanguageReleaseEntry {
-    repo: String,
-    version: String,
-    download_base_url: String,
-    archive_prefix: Option<String>,
-    archive_binary: Option<String>,
-    require_native_binary: Option<bool>,
-    supported_targets: Vec<String>,
-    #[serde(default)]
-    sha256_by_target: BTreeMap<String, String>,
-}
-
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum ProviderArtifactAuthority<'a> {
     DevelopBuild { root: &'a Path },
     LockedRelease,
+}
+
+pub(super) struct PreparedProviderReleaseReconciliation {
+    staging_root: PathBuf,
+    members: Vec<(String, PathBuf)>,
+}
+
+impl PreparedProviderReleaseReconciliation {
+    pub(super) fn member_sources(
+        &self,
+    ) -> Vec<
+        agent_semantic_artifacts::runtime_artifact_publication::RuntimeArtifactBundleMemberSource<
+            '_,
+        >,
+    > {
+        self.members
+            .iter()
+            .map(|(name, source)| {
+                agent_semantic_artifacts::runtime_artifact_publication::RuntimeArtifactBundleMemberSource {
+                    name,
+                    source,
+                }
+            })
+            .collect()
+    }
+
+    pub(super) fn provider_count(&self) -> usize {
+        self.members.len()
+    }
+}
+
+impl Drop for PreparedProviderReleaseReconciliation {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.staging_root);
+    }
+}
+
+pub(super) fn prepare_active_release_provider_reconciliation(
+    state_home: &Path,
+) -> Result<PreparedProviderReleaseReconciliation, String> {
+    let staging_root = std::env::temp_dir().join(format!(
+        "asp-provider-reconciliation-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|error| format!("system time before Unix epoch: {error}"))?
+            .as_nanos()
+    ));
+    let mut reconciliation = PreparedProviderReleaseReconciliation {
+        staging_root,
+        members: Vec::new(),
+    };
+    if agent_semantic_artifacts::runtime_artifact_catalog::load_runtime_developer_root(state_home)?
+        .is_some()
+    {
+        return Ok(reconciliation);
+    }
+    let active_slot = agent_semantic_artifacts::RuntimeArtifactStateLayout::new(state_home)
+        .active_slot()
+        .to_path_buf();
+    if let Err(error) = std::fs::symlink_metadata(&active_slot) {
+        if error.kind() == std::io::ErrorKind::NotFound {
+            return Ok(reconciliation);
+        }
+        return Err(format!(
+            "reasonKind=runtime-active-generation-unavailable path={} error={error}",
+            active_slot.display()
+        ));
+    }
+    let active = agent_semantic_artifacts::load_active_runtime_provider_set(state_home)?;
+    if active.providers.is_empty() {
+        return Ok(reconciliation);
+    }
+    let target = host_target_triple().ok_or_else(|| {
+        "reasonKind=provider-release-host-target-unsupported automatic Provider reconciliation requires a supported host target".to_owned()
+    })?;
+    reconciliation.members.reserve(active.providers.len());
+    for provider in active.providers {
+        let spec = provider_release(&provider.language_id)?;
+        if spec.provider_id != provider.provider_id {
+            return Err(format!(
+                "reasonKind=provider-release-active-identity-mismatch languageId={} activeProvider={} catalogProvider={}",
+                provider.language_id, provider.provider_id, spec.provider_id
+            ));
+        }
+        validate_target(&spec, &target)?;
+        let provider_root = reconciliation.staging_root.join(&provider.language_id);
+        let archive = download_release_archive_to(&spec, &target, &provider_root)?;
+        let expected = pinned_release_sha256(&spec, &target)?;
+        let actual = sha256_file(&archive)?;
+        if actual != expected {
+            return Err(format!(
+                "reasonKind=provider-release-artifact-digest-mismatch provider={} target={} expected={} actual={}",
+                spec.provider_id, target, expected, actual
+            ));
+        }
+        let source =
+            materialize_archive_binary(&archive, &spec, &target, &provider_root.join("package"))?;
+        reconciliation.members.push((spec.provider_id, source));
+    }
+    reconciliation
+        .members
+        .sort_by(|left, right| left.0.cmp(&right.0));
+    Ok(reconciliation)
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Parser)]
@@ -114,8 +194,6 @@ async fn run_install_provider(args: &[String]) -> Result<(), String> {
         return Err(usage());
     }
     let install_args = parse_install_language_options(&args[1..])?;
-    let install_registration =
-        crate::command::provider_install_registry::provider_install_registration(language_id)?;
     let target = match install_args.target {
         Some(target) => target,
         None => host_target_triple().ok_or_else(|| {
@@ -130,10 +208,14 @@ async fn run_install_provider(args: &[String]) -> Result<(), String> {
             &state_home,
         )
         .await?;
-    let provider_id = install_registration.provider_id.as_str();
-    let registered_binary = install_registration.binary.as_str();
     match provider_artifact_authority(artifact_catalog.mode())? {
         ProviderArtifactAuthority::DevelopBuild { root } => {
+            let install_registration =
+                crate::command::provider_install_registry::provider_install_registration(
+                    language_id,
+                )?;
+            let provider_id = install_registration.provider_id.as_str();
+            let registered_binary = install_registration.binary.as_str();
             let registration = &install_registration;
             let built = install_provider_workspace::build_registered_provider_workspace(
                 root,
@@ -155,6 +237,7 @@ async fn run_install_provider(args: &[String]) -> Result<(), String> {
         ProviderArtifactAuthority::LockedRelease => {}
     }
     let spec = provider_release(language_id)?;
+    let registered_binary = spec.binary.as_str();
     let rev = spec.release_version.as_str();
     validate_target(&spec, &target)?;
     let provider_binary = binary_file_name(registered_binary, &target);
@@ -174,23 +257,9 @@ async fn run_install_provider(args: &[String]) -> Result<(), String> {
         .join(&target);
     let asset_name = asset_name(&spec, &target);
     let archive_source = release_asset_url(&spec, &asset_name);
-    let archive_path = download_release_archive(&spec, &target, &scope_root)?;
-    let published_sha256 = checksum_for_archive(&spec, &target, &scope_root)?;
-    let pinned_sha256 = pinned_release_sha256(&spec, &target)?;
-    if let Some(pinned_sha256) = pinned_sha256
-        && pinned_sha256 != published_sha256
-    {
-        return Err(format!(
-            "release checksum sidecar mismatch for provider {} target {target}: pinned {pinned_sha256}, published {published_sha256}",
-            spec.provider_id
-        ));
-    }
-    let checksum_authority = if pinned_sha256.is_some() {
-        "pinned-release+sidecar"
-    } else {
-        "release-sidecar"
-    };
-    let expected_sha256 = pinned_sha256.unwrap_or(&published_sha256);
+    let archive_path = download_release_archive_to(&spec, &target, &scope_root.join("downloads"))?;
+    let expected_sha256 = pinned_release_sha256(&spec, &target)?;
+    let checksum_authority = "embedded-release-catalog";
     let actual_sha256 = sha256_file(&archive_path)?;
     if expected_sha256 != actual_sha256 {
         return Err(format!(
@@ -250,7 +319,7 @@ async fn run_install_provider(args: &[String]) -> Result<(), String> {
             repo: Some(&spec.repo),
             rev: Some(rev),
             target: &target,
-            binary: install_registration.binary.as_str(),
+            binary: registered_binary,
             installed_path: &installed,
             package_path: &provider_package_dir,
             sha256: &actual_sha256,
@@ -270,19 +339,14 @@ async fn run_install_provider(args: &[String]) -> Result<(), String> {
             launcher_digest: None,
         },
     )?;
-    let installed_provider_artifacts = Some(
-        super::installed_provider_artifacts::publish_current_installed_provider_artifacts(
-            &runtime_state.protocol_home,
-        )?,
-    );
     println!(
-        "[asp-install] provider={} language={} scope={} installMode=locked-release rev={} target={} binary={} sha256={} checksumAuthority={} installedPath={} installTargetSource={} lock={} runtimeBinDir={} binaryCurrent={} binarySwitch=atomic installedProviderArtifacts={} installedProviderArtifactsWrite={} installedProviderArtifactsChangedLeaves={} installedProviderArtifactsElapsedMicros={}",
+        "[asp-install] provider={} language={} scope={} installMode=locked-release rev={} target={} binary={} sha256={} checksumAuthority={} installedPath={} installTargetSource={} lock={} runtimeBinDir={} binaryCurrent={} binarySwitch=atomic activeRuntimeBundleDigest={}",
         spec.provider_id,
         spec.language_id,
         scope,
         rev,
         target,
-        install_registration.binary.as_str(),
+        registered_binary,
         actual_sha256,
         checksum_authority,
         installed.display(),
@@ -290,19 +354,7 @@ async fn run_install_provider(args: &[String]) -> Result<(), String> {
         lock_path.display(),
         runtime_bin_dir.display(),
         published.path.display(),
-        installed_provider_artifacts
-            .as_ref()
-            .map(|publication| publication.generation())
-            .unwrap_or("not-applicable"),
-        installed_provider_artifacts
-            .as_ref()
-            .is_some_and(|publication| publication.artifact_write()),
-        installed_provider_artifacts
-            .as_ref()
-            .map_or(0, |publication| publication.changed_leaf_count()),
-        installed_provider_artifacts
-            .as_ref()
-            .map_or(0, |publication| publication.elapsed_micros()),
+        published.bundle_digest.as_deref().unwrap_or("unavailable"),
     );
     Ok(())
 }
@@ -320,7 +372,8 @@ pub(super) fn canonical_provider_state_root() -> Result<PathBuf, String> {
 }
 
 fn canonical_provider_state_root_from(state_home: &Path) -> Result<PathBuf, String> {
-    let provider_root = agent_semantic_runtime::provider_state_root(state_home);
+    let provider_root =
+        agent_semantic_artifacts::RuntimeArtifactStateLayout::new(state_home).provider_staging();
     fs::create_dir_all(&provider_root).map_err(|error| {
         format!(
             "failed to create State Home provider root {}: {error}",
@@ -338,10 +391,10 @@ fn canonical_provider_state_root_from(state_home: &Path) -> Result<PathBuf, Stri
 fn provider_release(language_id: &str) -> Result<ProviderReleaseSpec, String> {
     let registrations = agent_semantic_provider_protocol::builtin_provider_registrations()?;
     let canonical_provider_id = canonical_provider_identity(language_id, &registrations)?;
-    let mut manifest = pinned_language_release_manifest()?;
-    let Some(entry) = manifest.languages.remove(language_id) else {
-        let supported = manifest
-            .languages
+    let mut catalog = provider_release_catalog()?;
+    let Some(entry) = catalog.releases.remove(language_id) else {
+        let supported = catalog
+            .releases
             .keys()
             .map(String::as_str)
             .collect::<Vec<_>>()
@@ -350,19 +403,26 @@ fn provider_release(language_id: &str) -> Result<ProviderReleaseSpec, String> {
             "[asp-install-error] state=locked-release-unavailable installMode=locked-release language={language_id} reason=language-not-pinned pinnedLanguages={supported}"
         ));
     };
+    if entry.provider_id != canonical_provider_id {
+        return Err(format!(
+            "provider release identity differs from the provider capability registry: languageId={language_id} releaseProviderId={} registeredProviderId={canonical_provider_id}",
+            entry.provider_id
+        ));
+    }
     let archive_prefix = entry
         .archive_prefix
         .clone()
         .or_else(|| entry.archive_binary.clone())
-        .unwrap_or_else(|| canonical_provider_id.clone());
+        .unwrap_or_else(|| entry.binary.clone());
     let archive_binary = entry
         .archive_binary
         .unwrap_or_else(|| archive_prefix.clone());
     Ok(ProviderReleaseSpec {
         language_id: language_id.to_string(),
-        provider_id: canonical_provider_id,
+        provider_id: entry.provider_id,
+        binary: entry.binary,
         repo: entry.repo,
-        release_version: entry.version,
+        release_version: entry.release_version,
         download_base_url: entry.download_base_url,
         archive_prefix,
         archive_binary,
@@ -399,13 +459,10 @@ fn canonical_provider_identity(
 fn pinned_release_sha256<'a>(
     spec: &'a ProviderReleaseSpec,
     target: &str,
-) -> Result<Option<&'a str>, String> {
+) -> Result<&'a str, String> {
     let Some(value) = spec.sha256_by_target.get(target) else {
-        if spec.sha256_by_target.is_empty() {
-            return Ok(None);
-        }
         return Err(format!(
-            "missing pinned release sha256 for provider {} target {target}",
+            "reasonKind=provider-release-target-digest-missing provider={} target={target}",
             spec.provider_id
         ));
     };
@@ -419,12 +476,12 @@ fn pinned_release_sha256<'a>(
             spec.provider_id
         ));
     }
-    Ok(Some(value))
+    Ok(value)
 }
 
-fn pinned_language_release_manifest() -> Result<PinnedLanguageReleaseManifest, String> {
-    toml::from_str(PINNED_LANGUAGE_RELEASES_TOML)
-        .map_err(|error| format!("failed to parse pinned language releases: {error}"))
+fn provider_release_catalog()
+-> Result<agent_semantic_provider_protocol::ProviderReleaseCatalog, String> {
+    agent_semantic_provider_protocol::builtin_provider_release_catalog()
 }
 
 fn host_target_triple() -> Option<String> {

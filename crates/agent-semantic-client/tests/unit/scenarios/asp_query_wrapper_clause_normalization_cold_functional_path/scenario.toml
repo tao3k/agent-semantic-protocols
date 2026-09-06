@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 id = "asp-query-wrapper-clause-normalization-cold-functional-path"
 title = "Query wrapper clause normalization is search-owned"
 policy_ids = ["RUST-AGENT-ASP-FUNCTIONAL-SUBCOMMAND-QUERY-WRAPPER-CLAUSE-NORMALIZATION-COLD-001"]

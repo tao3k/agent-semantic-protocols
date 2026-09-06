@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -19,7 +23,9 @@ pub(super) fn admit_embedded_hook_config() -> Result<(), String> {
 pub(in crate::command) fn publish_embedded_hook_config(
     protocol_home: &Path,
 ) -> Result<&'static str, String> {
-    let path = protocol_home.join("hooks/config.toml");
+    let path = agent_semantic_artifacts::StateHomeLayout::new(protocol_home)
+        .control()
+        .hook_client_config();
     let status = super::managed_hook_config::materialize(&path).map_err(|error| {
         format!(
             "ASP binary/config publication failed for {}: {error}",
@@ -58,38 +64,6 @@ pub(super) async fn admit_embedded_hook_runtime_candidate(
         source,
         artifact_digest,
     })
-}
-
-/// Retire the pre-Runtime Hook selector after the canonical evaluator is live.
-///
-/// `hooks/current` is never a serving authority.  Removing the legacy file or
-/// symlink prevents operators and diagnostics from mistaking an abandoned
-/// policy generation for the evaluator selected by the fixed plugin launcher.
-/// A directory at this path is not an old selector and is preserved fail-closed.
-pub(super) fn retire_legacy_hook_generation_pointer(
-    protocol_home: &Path,
-) -> Result<&'static str, String> {
-    let legacy = protocol_home.join("hooks/current");
-    match std::fs::symlink_metadata(&legacy) {
-        Ok(metadata) if metadata.file_type().is_symlink() || metadata.is_file() => {
-            std::fs::remove_file(&legacy).map_err(|error| {
-                format!(
-                    "failed to retire legacy Hook generation pointer {}: {error}",
-                    legacy.display()
-                )
-            })?;
-            Ok("retired")
-        }
-        Ok(_) => Err(format!(
-            "legacy-hook-generation-path-conflict: {} is not a file or symlink",
-            legacy.display()
-        )),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok("absent"),
-        Err(error) => Err(format!(
-            "failed to inspect legacy Hook generation pointer {}: {error}",
-            legacy.display()
-        )),
-    }
 }
 
 fn resolve_hook_binary_candidate(

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 #[tokio::test]
 async fn cli_install_binary_composition_acquires_once_and_consumes_operation_lease() {
     let protocol_home = std::env::temp_dir().join(format!(
@@ -89,7 +93,10 @@ async fn runtime_artifact_transaction_switches_client_launcher_without_switching
     let managed =
         super::managed_protocol_binary_path_aliases(&artifact_root, &primary_target, &path_dirs)
             .expect("discover managed aliases");
-    assert_eq!(managed, vec![first_alias.clone(), second_alias.clone()]);
+    assert!(
+        managed.is_empty(),
+        "superseded member-store links are not managed serving aliases"
+    );
 
     super::ensure_protocol_binary_installed(&super::ProtocolBinaryInstallPlan {
         binary_identity: super::RuntimeBinaryIdentityV1::asp_bootstrap(),
@@ -101,20 +108,12 @@ async fn runtime_artifact_transaction_switches_client_launcher_without_switching
     })
     .await
     .expect("reconcile managed aliases");
-    let immutable_artifact =
-        std::fs::read_link(&first_alias).expect("first immutable artifact target");
-    assert!(
-        immutable_artifact.is_absolute(),
-        "managed aliases must resolve directly to an immutable artifact"
-    );
-    assert!(
-        immutable_artifact.starts_with(&artifact_root),
-        "managed aliases must target the immutable digest artifact: {}",
-        immutable_artifact.display()
-    );
+    let superseded_alias_target =
+        std::fs::read_link(&first_alias).expect("first superseded alias target");
+    assert_eq!(superseded_alias_target, old_artifact);
     assert_eq!(
-        std::fs::read_link(&second_alias).expect("second immutable artifact target"),
-        immutable_artifact
+        std::fs::read_link(&second_alias).expect("second superseded alias target"),
+        superseded_alias_target
     );
     let state_home = artifact_root
         .parent()
@@ -130,7 +129,7 @@ async fn runtime_artifact_transaction_switches_client_launcher_without_switching
         activation.artifact_path.display()
     );
     assert_ne!(
-        activation.artifact_path, immutable_artifact,
+        activation.artifact_path, superseded_alias_target,
         "pending publication must not switch serving aliases before actor commit"
     );
     assert_eq!(

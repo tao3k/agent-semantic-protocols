@@ -1,0 +1,208 @@
+#+TITLE: RFC 10.06.16 - Project Topology Reasoning Library
+#+LANGUAGE: en
+#+DATE: 2026-09-06
+#+AUTHOR: ASP Maintainers
+#+FILETAGS: :asp:rfc:search:topology:reasoning:
+#+OPTIONS: toc:2 num:nil
+
+:PROPERTIES:
+:CONTRACT_ORG: [[../../../org/contracts/basic.template.v1.org][basic.template.v1]]
+:END:
+
+* SDD Project Topology Reasoning Library
+:PROPERTIES:
+:ID: a71a217c-a298-470f-95d2-5db5ae512293
+:CUSTOM_ID: asp-project-topology-reasoning-library-v1
+:SDD_KIND: system
+:SDD_STATUS: draft
+:SDD_CONCERN: durable project orientation and evidence-bound topology
+:SDD_SCOPE: topology construction admission reuse and slicing
+:SDD_OWNER: ASP shared topology contract
+:TRACEABILITY_STATUS: abstract-model-mapped
+:EVIDENCE_STATUS: see RFC 10.06.14 receipt
+:REVIEW_STATUS: source-admission-validated-runtime-integration-withheld
+:END:
+
+** Epistemic Planes
+
+Topology preserves project orientation across searches and context compaction:
+
+1. =StructuralSubstrate=: parser-certified hierarchy, ownership, membership,
+   names, imports, reexports, and document anchors.
+2. =DeclaredSemantics=: source-owned responsibilities, invariants, and rationale.
+3. =SynthesizedSemantics=: Agent/LLM summaries and proposed relations, each
+   bound to explicit premises, producer identity, and admission state.
+4. =EvidenceOverlay=: request-local fd, rg, Tantivy, native, and runtime evidence.
+
+Natural language is necessary because native structure does not explain why a
+component exists or how it participates in an architecture. It therefore lives
+inside the graph as a typed =SemanticAnnotation= or semantic edge, not as loose
+text and not as a parser fact. A proposal may improve recall, explain a selected
+path, or open a frontier. Only an authorized human or source-owned Org contract
+may promote it to =accepted=. Neither proposed nor accepted prose may mint a
+selector or contradict a current parser fact.
+
+** Native Skeleton And Locator
+
+The structural substrate stores names and topology, not implementation bodies:
+
+- Rust keeps files, modules, impl/type names, member names, functions, imports,
+  and reexports.
+- Python, TypeScript, Julia, and Scheme keep analogous module/type/function and
+  import/export structure.
+- Org and Markdown keep titles, heading hierarchy, named blocks, and links.
+- JSON keeps queryable object/pointer structure; Nix keeps attribute structure.
+
+Each native node has a canonical direct Query selector. A separate ephemeral
+locator maps content occurrences and byte intervals to those selectors so rg
+and Tantivy hits can be enriched. Locator ranges are retrieval evidence; they
+are never topology identity and are not rendered for selector-owned nodes.
+
+Each file binds =ContentDigest=, =SkeletonDigest=, and =LocatorDigest=. A
+body-only edit changes content and lexical/locator state while permitting reuse
+of declaration hierarchy. Body-derived CALLS, RETURNS, EMITS, and REFERENCES
+relations bind content identity and are invalidated even when the declaration
+skeleton is unchanged. A renamed member, changed hierarchy, or changed
+import/reexport changes the skeleton and invalidates the affected topology.
+
+** ProjectTopologyLibrary
+
+An immutable content-addressed library contains typed MRR relations, admitted
+semantic annotations, coverage certificates, a versioned
+=project-topology-inference.v1= program, its stable closure, and all identity bindings.
+Search imports the exact admitted library automatically; this is not a CLI flag.
+Live evidence enters as a delta for the current run.
+
+The six standard profiles and project-owned extension boundary are defined by
+[[file:10.06.18-mrr-defined-project-topology.org][RFC 10.06.18]]. MRR is the
+semantic and admission authority. GQL is the Agent-facing query and projection
+adapter; it is not the storage identity or closure authority.
+
+The language-neutral machine shape is
+[[file:../../../schemas/project-topology-library.v1.schema.json][project-topology-library.v1]].
+It explicitly declares Search, Query, code understanding, framework
+calibration, refactoring, and context recovery as consumers. Request-local
+rank, hit ranges, read ranges, and retrieval scores are excluded from the
+library and belong only to a bound projection.
+
+Ascent semi-naive evaluation accelerates a fixed-point run; it is not automatic
+cross-version deletion maintenance. Libraries are generation-scoped. Runtime
+reuses unchanged file segments, rebuilds affected strongly connected components
+and strata, verifies all additions and removals, and atomically switches only a
+complete topology generation. Unioning an old closure with a new delta is
+invalid because deleted nodes and edges could survive.
+
+Deletion invalidation follows the proof dependency graph transitively. If a
+base fact is removed, every derived descendant that depends on it is removed
+before the successor generation can be admitted. The successor closure MUST be
+observationally equal to a from-scratch evaluation under the successor tuple;
+an addition-only delta check cannot certify this condition.
+
+The from-scratch equivalence claim is backed by a separately admitted rebuild
+receipt that binds the topology generation and recomputed library digest. A
+candidate cannot certify itself by copying its own =libraryDigest= into a field
+named =fromScratchEquivalentDigest=. Digest equality without an independently
+resolved rebuild receipt is an untrusted assertion.
+
+The machine packet carries that evidence in =fromScratchRebuildReceipt=. Its
+complete record MUST equal the independently admitted receipt resolved by
+=id=; ID membership alone is insufficient. Its
+=topologyGenerationDigest= and =recomputedLibraryDigest= MUST equal the
+candidate generation and library. The packet also inventories
+=semanticAdmissionReceipts=; an accepted annotation's
+=admissionReceiptRef= MUST resolve to an identical externally admitted receipt whose
+=annotationNodeId= and =semanticTopologyDigest= match exactly.
+
+Relation storage follows its algebra instead of one universal table: hierarchy
+uses prefix/tree backing, equivalence and reexport classes use union-find,
+reachability uses SCC-aware relations, best-plan selection uses a lattice or
+Pareto frontier, and ordinary evidence uses hash-indexed sets. Multiple access
+patterns may share one physical index only when the storage contract proves
+their equivalence.
+
+** Identities And Admission
+
+=StructuralTopologyIdentity= binds workspace/source identity, provider grammar,
+resolver and schema versions, normalized skeleton facts, and coverage.
+=SemanticTopologyIdentity= also binds declarations, synthesized annotations,
+premise sets, producer/model identity, and admission receipts.
+=TopologyInferenceIdentity= binds the admitted logical-inference program. Publication
+generation is only a transaction fence and never topology freshness identity.
+
+A missing, stale, partially rebuilt, or premise-incompatible library fails
+before derivation. New declarations or accepted model semantics publish a new
+semantic identity instead of mutating a hidden cache.
+
+Every Search projection MUST jointly bind the following library identity tuple:
+
+#+begin_example
+(workspaceIdentity,
+ sourceGenerationDigest,
+ providerCatalogDigest,
+ topologyLibraryDigest,
+ topologyGenerationDigest,
+ structuralTopologyDigest,
+ semanticTopologyDigest,
+ inferenceProgramDigest)
+#+end_example
+
+Equality of publication or activation generations is neither necessary nor
+sufficient for this binding. Replay with any unequal tuple member fails before
+ranking, logical inference, GQL rendering, or Query materialization.
+
+An accepted synthesized annotation is factual only when its current semantic
+binding and a separately admitted receipt are both present. The literal state
+=accepted= is not an admission receipt. Shape validation of that field is also
+not evidence that the referenced receipt exists or belongs to the same
+semantic topology generation. The receipt MUST bind the annotation identity,
+semantic topology digest, admitting authority, and receipt identity. A receipt
+for another annotation or another semantic generation fails closed.
+
+Stable closure carries one =proofDependencies= record for every derived edge.
+Each record binds =derivedEdgeId= to its complete =premiseEdgeIds=. A removed
+or unresolved premise invalidates that derived edge and every transitive
+descendant before publication.
+
+** Bounded Slice And Replay
+
+Internal logical inference computes edge-kind-safe recursive reachability, expected
+relation grammar, coverage-sensitive known/missing/unknown state, and proof
+dependencies. Depth is relative to a seed and differs from structural depth or
+semantic hops. Python Graphs ranks only eligible facts and selects a minimal
+witness-connected decision core. A second topology-proof certification pass rejects
+any selected node outside every seed, best path, exact Query target, frontier
+boundary, or proof dependency.
+
+The default response renders this slice in one GQL graph. It retains exact
+library, logic-program, evidence-binding, proof-DAG, coverage, and ranking
+identities in the typed receipt so a later Agent can replay the project picture.
+Topology excludes volatile rank, runtime state, copied bodies, and unverified
+behavior edges.
+
+The selected Query materialization is a deterministic set, not an execution
+history. It contains unique, canonically ordered, currently admitted selectors.
+Every retained connector and every transitive proof dependency needed to
+justify those selectors remains in the decision core even when it is outside a
+flat rank prefix.
+
+** Admission Invariants
+
+- Structural facts require a current provider projection.
+- Declared semantics require source-owned contract identity.
+- Accepted synthesis retains all premises and its admission receipt.
+- Proposed synthesis is frontier-only without independent factual support.
+- Missing is derivable only under certified complete relation coverage.
+- Every path is edge-kind-safe and jointly compatible under one binding.
+- Direct and declared relations retain their original witnesses and modality.
+- Derived relations retain the same binding plus inference-program and proof
+  identities; settlement may not flatten them into parser facts.
+- Budget or fuel exhaustion is a typed non-fixed-point terminal. Only a receipt
+  whose =candidateRelationSetDigest= equals =nextRelationSetDigest= may claim
+  =fixed-point=.
+- Materialization selectors are unique, canonically ordered, and admitted by
+  the same topology generation.
+- A complete generation accounts for additions, removals, and invalidated
+  derived descendants, and equals a from-scratch rebuild for that generation.
+
+The formal model is
+[[file:../../../packages/proofs/ASPProof/SearchEvidenceDerivation.lean][SearchEvidenceDerivation]].

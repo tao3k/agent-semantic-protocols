@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: Contributors to Agent Semantic Protocols
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 """Python adaptation of the Xiuxian memory engine public surface."""
 
 from __future__ import annotations

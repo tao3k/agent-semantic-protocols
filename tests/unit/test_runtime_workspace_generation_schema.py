@@ -59,7 +59,7 @@ def complete_generation_receipt() -> dict[str, object]:
             "generation": digest("c"),
             "projectId": "repo-fixture",
             "workspaceId": "workspace-fixture",
-            "installedProviderBindingGeneration": digest("d"),
+            "runtimeBundleDigest": digest("d"),
             "schemaBundleDigest": digest("e"),
             "workspaceClosureDigest": digest("f"),
             "sourceSnapshotDigest": digest("3"),

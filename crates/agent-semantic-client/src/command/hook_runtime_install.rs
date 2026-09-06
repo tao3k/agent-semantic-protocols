@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 //! Installation owner for hook runtime and Codex plugin surfaces.
 
 use super::display_path;
@@ -144,7 +148,12 @@ async fn run_install_for_client(
     ensure_supported_client(client)?;
     timings.mark("args");
     let runtime_state = project_runtime_state(&project_root)?;
-    let runtime_artifact_root = runtime_state.protocol_home.join("runtime/artifacts");
+    let state_layout = agent_semantic_artifacts::StateHomeLayout::new(&runtime_state.protocol_home);
+    let runtime_artifact_root = state_layout
+        .runtime_state()
+        .artifacts()
+        .root()
+        .to_path_buf();
     let binary_install_plan = ProtocolBinaryInstallPlan::capture(runtime_artifact_root.clone())?;
     timings.mark("runtime-state");
     let org_state_sync =
@@ -171,10 +180,10 @@ async fn run_install_for_client(
     })?;
     timings.mark("binary");
     let activation_path = runtime_state.activation_path.clone();
-    let client_config_path = runtime_state
-        .protocol_home
-        .join("hooks")
-        .join("config.toml");
+    let client_config_path =
+        agent_semantic_artifacts::StateHomeLayout::new(&runtime_state.protocol_home)
+            .control()
+            .hook_client_config();
     let hook_binary_digest = hook_runtime.artifact_digest.to_string();
     timings.mark("user-config");
     remove_incompatible_hook_event_state(&project_root)?;
@@ -233,7 +242,7 @@ async fn run_install_for_client(
         active_artifact.artifact_bytes_read,
         active_artifact.receipt_writes,
         agent_config_receipt,
-        display_path(&project_root, &runtime_state.protocol_home.join("org")),
+        display_path(&project_root, &state_layout.resources().org()),
         org_state_sync.status,
         org_state_sync.source_index_status,
         display_path(&project_root, &config_path),

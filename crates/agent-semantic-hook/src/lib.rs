@@ -9,8 +9,6 @@ pub mod aot_evaluator;
 #[cfg(feature = "evaluator")]
 mod aot_evaluator_cli;
 #[cfg(feature = "evaluator")]
-mod aot_session_route;
-#[cfg(feature = "evaluator")]
 mod hook_binary;
 #[cfg(feature = "evaluator")]
 mod no_agent_escape;
@@ -31,12 +29,6 @@ pub use aot_evaluator_cli::evaluate_payload_with_policy_bundle_and_state_home_wi
 pub use aot_evaluator_cli::main_entry as run_aot_evaluator_cli;
 #[cfg(feature = "evaluator")]
 pub use aot_evaluator_cli::payload_has_process_no_agent_assignment;
-#[cfg(feature = "evaluator")]
-pub use aot_session_route::AotHookSessionRouteReceipt;
-#[cfg(feature = "evaluator")]
-pub use aot_session_route::publish_aot_hook_session_route;
-#[cfg(feature = "evaluator")]
-pub use aot_session_route::read_aot_hook_session_route;
 #[cfg(feature = "evaluator")]
 pub use hook_binary::run_from_env as run_hook_binary_from_env;
 

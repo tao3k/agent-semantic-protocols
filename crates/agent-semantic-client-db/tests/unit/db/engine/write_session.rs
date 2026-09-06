@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 #[tokio::test]
 async fn db_engine_rejects_uncommitted_state_core_path_without_creating_project_shell() {
     let state_home = temp_root("db-engine-uncommitted-state-home");

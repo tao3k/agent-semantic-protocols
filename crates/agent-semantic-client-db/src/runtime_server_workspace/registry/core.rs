@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 use crate::runtime_server_workspace::{
     RUNTIME_SERVER_SHUTDOWN_RECEIPT_SCHEMA_ID, ResidentOverlayStore, RuntimeDataPlaneCounters,
     RuntimeServerShutdownReceipt, WorkspaceGenerationDataPlaneClient,

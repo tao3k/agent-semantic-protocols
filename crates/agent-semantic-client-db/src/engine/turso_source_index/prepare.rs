@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 use super::canonical::turso_source_index_canonical_selectors_by_owner;
 use super::selector_identity::turso_source_index_selector_fingerprint;
 use crate::engine::turso_statement::run_turso_operation;

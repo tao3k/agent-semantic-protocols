@@ -1,0 +1,152 @@
+#+TITLE: RFC 10.06.15 - Search and Query Playbook Contract
+#+LANGUAGE: en
+#+DATE: 2026-09-06
+#+AUTHOR: ASP Maintainers
+#+FILETAGS: :asp:rfc:search:query:playbook:
+#+OPTIONS: toc:2 num:nil
+
+:PROPERTIES:
+:CONTRACT_ORG: [[../../../org/contracts/basic.template.v1.org][basic.template.v1]]
+:END:
+
+* SDD Search And Query Playbook Contract
+:PROPERTIES:
+:ID: b78aabf3-9aeb-4d56-b9ce-7f31e32f26a8
+:CUSTOM_ID: asp-search-query-playbook-contract-v1
+:SDD_KIND: system
+:SDD_STATUS: draft
+:SDD_CONCERN: public retrieval grammar and exact materialization
+:SDD_SCOPE: asp search playbook and asp query playbook
+:SDD_OWNER: ASP shared search contract
+:TRACEABILITY_STATUS: abstract-model-mapped
+:EVIDENCE_STATUS: see RFC 10.06.14 receipt
+:REVIEW_STATUS: handoff-formalized-source-admission-validated
+:END:
+
+** Search Input
+
+Search accepts retrieval operations, not a duplicated intent or question:
+
+#+begin_example
+asp search playbook \
+  --fd "fd --type f 'registry|publication|runtime|provider' crates languages docs schemas config | sort -u" \
+  --rg "rg -n 'refresh|publish|artifactDigest|rank' crates languages docs schemas config devenv.nix | sort -u" \
+  --tantivy '(title:"artifact refresh"^2 OR body:"artifact publication"^2) AND (runtime OR registry)' \
+  --native-syntax 'rust://src/registry.rs#item/implementation/type/Registry'
+#+end_example
+
+=--fd= and =--rg= preserve native arguments and the admitted shell pipeline.
+=--tantivy= preserves fields, phrases, Boolean operators, boosts, and analyzer
+identity. Search adds no intent, language, documents, or implicit extension
+filter. Optional repeatable =--native-syntax= accepts an admitted item selector,
+never a bare file URI.
+
+** Acquisition And Native Projection
+
+Supplied fd, rg, and Tantivy routes all participate, but candidates need not hit
+all three. Runtime forms a content-bound union before provider routing. A
+provider enriches hits with native nodes and selectors. Unsupported textual
+formats remain bounded =SourceExcerpt= values; path-only hits remain
+=CandidatePath= values.
+
+Every parsed Rust, Python, TypeScript, Gerbil Scheme, Julia, Org, Markdown,
+JSON, or Nix node has a canonical selector. jq is a typed projection attached
+to a selected JSON node, never selector authority.
+
+** Default Search Output
+
+A successful Search returns one Org response with a compact receipt header and
+one GQL evidence/topology slice. Runtime projects the admitted reusable Project
+Topology, executes its internal logical-inference program, and settles novel
+conclusions, frontier boundaries, and the materialization set into that same
+GQL graph. It never exposes Ascent source,
+fired-rule tuples, or a second reasoning block in the default Agent projection.
+Full digests, fixed-point receipts, and proof-DAG identities remain in the typed
+packet. There is no =--evidence-skeleton= output switch.
+
+Native nodes expose structure and exact Query selectors, not bodies. A
+non-native excerpt carries 1-based inclusive =match= and =read= ranges. The
+proposed shared source-context budget is 80 lines after overlap merging; it does
+not imply structural completeness.
+
+Every queryable native node carries its canonical selector. Request-local rank,
+retrieval support, and optional jq projection are compressed into that node's
+single =projection= property. A =MaterializationSet= groups all exact selectors
+recommended for the next =asp query playbook= invocation; the renderer does not
+invent numbered Query or Search pseudo-steps.
+
+** Query Contract
+
+#+begin_example
+asp query playbook \
+  --selector 'rust://src/registry.rs#item/method/publish_artifact/scope/implementation-owner/type/Registry' \
+  --selector 'org://docs/publication.org#item/heading/Publication' \
+  --selector 'json://config/runtime.json#item/pointer/runtime'
+#+end_example
+
+Repeated =--selector= arguments form one immutable =MaterializationSet= and one
+Query Playbook operation. Stable ordering makes the set digest deterministic;
+it does not encode execution order or create =Query 1=, =Query 2=, or =Query 3=.
+
+For a Search-recommended Query Playbook, selectors alone are not the handoff
+authority. Runtime constructs one =query-playbook-materialization-request.v1=
+from the admitted Search settlement. The request binds the exact eight-member
+Project Topology identity tuple, Search =requestId=, =materializationSetDigest=,
+the complete ordered selector set, and its complete proof dependencies. Query
+admission requires exact equality with the originating =MaterializationSet=.
+A subset, superset, reordered or duplicate selector list, changed proof set,
+foreign request identity, or cross-generation topology tuple fails before any
+provider read.
+
+Direct single-selector Query remains a separate exact-selector operation. It
+does not claim that Search recommended the selector and cannot manufacture a
+Search handoff receipt.
+
+Selector schemes identify providers, so Query has no language or documents
+switch. Each result renders relation affiliation before its native Org block.
+The block includes the exact selector and repository-relative filename, returns
+the complete selector-owned scope, preserves native bytes, inserts no ellipsis,
+and has no detached relation appendix after =#+end_src=.
+
+#+begin_example
+#+begin_src rust :query "rust://src/registry.rs#item/method/refresh_registry/scope/implementation-owner/type/Registry" :filename "src/registry.rs"
+pub fn refresh_registry(store: &ArtifactStore) -> Result<Receipt, Error> {
+    let artifact = store.load()?;
+    publish_artifact(artifact)
+}
+#+end_src
+#+end_example
+
+An Agent needing one member chooses that member selector instead of Querying an
+implementation owner and asking the renderer to truncate it.
+
+** Typed Binding And Failure
+
+The packet binds workspace/source snapshots, provider catalog and
+interpretation, topology identity, retrieval receipts, selector admission,
+coverage, ranking, request, and terminal identity. Local aliases are scoped to
+that packet.
+
+The packet also binds the topology-inference program id and digest, bounded fixed-point
+scope, proof-DAG digest and retrievable proof locator, coverage certificates,
+post-ranking certification, DecisionCore digest, FrontierSet digest,
+MaterializationSet digest, and topology-delta digest.
+
+Missing or ambiguous providers, noncanonical or stale selectors, invalid
+projections, incomplete required witnesses, duplicate aliases, and incompatible
+bindings fail closed. Selector failure never downgrades to a line range.
+
+The initial shared packet contract is
+[[file:../../../schemas/search-topology-settlement.v1.schema.json][search-topology-settlement.v1]].
+The Search-to-Query handoff contract is
+[[file:../../../schemas/query-playbook-materialization-request.v1.schema.json][query-playbook-materialization-request.v1]].
+It is an independent V1 schema rather than a breaking change to the existing
+Search packet. Provider bundle propagation begins only after this Runtime-owned
+settlement boundary passes semantic validation.
+
+** Implementation Order
+
+#+begin_example
+RFC -> shared schema -> language alignment -> Rust implementation/tests ->
+sandtable -> real-project evidence -> optimization
+#+end_example

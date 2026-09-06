@@ -67,7 +67,7 @@ def authority() -> dict[str, object]:
             "generation": wire_digest,
             "projectId": "repo-schema-fixture",
             "workspaceId": "workspace-schema-fixture",
-            "installedProviderBindingGeneration": wire_digest,
+            "runtimeBundleDigest": wire_digest,
             "schemaBundleDigest": wire_digest,
             "workspaceClosureDigest": wire_digest,
             "sourceSnapshotDigest": wire_digest,

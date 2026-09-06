@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 use super::install_command;
 
 #[test]
@@ -27,15 +31,15 @@ fn cache_gc_is_clap_owned_and_accepts_no_project_path() {
 }
 
 #[test]
-fn clean_is_clap_owned_and_requires_an_explicit_positive_retention() {
-    agent_semantic_client::project_registry_clean_clap_command()
+fn cache_clean_is_clap_owned_and_requires_an_explicit_positive_retention() {
+    agent_semantic_client::cache_clean_clap_command()
         .try_get_matches_from(["clean", "--day"])
         .expect("clean --day must select the one-day retention window");
-    agent_semantic_client::project_registry_clean_clap_command()
+    agent_semantic_client::cache_clean_clap_command()
         .try_get_matches_from(["clean", "--day", "14"])
         .expect("clean must accept a larger explicit retention window");
 
-    let missing = agent_semantic_client::project_registry_clean_clap_command()
+    let missing = agent_semantic_client::cache_clean_clap_command()
         .try_get_matches_from(["clean"])
         .expect_err("clean must require --day");
     assert_eq!(
@@ -43,17 +47,21 @@ fn clean_is_clap_owned_and_requires_an_explicit_positive_retention() {
         clap::error::ErrorKind::MissingRequiredArgument
     );
 
-    let zero = agent_semantic_client::project_registry_clean_clap_command()
+    let zero = agent_semantic_client::cache_clean_clap_command()
         .try_get_matches_from(["clean", "--day=0"])
         .expect_err("clean must reject a zero-day retention window");
     assert_eq!(zero.kind(), clap::error::ErrorKind::ValueValidation);
 }
 
 #[test]
-fn cache_clean_legacy_surface_is_rejected() {
-    let error = super::cache_command()
+fn cache_clean_is_the_only_state_home_cleanup_surface() {
+    super::cache_command()
         .try_get_matches_from(["cache", "clean", "--day"])
-        .expect_err("State Home cleanup must exist only at top-level asp clean");
+        .expect("State Home cleanup must be nested under asp cache");
+
+    let error = super::root_command()
+        .try_get_matches_from(["asp", "clean", "--day"])
+        .expect_err("top-level asp clean must not remain as a second surface");
     assert_eq!(error.kind(), clap::error::ErrorKind::InvalidSubcommand);
 }
 

@@ -10,581 +10,219 @@
 :CONTRACT_ORG: [[../../../org/contracts/agent.sdd.v1.org][agent.sdd.v1]]
 :END:
 
-* SDD Search Evidence Output
+* SDD Search Evidence Output Reflection
 :PROPERTIES:
 :ID: 3086cbb2-6d60-49b2-a14f-05f49775334f
 :CUSTOM_ID: asp-search-evidence-output-reflection-v1
 :SDD_KIND: system
 :SDD_STATUS: draft
-:SDD_CONCERN: decision-sufficient structural evidence and exact materialization
+:SDD_CONCERN: adversarial reflection over decision-sufficient search evidence
 :SDD_SCOPE: Search and Query Agent-facing output
 :SDD_OWNER: ASP shared search contract
 :TRACEABILITY_STATUS: abstract-model-mapped
 :EVIDENCE_STATUS: see linked evidence receipt
-:REVIEW_STATUS: output-boundary-accepted-encoding-open
+:REVIEW_STATUS: reflection-boundary-accepted
 :END:
 
 ** Purpose And Non-Goals
 
-This English research RFC records the accepted output boundary and challenges
-the remaining evidence encoding before implementing a new flag. It does not
-yet replace the current
-[[file:../10.06-agent-search-projection.org][Search projection contract]] or its
-registered command grammar. It is not an implementation ledger, a production
-schema, a cache authority, or a claim that a formal counterexample is a code bug.
+This RFC owns reflection questions and counterexamples. It does not own CLI
+grammar, output layout, topology storage, topology settlement, or an
+implementation ledger. Those responsibilities are split into:
 
-** Accepted Output Boundary
+- [[file:10.06.15-search-query-playbook-contract.org][RFC 10.06.15]]: Search and Query Playbook contract.
+- [[file:10.06.16-project-topology-reasoning-library.org][RFC 10.06.16]]: reusable project topology library.
+- [[file:10.06.17-gql-ascent-search-reasoning.org][RFC 10.06.17]]: reusable Project Topology, internal logical inference, and single-GQL settlement.
 
-The user accepted the following design boundary on 2026-09-05. Acceptance is
-for the output semantics and minimal Query envelope, not implementation or
-live acceptance. The shared schema and renderer must follow this decision
-before this proposal replaces the current public contract.
-
-1. Search supplies selection evidence, not a prescribed next action. A match
-   retains its canonical selector, canonical owner, necessary ownership
-   relation, retrieval support, and honest projection coverage. A hit list
-   must not masquerade as a complete member directory.
-2. Structural evidence is an optional expansion. An Agent with sufficient
-   exact evidence may Query directly; no previous skeleton request is an
-   admission requirement. The final flag namespace remains undecided.
-3. Query returns the complete explicitly resolved selection in a native
-   language Org source block. The header carries the full exact selector in
-   =:query= and the repository-relative file in =:filename=. The filename is
-   derived from the admitted result, not a second selection authority.
-4. Do not add a query-number/file heading, generated ellipses, source-summary
-   prose, or repeated integrity metadata to that Query projection. Integrity
-   and replay validation remain mandatory even when not repeated in display.
-5. Necessary relationship metadata precedes and is unambiguously associated
-   with its source block. No relationship or explanatory section follows
-   =#+end_src=. Containment already unambiguously represented by the selected
-   native syntax need not be printed again as a duplicate edge.
-6. Selector resolution owns scope. A selector resolving to an impl returns
-   that entire impl; one resolving to a member returns that entire member.
-   The renderer cannot narrow or broaden the resolved selection. A size limit
-   cannot turn an incomplete payload into a successful complete Query.
-7. Syntax facts, resolved relations, and derived relations remain distinct.
-   Presentation cannot promote a call-expression name into a resolved callee
-   or a reachability edge into a direct call.
-
-The following is a format fixture, not a selector discovered in this checkout.
-In this fixture the selector resolves to an impl containing exactly one member:
-
-#+begin_example
-#+begin_src rust :query "rust://src/registry.rs#item/method/refresh/scope/implementation-owner/type/Registry" :filename "src/registry.rs"
-impl Registry {
-    pub fn refresh(&mut self) -> Result<Receipt, Error> {
-        let artifact = self.store.load()?;
-        self.publish(artifact)
-    }
-}
-#+end_src
-#+end_example
-
-The relation grammar, affiliation encoding, coverage representation, overlapping
-selection handling, and reference-sharing strategy are still open. Accepting
-this clean output does not select GQL syntax, establish parser round-trip
-conformance, or prove that a compression candidate is optimal.
+Git is the history. This document must not become an append-only change diary.
 
 ** System Boundary
 
-Search discovers evidence; the Agent chooses a target; Query materializes the
-explicitly resolved scope. Runtime admission, native providers, and shared
-contracts retain their existing authority. Presentation cannot mint selectors.
-This is the root SDD of the bounded evidence-presentation subsystem, containing
-its runtime, data, and integration views; it is not a detached child view or
-a replacement system SDD for the entire ASP repository.
+This SDD governs the shared Agent-facing evidence semantics. Provider parsing,
+runtime storage, and UI rendering are dependencies, not alternate authorities.
 
 ** Stakeholders And Consumers
 
-The primary consumer is an Agent maintaining bounded, revisable evidence.
-Reviewers need reproducible claims, not presumed access to the Agent's private
-reasoning. Provider implementers need language-neutral semantic obligations.
+Consumers are search Agents, provider maintainers, Runtime admission owners,
+schema authors, proof authors, and reviewers of source-owned Org contracts.
 
 ** Requirements And Constraints
 
-A skeleton is optional; sufficient exact evidence permits direct Query.
-An owner query returns the complete selected owner, and a member query the
-complete selected member. No generated ellipses may masquerade as selected
-source. Member-to-owner navigation, if supported by the registered grammar,
-must report the canonical resolved owner rather than silently broadening a
-member selection. No example in this draft authorizes an invented selector.
+Evidence is content-bound, language-neutral, replayable, compact, and
+fail-closed. No presentation shortcut may mint authority or completeness.
 
 ** Quality Attributes
 
-Prioritize correctness, exact selectability, provenance, honest coverage, and
-replay. Compare bytes, tokens, calls, latency, and decoding effort only among
-representations satisfying those obligations. Namespace length alone is not a
-quality criterion for an Agent-facing flag.
+Primary qualities are decision sufficiency, epistemic precision, bounded
+context, deterministic replay, cross-language symmetry, and drift safety.
 
 ** Design Concerns
 
-The R01-R10 catalogue below tests cache dependencies, canonical owners,
-information loss, coverage, duplicated support, cost, replay, graph reduction,
-Org framing, and optional discovery.
+The design separates facts from proposals, content identity from transaction
+generation, complete evidence from bounded rendering, and Search from Query.
 
 ** Architecture Views
 
 *** Runtime View
 
-Admitted acquisition witnesses join native structure and typed relations.
-An optional structural projection reveals choice evidence without executing
-the next Query. Query validates the selected target and current binding.
-A bounded projection must admit its limits rather than prescribe a workflow.
+Runtime admits acquisition receipts, provider projections, topology identity,
+derivation, ranking, and one typed terminal before rendering.
 
 *** Data And State View
 
-Keep canonical node/owner identity, topology identity, exact content binding,
-resolver dependencies, source-occurrence provenance, and coverage distinct.
-Skeleton cache entries contain structural facts, not copied implementation
-bodies. A content edit may invalidate lexical hits and resolved calls without
-invalidating unchanged, separately validated structure.
+Durable state consists of source-owned contracts and content-addressed facts.
+Packet-local aliases and display order are derived state.
 
 *** Dependency And Integration View
 
-This model extends the existing decision-sufficiency abstraction in
-[[file:../../../packages/proofs/ASPProof/SearchRouteDecisionSufficientInspect.lean][SearchRouteDecisionSufficientInspect]].
-It does not replace the selector admission record in
-[[file:../../../packages/proofs/ASPProof/WorkspaceSearchPlaybookPlanner.lean][WorkspaceSearchPlaybookPlanner]]
-or cross-axis provenance in
-[[file:../../../packages/proofs/ASPProof/ChangeAwareEvidencePlanning.lean][ChangeAwareEvidencePlanning]].
-
-The finite identities in the new model are counterexample abstractions, not
-new production digest types. Code-to-model conformance remains a separate gate.
+RFC 10.06.15 owns operations, RFC 10.06.16 owns reusable topology, RFC 10.06.17
+owns reasoning projection, and the Lean model supplies counterexamples.
 
 ** Interfaces And Contracts
 
-Current grammar stays owned by the registered Search/Query contracts.
-The proposed optional =--evidence-skeleton= names a semantic projection, not a
-mandatory transition or a length optimization. Batched selectors, document
-selection, relation affiliation, and native Org rendering remain subject to
-shared schema and parser validation before public adoption.
-
-** Query Playbook Facade Decision
-
-The public exact-materialization spelling is =asp query playbook=.  The
-=playbook= token is a facade marker, not a provider option, selector component,
-cache key, or Runtime method.  A marker-less =asp query --selector= spelling may
-remain as a migration seam, but documentation and Agent guidance use the
-explicit facade.
-
-Exact selectors are self-describing producer identities.  Therefore an exact
-Query batch uses repeated =--selector= clauses and does not require
-=--language=, =--languages=, or =--documents= to restate the producer encoded by
-the selector scheme.  Those producer-set options remain part of native syntax
-Query, where no exact selector exists yet.  Treating them as selector-group
-state would create a second, order-dependent authority and permit a flag to
-disagree with the canonical selector.
-
-#+begin_example
-asp query playbook \
-  --selector 'rust://src/registry.rs#item/implementation/type/Registry' \
-  --selector 'rust://src/registry.rs#item/method/refresh/scope/implementation-owner/type/Registry' \
-  --selector 'org://docs/design.org#item/heading/Runtime-Authority'
-#+end_example
-
-Every selector returned as exact evidence by Search must first pass the same
-structural-selector grammar used by Query.  A repository-relative owner path is
-a candidate owner, not an exact selector.  Search must never prefix such a path
-with a producer scheme and present it as queryable evidence.  Empty or partial
-parser evidence yields candidate-owner output with no selector authority.
-
-A multi-selector Query is one content-bound batch.  ASP Server admits all
-selectors against one RuntimeExecutionBinding, WorkspaceSnapshot,
-CompleteGeneration, provider catalog, and schema binding before materializing
-the first result.  Any mismatch, unresolvable selector, cancellation, or
-generation change rejects the batch without a partial successful terminal.
-Client-side sequential single-selector dispatch is not an implementation of
-this contract because it can cross generations and expose partial output.
-
-The default rendering preserves request order.  Each admitted result consists
-of optional typed relation affiliations immediately preceding one native Org
-source block.  The block header carries the full resolved selector as =:query=
-and the admitted repository-relative owner path as =:filename=.  The native
-payload is the complete resolved scope.  There is no generated ellipsis,
-summary paragraph, integrity repetition, or relation section after that
-result's =#+end_src=.  A following result begins a new affiliation and source
-block; it cannot attach metadata retroactively to the preceding block.
-
-Duplicate canonical selectors fail with a typed request error instead of
-silently duplicating content or changing request order.  Machine-readable mode
-retains the existing exact-query identities and adds one batch identity derived
-from the ordered selector identities plus the admitted content binding.  It
-does not derive identity from presentation bytes.
-
-* Decisions And Competing Candidates
-
-The objective is verifiable, selectable, replayable evidence for an Agent, not
-a predetermined attractive layout. =--evidence-skeleton= is an optional evidence
-acquisition mode, never a prerequisite for Query. The name is a candidate;
-its length is not a reason to accept or reject its semantics.
-
-| Candidate | Representation | Benefit | Primary risk | Current disposition |
-|-----------+----------------+---------+--------------+---------------------|
-| A | Repeat the full local ancestor skeleton and provenance for every hit | Each result is locally self-contained | Duplicate ancestors, edges, and selectors consume the budget | Experimental baseline |
-| B | Maximum global deduplication; emit aliases and references only | Small apparent output | Dangling references after context eviction, lost provenance, unavailable canonical selectors | Reject without replay evidence |
-| C | Local evidence closure; normalize facts, retain provenance, expose coverage and references | Selectability and replayability with controlled duplication | More complex decoding and reference validation | Conditional candidate |
-
-C is not declared the winner. It must satisfy deterministic invariants and
-independent Agent-task evaluations before a default is selected.
-An unfinalized display grammar, selector suffix, or flag must not be presented
-as an already supported CLI capability.
-
-* Data Model And Invariants
-
-** Facts, Identities, and Views
-
-Let W be the full evidence state, K the information actually retained by the
-Agent, P the output, Q the declared question family, and pi_Q the projection.
-
-Distinguish at least:
-- Native structural facts: node kind, membership, and the particular owner.
-- Interface facts: signatures, traits, constraints, and conditional compilation.
-- Content facts: lexical occurrences, native excerpts, and source ranges.
-- Resolved relations: calls or references supported by resolver evidence.
-- Derived relations: conclusions carrying rule identity and premise witnesses.
-
-NodeId, Selector, ContentIdentity, TopologyIdentity, and ResolverIdentity are
-different concepts. The Lean research model uses distinct finite enums and records.
-It does not prove real BLAKE3 collision resistance or real parser completeness.
-
-Exact content access depends on the selected content binding. Topology reuse
-depends on its own structural binding. Equal names alone imply neither.
-
-** Sufficiency Requires a Declared Question Domain
-
-The central objective is:
-
-#+begin_example
-forall q in Q,
-  answer(decode(K, P), q) = answer(W, q)
-#+end_example
-
-Q cannot be omitted or replaced with all unspecified future Agent questions.
-=requested_fact_is_preserved= and =projection_preserves_declared_question=
-prove preservation for declared questions in this model, assuming that the
-source View already contains the relevant evidence. They do not prove retrieval
-recall or turn unknown answers into known answers.
+The public interface is defined by the three child RFCs and their future shared
+schemas. This parent defines the constraints all child contracts must satisfy.
+
+** Decisions And Competing Candidates
+
+The accepted decomposition replaces one cumulative RFC. Rejected alternatives
+are one monolithic document, duplicated full SDD templates, and implementation
+notes appended to the reflection owner.
+
+** Data Model And Invariants
+
+Facts, witnesses, coverage, topology, derivations, frontiers, selectors, and
+source excerpts are distinct typed values. Rendering cannot change support.
+
+** Accepted Boundary
+
+A successful Search gives the Agent enough bound knowledge to Query an exact
+selector, refine Search, or stop. It does not force an owner/member/Query
+sequence when a direct selector is already admitted. Exact Query alone
+materializes selector-owned source.
+
+** Reflection Dimensions
+
+1. =Decision sufficiency=: can the Agent choose a justified next operation?
+2. =Epistemic typing=: is each claim a parser fact, declared meaning, accepted
+   synthesis, proposal, retrieval witness, or derived conclusion?
+3. =Non-redundancy=: is each fact rendered at one owning layer?
+4. =Concision=: is presentation small without deleting required support?
+5. =Replay value=: can a later turn recover identities and witnesses?
+6. =Drift safety=: can changed source or interpretation invalidate reuse?
+
+Redundancy, concision, and cost are separate properties.
+
+** Counterexample Catalogue
+
+| ID | Invalid shortcut | Required correction |
+|----+------------------+---------------------|
+| R01 | Equal names imply equal nodes | Bind canonical identity and interpretation |
+| R02 | A discovered path is an owner | Keep path evidence until parser admission |
+| R03 | One skeleton answers every question | Declare coverage and boundaries |
+| R04 | Displayed members are complete | Use complete, partial, or unknown coverage |
+| R05 | Repeated text is duplicate evidence | Deduplicate atoms, retain collectors |
+| R06 | Irredundant means concise | Measure tokens and decision value separately |
+| R07 | Local aliases support replay | Bind aliases to packet and content identity |
+| R08 | Graph compression preserves reasoning | Retain witness closure |
+| R09 | Relations may follow =#+end_src= | Attach them before the native block |
+| R10 | Search must add two steps before Query | Permit direct Query for admitted selectors |
+| R11 | Valid premises always compose | Require joint satisfiability |
+| R12 | Clause hits prove a Boolean query | Bind the full-query receipt |
+| R13 | Display limits prove absence | Require certified complete coverage |
+| R14 | Compression may change support | Make support invariant under rendering |
+| R15 | Every queryable edge should execute | Require bounded decreasing progress |
+| R16 | Paths or suffixes mint syntax | Only a registered provider emits nodes |
+| R17 | Flat top-k is sufficient | Rank witness-connected closure |
+| R18 | Ascent may become a second Agent-facing language | Execute logical inference internally and settle the Project Topology projection into GQL |
+| R19 | One provider may fill the frontier | Reward cross-region marginal coverage |
+| R20 | Fired Ascent rules help the Agent reason | Keep engine traces internal and settle novel topology results into one GQL graph |
+| R21 | Every content edit invalidates topology | Separate content, locator, and structural-skeleton identities |
+| R22 | No edge in a partial slice means missing | Only certified complete coverage may derive missing; otherwise unknown |
+| R23 | Rank alone defines the decision core | Retain proof-path dependencies and reject disconnected selections |
+| R24 | Semi-naive evaluation handles cross-version deletion | Rebuild affected strata and atomically admit a complete generation |
+| R25 | Numbered Query and Search steps clarify the plan | Emit one selector MaterializationSet and explicit graph frontiers |
+| R26 | A model-written summary is a topology fact | Keep semantic annotations proposed until contract admission |
+| R27 | Natural language should stay outside the graph | Bind summaries, premises, producer, and admission state in GQL |
+
+** Fixed Decisions
+
+- The evidence graph is the default; there is no =--evidence-skeleton= switch.
+- fd, rg, and Tantivy are independent acquisition routes.
+- Runtime adds no implicit extension filter.
+- Native enrichment is provider-owned and automatic.
+- =--native-syntax= accepts canonical selectors only.
+- GQL is the sole default Agent-facing graph and owns direct facts, settled
+  derivations, frontiers, semantic annotations, and Query handles.
+- Ascent runs an internal, versioned topology-inference program. Runtime settles derived
+  knowledge and coverage-sensitive frontiers into GQL with explicit modality,
+  proof, and program provenance.
+- Python Graphs ranks after derivation; Runtime then certifies topology witness closure,
+  compatibility, coverage, and minimality before rendering.
+- A source excerpt is not selector-failure recovery.
+- Query returns the complete selector-owned scope without generated ellipses.
+- Natural-language annotations remain premise-bound proposals until human or
+  source-owned Org contract admission. They may guide Search but cannot prove
+  structure, behavior, completeness, or absence.
+
+** Open Questions And Fixed Invariants
+
+Open: the production GQL grammar, typed topology-inference bridge schema, lattice join,
+retraction strategy, ranking calibration, proof retention, and measured context
+budget remain to be validated. Fixed invariants are listed
+above and may change only through a new reviewed RFC decision.
+
+** Fitness Criteria
+
+Measure commands to the correct edit boundary, packet size, first-selector
+latency, witness closure, repeated searches, false absence, cross-language
+coverage, and stale-binding rejection.
+
+** Traceability Matrix
+
+| Concern | Owner |
+|---------+-------|
+| Reflection and counterexamples | RFC 10.06.14 and SearchEvidenceDerivation |
+| Search and Query grammar | RFC 10.06.15 |
+| Topology identity and reuse | RFC 10.06.16 |
+| GQL settlement, topology inference, ranking, rendering | RFC 10.06.17 |
+| Executable validation | search-evidence-output-reflection receipt |
 
-A View separately records positive facts and the certified question domain:
-- A positive fact yields supported.
-- A missing fact inside the certified complete domain yields ruledOut.
-- All other cases yield unknown.
-
-=projection_preserves_validity= proves that a valid source View remains valid
-after projection. Filtering must restrict both positive facts and the covered
-domain; a global complete flag cannot survive removal of its supporting facts.
-
-** Redundancy, Concision, and Cost Are Different Properties
-
-Semantic redundancy is relative to K and Q: after removing an atom, all answers
-in Q and the required provenance must remain recoverable.
-Syntactic repetition concerns repeated bytes or display fragments. It does not
-automatically imply semantic redundancy.
-
-Compare cost vectors only after correctness, selectability, coverage, and
-provenance obligations have been satisfied:
-
-#+begin_example
-cost(P) = (encodedBytes, modelTokens, additionalCalls, elapsedTime, replayCost)
-#+end_example
-
-The model uses declared abstract cost units, not measured tokenizer,
-network, or Agent costs. A packet from which no atom can be deleted is
-deletion-minimal, not necessarily globally minimum-cost. A shorter packet can
-also be harder to decode or require another Query.
-
-* Reflection Catalogue and Counterexample Decisions
-
-** R01 Does Equal Naming or Topology License Every Cached Relation?
-
-Counterexample: refresh, its impl, and its member directory remain unchanged
-while its body changes from store.load to cache.load. Topology is equal; the
-call fact is not. A resolver-catalog change is another independent witness.
-
-Correction: reuse each fact according to its actual dependencies.
-Parser-confirmed membership does not require reading every implementation body.
-Resolved calls require content and resolver validation.
-
-Proofs:
-=topology_equality_does_not_imply_exact_binding=,
-=resolver_change_is_not_licensed_by_same_content=,
-=topology_fact_reuse_is_not_body_reuse=, and =exact_admission_sound=.
-
-** R02 Can a Discovery Path Be the Canonical Owner Identity?
-
-Counterexample: refresh and publish belong to the same impl. Encoding the seed
-name in the owner key produces two keys. Deleting refresh invalidates that
-navigation expression without necessarily deleting the impl.
-
-Correction: separate the matched-node selector, canonical owner selector, and
-memberOf relation. If a member-to-owner selection expression is retained,
-return its canonical resolved selector. Distinct impl, trait, and conditional
-blocks must not be merged using only a type name.
-
-Proofs:
-=distinct_seeds_share_one_owner= and =owner_selection_independent_of_seed=.
-
-The primary node example contains one owner. Actual multiple-impl uniqueness remains
-a provider integration gate, not a theorem about the present implementation.
-The added =same_type_name_does_not_identify_an_impl= countermodel separates two
-same-named instances. =raw_and_active_structure_have_distinct_dependencies=
-distinguishes raw syntax (both cfg branches retained) from active-configuration
-membership. Reusing the first need not invalidate on every configuration
-change; reusing the second requires the admitted target/configuration witness.
-Topology identity is assumed to bind parser/grammar and canonical structure,
-not merely a namespace string. These are model assumptions to refine in code.
-
-** R03 Can a Compact Skeleton Support Every Future Question?
-
-Counterexample: two worlds produce the same skeleton, while an omitted call
-fact is present in one world and absent in the other. No algorithm reading only
-that skeleton can distinguish them.
-
-Correction: expose covered questions, omissions, and exact expansion selectors.
-Allow Query when a future question exceeds Q; do not claim unconditional
-information completeness.
-
-=omitted_fact_has_indistinguishable_worlds= is a general construction for any
-omitted fact. =skeleton_cannot_decide_implementation_call= provides concrete
-worlds. This does not deny compression of derivable facts; it rules out a
-lossless promise about arbitrary independent hidden facts.
-=no_decoder_can_recover_an_omitted_fact= proves the impossibility for every
-decoder over that projected input, not just for the example decoder.
+** Evidence Loop
 
-** R04 Can a Relevant-Member List Be Mistaken for a Complete Directory?
+Run the Lean executable, Org lint, schema tests, provider round trips, sandtable
+scenarios, and real-project trials. Feed observed ambiguity back to the owning
+child RFC, then rerun this adversarial catalogue.
 
-Counterexample: the full view contains membership and storeCall. Projection
-retains membership but preserves the original complete domain. Querying
-storeCall yields ruledOut even though the fact exists.
+** Failure Modes And Recovery
 
-Correction: coverage is relative to explicit scopes or questions. Neither hit
-count nor an empty candidate list proves absence.
+Missing ownership, stale identity, incompatible premises, incomplete coverage,
+or invalid witnesses fail closed. Recovery rebuilds the responsible derived
+artifact from source-owned contracts; it never guesses selectors or ranges.
 
-Proofs:
-=filtered_positive_with_unfiltered_coverage_is_false_absence=,
-=honest_partial_directory_is_unknown=, and =projection_preserves_validity=.
-
-The word covered denotes a certified complete relation/question domain, not
-merely a query that was attempted. =CertifiedView= carries =ValidView=;
-=certified_negative_is_not_merely_missing= proves that its ruledOut answer
-excludes the fact from the modeled truth. Actual admission must validate this
-certificate and bind its scope, snapshot, configuration, and producer; accepting
-an arbitrary caller-provided covered list would invalidate the conclusion.
-An explicit exclusion witness is an alternative certificate representation,
-not evidence that a second negative-fact authority is required.
+** Rollout And Migration
 
-** R05 Is Repeated Content Redundant, and Does Deduplication Preserve Provenance?
+Adopt the split RFCs before shared schemas. Then align providers, implement the
+Rust path, validate sandtables, and measure a real project. Old monolithic
+sections are replaced by Git history and these responsibility links.
 
-Counterexample one: rg and lexical retrieval report the same source occurrence;
-collector voting incorrectly counts two independent supports.
-Counterexample two: the same fact has two source occurrences; content-only
-deduplication discards a source.
+** Adversarial Review
 
-Correction: distinguish a fact, its source-occurrence witness, and collector
-attributions. Deduplicate display of the same witness while retaining every
-collector attribution and each distinct occurrence. Different source IDs do
-not automatically establish statistical independence either.
+R01 through R27 remain the required review suite. A child contract cannot claim
+closure merely because its syntax lints or one provider renders it.
 
-Proofs:
-=two_collectors_can_be_one_witness=,
-=same_fact_with_two_occurrences_retains_two_witnesses=, and
-=witness_membership_preserved=.
+** Formal And Evidence Mapping
 
-=same_occurrence_with_different_binding_is_not_deduplicated= rejects merging
-identical occurrence labels across content bindings. Actual witness keys must
-also bind the parser/extraction interpretation; matching file/span alone is
-insufficient. Collector count may remain a ranking feature, but cannot be
-promoted to independent support or an admission proof.
-
-** R06 Is an Irredundant Representation Necessarily the Most Concise?
+The model is [[file:../../../packages/proofs/ASPProof/SearchEvidenceDerivation.lean][SearchEvidenceDerivation]];
+the audit is [[file:../../../packages/proofs/ASPProof/Audit/SearchEvidenceDerivation.lean][SearchEvidenceDerivation Audit]];
+the executable receipt is
+[[file:../../../packages/proofs/receipts/search-evidence-output-reflection.org][search-evidence-output-reflection]].
+Finite identifiers are counterexample abstractions, not production digests.
 
-Counterexample: two indispensable atoms each cost 2, totaling 4. Another shared
-representation covers both obligations at cost 3. The first packet has no
-deletable atom but is not globally cheapest.
-
-Correction: preserve obligations, provenance, and decoding capability before
-comparing feasible representations on a Pareto frontier. Repeated type names
-may help local interpretation; global aliases may introduce context dependence.
-Those effects require measurement.
-
-Proofs:
-=deletion_minimal_need_not_minimize_cost= and
-=shortest_packet_need_not_be_sufficient=.
-
-Fewer characters do not prove better Agent reasoning.
+Implementation work updates its responsible RFC, never this reflection index.
 
-** R07 Does the Output Support Future Evidence Replay?
-
-Counterexample: the Server sent evidence earlier, but context compaction evicted
-it. A reference saying see the previous result is not independently usable.
-
-Correction: references require exact keys and verifiable retained or
-retrievable evidence. The model performs archive lookup and payload/key
-validation: a missing record or forged payload fails closed.
-
-Historical evidence can remain true and replayable in an old snapshot without
-being valid evidence for a current-workspace decision. Do not require every
-historical fact to belong to the current snapshot.
-
-Proofs:
-=previously_sent_does_not_imply_replayability=,
-=historical_replay_and_current_admission_are_distinct=,
-=forged_reference_payload_fails_closed=, and
-=unresolved_history_does_not_become_a_fact=.
-
-The model does not prove permanent archive availability, bounded replay latency,
-or correctness of cross-process leases.
-
-** R08 Does Graph Compression Preserve the Relations Needed for Reasoning?
-
-Counterexample: A calls B, B calls C, and A calls C. Removing the last edge
-preserves reachability from A to C but changes the answer to whether A directly
-calls C.
-
-Correction: preserve relation kinds and evidence paths relative to Q.
-Derived reachability must not masquerade as direct calls. A summary edge
-declared replayable needs verifiable expansion evidence.
-
-Proof: =reachability_does_not_preserve_direct_calls=.
-
-Connectivity or shortest-path proofs alone do not establish Query-decision
-evidence fidelity.
-
-** R09 Can the Org Envelope Corrupt Native Content or Relation Attachment?
-
-Counterexample: native source contains an actual =#+end_src= line. Wrapping it
-without escaping closes the result prematurely. Source can also contain text
-resembling =#+gql:=; it must not become external evidence or an instruction.
-
-Required corrections:
-- Decoded native payload equals the selected bytes in the bound snapshot.
-- Delimiters, comma escaping, newlines, and Unicode round-trip.
-- Preceding relation metadata attaches only to the explicitly associated result.
-- Source text cannot inject metadata, change scope, or trigger execution.
-- The selected scope is complete; no generated omission markers are inserted.
-- No result explanation or relationship section follows #+end_src.
-
-=unescaped_delimiter_loses_native_content= establishes an abstract framing
-counterexample only. The actual Org parser/renderer round-trip is unproven and
-requires tests in its real implementation owner.
-
-** R10 Does the Interface Force a Skeleton Phase Before Query?
-
-Counterexample: an Agent already has an exact member selector and a valid
-binding, but the protocol requires another skeleton request. That call adds no
-new evidence.
-
-Correction: Query admission checks selection and binding, not prior flag use.
-The Agent may select an owner, a member, or more evidence. The smallest
-sufficient scope is not always the smallest leaf.
-
-Proofs:
-=direct_member_query_is_legal= and
-=different_target_cannot_be_silently_expanded=.
-
-The second proof checks model-level target identity, not real Query byte access.
-
-* Open Questions And Fixed Invariants
-
-Fixed semantic requirements:
-- Search returns selectable structural evidence; related hits are not a complete directory.
-- Query uses canonical selectors and reads the selected scope completely.
-- Query does not perform a new search or guess a broader scope.
-- Relations precede source blocks; native payload stays inside the block.
-- No trailing relationship or explanatory section follows the block.
-- If present, =:query= denotes the full selector and =:filename= denotes its file.
-- GQL/Org renders typed facts; MRR/Ascent conclusions retain separate provenance.
-- Rendering creates no second identity or evidence authority.
-
-Decisions that remain subject to evaluation:
-- The scope and coverage encoding of the optional structural evidence expansion.
-- The final namespace and behavior of =--evidence-skeleton=.
-- Org distinctions between relevant-member candidates and complete member directories.
-- Alias dictionaries, repeated selectors, and shared ancestors.
-- The actual =#+gql:= grammar, affiliation, and distinction between observed and derived facts.
-
-Do not present these display decisions as mathematically settled.
-
-* Fitness Criteria: Measure Observable Outcomes
-
-Control two independent factors: vary names with equivalent facts/bytes, and
-vary projections with a fixed interface. Do not change names, information
-content, and retrieval algorithms simultaneously and attribute gains to naming.
-
-Task families must cover Rust, Markdown, and Org:
-- Same-named members in different impl, trait, or cfg blocks.
-- Same-named headings at different structural locations.
-- Code-block body hits absent from the heading.
-- Multiple collectors reporting the same occurrence.
-- Direct member Query with a previously acquired skeleton.
-- Unknown versus absence under a bounded directory listing.
-- Replay after context eviction and a current-content change.
-- Native source containing Org delimiters or metadata lookalikes.
-
-Measure task correctness, selector errors, overbroad/undernarrow reads, false
-absence conclusions, repeated calls, actual output tokens, end-to-end latency,
-replay success, and provenance retention. Do not require private reasoning
-traces; validate selected nodes, scopes, external answers, and actual tool calls.
-Naming and cognitive effects require repeated runs, held-out tasks, and Agent
-evaluation rather than Lean theorems.
-
-
-* Traceability Matrix
-
-| Concern | Existing boundary | Additional research obligation |
-|---------+-------------------+--------------------------------|
-| R01-R02 | ParserAdmission, canonicalExactQuery | Fact-dependent reuse; canonical owner distinct from discovery path |
-| R03-R04 | InspectSurface.DecisionCorrect, EvidenceProjection | Declared-question preservation; scoped three-valued coverage |
-| R05-R06 | EvidenceAtom, EvidenceMapping, token budget | Preserve occurrence and collector provenance; reject cost-only sufficiency |
-| R07-R08 | RoundIdentity, derivation lineage | Historical replay distinct from current admission; direct edge distinct from reachability |
-| R09-R10 | ExactQuery, native projection boundary | Lossless Org framing; no forced skeleton or scope expansion |
-
-* Evidence Loop
-
-The [[file:../../../packages/proofs/receipts/search-evidence-output-reflection.org][adversarial review and replay receipt]]
-records commands, evaluated results, and answered reflection questions.
-The [[file:../../../packages/proofs/ASPProof/SearchEvidenceReflection.lean][Lean model]]
-contains universal preservation results and finite countermodels.
-The [[file:../../../packages/proofs/ASPProof/Audit/SearchEvidenceReflection.lean][audit]]
-checks rejected claims and theorem dependencies. These are not proofs of
-production parser behavior, optimal Agent reasoning, or live serving closure.
-
-* Failure Modes And Recovery
-
-Missing reference means unresolved evidence, not an inferred fact. Incomplete
-coverage means unknown, not absence. Mismatched identity rejects current
-materialization. A relation whose dependencies changed must be revalidated by
-its owner. No client retry, hidden cache, runtime restart, or alternate parser
-can repair a failed evidence obligation.
-
-The framing countermodel does not assert that the current Org parser is
-vulnerable. Actual native-byte round trips and metadata attachment must be
-tested in the provider/renderer owner before implementing the format.
-
-* Rollout And Migration
-
-1. Review the English RFC and abstract counterexamples against existing contracts.
-2. Validate the imported Lean model and audit with the package-pinned toolchain.
-3. Evaluate A/B/C over the same admitted evidence and declared question families.
-4. Select semantic fields and a rendering candidate; define the shared schema.
-5. Add actual Org parser/renderer RED tests for byte round-trip, relation
-   attachment, deduplication, ambiguity, and metadata injection.
-6. Align Rust, Markdown, and Org provider contracts, then implement the renderer.
-7. Run normal Search/Query sandtable and real-project evaluations before
-   promoting a default or advertising a new flag.
-
-No wire version, default flag, provider API, or installed artifact changes in
-this research integration. Existing dirty files are preserved.
-
-* Adversarial Review
-
-See the [[file:../../../packages/proofs/receipts/search-evidence-output-reflection.org][contract-backed review]].
-Structural contract validity alone cannot prove that the answers are useful,
-complete, or correct. Each reflection answer must link to evaluated evidence;
-semantic and empirical review remain mandatory even if Org assertions pass.
-
-* Linked Implementation
-
-Only the research model, its audit, and its executable checker are introduced
-at this stage. The shared schema and production renderer are deliberately
-unmodified until the open decisions have sufficient evidence.
+** Linked Implementation
+
+Current formal implementation is the linked Lean model and audit. Production
+schema, renderer, provider, and Runtime links are added to their child RFCs only
+after executable gates exist.

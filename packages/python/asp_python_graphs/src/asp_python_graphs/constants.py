@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: Contributors to Agent Semantic Protocols
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 """Shared graph turbo protocol constants."""
 
 ALGORITHM_ID = "typed-ppr-diverse"

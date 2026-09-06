@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 //! Digest-addressed identity for installed protocol binaries.
 
 use std::fs;
@@ -36,35 +40,16 @@ pub(super) fn is_digest_addressed_protocol_binary(
     let Some(binary) = components.next().map(|value| value.as_os_str()) else {
         return Ok(false);
     };
-    Ok(store == "blake3-256"
+    Ok(store == "generations"
         && valid_blake3_digest(digest)
         && !binary.is_empty()
         && components.next().is_none())
 }
 
-pub(crate) fn protocol_binary_artifact_path_digest(path: &Path) -> Option<String> {
-    if let Ok(link) = fs::read_link(path) {
-        let target = if link.is_absolute() {
-            link
-        } else {
-            path.parent()?.join(link)
-        };
-        if fs::symlink_metadata(&target)
-            .ok()
-            .is_some_and(|metadata| metadata.file_type().is_file())
-            && let Some(digest) = protocol_binary_digest_from_canonical_artifact_path(&target)
-        {
-            return Some(digest);
-        }
-    }
-    let canonical = fs::canonicalize(path).ok()?;
-    protocol_binary_digest_from_canonical_artifact_path(&canonical)
-}
-
 pub(crate) fn protocol_binary_digest_from_canonical_artifact_path(
     canonical: &Path,
 ) -> Option<String> {
-    agent_semantic_content_identity::blake3_digest_from_canonical_artifact_path(canonical)
+    agent_semantic_content_identity::file_content_digest_v1(canonical).ok()
 }
 
 fn valid_blake3_digest(digest: &str) -> bool {

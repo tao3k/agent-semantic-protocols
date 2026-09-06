@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 #[test]
 fn db_engine_active_backend_contract_tracks_turso_default() {
     let project_root = temp_root("db-engine-active-project");
@@ -299,6 +303,26 @@ fn db_engine_active_backend_contract_tracks_turso_default() {
 
     let _ = std::fs::remove_dir_all(project_root);
     let _ = std::fs::remove_dir_all(state_home);
+}
+
+#[test]
+fn db_engine_resolves_through_the_artifacts_owned_workspace_layout() {
+    let project_root = temp_root("db-engine-canonical-workspace");
+    let state_home = temp_root("db-engine-canonical-state-home");
+    init_git_repository(&project_root);
+    let state = ResolvedState::resolve_with_state_home(&project_root, &state_home)
+        .expect("resolve canonical state");
+    let workspace = state
+        .ensure_workspace_state_layout()
+        .expect("materialize canonical workspace");
+    let engine = ClientDbEngine::from_resolved_state(&state);
+
+    assert_eq!(engine.client_dir(), workspace.root);
+    assert_eq!(engine.db_path(), workspace.facts);
+    assert_eq!(engine.artifact_path(), workspace.artifacts);
+    assert_eq!(engine.manifest_path(), workspace.db_manifest_path());
+    assert!(workspace.binding_path().is_file());
+    assert!(!state_home.join("projects").exists());
 }
 
 #[test]

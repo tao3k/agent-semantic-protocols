@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 //! Owns assembly and coordinated shutdown of the long-lived Runtime Server.
 
 use super::daemon_identity;
@@ -123,9 +127,11 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
         }
         active_identity
     };
-    let runtime_provider_catalog =
-        crate::command::installed_provider_artifacts::load_runtime_provider_artifacts(state_home)
-            .await?;
+    let runtime_active_provider_projection =
+        crate::command::active_provider_projection::load_runtime_active_provider_projection(
+            state_home,
+        )
+        .await?;
     let artifact_catalog =
         agent_semantic_artifacts::runtime_artifact_catalog::load_runtime_artifact_catalog(
             &state_home,
@@ -160,14 +166,11 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
     .await?;
     let provider_register_state_path = runtime_serving.provider_register_receipt();
     let provider_seed = agent_semantic_provider_protocol::builtin_provider_registrations()?;
-    let provider_register = if artifact_catalog
-        .installed_provider_binding_generation()
-        .is_some()
-    {
+    let provider_register = if artifact_catalog.runtime_bundle_digest().is_some() {
         agent_semantic_client_db::runtime_provider_register::RuntimeProviderRegister::from_verified_seed_with_store(
             provider_seed,
             provider_register_state_path,
-            artifact_catalog.installed_provider_targets(),
+            artifact_catalog.active_provider_targets(),
         )
         .await?
     } else {
@@ -259,18 +262,18 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
                         std::time::Duration::from_millis(800),
                     )
                     .await?;
-                    let runtime_provider_catalog = crate::command::installed_provider_artifacts::
-                        load_runtime_provider_artifacts(&state_home)
+                    let runtime_active_provider_projection = crate::command::active_provider_projection::
+                        load_runtime_active_provider_projection(&state_home)
                         .await?;
-                    let required_languages = crate::command::installed_provider_artifacts::
+                    let required_languages = crate::command::active_provider_projection::
                         provider_languages_for_generation_demand(
                             &provider_register,
                             &inventory.owner_paths,
                             provider_target.as_ref(),
                         )?;
                     let (registry, current_catalog_generation) =
-                        crate::command::installed_provider_artifacts::runtime_source_index_provider_projection(
-                            &runtime_provider_catalog,
+                        crate::command::active_provider_projection::runtime_source_index_provider_projection(
+                            &runtime_active_provider_projection,
                             &provider_register,
                             &required_languages,
                         )?;
@@ -313,10 +316,10 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
                                 "canonical source generation failed: changedPathCount={changed_path_count} error={error}"
                             )
                         })?;
-                    let execution_binding = agent_semantic_artifacts::installed_provider_binding::RuntimeProviderExecutionBinding::build(
+                    let execution_binding = agent_semantic_artifacts::runtime_provider_execution_binding::RuntimeProviderExecutionBinding::build(
                         admission.project_id,
                         workspace_id,
-                        runtime_provider_catalog.generation().to_owned(),
+                        runtime_active_provider_projection.generation().to_owned(),
                         schema_bundle_digest,
                         current_catalog_generation,
                         build.materialization.source_snapshot.root_integrity_reference()?,
@@ -332,7 +335,7 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
     let mut runtime_search_tasks = tokio::task::JoinSet::new();
     runtime_search_tasks.spawn(serve_runtime_search_requests(
         state_home.to_path_buf(),
-        runtime_provider_catalog.clone(),
+        runtime_active_provider_projection.clone(),
         std::sync::Arc::clone(&provider_register),
         runtime_search_requests,
         graph_server.clone(),
@@ -343,9 +346,12 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
         )
         .await?;
     agent_semantic_client_db::AgentSessionRegistry::mark_runtime_server_owner_process();
+    let session_registry_root = agent_semantic_artifacts::StateHomeLayout::new(state_home)
+        .control()
+        .session_registry_root();
     let agent_session_registry = std::sync::Arc::new(
         agent_semantic_client_db::AgentSessionRegistry::open_or_create_state_root_async(
-            &state_home,
+            session_registry_root,
         )
         .await?,
     );
@@ -358,20 +364,20 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
     )
     .await
     .map_err(|error| format!("failed to bind Runtime Server control plane: {error}"))?;
-    let provider_binding_probe_state_home = state_home.to_path_buf();
-    let provider_binding_generation_probe = std::sync::Arc::new(move || {
-        crate::command::installed_provider_artifacts::runtime_provider_binding_generation_with_refresh(
-            &provider_binding_probe_state_home,
+    let runtime_bundle_probe_state_home = state_home.to_path_buf();
+    let runtime_bundle_digest_probe = std::sync::Arc::new(move || {
+        crate::command::active_provider_projection::active_runtime_bundle_digest(
+            &runtime_bundle_probe_state_home,
         )
     });
     let server = server
         .with_provider_register(std::sync::Arc::clone(&provider_register))
         .with_event_sender(diagnostic_events)
         .with_runtime_telemetry_sender(lifecycle_bus.sender.clone())
-        .with_workspace_generation_builder_catalog_and_provider_binding_probe(
+        .with_workspace_generation_builder_catalog_and_runtime_bundle_probe(
             generation_builder,
             admission_catalog,
-            provider_binding_generation_probe,
+            runtime_bundle_digest_probe,
         )
         .with_runtime_search_service(runtime_search_service.clone())
         .with_agent_session_registry_owner(std::sync::Arc::clone(&agent_session_registry));
@@ -396,8 +402,8 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
         runtime_search_service.clone(),
         generation_admission,
         std::sync::Arc::clone(server.workspace_registry()),
-        runtime_provider_catalog.generation().to_owned(),
-        std::sync::Arc::from(runtime_provider_catalog.installed_provider_targets()),
+        runtime_active_provider_projection.generation().to_owned(),
+        std::sync::Arc::from(runtime_active_provider_projection.active_provider_targets()),
         std::sync::Arc::clone(&provider_register),
         workspace_store_root,
         query_generation_authority.clone(),

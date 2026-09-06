@@ -60,12 +60,9 @@ impl fmt::Display for ScopeId {
 }
 
 /// Whether a resolved repository identity may own durable State Home data.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum RepoPersistence {
-    /// Compatibility value for metadata written before persistence was explicit.
-    #[default]
-    Legacy,
     /// A Git repository identified by its remote or Git metadata.
     Git,
     /// An explicitly declared non-Git project.
@@ -78,7 +75,6 @@ impl RepoPersistence {
     /// Stable diagnostic and manifest representation.
     pub fn as_str(self) -> &'static str {
         match self {
-            Self::Legacy => "legacy",
             Self::Git => "git",
             Self::ExplicitNonGit => "explicit-non-git",
             Self::EphemeralPath => "ephemeral-path",
@@ -103,33 +99,32 @@ pub struct RepoIdentity {
     pub git_common_dir: Option<PathBuf>,
     pub remote_url: Option<RemoteUrl>,
     pub identity_basis: String,
-    #[serde(default)]
     pub persistence: RepoPersistence,
 }
 
 impl RepoIdentity {
     pub(super) fn from_checkout(git: &GitIdentity, checkout: &CheckoutIdentity) -> Self {
-        let remote_basis = git
+        let checkout_is_temporary = is_temporary_checkout_path(&checkout.root);
+        let git_basis = git
+            .common_git_dir
+            .as_deref()
+            .map(|git_dir| format!("git-common-dir:{}", path_identity(git_dir)))
+            .or_else(|| {
+                git.git_dir
+                    .as_deref()
+                    .map(|git_dir| format!("git-dir:{}", path_identity(git_dir)))
+            });
+        let durable_local_object_database = git
+            .common_git_dir
+            .as_deref()
+            .or(git.git_dir.as_deref())
+            .is_some_and(|git_dir| !checkout_is_temporary || !is_temporary_checkout_path(git_dir));
+        let durable_network_provenance = git
             .remote_url
             .as_ref()
             .and_then(RemoteUrl::canonical_identity)
-            .map(|remote| format!("git-remote:{remote}"));
-        let checkout_is_temporary = is_temporary_checkout_path(&checkout.root);
-        let git_basis = remote_basis.or_else(|| {
-            git.common_git_dir
-                .as_deref()
-                .filter(|git_dir| !checkout_is_temporary || !is_temporary_checkout_path(git_dir))
-                .map(|git_dir| format!("git-common-dir:{}", path_identity(git_dir)))
-                .or_else(|| {
-                    git.git_dir
-                        .as_deref()
-                        .filter(|git_dir| {
-                            !checkout_is_temporary || !is_temporary_checkout_path(git_dir)
-                        })
-                        .map(|git_dir| format!("git-dir:{}", path_identity(git_dir)))
-                })
-        });
-        let persistence = if git_basis.is_some() {
+            .is_some();
+        let persistence = if durable_local_object_database || durable_network_provenance {
             RepoPersistence::Git
         } else {
             RepoPersistence::EphemeralPath

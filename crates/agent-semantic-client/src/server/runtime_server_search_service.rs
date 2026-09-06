@@ -1,8 +1,12 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 //! Resident provider request service owned by the Runtime Server.
 
 pub(super) async fn serve_runtime_search_requests(
     state_home: std::path::PathBuf,
-    mut runtime_provider_catalog: crate::command::installed_provider_artifacts::RuntimeProviderArtifacts,
+    mut runtime_active_provider_projection: crate::command::active_provider_projection::RuntimeActiveProviderProjection,
     provider_register: std::sync::Arc<
         agent_semantic_client_db::runtime_provider_register::RuntimeProviderRegister,
     >,
@@ -41,10 +45,10 @@ pub(super) async fn serve_runtime_search_requests(
                 response,
             } => {
                 let result = async {
-                    runtime_provider_catalog =
-                        crate::command::installed_provider_artifacts::load_runtime_provider_artifacts(&state_home)
+                    runtime_active_provider_projection =
+                        crate::command::active_provider_projection::load_runtime_active_provider_projection(&state_home)
                             .await?;
-                    let launch = runtime_provider_catalog.runtime_launch(
+                    let launch = runtime_active_provider_projection.runtime_launch(
                         &project_root,
                         &language_id,
                         &provider_register,
@@ -101,7 +105,7 @@ pub(super) async fn serve_runtime_search_requests(
                 response,
             } => {
                 let result = (|| {
-                    let launch = runtime_provider_catalog.runtime_launch(
+                    let launch = runtime_active_provider_projection.runtime_launch(
                         &project_root,
                         &language_id,
                         &provider_register,
@@ -122,7 +126,7 @@ pub(super) async fn serve_runtime_search_requests(
                 response,
             } => {
                 let result = (|| {
-                    let launch = runtime_provider_catalog.runtime_launch(
+                    let launch = runtime_active_provider_projection.runtime_launch(
                         &project_root,
                         &language_id,
                         &provider_register,
@@ -168,7 +172,7 @@ pub(super) async fn serve_runtime_search_requests(
                 response,
             } => {
                 let result = (|| {
-                    let launch = runtime_provider_catalog.runtime_launch(
+                    let launch = runtime_active_provider_projection.runtime_launch(
                         &project_root,
                         &language_id,
                         &provider_register,
@@ -209,7 +213,7 @@ pub(super) async fn serve_runtime_search_requests(
                 response,
             } => {
                 let result = (|| {
-                    let launch = runtime_provider_catalog.runtime_launch(
+                    let launch = runtime_active_provider_projection.runtime_launch(
                         &project_root,
                         &language_id,
                         &provider_register,
@@ -383,7 +387,7 @@ pub(super) async fn serve_runtime_search_requests(
                 response,
             } => {
                 let result = (|| {
-                    let launch = runtime_provider_catalog.runtime_launch(
+                    let launch = runtime_active_provider_projection.runtime_launch(
                         &project_root,
                         &language_id,
                         &provider_register,
@@ -430,9 +434,9 @@ pub(super) async fn serve_runtime_search_requests(
                             ));
                         }
                     }
-                    let (registry, _) = crate::command::installed_provider_artifacts::
+                    let (registry, _) = crate::command::active_provider_projection::
                         runtime_source_index_provider_projection(
-                            &runtime_provider_catalog,
+                            &runtime_active_provider_projection,
                             &provider_register,
                             &std::collections::BTreeSet::from([language_id.clone()]),
                         )?;

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 //! Database-side keyset pagination for the single-process MVCC event store.
 
 use crate::turso_mvcc_store::{TursoMvccEvent, TursoMvccStore, event_shard};

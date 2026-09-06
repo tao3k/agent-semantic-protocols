@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 include!("cli_help_model.rs");
 pub(crate) fn install_plugin_command() -> Command {
     Command::new("plugin")
@@ -478,8 +482,9 @@ fn selected_command_default(args: &[String]) -> Command {
         (Some("wrap"), _) => Command::new("wrap")
             .bin_name("asp wrap")
             .about("Run a command through the ASP client runtime"),
-        (Some("cache"), Some("gc")) => agent_semantic_client::project_registry_gc_clap_command(),
-        (Some("clean"), _) => agent_semantic_client::project_registry_clean_clap_command(),
+        (Some("cache"), Some("clean")) => {
+            agent_semantic_client::cache_clean_clap_command()
+        }
         (Some("cache"), _) => cache_command(),
         (Some("cloud"), _) => cloud_command(),
         (Some("paths"), _) => paths_command(),

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 #[path = "scenario_performance_gate/agent_session_pressure.rs"]
 mod agent_session_pressure;
 #[path = "scenario_performance_gate/contracts.rs"]

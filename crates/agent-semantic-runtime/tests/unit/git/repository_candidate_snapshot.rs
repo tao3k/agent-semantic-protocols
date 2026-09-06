@@ -434,6 +434,51 @@ fn checkout_identity_is_stable_while_head_advances_its_generation() {
 }
 
 #[test]
+fn independent_object_databases_with_the_same_remote_have_distinct_repository_identities() {
+    let first = Fixture::new("same-remote-first");
+    let second = Fixture::new("same-remote-second");
+    for fixture in [&first, &second] {
+        fixture.git(&["init", "--quiet"]);
+        fixture.git(&[
+            "remote",
+            "add",
+            "origin",
+            "https://example.invalid/asp/shared-upstream.git",
+        ]);
+        fixture.write("src/lib.rs", "pub fn value() -> u8 { 1 }\n");
+        fixture.git(&["add", "src/lib.rs"]);
+    }
+
+    let first = discover_repository_candidate_snapshot(&first.root)
+        .expect("discover first independent repository")
+        .expect("first Git snapshot exists");
+    let second = discover_repository_candidate_snapshot(&second.root)
+        .expect("discover second independent repository")
+        .expect("second Git snapshot exists");
+
+    assert_ne!(
+        first.repository_identity.repository_id,
+        second.repository_identity.repository_id
+    );
+    assert!(
+        first
+            .repository_identity
+            .identity_basis
+            .starts_with("git-common-dir:")
+    );
+    assert!(
+        second
+            .repository_identity
+            .identity_basis
+            .starts_with("git-common-dir:")
+    );
+    assert_eq!(
+        first.repository_identity.remote_url,
+        second.repository_identity.remote_url
+    );
+}
+
+#[test]
 fn nested_project_snapshot_rebases_candidates_to_project_root() {
     let fixture = Fixture::new("nested-project");
     fixture.git(&["init", "--quiet"]);

@@ -126,7 +126,7 @@ impl AspClientDispatcher for RuntimeAspClientDispatcher {
         let runtime_search_service = self.runtime_search_service.clone();
         let generation_admission = Arc::clone(&self.generation_admission);
         let workspace_registry = Arc::clone(&self.workspace_registry);
-        let installed_provider_targets = Arc::clone(&self.installed_provider_targets);
+        let active_provider_targets = Arc::clone(&self.active_provider_targets);
         let provider_register = Arc::clone(&self.provider_register);
         let workspace_store_root = self.workspace_store_root.clone();
         let query_generation_authority = self.query_generation_authority.clone();
@@ -255,7 +255,7 @@ impl AspClientDispatcher for RuntimeAspClientDispatcher {
                         })?;
                     params.validate()?;
                     let installed_provider_matches =
-                        installed_provider_targets
+                        active_provider_targets
                             .iter()
                             .any(|(language_id, provider_id)| {
                                 language_id == &params.language_id
@@ -431,7 +431,7 @@ impl AspClientDispatcher for RuntimeAspClientDispatcher {
                     let provider_target = match params.language_id {
                         None => None,
                         Some(language_id) => {
-                            let provider_id = installed_provider_targets
+                            let provider_id = active_provider_targets
                                 .iter()
                                 .find_map(|(installed_language_id, provider_id)| {
                                     (installed_language_id == &language_id)
@@ -489,7 +489,7 @@ impl AspClientDispatcher for RuntimeAspClientDispatcher {
                     runtime_search_service,
                     generation_admission,
                     workspace_registry,
-                    installed_provider_targets,
+                    active_provider_targets,
                     provider_register,
                     query_generation_authority,
                     query_generation,

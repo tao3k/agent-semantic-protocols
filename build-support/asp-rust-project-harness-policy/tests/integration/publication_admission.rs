@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 //! Release publication and CI own the one-shot Cargo-DAG workspace policy.
 
 use std::path::PathBuf;

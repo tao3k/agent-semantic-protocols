@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 use std::path::Path;
 
 use agent_semantic_artifacts::RuntimeArtifactStateLayout;
@@ -8,15 +12,14 @@ fn mutable_runtime_artifact_state_has_one_physical_authority() {
     let layout = RuntimeArtifactStateLayout::new(state_home);
 
     assert_eq!(layout.root(), state_home.join("runtime/artifacts"));
-    assert_eq!(layout.content_store(), layout.root().join("blake3-256"));
-    assert_eq!(layout.bundle_store(), layout.root().join("bundles"));
+    assert_eq!(layout.generation_store(), layout.root().join("generations"));
     assert_eq!(layout.active_slot(), layout.root().join("active"));
     assert_eq!(layout.healthy_slot(), layout.root().join("healthy"));
     assert_eq!(layout.activation(), layout.root().join("activation"));
     assert_eq!(layout.leases(), layout.root().join("leases"));
 
     for path in [
-        layout.bundle_store(),
+        layout.generation_store(),
         layout.active_slot(),
         layout.healthy_slot(),
         layout.activation(),
@@ -45,7 +48,9 @@ async fn runtime_publication_uses_only_the_canonical_artifact_authority() {
     .expect("publish Runtime artifact");
 
     let layout = RuntimeArtifactStateLayout::new(&state_home);
-    assert!(layout.bundle_store().is_dir());
+    assert!(layout.generation_store().is_dir());
+    assert!(!layout.root().join("blake3-256").exists());
+    assert!(!layout.root().join("bundles").exists());
     assert!(layout.active_slot().exists());
     let active_bundle = std::fs::read_link(layout.active_slot()).expect("active bundle selector");
     assert!(

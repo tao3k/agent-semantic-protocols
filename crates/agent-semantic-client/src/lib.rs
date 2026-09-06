@@ -1,12 +1,16 @@
 #![deny(dead_code)]
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 
 //! Public `asp` client, CLI, and Runtime Server lifecycle surface.
 
 extern crate self as agent_semantic_client;
 
+mod cache_cleanup_service;
 mod cache_cli;
-pub use cache_cli::project_registry_clean_clap_command;
-pub use cache_cli::project_registry_gc_clap_command;
+pub use cache_cli::cache_clean_clap_command;
 pub mod cli;
 mod cli_args;
 mod client_cli;
@@ -26,6 +30,7 @@ mod runtime_language_client;
 mod runtime_language_client_tests;
 mod search_history;
 mod state_cli;
+mod state_service;
 mod syntax_query_preflight;
 #[cfg(test)]
 #[path = "../tests/unit/support.rs"]
@@ -45,8 +50,6 @@ pub use runtime_language_client::ClientBackpressureProbeReceipt;
 pub use runtime_language_client::{AspClient, AspClientRuntimeHandoff};
 
 pub mod cli_failure;
-pub use command::protocol_binary::publish_runtime_server_artifact;
-pub use command::protocol_binary::published_runtime_server_artifact_digest;
 #[doc(hidden)]
 pub use state_cli::run_binary_from_env;
 pub(crate) mod codex;

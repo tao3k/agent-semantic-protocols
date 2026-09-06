@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 use std::sync::Arc;
 
 use super::{DurabilityTask, RuntimeDataPlaneCounterState, publish_new_generation};
@@ -76,7 +80,7 @@ fn generation_from_owners(
         .expect("content generation receipt");
     let module_graph_digest = format!("blake3-256:{}", "3".repeat(64));
     let runtime_provider_execution_binding =
-        agent_semantic_artifacts::installed_provider_binding::RuntimeProviderExecutionBinding::build(
+        agent_semantic_artifacts::runtime_provider_execution_binding::RuntimeProviderExecutionBinding::build(
             "repo-0000000000000001".to_owned(),
             "workspace-resident-durability".to_owned(),
             format!("blake3-256:{}", "4".repeat(64)),

@@ -1,12 +1,9 @@
 //! State-root and durable path layout.
 
-use super::identity::RepoId;
-use super::identity::WorkspaceId;
 use crate::git::canonicalize_if_possible;
 use serde::Deserialize;
 use serde::Serialize;
 use std::env;
-use std::path::Path;
 use std::path::PathBuf;
 
 /// Environment variable that overrides the ASP v2 state root.
@@ -38,63 +35,6 @@ pub struct StateHomeResolution {
     pub source: StateHomeResolutionSource,
     pub asp_state_home_present: bool,
     pub home_present: bool,
-}
-
-/// Concrete paths for the State Core v1 layout.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct StatePaths {
-    pub version_file: PathBuf,
-    pub state_json: PathBuf,
-    pub registry_dir: PathBuf,
-    pub registry_events_jsonl: PathBuf,
-    pub aliases_by_display_name_dir: PathBuf,
-    #[serde(default)]
-    pub projects_by_id_dir: PathBuf,
-    pub project_dir: PathBuf,
-    pub project_json: PathBuf,
-    pub workspace_dir: PathBuf,
-    pub workspace_json: PathBuf,
-    pub hooks_dir: PathBuf,
-    pub client_dir: PathBuf,
-    pub client_manifest_json: PathBuf,
-    pub client_cache_manifest_path: PathBuf,
-    pub client_db_path: PathBuf,
-    pub artifacts_dir: PathBuf,
-}
-
-impl StatePaths {
-    /// Project already-resolved repository and workspace identities into the
-    /// canonical State Core path layout.
-    pub fn new(state_home: &Path, repo_id: &RepoId, workspace_id: &WorkspaceId) -> Self {
-        let registry_dir = state_home.join("registry");
-        let aliases_by_display_name_dir = state_home.join("aliases").join("by-display-name");
-        let projects_by_id_dir = state_home.join("projects").join("by-id");
-        let project_dir = projects_by_id_dir.join(repo_id.as_str());
-        let workspace_dir = project_dir.join("workspaces").join(workspace_id.as_str());
-        let hooks_dir = workspace_dir.join("hooks");
-        let client_dir = workspace_dir.join("live").join("client");
-        let artifacts_dir = workspace_dir.join("artifacts");
-
-        Self {
-            version_file: state_home.join("VERSION"),
-            state_json: state_home.join("state.json"),
-            registry_events_jsonl: registry_dir.join("events.jsonl"),
-            registry_dir,
-            aliases_by_display_name_dir,
-            projects_by_id_dir,
-            project_json: project_dir.join("project.json"),
-            project_dir,
-            workspace_json: workspace_dir.join("workspace.json"),
-            workspace_dir: workspace_dir.clone(),
-            hooks_dir,
-            client_manifest_json: client_dir.join(STATE_MANIFEST_FILE),
-            client_cache_manifest_path: client_dir.join("cache-manifest.json"),
-            client_db_path: client_dir.join(CLIENT_DB_FILE),
-            client_dir,
-            artifacts_dir,
-        }
-    }
 }
 
 /// Resolve the active ASP v1 state root from process environment variables.

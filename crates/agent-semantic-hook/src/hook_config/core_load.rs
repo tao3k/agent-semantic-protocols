@@ -14,8 +14,11 @@ use crate::provider_manifest::project_agent_config_path;
 
 /// Return the default global hook config path.
 pub fn default_client_config_path(_project_root: &str) -> PathBuf {
-    default_global_client_config_path()
-        .unwrap_or_else(|| PathBuf::from(".agent-semantic-protocols/hooks/config.toml"))
+    default_global_client_config_path().unwrap_or_else(|| {
+        agent_semantic_artifacts::StateHomeLayout::new(".agent-semantic-protocols")
+            .control()
+            .hook_client_config()
+    })
 }
 
 /// Render the seed global hook config file.

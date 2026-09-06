@@ -367,10 +367,7 @@ pub fn discover_repository_candidate_snapshot_cancellable(
     let remote_url = canonical_remote_url_from_repository(&repository)
         .or_else(|| canonical_remote_url_from_git_dir(&git_dir))
         .or_else(|| canonical_remote_url_from_git_dir(&git_common_dir));
-    let identity_basis = remote_url
-        .as_deref()
-        .map(|url| format!("remote:{url}"))
-        .unwrap_or_else(|| format!("git-common-dir:{}", git_common_dir.display()));
+    let identity_basis = format!("git-common-dir:{}", git_common_dir.display());
     let repository_id = stable_identity("repository", identity_basis.as_bytes());
     let worktree_basis = format!(
         "{}\0{}\0{}",

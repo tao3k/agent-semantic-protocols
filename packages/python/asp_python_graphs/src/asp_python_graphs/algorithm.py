@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: Contributors to Agent Semantic Protocols
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 """Private Graph-Turbo algorithm API used by the ASP Server service.
 
 This module deliberately has no command-line entry point.  Runtime callers

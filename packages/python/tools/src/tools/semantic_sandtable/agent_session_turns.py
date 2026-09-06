@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: Contributors to Agent Semantic Protocols
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 """Build turn-level quality details from visible agent-session events."""
 
 from __future__ import annotations

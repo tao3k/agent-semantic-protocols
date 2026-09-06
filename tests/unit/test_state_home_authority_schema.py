@@ -24,12 +24,13 @@ def test_project_binding_keeps_host_repo_and_workspace_axes_distinct() -> None:
         },
         "repo": {
             "digest": "blake3-256:" + "a" * 64,
-            "basis": "git-remote:example/repo",
+            "basis": "git-common-dir:/workspace/.git",
         },
         "workspace": {
             "digest": "blake3-256:" + "b" * 64,
             "repoDigest": "blake3-256:" + "a" * 64,
             "canonicalRoot": "/workspace",
+            "privateGitDir": "/workspace/.git",
         },
         "bindingDigest": "blake3-256:" + "c" * 64,
     }
@@ -40,12 +41,37 @@ def test_project_binding_keeps_host_repo_and_workspace_axes_distinct() -> None:
         jsonschema.validate(document, schema("state-home-project-binding.schema.json"))
 
 
+def test_project_binding_v1_binds_the_private_git_directory() -> None:
+    document = {
+        "schemaId": "agent.semantic-protocols.state-home-project-binding",
+        "schemaVersion": 1,
+        "hostProject": None,
+        "repo": {
+            "digest": "blake3-256:" + "a" * 64,
+            "basis": "git-common-dir:/workspace/.git",
+        },
+        "workspace": {
+            "digest": "blake3-256:" + "b" * 64,
+            "repoDigest": "blake3-256:" + "a" * 64,
+            "canonicalRoot": "/workspace-linked",
+            "privateGitDir": "/workspace/.git/worktrees/linked",
+        },
+        "bindingDigest": "blake3-256:" + "c" * 64,
+    }
+    jsonschema.validate(document, schema("state-home-project-binding.schema.json"))
+
+    del document["workspace"]["privateGitDir"]
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(document, schema("state-home-project-binding.schema.json"))
+
+
 def test_retention_plan_requires_typed_disposition_and_byte_accounting() -> None:
     document = {
         "schemaId": "agent.semantic-protocols.state-home-retention-plan",
         "schemaVersion": 1,
         "evaluatedAtMs": 200,
         "retainForMs": 100,
+        "selection": {"kind": "all"},
         "retainedCount": 1,
         "retiredCount": 0,
         "retainedBytes": 42,
@@ -69,25 +95,26 @@ def test_retention_plan_requires_typed_disposition_and_byte_accounting() -> None
         jsonschema.validate(document, schema("state-home-retention-plan.schema.json"))
 
 
-def test_cleanup_receipt_joins_workspace_and_project_retirement() -> None:
+def test_cleanup_receipt_has_one_canonical_workspace_authority() -> None:
     document = {
         "schemaId": "agent.semantic-protocols.state-home-cleanup-receipt",
         "schemaVersion": 1,
         "state": "applied",
         "retainedForDays": 1,
         "catalogGeneration": 2,
+        "canonicalWorkspacesRetired": 0,
+        "retiredStateRoots": 0,
         "catalogPlan": {
             "schemaId": "agent.semantic-protocols.state-home-retention-plan",
             "schemaVersion": 1,
             "evaluatedAtMs": 200,
             "retainForMs": 100,
+            "selection": {"kind": "all"},
             "retainedCount": 0,
             "retiredCount": 0,
             "retainedBytes": 0,
             "retiredBytes": 0,
             "entries": [],
         },
-        "temporaryWorkspaceReport": {"retiredCount": 2},
-        "projectRegistryReport": {"removedCount": 84},
     }
     jsonschema.validate(document, schema("state-home-cleanup-receipt.schema.json"))

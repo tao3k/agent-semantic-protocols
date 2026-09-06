@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 //! Multi-Agent v2 session registration commands.
 //!
 //! The parent id is carried as an explicit command argument in the native
@@ -111,7 +115,9 @@ async fn register_session_binding(
     handoff: crate::AspClientRuntimeHandoff,
 ) -> Result<(), String> {
     let state_home = agent_semantic_runtime::resolve_state_home()?;
-    let registry_path = state_home.join("agents/config.toml");
+    let registry_path = agent_semantic_artifacts::StateHomeLayout::new(&state_home)
+        .control()
+        .agent_registry();
     let agents =
         agent_semantic_config::agent_route_registry::load_agent_route_registry_for_platform(
             &registry_path,

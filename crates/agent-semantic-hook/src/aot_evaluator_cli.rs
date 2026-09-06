@@ -389,19 +389,8 @@ pub fn evaluate_payload_with_policy_bundle_and_state_home_with_receipt(
 
 fn render_and_record_deny(
     decision: &aot_evaluator::AotHookDecision<'_>,
-    payload_json: &str,
+    _payload_json: &str,
 ) -> Result<serde_json::Value, String> {
-    let payload: serde_json::Value = serde_json::from_str(payload_json)
-        .map_err(|error| format!("decode denied Hook payload for event state: {error}"))?;
-    if decision.route.is_some() {
-        let project_root = payload
-            .get("cwd")
-            .and_then(serde_json::Value::as_str)
-            .map(PathBuf::from)
-            .or_else(|| std::env::current_dir().ok())
-            .ok_or_else(|| "configured Agent deny has no workspace root".to_owned())?;
-        crate::publish_aot_hook_session_route(&project_root, decision, &payload)?;
-    }
     let typed = serde_json::to_value(decision).map_err(|error| error.to_string())?;
     let message = typed
         .get("message")

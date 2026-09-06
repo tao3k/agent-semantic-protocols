@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: Contributors to Agent Semantic Protocols
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 """CodeQL runtime helpers for bounded ASLP fixture evidence."""
 
 from __future__ import annotations

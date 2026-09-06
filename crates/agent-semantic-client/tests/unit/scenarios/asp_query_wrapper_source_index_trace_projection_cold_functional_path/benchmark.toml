@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 harness = "libtest"
 test = "asp_query_wrapper_source_index_trace_projection_cold_functional_path_stays_inside_scenario_gate"
 snapshot = "asp_query_wrapper_source_index_trace_projection_cold_functional_path_stays_inside_scenario_gate"

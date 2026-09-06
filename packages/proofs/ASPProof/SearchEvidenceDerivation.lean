@@ -1,0 +1,1231 @@
+import ASPProof.SearchEvidenceReflection
+
+/-! Abstract design checks for R11–R20. Identities and certificates are model
+values, not proofs of a parser, digest implementation, or running retriever. -/
+namespace ASPProof.SearchEvidenceDerivation
+open SearchEvidenceReflection
+
+structure ConditionalEdge where
+  snapshot : Nat
+  allowed : List Configuration
+  deriving DecidableEq, Repr
+
+def holdsAt (snapshot : Nat) (cfg : Configuration) (edge : ConditionalEdge) : Prop :=
+  edge.snapshot = snapshot ∧ cfg ∈ edge.allowed
+
+/- This condition licenses a jointly possible behavior witness. A graph may
+   still display mutually exclusive alternatives without asserting this path.
+   Graph adjacency is a separate producer obligation, not modeled here. -/
+def jointPath (snapshot : Nat) (edges : List ConditionalEdge) : Prop :=
+  ∃ cfg, ∀ edge ∈ edges, holdsAt snapshot cfg edge
+
+def unixEdge : ConditionalEdge := ⟨1, [.unix]⟩
+def windowsEdge : ConditionalEdge := ⟨1, [.windows]⟩
+
+theorem same_snapshot_individual_validity_is_insufficient :
+    unixEdge.snapshot = windowsEdge.snapshot ∧
+    holdsAt 1 .unix unixEdge ∧ holdsAt 1 .windows windowsEdge ∧
+    ¬ jointPath 1 [unixEdge, windowsEdge] := by
+  refine ⟨rfl, by unfold holdsAt; decide, by unfold holdsAt; decide, ?_⟩
+  rintro ⟨cfg, h⟩
+  have u := (h unixEdge (by simp)).2
+  have w := (h windowsEdge (by simp)).2
+  cases cfg <;> simp [unixEdge, windowsEdge] at u w
+
+theorem joint_path_has_one_context (snapshot : Nat) (edges : List ConditionalEdge)
+    (h : jointPath snapshot edges) :
+    ∃ cfg, ∀ edge ∈ edges, edge.snapshot = snapshot ∧ cfg ∈ edge.allowed := h
+
+theorem joint_path_subpath (snapshot : Nat) (edges subset : List ConditionalEdge)
+    (h : jointPath snapshot edges) (included : ∀ e ∈ subset, e ∈ edges) :
+    jointPath snapshot subset := by
+  obtain ⟨cfg, valid⟩ := h
+  exact ⟨cfg, fun e he => valid e (included e he)⟩
+
+theorem joint_append_requires_shared_context (snapshot : Nat)
+    (left right : List ConditionalEdge) :
+    jointPath snapshot (left ++ right) ↔
+      ∃ cfg, (∀ e ∈ left, holdsAt snapshot cfg e) ∧
+        (∀ e ∈ right, holdsAt snapshot cfg e) := by
+  constructor
+  · rintro ⟨cfg, valid⟩
+    exact ⟨cfg, (fun e he => valid e (List.mem_append_left right he)),
+      (fun e he => valid e (List.mem_append_right left he))⟩
+  · rintro ⟨cfg, leftValid, rightValid⟩
+    refine ⟨cfg, ?_⟩
+    intro e he
+    rcases List.mem_append.mp he with hl | hr
+    · exact leftValid e hl
+    · exact rightValid e hr
+
+def fullQuery (a b : Bool) : Bool := a && !b
+
+theorem positive_clause_does_not_prove_query :
+    (true : Bool) = true ∧ fullQuery true true = false := by decide
+
+theorem query_satisfaction_requires_negative (a b : Bool) :
+    fullQuery a b = true ↔ a = true ∧ b = false := by
+  cases a <;> cases b <;> decide
+
+theorem missing_negative_has_two_worlds :
+    fullQuery true false = true ∧ fullQuery true true = false := by decide
+
+/- Reuse the certified three-valued coverage model. No arbitrary `covered`
+   list is accepted without its ValidView proof. -/
+def fullDirectory : CertifiedView [membership, storeCall] :=
+  ⟨⟨[membership, storeCall], [membership, storeCall]⟩, by
+    constructor <;> intro f h
+    · exact h
+    · exact Iff.rfl⟩
+
+def partialDirectory : CertifiedView [membership, storeCall] :=
+  ⟨projectView [membership] fullDirectory.view,
+    projection_preserves_validity _ _ _ fullDirectory.sound⟩
+
+theorem partial_directory_preserves_positive :
+    certifiedAnswer partialDirectory membership = .supported := by decide
+
+theorem partial_directory_does_not_rule_out_omitted_member :
+    certifiedAnswer partialDirectory storeCall = .unknown := by decide
+
+theorem certified_absence_requires_truth_absence (truth : List Fact)
+    (view : CertifiedView truth) (q : Fact)
+    (h : certifiedAnswer view q = .ruledOut) : q ∉ truth :=
+  certified_negative_is_not_merely_missing truth view q h
+
+/- Concrete budget cardinalities, kept separate from semantic coverage. -/
+set_option maxRecDepth 4096 in
+theorem directory_budget_250_32_is_partial :
+    (List.range 250).length = 250 ∧
+    ((List.range 250).take 32).length = 32 ∧
+    249 ∈ List.range 250 ∧ 249 ∉ (List.range 250).take 32 := by decide
+
+abbrev EvidenceAtom := Witness
+
+structure DisplayRow where
+  alias : Nat
+  evidence : EvidenceAtom
+  collector : Collector
+  deriving DecidableEq, Repr
+
+def support (rows : List DisplayRow) (atom : EvidenceAtom) : Prop :=
+  atom ∈ rows.map DisplayRow.evidence
+
+def normalizedSupport (rows : List DisplayRow) : List EvidenceAtom :=
+  (rows.map DisplayRow.evidence).eraseDups
+
+def attribution (rows : List DisplayRow) (atom : EvidenceAtom) : List Collector :=
+  ((rows.filter (fun row => row.evidence == atom)).map DisplayRow.collector).eraseDups
+
+theorem normalized_support_membership (rows : List DisplayRow) (atom : EvidenceAtom) :
+    atom ∈ normalizedSupport rows ↔ support rows atom := by
+  simp [normalizedSupport, support]
+
+theorem support_ignores_duplicate_rows (rows : List DisplayRow) (atom : EvidenceAtom) :
+    support (rows ++ rows) atom ↔ support rows atom := by
+  simp [support]
+
+theorem support_ignores_reordering (a b : List DisplayRow) (atom : EvidenceAtom) :
+    support (a ++ b) atom ↔ support (b ++ a) atom := by
+  simp only [support, List.map_append, List.mem_append]
+  exact or_comm
+
+def rename (f : Nat → Nat) (row : DisplayRow) : DisplayRow :=
+  { row with alias := f row.alias }
+
+theorem support_ignores_aliases (f : Nat → Nat) (rows : List DisplayRow)
+    (atom : EvidenceAtom) :
+    support (rows.map (rename f)) atom ↔ support rows atom := by
+  simp [support, List.map_map, Function.comp_def, rename]
+
+theorem support_retains_attribution :
+    (normalizedSupport [⟨0, occurrenceA, .rg⟩, ⟨1, occurrenceA, .lexical⟩]).length = 1 ∧
+    attribution [⟨0, occurrenceA, .rg⟩, ⟨1, occurrenceA, .lexical⟩] occurrenceA =
+      [.rg, .lexical] := by decide
+
+theorem changed_binding_is_distinct_support :
+    (normalizedSupport [⟨0, occurrenceA, .rg⟩,
+      ⟨0, ⟨storeCall, .firstLiteral, afterBodyEdit⟩, .rg⟩]).length = 2 := by decide
+
+/- Every premise is retained as an evidence identity, even if its display
+   is omitted. Resolvability is a certificate obligation, not alias lookup. -/
+structure Trace (archive : List EvidenceAtom) where
+  premises : List EvidenceAtom
+  resolvable : ∀ p ∈ premises, p ∈ archive
+
+theorem trace_premises_recoverable (archive : List EvidenceAtom) (trace : Trace archive) :
+    ∀ p ∈ trace.premises, p ∈ archive := trace.resolvable
+
+/- Budget bound applies to one question-bound episode at a fixed binding.
+   A new question may start another episode and revisit the same target.
+   A new binding starts a new run; this theorem does not license old visited
+   state reuse across bindings. The model proves budget termination, not that
+   each selected query is useful or that producer coverage is authentic. -/
+inductive BudgetRun (binding : Nat) : Nat → Nat → Nat → Prop where
+  | done (budget : Nat) : BudgetRun binding budget 0 budget
+  | step {budget count remaining : Nat} :
+      BudgetRun binding budget count remaining →
+      BudgetRun binding (budget + 1) (count + 1) remaining
+
+theorem run_budget_conservation {binding budget count remaining : Nat}
+    (run : BudgetRun binding budget count remaining) : count + remaining = budget := by
+  induction run with
+  | done => simp
+  | step _ ih => omega
+
+theorem run_has_finite_step_bound {binding budget count remaining : Nat}
+    (run : BudgetRun binding budget count remaining) : count ≤ budget := by
+  have h := run_budget_conservation run
+  omega
+
+theorem prior_budget_is_less_than_one_step_extended_budget (budget : Nat) :
+    budget < budget + 1 := by omega
+
+structure FrontierPotential where
+  remainingBudget : Nat
+  unresolvedCount : Nat
+  deriving DecidableEq, Repr
+
+def spendFrontierBudget : FrontierPotential → Option FrontierPotential
+  | ⟨0, _⟩ => none
+  | ⟨budget + 1, unresolved⟩ => some ⟨budget, unresolved⟩
+
+theorem frontier_step_strictly_decreases_remaining_budget
+    (budget unresolved : Nat) :
+    spendFrontierBudget ⟨budget + 1, unresolved⟩ = some ⟨budget, unresolved⟩ ∧
+      budget < budget + 1 := by simp [spendFrontierBudget]
+
+def cycleNext (node : Bool) : Bool := !node
+
+theorem eligible_call_cycle_returns_to_start (node : Bool) :
+    cycleNext (cycleNext node) = node := by cases node <;> decide
+
+def eligible (source target : Bool) : Bool := target == cycleNext source
+
+theorem eligibility_alone_allows_two_way_cycle :
+    eligible false true = true ∧ eligible true false = true := by decide
+
+theorem spent_budget_cannot_take_another_step {binding count remaining : Nat}
+    (run : BudgetRun binding 0 count remaining) : count = 0 := by
+  have h := run_has_finite_step_bound run
+  omega
+
+/- Acquisition returns candidates. Only a registered provider projection under
+   the same binding can mint a structural selector for one. The explicit syntax
+   axis uses a provider predicate; its type is intentionally not a path or URI. -/
+structure AcquisitionCandidate where
+  pathId : Nat
+  binding : Nat
+  deriving DecidableEq, Repr
+
+inductive AcquisitionRoute where
+  | fd | rg | tantivy
+  deriving DecidableEq, Repr
+
+structure RouteCandidate where
+  pathId : Nat
+  suffixId : Nat
+  route : AcquisitionRoute
+  providerAvailable : Bool
+  deriving DecidableEq, Repr
+
+def heterogeneousRouteCandidates : List RouteCandidate :=
+  [⟨1, 1, .fd, true⟩, ⟨2, 2, .rg, true⟩,
+   ⟨3, 3, .tantivy, true⟩, ⟨4, 99, .rg, false⟩]
+
+def acquisitionCandidateUnion (candidates : List RouteCandidate) : List Nat :=
+  (candidates.map (·.pathId)).eraseDups
+
+def illegalProviderExtensionPrefilter
+    (candidates : List RouteCandidate) : List Nat :=
+  ((candidates.filter (·.providerAvailable)).map (·.pathId)).eraseDups
+
+theorem acquisition_union_preserves_unknown_extension :
+    4 ∈ acquisitionCandidateUnion heterogeneousRouteCandidates := by decide
+
+theorem provider_extension_prefilter_changes_acquisition_semantics :
+    illegalProviderExtensionPrefilter heterogeneousRouteCandidates ≠
+      acquisitionCandidateUnion heterogeneousRouteCandidates := by decide
+
+structure NativeProjection where
+  binding : Nat
+  registered : Bool
+  parsed : Bool
+  selector : Node
+  deriving DecidableEq, Repr
+
+def selectorFrom (candidate : AcquisitionCandidate)
+    (projection : NativeProjection) : Option Node :=
+  if candidate.binding == projection.binding && projection.registered && projection.parsed
+  then some projection.selector
+  else none
+
+def candidate : AcquisitionCandidate := ⟨7, 1⟩
+def validProjection : NativeProjection := ⟨1, true, true, .refresh⟩
+def unregisteredProjection : NativeProjection := ⟨1, false, true, .refresh⟩
+def staleProjection : NativeProjection := ⟨2, true, true, .refresh⟩
+
+theorem admitted_native_projection_mints_selector :
+    selectorFrom candidate validProjection = some .refresh := by decide
+
+theorem candidate_path_alone_does_not_mint_selector :
+    selectorFrom candidate unregisteredProjection = none := by decide
+
+theorem stale_native_projection_does_not_mint_selector :
+    selectorFrom candidate staleProjection = none := by decide
+
+structure NativeSyntaxAnchor where
+  providerId : Nat
+  hasItemFragment : Bool
+  canonical : Bool
+  binding : Nat
+  deriving DecidableEq, Repr
+
+def nativeSyntaxAnchorAdmitted (expectedBinding : Nat) (anchor : NativeSyntaxAnchor) : Bool :=
+  anchor.providerId != 0 && anchor.hasItemFragment && anchor.canonical &&
+    anchor.binding == expectedBinding
+
+def bareFileUri : NativeSyntaxAnchor := ⟨1, false, true, 1⟩
+def canonicalItemAnchor : NativeSyntaxAnchor := ⟨1, true, true, 1⟩
+def staleItemAnchor : NativeSyntaxAnchor := ⟨1, true, true, 2⟩
+
+theorem bare_file_uri_is_not_a_native_syntax_anchor :
+    nativeSyntaxAnchorAdmitted 1 bareFileUri = false := by decide
+
+theorem canonical_item_selector_can_anchor_native_syntax :
+    nativeSyntaxAnchorAdmitted 1 canonicalItemAnchor = true := by decide
+
+theorem stale_item_selector_cannot_anchor_native_syntax :
+    nativeSyntaxAnchorAdmitted 1 staleItemAnchor = false := by decide
+
+/- A reasoning frontier ranks core candidates separately from the witness
+   connectors required to explain them. Display omission is not absence. -/
+structure RankedFrontier where
+  candidateCount : Nat
+  coreLimit : Nat
+  selectedCount : Nat
+  connectorCount : Nat
+  omittedCount : Nat
+  deriving DecidableEq, Repr
+
+def frontier100x10 : RankedFrontier := ⟨100, 10, 10, 2, 90⟩
+
+def coreTop10 : List Nat := (List.range 100).take 10
+
+def witnessClosure (selected : List Nat) : List Nat :=
+  if 1 ∈ selected then (0 :: selected).eraseDups else selected.eraseDups
+
+theorem top_k_keeps_bounded_core_and_reports_omission :
+    frontier100x10.selectedCount = frontier100x10.coreLimit ∧
+    frontier100x10.selectedCount + frontier100x10.omittedCount =
+      frontier100x10.candidateCount := by decide
+
+theorem omitted_candidate_is_not_in_rendered_top_k :
+    99 ∈ List.range 100 ∧ 99 ∉ coreTop10 := by decide
+
+theorem witness_closure_retains_required_connector :
+    0 ∈ witnessClosure [1] ∧ 1 ∈ witnessClosure [1] := by decide
+
+theorem flat_top_k_can_drop_required_connector :
+    1 ∈ [1] ∧ 0 ∉ [1] := by decide
+
+/- Ascent output is a derivation delta, not a second rendering of base GQL
+   facts. Existing facts are removed while genuinely new conclusions remain. -/
+def derivationDelta (base inferred : List Nat) : List Nat :=
+  (inferred.filter fun fact => fact ∉ base).eraseDups
+
+theorem restating_gql_facts_produces_no_ascent_output :
+    derivationDelta [1, 2] [1, 2, 1] = [] := by decide
+
+theorem a_new_relation_survives_the_derivation_delta :
+    derivationDelta [1, 2] [1, 2, 3] = [3] := by decide
+
+/- Dense rows from one provider can occupy a naive prefix. A diversified
+   frontier may retain a distinct relevant provider, but no provider receives
+   a slot merely because it exists. -/
+def denseProviderOrder : List Nat := [1, 1, 1, 2]
+def naiveProviderTop3 : List Nat := denseProviderOrder.take 3
+def diversifiedRelevantProviders : List Nat := [1, 2]
+
+theorem naive_prefix_can_hide_a_distinct_provider :
+    2 ∈ denseProviderOrder ∧ 2 ∉ naiveProviderTop3 := by decide
+
+theorem diversified_frontier_can_retain_distinct_relevant_providers :
+    1 ∈ diversifiedRelevantProviders ∧ 2 ∈ diversifiedRelevantProviders := by decide
+
+theorem an_unselected_provider_has_no_automatic_quota :
+    3 ∉ diversifiedRelevantProviders := by decide
+
+/- R16: queryability is language-neutral. A registered native parser mints a
+   canonical selector for every admitted syntax or document node it owns.
+   Structured projections such as jq refine that selected node; they are not a
+   substitute selector authority. -/
+inductive NativeProducer where
+  | rust | python | typescript | scheme | julia | org | markdown | json | nix
+  deriving DecidableEq, Repr
+
+inductive NativeNodeKind where
+  | implementation | method | function | heading | object | attribute | form
+  deriving DecidableEq, Repr
+
+structure ParsedNativeNode where
+  producer : NativeProducer
+  kind : NativeNodeKind
+  binding : Nat
+  registered : Bool
+  parsed : Bool
+  canonicalSelector : Option Nat
+  projectionProgram : Option Nat
+  deriving DecidableEq, Repr
+
+structure NativeQueryMapping where
+  producer : NativeProducer
+  selector : Nat
+  projectionProgram : Option Nat
+  deriving DecidableEq, Repr
+
+def directQueryMapping (expectedBinding : Nat)
+    (node : ParsedNativeNode) : Option NativeQueryMapping :=
+  if node.binding == expectedBinding && node.registered && node.parsed then
+    node.canonicalSelector.map fun selector =>
+      ⟨node.producer, selector, node.projectionProgram⟩
+  else none
+
+def rustMethodNode : ParsedNativeNode :=
+  ⟨.rust, .method, 1, true, true, some 11, none⟩
+
+def orgHeadingNode : ParsedNativeNode :=
+  ⟨.org, .heading, 1, true, true, some 21, none⟩
+
+def markdownHeadingNode : ParsedNativeNode :=
+  ⟨.markdown, .heading, 1, true, true, some 31, none⟩
+
+def jsonObjectWithJqNode : ParsedNativeNode :=
+  ⟨.json, .object, 1, true, true, some 41, some 42⟩
+
+def pythonFunctionNode : ParsedNativeNode :=
+  ⟨.python, .function, 1, true, true, some 51, none⟩
+
+def typescriptFunctionNode : ParsedNativeNode :=
+  ⟨.typescript, .function, 1, true, true, some 61, none⟩
+
+def schemeFunctionNode : ParsedNativeNode :=
+  ⟨.scheme, .function, 1, true, true, some 71, none⟩
+
+def juliaFunctionNode : ParsedNativeNode :=
+  ⟨.julia, .function, 1, true, true, some 81, none⟩
+
+def nixAttributeNode : ParsedNativeNode :=
+  ⟨.nix, .attribute, 1, true, true, some 91, none⟩
+
+def jsonObjectWithoutSelector : ParsedNativeNode :=
+  ⟨.json, .object, 1, true, true, none, some 42⟩
+
+def staleDocumentNode : ParsedNativeNode :=
+  ⟨.org, .heading, 2, true, true, some 21, none⟩
+
+theorem admitted_polyglot_nodes_have_direct_query_mappings :
+    directQueryMapping 1 rustMethodNode = some ⟨.rust, 11, none⟩ ∧
+    directQueryMapping 1 orgHeadingNode = some ⟨.org, 21, none⟩ ∧
+    directQueryMapping 1 markdownHeadingNode = some ⟨.markdown, 31, none⟩ ∧
+    directQueryMapping 1 jsonObjectWithJqNode = some ⟨.json, 41, some 42⟩ ∧
+    directQueryMapping 1 pythonFunctionNode = some ⟨.python, 51, none⟩ ∧
+    directQueryMapping 1 typescriptFunctionNode = some ⟨.typescript, 61, none⟩ ∧
+    directQueryMapping 1 schemeFunctionNode = some ⟨.scheme, 71, none⟩ ∧
+    directQueryMapping 1 juliaFunctionNode = some ⟨.julia, 81, none⟩ ∧
+    directQueryMapping 1 nixAttributeNode = some ⟨.nix, 91, none⟩ := by decide
+
+abbrev ProducerRelation := NativeProducer × NativeProducer
+
+def polyglotPipelineRelations : List ProducerRelation :=
+  [(.rust, .python), (.julia, .python), (.python, .json),
+   (.scheme, .json), (.typescript, .json), (.org, .json),
+   (.markdown, .typescript), (.nix, .python)]
+
+structure PolyglotPipelineFact where
+  entry : NativeProducer
+  ranker : NativeProducer
+  scorer : NativeProducer
+  packet : NativeProducer
+  validator : NativeProducer
+  renderer : NativeProducer
+  contract : NativeProducer
+  guide : NativeProducer
+  package : NativeProducer
+  deriving DecidableEq, Repr
+
+def derivePolyglotPipeline (relations : List ProducerRelation) :
+    Option PolyglotPipelineFact :=
+  if relations.contains (.rust, .python) &&
+      relations.contains (.julia, .python) &&
+      relations.contains (.python, .json) &&
+      relations.contains (.scheme, .json) &&
+      relations.contains (.typescript, .json) &&
+      relations.contains (.org, .json) &&
+      relations.contains (.markdown, .typescript) &&
+      relations.contains (.nix, .python) then
+    some ⟨.rust, .python, .julia, .json, .scheme,
+      .typescript, .org, .markdown, .nix⟩
+  else none
+
+theorem heterogeneous_relations_derive_one_polyglot_pipeline :
+    derivePolyglotPipeline polyglotPipelineRelations =
+      some ⟨.rust, .python, .julia, .json, .scheme,
+        .typescript, .org, .markdown, .nix⟩ := by decide
+
+theorem missing_language_relation_blocks_polyglot_pipeline :
+    derivePolyglotPipeline
+      (polyglotPipelineRelations.erase (.scheme, .json)) = none := by decide
+
+theorem jq_projection_does_not_replace_a_canonical_selector :
+    jsonObjectWithoutSelector.projectionProgram = some 42 ∧
+    directQueryMapping 1 jsonObjectWithoutSelector = none := by decide
+
+theorem stale_document_selector_is_not_queryable :
+    directQueryMapping 1 staleDocumentNode = none := by decide
+
+theorem every_admitted_selector_has_a_direct_mapping
+    (expectedBinding selector : Nat) (node : ParsedNativeNode)
+    (bindingMatches : node.binding = expectedBinding)
+    (registered : node.registered = true)
+    (parsed : node.parsed = true)
+    (hasSelector : node.canonicalSelector = some selector) :
+    directQueryMapping expectedBinding node =
+      some ⟨node.producer, selector, node.projectionProgram⟩ := by
+  simp [directQueryMapping, bindingMatches, registered, parsed, hasSelector]
+
+/- A SourceExcerpt is a first-class evidence surface for a source format for
+   which no registered native parser applies. It is not a recovery path for a
+   native node whose selector resolution failed. -/
+structure SourceExcerpt where
+  pathId : Nat
+  binding : Nat
+  firstLine : Nat
+  lastLine : Nat
+  nativeParserApplicable : Bool
+  selectorResolutionFailed : Bool
+  deriving DecidableEq, Repr
+
+def sourceExcerptAdmitted (expectedBinding : Nat) (excerpt : SourceExcerpt) : Bool :=
+  excerpt.binding == expectedBinding && excerpt.firstLine > 0 &&
+    excerpt.firstLine ≤ excerpt.lastLine &&
+    !excerpt.nativeParserApplicable && !excerpt.selectorResolutionFailed
+
+def unsupportedTextExcerpt : SourceExcerpt := ⟨90, 1, 80, 159, false, false⟩
+
+def failedNativeSelectorExcerpt : SourceExcerpt := ⟨91, 1, 80, 159, true, true⟩
+
+theorem source_excerpt_is_context_not_query_authority :
+    sourceExcerptAdmitted 1 unsupportedTextExcerpt = true ∧
+    directQueryMapping 1 jsonObjectWithoutSelector = none := by decide
+
+theorem native_selector_failure_cannot_downgrade_to_source_excerpt :
+    sourceExcerptAdmitted 1 failedNativeSelectorExcerpt = false := by decide
+
+/- R20: topology combines a parser substrate, declared human semantics, and
+   evidence-anchored model synthesis without collapsing their modalities. -/
+structure ProjectRevision where
+  structuralShape : Nat
+  bodyContent : Nat
+  deriving DecidableEq, Repr
+
+def revisionA : ProjectRevision := ⟨7, 11⟩
+def bodyEditedRevision : ProjectRevision := ⟨7, 12⟩
+def structurallyEditedRevision : ProjectRevision := ⟨8, 12⟩
+
+def structuralTopologyIdentity (revision : ProjectRevision) : Nat :=
+  revision.structuralShape
+
+def revisionContentIdentity (revision : ProjectRevision) : Nat :=
+  revision.bodyContent
+
+theorem body_only_edit_reuses_structural_topology_not_content :
+    structuralTopologyIdentity revisionA =
+      structuralTopologyIdentity bodyEditedRevision ∧
+    revisionContentIdentity revisionA ≠
+      revisionContentIdentity bodyEditedRevision := by decide
+
+theorem structural_edit_changes_topology_identity :
+    structuralTopologyIdentity revisionA ≠
+      structuralTopologyIdentity structurallyEditedRevision := by decide
+
+inductive TopologyModality where
+  | parserFact | declared | synthesizedProposed | synthesizedAccepted
+  deriving DecidableEq, Repr
+
+def factualPremiseEligible : TopologyModality → Bool
+  | .parserFact | .declared | .synthesizedAccepted => true
+  | .synthesizedProposed => false
+
+def frontierPremiseEligible : TopologyModality → Bool
+  | .parserFact | .declared | .synthesizedProposed | .synthesizedAccepted => true
+
+theorem proposed_semantics_cannot_prove_behavior :
+    factualPremiseEligible .synthesizedProposed = false := by decide
+
+theorem proposed_semantics_can_open_search_frontier :
+    frontierPremiseEligible .synthesizedProposed = true := by decide
+
+structure TopologyEvidenceBinding where
+  structuralBinding : Nat
+  semanticBinding : Nat
+  evidenceBinding : Nat
+  deriving DecidableEq, Repr
+
+def jointlyAdmittedTopologyEvidence (expected : Nat)
+    (binding : TopologyEvidenceBinding) : Bool :=
+  binding.structuralBinding == expected &&
+    binding.semanticBinding == expected && binding.evidenceBinding == expected
+
+def currentTopologyEvidence : TopologyEvidenceBinding := ⟨1, 1, 1⟩
+def staleSemanticTopologyEvidence : TopologyEvidenceBinding := ⟨1, 2, 1⟩
+
+def topologyAssistedFactualDerivation (expected : Nat)
+    (binding : TopologyEvidenceBinding) (modality : TopologyModality)
+    (liveEvidence : Bool) : Bool :=
+  jointlyAdmittedTopologyEvidence expected binding &&
+    factualPremiseEligible modality && liveEvidence
+
+theorem declared_topology_and_live_evidence_support_joint_derivation :
+    topologyAssistedFactualDerivation 1 currentTopologyEvidence
+      .declared true = true := by decide
+
+theorem stale_semantic_topology_blocks_joint_derivation :
+    topologyAssistedFactualDerivation 1 staleSemanticTopologyEvidence
+      .declared true = false := by decide
+
+theorem proposed_semantics_alone_cannot_enter_factual_derivation :
+    topologyAssistedFactualDerivation 1 currentTopologyEvidence
+      .synthesizedProposed true = false := by decide
+
+structure TopologyLibraryIdentity where
+  structural : Nat
+  semantic : Nat
+  program : Nat
+  deriving DecidableEq, Repr
+
+structure ProjectTopologyLibrary where
+  binding : Nat
+  identity : TopologyLibraryIdentity
+  stableClosure : List Nat
+  semanticClaims : List TopologyModality
+  deriving DecidableEq, Repr
+
+def admittedTopologyLibrary : ProjectTopologyLibrary :=
+  ⟨1, ⟨7, 17, 27⟩, [100, 101], [.declared, .synthesizedAccepted]⟩
+
+def staleTopologyLibrary : ProjectTopologyLibrary :=
+  ⟨1, ⟨7, 18, 27⟩, [100, 101], [.declared, .synthesizedAccepted]⟩
+
+def loadTopologyLibrary (expectedBinding : Nat)
+    (expectedIdentity : TopologyLibraryIdentity)
+    (library : ProjectTopologyLibrary) : Option ProjectTopologyLibrary :=
+  if library.binding == expectedBinding && library.identity == expectedIdentity
+  then some library else none
+
+def factualTopologyClaims (library : ProjectTopologyLibrary) :
+    List TopologyModality :=
+  library.semanticClaims.filter factualPremiseEligible
+
+def stageTopologyEvaluationInput (library : ProjectTopologyLibrary)
+    (evidenceDelta : List Nat) : List Nat :=
+  (library.stableClosure ++ evidenceDelta).eraseDups
+
+theorem exact_topology_library_import_is_admitted :
+    loadTopologyLibrary 1 ⟨7, 17, 27⟩ admittedTopologyLibrary =
+      some admittedTopologyLibrary := by decide
+
+theorem semantic_identity_drift_rejects_topology_library_import :
+    loadTopologyLibrary 1 ⟨7, 17, 27⟩ staleTopologyLibrary = none := by decide
+
+theorem proposed_claims_are_not_loaded_into_factual_closure :
+    factualTopologyClaims
+      { admittedTopologyLibrary with
+        semanticClaims := [.declared, .synthesizedProposed] } =
+      [.declared] := by decide
+
+theorem live_evidence_delta_is_staged_without_claiming_new_closure :
+    stageTopologyEvaluationInput admittedTopologyLibrary [102] =
+      [100, 101, 102] := by decide
+
+/- R17: Ascent must derive knowledge that is absent from the GQL EDB. The
+   finite model below computes a bounded transitive closure; production uses a
+   least fixed point, but this witness is sufficient to refute conclusion
+   initialization as an inference implementation. -/
+inductive ReasoningNode where
+  | refreshRegistry | publishArtifact | commitReceipt | publicationHeading
+  deriving DecidableEq, Repr
+
+abbrev ReachabilityFact := ReasoningNode × ReasoningNode
+
+def composeReachability (known edges : List ReachabilityFact) : List ReachabilityFact :=
+  known.flatMap fun left =>
+    edges.filterMap fun right =>
+      if left.2 == right.1 then some (left.1, right.2) else none
+
+def closureStep (edges known : List ReachabilityFact) : List ReachabilityFact :=
+  (known ++ composeReachability known edges).eraseDups
+
+def closureWithin : Nat → List ReachabilityFact → List ReachabilityFact
+  | 0, edges => edges.eraseDups
+  | fuel + 1, edges => closureStep edges (closureWithin fuel edges)
+
+def reasoningEdges : List ReachabilityFact :=
+  [(.refreshRegistry, .publishArtifact), (.publishArtifact, .commitReceipt)]
+
+def documentEdges : List (ReasoningNode × ReasoningNode) :=
+  [(.publicationHeading, .publishArtifact)]
+
+def deriveDocumentedPaths (reachable : List ReachabilityFact)
+    (documents : List (ReasoningNode × ReasoningNode)) : List ReachabilityFact :=
+  (reachable.flatMap fun path =>
+    documents.filterMap fun document =>
+      if path.2 == document.2 then some (path.1, document.1) else none).eraseDups
+
+theorem recursive_closure_derives_a_non_input_fact :
+    (.refreshRegistry, .commitReceipt) ∈ closureWithin 1 reasoningEdges ∧
+    (.refreshRegistry, .commitReceipt) ∉ reasoningEdges := by decide
+
+theorem relational_join_derives_a_documented_path :
+    (.refreshRegistry, .publicationHeading) ∈
+      deriveDocumentedPaths (closureWithin 1 reasoningEdges) documentEdges := by decide
+
+structure PublicationPathFact where
+  origin : ReasoningNode
+  action : ReasoningNode
+  document : ReasoningNode
+  terminal : ReasoningNode
+  deriving DecidableEq, Repr
+
+def emissionEdges : List (ReasoningNode × ReasoningNode) :=
+  [(.publishArtifact, .commitReceipt)]
+
+def derivePublicationPaths
+    (calls documents emissions : List (ReasoningNode × ReasoningNode)) :
+    List PublicationPathFact :=
+  (calls.flatMap fun call =>
+    documents.flatMap fun document =>
+      emissions.filterMap fun emission =>
+        if call.2 == document.2 && call.2 == emission.1 then
+          some ⟨call.1, call.2, document.1, emission.2⟩
+        else none).eraseDups
+
+def publicationPaths : List PublicationPathFact :=
+  derivePublicationPaths
+    [(.refreshRegistry, .publishArtifact)] documentEdges emissionEdges
+
+theorem three_relation_join_derives_publication_path :
+    ⟨.refreshRegistry, .publishArtifact, .publicationHeading, .commitReceipt⟩ ∈
+      publicationPaths := by decide
+
+def queryableReasoningNode : ReasoningNode → Bool
+  | .publishArtifact | .commitReceipt => true
+  | _ => false
+
+structure MaterializationSet where
+  selectors : List ReasoningNode
+  deriving DecidableEq, Repr
+
+def publicationMaterializationSet (paths : List PublicationPathFact) :
+    MaterializationSet :=
+  ⟨(paths.flatMap fun path => [path.action, path.terminal]).filter
+      queryableReasoningNode |>.eraseDups⟩
+
+theorem publication_materialization_is_one_query_playbook_set :
+    publicationMaterializationSet publicationPaths =
+      ⟨[.publishArtifact, .commitReceipt]⟩ := by decide
+
+inductive DerivedOutput where
+  | knowledge (fact : ReachabilityFact)
+  | frontier (anchor : ReasoningNode) (relationId : Nat)
+  deriving DecidableEq, Repr
+
+def admissibleAsPremise : DerivedOutput → Bool
+  | .knowledge _ => true
+  | .frontier _ _ => false
+
+theorem a_search_frontier_is_a_proposal_not_a_fact :
+    admissibleAsPremise (.frontier .publishArtifact 7) = false := by decide
+
+/- R18: a custom relation participating in semi-naive evaluation must expose
+   every newly concretized fact through delta. Otherwise a consequence can be
+   skipped because the generated program intentionally omits all-total rules. -/
+def deltaComplete (previous current delta : List Nat) : Bool :=
+  current.all fun fact => previous.contains fact || delta.contains fact
+
+theorem a_new_fact_that_skips_delta_violates_incremental_completeness :
+    deltaComplete [1, 2] [1, 2, 3] [] = false := by decide
+
+theorem a_new_fact_exposed_by_delta_satisfies_incremental_completeness :
+    deltaComplete [1, 2] [1, 2, 3] [3] = true := by decide
+
+/- R20-R27: Ascent is an internal inference engine. The reusable Project Topology is
+the architecture authority, and the Agent receives one request-bound GQL settlement
+   whose modalities and proof references distinguish native facts, derived
+   conclusions, and model-authored semantic proposals. -/
+inductive SettlementModality where
+  | parserDirect | declared | derived | proposed
+  deriving DecidableEq, Repr
+
+structure SettledRelation where
+  fact : ReachabilityFact
+  modality : SettlementModality
+  programIdentity : Option Nat
+  proofIdentity : Option Nat
+  deriving DecidableEq, Repr
+
+def settleToGql (direct inferred : List ReachabilityFact)
+    (programIdentity proofIdentity : Nat) : List SettledRelation :=
+  direct.eraseDups.map (fun fact => ⟨fact, .parserDirect, none, none⟩) ++
+    (inferred.filter (fun fact => fact ∉ direct)).eraseDups.map
+      (fun fact => ⟨fact, .derived, some programIdentity, some proofIdentity⟩)
+
+def settledPublicationGraph : List SettledRelation :=
+  settleToGql reasoningEdges (closureWithin 1 reasoningEdges) 27 42
+
+theorem gql_settlement_preserves_direct_and_marks_novel_derived :
+    ⟨(.refreshRegistry, .publishArtifact), .parserDirect, none, none⟩ ∈
+      settledPublicationGraph ∧
+    ⟨(.refreshRegistry, .commitReceipt), .derived, some 27, some 42⟩ ∈
+      settledPublicationGraph := by decide
+
+def defaultAgentProjectionExposesAscentSource : Bool := false
+
+theorem default_agent_projection_is_one_gql_settlement :
+    defaultAgentProjectionExposesAscentSource = false := by decide
+
+inductive AnnotationState where
+  | proposed | contested | accepted
+  deriving DecidableEq, Repr
+
+structure SemanticAnnotation where
+  subject : ReasoningNode
+  premises : List Nat
+  producerIdentity : Nat
+  binding : Nat
+  state : AnnotationState
+  deriving DecidableEq, Repr
+
+def annotationCanProveBehavior (expectedBinding : Nat) : SemanticAnnotation → Bool
+  | ⟨_, premises, _, binding, .accepted⟩ =>
+      !premises.isEmpty && binding == expectedBinding
+  | _ => false
+
+def proposedPublicationSummary : SemanticAnnotation :=
+  ⟨.refreshRegistry, [40, 42], 7, 1, .proposed⟩
+
+def acceptedPublicationSummary : SemanticAnnotation :=
+  ⟨.refreshRegistry, [40, 42], 7, 1, .accepted⟩
+
+theorem natural_language_proposal_guides_but_does_not_prove :
+    proposedPublicationSummary.premises = [40, 42] ∧
+    annotationCanProveBehavior 1 proposedPublicationSummary = false := by decide
+
+theorem admitted_natural_language_requires_current_binding :
+    annotationCanProveBehavior 1 acceptedPublicationSummary = true ∧
+    annotationCanProveBehavior 2 acceptedPublicationSummary = false := by decide
+
+inductive RelationCoverage where
+  | certifiedComplete
+  | boundedPartial
+  | unavailable
+  deriving DecidableEq, Repr
+
+inductive RelationKnowledge where
+  | known
+  | certifiedMissing
+  | unresolved
+  deriving DecidableEq, Repr
+
+def classifyRelation (coverage : RelationCoverage) (hasWitness : Bool) :
+    RelationKnowledge :=
+  if hasWitness then .known else
+    match coverage with
+    | .certifiedComplete => .certifiedMissing
+    | .boundedPartial | .unavailable => .unresolved
+
+theorem partial_coverage_cannot_certify_missing :
+    classifyRelation .boundedPartial false = .unresolved := by decide
+
+theorem complete_coverage_without_a_witness_certifies_missing :
+    classifyRelation .certifiedComplete false = .certifiedMissing := by decide
+
+structure ReachedAt where
+  seed : ReasoningNode
+  node : ReasoningNode
+  depth : Nat
+  path : List ReasoningNode
+  deriving DecidableEq, Repr
+
+def publicationReachedAt : ReachedAt :=
+  ⟨.refreshRegistry, .commitReceipt, 2,
+    [.refreshRegistry, .publishArtifact, .commitReceipt]⟩
+
+def reachedAtValid (reached : ReachedAt) : Bool :=
+  reached.path.head? == some reached.seed &&
+    reached.path.getLast? == some reached.node &&
+    reached.depth + 1 == reached.path.length
+
+theorem seed_relative_depth_is_bound_to_its_path :
+    reachedAtValid publicationReachedAt = true := by decide
+
+/- Python Graphs proposes a core; certification closes proof dependencies.
+   This finite closure is deliberately general rather than the old 1 -> 0
+   special case. -/
+abbrev ProofDependency := Nat × Nat
+
+def dependencyStep (dependencies : List ProofDependency)
+    (selected : List Nat) : List Nat :=
+  (selected ++ dependencies.filterMap (fun dependency =>
+    if dependency.1 ∈ selected then some dependency.2 else none)).eraseDups
+
+def dependencyClosure : Nat → List ProofDependency → List Nat → List Nat
+  | 0, _, selected => selected.eraseDups
+  | fuel + 1, dependencies, selected =>
+      dependencyClosure fuel dependencies (dependencyStep dependencies selected)
+
+def transitiveProofDependencies : List ProofDependency := [(3, 2), (2, 1)]
+
+theorem decision_core_retains_transitive_proof_dependencies :
+    dependencyClosure 2 transitiveProofDependencies [3] = [3, 2, 1] := by decide
+
+/- Cross-version updates need explicit additions and removals. Semi-naive delta
+   completeness within one monotone run cannot authorize append-only reuse. -/
+structure RelationGenerationDelta where
+  fromIdentity : Nat
+  toIdentity : Nat
+  added : List Nat
+  removed : List Nat
+  deriving DecidableEq, Repr
+
+def applyGenerationDelta (expectedFrom : Nat) (previous : List Nat)
+    (delta : RelationGenerationDelta) : Option (List Nat) :=
+  if delta.fromIdentity != expectedFrom ||
+      delta.added.any delta.removed.contains then none
+  else some ((previous.filter fun fact => fact ∉ delta.removed) ++ delta.added).eraseDups
+
+def removePublishedEdge : RelationGenerationDelta := ⟨1, 2, [], [2]⟩
+
+theorem generation_replacement_retracts_deleted_facts :
+    applyGenerationDelta 1 [1, 2] removePublishedEdge = some [1] := by decide
+
+theorem addition_only_delta_check_is_insufficient_for_deletion :
+    deltaComplete [1, 2] [1] [] = true := by decide
+
+def fixedPoint (edges known : List ReachabilityFact) : Bool :=
+  closureStep edges known == known
+
+theorem fuel_exhaustion_is_not_a_fixed_point_certificate :
+    fixedPoint reasoningEdges reasoningEdges = false := by decide
+
+theorem bounded_closure_reaches_the_finite_example_fixed_point :
+    fixedPoint reasoningEdges (closureWithin 2 reasoningEdges) = true := by decide
+
+/- Project Topology is a reusable architecture authority. Search consumes one
+   exact library generation; it does not own or reconstruct these identities. -/
+structure ProjectTopologyIdentity where
+  workspace : Nat
+  sourceGeneration : Nat
+  providerCatalog : Nat
+  library : Nat
+  topologyGeneration : Nat
+  structural : Nat
+  semantic : Nat
+  inferenceProgram : Nat
+  deriving DecidableEq, Repr
+
+structure SearchTopologySettlementIdentity where
+  workspace : Nat
+  sourceGeneration : Nat
+  providerCatalog : Nat
+  library : Nat
+  topologyGeneration : Nat
+  structural : Nat
+  semantic : Nat
+  inferenceProgram : Nat
+  deriving DecidableEq, Repr
+
+def settlementBoundToLibrary (library : ProjectTopologyIdentity)
+    (settlement : SearchTopologySettlementIdentity) : Bool :=
+  library.workspace == settlement.workspace &&
+    library.sourceGeneration == settlement.sourceGeneration &&
+    library.providerCatalog == settlement.providerCatalog &&
+    library.library == settlement.library &&
+    library.topologyGeneration == settlement.topologyGeneration &&
+    library.structural == settlement.structural &&
+    library.semantic == settlement.semantic &&
+    library.inferenceProgram == settlement.inferenceProgram
+
+def projectTopologyIdentity : ProjectTopologyIdentity :=
+  ⟨1, 11, 12, 13, 14, 15, 16, 17⟩
+
+def exactSearchTopologyIdentity : SearchTopologySettlementIdentity :=
+  ⟨1, 11, 12, 13, 14, 15, 16, 17⟩
+
+def replayedSearchTopologyIdentity : SearchTopologySettlementIdentity :=
+  ⟨1, 11, 12, 13, 99, 15, 16, 17⟩
+
+theorem exact_search_projection_binds_the_reusable_topology_library :
+    settlementBoundToLibrary projectTopologyIdentity exactSearchTopologyIdentity = true := by decide
+
+theorem cross_generation_search_projection_replay_is_rejected :
+    settlementBoundToLibrary projectTopologyIdentity replayedSearchTopologyIdentity = false := by decide
+
+/- Accepted prose needs a separate admission receipt. State=accepted plus a
+   matching semantic identity is insufficient by itself. -/
+structure SemanticAdmissionReceipt where
+  semanticBinding : Nat
+  annotationIdentity : Nat
+  receiptIdentity : Nat
+  deriving DecidableEq, Repr
+
+structure AdmittedSemanticAnnotation where
+  annotationIdentity : Nat
+  annotation : SemanticAnnotation
+  admissionReceipt : Option SemanticAdmissionReceipt
+  deriving DecidableEq, Repr
+
+def admittedAnnotationCanProveBehavior (expectedBinding : Nat)
+    (candidate : AdmittedSemanticAnnotation) : Bool :=
+  annotationCanProveBehavior expectedBinding candidate.annotation &&
+    match candidate.admissionReceipt with
+    | none => false
+    | some receipt =>
+        receipt.semanticBinding == expectedBinding &&
+          receipt.annotationIdentity == candidate.annotationIdentity &&
+          receipt.receiptIdentity != 0
+
+theorem accepted_annotation_without_admission_receipt_is_not_factual :
+    admittedAnnotationCanProveBehavior 1
+      ⟨7, acceptedPublicationSummary, none⟩ = false := by decide
+
+theorem accepted_annotation_with_receipt_and_exact_binding_is_factual :
+    admittedAnnotationCanProveBehavior 1
+      ⟨7, acceptedPublicationSummary, some ⟨1, 7, 51⟩⟩ = true := by decide
+
+theorem accepted_annotation_with_foreign_receipt_is_not_factual :
+    admittedAnnotationCanProveBehavior 1
+      ⟨7, acceptedPublicationSummary, some ⟨2, 8, 51⟩⟩ = false := by decide
+
+/- A from-scratch equivalence digest is an external computation receipt, not a
+   second self-declared copy of the candidate library digest. -/
+structure TopologyRebuildReceipt where
+  sourceIdentity : Nat
+  programIdentity : Nat
+  topologyGeneration : Nat
+  recomputedLibrary : Nat
+  receiptIdentity : Nat
+  deriving DecidableEq, Repr
+
+def fromScratchEquivalenceAdmitted
+    (expectedSource expectedProgram expectedGeneration candidateLibrary : Nat)
+    (independentlyAdmitted : List TopologyRebuildReceipt)
+    (receipt : Option TopologyRebuildReceipt) : Bool :=
+  match receipt with
+  | none => false
+  | some proof =>
+      independentlyAdmitted.contains proof &&
+        proof.sourceIdentity == expectedSource &&
+        proof.programIdentity == expectedProgram &&
+        proof.topologyGeneration == expectedGeneration &&
+        proof.recomputedLibrary == candidateLibrary &&
+        proof.receiptIdentity != 0
+
+theorem self_declared_digest_equality_is_not_a_rebuild_certificate :
+    fromScratchEquivalenceAdmitted 11 17 14 13 [] none = false := by decide
+
+theorem external_rebuild_receipt_binds_generation_and_library :
+    fromScratchEquivalenceAdmitted 11 17 14 13 [⟨11, 17, 14, 13, 61⟩]
+      (some ⟨11, 17, 14, 13, 61⟩) = true := by decide
+
+theorem stale_rebuild_receipt_is_rejected :
+    fromScratchEquivalenceAdmitted 11 17 14 13 [⟨11, 17, 12, 13, 61⟩]
+      (some ⟨11, 17, 12, 13, 61⟩) = false := by decide
+
+theorem embedded_nonzero_rebuild_receipt_cannot_authorize_itself :
+    fromScratchEquivalenceAdmitted 11 17 14 13 []
+      (some ⟨11, 17, 14, 13, 61⟩) = false := by decide
+
+theorem foreign_program_rebuild_receipt_is_rejected :
+    fromScratchEquivalenceAdmitted 11 17 14 13 [⟨11, 99, 14, 13, 61⟩]
+      (some ⟨11, 99, 14, 13, 61⟩) = false := by decide
+
+theorem admitted_identity_collision_cannot_authorize_forged_rebuild_fields :
+    fromScratchEquivalenceAdmitted 11 17 14 13 [⟨90, 91, 92, 93, 61⟩]
+      (some ⟨11, 17, 14, 13, 61⟩) = false := by decide
+
+/- The settled graph preserves binding, witness, modality and proof identity.
+   A bare relation pair is never sufficient Agent-facing evidence. -/
+structure BoundSettledRelation where
+  fact : ReachabilityFact
+  modality : SettlementModality
+  binding : Nat
+  witnesses : List Nat
+  programIdentity : Option Nat
+  proofIdentity : Option Nat
+  deriving DecidableEq, Repr
+
+def settleBoundRelation (binding : Nat) (direct inferred : List ReachabilityFact)
+    (directWitnesses : List Nat) (programIdentity proofIdentity : Nat) :
+    List BoundSettledRelation :=
+  direct.eraseDups.map
+      (fun fact => ⟨fact, .parserDirect, binding, directWitnesses, none, none⟩) ++
+    (inferred.filter (fun fact => fact ∉ direct)).eraseDups.map
+      (fun fact =>
+        ⟨fact, .derived, binding, directWitnesses,
+          some programIdentity, some proofIdentity⟩)
+
+def boundPublicationGraph : List BoundSettledRelation :=
+  settleBoundRelation 1 reasoningEdges (closureWithin 1 reasoningEdges) [40, 42] 27 43
+
+theorem bound_gql_settlement_preserves_direct_witnesses :
+    ⟨(.refreshRegistry, .publishArtifact), .parserDirect, 1, [40, 42], none, none⟩ ∈
+      boundPublicationGraph := by decide
+
+theorem bound_gql_settlement_marks_derived_proof_authority :
+    ⟨(.refreshRegistry, .commitReceipt), .derived, 1, [40, 42], some 27, some 43⟩ ∈
+      boundPublicationGraph := by decide
+
+/- Deletion invalidation is transitive over proof dependencies. Addition-only
+   semi-naive delta completeness cannot establish this property. -/
+structure DerivedFactDependency where
+  factId : Nat
+  premises : List Nat
+  deriving DecidableEq, Repr
+
+def invalidationStep (derived : List DerivedFactDependency)
+    (invalid : List Nat) : List Nat :=
+  (invalid ++ derived.filterMap (fun fact =>
+    if fact.premises.any invalid.contains then some fact.factId else none)).eraseDups
+
+def invalidationClosure : Nat → List DerivedFactDependency → List Nat → List Nat
+  | 0, _, invalid => invalid.eraseDups
+  | fuel + 1, derived, invalid =>
+      invalidationClosure fuel derived (invalidationStep derived invalid)
+
+def transitiveDerivedFacts : List DerivedFactDependency :=
+  [⟨3, [2]⟩, ⟨4, [3]⟩]
+
+def retainedDerivedFacts (derived : List DerivedFactDependency)
+    (invalid : List Nat) : List Nat :=
+  derived.filterMap fun fact =>
+    if fact.factId ∈ invalid then none else some fact.factId
+
+theorem deleting_a_base_edge_invalidates_all_derived_descendants :
+    invalidationClosure 2 transitiveDerivedFacts [2] = [2, 3, 4] ∧
+      retainedDerivedFacts transitiveDerivedFacts
+        (invalidationClosure 2 transitiveDerivedFacts [2]) = [] := by decide
+
+inductive InferenceTerminationKind where
+  | fixedPoint | budgetExhausted | blocked
+  deriving DecidableEq, Repr
+
+structure InferenceSettlementReceipt where
+  sourceIdentity : Nat
+  programIdentity : Nat
+  candidate : List ReachabilityFact
+  next : List ReachabilityFact
+  termination : InferenceTerminationKind
+  receiptIdentity : Nat
+  deriving DecidableEq, Repr
+
+def inferenceReceiptAdmitted
+    (expectedSource expectedProgram : Nat)
+    (independentlyAdmitted : List InferenceSettlementReceipt)
+    (receipt : InferenceSettlementReceipt) : Bool :=
+  independentlyAdmitted.contains receipt &&
+    receipt.sourceIdentity == expectedSource &&
+    receipt.programIdentity == expectedProgram &&
+    receipt.termination == .fixedPoint && receipt.candidate == receipt.next
+
+theorem budget_exhaustion_is_not_a_fixed_point_receipt :
+    inferenceReceiptAdmitted 11 17
+      [⟨11, 17, reasoningEdges, closureStep reasoningEdges reasoningEdges,
+        .budgetExhausted, 71⟩]
+      ⟨11, 17, reasoningEdges, closureStep reasoningEdges reasoningEdges,
+        .budgetExhausted, 71⟩ = false := by decide
+
+theorem stable_candidate_with_fixed_point_terminal_is_admitted :
+    let closure := closureWithin 2 reasoningEdges
+    inferenceReceiptAdmitted 11 17
+      [⟨11, 17, closure, closureStep reasoningEdges closure, .fixedPoint, 71⟩]
+      ⟨11, 17, closure, closureStep reasoningEdges closure,
+        .fixedPoint, 71⟩ = true := by decide
+
+theorem unadmitted_fixed_point_receipt_is_rejected :
+    let closure := closureWithin 2 reasoningEdges
+    inferenceReceiptAdmitted 11 17 []
+      ⟨11, 17, closure, closureStep reasoningEdges closure,
+        .fixedPoint, 71⟩ = false := by decide
+
+theorem foreign_program_fixed_point_receipt_is_rejected :
+    let closure := closureWithin 2 reasoningEdges
+    inferenceReceiptAdmitted 11 17
+      [⟨11, 99, closure, closureStep reasoningEdges closure, .fixedPoint, 71⟩]
+      ⟨11, 99, closure, closureStep reasoningEdges closure,
+        .fixedPoint, 71⟩ = false := by decide
+
+theorem admitted_identity_collision_cannot_authorize_forged_inference_fields :
+    let closure := closureWithin 2 reasoningEdges
+    inferenceReceiptAdmitted 11 17
+      [⟨90, 91, closure, closureStep reasoningEdges closure, .fixedPoint, 71⟩]
+      ⟨11, 17, closure, closureStep reasoningEdges closure,
+        .fixedPoint, 71⟩ = false := by decide
+
+/- A MaterializationSet is one deterministic set, not an execution sequence.
+   Stable ordering and selector availability are separate admission facts. -/
+def materializationSetAdmitted (available selected : List Nat) : Bool :=
+  selected.Pairwise (· < ·) && selected.all available.contains
+
+theorem sorted_available_materialization_set_is_admitted :
+    materializationSetAdmitted [10, 20, 30] [10, 30] = true := by decide
+
+theorem duplicate_or_unavailable_materialization_is_rejected :
+    materializationSetAdmitted [10, 20, 30] [10, 10] = false ∧
+      materializationSetAdmitted [10, 20, 30] [10, 40] = false := by decide
+
+/- A Query Playbook handoff is an exact replay-safe projection of one admitted
+   Search MaterializationSet. A selector list alone cannot claim this origin. -/
+structure QueryPlaybookHandoff where
+  settlement : SearchTopologySettlementIdentity
+  requestIdentity : Nat
+  materializationDigest : Nat
+  selectors : List Nat
+  proofDependencies : List Nat
+  deriving DecidableEq, Repr
+
+def queryPlaybookHandoffAdmitted
+    (expectedSettlement : SearchTopologySettlementIdentity)
+    (expectedRequest expectedDigest : Nat)
+    (expectedSelectors expectedProofDependencies availableSelectors : List Nat)
+    (handoff : QueryPlaybookHandoff) : Bool :=
+  handoff.settlement == expectedSettlement &&
+    handoff.requestIdentity == expectedRequest &&
+    handoff.materializationDigest == expectedDigest &&
+    handoff.selectors == expectedSelectors &&
+    handoff.proofDependencies == expectedProofDependencies &&
+    materializationSetAdmitted availableSelectors handoff.selectors
+
+def exactQueryPlaybookHandoff : QueryPlaybookHandoff :=
+  ⟨exactSearchTopologyIdentity, 71, 72, [10, 30], [40, 42]⟩
+
+theorem exact_search_materialization_handoff_is_admitted :
+    queryPlaybookHandoffAdmitted exactSearchTopologyIdentity 71 72
+      [10, 30] [40, 42] [10, 20, 30] exactQueryPlaybookHandoff = true := by decide
+
+theorem selector_subset_cannot_claim_search_materialization_origin :
+    queryPlaybookHandoffAdmitted exactSearchTopologyIdentity 71 72
+      [10, 30] [40, 42] [10, 20, 30]
+      ⟨exactSearchTopologyIdentity, 71, 72, [10], [40, 42]⟩ = false := by decide
+
+theorem cross_generation_query_handoff_replay_is_rejected :
+    queryPlaybookHandoffAdmitted exactSearchTopologyIdentity 71 72
+      [10, 30] [40, 42] [10, 20, 30]
+      ⟨replayedSearchTopologyIdentity, 71, 72, [10, 30], [40, 42]⟩ = false := by decide
+
+theorem changed_query_proof_dependencies_are_rejected :
+    queryPlaybookHandoffAdmitted exactSearchTopologyIdentity 71 72
+      [10, 30] [40, 42] [10, 20, 30]
+      ⟨exactSearchTopologyIdentity, 71, 72, [10, 30], [40]⟩ = false := by decide
+
+end ASPProof.SearchEvidenceDerivation

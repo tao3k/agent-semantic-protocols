@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 use sha2::Digest;
 use sha2::Sha256;
 use std::io::Read;
@@ -77,22 +81,19 @@ fn install_binary_reconciles_provider_artifacts_without_starting_runtime() {
     );
     let stdout = String::from_utf8_lossy(&warm.stdout);
     assert!(
-        stdout.contains("providerReconciliation=automatic"),
+        stdout.contains("providerReconciliation=embedded-release-catalog"),
+        "{stdout}"
+    );
+    assert!(stdout.contains("providerReconciledCount=0"), "{stdout}");
+    assert!(
+        stdout.contains("activeRuntimeBundleDigest=blake3-256:"),
         "{stdout}"
     );
     assert!(
-        stdout.contains("installedProviderArtifactsGeneration=blake3-256:"),
-        "{stdout}"
-    );
-    assert!(
-        stdout.contains("installedProviderArtifactsWrite=false"),
-        "{stdout}"
-    );
-    assert!(
-        state_home
+        !state_home
             .join("runtime/installed-provider-artifacts.json")
-            .is_file(),
-        "binary installation must refresh the installed provider artifact projection"
+            .exists(),
+        "binary installation must not publish a second provider serving authority"
     );
     assert!(
         !state_home.join("runtime/server/candidates").exists(),

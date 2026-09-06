@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 //! Typed artifact retention planning and leases.
 
 use serde::Deserialize;
@@ -5,6 +9,34 @@ use serde::Serialize;
 
 pub const RETENTION_PLAN_SCHEMA_ID: &str = "agent.semantic-protocols.state-home-retention-plan";
 pub const RETENTION_PLAN_SCHEMA_VERSION: u32 = 1;
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "kebab-case")]
+pub enum CleanupSelection {
+    All,
+    WorkspaceDigest { workspace_digest: String },
+    ObjectId { object_id: String },
+}
+
+impl CleanupSelection {
+    pub fn validate(&self) -> Result<(), String> {
+        let value = match self {
+            Self::All => return Ok(()),
+            Self::WorkspaceDigest { workspace_digest } => {
+                crate::blake3_content_digest::Blake3ContentDigest::parse(workspace_digest)
+                    .map_err(|error| {
+                        format!("reasonKind=state-home-cleanup-workspace-digest-invalid {error}")
+                    })?;
+                return Ok(());
+            }
+            Self::ObjectId { object_id } => object_id,
+        };
+        if value.trim().is_empty() {
+            return Err("reasonKind=state-home-cleanup-selection-empty".to_string());
+        }
+        Ok(())
+    }
+}
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -57,6 +89,7 @@ pub struct CleanupPlan {
     pub schema_version: u32,
     pub evaluated_at_ms: u64,
     pub retain_for_ms: u64,
+    pub selection: CleanupSelection,
     pub retained_count: usize,
     pub retired_count: usize,
     pub retained_bytes: u64,
@@ -80,9 +113,22 @@ impl RetentionPlanner {
 
     pub fn plan(
         &self,
-        mut objects: Vec<RetainedObject>,
+        objects: Vec<RetainedObject>,
         leases: &[RetentionLease],
     ) -> Result<CleanupPlan, String> {
+        self.plan_selected(objects, leases, CleanupSelection::All)
+    }
+
+    pub fn plan_selected(
+        &self,
+        mut objects: Vec<RetainedObject>,
+        leases: &[RetentionLease],
+        selection: CleanupSelection,
+    ) -> Result<CleanupPlan, String> {
+        selection.validate()?;
+        if !matches!(selection, CleanupSelection::All) && objects.is_empty() {
+            return Err("reasonKind=state-home-cleanup-selection-no-match".to_string());
+        }
         validate_unique_objects(&objects)?;
         validate_leases(leases)?;
         objects.sort_by(|left, right| {
@@ -145,6 +191,7 @@ impl RetentionPlanner {
             schema_version: RETENTION_PLAN_SCHEMA_VERSION,
             evaluated_at_ms: self.evaluated_at_ms,
             retain_for_ms: self.retain_for_ms,
+            selection,
             retained_count,
             retired_count,
             retained_bytes,

@@ -1,7 +1,12 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 //! Command tree for the `asp` binary.
 
 mod agent_session;
 
+pub(crate) mod active_provider_projection;
 mod agent_config_sync;
 mod agent_control_plane;
 mod ast_patch;
@@ -17,7 +22,6 @@ mod hook_host_acceptance;
 pub(crate) mod hook_runtime;
 mod install_binary_config_admission;
 mod install_provider;
-pub(crate) mod installed_provider_artifacts;
 mod provider_install_receipt;
 
 mod live_corpus;

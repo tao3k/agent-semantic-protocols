@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
@@ -6,7 +10,7 @@ const CLAUDE_DEFAULT_RESIDENT_AGENT_MODEL: &str = "haiku";
 pub(super) fn subagent_model_arg(client: &str, model: Option<&str>) -> Result<String, String> {
     if client == "codex" {
         return Err(
-            "Codex agent models are owned by agents/config.toml; plugin install has no model override"
+            "Codex agent models are owned by the State Home control-plane Agent registry; plugin install has no model override"
                 .to_owned(),
         );
     }
@@ -42,9 +46,12 @@ pub(super) fn install_claude_resident_agents(
 }
 
 fn asp_agent_config_path(name: &str, client: &str, extension: &str) -> Result<PathBuf, String> {
-    Ok(agent_semantic_runtime::state_core::resolve_state_home()?
-        .join("agents")
-        .join(format!("{name}_{client}.{extension}")))
+    Ok(agent_semantic_artifacts::StateHomeLayout::new(
+        agent_semantic_runtime::state_core::resolve_state_home()?,
+    )
+    .control()
+    .agent_registry_root()
+    .join(format!("{name}_{client}.{extension}")))
 }
 
 fn write_agent_config(path: &Path, contents: &[u8]) -> Result<(), String> {

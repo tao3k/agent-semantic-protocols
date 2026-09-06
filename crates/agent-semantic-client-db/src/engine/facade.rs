@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 //! ASP-owned client DB engine facade.
 
 use std::fs;
@@ -293,7 +297,7 @@ impl ClientDbEngine {
     /// Resolve a DB Engine for an explicit state-mutating operation.
     pub fn resolve_for_write(project_root: impl AsRef<Path>) -> Result<Self, String> {
         let state = ResolvedState::resolve(project_root)?;
-        state.ensure_minimal_layout()?;
+        state.ensure_workspace_state_layout()?;
         let engine = Self::from_resolved_state(&state);
         engine.write_manifest()?;
         Ok(engine)
@@ -303,15 +307,22 @@ impl ClientDbEngine {
     #[must_use]
     pub fn from_resolved_state(state: &ResolvedState) -> Self {
         let backend = active_client_db_backend();
+        let binding = state
+            .project_binding()
+            .expect("ResolvedState always yields a canonical project binding");
+        let workspace = state
+            .workspace_state_paths()
+            .expect("validated workspace digest always yields canonical paths");
+        let manifest_path = workspace.db_manifest_path();
         Self {
             backend,
             layout_version: STATE_LAYOUT_VERSION,
-            client_dir: state.paths.client_dir.clone(),
-            db_path: Self::db_path_for_client_dir(&state.paths.client_dir),
-            manifest_path: state.paths.client_manifest_json.clone(),
-            artifact_path: state.paths.artifacts_dir.clone(),
-            repo_id: ClientDbRepoId::from(state.repo.repo_id.to_string()),
-            workspace_id: ClientDbWorkspaceId::from(state.workspace.workspace_id.to_string()),
+            client_dir: workspace.root.clone(),
+            db_path: workspace.facts,
+            manifest_path,
+            artifact_path: workspace.artifacts,
+            repo_id: ClientDbRepoId::from(binding.repo.digest.to_string()),
+            workspace_id: ClientDbWorkspaceId::from(binding.workspace.digest.to_string()),
             scope_id: ClientDbScopeId::from(state.scope_id.to_string()),
         }
     }
@@ -819,6 +830,37 @@ pub(super) fn prepare_client_dir_for_write(client_dir: &Path) -> Result<(), Stri
 }
 
 pub(super) fn require_state_core_materialization(client_dir: &Path) -> Result<(), String> {
+    if let Some(workspace_digest) = canonical_workspace_digest(client_dir) {
+        let binding_path = client_dir
+            .join("observations")
+            .join(agent_semantic_artifacts::WORKSPACE_BINDING_FILE);
+        let bytes = fs::read(&binding_path).map_err(|error| {
+            format!(
+                "state-home-binding-required: DB Engine write requires {}: {error}",
+                binding_path.display()
+            )
+        })?;
+        let binding = serde_json::from_slice::<agent_semantic_artifacts::ProjectBinding>(&bytes)
+            .map_err(|error| {
+                format!(
+                    "state-home-binding-invalid: decode {}: {error}",
+                    binding_path.display()
+                )
+            })?;
+        binding.validate()?;
+        let expected = binding
+            .workspace
+            .digest
+            .as_str()
+            .strip_prefix("blake3-256:")
+            .ok_or_else(|| "workspace binding digest is not canonical".to_string())?;
+        if expected != workspace_digest {
+            return Err(format!(
+                "state-home-binding-mismatch: directoryDigest={workspace_digest} bindingDigest={expected}"
+            ));
+        }
+        return Ok(());
+    }
     let Some((project_dir, workspace_dir)) = state_core_identity_dirs(client_dir) else {
         return Ok(());
     };
@@ -840,6 +882,14 @@ pub(super) fn require_state_core_materialization(client_dir: &Path) -> Result<()
         "state-core-materialization-required: DB Engine write requires committed identity metadata before mutating `{}`; missing: {missing}",
         client_dir.display()
     ))
+}
+
+fn canonical_workspace_digest(client_dir: &Path) -> Option<&str> {
+    let digest = client_dir.file_name()?.to_str()?;
+    if digest.len() != 64 || !digest.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return None;
+    }
+    (client_dir.parent()?.file_name()?.to_str()? == "workspaces").then_some(digest)
 }
 
 fn state_core_identity_dirs(client_dir: &Path) -> Option<(PathBuf, PathBuf)> {

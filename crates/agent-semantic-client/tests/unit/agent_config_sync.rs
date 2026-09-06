@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 #[test]
 fn embedded_registry_sync_replaces_stale_state_catalog_without_project_agents_directory() {
     let root = tempfile::tempdir().expect("agent config sync fixture");

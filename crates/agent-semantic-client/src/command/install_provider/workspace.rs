@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 //! Registry-driven development provider workspace build and artifact publication.
 
 use std::collections::BTreeMap;
@@ -43,6 +47,7 @@ pub(super) struct PublishedProviderWorkspace {
     pub(super) artifact_leaf_count: usize,
     pub(super) launcher: PathBuf,
     pub(super) installed_path: PathBuf,
+    pub(super) runtime_bundle_digest: String,
 }
 
 pub(super) async fn build_registered_provider_workspace(
@@ -447,7 +452,7 @@ pub(super) async fn publish_provider_workspace(
     built: BuiltProviderWorkspace,
 ) -> Result<PublishedProviderWorkspace, String> {
     let publication_root = agent_semantic_artifacts::RuntimeArtifactStateLayout::new(protocol_home)
-        .provider_content_store()
+        .provider_staging()
         .join(&registration.provider_id)
         .join("artifacts/blake3-merkle-v1");
     fs::create_dir_all(&publication_root)
@@ -549,6 +554,9 @@ pub(super) async fn publish_provider_workspace(
         artifact_leaf_count,
         launcher,
         installed_path: installed.path,
+        runtime_bundle_digest: installed
+            .bundle_digest
+            .ok_or_else(|| "provider publication omitted Runtime bundle digest".to_owned())?,
     })
 }
 

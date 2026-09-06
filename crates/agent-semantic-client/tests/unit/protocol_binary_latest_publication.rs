@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 use super::ProtocolBinaryInstallPlan;
 use super::SEMANTIC_AGENT_PROTOCOL_BIN;
 use super::ensure_protocol_binary_installed;
@@ -46,9 +50,11 @@ async fn published_runtime_identity_lookup_never_reads_artifact_bytes() {
         assert_eq!(
             digest,
             installed
-                .artifact_digest
+                .bundle_digest
+                .as_deref()
+                .expect("published bundle digest")
                 .strip_prefix("blake3-256:")
-                .expect("canonical installed digest")
+                .expect("canonical bundle digest")
         );
     }
     samples.sort_unstable();
@@ -130,11 +136,14 @@ async fn lattice_profile_slots_and_multi_binary_switches_are_isolated() {
     let asp_digest = installed.artifact_digest.clone();
     assert!(
         artifact_root
-            .join("blake3-256")
+            .join("generations")
             .join(
-                asp_digest
+                installed
+                    .bundle_digest
+                    .as_deref()
+                    .expect("published bundle digest")
                     .strip_prefix("blake3-256:")
-                    .expect("canonical ASP digest"),
+                    .expect("canonical bundle digest"),
             )
             .join(SEMANTIC_AGENT_PROTOCOL_BIN)
             .is_file()
@@ -161,14 +170,19 @@ async fn lattice_profile_slots_and_multi_binary_switches_are_isolated() {
     assert_eq!(installed.artifact_digest, asp_digest);
 
     let second_asp = fixture_source(&root, "source-asp-v2", b"protocol-binary-v2");
-    let second_asp_install = install_protocol_binary_target(
-        &second_asp,
-        &stable_entry,
-        &artifact_root,
-        &RuntimeBinaryIdentityV1::asp_bootstrap(),
+    let second_asp_install = super::ensure_protocol_binary_bundle_members_installed_transaction(
+        &ProtocolBinaryInstallPlan {
+            current_exe: second_asp,
+            explicit_candidate_source: None,
+            target: stable_entry.clone(),
+            artifact_root: artifact_root.clone(),
+            managed_path_aliases: Vec::new(),
+            binary_identity: RuntimeBinaryIdentityV1::asp_bootstrap(),
+        },
+        &[],
     )
     .await
-    .expect("switch asp latest independently");
+    .expect("switch ASP through a complete active-bundle successor");
     commit_pending_runtime_activation(&root).await;
     assert_ne!(second_asp_install.artifact_digest, asp_digest);
     assert_eq!(
@@ -179,7 +193,7 @@ async fn lattice_profile_slots_and_multi_binary_switches_are_isolated() {
         fs::read(&harness_stable).expect("harness profile remains isolated"),
         b"asp-rust-v1"
     );
-    assert!(artifact_root.join("blake3-256").exists());
+    assert!(artifact_root.join("generations").exists());
 
     fs::remove_dir_all(&root).expect("remove protocol binary fixture");
 }
@@ -205,7 +219,7 @@ async fn runtime_publication_rejects_target_name_inference_and_path_shaped_ident
 }
 
 #[tokio::test]
-async fn registered_scheme_and_python_dangling_entries_are_atomically_republished() {
+async fn registered_provider_install_requires_an_active_complete_runtime_bundle() {
     let registrations = agent_semantic_provider_protocol::builtin_provider_registrations()
         .expect("builtin provider registrations");
     for (language_id, binary) in [
@@ -234,39 +248,20 @@ async fn registered_scheme_and_python_dangling_entries_are_atomically_republishe
         let identity = RuntimeBinaryIdentityV1::from_registered_provider(binary)
             .unwrap_or_else(|error| panic!("registered identity for `{provider_id}`: {error}"));
 
-        let installed = install_protocol_binary_target(&source, &target, &artifact_root, &identity)
+        let original_target = fs::read_link(&target).expect("read dangling provider target");
+        let error = install_protocol_binary_target(&source, &target, &artifact_root, &identity)
             .await
-            .unwrap_or_else(|error| panic!("publish `{language_id}` / `{provider_id}`: {error}"));
+            .expect_err("provider must not create a Runtime authority without active ASP");
         assert_eq!(
-            installed.status, "published-active-awaiting-health",
-            "{provider_id}"
-        );
-        commit_pending_runtime_activation(&root).await;
-        assert_eq!(installed.path, target, "{provider_id}");
-        assert!(
-            fs::symlink_metadata(&target)
-                .expect("inspect republished provider")
-                .file_type()
-                .is_symlink(),
-            "{provider_id}"
-        );
-        assert_eq!(
-            fs::read(&target).expect("read republished provider"),
-            provider_id.as_bytes(),
+            fs::read_link(&target).expect("dangling provider target remains unchanged"),
+            original_target,
             "{provider_id}"
         );
         assert!(
-            artifact_root
-                .join("blake3-256")
-                .join(
-                    installed
-                        .artifact_digest
-                        .strip_prefix("blake3-256:")
-                        .expect("canonical installed digest"),
-                )
-                .join(binary)
-                .is_file()
+            error.contains("runtime-active-generation-unavailable"),
+            "unexpected `{language_id}` / `{provider_id}` error: {error}"
         );
+        assert!(!artifact_root.join("active").exists(), "{provider_id}");
 
         fs::remove_dir_all(root).expect("remove protocol binary fixture");
     }
@@ -326,16 +321,13 @@ async fn lattice_reconciliation_retains_only_reachable_digest_generations() {
     let harness_identity =
         RuntimeBinaryIdentityV1::from_registered_provider(harness_name).expect("harness identity");
 
+    let initial_asp = fixture_source(&root, "source-asp-initial", b"protocol-binary-initial");
+    install_protocol_binary_target(&initial_asp, &asp_target, &artifact_root, &asp_identity)
+        .await
+        .expect("publish initial ASP generation");
+    commit_pending_runtime_activation(&root).await;
+
     for version in 0..4 {
-        let source = fixture_source(
-            &root,
-            &format!("source-asp-{version}"),
-            format!("protocol-binary-{version}").as_bytes(),
-        );
-        install_protocol_binary_target(&source, &asp_target, &artifact_root, &asp_identity)
-            .await
-            .expect("publish ASP generation");
-        commit_pending_runtime_activation(&root).await;
         let source = fixture_source(
             &root,
             &format!("source-harness-{version}"),
@@ -343,7 +335,27 @@ async fn lattice_reconciliation_retains_only_reachable_digest_generations() {
         );
         install_protocol_binary_target(&source, &harness_target, &artifact_root, &harness_identity)
             .await
-            .expect("publish harness generation");
+            .expect("publish harness member successor");
+        commit_pending_runtime_activation(&root).await;
+
+        let source = fixture_source(
+            &root,
+            &format!("source-asp-{version}"),
+            format!("protocol-binary-{version}").as_bytes(),
+        );
+        super::ensure_protocol_binary_bundle_members_installed_transaction(
+            &ProtocolBinaryInstallPlan {
+                current_exe: source,
+                explicit_candidate_source: None,
+                target: asp_target.clone(),
+                artifact_root: artifact_root.clone(),
+                managed_path_aliases: Vec::new(),
+                binary_identity: RuntimeBinaryIdentityV1::asp_bootstrap(),
+            },
+            &[],
+        )
+        .await
+        .expect("publish complete ASP bundle successor");
         commit_pending_runtime_activation(&root).await;
     }
 
@@ -353,15 +365,15 @@ async fn lattice_reconciliation_retains_only_reachable_digest_generations() {
         )
         .await
         .expect("prune artifact history");
-    assert_eq!(receipt.scanned_generation_count, 8);
-    assert_eq!(receipt.retained_generation_count, 4);
-    assert_eq!(receipt.removed_generation_count, 4);
+    assert_eq!(receipt.scanned_generation_count, 1);
+    assert_eq!(receipt.retained_generation_count, 1);
+    assert_eq!(receipt.removed_generation_count, 0);
     assert_eq!(receipt.ignored_entry_count, 0);
-    assert!(receipt.reclaimed_bytes > 0);
-    assert_eq!(receipt.protected_digests.len(), 4);
+    assert_eq!(receipt.reclaimed_bytes, 0);
+    assert_eq!(receipt.protected_digests.len(), 1);
     assert!(fs::canonicalize(&asp_target).is_ok());
     assert!(fs::canonicalize(&harness_target).is_ok());
-    assert!(artifact_root.join("blake3-256").is_dir());
+    assert!(artifact_root.join("generations").is_dir());
     assert!(artifact_root.join("retention-receipt.json").is_file());
 
     fs::remove_dir_all(&root).expect("remove protocol binary fixture");

@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+-->
+
 <!-- ASP-HOOK-TRIGGER-PROMPT:MANAGED-BEGIN -->
 ASP hook blocked `{reason}`; do not retry raw read/search commands on the same source.
 Codex: if an ASP search agent thread is already open for this main task, call `send_input` on that thread with the safe route below and wait for `asp-search-subagent(role,action,evidence,missing,next,risk)`.

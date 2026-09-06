@@ -1,0 +1,54 @@
+{
+  "schemaId": "agent.semantic-protocols.project-topology-library",
+  "schemaVersion": "1",
+  "workspaceIdentity": "workspace-example",
+  "sourceGenerationDigest": "blake3-256:1111111111111111111111111111111111111111111111111111111111111111",
+  "providerCatalogDigest": "blake3-256:2222222222222222222222222222222222222222222222222222222222222222",
+  "libraryDigest": "blake3-256:3333333333333333333333333333333333333333333333333333333333333333",
+  "generation": {
+    "generationDigest": "blake3-256:4444444444444444444444444444444444444444444444444444444444444444",
+    "parentGenerationDigest": null,
+    "state": "complete",
+    "changeSetDigest": "blake3-256:5555555555555555555555555555555555555555555555555555555555555555",
+    "rebuiltSegmentIds": ["segment-rust", "segment-org"],
+    "removedNodeIds": [],
+    "removedEdgeIds": [],
+    "fromScratchEquivalentDigest": "blake3-256:3333333333333333333333333333333333333333333333333333333333333333"
+  },
+  "fromScratchRebuildReceipt": {
+    "id": "topology-rebuild-1",
+    "sourceGenerationDigest": "blake3-256:1111111111111111111111111111111111111111111111111111111111111111",
+    "inferenceProgramDigest": "blake3-256:8888888888888888888888888888888888888888888888888888888888888888",
+    "topologyGenerationDigest": "blake3-256:4444444444444444444444444444444444444444444444444444444444444444",
+    "recomputedLibraryDigest": "blake3-256:3333333333333333333333333333333333333333333333333333333333333333",
+    "authority": "project-topology-rebuild.v1",
+    "state": "admitted"
+  },
+  "semanticAdmissionReceipts": [],
+  "identities": {
+    "structuralTopologyDigest": "blake3-256:6666666666666666666666666666666666666666666666666666666666666666",
+    "semanticTopologyDigest": "blake3-256:7777777777777777777777777777777777777777777777777777777777777777",
+    "inferenceProgramDigest": "blake3-256:8888888888888888888888888888888888888888888888888888888888888888",
+    "providerGrammarDigest": "blake3-256:9999999999999999999999999999999999999999999999999999999999999999",
+    "resolverDigest": "blake3-256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "topologySchemaDigest": "blake3-256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  },
+  "segments": [
+    {"id":"segment-rust","ownerPath":"src/registry.rs","contentDigest":"blake3-256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc","skeletonDigest":"blake3-256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd","locatorDigest":"blake3-256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee","sccDigest":"blake3-256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff","stratum":0,"nodeIds":["registry","refresh"],"edgeIds":["declares-refresh"]},
+    {"id":"segment-org","ownerPath":"docs/publication.org","contentDigest":"blake3-256:1212121212121212121212121212121212121212121212121212121212121212","skeletonDigest":"blake3-256:1313131313131313131313131313131313131313131313131313131313131313","locatorDigest":"blake3-256:1414141414141414141414141414141414141414141414141414141414141414","sccDigest":"blake3-256:1515151515151515151515151515151515151515151515151515151515151515","stratum":0,"nodeIds":["publication","meaning"],"edgeIds":["explains-refresh"]}
+  ],
+  "nodes": [
+    {"id":"registry","segmentId":"segment-rust","plane":"structural","language":"rust","kind":"Impl","name":"Registry","selector":"rust://src/registry.rs#item/implementation/type/Registry"},
+    {"id":"refresh","segmentId":"segment-rust","plane":"structural","language":"rust","kind":"Method","name":"refresh_registry","selector":"rust://src/registry.rs#item/method/refresh_registry/scope/implementation-owner/type/Registry"},
+    {"id":"publication","segmentId":"segment-org","plane":"structural","language":"org","kind":"Heading","name":"Publication","selector":"org://docs/publication.org#item/heading/Publication"},
+    {"id":"meaning","segmentId":"segment-org","plane":"synthesized-semantic","language":"natural-language","kind":"SemanticAnnotation","annotation":{"text":"Publication is the durable boundary reached by registry refresh.","state":"proposed","premiseWitnesses":["declares-refresh","explains-refresh"],"producer":"model-reasoner@receipt-1","bindingDigest":"blake3-256:7777777777777777777777777777777777777777777777777777777777777777"}}
+  ],
+  "edges": [
+    {"id":"declares-refresh","segmentId":"segment-rust","from":"registry","to":"refresh","relation":"DECLARES","modality":"parser-direct","bindingDigest":"blake3-256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd","witnesses":["rust-parser-1"]},
+    {"id":"explains-refresh","segmentId":"segment-org","from":"publication","to":"refresh","relation":"EXPLAINS","modality":"declared","bindingDigest":"blake3-256:1313131313131313131313131313131313131313131313131313131313131313","witnesses":["org-contract-1"]}
+  ],
+  "coverageCertificates": [{"id":"coverage-declares","relation":"DECLARES","targetKind":"Method","scope":"complete","digest":"blake3-256:1616161616161616161616161616161616161616161616161616161616161616"}],
+  "closure": {"state":"stable","digest":"blake3-256:1717171717171717171717171717171717171717171717171717171717171717","proofDagDigest":"blake3-256:1818181818181818181818181818181818181818181818181818181818181818","derivedEdgeIds":[],"proofDependencies":[]},
+  "consumers": ["search", "query", "code-understanding", "framework-calibration", "refactoring", "context-recovery"],
+  "terminal": {"state":"ready","terminalCount":1}
+}

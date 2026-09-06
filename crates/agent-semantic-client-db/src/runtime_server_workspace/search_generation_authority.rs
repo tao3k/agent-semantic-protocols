@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 use serde::{Deserialize, Serialize};
 
 use std::path::{Path, PathBuf};
@@ -22,7 +26,7 @@ pub struct WorkspaceSearchGenerationAuthority {
     pub provider_schema_digest: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub runtime_provider_execution_binding:
-        Option<agent_semantic_artifacts::installed_provider_binding::RuntimeProviderExecutionBinding>,
+        Option<agent_semantic_artifacts::runtime_provider_execution_binding::RuntimeProviderExecutionBinding>,
     pub content_search_generation: agent_semantic_search::ContentSearchGenerationReceipt,
     pub source_snapshot: agent_semantic_content_identity::SourceSnapshotEvidence,
     pub project_resolutions: Vec<agent_semantic_content_identity::AdmittedProjectResolution>,

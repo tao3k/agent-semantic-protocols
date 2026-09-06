@@ -71,6 +71,23 @@ evaluation remain required.
 | R08 Can reachability replace direct-call evidence? | No. Transitive reduction preserves reachability but can remove a required direct edge. See [[#E1][E1]]. |
 | R09 Is raw native source safe inside an unescaped Org block? | Not in the abstract framing countermodel. Actual Org renderer round-trip and metadata attachment remain open integration gates. See [[#E1][E1]]. |
 | R10 Must an Agent request a skeleton before exact Query? | No. Admission depends on the selected target and binding, not earlier flag use; a member cannot silently expand to its owner. See [[#E2][E2]]. |
+| R11 Can same-snapshot premises be composed unconditionally? | No. Individually possible edges may require mutually exclusive configurations. Joint-behavior conclusions need a compatible witness. See [[#E6][E6]]. |
+| R12 Does a valid positive clause prove the full query? | No. A true A witness does not satisfy A AND NOT B when B is true. Explanations retain the full retrieval decision as a separate premise. See [[#E6][E6]]. |
+| R13 Does a truncated skeleton establish absence? | No. Negative answers require a sound scoped completeness certificate from the facts' authority. Source-window budgets and member coverage remain separate. See [[#E6][E6]]. |
+| R14 Can compact aliases or duplicate rows change support? | No. Support depends on canonical witnesses, while collector attribution and replay references remain available. See [[#E6][E6]]. |
+| R15 Must every queryable reachable node be queried again? | No. Eligibility is distinct from scheduling within a question-bound episode and fixed binding. New questions may begin new episodes. See [[#E6][E6]]. |
+| R16 Can a candidate path or URI mint a native selector? | A candidate path cannot. A registered provider projection may mint a selector under the same binding. Explicit native syntax accepts a validated canonical item selector as a graph anchor; a bare file URI or stale selector is rejected. See [[#E6][E6]]. |
+| R17 Can a flat top-k hit list support the next Agent decision? | No. Core rank must remain distinct from the bounded witness closure that preserves owners, edges, and evidence. Omitted candidates remain unknown, and the frontier exposes both Query-eligible and Search-eligible nodes. See [[#E6][E6]]. |
+| R18 May Ascent become a second Agent-facing result language? | No. Logical inference executes internally; Runtime settles novel topology conclusions and frontiers into the single GQL result with modality and proof references. See [[#E6][E6]]. |
+| R19 May one provider's dense hits dominate the frontier? | Not by input order or hit volume. Selection uses relevance-threshold marginal graph coverage across heterogeneous provider/evidence clusters, without fixed language quotas. See [[#E6][E6]]. |
+| R20 May fired Ascent rules be rendered because they are explanatory? | No. They duplicate the graph and expose engine syntax. The typed receipt retains fixed-point and proof artifacts while GQL carries the topology settlement. See [[#E6][E6]]. |
+| R21 Does a body-only edit invalidate every topology fact? | No. Declaration skeleton identity may remain reusable, while body-derived CALLS, RETURNS, EMITS, and REFERENCES bind content and must be invalidated. See [[#E6][E6]]. |
+| R22 Does an absent edge in a bounded slice establish missing? | No. Partial coverage yields unknown. Only certified complete coverage for the relation and target kind may yield certified missing. See [[#E6][E6]]. |
+| R23 May Python rank select a node without its proof path? | No. A post-rank topology-proof certification closes all transitive proof dependencies and rejects disconnected selections. See [[#E6][E6]]. |
+| R24 Does semi-naive delta support cross-generation deletion automatically? | No. Addition-only completeness accepts a deletion counterexample. Generation replacement must apply removals and invalidate derived descendants. See [[#E6][E6]]. |
+| R25 Should the result emit Query 1, Query 2, and Search 1? | No. One MaterializationSet feeds one Query Playbook; graph frontier edges express unresolved Search obligations. See [[#E6][E6]]. |
+| R26 Can an LLM summary enter factual closure directly? | No. A premise-bound proposed annotation may guide ranking or frontier expansion but cannot prove behavior before authorized admission. See [[#E6][E6]]. |
+| R27 Should natural-language reasoning stay outside topology? | No. It belongs in GQL as a typed SemanticAnnotation with premises, producer, and admission state, never as unbound prose or parser fact. See [[#E6][E6]]. |
 
 ** Evidence
 
@@ -173,6 +190,142 @@ warm_start_cannot_prune_fresh_axes, and ext_schedule_preserves_five_axis_receipt
 Those owner files were not edited in this research task. The aggregate gate
 is not green, despite the new focused model/audit and executable passing.
 
+*** E6 Derivation Extension And Independent Review
+:PROPERTIES:
+:CUSTOM_ID: E6
+:EVIDENCE_KIND: abstract-lean-derivation-model
+:RESULT: pass-focused-lean-and-org-provider
+:END:
+
+The 2026-09-06 extension follows the independent R11-R19 counterexample review.
+The [[file:../ASPProof/SearchEvidenceDerivation.lean][derivation model]],
+[[file:../ASPProof/Audit/SearchEvidenceDerivation.lean][audit]], and
+[[file:../SearchEvidenceDerivationMain.lean][runner]] are separate from the
+earlier R01-R10 model. Historical E1-E5 results above are not current reruns.
+
+#+begin_src sh
+./.devenv/devenv-profile-exec elan run leanprover/lean4:v4.32.2 lake --dir packages/proofs build ASPProof.SearchEvidenceDerivation ASPProof.Audit.SearchEvidenceDerivation
+./.devenv/devenv-profile-exec elan run leanprover/lean4:v4.32.2 lake --dir packages/proofs env lean --run packages/proofs/SearchEvidenceDerivationMain.lean
+#+end_src
+
+Independent review corrected three overbroad claims: compatibility constrains
+joint-behavior conclusions but does not prohibit displaying mutually exclusive
+alternatives; source coverage authority differs from Ascent derivation
+authority; progress is scoped to a question-bound episode rather than all
+future questions against an unchanged snapshot.
+
+The current local ASP candidate no longer exposes the historical Org contract
+trace command. The repository's existing Org provider executable exposes both
+native lint and contract trace. These checks validate documents with that
+executable; they do not establish current-tree provider-build or Runtime route
+conformance. The initial lint detected the not-yet-created model link, showing
+that contract presence alone does not establish link integrity.
+
+#+begin_src sh
+./.devenv/devenv-profile-exec ./languages/orgize/target/debug/orgize lint --org-contract-registry org/contracts/agent.sdd.v1.org --org-contract-registry org/contracts/agent.adversarial-review.v1.org --org-contract-registry org/contracts/agent.reflection-answers.v1.org docs/10-19-rfcs/10.06-agent-search-projection/10.06.14-search-evidence-output-reflection.org packages/proofs/receipts/search-evidence-output-reflection.org
+./.devenv/devenv-profile-exec ./languages/orgize/target/debug/orgize contract trace --org-contract-registry org/contracts/agent.sdd.v1.org --org-contract-registry org/contracts/agent.adversarial-review.v1.org --org-contract-registry org/contracts/agent.reflection-answers.v1.org docs/10-19-rfcs/10.06-agent-search-projection/10.06.14-search-evidence-output-reflection.org packages/proofs/receipts/search-evidence-output-reflection.org
+#+end_src
+
+Require 27 nonempty reflection answers, no failed contract assertions, native
+lint success, and nonzero executable checks. Record the evaluated results below
+only after the commands complete. Parser accuracy, retrieval recall, GQL/Ascent
+grammar conformance, and Agent performance remain outside the formal model.
+
+Evaluated results on 2026-09-06 after the native-node direct-Query and
+derivation-delta refinement: focused model and audit each exited 0, all guarded
+false-proposition diagnostics matched, and executable checks=64 passed=64.
+The added checks cover Rust, Python, TypeScript, Gerbil Scheme, Julia, Org,
+Markdown, JSON, and Nix selector mappings; jq projection without selector
+authority; SourceExcerpt non-authority and
+selector-failure non-downgrade;
+recursive and three-relation joined publication-path derivations; ordered
+query-frontier construction; fact versus frontier separation; and
+semi-naive delta completeness. The dependency reports use only Lean standard
+axioms or no axioms; no sorry or custom axiom was introduced. Native Org lint
+exited 0. The prior contract trace exited 0 with 61 passed assertions, zero
+failed, and 19 nonempty reflection answers; it was not rerun for this focused
+extension.
+
+The current focused rerun resolved the already-installed Lean toolchain as
+4.33.1 after its release check was unavailable. Model, guarded audit, and the
+64-check executable all exited 0. The additional polyglot checks cover direct
+Query mappings for Rust, Python, TypeScript, Gerbil Scheme, Julia, Org,
+Markdown, JSON with jq, and Nix, plus a heterogeneous relation join that fails
+when the Scheme validation edge is removed. This current result is not relabeled as the
+historical package-pinned 4.32.2 execution.
+
+The 2026-09-06 topology settlement calibration supersedes only the current E6
+check count, not the historical receipts above. The focused model, guarded audit,
+and executable exited 0 under the already-installed Lean 4.33.1 toolchain; the
+executable reported 81/81 checks passed. New guarded countermodels reject
+Agent-facing Ascent leakage, proposed summaries used as facts, partial coverage
+reported as missing, incorrect path depth, incomplete transitive proof closure,
+append-only deletion handling, and fuel exhaustion reported as a fixed point.
+Positive checks validate one MaterializationSet, single-GQL modality-preserving
+settlement, premise- and binding-bound natural language, seed-relative depth, removal-aware
+generation replacement, and a reached finite fixed point. The derivation model
+and audit are now imported by the default ASPProof library surface; aggregate
+workspace closure remains a separate gate.
+
+The acquisition model also proves that an unknown extension survives the
+fd/rg/Tantivy candidate union and that inserting a provider-derived extension
+prefilter changes the observable acquisition result. Provider routing therefore
+follows the heterogeneous union; it does not define that union.
+
+Implementation review caught an initial model error: including collector in
+evidence identity would count one occurrence from two collectors twice. The
+final model reuses the existing content-bound Witness and stores collector
+only as attribution. Regression checks preserve both attributions and one
+normalized support; changed content binding produces distinct support.
+
+The joint-context model does not prove graph adjacency. Certified coverage
+assumes a sound producer certificate. Representation invariance concerns
+support membership, not an implemented Python ranking function. Trace recovery
+is a certificate obligation rather than a new archive validator. Budget
+conservation proves a finite bound for one modeled episode, not Query utility.
+This focused gate does not supersede E5's historical aggregate failure or
+establish shared-schema, renderer, or live Search/Query acceptance.
+
+*** E7 Compact Read Surface Contract
+:PROPERTIES:
+:CUSTOM_ID: E7
+:EVIDENCE_KIND: executable-reference-contract
+:RESULT: pass-70-focused-checks
+:END:
+
+The [[file:../../../schemas/search-evidence-read-surface.v1.schema.json][shared schema]],
+[[file:../src/asp_proofs/search_evidence_read_surface.py][validator/renderer]],
+and [[file:../fixtures/search-evidence-read-surface-example.org][golden output]]
+implement the compact inline read-surface decision. The authority and source
+records in the example JSON are synthetic fixtures, not self-admitting Runtime
+receipts. The renderer does not run jq, read source, or dispatch Query.
+
+#+begin_src sh
+./.devenv/devenv-profile-exec uv run --project packages/proofs --frozen python -m pytest -o addopts= tests/unit/test_search_evidence_read_surface_schema.py packages/proofs/tests/test_search_evidence_read_surface.py -q
+#+end_src
+
+Evaluated result: exitCode=0, 70 passed. The initial RED was a missing reference
+module import (collection error), not a behavioral test failure. The final gate
+covers mutually exclusive surfaces, source/witness/binding drift, explicit null
+versus missing/empty extraction, graph endpoint rebinding, range ordering and
+bounds, cross-node interval union and cross-file sums, nonmutation on rejection,
+escaped delimiters, deterministic rendering, and the byte-for-byte golden.
+The addopts override isolates these tests because the proofs environment does
+not load the root harness plugin; Python policy was checked separately.
+
+The AGENTS-described assert_python_project_harness_clean import is absent in
+the current provider. Inspection found the exported replacement below. Its
+focused check of the three new Python files exited 0 without configuration or
+severity overrides; it is not a whole-project policy result.
+
+#+begin_src sh
+./.devenv/devenv-profile-exec uv run --project languages/asp-python --frozen python -c 'from asp_python import assert_python_lang_harness_clean; assert_python_lang_harness_clean(["packages/proofs/src/asp_proofs/search_evidence_read_surface.py", "packages/proofs/tests/test_search_evidence_read_surface.py", "tests/unit/test_search_evidence_read_surface_schema.py"])'
+#+end_src
+
+No token savings or live CLI integration are claimed. Native expression
+execution, authority authenticity, standard GQL parsing, and production
+Search-to-Query handoff remain integration obligations.
+
 ** Verdict
 
 *** Validation-Layer Reflection
@@ -194,16 +347,252 @@ The repository-local ASP candidate was subsequently run with the documented
 relative-path command: exitCode=0, [ok] orgize lint.
 
 #+begin_src sh
-./.devenv/devenv-profile-exec ./target/debug/asp org lint --org-contract-registry org/contracts/agent.sdd.v1.org --org-contract-registry org/contracts/agent.adversarial-review.v1.org --org-contract-registry org/contracts/agent.reflection-answers.v1.org docs/10-19-rfcs/10.06-agent-search-projection/10.06.14-search-evidence-output-reflection.org packages/proofs/receipts/search-evidence-output-reflection.org
+./.devenv/devenv-profile-exec ./target/debug/asp org lint --org-contract-registry org/contracts/agent.sdd.v1.org --org-contract-registry org/contracts/agent.adversarial-review.v1.org --org-contract-registry org/contracts/agent.reflection-answers.v1.org docs/10-19-rfcs/10.06-agent-search-projection/10.06.14-search-evidence-output-reflection.org docs/10-19-rfcs/10.06-agent-search-projection/10.06.15-search-query-playbook-contract.org docs/10-19-rfcs/10.06-agent-search-projection/10.06.16-project-topology-reasoning-library.org docs/10-19-rfcs/10.06-agent-search-projection/10.06.17-gql-ascent-search-reasoning.org packages/proofs/receipts/search-evidence-output-reflection.org
 #+end_src
 
 *** Design Disposition
 
-The user accepted the minimal native Org Query envelope and the Search/Query
-semantic boundaries recorded in the RFC's Accepted Output Boundary section.
-Evidence grouping, optional flag namespace, relation grammar, and coverage
-encoding remain open. This is design approval, not a new implementation gate.
-The research gate establishes abstract constraints, not product behavior. Advance to a
-shared-schema/rendering candidate only after the RFC's unresolved affiliation,
-scope, coverage, and replay questions are addressed. Then use real parser
-round-trip tests and controlled Agent-task evaluation to compare A/B/C.
+The design is now split by owner. RFC 10.06.14 retains only reflection and
+counterexamples; RFC 10.06.15 owns Search/Query grammar and materialization;
+RFC 10.06.16 owns the topology reasoning library; RFC 10.06.17 owns the typed
+topology-inference bridge and GQL settlement. Future fixes update the responsible RFC
+instead of extending one cumulative document.
+
+The accepted boundary is selector-first and language-neutral: every admitted
+native parser node, including document and structured-data nodes, carries its
+provider-minted exact Query selector. A typed jq program may refine a selected
+JSON node but cannot mint or repair selector authority. A format with no
+applicable native parser may expose a bounded =SourceExcerpt=; this is a
+separate evidence type and never selector-failure recovery. GQL carries admitted
+facts, settled derivations, direct Query mappings, frontier boundaries, and
+premise-bound semantic annotations. Ascent executes internally as versioned
+logical inference; its proof receipt is machine-readable but its source and fired rules
+are not a second default projection. One GQL graph is the successful
+=search playbook= output; no =--evidence-skeleton= switch remains.
+This is design and formal-model closure, not a production Search/Query gate.
+Shared-schema, renderer, provider round-trip, and controlled Agent-task evidence
+remain required before live acceptance.
+
+*** E8 Shared Settlement Schema And Semantic Admission
+:PROPERTIES:
+:CUSTOM_ID: E8
+:EVIDENCE_KIND: schema-and-semantic-validator
+:RESULT: pass-26-of-26
+:END:
+
+The independent
+[[file:../../../schemas/search-topology-settlement.v1.schema.json][settlement schema]]
+does not mutate the existing Search packet V1. Its valid fixture contains one
+GQL rendering, one MaterializationSet, a derived edge with topology-inference proof
+provenance, a premise-bound proposed natural-language annotation, partial
+coverage, a bounded fixed-point receipt, and exactly one terminal.
+
+#+begin_src sh
+./.devenv/devenv-profile-exec uv run --project packages/proofs --frozen pytest packages/proofs/tests/test_search_topology_settlement.py -q
+./.devenv/devenv-profile-exec uv run --frozen pytest tests/unit/test_search_topology_settlement_schema.py -q
+#+end_src
+
+The first semantic run was a real RED collection failure because
+=asp_proofs.search_topology_settlement= did not exist. After implementing the
+no-I/O reference validator, the semantic gate passed 11/11 and the JSON Schema
+shape gate passed 15/15. Negative cases cover dangling references, authority and
+modality drift, annotation binding drift, unresolved proof dependencies,
+unstable or unavailable Query selectors, derived-count mismatch, incomplete
+coverage reported as missing, multiple GQL blocks, Ascent leakage, and multiple
+terminals. These are source/schema gates, not provider or live Runtime closure.
+
+*** E9 Rust Topology Settlement Admission And Single-GQL Rendering
+:PROPERTIES:
+:CUSTOM_ID: E9
+:EVIDENCE_KIND: rust-admission-and-renderer
+:RESULT: pass-26-of-26
+:END:
+
+The Rust search-projection boundary now admits one request-bound projection of
+the reusable Project Topology. It checks schema/protocol identity, fixed-point
+state, semantic-annotation binding, edge modality/authority pairs, proof and
+coverage references, stable Query selector materialization, one GQL rendering,
+and exactly one terminal before rendering. Ascent remains an internal inference
+engine and is not named as the architecture authority or exposed in the output.
+
+#+begin_src sh
+./.devenv/devenv-profile-exec rtk cargo test -p agent-semantic-search-projection --test unit_test topology_settlement
+./.devenv/devenv-profile-exec rtk cargo test -p agent-semantic-search-projection --tests
+#+end_src
+
+The renderer test first failed to compile because =render_org_gql= did not
+exist. After implementation the focused topology settlement gate passed 6/6,
+and the full crate test gate passed 26/26. The emitted form contains one compact
+Org/GQL block grouped by source language, selector-local rank/depth/retrieval or
+jq projection, premise-bound semantic annotations, modality-preserving derived
+edges, coverage/frontier state, and one MaterializationSet. It emits no Ascent
+source or fired-rule table. This remains a shared Runtime-facing source gate;
+provider ingestion and live Search/Query handoff are not claimed.
+
+*** E10 Reusable Project Topology Library Shape
+:PROPERTIES:
+:CUSTOM_ID: E10
+:EVIDENCE_KIND: shared-topology-schema
+:RESULT: pass-10-of-10
+:END:
+
+The independent
+[[file:../../../schemas/project-topology-library.v1.schema.json][Project Topology library schema]]
+is the cross-consumer architecture boundary. Its polyglot fixture includes a
+Rust declaration skeleton, an Org document anchor, their typed relationship,
+and a premise-bound natural-language annotation. It declares Search, Query,
+code understanding, framework calibration, refactoring, and context recovery
+as consumers. It excludes request-local rank, hit ranges, read ranges, and
+retrieval scores; those belong only to a bound Search projection.
+
+#+begin_src sh
+./.devenv/devenv-profile-exec uv run --frozen pytest tests/unit/test_project_topology_library_schema.py -q
+#+end_src
+
+The shape gate passed 10/10. It also rejects partial generation publication,
+accepted annotations without admission receipts, derived edges without proof
+references, request-local retrieval data in durable nodes, and any terminal
+count other than one. The Search topology settlement now binds both the exact
+library digest and topology generation digest. This is shared contract closure,
+not yet persistent library publication or provider ingestion.
+
+The schema manager initially reported =classified=467 unclassified=1= because
+the reusable topology library had no family owner. Adding the dedicated
+=asp.schema-family.semantic-topology= family produced =classified=468
+unclassified=0= and =mixedFamilyRefs=0=. The repository-wide check still exits
+1 on pre-existing family-local extraction opportunities and cross-family
+decision-registry drift; those findings were not weakened or reclassified as a
+pass.
+
+*** E11 Rust Project Topology Admission And Joint Search Binding
+:PROPERTIES:
+:CUSTOM_ID: E11
+:EVIDENCE_KIND: rust-topology-admission
+:RESULT: pass-35-of-35
+:END:
+
+The Rust boundary now admits a complete reusable Project Topology generation
+before publication. It rejects incremental results whose library digest differs
+from a from-scratch rebuild, segment inventories that do not exactly cover
+active nodes and edges, active records listed as removed, dangling edges,
+semantic annotations bound to another semantic topology, modality bindings
+that do not match their structural, semantic, or inference authority, and a
+stable closure that omits or invents derived edges.
+
+Search settlement admission additionally compares the exact workspace, source
+generation, provider catalog, library, topology generation, structural
+topology, semantic topology, and inference-program identity tuple against the
+already admitted library. Cross-library replay fails with
+=topology-library-binding-mismatch= before GQL rendering or Query
+materialization.
+
+#+begin_src sh
+./.devenv/devenv-profile-exec rtk cargo test -p agent-semantic-search-projection --test unit_test project_topology_library
+./.devenv/devenv-profile-exec rtk cargo test -p agent-semantic-search-projection --test unit_test topology_settlement
+./.devenv/devenv-profile-exec rtk cargo test -p agent-semantic-search-projection --tests
+#+end_src
+
+The two focused gates passed 7/7 and 9/9. The complete crate passed 35/35.
+Python semantic admission remained 11/11 and the combined topology shape gates
+remained 24/24. Persistent topology publication, Runtime receipt wiring, and
+provider-native skeleton ingestion remain later integration owners.
+
+*** E12 Formal Admission Correction Before Rust Acceptance
+:PROPERTIES:
+:CUSTOM_ID: E12
+:EVIDENCE_KIND: lean-admission-correction
+:RESULT: pass-93-of-93-rust-acceptance-withheld
+:END:
+
+The earlier Rust results are implementation-candidate evidence, not authority
+for the contract. Formal review found that the prior abstraction did not fully
+bind a Search settlement to all Project Topology identities, did not require a
+separate receipt for accepted natural-language semantics, and did not model
+transitive deletion invalidation or a typed fixed-point terminal strongly
+enough. Rust acceptance is therefore withheld until the implementation is
+audited against the corrected RFC and formal model.
+
+The corrected model now requires exact equality of workspace, source
+generation, provider catalog, topology library, topology generation,
+structural topology, semantic topology, and inference-program identities. It
+preserves binding, witnesses, modality, and proof authority in settled GQL
+relations. It rejects accepted prose without an admission receipt, invalidates
+all derived descendants of a deleted premise, distinguishes budget exhaustion
+from a fixed point, and treats Query materialization as a unique, ordered,
+currently available set.
+
+#+begin_src sh
+./.devenv/devenv-profile-exec lake -d packages/proofs build ASPProof.SearchEvidenceDerivation ASPProof.Audit.SearchEvidenceDerivation
+./.devenv/devenv-profile-exec lake -d packages/proofs env lean --run packages/proofs/SearchEvidenceDerivationMain.lean
+./.devenv/devenv-profile-exec asp org lint --org-contract-registry org/contracts/agent.sdd.v1.org --org-contract-registry org/contracts/agent.adversarial-review.v1.org --org-contract-registry org/contracts/agent.reflection-answers.v1.org docs/10-19-rfcs/10.06-agent-search-projection/10.06.16-project-topology-reasoning-library.org docs/10-19-rfcs/10.06-agent-search-projection/10.06.17-gql-ascent-search-reasoning.org
+#+end_src
+
+The focused model and guarded audit compiled under the installed Lean 4.33.1
+toolchain. The executable reported 93/93 checks passed and native Org lint
+reported =[ok] orgize lint=. Five new guarded countermodels reject
+cross-generation topology replay, accepted prose without a receipt, retained
+transitive derived descendants after deletion, budget exhaustion mislabeled as
+fixed point, and duplicate Query materialization. No Rust gate is promoted by
+this evidence; the next step is a field-by-field implementation audit against
+these formal obligations.
+
+The default =lake -d packages/proofs build ASPProof= aggregate was also run and
+is not green. Its first import failure is the missing existing file
+=ASPProof/MultiAgentResidentNamespace.lean=. Existing
+=SearchQueryIncidentLifecycle= proofs also fail under Lean 4.33.1, and the
+existing =Audit.WorkspaceSearchPlaybookPlanner= refers to four unknown
+constants. None is in the Search/Topology files changed by this correction.
+The aggregate failure is preserved as an independent repository blocker and is
+not hidden by the focused 93/93 result.
+
+*** E13 Shared Admission And Rust Counterexample Closure
+:PROPERTIES:
+:CUSTOM_ID: E13
+:EVIDENCE_KIND: cross-layer-admission-closure
+:RESULT: pass-97-of-97-shared-validator-and-rust-focused-green
+:END:
+
+The corrected executable Lean model now reports 97/97 checks. The shared V1
+schemas expose =fromScratchRebuildReceipt=, =semanticAdmissionReceipts=,
+closure =proofDependencies=, =candidateRelationSetDigest=, and
+=nextRelationSetDigest=. The Python semantic admission gates pass 20/20 and the
+combined schema/shape gates pass 28/28.
+
+Rust implementation started only after those RFC, Lean, schema, and semantic
+validator obligations were fixed. A real RED demonstrated that a settlement
+could claim =fixed-point= while its candidate and next relation-set digests
+differed. The focused test now passes after admission compares both BLAKE3
+identities. Focused Project Topology tests also prove that embedded rebuild
+receipts cannot authorize themselves or reuse an admitted ID with altered
+content, accepted model semantics require an
+exact externally admitted annotation receipt, and deletion of a premise
+invalidates its retained derived descendant.
+
+These gates establish source-level admission parity only. They do not claim
+Runtime publication, provider ingestion, live Search/Query serving, or
+performance acceptance.
+
+*** E14 Exact Search-To-Query Materialization Handoff
+:PROPERTIES:
+:CUSTOM_ID: E14
+:EVIDENCE_KIND: query-playbook-handoff
+:RESULT: pass-101-of-101-python-24-rust-41
+:END:
+
+Review found that a bare Query selector list could not prove which admitted
+Search settlement recommended it. RFC 10.06.15 now requires an independent V1
+handoff packet rather than silently breaking the existing exact-query request.
+The handoff binds the exact eight-member Project Topology tuple, Search request
+identity, MaterializationSet digest, complete ordered selectors, and proof
+dependencies.
+
+Lean rejects selector subsets, cross-generation replay, and changed proof
+dependencies, and now reports 101/101 checks. The shared schema is
+=query-playbook-materialization-request.v1=. Its Python validator began with a
+real missing-module RED and the combined semantic suite now passes 24/24. The
+Rust public admission type began with an unresolved-import RED; both focused
+handoff tests pass and the complete search-projection crate passes 41/41.
+
+This receipt proves the source-level handoff contract. Runtime construction of
+the packet and provider-before-read enforcement remain separate integration
+owners.

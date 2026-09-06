@@ -1,0 +1,90 @@
+schemaId = "agent.semantic-protocols.provider-release-catalog"
+schemaVersion = "1"
+
+[releases.rust]
+languageId = "rust"
+providerId = "asp-rust"
+binary = "asp-rust"
+repo = "tao3k/rust-lang-project-harness"
+version = "v0.1.2"
+downloadBaseUrl = "https://github.com/tao3k/rust-lang-project-harness/releases/download/v0.1.2"
+archivePrefix = "rs-harness"
+archiveBinary = "rs-harness"
+supportedTargets = [
+  "x86_64-unknown-linux-gnu",
+  "aarch64-apple-darwin",
+  "x86_64-pc-windows-msvc",
+]
+[releases.rust.sha256ByTarget]
+"x86_64-unknown-linux-gnu" = "25e598271fa370d1e113a25aee3c38eb5f854c698865e5d58d4dbba5ee1e8ec3"
+"aarch64-apple-darwin" = "773aee0e81e149b69b64f7037a2fe88a2150788e973336c854f54311fc7c7572"
+"x86_64-pc-windows-msvc" = "db86697bf6ecb49520d2d1a39723b9eb5757e39149dca6c2cdb7e25e80d7a92c"
+
+[releases.typescript]
+languageId = "typescript"
+providerId = "asp-typescript"
+binary = "asp-typescript"
+repo = "tao3k/asp-typescript"
+version = "v0.1.0"
+downloadBaseUrl = "https://github.com/tao3k/asp-typescript/releases/download/v0.1.0"
+archivePrefix = "ts-harness"
+archiveBinary = "ts-harness"
+supportedTargets = [
+  "x86_64-unknown-linux-gnu",
+  "aarch64-apple-darwin",
+]
+[releases.typescript.sha256ByTarget]
+"x86_64-unknown-linux-gnu" = "a943b7a36ac2db921fc89dca271606562f53b9a6bd3db6a76069288ec156078c"
+"aarch64-apple-darwin" = "f6d9025122ee112348645ae617393620d4443550fc41648148954165fd223c57"
+
+[releases.python]
+languageId = "python"
+providerId = "asp-python"
+binary = "asp-python"
+repo = "tao3k/asp-python"
+version = "v0.1.0"
+downloadBaseUrl = "https://github.com/tao3k/asp-python/releases/download/v0.1.0"
+archivePrefix = "py-harness"
+archiveBinary = "py-harness"
+supportedTargets = [
+  "x86_64-unknown-linux-gnu",
+  "aarch64-apple-darwin",
+]
+[releases.python.sha256ByTarget]
+"x86_64-unknown-linux-gnu" = "05eb261114c1b4154c131f2ea96e251d78c6d60b45550fc395dc5d2504225e6d"
+"aarch64-apple-darwin" = "144888a0796563d1f4f8a9c40339ed76e4602f226a6f09a305d16633b8df0678"
+
+[releases.julia]
+languageId = "julia"
+providerId = "asp-julia"
+binary = "asp-julia"
+repo = "JuliaCN/AspJulia.jl"
+version = "v0.1.0"
+archivePrefix = "asp-julia-harness"
+archiveBinary = "asp-julia-harness"
+downloadBaseUrl = "https://github.com/JuliaCN/AspJulia.jl/releases/download/v0.1.0"
+supportedTargets = [
+  "x86_64-unknown-linux-gnu",
+  "aarch64-apple-darwin",
+]
+[releases.julia.sha256ByTarget]
+"x86_64-unknown-linux-gnu" = "437683e44c291b2a24027cd7b5c5526f15af35f551c89c24cb2f0da00fd9f6b8"
+"aarch64-apple-darwin" = "0f48954769dc3f0cb6c7d70e0d5c4f7d23dfdaea37d4f696df19d07c26e72549"
+
+[releases.gerbil-scheme]
+languageId = "gerbil-scheme"
+providerId = "asp-gerbil-scheme"
+binary = "asp-gerbil-scheme"
+repo = "tao3k/asp-gerbil-scheme"
+version = "v0.1.0"
+downloadBaseUrl = "https://github.com/tao3k/asp-gerbil-scheme/releases/download/v0.1.0"
+archivePrefix = "gerbil-scheme-harness"
+archiveBinary = "gerbil-scheme-harness"
+requireNativeBinary = true
+supportedTargets = [
+  "x86_64-unknown-linux-gnu",
+  "aarch64-apple-darwin",
+]
+[releases.gerbil-scheme.sha256ByTarget]
+"x86_64-unknown-linux-gnu" = "8bc123e6498062aac18cb0914f96ca8ed603353e9328d976046a1bb05cff597b"
+"aarch64-apple-darwin" = "741e4c3bdf6faab3075adfbe57120d84a308cb4fd3679b000424557f0640a4bf"

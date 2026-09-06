@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 //! Read-only acceptance authority for enabling the Codex Hook.
 
 use std::path::Path;
@@ -96,10 +100,12 @@ async fn accept(project_root: &Path) -> Result<HookEnablementAcceptanceReceipt, 
     admit_global_plugin_config(project_root).await?;
 
     let runtime_state = agent_semantic_runtime::project_runtime_state(project_root)?;
-    let runtime_root = runtime_state.protocol_home.join("runtime");
-    let public = runtime_root.join("bin/asp");
-    let active_slot = runtime_root.join("resident/active/asp");
-    let healthy_slot = runtime_root.join("resident/healthy/asp");
+    let runtime_layout =
+        agent_semantic_artifacts::StateHomeLayout::new(&runtime_state.protocol_home)
+            .runtime_state();
+    let public = runtime_layout.bin().join("asp");
+    let active_slot = runtime_layout.artifacts().active_slot().join("asp");
+    let healthy_slot = runtime_layout.artifacts().healthy_slot().join("asp");
     require_symlink_target(&public, &active_slot, "public ASP alias").await?;
     let active = canonical_executable(&active_slot, "active ASP artifact").await?;
     let healthy = canonical_executable(&healthy_slot, "healthy ASP artifact").await?;
@@ -108,7 +114,7 @@ async fn accept(project_root: &Path) -> Result<HookEnablementAcceptanceReceipt, 
     let mut protected = vec![active_digest.clone(), healthy_digest.clone()];
     protected.sort();
     protected.dedup();
-    admit_retention_receipt(&runtime_root, &protected).await?;
+    admit_retention_receipt(runtime_layout.root(), &protected).await?;
 
     let policy_decision_max_cpu_micros =
         policy_decision_acceptance(&active, project_root, &runtime_state.protocol_home).await?;

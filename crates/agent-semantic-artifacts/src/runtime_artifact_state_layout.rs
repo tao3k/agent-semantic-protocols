@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 //! Canonical physical layout for Runtime artifact content and mutable publication state.
 //!
 //! Every path that can select, stage, activate, or fence Runtime executable content is
@@ -17,23 +21,31 @@ impl RuntimeArtifactStateLayout {
         Self { root }
     }
 
+    pub(crate) fn from_artifact_root(root: impl AsRef<Path>) -> Self {
+        Self {
+            root: root.as_ref().to_path_buf(),
+        }
+    }
+
     pub fn root(&self) -> &Path {
         &self.root
     }
 
-    pub fn content_store(&self) -> PathBuf {
-        self.root.join("blake3-256")
+    /// Immutable Runtime execution generations keyed by the bundle digest.
+    ///
+    /// Member content digests are leaves of each generation manifest. They do
+    /// not own a second persistent CAS or serving selector.
+    pub fn generation_store(&self) -> PathBuf {
+        self.root.join("generations")
     }
 
-    /// Content-addressed provider artifacts share the Runtime artifact
-    /// authority. Provider identity is a namespace inside the artifact store,
-    /// never a sibling Runtime root with independent active/healthy pointers.
-    pub fn provider_content_store(&self) -> PathBuf {
-        self.root.join("providers")
+    /// Transaction-local inputs that are not serving authorities.
+    pub fn staging(&self) -> PathBuf {
+        self.root.join("staging")
     }
 
-    pub fn bundle_store(&self) -> PathBuf {
-        self.root.join("bundles")
+    pub fn provider_staging(&self) -> PathBuf {
+        self.staging().join("providers")
     }
 
     pub fn active_slot(&self) -> PathBuf {

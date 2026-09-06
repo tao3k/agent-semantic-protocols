@@ -24,28 +24,19 @@ fn runtime_state_materializes_state_core_layout() {
     let resolved =
         crate::state_core::ResolvedState::resolve_with_state_home(&package_root, &state_home)
             .expect("resolved state layout");
+    let workspace = resolved.workspace_state_paths().expect("workspace paths");
 
     assert_eq!(resolved.repo.git_toplevel.as_deref(), Some(root.as_path()));
     assert_eq!(state.protocol_home, state_home);
-    assert_eq!(state.hook_cache_dir, resolved.paths.hooks_dir.join("cache"));
-    assert_eq!(state.hook_state_dir, resolved.paths.hooks_dir.join("state"));
-    assert!(state_home.join("projects/by-id").exists());
+    assert_eq!(state.hook_cache_dir, workspace.hook_root().join("cache"));
+    assert_eq!(state.hook_state_dir, workspace.hook_root().join("state"));
+    assert!(!state_home.join("projects").exists());
     assert_eq!(
         state.activation_path,
         state.hook_state_dir.join("activation.json")
     );
-    assert!(
-        state
-            .client_cache_dir
-            .starts_with(state_home.join("projects/by-id"))
-    );
-    assert!(state.client_cache_dir.ends_with("live/client"));
-    assert!(
-        state
-            .artifacts_dir
-            .starts_with(state_home.join("projects/by-id"))
-    );
-    assert!(state.artifacts_dir.ends_with("artifacts"));
+    assert_eq!(state.client_cache_dir, workspace.root);
+    assert_eq!(state.artifacts_dir, workspace.artifacts);
     assert_eq!(state.runtime_home, state_home.join("runtime"));
     let active_bundle =
         agent_semantic_artifacts::RuntimeArtifactStateLayout::new(&state_home).active_slot();
@@ -114,6 +105,37 @@ fn project_state_path_resolution_never_materializes_project_directories() {
 }
 
 #[test]
+fn canonical_workspace_materialization_never_creates_a_project_id_tree() {
+    let root = temp_root("canonical-workspace-state");
+    let state_home = temp_root("canonical-workspace-state-home");
+    init_git_repository(&root);
+    let resolved = crate::state_core::ResolvedState::resolve_with_state_home(&root, &state_home)
+        .expect("resolve canonical workspace state");
+
+    let workspace = resolved
+        .ensure_workspace_state_layout()
+        .expect("materialize canonical workspace state");
+    let binding = resolved.project_binding().expect("resolve project binding");
+    let digest = binding
+        .workspace
+        .digest
+        .as_str()
+        .strip_prefix("blake3-256:")
+        .expect("canonical workspace digest");
+
+    assert_eq!(workspace.root, state_home.join("workspaces").join(digest));
+    assert!(workspace.binding_path().is_file());
+    assert!(!state_home.join("projects").exists());
+    assert!(
+        !workspace.facts.exists(),
+        "layout must not eagerly create the DB"
+    );
+
+    let _ = fs::remove_dir_all(root);
+    let _ = fs::remove_dir_all(state_home);
+}
+
+#[test]
 fn ordinary_non_git_roots_are_ephemeral_and_never_materialized() {
     let root = temp_root("state-non-git-ephemeral");
     let state_home = temp_root("state-non-git-ephemeral-home");
@@ -162,7 +184,7 @@ fn filesystem_git_marker_without_gix_repository_is_not_admitted() {
         crate::state_core::RepoPersistence::EphemeralPath
     );
     let error = resolved
-        .ensure_minimal_layout()
+        .ensure_workspace_state_layout()
         .expect_err("filesystem marker must not bypass Gix admission");
     assert!(error.contains("refusing to materialize ephemeral or standalone temporary checkout"));
     assert!(!state_home.join("projects/by-id").exists());
@@ -189,7 +211,7 @@ fn standalone_temporary_git_repository_never_materializes_a_project_id() {
         crate::state_core::RepoPersistence::EphemeralPath
     );
     let error = resolved
-        .ensure_minimal_layout()
+        .ensure_workspace_state_layout()
         .expect_err("standalone temporary Git fixture must not materialize");
     assert!(error.contains("standalone temporary checkout"));
     assert!(
@@ -202,7 +224,7 @@ fn standalone_temporary_git_repository_never_materializes_a_project_id() {
 }
 
 #[test]
-fn repeated_writers_in_one_checkout_materialize_one_repository_and_workspace() {
+fn repeated_writers_in_one_checkout_materialize_one_content_addressed_workspace() {
     let root = temp_root("state-writer-idempotence");
     let state_home = temp_root("state-writer-idempotence-home");
     let first_package = root.join("crates/first");
@@ -225,45 +247,26 @@ fn repeated_writers_in_one_checkout_materialize_one_repository_and_workspace() {
         assert_eq!(repeated.artifacts_dir, first.artifacts_dir);
     }
 
-    let projects_by_id = state_home.join("projects/by-id");
-    let repository_dirs = fs::read_dir(&projects_by_id)
-        .expect("read repository directories")
+    let workspaces = state_home.join("workspaces");
+    let workspace_dirs = fs::read_dir(&workspaces)
+        .expect("read workspace directories")
         .map(|entry| entry.expect("read repository directory").path())
         .filter(|path| path.is_dir())
         .collect::<Vec<_>>();
     assert_eq!(
-        repository_dirs.len(),
+        workspace_dirs.len(),
         1,
-        "one checkout must materialize exactly one repository directory"
+        "one checkout must materialize exactly one workspace digest directory"
     );
-
-    let workspace_count = fs::read_dir(repository_dirs[0].join("workspaces"))
-        .expect("read workspace directories")
-        .filter_map(Result::ok)
-        .filter(|entry| entry.path().is_dir())
-        .count();
-    assert_eq!(
-        workspace_count, 1,
-        "subdirectories in one checkout must share one workspace directory"
-    );
-    for repository_dir in &repository_dirs {
-        assert!(
-            repository_dir.join("project.json").is_file(),
-            "every visible repository directory must have committed identity metadata"
-        );
-        for workspace in
-            fs::read_dir(repository_dir.join("workspaces")).expect("read committed workspaces")
-        {
-            let workspace = workspace.expect("read committed workspace").path();
-            if workspace.is_dir() {
-                assert!(workspace.join("workspace.json").is_file());
-                assert!(workspace.join("live/client/manifest.json").is_file());
-            }
-        }
-    }
     assert!(
-        fs::read_dir(&projects_by_id)
-            .expect("read registry staging entries")
+        workspace_dirs[0]
+            .join("observations/project-binding.json")
+            .is_file()
+    );
+    assert!(!state_home.join("projects").exists());
+    assert!(
+        fs::read_dir(&workspaces)
+            .expect("read workspace entries")
             .filter_map(Result::ok)
             .all(|entry| !entry.file_name().to_string_lossy().contains(".staging-")),
         "successful materialization must leave no staging directory"
@@ -273,7 +276,7 @@ fn repeated_writers_in_one_checkout_materialize_one_repository_and_workspace() {
 }
 
 #[test]
-fn concurrent_writers_publish_one_complete_project_tree() {
+fn concurrent_writers_publish_one_complete_workspace_envelope() {
     let root = temp_root("state-concurrent-writer");
     let state_home = temp_root("state-concurrent-writer-home");
     init_git_repository(&root);
@@ -289,7 +292,7 @@ fn concurrent_writers_publish_one_complete_project_tree() {
         let barrier = Arc::clone(&barrier);
         writers.push(std::thread::spawn(move || {
             barrier.wait();
-            resolved.ensure_minimal_layout()
+            resolved.ensure_workspace_state_layout()
         }));
     }
     for writer in writers {
@@ -299,19 +302,25 @@ fn concurrent_writers_publish_one_complete_project_tree() {
             .expect("concurrent State Core materialization");
     }
 
-    assert!(resolved.paths.project_json.is_file());
-    assert!(resolved.paths.workspace_json.is_file());
-    assert!(resolved.paths.client_manifest_json.is_file());
-    let workspaces_dir = resolved.paths.project_dir.join("workspaces");
-    for directory in [&resolved.paths.projects_by_id_dir, &workspaces_dir] {
-        assert!(
-            fs::read_dir(directory)
-                .expect("read State Core commit parent")
-                .filter_map(Result::ok)
-                .all(|entry| !entry.file_name().to_string_lossy().contains(".staging-")),
-            "concurrent commit must leave no staging directory"
-        );
-    }
+    let workspace = resolved
+        .workspace_state_paths()
+        .expect("resolve canonical workspace paths");
+    assert!(workspace.binding_path().is_file());
+    assert!(workspace.artifacts.is_dir());
+    assert!(workspace.observations.is_dir());
+    assert!(
+        fs::read_dir(
+            workspace
+                .root
+                .parent()
+                .expect("workspace namespace has parent")
+        )
+        .expect("read workspace commit parent")
+        .filter_map(Result::ok)
+        .all(|entry| !entry.file_name().to_string_lossy().contains(".staging-")),
+        "concurrent commit must leave no staging directory"
+    );
+    assert!(!state_home.join("projects/by-id").exists());
 
     let _ = fs::remove_dir_all(root);
     let _ = fs::remove_dir_all(state_home);
@@ -331,12 +340,13 @@ fn ensure_helpers_create_only_the_requested_runtime_dir() {
         crate::state_core::ResolvedState::resolve_with_state_home(&package_root, &state_home)
             .expect("resolved state layout");
     resolved
-        .ensure_minimal_layout()
+        .ensure_workspace_state_layout()
         .expect("materialize identity metadata");
     let hook_dir = ensure_dir(paths.hook_cache_dir).expect("hook cache dir");
+    let workspace = resolved.workspace_state_paths().expect("workspace paths");
 
     assert!(hook_dir.is_dir());
-    assert_eq!(hook_dir, resolved.paths.hooks_dir.join("cache"));
+    assert_eq!(hook_dir, workspace.hook_root().join("cache"));
     assert!(
         !hook_dir
             .parent()
@@ -356,18 +366,13 @@ fn ensure_helpers_create_only_the_requested_runtime_dir() {
         hook_dir.parent().expect("hook parent").join("state")
     );
     assert!(client_dir.is_dir());
-    assert!(client_dir.starts_with(state_home.join("projects/by-id")));
-    assert!(client_dir.ends_with("live/client"));
-    let workspace_dir = client_dir
-        .parent()
-        .and_then(|live_dir| live_dir.parent())
-        .expect("workspace dir");
-    let project_dir = workspace_dir
-        .parent()
-        .and_then(|workspaces_dir| workspaces_dir.parent())
-        .expect("project dir");
-    assert!(project_dir.join("project.json").is_file());
-    assert!(workspace_dir.join("workspace.json").is_file());
+    assert!(client_dir.starts_with(state_home.join("workspaces")));
+    assert!(
+        client_dir
+            .join("observations/project-binding.json")
+            .is_file()
+    );
+    assert!(!state_home.join("projects").exists());
     assert!(runtime_home.is_dir());
     assert!(provider_bin_dir.is_dir());
     assert!(provider_lock_dir.is_dir());

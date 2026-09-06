@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 id = "asp-query-wrapper-render-hint-projection-cold-functional-path"
 title = "Query wrapper render hint projection is search-owned"
 policy_ids = ["RUST-AGENT-ASP-FUNCTIONAL-SUBCOMMAND-QUERY-WRAPPER-RENDER-HINT-PROJECTION-COLD-001"]

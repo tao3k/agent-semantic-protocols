@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 use serde::{Deserialize, Serialize};
 
 #[path = "canonical_materialization_observability.rs"]
@@ -27,7 +31,7 @@ pub struct WorkspaceCanonicalMaterialization {
     pub import_digest: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub runtime_provider_execution_binding:
-        Option<agent_semantic_artifacts::installed_provider_binding::RuntimeProviderExecutionBinding>,
+        Option<agent_semantic_artifacts::runtime_provider_execution_binding::RuntimeProviderExecutionBinding>,
     pub selector_set_digest: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub content_search_generation: Option<agent_semantic_search::ContentSearchGenerationReceipt>,
@@ -266,7 +270,7 @@ impl WorkspaceCanonicalMaterialization {
             workspace_generation: &'a agent_semantic_content_identity::workspace_generation_evidence::WorkspaceGenerationEvidenceV1,
             provider_schema_digest: &'a str,
             import_digest: &'a str,
-            runtime_provider_execution_binding: &'a Option<agent_semantic_artifacts::installed_provider_binding::RuntimeProviderExecutionBinding>,
+            runtime_provider_execution_binding: &'a Option<agent_semantic_artifacts::runtime_provider_execution_binding::RuntimeProviderExecutionBinding>,
             selector_set_digest: &'a str,
             workspace_source_scope_generation: &'a str,
             project_resolutions: &'a [agent_semantic_content_identity::AdmittedProjectResolution],
@@ -718,7 +722,7 @@ impl WorkspaceCanonicalMaterialization {
 
     pub fn bind_runtime_provider_execution(
         &mut self,
-        binding: agent_semantic_artifacts::installed_provider_binding::RuntimeProviderExecutionBinding,
+        binding: agent_semantic_artifacts::runtime_provider_execution_binding::RuntimeProviderExecutionBinding,
     ) -> Result<(), String> {
         binding.validate()?;
         if binding.source_snapshot_digest != self.source_snapshot.root_integrity_reference()?

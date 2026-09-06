@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 use clap::{Arg, ArgAction, Command};
 
 const ROOT_COMMANDS: &[(&str, &str)] = &[
@@ -5,7 +9,6 @@ const ROOT_COMMANDS: &[(&str, &str)] = &[
     ("tools", "Inspect and run ASP support tools"),
     ("wrap", "Run a command through the ASP client runtime"),
     ("cache", "Inspect and maintain ASP caches"),
-    ("clean", "Apply typed State Home retention"),
     ("cloud", "Inspect optional cloud state"),
     ("hook", "Run and inspect host hook integration"),
     ("config", "Manage ASP-owned global configuration"),
@@ -133,7 +136,7 @@ fn cache_command() -> Command {
             .value_name("PATH")
             .help("Select the workspace"),
     )
-    .subcommand(agent_semantic_client::project_registry_gc_clap_command())
+    .subcommand(agent_semantic_client::cache_clean_clap_command())
 }
 
 fn cloud_command() -> Command {

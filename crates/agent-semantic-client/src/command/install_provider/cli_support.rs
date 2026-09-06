@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 /// Return whether the install invocation requested help.
 pub(super) fn has_help_flag(args: &[String]) -> bool {
     args.iter()

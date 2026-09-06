@@ -45,4 +45,13 @@ theorem payload_digest_mismatch_rejected
   intro accepted
   exact mismatch accepted
 
+theorem root_digest_does_not_replace_generation_binding
+    (left right : RuntimeAuthority)
+    (_sameRoot : left.root = right.root)
+    (differentGeneration : left.generation ≠ right.generation) :
+    left ≠ right := by
+  intro sameAuthority
+  apply differentGeneration
+  exact congrArg RuntimeAuthority.generation sameAuthority
+
 end ASPProof.SemanticProjectionRuntimeWrapping

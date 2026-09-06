@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: Contributors to Agent Semantic Protocols
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 """Private launcher for the ASP Server-owned Python Graphs gRPC service.
 
 This module has one admitted operation, ``serve``.  It does not rank packets,

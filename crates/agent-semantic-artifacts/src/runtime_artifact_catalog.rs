@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 //! Immutable runtime artifact catalog owned by the Artifacts package.
 
 use std::io::ErrorKind;
@@ -108,9 +112,8 @@ impl QualifiedRuntimeArtifactSource {
             )
         })?;
         let staging_root = crate::RuntimeArtifactStateLayout::new(state_home)
-            .provider_content_store()
-            .join(artifact_kind)
-            .join("artifacts");
+            .provider_staging()
+            .join(artifact_kind);
         if !source_identity.starts_with(&staging_root) {
             return Err(format!(
                 "qualified Runtime artifact source escapes provider staging: source={} stagingRoot={}",
@@ -232,8 +235,8 @@ impl RuntimeArtifactReference {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RuntimeArtifactCatalog {
     mode: RuntimeArtifactMode,
-    installed_provider_binding_generation: Option<String>,
-    installed_provider_targets: Vec<(String, String)>,
+    runtime_bundle_digest: Option<String>,
+    active_provider_targets: Vec<(String, String)>,
 }
 
 impl RuntimeArtifactCatalog {
@@ -251,19 +254,18 @@ impl RuntimeArtifactCatalog {
                 if reference.checkout_root.as_deref() != Some(root.as_path()) {
                     return Err("development artifact checkout root drift".to_owned());
                 }
-                let stable_slots = [runtime_root.join("bin"), runtime_root.join("profiles")];
-                if !stable_slots
-                    .iter()
-                    .any(|stable_root| reference.executable_path.starts_with(stable_root))
-                {
+                let stable_root = runtime_root.join("bin");
+                if !reference.executable_path.starts_with(&stable_root) {
                     return Err(format!(
                         "development artifact executable is outside stable runtime slots: {}",
                         reference.executable_path.display()
                     ));
                 }
-                let content_store = runtime_root.join("artifacts").join("blake3-256");
-                if reference.executable_path.starts_with(&content_store) {
-                    return Err("content-store path cannot be an active executable".to_owned());
+                if reference
+                    .executable_path
+                    .starts_with(runtime_root.join("artifacts"))
+                {
+                    return Err("generation-store path cannot be a stable executable".to_owned());
                 }
             }
             RuntimeArtifactMode::Release => {
@@ -273,19 +275,18 @@ impl RuntimeArtifactCatalog {
                 if reference.checkout_root.is_some() {
                     return Err("release artifact must not retain a checkout root".to_owned());
                 }
-                let stable_slots = [runtime_root.join("bin"), runtime_root.join("profiles")];
-                if !stable_slots
-                    .iter()
-                    .any(|stable_root| reference.executable_path.starts_with(stable_root))
-                {
+                let stable_root = runtime_root.join("bin");
+                if !reference.executable_path.starts_with(&stable_root) {
                     return Err(format!(
                         "release artifact executable is outside stable runtime slots: {}",
                         reference.executable_path.display()
                     ));
                 }
-                let content_store = runtime_root.join("artifacts").join("blake3-256");
-                if reference.executable_path.starts_with(&content_store) {
-                    return Err("content-store path cannot be an active executable".to_owned());
+                if reference
+                    .executable_path
+                    .starts_with(runtime_root.join("artifacts"))
+                {
+                    return Err("generation-store path cannot be a stable executable".to_owned());
                 }
             }
         }
@@ -297,29 +298,26 @@ impl RuntimeArtifactCatalog {
     pub const fn new(mode: RuntimeArtifactMode) -> Self {
         Self {
             mode,
-            installed_provider_binding_generation: None,
-            installed_provider_targets: Vec::new(),
+            runtime_bundle_digest: None,
+            active_provider_targets: Vec::new(),
         }
     }
 
-    /// Bind the verified installed-provider closure consumed by this daemon.
+    /// Bind the verified active Runtime bundle consumed by this daemon.
     #[must_use]
-    pub fn with_installed_provider_binding_generation(
-        mut self,
-        generation: impl Into<String>,
-    ) -> Self {
-        self.installed_provider_binding_generation = Some(generation.into());
+    pub fn with_runtime_bundle_digest(mut self, generation: impl Into<String>) -> Self {
+        self.runtime_bundle_digest = Some(generation.into());
         self
     }
 
     #[must_use]
-    pub fn installed_provider_binding_generation(&self) -> Option<&str> {
-        self.installed_provider_binding_generation.as_deref()
+    pub fn runtime_bundle_digest(&self) -> Option<&str> {
+        self.runtime_bundle_digest.as_deref()
     }
 
     #[must_use]
-    pub fn installed_provider_targets(&self) -> &[(String, String)] {
-        &self.installed_provider_targets
+    pub fn active_provider_targets(&self) -> &[(String, String)] {
+        &self.active_provider_targets
     }
 
     /// Return the immutable mode captured for this catalog generation.
@@ -348,8 +346,8 @@ impl RuntimeArtifactCatalog {
             hasher.update(b"\0");
             hasher.update(root.to_string_lossy().as_bytes());
         }
-        if let Some(generation) = &self.installed_provider_binding_generation {
-            hasher.update(b"\0installed-provider-binding\0");
+        if let Some(generation) = &self.runtime_bundle_digest {
+            hasher.update(b"\0runtime-bundle\0");
             hasher.update(generation.as_bytes());
         }
         format!("blake3-256:{}", hasher.finalize().to_hex())
@@ -459,21 +457,21 @@ pub async fn load_runtime_artifact_catalog(
         }
         RuntimeArtifactMode::Release => RuntimeArtifactMode::Release,
     };
-    let installed_binding =
-        crate::installed_provider_binding::load_installed_provider_binding(state_home)?;
-    let catalog = RuntimeArtifactCatalog::new(mode);
-    Ok(match installed_binding {
-        Some(binding) => {
-            let targets = binding
-                .providers
-                .iter()
-                .map(|provider| (provider.language_id.clone(), provider.provider_id.clone()))
-                .collect();
-            let mut catalog =
-                catalog.with_installed_provider_binding_generation(binding.generation);
-            catalog.installed_provider_targets = targets;
-            catalog
-        }
-        None => catalog,
-    })
+    let mut catalog = RuntimeArtifactCatalog::new(mode);
+    let providers =
+        match crate::runtime_active_provider_set::load_active_runtime_provider_set_async(state_home)
+            .await
+        {
+            Ok(providers) => providers,
+            Err(error) if error.contains("runtime-active-generation-unavailable") => {
+                return Ok(catalog);
+            }
+            Err(error) => return Err(error),
+        };
+    catalog.active_provider_targets = providers
+        .providers
+        .into_iter()
+        .map(|provider| (provider.language_id, provider.provider_id))
+        .collect();
+    Ok(catalog.with_runtime_bundle_digest(providers.runtime_bundle_digest))
 }

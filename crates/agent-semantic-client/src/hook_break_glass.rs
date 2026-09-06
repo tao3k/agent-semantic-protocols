@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 //! One-shot, state-bound Hook break-glass capabilities.
 
 use serde::Deserialize;
@@ -108,7 +112,12 @@ fn issue_hook_break_glass_capability_at(
 
 fn break_glass_root() -> Result<PathBuf, String> {
     agent_semantic_runtime::resolve_state_home()
-        .map(|state_home| state_home.join("hook-break-glass"))
+        .map(|state_home| {
+            agent_semantic_artifacts::StateHomeLayout::new(state_home)
+                .runtime_state()
+                .serving()
+                .hook_break_glass_mailbox()
+        })
         .map_err(|error| format!("resolve break-glass State Home: {error}"))
 }
 

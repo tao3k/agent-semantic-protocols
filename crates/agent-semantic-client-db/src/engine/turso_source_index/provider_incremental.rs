@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 //! Provider-scoped incremental reasoning-search state.
 //!
 //! This state is deliberately independent from the immutable full source-index

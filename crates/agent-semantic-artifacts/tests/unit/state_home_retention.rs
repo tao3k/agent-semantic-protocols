@@ -1,6 +1,11 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 //! State Home retention tests.
 
 use crate::CleanupDisposition;
+use crate::CleanupSelection;
 use crate::RetainedObject;
 use crate::RetentionLease;
 use crate::RetentionObjectKind;
@@ -58,4 +63,32 @@ fn planner_is_deterministic_and_rejects_identity_aliasing() {
             .plan(vec![object("same", 0, 1), object("same", 0, 2)], &[])
             .is_err()
     );
+}
+
+#[test]
+fn exact_cleanup_selection_is_receipted_and_missing_targets_fail_closed() {
+    let planner = RetentionPlanner::new(100, 10);
+    let selection = CleanupSelection::ObjectId {
+        object_id: "workspace-cache:one".to_string(),
+    };
+    let plan = planner
+        .plan_selected(
+            vec![object("workspace-cache:one", 0, 7)],
+            &[],
+            selection.clone(),
+        )
+        .expect("plan one exact retained object");
+    assert_eq!(plan.selection, selection);
+    assert_eq!(plan.retired_count, 1);
+
+    let error = planner
+        .plan_selected(
+            Vec::new(),
+            &[],
+            CleanupSelection::ObjectId {
+                object_id: "workspace-cache:missing".to_string(),
+            },
+        )
+        .expect_err("an exact cleanup target must not silently match nothing");
+    assert!(error.contains("state-home-cleanup-selection-no-match"));
 }

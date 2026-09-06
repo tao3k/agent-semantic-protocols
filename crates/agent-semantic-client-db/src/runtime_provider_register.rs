@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 use agent_semantic_provider_protocol::{
     CompiledProviderRoute, PROVIDER_REGISTER_RESPONSE_SCHEMA_ID, PROVIDER_REGISTER_SCHEMA_VERSION,
     ProviderRegisterOperation, ProviderRegisterRequest, ProviderRegisterResponse,
@@ -80,7 +84,7 @@ impl RuntimeProviderRegister {
     }
 
     /// Build a register whose executable provider set is constrained by the
-    /// verified installed-provider binding captured for this Runtime daemon.
+    /// verified active Runtime bundle captured for this Runtime daemon.
     pub async fn from_verified_seed_with_store(
         identity_constraints: Vec<ProviderRegistrationDocument>,
         store_path: PathBuf,
@@ -91,7 +95,7 @@ impl RuntimeProviderRegister {
             .map(|(language_id, provider_id)| (provider_id.clone(), language_id.clone()))
             .collect::<BTreeMap<_, _>>();
         if admitted.len() != admitted_targets.len() {
-            return Err("installed provider binding targets must be unique".to_owned());
+            return Err("active Runtime provider targets must be unique".to_owned());
         }
         let filtered = identity_constraints
             .into_iter()
@@ -102,7 +106,7 @@ impl RuntimeProviderRegister {
             })
             .collect::<Vec<_>>();
         if filtered.len() != admitted.len() {
-            return Err("installed provider binding target is absent from binary seed".to_owned());
+            return Err("active Runtime provider target is absent from capability seed".to_owned());
         }
         Self::from_seed_with_store_admission(
             filtered,
@@ -261,7 +265,7 @@ impl RuntimeProviderRegister {
         })?;
         if matches.next().is_some() {
             return Err(format!(
-                "state=route-ambiguous reasonKind=multiple-installed-provider-routes languageId={language_id} operation={operation}"
+                "state=route-ambiguous reasonKind=multiple-active-provider-routes languageId={language_id} operation={operation}"
             ));
         }
         Ok(resolved)
@@ -333,7 +337,7 @@ impl RuntimeProviderRegister {
                     return Ok(rejected_response(
                         "provider-not-in-installed-binding",
                         format!(
-                            "provider `{}` is not admitted by the Runtime installed-provider binding",
+                            "provider `{}` is not admitted by the active Runtime bundle",
                             provider.provider_id
                         ),
                     ));

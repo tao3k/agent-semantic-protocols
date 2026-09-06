@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 #[tokio::test]
 async fn agent_session_registry_call_is_bounded() {
     let error = super::bounded_agent_session_registry_call(

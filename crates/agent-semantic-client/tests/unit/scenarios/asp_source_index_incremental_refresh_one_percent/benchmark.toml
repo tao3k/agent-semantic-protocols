@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 harness = "libtest"
 test = "source_index_1193_owner_one_percent_refresh_stays_inside_v1_gate"
 phase = "warm"

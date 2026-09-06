@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 //! Agent-facing materialization for failures that occur before an ASP evidence frame exists.
 
 /// Preserve ordinary command errors, but turn a bare OS `EPERM` into an

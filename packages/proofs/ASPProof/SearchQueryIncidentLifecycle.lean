@@ -96,11 +96,45 @@ def transitionIdentity (incident : Incident) : Nat × Nat :=
 
 theorem workspace_isolation (incident : Incident) (event : Event) :
     (step incident event).workspaceIdentity = incident.workspaceIdentity := by
-  cases event <;> simp [step, advance, eligibleForCompaction] <;> split <;> rfl
+  cases event with
+  | observeFailure => rfl
+  | beginRepair =>
+      by_cases openState : incident.state = .open <;>
+        simp [step, openState, advance]
+  | requestVerification =>
+      by_cases repairing : incident.state = .repairing <;>
+        simp [step, repairing, advance]
+  | verificationFailed =>
+      by_cases pending : incident.state = .verificationPending <;>
+        simp [step, pending, advance]
+  | verificationSucceeded receipt =>
+      by_cases accepted : incident.state = .verificationPending && receipt.valid <;>
+        simp [step, accepted, advance]
+  | supersede => rfl
+  | compact =>
+      by_cases eligible : eligibleForCompaction incident <;>
+        simp [step, eligible, advance]
 
 theorem identity_is_stable (incident : Incident) (event : Event) :
     (step incident event).incidentIdentity = incident.incidentIdentity := by
-  cases event <;> simp [step, advance, eligibleForCompaction] <;> split <;> rfl
+  cases event with
+  | observeFailure => rfl
+  | beginRepair =>
+      by_cases openState : incident.state = .open <;>
+        simp [step, openState, advance]
+  | requestVerification =>
+      by_cases repairing : incident.state = .repairing <;>
+        simp [step, repairing, advance]
+  | verificationFailed =>
+      by_cases pending : incident.state = .verificationPending <;>
+        simp [step, pending, advance]
+  | verificationSucceeded receipt =>
+      by_cases accepted : incident.state = .verificationPending && receipt.valid <;>
+        simp [step, accepted, advance]
+  | supersede => rfl
+  | compact =>
+      by_cases eligible : eligibleForCompaction incident <;>
+        simp [step, eligible, advance]
 
 theorem transition_sequence_is_monotone (incident : Incident) (event : Event) :
     incident.transitionSequence ≤ (step incident event).transitionSequence := by

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 //! Explicit Codex plugin payload status and publication transaction.
 
 use std::fs;
@@ -104,7 +108,10 @@ pub(in crate::command) fn publish_codex_plugin_payload(
         }
         println!(
             "[hook-config-sync] path={} status={} pluginPayload=current",
-            protocol_home.join("hooks/config.toml").display(),
+            agent_semantic_artifacts::StateHomeLayout::new(&protocol_home)
+                .control()
+                .hook_client_config()
+                .display(),
             hook_config_status
         );
         print_inspection(

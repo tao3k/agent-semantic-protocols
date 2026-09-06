@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 #[test]
 fn cli_live_corpus_forwards_only_typed_public_client_requests() {
     let owner = concat!(

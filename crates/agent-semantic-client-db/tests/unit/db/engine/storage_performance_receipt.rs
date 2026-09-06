@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 mod storage_performance_receipt_tests {
     use agent_semantic_client_db::storage_performance_receipt::StorageLatencyDistributionMicros;
 

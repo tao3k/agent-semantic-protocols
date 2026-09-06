@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 use super::types::AgentSessionRecord;
 
 pub(super) fn from_turso_row(row: &turso::Row) -> Result<AgentSessionRecord, String> {

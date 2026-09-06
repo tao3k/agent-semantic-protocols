@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 harness = "libtest"
 test = "search_frame_codebase_memory_mcp_reference_benchmark_records_round_delta"
 snapshot = "search_frame_codebase_memory_mcp_reference_benchmark_records_round_delta"

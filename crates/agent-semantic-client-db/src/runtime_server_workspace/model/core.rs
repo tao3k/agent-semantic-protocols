@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -208,7 +212,7 @@ pub struct WorkspaceGenerationBuild {
     pub source_snapshot: agent_semantic_content_identity::SourceSnapshotEvidence,
     pub module_graph_digest: String,
     pub runtime_provider_execution_binding:
-        Option<agent_semantic_artifacts::installed_provider_binding::RuntimeProviderExecutionBinding>,
+        Option<agent_semantic_artifacts::runtime_provider_execution_binding::RuntimeProviderExecutionBinding>,
     pub content_search_generation: agent_semantic_search::ContentSearchGenerationReceipt,
     pub project_resolutions: Vec<agent_semantic_content_identity::AdmittedProjectResolution>,
     pub owners: Vec<WorkspaceOwnerSnapshot>,
@@ -230,7 +234,7 @@ pub struct WorkspaceMemoryGeneration {
     pub provider_schema_digest: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub runtime_provider_execution_binding:
-        Option<agent_semantic_artifacts::installed_provider_binding::RuntimeProviderExecutionBinding>,
+        Option<agent_semantic_artifacts::runtime_provider_execution_binding::RuntimeProviderExecutionBinding>,
     pub module_graph_digest: String,
     pub content_search_generation: agent_semantic_search::ContentSearchGenerationReceipt,
     pub selector_set_digest: String,
@@ -443,7 +447,7 @@ pub struct WorkspaceGenerationSnapshot {
     pub provider_schema_digest: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub runtime_provider_execution_binding: Option<
-        agent_semantic_artifacts::installed_provider_binding::RuntimeProviderExecutionBinding,
+        agent_semantic_artifacts::runtime_provider_execution_binding::RuntimeProviderExecutionBinding,
     >,
     pub source_root_digest: String,
     pub base_root_digest: Option<String>,

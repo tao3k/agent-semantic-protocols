@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 pub(super) async fn clone_active_generation_rows(
     connection: &turso::Connection,
     project_root: &str,

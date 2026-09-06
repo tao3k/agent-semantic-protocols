@@ -1,10 +1,16 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 
 use super::RuntimeArtifactBundleMemberSource;
 use super::publish_runtime_artifact;
 use super::publish_runtime_artifact_bundle;
+use super::publish_runtime_artifact_bundle_member_from_active;
 use super::publish_runtime_artifact_bundle_members;
+use super::publish_runtime_artifact_bundle_successor_from_active;
 use super::publish_runtime_artifact_with_before_guard;
 use crate::blake3_content_digest::Blake3ContentDigest;
 use crate::runtime_artifact_activation::RuntimeArtifactActivationEvent;
@@ -203,6 +209,67 @@ async fn optional_capability_is_an_exact_member_of_the_same_active_bundle() {
 }
 
 #[tokio::test]
+async fn provider_refresh_republishes_the_complete_active_generation() {
+    let temporary = tempfile::tempdir().expect("provider refresh bundle fixture");
+    let state_home = temporary.path().join("state");
+    let asp_source = temporary.path().join("asp");
+    let hook_source = temporary.path().join("asp-hook");
+    let first_provider = temporary.path().join("asp-rust-first");
+    let next_provider = temporary.path().join("asp-rust-next");
+    let asp_target = state_home.join("runtime/bin/asp");
+    write_executable(&asp_source, "#!/bin/sh\nexit 0\n");
+    write_executable(&hook_source, "#!/bin/sh\nexit 1\n");
+    write_executable(&first_provider, "#!/bin/sh\nexit 2\n");
+    write_executable(&next_provider, "#!/bin/sh\nexit 3\n");
+
+    let members = [
+        RuntimeArtifactBundleMemberSource {
+            name: "asp-hook",
+            source: &hook_source,
+        },
+        RuntimeArtifactBundleMemberSource {
+            name: "asp-rust",
+            source: &first_provider,
+        },
+    ];
+    publish_runtime_artifact_bundle_members(&state_home, &asp_source, &asp_target, "dev", &members)
+        .await
+        .expect("publish initial complete Runtime generation");
+    let slots = RuntimeArtifactSlotAuthority::new(state_home.join("runtime/artifacts"));
+    let first_active = slots.active_target().await.unwrap().unwrap();
+
+    publish_runtime_artifact_bundle_member_from_active(
+        &state_home,
+        "asp-rust",
+        &next_provider,
+        "dev",
+    )
+    .await
+    .expect("replace provider through the complete generation authority");
+
+    let next_active = slots.active_target().await.unwrap().unwrap();
+    assert_ne!(next_active, first_active);
+    assert_eq!(
+        std::fs::read(next_active.join("asp")).unwrap(),
+        std::fs::read(&asp_source).unwrap()
+    );
+    assert_eq!(
+        std::fs::read(next_active.join("asp-hook")).unwrap(),
+        std::fs::read(&hook_source).unwrap()
+    );
+    assert_eq!(
+        std::fs::read(next_active.join("asp-rust")).unwrap(),
+        std::fs::read(&next_provider).unwrap()
+    );
+    assert_eq!(
+        std::fs::canonicalize(state_home.join("runtime/bin/asp-rust")).unwrap(),
+        std::fs::canonicalize(next_active.join("asp-rust")).unwrap()
+    );
+    assert!(!state_home.join("runtime/artifacts/blake3-256").exists());
+    assert!(!state_home.join("runtime/artifacts/bundles").exists());
+}
+
+#[tokio::test]
 async fn repeated_bundle_publication_moves_only_the_shared_active_selector() {
     let temporary = tempfile::tempdir().expect("fixed bundle launcher fixture");
     let state_home = temporary.path().join("state");
@@ -238,6 +305,87 @@ async fn repeated_bundle_publication_moves_only_the_shared_active_selector() {
     assert_ne!(active_after, healthy_before);
     assert_eq!(slots.healthy_target().await.unwrap(), healthy_before);
     assert_eq!(std::fs::read_link(&asp_target).unwrap(), fixed_asp_launcher);
+}
+
+#[tokio::test]
+async fn binary_refresh_preserves_providers_and_health_commit_prunes_the_predecessor() {
+    let temporary = tempfile::tempdir().expect("binary refresh fixture");
+    let state_home = temporary.path().join("state");
+    let first_asp = temporary.path().join("asp-first");
+    let first_hook = temporary.path().join("asp-hook-first");
+    let provider = temporary.path().join("asp-rust");
+    let next_asp = temporary.path().join("asp-next");
+    let next_hook = temporary.path().join("asp-hook-next");
+    let target = state_home.join("runtime/bin/asp");
+    write_executable(&first_asp, "#!/bin/sh\nexit 10\n");
+    write_executable(&first_hook, "#!/bin/sh\nexit 11\n");
+    write_executable(&provider, "#!/bin/sh\nexit 12\n");
+    write_executable(&next_asp, "#!/bin/sh\nexit 20\n");
+    write_executable(&next_hook, "#!/bin/sh\nexit 21\n");
+
+    publish_runtime_artifact_bundle_members(
+        &state_home,
+        &first_asp,
+        &target,
+        "release",
+        &[
+            RuntimeArtifactBundleMemberSource {
+                name: "asp-hook",
+                source: &first_hook,
+            },
+            RuntimeArtifactBundleMemberSource {
+                name: "asp-rust",
+                source: &provider,
+            },
+        ],
+    )
+    .await
+    .expect("publish initial complete generation");
+    let first = read_runtime_artifact_activation_event(&state_home)
+        .await
+        .unwrap()
+        .unwrap();
+    commit_runtime_artifact_activation(&state_home, &first, None)
+        .await
+        .expect("qualify initial generation");
+
+    publish_runtime_artifact_bundle_successor_from_active(
+        &state_home,
+        &next_asp,
+        &target,
+        "release",
+        &[RuntimeArtifactBundleMemberSource {
+            name: "asp-hook",
+            source: &next_hook,
+        }],
+    )
+    .await
+    .expect("publish binary refresh successor");
+    let pending = read_runtime_artifact_activation_event(&state_home)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        std::fs::read(pending.candidate_slot_path.join("asp-rust")).unwrap(),
+        std::fs::read(&provider).unwrap(),
+        "binary refresh must preserve the admitted provider member"
+    );
+    let generations = state_home.join("runtime/artifacts/generations");
+    assert_eq!(std::fs::read_dir(&generations).unwrap().count(), 2);
+
+    commit_runtime_artifact_activation(&state_home, &pending, Some(&first.artifact_digest))
+        .await
+        .expect("qualify successor generation");
+    let slots = RuntimeArtifactSlotAuthority::new(state_home.join("runtime/artifacts"));
+    assert_eq!(
+        slots.active_target().await.unwrap(),
+        slots.healthy_target().await.unwrap()
+    );
+    assert_eq!(
+        std::fs::read_dir(&generations).unwrap().count(),
+        1,
+        "health commit must retire the predecessor generation"
+    );
 }
 
 #[tokio::test]
@@ -280,6 +428,10 @@ async fn activation_failure_restores_active_from_healthy_without_moving_healthy(
         .expect("restore previous healthy bundle");
     assert_eq!(slots.active_target().await.unwrap(), healthy_before);
     assert_eq!(slots.healthy_target().await.unwrap(), healthy_before);
+    assert!(
+        !candidate.candidate_slot_path.exists(),
+        "failed candidate must be retired after rollback"
+    );
 
     rollback_runtime_artifact_activation(&state_home, &candidate)
         .await
@@ -329,7 +481,7 @@ async fn publication_derives_previous_serving_after_acquiring_the_mutation_guard
     let new_bundle_digest = runtime_artifact_bundle_digest(&new_members);
     let new_token = new_bundle_digest.content_digest().as_str();
     let new_candidate_dir = state_home
-        .join("runtime/artifacts/bundles/asp")
+        .join("runtime/artifacts/generations")
         .join(new_token);
     let new_prepared = crate::runtime_artifact_slots::prepare_runtime_artifact_candidate_for_kind(
         &state_home,
@@ -366,7 +518,7 @@ async fn publication_derives_previous_serving_after_acquiring_the_mutation_guard
         schema_version: 1,
         bundle_digest: new_bundle_digest,
         artifact_digest: new_serving_digest.clone(),
-        artifact_path: new_prepared.path,
+        artifact_path: new_prepared.path.clone(),
         candidate_slot_path: new_candidate_dir.clone(),
         previous_artifact_digest: Some(old.artifact_digest.clone()),
         artifact_mode: "release".to_owned(),
@@ -374,7 +526,7 @@ async fn publication_derives_previous_serving_after_acquiring_the_mutation_guard
         publication_nonce: new_nonce.clone(),
         candidate_identity: RuntimeArtifactCandidateIdentityReceipt {
             artifact_digest: new_serving_digest.clone(),
-            artifact_path: new_candidate_dir.join("asp").read_link().unwrap(),
+            artifact_path: new_prepared.path,
             stable_path: target.clone(),
             artifact_mode: "release".to_owned(),
             publication_nonce: new_nonce,
@@ -398,6 +550,8 @@ async fn publication_derives_previous_serving_after_acquiring_the_mutation_guard
             "release",
             &[],
             None,
+            None,
+            &[],
             move || async move {
                 before_guard_tx
                     .send(())
@@ -441,6 +595,55 @@ async fn publication_derives_previous_serving_after_acquiring_the_mutation_guard
         .expect("interleaved pending event");
     assert_eq!(pending.previous_artifact_digest, Some(new_serving_digest));
     assert_ne!(pending.previous_artifact_digest, Some(old.artifact_digest));
+}
+
+#[tokio::test]
+async fn publication_repairs_an_empty_selector_directory_inside_the_artifact_transaction() {
+    let temporary = tempfile::tempdir().expect("publication repair fixture");
+    let state_home = temporary.path().join("state");
+    let source = temporary.path().join("asp");
+    let target = state_home.join("bin/asp");
+    write_executable(&source, "#!/bin/sh\nexit 0\n");
+    let active = state_home.join("runtime/artifacts/active");
+    std::fs::create_dir_all(&active).expect("empty invalid selector directory");
+
+    let receipt = publish_runtime_artifact(&state_home, &source, &target, "release")
+        .await
+        .expect("Artifacts publication repairs its own empty selector");
+
+    let metadata = std::fs::symlink_metadata(&active).expect("active selector metadata");
+    assert!(metadata.file_type().is_symlink());
+    assert_eq!(
+        std::fs::canonicalize(active).expect("active generation"),
+        std::fs::canonicalize(
+            state_home
+                .join("runtime/artifacts/generations")
+                .join(receipt.bundle_digest.content_digest().as_str())
+        )
+        .expect("published generation")
+    );
+}
+
+#[tokio::test]
+async fn publication_rejects_a_populated_selector_directory_without_deleting_it() {
+    let temporary = tempfile::tempdir().expect("publication conflict fixture");
+    let state_home = temporary.path().join("state");
+    let source = temporary.path().join("asp");
+    let target = state_home.join("bin/asp");
+    write_executable(&source, "#!/bin/sh\nexit 0\n");
+    let active = state_home.join("runtime/artifacts/active");
+    std::fs::create_dir_all(&active).expect("invalid selector directory");
+    std::fs::write(active.join("do-not-delete"), b"owned").expect("conflict marker");
+
+    let error = publish_runtime_artifact(&state_home, &source, &target, "release")
+        .await
+        .expect_err("populated selector directory must fail closed");
+
+    assert!(error.contains("artifact-selector-directory-conflict"));
+    assert_eq!(
+        std::fs::read(active.join("do-not-delete")).unwrap(),
+        b"owned"
+    );
 }
 
 #[tokio::test]

@@ -117,7 +117,7 @@ pub struct RuntimeAspClientDispatcher {
     pub(super) generation_admission: Arc<WorkspaceGenerationAdmission>,
     pub(super) workspace_registry:
         Arc<agent_semantic_client_db::runtime_server_workspace::RuntimeServerWorkspaceRegistry>,
-    pub(super) installed_provider_targets: Arc<[(String, String)]>,
+    pub(super) active_provider_targets: Arc<[(String, String)]>,
     /// Runtime-owned provider authority. Each Search/Query request derives one
     /// immutable snapshot, so a committed provider refresh is visible to the
     /// next request without client inference or daemon restart.
@@ -142,7 +142,7 @@ impl RuntimeAspClientDispatcher {
             agent_semantic_client_db::runtime_server_workspace::RuntimeServerWorkspaceRegistry,
         >,
         initialized_workspaces: Arc<Mutex<HashMap<ClientWorkspaceKey, InitializedWorkspace>>>,
-        installed_provider_targets: Arc<[(String, String)]>,
+        active_provider_targets: Arc<[(String, String)]>,
         provider_register: Arc<
             agent_semantic_client_db::runtime_provider_register::RuntimeProviderRegister,
         >,
@@ -157,7 +157,7 @@ impl RuntimeAspClientDispatcher {
             generation_admission,
             workspace_registry,
             initialized_workspaces,
-            installed_provider_targets,
+            active_provider_targets,
             provider_register,
             workspace_store_root,
             query_generation_authority,
@@ -179,7 +179,7 @@ pub fn build_frame_service(
         agent_semantic_client_db::runtime_server_workspace::RuntimeServerWorkspaceRegistry,
     >,
     client_catalog_generation: String,
-    installed_provider_targets: Arc<[(String, String)]>,
+    active_provider_targets: Arc<[(String, String)]>,
     provider_register: Arc<
         agent_semantic_client_db::runtime_provider_register::RuntimeProviderRegister,
     >,
@@ -189,7 +189,7 @@ pub fn build_frame_service(
 ) -> Result<Arc<AspClientFrameService<RuntimeAspClientDispatcher>>, String> {
     let initialized_workspaces = Arc::new(Mutex::new(HashMap::new()));
     let catalog_generation = client_catalog_generation;
-    let catalog_provider_targets = Arc::clone(&installed_provider_targets);
+    let catalog_provider_targets = Arc::clone(&active_provider_targets);
     let dispatcher = Arc::new(RuntimeAspClientDispatcher::new(
         schema_bundles,
         agent_session_registry,
@@ -197,7 +197,7 @@ pub fn build_frame_service(
         Arc::clone(&generation_admission),
         workspace_registry,
         Arc::clone(&initialized_workspaces),
-        installed_provider_targets,
+        active_provider_targets,
         provider_register,
         workspace_store_root,
         query_generation_authority,

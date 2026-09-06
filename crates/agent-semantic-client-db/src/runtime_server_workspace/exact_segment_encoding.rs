@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 //! Immutable exact-projection segment encoding owned by the workspace publisher.
 
 use super::evidence_context::{CONTEXT_ENTRY_LEN, context_key_hash};

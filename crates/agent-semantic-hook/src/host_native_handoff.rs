@@ -405,7 +405,12 @@ fn canonical_workspace(payload: &Value) -> Result<PathBuf, String> {
 
 fn state_root() -> Result<PathBuf, String> {
     agent_semantic_runtime::resolve_state_home()
-        .map(|state_home| state_home.join("hook-host-native-handoff"))
+        .map(|state_home| {
+            agent_semantic_artifacts::StateHomeLayout::new(state_home)
+                .runtime_state()
+                .serving()
+                .hook_host_native_handoff_mailbox()
+        })
         .map_err(|error| format!("resolve host-native handoff State Home: {error}"))
 }
 

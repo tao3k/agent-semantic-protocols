@@ -5,6 +5,7 @@
 mod install_register;
 mod provider_stream;
 mod register;
+mod release_catalog;
 mod route;
 mod syntax_query;
 mod workspace_install;
@@ -15,6 +16,12 @@ pub use install_register::parse_provider_install_register;
 pub use provider_stream::PROVIDER_STREAM_SCHEMA_ID;
 pub use provider_stream::PROVIDER_STREAM_SCHEMA_VERSION;
 pub use provider_stream::validate_provider_stream_envelope;
+pub use release_catalog::PROVIDER_RELEASE_CATALOG_SCHEMA_ID;
+pub use release_catalog::PROVIDER_RELEASE_CATALOG_SCHEMA_VERSION;
+pub use release_catalog::ProviderReleaseCatalog;
+pub use release_catalog::ProviderReleaseRegistration;
+pub use release_catalog::builtin_provider_release_catalog;
+pub use release_catalog::parse_provider_release_catalog;
 
 pub use register::PROVIDER_REGISTER_REQUEST_SCHEMA_ID;
 pub use register::PROVIDER_REGISTER_RESPONSE_SCHEMA_ID;
@@ -74,6 +81,9 @@ pub use workspace_install::WorkspaceCommandDescriptor;
 pub use workspace_install::WorkspaceLaunchDescriptor;
 pub use workspace_install::WorkspaceRuntimeDependencyDescriptor;
 
+#[cfg(test)]
+#[path = "../tests/unit/release_catalog.rs"]
+mod release_catalog_tests;
 #[cfg(test)]
 #[path = "../tests/unit/route.rs"]
 mod route_tests;

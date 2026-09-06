@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 use agent_semantic_client_db::runtime_server_control::read_supervisor_endpoint;
 use serde_json::Value;
 use serde_json::json;

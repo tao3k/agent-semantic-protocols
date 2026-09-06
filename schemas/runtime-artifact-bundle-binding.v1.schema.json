@@ -8,7 +8,7 @@
     "schemaId",
     "schemaVersion",
     "providerRegistrationDigest",
-    "installedProviderBindingDigest",
+    "providerArtifactSetDigest",
     "evaluatorPolicyDigest",
     "schemaBundleDigest"
   ],
@@ -22,7 +22,7 @@
     "providerRegistrationDigest": {
       "$ref": "#/$defs/blake3Digest"
     },
-    "installedProviderBindingDigest": {
+    "providerArtifactSetDigest": {
       "$ref": "#/$defs/blake3Digest"
     },
     "evaluatorPolicyDigest": {

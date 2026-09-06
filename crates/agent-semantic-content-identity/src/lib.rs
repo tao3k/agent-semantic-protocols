@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 //! Canonical content identity primitives for semantic artifacts and source snapshots.
 //!
 //! The crate separates stable domain tokens and value objects from artifact models,

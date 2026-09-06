@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: Contributors to Agent Semantic Protocols
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 """Typed Graph-Turbo algorithm API used by the ASP Server gRPC service."""
 
 from .model import (

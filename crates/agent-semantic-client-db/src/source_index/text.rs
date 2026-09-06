@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 //! Source-index text projection helpers for transient import assembly.
 
 pub(super) fn source_line_count(text: &str) -> u32 {

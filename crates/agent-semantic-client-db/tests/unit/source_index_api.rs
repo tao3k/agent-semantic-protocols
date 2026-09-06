@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 #[test]
 fn materialized_snapshot_binds_root_leaf_and_owner_counts() {
     let owner = "src/lib.rs";

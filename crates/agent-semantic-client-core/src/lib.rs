@@ -1,4 +1,8 @@
 #![deny(dead_code)]
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 
 //! Core contracts for the server-first agent semantic client.
 

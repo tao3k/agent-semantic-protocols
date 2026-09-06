@@ -4,9 +4,9 @@ use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
 
-/// Read-only ASP state paths derived from State Core.
+/// Read-only ASP workspace/runtime paths derived through Artifacts.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct ProjectStatePaths {
+pub struct WorkspaceRuntimePaths {
     pub repo_id: crate::state_core::RepoId,
     pub workspace_id: crate::state_core::WorkspaceId,
     pub identity_basis: String,
@@ -42,7 +42,7 @@ pub struct ProjectRuntimeState {
 }
 
 pub fn provider_state_root(protocol_home: impl AsRef<Path>) -> PathBuf {
-    protocol_home.as_ref().join("runtime").join("providers")
+    agent_semantic_artifacts::RuntimeArtifactStateLayout::new(protocol_home).provider_staging()
 }
 
 pub fn provider_receipt_dir(protocol_home: impl AsRef<Path>) -> PathBuf {
@@ -54,7 +54,9 @@ pub fn provider_package_dir(protocol_home: impl AsRef<Path>) -> PathBuf {
 }
 
 /// Resolve the ASP runtime state paths for a project without creating files.
-pub fn project_state_paths(project_root: impl AsRef<Path>) -> Result<ProjectStatePaths, String> {
+pub fn project_state_paths(
+    project_root: impl AsRef<Path>,
+) -> Result<WorkspaceRuntimePaths, String> {
     let resolved = crate::state_core::ResolvedState::resolve(project_root)?;
     Ok(project_state_paths_from_resolved(resolved))
 }
@@ -66,7 +68,7 @@ pub fn project_state_paths(project_root: impl AsRef<Path>) -> Result<ProjectStat
 pub fn project_state_paths_with_state_home(
     project_root: impl AsRef<Path>,
     state_home: impl AsRef<Path>,
-) -> Result<ProjectStatePaths, String> {
+) -> Result<WorkspaceRuntimePaths, String> {
     let resolved =
         crate::state_core::ResolvedState::resolve_with_state_home(project_root, state_home)?;
     Ok(project_state_paths_from_resolved(resolved))
@@ -74,25 +76,26 @@ pub fn project_state_paths_with_state_home(
 
 fn project_state_paths_from_resolved(
     resolved: crate::state_core::ResolvedState,
-) -> ProjectStatePaths {
+) -> WorkspaceRuntimePaths {
     let protocol_home = resolved.state_home.clone();
-    let hook_dir = resolved.paths.hooks_dir.clone();
+    let workspace = resolved
+        .workspace_state_paths()
+        .expect("resolved workspace identity always maps to canonical State Home paths");
+    let hook_dir = workspace.hook_root();
     let hook_cache_dir = hook_dir.join("cache");
     let hook_state_dir = hook_dir.join("state");
     let activation_path = hook_state_dir.join("activation.json");
-    let client_cache_dir = resolved.paths.client_dir.clone();
-    let client_db_dir = resolved.paths.client_dir.clone();
-    let client_db_path = resolved.paths.client_db_path.clone();
-    let artifacts_dir = resolved.paths.artifacts_dir.clone();
-    let runtime_home = protocol_home.join("runtime");
-    let state_home = runtime_home
-        .parent()
-        .expect("Runtime State Home layout always has a parent");
-    let runtime_bin_dir =
-        agent_semantic_artifacts::RuntimeArtifactStateLayout::new(state_home).active_slot();
+    let client_cache_dir = workspace.root.clone();
+    let client_db_dir = workspace.root.clone();
+    let client_db_path = workspace.facts.clone();
+    let artifacts_dir = workspace.artifacts.clone();
+    let runtime_layout =
+        agent_semantic_artifacts::StateHomeLayout::new(&protocol_home).runtime_state();
+    let runtime_home = runtime_layout.root().to_path_buf();
+    let runtime_bin_dir = runtime_layout.artifacts().active_slot();
     let provider_lock_dir = provider_receipt_dir(&protocol_home);
 
-    ProjectStatePaths {
+    WorkspaceRuntimePaths {
         repo_id: resolved.repo.repo_id.clone(),
         workspace_id: resolved.workspace.workspace_id.clone(),
         identity_basis: resolved.repo.identity_basis.clone(),
@@ -102,7 +105,7 @@ fn project_state_paths_from_resolved(
         hook_state_dir,
         activation_path,
         client_cache_dir,
-        client_cache_manifest_path: resolved.paths.client_cache_manifest_path.clone(),
+        client_cache_manifest_path: workspace.cache_manifest_path(),
         client_db_dir,
         client_db_path,
         artifacts_dir,
@@ -118,7 +121,7 @@ pub fn project_runtime_state(
     project_root: impl AsRef<Path>,
 ) -> Result<ProjectRuntimeState, String> {
     let resolved = crate::state_core::ResolvedState::resolve(project_root)?;
-    resolved.ensure_minimal_layout()?;
+    resolved.ensure_workspace_state_layout()?;
     let paths = project_state_paths_from_resolved(resolved);
     materialize_project_runtime_state(paths)
 }
@@ -130,7 +133,7 @@ pub fn project_runtime_state_with_state_home(
 ) -> Result<ProjectRuntimeState, String> {
     let resolved =
         crate::state_core::ResolvedState::resolve_with_state_home(project_root, state_home)?;
-    resolved.ensure_minimal_layout()?;
+    resolved.ensure_workspace_state_layout()?;
     let paths = project_state_paths_from_resolved(resolved);
     materialize_project_runtime_state(paths)
 }
@@ -147,13 +150,13 @@ pub fn temporary_workspace_runtime_state_with_owner_and_state_home(
             owner_project_root,
             state_home,
         )?;
-    resolved.ensure_minimal_layout()?;
+    resolved.ensure_workspace_state_layout()?;
     let paths = project_state_paths_from_resolved(resolved);
     materialize_project_runtime_state(paths)
 }
 
 fn materialize_project_runtime_state(
-    paths: ProjectStatePaths,
+    paths: WorkspaceRuntimePaths,
 ) -> Result<ProjectRuntimeState, String> {
     let protocol_home = ensure_dir(paths.protocol_home)?;
     let hook_cache_dir = ensure_dir(paths.hook_cache_dir)?;
@@ -219,15 +222,17 @@ fn project_root_for_state_activation_path(path: &Path) -> Option<PathBuf> {
     if hooks_dir.file_name().and_then(|name| name.to_str()) != Some("hooks") {
         return None;
     }
-    let workspace_dir = hooks_dir.parent()?;
-    let workspace_manifest = workspace_dir.join("workspace.json");
-    let manifest = std::fs::read_to_string(workspace_manifest).ok()?;
-    let manifest = serde_json::from_str::<serde_json::Value>(&manifest).ok()?;
-    let root = manifest.get("root")?.as_str()?;
-    if root.is_empty() {
+    let observations_dir = hooks_dir.parent()?;
+    if observations_dir.file_name().and_then(|name| name.to_str()) != Some("observations") {
         return None;
     }
-    Some(PathBuf::from(root))
+    let binding_path = observations_dir.join(agent_semantic_artifacts::WORKSPACE_BINDING_FILE);
+    let binding = serde_json::from_slice::<agent_semantic_artifacts::ProjectBinding>(
+        &std::fs::read(binding_path).ok()?,
+    )
+    .ok()?;
+    binding.validate().ok()?;
+    Some(binding.workspace.canonical_root)
 }
 
 /// Resolve and create the managed hook activation directory.
@@ -244,7 +249,7 @@ pub fn ensure_project_hook_state_dir(project_root: impl AsRef<Path>) -> Result<P
 pub fn ensure_project_client_cache_dir(project_root: impl AsRef<Path>) -> Result<PathBuf, String> {
     let project_root = project_root.as_ref();
     let paths = project_state_paths(project_root)?;
-    crate::state_core::ResolvedState::resolve(project_root)?.ensure_minimal_layout()?;
+    crate::state_core::ResolvedState::resolve(project_root)?.ensure_workspace_state_layout()?;
     ensure_dir(paths.client_cache_dir)
 }
 
@@ -252,7 +257,7 @@ pub fn ensure_project_client_cache_dir(project_root: impl AsRef<Path>) -> Result
 pub fn ensure_project_artifacts_dir(project_root: impl AsRef<Path>) -> Result<PathBuf, String> {
     let project_root = project_root.as_ref();
     let paths = project_state_paths(project_root)?;
-    crate::state_core::ResolvedState::resolve(project_root)?.ensure_minimal_layout()?;
+    crate::state_core::ResolvedState::resolve(project_root)?.ensure_workspace_state_layout()?;
     ensure_dir(paths.artifacts_dir)
 }
 

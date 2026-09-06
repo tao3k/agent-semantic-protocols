@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 fn shallow_database_route() -> agent_semantic_search_projection::SemanticSearchRouteDecision {
     use agent_semantic_search_projection::SemanticMutationClass;
     use agent_semantic_search_projection::SemanticSearchAlgorithmEvidence;

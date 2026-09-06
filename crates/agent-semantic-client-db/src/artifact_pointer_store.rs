@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 //! Immutable artifact attempt preservation and compare-and-set root pointers.
 //!
 //! Artifact identity remains owned by `agent-semantic-content-identity` and

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 //! Runtime-owned durability attachment tasks and typed observations.
 
 #[derive(serde::Serialize)]
@@ -58,7 +62,7 @@ pub(super) async fn spawn_runtime_owned_durability_task<F>(
     durability_tasks.spawn(task);
 }
 
-pub(super) fn durable_provider_binding_matches_current(
+pub(super) fn durable_runtime_bundle_matches_current(
     observed_generation: Option<&str>,
     current_generation: Option<&str>,
 ) -> bool {

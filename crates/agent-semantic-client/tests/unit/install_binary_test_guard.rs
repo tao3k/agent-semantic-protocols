@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 //! Serializes production binary installation fixtures that mutate global-style state.
 
 pub(crate) fn acquire() -> std::sync::MutexGuard<'static, ()> {

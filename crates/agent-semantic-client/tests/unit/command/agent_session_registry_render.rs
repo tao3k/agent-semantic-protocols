@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 #[path = "../../../src/command/agent_session_registry_rollout_activity.rs"]
 mod agent_session_registry_rollout_activity;
 

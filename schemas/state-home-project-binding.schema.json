@@ -45,11 +45,16 @@
     "workspaceIdentity": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["digest", "repoDigest", "canonicalRoot"],
+      "required": ["digest", "repoDigest", "canonicalRoot", "privateGitDir"],
       "properties": {
         "digest": { "$ref": "#/$defs/digest" },
         "repoDigest": { "$ref": "#/$defs/digest" },
-        "canonicalRoot": { "type": "string", "minLength": 1 }
+        "canonicalRoot": { "type": "string", "minLength": 1 },
+        "privateGitDir": {
+          "type": ["string", "null"],
+          "minLength": 1,
+          "description": "Canonical gix worktree-private Git directory. Null is reserved for imported non-Git observations."
+        }
       }
     }
   }

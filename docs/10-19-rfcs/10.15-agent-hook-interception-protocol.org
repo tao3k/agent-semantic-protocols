@@ -441,8 +441,9 @@ The classifier must operate primarily at the action layer:
 Client-side hook customization is a typed global config file, not a server
 process:
 
-- default path: =$ASP_STATE_HOME/hooks/config.toml=, falling back to
-  =$HOME/.agent-semantic-protocols/hooks/config.toml=;
+- default path: =$ASP_STATE_HOME/control/config/hook-client.toml=, with
+  =$HOME/.agent-semantic-protocols= used only to resolve State Home when the
+  explicit override is absent;
 - install behavior: =asp install plugin --codex=
   creates this file when missing, with schema metadata plus configured examples,
   and preserves an existing valid global config;
@@ -714,8 +715,8 @@ event logs as migratable cache, not durable policy.  If an existing
 =events.jsonl= contains a non-empty line with a retired =schemaId=, retired
 =protocolId=, or invalid JSON, install may remove that generated file and
   start a new current-protocol log.  The versioned hook policy remains global
-under =$ASP_STATE_HOME/hooks/config.toml= or
-=$HOME/.agent-semantic-protocols/hooks/config.toml=.
+under =$ASP_STATE_HOME/control/config/hook-client.toml= (or the same path
+below the HOME-derived State Home).
 
 * Classifier
 

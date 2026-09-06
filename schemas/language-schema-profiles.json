@@ -500,6 +500,18 @@
       "definitionVisibility": "public"
     },
     {
+      "familyId": "asp.schema-family.semantic-topology",
+      "owner": "schemas",
+      "rationale": "Reusable, cross-consumer Project Topology library, generation, structural skeleton, semantic annotation, coverage, and inference-binding contracts.",
+      "priority": 210,
+      "parentFamilyId": "asp.schema-family.semantic",
+      "namespace": {
+        "filenamePrefixes": [
+          "project-topology-"
+        ]
+      }
+    },
+    {
       "familyId": "asp.schema-family.semantic-search",
       "owner": "schemas",
       "rationale": "Search packet, projection, trace, and evidence contracts under the semantic-search namespace.",
@@ -528,9 +540,10 @@
         ]
       },
       "membershipOverrides": {
-        "includeSchemaPaths": [
-          "schemas/asp.exact-selector-execution-receipt.v1.schema.json",
-          "schemas/projection-evidence-context.v1.schema.json",
+      "includeSchemaPaths": [
+        "schemas/asp.exact-selector-execution-receipt.v1.schema.json",
+        "schemas/query-playbook-materialization-request.v1.schema.json",
+        "schemas/projection-evidence-context.v1.schema.json",
           "schemas/lexical-postings-work-reduction-receipt.schema.json",
           "schemas/rg-coverage-receipt.schema.json",
           "schemas/asp-client-workspace-search-playbook-request.v1.schema.json",

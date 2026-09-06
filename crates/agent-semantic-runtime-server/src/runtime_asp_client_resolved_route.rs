@@ -34,7 +34,7 @@ pub(super) struct ResolvedRouteContext {
     pub(super) runtime_search_service: RuntimeSearchServiceHandle,
     pub(super) generation_admission: Arc<WorkspaceGenerationAdmission>,
     pub(super) workspace_registry: Arc<RuntimeServerWorkspaceRegistry>,
-    pub(super) installed_provider_targets: Arc<[(String, String)]>,
+    pub(super) active_provider_targets: Arc<[(String, String)]>,
     pub(super) provider_register: Arc<RuntimeProviderRegister>,
     pub(super) query_generation_authority: RuntimeQueryGenerationAuthority,
     pub(super) query_generation: tokio::sync::watch::Receiver<
@@ -45,7 +45,7 @@ pub(super) struct ResolvedRouteContext {
 
 fn selected_provider_targets(
     languages: Option<&str>,
-    installed_provider_targets: &[(String, String)],
+    active_provider_targets: &[(String, String)],
 ) -> Result<
     Vec<agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationProviderTarget>,
     AspClientOperationError,
@@ -58,7 +58,7 @@ fn selected_provider_targets(
         .filter(|language_id| !language_id.is_empty())
         .filter(|language_id| seen.insert((*language_id).to_owned()))
         .map(|language_id| {
-            let provider_id = installed_provider_targets
+            let provider_id = active_provider_targets
                 .iter()
                 .find_map(|(installed_language_id, provider_id)| {
                     (installed_language_id == language_id).then(|| provider_id.clone())
@@ -86,7 +86,7 @@ pub(super) async fn dispatch_resolved_route(
         runtime_search_service,
         generation_admission,
         workspace_registry,
-        installed_provider_targets,
+        active_provider_targets,
         provider_register,
         query_generation_authority,
         mut query_generation,
@@ -95,7 +95,7 @@ pub(super) async fn dispatch_resolved_route(
 
     let resolved = agent_semantic_client_protocol::resolve_server_client_method_owner(
         &request.method,
-        installed_provider_targets
+        active_provider_targets
             .iter()
             .map(|(language_id, _)| language_id.clone()),
     )?;
@@ -112,7 +112,7 @@ pub(super) async fn dispatch_resolved_route(
         let language_id = validated_params.as_value()["languageId"]
             .as_str()
             .expect("validated languageId");
-        let provider_id = installed_provider_targets
+        let provider_id = active_provider_targets
             .iter()
             .find_map(|(installed_language_id, provider_id)| {
                 (installed_language_id == language_id).then_some(provider_id.as_str())
@@ -256,7 +256,7 @@ pub(super) async fn dispatch_resolved_route(
             language_id,
             route,
         } => {
-            let provider_id = installed_provider_targets
+            let provider_id = active_provider_targets
                 .iter()
                 .find_map(|(installed_language_id, provider_id)| {
                     (installed_language_id == &language_id).then(|| provider_id.clone())
@@ -341,13 +341,13 @@ pub(super) async fn dispatch_resolved_route(
             workspace_search_playbook_params
                 .as_ref()
                 .and_then(|params| params.languages.as_deref()),
-            installed_provider_targets.as_ref(),
+            active_provider_targets.as_ref(),
         )?,
         ServerClientRoute::WorkspaceSyntaxQuery => selected_provider_targets(
             workspace_syntax_query_params
                 .as_ref()
                 .and_then(|params| params.languages.as_deref()),
-            installed_provider_targets.as_ref(),
+            active_provider_targets.as_ref(),
         )?,
         _ => vec![
             agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationProviderTarget {

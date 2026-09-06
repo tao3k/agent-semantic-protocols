@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 //! Storage-neutral production adapter for provider execution lifecycle evidence.
 //!
 //! Runtime identity remains owned by `agent-semantic-runtime`; persistence is

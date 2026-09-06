@@ -9,6 +9,7 @@
     "schemaVersion",
     "evaluatedAtMs",
     "retainForMs",
+    "selection",
     "retainedCount",
     "retiredCount",
     "retainedBytes",
@@ -20,6 +21,34 @@
     "schemaVersion": { "const": 1 },
     "evaluatedAtMs": { "type": "integer", "minimum": 0 },
     "retainForMs": { "type": "integer", "minimum": 0 },
+    "selection": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind"],
+          "properties": { "kind": { "const": "all" } }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "workspaceDigest"],
+          "properties": {
+            "kind": { "const": "workspace-digest" },
+            "workspaceDigest": { "$ref": "#/$defs/blake3Digest" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "objectId"],
+          "properties": {
+            "kind": { "const": "object-id" },
+            "objectId": { "type": "string", "minLength": 1 }
+          }
+        }
+      ]
+    },
     "retainedCount": { "type": "integer", "minimum": 0 },
     "retiredCount": { "type": "integer", "minimum": 0 },
     "retainedBytes": { "type": "integer", "minimum": 0 },
@@ -68,6 +97,12 @@
           }
         }
       }
+    }
+  },
+  "$defs": {
+    "blake3Digest": {
+      "type": "string",
+      "pattern": "^blake3-256:[0-9a-f]{64}$"
     }
   }
 }

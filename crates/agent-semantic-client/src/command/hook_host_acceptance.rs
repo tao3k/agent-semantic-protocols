@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 //! Explicit acceptance of Codex Host-to-Hook delivery from a normal-task rollout.
 //!
 //! This is a diagnostic-plane reader. The Hook event path must never discover or

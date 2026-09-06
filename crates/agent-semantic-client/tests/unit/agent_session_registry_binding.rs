@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 #[test]
 fn verified_canonical_target_presence_is_independent_of_model_evidence() {
     // Model evidence is deliberately not an input to host-target identity.

@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 id = "asp-search-candidate-contract-cold-functional-path"
 title = "ASP search crate projects and merges source-index and overlay hits through one candidate contract"
 policy_ids = [

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 use agent_semantic_client_db::runtime_server_workspace::content_binding::ContentPublicationLedger;
 use agent_semantic_content_identity::content_binding::AuthorityStamp;
 use agent_semantic_content_identity::content_binding::ContentBinding;

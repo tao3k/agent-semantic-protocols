@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 use agent_semantic_client_db::RuntimeServerControlReceipt;
 use agent_semantic_client_db::RuntimeServerOperation;
 use agent_semantic_client_db::call_runtime_server_for_state_home;

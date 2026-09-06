@@ -1,7 +1,13 @@
+# SPDX-FileCopyrightText: Contributors to Agent Semantic Protocols
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 [project]
 name = "agent-semantic-protocols-python-workspace"
 version = "0.1.0"
 description = "Python workspace for Agent Semantic Protocols packages."
+license = "Apache-2.0 AND LGPL-2.1-only"
+license-files = ["LICENSE"]
 requires-python = ">=3.12"
 dependencies = [
     "agent-semantic-protocols-tools",

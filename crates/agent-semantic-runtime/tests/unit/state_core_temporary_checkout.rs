@@ -39,7 +39,7 @@ fn standalone_temporary_git_repository_is_ephemeral() {
     let repo = RepoIdentity::from_checkout(&git, &checkout);
 
     assert_eq!(repo.persistence, RepoPersistence::EphemeralPath);
-    assert!(repo.identity_basis.starts_with("ephemeral-path:"));
+    assert!(repo.identity_basis.starts_with("git-common-dir:"));
 }
 
 #[test]
@@ -66,7 +66,7 @@ fn temporary_linked_worktree_inherits_non_temporary_common_git_identity() {
 }
 
 #[test]
-fn canonical_remote_keeps_temporary_checkout_under_real_project() {
+fn canonical_remote_admits_durability_without_becoming_repository_identity() {
     let checkout = CheckoutIdentity {
         root: PathBuf::from("/tmp/remote-workspace"),
         display_name: "remote-workspace".to_string(),
@@ -85,7 +85,7 @@ fn canonical_remote_keeps_temporary_checkout_under_real_project() {
     assert_eq!(repo.persistence, RepoPersistence::Git);
     assert_eq!(
         repo.identity_basis,
-        "git-remote:github.com/tao3k/agent-semantic-protocols"
+        format!("git-common-dir:{}", checkout.root.join(".git").display())
     );
 }
 
@@ -151,97 +151,6 @@ fn gix_discovers_a_real_linked_worktree_as_a_workspace_of_its_owner_project() {
 }
 
 #[test]
-fn owner_bound_temporary_workspace_retires_cache_and_preserves_artifacts() {
-    let fixture = std::env::temp_dir().join(format!(
-        "asp-owner-bound-temporary-workspace-{}-{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system clock")
-            .as_nanos()
-    ));
-    let owner = fixture.join("owner");
-    let temporary = fixture.join("temporary");
-    let state_home = fixture.join("state");
-    fs::create_dir_all(&owner).expect("create owner checkout");
-    fs::create_dir_all(&temporary).expect("create temporary checkout");
-    run_git(&owner, &["init", "--quiet"]);
-    run_git(
-        &owner,
-        &[
-            "remote",
-            "add",
-            "origin",
-            "https://example.invalid/asp/owner-bound-workspace.git",
-        ],
-    );
-    run_git(&temporary, &["init", "--quiet"]);
-
-    let owner_state =
-        crate::state_core::ResolvedState::resolve_with_state_home(&owner, &state_home)
-            .expect("resolve owner project");
-    owner_state
-        .ensure_minimal_layout()
-        .expect("materialize owner");
-    let temporary_state =
-        crate::state_core::ResolvedState::resolve_temporary_workspace_with_owner_and_state_home(
-            &temporary,
-            &owner,
-            &state_home,
-        )
-        .expect("resolve owner-bound temporary workspace");
-    assert_eq!(temporary_state.repo.repo_id, owner_state.repo.repo_id);
-    assert_ne!(
-        temporary_state.workspace.workspace_id,
-        owner_state.workspace.workspace_id
-    );
-    assert!(temporary_state.workspace.lifecycle.is_temporary());
-    temporary_state
-        .ensure_minimal_layout()
-        .expect("materialize temporary workspace");
-    fs::write(
-        temporary_state.paths.client_dir.join("cache.bin"),
-        b"path-bound cache",
-    )
-    .expect("write temporary cache");
-    fs::write(
-        temporary_state.paths.artifacts_dir.join("useful.txt"),
-        b"preserved artifact",
-    )
-    .expect("write temporary artifact");
-    fs::remove_dir_all(&temporary).expect("remove temporary checkout");
-
-    let report = owner_state
-        .gc_temporary_workspace_cache(crate::state_core::TemporaryWorkspaceCacheGcOptions {
-            apply: true,
-            grace_period_ms: 0,
-        })
-        .expect("retire temporary workspace cache");
-
-    assert_eq!(report.retired_count, 1);
-    assert!(temporary_state.paths.workspace_json.is_file());
-    assert!(
-        temporary_state
-            .paths
-            .artifacts_dir
-            .join("useful.txt")
-            .is_file()
-    );
-    assert!(!temporary_state.paths.client_dir.exists());
-    assert!(!temporary_state.paths.hooks_dir.exists());
-    assert!(
-        temporary_state
-            .paths
-            .workspace_dir
-            .join(".state/temporary-workspace-cache-retirement.v1.json")
-            .is_file()
-    );
-    assert!(owner_state.paths.project_dir.is_dir());
-
-    fs::remove_dir_all(&fixture).expect("remove owner-bound fixture");
-}
-
-#[test]
 fn owner_bound_temporary_workspace_rejects_a_different_gix_project() {
     let fixture = std::env::temp_dir().join(format!(
         "asp-owner-bound-mismatch-{}-{}",
@@ -251,7 +160,8 @@ fn owner_bound_temporary_workspace_rejects_a_different_gix_project() {
             .expect("system clock")
             .as_nanos()
     ));
-    let owner = fixture.join("owner");
+    let durable_fixture = durable_fixture_root("owner-bound-mismatch");
+    let owner = durable_fixture.join("owner");
     let temporary = fixture.join("temporary");
     let state_home = fixture.join("state");
     fs::create_dir_all(&owner).expect("create owner checkout");
@@ -288,6 +198,19 @@ fn owner_bound_temporary_workspace_rejects_a_different_gix_project() {
     assert!(error.contains("Gix resolved temporary checkout"));
     assert!(!state_home.exists());
     fs::remove_dir_all(&fixture).expect("remove mismatch fixture");
+    fs::remove_dir_all(&durable_fixture).expect("remove durable owner fixture");
+}
+
+fn durable_fixture_root(label: &str) -> PathBuf {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("system clock")
+        .as_nanos();
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("target/state-core-fixtures")
+        .join(format!("{label}-{}-{nanos}", std::process::id()));
+    fs::create_dir_all(&root).expect("create durable state fixture");
+    root
 }
 
 fn run_git(cwd: &Path, args: &[&str]) {

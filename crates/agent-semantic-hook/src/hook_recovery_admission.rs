@@ -71,7 +71,12 @@ fn exact_canonical_binary_install(words: &[String], asp_index: usize) -> bool {
     words.get(asp_index + 3).map(String::as_str) == Some("--target")
         && words.len() == asp_index + 5
         && agent_semantic_runtime::resolve_state_home()
-            .map(|state_home| state_home.join("runtime").join("bin").join("asp"))
+            .map(|state_home| {
+                agent_semantic_artifacts::StateHomeLayout::new(state_home)
+                    .runtime_state()
+                    .bin()
+                    .join("asp")
+            })
             .is_ok_and(|canonical| canonical == std::path::Path::new(target))
 }
 

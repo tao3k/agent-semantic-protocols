@@ -1,12 +1,24 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 use super::ProviderArtifactAuthority;
 use super::ProviderInstallLock;
 use super::asset_name;
-use super::checksum_name;
-use super::parse_sha256_checksum;
 use super::path_segment;
 use super::provider_release;
 use super::validate_target;
 use super::write_provider_lock;
+
+#[test]
+fn release_reconciliation_without_an_active_bundle_is_empty_and_offline() {
+    let state_home = tempfile::tempdir().expect("state home");
+    let plan = super::prepare_active_release_provider_reconciliation(state_home.path())
+        .expect("empty release reconciliation");
+    assert_eq!(plan.provider_count(), 0);
+    assert!(plan.member_sources().is_empty());
+    assert!(!plan.staging_root.exists());
+}
 
 #[test]
 fn provider_lock_serializes_canonical_artifact_digest_without_legacy_generation_key() {
@@ -61,11 +73,7 @@ fn asset_names_are_rev_independent_and_target_selected() {
     let spec = provider_release("julia").expect("julia release spec");
     assert_eq!(
         asset_name(&spec, "aarch64-apple-darwin"),
-        "asp-julia-aarch64-apple-darwin.tar.gz"
-    );
-    assert_eq!(
-        checksum_name(&spec, "aarch64-apple-darwin"),
-        "asp-julia-aarch64-apple-darwin.tar.gz.sha256"
+        "asp-julia-harness-aarch64-apple-darwin.tar.gz"
     );
 }
 
@@ -76,7 +84,7 @@ fn pinned_release_hash_requires_a_valid_value_for_each_target() {
     let missing = super::pinned_release_sha256(&spec, "aarch64-apple-darwin")
         .expect_err("missing target hash must fail");
     assert!(
-        missing.contains("missing pinned release sha256"),
+        missing.contains("provider-release-target-digest-missing"),
         "{missing}"
     );
 
@@ -89,17 +97,6 @@ fn pinned_release_hash_requires_a_valid_value_for_each_target() {
     assert!(
         invalid.contains("invalid pinned release sha256"),
         "{invalid}"
-    );
-}
-
-#[test]
-fn parse_checksum_accepts_common_sha256_formats() {
-    assert_eq!(
-        parse_sha256_checksum(
-            "ABCDEFabcdef0123456789abcdef0123456789abcdef0123456789abcdef0123  file.tar.gz\n"
-        )
-        .as_deref(),
-        Some("abcdefabcdef0123456789abcdef0123456789abcdef0123456789abcdef0123")
     );
 }
 
@@ -135,7 +132,7 @@ fn external_register_fixture_resolves_identity_without_caller_supplied_binary() 
     assert_eq!(provider_id, "external-provider");
 }
 #[test]
-fn provider_state_home_is_separate_from_runtime_bin() {
+fn provider_install_inputs_are_owned_by_artifact_staging() {
     let state_home = std::env::temp_dir().join(format!(
         "asp-install-scope-{}-{}",
         std::process::id(),
@@ -149,6 +146,8 @@ fn provider_state_home_is_separate_from_runtime_bin() {
             .canonicalize()
             .expect("canonical state home")
             .join("runtime")
+            .join("artifacts")
+            .join("staging")
             .join("providers")
     );
     assert_ne!(provider_root, state_home.join("runtime").join("bin"));

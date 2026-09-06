@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 //! Project path introspection for the `asp paths` command.
 
 use std::collections::BTreeMap;
@@ -103,10 +107,14 @@ impl ProjectPaths {
         let client_db_dir = project_state_paths.client_db_dir;
         let client_db_path = project_state_paths.client_db_path;
         let artifacts_dir = project_state_paths.artifacts_dir;
-        let runtime_home = state_root.join("runtime");
-        let runtime_bin_dir = runtime_home.join("bin");
+        let runtime_layout =
+            agent_semantic_artifacts::StateHomeLayout::new(&state_root).runtime_state();
+        let runtime_home = runtime_layout.root().to_path_buf();
+        let runtime_bin_dir = runtime_layout.bin();
         let provider_lock_dir = project_state_paths.provider_lock_dir;
-        let org_state_root = protocol_home.join("org");
+        let org_state_root = agent_semantic_artifacts::StateHomeLayout::new(protocol_home)
+            .resources()
+            .org();
         let org_state_skill = org_state_root.join("templates").join("ASP_ORG_SKILL.org");
         let org_artifacts = artifacts_dir.join("org");
         let org_flow = org_artifacts.join("flow");

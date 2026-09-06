@@ -35,10 +35,9 @@ pub fn diagnose_reader_probe_with_state_home(
         wrapped_command,
         reader_behavior_patterns,
         dynamic_cache_root: Some(
-            state_home
-                .join("hooks")
-                .join("reader-behavior")
-                .join("dynamic-catalog"),
+            agent_semantic_artifacts::StateHomeLayout::new(state_home)
+                .cache()
+                .reader_behavior(),
         ),
     })
 }

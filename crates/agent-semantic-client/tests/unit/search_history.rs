@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 use std::path::Path;
 
 use agent_semantic_client_core::state_core::ResolvedState;
@@ -27,8 +31,9 @@ async fn search_history_backfills_artifacts_and_passes_db_engine_events() {
     let _state_home = EnvVarGuard::set("ASP_STATE_HOME", root.join(".asp-state"));
     let artifact_dir = ResolvedState::resolve(&root)
         .expect("state core")
-        .paths
-        .artifacts_dir;
+        .workspace_state_paths()
+        .expect("canonical workspace paths")
+        .artifacts;
     std::fs::create_dir_all(artifact_dir.join("prompt-output")).expect("create artifact dir");
     std::fs::write(
         artifact_dir.join("prompt-output/rust-search-prime-abc123.txt"),

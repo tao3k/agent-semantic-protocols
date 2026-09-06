@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 //! Project-facing entry point for ASP state and cache paths.
 
 use std::path::Path;
@@ -34,7 +38,7 @@ impl ProjectContext {
     pub fn open(cwd: impl AsRef<Path>) -> Result<Self, String> {
         let cwd = canonicalize_if_possible(cwd.as_ref());
         let resolved = crate::state_core::ResolvedState::resolve(&cwd)?;
-        resolved.ensure_minimal_layout()?;
+        resolved.ensure_workspace_state_layout()?;
         Self::from_resolved_state(cwd, resolved)
     }
 
@@ -44,12 +48,8 @@ impl ProjectContext {
     ) -> Result<Self, String> {
         let git_toplevel = resolved.repo.git_toplevel.clone();
         let project_home = git_toplevel.clone();
-        let binding = agent_semantic_artifacts::ProjectBinding::resolve(
-            None,
-            resolved.repo.identity_basis.clone(),
-            &resolved.workspace.root,
-        )?;
-        let state_layout = StateLayout::from_resolved_state(resolved);
+        let binding = resolved.project_binding()?;
+        let state_layout = StateLayout::from_resolved_state(resolved)?;
 
         Ok(Self {
             cwd,
@@ -103,30 +103,29 @@ impl ProjectContext {
 impl StateLayout {
     /// Resolve State Home paths without materializing them.
     pub fn resolve(project_root: impl AsRef<Path>) -> Result<Self, String> {
-        Ok(Self::from_resolved_state(
-            crate::state_core::ResolvedState::resolve(project_root)?,
-        ))
+        Self::from_resolved_state(crate::state_core::ResolvedState::resolve(project_root)?)
     }
 
     /// Resolve and explicitly materialize State Home paths.
     pub fn open(project_root: impl AsRef<Path>) -> Result<Self, String> {
         let resolved = crate::state_core::ResolvedState::resolve(project_root)?;
-        resolved.ensure_minimal_layout()?;
-        Ok(Self::from_resolved_state(resolved))
+        resolved.ensure_workspace_state_layout()?;
+        Self::from_resolved_state(resolved)
     }
 
-    fn from_resolved_state(resolved: crate::state_core::ResolvedState) -> Self {
+    fn from_resolved_state(resolved: crate::state_core::ResolvedState) -> Result<Self, String> {
+        let workspace = resolved.workspace_state_paths()?;
         let state_root = resolved.state_home.clone();
-        let client_cache_dir = resolved.paths.client_dir.clone();
-        let artifacts_dir = resolved.paths.artifacts_dir.clone();
-        let cache_manifest_path = resolved.paths.client_cache_manifest_path.clone();
+        let client_cache_dir = workspace.root.clone();
+        let artifacts_dir = workspace.artifacts.clone();
+        let cache_manifest_path = workspace.cache_manifest_path();
 
-        Self {
+        Ok(Self {
             state_root,
             client_cache_dir,
             cache_manifest_path,
             artifacts_dir,
-        }
+        })
     }
 
     pub fn state_root(&self) -> &Path {

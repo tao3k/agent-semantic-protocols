@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 use super::materialize_codex_multi_agent_control_plane;
 use crate::agent_session_registry::AgentSessionRecord;
 use crate::workspace_db_ipc::WorkspaceDbIpcOperation;

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 //! Shared State Home v1 fixtures for protocol integration tests.
 
 use std::path::{Path, PathBuf};
@@ -10,10 +14,9 @@ use agent_semantic_hook::{
 use agent_semantic_runtime::state_core::ResolvedState;
 
 pub(crate) fn canonical_activation_path(root: &Path, state_home: &Path) -> PathBuf {
-    resolved_state(root, state_home)
-        .paths
-        .hooks_dir
-        .join("state/activation.json")
+    agent_semantic_runtime::project_state_paths_with_state_home(root, state_home)
+        .expect("canonical project state paths")
+        .activation_path
 }
 
 pub(crate) fn install_provider_script(
@@ -22,7 +25,10 @@ pub(crate) fn install_provider_script(
     script: &str,
 ) -> PathBuf {
     let manifest = manifest_for(language_id);
-    let provider_path = state_home.join("runtime/bin").join(manifest.binary());
+    let provider_path = agent_semantic_artifacts::StateHomeLayout::new(state_home)
+        .runtime_state()
+        .bin()
+        .join(manifest.binary());
     std::fs::create_dir_all(provider_path.parent().expect("provider runtime bin parent"))
         .expect("create State Home provider runtime bin");
     std::fs::write(&provider_path, script).expect("write State Home provider");
@@ -36,9 +42,11 @@ pub(crate) fn install_provider_script(
 pub(crate) fn write_activation(root: &Path, state_home: &Path, language_ids: &[&str]) -> PathBuf {
     let resolved = resolved_state(root, state_home);
     resolved
-        .ensure_minimal_layout()
+        .ensure_workspace_state_layout()
         .expect("materialize canonical State Home layout");
-    agent_semantic_client_db::AgentSessionRegistry::open_or_create_state_root(&resolved.state_home)
+    agent_semantic_client_db::AgentSessionRegistry::open_or_create_state_root(
+        agent_semantic_client_db::AgentSessionRegistry::state_root_for_resolved_state(&resolved),
+    )
         .expect("materialize canonical agent-session registry");
     let canonical_root = std::fs::canonicalize(root).expect("canonical protocol fixture root");
     let semantic_registry_digest = semantic_registry_digest();
@@ -46,7 +54,10 @@ pub(crate) fn write_activation(root: &Path, state_home: &Path, language_ids: &[&
         .iter()
         .map(|language_id| {
             let manifest = manifest_for(language_id);
-            let provider_path = state_home.join("runtime/bin").join(manifest.binary());
+            let provider_path = agent_semantic_artifacts::StateHomeLayout::new(state_home)
+                .runtime_state()
+                .bin()
+                .join(manifest.binary());
             let provider_path = std::fs::canonicalize(&provider_path).unwrap_or_else(|error| {
                 panic!(
                     "State Home provider must be installed before activation: {}: {error}",

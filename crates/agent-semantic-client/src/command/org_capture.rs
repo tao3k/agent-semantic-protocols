@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 //! ASP-owned Org capture state materialization.
 
 use super::org_capture_contract_materialize::ContractCaptureArgs;
@@ -64,7 +68,9 @@ async fn run_contract_capture(args: &[String]) -> Result<(), String> {
 
 pub(crate) async fn run_org_state_sync(project_root: &Path) -> Result<OrgStateSync, String> {
     let paths = project_state_paths(project_root)?;
-    let state_root = paths.protocol_home.join("org");
+    let state_root = agent_semantic_artifacts::StateHomeLayout::new(&paths.protocol_home)
+        .resources()
+        .org();
     let mut sync = sync_default_org_state(&state_root)?;
     if matches!(sync.status, "updated" | "cloned") {
         let revision = git_output(&["rev-parse", "HEAD"], Some(&state_root))?;
@@ -100,7 +106,9 @@ pub(crate) async fn run_org_state_sync(project_root: &Path) -> Result<OrgStateSy
 /// idempotent install into an implicit `git pull`.
 pub(crate) fn require_materialized_org_state(project_root: &Path) -> Result<OrgStateSync, String> {
     let paths = project_state_paths(project_root)?;
-    let state_root = paths.protocol_home.join("org");
+    let state_root = agent_semantic_artifacts::StateHomeLayout::new(&paths.protocol_home)
+        .resources()
+        .org();
     if !state_root.join(".git").is_dir() {
         return Err(format!(
             "ASP Org state is not materialized at {}; run the explicit Org sync workflow before plugin installation",

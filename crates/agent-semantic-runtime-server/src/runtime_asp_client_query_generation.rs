@@ -266,7 +266,7 @@ pub(super) async fn install_runtime_query_generation_terminal(
 /// A resident query generation may have been opened by a non-language request
 /// before a V1 provider-execution binding existed.  Reusing that handle for a
 /// later language operation without returning through the admission validator
-/// would bypass the legacy-refresh barrier.  The admission owner either proves
+/// would bypass the generation-refresh barrier.  The admission owner either proves
 /// the current binding unchanged or rebuilds and publishes one replacement
 /// CompleteGeneration before this returns.
 pub(super) async fn revalidate_runtime_query_generation(

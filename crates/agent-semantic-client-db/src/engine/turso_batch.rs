@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 pub(super) const TURSO_BATCH_ROW_COUNT: usize = 64;
 
 pub(super) fn text_value(value: &str) -> turso::Value {

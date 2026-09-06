@@ -639,10 +639,9 @@ fn dynamic_cache_root_path() -> Result<PathBuf, String> {
                 .map(|home| PathBuf::from(home).join(".agent-semantic-protocols"))
         })
         .ok_or("Reader behavior cache requires ASP_STATE_HOME or HOME")?;
-    Ok(state_home
-        .join("hooks")
-        .join("reader-behavior")
-        .join("dynamic-catalog"))
+    Ok(agent_semantic_artifacts::StateHomeLayout::new(state_home)
+        .cache()
+        .reader_behavior())
 }
 
 #[cfg(target_os = "macos")]

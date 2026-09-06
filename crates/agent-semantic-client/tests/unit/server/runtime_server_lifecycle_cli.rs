@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 #[test]
 fn public_server_help_exposes_atomic_restart() {
     let help = super::runtime_server_command().render_help().to_string();
@@ -80,6 +84,7 @@ async fn operator_start_recovers_the_durable_applied_activation_without_pending_
     let event = RuntimeArtifactActivationEvent {
         schema_id: "agent.semantic-protocols.runtime-artifact-activation".to_owned(),
         schema_version: 1,
+        activation_generation: 1,
         bundle_digest: digest.clone(),
         artifact_digest: digest.clone(),
         artifact_path: artifact_path.clone(),

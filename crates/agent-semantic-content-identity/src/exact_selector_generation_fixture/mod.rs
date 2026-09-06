@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 //! Reasoning tree for exact-selector generation fixtures.
 //!
 //! `core` owns the immutable binary layout and zero-copy lookup, while

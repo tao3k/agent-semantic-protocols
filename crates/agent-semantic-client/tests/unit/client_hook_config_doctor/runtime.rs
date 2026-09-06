@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 use super::{
     PROBE_SENTINEL, run_doctor_with_env, run_doctor_with_env_and_args, stderr, stdout,
     temp_project_root, write_activation, write_client_config, write_codex_plugin_fixture,

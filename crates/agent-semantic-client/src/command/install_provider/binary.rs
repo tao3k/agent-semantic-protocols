@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 //! Thin owner for Protocol binary installation.
 
 use std::env;
@@ -33,27 +37,27 @@ pub(crate) async fn run_install_binary(args: &[String]) -> Result<(), String> {
     let hook_config_status = install_binary_config_admission::publish_embedded_hook_config(
         &runtime_state.protocol_home,
     )?;
-    let installed = protocol_binary::ensure_protocol_binary_bundle_installed_transaction(
-        &plan,
-        &hook_candidate.source,
+    let provider_reconciliation =
+        super::core::prepare_active_release_provider_reconciliation(&runtime_state.protocol_home)?;
+    let mut members = vec![
+        agent_semantic_artifacts::runtime_artifact_publication::RuntimeArtifactBundleMemberSource {
+            name: "asp-hook",
+            source: &hook_candidate.source,
+        },
+    ];
+    members.extend(provider_reconciliation.member_sources());
+    let installed = protocol_binary::ensure_protocol_binary_bundle_members_installed_transaction(
+        &plan, &members,
     )
     .await?;
     let install_registry_digest =
         crate::command::provider_install_registry::provider_install_registry_digest()?;
-    let legacy_hook_generation =
-        install_binary_config_admission::retire_legacy_hook_generation_pointer(
-            &runtime_state.protocol_home,
-        )?;
     let active_artifact_receipt = agent_semantic_hook::rebind_active_asp_binary_receipt_if_present(
         &installed.path,
         &installed.artifact_digest,
         &runtime_state.activation_path,
     )?;
     agent_config_sync::synchronize_embedded_agent_state_config(&runtime_state.protocol_home)?;
-    let provider_artifacts =
-        crate::command::installed_provider_artifacts::publish_current_installed_provider_artifacts(
-            &runtime_state.protocol_home,
-        )?;
     let state_resolution = agent_semantic_runtime::state_core::resolve_state_home_projection()?;
     if state_resolution.state_home != runtime_state.protocol_home {
         return Err(format!(
@@ -69,7 +73,7 @@ pub(crate) async fn run_install_binary(args: &[String]) -> Result<(), String> {
     let runtime_endpoint_path =
         agent_semantic_client_db::runtime_server_endpoint_path(&runtime_state.protocol_home)?;
     println!(
-        "[asp-install-binary] binaryPath={} binaryInstall={} binaryContentDigest={} digestAlgorithm=blake3-256 binaryCurrent={} binarySwitch=atomic providerInstallRegistryDigest={} hookBinaryPath={} hookBinaryDigest={} hookBinarySwitch=active-healthy-bundle bundleLockAcquisitionCount={} hookConfigPublication={} hookConfigCoupling=embedded-in-hook-binary legacyHookGeneration={} hookAuthority=runtime-active-bundle-content-digest agentConfigPublication=current agentConfigCoupling=embedded-in-hook-binary runtimeServerLifecycle=resident-owner-independent reasonKind=none providerReconciliation=automatic installedProviderArtifactsGeneration={} installedProviderArtifactsWrite={} installedProviderArtifactsChangedLeaves={} developerIdentityReceipt={} installSource={} installScope=state-home projectRoot={} executablePath={} stateHome={} stateHomeSource={:?} aspStateHomePresent={} homePresent={} pendingActivationPath={} appliedActivationPath={} runtimeEndpointPath={}",
+        "[asp-install-binary] binaryPath={} binaryInstall={} binaryContentDigest={} digestAlgorithm=blake3-256 binaryCurrent={} binarySwitch=atomic providerInstallRegistryDigest={} hookBinaryPath={} hookBinaryDigest={} hookBinarySwitch=active-healthy-bundle bundleLockAcquisitionCount={} hookConfigPublication={} hookConfigCoupling=embedded-in-hook-binary hookAuthority=runtime-active-bundle-content-digest agentConfigPublication=current agentConfigCoupling=embedded-in-hook-binary runtimeServerLifecycle=resident-owner-independent reasonKind=none providerReconciliation=embedded-release-catalog providerReconciledCount={} activeRuntimeBundleDigest={} developerIdentityReceipt={} installSource={} installScope=state-home projectRoot={} executablePath={} stateHome={} stateHomeSource={:?} aspStateHomePresent={} homePresent={} pendingActivationPath={} appliedActivationPath={} runtimeEndpointPath={}",
         installed.path.display(),
         installed.status,
         installed.artifact_digest,
@@ -82,10 +86,8 @@ pub(crate) async fn run_install_binary(args: &[String]) -> Result<(), String> {
         hook_candidate.artifact_digest,
         installed.lock_acquisition_count,
         hook_config_status,
-        legacy_hook_generation,
-        provider_artifacts.generation(),
-        provider_artifacts.artifact_write(),
-        provider_artifacts.changed_leaf_count(),
+        provider_reconciliation.provider_count(),
+        installed.bundle_digest.as_deref().unwrap_or("unavailable"),
         active_artifact_receipt.as_str(),
         plan.install_source_kind(),
         project_root.display(),

@@ -1,6 +1,9 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 //! Provider installation branch boundary.
 
-use crate::command::installed_provider_artifacts;
 use crate::command::protocol_binary;
 
 mod archive;

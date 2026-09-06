@@ -53,36 +53,51 @@ language/package-manager entries contribute receipts to the same workspace
 semantic scope; they do not create multiple project scopes or identities.
 
 * Canonical layout
-The current physical layout is:
+=agent-semantic-artifacts::StateHomeLayout= is the only physical layout
+interface. Domain packages own their state machines and schemas, but they
+receive typed layout projections and never append State Home path segments.
+
+The current V1 physical layout is:
 #+begin_src text
 $ASP_STATE_HOME/
-  VERSION
-  state.json
-  session-registry.turso
-  registry/
-    events.jsonl
-  aliases/
-    by-display-name/
-  projects/
-    by-id/
-      <repo_id>/
-        project.json
-        workspaces/
-          <workspace_id>/
-            workspace.json
-            live/
-              client/
-                client.turso
-                manifest.json
-                hooks/
-                  events/
-                  ttl/
-                  dispatcher/
-            artifacts/
-              org/
-              prompt-output/
-              provider/
-              analyzer/
+  catalog/state.turso
+  control/
+    config/
+      hook-client.toml
+      agents/
+        config.toml
+        <host-agent-profile>
+    sessions/
+      session-registry.current.turso
+      session-registry.current.v1.json
+  runtime/
+    bin/<executable>
+    artifacts/
+      active
+      healthy
+      generations/<bundle-digest>/
+      activation/
+      leases/
+      staging/
+    serving/
+      endpoint.v1.json
+      readiness/
+      workspaces/
+      mailboxes/
+  workspaces/
+    <workspace-content-digest>/
+      project-binding.json
+      facts.turso
+      artifacts/
+      observations/
+  cache/
+    reader-behavior/blake3-256/
+  resources/
+    org/
+    live-corpus/
+  blobs/blake3-256/
+  receipts/
+  trash/
 #+end_src
 
 The trace must remain stable even if the physical layout evolves:
@@ -91,15 +106,18 @@ repo_id -> workspace_id -> scope_id -> generation_id -> provider_id ->
 search_receipt_id -> selector/snippet/artifact
 #+end_src
 
-=session-registry.turso= is the top-level ASP lifecycle control-plane
-database. It is not a project artifact and MUST NOT be placed under
-=projects/by-id/<repo_id>/=, =workspaces/<workspace_id>/=, or
-=live/client/agent/=. Project and workspace directories carry project
-identity, dynamic search/history data, command artifacts, provider output, and
-analysis material consumed by Python, Julia, or other downstream tooling.
+=control/sessions/session-registry.current.turso= is the Runtime Server-owned
+lifecycle control-plane database. It is not a workspace artifact. The Hook
+must not publish a session-route JSON mirror; every registration, lookup,
+dispatch, and terminal transition goes through the typed Runtime service.
+
+=projects/by-id=, root-level session databases, =hooks/session-routes=,
+=runtime/resident=, and root-level =agents= or =org= directories are retired
+namespaces. Normal V1 code neither reads nor writes them. Retention may retire
+their bytes, but it cannot import them into current authority.
 
 * Manifest contract
-=live/client/manifest.json= is written by the owning State Core/DB Engine
+=workspaces/<workspace-content-digest>/observations/db-engine.json= is written by the owning State Core/DB Engine
 service, not by command code. It records:
 - =stateLayoutVersion= =state-v1=;
 - =backend= =turso=;
@@ -114,8 +132,8 @@ service, not by command code. It records:
 from schema and protocol versions, which remain attached to their individual
 JSON contracts.
 
-Commands must call typed services to obtain these paths. They must not
-reconstruct =projects/by-id/...= manually.
+Commands must call typed services to obtain these paths. CLI modules parse and
+render only; they do not materialize state or reconstruct any State Home path.
 
 * Crate ownership
 The command crate is a public facade only:
@@ -185,13 +203,13 @@ The CLI must call the State Core service. It must not compose paths itself.
   =schemas/semantic-state-locate-report.v1.schema.json=;
 - no command-layer path helper reconstructs State Core v2 paths directly.
 * Implementation checkpoint: M0 DB/cache identity closure
-The M0 DB/cache closure keeps State Core as the source of path truth:
-- active client DB paths resolve through State Core and DB Engine services under =live/client/client.turso=;
-- command code must not compose =projects/by-id/<repo_id>/workspaces/<workspace_id>/...= paths by hand;
+The M0 DB/cache closure keeps Artifacts as the source of physical path truth:
+- active client DB paths resolve through the typed workspace projection at =workspaces/<workspace-content-digest>/facts.turso=;
+- command code must not compose State Home paths by hand;
 - external absolute workspace roots may be used by cache probing to choose the effective project state bucket;
 - positional path arguments remain part of the CLI/provider forwarding contract unless they are explicit cache identity markers;
 - cache request fingerprints must ignore trailing workspace markers such as =.= and absolute workspace directories so equivalent invocations reuse the same generation;
-- project-local cache remains diagnostic-only and is still not a v2 fallback or migration source.
+- project-local cache remains diagnostic-only and is not a V1 fallback or migration source.
 
 The matching validation gates are:
 - =cargo test -p agent-semantic-client --locked cli_args -- --nocapture=

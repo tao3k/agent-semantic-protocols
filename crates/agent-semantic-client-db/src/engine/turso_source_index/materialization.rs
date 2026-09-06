@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 use crate::runtime_server_workspace::WorkspaceCanonicalMaterialization;
 
 pub(super) async fn persist_workspace_generation_materialization(

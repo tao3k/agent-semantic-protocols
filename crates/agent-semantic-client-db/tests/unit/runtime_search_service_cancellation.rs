@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 use agent_semantic_client_db::runtime_generation_cancellation::GenerationCancellation;
 use agent_semantic_client_db::runtime_search_service::RuntimeSearchServiceRequest;
 use agent_semantic_client_db::runtime_search_service::runtime_search_service_channel;

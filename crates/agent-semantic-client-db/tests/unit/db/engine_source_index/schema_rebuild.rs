@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 use super::CLIENT_DB_SOURCE_INDEX_PROVIDER_ID;
 use super::CLIENT_DB_SOURCE_INDEX_SCHEMA_ID;
 use super::CLIENT_DB_SOURCE_INDEX_SCHEMA_VERSION;

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 //! Shared typed generation fixtures for overlay admission scenarios.
 
 use std::sync::atomic::AtomicU64;
@@ -48,7 +52,7 @@ pub(super) fn generation_with_selectors(
         blake3::hash(b"runtime-overlay-fixture-module-graph").to_hex()
     );
     let runtime_provider_execution_binding =
-        agent_semantic_artifacts::installed_provider_binding::RuntimeProviderExecutionBinding::build(
+        agent_semantic_artifacts::runtime_provider_execution_binding::RuntimeProviderExecutionBinding::build(
             crate::fixture::FIXTURE_PROJECT_ID.to_owned(),
             workspace_identity.to_owned(),
             format!("blake3-256:{}", "1".repeat(64)),

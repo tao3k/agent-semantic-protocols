@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 //! CLI dispatcher for the public `asp` agent semantic client surface.
 
 use std::env;
@@ -40,14 +44,6 @@ pub async fn run_cli_args(
             crate::cache_cli::run_cache(
                 &parsed.project_root,
                 language_id.as_ref(),
-                &parsed.forwarded_args,
-                parsed.receipt_json,
-            )
-            .await
-        }
-        Some("clean") => {
-            crate::cache_cli::run_project_registry_clean(
-                &parsed.project_root,
                 &parsed.forwarded_args,
                 parsed.receipt_json,
             )

@@ -1,43 +1,37 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 //! PATH-visible `asp` binary installation helpers.
 
 #[path = "protocol_binary_identity.rs"]
 mod protocol_binary_identity;
 
-/// Publishes a verified, digest-addressed Runtime Server artifact into State Home.
-///
-/// Runtime startup accepts only artifacts installed through this identity contract; it never
-/// hashes an unregistered executable as a compatibility fallback.
-pub async fn publish_runtime_server_artifact(
-    source: &Path,
-    state_home: &Path,
-) -> Result<String, String> {
-    let artifact_root = agent_semantic_artifacts::RuntimeArtifactStateLayout::new(state_home)
-        .root()
-        .to_path_buf();
-    let installed = install_protocol_binary_target(
-        source,
-        &agent_semantic_artifacts::RuntimeArtifactStateLayout::new(state_home)
-            .active_slot()
-            .join("asp"),
-        &artifact_root,
-        &RuntimeBinaryIdentityV1::asp_bootstrap(),
-    )
-    .await?;
-    Ok(installed.artifact_digest)
-}
-
-/// Returns the identity of the published Runtime Server artifact without reading its bytes.
-pub fn published_runtime_server_artifact_digest(state_home: &Path) -> Option<String> {
-    protocol_binary_artifact_path_digest(
-        &agent_semantic_artifacts::RuntimeArtifactStateLayout::new(state_home)
-            .active_slot()
-            .join("asp"),
-    )
-}
-
 use protocol_binary_identity::is_digest_addressed_protocol_binary;
-pub(crate) use protocol_binary_identity::protocol_binary_artifact_path_digest;
 pub(crate) use protocol_binary_identity::protocol_binary_digest_from_canonical_artifact_path;
+
+#[cfg(test)]
+fn protocol_binary_artifact_path_digest(path: &Path) -> Option<String> {
+    let launcher_target = std::fs::read_link(path).ok()?;
+    let launcher_target = if launcher_target.is_absolute() {
+        launcher_target
+    } else {
+        path.parent()?.join(launcher_target)
+    };
+    let active_slot = launcher_target.parent()?;
+    let generation_target = std::fs::read_link(active_slot).ok()?;
+    let generation_target = if generation_target.is_absolute() {
+        generation_target
+    } else {
+        active_slot.parent()?.join(generation_target)
+    };
+    let generation = generation_target.file_name()?.to_str()?;
+    (generation.len() == 64
+        && generation
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte)))
+    .then(|| generation.to_owned())
+}
 
 use std::env;
 use std::fs;
@@ -112,8 +106,18 @@ impl ProtocolBinaryInstall {
                 "reasonKind=runtime-artifact-publication-receipt-incomplete missing binary name"
                     .to_owned()
             })?;
+        self.validate_artifact_transaction_receipt_for_operation(&expected_operation)
+    }
+
+    fn validate_artifact_transaction_receipt_for_operation(
+        &self,
+        expected_operation: &str,
+    ) -> Result<(), String> {
+        if self.status == "current" {
+            return Ok(());
+        }
         if self.lock_acquisition_count != 1
-            || self.quiescence_operation.as_deref() != Some(expected_operation.as_str())
+            || self.quiescence_operation.as_deref() != Some(expected_operation)
             || !self
                 .quiescence_lease_nonce
                 .as_deref()
@@ -251,15 +255,48 @@ pub(crate) async fn ensure_protocol_binary_bundle_members_installed_transaction(
     for alias in &plan.managed_path_aliases {
         validate_protocol_entry_for_repair(alias, &plan.artifact_root)?;
     }
-    let install = install_protocol_binary_target_transaction(
+    let runtime_root = plan.artifact_root.parent().ok_or_else(|| {
+        format!(
+            "runtime artifact root has no Runtime parent: {}",
+            plan.artifact_root.display()
+        )
+    })?;
+    let state_home = runtime_root.parent().ok_or_else(|| {
+        format!(
+            "Runtime root has no State Home parent: {}",
+            runtime_root.display()
+        )
+    })?;
+    let artifact_mode =
+        if agent_semantic_artifacts::runtime_artifact_catalog::load_runtime_developer_root(
+            state_home,
+        )?
+        .is_some()
+        {
+            "dev"
+        } else {
+            "release"
+        };
+    let receipt = agent_semantic_artifacts::runtime_artifact_publication::publish_runtime_artifact_bundle_successor_from_active(
+        state_home,
         plan.candidate_source(),
         &plan.target,
-        &plan.artifact_root,
-        &plan.binary_identity,
-        None,
+        artifact_mode,
         members,
     )
     .await?;
+    let install = ProtocolBinaryInstall {
+        path: receipt.path,
+        status: receipt.status,
+        artifact_digest: receipt.artifact_digest.to_string(),
+        bundle_digest: Some(receipt.bundle_digest.to_string()),
+        lock_acquisition_count: receipt.lock_acquisition_count,
+        quiescence_operation: Some(receipt.quiescence_operation),
+        quiescence_lease_nonce: Some(receipt.quiescence_lease_nonce),
+        lease_producer_process_id: Some(receipt.lease_producer_process_id),
+        lease_consumer_process_id: Some(receipt.lease_consumer_process_id),
+    };
+    install.validate_artifact_transaction_receipt_for_operation("publish:asp")?;
     if install.status != "published-active-awaiting-health" {
         for alias in &plan.managed_path_aliases {
             install_protocol_binary_alias(alias, &plan.target, &plan.artifact_root)?;
@@ -419,6 +456,15 @@ pub(crate) async fn install_protocol_binary_target(
     artifact_root: &Path,
     binary_identity: &RuntimeBinaryIdentityV1,
 ) -> Result<ProtocolBinaryInstall, String> {
+    if binary_identity.name() != std::ffi::OsStr::new(SEMANTIC_AGENT_PROTOCOL_BIN) {
+        return install_release_provider_member_target(
+            source,
+            target,
+            artifact_root,
+            binary_identity,
+        )
+        .await;
+    }
     install_protocol_binary_target_transaction(
         source,
         target,
@@ -428,6 +474,68 @@ pub(crate) async fn install_protocol_binary_target(
         &[],
     )
     .await
+}
+
+async fn install_release_provider_member_target(
+    source: &Path,
+    target: &Path,
+    artifact_root: &Path,
+    binary_identity: &RuntimeBinaryIdentityV1,
+) -> Result<ProtocolBinaryInstall, String> {
+    let binary_name = binary_identity.name();
+    if target.file_name() != Some(binary_name) {
+        return Err(format!(
+            "provider binary target {} does not match declared binary identity `{}`",
+            target.display(),
+            binary_name.to_string_lossy()
+        ));
+    }
+    let runtime_root = artifact_root.parent().ok_or_else(|| {
+        format!(
+            "runtime artifact root has no Runtime parent: {}",
+            artifact_root.display()
+        )
+    })?;
+    let state_home = runtime_root.parent().ok_or_else(|| {
+        format!(
+            "Runtime root has no State Home parent: {}",
+            runtime_root.display()
+        )
+    })?;
+    let expected_target = runtime_root.join("bin").join(binary_name);
+    if !same_protocol_binary_entry(target, &expected_target) {
+        return Err(format!(
+            "provider binary target must use the Runtime stable launcher: expected={} actual={}",
+            expected_target.display(),
+            target.display()
+        ));
+    }
+    let member_name = binary_name
+        .to_str()
+        .ok_or_else(|| "provider binary identity must be UTF-8".to_owned())?;
+    let member_digest =
+        agent_semantic_artifacts::runtime_artifact_slots::runtime_artifact_candidate_digest(source)
+            .await?;
+    let publication = agent_semantic_artifacts::runtime_artifact_publication::publish_runtime_artifact_bundle_member_from_active(
+        state_home,
+        member_name,
+        source,
+        "release",
+    )
+    .await?;
+    let install = ProtocolBinaryInstall {
+        path: target.to_path_buf(),
+        status: publication.status,
+        artifact_digest: member_digest.to_string(),
+        bundle_digest: Some(publication.bundle_digest.to_string()),
+        lock_acquisition_count: publication.lock_acquisition_count,
+        quiescence_operation: Some(publication.quiescence_operation),
+        quiescence_lease_nonce: Some(publication.quiescence_lease_nonce),
+        lease_producer_process_id: Some(publication.lease_producer_process_id),
+        lease_consumer_process_id: Some(publication.lease_consumer_process_id),
+    };
+    install.validate_artifact_transaction_receipt_for_operation("publish:asp")?;
+    Ok(install)
 }
 
 pub(crate) async fn install_qualified_provider_staging_target(
@@ -446,10 +554,10 @@ pub(crate) async fn install_qualified_provider_staging_target(
             binary_name.to_string_lossy()
         ));
     }
-    let runtime_root = target.parent().and_then(Path::parent).ok_or_else(|| {
+    let runtime_root = artifact_root.parent().ok_or_else(|| {
         format!(
-            "provider binary target has no Runtime parent: {}",
-            target.display()
+            "runtime artifact root has no Runtime parent: {}",
+            artifact_root.display()
         )
     })?;
     let state_home = runtime_root.parent().ok_or_else(|| {
@@ -461,42 +569,33 @@ pub(crate) async fn install_qualified_provider_staging_target(
     let expected_target = runtime_root.join("bin").join(binary_name);
     if !same_protocol_binary_entry(target, &expected_target) {
         return Err(format!(
-            "provider binary target must use the stable Runtime bin slot: expected={} actual={}",
+            "provider binary target must use the Runtime stable launcher: expected={} actual={}",
             expected_target.display(),
             target.display()
         ));
     }
     let artifact_kind = binary_name.to_string_lossy().into_owned();
     authority.validate_source(state_home, source, &artifact_kind)?;
-    let guard =
-        agent_semantic_artifacts::runtime_artifact_retention::RuntimeArtifactMutationGuard::try_acquire(
-            artifact_root,
-        )?;
-    let publication =
-        agent_semantic_artifacts::runtime_artifact_store::publish_qualified_runtime_artifact_under_guard(
-            state_home,
-            source,
-            target,
-            artifact_root,
-            artifact_kind,
-            authority,
-            &guard,
-        )
-        .await?;
-    drop(guard);
+    let member_digest =
+        agent_semantic_artifacts::runtime_artifact_slots::runtime_artifact_candidate_digest(source)
+            .await?;
+    let publication = agent_semantic_artifacts::runtime_artifact_publication::publish_runtime_artifact_bundle_member_from_active(
+        state_home,
+        &artifact_kind,
+        source,
+        "dev",
+    )
+    .await?;
     Ok(ProtocolBinaryInstall {
-        path: publication.path,
-        // Provider staging is not a Runtime serving activation. The stable
-        // provider entry is atomically linked to the qualified CAS artifact,
-        // so there is no Runtime activation/quiescence receipt to validate.
-        status: "current",
-        artifact_digest: publication.artifact_digest.to_string(),
-        bundle_digest: None,
-        lock_acquisition_count: 0,
-        quiescence_operation: None,
-        quiescence_lease_nonce: None,
-        lease_producer_process_id: None,
-        lease_consumer_process_id: None,
+        path: target.to_path_buf(),
+        status: publication.status,
+        artifact_digest: member_digest.to_string(),
+        bundle_digest: Some(publication.bundle_digest.to_string()),
+        lock_acquisition_count: publication.lock_acquisition_count,
+        quiescence_operation: Some(publication.quiescence_operation),
+        quiescence_lease_nonce: Some(publication.quiescence_lease_nonce),
+        lease_producer_process_id: Some(publication.lease_producer_process_id),
+        lease_consumer_process_id: Some(publication.lease_consumer_process_id),
     })
 }
 
@@ -533,7 +632,7 @@ async fn install_protocol_binary_target_transaction(
     let expected_target = runtime_root.join("bin").join(binary_name);
     if !same_protocol_binary_entry(target, &expected_target) {
         return Err(format!(
-            "runtime binary target must use the stable Runtime slot: expected={} actual={}",
+            "runtime binary target must use the Runtime stable launcher: expected={} actual={}",
             expected_target.display(),
             target.display()
         ));

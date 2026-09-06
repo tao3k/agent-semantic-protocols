@@ -356,12 +356,11 @@ a concrete project/workspace and must be under the project layout:
 
 #+BEGIN_SRC text
 ~/.agent-semantic-protocols/
-  projects/by-id/<repo-id>/
-    workspaces/<workspace-id>/
-      live/hooks/cache/
-      live/hooks/state/
-        activation.json
-        events.jsonl
+  workspaces/<workspace-content-digest>/
+    observations/hooks/cache/
+    observations/hooks/state/
+      activation.json
+      events.jsonl
 #+END_SRC
 
 The global state root may still own cross-project registries, runtime binaries,
@@ -372,7 +371,7 @@ own per-project hook activation or event state.
 ASP-owned agent definitions live under:
 
 #+BEGIN_SRC text
-~/.agent-semantic-protocols/agents/
+~/.agent-semantic-protocols/control/config/agents/
   config.toml
   asp-explorer_codex.toml
   asp-testing_codex.toml
@@ -424,11 +423,11 @@ The regression shape is:
 
 #+BEGIN_SRC text
 asp paths --json
-  => hookStateDir is under projects/by-id/.../workspaces/.../live/hooks/state
+  => hookStateDir is under workspaces/<digest>/observations/hooks/state
   => activation is hookStateDir/activation.json
 
 asp sync
-  => scans ~/.agent-semantic-protocols/agents/*_{codex,claude}.*
+  => scans ~/.agent-semantic-protocols/control/config/agents/*_{codex,claude}.*
   => refreshes host agent projections
   => reports agentConfigs=<n>
 

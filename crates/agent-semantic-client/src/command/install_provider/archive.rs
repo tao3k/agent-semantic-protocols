@@ -1,6 +1,9 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 //! Archive download and executable installation helpers for pinned providers.
 
-use agent_semantic_runtime::ensure_project_provider_lock_dir;
 use sha2::Digest;
 use sha2::Sha256;
 use std::fs;
@@ -16,10 +19,6 @@ pub(super) fn asset_name(spec: &ProviderReleaseSpec, target: &str) -> String {
     format!("{}-{target}.tar.gz", spec.archive_prefix)
 }
 
-pub(super) fn checksum_name(spec: &ProviderReleaseSpec, target: &str) -> String {
-    format!("{}.sha256", asset_name(spec, target))
-}
-
 pub(super) fn release_asset_url(spec: &ProviderReleaseSpec, asset_name: &str) -> String {
     format!(
         "{}/{}",
@@ -28,36 +27,17 @@ pub(super) fn release_asset_url(spec: &ProviderReleaseSpec, asset_name: &str) ->
     )
 }
 
-pub(super) fn download_release_archive(
+pub(super) fn download_release_archive_to(
     spec: &ProviderReleaseSpec,
     target: &str,
-    project_root: &Path,
+    download_dir: &Path,
 ) -> Result<PathBuf, String> {
-    let asset_name = asset_name(spec, target);
-    let url = release_asset_url(spec, &asset_name);
-    let download_dir = ensure_project_provider_lock_dir(project_root)?.join("downloads");
-    fs::create_dir_all(&download_dir)
+    fs::create_dir_all(download_dir)
         .map_err(|error| format!("failed to create {}: {error}", download_dir.display()))?;
-    let archive_path = download_dir.join(&asset_name);
-    run_curl(&url, &archive_path)?;
+    let name = asset_name(spec, target);
+    let archive_path = download_dir.join(&name);
+    run_curl(&release_asset_url(spec, &name), &archive_path)?;
     Ok(archive_path)
-}
-
-pub(super) fn checksum_for_archive(
-    spec: &ProviderReleaseSpec,
-    target: &str,
-    project_root: &Path,
-) -> Result<String, String> {
-    let url = release_asset_url(spec, &checksum_name(spec, target));
-    let download_dir = ensure_project_provider_lock_dir(project_root)?.join("downloads");
-    fs::create_dir_all(&download_dir)
-        .map_err(|error| format!("failed to create {}: {error}", download_dir.display()))?;
-    let checksum_path = download_dir.join(checksum_name(spec, target));
-    run_curl(&url, &checksum_path)?;
-    let checksum = fs::read_to_string(&checksum_path)
-        .map_err(|error| format!("failed to read {}: {error}", checksum_path.display()))?;
-    parse_sha256_checksum(&checksum)
-        .ok_or_else(|| format!("checksum file {url} did not contain a sha256 digest"))
 }
 
 fn run_curl(url: &str, output: &Path) -> Result<(), String> {
@@ -71,15 +51,6 @@ fn run_curl(url: &str, output: &Path) -> Result<(), String> {
         return Err(format!("curl failed for {url} with status {status}"));
     }
     Ok(())
-}
-
-pub(super) fn parse_sha256_checksum(content: &str) -> Option<String> {
-    content
-        .split_whitespace()
-        .find(|part| {
-            part.len() == 64 && part.chars().all(|character| character.is_ascii_hexdigit())
-        })
-        .map(|value| value.to_ascii_lowercase())
 }
 
 pub(super) fn sha256_file(path: &Path) -> Result<String, String> {
@@ -106,12 +77,23 @@ pub(super) fn install_archive_binary(
     provider_binary_path: &Path,
     provider_package_dir: &Path,
 ) -> Result<PathBuf, String> {
+    let package_binary =
+        materialize_archive_binary(archive_path, spec, target, provider_package_dir)?;
+    install_executable_entrypoint(&package_binary, provider_binary_path)?;
+    Ok(provider_binary_path.to_path_buf())
+}
+
+pub(super) fn materialize_archive_binary(
+    archive_path: &Path,
+    spec: &ProviderReleaseSpec,
+    target: &str,
+    provider_package_dir: &Path,
+) -> Result<PathBuf, String> {
     let package_binary = install_archive_package(archive_path, spec, target, provider_package_dir)?;
     if spec.require_native_binary {
         validate_native_binary(&package_binary)?;
     }
-    install_executable_entrypoint(&package_binary, provider_binary_path)?;
-    Ok(provider_binary_path.to_path_buf())
+    Ok(package_binary)
 }
 
 fn install_archive_package(

@@ -1,9 +1,13 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 [package]
 name = "agent-semantic-client-core"
 version = "0.1.0"
 edition.workspace = true
 description = "Core request, route, cache, and receipt contracts for the agent semantic client."
-license = "MIT"
+license.workspace = true
 
 [dependencies]
 sha2.workspace = true

@@ -15,5 +15,9 @@ pub fn default_global_client_config_path() -> Option<PathBuf> {
                 .filter(|value| !value.is_empty())
                 .map(|home| PathBuf::from(home).join(DEFAULT_STATE_HOME_DIR))
         })?;
-    Some(state_home.join("hooks").join("config.toml"))
+    Some(
+        agent_semantic_artifacts::StateHomeLayout::new(state_home)
+            .control()
+            .hook_client_config(),
+    )
 }

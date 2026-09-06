@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 use super::rollout::{
     CodexRolloutSessionActivity, CodexRolloutSessionActivityState,
     fast_rollout_path_for_session_id, fast_rollout_path_for_session_id_in, rollout_session_meta,

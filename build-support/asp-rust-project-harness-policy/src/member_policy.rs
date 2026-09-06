@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 //! Central Rust harness policy registry for ASP workspace member crates.
 
 /// A source owner covered by a member crate harness policy.

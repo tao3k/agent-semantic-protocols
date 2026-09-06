@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 //! Canonical typed layout for generated Runtime State Home objects.
 //!
 //! Domain packages own transition semantics. This module is the sole owner of
@@ -42,6 +46,16 @@ impl RuntimeStateLayout {
         RuntimeArtifactStateLayout::new(&self.state_home)
     }
 
+    /// Stable executable entrypoints derived from the active artifact slot.
+    pub fn bin(&self) -> PathBuf {
+        self.root.join("bin")
+    }
+
+    /// Managed source checkouts used to build source-index generations.
+    pub fn sources(&self) -> PathBuf {
+        self.root.join("sources")
+    }
+
     pub fn serving(&self) -> RuntimeServingStateLayout {
         RuntimeServingStateLayout {
             root: self.root.join("serving"),
@@ -82,6 +96,18 @@ impl RuntimeServingStateLayout {
         self.root.join("workspaces")
     }
 
+    pub fn mailboxes(&self) -> PathBuf {
+        self.root.join("mailboxes")
+    }
+
+    pub fn hook_host_native_handoff_mailbox(&self) -> PathBuf {
+        self.mailboxes().join("hook-host-native-handoff")
+    }
+
+    pub fn hook_break_glass_mailbox(&self) -> PathBuf {
+        self.mailboxes().join("hook-break-glass")
+    }
+
     pub fn owner_election_lock(&self) -> PathBuf {
         self.root.join("runtime-server.owner.lock")
     }
@@ -108,6 +134,10 @@ impl RuntimeServingStateLayout {
 
     pub fn diagnostic_receipt(&self) -> PathBuf {
         self.root.join("runtime-server-diagnostic.v1.json")
+    }
+
+    pub fn identity_monitor_receipt(&self) -> PathBuf {
+        self.root.join("identity-monitor.v1.json")
     }
 
     pub fn python_graphs_socket(&self) -> PathBuf {

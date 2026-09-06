@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 use super::{
     TREE_SITTER_OWNER_BUDGET, WorkspaceTreeSitterRequest, join_capture_projections,
     provider_path_is_ignored, registered_source_path,

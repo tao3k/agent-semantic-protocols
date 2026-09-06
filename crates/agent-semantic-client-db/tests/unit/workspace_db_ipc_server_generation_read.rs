@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 #[test]
 fn runtime_owner_probe_does_not_require_a_full_workspace_generation() {
     let operation = crate::workspace_db_ipc::WorkspaceDbIpcOperation::ReadRuntimeOwner {

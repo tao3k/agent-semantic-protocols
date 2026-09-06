@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 //! Low-overhead resident-process memory evidence for Runtime Server telemetry.
 
 pub(super) const MEMORY_WATERMARK_STEP_BYTES: u64 = 256 * 1024 * 1024;

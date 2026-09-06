@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: Contributors to Agent Semantic Protocols
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 """Normalize CodeQL CLI metadata into ASP evidence artifacts."""
 
 from __future__ import annotations

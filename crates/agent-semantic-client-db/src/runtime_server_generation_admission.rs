@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 //! Composition surface for Runtime Server workspace generation admission.
 
 use crate::runtime_server::RuntimeServer;
@@ -18,18 +22,18 @@ impl RuntimeServer {
         self.configure_workspace_generation_builder(source_builder, Some(catalog), None)
     }
 
-    pub fn with_workspace_generation_builder_catalog_and_provider_binding_probe(
+    pub fn with_workspace_generation_builder_catalog_and_runtime_bundle_probe(
         self,
         source_builder: crate::runtime_server_admission::WorkspaceGenerationCandidateBuilder,
         catalog: crate::runtime_server_admission_catalog::RuntimeWorkspaceAdmissionCatalog,
-        provider_binding_generation_probe: std::sync::Arc<
+        runtime_bundle_digest_probe: std::sync::Arc<
             dyn Fn() -> Result<Option<String>, String> + Send + Sync + 'static,
         >,
     ) -> Self {
         self.configure_workspace_generation_builder(
             source_builder,
             Some(catalog),
-            Some(provider_binding_generation_probe),
+            Some(runtime_bundle_digest_probe),
         )
     }
 

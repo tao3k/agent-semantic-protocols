@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 //! Server-owned content publication ledger.
 //!
 //! This is the V1 authority primitive. It is intentionally not connected to

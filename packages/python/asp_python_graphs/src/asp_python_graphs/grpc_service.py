@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: Contributors to Agent Semantic Protocols
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 """Serve bounded ASP Python Graphs requests over a private gRPC stream."""
 
 from __future__ import annotations

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 //! Reachability retention and mutation locking owned by the Artifacts package.
 
 use std::collections::BTreeMap;
@@ -31,6 +35,14 @@ pub struct RuntimeArtifactRetentionReceipt {
     pub retained_candidate_count: usize,
     #[serde(default)]
     pub removed_candidate_count: usize,
+    #[serde(default)]
+    pub retired_superseded_store_count: usize,
+    #[serde(default)]
+    pub retired_superseded_lease_directory_count: usize,
+    #[serde(default)]
+    pub retired_misplaced_launcher_root_count: usize,
+    #[serde(default)]
+    pub retired_superseded_provider_staging_root_count: usize,
     pub ignored_entry_count: usize,
     pub reclaimed_bytes: u64,
     pub protected_digests: Vec<String>,
@@ -66,8 +78,7 @@ impl RuntimeArtifactCandidatePreparationLease {
         }
         let lease_root = crate::RuntimeArtifactStateLayout::new(state_home)
             .leases()
-            .join("candidates")
-            .join(binary_name);
+            .join("candidates");
         fs::create_dir_all(&lease_root).map_err(|error| {
             format!(
                 "failed to create Runtime candidate lease root {}: {error}",
@@ -87,7 +98,7 @@ impl RuntimeArtifactCandidatePreparationLease {
                     lease_path.display()
                 )
             })?;
-        fs2::FileExt::try_lock_shared(&file).map_err(|error| {
+        fs2::FileExt::try_lock_exclusive(&file).map_err(|error| {
             format!(
                 "state=runtime-artifact-publication-failed reasonKind=candidate-preparation-conflict lease={} error={error}",
                 lease_path.display()
@@ -107,11 +118,6 @@ pub(crate) struct PreparedRuntimeArtifactRetention {
     artifact_root: PathBuf,
     retired_roots: Vec<PathBuf>,
     receipt: RuntimeArtifactRetentionReceipt,
-}
-
-struct RuntimeArtifactCandidateRetirementGuard {
-    file: std::fs::File,
-    lease_path: PathBuf,
 }
 
 impl PreparedRuntimeArtifactRetention {
@@ -143,13 +149,13 @@ impl RuntimeArtifactMutationGuard {
 fn acquire_runtime_artifact_mutation_guard(
     artifact_root: &Path,
 ) -> Result<RuntimeArtifactMutationGuard, String> {
-    let runtime_root = artifact_root.parent().ok_or_else(|| {
+    artifact_root.parent().ok_or_else(|| {
         format!(
             "Runtime artifact root has no Runtime parent: {}",
             artifact_root.display()
         )
     })?;
-    let lock_dir = runtime_root.join("locks");
+    let lock_dir = artifact_root.join("leases");
     std::fs::create_dir_all(&lock_dir)
         .map_err(|error| format!("failed to create {}: {error}", lock_dir.display()))?;
     let lock_path = lock_dir.join("artifact-mutation.lock");
@@ -227,29 +233,18 @@ pub(crate) fn prune_unreachable_runtime_artifacts_blocking(
 fn prepare_runtime_artifact_retention(
     artifact_root: &Path,
 ) -> Result<PreparedRuntimeArtifactRetention, String> {
-    let runtime_root = artifact_root.parent().ok_or_else(|| {
-        format!(
-            "runtime artifact root has no runtime parent: {}",
-            artifact_root.display()
-        )
-    })?;
-    // Retire completed artifact bundles before deriving CAS reachability.
-    // Candidates which have not staged activation.json may belong to a
-    // concurrent publisher that materialized outside the mutation guard.
+    let layout = crate::RuntimeArtifactStateLayout::from_artifact_root(artifact_root);
     let transaction = format!(
         "{}-{}",
         std::process::id(),
         RETENTION_TRANSACTION_ID.fetch_add(1, Ordering::Relaxed)
     );
     let retired_artifact_root = artifact_root.join("retired").join(&transaction);
-    let retired_candidate_root = runtime_root.join("resident/retired").join(&transaction);
-    let (scanned_candidate_count, removed_candidate_count, candidate_ignored) =
-        retire_unreachable_runtime_candidates(runtime_root, &retired_candidate_root)?;
-    let algorithm_root = artifact_root.join("blake3-256");
-    let (generations, ignored_entry_count) = runtime_artifact_generations(&algorithm_root)?;
-    let canonical_algorithm_root =
-        std::fs::canonicalize(&algorithm_root).unwrap_or_else(|_| algorithm_root.clone());
-    let protected = protected_runtime_artifact_digests(artifact_root, &canonical_algorithm_root)?;
+    let generation_root = layout.generation_store();
+    let (generations, ignored_entry_count) = runtime_artifact_generations(&generation_root)?;
+    let canonical_generation_root =
+        std::fs::canonicalize(&generation_root).unwrap_or_else(|_| generation_root.clone());
+    let protected = protected_runtime_generation_digests(&layout, &canonical_generation_root)?;
     let mut reclaimed_bytes = 0_u64;
     let mut removed_generation_count = 0_usize;
 
@@ -257,7 +252,10 @@ fn prepare_runtime_artifact_retention(
         if protected.contains(digest) {
             continue;
         }
-        let path = algorithm_root.join(digest);
+        if generation_has_live_preparation_lease(artifact_root, digest)? {
+            continue;
+        }
+        let path = generation_root.join(digest);
         fs::create_dir_all(&retired_artifact_root).map_err(|error| {
             format!(
                 "failed to create Runtime artifact retirement root {}: {error}",
@@ -274,9 +272,34 @@ fn prepare_runtime_artifact_retention(
         })?;
         reclaimed_bytes = reclaimed_bytes.saturating_add(generation.bytes);
         removed_generation_count += 1;
+        remove_dead_generation_preparation_leases(artifact_root, digest)?;
     }
 
-    let ignored_entry_count = ignored_entry_count.saturating_add(candidate_ignored);
+    // The old member-CAS and binary-namespaced bundle trees were two
+    // additional physical authorities for the same executable content.  Once
+    // at least one canonical generation is selected by active/healthy, retire
+    // those exact roots under the same artifact mutation transaction.  Never
+    // infer arbitrary siblings and never follow a symlink at either name.
+    let retired_superseded_store_count = if protected.is_empty() {
+        0
+    } else {
+        retire_superseded_physical_stores(artifact_root, &retired_artifact_root)?
+    };
+    let retired_superseded_lease_directory_count = if protected.is_empty() {
+        0
+    } else {
+        retire_superseded_candidate_lease_directories(artifact_root, &retired_artifact_root)?
+    };
+    let retired_misplaced_launcher_root_count = if protected.is_empty() {
+        0
+    } else {
+        retire_misplaced_state_home_launcher_root(artifact_root, &retired_artifact_root)?
+    };
+    let retired_superseded_provider_staging_root_count = if protected.is_empty() {
+        0
+    } else {
+        retire_superseded_provider_staging_root(artifact_root, &retired_artifact_root)?
+    };
 
     let receipt = RuntimeArtifactRetentionReceipt {
         schema_id: SCHEMA_ID.to_owned(),
@@ -287,183 +310,318 @@ fn prepare_runtime_artifact_retention(
         scanned_generation_count: generations.len(),
         retained_generation_count: generations.len() - removed_generation_count,
         removed_generation_count,
-        scanned_candidate_count,
-        retained_candidate_count: scanned_candidate_count - removed_candidate_count,
-        removed_candidate_count,
+        scanned_candidate_count: 0,
+        retained_candidate_count: 0,
+        removed_candidate_count: 0,
+        retired_superseded_store_count,
+        retired_superseded_lease_directory_count,
+        retired_misplaced_launcher_root_count,
+        retired_superseded_provider_staging_root_count,
         ignored_entry_count,
         reclaimed_bytes,
         protected_digests: protected.into_iter().collect(),
     };
     Ok(PreparedRuntimeArtifactRetention {
         artifact_root: artifact_root.to_path_buf(),
-        retired_roots: vec![retired_artifact_root, retired_candidate_root],
+        retired_roots: vec![retired_artifact_root],
         receipt,
     })
 }
 
-fn retire_unreachable_runtime_candidates(
-    runtime_root: &Path,
-    retired_root: &Path,
-) -> Result<(usize, usize, usize), String> {
-    let artifact_root = runtime_root.join("artifacts");
-    let slots_root = artifact_root.to_path_buf();
-    let candidate_root = artifact_root.join("bundles");
-    if !candidate_root.is_dir() {
-        return Ok((0, 0, 0));
+fn retire_superseded_provider_staging_root(
+    artifact_root: &Path,
+    retired_artifact_root: &Path,
+) -> Result<usize, String> {
+    let runtime_root = artifact_root.parent().ok_or_else(|| {
+        format!(
+            "Runtime artifact root has no Runtime parent: {}",
+            artifact_root.display()
+        )
+    })?;
+    let source = runtime_root.join("providers");
+    let metadata = match fs::symlink_metadata(&source) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(0),
+        Err(error) => {
+            return Err(format!(
+                "failed to inspect superseded Provider staging root {}: {error}",
+                source.display()
+            ));
+        }
+    };
+    if !metadata.is_dir() || metadata.file_type().is_symlink() {
+        return Err(format!(
+            "state=runtime-artifact-retention-failed reasonKind=superseded-provider-staging-root-type-conflict path={}",
+            source.display()
+        ));
     }
+    let retirement_root = retired_artifact_root.join("superseded-provider-staging");
+    fs::create_dir_all(&retirement_root).map_err(|error| {
+        format!(
+            "failed to create superseded Provider staging retirement root {}: {error}",
+            retirement_root.display()
+        )
+    })?;
+    let target = retirement_root.join("providers");
+    fs::rename(&source, &target).map_err(|error| {
+        format!(
+            "failed to retire superseded Provider staging root {} to {}: {error}",
+            source.display(),
+            target.display()
+        )
+    })?;
+    Ok(1)
+}
 
-    let mut protected = BTreeSet::new();
-    for slot in [slots_root.join("active"), slots_root.join("healthy")] {
-        match fs::canonicalize(&slot) {
-            Ok(target) => {
-                protected.insert(target);
-            }
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+fn retire_misplaced_state_home_launcher_root(
+    artifact_root: &Path,
+    retired_artifact_root: &Path,
+) -> Result<usize, String> {
+    let runtime_root = artifact_root.parent().ok_or_else(|| {
+        format!(
+            "Runtime artifact root has no Runtime parent: {}",
+            artifact_root.display()
+        )
+    })?;
+    let state_home = runtime_root.parent().ok_or_else(|| {
+        format!(
+            "Runtime root has no State Home parent: {}",
+            runtime_root.display()
+        )
+    })?;
+    let misplaced_root = state_home.join("bin");
+    let metadata = match fs::symlink_metadata(&misplaced_root) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(0),
+        Err(error) => {
+            return Err(format!(
+                "failed to inspect misplaced State Home launcher root {}: {error}",
+                misplaced_root.display()
+            ));
+        }
+    };
+    if !metadata.is_dir() || metadata.file_type().is_symlink() {
+        return Err(format!(
+            "state=runtime-artifact-retention-failed reasonKind=misplaced-launcher-root-type-conflict path={}",
+            misplaced_root.display()
+        ));
+    }
+    let active_generation = fs::canonicalize(artifact_root.join("active"))
+        .map_err(|error| format!("failed to resolve active Runtime generation: {error}"))?;
+    for entry in fs::read_dir(&misplaced_root)
+        .map_err(|error| format!("failed to read {}: {error}", misplaced_root.display()))?
+    {
+        let entry = entry.map_err(|error| {
+            format!(
+                "failed to read entry in misplaced launcher root {}: {error}",
+                misplaced_root.display()
+            )
+        })?;
+        let file_type = entry
+            .file_type()
+            .map_err(|error| format!("failed to inspect {}: {error}", entry.path().display()))?;
+        if !file_type.is_symlink() {
+            return Err(format!(
+                "state=runtime-artifact-retention-failed reasonKind=misplaced-launcher-entry-not-managed path={}",
+                entry.path().display()
+            ));
+        }
+        let target = fs::canonicalize(entry.path()).map_err(|error| {
+            format!(
+                "failed to resolve misplaced launcher {}: {error}",
+                entry.path().display()
+            )
+        })?;
+        let relative = target.strip_prefix(&active_generation).map_err(|_| {
+            format!(
+                "state=runtime-artifact-retention-failed reasonKind=misplaced-launcher-target-drift path={} target={}",
+                entry.path().display(),
+                target.display()
+            )
+        })?;
+        if relative.components().count() != 1 {
+            return Err(format!(
+                "state=runtime-artifact-retention-failed reasonKind=misplaced-launcher-target-drift path={} target={}",
+                entry.path().display(),
+                target.display()
+            ));
+        }
+    }
+    let retirement_root = retired_artifact_root.join("misplaced-launchers");
+    fs::create_dir_all(&retirement_root).map_err(|error| {
+        format!(
+            "failed to create misplaced launcher retirement root {}: {error}",
+            retirement_root.display()
+        )
+    })?;
+    let target = retirement_root.join("state-home-bin");
+    fs::rename(&misplaced_root, &target).map_err(|error| {
+        format!(
+            "failed to retire misplaced State Home launcher root {} to {}: {error}",
+            misplaced_root.display(),
+            target.display()
+        )
+    })?;
+    Ok(1)
+}
+
+fn retire_superseded_candidate_lease_directories(
+    artifact_root: &Path,
+    retired_artifact_root: &Path,
+) -> Result<usize, String> {
+    let lease_root = artifact_root.join("leases/candidates");
+    if !lease_root.is_dir() {
+        return Ok(0);
+    }
+    let mut retired = 0_usize;
+    for entry in fs::read_dir(&lease_root)
+        .map_err(|error| format!("failed to read {}: {error}", lease_root.display()))?
+    {
+        let entry = entry.map_err(|error| {
+            format!("failed to read entry in {}: {error}", lease_root.display())
+        })?;
+        let file_type = entry
+            .file_type()
+            .map_err(|error| format!("failed to inspect {}: {error}", entry.path().display()))?;
+        if file_type.is_symlink() {
+            return Err(format!(
+                "state=runtime-artifact-retention-failed reasonKind=superseded-candidate-lease-type-conflict path={}",
+                entry.path().display()
+            ));
+        }
+        if !file_type.is_dir() {
+            continue;
+        }
+        let retirement_root = retired_artifact_root.join("superseded-candidate-leases");
+        fs::create_dir_all(&retirement_root).map_err(|error| {
+            format!(
+                "failed to create superseded candidate lease retirement root {}: {error}",
+                retirement_root.display()
+            )
+        })?;
+        let target = retirement_root.join(entry.file_name());
+        fs::rename(entry.path(), &target).map_err(|error| {
+            format!(
+                "failed to retire superseded candidate lease directory {} to {}: {error}",
+                entry.path().display(),
+                target.display()
+            )
+        })?;
+        retired += 1;
+    }
+    Ok(retired)
+}
+
+fn retire_superseded_physical_stores(
+    artifact_root: &Path,
+    retired_artifact_root: &Path,
+) -> Result<usize, String> {
+    let mut retired = 0_usize;
+    for name in ["blake3-256", "bundles"] {
+        let source = artifact_root.join(name);
+        let metadata = match fs::symlink_metadata(&source) {
+            Ok(metadata) => metadata,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
             Err(error) => {
                 return Err(format!(
-                    "failed to resolve Runtime bundle slot {}: {error}",
-                    slot.display()
+                    "failed to inspect superseded Runtime artifact store {}: {error}",
+                    source.display()
+                ));
+            }
+        };
+        if !metadata.is_dir() || metadata.file_type().is_symlink() {
+            return Err(format!(
+                "state=runtime-artifact-retention-failed reasonKind=superseded-artifact-store-type-conflict path={}",
+                source.display()
+            ));
+        }
+        let retirement_root = retired_artifact_root.join("superseded-stores");
+        fs::create_dir_all(&retirement_root).map_err(|error| {
+            format!(
+                "failed to create superseded Runtime artifact retirement root {}: {error}",
+                retirement_root.display()
+            )
+        })?;
+        let target = retirement_root.join(name);
+        fs::rename(&source, &target).map_err(|error| {
+            format!(
+                "failed to retire superseded Runtime artifact store {} to {}: {error}",
+                source.display(),
+                target.display()
+            )
+        })?;
+        retired += 1;
+    }
+    Ok(retired)
+}
+
+fn generation_has_live_preparation_lease(
+    artifact_root: &Path,
+    digest: &str,
+) -> Result<bool, String> {
+    for lease in generation_preparation_leases(artifact_root, digest)? {
+        let file = fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(&lease)
+            .map_err(|error| {
+                format!(
+                    "failed to open candidate lease {}: {error}",
+                    lease.display()
+                )
+            })?;
+        match fs2::FileExt::try_lock_exclusive(&file) {
+            Ok(()) => fs2::FileExt::unlock(&file).map_err(|error| {
+                format!(
+                    "failed to unlock candidate lease {}: {error}",
+                    lease.display()
+                )
+            })?,
+            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => return Ok(true),
+            Err(error) => {
+                return Err(format!(
+                    "failed to inspect candidate lease {}: {error}",
+                    lease.display()
                 ));
             }
         }
     }
-
-    let mut scanned = 0_usize;
-    let mut removed = 0_usize;
-    let mut ignored = 0_usize;
-    for binary_entry in fs::read_dir(&candidate_root)
-        .map_err(|error| format!("failed to read {}: {error}", candidate_root.display()))?
-    {
-        let binary_entry = binary_entry.map_err(|error| {
-            format!(
-                "failed to read entry in {}: {error}",
-                candidate_root.display()
-            )
-        })?;
-        let binary_type = binary_entry.file_type().map_err(|error| {
-            format!(
-                "failed to inspect {}: {error}",
-                binary_entry.path().display()
-            )
-        })?;
-        if !binary_type.is_dir() || binary_type.is_symlink() {
-            ignored += 1;
-            continue;
-        }
-        let binary_root = binary_entry.path();
-        for candidate_entry in fs::read_dir(&binary_root)
-            .map_err(|error| format!("failed to read {}: {error}", binary_root.display()))?
-        {
-            let candidate_entry = candidate_entry.map_err(|error| {
-                format!("failed to read entry in {}: {error}", binary_root.display())
-            })?;
-            let candidate_type = candidate_entry.file_type().map_err(|error| {
-                format!(
-                    "failed to inspect {}: {error}",
-                    candidate_entry.path().display()
-                )
-            })?;
-            let name = candidate_entry.file_name();
-            let is_digest_directory = candidate_type.is_dir()
-                && !candidate_type.is_symlink()
-                && name.to_str().is_some_and(valid_digest);
-            if !is_digest_directory {
-                ignored += 1;
-                continue;
-            }
-            scanned += 1;
-            let candidate = fs::canonicalize(candidate_entry.path()).map_err(|error| {
-                format!(
-                    "failed to resolve Runtime artifact bundle {}: {error}",
-                    candidate_entry.path().display()
-                )
-            })?;
-            if protected.contains(&candidate) {
-                continue;
-            }
-            let Some(retirement_guard) = acquire_candidate_retirement_guard(
-                runtime_root,
-                binary_entry.file_name().as_os_str(),
-                name.as_os_str(),
-            )?
-            else {
-                continue;
-            };
-            let binary_name = binary_entry.file_name();
-            let retired_binary_root = retired_root.join(binary_name);
-            fs::create_dir_all(&retired_binary_root).map_err(|error| {
-                format!(
-                    "failed to create Runtime candidate retirement root {}: {error}",
-                    retired_binary_root.display()
-                )
-            })?;
-            let retired = retired_binary_root.join(&name);
-            fs::rename(&candidate, &retired).map_err(|error| {
-                format!(
-                    "failed to retire unreachable Runtime artifact bundle {} to {}: {error}",
-                    candidate.display(),
-                    retired.display()
-                )
-            })?;
-            let retired_lease =
-                retired_binary_root.join(format!(".{}.preparation.lock", name.to_string_lossy()));
-            fs::rename(&retirement_guard.lease_path, &retired_lease).map_err(|error| {
-                format!(
-                    "failed to retire Runtime candidate preparation lease {} to {}: {error}",
-                    retirement_guard.lease_path.display(),
-                    retired_lease.display()
-                )
-            })?;
-            fs2::FileExt::unlock(&retirement_guard.file).map_err(|error| {
-                format!(
-                    "failed to release Runtime candidate retirement lease for {}: {error}",
-                    candidate.display()
-                )
-            })?;
-            removed += 1;
-        }
-    }
-    Ok((scanned, removed, ignored))
+    Ok(false)
 }
 
-fn acquire_candidate_retirement_guard(
-    runtime_root: &Path,
-    binary_name: &std::ffi::OsStr,
-    bundle_digest: &std::ffi::OsStr,
-) -> Result<Option<RuntimeArtifactCandidateRetirementGuard>, String> {
-    let lease_root = runtime_root
-        .join("artifacts/leases/candidates")
-        .join(binary_name);
-    fs::create_dir_all(&lease_root).map_err(|error| {
-        format!(
-            "failed to create Runtime candidate lease root {}: {error}",
-            lease_root.display()
-        )
-    })?;
-    let lease_path = lease_root.join(bundle_digest).with_extension("lock");
-    let file = fs::OpenOptions::new()
-        .create(true)
-        .truncate(false)
-        .read(true)
-        .write(true)
-        .open(&lease_path)
-        .map_err(|error| {
-            format!(
-                "failed to open Runtime candidate retirement lease {}: {error}",
-                lease_path.display()
-            )
-        })?;
-    match fs2::FileExt::try_lock_exclusive(&file) {
-        Ok(()) => Ok(Some(RuntimeArtifactCandidateRetirementGuard {
-            file,
-            lease_path,
-        })),
-        Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => Ok(None),
-        Err(error) => Err(format!(
-            "failed to acquire Runtime candidate retirement lease {}: {error}",
-            lease_path.display()
-        )),
+fn remove_dead_generation_preparation_leases(
+    artifact_root: &Path,
+    digest: &str,
+) -> Result<(), String> {
+    for lease in generation_preparation_leases(artifact_root, digest)? {
+        match fs::remove_file(&lease) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => {
+                return Err(format!(
+                    "failed to remove candidate lease {}: {error}",
+                    lease.display()
+                ));
+            }
+        }
     }
+    Ok(())
+}
+
+fn generation_preparation_leases(
+    artifact_root: &Path,
+    digest: &str,
+) -> Result<Vec<PathBuf>, String> {
+    let root = artifact_root.join("leases/candidates");
+    if !root.is_dir() {
+        return Ok(Vec::new());
+    }
+    let lease = root.join(format!("{digest}.lock"));
+    Ok(if lease.is_file() {
+        vec![lease]
+    } else {
+        Vec::new()
+    })
 }
 
 fn finish_prepared_runtime_artifact_retention(
@@ -479,6 +637,21 @@ fn finish_prepared_runtime_artifact_retention(
                     root.display()
                 ));
             }
+        }
+    }
+    let retired_parent = prepared.artifact_root.join("retired");
+    match fs::remove_dir(&retired_parent) {
+        Ok(()) => {}
+        Err(error)
+            if matches!(
+                error.kind(),
+                std::io::ErrorKind::NotFound | std::io::ErrorKind::DirectoryNotEmpty
+            ) => {}
+        Err(error) => {
+            return Err(format!(
+                "failed to remove empty Runtime artifact retirement root {}: {error}",
+                retired_parent.display()
+            ));
         }
     }
     publish_retention_receipt(&prepared.artifact_root, &prepared.receipt)?;
@@ -541,67 +714,44 @@ fn artifact_generation(path: PathBuf) -> Result<(ArtifactGeneration, usize), Str
     Ok((ArtifactGeneration { bytes }, ignored))
 }
 
-fn protected_runtime_artifact_digests(
-    artifact_root: &Path,
-    algorithm_root: &Path,
+fn protected_runtime_generation_digests(
+    layout: &crate::RuntimeArtifactStateLayout,
+    generation_root: &Path,
 ) -> Result<BTreeSet<String>, String> {
-    let runtime_root = artifact_root.parent().ok_or_else(|| {
-        format!(
-            "runtime artifact root has no runtime parent: {}",
-            artifact_root.display()
-        )
-    })?;
     let mut protected = BTreeSet::new();
-    for stable_root in [
-        runtime_root.join("bin"),
-        artifact_root.join("active"),
-        artifact_root.join("healthy"),
-        artifact_root.join("bundles"),
-    ] {
-        collect_reachable_digests(&stable_root, algorithm_root, &mut protected)?;
-    }
-    Ok(protected)
-}
-
-fn collect_reachable_digests(
-    path: &Path,
-    algorithm_root: &Path,
-    protected: &mut BTreeSet<String>,
-) -> Result<(), String> {
-    if !path.is_dir() {
-        return Ok(());
-    }
-    for entry in
-        fs::read_dir(path).map_err(|error| format!("failed to read {}: {error}", path.display()))?
-    {
-        let entry = entry
-            .map_err(|error| format!("failed to read entry in {}: {error}", path.display()))?;
-        let entry_path = entry.path();
-        let file_type = entry
-            .file_type()
-            .map_err(|error| format!("failed to inspect {}: {error}", entry_path.display()))?;
-        if file_type.is_dir() && !file_type.is_symlink() {
-            collect_reachable_digests(&entry_path, algorithm_root, protected)?;
-            continue;
-        }
-        let Ok(identity) = fs::canonicalize(&entry_path) else {
-            continue;
+    for slot in [layout.active_slot(), layout.healthy_slot()] {
+        let target = match fs::canonicalize(&slot) {
+            Ok(target) => target,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(error) => {
+                return Err(format!(
+                    "failed to resolve Runtime artifact selector {}: {error}",
+                    slot.display()
+                ));
+            }
         };
-        let Ok(relative) = identity.strip_prefix(algorithm_root) else {
-            continue;
-        };
-        let Some(digest) = relative
+        let relative = target.strip_prefix(generation_root).map_err(|_| {
+            format!(
+                "Runtime artifact selector escaped generation store: slot={} target={}",
+                slot.display(),
+                target.display()
+            )
+        })?;
+        let digest = relative
             .components()
             .next()
             .and_then(|part| part.as_os_str().to_str())
-        else {
-            continue;
-        };
-        if valid_digest(digest) {
-            protected.insert(digest.to_owned());
-        }
+            .filter(|digest| valid_digest(digest))
+            .ok_or_else(|| {
+                format!(
+                    "Runtime artifact selector has invalid generation identity: slot={} target={}",
+                    slot.display(),
+                    target.display()
+                )
+            })?;
+        protected.insert(digest.to_owned());
     }
-    Ok(())
+    Ok(protected)
 }
 
 fn publish_retention_receipt(

@@ -1,0 +1,74 @@
+{
+  "schemaId": "agent.semantic-protocols.project-topology-program-binding",
+  "schemaVersion": "1",
+  "binding": {
+    "workspaceIdentity": "workspace-example",
+    "sourceSnapshotDigest": "blake3-256:1111111111111111111111111111111111111111111111111111111111111111",
+    "providerCatalogDigest": "blake3-256:2222222222222222222222222222222222222222222222222222222222222222",
+    "parserCatalogDigest": "blake3-256:3333333333333333333333333333333333333333333333333333333333333333",
+    "mrrPreludeDigest": "blake3-256:4444444444444444444444444444444444444444444444444444444444444444",
+    "projectProgramDigest": "blake3-256:5555555555555555555555555555555555555555555555555555555555555555",
+    "schemeProgramDigest": "blake3-256:6666666666666666666666666666666666666666666666666666666666666666",
+    "compiledProgramAbiDigest": "blake3-256:7777777777777777777777777777777777777777777777777777777777777777",
+    "mrrBundleIdentity": "mrr:reasoning-bundle:v1:8888888888888888888888888888888888888888888888888888888888888888",
+    "ascentProgramDigest": "blake3-256:9999999999999999999999999999999999999999999999999999999999999999",
+    "topologyRootDigest": "blake3-256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "profiles": [
+    "mrr.topology.workspace.v1",
+    "mrr.topology.engineering.v1",
+    "mrr.topology.domain.v1",
+    "mrr.topology.file.v1",
+    "mrr.topology.structure.v1",
+    "mrr.topology.reference.v1",
+    "project.runtime-authority.v1"
+  ],
+  "program": {
+    "modules": [
+      {
+        "id": "project.runtime-authority.v1",
+        "ownerNamespace": "project.runtime-authority",
+        "operation": "refine",
+        "imports": ["mrr.topology.engineering.v1"],
+        "programDigest": "blake3-256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "relationSignatures": [
+          {
+            "namespace": "project.runtime-authority",
+            "name": "ADMITS",
+            "arity": 2
+          }
+        ]
+      }
+    ],
+    "compilationReceipt": {
+      "id": "compile-project-topology-1",
+      "schemaId": "agent.semantic-protocols.mrr-program-compilation-receipt",
+      "schemaVersion": "1",
+      "state": "admitted",
+      "schemeProgramDigest": "blake3-256:6666666666666666666666666666666666666666666666666666666666666666",
+      "compiledProgramAbiDigest": "blake3-256:7777777777777777777777777777777777777777777777777777777777777777",
+      "mrrBundleIdentity": "mrr:reasoning-bundle:v1:8888888888888888888888888888888888888888888888888888888888888888"
+    }
+  },
+  "materialization": {
+    "root": ".agents/asp/topology",
+    "manifestPath": ".agents/asp/topology/manifest.org",
+    "programPaths": [
+      ".agents/asp/topology/programs/project.org"
+    ],
+    "factSegmentPaths": [
+      ".agents/asp/topology/facts/projects/workspace-example.org"
+    ],
+    "annotationPaths": [],
+    "excludedInputs": [
+      ".agents/asp/topology/**",
+      ".cache/**",
+      ".git/**"
+    ],
+    "gitTracked": true
+  },
+  "terminal": {
+    "state": "admitted",
+    "reasonKind": null
+  }
+}

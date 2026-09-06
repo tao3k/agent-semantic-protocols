@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 //! DB-owned storage for agent session registry rows.
 
 use agent_semantic_client_core::state_core::ResolvedState;
@@ -117,7 +121,9 @@ impl AgentSessionRegistry {
 
     #[must_use]
     pub fn state_root_for_resolved_state(state: &ResolvedState) -> PathBuf {
-        state.state_home.clone()
+        agent_semantic_artifacts::StateHomeLayout::new(&state.state_home)
+            .control()
+            .session_registry_root()
     }
 
     pub fn state_root_for_project(project_root: impl AsRef<Path>) -> Result<PathBuf, String> {
@@ -133,7 +139,7 @@ impl AgentSessionRegistry {
     pub async fn open_or_create_project(project_root: impl AsRef<Path>) -> Result<Self, String> {
         let project_root = project_root.as_ref();
         let state = ResolvedState::resolve(project_root)?;
-        state.ensure_minimal_layout()?;
+        state.ensure_workspace_state_layout()?;
         if let Some(proxy) = Self::runtime_proxy(&state, project_root).await? {
             return Ok(proxy);
         }
@@ -292,7 +298,7 @@ impl AgentSessionRegistry {
         // data plane is healthy. Requiring that path here made SubagentStart fall
         // back to the forbidden direct-open branch before it could issue the typed
         // Runtime IPC registration.
-        let db_path = Self::db_path_for_state_root(&state.state_home);
+        let db_path = Self::db_path_for_state_root(Self::state_root_for_resolved_state(state));
         Ok(Some(Self {
             db_path,
             runtime_project_root: Some(project_root),

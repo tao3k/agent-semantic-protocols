@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 //! Project, repository, and workspace binding identities owned by Artifacts.
 
 use std::path::Path;
@@ -32,6 +36,7 @@ pub struct WorkspaceIdentity {
     pub digest: Blake3ContentDigest,
     pub repo_digest: Blake3ContentDigest,
     pub canonical_root: PathBuf,
+    pub private_git_dir: Option<PathBuf>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -51,6 +56,15 @@ impl ProjectBinding {
         repo_basis: impl Into<String>,
         workspace_root: impl AsRef<Path>,
     ) -> Result<Self, String> {
+        Self::resolve_with_private_git_dir(host_project, repo_basis, workspace_root, None::<&Path>)
+    }
+
+    pub fn resolve_with_private_git_dir(
+        host_project: Option<HostProjectReference>,
+        repo_basis: impl Into<String>,
+        workspace_root: impl AsRef<Path>,
+        private_git_dir: Option<impl AsRef<Path>>,
+    ) -> Result<Self, String> {
         let repo_basis = non_empty("repo basis", repo_basis.into())?;
         let canonical_root = workspace_root
             .as_ref()
@@ -62,6 +76,11 @@ impl ProjectBinding {
         if let Some(reference) = &host_project {
             reference.validate()?;
         }
+        let private_git_dir = private_git_dir.map(|path| {
+            path.as_ref()
+                .canonicalize()
+                .unwrap_or_else(|_| path.as_ref().to_path_buf())
+        });
 
         let repo_digest = digest_json(&serde_json::json!({
             "domain": "asp-state-home-repo-identity",
@@ -71,6 +90,7 @@ impl ProjectBinding {
             "domain": "asp-state-home-workspace-identity",
             "repoDigest": repo_digest,
             "canonicalRoot": canonical_root,
+            "privateGitDir": private_git_dir,
         }))?;
         let binding_digest = digest_json(&serde_json::json!({
             "domain": "asp-state-home-project-binding",
@@ -91,6 +111,7 @@ impl ProjectBinding {
                 digest: workspace_digest,
                 repo_digest,
                 canonical_root,
+                private_git_dir,
             },
             binding_digest,
         })
@@ -102,10 +123,11 @@ impl ProjectBinding {
         {
             return Err("project binding schema identity mismatch".to_string());
         }
-        let expected = Self::resolve(
+        let expected = Self::resolve_with_private_git_dir(
             self.host_project.clone(),
             self.repo.basis.clone(),
             &self.workspace.canonical_root,
+            self.workspace.private_git_dir.as_deref(),
         )?;
         if &expected != self {
             return Err("project binding digest or identity mismatch".to_string());

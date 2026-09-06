@@ -6,10 +6,10 @@ open ASPProof.WorkspaceSearchPlaybookPlanner
 #print axioms successful_contract_compile_is_provider_owned
 #print axioms mismatched_provider_has_no_contract_fallback
 #print axioms contract_query_precedes_generation_admission
-#print axioms five_axes_are_pairwise_distinct
+#print axioms clause_kinds_are_pairwise_distinct
 #print axioms native_argument_is_forwarded_unchanged
 #print axioms standalone_shell_pipe_is_rejected
-#print axioms no_axis_consumes_another_axis_candidates
+#print axioms acquisition_clause_does_not_consume_another_clause
 #print axioms targeted_recovery_is_exactly_example_and_grammar
 #print axioms targeted_repair_strictly_decreases_missing_axes
 #print axioms no_match_requires_complete_coverage
@@ -23,10 +23,10 @@ open ASPProof.WorkspaceSearchPlaybookPlanner
 #print axioms valid_derived_parent_is_current
 #print axioms ascent_cannot_mint_exact_selector
 #print axioms stale_warm_observation_has_zero_priority
-#print axioms warm_start_cannot_prune_fresh_axes
+#print axioms warm_start_cannot_prune_registered_clause_kinds
 #print axioms ext_score_is_scheduling_only
 #print axioms ext_schedule_preserves_semantic_result
-#print axioms ext_schedule_preserves_five_axis_receipts
+#print axioms ext_schedule_preserves_clause_receipts
 #print axioms ext_schedule_can_change_execution_order
 #print axioms new_branch_requires_evidence_validation_before_quality_gate
 #print axioms search_agent_handoff_contains_no_source

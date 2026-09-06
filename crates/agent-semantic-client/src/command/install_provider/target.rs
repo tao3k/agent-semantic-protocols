@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 //! Provider install target resolution for language harness binaries.
 
 use std::path::Path;
@@ -44,10 +48,13 @@ fn state_home_provider_binary_at(
         || binary_path.file_name().and_then(|name| name.to_str()) != Some(binary)
     {
         return Err(format!(
-            "provider binary for language `{language_id}` must be a logical basename resolved from the active Runtime artifact bundle, got `{binary}`"
+            "provider binary for language `{language_id}` must be a logical basename resolved under State Home runtime/bin, got `{binary}`"
         ));
     }
-    Ok(state_home.join("runtime").join("bin").join(binary_path))
+    Ok(agent_semantic_artifacts::StateHomeLayout::new(state_home)
+        .runtime_state()
+        .bin()
+        .join(binary_path))
 }
 
 #[cfg(test)]

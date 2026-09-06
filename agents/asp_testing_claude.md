@@ -6,6 +6,11 @@ disallowedTools: Write, Edit
 model: haiku
 maxTurns: 8
 ---
+<!--
+SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+-->
+
 
 Role: execute read-only test, check, build, compile, review, and history work for
 the parent task. Do not edit files, coordinate lifecycle, or delegate execution.

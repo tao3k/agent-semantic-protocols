@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 use super::{AgentHostLifecycleEventIpc, publish_host_lifecycle_event_locally};
 use agent_semantic_client_db::workspace_db_ipc::AgentHostLifecycleEventKind;
 use serde_json::Value;

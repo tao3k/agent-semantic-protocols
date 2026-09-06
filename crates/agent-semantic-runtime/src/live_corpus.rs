@@ -116,16 +116,18 @@ pub fn live_corpus_git_repository_paths(
     let remote_digest = blake3::hash(canonical_remote_identity.as_bytes())
         .to_hex()
         .to_string();
-    let repository_dir = state_home
+    let resource_root = agent_semantic_artifacts::StateHomeLayout::new(state_home)
+        .resources()
+        .live_corpus();
+    let repository_dir = resource_root
         .join("git")
         .join("repo")
         .join(BLAKE3_256)
         .join(&remote_digest);
-    let ghq_alias_path = canonical_remote_identity
-        .split('/')
-        .fold(state_home.join("git").join("by-remote"), |path, segment| {
-            path.join(encode_path_segment(segment))
-        });
+    let ghq_alias_path = canonical_remote_identity.split('/').fold(
+        resource_root.join("git").join("by-remote"),
+        |path, segment| path.join(encode_path_segment(segment)),
+    );
 
     Ok(LiveCorpusGitRepositoryPaths {
         canonical_remote_identity,
@@ -464,7 +466,10 @@ pub fn live_corpus_artifact_paths(
         identity.git_tree,
         identity.source_merkle_root,
     ]);
-    let artifact_root = state_home.join("artifacts").join("live-corpus");
+    let artifact_root = agent_semantic_artifacts::StateHomeLayout::new(state_home)
+        .resources()
+        .live_corpus()
+        .join("artifacts");
     let artifact_dir = artifact_root.join(BLAKE3_256).join(&artifact_digest);
 
     Ok(LiveCorpusArtifactPaths {

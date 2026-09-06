@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 //! Stable v1 ownership vocabulary for Runtime-owned workspace generation admission.
 
 use serde::{Deserialize, Serialize};

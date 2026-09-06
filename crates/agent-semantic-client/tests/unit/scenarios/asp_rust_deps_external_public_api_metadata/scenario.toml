@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 id = "asp-rust-deps-external-public-api-metadata"
 title = "Rust dependency API search resolves external package source through ASP"
 policy_ids = ["RUST-AGENT-ASP-DEPS-EXTERNAL-API-001", "RUST-AGENT-ASP-SEARCH-DEPS-SOURCE-ROOT-001"]

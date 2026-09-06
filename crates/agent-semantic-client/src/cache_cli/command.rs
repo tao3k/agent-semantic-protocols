@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 //! Runtime Server-backed cache CLI adapter.
 
 use std::path::Path;
@@ -193,12 +197,13 @@ pub(crate) async fn run_cache(
     receipt_json: bool,
 ) -> Result<(), String> {
     match forwarded_args {
-        [subcommand, rest @ ..] if subcommand == "gc" => {
-            super::project_registry_gc_command::run_project_registry_gc(
+        [subcommand, rest @ ..] if subcommand == "clean" => {
+            super::clean_command::run_cache_clean(
                 project_root,
                 rest,
                 receipt_json,
             )
+            .await
         }
         [subcommand, action, rest @ ..]
             if subcommand == "source-index" && action == "lookup" =>
@@ -206,7 +211,7 @@ pub(crate) async fn run_cache(
             run_source_index_lookup(project_root, facade_language_id, rest, receipt_json).await
         }
         _ => Err(
-            "usage: asp cache gc [--grace-days <n>] [--apply] or asp <language> cache source-index lookup --query <term> [--index-root <workspace>] [--limit <n>]; use `asp clean --day[=<days>]` for State Home retention"
+            "usage: asp cache clean --day[=<days>] [--workspace-digest <digest>|--workspace-root <path>|--object-id <id>] or asp <language> cache source-index lookup --query <term> [--index-root <workspace>] [--limit <n>]"
                 .to_owned(),
         ),
     }

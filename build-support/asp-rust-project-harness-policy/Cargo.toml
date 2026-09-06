@@ -1,5 +1,10 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 [package]
 name = "asp-rust-project-harness-policy"
+license.workspace = true
 version = "0.1.0"
 edition.workspace = true
 publish = false

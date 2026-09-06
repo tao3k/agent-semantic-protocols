@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 //! Live Corpus qualification runner over the shared ASP Client application boundary.
 
 use std::path::Path;
@@ -222,7 +226,10 @@ fn qualification_receipt_path(
     language_id: Option<&str>,
     resource_id: Option<&str>,
 ) -> PathBuf {
-    let receipt_root = state_home.join("runtime").join("live-corpus");
+    let receipt_root = agent_semantic_artifacts::StateHomeLayout::new(state_home)
+        .resources()
+        .live_corpus()
+        .join("receipts");
     match (language_id, resource_id) {
         (_, Some(resource_id)) => receipt_root
             .join("search-query-qualification")

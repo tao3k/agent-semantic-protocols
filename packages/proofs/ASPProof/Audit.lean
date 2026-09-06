@@ -11,6 +11,9 @@ import ASPProof.SearchLoopCacheDiagnostics
 import ASPProof.SearchLoopCacheIdentity
 import ASPProof.Audit.ActivationAdmission
 import ASPProof.Audit.RuntimeSelectorOverlay
+import ASPProof.Audit.SearchEvidenceDerivation
+import ASPProof.Audit.ProjectTopologyProgram
+import ASPProof.Audit.ProjectTopologyIdentityRefinement
 import Lean.Elab.Command
 
 namespace ASPProof.Audit

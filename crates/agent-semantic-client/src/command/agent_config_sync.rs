@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 use serde_json::json;
 use std::collections::BTreeSet;
 use std::ffi::OsString;
@@ -145,7 +149,9 @@ pub(crate) fn synchronize_embedded_agent_state_config(
 }
 
 fn synchronize_embedded_agent_state(state_home: &Path) -> Result<SynchronizedAgentState, String> {
-    let state_agents = state_home.join("agents");
+    let state_agents = agent_semantic_artifacts::StateHomeLayout::new(state_home)
+        .control()
+        .agent_registry_root();
     std::fs::create_dir_all(&state_agents).map_err(|error| {
         format!(
             "failed to create ASP agent state directory {}: {error}",

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 use std::fs;
 use std::path::PathBuf;
 
@@ -32,20 +36,15 @@ fn state_layout_uses_single_client_cache_interface() {
 
     let layout = StateLayout::resolve(&package).expect("state layout");
     let resolved = crate::state_core::ResolvedState::resolve(&package).expect("resolved state");
+    let workspace = resolved.workspace_state_paths().expect("workspace paths");
 
     assert_eq!(layout.state_root(), resolved.state_home.as_path());
-    assert_eq!(
-        layout.client_cache_dir(),
-        resolved.paths.client_dir.as_path()
-    );
+    assert_eq!(layout.client_cache_dir(), workspace.root.as_path());
     assert_eq!(
         layout.cache_manifest_path(),
-        resolved.paths.client_cache_manifest_path.as_path()
+        workspace.cache_manifest_path().as_path()
     );
-    assert_eq!(
-        layout.artifacts_dir(),
-        resolved.paths.artifacts_dir.as_path()
-    );
+    assert_eq!(layout.artifacts_dir(), workspace.artifacts.as_path());
     assert!(!root.join(".cache").join("agent-semantic-protocol").exists());
     let _ = fs::remove_dir_all(root);
 }

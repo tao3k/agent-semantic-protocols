@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 //! Provider-fact consumers for ASP Server-owned source-index publication.
 
 #[derive(Clone, Debug, Eq, PartialEq)]

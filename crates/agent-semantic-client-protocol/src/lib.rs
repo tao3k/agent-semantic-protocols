@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 //! Typed Runtime client frames, identities, catalogs, routes, and conformance contracts.
 
 mod agent_session;

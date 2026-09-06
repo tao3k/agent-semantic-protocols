@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 use super::core::runtime_server_shutdown_signal;
 use super::core::{RuntimeServer, RuntimeServerExit, RuntimeServerShutdownHandle};
 use crate::WorkspaceDbRegistry;
@@ -181,14 +185,11 @@ impl RuntimeServer {
         let (readiness_sender, _readiness) =
             watch::channel(crate::runtime_server_control::RuntimeServerState::Starting);
         let provider_seed = agent_semantic_provider_protocol::builtin_provider_registrations()?;
-        let provider_register = if artifact_catalog
-            .installed_provider_binding_generation()
-            .is_some()
-        {
+        let provider_register = if artifact_catalog.runtime_bundle_digest().is_some() {
             crate::runtime_provider_register::RuntimeProviderRegister::from_verified_seed_with_store(
                 provider_seed,
                 provider_register_state_path,
-                artifact_catalog.installed_provider_targets(),
+                artifact_catalog.active_provider_targets(),
             )
             .await?
         } else {

@@ -293,7 +293,10 @@ async fn write_monitor_receipt(
     observation_error: Option<&str>,
     heartbeat: bool,
 ) -> Result<(), String> {
-    let path = state_home.join("runtime/server/monitor-state.json");
+    let path = agent_semantic_artifacts::StateHomeLayout::new(state_home)
+        .runtime_state()
+        .serving()
+        .identity_monitor_receipt();
     let parent = path
         .parent()
         .ok_or_else(|| "Runtime identity monitor receipt has no parent".to_owned())?;

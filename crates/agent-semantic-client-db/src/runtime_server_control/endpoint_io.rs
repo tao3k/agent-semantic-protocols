@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 use super::endpoint_identity::runtime_server_endpoint_path;
 use super::model::RuntimeServerEndpoint;
 use agent_semantic_artifacts::runtime_artifact_catalog::RuntimeBinaryIdentity;

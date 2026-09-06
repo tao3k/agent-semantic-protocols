@@ -1,7 +1,13 @@
+# SPDX-FileCopyrightText: Contributors to Agent Semantic Protocols
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 [project]
 name = "asp-memory-engine"
 version = "0.1.0"
 description = "Deterministic Python memory engine adapted for ASP workspace recall."
+license = "Apache-2.0 AND LGPL-2.1-only"
+license-files = ["LICENSE"]
 requires-python = ">=3.11"
 dependencies = []
 

@@ -1,9 +1,13 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 [package]
 name = "agent-semantic-client-db"
 version = "0.1.0"
 edition.workspace = true
 description = "ASP Server-owned Turso/Merkle DB Engine for semantic source generations."
-license = "MIT"
+license.workspace = true
 
 [features]
 default = []

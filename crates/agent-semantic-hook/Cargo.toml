@@ -11,7 +11,6 @@ default = ["compiler", "evaluator"]
 compiler = [
     "evaluator",
     "dep:agent-semantic-schema-manager",
-    "dep:agent-semantic-artifacts",
     "dep:agent-semantic-provider-protocol",
     "dep:agent-semantic-shell-parser",
     "dep:agent-semantic-config",
@@ -32,6 +31,7 @@ compiler = [
     "dep:which",
 ]
 evaluator = [
+    "dep:agent-semantic-artifacts",
     "dep:arc-swap",
     "dep:agent-semantic-shell-parser",
     "dep:blake3",

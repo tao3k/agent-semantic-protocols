@@ -29,6 +29,34 @@ The Host project id is never a storage key. Projectless work has no Host
 reference and remains fully valid. Full BLAKE3 identities are retained in
 receipts and physical workspace names; truncated hash tokens are forbidden.
 
+** GitOps identity authority
+
+For a Git workspace, =gix= is the sole parser of repository and worktree
+topology.  The repository axis identifies one local Git object database.  Its
+canonical basis is the normalized absolute common Git directory returned by
+=gix=.  Main and linked worktrees therefore share one repository digest, while
+two independent clones remain distinct even when they advertise the same
+remote URL.
+
+Remote URLs are provenance and display aliases only.  They MUST NOT select a
+State Home path, merge mutable databases, protect an object from cleanup, or
+change a repository/workspace digest.  ASP does not reproduce Git remote
+normalization as an identity algorithm.
+
+The workspace axis identifies one concrete Git worktree.  Its basis is the
+repository digest, canonical worktree root, and worktree-private Git directory.
+HEAD, branch names, index entries, tracked files, and worktree overlays belong
+to the source-generation identity.  They MUST invalidate content without
+allocating another workspace.
+
+This three-part workspace identity is part of the single =ProjectBinding= V1
+contract.  There is no reduced compatibility identity and no parallel schema
+version that omits the worktree-private Git directory.
+
+Non-Git work is durable only through an explicit Host binding or explicit
+State Home admission.  An arbitrary path discovered during Search is not a
+durable repository.
+
 * Physical layout
 
 #+begin_example
@@ -58,10 +86,29 @@ lifecycle authority. Active workspace/session leases, Runtime
 active/healthy/pending references, and provider build leases protect objects.
 An unleased object becomes eligible only after the declared retention window.
 
-=asp clean --day N= evaluates one deterministic plan, validates that the
+=asp cache clean --day N= evaluates one deterministic plan, validates that the
 lease/observation generation is unchanged, moves eligible objects to =trash=
 inside one mutation transaction, publishes a typed receipt, and only then
 reaps content. Failure preserves the previous catalog and live paths.
+
+=--day N= is only the minimum inactivity window.  Cleanup selection is an
+independent typed axis.  The public command supports exactly one of:
+
+- no selector: all catalog objects eligible under the retention window;
+- an exact workspace digest or canonical workspace root;
+- an exact retained-object id.
+
+A selector narrows the plan but never bypasses a live lease, active/healthy
+Runtime reference, age threshold, or generation revalidation.  Every selected
+object appears in the receipt as retained, retired, or rejected.  A missing
+selector is a typed no-match terminal rather than a successful zero-effect
+cleanup.
+
+Cleanup operates on catalog objects, not repository container directories.
+It can therefore retire a disappeared worktree, a partial imported shell, or
+one cache object while another worktree of the same repository remains live.
+It never invokes =git clean= and never deletes a checkout, Git directory,
+object database, index, or worktree file.
 
 Quarantine and rollback objects include owner, reason, creation time, expiry,
 and byte count. They obey both count and byte budgets. Runtime artifacts retain
@@ -81,7 +128,13 @@ trees.
 
 * Migration hard cut
 
-The legacy =projects/by-id= hierarchy is import-only. Migration validates each
-record, publishes the new catalog and references atomically, then retires the
-legacy subtree through the same cleanup planner. There is no runtime fallback,
-dual writer, compatibility facade, or mtime-based admission after commit.
+The retired =projects/by-id= hierarchy is cleanup input only. Runtime code does
+not import from it. The cleanup planner may atomically retire its bytes, but it
+cannot turn an old identity record into a current binding. There is no runtime
+fallback, dual writer, compatibility facade, or mtime-based admission.
+
+The legacy filesystem-scanning =ProjectRegistryGc= and =asp cache gc= surfaces
+are removed.  New writes and cleanup MUST use =ProjectBinding=,
+=StateHomeLayout=, and =StateHomeCatalog=. There is no =StatePaths= operational
+or migration type. After retirement, the old hierarchy is not retained as
+operational documentation.

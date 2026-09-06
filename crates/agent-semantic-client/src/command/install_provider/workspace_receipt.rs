@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 use std::path::Path;
 
 use agent_semantic_provider_protocol::ProviderRegisterOperation;
@@ -39,7 +43,7 @@ pub(in super::super) async fn record_registered_provider_workspace_install(
     let stable_entry = install_target.path.clone();
     let binary_artifact_root =
         agent_semantic_artifacts::RuntimeArtifactStateLayout::new(&runtime_state.protocol_home)
-            .provider_content_store()
+            .provider_staging()
             .join(provider_id)
             .join("artifacts");
     let published = super::workspace::publish_provider_workspace(
@@ -106,13 +110,9 @@ pub(in super::super) async fn record_registered_provider_workspace_install(
             launcher_digest: Some(&launcher_digest),
         },
     )?;
-    let installed_provider_artifacts =
-        super::super::installed_provider_artifacts::publish_current_installed_provider_artifacts(
-            &runtime_state.protocol_home,
-        )?;
     publish_live_provider_registration(&runtime_state.protocol_home, live_registration).await?;
     println!(
-        "[asp-install] provider={} language={} scope={} installMode=develop-workspace-tree sourceKind=develop-workspace-tree devRoot={} target={} binary={} binaryContentDigest={} digestAlgorithm=blake3-256 artifactLeafCount={} artifactEntrypoint={} installedPath={} lock={} switch=atomic installedProviderArtifacts={} installedProviderArtifactsWrite={} installedProviderArtifactsChangedLeaves={} installedProviderArtifactsElapsedMicros={}",
+        "[asp-install] provider={} language={} scope={} installMode=develop-workspace-tree sourceKind=develop-workspace-tree devRoot={} target={} binary={} binaryContentDigest={} digestAlgorithm=blake3-256 artifactLeafCount={} artifactEntrypoint={} installedPath={} lock={} switch=atomic activeRuntimeBundleDigest={}",
         provider_id,
         language_id,
         scope,
@@ -124,10 +124,7 @@ pub(in super::super) async fn record_registered_provider_workspace_install(
         published.artifact_entrypoint.display(),
         published.installed_path.display(),
         lock_path.display(),
-        installed_provider_artifacts.generation(),
-        installed_provider_artifacts.artifact_write(),
-        installed_provider_artifacts.changed_leaf_count(),
-        installed_provider_artifacts.elapsed_micros(),
+        published.runtime_bundle_digest,
     );
     Ok(())
 }

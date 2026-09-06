@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 use super::{
     SearchGenerationSectionKind, SearchMerkleOwnerRecord, ValidatedSearchGenerationSegment,
     ValidatedSortedRecordTable, encode_workspace_search_generation_segment,
@@ -22,7 +26,7 @@ fn search_segment_publishes_a_verified_owner_inclusion_proof() {
     );
     let module_graph_digest = format!("blake3-256:{}", blake3::hash(b"module-graph").to_hex());
     let runtime_provider_execution_binding =
-        agent_semantic_artifacts::installed_provider_binding::RuntimeProviderExecutionBinding::build(
+        agent_semantic_artifacts::runtime_provider_execution_binding::RuntimeProviderExecutionBinding::build(
             "repo-merkle-proof".to_owned(),
             "workspace-merkle-proof".to_owned(),
             format!("blake3-256:{}", "1".repeat(64)),

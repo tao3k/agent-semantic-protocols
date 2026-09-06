@@ -28,7 +28,7 @@
       },
       "required": [
         "provider-registration.json",
-        "installed-provider-binding.json",
+        "provider-artifact-set",
         "evaluator-policy.json",
         "schema-bundle.json"
       ],

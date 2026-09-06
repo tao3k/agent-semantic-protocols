@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 use crate::agent_session_registry::AgentSessionDispatchClaimRequest;
 use crate::agent_session_registry::AgentSessionDispatchCompleteRequest;
 use crate::agent_session_registry::AgentSessionDispatchMarkOrphanedRequest;

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 //! Millisecond immutable bundle publication and launcher switching.
 
 use std::path::Path;
@@ -43,7 +47,6 @@ pub struct RuntimeArtifactBundleMemberSource<'a> {
 
 #[derive(Debug)]
 struct PreparedRuntimeArtifactBundleMember {
-    name: String,
     artifact: PreparedRuntimeArtifact,
 }
 
@@ -88,6 +91,8 @@ pub async fn publish_runtime_artifact(
         artifact_mode,
         &[],
         None,
+        None,
+        &[],
         || async {},
     )
     .await
@@ -127,6 +132,97 @@ pub async fn publish_runtime_artifact_bundle_members(
         artifact_mode,
         member_sources,
         None,
+        None,
+        &[],
+        || async {},
+    )
+    .await
+}
+
+/// Replace the Runtime client cohort while preserving every other verified
+/// member of the current active generation.
+///
+/// This is the binary-refresh transaction. Provider executables already
+/// admitted by the active bundle remain members of the successor generation;
+/// callers cannot reconstruct the active manifest or republish providers
+/// through a second catalog. A concurrent active switch fails the final CAS.
+pub async fn publish_runtime_artifact_bundle_successor_from_active(
+    state_home: &Path,
+    source: &Path,
+    target: &Path,
+    artifact_mode: &str,
+    replacement_members: &[RuntimeArtifactBundleMemberSource<'_>],
+) -> Result<RuntimeArtifactPublicationReceipt, String> {
+    let layout = crate::RuntimeArtifactStateLayout::new(state_home);
+    let active_bundle = match std::fs::canonicalize(layout.active_slot()) {
+        Ok(active) => active,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return publish_runtime_artifact_bundle_members(
+                state_home,
+                source,
+                target,
+                artifact_mode,
+                replacement_members,
+            )
+            .await;
+        }
+        Err(error) => {
+            return Err(format!(
+                "reasonKind=runtime-active-generation-unavailable path={} error={error}",
+                layout.active_slot().display()
+            ));
+        }
+    };
+    let manifest_bytes = tokio::fs::read(active_bundle.join("bundle.json"))
+        .await
+        .map_err(|error| format!("read active Runtime bundle identity: {error}"))?;
+    let manifest_value: serde_json::Value = serde_json::from_slice(&manifest_bytes)
+        .map_err(|error| format!("decode active Runtime bundle identity: {error}"))?;
+    if manifest_value.get("executionBinding").is_some() {
+        return Err(
+            "reasonKind=runtime-bound-binary-refresh-requires-rebound-execution-binding".to_owned(),
+        );
+    }
+    let verified =
+        crate::runtime_artifact_slots::verify_runtime_artifact_bundle(&active_bundle).await?;
+    if !verified.members().contains_key("asp") {
+        return Err("reasonKind=runtime-active-generation-primary-missing member=asp".to_owned());
+    }
+    let replacement_names = replacement_members
+        .iter()
+        .map(|member| member.name)
+        .collect::<std::collections::BTreeSet<_>>();
+    if replacement_names.len() != replacement_members.len() {
+        return Err("duplicate Runtime replacement bundle member".to_owned());
+    }
+    let mut owned_members = verified
+        .members()
+        .keys()
+        .filter(|name| name.as_str() != "asp" && !replacement_names.contains(name.as_str()))
+        .map(|name| (name.clone(), active_bundle.join(name)))
+        .collect::<Vec<_>>();
+    owned_members.extend(
+        replacement_members
+            .iter()
+            .map(|member| (member.name.to_owned(), member.source.to_path_buf())),
+    );
+    owned_members.sort_by(|left, right| left.0.cmp(&right.0));
+    let successor_members = owned_members
+        .iter()
+        .map(|(name, member_source)| RuntimeArtifactBundleMemberSource {
+            name: name.as_str(),
+            source: member_source,
+        })
+        .collect::<Vec<_>>();
+    publish_runtime_artifact_with_before_guard(
+        state_home,
+        source,
+        target,
+        artifact_mode,
+        &successor_members,
+        None,
+        Some(&active_bundle),
+        &[],
         || async {},
     )
     .await
@@ -150,6 +246,82 @@ pub async fn publish_runtime_artifact_bound_bundle_members(
         artifact_mode,
         member_sources,
         Some(execution_binding),
+        None,
+        &[],
+        || async {},
+    )
+    .await
+}
+
+/// Replace one executable capability by composing and publishing a complete
+/// successor of the current active generation. The observed active bundle is
+/// a CAS input: a concurrent activation makes this operation fail closed
+/// instead of silently rebasing the provider onto different Runtime content.
+pub async fn publish_runtime_artifact_bundle_member_from_active(
+    state_home: &Path,
+    member_name: &str,
+    source: &Path,
+    artifact_mode: &str,
+) -> Result<RuntimeArtifactPublicationReceipt, String> {
+    let member_path = Path::new(member_name);
+    if member_path.components().count() != 1
+        || member_name == "."
+        || member_name == ".."
+        || member_name == "asp"
+    {
+        return Err(format!(
+            "invalid Runtime replacement bundle member `{member_name}`"
+        ));
+    }
+    let layout = crate::RuntimeArtifactStateLayout::new(state_home);
+    let active_bundle = std::fs::canonicalize(layout.active_slot()).map_err(|error| {
+        format!(
+            "reasonKind=runtime-active-generation-unavailable path={} error={error}",
+            layout.active_slot().display()
+        )
+    })?;
+    let manifest_bytes = tokio::fs::read(active_bundle.join("bundle.json"))
+        .await
+        .map_err(|error| format!("read active Runtime bundle identity: {error}"))?;
+    let manifest_value: serde_json::Value = serde_json::from_slice(&manifest_bytes)
+        .map_err(|error| format!("decode active Runtime bundle identity: {error}"))?;
+    if manifest_value.get("executionBinding").is_some() {
+        return Err(
+            "reasonKind=runtime-bound-provider-refresh-requires-rebound-execution-binding"
+                .to_owned(),
+        );
+    }
+    let verified =
+        crate::runtime_artifact_slots::verify_runtime_artifact_bundle(&active_bundle).await?;
+    let members = verified.members().clone();
+    if !members.contains_key("asp") {
+        return Err("reasonKind=runtime-active-generation-primary-missing member=asp".to_owned());
+    }
+    let asp_source = active_bundle.join("asp");
+    let mut owned_members = members
+        .keys()
+        .filter(|name| name.as_str() != "asp" && name.as_str() != member_name)
+        .map(|name| (name.clone(), active_bundle.join(name)))
+        .collect::<Vec<_>>();
+    owned_members.push((member_name.to_owned(), source.to_path_buf()));
+    owned_members.sort_by(|left, right| left.0.cmp(&right.0));
+    let member_sources = owned_members
+        .iter()
+        .map(|(name, source)| RuntimeArtifactBundleMemberSource {
+            name: name.as_str(),
+            source,
+        })
+        .collect::<Vec<_>>();
+    let target = state_home.join("runtime/bin/asp");
+    publish_runtime_artifact_with_before_guard(
+        state_home,
+        &asp_source,
+        &target,
+        artifact_mode,
+        &member_sources,
+        None,
+        Some(&active_bundle),
+        &[member_name],
         || async {},
     )
     .await
@@ -162,6 +334,8 @@ async fn publish_runtime_artifact_with_before_guard<BeforeGuard, BeforeGuardFutu
     artifact_mode: &str,
     member_sources: &[RuntimeArtifactBundleMemberSource<'_>],
     execution_binding: Option<&RuntimeArtifactBundleBinding>,
+    expected_active_bundle: Option<&Path>,
+    stable_member_launchers: &[&str],
     before_guard: BeforeGuard,
 ) -> Result<RuntimeArtifactPublicationReceipt, String>
 where
@@ -175,6 +349,18 @@ where
         .file_name()
         .and_then(|name| name.to_str())
         .ok_or_else(|| "Runtime artifact target has no binary name".to_owned())?;
+    for member in stable_member_launchers {
+        let path = Path::new(member);
+        if path.components().count() != 1
+            || *member == "."
+            || *member == ".."
+            || *member == binary_name
+        {
+            return Err(format!(
+                "invalid or duplicate Runtime stable member launcher `{member}`"
+            ));
+        }
+    }
     let mut members = std::collections::BTreeMap::from([(binary_name.to_owned(), digest.clone())]);
     for member in member_sources {
         let member_path = Path::new(member.name);
@@ -199,7 +385,7 @@ where
         |binding| runtime_artifact_bound_bundle_digest(&members, binding),
     );
     let token = bundle_digest.content_digest().as_str();
-    let candidate_dir = layout.bundle_store().join(binary_name).join(&token);
+    let candidate_dir = layout.generation_store().join(&token);
     let _candidate_preparation_lease =
         RuntimeArtifactCandidatePreparationLease::acquire(state_home, binary_name, &token)?;
     let slots = RuntimeArtifactSlotAuthority::for_artifact(layout.root(), binary_name);
@@ -238,7 +424,6 @@ where
             return Err(error);
         }
         prepared_members.push(PreparedRuntimeArtifactBundleMember {
-            name: member.name.to_owned(),
             artifact: member_prepared,
         });
     }
@@ -274,6 +459,18 @@ where
     before_guard().await;
 
     let mut phase_trace = RuntimeArtifactPublicationPhaseTrace::default();
+    let repair_guard = match RuntimeArtifactMutationGuard::try_acquire(&artifact_root) {
+        Ok(guard) => guard,
+        Err(error) => {
+            discard_prepared_runtime_artifact(&prepared).await?;
+            discard_prepared_runtime_artifact_bundle_members(&prepared_members).await?;
+            return Err(error);
+        }
+    };
+    repair_empty_artifact_selector_under_guard(&layout.active_slot())?;
+    repair_empty_artifact_selector_under_guard(&layout.healthy_slot())?;
+    drop(repair_guard);
+
     let phase_started = std::time::Instant::now();
     let serving_snapshot =
         match prepare_runtime_artifact_serving_snapshot(&slots, binary_name).await {
@@ -413,6 +610,21 @@ where
             return Err(error);
         }
     };
+    if expected_active_bundle.is_some_and(|expected| {
+        !observed_active.as_ref().is_some_and(|observed| {
+            std::fs::canonicalize(observed).is_ok_and(|identity| identity == expected)
+        })
+    }) {
+        let _ = std::fs::remove_file(&staged_pending);
+        quiescence.restore_after_failed_commit(&consumed_lease, &guard)?;
+        drop(guard);
+        discard_prepared_runtime_artifact(&prepared).await?;
+        discard_prepared_runtime_artifact_bundle_members(&prepared_members).await?;
+        return Err(
+            "state=runtime-artifact-publication-failed reasonKind=active-generation-cas-mismatch"
+                .to_owned(),
+        );
+    }
     let observed_healthy = match slots.healthy_target_under_guard() {
         Ok(target) => target,
         Err(error) => {
@@ -425,7 +637,7 @@ where
         }
     };
     let observed_healthy_artifact = match observed_healthy.as_ref() {
-        Some(healthy) => match std::fs::read_link(healthy.join(binary_name)) {
+        Some(healthy) => match std::fs::canonicalize(healthy.join(binary_name)) {
             Ok(target) => Some(target),
             Err(error) => {
                 let _ = std::fs::remove_file(&staged_pending);
@@ -456,6 +668,19 @@ where
         );
     }
     phase_trace.receipt_read_validate_micros = phase_started.elapsed().as_micros();
+    let launcher_directory = target.parent().ok_or_else(|| {
+        format!(
+            "Runtime stable launcher has no parent: {}",
+            target.display()
+        )
+    })?;
+    let additional_launcher_before = stable_member_launchers
+        .iter()
+        .map(|member| {
+            let launcher = launcher_directory.join(member);
+            read_optional_symlink(&launcher).map(|previous| (launcher, previous))
+        })
+        .collect::<Result<Vec<_>, String>>()?;
     let prior_authority = (|| {
         Ok::<_, String>((
             observed_active,
@@ -517,6 +742,16 @@ where
             &event.publication_nonce,
             binary_name,
         )?;
+        for member in stable_member_launchers {
+            let launcher = launcher_directory.join(member);
+            publish_runtime_bundle_member_launcher(
+                &launcher,
+                &layout.active_slot().join(member),
+                &event.publication_nonce,
+                member,
+            )?;
+            validate_runtime_bundle_launcher(&launcher, &candidate_dir.join(member))?;
+        }
         phase_trace.client_launcher_switch_micros = phase_started.elapsed().as_micros();
         validate_runtime_bundle_launcher(target, &candidate_dir.join(binary_name))?;
         Ok(())
@@ -525,7 +760,7 @@ where
         Ok(()) => {}
         Err(error) => {
             let _ = std::fs::remove_file(&staged_pending);
-            let rollback =
+            let mut rollback =
                 restore_pending_runtime_artifact_activation(
                     &activation_event_path,
                     previous_pending.as_deref(),
@@ -540,6 +775,13 @@ where
                     stable_before.as_deref(),
                     &quiescence.lease.lease_nonce,
                 ));
+            for (launcher, previous) in &additional_launcher_before {
+                rollback = rollback.and(restore_runtime_artifact_symlink(
+                    launcher,
+                    previous.as_deref(),
+                    &quiescence.lease.lease_nonce,
+                ));
+            }
             quiescence.restore_after_failed_commit(&consumed_lease, &guard)?;
             drop(guard);
             discard_prepared_runtime_artifact(&prepared).await?;
@@ -582,6 +824,46 @@ async fn discard_prepared_runtime_artifact_bundle_members(
         discard_prepared_runtime_artifact(&member.artifact).await?;
     }
     Ok(())
+}
+
+fn repair_empty_artifact_selector_under_guard(slot: &Path) -> Result<(), String> {
+    let metadata = match std::fs::symlink_metadata(slot) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => {
+            return Err(format!(
+                "state=runtime-artifact-publication-failed reasonKind=artifact-selector-unreadable path={} error={error}",
+                slot.display()
+            ));
+        }
+    };
+    if metadata.file_type().is_symlink() {
+        return Ok(());
+    }
+    if !metadata.is_dir() {
+        return Err(format!(
+            "state=runtime-artifact-publication-failed reasonKind=artifact-selector-type-conflict path={}",
+            slot.display()
+        ));
+    }
+    let mut entries = std::fs::read_dir(slot).map_err(|error| {
+        format!(
+            "state=runtime-artifact-publication-failed reasonKind=artifact-selector-unreadable path={} error={error}",
+            slot.display()
+        )
+    })?;
+    if entries.next().is_some() {
+        return Err(format!(
+            "state=runtime-artifact-publication-failed reasonKind=artifact-selector-directory-conflict path={}",
+            slot.display()
+        ));
+    }
+    std::fs::remove_dir(slot).map_err(|error| {
+        format!(
+            "state=runtime-artifact-publication-failed reasonKind=artifact-selector-repair-failed path={} error={error}",
+            slot.display()
+        )
+    })
 }
 
 fn publish_runtime_bundle_member_launcher(

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 #[test]
 fn root_justfile_develop_install_is_only_a_registry_driven_adapter() {
     let justfile = include_str!("../../../../../Justfile");

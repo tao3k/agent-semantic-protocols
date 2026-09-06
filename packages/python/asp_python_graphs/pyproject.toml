@@ -1,7 +1,13 @@
+# SPDX-FileCopyrightText: Contributors to Agent Semantic Protocols
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 [project]
 name = "asp-python-graphs"
 version = "0.1.0"
 description = "Resident Python graph algorithms managed by ASP Server."
+license = "Apache-2.0 AND LGPL-2.1-only"
+license-files = ["LICENSE"]
 requires-python = ">=3.11"
 dependencies = [
     "blake3>=1.0.8,<2",

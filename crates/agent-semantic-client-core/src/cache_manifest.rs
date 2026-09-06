@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 //! Cache manifest model and path resolution for `agent-semantic-client`.
 
 use std::fs;
@@ -291,8 +295,7 @@ pub struct ClientCacheFileHash {
 /// client, hook, and provider receipts resolve the same manifest and Turso DB.
 pub fn project_client_cache_dir(project_root: impl AsRef<Path>) -> Result<PathBuf, String> {
     let resolved = crate::state_core::ResolvedState::resolve(project_root.as_ref())?;
-    resolved.ensure_minimal_layout()?;
-    Ok(resolved.paths.client_dir)
+    Ok(resolved.ensure_workspace_state_layout()?.root)
 }
 
 /// Return the client cache directory without creating or updating state files.
@@ -304,12 +307,14 @@ pub fn project_client_cache_dir_read_only(
     project_root: impl AsRef<Path>,
 ) -> Result<PathBuf, String> {
     let resolved = crate::state_core::ResolvedState::resolve(project_root.as_ref())?;
-    Ok(resolved.paths.client_dir)
+    Ok(resolved.workspace_state_paths()?.root)
 }
 
 /// Resolve the JSON cache manifest path for a project.
 pub fn project_client_cache_manifest_path(
     project_root: impl AsRef<Path>,
 ) -> Result<PathBuf, String> {
-    Ok(project_client_cache_dir(project_root)?.join(AGENT_SEMANTIC_CLIENT_CACHE_MANIFEST_FILE))
+    let resolved = crate::state_core::ResolvedState::resolve(project_root.as_ref())?;
+    resolved.ensure_workspace_state_layout()?;
+    Ok(resolved.workspace_state_paths()?.cache_manifest_path())
 }

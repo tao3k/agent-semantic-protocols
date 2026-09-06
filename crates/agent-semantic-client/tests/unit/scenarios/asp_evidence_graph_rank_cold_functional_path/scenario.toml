@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 id = "asp-evidence-graph-rank-cold-functional-path"
 title = "ASP EvidenceGraph ranking keeps selector-first graph-route seeds inside a scenario gate"
 policy_ids = [

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 use super::{HOOK_STDIN_MAX_BYTES, append_chunk, json_frame_is_complete, read_one_json_frame};
 
 struct OneFrameWithoutEof {

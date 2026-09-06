@@ -97,7 +97,7 @@ pub use runtime_source::runtime_source_checkout_dir_in_runtime_root;
 pub use runtime_source::runtime_source_index_context;
 pub use runtime_source::runtime_source_registry_fingerprint;
 pub use state::ProjectRuntimeState;
-pub use state::ProjectStatePaths;
+pub use state::WorkspaceRuntimePaths;
 pub use state::ensure_project_artifacts_dir;
 pub use state::ensure_project_client_cache_dir;
 pub use state::ensure_project_hook_cache_dir;

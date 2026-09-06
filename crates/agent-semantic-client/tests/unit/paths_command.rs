@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 use std::process::Command;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
@@ -11,8 +15,10 @@ fn paths_reports_project_root_and_org_state_paths() {
     let state_home = temp_project_root("paths-state");
     let resolved_state =
         ResolvedState::resolve_with_state_home(&root, &state_home).expect("resolved state");
-    let resolved = &resolved_state.paths;
-    let expected_org_artifacts = resolved.artifacts_dir.join("org");
+    let resolved = resolved_state
+        .workspace_state_paths()
+        .expect("canonical workspace paths");
+    let expected_org_artifacts = resolved.artifacts.join("org");
     let expected_paths =
         agent_semantic_runtime::project_state_paths_with_state_home(&root, &state_home)
             .expect("resolved project state paths");
@@ -48,8 +54,9 @@ fn paths_reports_project_root_and_org_state_paths() {
     assert!(
         stdout.contains(&format!(
             "orgStateSkill={}",
-            state_home
-                .join("org")
+            agent_semantic_artifacts::StateHomeLayout::new(&state_home)
+                .resources()
+                .org()
                 .join("templates")
                 .join("ASP_ORG_SKILL.org")
                 .display()
@@ -77,8 +84,8 @@ fn paths_reports_project_root_and_org_state_paths() {
         )),
         "stdout: {stdout}"
     );
-    assert!(stdout.contains("/projects/by-id/"), "stdout: {stdout}");
-    assert!(stdout.contains("/live/client/"), "stdout: {stdout}");
+    assert!(stdout.contains("/workspaces/"), "stdout: {stdout}");
+    assert!(!stdout.contains("/projects/by-id/"), "stdout: {stdout}");
     assert!(!root.join(".cache").exists());
     assert!(!state_home.join("projects/by-id").exists());
     let _ = std::fs::remove_dir_all(root);
@@ -106,8 +113,9 @@ fn paths_get_returns_single_absolute_field() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert_eq!(
         stdout.trim(),
-        state_home
-            .join("org")
+        agent_semantic_artifacts::StateHomeLayout::new(&state_home)
+            .resources()
+            .org()
             .join("templates")
             .join("ASP_ORG_SKILL.org")
             .display()
@@ -125,8 +133,10 @@ fn paths_json_is_machine_readable() {
     let state_home = temp_project_root("paths-json-state");
     let resolved_state =
         ResolvedState::resolve_with_state_home(&root, &state_home).expect("resolved state");
-    let resolved = &resolved_state.paths;
-    let expected_org_artifacts = resolved.artifacts_dir.join("org");
+    let resolved = resolved_state
+        .workspace_state_paths()
+        .expect("canonical workspace paths");
+    let expected_org_artifacts = resolved.artifacts.join("org");
     let expected_paths =
         agent_semantic_runtime::project_state_paths_with_state_home(&root, &state_home)
             .expect("resolved project state paths");
@@ -181,13 +191,13 @@ fn paths_json_is_machine_readable() {
         value["clientCacheDir"]
             .as_str()
             .expect("client cache dir")
-            .contains("/projects/by-id/")
+            .contains("/workspaces/")
     );
     assert!(
         value["cacheManifest"]
             .as_str()
             .expect("cache manifest")
-            .contains("/live/client/cache-manifest.json")
+            .contains("/observations/cache-manifest.json")
     );
     assert!(!root.join(".cache").exists());
     let _ = std::fs::remove_dir_all(root);

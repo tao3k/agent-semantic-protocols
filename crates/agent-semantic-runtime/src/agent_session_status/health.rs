@@ -245,8 +245,8 @@ pub fn agent_session_artifact_activity(
     stale_after_seconds: i64,
 ) -> Result<AgentSessionArtifactActivity, String> {
     let artifacts_dir = crate::state_core::ResolvedState::resolve(project_root.as_ref())?
-        .paths
-        .artifacts_dir;
+        .workspace_state_paths()?
+        .artifacts;
     if !artifacts_dir.is_dir() {
         return Ok(AgentSessionArtifactActivity {
             artifacts_dir,

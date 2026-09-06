@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 //! Runtime-owned dispatcher for generation admission and mutation futures.
 
 use std::{collections::HashMap, future::Future, pin::Pin, sync::Arc};

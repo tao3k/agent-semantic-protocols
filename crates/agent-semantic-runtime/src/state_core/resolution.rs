@@ -9,7 +9,6 @@ use super::identity::WorkspaceIdentity;
 use super::layout::ASP_STATE_HOME_ENV;
 use super::layout::DEFAULT_SCOPE_ID;
 use super::layout::STATE_LAYOUT_VERSION;
-use super::layout::StatePaths;
 use super::layout::TURSO_BACKEND;
 use super::layout::canonicalize_parent;
 use super::layout::resolve_state_home_from;
@@ -30,10 +29,52 @@ pub struct ResolvedState {
     pub repo: RepoIdentity,
     pub workspace: WorkspaceIdentity,
     pub scope_id: ScopeId,
-    pub paths: StatePaths,
 }
 
 impl ResolvedState {
+    /// Resolve the content-addressed binding used by all normal State Home writers.
+    pub fn project_binding(&self) -> Result<agent_semantic_artifacts::ProjectBinding, String> {
+        agent_semantic_artifacts::ProjectBinding::resolve_with_private_git_dir(
+            None,
+            self.repo.identity_basis.clone(),
+            &self.workspace.root,
+            self.workspace.git_dir.as_deref(),
+        )
+    }
+
+    /// Resolve canonical workspace paths without materializing them.
+    pub fn workspace_state_paths(
+        &self,
+    ) -> Result<agent_semantic_artifacts::WorkspaceStatePaths, String> {
+        let binding = self.project_binding()?;
+        agent_semantic_artifacts::StateHomeLayout::new(&self.state_home)
+            .workspace(&binding.workspace)
+    }
+
+    /// Materialize the canonical content-addressed workspace envelope.
+    pub fn ensure_workspace_state_layout(
+        &self,
+    ) -> Result<agent_semantic_artifacts::WorkspaceStatePaths, String> {
+        if !self.repo.persistence.is_durable() {
+            return Err(format!(
+                "refusing to materialize ephemeral or standalone temporary checkout: {}",
+                self.repo.checkout_root.display()
+            ));
+        }
+        let binding = self.project_binding()?;
+        agent_semantic_artifacts::StateHomeLayout::new(&self.state_home)
+            .materialize_workspace(&binding)
+    }
+
+    pub async fn ensure_workspace_state_layout_async(
+        &self,
+    ) -> Result<agent_semantic_artifacts::WorkspaceStatePaths, String> {
+        let resolved = self.clone();
+        tokio::task::spawn_blocking(move || resolved.ensure_workspace_state_layout())
+            .await
+            .map_err(|error| format!("canonical workspace materialization task failed: {error}"))?
+    }
+
     /// Resolve State Core from the process environment.
     pub fn resolve(cwd: impl AsRef<Path>) -> Result<Self, String> {
         let cwd = canonicalize_if_possible(cwd.as_ref());
@@ -53,13 +94,11 @@ impl ResolvedState {
         let checkout = CheckoutIdentity::new(&cwd, &git);
         let repo = RepoIdentity::from_checkout(&git, &checkout);
         let workspace = WorkspaceIdentity::from_checkout(&git, &checkout, &repo.repo_id);
-        let paths = StatePaths::new(&state_home, &repo.repo_id, &workspace.workspace_id);
         Ok(Self {
             state_home,
             repo,
             workspace,
             scope_id: ScopeId(DEFAULT_SCOPE_ID.to_string()),
-            paths,
         })
     }
 
@@ -110,18 +149,19 @@ impl ResolvedState {
         }
         let workspace =
             WorkspaceIdentity::from_checkout(&temporary_git, &temporary_checkout, &repo.repo_id);
-        let paths = StatePaths::new(&state_home, &repo.repo_id, &workspace.workspace_id);
         Ok(Self {
             state_home,
             repo,
             workspace,
             scope_id: ScopeId(DEFAULT_SCOPE_ID.to_string()),
-            paths,
         })
     }
 
     /// Render a diagnostic DTO for `asp state locate`.
     pub fn locate_report(&self) -> StateLocateReport {
+        let workspace = self
+            .workspace_state_paths()
+            .expect("resolved State Home workspace identity is canonical");
         StateLocateReport {
             state_layout_version: STATE_LAYOUT_VERSION.to_string(),
             state_home: self.state_home.clone(),
@@ -135,10 +175,10 @@ impl ResolvedState {
             git_dir: self.workspace.git_dir.clone(),
             remote_url: self.repo.remote_url.clone(),
             persistence: self.repo.persistence,
-            db_path: self.paths.client_db_path.clone(),
-            artifact_path: self.paths.artifacts_dir.clone(),
-            manifest_path: self.paths.client_manifest_json.clone(),
-            generation_manifest_path: self.paths.client_cache_manifest_path.clone(),
+            db_path: workspace.facts.clone(),
+            artifact_path: workspace.artifacts.clone(),
+            manifest_path: workspace.db_manifest_path(),
+            generation_manifest_path: workspace.cache_manifest_path(),
             backend: TURSO_BACKEND.to_string(),
         }
     }
@@ -174,7 +214,7 @@ pub fn locate_state(
 ) -> Result<StateLocateReport, String> {
     let state = ResolvedState::resolve(cwd)?;
     if ensure_layout {
-        state.ensure_minimal_layout()?;
+        state.ensure_workspace_state_layout()?;
     }
     Ok(state.locate_report())
 }

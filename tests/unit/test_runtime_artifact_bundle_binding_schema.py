@@ -25,7 +25,7 @@ def test_runtime_artifact_bundle_binding_is_a_closed_v1_contract() -> None:
         "schemaId",
         "schemaVersion",
         "providerRegistrationDigest",
-        "installedProviderBindingDigest",
+        "providerArtifactSetDigest",
         "evaluatorPolicyDigest",
         "schemaBundleDigest",
     }
@@ -59,7 +59,7 @@ def test_runtime_binary_bundle_requires_the_materialized_execution_closure() -> 
     assert "executionBinding" in schema["required"]
     assert set(schema["properties"]["members"]["required"]) == {
         "provider-registration.json",
-        "installed-provider-binding.json",
+        "provider-artifact-set",
         "evaluator-policy.json",
         "schema-bundle.json",
     }

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 //! Active/healthy bundle slots and immutable candidate materialization.
 
 use std::io::ErrorKind;
@@ -28,7 +32,7 @@ pub struct RuntimeArtifactBundleBinding {
     schema_id: String,
     schema_version: String,
     provider_registration_digest: crate::blake3_content_digest::Blake3ContentDigest,
-    installed_provider_binding_digest: crate::blake3_content_digest::Blake3ContentDigest,
+    provider_artifact_set_digest: crate::blake3_content_digest::Blake3ContentDigest,
     evaluator_policy_digest: crate::blake3_content_digest::Blake3ContentDigest,
     schema_bundle_digest: crate::blake3_content_digest::Blake3ContentDigest,
 }
@@ -37,7 +41,7 @@ impl RuntimeArtifactBundleBinding {
     #[must_use]
     pub fn new(
         provider_registration_digest: crate::blake3_content_digest::Blake3ContentDigest,
-        installed_provider_binding_digest: crate::blake3_content_digest::Blake3ContentDigest,
+        provider_artifact_set_digest: crate::blake3_content_digest::Blake3ContentDigest,
         evaluator_policy_digest: crate::blake3_content_digest::Blake3ContentDigest,
         schema_bundle_digest: crate::blake3_content_digest::Blake3ContentDigest,
     ) -> Self {
@@ -45,7 +49,7 @@ impl RuntimeArtifactBundleBinding {
             schema_id: "agent.semantic-protocols.runtime-artifact-bundle-binding".to_owned(),
             schema_version: "1".to_owned(),
             provider_registration_digest,
-            installed_provider_binding_digest,
+            provider_artifact_set_digest,
             evaluator_policy_digest,
             schema_bundle_digest,
         }
@@ -59,10 +63,10 @@ impl RuntimeArtifactBundleBinding {
     }
 
     #[must_use]
-    pub fn installed_provider_binding_digest(
+    pub fn provider_artifact_set_digest(
         &self,
     ) -> &crate::blake3_content_digest::Blake3ContentDigest {
-        &self.installed_provider_binding_digest
+        &self.provider_artifact_set_digest
     }
 
     #[must_use]
@@ -99,10 +103,7 @@ impl RuntimeArtifactBundleBinding {
                 "provider-registration.json",
                 &self.provider_registration_digest,
             ),
-            (
-                "installed-provider-binding.json",
-                &self.installed_provider_binding_digest,
-            ),
+            ("provider-artifact-set", &self.provider_artifact_set_digest),
             ("evaluator-policy.json", &self.evaluator_policy_digest),
             ("schema-bundle.json", &self.schema_bundle_digest),
         ] {
@@ -130,10 +131,7 @@ impl RuntimeArtifactBundleBinding {
         identity.push(0);
         for (field, digest) in [
             ("provider-registration", &self.provider_registration_digest),
-            (
-                "installed-provider-binding",
-                &self.installed_provider_binding_digest,
-            ),
+            ("provider-artifact-set", &self.provider_artifact_set_digest),
             ("evaluator-policy", &self.evaluator_policy_digest),
             ("schema-bundle", &self.schema_bundle_digest),
         ] {
@@ -196,6 +194,15 @@ impl VerifiedRuntimeArtifactBundle {
         member: &str,
     ) -> Option<&crate::blake3_content_digest::Blake3ContentDigest> {
         self.members.get(member)
+    }
+
+    /// Complete immutable member index used when a single capability is
+    /// replaced by republishing the whole Runtime generation.
+    pub fn members(
+        &self,
+    ) -> &std::collections::BTreeMap<String, crate::blake3_content_digest::Blake3ContentDigest>
+    {
+        &self.members
     }
 }
 
@@ -282,8 +289,21 @@ pub async fn runtime_artifact_candidate_bundle_digest(
 pub async fn verify_runtime_artifact_bundle(
     candidate: &Path,
 ) -> Result<VerifiedRuntimeArtifactBundle, String> {
+    let candidate = candidate.to_path_buf();
+    tokio::task::spawn_blocking(move || verify_runtime_artifact_bundle_blocking(&candidate))
+        .await
+        .map_err(|error| format!("verify Runtime artifact bundle task failed: {error}"))?
+}
+
+/// Verify one immutable Runtime generation without entering an async runtime.
+///
+/// Lifecycle probes use this form while holding no Runtime locks. It has the
+/// same manifest and member-content admission rules as the async API.
+pub fn verify_runtime_artifact_bundle_blocking(
+    candidate: &Path,
+) -> Result<VerifiedRuntimeArtifactBundle, String> {
     let manifest_path = candidate.join("bundle.json");
-    let bytes = tokio::fs::read(&manifest_path).await.map_err(|error| {
+    let bytes = std::fs::read(&manifest_path).map_err(|error| {
         format!(
             "read Runtime artifact bundle manifest {}: {error}",
             manifest_path.display()
@@ -312,7 +332,7 @@ pub async fn verify_runtime_artifact_bundle(
             return Err(format!("invalid Runtime artifact bundle member `{member}`"));
         }
         let artifact = candidate.join(member);
-        let observed_digest = runtime_artifact_candidate_digest(&artifact).await?;
+        let observed_digest = runtime_artifact_content_digest(&artifact)?;
         if &observed_digest != expected_digest {
             return Err(format!(
                 "Runtime artifact bundle member digest mismatch: member={member} expected={expected_digest} observed={observed_digest}"
@@ -353,10 +373,18 @@ impl VerifiedRuntimeArtifactBoundBundle {
             .contains_key(member)
             .then(|| self.root.join(member))
     }
+
+    #[must_use]
+    pub fn members(
+        &self,
+    ) -> &std::collections::BTreeMap<String, crate::blake3_content_digest::Blake3ContentDigest>
+    {
+        &self.members
+    }
 }
 
 /// Strict serving admission for the content-addressed Runtime architecture.
-/// Legacy members-only manifests are observable migration inputs, never valid
+/// Unbound members-only manifests are observable migration inputs, never valid
 /// serving authorities.
 pub async fn verify_runtime_artifact_bound_bundle(
     candidate: &Path,
@@ -635,7 +663,17 @@ impl RuntimeArtifactSlotAuthority {
         if member_path.components().count() != 1 || member == "." || member == ".." {
             return Err(format!("invalid Runtime artifact bundle member `{member}`"));
         }
-        publish_runtime_artifact_slot(artifact, &candidate_dir.join(member)).await
+        let member_target = candidate_dir.join(member);
+        if artifact == member_target {
+            if artifact.is_file() {
+                return Ok(());
+            }
+            return Err(format!(
+                "Runtime artifact generation member is unavailable: {}",
+                artifact.display()
+            ));
+        }
+        publish_runtime_artifact_slot(artifact, &member_target).await
     }
 }
 
@@ -669,13 +707,13 @@ pub async fn prepare_runtime_artifact_candidate_for_kind(
     source: &Path,
     artifact_kind: &str,
 ) -> Result<PreparedRuntimeArtifact, String> {
-    let state_home = state_home.to_path_buf();
+    let _state_home = state_home.to_path_buf();
     let candidate_dir = candidate_dir.to_path_buf();
     let source = source.to_path_buf();
     let artifact_kind = artifact_kind.to_owned();
     tokio::task::spawn_blocking(move || {
         prepare_runtime_artifact_candidate_blocking(
-            &state_home,
+            &_state_home,
             &candidate_dir,
             &source,
             &artifact_kind,
@@ -691,16 +729,13 @@ pub async fn prepare_runtime_artifact_bytes_candidate_for_kind(
     bytes: &[u8],
     artifact_kind: &str,
 ) -> Result<PreparedRuntimeArtifact, String> {
-    let state_home = state_home.to_path_buf();
+    let _state_home = state_home.to_path_buf();
     let candidate_dir = candidate_dir.to_path_buf();
     let bytes = bytes.to_vec();
     let artifact_kind = artifact_kind.to_owned();
     tokio::task::spawn_blocking(move || {
         let content_digest = crate::blake3_content_digest::Blake3ContentDigest::from_bytes(&bytes);
-        let path = crate::RuntimeArtifactStateLayout::new(&state_home)
-            .content_store()
-            .join(content_digest.content_digest().as_str())
-            .join(&artifact_kind);
+        let path = candidate_dir.join(&artifact_kind);
         if path.exists() {
             let observed = runtime_artifact_content_digest(&path)?;
             if observed != content_digest {
@@ -755,17 +790,13 @@ pub async fn prepare_runtime_artifact_bytes_candidate_for_kind(
 }
 
 fn prepare_runtime_artifact_candidate_blocking(
-    state_home: &Path,
+    _state_home: &Path,
     candidate_dir: &Path,
     source: &Path,
     artifact_kind: &str,
 ) -> Result<PreparedRuntimeArtifact, String> {
     let content_digest = runtime_artifact_content_digest(source)?;
-    let digest_hex = content_digest.content_digest().as_str();
-    let path = crate::RuntimeArtifactStateLayout::new(state_home)
-        .content_store()
-        .join(digest_hex)
-        .join(artifact_kind);
+    let path = candidate_dir.join(artifact_kind);
     if path.exists() {
         let observed = runtime_artifact_content_digest(&path)?;
         if observed != content_digest {
@@ -852,7 +883,7 @@ mod runtime_artifact_bundle_binding_tests {
         let members = std::collections::BTreeMap::from([("asp".to_owned(), digest("asp"))]);
         let baseline = RuntimeArtifactBundleBinding::new(
             digest("provider-registration"),
-            digest("installed-provider-binding"),
+            digest("provider-artifact-set"),
             digest("evaluator-policy"),
             digest("schema-bundle"),
         );
@@ -861,25 +892,25 @@ mod runtime_artifact_bundle_binding_tests {
         for changed in [
             RuntimeArtifactBundleBinding::new(
                 digest("provider-registration-v2"),
-                digest("installed-provider-binding"),
+                digest("provider-artifact-set"),
                 digest("evaluator-policy"),
                 digest("schema-bundle"),
             ),
             RuntimeArtifactBundleBinding::new(
                 digest("provider-registration"),
-                digest("installed-provider-binding-v2"),
+                digest("provider-artifact-set-v2"),
                 digest("evaluator-policy"),
                 digest("schema-bundle"),
             ),
             RuntimeArtifactBundleBinding::new(
                 digest("provider-registration"),
-                digest("installed-provider-binding"),
+                digest("provider-artifact-set"),
                 digest("evaluator-policy-v2"),
                 digest("schema-bundle"),
             ),
             RuntimeArtifactBundleBinding::new(
                 digest("provider-registration"),
-                digest("installed-provider-binding"),
+                digest("provider-artifact-set"),
                 digest("evaluator-policy"),
                 digest("schema-bundle-v2"),
             ),
@@ -893,7 +924,7 @@ mod runtime_artifact_bundle_binding_tests {
     }
 
     #[tokio::test]
-    async fn bound_bundle_admission_rejects_a_legacy_members_only_manifest() {
+    async fn bound_bundle_admission_rejects_an_unbound_members_only_manifest() {
         let temporary = tempfile::tempdir().expect("Runtime bundle fixture");
         let candidate = temporary.path().join("candidate");
         std::fs::create_dir_all(&candidate).expect("candidate directory");
@@ -905,18 +936,18 @@ mod runtime_artifact_bundle_binding_tests {
                 .await
                 .expect("member digest"),
         )]);
-        let legacy_digest = runtime_artifact_bundle_digest(&members);
+        let unbound_digest = runtime_artifact_bundle_digest(&members);
         std::fs::write(
             candidate.join("bundle.json"),
             serde_json::to_vec_pretty(&serde_json::json!({
                 "schemaId": "agent.semantic-protocols.runtime-binary-bundle",
                 "schemaVersion": 1,
-                "bundleDigest": legacy_digest,
+                "bundleDigest": unbound_digest,
                 "members": members,
             }))
-            .expect("legacy manifest bytes"),
+            .expect("unbound manifest bytes"),
         )
-        .expect("legacy manifest");
+        .expect("unbound manifest");
 
         let error = verify_runtime_artifact_bound_bundle(&candidate)
             .await
@@ -939,10 +970,7 @@ mod runtime_artifact_bundle_binding_tests {
         )]);
         for (member, contents) in [
             ("provider-registration.json", "provider-registration"),
-            (
-                "installed-provider-binding.json",
-                "installed-provider-binding",
-            ),
+            ("provider-artifact-set", "provider-artifact-set"),
             ("evaluator-policy.json", "evaluator-policy"),
             ("schema-bundle.json", "schema-bundle"),
         ] {
@@ -951,7 +979,7 @@ mod runtime_artifact_bundle_binding_tests {
         }
         let binding = RuntimeArtifactBundleBinding::new(
             digest("provider-registration"),
-            digest("installed-provider-binding"),
+            digest("provider-artifact-set"),
             digest("evaluator-policy"),
             digest("schema-bundle"),
         );
@@ -985,14 +1013,14 @@ mod runtime_artifact_bundle_binding_tests {
         )]);
         let admitted_binding = RuntimeArtifactBundleBinding::new(
             digest("provider-registration"),
-            digest("installed-provider-binding"),
+            digest("provider-artifact-set"),
             digest("evaluator-policy"),
             digest("schema-bundle"),
         );
         let bundle_digest = runtime_artifact_bound_bundle_digest(&members, &admitted_binding);
         let tampered_binding = RuntimeArtifactBundleBinding::new(
             digest("provider-registration-v2"),
-            digest("installed-provider-binding"),
+            digest("provider-artifact-set"),
             digest("evaluator-policy"),
             digest("schema-bundle"),
         );
@@ -1030,7 +1058,7 @@ mod runtime_artifact_bundle_binding_tests {
         )]);
         let binding = RuntimeArtifactBundleBinding::new(
             digest("provider-registration"),
-            digest("installed-provider-binding"),
+            digest("provider-artifact-set"),
             digest("evaluator-policy"),
             digest("schema-bundle"),
         );

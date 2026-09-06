@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: Contributors to Agent Semantic Protocols
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 """Shared protocol fixtures for ASP Python Graphs service-session tests."""
 
 from __future__ import annotations

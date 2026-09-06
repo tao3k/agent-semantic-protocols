@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 //! Typed MVCC partition heads, records, aliases, and compare-and-append operations.
 
 use std::{collections::BTreeSet, sync::Arc, time::Duration};

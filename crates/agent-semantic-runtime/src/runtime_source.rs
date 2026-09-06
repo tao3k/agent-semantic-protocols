@@ -50,7 +50,10 @@ pub fn runtime_source_checkout_dir(
     version_key: &str,
 ) -> Result<PathBuf, String> {
     runtime_source_checkout_dir_in_runtime_root(
-        state_home.as_ref().join("runtime"),
+        agent_semantic_artifacts::StateHomeLayout::new(state_home)
+            .runtime_state()
+            .root()
+            .to_path_buf(),
         state_namespace,
         version_key,
     )

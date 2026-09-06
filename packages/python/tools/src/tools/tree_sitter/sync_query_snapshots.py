@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# SPDX-FileCopyrightText: Contributors to Agent Semantic Protocols
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 """Sync tree-sitter query snapshots from an upstream checkout.
 
 This is a development/CI maintenance tool. Runtime providers still embed

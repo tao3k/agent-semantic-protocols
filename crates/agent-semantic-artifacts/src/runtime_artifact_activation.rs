@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 //! Runtime artifact activation event validation, commit, acknowledgement, and rollback.
 
 use std::path::Path;
@@ -179,7 +183,7 @@ async fn validate_current_activation_content(
                 .to_owned()
         })?;
     let member = event.candidate_slot_path.join(artifact_kind);
-    let member_target = std::fs::read_link(&member).map_err(|error| {
+    let member_target = std::fs::canonicalize(&member).map_err(|error| {
         format!(
             "state=runtime-artifact-publication-failed reasonKind=activation-candidate-member-invalid path={} error={error}",
             member.display()
@@ -188,7 +192,13 @@ async fn validate_current_activation_content(
     let actual_digest = runtime_artifact_candidate_digest(&member_target).await?;
     let actual_bundle =
         runtime_artifact_candidate_bundle_digest(&event.candidate_slot_path).await?;
-    if member_target != event.artifact_path
+    let recorded_artifact = std::fs::canonicalize(&event.artifact_path).map_err(|error| {
+        format!(
+            "state=runtime-artifact-publication-failed reasonKind=activation-artifact-invalid path={} error={error}",
+            event.artifact_path.display()
+        )
+    })?;
+    if member_target != recorded_artifact
         || actual_digest != event.artifact_digest
         || actual_bundle != event.bundle_digest
     {
@@ -270,7 +280,7 @@ pub(crate) async fn prepare_runtime_artifact_serving_snapshot(
                 )
             })?;
             let expected = healthy.join(artifact_kind);
-            let candidate_target = std::fs::read_link(&expected).map_err(|error| {
+            let candidate_target = std::fs::canonicalize(&expected).map_err(|error| {
                 format!(
                     "state=runtime-artifact-publication-failed reasonKind=applied-candidate-slot-dangling path={} error={error}",
                     expected.display()
@@ -287,7 +297,13 @@ pub(crate) async fn prepare_runtime_artifact_serving_snapshot(
                     applied.candidate_slot_path.display()
                 ));
             }
-            if candidate_target != applied.artifact_path {
+            let applied_artifact = std::fs::canonicalize(&applied.artifact_path).map_err(|error| {
+                format!(
+                    "state=runtime-artifact-publication-failed reasonKind=applied-artifact-invalid path={} error={error}",
+                    applied.artifact_path.display()
+                )
+            })?;
+            if candidate_target != applied_artifact {
                 return Err(format!(
                     "state=runtime-artifact-publication-failed reasonKind=applied-artifact-identity-mismatch candidate={} applied={}",
                     candidate_target.display(),
@@ -349,7 +365,7 @@ fn prepare_active_slot_snapshot_blocking(
         )
     })?;
     let member_path = active.join(artifact_kind);
-    let member_target = std::fs::read_link(&member_path).map_err(|error| {
+    let member_target = std::fs::canonicalize(&member_path).map_err(|error| {
         format!(
             "state=runtime-artifact-publication-failed reasonKind=active-member-dangling path={} error={error}",
             member_path.display()
@@ -485,6 +501,13 @@ pub async fn commit_runtime_artifact_activation(
         return Err(error);
     }
     drop(guard);
+    crate::runtime_artifact_retention::prune_unreachable_runtime_artifacts(&artifact_root)
+        .await
+        .map_err(|error| {
+            format!(
+                "state=runtime-artifact-activation-committed reasonKind=runtime-state-retention-finalization-failed error={error}"
+            )
+        })?;
 
     Ok(RuntimeArtifactActivationCommitReceipt {
         bundle_digest: event.bundle_digest.clone(),
@@ -556,7 +579,14 @@ pub async fn rollback_runtime_artifact_activation(
         .restore_active_from_healthy(&event.candidate_slot_path)
         .await?;
     drop(guard);
-    Ok(())
+    crate::runtime_artifact_retention::prune_unreachable_runtime_artifacts(&artifact_root)
+        .await
+        .map(|_| ())
+        .map_err(|error| {
+            format!(
+                "state=runtime-artifact-rollback-committed reasonKind=runtime-state-retention-finalization-failed error={error}"
+            )
+        })
 }
 
 pub(crate) fn read_optional_symlink(path: &Path) -> Result<Option<PathBuf>, String> {

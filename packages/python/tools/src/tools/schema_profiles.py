@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: Contributors to Agent Semantic Protocols
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 """Thin command adapter for the Rust-owned ASP Schema Manager.
 
 The Rust ``agent-semantic-schema-manager`` binary is the sole authority for

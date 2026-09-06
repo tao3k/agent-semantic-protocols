@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 use super::resident_transaction_identity_matches;
 use super::runtime_activation_environment;
 
@@ -11,6 +15,7 @@ fn event() -> agent_semantic_artifacts::runtime_artifact_activation::RuntimeArti
     agent_semantic_artifacts::runtime_artifact_activation::RuntimeArtifactActivationEvent {
         schema_id: "agent.semantic-protocols.runtime-artifact-activation".to_owned(),
         schema_version: 1,
+        activation_generation: 1,
         bundle_digest: artifact_digest.clone(),
         artifact_digest: artifact_digest.clone(),
         artifact_path: artifact_path.clone(),

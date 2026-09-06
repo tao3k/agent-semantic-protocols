@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 id = "asp-search-query-budget-cold-functional-path"
 title = "Search query budget is search-owned"
 policy_ids = ["RUST-AGENT-ASP-FUNCTIONAL-SUBCOMMAND-SEARCH-QUERY-BUDGET-COLD-001"]

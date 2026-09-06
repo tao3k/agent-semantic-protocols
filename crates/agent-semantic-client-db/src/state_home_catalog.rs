@@ -1,12 +1,17 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 //! Runtime DB-owned transactional State Home catalog.
 
 use std::{path::Path, time::Duration};
 
 use agent_semantic_artifacts::{
     CatalogBatchReceipt, CatalogGeneration, CatalogObservation, CatalogObservationReceipt,
-    CleanupPlan, ProjectBinding, RetainedObject, RetentionLease, RetentionObjectKind,
-    RetentionPlanner, STATE_HOME_CATALOG_SCHEMA_ID, STATE_HOME_CATALOG_SCHEMA_VERSION,
-    admit_state_home_catalog_batch, validate_state_home_catalog_observations,
+    CleanupPlan, CleanupSelection, ProjectBinding, RetainedObject, RetentionLease,
+    RetentionObjectKind, RetentionPlanner, STATE_HOME_CATALOG_SCHEMA_ID,
+    STATE_HOME_CATALOG_SCHEMA_VERSION, admit_state_home_catalog_batch,
+    validate_state_home_catalog_observations,
 };
 
 const BOOTSTRAP_SQL: &str = "
@@ -230,15 +235,92 @@ impl StateHomeCatalog {
         read_connection_generation(&connection).await
     }
 
+    /// CAS-retire exact catalog objects after their physical workspaces have
+    /// been atomically staged out of the live namespace.
+    pub async fn retire_objects(
+        &self,
+        expected_generation: CatalogGeneration,
+        object_ids: &std::collections::BTreeSet<String>,
+    ) -> Result<CatalogGeneration, String> {
+        if object_ids.is_empty() {
+            return Ok(expected_generation);
+        }
+        let mut connection = self.connection.lock().await;
+        let transaction = connection
+            .transaction_with_behavior(turso::transaction::TransactionBehavior::Immediate)
+            .await
+            .map_err(|error| format!("begin State Home retirement transaction: {error}"))?;
+        let observed = read_generation(&transaction).await?;
+        if observed != expected_generation {
+            return Err(format!(
+                "reasonKind=state-home-cleanup-catalog-generation-changed expected={} actual={}",
+                expected_generation.get(),
+                observed.get()
+            ));
+        }
+        for object_id in object_ids {
+            transaction
+                .execute(
+                    "DELETE FROM asp_retention_lease WHERE object_id = ?1",
+                    [object_id.as_str()],
+                )
+                .await
+                .map_err(|error| format!("retire State Home object leases: {error}"))?;
+            let removed = transaction
+                .execute(
+                    "DELETE FROM asp_retained_object WHERE object_id = ?1",
+                    [object_id.as_str()],
+                )
+                .await
+                .map_err(|error| format!("retire State Home object: {error}"))?;
+            if removed != 1 {
+                return Err(format!(
+                    "reasonKind=state-home-cleanup-object-not-current objectId={object_id}"
+                ));
+            }
+        }
+        transaction
+            .execute(
+                "DELETE FROM asp_project_binding WHERE workspace_digest NOT IN (SELECT workspace_digest FROM asp_retained_object)",
+                (),
+            )
+            .await
+            .map_err(|error| format!("retire unreferenced State Home bindings: {error}"))?;
+        transaction
+            .execute(
+                "UPDATE asp_state_home_catalog SET generation = generation + 1 WHERE singleton = 1",
+                (),
+            )
+            .await
+            .map_err(|error| format!("advance State Home retirement generation: {error}"))?;
+        let generation = read_generation(&transaction).await?;
+        transaction
+            .commit()
+            .await
+            .map_err(|error| format!("commit State Home retirement: {error}"))?;
+        Ok(generation)
+    }
+
     pub async fn plan_cleanup(
         &self,
         evaluated_at_ms: u64,
         retain_for_ms: u64,
     ) -> Result<CleanupPlan, String> {
+        self.plan_cleanup_selected(evaluated_at_ms, retain_for_ms, CleanupSelection::All)
+            .await
+    }
+
+    pub async fn plan_cleanup_selected(
+        &self,
+        evaluated_at_ms: u64,
+        retain_for_ms: u64,
+        selection: CleanupSelection,
+    ) -> Result<CleanupPlan, String> {
+        selection.validate()?;
         let connection = self.connection.lock().await;
         let mut rows = connection
             .query(
-                "SELECT object_id, kind, last_observed_at_ms, byte_count
+                "SELECT object_id, workspace_digest, kind, last_observed_at_ms, byte_count
                  FROM asp_retained_object ORDER BY object_id",
                 (),
             )
@@ -250,14 +332,28 @@ impl StateHomeCatalog {
             .await
             .map_err(|error| format!("advance State Home retained object row: {error}"))?
         {
+            let object_id = row.get::<String>(0).map_err(row_error)?;
+            let workspace_digest = row.get::<String>(1).map_err(row_error)?;
+            let selected = match &selection {
+                CleanupSelection::All => true,
+                CleanupSelection::WorkspaceDigest {
+                    workspace_digest: expected,
+                } => &workspace_digest == expected,
+                CleanupSelection::ObjectId {
+                    object_id: expected,
+                } => &object_id == expected,
+            };
+            if !selected {
+                continue;
+            }
             objects.push(RetainedObject {
-                object_id: row.get::<String>(0).map_err(row_error)?,
-                kind: parse_object_kind(&row.get::<String>(1).map_err(row_error)?)?,
+                object_id,
+                kind: parse_object_kind(&row.get::<String>(2).map_err(row_error)?)?,
                 last_observed_at_ms: from_i64(
                     "lastObservedAtMs",
-                    row.get::<i64>(2).map_err(row_error)?,
+                    row.get::<i64>(3).map_err(row_error)?,
                 )?,
-                byte_count: from_i64("byteCount", row.get::<i64>(3).map_err(row_error)?)?,
+                byte_count: from_i64("byteCount", row.get::<i64>(4).map_err(row_error)?)?,
             });
         }
         let mut rows = connection
@@ -284,7 +380,8 @@ impl StateHomeCatalog {
                     .transpose()?,
             });
         }
-        RetentionPlanner::new(evaluated_at_ms, retain_for_ms).plan(objects, &leases)
+        RetentionPlanner::new(evaluated_at_ms, retain_for_ms)
+            .plan_selected(objects, &leases, selection)
     }
 }
 
@@ -388,4 +485,127 @@ fn from_i64(label: &str, value: i64) -> Result<u64, String> {
 
 fn row_error(error: turso::Error) -> String {
     format!("decode State Home catalog row: {error}")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn cleanup_selection_targets_one_workspace_and_missing_identity_fails_closed() {
+        let temporary = tempfile::tempdir().expect("catalog selection fixture");
+        let first_root = temporary.path().join("first");
+        let second_root = temporary.path().join("second");
+        std::fs::create_dir_all(&first_root).expect("first workspace root");
+        std::fs::create_dir_all(&second_root).expect("second workspace root");
+        let catalog = StateHomeCatalog::open(temporary.path().join("catalog/state.turso"))
+            .await
+            .expect("open catalog");
+        let first = ProjectBinding::resolve(None, "git-common-dir:first", &first_root)
+            .expect("first binding");
+        let second = ProjectBinding::resolve(None, "git-common-dir:second", &second_root)
+            .expect("second binding");
+        for (binding, object_id) in [(&first, "cache:first"), (&second, "cache:second")] {
+            catalog
+                .observe(
+                    binding,
+                    &RetainedObject {
+                        object_id: object_id.to_string(),
+                        kind: RetentionObjectKind::Workspace,
+                        last_observed_at_ms: 1,
+                        byte_count: 10,
+                    },
+                    &[],
+                    1,
+                )
+                .await
+                .expect("observe retained workspace");
+        }
+
+        let plan = catalog
+            .plan_cleanup_selected(
+                100,
+                10,
+                CleanupSelection::WorkspaceDigest {
+                    workspace_digest: first.workspace.digest.to_string(),
+                },
+            )
+            .await
+            .expect("plan exact workspace cleanup");
+        assert_eq!(plan.entries.len(), 1);
+        assert_eq!(plan.entries[0].object.object_id, "cache:first");
+
+        let error = catalog
+            .plan_cleanup_selected(
+                100,
+                10,
+                CleanupSelection::ObjectId {
+                    object_id: "cache:missing".to_string(),
+                },
+            )
+            .await
+            .expect_err("missing exact cleanup object must fail closed");
+        assert!(error.contains("state-home-cleanup-selection-no-match"));
+    }
+
+    #[tokio::test]
+    async fn retirement_generation_mismatch_preserves_the_catalog_object() {
+        let temporary = tempfile::tempdir().expect("catalog retirement fixture");
+        let workspace_root = temporary.path().join("workspace");
+        std::fs::create_dir_all(&workspace_root).expect("workspace root");
+        let catalog = StateHomeCatalog::open(temporary.path().join("catalog/state.turso"))
+            .await
+            .expect("open catalog");
+        let binding =
+            ProjectBinding::resolve(None, "git-common-dir:repo", &workspace_root).expect("binding");
+        let object = RetainedObject {
+            object_id: "workspace:retire".to_string(),
+            kind: RetentionObjectKind::Workspace,
+            last_observed_at_ms: 1,
+            byte_count: 10,
+        };
+        let observed = catalog
+            .observe(&binding, &object, &[], 1)
+            .await
+            .expect("observe workspace");
+        let selected = std::collections::BTreeSet::from([object.object_id.clone()]);
+
+        let error = catalog
+            .retire_objects(
+                CatalogGeneration::new(observed.generation.get() - 1),
+                &selected,
+            )
+            .await
+            .expect_err("stale cleanup generation must fail closed");
+        assert!(error.contains("state-home-cleanup-catalog-generation-changed"));
+
+        let plan = catalog
+            .plan_cleanup_selected(
+                100,
+                10,
+                CleanupSelection::ObjectId {
+                    object_id: object.object_id.clone(),
+                },
+            )
+            .await
+            .expect("stale CAS must preserve the object");
+        assert_eq!(plan.entries.len(), 1);
+
+        let committed = catalog
+            .retire_objects(observed.generation, &selected)
+            .await
+            .expect("retire current object");
+        assert_eq!(committed.get(), observed.generation.get() + 1);
+        let error = catalog
+            .plan_cleanup_selected(
+                100,
+                10,
+                CleanupSelection::ObjectId {
+                    object_id: object.object_id,
+                },
+            )
+            .await
+            .expect_err("committed retirement must remove the object");
+        assert!(error.contains("state-home-cleanup-selection-no-match"));
+    }
 }

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 use std::sync::Arc;
 
 use super::generation_builder::{Stage, await_stage};
@@ -17,7 +21,7 @@ use crate::WorkspaceDbRegistry;
 #[path = "durability.rs"]
 mod durability;
 use durability::{
-    durable_provider_binding_matches_current, emit_source_index_durability_attachment,
+    durable_runtime_bundle_matches_current, emit_source_index_durability_attachment,
     spawn_runtime_owned_durability_task,
 };
 
@@ -134,7 +138,7 @@ impl RuntimeServer {
             Option<crate::runtime_server_admission::WorkspaceGenerationCandidateBuilder>,
         >,
         catalog: Option<crate::runtime_server_admission_catalog::RuntimeWorkspaceAdmissionCatalog>,
-        provider_binding_generation_probe: Option<
+        runtime_bundle_digest_probe: Option<
             std::sync::Arc<dyn Fn() -> Result<Option<String>, String> + Send + Sync + 'static>,
         >,
     ) -> Self {
@@ -144,8 +148,8 @@ impl RuntimeServer {
         let generation_publication = self.generation_publication.clone();
         let durability_tasks = Arc::clone(&self.durability_tasks);
         let events = self.events.clone();
-        let durable_restore_provider_binding_probe = provider_binding_generation_probe.clone();
-        let ready_validator = provider_binding_generation_probe.map(|probe| {
+        let durable_restore_runtime_bundle_probe = runtime_bundle_digest_probe.clone();
+        let ready_validator = runtime_bundle_digest_probe.map(|probe| {
             let memory_registry = Arc::clone(&memory_registry);
             std::sync::Arc::new(
                 move |
@@ -173,13 +177,13 @@ impl RuntimeServer {
                     let observed = match generation.runtime_provider_execution_binding.as_ref() {
                         Some(binding) => {
                             binding.validate()?;
-                            Some(binding.installed_provider_binding_generation.clone())
+                            Some(binding.runtime_bundle_digest.clone())
                         }
                         None => None,
                     };
                     if observed != expected {
                         return Err(format!(
-                            "Runtime provider binding generation drift: expected={} observed={}",
+                            "Runtime bundle identity drift: expected={} observed={}",
                             expected.as_deref().unwrap_or("absent"),
                             observed.as_deref().unwrap_or("absent")
                         ));
@@ -202,8 +206,8 @@ impl RuntimeServer {
                 let memory_registry = Arc::clone(&memory_registry);
                 let generation_publication = generation_publication.clone();
                 let durability_tasks = Arc::clone(&durability_tasks);
-                let durable_restore_provider_binding_probe =
-                    durable_restore_provider_binding_probe.clone();
+                let durable_restore_runtime_bundle_probe =
+                    durable_restore_runtime_bundle_probe.clone();
                 let source_builder = source_builder.clone();
         let source_builder_cancellation = cancellation.clone();
                 let events = events.clone();
@@ -259,7 +263,7 @@ impl RuntimeServer {
                     } else if provider_target.is_none() {
                         true
                     } else {
-                        let current_generation = durable_restore_provider_binding_probe
+                        let current_generation = durable_restore_runtime_bundle_probe
                             .as_ref()
                             .and_then(|probe| probe().ok().flatten());
                         let observed_generation = async {
@@ -278,10 +282,10 @@ impl RuntimeServer {
                             snapshot.validate().ok()?;
                             snapshot
                                 .runtime_provider_execution_binding
-                                .map(|binding| binding.installed_provider_binding_generation)
+                                .map(|binding| binding.runtime_bundle_digest)
                         }
                         .await;
-                        durable_provider_binding_matches_current(
+                        durable_runtime_bundle_matches_current(
                             observed_generation.as_deref(),
                             current_generation.as_deref(),
                         )

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 //! Production-command coverage for the real Cargo-built ASP executable.
 
 use std::path::Path;
@@ -83,17 +87,6 @@ async fn built_asp_install_binary_publishes_runtime_hook_independent_of_runtime_
     let plugin_cache_before = directory_identity(&plugin_cache);
     let plugin_source = workspace_root.join("asp-codex-plugin");
     let plugin_source_before = directory_identity(&plugin_source);
-    let legacy_generation = state_home
-        .path()
-        .join("hooks/generations/blake3-256/legacy-policy");
-    std::fs::create_dir_all(&legacy_generation).expect("legacy Hook generation fixture");
-    #[cfg(unix)]
-    std::os::unix::fs::symlink(
-        "generations/blake3-256/legacy-policy",
-        state_home.path().join("hooks/current"),
-    )
-    .expect("legacy Hook current fixture");
-
     let output = Command::new(&asp)
         .args(["install", "binary"])
         .current_dir(workspace_root)
@@ -114,7 +107,6 @@ async fn built_asp_install_binary_publishes_runtime_hook_independent_of_runtime_
     assert!(install_stdout.contains("hookBinaryDigest=blake3-256:"));
     assert!(install_stdout.contains("hookBinarySwitch=active-healthy-bundle"));
     assert!(install_stdout.contains("runtimeServerLifecycle=resident-owner-independent"));
-    assert!(install_stdout.contains("legacyHookGeneration=retired"));
     assert!(install_stdout.contains("hookAuthority=runtime-active-bundle-content-digest"));
     assert_eq!(
         directory_identity(&plugin_source),
@@ -127,16 +119,12 @@ async fn built_asp_install_binary_publishes_runtime_hook_independent_of_runtime_
         "binary installation must not mutate the global Codex plugin cache"
     );
 
-    let installed_hook = state_home.path().join("runtime/bin/asp-hook");
+    let installed_hook = state_home.path().join("runtime/artifacts/active/asp-hook");
     assert!(
         installed_hook.exists(),
         "canonical Hook evaluator publication"
     );
     assert!(!state_home.path().join("hooks/current").exists());
-    assert!(
-        legacy_generation.exists(),
-        "install retires only the obsolete selector; clean owns history retention"
-    );
 
     let pending_path = agent_semantic_artifacts::runtime_artifact_activation::
         runtime_artifact_activation_event_path(state_home.path());
@@ -152,7 +140,7 @@ async fn built_asp_install_binary_publishes_runtime_hook_independent_of_runtime_
     assert_eq!(activation.artifact_digest, expected_digest);
     assert!(activation.artifact_path.is_file());
     assert!(activation.artifact_path.components().any(|component| {
-        component.as_os_str() == activation.artifact_digest.content_digest().as_str()
+        component.as_os_str() == activation.bundle_digest.content_digest().as_str()
     }));
     assert!(
         !state_home
@@ -176,8 +164,8 @@ async fn built_asp_install_binary_publishes_runtime_hook_independent_of_runtime_
         "install must switch only the client launcher to the pending immutable candidate"
     );
     assert!(
-        !state_home.path().join("runtime/artifacts/active").exists(),
-        "install cannot switch the resident serving slot before activation commit"
+        state_home.path().join("runtime/artifacts/active").exists(),
+        "install must switch the sole active generation selector"
     );
     assert!(
         !state_home

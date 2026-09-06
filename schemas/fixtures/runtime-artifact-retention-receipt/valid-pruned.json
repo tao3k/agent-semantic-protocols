@@ -7,6 +7,9 @@
   "scannedGenerationCount": 12,
   "retainedGenerationCount": 5,
   "removedGenerationCount": 7,
+  "retiredSupersededStoreCount": 2,
+  "retiredSupersededLeaseDirectoryCount": 1,
+  "retiredMisplacedLauncherRootCount": 1,
   "ignoredEntryCount": 0,
   "reclaimedBytes": 734003200,
   "protectedDigests": [

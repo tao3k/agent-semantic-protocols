@@ -120,18 +120,10 @@ fn test_activation_path(root: &std::path::Path) -> std::path::PathBuf {
         root.join(".agent-semantic-protocols"),
     )
     .expect("resolve test state");
-    std::fs::create_dir_all(&resolved.paths.workspace_dir).expect("create workspace state dir");
-    std::fs::write(
-        &resolved.paths.workspace_json,
-        serde_json::to_string(&serde_json::json!({
-            "root": project_root.display().to_string()
-        }))
-        .expect("serialize workspace manifest"),
-    )
-    .expect("write workspace manifest");
     resolved
-        .paths
-        .hooks_dir
+        .ensure_workspace_state_layout()
+        .expect("create workspace state dir")
+        .hook_root()
         .join("state")
         .join("activation.json")
 }

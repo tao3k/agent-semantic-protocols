@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 #[test]
 fn asp_unit_scenarios_have_rust_harness_benchmark_toml_gates() {
     super::scenario_benchmark_manifest::asp_unit_scenarios_have_rust_harness_benchmark_toml_gates();

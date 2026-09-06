@@ -90,7 +90,7 @@ pub fn compile_embedded_hook_policy_bundle() -> Result<Vec<u8>, String> {
 /// optional user-level State Home overlay.
 ///
 /// The system template is always the base policy.  When present,
-/// `$ASP_STATE_HOME/hooks/config.toml` is a declarative overlay, not a second
+/// `$ASP_STATE_HOME/control/config/hook-client.toml` is a declarative overlay, not a second
 /// executable authority and not a best-effort hint: invalid user policy fails
 /// closed before a Host action can be admitted.  The normal `asp-hook` path
 /// calls this function directly.

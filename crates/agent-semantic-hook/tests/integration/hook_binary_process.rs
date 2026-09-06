@@ -238,23 +238,10 @@ fn configured_testing_agent_is_allowed_without_child_registration() {
             )),
         "{unregistered}"
     );
-    let route_key = blake3::hash(b"root-test").to_hex();
-    let route_path = temp
-        .path()
-        .join("hooks/session-routes")
-        .join(format!("{route_key}.json"));
-    let route: serde_json::Value = serde_json::from_slice(
-        &std::fs::read(&route_path).expect("standalone Hook publishes collaboration route"),
-    )
-    .expect("decode collaboration route receipt");
-    assert_eq!(
-        route["schemaId"],
-        "agent.semantic-protocols.hook-session-route"
+    assert!(
+        !temp.path().join("hooks/session-routes").exists(),
+        "Hook must not publish a second session-routing authority"
     );
-    assert_eq!(route["schemaVersion"], 1);
-    assert_eq!(route["rootSessionId"], "root-test");
-    assert_eq!(route["targetAgent"], "asp_testing");
-    assert_eq!(route["configRuleId"], "testing-role-dispatch");
 
     let agent_payload = serde_json::json!({
         "session_id": "agent-session-test",

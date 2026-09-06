@@ -76,7 +76,6 @@ import ASPProof.Audit.ManagerProjectionElimination
 import ASPProof.AgentSessionLifecycleProduct
 import ASPProof.MultiAgentLifeSession
 import ASPProof.MultiAgentHostIdentityBinding
-import ASPProof.MultiAgentResidentNamespace
 import ASPProof.MultiAgentProviderFacadeAuthority
 import ASPProof.Audit.MultiAgentLifeSession
 import ASPProof.AgentSessionLifecycleExecutableRefinement
@@ -304,3 +303,9 @@ import ASPProof.RuntimeEndpointAuthority
 import ASPProof.HotPathEffectIsolation
 import ASPProof.SearchEvidenceReflection
 import ASPProof.Audit.SearchEvidenceReflection
+import ASPProof.SearchEvidenceDerivation
+import ASPProof.Audit.SearchEvidenceDerivation
+import ASPProof.ProjectTopologyProgram
+import ASPProof.Audit.ProjectTopologyProgram
+import ASPProof.ProjectTopologyIdentityRefinement
+import ASPProof.Audit.ProjectTopologyIdentityRefinement

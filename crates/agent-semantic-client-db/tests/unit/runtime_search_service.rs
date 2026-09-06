@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 use agent_semantic_search::RuntimeSearchSource;
 use agent_semantic_search::build_runtime_provider_search_receipt;
 use agent_semantic_search_projection::RESIDENT_SEARCH_RESULT_SCHEMA_ID;

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+
 pub use agent_semantic_context_product::agent_session_lifecycle::AGENT_SESSION_LIFECYCLE_PROJECTION_SCHEMA_ID;
 pub use agent_semantic_context_product::agent_session_lifecycle::AGENT_SESSION_LIFECYCLE_PROJECTION_SCHEMA_VERSION;
 pub use agent_semantic_context_product::agent_session_lifecycle::AgentSessionLifecycleFacts;

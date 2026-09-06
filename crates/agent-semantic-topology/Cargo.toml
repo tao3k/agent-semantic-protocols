@@ -1,0 +1,16 @@
+[package]
+name = "agent-semantic-topology"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "Reusable Project Topology identity, admission, and incremental generation contracts for ASP"
+
+[dependencies]
+meta-relational-reasoning.workspace = true
+serde_json.workspace = true
+
+[build-dependencies]
+asp-rust-project-harness-policy.workspace = true
+
+[lints]
+workspace = true
