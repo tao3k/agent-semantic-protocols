@@ -77,12 +77,12 @@ pub(in crate::command) fn validate_codex_plugin_source_payload() -> Result<Strin
         return Err("ASP Codex plugin Hook payload is incomplete".to_string());
     }
     if !ASP_CODEX_PLUGIN_HOOK_LAUNCHER.starts_with("#!/bin/sh\n")
-        || !ASP_CODEX_PLUGIN_HOOK_LAUNCHER.contains("runtime/bin/asp-hook")
+        || !ASP_CODEX_PLUGIN_HOOK_LAUNCHER.contains("runtime/artifacts/active/asp-hook")
         || ASP_CODEX_PLUGIN_HOOK_LAUNCHER.contains("hooks/current")
         || ASP_CODEX_PLUGIN_HOOK_LAUNCHER.contains("ASP_HOOK_GENERATION_ROOT")
-        || ASP_CODEX_PLUGIN_HOOK_LAUNCHER.contains("runtime/profiles/asp/active")
-        || ASP_CODEX_PLUGIN_HOOK_LAUNCHER.contains("runtime/profiles/asp/healthy")
-        || !ASP_CODEX_PLUGIN_HOOK_LAUNCHER.contains("$asp_hook_state_home/runtime/bin/asp-hook")
+        || ASP_CODEX_PLUGIN_HOOK_LAUNCHER.contains("runtime/artifacts/active")
+        || !ASP_CODEX_PLUGIN_HOOK_LAUNCHER
+            .contains("$asp_hook_state_home/runtime/artifacts/active/asp-hook")
         || !ASP_CODEX_PLUGIN_HOOK_LAUNCHER.contains("exec \"$hook_bin\" \"$@\"")
     {
         return Err(

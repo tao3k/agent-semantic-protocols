@@ -174,7 +174,10 @@ fn payload_validation_rejects_runtime_coupled_launcher() {
     let launcher_path = source.join(CODEX_PLUGIN_LAUNCHER_RELATIVE_PATH);
     let launcher = String::from_utf8(SOURCE_LAUNCHER.to_vec())
         .expect("launcher UTF-8")
-        .replace("runtime/bin/asp-hook", "runtime/bin/asp");
+        .replace(
+            "runtime/artifacts/active/asp-hook",
+            "runtime/artifacts/active/asp",
+        );
     std::fs::write(&launcher_path, launcher).expect("write Runtime-coupled launcher");
     assert!(
         load_codex_plugin_payload_identity(&source)

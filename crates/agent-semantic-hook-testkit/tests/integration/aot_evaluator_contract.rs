@@ -7,6 +7,7 @@ use agent_semantic_hook::aot_evaluator::reader_probe_request;
 use agent_semantic_hook::bind_reader_probe_observation;
 use agent_semantic_hook::diagnose_reader_probe;
 use agent_semantic_hook::diagnose_reader_probe_with_state_home;
+use agent_semantic_hook::evaluate_payload_with_policy_bundle_and_state_home_with_receipt;
 use agent_semantic_hook::materialize_reader_probe_fixture;
 
 pub(super) const GENERATION: &str = r#"{"schemaId":"agent.semantic-protocols.hook-policy-bundle","schemaVersion":1,"generationDigest":"blake3-256:testkit-perf","rules":[{"id":"route-source","matchers":["Bash"],"wrappedCommand":true,"actions":["read"],"registeredExtensions":["rs"],"decision":"deny","reasonKind":"registered-source-route-required","message":"Use ASP."}]}"#;
@@ -198,7 +199,7 @@ fn canonical_aot_generation_preserves_config_rule_composition_and_dominance() {
         ),
         (
             "asp search playbook --language rust 'owner symbol' --workspace . --json",
-            Some("deny-agent-search-json"),
+            Some("registered-asp-reasoning-search"),
         ),
         (
             "cargo test -p agent-semantic-hook",
@@ -212,7 +213,10 @@ fn canonical_aot_generation_preserves_config_rule_composition_and_dominance() {
             "git show HEAD:README.md",
             Some("git-history-inspection-dispatch"),
         ),
-        ("just --list | rg hook", None),
+        (
+            "just --list | rg hook",
+            Some("deny-shell-search-before-execution"),
+        ),
         ("cargo fmt --all", None),
     ] {
         assert_eq!(
@@ -335,6 +339,105 @@ fn wrapped_command_profile_uses_dynamic_reader_observation_without_wrapper_vocab
     }
 }
 
+/// The exact `rtk read <unknown markdown path>` shape must enter the dynamic
+/// detector, and its receipt must remain inspectable even if the policy allows
+/// the command after an inconclusive probe.  This deliberately has no static
+/// `rtk` reader catalog entry.
+#[test]
+fn exact_rtk_read_shape_persists_a_dynamic_probe_receipt() {
+    #[cfg(target_os = "macos")]
+    {
+        let workspace = tempfile::tempdir().expect("isolated workspace");
+        let state_home = tempfile::tempdir().expect("isolated Reader State Home");
+        let subject = "/Users/guangtao/.codex/memories/skills/asp-hook-readonly-acceptance/xxxx.md";
+        let payload = serde_json::json!({
+            "session_id": "testkit-dynamic-rtk-read",
+            "tool_use_id": "testkit-dynamic-rtk-read-tool-use",
+            "cwd": workspace.path(),
+            "hook_event_name": "PreToolUse",
+            "tool_name": "Bash",
+            "tool_input": { "command": format!("rtk read {subject}") },
+        })
+        .to_string();
+
+        let receipt = evaluate_payload_with_policy_bundle_and_state_home_with_receipt(
+            &canonical_generation(),
+            &payload,
+            "Bash",
+            Some(state_home.path()),
+        )
+        .expect("evaluate exact dynamic rtk read shape");
+        let host_output = receipt.host_output.expect("Codex pre-tool output");
+        assert!(
+            host_output == serde_json::json!({})
+                || host_output["hookSpecificOutput"]["permissionDecision"] == "deny",
+            "Host keeps its existing empty-allow or deny-only wire shape: {host_output:#}"
+        );
+        if host_output["hookSpecificOutput"]["permissionDecision"] == "deny" {
+            let message = host_output["hookSpecificOutput"]["permissionDecisionReason"]
+                .as_str()
+                .expect("Markdown deny message");
+            assert!(
+                message.contains("Direct Markdown reads are denied because"),
+                "message must state why the action is denied: {message}"
+            );
+            assert!(
+                message.contains("Use `asp search playbook --languages md`."),
+                "message must contain the Rust-rendered ASP Search Playbook contract: {message}"
+            );
+            assert!(
+                !message.contains("{{searchPlaybookContract}}") && !message.contains("<path>"),
+                "message must not expose an unresolved recovery placeholder: {message}"
+            );
+            assert!(
+                !message.contains("Delegate it to ASP Explorer"),
+                "Host delegation prose belongs in the typed receipt, not the Agent message: {message}"
+            );
+        }
+
+        let state_path = receipt
+            .reader_probe_event_path
+            .expect("dynamic Reader probe receipt path");
+        let events = std::fs::read_to_string(&state_path).expect("dynamic probe event state");
+        let event = events
+            .lines()
+            .map(|line| serde_json::from_str::<serde_json::Value>(line).expect("event JSON"))
+            .rev()
+            .find(|event| event["fields"]["recordKind"] == "reader-probe-observation")
+            .expect("dynamic Reader probe receipt");
+        assert_eq!(event["schemaId"], "agent.semantic-protocols.hook.event");
+        assert_eq!(event["schemaVersion"], "1");
+        assert_eq!(event["subject"]["path"], subject);
+        assert_eq!(event["fields"]["hostMatcher"], "Bash");
+        assert_eq!(
+            event["fields"]["readerProbe"]["schemaId"],
+            "agent.semantic-protocols.reader-probe-observation"
+        );
+        assert!(
+            matches!(
+                event["fields"]["readerProbe"]["access"].as_str(),
+                Some("read" | "unknown")
+            ),
+            "a dynamic probe must publish an explicit Read or Unknown observation: {event:#}"
+        );
+        if event["fields"]["readerProbe"]["access"] == "read" {
+            assert_eq!(
+                event["fields"]["policyDecision"]["generationDigest"],
+                "blake3-256:testkit-canonical"
+            );
+            assert_eq!(
+                event["fields"]["policyDecision"]["configRuleId"],
+                "route-markdown-document-read-to-asp-explorer"
+            );
+        } else {
+            assert_eq!(
+                event["fields"]["policyDecision"]["state"],
+                "no-matching-rule"
+            );
+        }
+    }
+}
+
 #[test]
 fn canonical_aot_generation_preserves_structured_projection_allow_and_deny() {
     let generation = canonical_generation();
@@ -443,8 +546,11 @@ fn every_canonical_config_rule_has_an_aot_decision_witness() {
         decide("Bash", "Bash", serde_json::json!({"command":"git show HEAD:README.md"})),
         decide("Bash", "Bash", serde_json::json!({"command":"asp live-corpus qualify"})),
         decide("Bash", "Bash", serde_json::json!({"command":"gxc -O src/runtime.ss"})),
-        decide("Bash", "Bash", serde_json::json!({"command":"asp search playbook --language rust owner --json"})),
+        decide("Bash", "Bash", serde_json::json!({"command":"asp rust search owner --json"})),
+        decide("Bash", "Bash", serde_json::json!({"command":"rg Hook crates/agent-semantic-hook/src/lib.rs"})),
         decide("Bash", "Bash", confirmed_read("src/lib.rs")),
+        decide("Bash", "Bash", confirmed_read("docs/acceptance.org")),
+        decide("Bash", "Bash", confirmed_read("README.md")),
         decide("Bash", "Bash", confirmed_read("fixture.json")),
         decide("Bash", "Bash", serde_json::json!({"command":"jq -c '.name' fixture.json"})),
         decide("Bash", "Bash", serde_json::json!({"command":"yq -p=toml '.name' fixture.toml"})),
@@ -467,463 +573,5 @@ fn every_canonical_config_rule_has_an_aot_decision_witness() {
     );
 }
 
-#[test]
-fn unknown_reader_observation_does_not_produce_a_read_action() {
-    let mut payload = serde_json::json!({
-        "session_id": "testkit-reader-unknown",
-        "cwd": ".",
-        "hook_event_name": "PreToolUse",
-        "tool_name": "Bash",
-        "tool_input": { "command": "future-source-consumer src/lib.rs" }
-    });
-    let observation = ReaderProbeObservation {
-        subject: "src/lib.rs".to_owned(),
-        access: ReaderProbeAccess::Unknown,
-        backend: "permission-differential".to_owned(),
-        terminal: "probe-unknown".to_owned(),
-        elapsed_micros: 0,
-        probe_process_launched: true,
-        cleanup_verified: true,
-        cache_hit: false,
-        behavior_key: None,
-    };
-    bind_reader_probe_observation(&mut payload, Some(&observation))
-        .expect("bind typed Unknown observation");
-    let payload = payload.to_string();
-    assert!(
-        evaluate_pre_tool(GENERATION, &payload, "Bash")
-            .expect("evaluate typed Unknown observation")
-            .is_none(),
-        "Unknown SourceAccess must not be promoted to Read"
-    );
-
-    let explicit_read_payload = serde_json::json!({
-        "session_id": "testkit-reader-redirection",
-        "cwd": ".",
-        "hook_event_name": "PreToolUse",
-        "tool_name": "Bash",
-        "tool_input": { "command": "< src/lib.rs" }
-    })
-    .to_string();
-    let explicit_read = evaluate_pre_tool(GENERATION, &explicit_read_payload, "Bash")
-        .expect("evaluate explicit read redirection")
-        .expect("explicit registered source read must deny");
-    assert_eq!(explicit_read.decision, "deny");
-    assert_eq!(explicit_read.config_rule_id, "route-source");
-    assert_eq!(explicit_read.subject.as_deref(), Some("src/lib.rs"));
-    assert_eq!(explicit_read.access, "read");
-    assert_eq!(explicit_read.evidence, "shell-redirection-read");
-    assert!(!explicit_read.probe_process_launched);
-    assert_eq!(explicit_read.elapsed_micros, 0);
-    assert!(explicit_read.policy_fast_path);
-
-    for command in ["just --list | rg hook", "rg hook", "git status --short"] {
-        let payload = serde_json::json!({
-            "session_id": "testkit-reader-allow",
-            "cwd": ".",
-            "hook_event_name": "PreToolUse",
-            "tool_name": "Bash",
-            "tool_input": { "command": command }
-        })
-        .to_string();
-        assert!(
-            evaluate_pre_tool(GENERATION, &payload, "Bash")
-                .unwrap_or_else(|error| panic!("evaluate allow witness {command:?}: {error}"))
-                .is_none(),
-            "metadata witness {command:?} unexpectedly matched a source rule"
-        );
-    }
-}
-
-#[test]
-fn static_reader_catalog_routes_git_show_to_asp() {
-    let generation = canonical_generation();
-    let payload = serde_json::json!({
-        "session_id": "testkit-static-git-show",
-        "cwd": ".",
-        "hook_event_name": "PreToolUse",
-        "tool_name": "Bash",
-        "tool_input": { "command": "git show HEAD:src/lib.rs" }
-    });
-    let payload_json = payload.to_string();
-    let decision = evaluate_pre_tool(&generation, &payload_json, "Bash")
-        .expect("evaluate git show")
-        .expect("git show must deny");
-    assert_eq!(decision.decision, "deny");
-    assert_eq!(decision.config_rule_id, "git-history-inspection-dispatch");
-}
-
-#[test]
-fn static_reader_catalog_routes_wrapped_absolute_git_show_to_asp() {
-    let generation = canonical_generation();
-    let payload = serde_json::json!({
-        "session_id": "testkit-static-wrapped-git-show",
-        "cwd": ".",
-        "hook_event_name": "PreToolUse",
-        "tool_name": "Bash",
-        "tool_input": { "command": ".devenv/devenv-profile-exec /usr/bin/git show HEAD:src/lib.rs" }
-    });
-    let payload_json = payload.to_string();
-    let decision = evaluate_pre_tool(&generation, &payload_json, "Bash")
-        .expect("evaluate wrapped absolute git show")
-        .expect("wrapped absolute git show must route");
-    assert_eq!(decision.decision, "deny");
-    assert_eq!(decision.config_rule_id, "git-history-inspection-dispatch");
-    assert!(!decision.probe_process_launched);
-}
-
-#[test]
-fn static_reader_catalog_routes_git_diff_to_asp() {
-    let generation = canonical_generation();
-    let payload = serde_json::json!({
-        "session_id": "testkit-static-git-diff",
-        "cwd": ".",
-        "hook_event_name": "PreToolUse",
-        "tool_name": "Bash",
-        "tool_input": { "command": "git diff -- src/lib.rs" }
-    });
-    let payload_json = payload.to_string();
-    let decision = evaluate_pre_tool(&generation, &payload_json, "Bash")
-        .expect("evaluate git diff")
-        .expect("git diff must deny");
-    assert_eq!(decision.decision, "deny");
-    assert_eq!(decision.config_rule_id, "git-history-inspection-dispatch");
-}
-
-#[test]
-fn git_subcommands_without_a_declared_reader_argument_do_not_inherit_read() {
-    let generation = canonical_generation();
-    let payload = serde_json::json!({
-        "session_id": "testkit-git-non-reader",
-        "cwd": ".",
-        "hook_event_name": "PreToolUse",
-        "tool_name": "Bash",
-        "tool_input": { "command": "git cat-file -e HEAD:src/lib.rs" }
-    });
-    assert!(
-        evaluate_pre_tool(&generation, &payload.to_string(), "Bash")
-            .expect("evaluate non-reader git command")
-            .is_none(),
-        "a git executable name alone must not fabricate Read"
-    );
-}
-
-#[test]
-fn static_reader_catalog_routes_wrapped_gerbil_sed_to_asp() {
-    let generation = canonical_generation();
-    let command = ".devenv/devenv-profile-exec sed -n '130,180p;250,275p;318,365p' languages/asp-gerbil-scheme/src/language/evidence.ss";
-    let payload = serde_json::json!({
-        "session_id": "testkit-static-gerbil-sed",
-        "cwd": ".",
-        "hook_event_name": "PreToolUse",
-        "tool_name": "Bash",
-        "tool_input": { "command": command }
-    });
-    let payload_json = payload.to_string();
-    let request = reader_probe_request(&generation, &payload_json, "Bash")
-        .expect("build Reader observation request")
-        .expect("static wrapped sed must require a Reader observation");
-    let state_home = tempfile::tempdir().expect("state home");
-    let observation = diagnose_reader_probe_with_state_home(
-        request.command_tokens,
-        request.subject,
-        request.wrapped_command,
-        request.reader_behavior_patterns,
-        state_home.path(),
-    )
-    .expect("observe static wrapped sed");
-    assert_eq!(observation.access, ReaderProbeAccess::Read);
-    assert_eq!(observation.terminal, "reader-behavior-catalog-hit");
-    assert!(!observation.probe_process_launched);
-
-    let mut observed_payload = payload;
-    bind_reader_probe_observation(&mut observed_payload, Some(&observation))
-        .expect("bind static Reader observation");
-    let observed_payload_json = observed_payload.to_string();
-    let decision = evaluate_pre_tool(&generation, &observed_payload_json, "Bash")
-        .expect("evaluate observed wrapped sed")
-        .expect("registered Gerbil source read must deny");
-    assert_eq!(decision.decision, "deny");
-    assert_eq!(decision.config_rule_id, "route-read-to-asp-languages");
-    assert_eq!(decision.language, Some("gerbil-scheme"));
-    assert_eq!(decision.access, "read");
-    assert_eq!(decision.backend, "hook-policy-bundle-reader-catalog");
-}
-
-#[test]
-fn batched_static_reader_stages_route_the_entire_host_call() {
-    let generation = canonical_generation();
-    let payload = serde_json::json!({
-        "session_id": "testkit-batched-static-readers",
-        "cwd": ".",
-        "hook_event_name": "PreToolUse",
-        "tool_name": "Bash",
-        "tool_input": {
-            "command": "sed -n '1,3p' crates/agent-semantic-hook/src/lib.rs && sed -n '1,3p' crates/agent-semantic-client/src/lib.rs"
-        }
-    });
-    let request = reader_probe_request(&generation, &payload.to_string(), "Bash")
-        .expect("build batched Reader observation request")
-        .expect("one static Reader stage must govern the complete Host call");
-    assert_eq!(
-        request.command_tokens.first().map(String::as_str),
-        Some("sed")
-    );
-    let state_home = tempfile::tempdir().expect("state home");
-    let observation = diagnose_reader_probe_with_state_home(
-        request.command_tokens,
-        request.subject,
-        request.wrapped_command,
-        request.reader_behavior_patterns,
-        state_home.path(),
-    )
-    .expect("observe batched static Reader");
-    assert_eq!(observation.access, ReaderProbeAccess::Read);
-    assert!(!observation.probe_process_launched);
-    let mut observed = payload;
-    bind_reader_probe_observation(&mut observed, Some(&observation))
-        .expect("bind batched Reader observation");
-    let observed_json = observed.to_string();
-    let decision = evaluate_pre_tool(&generation, &observed_json, "Bash")
-        .expect("evaluate batched static Reader")
-        .expect("batched registered source read must deny");
-    assert_eq!(decision.config_rule_id, "route-read-to-asp-languages");
-}
-
-#[test]
-fn unknown_command_names_allow_without_confirmed_read_evidence() {
-    for command in ["BATT -s src/lib.rs", "BATT-random-7f3 -s src/lib.rs"] {
-        let payload = serde_json::json!({
-            "session_id": "testkit-unknown-command",
-            "cwd": ".",
-            "hook_event_name": "PreToolUse",
-            "tool_name": "Bash",
-            "tool_input": { "command": command }
-        })
-        .to_string();
-        assert!(
-            evaluate_pre_tool(GENERATION, &payload, "Bash")
-                .unwrap_or_else(|error| panic!("evaluate {command:?}: {error}"))
-                .is_none(),
-            "unknown command name {command:?} must remain Allow(None)"
-        );
-    }
-}
-
-#[test]
-fn declared_reader_behavior_pattern_routes_without_process_launch() {
-    const STATIC_GENERATION: &str = r#"{"schemaId":"agent.semantic-protocols.hook-policy-bundle","schemaVersion":1,"generationDigest":"blake3-256:static-reader","readerBehaviorPatterns":[["BATT","-s"]],"rules":[{"id":"route-source","matchers":["Bash"],"wrappedCommand":true,"actions":["read"],"registeredExtensions":["rs"],"decision":"deny","reasonKind":"registered-source-route-required","message":"Use ASP."}]}"#;
-    let mut payload = serde_json::json!({
-        "session_id": "testkit-static-reader",
-        "cwd": ".",
-        "hook_event_name": "PreToolUse",
-        "tool_name": "Bash",
-        "tool_input": {"command": "BATT -s src/lib.rs"}
-    });
-    let request = reader_probe_request(STATIC_GENERATION, &payload.to_string(), "Bash")
-        .expect("project static Reader request")
-        .expect("static Reader request");
-    let observation = diagnose_reader_probe(
-        request.command_tokens,
-        request.subject,
-        request.wrapped_command,
-        request.reader_behavior_patterns,
-    )
-    .expect("static Reader observation");
-    assert_eq!(observation.access, ReaderProbeAccess::Read);
-    assert!(!observation.probe_process_launched);
-    assert_eq!(observation.backend, "hook-policy-bundle-reader-catalog");
-    bind_reader_probe_observation(&mut payload, Some(&observation))
-        .expect("bind static Reader observation");
-    let payload_json = payload.to_string();
-    let decision = evaluate_pre_tool(STATIC_GENERATION, &payload_json, "Bash")
-        .expect("evaluate static Reader")
-        .expect("static Reader deny");
-    assert_eq!(decision.evidence, "reader-behavior-static-catalog");
-    assert_eq!(decision.decision, "deny");
-
-    let wrapped = diagnose_reader_probe(
-        vec![
-            "future-wrapper".to_owned(),
-            "BATT".to_owned(),
-            "-s".to_owned(),
-            "src/lib.rs".to_owned(),
-        ],
-        "src/lib.rs".to_owned(),
-        true,
-        vec![vec!["BATT".to_owned(), "-s".to_owned()]],
-    )
-    .expect("wrapped static Reader observation");
-    assert_eq!(wrapped.access, ReaderProbeAccess::Read);
-    assert_eq!(wrapped.terminal, "reader-behavior-catalog-hit");
-    assert!(!wrapped.probe_process_launched);
-}
-
-#[test]
-fn reader_probe_permission_differential_authorizes_only_read_behavior() {
-    let fixture = materialize_reader_probe_fixture().expect("Reader behavior fixture");
-    let random_root = tempfile::tempdir().expect("random Reader fixture root");
-    let random_fixture = random_root.path().join("BATT-random-7f3");
-    std::fs::hard_link(&fixture, &random_fixture).expect("link random Reader fixture");
-    std::fs::set_permissions(
-        &random_fixture,
-        std::fs::metadata(&fixture)
-            .expect("Reader fixture metadata")
-            .permissions(),
-    )
-    .expect("random Reader fixture mode");
-    let state_home = tempfile::tempdir().expect("isolated Reader State Home");
-    for (mode, expected_access, denied) in [
-        ("read", ReaderProbeAccess::Read, true),
-        ("write", ReaderProbeAccess::Unknown, false),
-        ("read-write", ReaderProbeAccess::Unknown, false),
-    ] {
-        let mut payload = serde_json::json!({
-            "session_id": format!("testkit-reader-{mode}"),
-            "cwd": ".",
-            "hook_event_name": "PreToolUse",
-            "tool_name": "Bash",
-            "tool_input": {
-                "command": format!("{} {mode} src/lib.rs", random_fixture.display())
-            }
-        });
-        let payload_json = payload.to_string();
-        let request = reader_probe_request(GENERATION, &payload_json, "Bash")
-            .unwrap_or_else(|error| panic!("project {mode} Reader request: {error}"))
-            .unwrap_or_else(|| panic!("Reader request was ambiguous for {mode}"));
-        let observation = diagnose_reader_probe_with_state_home(
-            request.command_tokens,
-            request.subject,
-            request.wrapped_command,
-            request.reader_behavior_patterns,
-            state_home.path(),
-        )
-        .unwrap_or_else(|| panic!("Reader probe produced no {mode} observation"));
-        if observation.access == ReaderProbeAccess::Unknown
-            && matches!(
-                observation.terminal.as_str(),
-                "probe-deferred" | "probe-timeout"
-            )
-        {
-            bind_reader_probe_observation(&mut payload, Some(&observation))
-                .unwrap_or_else(|error| panic!("bind deferred {mode} observation: {error}"));
-            assert!(
-                evaluate_pre_tool(GENERATION, &payload.to_string(), "Bash")
-                    .expect("evaluate deferred Reader observation")
-                    .is_none(),
-                "unconfirmed Reader behavior must not deny"
-            );
-            continue;
-        }
-        assert_eq!(
-            observation.access, expected_access,
-            "{mode}: backend={} terminal={} elapsedMicros={}",
-            observation.backend, observation.terminal, observation.elapsed_micros
-        );
-        assert!(observation.cleanup_verified, "{mode}");
-        bind_reader_probe_observation(&mut payload, Some(&observation))
-            .unwrap_or_else(|error| panic!("bind {mode} observation: {error}"));
-        let payload = payload.to_string();
-        let decision = evaluate_pre_tool(GENERATION, &payload, "Bash")
-            .unwrap_or_else(|error| panic!("evaluate {mode} observation: {error}"));
-        assert_eq!(decision.is_some(), denied, "{mode}");
-        if let Some(decision) = decision {
-            assert_eq!(decision.access, "read");
-            assert_eq!(decision.access_mode, "read-permission");
-            assert_eq!(decision.evidence, "reader-probe-read-permission");
-            assert!(decision.cleanup_verified);
-        }
-        if mode == "read" {
-            let request = reader_probe_request(GENERATION, &payload_json, "Bash")
-                .expect("project cached Reader request")
-                .expect("cached Reader request");
-            let cached = diagnose_reader_probe_with_state_home(
-                request.command_tokens,
-                request.subject,
-                request.wrapped_command,
-                request.reader_behavior_patterns,
-                state_home.path(),
-            )
-            .expect("cached Reader observation");
-            assert_eq!(cached.access, ReaderProbeAccess::Read);
-            assert!(cached.cache_hit);
-            assert!(!cached.probe_process_launched);
-            assert_eq!(cached.backend, "process-memory-reader-catalog");
-        }
-    }
-}
-
-#[test]
-fn concurrent_dynamic_cache_hits_are_submillisecond_and_process_free() {
-    #[cfg(target_os = "macos")]
-    {
-        const WORKERS: usize = 32;
-        let fixture = materialize_reader_probe_fixture().expect("Reader behavior fixture");
-        let state_home = tempfile::tempdir().expect("isolated Reader State Home");
-        let tokens = vec![
-            fixture.to_string_lossy().into_owned(),
-            "read".to_owned(),
-            "fixture.rs".to_owned(),
-        ];
-        let cold = diagnose_reader_probe_with_state_home(
-            tokens.clone(),
-            "fixture.rs".to_owned(),
-            false,
-            Vec::new(),
-            state_home.path(),
-        )
-        .expect("cold Reader observation");
-        if cold.access == ReaderProbeAccess::Unknown {
-            assert!(
-                matches!(cold.terminal.as_str(), "probe-deferred" | "probe-timeout"),
-                "cold={cold:?}"
-            );
-            assert_eq!(
-                cold.probe_process_launched,
-                cold.terminal == "probe-timeout",
-                "cold={cold:?}"
-            );
-            assert!(cold.cleanup_verified, "cold={cold:?}");
-            return;
-        }
-        assert_eq!(cold.access, ReaderProbeAccess::Read);
-        assert!(cold.probe_process_launched);
-
-        let barrier = std::sync::Arc::new(std::sync::Barrier::new(WORKERS));
-        let workers = (0..WORKERS)
-            .map(|_| {
-                let barrier = barrier.clone();
-                let tokens = tokens.clone();
-                let state_home = state_home.path().to_owned();
-                std::thread::spawn(move || {
-                    barrier.wait();
-                    let observation = diagnose_reader_probe_with_state_home(
-                        tokens,
-                        "fixture.rs".to_owned(),
-                        false,
-                        Vec::new(),
-                        &state_home,
-                    )
-                    .expect("cached Reader observation");
-                    (
-                        Duration::from_micros(observation.elapsed_micros),
-                        observation,
-                    )
-                })
-            })
-            .collect::<Vec<_>>();
-        let mut receipts = workers
-            .into_iter()
-            .map(|worker| worker.join().expect("Reader cache worker"))
-            .collect::<Vec<_>>();
-        assert!(receipts.iter().all(|(_, observation)| {
-            observation.access == ReaderProbeAccess::Read
-                && observation.cache_hit
-                && !observation.probe_process_launched
-        }));
-        receipts.sort_by_key(|(elapsed, _)| *elapsed);
-        let p99 = receipts[WORKERS * 99 / 100].0;
-        eprintln!("Reader dynamic cache hit concurrency: n={WORKERS} p99={p99:?}");
-        assert!(p99 < Duration::from_millis(1), "cache-hit p99={p99:?}");
-    }
-}
+#[path = "aot_evaluator_contract_cases/reader_routes.rs"]
+mod reader_routes;

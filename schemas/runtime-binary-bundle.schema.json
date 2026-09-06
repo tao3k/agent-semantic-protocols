@@ -1,10 +1,16 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://agent-semantic-protocols.dev/schemas/runtime-binary-bundle.schema.json",
-  "title": "Runtime Binary Bundle",
+  "title": "Runtime Binary Bundle V1",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaId", "schemaVersion", "bundleDigest", "members"],
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "bundleDigest",
+    "members",
+    "executionBinding"
+  ],
   "properties": {
     "schemaId": {
       "const": "agent.semantic-protocols.runtime-binary-bundle"
@@ -13,21 +19,30 @@
       "const": 1
     },
     "bundleDigest": {
-      "$ref": "#/$defs/digest"
+      "$ref": "#/$defs/blake3Digest"
     },
     "members": {
       "type": "object",
-      "minProperties": 1,
+      "additionalProperties": {
+        "$ref": "#/$defs/blake3Digest"
+      },
+      "required": [
+        "provider-registration.json",
+        "installed-provider-binding.json",
+        "evaluator-policy.json",
+        "schema-bundle.json"
+      ],
+      "minProperties": 5,
       "propertyNames": {
         "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
-      },
-      "additionalProperties": {
-        "$ref": "#/$defs/digest"
       }
+    },
+    "executionBinding": {
+      "$ref": "runtime-artifact-bundle-binding.v1.schema.json"
     }
   },
   "$defs": {
-    "digest": {
+    "blake3Digest": {
       "type": "string",
       "pattern": "^blake3-256:[0-9a-f]{64}$"
     }

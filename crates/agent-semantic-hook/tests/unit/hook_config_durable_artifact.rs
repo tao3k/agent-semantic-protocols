@@ -105,12 +105,12 @@ fn durable_hydration_rematerializes_declarative_actions_and_profiles() {
         providers: Vec::new(),
     };
     let action = ToolAction::normalized_shell_command_action(
-        "opaque-source-consumer < docs/plan.org".to_owned(),
+        "opaque-source-consumer < src/plan.rs".to_owned(),
         "Bash".to_owned(),
     );
 
     assert!(rule.matches_before_paths(&runtime, "codex", "pre-tool", &action, None));
-    assert!(rule.matches_after_paths(&runtime, &["docs/plan.org".to_owned()]));
+    assert!(rule.matches_after_paths(&runtime, &["src/plan.rs".to_owned()]));
 }
 
 #[test]

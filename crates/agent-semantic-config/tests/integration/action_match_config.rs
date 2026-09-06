@@ -7,45 +7,54 @@ fn default_config() -> HookClientConfigFile {
 }
 
 #[test]
-fn reader_behavior_catalog_is_a_compact_deterministic_argv_list() {
+fn command_action_catalog_is_a_compact_deterministic_argv_list() {
     let config = default_config();
+    let patterns = config
+        .command_action_patterns
+        .iter()
+        .flat_map(|family| {
+            family
+                .argv_pattern_any
+                .iter()
+                .map(move |pattern| (family.action, pattern))
+        })
+        .collect::<Vec<_>>();
     assert!(
-        config
-            .reader_behavior_patterns
-            .contains(&vec!["head".to_owned()])
+        patterns
+            .iter()
+            .any(|(_, pattern)| *pattern == &vec!["head".to_owned()])
     );
     assert!(
-        config
-            .reader_behavior_patterns
-            .contains(&vec!["sed".to_owned(), "-n".to_owned()])
+        patterns
+            .iter()
+            .any(|(_, pattern)| *pattern == &vec!["rg".to_owned()])
     );
-    assert!(config.reader_behavior_patterns.iter().all(|pattern| {
+    assert!(patterns.iter().all(|(_, pattern)| {
         !pattern.is_empty()
             && !pattern[0].contains('/')
             && pattern.iter().all(|token| !token.is_empty())
     }));
-    let unique = config
-        .reader_behavior_patterns
-        .iter()
-        .collect::<std::collections::HashSet<_>>();
-    assert_eq!(unique.len(), config.reader_behavior_patterns.len());
+    let unique = patterns.iter().collect::<std::collections::HashSet<_>>();
+    assert_eq!(unique.len(), patterns.len());
 }
 
 #[test]
-fn reader_behavior_catalog_rejects_duplicate_empty_and_path_executables() {
+fn command_action_catalog_rejects_duplicate_empty_and_path_executables() {
     let mut duplicate = default_config();
-    duplicate
-        .reader_behavior_patterns
+    duplicate.command_action_patterns[0]
+        .argv_pattern_any
         .push(vec!["head".to_owned()]);
     assert!(
         duplicate
             .validate()
             .expect_err("duplicate Reader pattern")
-            .contains("duplicate pattern")
+            .contains("duplicate action/pattern")
     );
 
     let mut empty = default_config();
-    empty.reader_behavior_patterns.push(Vec::new());
+    empty.command_action_patterns[0]
+        .argv_pattern_any
+        .push(Vec::new());
     assert!(
         empty
             .validate()
@@ -54,7 +63,8 @@ fn reader_behavior_catalog_rejects_duplicate_empty_and_path_executables() {
     );
 
     let mut path = default_config();
-    path.reader_behavior_patterns
+    path.command_action_patterns[0]
+        .argv_pattern_any
         .push(vec!["/usr/bin/head".to_owned()]);
     assert!(
         path.validate()
@@ -76,7 +86,7 @@ fn source_access_rule_uses_read_default_wrapping_and_language_profiles() {
         .as_ref()
         .expect("source access route dispatch");
     assert_eq!(dispatch.agent.as_str(), "asp_explorer");
-    assert!(rule.matcher.is_none());
+    assert_eq!(rule.matcher.as_deref(), Some("Bash"));
     assert!(rule.matcher_policies.is_empty());
     assert!(!rule.profiles_list.is_empty());
     assert_eq!(
@@ -108,7 +118,7 @@ fn default_template_uses_rule_local_matcher_policies() {
         .find(|rule| rule.id == "route-read-to-asp-languages")
         .expect("Bash source-access route rule");
     assert!(source_access_rule.matcher_policies.is_empty());
-    assert!(source_access_rule.matcher.is_none());
+    assert_eq!(source_access_rule.matcher.as_deref(), Some("Bash"));
     assert!(
         source_access_rule
             .profiles_list

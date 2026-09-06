@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/runtime-state-cleanup-commit-receipt.v1.schema.json",
+  "title": "Runtime State Cleanup Commit Receipt V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "state",
+    "planDigest",
+    "reasonKind",
+    "deletedCount"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.runtime-state-cleanup-commit-receipt"
+    },
+    "schemaVersion": { "const": "1" },
+    "state": { "enum": ["committed", "rejected", "cancelled"] },
+    "planDigest": { "$ref": "./common.schema.json#/$defs/blake3Digest" },
+    "reasonKind": { "type": "string", "minLength": 1 },
+    "deletedCount": { "type": "integer", "minimum": 0 }
+  }
+}

@@ -20,7 +20,7 @@ if [ "${ASP_NO_AGENT:-}" = "1" ]; then
     exit 0
 fi
 
-hook_bin="$asp_hook_state_home/runtime/bin/asp-hook"
+hook_bin="$asp_hook_state_home/runtime/artifacts/slots/runtime/active/asp-hook"
 if [ ! -x "$hook_bin" ]; then
     asp_hook_binary_unavailable "${1:-}"
     exit 0

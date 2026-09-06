@@ -2,6 +2,7 @@ mod aot_evaluator_contract;
 mod aot_evaluator_performance;
 mod child_session_registration_contract;
 mod codex_native_action_entries;
+mod codex_rollout_projection;
 mod codex_thread_management_contract;
 mod collaboration_lifecycle_contract;
 mod config_dsl_scenario_matrix;

@@ -263,7 +263,7 @@ fn bash_source_access_plus_language_profile_does_not_depend_on_executable_names(
         "rg HookDecision Cargo.lock",
     ] {
         let decision = classify(&runtime("."), command);
-        assert_ne!(decision["decision"], "deny", "command={command}");
+        assert_eq!(decision["decision"], "deny", "command={command}");
     }
 
     let registered_source_read = classify(
@@ -451,11 +451,11 @@ fn registered_source_root_and_parser_read_behavior_compose_into_the_source_searc
 #[test]
 fn recipe_name_filter_does_not_invent_a_registered_source_subject() {
     let decision = classify(&runtime("."), "just --list | rg hook");
-    assert_ne!(
-        decision["fields"]["configRuleId"],
-        "deny-uncontrolled-source-search-commands"
+    assert_eq!(
+        decision["fields"]["configRuleId"].as_str(),
+        Some("deny-shell-search-before-execution")
     );
-    assert_ne!(decision["reasonKind"], "raw-broad-search");
+    assert_eq!(decision["reasonKind"].as_str(), Some("raw-broad-search"));
 }
 
 #[test]

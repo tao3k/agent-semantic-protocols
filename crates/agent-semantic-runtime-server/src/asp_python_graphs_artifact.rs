@@ -29,7 +29,9 @@ impl VerifiedAspPythonGraphsArtifact {
     /// bundle. The immutable candidate target is retained after validation so
     /// a later active-slot switch cannot change this process identity.
     pub async fn load_from_active_runtime_bundle(state_home: &Path) -> Result<Self, String> {
-        let resident_root = state_home.join("runtime/resident");
+        let resident_root = agent_semantic_artifacts::RuntimeArtifactStateLayout::new(state_home)
+            .root()
+            .to_path_buf();
         let slots = RuntimeArtifactSlotAuthority::new(&resident_root);
         let active = slots.active_target().await?.ok_or_else(|| {
             "state=unavailable reasonKind=asp-python-graphs-runtime-bundle-not-active".to_owned()

@@ -330,7 +330,7 @@ fn canonical_source_routing_uses_wrapped_profiles_without_legacy_search() {
         .iter()
         .find(|rule| rule.id == "route-read-to-asp-languages")
         .expect("registered source routing rule");
-    assert!(route.matcher.is_none());
+    assert_eq!(route.matcher.as_deref(), Some("Bash"));
     assert!(route.matcher_policies.is_empty());
     assert_eq!(
         route.actions,
@@ -340,15 +340,7 @@ fn canonical_source_routing_uses_wrapped_profiles_without_legacy_search() {
     assert!(route.match_config.argv_prefix_any.is_empty());
     assert_eq!(
         route.profiles_list,
-        [
-            "rust",
-            "typescript",
-            "python",
-            "julia",
-            "gerbil-scheme",
-            "org",
-            "markdown",
-        ]
+        ["rust", "typescript", "python", "julia", "gerbil-scheme",]
     );
     for profile_id in &route.profiles_list {
         let profile = config

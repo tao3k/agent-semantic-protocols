@@ -19,6 +19,132 @@ use serde::Deserialize;
 use crate::runtime_artifact_store::runtime_artifact_content_digest;
 use crate::runtime_artifact_store::stage_runtime_artifact;
 
+/// Immutable content identity for every non-executable input that can change
+/// Runtime search, query, or evaluator behavior. This value is part of the
+/// bundle digest; it is never reconstructed from mutable State Home files.
+#[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RuntimeArtifactBundleBinding {
+    schema_id: String,
+    schema_version: String,
+    provider_registration_digest: crate::blake3_content_digest::Blake3ContentDigest,
+    installed_provider_binding_digest: crate::blake3_content_digest::Blake3ContentDigest,
+    evaluator_policy_digest: crate::blake3_content_digest::Blake3ContentDigest,
+    schema_bundle_digest: crate::blake3_content_digest::Blake3ContentDigest,
+}
+
+impl RuntimeArtifactBundleBinding {
+    #[must_use]
+    pub fn new(
+        provider_registration_digest: crate::blake3_content_digest::Blake3ContentDigest,
+        installed_provider_binding_digest: crate::blake3_content_digest::Blake3ContentDigest,
+        evaluator_policy_digest: crate::blake3_content_digest::Blake3ContentDigest,
+        schema_bundle_digest: crate::blake3_content_digest::Blake3ContentDigest,
+    ) -> Self {
+        Self {
+            schema_id: "agent.semantic-protocols.runtime-artifact-bundle-binding".to_owned(),
+            schema_version: "1".to_owned(),
+            provider_registration_digest,
+            installed_provider_binding_digest,
+            evaluator_policy_digest,
+            schema_bundle_digest,
+        }
+    }
+
+    #[must_use]
+    pub fn provider_registration_digest(
+        &self,
+    ) -> &crate::blake3_content_digest::Blake3ContentDigest {
+        &self.provider_registration_digest
+    }
+
+    #[must_use]
+    pub fn installed_provider_binding_digest(
+        &self,
+    ) -> &crate::blake3_content_digest::Blake3ContentDigest {
+        &self.installed_provider_binding_digest
+    }
+
+    #[must_use]
+    pub fn evaluator_policy_digest(&self) -> &crate::blake3_content_digest::Blake3ContentDigest {
+        &self.evaluator_policy_digest
+    }
+
+    #[must_use]
+    pub fn schema_bundle_digest(&self) -> &crate::blake3_content_digest::Blake3ContentDigest {
+        &self.schema_bundle_digest
+    }
+
+    fn validate(&self) -> Result<(), String> {
+        if self.schema_id != "agent.semantic-protocols.runtime-artifact-bundle-binding"
+            || self.schema_version != "1"
+        {
+            return Err(
+                "reasonKind=runtime-bundle-binding-schema-mismatch Runtime bundle binding schema identity is invalid"
+                    .to_owned(),
+            );
+        }
+        Ok(())
+    }
+
+    fn validate_materialized_members(
+        &self,
+        members: &std::collections::BTreeMap<
+            String,
+            crate::blake3_content_digest::Blake3ContentDigest,
+        >,
+    ) -> Result<(), String> {
+        for (member, expected) in [
+            (
+                "provider-registration.json",
+                &self.provider_registration_digest,
+            ),
+            (
+                "installed-provider-binding.json",
+                &self.installed_provider_binding_digest,
+            ),
+            ("evaluator-policy.json", &self.evaluator_policy_digest),
+            ("schema-bundle.json", &self.schema_bundle_digest),
+        ] {
+            match members.get(member) {
+                Some(observed) if observed == expected => {}
+                Some(observed) => {
+                    return Err(format!(
+                        "reasonKind=runtime-bundle-binding-member-drift member={member} expected={expected} observed={observed}"
+                    ));
+                }
+                None => {
+                    return Err(format!(
+                        "reasonKind=runtime-bundle-binding-member-missing member={member}"
+                    ));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn append_identity_bytes(&self, identity: &mut Vec<u8>) {
+        identity.extend_from_slice(self.schema_id.as_bytes());
+        identity.push(0);
+        identity.extend_from_slice(self.schema_version.as_bytes());
+        identity.push(0);
+        for (field, digest) in [
+            ("provider-registration", &self.provider_registration_digest),
+            (
+                "installed-provider-binding",
+                &self.installed_provider_binding_digest,
+            ),
+            ("evaluator-policy", &self.evaluator_policy_digest),
+            ("schema-bundle", &self.schema_bundle_digest),
+        ] {
+            identity.extend_from_slice(field.as_bytes());
+            identity.push(0);
+            identity.extend_from_slice(digest.as_str().as_bytes());
+            identity.push(0);
+        }
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RuntimeArtifactSlotAuthority {
     root: PathBuf,
@@ -32,6 +158,16 @@ struct RuntimeArtifactBundleManifest {
     schema_version: u64,
     bundle_digest: crate::blake3_content_digest::Blake3ContentDigest,
     members: std::collections::BTreeMap<String, crate::blake3_content_digest::Blake3ContentDigest>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct RuntimeArtifactBoundBundleManifest {
+    schema_id: String,
+    schema_version: u64,
+    bundle_digest: crate::blake3_content_digest::Blake3ContentDigest,
+    members: std::collections::BTreeMap<String, crate::blake3_content_digest::Blake3ContentDigest>,
+    execution_binding: RuntimeArtifactBundleBinding,
 }
 
 /// A content-proven immutable Runtime bundle.  Consumers may resolve optional
@@ -75,6 +211,64 @@ pub fn runtime_artifact_bundle_digest(
         identity.push(0);
     }
     crate::blake3_content_digest::Blake3ContentDigest::from_bytes(&identity)
+}
+
+/// Derive the product identity of a Runtime bundle from executable members and
+/// its complete execution closure. Publication sequence numbers intentionally
+/// do not participate in this digest.
+pub fn runtime_artifact_bound_bundle_digest(
+    members: &std::collections::BTreeMap<String, crate::blake3_content_digest::Blake3ContentDigest>,
+    binding: &RuntimeArtifactBundleBinding,
+) -> crate::blake3_content_digest::Blake3ContentDigest {
+    let mut identity = Vec::new();
+    identity.extend_from_slice(b"agent.semantic-protocols.runtime-binary-bundle-bound.v1\0");
+    for (member, digest) in members {
+        identity.extend_from_slice(member.as_bytes());
+        identity.push(0);
+        identity.extend_from_slice(digest.as_str().as_bytes());
+        identity.push(0);
+    }
+    binding.append_identity_bytes(&mut identity);
+    crate::blake3_content_digest::Blake3ContentDigest::from_bytes(&identity)
+}
+
+/// Stage the one manifest accepted by strict Runtime serving admission. The
+/// candidate directory is not a serving authority until the Artifacts CAS
+/// publishes it through the active slot.
+pub fn stage_runtime_artifact_bound_bundle_manifest(
+    candidate: &Path,
+    members: &std::collections::BTreeMap<String, crate::blake3_content_digest::Blake3ContentDigest>,
+    execution_binding: &RuntimeArtifactBundleBinding,
+) -> Result<crate::blake3_content_digest::Blake3ContentDigest, String> {
+    if members.is_empty() {
+        return Err("Runtime artifact bound bundle members are empty".to_owned());
+    }
+    execution_binding.validate()?;
+    execution_binding.validate_materialized_members(members)?;
+    let bundle_digest = runtime_artifact_bound_bundle_digest(members, execution_binding);
+    let bytes = serde_json::to_vec_pretty(&serde_json::json!({
+        "schemaId": "agent.semantic-protocols.runtime-binary-bundle",
+        "schemaVersion": 1,
+        "bundleDigest": bundle_digest,
+        "members": members,
+        "executionBinding": execution_binding,
+    }))
+    .map_err(|error| format!("encode Runtime artifact bound bundle manifest: {error}"))?;
+    let manifest_path = candidate.join("bundle.json");
+    let temporary = candidate.join(format!(".bundle.{}.tmp", std::process::id()));
+    std::fs::write(&temporary, bytes).map_err(|error| {
+        format!(
+            "stage Runtime artifact bound bundle manifest {}: {error}",
+            temporary.display()
+        )
+    })?;
+    std::fs::rename(&temporary, &manifest_path).map_err(|error| {
+        format!(
+            "publish Runtime artifact bound bundle manifest {}: {error}",
+            manifest_path.display()
+        )
+    })?;
+    Ok(bundle_digest)
 }
 
 pub async fn runtime_artifact_candidate_bundle_digest(
@@ -129,6 +323,107 @@ pub async fn verify_runtime_artifact_bundle(
         root: candidate.to_path_buf(),
         bundle_digest: derived,
         members: manifest.members,
+    })
+}
+
+/// A serving-admissible Runtime bundle whose executable members and complete
+/// execution closure are proven by one immutable manifest digest.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct VerifiedRuntimeArtifactBoundBundle {
+    root: PathBuf,
+    bundle_digest: crate::blake3_content_digest::Blake3ContentDigest,
+    members: std::collections::BTreeMap<String, crate::blake3_content_digest::Blake3ContentDigest>,
+    execution_binding: RuntimeArtifactBundleBinding,
+}
+
+impl VerifiedRuntimeArtifactBoundBundle {
+    #[must_use]
+    pub fn bundle_digest(&self) -> &crate::blake3_content_digest::Blake3ContentDigest {
+        &self.bundle_digest
+    }
+
+    #[must_use]
+    pub fn execution_binding(&self) -> &RuntimeArtifactBundleBinding {
+        &self.execution_binding
+    }
+
+    #[must_use]
+    pub fn member_path(&self, member: &str) -> Option<PathBuf> {
+        self.members
+            .contains_key(member)
+            .then(|| self.root.join(member))
+    }
+}
+
+/// Strict serving admission for the content-addressed Runtime architecture.
+/// Legacy members-only manifests are observable migration inputs, never valid
+/// serving authorities.
+pub async fn verify_runtime_artifact_bound_bundle(
+    candidate: &Path,
+) -> Result<VerifiedRuntimeArtifactBoundBundle, String> {
+    let manifest_path = candidate.join("bundle.json");
+    let bytes = tokio::fs::read(&manifest_path).await.map_err(|error| {
+        format!(
+            "read Runtime artifact bundle manifest {}: {error}",
+            manifest_path.display()
+        )
+    })?;
+    let value: serde_json::Value = serde_json::from_slice(&bytes).map_err(|error| {
+        format!(
+            "decode Runtime artifact bundle manifest {}: {error}",
+            manifest_path.display()
+        )
+    })?;
+    if value.get("executionBinding").is_none() {
+        return Err(
+            "reasonKind=runtime-bundle-binding-missing Runtime bundle manifest has no execution binding"
+                .to_owned(),
+        );
+    }
+    let manifest: RuntimeArtifactBoundBundleManifest = serde_json::from_value(value).map_err(
+        |error| {
+            format!(
+                "reasonKind=runtime-bundle-binding-invalid decode Runtime artifact bound bundle manifest {}: {error}",
+                manifest_path.display()
+            )
+        },
+    )?;
+    if manifest.schema_id != "agent.semantic-protocols.runtime-binary-bundle"
+        || manifest.schema_version != 1
+        || manifest.members.is_empty()
+    {
+        return Err("invalid Runtime artifact bound bundle manifest authority".to_owned());
+    }
+    manifest.execution_binding.validate()?;
+    let derived =
+        runtime_artifact_bound_bundle_digest(&manifest.members, &manifest.execution_binding);
+    if derived != manifest.bundle_digest {
+        return Err(
+            "reasonKind=runtime-bundle-binding-digest-mismatch Runtime artifact bound bundle manifest digest mismatch"
+                .to_owned(),
+        );
+    }
+    manifest
+        .execution_binding
+        .validate_materialized_members(&manifest.members)?;
+    for (member, expected_digest) in &manifest.members {
+        let member_path = Path::new(member);
+        if member_path.components().count() != 1 || member == "." || member == ".." {
+            return Err(format!("invalid Runtime artifact bundle member `{member}`"));
+        }
+        let artifact = candidate.join(member);
+        let observed_digest = runtime_artifact_candidate_digest(&artifact).await?;
+        if &observed_digest != expected_digest {
+            return Err(format!(
+                "Runtime artifact bundle member digest mismatch: member={member} expected={expected_digest} observed={observed_digest}"
+            ));
+        }
+    }
+    Ok(VerifiedRuntimeArtifactBoundBundle {
+        root: candidate.to_path_buf(),
+        bundle_digest: derived,
+        members: manifest.members,
+        execution_binding: manifest.execution_binding,
     })
 }
 
@@ -342,68 +637,6 @@ impl RuntimeArtifactSlotAuthority {
         }
         publish_runtime_artifact_slot(artifact, &candidate_dir.join(member)).await
     }
-
-    pub async fn prune_unreachable_publications(&self) -> Result<(), String> {
-        let root = self.root.clone();
-        tokio::task::spawn_blocking(move || {
-            let mut protected = std::collections::BTreeSet::new();
-            for slot in [root.join("active"), root.join("healthy")] {
-                match std::fs::canonicalize(&slot) {
-                    Ok(target) => {
-                        protected.insert(target);
-                    }
-                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-                    Err(error) => {
-                        return Err(format!(
-                            "resolve Runtime artifact slot {}: {error}",
-                            slot.display()
-                        ));
-                    }
-                }
-            }
-            let publications = root.join("publications");
-            let entries = match std::fs::read_dir(&publications) {
-                Ok(entries) => entries,
-                Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
-                Err(error) => {
-                    return Err(format!(
-                        "read Runtime artifact publications {}: {error}",
-                        publications.display()
-                    ));
-                }
-            };
-            for entry in entries {
-                let entry = entry
-                    .map_err(|error| format!("read Runtime artifact publication entry: {error}"))?;
-                let file_type = entry.file_type().map_err(|error| {
-                    format!(
-                        "read Runtime artifact publication type {}: {error}",
-                        entry.path().display()
-                    )
-                })?;
-                if !file_type.is_dir() {
-                    continue;
-                }
-                let path = std::fs::canonicalize(entry.path()).map_err(|error| {
-                    format!(
-                        "resolve Runtime artifact publication {}: {error}",
-                        entry.path().display()
-                    )
-                })?;
-                if !protected.contains(&path) {
-                    std::fs::remove_dir_all(&path).map_err(|error| {
-                        format!(
-                            "remove unreachable Runtime artifact publication {}: {error}",
-                            path.display()
-                        )
-                    })?;
-                }
-            }
-            Ok(())
-        })
-        .await
-        .map_err(|error| format!("prune Runtime artifact publications task failed: {error}"))?
-    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -411,56 +644,6 @@ pub struct PreparedRuntimeArtifact {
     pub path: PathBuf,
     pub content_digest: crate::blake3_content_digest::Blake3ContentDigest,
     pub was_present: bool,
-}
-
-pub async fn publish_resident_runtime_alias(
-    target: &Path,
-    resident_root: &Path,
-) -> Result<(), String> {
-    let target = target.to_path_buf();
-    let resident_root = resident_root.to_path_buf();
-    tokio::task::spawn_blocking(move || {
-        let parent = target.parent().ok_or_else(|| {
-            format!(
-                "resident Runtime binary alias has no parent: {}",
-                target.display()
-            )
-        })?;
-        std::fs::create_dir_all(parent)
-            .map_err(|error| format!("create resident Runtime alias directory: {error}"))?;
-        let staged = parent.join(format!(".asp.resident-{}", std::process::id()));
-        match std::fs::remove_file(&staged) {
-            Ok(()) => {}
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-            Err(error) => {
-                return Err(format!(
-                    "remove stale resident Runtime alias {}: {error}",
-                    staged.display()
-                ));
-            }
-        }
-        let artifact_kind = target.file_name().ok_or_else(|| {
-            format!(
-                "resident Runtime alias has no artifact kind: {}",
-                target.display()
-            )
-        })?;
-        #[cfg(unix)]
-        std::os::unix::fs::symlink(resident_root.join("active").join(artifact_kind), &staged)
-            .map_err(|error| {
-                format!("stage resident Runtime alias {}: {error}", staged.display())
-            })?;
-        #[cfg(not(unix))]
-        return Err("resident Runtime publication requires atomic symlink support".to_owned());
-        std::fs::rename(&staged, &target).map_err(|error| {
-            format!(
-                "publish resident Runtime binary alias {}: {error}",
-                target.display()
-            )
-        })
-    })
-    .await
-    .map_err(|error| format!("publish resident Runtime alias task failed: {error}"))?
 }
 
 pub async fn runtime_artifact_candidate_digest(
@@ -514,8 +697,8 @@ pub async fn prepare_runtime_artifact_bytes_candidate_for_kind(
     let artifact_kind = artifact_kind.to_owned();
     tokio::task::spawn_blocking(move || {
         let content_digest = crate::blake3_content_digest::Blake3ContentDigest::from_bytes(&bytes);
-        let path = state_home
-            .join("runtime/artifacts/blake3-256")
+        let path = crate::RuntimeArtifactStateLayout::new(&state_home)
+            .content_store()
             .join(content_digest.content_digest().as_str())
             .join(&artifact_kind);
         if path.exists() {
@@ -579,8 +762,8 @@ fn prepare_runtime_artifact_candidate_blocking(
 ) -> Result<PreparedRuntimeArtifact, String> {
     let content_digest = runtime_artifact_content_digest(source)?;
     let digest_hex = content_digest.content_digest().as_str();
-    let path = state_home
-        .join("runtime/artifacts/blake3-256")
+    let path = crate::RuntimeArtifactStateLayout::new(state_home)
+        .content_store()
         .join(digest_hex)
         .join(artifact_kind);
     if path.exists() {
@@ -654,6 +837,222 @@ fn prepare_runtime_artifact_candidate_blocking(
         content_digest,
         was_present,
     })
+}
+
+#[cfg(test)]
+mod runtime_artifact_bundle_binding_tests {
+    use super::*;
+
+    fn digest(label: &str) -> crate::blake3_content_digest::Blake3ContentDigest {
+        crate::blake3_content_digest::Blake3ContentDigest::from_bytes(label.as_bytes())
+    }
+
+    #[test]
+    fn bundle_identity_covers_the_complete_runtime_execution_closure() {
+        let members = std::collections::BTreeMap::from([("asp".to_owned(), digest("asp"))]);
+        let baseline = RuntimeArtifactBundleBinding::new(
+            digest("provider-registration"),
+            digest("installed-provider-binding"),
+            digest("evaluator-policy"),
+            digest("schema-bundle"),
+        );
+        let baseline_digest = runtime_artifact_bound_bundle_digest(&members, &baseline);
+
+        for changed in [
+            RuntimeArtifactBundleBinding::new(
+                digest("provider-registration-v2"),
+                digest("installed-provider-binding"),
+                digest("evaluator-policy"),
+                digest("schema-bundle"),
+            ),
+            RuntimeArtifactBundleBinding::new(
+                digest("provider-registration"),
+                digest("installed-provider-binding-v2"),
+                digest("evaluator-policy"),
+                digest("schema-bundle"),
+            ),
+            RuntimeArtifactBundleBinding::new(
+                digest("provider-registration"),
+                digest("installed-provider-binding"),
+                digest("evaluator-policy-v2"),
+                digest("schema-bundle"),
+            ),
+            RuntimeArtifactBundleBinding::new(
+                digest("provider-registration"),
+                digest("installed-provider-binding"),
+                digest("evaluator-policy"),
+                digest("schema-bundle-v2"),
+            ),
+        ] {
+            assert_ne!(
+                runtime_artifact_bound_bundle_digest(&members, &changed),
+                baseline_digest,
+                "every execution-closure leaf must participate in Runtime bundle identity"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn bound_bundle_admission_rejects_a_legacy_members_only_manifest() {
+        let temporary = tempfile::tempdir().expect("Runtime bundle fixture");
+        let candidate = temporary.path().join("candidate");
+        std::fs::create_dir_all(&candidate).expect("candidate directory");
+        let executable = candidate.join("asp");
+        std::fs::write(&executable, b"runtime executable").expect("runtime executable");
+        let members = std::collections::BTreeMap::from([(
+            "asp".to_owned(),
+            runtime_artifact_candidate_digest(&executable)
+                .await
+                .expect("member digest"),
+        )]);
+        let legacy_digest = runtime_artifact_bundle_digest(&members);
+        std::fs::write(
+            candidate.join("bundle.json"),
+            serde_json::to_vec_pretty(&serde_json::json!({
+                "schemaId": "agent.semantic-protocols.runtime-binary-bundle",
+                "schemaVersion": 1,
+                "bundleDigest": legacy_digest,
+                "members": members,
+            }))
+            .expect("legacy manifest bytes"),
+        )
+        .expect("legacy manifest");
+
+        let error = verify_runtime_artifact_bound_bundle(&candidate)
+            .await
+            .expect_err("members-only bundles must not enter bound Runtime admission");
+        assert!(error.contains("reasonKind=runtime-bundle-binding-missing"));
+    }
+
+    #[tokio::test]
+    async fn bound_bundle_admission_returns_the_exact_execution_closure() {
+        let temporary = tempfile::tempdir().expect("Runtime bundle fixture");
+        let candidate = temporary.path().join("candidate");
+        std::fs::create_dir_all(&candidate).expect("candidate directory");
+        let executable = candidate.join("asp");
+        std::fs::write(&executable, b"runtime executable").expect("runtime executable");
+        let mut members = std::collections::BTreeMap::from([(
+            "asp".to_owned(),
+            runtime_artifact_candidate_digest(&executable)
+                .await
+                .expect("member digest"),
+        )]);
+        for (member, contents) in [
+            ("provider-registration.json", "provider-registration"),
+            (
+                "installed-provider-binding.json",
+                "installed-provider-binding",
+            ),
+            ("evaluator-policy.json", "evaluator-policy"),
+            ("schema-bundle.json", "schema-bundle"),
+        ] {
+            std::fs::write(candidate.join(member), contents).expect("closure member");
+            members.insert(member.to_owned(), digest(contents));
+        }
+        let binding = RuntimeArtifactBundleBinding::new(
+            digest("provider-registration"),
+            digest("installed-provider-binding"),
+            digest("evaluator-policy"),
+            digest("schema-bundle"),
+        );
+        let bundle_digest =
+            stage_runtime_artifact_bound_bundle_manifest(&candidate, &members, &binding)
+                .expect("bound manifest");
+
+        let admitted = verify_runtime_artifact_bound_bundle(&candidate)
+            .await
+            .expect("bound bundle admission");
+        assert_eq!(admitted.bundle_digest(), &bundle_digest);
+        assert_eq!(
+            admitted.execution_binding().provider_registration_digest(),
+            &digest("provider-registration")
+        );
+        assert_eq!(admitted.member_path("asp"), Some(executable));
+    }
+
+    #[tokio::test]
+    async fn bound_bundle_admission_rejects_a_tampered_execution_closure() {
+        let temporary = tempfile::tempdir().expect("Runtime bundle fixture");
+        let candidate = temporary.path().join("candidate");
+        std::fs::create_dir_all(&candidate).expect("candidate directory");
+        let executable = candidate.join("asp");
+        std::fs::write(&executable, b"runtime executable").expect("runtime executable");
+        let members = std::collections::BTreeMap::from([(
+            "asp".to_owned(),
+            runtime_artifact_candidate_digest(&executable)
+                .await
+                .expect("member digest"),
+        )]);
+        let admitted_binding = RuntimeArtifactBundleBinding::new(
+            digest("provider-registration"),
+            digest("installed-provider-binding"),
+            digest("evaluator-policy"),
+            digest("schema-bundle"),
+        );
+        let bundle_digest = runtime_artifact_bound_bundle_digest(&members, &admitted_binding);
+        let tampered_binding = RuntimeArtifactBundleBinding::new(
+            digest("provider-registration-v2"),
+            digest("installed-provider-binding"),
+            digest("evaluator-policy"),
+            digest("schema-bundle"),
+        );
+        std::fs::write(
+            candidate.join("bundle.json"),
+            serde_json::to_vec_pretty(&serde_json::json!({
+                "schemaId": "agent.semantic-protocols.runtime-binary-bundle",
+                "schemaVersion": 1,
+                "bundleDigest": bundle_digest,
+                "members": members,
+                "executionBinding": tampered_binding,
+            }))
+            .expect("tampered manifest bytes"),
+        )
+        .expect("tampered manifest");
+
+        let error = verify_runtime_artifact_bound_bundle(&candidate)
+            .await
+            .expect_err("a changed closure cannot reuse the prior bundle identity");
+        assert!(error.contains("reasonKind=runtime-bundle-binding-digest-mismatch"));
+    }
+
+    #[tokio::test]
+    async fn bound_bundle_admission_requires_materialized_closure_members() {
+        let temporary = tempfile::tempdir().expect("Runtime bundle fixture");
+        let candidate = temporary.path().join("candidate");
+        std::fs::create_dir_all(&candidate).expect("candidate directory");
+        let executable = candidate.join("asp");
+        std::fs::write(&executable, b"runtime executable").expect("runtime executable");
+        let members = std::collections::BTreeMap::from([(
+            "asp".to_owned(),
+            runtime_artifact_candidate_digest(&executable)
+                .await
+                .expect("member digest"),
+        )]);
+        let binding = RuntimeArtifactBundleBinding::new(
+            digest("provider-registration"),
+            digest("installed-provider-binding"),
+            digest("evaluator-policy"),
+            digest("schema-bundle"),
+        );
+        let bundle_digest = runtime_artifact_bound_bundle_digest(&members, &binding);
+        std::fs::write(
+            candidate.join("bundle.json"),
+            serde_json::to_vec_pretty(&serde_json::json!({
+                "schemaId": "agent.semantic-protocols.runtime-binary-bundle",
+                "schemaVersion": 1,
+                "bundleDigest": bundle_digest,
+                "members": members,
+                "executionBinding": binding,
+            }))
+            .expect("manifest bytes"),
+        )
+        .expect("manifest");
+
+        let error = verify_runtime_artifact_bound_bundle(&candidate)
+            .await
+            .expect_err("digest-only closure leaves cannot serve as Runtime content");
+        assert!(error.contains("reasonKind=runtime-bundle-binding-member-missing"));
+    }
 }
 
 pub async fn discard_prepared_runtime_artifact(

@@ -128,7 +128,7 @@ pub(crate) fn compact_source_access_deny_message(
         .unwrap_or(false)
     {
         return format!(
-            "ASP denied source access (`{reason}`) inside a delegated Agent. Use ASP query/search routes and return one compact `[asp-search-subagent]` graph-route receipt with schema/intent/route/state/evidence/next; do not return source bodies, snippets, or line-range selectors.\nrecoveryRef={recovery_ref}"
+            "ASP denied source access (`{reason}`) inside a delegated Agent. Use ASP Search Playbook and return one compact `[asp-search-subagent]` receipt with state plus executable QueryGrammar/owner/item/selector/matchedBy/relation evidence; do not return source bodies, snippets, line-range selectors, or a prescribed next command.\nrecoveryRef={recovery_ref}"
         );
     }
 

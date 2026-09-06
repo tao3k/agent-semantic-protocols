@@ -37,11 +37,11 @@ pub(in super::super) async fn record_registered_provider_workspace_install(
     let install_target =
         super::target::resolve_provider_binary_install_target(language_id, &provider_binary)?;
     let stable_entry = install_target.path.clone();
-    let binary_artifact_root = runtime_state
-        .protocol_home
-        .join("runtime/provider-artifacts")
-        .join(provider_id)
-        .join("artifacts");
+    let binary_artifact_root =
+        agent_semantic_artifacts::RuntimeArtifactStateLayout::new(&runtime_state.protocol_home)
+            .provider_content_store()
+            .join(provider_id)
+            .join("artifacts");
     let published = super::workspace::publish_provider_workspace(
         &runtime_state.protocol_home,
         &stable_entry,

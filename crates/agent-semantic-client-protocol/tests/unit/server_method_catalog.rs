@@ -25,6 +25,7 @@ fn server_catalog_exposes_northbound_search_query_and_schema_bundle_methods() {
             "asp.session.host-event",
             "asp.session.register-child",
             "asp.workspace.generation.ensure-ready",
+            "asp.workspace.query.syntax",
             "asp.workspace.search.playbook",
             "rust.query",
             "rust.search",
@@ -42,6 +43,23 @@ fn server_catalog_exposes_northbound_search_query_and_schema_bundle_methods() {
                     .as_str()
                     .starts_with("agent.semantic-protocols.")
             })
+    );
+}
+
+#[test]
+fn workspace_syntax_query_is_server_owned_and_complete_generation_scoped() {
+    assert_eq!(
+        resolve_server_client_method_owner(
+            crate::WORKSPACE_SYNTAX_QUERY_METHOD,
+            ["rust".to_owned(), "python".to_owned()],
+        ),
+        Ok(ResolvedServerClientMethod::Server(
+            ServerClientRoute::WorkspaceSyntaxQuery,
+        ))
+    );
+    assert_eq!(
+        classify_client_dispatch(crate::WORKSPACE_SYNTAX_QUERY_METHOD),
+        ClientDispatchClass::CompleteGenerationRead,
     );
 }
 

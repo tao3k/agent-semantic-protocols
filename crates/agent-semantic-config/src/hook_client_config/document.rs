@@ -9,6 +9,7 @@ use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use std::path::Path;
 
+use super::routing::HookClientActionKind;
 use super::routing::HookClientCapabilityPolicyConfig;
 use super::routing::HookClientRuleConfig;
 
@@ -50,12 +51,11 @@ pub struct HookClientConfigFile {
     pub command_profiles: Vec<super::profiles::HookClientCommandProfileConfig>,
     #[serde(default)]
     pub command_sets: Vec<super::profiles::HookClientCommandSetConfig>,
-    /// Deterministic Reader behavior facts compiled into the Hook policy bundle.
-    ///
-    /// Each inner vector is an executable basename followed by optional
-    /// argv-token globs. The list is data, not Rust command-name policy.
+    /// Declarative command semantics compiled into the Hook policy bundle.
+    /// The shell parser supplies normalized argv stages; this configuration is
+    /// the sole authority that projects a stage to a semantic action.
     #[serde(default)]
-    pub reader_behavior_patterns: Vec<Vec<String>>,
+    pub command_action_patterns: Vec<HookClientCommandActionPatternConfig>,
     #[serde(default)]
     pub profiles: BTreeMap<String, HookClientProfileConfig>,
     #[serde(default)]
@@ -64,6 +64,15 @@ pub struct HookClientConfigFile {
     pub capability_policies: Vec<HookClientCapabilityPolicyConfig>,
     #[serde(default)]
     pub rules: Vec<HookClientRuleConfig>,
+}
+
+/// One declarative semantic command family.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HookClientCommandActionPatternConfig {
+    pub action: HookClientActionKind,
+    #[serde(default)]
+    pub argv_pattern_any: Vec<Vec<String>>,
 }
 
 /// Host-native Agent calling-symbol DSL.

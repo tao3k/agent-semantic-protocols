@@ -156,6 +156,90 @@ impl WorkspaceGenerationAdmission {
         Ok(state)
     }
 
+    /// Submit one ordered set of language-scoped generation demands and emit
+    /// the terminal only after every selected provider has been admitted.
+    ///
+    /// Each provider publication remains a CompleteGeneration successor, so
+    /// later targets carry earlier members forward. Providers outside this
+    /// explicit set are never pulled into a language-scoped Search or Query.
+    pub fn request_runtime_generations_ready_for_providers_with_terminal<Terminal, TerminalFuture>(
+        &self,
+        workspace_identity: String,
+        project_root: PathBuf,
+        provider_targets: Vec<super::WorkspaceGenerationProviderTarget>,
+        terminal: Terminal,
+    ) -> Result<WorkspaceGenerationReadinessRequestState, String>
+    where
+        Terminal: FnOnce(Result<super::WorkspaceGenerationAdmissionReceipt, String>) -> TerminalFuture
+            + Send
+            + 'static,
+        TerminalFuture: std::future::Future<Output = ()> + Send + 'static,
+    {
+        if provider_targets.is_empty() {
+            return self.request_runtime_generation_ready_with_terminal(
+                workspace_identity,
+                project_root,
+                terminal,
+            );
+        }
+        if workspace_identity.trim().is_empty() {
+            return Err(
+                "workspace generation readiness request identity must be non-empty".to_owned(),
+            );
+        }
+        if !project_root.is_absolute() {
+            return Err("workspace generation readiness request root must be absolute".to_owned());
+        }
+
+        let key = WorkspaceGenerationAdmissionKey {
+            workspace_identity: workspace_identity.clone(),
+        };
+        let guard = {
+            let mut requests = self.pending_readiness_requests.lock().map_err(|_| {
+                "workspace generation readiness request registry poisoned".to_owned()
+            })?;
+            if let Some(admitted_root) = requests.get(&key) {
+                if admitted_root != &project_root {
+                    return Err(format!(
+                        "workspace generation readiness request root drift: workspaceIdentity={workspace_identity} requestedRoot={} admittedRoot={}",
+                        project_root.display(),
+                        admitted_root.display(),
+                    ));
+                }
+                return Ok(WorkspaceGenerationReadinessRequestState::Coalesced);
+            }
+            requests.insert(key.clone(), project_root.clone());
+            PendingReadinessRequestGuard {
+                key,
+                requests: self.pending_readiness_requests.clone(),
+            }
+        };
+
+        let admission = self.clone();
+        self.submit_background_mutation(async move {
+            let _guard = guard;
+            let mut last_terminal = None;
+            for provider_target in provider_targets {
+                match admission
+                    .ensure_runtime_generation_ready_for_provider(
+                        workspace_identity.clone(),
+                        project_root.clone(),
+                        Some(provider_target),
+                    )
+                    .await
+                {
+                    Ok(receipt) => last_terminal = Some(receipt),
+                    Err(error) => {
+                        terminal(Err(error)).await;
+                        return;
+                    }
+                }
+            }
+            terminal(Ok(last_terminal.expect("non-empty provider target set"))).await;
+        })?;
+        Ok(WorkspaceGenerationReadinessRequestState::Accepted)
+    }
+
     /// Establish the single complete-generation read barrier used by all
     /// language Search/Query routes on a client connection.
     ///

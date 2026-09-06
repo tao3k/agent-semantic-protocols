@@ -339,7 +339,7 @@ fn priority_overlaps_have_explicit_winners() {
     let scenarios = [
         (
             "reasoning over json",
-            shell("asp rust search --json --language rust"),
+            shell("asp search playbook --language rust --json"),
             "deny-agent-search-json",
         ),
         (

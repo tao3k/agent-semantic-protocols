@@ -97,6 +97,16 @@ async fn serve_query(
     if bytes_read == 0 {
         return Ok(QueryConnectionOutcome::LivenessProbe);
     }
+    if !request_line.ends_with('\n') {
+        return Err(serde_json::json!({
+            "schemaId": "agent.semantic-protocols.client.frame",
+            "schemaVersion": "1",
+            "state": "failed",
+            "reasonKind": "frame-eof",
+            "message": "Runtime Server telemetry query ended before its frame delimiter"
+        })
+        .to_string());
+    }
     let query: RuntimePerformanceQuery = serde_json::from_str(&request_line)
         .map_err(|error| format!("failed to decode Runtime Server telemetry query: {error}"))?;
     query.validate()?;

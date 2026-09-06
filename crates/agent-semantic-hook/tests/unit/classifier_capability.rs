@@ -61,6 +61,26 @@ fn codex_bash_payload_preserves_registered_asp_search_action_for_policy_matching
 }
 
 #[test]
+fn codex_renderable_devenv_wrapped_search_is_denied_before_execution() {
+    let decision = classify(&serde_json::json!({
+        "tool_name": "Bash",
+        "tool_input": {
+            "command": "/workspace/.devenv/devenv-profile-exec rtk run 'rg -n 4 .devenv/devenv-profile-exec'"
+        }
+    }));
+
+    assert_eq!(decision.decision, DecisionKind::Deny, "{decision:#?}");
+    assert_eq!(decision.reason_kind, ReasonKind::RawBroadSearch);
+    assert_eq!(
+        decision
+            .fields
+            .get("configRuleId")
+            .and_then(serde_json::Value::as_str),
+        Some("deny-shell-search-before-execution")
+    );
+}
+
+#[test]
 fn config_selected_explorer_role_admits_search_across_codex_surfaces() {
     let payloads = [
         serde_json::json!({

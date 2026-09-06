@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.agent-semantic-protocols.dev/provider-search-playbook-contract.schema.json",
+  "title": "Provider Search Playbook Contract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contractId",
+    "contractVersion",
+    "languageId",
+    "providerId",
+    "syntaxContractId",
+    "syntaxContractDigest",
+    "projection"
+  ],
+  "properties": {
+    "contractId": {"type": "string", "minLength": 1},
+    "contractVersion": {"const": "1"},
+    "languageId": {"type": "string", "minLength": 1},
+    "providerId": {"type": "string", "minLength": 1},
+    "syntaxContractId": {"type": "string", "minLength": 1},
+    "syntaxContractDigest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "projection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["example", "grammar"],
+      "properties": {
+        "example": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^asp search playbook "
+        },
+        "grammar": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^asp search playbook "
+        }
+      }
+    }
+  }
+}

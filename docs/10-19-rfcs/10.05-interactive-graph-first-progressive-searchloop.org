@@ -6,6 +6,13 @@
 
 ASP Server-First Agent Search Architecture.
 The public gRPC ClientFrame is the sole public search/query route; the command entry is a thin typed CLI adapter.
+
+Provider installation may advance the Runtime-owned Provider Register while the
+daemon remains healthy.  Search Playbook and syntax Query therefore resolve a
+fresh immutable register snapshot at request admission; a daemon-bootstrap
+snapshot is not provider-contract authority.  Each admitted request retains one
+snapshot for its complete execution, so refresh is visible to the next request
+without mixing generations or requiring a restart.
 Git history is the only historical architecture archive; this working tree describes only the current server-first design.
 
 * Status
@@ -176,7 +183,7 @@ mistaken for the same event.
 The package and route contract is owned by
 [[file:10.05-interactive-graph-first-progressive-searchloop/10.05.01-server-client-package-responsibility.org][10.05.01 Server/Client Package Responsibility]].
 Atomic resident activation is owned by
-[[file:10.05-interactive-graph-first-progressive-searchloop/10.05.02-atomic-resident-publication.org][10.05.02 Atomic Resident Publication]].
+[[file:10.05.03-runtime-state-authority-and-retention.org][10.05.03 Runtime State Authority and Retention]].
 
 * Naming
 
@@ -201,32 +208,503 @@ The canonical state transition is:
 #+begin_example
 intent
   -> admitted workspace/provider authority
-  -> typed seed topology
-  -> bounded evidence route
+  -> typed query-set planning
+  -> generation-bound independent evidence axes
+  -> evidence-graph synthesis
   -> compact inspection
   -> focused expansion or exact materialization
   -> receipt-backed conclusion, reroute, or stop
 #+end_example
 
-Loop state, rather than a command transcript, is the durable protocol object.
-A user-supplied exact selector enters the same topology as any other seed.  It
-does not create a second text protocol.
+The agent-facing PlayBook protocol advances through fresh typed rounds, not a
+command transcript.  A user-supplied exact selector enters the same topology
+as any other typed input.  It does not create a second text protocol.
+
+** Single-layer agent-facing PlayBook protocol
+
+The following clauses are normative and stable search/proof anchors.
+
+*** SP-CONTRACT-001 — Contract discovery is not a reasoning layer
+
+The Agent's intent remains in its own conversation context.  =--intent= is not
+a Search Playbook option: the Agent reasons over that context and directly
+constructs one composed request.
+
+An empty =asp search playbook= invocation returns a schema-owned contract index
+containing exactly =Example:= and =Grammar:=.  Its example selects one
+registered language or document producer.  A partial invocation that already
+contains =--languages= or =--documents= resolves the admitted provider-owned
+=searchPlaybookContract= and returns its complete native =Example:= and
+=Grammar:=.  Neither form opens a generation read or creates search state.
+They are parser recovery projections, not a reasoning layer.
+
+*** SP-REQUEST-002 — The public request is single-layer
+
+The executable request contains global =--languages= and =--documents=
+producer-set selections, an optional cross-workspace
+=--workspace <registered WorkspaceId>=,
+and exactly five backend positions: =--fd=, =--rg=, =--tantivy=, =--syntax=,
+and =--graph=.  =--intent= is always rejected before retrieval.
+
+Every position is present with one or more native blocks.  An absent or invalid
+position requests the targeted schema-owned contract.  The
+top-level parser recognizes only global parameters and block boundaries.  It
+passes each block's token sequence
+unchanged to its registered native parser; it MUST NOT stringify, split,
+reparse, interpolate, or shell-evaluate those tokens.
+
+*** SP-GRAMMAR-003 — Native grammar and shell separation
+
+=fd= and =rg= receive native argv tokens, Tantivy receives its native query
+tokens, Syntax receives a registered language/document producer followed by
+that producer's native syntax grammar tokens, and Graph receives a
+registry-admitted persistent property-graph query language such as =pgql= or
+=sql-pgq= followed by native language tokens.  No wrapper grammar replaces any
+of these registered grammars.
+
+*** SP-PIPE-003A — Pipe is the first-class reasoning composition operator
+
+A quoted =|= is a first-class composition boundary throughout the request.
+=--languages 'rust|python'= and =--documents 'org|md'= form registered producer
+set unions.  Within fd, rg, Tantivy, Syntax, and Graph blocks, =|= retains
+the meaning assigned by that native parser.  The shared Search contract does
+not reinterpret the native expression, but it records an ordered
+=pipeComposition= receipt containing each branch digest, producer binding,
+budget, evidence ids, and marginal verified gain.
+
+The schema-owned contract teaches the Agent to use pipe alternatives for
+independent, complementary facets such as surface evidence, mechanism,
+authority/invariant, and impact.  Within one option occurrence those
+alternatives occupy the same priority band.  Repeating =--fd=, =--rg=,
+=--tantivy=, or =--syntax= creates a later, lower-priority band.  No synthetic
+=--priority= number is admitted: left-to-right option occurrence is the
+Agent-authored priority order.
+
+Top-K is produced only after clause provenance has been retained and Graph
+fan-in has related and filtered the acquired candidates.  A standalone
+unquoted shell =|= is rejected before request admission and can never connect
+backend processes.
+
+*** SP-AXIS-004 — Ordered acquisition followed by Graph fan-in
+
+The Agent authors an ordered sequence of acquisition clauses.  fd, rg,
+Tantivy, and native Syntax clauses acquire evidence independently against the
+same Runtime-bound =ProjectId=, =WorkspaceId=, and source generation; their
+occurrence order is descending priority, not a data pipe between backend
+processes.  Runtime may execute independent acquisition clauses concurrently,
+but synthesis MUST reproduce the authored priority order rather than completion
+order or flat axis voting.
+
+The first =--graph= occurrence is a barrier.  Every Graph block consumes the
+union of the preceding acquisition candidates and applies in written order;
+an acquisition clause after that barrier is invalid.  Graph is therefore a
+progressive relation-filtering fan-in, not a fifth independent candidate vote.
+The Agent may omit Graph in an initial broad round, reason over the resulting
+evidence, and include Graph in a later complete request.
+
+*** SP-RECOVERY-005 — Targeted recovery has exactly two fields
+
+An incomplete request or backend-native parse error returns exactly =Example:=
+and =Grammar:= from the admitted provider's =searchPlaybookContract=.
+=Example:= is contextual and directly usable; =Grammar:= is the smallest
+complete grammar needed to repair the request.  Recovery exposes no state,
+reason-kind, missing, accepted, purpose, required-for, or whole-guide table.
+The shared schema defines the projection shape; each provider owns its native
+syntax content and binds it to =syntaxContractId= and
+=syntaxContractDigest=.  Hook AOT compilation resolves the contract by
+=languageId= and =providerId= and embeds the projection into the compiled rule.
+The evaluator only replaces ={{searchPlaybookContract}}=; it performs no schema
+read, source search, package import, or command synthesis.
+
+*** SP-PROGRESS-006 — Fresh progressive reasoning
+
+Fan-in synthesizes an evidence graph and returns exactly one explicit result:
+=exact-selector-ready=, =disambiguation-required=,
+=relationship-supported=, =no-match=, =contradiction=,
+=refinement-required=, or =provider-contract-failure=.  A next delta never
+stands in for that result.  The Agent reasons over the result and submits a
+fresh complete request when refinement is required.  Ephemeral =roundId= and
+=continuationContextDigest= correlate the current receipt only.  Any source
+generation change invalidates the context and every old selector fails closed.
+The =no-match= result is constructible only with an untruncated complete-
+coverage witness bound to the admitted owner universe and every requested
+acquisition clause and Graph fan-in;
+each clause receipt binds the same query-set/predicate digest and owner-universe
+digest, covers the complete admitted-owner count, and reports zero matches.
+Enumerating the result kind alone is not an absence proof.
+For a finite missing-axis set, applying each targeted repair strictly decreases
+its cardinality; therefore completeness is reachable without a contract-discovery loop.
+
+=plan-ready= is an internal scheduler state and is not a public Search
+terminal.  The Runtime may construct an execution plan, but it MUST obtain one
+generation-bound completion witness for every Agent-authored acquisition
+clause and, when present, the ordered Graph fan-in before constructing a
+successful public result.  The agent-facing projection is exactly one =Result=
+line, one =QueryGrammar= line when evidence exists, followed by at most thirty
+=owner + exact item + exact selector + supporting clauses + compact semantic
+relation= evidence lines.  It contains no
+plan, digest, source payload, prescribed command, or =Next= field.  Axis
+receipts and identity digests remain Runtime audit evidence and are not copied
+into the save-token projection.
+
+*** SP-RESULT-007 — Syntax results are exact-query complete
+
+Every public Syntax result carries a parser-owned structural
+identity and exactly one generation-current exact selector.  The result also
+carries one canonical exact-query request with an explicit projection.  Querying
+that selector round-trips to the same parser node.  A path, display range, byte
+range, GraphRelationalIR row, or derived relation is not a selector.  A capture
+that cannot satisfy totality, uniqueness, current-generation admission, and
+round-trip identity is a =provider-contract-failure=, not a candidate.
+When a selected owner requires provider-native Syntax, its complete provider
+owner projection MUST be materialized before the immutable
+=CompleteGeneration= commit.  A later request-local capture or owner overlay
+cannot mint a content search generation and therefore cannot authorize public
+evidence.  The =CompleteGeneration= commit is the Search-to-Query
+linearization point: Search emits only selectors already admitted by that
+generation, and the following =asp query --selector= is a resident read that
+MUST NOT repair, reparse, retry, or call the provider.
+Selector identity includes source-root, provider, parser identity/version, and
+selector-grammar version; a generation digest plus display node name is
+insufficient.
+
+*** SP-SYNTAX-007A — Syntax Search and Query share one native contract
+
+=--syntax <registered-producer> <native syntax query tokens...>= is the public
+Syntax Search block.  It is not Tree-sitter-specific: language and document
+producers register their own native grammar identity and parser receipt.
+=--treesitter-query '<s-expression>'= is one possible native token sequence
+inside such a block.
+
+Clause order is executable progressive scope.  A Syntax block following one
+or more acquisition blocks MUST evaluate only the union of owner candidates
+already admitted by those earlier blocks; an empty prior frontier completes
+without launching a provider.  A Syntax block in first position has the whole
+selected workspace as its owner domain.  Axis-internal =|= alternatives remain
+one composed clause and do not erase this inter-clause priority.
+
+Every admitted Search syntax block maps without semantic rewriting to one
+canonical =asp query --syntax ...= request.  Its result maps back to the same
+structural selector and parser node.  Known selectors use
+=asp query --selector ...= for materialization.  These are two modes of one
+Query contract, not two selector authorities.
+
+The common request/result envelope follows LSP-compatible shapes for document
+selection and locations: a document selector resolves registered language or
+document producers; a text-document identity resolves the source URI; position,
+range, selection range, and location-link projections use zero-based LSP
+coordinates.  ASP extends that envelope with =grammarId=, =grammarVersion=,
+=nativeFactId=, capture identities, parser/source digests, and the exact
+=structuralSelector=.  LSP does not define the native AST query grammar, so ASP
+MUST NOT label a Tree-sitter, Org, Markdown, or compiler query expression as an
+LSP-standard grammar.
+
+The provider-owned language/document schema is the sole authority for native
+syntax granularity.  It defines admitted node kinds, fields, captures, query
+grammar, projections, and parser capability for that producer.  ASP Server
+admits the schema and binds its id/digest to the active generation; Search
+Playbook dispatches the untouched syntax tokens through that admitted contract.
+The shared envelope MUST NOT copy language-specific node or field enums.
+Neither the Agent nor CLI supplies the syntax-contract digest: the Server
+resolves it from the producer registry and returns =syntaxContractId= and
+=syntaxContractDigest= in every syntax evidence and canonical Query receipt.
+
+*** SP-EVIDENCE-008 — Evidence has three volatility planes
+
+The evidence graph is a typed join of three planes, never one persistent source
+database:
+
+#+begin_example
+DurableWorkspacePropertyGraph
+  + SnapshotSourceGraph(sourceSnapshotDigest)
+  + DerivedReasoningOverlay(complete lineage)
+#+end_example
+
+The durable plane contains low-volatility Workspace facts such as package,
+dependency, lockfile, build/test target, owner, and provider topology.  It is
+queried through registry-admitted PGQL or SQL/PGQ and is reusable only while its
+owner/manifest digest and validator version remain current.  The snapshot plane
+contains high-volatility code facts from fd, rg, Tantivy, native parsers,
+Tree-sitter, and Python Graphs; it is rebuilt for the current source generation
+and MUST NOT be admitted into the durable graph.  The derived plane contains
+reasoning facts whose validity is the conjunction of every parent fact's
+validity.  Source drift invalidates snapshot facts and every dependent derived
+fact before either can participate in closure.
+
+*** SP-META-009 — Shallow reuse schedules but never proves
+
+Validated low-volatility evidence at reasoning-tree depth Root 0 or Root 1 may
+warm-start a later search.  Warm evidence provides owner routes, query priors,
+historical productivity, and budget scheduling only.  It cannot prune any of
+the five independent fresh axes, satisfy an exact-selector obligation, or close
+a relationship/absence claim without a current typed witness.  Invalid owner
+digests, validator drift, or scope mismatch reduce reuse admission to false,
+regardless of depth or historical score.
+
+An ExTS-inspired policy operates above evidence acquisition.  It compares the
+value of deepening an admitted reasoning branch with the value of expanding a
+new query/hypothesis branch under a finite budget.  Every new branch receives
+one evidence-producing validation opportunity before quality gating.  Reward,
+virtual-child score, depth, and quality-gated widening affect scheduling only;
+no scalar score is a proof or closure witness.  The first complete
+fan-out supplies the pilot observations, so no extra pilot tree is required.
+The scheduler may change physical completion order and per-branch budget, while
+the Agent-authored semantic priority, typed semantic result, QueryIdentity, and
+ordered clause receipts remain unchanged.
+
+*** SP-GRAPH-010 — Persistent graph query and logical reasoning are co-cores
+
+=--graph gql <native GQL tokens...>= selects the generation-bound snapshot graph
+adapter used by V1 Search Playbook.  The query is parsed by the pinned gql-rust
+frontend and executed against the immutable Runtime graph; it is not emulated by
+lexical token extraction.  PGQL and SQL/PGQ remain registry-declared persistent
+query languages for the admitted low-volatility Workspace graph.  High-volatility
+Coding Search facts are constructed from the current snapshot by native providers
+and Python Graphs rather than loaded into the persistent database.  Each frontend
+records language/version, compiler or lowerer identity/version, input digest,
+GraphRelationalIR digest, and provenance.
+The Meta Reasoning path is:
+
+#+begin_example
+PersistentGraphQuery(PGQL | SQL/PGQ)
+  -> GraphRelationalIR
+  -> owner-digest-bound DurableRelationFacts
+SnapshotSourceGraph(sourceSnapshotDigest)
+  -> snapshot-bound SourceRelationFacts
+DurableRelationFacts + SourceRelationFacts
+  -> bounded Ascent inference
+  -> DerivedRelationFacts + derivation lineage
+  -> EvidenceGraph fan-in
+#+end_example
+
+PGQL/SQL-PGQ property-graph reasoning and Ascent logical programming are both
+core Meta Reasoning library components.  Ascent is not a sixth retrieval axis;
+it consumes admitted durable and snapshot relation facts after independent
+retrieval fan-in.  Query-language tokens and logical-rule tokens are disjoint,
+independently registered grammars.  An absent or version-mismatched reasoning
+engine fails closed.  Every derived fact carries =FactId=, =DerivationId=, and
+typed parent-fact references, not detached identifier and validity lists.  Each
+parent resolves either to an admitted snapshot-bound base fact or to a scope-,
+owner-digest-, and validator-bound durable fact.  A derivation additionally
+binds the admitted-base-fact registry digest, current Workspace binding, Ascent
+engine digest, and ruleset digest.  Registry admission binds the complete
+ordered base =FactId= set to QueryIdentity and a nonempty authority receipt;
+digest equality without this content/completeness proof is insufficient.
+Ascent cannot invent base/source facts.  Bounded monotone closure is
+deterministic for the same admitted inputs.  Neither a GraphRelationalIR node
+nor a derived relation is an exact selector: exact materialization must return
+to a grounded, generation-current provider/parser selector.
+
+The current contract defines this transition boundary and its proof
+obligations; it does not claim that future gql-rust Meta Reasoning, Relation
+Reasoning, PGQL/SQL-PGQ lowering, or Ascent execution is implemented.
+
+*** SP-PROJECTION-011 — Token-bounded evidence preserves reasoning utility
+
+Agent-facing output is a bounded projection of the current generation's
+admitted evidence, never a raw source/result dump.  The projection is bounded
+by both =topK= and =tokenBudget=.  Mandatory closure witnesses, exact selectors,
+contradiction witnesses, and complete derivation-lineage references are selected
+before optional ranked evidence.  If capacity remains, the projection includes
+at least one admissible item from each nonempty independent axis only when one
+complete representative set fits =topK= and =tokenBudget= jointly, then fills
+the remaining budget by deterministic reasoning utility with a stable
+evidence-identity tie break.  Per-item affordability is not global diversity
+feasibility.
+
+Reasoning utility accounts for unresolved-obligation discharge, selector
+readiness, provenance completeness, freshness, novelty/diversity, and token
+cost.  Historical depth or ExTS score may influence scheduling utility but
+cannot outrank a required witness.  Every projected item is a member of the
+admitted evidence set and retains =EvidenceId=, axis, validity identity, and
+selector or lineage references needed for later proof.
+
+The receipt exposes selected count, admitted count, exact token cost,
+=truncated=, and a digest of omitted identities.  A generation-bound cursor may
+request another slice without repeating prior packet bodies.  Truncation cannot
+be interpreted as complete coverage or absence proof.  If a required witness
+cannot fit, the result is =refinement-required= or
+=provider-contract-failure=; projection pressure MUST NOT change the semantic
+result to a successful closure.
+
+*** SP-MAPPING-012 — Cross-axis mapping preserves provenance
+
+Each fd, rg, Tantivy, Tree-sitter, or Graph result is first admitted as its own
+=EvidenceAtom= with producer axis, native input/output digest, source locator,
+Workspace/Generation identity, and validity dependencies.  Fan-in may add
+typed =same-source=, =grounds=, =supports=, =contradicts=, or =derives-from=
+edges between atoms.  A mapping never merges the producer receipts or promotes
+a lexical/path hit into a parser selector.  Mapping is admitted only through a
+nonempty typed grounding receipt.  A =same-source= edge additionally requires
+canonical source-identity equality; support, contradiction, derivation, and
+model/code edges may cross source nodes while retaining their grounding proof.
+
+The mapped graph is generation-local resident state.  It is neither inserted
+into the durable Workspace property graph nor required when a fresh request
+omits Graph.  When Graph is requested, its fan-in receipt is required for the
+result.  Losing reusable graph state costs optimization, not truth.
+
+*** SP-TRAJECTORY-013 — Progressive rounds exchange evidence deltas
+
+For comparable rounds, SearchLoop classifies mapped identities as =new=,
+=retained=, =strengthened=, =weakened=, =contradicted=, or =disappeared=.
+The agent-facing trajectory carries EvidenceId/relation deltas and changed
+validity identities, not repeated evidence bodies.  A round remains comparable
+only while its Project/Workspace binding, source-generation or explicit
+relocation proof, schema, provider contract, and mapping version are admitted.
+
+=disappeared= means that an earlier EvidenceId is absent from the current
+bounded result.  It is not an absence proof when the query predicate changed,
+an axis or projection was truncated, coverage is incomplete, or generation
+relocation is unproved.  Code change invalidates affected atoms and the forward
+closure of their =derives-from= edges; unaffected atoms may be retained after
+minimal-witness validation.
+
+*** SP-PLANNER-014 — Meta Reasoning schedules obligation gain
+
+After each fan-in, Ascent consumes the admitted base-fact registry and derives
+unresolved obligations, contradictions, impact edges, and candidate reasoning
+branches.  PGQL/SQL-PGQ supplies low-volatility owner/dependency reachability;
+snapshot mappings supply current code evidence.  The planner selects feasible
+actions by obligation discharge, contradiction gain, selector progress,
+future-reuse value, novelty, token cost, latency, and invalidation risk.
+
+This value function is scheduling authority only.  Closure remains an
+independent validator over fresh witnesses.  A learned policy, ExTS score, or
+historical trajectory may change branch order and budget allocation but cannot
+drop an unresolved required obligation, redefine sufficiency, or change the
+semantic result.
+
+*** SP-CONFORMANCE-015 — Formal models require code-trace conformance
+
+TLA+ is applied through an evidence-backed conformance loop, not by treating an
+agent-generated specification as source truth.  A reference model records
+typed mappings from each modeled action, variable, and invariant to code,
+tests, documentation, issues, or revision evidence.  Scenario models are
+bounded projections of that immutable reference model and retain the targeted
+invariants and projection lineage.
+
+Code-level trace validation and model checking are paired boundaries.  Trace
+validation establishes that observed implementation behavior is admitted by
+the model; model checking searches the admitted state space for invariant
+violations.  A model that rejects a code trace has a model/instrumentation
+conformance gap, not a proven code bug.  A model-checking counterexample is not
+a confirmed code bug until its action trace is reproduced or independently
+validated against code behavior.
+
+Every failed loop is adjudicated as =model-gap=, =code-bug=, =invariant-gap=,
+or =unresolved= with new evidence.  Repair may change model abstraction,
+instrumentation, code, or an unsupported invariant, but it cannot silently
+weaken an invariant merely to accept one trace.  This is the formal
+bug-discovery boundary inspired by Specula; the current TLA+ lifecycle model is
+only the first reference-model scenario, not end-to-end conformance closure.
 
 Interactive transition semantics are owned by
 [[file:10.05-interactive-graph-first-progressive-searchloop/10.05.10-interactive-searchloop/00-overview.org][10.05.10 Interactive SearchLoop]].
 
 * Search/query wire and replay contract
+** V1 Search Playbook Top-K outcome
 
-Search and exact query are two operations on one public =ClientFrame= data
-plane. The language CLI is only a typed adapter: it selects =search= or
-=query=, supplies the schema-owned parameters, and renders the returned frame.
-It does not create a provider route or interpret a URL/string heuristic.
+The Search Playbook broad-search result is a formal rank-ordered Top-K candidate
+set, not a post-hoc output-compression mechanism.  In V1, =K = 30= and the
+agent-facing handoff has exactly three mutually exclusive outcomes:
+
+The acquisition axes are independent and may each yield thousands of raw
+candidates.  Native =fd= and =rg= arguments acquire path and text candidates;
+provider-native syntax and Tantivy contribute structural and lexical evidence.
+Runtime retains rg's owner-local match position internally and maps it to the
+smallest overlapping parser-owned item selector.  Tantivy's matched query keys
+map only to parser selectors carrying the same normalized keys.  Neither
+mapping serializes source, line numbers, or excerpts; both prevent an owner-only
+hit from becoming an unactionable Search result.
+Python Graphs then materializes candidate mappings and relations, deduplicates
+equivalent identities, and removes candidates unsupported by the composed
+evidence graph.  Rust owns the final graph-aware ranking and emits the first
+thirty candidates.  The pipe composes these axes; it does not impose a fixed
+one-stage-after-another reasoning order.
+
+=--graph= is this fan-in reasoning stage; it is not a fifth keyword-acquisition
+axis and it does not merely query an unrelated resident graph.  The Agent uses
+the candidate evidence returned by an earlier broad round, or relationships it
+already knows in the first round, to express a GQL/PGQL relation query.  On each
+invocation the Runtime rebuilds an ephemeral property graph from the current
+=fd=, =rg=, Tantivy, and native-syntax candidates, maps syntax selectors and
+owners into graph nodes, and lets Python Graphs evaluate relation, path,
+connectivity, and ranking features before Rust selects Top-30.  Re-running cheap
+acquisition avoids persisting high-volatility code-search state.
+
+The graph language and graph storage lifetime are orthogonal.  GQL/PGQL can be
+evaluated over the ephemeral candidate graph for coding search.  A persistent
+PGQ/PGQL backend is reserved for low-volatility Workspace facts such as package
+and dependency topology.  Selecting GQL or PGQL MUST NOT implicitly persist
+source-search candidates.
+
+** Agent-authored clause priority and pipe composition
+
+The public CLI does not add a synthetic =--priority= option.  The order in which
+the Agent writes acquisition clauses is the descending priority order preserved
+by the parser.  Repeated clauses of the same kind remain distinct.  For example,
+two =--rg= blocks express two priority bands instead of being flattened into one
+unordered =rg= field.
+
+A native pipe inside one clause, such as =runtime|client|host=, combines
+same-priority alternatives using that producer's native grammar.  ASP MUST NOT
+reinterpret or rewrite native =rg=, =fd=, syntax, or graph expressions merely to
+recover branch weights.  When the Agent needs different priority, it writes
+separate repeated clauses in the required order.  Pipes in =--languages= and
+=--documents= likewise express a scope union, not a hidden global weight.
+
+The request projection records each parsed acquisition clause as a typed
+=(axis, block-index)= reference in occurrence order.  This derived ordering is
+wire data, not another Agent-facing argument.  Grouped per-axis native blocks
+remain available for native execution, while the ordered references prevent
+the parser from erasing Agent-authored priority.
+
+Each result row records this surviving path in =matchedBy=.  Acquisition
+references remain in authored priority order; any Graph references form the
+final suffix because Graph is the fan-in barrier.  Therefore
+=rg:0|syntax:0|graph:0= is valid, while =graph:0|rg:0= is rejected as a false
+execution history.
+
+=--graph= is an ordered barrier.  It requires at least one preceding acquisition
+clause and consumes the normalized candidates accumulated before it.  V1 rejects
+new acquisition clauses after the first graph clause: graph reasoning is the
+final progressive filtering phase, not an independent vote or an early keyword
+source.  Multiple graph blocks are evaluated in written order as progressively
+narrower relation constraints.
+
+- =candidates=: one to thirty selector-complete candidates, ordered by the
+  combined playbook rank;
+- =empty=: every requested search axis completed successfully and the ranked
+  candidate set is empty;
+- =unavailable=: registration, Runtime, search execution, or result projection
+  failed; this outcome carries only =stage= and =reasonKind=.
+
+=no-output= is not an outcome.  It cannot distinguish successful zero-match
+retrieval from an unavailable execution boundary and therefore cannot support
+evidence-chain reasoning.  Likewise, historical states such as stale index,
+invalid selector, or quarantine are typed =reasonKind= values under
+=unavailable= rather than competing top-level search outcomes.
+
+The Top-K handoff contains exact item/selector identity, ordered supporting
+clause references, and semantic relation mappings, but never
+source text, display excerpts, digests, or a prescribed next command.  Exact
+Query consumes a selected candidate; the agent remains responsible for deciding
+which selector to inspect or which independent search axes to recombine.
+
+
+Search and exact query are two root operations on one public =ClientFrame=
+data plane.  =asp search playbook= selects producers through =--languages= and
+=--documents=; =asp query= either consumes a producer-bound exact selector or
+declares native Syntax blocks.  Language-first Search/Query adapters are not a
+second public route.
 
 Every successful or terminal frame carries the same workspace identity,
 provider identity, generation identity, source-snapshot identity, request
-identity, and schema references. Search results carry the typed =routeGraph=,
-=actionFrontier=, and =recommendedNext= fields; query carries the canonical
-structural selector and the declared source or projection kind. A query may
+identity, and schema references. Search machine receipts carry the typed
+evidence graph, correlation, and residual uncertainty but no recommended
+command; query carries the canonical structural selector and the declared
+source or projection kind. A query may
 consume a selector produced by search only after the Runtime Server validates
 that selector against the active immutable generation and source snapshot.
 
@@ -322,10 +800,9 @@ Every SearchLoop entry constructs stable nodes, directed typed relations, and
 typed action-frontier entries before compact rendering.  Canonical selector
 validation precedes any =owns_item= or =targets_item= relation.
 
-Presentation ordinals and rendered =recommendedNext= text are not durable node
-identities.  A malformed or cross-language selector may remain as unresolved
-input evidence, but it produces neither an owner/item relation nor an
-executable exact-query action.
+Presentation ordinals are not durable node identities.  A malformed or
+cross-language selector may remain as unresolved input evidence, but it
+produces neither an owner/item relation nor grounded selector evidence.
 
 Evidence topology and route selection are owned by
 [[file:10.05-interactive-graph-first-progressive-searchloop/10.05.20-evidence-graph-routing/00-overview.org][10.05.20 Evidence Graph and Routing]].
@@ -462,7 +939,7 @@ Typed resident dispatch removal is owned by
 |-
 | Root decisions, naming, global cross-owner invariants | this document |
 | Public ClientFrame gRPC route and package responsibility | [[file:10.05-interactive-graph-first-progressive-searchloop/10.05.01-server-client-package-responsibility.org][10.05.01]] |
-| Atomic serving activation and resident publication | [[file:10.05-interactive-graph-first-progressive-searchloop/10.05.02-atomic-resident-publication.org][10.05.02]] |
+| Atomic serving activation and artifact publication | [[file:10.05.03-runtime-state-authority-and-retention.org][10.05.03]] |
 | Interactive state transitions and merge | [[file:10.05-interactive-graph-first-progressive-searchloop/10.05.10-interactive-searchloop/00-overview.org][10.05.10]] |
 | Runtime task, cancellation, and terminal lifecycle | [[file:10.05.11.05-runtime-server-tokio-task-lifecycle.org][10.05.11.05]] |
 | Generation memory and lazy capability indexes | [[file:10.05.11.09-runtime-generation-memory-authority.org][10.05.11.09]] |
@@ -839,12 +1316,11 @@ The Rust resident graph is the base relation authority, but it is not part of
 the content-generation publication quorum.  It is independently derived from
 the same admitted provider facts and attaches only through the exact content
 generation identity.  Cold byte/native-syntax search remains available while
-that graph transaction is absent or building.  =asp-python-graphs= is an optional, intent-selected graph
-capability: relationship or an explicit Python-graph request requires an exact
-Project/Workspace/Generation/root-bound graph session, while lexical and exact
-literal requests may remain entirely on the Rust resident generation.  A
-missing or stale optional session is a typed capability failure for a request
-that requires it; it never blocks publication or falsifies a complete result.
+that graph transaction is absent or building.  A present =--graph=
+block selects a registry-admitted graph-language/runtime capability and requires
+an exact Project/Workspace/Generation/root-bound graph session.  A missing or
+stale selected capability fails closed; an explicitly omitted graph axis starts
+no graph session.  Neither case changes content-generation publication.
 
 The v1 Python session admits one bounded graph view per exact
 Project/Workspace/Generation/root identity.  The Runtime opens that view only
@@ -928,7 +1404,7 @@ that exact identity.  The composition receipt records:
   coverage;
 - the marginal verified-owner gain contributed by each additional lane;
 - elapsed time and budgets per lane;
-- the chosen ordered route and alternatives that were rejected; and
+- the chosen complementary axes and independently omitted axes; and
 - residual uncertainty, including unindexed owners, unresolved graph edges,
   unverified candidates, truncation, and stale evidence.
 
@@ -940,45 +1416,54 @@ benchmark calibration bound to the planner digest.  A missing calibration is
 typed =uncalibrated=; it does not prevent deterministic routing, but the agent
 must see the remaining uncertainty.
 
-The public workspace orchestrator is exactly =asp search playbook=.  It is a
-server-owned planner, never an alias for any provider's =search= method.  Given
-ProjectId, WorkspaceId, the active content generation, intent, and query, it
-emits =workspace-search-playbook-plan.v1= with one deterministic route per
-admitted language.  Each route binds language/provider/generation, declared
-extensions, =search= or =query=, normalized terms/selectors, budget,
-dependencies, and the exact public =asp <language> ...= command.  Unsupported
-or unavailable languages are explicit skipped records with typed reasons.
+The public workspace orchestrator is exactly =asp search playbook=.  The Agent
+owns intent decomposition; no intent or decomposition layer enters the
+protocol.  The public operation admits one ordered acquisition plan with an
+optional trailing Graph fan-in
+against the Host-selected current workspace and its active source generation.
+Each native block binds its backend grammar and registry identity.  Omitted
+clause kinds require no synthetic reason field.  The request contains no
+executable command string.
 
-The Server may execute that plan with bounded fan-out/fan-in.  File discovery
-occurs once while building the content generation.  Ripgrep may run only on a
-cold lexical request before Tantivy readiness and never on a warm plan request.
-Lexical and parser indexes remain language-scoped resident inputs.  Python Graph may fuse relationships only
-after every route terminal is bound to the same content generation.  There is
-no fallback from a missing language route to a workspace-wide provider call.
+When producer selectors are present without an executable acquisition clause,
+the command recovers the selected providers' minimum contract.  Its default
+Agent rendering is exactly two sections, =Example= and =Grammar=, composed in
+pipe order.  Provider, parser, contract, generation, and content digests remain
+Runtime admission facts; they are not Agent search evidence and MUST NOT appear
+in that rendering.  The contract projection contains no continuation directive.
 
-Conversely, =asp <language> search|query= is strictly the execution data plane
-for one registered provider, its declared extensions, and parser-owned facts.
-It cannot observe another language's owners and cannot mint a workspace plan.
+The Server may execute the acquisition plan with bounded fan-out/fan-in.
+Acquisition clauses never consume each other's output.  Their candidate union
+is, however, the explicit input frontier of every trailing Graph clause.
+Lexical and parser indexes remain generation-scoped resident inputs.  Graph evidence and
+optional post-query Ascent inference are accepted only when their registry,
+version, and source-generation receipts match the round.  There is no fallback
+from an omitted clause to a workspace-wide provider call.
 
-The fused Ready route policy is intent-sensitive:
+Language providers retain an internal execution data plane for their declared
+extensions and parser-owned facts, but it is not a public CLI namespace.  The
+public routes are =asp search playbook ... --languages '<language|...>'= with optional
+=--documents '<document-kind|...>'= and =asp query --selector <selector>=.
+=asp <language> search|query= fails
+closed and is never retained as an alias.  Language selection chooses one
+registered fact producer; it does not transfer workspace planning authority to
+that provider.
 
-| Intent/evidence | Ordered route | Stop condition |
+The fused Ready policy evaluates an Agent-authored progressive plan:
+
+| Evidence need | Independent complementary blocks | Fan-in condition |
 |-
-| exact selector with current identity | parser/source direct | selector resolves uniquely; no lexical or ripgrep work |
-| conceptual or API query before accelerator readiness | bounded rg frontier -> content/native-syntax verification -> Rust resident graph | verified owner/selector evidence satisfies requested axes |
-| conceptual or API query with current accelerator | resident Tantivy frontier -> Rust resident graph -> optional byte evidence | verified owner/selector evidence satisfies requested axes |
-| relation, impact, dependency, or ownership query | current lexical frontier (rg cold or Tantivy ready) -> exact Python graph session -> resident byte evidence | required relation witnesses and cited bytes are verified |
-| exact literal or diagnostic text | indexed path/profile restriction -> resident byte evidence -> optional Rust graph context | byte match is verified and graph context is sufficient |
-| complete absence claim | complete published byte-coverage block | every admitted owner was covered exactly once during publication |
+| path and literal discovery | ordered fd, rg, or Tantivy clauses; Graph may be omitted | independent path/byte evidence covers the question |
+| API or structural ownership | ordered lexical clauses plus native Syntax | parser identity grounds every executable selector |
+| relation or impact | acquisition clauses followed by registered Graph blocks | Graph filters and ranks only the acquired candidate union |
+| logical closure | Graph block plus optional registered Ascent request inside graph processing | every derived fact has bounded base-fact lineage |
+| complete absence claim | complete, untruncated requested clauses | every admitted owner is accounted for by the requested predicates |
 
-The planner may skip a resident lane only with a typed capability or intent
-reason.  Lexical, graph, and byte-evidence reads may fan out as bounded tasks on
-the workspace Tokio runtime because they share one immutable mapping; they
-join deterministically before encoding.  Candidate union preserves recall;
-intersection and graph distance are ranking evidence, not filters that may
-discard the only supported owner.  No Ready path starts Python, invokes
-ripgrep, performs provider RPC, scans the workspace, reads durable storage, or
-discovers an endpoint.
+An Agent may choose the acquisition clauses and their priority directly.
+Selected acquisition clauses fan out as bounded tasks over one immutable
+generation and join deterministically in authored order.  Graph may filter
+weak candidates but cannot mint an owner absent from that union.  Logical inference begins
+only after graph/base relation facts exist and never becomes a retrieval axis.
 
 The fused Ready cache is owned by the immutable resident generation.  Its key
 binds ProjectId, WorkspaceId, exact source/content generation, normalized query
@@ -1016,24 +1501,46 @@ Release follows Runtime generation retirement.  This preserves Python as a
 replaceable graph-algorithm worker without creating a second publication
 authority.
 
-*** Search Playbook public surface
+*** Search and exact-query public surfaces
 
-The agent-facing discovery command converges on one public surface:
+The agent-facing namespace has one Search Playbook route and one exact
+materialization route:
 
 #+begin_src shell
-asp search playbook '<query>' --language <language> \
-  [--intent conceptual|relationship|exact-literal|absence-proof] \
-  [--scope workspace|owner:<path>] \
-  [--coverage candidates|complete] \
-  [--max-owners <N>] [--deadline-ms <N>] \
-  [--explain compact|full]
+asp search playbook --languages '<language|...>' \
+  [--documents '<document-kind|...>'] \
+  [--workspace <registered WorkspaceId>] \
+  --fd <native fd argv...> --rg <native rg argv...> \
+  --tantivy <native Tantivy query...> \
+  --syntax <registered-producer> <native syntax query tokens...> \
+  --graph <pgql|sql-pgq> <native graph query...>
+
+asp query --selector <exact-selector> \
+  --projection <source|callable-skeleton> --workspace <root>
+
+asp query --languages '<language|...>' \
+  [--documents '<document-kind|...>'] \
+  --syntax <registered-producer> <native syntax query tokens...>
 #+end_src
 
-Defaults are =--intent conceptual=, =--scope workspace=, =--coverage
-candidates=, and =--explain compact=.  =--coverage complete= is admitted only
-for an absence-proof request or another policy-authorized complete scan.
-=--selector <exact-selector>= is a direct identity route and bypasses lexical,
+The single =playbook= operation uses =--languages= and optional =--documents=;
+=--intent= is not part of its grammar.  Their quoted
+=|=-expressions denote registry-bound set union; an unquoted shell pipe remains
+invalid.  Language and document kinds select registered producers inside the
+shared search namespace, never command namespaces.  A language-specific native
+syntax block may repeat; no cross-language wrapper grammar is invented around
+its native expression.  Direct syntax query uses the same producer-set and
+native syntax-block contract as Search but performs no fd, rg, Tantivy, or
+Graph planning.  Exact selector materialization needs no producer flag because
+the selector already binds provider and parser identity; it bypasses lexical,
 graph, and ripgrep planning when current.
+
+By default the Host injects the current =ProjectId= and =WorkspaceId= and
+Runtime binds the active source generation.  The Server generates =roundId=
+and =contextDigest= for the receipt.  None is accepted as an ordinary
+CLI argument.  =--workspace= exists only for an explicit registered
+cross-workspace target; Runtime resolves it to both authority identities before
+retrieval, and a filesystem path never becomes the execution identity.
 
 =seeds= is removed rather than hidden.  =--view seeds=, =--seeds=,
 =searchSynthesis.seeds=, and seed-frontier output are not part of the new
@@ -1047,9 +1554,27 @@ frontiers cease to be public agent workflow.  Where an implementation still
 needs one of those algorithms during migration, it is invoked through the
 playbook planner and cannot appear as a public =recommendedNext= command.  The
 playbook receipt contains one chosen stage sequence, compact evidence
-correlation, residual uncertainty, and at most one executable next command.
+correlation, and residual uncertainty.  It contains no prescribed next command.
 Flags select semantic constraints; they never select a storage backend or
 graph algorithm implementation.
+
+Search-agent handoff is executable evidence, not source.  ASP Explorer MUST
+return a bounded, ranked evidence graph whose nodes carry owner, exact item,
+parser-owned exact selector, ordered supporting clause references, and compact
+semantic relation.  Every nonempty handoff carries the packet-level exact Query
+Grammar once.  Runtime validates generation, provider, parser, and
+artifact identity without serializing those digests into the handoff.  It MUST
+NOT return source bytes, snippets, excerpts, display line ranges, fenced source, or a
+natural-language restatement of source text.  An open-ended extension map is
+also forbidden because it can smuggle the same payload under an unknown key.
+The handoff ends after the Top-K executable evidence.  Query Grammar describes
+a capability and is not a prescribed invocation.  The handoff does not prescribe a
+next command: the parent reasons over the evidence and may choose Query,
+refinement, comparison, or no further action.  Query alone materializes source
+when the parent chooses it.  Search therefore pays for evidence once without
+duplicating Query's source payload or constraining the Agent's reasoning policy.
+Typed Query failures follow the same boundary: they report failure evidence,
+not =next=, =recommendedNext=, or an equivalent prescribed action.
 
 Route stages use the stable families =direct=, =acquire=, =reason=, and
 =verify= plus a catalog-bound =capabilityId=.  The initial reason capability is

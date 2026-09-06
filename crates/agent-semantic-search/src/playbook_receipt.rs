@@ -287,7 +287,6 @@ pub fn build_search_playbook_receipt(
             }
             .to_owned(),
             residual_uncertainty: Vec::new(),
-            next_command: None,
             selectors: input.runtime.selectors.clone(),
             owner_paths: input.runtime.owner_paths.clone(),
         },

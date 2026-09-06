@@ -11,7 +11,6 @@ use serde::Serialize;
 use crate::blake3_content_digest::Blake3ContentDigest;
 use crate::runtime_artifact_activation::RuntimeArtifactActivationEvent;
 use crate::runtime_artifact_activation::RuntimeArtifactCandidateIdentityReceipt;
-use crate::runtime_artifact_activation::canonicalize_legacy_activation_receipts_under_guard;
 use crate::runtime_artifact_activation::commit_staged_pending_runtime_artifact_activation;
 use crate::runtime_artifact_activation::decode_runtime_artifact_activation_event;
 use crate::runtime_artifact_activation::prepare_active_slot_snapshot;
@@ -20,16 +19,21 @@ use crate::runtime_artifact_activation::read_optional_symlink;
 use crate::runtime_artifact_activation::restore_pending_runtime_artifact_activation;
 use crate::runtime_artifact_activation::restore_runtime_artifact_symlink;
 use crate::runtime_artifact_activation::runtime_artifact_activation_event_path;
-use crate::runtime_artifact_activation::runtime_artifact_activation_socket_path;
 use crate::runtime_artifact_activation::stage_pending_runtime_artifact_activation;
+use crate::runtime_artifact_activation::validate_current_activation_receipts_content;
 use crate::runtime_artifact_quiescence::prepare_runtime_artifact_quiescence_lease;
+use crate::runtime_artifact_retention::RuntimeArtifactCandidatePreparationLease;
 use crate::runtime_artifact_retention::RuntimeArtifactMutationGuard;
+use crate::runtime_artifact_retention::prune_unreachable_runtime_artifacts;
 use crate::runtime_artifact_slots::PreparedRuntimeArtifact;
+use crate::runtime_artifact_slots::RuntimeArtifactBundleBinding;
 use crate::runtime_artifact_slots::RuntimeArtifactSlotAuthority;
 use crate::runtime_artifact_slots::discard_prepared_runtime_artifact;
 use crate::runtime_artifact_slots::prepare_runtime_artifact_candidate_for_kind;
+use crate::runtime_artifact_slots::runtime_artifact_bound_bundle_digest;
 use crate::runtime_artifact_slots::runtime_artifact_bundle_digest;
 use crate::runtime_artifact_slots::runtime_artifact_candidate_digest;
+use crate::runtime_artifact_slots::stage_runtime_artifact_bound_bundle_manifest;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct RuntimeArtifactBundleMemberSource<'a> {
@@ -83,6 +87,7 @@ pub async fn publish_runtime_artifact(
         target,
         artifact_mode,
         &[],
+        None,
         || async {},
     )
     .await
@@ -121,6 +126,30 @@ pub async fn publish_runtime_artifact_bundle_members(
         target,
         artifact_mode,
         member_sources,
+        None,
+        || async {},
+    )
+    .await
+}
+
+/// Publish a Runtime bundle whose complete execution closure is part of the
+/// immutable product identity. New serving callers must use this entry point;
+/// mutable State Home catalog files are not binding inputs.
+pub async fn publish_runtime_artifact_bound_bundle_members(
+    state_home: &Path,
+    source: &Path,
+    target: &Path,
+    artifact_mode: &str,
+    member_sources: &[RuntimeArtifactBundleMemberSource<'_>],
+    execution_binding: &RuntimeArtifactBundleBinding,
+) -> Result<RuntimeArtifactPublicationReceipt, String> {
+    publish_runtime_artifact_with_before_guard(
+        state_home,
+        source,
+        target,
+        artifact_mode,
+        member_sources,
+        Some(execution_binding),
         || async {},
     )
     .await
@@ -132,14 +161,15 @@ async fn publish_runtime_artifact_with_before_guard<BeforeGuard, BeforeGuardFutu
     target: &Path,
     artifact_mode: &str,
     member_sources: &[RuntimeArtifactBundleMemberSource<'_>],
+    execution_binding: Option<&RuntimeArtifactBundleBinding>,
     before_guard: BeforeGuard,
 ) -> Result<RuntimeArtifactPublicationReceipt, String>
 where
     BeforeGuard: FnOnce() -> BeforeGuardFuture,
     BeforeGuardFuture: std::future::Future<Output = ()>,
 {
-    let artifact_root = state_home.join("runtime/artifacts");
-    let resident_root = state_home.join("runtime/resident");
+    let layout = crate::RuntimeArtifactStateLayout::new(state_home);
+    let artifact_root = layout.root().to_path_buf();
     let digest = runtime_artifact_candidate_digest(source).await?;
     let binary_name = target
         .file_name()
@@ -164,13 +194,15 @@ where
             runtime_artifact_candidate_digest(member.source).await?,
         );
     }
-    let bundle_digest = runtime_artifact_bundle_digest(&members);
+    let bundle_digest = execution_binding.map_or_else(
+        || runtime_artifact_bundle_digest(&members),
+        |binding| runtime_artifact_bound_bundle_digest(&members, binding),
+    );
     let token = bundle_digest.content_digest().as_str();
-    let candidate_dir = resident_root
-        .join("candidates")
-        .join(binary_name)
-        .join(&token);
-    let slots = RuntimeArtifactSlotAuthority::for_artifact(&resident_root, binary_name);
+    let candidate_dir = layout.bundle_store().join(binary_name).join(&token);
+    let _candidate_preparation_lease =
+        RuntimeArtifactCandidatePreparationLease::acquire(state_home, binary_name, &token)?;
+    let slots = RuntimeArtifactSlotAuthority::for_artifact(layout.root(), binary_name);
 
     // Immutable materialization is deliberately outside the artifact mutation lock.
     let prepared = prepare_runtime_artifact_candidate_for_kind(
@@ -210,21 +242,26 @@ where
             artifact: member_prepared,
         });
     }
-    let has_hook = prepared_members
-        .iter()
-        .any(|member| member.name == "asp-hook");
-    let bundle_identity = serde_json::json!({
-        "schemaId": "agent.semantic-protocols.runtime-binary-bundle",
-        "schemaVersion": 1,
-        "bundleDigest": bundle_digest.clone(),
-        "members": members,
-    });
-    std::fs::write(
-        candidate_dir.join("bundle.json"),
-        serde_json::to_vec_pretty(&bundle_identity)
-            .map_err(|error| format!("encode Runtime binary bundle identity: {error}"))?,
-    )
-    .map_err(|error| format!("stage Runtime binary bundle identity: {error}"))?;
+    if let Some(binding) = execution_binding {
+        let staged_digest =
+            stage_runtime_artifact_bound_bundle_manifest(&candidate_dir, &members, binding)?;
+        if staged_digest != bundle_digest {
+            return Err("Runtime bound bundle staging digest drift".to_owned());
+        }
+    } else {
+        let bundle_identity = serde_json::json!({
+            "schemaId": "agent.semantic-protocols.runtime-binary-bundle",
+            "schemaVersion": 1,
+            "bundleDigest": bundle_digest.clone(),
+            "members": members,
+        });
+        std::fs::write(
+            candidate_dir.join("bundle.json"),
+            serde_json::to_vec_pretty(&bundle_identity)
+                .map_err(|error| format!("encode Runtime binary bundle identity: {error}"))?,
+        )
+        .map_err(|error| format!("stage Runtime binary bundle identity: {error}"))?;
+    }
     if let Err(error) = slots.validate_candidate(&candidate_dir).await {
         discard_prepared_runtime_artifact(&prepared).await?;
         discard_prepared_runtime_artifact_bundle_members(&prepared_members).await?;
@@ -233,6 +270,7 @@ where
     let activation_event_path = runtime_artifact_activation_event_path(state_home);
 
     let quiescence_operation = format!("publish:{binary_name}");
+    validate_current_activation_receipts_content(state_home).await?;
     before_guard().await;
 
     let mut phase_trace = RuntimeArtifactPublicationPhaseTrace::default();
@@ -270,14 +308,6 @@ where
     };
     phase_trace.guard_acquisition_micros = phase_started.elapsed().as_micros();
     let lock_started = std::time::Instant::now();
-    if let Err(error) =
-        canonicalize_legacy_activation_receipts_under_guard(state_home, &guard).await
-    {
-        drop(guard);
-        discard_prepared_runtime_artifact(&prepared).await?;
-        discard_prepared_runtime_artifact_bundle_members(&prepared_members).await?;
-        return Err(error);
-    }
     let quiescence = match prepare_runtime_artifact_quiescence_lease(
         state_home,
         &quiescence_operation,
@@ -307,6 +337,11 @@ where
     let event = RuntimeArtifactActivationEvent {
         schema_id: "agent.semantic-protocols.runtime-artifact-activation".to_owned(),
         schema_version: 1,
+        activation_generation:
+            crate::runtime_artifact_activation::next_runtime_artifact_activation_generation_under_guard(
+                state_home,
+            )
+            .await?,
         bundle_digest: bundle_digest.clone(),
         artifact_digest: prepared.content_digest.clone(),
         artifact_path: prepared.path.clone(),
@@ -421,20 +456,14 @@ where
         );
     }
     phase_trace.receipt_read_validate_micros = phase_started.elapsed().as_micros();
-    let hook_stable_path = state_home.join("runtime/bin/asp-hook");
     let prior_authority = (|| {
         Ok::<_, String>((
             observed_active,
             observed_healthy,
             read_optional_symlink(target)?,
-            if has_hook {
-                read_optional_symlink(&hook_stable_path)?
-            } else {
-                None
-            },
         ))
     })();
-    let (active_before, healthy_before, stable_before, hook_stable_before) = match prior_authority {
+    let (active_before, healthy_before, stable_before) = match prior_authority {
         Ok(authority) => authority,
         Err(error) => {
             let _ = std::fs::remove_file(&staged_pending);
@@ -475,34 +504,21 @@ where
         );
         phase_trace.pending_publication_micros = phase_started.elapsed().as_micros();
         let phase_started = std::time::Instant::now();
-        let commit = commit.and_then(|()| {
-            let result = publish_runtime_bundle_member_launcher(
-                target,
-                &resident_root.join("active").join(binary_name),
-                &event.publication_nonce,
-                binary_name,
-            );
-            phase_trace.client_launcher_switch_micros = phase_started.elapsed().as_micros();
-            result
-        });
-        let commit = commit.and_then(|()| {
-            if has_hook {
-                publish_runtime_bundle_member_launcher(
-                    &hook_stable_path,
-                    &resident_root.join("active/asp-hook"),
-                    &event.publication_nonce,
-                    "asp-hook",
-                )
-            } else {
-                Ok(())
-            }
-        });
         commit?;
+        // `active` is the single bundle selector, not a directory. Publish it
+        // before installing the stable launcher that resolves through
+        // `active/<binary>`. Reversing this order causes launcher preparation
+        // to create `active` as a directory and makes the slot CAS fail with
+        // EINVAL on its first symlink read.
         slots.publish_active_candidate_under_guard(&candidate_dir)?;
+        publish_runtime_bundle_member_launcher(
+            target,
+            &layout.active_slot().join(binary_name),
+            &event.publication_nonce,
+            binary_name,
+        )?;
+        phase_trace.client_launcher_switch_micros = phase_started.elapsed().as_micros();
         validate_runtime_bundle_launcher(target, &candidate_dir.join(binary_name))?;
-        if has_hook {
-            validate_runtime_bundle_launcher(&hook_stable_path, &candidate_dir.join("asp-hook"))?;
-        }
         Ok(())
     })();
     match transaction {
@@ -523,16 +539,7 @@ where
                     target,
                     stable_before.as_deref(),
                     &quiescence.lease.lease_nonce,
-                ))
-                .and(if has_hook {
-                    restore_runtime_artifact_symlink(
-                        &hook_stable_path,
-                        hook_stable_before.as_deref(),
-                        &quiescence.lease.lease_nonce,
-                    )
-                } else {
-                    Ok(())
-                });
+                ));
             quiescence.restore_after_failed_commit(&consumed_lease, &guard)?;
             drop(guard);
             discard_prepared_runtime_artifact(&prepared).await?;
@@ -541,11 +548,16 @@ where
             return Err(error);
         }
     }
-    let lock_elapsed_micros = lock_started.elapsed().as_micros();
     quiescence.finish_consumption(&consumed_lease, &guard)?;
+    let lock_elapsed_micros = lock_started.elapsed().as_micros();
     drop(guard);
-
-    notify_runtime_artifact_activation(state_home, &event_bytes).await;
+    prune_unreachable_runtime_artifacts(&artifact_root)
+        .await
+        .map_err(|error| {
+        format!(
+            "state=runtime-artifact-publication-committed reasonKind=runtime-state-retention-finalization-failed error={error}"
+        )
+    })?;
 
     Ok(RuntimeArtifactPublicationReceipt {
         path: target.to_path_buf(),
@@ -647,25 +659,10 @@ fn stage_runtime_bundle_launcher(candidate: &Path, staged: &Path) -> Result<(), 
         .map_err(|error| format!("stage Runtime client launcher: {error}"))
 }
 
-async fn notify_runtime_artifact_activation(state_home: &Path, event_bytes: &[u8]) {
-    #[cfg(unix)]
-    {
-        let Ok(socket) = tokio::net::UnixDatagram::unbound() else {
-            return;
-        };
-        let endpoint = runtime_artifact_activation_socket_path(state_home);
-        let _ = socket.send_to(event_bytes, &endpoint).await;
-    }
-    #[cfg(not(unix))]
-    {
-        let _ = (state_home, event_bytes);
-    }
-}
-
 #[cfg(test)]
 #[path = "../tests/unit/runtime_artifact_publication.rs"]
 mod tests;
 
 #[cfg(test)]
-#[path = "../tests/unit/runtime_artifact_activation_migration.rs"]
-mod activation_migration_tests;
+#[path = "../tests/unit/runtime_artifact_publication_retention.rs"]
+mod retention_tests;

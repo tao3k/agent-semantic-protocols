@@ -14,9 +14,19 @@ mod aot_session_route;
 mod hook_binary;
 #[cfg(feature = "evaluator")]
 mod no_agent_escape;
-
 #[cfg(feature = "evaluator")]
-pub use aot_evaluator_cli::evaluate_payload_from_embedded;
+mod search_subagent_output_contract;
+
+#[cfg(feature = "compiler")]
+pub use aot_evaluator_cli::AotHookEvaluationReceipt;
+#[cfg(feature = "evaluator")]
+pub use aot_evaluator_cli::evaluate_payload_from_serving_config;
+#[cfg(feature = "compiler")]
+pub use aot_evaluator_cli::evaluate_payload_with_policy_bundle;
+#[cfg(feature = "compiler")]
+pub use aot_evaluator_cli::evaluate_payload_with_policy_bundle_and_state_home;
+#[cfg(feature = "compiler")]
+pub use aot_evaluator_cli::evaluate_payload_with_policy_bundle_and_state_home_with_receipt;
 #[cfg(feature = "evaluator")]
 pub use aot_evaluator_cli::main_entry as run_aot_evaluator_cli;
 #[cfg(feature = "evaluator")]
@@ -206,13 +216,9 @@ pub use crate::active_artifact_receipt::materialize_active_asp_artifact_receipt;
 #[cfg(feature = "compiler")]
 pub use crate::active_artifact_receipt::verify_active_asp_artifact_receipt;
 #[cfg(feature = "compiler")]
-pub use classifier::DirectReadSourceKey;
-#[cfg(feature = "compiler")]
 pub use classifier::HOOK_TRIGGER_PROMPT_FILE_NAME;
 #[cfg(feature = "compiler")]
 pub use classifier::HookClassificationRequest;
-#[cfg(feature = "compiler")]
-pub use classifier::HookMatcherKeys;
 #[cfg(feature = "compiler")]
 pub use classifier::ShellCommandKey;
 #[cfg(feature = "compiler")]
@@ -223,12 +229,6 @@ pub use classifier::classify_hook;
 pub use classifier::classify_hook_with_config;
 #[cfg(feature = "compiler")]
 pub use classifier::default_hook_trigger_prompt_message;
-#[cfg(feature = "compiler")]
-pub use classifier::direct_read_source_extension;
-#[cfg(feature = "compiler")]
-pub use classifier::direct_read_source_key;
-#[cfg(feature = "compiler")]
-pub use classifier::hook_matcher_keys;
 #[cfg(feature = "compiler")]
 pub use classifier::hook_trigger_prompt_document;
 #[cfg(feature = "compiler")]
@@ -241,8 +241,6 @@ pub use classifier::merge_hook_trigger_prompt_document;
 pub use classifier::rebind_command_decision_to_payload;
 #[cfg(feature = "compiler")]
 pub use classifier::rebind_command_decision_to_payload_with_keys;
-#[cfg(feature = "compiler")]
-pub use classifier::rebind_direct_read_decision_to_payload;
 #[cfg(feature = "compiler")]
 pub use classifier::render_hook_trigger_prompt_document;
 #[cfg(feature = "compiler")]
@@ -289,6 +287,8 @@ pub use dev_context::record_active_context;
 pub use event_state::HookSessionAgentRoute;
 #[cfg(feature = "compiler")]
 pub use event_state::append_hook_event_state;
+#[cfg(feature = "compiler")]
+pub use event_state::append_reader_probe_event_state;
 #[cfg(feature = "compiler")]
 pub use event_state::apply_repeated_deny_replay;
 #[cfg(feature = "compiler")]

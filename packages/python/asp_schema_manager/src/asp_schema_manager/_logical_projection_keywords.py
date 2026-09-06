@@ -58,6 +58,7 @@ SUPPORTED_KEYWORDS = frozenset(
 ANNOTATION_KEYWORDS = frozenset(
     {
         "$comment",
+        "searchPlaybookContract",
         "contentEncoding",
         "contentMediaType",
         "contentSchema",

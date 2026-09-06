@@ -95,6 +95,18 @@ fn hook_break_glass_help_is_a_public_typed_command() {
 }
 
 #[test]
+fn hook_accept_host_help_requires_rollout_and_exact_hook_events() {
+    let mut command = help_model::selected_command(&owned_args(&["hook", "accept-host", "--help"]));
+    let help = command.render_long_help().to_string();
+    assert!(help.contains("--host-rollout"), "help={help}");
+    assert!(help.contains("--hook-events"), "help={help}");
+    assert!(help.contains("--host-probe-path"), "help={help}");
+
+    let mut hook = help_model::selected_command(&owned_args(&["hook", "--help"]));
+    assert!(hook.render_long_help().to_string().contains("refresh"));
+}
+
+#[test]
 fn install_plugin_path_selects_plugin_command() {
     assert_selected(
         &["install", "plugin", "--help"],
@@ -116,21 +128,31 @@ fn codex_plugin_help_is_global_and_never_defaults_to_the_current_directory() {
 }
 
 #[test]
-fn search_help_owns_tree_sitter_discovery() {
-    for args in [&["search", "--help"][..], &["rust", "search", "--help"][..]] {
-        let mut command = help_model::selected_command(&owned_args(args));
-        let help = command.render_help().to_string();
-
-        assert!(help.contains("--treesitter-query <QUERY>"), "help={help}");
-        assert!(
-            help.contains("workspace-wide structural reasoning search"),
-            "help={help}",
-        );
-        assert!(
-            help.contains("query with an exact --selector"),
-            "help={help}",
-        );
+fn search_playbook_help_owns_the_composed_root_contract() {
+    let mut command = help_model::selected_command(&owned_args(&["search", "playbook", "--help"]));
+    let help = command.render_help().to_string();
+    for token in [
+        "--languages",
+        "--documents",
+        "--fd",
+        "--rg",
+        "--tantivy",
+        "--syntax",
+        "--graph",
+    ] {
+        assert!(help.contains(token), "missing {token}: {help}");
     }
+
+    let mut language = help_model::selected_command(&owned_args(&["rust", "--help"]));
+    let language_help = language.render_help().to_string();
+    assert!(
+        !language_help.contains("search"),
+        "language-first Search leaked: {language_help}"
+    );
+    assert!(
+        !language_help.contains("query"),
+        "language-first Query leaked: {language_help}"
+    );
 }
 
 #[test]
@@ -152,8 +174,6 @@ fn language_leaf_path_selects_leaf_command() {
     for language in ["gerbil-scheme", "julia", "python", "rust", "typescript"] {
         for leaf in [
             "guide",
-            "search",
-            "query",
             "check",
             "cache",
             "info",
@@ -176,7 +196,7 @@ fn language_leaf_path_selects_leaf_command() {
 fn non_help_invocations_are_not_intercepted() {
     for parts in [
         &["install", "plugin", "--codex"][..],
-        &["rust", "search", "owner"][..],
+        &["search", "playbook", "--languages", "rust"][..],
         &["graph", "render", "--packet", "-"][..],
         &["rust", "search", "--", "--help"][..],
     ] {

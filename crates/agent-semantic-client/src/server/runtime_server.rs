@@ -157,12 +157,15 @@ async fn run_restart() -> Result<(), String> {
 
 async fn run_control_status() -> Result<(), String> {
     let state_home = state_home()?;
-    let endpoint_path =
-        agent_semantic_client_db::runtime_server_control::runtime_server_endpoint_path_async(
-            &state_home,
-        )
-        .await?;
-    let endpoint = read_endpoint(&endpoint_path).await?;
+    let (resident_transaction, endpoint) = agent_semantic_client_db::runtime_server_lifecycle::
+        observe_resident_transaction_with_endpoint(&state_home)
+        .await
+        .map_err(|error| {
+            format!(
+                "reasonKind=runtime-client-handoff-unavailable failureLayer=runtime-resident-transaction Runtime status requires a content-bound Host handoff: {error}"
+            )
+        })?;
+    let _runtime_handoff = crate::AspClientRuntimeHandoff::try_from(&resident_transaction)?;
     validate_runtime_server_service_publication(&endpoint).await?;
     let request_id = request_identity("control").await?;
     prewarm_runtime_server_status_memory(&endpoint).await?;
@@ -193,7 +196,7 @@ async fn run_start_inner() -> Result<(), String> {
     super::runtime_server_wire_adapter::ensure_healthy_runtime_server_for_activation_event(
         &state_home,
         &event,
-        None,
+        event.previous_artifact_digest.as_ref(),
     )
     .await?;
     Ok(())
@@ -228,12 +231,21 @@ async fn run_status() -> Result<(), String> {
 
 fn status_observation_failure(reason: &str) -> String {
     let lower = reason.to_ascii_lowercase();
-    let reason_kind = if lower.contains("operation not permitted") || lower.contains("os error 1") {
-        "transport-unavailable"
-    } else {
-        "runtime-status-observation-failed"
-    };
-    format!("state=blocked reasonKind={reason_kind} operation=status originalError={reason}")
+    let (reason_kind, failure_layer) =
+        if lower.contains("operation not permitted") || lower.contains("os error 1") {
+            (
+                "host-operation-not-permitted",
+                "runtime-verified-endpoint-transport",
+            )
+        } else {
+            (
+                "runtime-status-observation-failed",
+                "runtime-lifecycle-observation",
+            )
+        };
+    format!(
+        "state=blocked failureLayer={failure_layer} reasonKind={reason_kind} operation=status originalError={reason}"
+    )
 }
 
 pub(crate) async fn ensure_runtime_server_for_healthcheck(
@@ -328,11 +340,19 @@ pub(crate) async fn ensure_healthy_runtime_server_for_bounded_operation()
                 .to_owned(),
         );
     }
-    super::runtime_server_wire_adapter::ensure_healthy_runtime_server_for_client_recovery(
-        &state_home,
-        &event,
-    )
-    .await
+    let receipt =
+        super::runtime_server_wire_adapter::ensure_healthy_runtime_server_for_client_recovery(
+            &state_home,
+            &event,
+        )
+        .await?;
+    if receipt.resident_transaction.is_none() {
+        return Err(
+            "reasonKind=runtime-client-handoff-unavailable failureLayer=runtime-resident-transaction Runtime bootstrap returned Healthy without its resident transaction"
+                .to_owned(),
+        );
+    }
+    Ok(receipt)
 }
 
 pub(crate) fn state_home() -> Result<PathBuf, String> {
@@ -340,19 +360,19 @@ pub(crate) fn state_home() -> Result<PathBuf, String> {
 }
 
 pub(crate) fn runtime_server_telemetry_socket_path(state_home: &Path) -> Result<PathBuf, String> {
-    Ok(
-        agent_semantic_client_db::runtime_server_runtime_base(state_home)?
-            .join("opentelemetry.sock"),
-    )
+    Ok(agent_semantic_artifacts::StateHomeLayout::new(state_home)
+        .runtime_state()
+        .serving()
+        .opentelemetry_socket())
 }
 
 pub(crate) fn runtime_server_telemetry_query_socket_path(
     state_home: &Path,
 ) -> Result<PathBuf, String> {
-    Ok(
-        agent_semantic_client_db::runtime_server_runtime_base(state_home)?
-            .join("opentelemetry-query.sock"),
-    )
+    Ok(agent_semantic_artifacts::StateHomeLayout::new(state_home)
+        .runtime_state()
+        .serving()
+        .opentelemetry_query_socket())
 }
 
 async fn request_identity(seed: &str) -> Result<String, String> {
@@ -389,7 +409,6 @@ async fn os_entropy() -> Result<[u8; 32], String> {
         .map_err(|error| format!("failed to read OS entropy: {error}"))?;
     Ok(entropy)
 }
-use agent_semantic_client_db::runtime_server_control::read_endpoint;
 use agent_semantic_client_db::runtime_server_control::read_supervisor_endpoint;
 
 #[cfg(test)]

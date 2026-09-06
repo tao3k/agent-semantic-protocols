@@ -11,10 +11,15 @@ pub async fn publish_runtime_server_artifact(
     source: &Path,
     state_home: &Path,
 ) -> Result<String, String> {
+    let artifact_root = agent_semantic_artifacts::RuntimeArtifactStateLayout::new(state_home)
+        .root()
+        .to_path_buf();
     let installed = install_protocol_binary_target(
         source,
-        &state_home.join("runtime/bin/asp"),
-        &state_home.join("runtime/artifacts"),
+        &agent_semantic_artifacts::RuntimeArtifactStateLayout::new(state_home)
+            .active_slot()
+            .join("asp"),
+        &artifact_root,
         &RuntimeBinaryIdentityV1::asp_bootstrap(),
     )
     .await?;
@@ -23,7 +28,11 @@ pub async fn publish_runtime_server_artifact(
 
 /// Returns the identity of the published Runtime Server artifact without reading its bytes.
 pub fn published_runtime_server_artifact_digest(state_home: &Path) -> Option<String> {
-    protocol_binary_artifact_path_digest(&state_home.join("runtime/bin/asp"))
+    protocol_binary_artifact_path_digest(
+        &agent_semantic_artifacts::RuntimeArtifactStateLayout::new(state_home)
+            .active_slot()
+            .join("asp"),
+    )
 }
 
 use protocol_binary_identity::is_digest_addressed_protocol_binary;

@@ -90,7 +90,7 @@
     "decision": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["chosenPath", "explanation", "residualUncertainty", "nextCommand", "selectors", "ownerPaths"],
+      "required": ["chosenPath", "explanation", "residualUncertainty", "selectors", "ownerPaths"],
       "properties": {
         "chosenPath": {"type": "string", "minLength": 1},
         "explanation": {"type": "string", "minLength": 1},
@@ -98,10 +98,6 @@
           "type": "array",
           "uniqueItems": true,
           "items": {"type": "string", "minLength": 1}
-        },
-        "nextCommand": {
-          "type": ["string", "null"],
-      "pattern": "^(?:asp\\s+search\\s+playbook|asp\\s+[^\\s]+\\s+(?:search\\s+playbook|query))\\b(?!.*<[^>]+>).*$"
         },
         "selectors": {
           "type": "array",

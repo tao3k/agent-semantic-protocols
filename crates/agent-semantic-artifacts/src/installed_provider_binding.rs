@@ -1,4 +1,4 @@
-//! Immutable V1 binding between a binary provider catalog and installed artifacts.
+//! Immutable V1 binding for the installed provider execution closure.
 
 use std::collections::BTreeSet;
 use std::path::Path;
@@ -31,7 +31,6 @@ pub struct InstalledProviderBinding {
     pub schema_id: String,
     pub schema_version: String,
     pub generation: String,
-    pub binary_catalog_digest: String,
     pub provider_registration_digest: String,
     pub hook_policy_digest: String,
     pub providers: Vec<InstalledProviderArtifactIdentity>,
@@ -39,7 +38,6 @@ pub struct InstalledProviderBinding {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct InstalledProviderBindingInput {
-    pub binary_catalog_digest: String,
     pub provider_registration_digest: String,
     pub hook_policy_digest: String,
     pub providers: Vec<InstalledProviderArtifactIdentity>,
@@ -105,7 +103,9 @@ pub fn publish_installed_provider_binding(
     expected_generation: Option<&str>,
 ) -> Result<InstalledProviderBindingPublication, String> {
     let binding = InstalledProviderBinding::build(input)?;
-    let artifact_root = state_home.join("runtime/artifacts");
+    let artifact_root = crate::RuntimeArtifactStateLayout::new(state_home)
+        .root()
+        .to_path_buf();
     let _guard = crate::runtime_artifact_retention::RuntimeArtifactMutationGuard::try_acquire(
         &artifact_root,
     )?;
@@ -203,7 +203,6 @@ impl InstalledProviderBinding {
             schema_id: INSTALLED_PROVIDER_BINDING_SCHEMA_ID.to_owned(),
             schema_version: INSTALLED_PROVIDER_BINDING_SCHEMA_VERSION.to_owned(),
             generation: String::new(),
-            binary_catalog_digest: input.binary_catalog_digest,
             provider_registration_digest: input.provider_registration_digest,
             hook_policy_digest: input.hook_policy_digest,
             providers: input.providers,
@@ -220,7 +219,6 @@ impl InstalledProviderBinding {
             return Err("installed provider binding schema identity mismatch".to_owned());
         }
         for (field, digest) in [
-            ("binaryCatalogDigest", &self.binary_catalog_digest),
             (
                 "providerRegistrationDigest",
                 &self.provider_registration_digest,
@@ -261,13 +259,11 @@ impl InstalledProviderBinding {
         #[derive(Serialize)]
         #[serde(rename_all = "camelCase")]
         struct Identity<'a> {
-            binary_catalog_digest: &'a str,
             provider_registration_digest: &'a str,
             hook_policy_digest: &'a str,
             providers: &'a [InstalledProviderArtifactIdentity],
         }
         let bytes = serde_json::to_vec(&Identity {
-            binary_catalog_digest: &self.binary_catalog_digest,
             provider_registration_digest: &self.provider_registration_digest,
             hook_policy_digest: &self.hook_policy_digest,
             providers: &self.providers,
@@ -293,12 +289,12 @@ pub fn admit_installed_provider_artifact(
     })?;
     let authority_root =
         if crate::runtime_artifact_catalog::load_runtime_developer_root(state_home)?.is_some() {
-            state_home
-                .join("runtime/provider-artifacts")
+            crate::RuntimeArtifactStateLayout::new(state_home)
+                .provider_content_store()
                 .join(&identity.provider_id)
                 .join("artifacts")
         } else {
-            state_home.join("runtime/artifacts/blake3-256")
+            crate::RuntimeArtifactStateLayout::new(state_home).content_store()
         };
     let canonical_authority_root = std::fs::canonicalize(&authority_root).map_err(|error| {
         format!(

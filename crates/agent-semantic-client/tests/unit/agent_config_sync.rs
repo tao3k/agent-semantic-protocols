@@ -21,7 +21,7 @@ fn embedded_registry_sync_replaces_stale_state_catalog_without_project_agents_di
     let downstream_workspace = root.path().join("downstream-without-agent-config");
     std::fs::create_dir_all(&downstream_workspace).expect("downstream workspace fixture");
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_asp"))
-        .args(["agent", "config", "sync"])
+        .args(["config", "agents", "sync"])
         .current_dir(&downstream_workspace)
         .env("ASP_STATE_HOME", &state_home)
         .env("CODEX_HOME", &codex_home)

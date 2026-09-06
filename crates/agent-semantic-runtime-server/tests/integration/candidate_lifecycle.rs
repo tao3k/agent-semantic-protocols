@@ -36,7 +36,10 @@ fn launch_spec(program: &Path, args: Vec<String>, stderr: &Path) -> RuntimeProce
 
 #[tokio::test]
 async fn spawn_failure_is_typed_immediate_and_releases_artifact_mutation_lock() {
-    let temporary = tempfile::tempdir().expect("temporary candidate lifecycle");
+    let temporary = tempfile::Builder::new()
+        .prefix("asp-r-")
+        .tempdir_in("/tmp")
+        .expect("short candidate lifecycle fixture");
     let state_home = temporary.path().join("state");
     let artifact_root = state_home.join("runtime").join("artifacts");
     tokio::fs::create_dir_all(&artifact_root)
@@ -67,7 +70,10 @@ async fn spawn_failure_is_typed_immediate_and_releases_artifact_mutation_lock() 
 
 #[tokio::test]
 async fn child_exit_before_readiness_is_a_typed_terminal() {
-    let temporary = tempfile::tempdir().expect("temporary candidate lifecycle");
+    let temporary = tempfile::Builder::new()
+        .prefix("asp-r-")
+        .tempdir_in("/tmp")
+        .expect("short candidate lifecycle fixture");
     let state_home = temporary.path().join("state");
     tokio::fs::create_dir_all(&state_home)
         .await
@@ -92,7 +98,10 @@ async fn child_exit_before_readiness_is_a_typed_terminal() {
 
 #[tokio::test]
 async fn candidate_success_returns_typed_readiness_before_child_exit() {
-    let temporary = tempfile::tempdir().expect("temporary candidate lifecycle");
+    let temporary = tempfile::Builder::new()
+        .prefix("asp-r-")
+        .tempdir_in("/tmp")
+        .expect("short candidate lifecycle fixture");
     let state_home = temporary.path().join("state");
     tokio::fs::create_dir_all(&state_home)
         .await

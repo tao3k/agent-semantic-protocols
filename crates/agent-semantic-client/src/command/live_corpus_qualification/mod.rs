@@ -5,3 +5,4 @@ mod contract;
 mod runner;
 
 pub(super) use runner::run;
+pub(super) use runner::validate_args;

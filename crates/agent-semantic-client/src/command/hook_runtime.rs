@@ -41,11 +41,13 @@ async fn run(args: Vec<String>) -> Result<(), String> {
         Some("accept-host") => super::hook_host_acceptance::run_accept_host(&args[1..]),
         Some("doctor") => run_doctor(&args[1..]).await,
         Some("enablement") => hook_enablement_acceptance::run(&args[1..]).await,
+        Some("refresh") => super::install_provider::run_hook_refresh(&args[1..]).await,
         Some("install") => run_install(&args[1..]).await,
         Some("paths") => run_paths(&args[1..]),
-        _ => {
-            Err("usage: asp hook <accept-host|doctor|enablement|paths> --client codex".to_string())
-        }
+        _ => Err(
+            "usage: asp hook <accept-host|doctor|enablement|paths|refresh> --client codex"
+                .to_string(),
+        ),
     }
 }
 
@@ -106,6 +108,7 @@ fn positionals(args: &[String]) -> Vec<&str> {
                 | "--emit"
                 | "--host-probe-path"
                 | "--host-rollout"
+                | "--hook-events"
                 | "--host-sentinel"
                 | "--output"
                 | "--subagent-model"

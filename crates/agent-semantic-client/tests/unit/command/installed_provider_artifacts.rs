@@ -14,6 +14,7 @@ use super::generation;
 use super::integrity_ref;
 use super::load_authoritative_runtime_projection;
 use super::load_runtime_provider_artifacts;
+use super::provider_languages_for_generation_demand;
 use super::publish_current_installed_provider_artifacts;
 use super::runtime_source_index_provider_projection;
 use super::workspace_required_provider_languages_for_paths;
@@ -135,6 +136,21 @@ fn runtime_source_index_projection_is_derived_from_live_register() {
     .expect("workspace provider closure");
     assert_eq!(
         required,
+        std::collections::BTreeSet::from(["rust".to_owned()])
+    );
+    let targeted = provider_languages_for_generation_demand(
+        &closure_register,
+        &["Cargo.toml".to_owned(), "Project.toml".to_owned()],
+        Some(
+            &agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationProviderTarget {
+                language_id: "rust".to_owned(),
+                provider_id: Some("asp-rust".to_owned()),
+            },
+        ),
+    )
+    .expect("targeted provider closure");
+    assert_eq!(
+        targeted,
         std::collections::BTreeSet::from(["rust".to_owned()])
     );
     let incomplete_register =

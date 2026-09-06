@@ -144,18 +144,38 @@ fn northbound_client_requests_are_distinct_from_provider_runtime_requests() {
         schema_id: "agent.semantic-protocols.asp-client-workspace-search-playbook-request"
             .to_owned(),
         schema_version: "1".to_owned(),
-        language: None,
-        intent: "conceptual".to_owned(),
-        query: "RuntimeAspClient".to_owned(),
-        scope: "workspace".to_owned(),
-        coverage: "candidates".to_owned(),
-        max_owners: 100,
-        deadline_ms: 1_000,
-        explain: "compact".to_owned(),
+        languages: Some("rust".to_owned()),
+        documents: None,
+        workspace: None,
+        fd: None,
+        rg: None,
+        tantivy: None,
+        syntax: None,
+        graph: None,
+        clause_order: None,
     };
     workspace_playbook
         .validate_schema_identity()
         .expect("workspace playbook identity");
+
+    let syntax_query = crate::AspClientWorkspaceSyntaxQueryRequest {
+        schema_id: "agent.semantic-protocols.asp-client-workspace-syntax-query-request".to_owned(),
+        schema_version: "1".to_owned(),
+        languages: Some("rust|python".to_owned()),
+        documents: None,
+        workspace: None,
+        syntax: vec![crate::AspClientSearchPlaybookSyntaxBlock {
+            producer: "rust".to_owned(),
+            argv: vec![
+                "--treesitter-query".to_owned(),
+                "((identifier) @symbol)".to_owned(),
+            ],
+        }],
+        projection: "matches".to_owned(),
+    };
+    syntax_query
+        .validate_schema_identity()
+        .expect("workspace syntax Query identity");
 
     let source_index = crate::AspClientSourceIndexLookupRequest {
         schema_id: "agent.semantic-protocols.asp-client-source-index-lookup-request".to_owned(),
@@ -179,6 +199,82 @@ fn northbound_client_requests_are_distinct_from_provider_runtime_requests() {
     assert_ne!(
         search.schema_id,
         "agent.semantic-protocols.runtime-provider-search-request"
+    );
+}
+
+#[test]
+fn workspace_playbook_clause_order_is_priority_and_graph_barrier() {
+    use crate::{
+        AspClientSearchPlaybookClauseAxis as Axis, AspClientSearchPlaybookClauseRef as Clause,
+        AspClientSearchPlaybookGraphBlock,
+    };
+
+    let request = crate::AspClientWorkspaceSearchPlaybookRequest {
+        schema_id: "agent.semantic-protocols.asp-client-workspace-search-playbook-request"
+            .to_owned(),
+        schema_version: "1".to_owned(),
+        languages: Some("rust".to_owned()),
+        documents: None,
+        workspace: None,
+        fd: Some(vec![vec!["runtime|client".to_owned()]]),
+        rg: Some(vec![vec![
+            "-e".to_owned(),
+            "ClientFrame|Endpoint".to_owned(),
+        ]]),
+        tantivy: None,
+        syntax: None,
+        graph: Some(vec![AspClientSearchPlaybookGraphBlock {
+            language: "gql".to_owned(),
+            argv: vec!["MATCH (a:Owner)-[:CALLS]->(b:Item) RETURN a, b".to_owned()],
+        }]),
+        clause_order: Some(vec![
+            Clause {
+                axis: Axis::Rg,
+                block_index: 0,
+            },
+            Clause {
+                axis: Axis::Fd,
+                block_index: 0,
+            },
+            Clause {
+                axis: Axis::Graph,
+                block_index: 0,
+            },
+        ]),
+    };
+    request
+        .validate_schema_identity()
+        .expect("written acquisition priority followed by Graph is valid");
+
+    let mut acquisition_after_graph = request.clone();
+    acquisition_after_graph.clause_order = Some(vec![
+        Clause {
+            axis: Axis::Graph,
+            block_index: 0,
+        },
+        Clause {
+            axis: Axis::Rg,
+            block_index: 0,
+        },
+        Clause {
+            axis: Axis::Fd,
+            block_index: 0,
+        },
+    ]);
+    assert!(
+        acquisition_after_graph
+            .validate_schema_identity()
+            .unwrap_err()
+            .contains("precede Graph")
+    );
+
+    let mut missing_clause = request;
+    missing_clause.clause_order.as_mut().unwrap().remove(1);
+    assert!(
+        missing_clause
+            .validate_schema_identity()
+            .unwrap_err()
+            .contains("coverage is invalid")
     );
 }
 
@@ -278,7 +374,6 @@ fn exact_query_response_rejects_empty_ready_and_failure_is_a_distinct_terminal()
         reason_kind: "projection-missing".to_owned(),
         generation_digest: Some(format!("blake3-256:{}", "a".repeat(64))),
         root_digest: Some("b".repeat(64)),
-        recommended_next: serde_json::json!({"action": "query-owner-or-admitted-scope"}),
         resident_read_elapsed_micros: 7,
         service_elapsed_micros: 3,
         elapsed_micros: 10,

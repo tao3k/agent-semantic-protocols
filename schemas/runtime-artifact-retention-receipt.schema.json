@@ -28,6 +28,9 @@
     "scannedGenerationCount": { "type": "integer", "minimum": 0 },
     "retainedGenerationCount": { "type": "integer", "minimum": 0 },
     "removedGenerationCount": { "type": "integer", "minimum": 0 },
+    "scannedCandidateCount": { "type": "integer", "minimum": 0 },
+    "retainedCandidateCount": { "type": "integer", "minimum": 0 },
+    "removedCandidateCount": { "type": "integer", "minimum": 0 },
     "ignoredEntryCount": { "type": "integer", "minimum": 0 },
     "reclaimedBytes": { "type": "integer", "minimum": 0 },
     "protectedDigests": {

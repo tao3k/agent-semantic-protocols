@@ -37,6 +37,7 @@ impl FilesystemPermissionFact {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum SemanticCapabilityEvidence {
     HostMatcher,
+    ConfiguredCommandPattern,
     ReaderProbe,
     RegisteredSourceOperand,
     ShellRedirection,

@@ -87,4 +87,5 @@ pub use search_budget::SearchPacketSizeLimitBytes;
 pub use search_budget::SearchParallelismLimit;
 pub use search_budget::SearchParentVisibleSizeLimitBytes;
 pub use validation::chained_event_log_digest;
+pub mod agent_session_dispatch_disposition;
 pub mod agent_session_lifecycle;

@@ -77,6 +77,7 @@ const fn filesystem_permission_source_label(source: FilesystemPermissionSource) 
 const fn agent_action_kind_label(kind: AgentActionKind) -> &'static str {
     match kind {
         AgentActionKind::Read => "read",
+        AgentActionKind::Search => "search",
         AgentActionKind::Edit => "edit",
         AgentActionKind::Execute => "execute",
         AgentActionKind::Mcp => "mcp",
@@ -99,6 +100,7 @@ const fn host_invocation_kind_label(kind: HostInvocationKind) -> &'static str {
 const fn semantic_capability_evidence_label(evidence: SemanticCapabilityEvidence) -> &'static str {
     match evidence {
         SemanticCapabilityEvidence::HostMatcher => "host-matcher",
+        SemanticCapabilityEvidence::ConfiguredCommandPattern => "configured-command-pattern",
         SemanticCapabilityEvidence::ReaderProbe => "reader-probe",
         SemanticCapabilityEvidence::RegisteredSourceOperand => "registered-source-operand",
         SemanticCapabilityEvidence::ShellRedirection => "shell-redirection",

@@ -9,6 +9,13 @@ from dataclasses import dataclass, field
 from typing import Any, Mapping
 
 from .model import TypedGraph
+from .service_protocol import (
+    ServiceProtocolError,
+    required_digest,
+    required_string,
+    service_receipt,
+    validate_service_envelope,
+)
 
 
 MAX_RETAINED_GENERATIONS = 8
@@ -22,15 +29,6 @@ class RetainedGenerationGraph:
     root_digest: str
     artifact_digest: str
     graph: TypedGraph
-
-
-from .service_protocol import (
-    ServiceProtocolError,
-    required_digest,
-    required_string,
-    service_receipt,
-    validate_service_envelope,
-)
 
 
 @dataclass
@@ -328,6 +326,7 @@ class AspPythonGraphsSession:
         controls = {
             "entryNodeIds": list(payload["entryNodeIds"]),
             "budget": int(budget["maxResults"]),
+            "queryClauses": list(payload["queryClauses"]),
         }
         try:
             result = result_to_packet(
@@ -337,6 +336,9 @@ class AspPythonGraphsSession:
             raise ServiceProtocolError(
                 "resident-evaluation-failed", str(error)
             ) from error
+        candidate_node_ids = frozenset(payload["candidateNodeIds"])
+        if candidate_node_ids:
+            _project_candidate_nodes(result, candidate_node_ids)
         receipt = self._receipt(
             request_id,
             "completed",
@@ -487,8 +489,10 @@ def _validate_resident_evaluation_payload(payload: Mapping[str, Any]) -> None:
         "languageId",
         "surface",
         "queryTerms",
+        "queryClauses",
         "profile",
         "entryNodeIds",
+        "candidateNodeIds",
         "budget",
     }
     if set(payload) != required:
@@ -516,7 +520,7 @@ def _validate_resident_evaluation_payload(payload: Mapping[str, Any]) -> None:
         raise ServiceProtocolError(
             "invalid-resident-evaluation", "resident evaluation profile is unsupported"
         )
-    for key in ("queryTerms", "entryNodeIds"):
+    for key in ("queryTerms", "queryClauses", "entryNodeIds", "candidateNodeIds"):
         value = payload.get(key)
         if not isinstance(value, list) or any(
             not isinstance(item, str) or not item for item in value
@@ -528,6 +532,11 @@ def _validate_resident_evaluation_payload(payload: Mapping[str, Any]) -> None:
         raise ServiceProtocolError(
             "invalid-resident-evaluation",
             "resident evaluation requires queryTerms or entryNodeIds",
+        )
+    if not set(payload["candidateNodeIds"]).issubset(payload["entryNodeIds"]):
+        raise ServiceProtocolError(
+            "invalid-resident-evaluation",
+            "candidateNodeIds must be a subset of entryNodeIds",
         )
     budget = payload.get("budget")
     expected_budget = {"maxDepth", "maxNodes", "maxEdges", "maxResults"}
@@ -544,3 +553,44 @@ def _validate_resident_evaluation_payload(payload: Mapping[str, Any]) -> None:
         raise ServiceProtocolError(
             "invalid-resident-evaluation", "resident evaluation budget is invalid"
         )
+
+
+def _project_candidate_nodes(
+    result: dict[str, object], candidate_node_ids: frozenset[str]
+) -> None:
+    ranked_nodes = result.get("rankedNodes")
+    if not isinstance(ranked_nodes, list):
+        raise ServiceProtocolError(
+            "resident-evaluation-failed", "rankedNodes projection is absent"
+        )
+    projected = [
+        node
+        for node in ranked_nodes
+        if isinstance(node, Mapping) and node.get("id") in candidate_node_ids
+    ]
+    projected_ids = [str(node["id"]) for node in projected]
+    projected_id_set = frozenset(projected_ids)
+    result["rankedNodes"] = projected
+    result["rank"] = projected_ids
+    scores = result.get("scores")
+    if isinstance(scores, Mapping):
+        result["scores"] = {
+            node_id: score
+            for node_id, score in scores.items()
+            if node_id in projected_id_set
+        }
+    explanations = result.get("rankExplanations")
+    if isinstance(explanations, list):
+        result["rankExplanations"] = [
+            explanation
+            for explanation in explanations
+            if isinstance(explanation, Mapping)
+            and explanation.get("nodeId") in projected_id_set
+        ]
+    frontier = result.get("frontier")
+    if isinstance(frontier, list):
+        result["frontier"] = [
+            entry
+            for entry in frontier
+            if isinstance(entry, Mapping) and entry.get("nodeId") in projected_id_set
+        ]

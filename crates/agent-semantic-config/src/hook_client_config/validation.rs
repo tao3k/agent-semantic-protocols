@@ -35,7 +35,7 @@ pub(super) fn validate_config(config: &HookClientConfigFile) -> Result<(), Strin
     validate_rule_profile_references(&config.rules, &config.profiles, &config.provider_routes)?;
     validate_command_profiles(&config.command_profiles)?;
     validate_command_sets(&config.command_sets)?;
-    validate_reader_behavior_patterns(&config.reader_behavior_patterns)?;
+    validate_command_action_patterns(&config.command_action_patterns)?;
     validate_capability_policies(&config.capability_policies)?;
     validate_rule_dispatches(&config.rules)?;
     validate_unique_rule_ids(&config.rules)?;
@@ -47,32 +47,51 @@ pub(super) fn validate_config(config: &HookClientConfigFile) -> Result<(), Strin
     )
 }
 
-fn validate_reader_behavior_patterns(patterns: &[Vec<String>]) -> Result<(), String> {
+fn validate_command_action_patterns(
+    families: &[super::document::HookClientCommandActionPatternConfig],
+) -> Result<(), String> {
     let mut unique = HashSet::new();
-    for (index, pattern) in patterns.iter().enumerate() {
-        if pattern.is_empty() {
+    for (family_index, family) in families.iter().enumerate() {
+        if !matches!(
+            family.action,
+            super::routing::HookClientActionKind::Read
+                | super::routing::HookClientActionKind::Search
+        ) {
             return Err(format!(
-                "readerBehaviorPatterns[{index}] must contain an executable basename"
+                "commandActionPatterns[{family_index}].action must be read or search"
             ));
         }
-        validate_non_empty_values("readerBehaviorPatterns[][]", pattern)?;
-        let executable = &pattern[0];
-        if executable.contains('/') || executable == "." || executable == ".." {
+        if family.argv_pattern_any.is_empty() {
             return Err(format!(
-                "readerBehaviorPatterns[{index}][0] must be an executable basename"
+                "commandActionPatterns[{family_index}].argvPatternAny must not be empty"
             ));
         }
-        for token_glob in pattern.iter().skip(1) {
-            globset::Glob::new(token_glob).map_err(|error| {
+        for (pattern_index, pattern) in family.argv_pattern_any.iter().enumerate() {
+            if pattern.is_empty() {
+                return Err(format!(
+                    "commandActionPatterns[{family_index}].argvPatternAny[{pattern_index}] must contain an executable basename"
+                ));
+            }
+            validate_non_empty_values("commandActionPatterns[].argvPatternAny[]", pattern)?;
+            let executable = &pattern[0];
+            if executable.contains('/') || executable == "." || executable == ".." {
+                return Err(format!(
+                    "commandActionPatterns[{family_index}].argvPatternAny[{pattern_index}][0] must be an executable basename"
+                ));
+            }
+            for token_glob in pattern.iter().skip(1) {
+                globset::Glob::new(token_glob).map_err(|error| {
                 format!(
-                    "readerBehaviorPatterns[{index}] contains invalid argv glob `{token_glob}`: {error}"
+                    "commandActionPatterns[{family_index}].argvPatternAny[{pattern_index}] contains invalid argv glob `{token_glob}`: {error}"
                 )
             })?;
-        }
-        if !unique.insert(pattern) {
-            return Err(format!(
-                "readerBehaviorPatterns contains duplicate pattern {pattern:?}"
-            ));
+            }
+            if !unique.insert((family.action, pattern)) {
+                return Err(format!(
+                    "commandActionPatterns contains duplicate action/pattern {:?}/{pattern:?}",
+                    family.action
+                ));
+            }
         }
     }
     Ok(())

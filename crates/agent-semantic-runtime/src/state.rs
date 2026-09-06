@@ -85,7 +85,11 @@ fn project_state_paths_from_resolved(
     let client_db_path = resolved.paths.client_db_path.clone();
     let artifacts_dir = resolved.paths.artifacts_dir.clone();
     let runtime_home = protocol_home.join("runtime");
-    let runtime_bin_dir = runtime_home.join("bin");
+    let state_home = runtime_home
+        .parent()
+        .expect("Runtime State Home layout always has a parent");
+    let runtime_bin_dir =
+        agent_semantic_artifacts::RuntimeArtifactStateLayout::new(state_home).active_slot();
     let provider_lock_dir = provider_receipt_dir(&protocol_home);
 
     ProjectStatePaths {

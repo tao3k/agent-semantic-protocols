@@ -143,7 +143,7 @@ fn default_template_round_trips_through_config_parser() {
             .argv_prefix_any
             .contains(&vec!["git".to_owned(), "grep".to_owned()])
     );
-    assert_eq!(config.rules.len(), 18);
+    assert_eq!(config.rules.len(), 21);
     assert_eq!(
         config
             .rules
@@ -165,6 +165,9 @@ fn default_template_round_trips_through_config_parser() {
             "gerbil-build-role-dispatch",
             "deny-agent-search-json",
             "route-read-to-asp-languages",
+            "deny-shell-search-before-execution",
+            "route-org-document-read-to-asp-explorer",
+            "route-markdown-document-read-to-asp-explorer",
             "route-shell-structured-document-read",
             "allow-bounded-json-projection",
             "allow-bounded-toml-projection",
@@ -367,7 +370,7 @@ fn template_routes_dynamic_wrapped_read_through_declared_action() {
         .iter()
         .find(|rule| rule.id == "route-read-to-asp-languages")
         .expect("confirmed Bash Read route");
-    assert!(read_route.matcher.is_none());
+    assert_eq!(read_route.matcher.as_deref(), Some("Bash"));
     assert!(read_route.matcher_policies.is_empty());
     assert_eq!(
         read_route.actions,

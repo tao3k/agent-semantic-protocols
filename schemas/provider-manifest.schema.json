@@ -85,6 +85,9 @@
     "queryPackDescriptor": {
       "$ref": "https://schemas.agent-semantic-protocols.dev/provider-query-pack-descriptor.schema.json"
     },
+    "searchPlaybookContract": {
+      "$ref": "https://schemas.agent-semantic-protocols.dev/provider-search-playbook-contract.schema.json"
+    },
     "policy": {
       "$ref": "#/$defs/hookPolicy"
     },

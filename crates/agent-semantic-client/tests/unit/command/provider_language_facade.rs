@@ -8,12 +8,55 @@ fn workspace_root() -> PathBuf {
         .expect("canonical workspace root")
 }
 
+fn assert_runtime_activation_missing(output: &std::process::Output, operation: &str) {
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        !output.status.success(),
+        "{operation} unexpectedly succeeded: {text}"
+    );
+    assert!(
+        text.contains("state=runtime-server-client-bootstrap-failed")
+            && text.contains("reasonKind=activation-event-missing"),
+        "{operation} did not reach the isolated Runtime authority: {text}"
+    );
+    assert!(
+        !text.contains("language-first")
+            && !text.contains("provider command must be admitted as a Runtime Server route"),
+        "{operation} was rejected before Runtime admission: {text}"
+    );
+}
+
+fn assert_runtime_transport_missing(output: &std::process::Output, operation: &str) {
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        !output.status.success(),
+        "{operation} unexpectedly succeeded: {text}"
+    );
+    assert!(
+        text.contains("\"failureLayer\":\"runtime-transport-capability\"")
+            && text.contains("\"reasonKind\":\"transport-unavailable\""),
+        "{operation} did not fail at the Host transport boundary: {text}"
+    );
+    assert!(
+        !text.contains("language-first")
+            && !text.contains("provider command must be admitted as a Runtime Server route"),
+        "{operation} was rejected before Runtime transport admission: {text}"
+    );
+}
+
 #[test]
 fn structural_item_source_query_does_not_use_cli_breaker() {
     let state_home = tempfile::tempdir().expect("isolated Runtime State Home");
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_asp"))
         .args([
-            "rust",
             "query",
             "--selector",
             "rust://crates/agent-semantic-client/src/command/provider_dispatch.rs#item/function/run_language_command",
@@ -28,21 +71,7 @@ fn structural_item_source_query_does_not_use_cli_breaker() {
         .output()
         .expect("run public exact-query facade");
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        output.status.success(),
-        "public exact query failed: stdout={stdout} stderr={stderr}"
-    );
-    assert!(
-        !stderr.contains("provider command must be admitted as a Runtime Server route"),
-        "public query must cross Runtime admission instead of the removed CLI breaker: {stderr}"
-    );
-    assert!(stderr.is_empty(), "unexpected stderr: {stderr}");
-    assert!(
-        stdout.contains("\"reasonKind\":\"runtime-server-activation-unavailable\""),
-        "public query must stop at the exact isolated Runtime authority terminal: {stdout}"
-    );
+    assert_runtime_activation_missing(&output, "public exact query");
 }
 
 #[test]
@@ -50,10 +79,9 @@ fn gerbil_owner_source_query_enters_runtime_instead_of_the_cli_breaker() {
     let state_home = tempfile::tempdir().expect("isolated Runtime State Home");
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_asp"))
         .args([
-            "gerbil-scheme",
             "query",
             "--selector",
-            "scheme/reasoning/core.ss",
+            "gerbil-scheme://scheme/reasoning/core.ss#item/function/missing",
             "--workspace",
             ".",
             "--projection",
@@ -65,33 +93,19 @@ fn gerbil_owner_source_query_enters_runtime_instead_of_the_cli_breaker() {
         .output()
         .expect("run public Gerbil owner-source query");
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        output.status.success(),
-        "Gerbil owner-source query failed: stdout={stdout} stderr={stderr}"
-    );
-    assert!(
-        !stderr.contains("provider command must be admitted as a Runtime Server route"),
-        "Gerbil owner query was rejected before Runtime admission: {stderr}"
-    );
-    assert!(stderr.is_empty(), "unexpected stderr: {stderr}");
-    assert!(
-        stdout.contains("\"reasonKind\":\"runtime-server-activation-unavailable\""),
-        "owner query must stop at the isolated Runtime authority: {stdout}"
-    );
+    assert_runtime_activation_missing(&output, "Gerbil exact query");
 }
 
 #[test]
-fn public_search_facades_use_runtime_admission_for_registered_languages() {
+fn search_playbook_uses_runtime_admission_for_registered_languages() {
     for language_id in ["rust", "python", "gerbil-scheme"] {
         let state_home = tempfile::tempdir().expect("isolated Runtime State Home");
         let output = Command::new(env!("CARGO_BIN_EXE_asp"))
             .args([
-                language_id,
                 "search",
-                "pipe",
-                "RuntimeAspClient",
+                "playbook",
+                "--languages",
+                language_id,
                 "--workspace",
                 ".",
             ])
@@ -99,21 +113,7 @@ fn public_search_facades_use_runtime_admission_for_registered_languages() {
             .env("ASP_STATE_HOME", state_home.path())
             .output()
             .unwrap_or_else(|error| panic!("run public {language_id} search facade: {error}"));
-        assert!(output.status.success());
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        assert!(
-            !stderr.contains("provider command must be admitted as a Runtime Server route"),
-            "public {language_id} search must cross Runtime admission: {stderr}"
-        );
-        assert!(
-            stderr.is_empty(),
-            "unexpected {language_id} stderr: {stderr}"
-        );
-        assert!(
-            stdout.contains("\"reasonKind\":\"runtime-server-activation-unavailable\""),
-            "public {language_id} search must stop at the exact isolated Runtime authority terminal: {stdout}"
-        );
+        assert_runtime_transport_missing(&output, &format!("{language_id} Search Playbook"));
     }
 }
 
@@ -122,7 +122,6 @@ fn structural_item_source_query_requires_current_runtime_authority_before_provid
     let state_home = tempfile::tempdir().expect("isolated Runtime State Home");
     let output = Command::new(env!("CARGO_BIN_EXE_asp"))
         .args([
-            "typescript",
             "query",
             "--selector",
             "typescript://languages/asp-typescript/src/cli/semantic-search/item-query.ts#item/function/renderOwnerItemQuery",
@@ -136,14 +135,7 @@ fn structural_item_source_query_requires_current_runtime_authority_before_provid
         .output()
         .expect("run asp structural item query");
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(output.status.success(), "stderr={stderr}");
-    assert!(stderr.is_empty(), "unexpected stderr: {stderr}");
-    assert!(
-        stdout.contains("\"reasonKind\":\"runtime-server-activation-unavailable\""),
-        "stdout={stdout}"
-    );
+    assert_runtime_activation_missing(&output, "TypeScript exact query");
 }
 
 #[test]
@@ -152,7 +144,6 @@ fn exact_structural_selector_does_not_require_a_term() {
     let selector = "typescript://languages/asp-typescript/src/cli/semantic-search/item-query.ts#item/function/renderOwnerItemQuery";
     let output = Command::new(env!("CARGO_BIN_EXE_asp"))
         .args([
-            "typescript",
             "query",
             "--selector",
             selector,
@@ -166,17 +157,7 @@ fn exact_structural_selector_does_not_require_a_term() {
         .output()
         .expect("run exact structural selector query");
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(output.status.success(), "stderr={stderr}");
-    assert!(
-        !stderr.contains("query requires at least one --term"),
-        "stderr={stderr}"
-    );
-    assert!(
-        stdout.contains("\"reasonKind\":\"runtime-server-activation-unavailable\""),
-        "stdout={stdout}"
-    );
+    assert_runtime_activation_missing(&output, "term-free exact query");
 }
 
 #[test]
@@ -184,7 +165,6 @@ fn removed_exact_query_flags_are_rejected_by_cli_admission() {
     for removed_flag in ["--code", "--names-only"] {
         let output = Command::new(env!("CARGO_BIN_EXE_asp"))
             .args([
-                "typescript",
                 "query",
                 "--selector",
                 "typescript://languages/asp-typescript/src/cli/semantic-search/item-query.ts#item/function/renderOwnerItemQuery",
@@ -199,7 +179,7 @@ fn removed_exact_query_flags_are_rejected_by_cli_admission() {
         assert!(!output.status.success(), "{removed_flag} was admitted");
         let stderr = String::from_utf8_lossy(&output.stderr);
         assert!(
-            stderr.contains("unexpected argument"),
+            stderr.contains("query does not support option"),
             "removed flag did not use ordinary CLI rejection: flag={removed_flag} stderr={stderr}"
         );
         assert!(
@@ -213,14 +193,13 @@ fn removed_exact_query_flags_are_rejected_by_cli_admission() {
 fn document_exact_selector_crosses_the_language_neutral_owner_boundary() {
     let output = Command::new(env!("CARGO_BIN_EXE_asp"))
         .args([
-            "org",
             "query",
             "--selector",
             "org://docs/missing.org#item/heading/missing",
             "--workspace",
             ".",
             "--projection",
-            "content",
+            "source",
         ])
         .current_dir(workspace_root())
         .output()
@@ -238,7 +217,7 @@ fn document_exact_selector_crosses_the_language_neutral_owner_boundary() {
 }
 
 #[test]
-fn language_query_never_claims_runtime_lifecycle_authority_even_with_hook_escape_present() {
+fn language_query_reports_missing_activation_through_client_bootstrap() {
     let temporary = tempfile::tempdir().expect("isolated client State Home");
     let project_root = temporary.path().join("workspace");
     std::fs::create_dir_all(&project_root).expect("create fixture workspace");
@@ -252,7 +231,6 @@ fn language_query_never_claims_runtime_lifecycle_authority_even_with_hook_escape
         .env("HOME", temporary.path())
         .current_dir(&project_root)
         .args([
-            "rust",
             "query",
             "--selector",
             "rust://src/lib.rs#item/function/missing",
@@ -271,16 +249,15 @@ fn language_query_never_claims_runtime_lifecycle_authority_even_with_hook_escape
     );
     assert!(!output.status.success());
     assert!(
-        output_text.contains("ASP Server endpoint is unavailable"),
-        "unexpected transport terminal: {output_text}"
+        output_text.contains("state=runtime-server-client-bootstrap-failed"),
+        "language query must report the lifecycle acquisition terminal: {output_text}"
     );
-    assert!(output_text.contains("\"reasonKind\":\"transport-unavailable\""));
-    assert!(!output_text.contains("runtime-server-activation"));
+    assert!(output_text.contains("reasonKind=activation-event-missing"));
     assert!(
         !temporary
             .path()
             .join(".agent-semantic-protocols/runtime/server/owner-spawn.v1.json")
             .exists(),
-        "a language client must not claim Runtime lifecycle ownership"
+        "client bootstrap must not fabricate an owner without an activation"
     );
 }

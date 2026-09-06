@@ -4,8 +4,6 @@ use std::io::ErrorKind;
 use std::path::Path;
 use std::path::PathBuf;
 
-use crate::runtime_provider_catalog::RuntimeProviderCatalogIdentity;
-use crate::runtime_provider_catalog::load_runtime_provider_catalog_identity;
 pub fn runtime_artifact_source_generation(source_path: &Path) -> Result<String, String> {
     let source_path = std::fs::canonicalize(source_path).map_err(|error| {
         format!(
@@ -109,8 +107,8 @@ impl QualifiedRuntimeArtifactSource {
                 source.display()
             )
         })?;
-        let staging_root = state_home
-            .join("runtime/provider-artifacts")
+        let staging_root = crate::RuntimeArtifactStateLayout::new(state_home)
+            .provider_content_store()
             .join(artifact_kind)
             .join("artifacts");
         if !source_identity.starts_with(&staging_root) {
@@ -234,7 +232,6 @@ impl RuntimeArtifactReference {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RuntimeArtifactCatalog {
     mode: RuntimeArtifactMode,
-    provider_catalog_generation: Option<String>,
     installed_provider_binding_generation: Option<String>,
     installed_provider_targets: Vec<(String, String)>,
 }
@@ -300,22 +297,9 @@ impl RuntimeArtifactCatalog {
     pub const fn new(mode: RuntimeArtifactMode) -> Self {
         Self {
             mode,
-            provider_catalog_generation: None,
             installed_provider_binding_generation: None,
             installed_provider_targets: Vec::new(),
         }
-    }
-
-    /// Bind the immutable provider catalog consumed by this daemon process.
-    #[must_use]
-    pub fn with_provider_catalog_generation(mut self, generation: impl Into<String>) -> Self {
-        self.provider_catalog_generation = Some(generation.into());
-        self
-    }
-
-    #[must_use]
-    pub fn provider_catalog_generation(&self) -> Option<&str> {
-        self.provider_catalog_generation.as_deref()
     }
 
     /// Bind the verified installed-provider closure consumed by this daemon.
@@ -363,10 +347,6 @@ impl RuntimeArtifactCatalog {
         if let RuntimeArtifactMode::Dev { root } = &self.mode {
             hasher.update(b"\0");
             hasher.update(root.to_string_lossy().as_bytes());
-        }
-        if let Some(generation) = &self.provider_catalog_generation {
-            hasher.update(b"\0provider-catalog\0");
-            hasher.update(generation.as_bytes());
         }
         if let Some(generation) = &self.installed_provider_binding_generation {
             hasher.update(b"\0installed-provider-binding\0");
@@ -479,46 +459,9 @@ pub async fn load_runtime_artifact_catalog(
         }
         RuntimeArtifactMode::Release => RuntimeArtifactMode::Release,
     };
-    let provider_catalog_path = state_home.join("runtime/provider-catalog.v1.json");
-    let provider_catalog = match tokio::fs::read(&provider_catalog_path).await {
-        Ok(bytes) => {
-            let identity: RuntimeProviderCatalogIdentity =
-                serde_json::from_slice(&bytes).map_err(|error| {
-                    format!(
-                        "parse runtime provider catalog identity {}: {error}",
-                        provider_catalog_path.display()
-                    )
-                })?;
-            identity.validate()?;
-            Some(identity.catalog_generation)
-        }
-        Err(error) if error.kind() == ErrorKind::NotFound => None,
-        Err(error) => {
-            return Err(format!(
-                "read runtime provider catalog identity {}: {error}",
-                provider_catalog_path.display()
-            ));
-        }
-    };
     let installed_binding =
         crate::installed_provider_binding::load_installed_provider_binding(state_home)?;
-    if let Some(binding) = &installed_binding {
-        let identity = load_runtime_provider_catalog_identity(state_home)?.ok_or_else(|| {
-            "installed provider binding requires runtime provider catalog identity".to_owned()
-        })?;
-        if binding.binary_catalog_digest != identity.catalog_generation
-            || binding.provider_registration_digest != identity.install_registry_digest
-        {
-            return Err(
-                "installed provider binding drifts from runtime provider catalog".to_owned(),
-            );
-        }
-    }
     let catalog = RuntimeArtifactCatalog::new(mode);
-    let catalog = match provider_catalog {
-        Some(generation) => catalog.with_provider_catalog_generation(generation),
-        None => catalog,
-    };
     Ok(match installed_binding {
         Some(binding) => {
             let targets = binding

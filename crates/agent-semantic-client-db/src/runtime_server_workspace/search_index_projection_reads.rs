@@ -5,6 +5,8 @@ use std::sync::Arc;
 
 use super::{SearchOwnerRecord, WorkspaceSearchGenerationDataPlaneClient};
 
+const MAX_COLD_LEXICAL_CANDIDATES: u32 = 4096;
+
 impl WorkspaceSearchGenerationDataPlaneClient {
     pub fn read_source_index(
         &self,
@@ -117,11 +119,7 @@ impl WorkspaceSearchGenerationDataPlaneClient {
         authority: Option<&agent_semantic_search::ResidentSearchAuthority>,
         limit: u32,
     ) -> Result<Arc<agent_semantic_search_projection::ResidentSearchReadyResult>, String> {
-        if query.trim().is_empty() || !(1..=100).contains(&limit) {
-            return Err(
-                "cold resident search requires a non-empty query and limit in 1..=100".to_owned(),
-            );
-        }
+        validate_cold_lexical_request(query, limit)?;
         if admitted_owner_paths.is_none()
             && let Some(Ok(accelerator)) = self.lexical_accelerator.get()
         {
@@ -481,5 +479,26 @@ impl WorkspaceSearchGenerationDataPlaneClient {
             self.authority.generation_digest.clone(),
             relations,
         )
+    }
+}
+
+fn validate_cold_lexical_request(query: &str, limit: u32) -> Result<(), String> {
+    if query.trim().is_empty() || !(1..=MAX_COLD_LEXICAL_CANDIDATES).contains(&limit) {
+        return Err(
+            "cold resident search requires a non-empty query and limit in 1..=4096".to_owned(),
+        );
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::validate_cold_lexical_request;
+
+    #[test]
+    fn progressive_acquisition_accepts_4096_candidates_but_rejects_larger_requests() {
+        assert!(validate_cold_lexical_request("runtime|query", 4096).is_ok());
+        assert!(validate_cold_lexical_request("runtime|query", 4097).is_err());
+        assert!(validate_cold_lexical_request(" ", 30).is_err());
     }
 }

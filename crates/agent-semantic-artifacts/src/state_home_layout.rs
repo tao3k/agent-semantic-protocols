@@ -6,6 +6,7 @@ use std::path::PathBuf;
 use serde::Deserialize;
 use serde::Serialize;
 
+use crate::RuntimeStateLayout;
 use crate::WorkspaceIdentity;
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -15,7 +16,7 @@ pub struct StateHomeLayout {
     pub catalog: PathBuf,
     pub workspaces: PathBuf,
     pub blobs: PathBuf,
-    pub runtime: PathBuf,
+    runtime: PathBuf,
     pub receipts: PathBuf,
     pub trash: PathBuf,
 }
@@ -59,5 +60,9 @@ impl StateHomeLayout {
             observations: root.join("observations"),
             root,
         })
+    }
+
+    pub fn runtime_state(&self) -> RuntimeStateLayout {
+        RuntimeStateLayout::new(&self.root)
     }
 }

@@ -26,7 +26,8 @@
         "probe-call-missing",
         "source-bytes-leaked",
         "hook-event-missing",
-        "hook-deny-missing"
+        "hook-deny-missing",
+        "hook-deny-publication-identity-missing"
       ]
     },
     "pluginLoaded": { "type": "boolean" },

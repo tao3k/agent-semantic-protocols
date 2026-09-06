@@ -30,9 +30,10 @@ fn configured_message_binds_language_and_appends_executable_provider_route() {
             kind: DecisionRouteKind::Playbook,
             argv: vec![
                 "asp".to_owned(),
-                "rust".to_owned(),
                 "search".to_owned(),
                 "playbook".to_owned(),
+                "--language".to_owned(),
+                "rust".to_owned(),
                 "source structure".to_owned(),
                 "--scope".to_owned(),
                 "owner:src/a file.rs".to_owned(),
@@ -66,12 +67,6 @@ fn materialized_decision_shards_keep_denials_guided_and_role_only() {
     let shards = agent_semantic_hook::ClientHookConfig::default()
         .materialized_decision_shards()
         .expect("materialize default Hook decision shards");
-
-    for (_extension, bytes) in shards.direct_read {
-        let decision = HookDecision::from_compact_binary(&bytes)
-            .expect("decode materialized direct-read decision");
-        assert_guided_role_only_deny(&decision);
-    }
 
     let mut table_count = 0usize;
     for (_extension, table) in shards.shell_read {

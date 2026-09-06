@@ -203,6 +203,40 @@ fn generation_graph_is_query_independent_and_deterministic() {
 }
 
 #[test]
+fn graph_labels_resolve_directly_to_bounded_node_kinds() {
+    let root = "a".repeat(64);
+    let snapshot =
+        SourceSnapshotEvidence::new(root.clone(), SourceSnapshotKind::Filesystem, 2, "provider");
+    let generation = WorkspaceGenerationEvidenceV1 {
+        root_digest: root,
+        root_depth: 1,
+        leaf_count: 2,
+        owner_count: 2,
+    };
+    let graph = materialize_resident_graph_generation(
+        &snapshot,
+        &generation,
+        ["src/a.rs".to_owned(), "src/z.rs".to_owned()],
+        [relation("src/a.rs")],
+    )
+    .expect("generation graph");
+
+    let (owners, truncated) = graph.node_ids_for_kind("Owner", 1);
+    assert_eq!(owners, [stable_graph_node_id("owner", "src/a.rs")]);
+    assert!(truncated);
+
+    let (items, truncated) = graph.node_ids_for_kind("ITEM", 8);
+    assert_eq!(
+        items,
+        [stable_graph_node_id(
+            "item",
+            "WorkspaceGenerationAdmission::compare"
+        )]
+    );
+    assert!(!truncated);
+}
+
+#[test]
 fn generation_graph_rejects_a_relation_to_an_unadmitted_owner() {
     let root = "a".repeat(64);
     let snapshot =

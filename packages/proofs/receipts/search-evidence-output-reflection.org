@@ -1,0 +1,209 @@
+#+TITLE: Search Evidence Output Reflection - Adversarial Review
+#+LANGUAGE: en
+#+DATE: 2026-09-05
+#+AUTHOR: ASP Maintainers
+#+FILETAGS: :asp:proof:reflection:receipt:
+
+:PROPERTIES:
+:CONTRACT_ORG: [[../../../org/contracts/basic.template.v1.org][basic.template.v1]]
+:CONTRACT_ORG: [[../../../org/contracts/agent.adversarial-review.v1.org][agent.adversarial-review.v1]]
+:END:
+
+* Adversarial Review
+:PROPERTIES:
+:REVIEW_SUBJECT: RFC 10.06.14 Search Evidence Output Reflection
+:REVIEW_MODE: adversarial-reflection
+:END:
+
+** Challenge
+
+Does a compact structural output preserve enough verified knowledge for an
+Agent to select an exact Query, distinguish unknown from absent, and revisit
+evidence after context or source changes?
+
+Subject: [[file:../../../docs/10-19-rfcs/10.06-agent-search-projection/10.06.14-search-evidence-output-reflection.org][English RFC]].
+
+** Criteria
+
+- redundancy: remove repeated presentation only if required answers and
+  source-occurrence provenance remain recoverable.
+- out of scope: do not claim a new production grammar, live acceptance, or
+  better Agent reasoning from finite proof examples.
+- command clarity: replay commands use the package-pinned Lean toolchain;
+  proposed Query flags remain explicitly undecided.
+- mechanism clarity: exact admission, projection, and historical replay have
+  different obligations.
+- structure: use the existing SDD, adversarial-review, and reflection-answers
+  Org contracts without changing materialized contracts.
+
+** Findings
+
+The independent review identified configuration-sensitive structure, ambiguous
+coverage, and cross-snapshot witness deduplication as pressure points. The
+model now distinguishes raw and active structure, carries a soundness proof
+for certified views, and tests identical occurrences under different bindings.
+
+Two suggestions were narrowed rather than adopted wholesale. Raw parser
+membership need not depend on every implementation-body edit or resolver
+change. Certified complete coverage can justify exclusion, but an attempted
+query or an arbitrary coverage field cannot. The model now states and proves
+that distinction.
+
+The model's finite instance identifiers do not prove real selector uniqueness.
+Its abstract Org delimiter reader is not the product parser. Its declared
+costs are not tokenizer measurements. Production refinement and Agent-task
+evaluation remain required.
+
+** Reflection Questions
+:PROPERTIES:
+:CONTRACT_ORG: [[../../../org/contracts/agent.reflection-answers.v1.org][agent.reflection-answers.v1]]
+:END:
+
+| Question | Value |
+|----------+-------|
+| R01 Does equal topology prove fresh implementation evidence? | No. Body and resolver changes are separate countermodels; structurally validated membership may still be reusable. See [[#E1][E1 model and audit]]. |
+| R02 Are type names or member discovery paths canonical owners? | No. Same-named impl instances differ; raw syntax and active cfg membership have different dependencies. See [[#E1][E1]]. |
+| R03 Can a skeleton preserve arbitrary future answers? | No. Indistinguishable worlds defeat every decoder for an omitted independent fact. Declared-question preservation is proved instead. See [[#E1][E1]]. |
+| R04 Does a missing hit prove absence? | Only a sound complete coverage certificate can justify ruledOut; partial or merely attempted coverage is unknown. See [[#E1][E1]]. |
+| R05 Do two collectors imply two independent supports? | No. Deduplicate equal witnesses while preserving collector attribution, distinct occurrences, and distinct bindings. See [[#E2][E2 executable checks]]. |
+| R06 Is deletion-minimal output globally cheapest or best for reasoning? | No. A cheaper sufficient alternative exists in the countermodel; real token and reasoning costs remain unmeasured. See [[#E1][E1]]. |
+| R07 Is previously sent evidence usable after compaction or edits? | Only with retained or retrievable validated evidence. Historical replay is distinct from current admission. See [[#E2][E2]]. |
+| R08 Can reachability replace direct-call evidence? | No. Transitive reduction preserves reachability but can remove a required direct edge. See [[#E1][E1]]. |
+| R09 Is raw native source safe inside an unescaped Org block? | Not in the abstract framing countermodel. Actual Org renderer round-trip and metadata attachment remain open integration gates. See [[#E1][E1]]. |
+| R10 Must an Agent request a skeleton before exact Query? | No. Admission depends on the selected target and binding, not earlier flag use; a member cannot silently expand to its owner. See [[#E2][E2]]. |
+
+** Evidence
+
+*** E1 Package-Pinned Model And Expected-Failure Audit
+:PROPERTIES:
+:CUSTOM_ID: E1
+:EVIDENCE_KIND: abstract-lean-model
+:RESULT: pass-focused-lean-4.32.2
+:END:
+
+[[file:../ASPProof/SearchEvidenceReflection.lean][Model]],
+[[file:../ASPProof/Audit/SearchEvidenceReflection.lean][audit]],
+and [[file:../ASPProof.lean][library imports]].
+
+#+begin_src sh
+./.devenv/devenv-profile-exec elan run leanprover/lean4:v4.32.2 lake --dir packages/proofs build ASPProof.SearchEvidenceReflection ASPProof.Audit.SearchEvidenceReflection
+#+end_src
+
+Six guarded negative claims require exactly the false-proposition diagnostic.
+Unrelated import or syntax failures do not satisfy the audit. Axiom output
+must contain no sorryAx or custom axioms. The model reuses the repository's
+InspectSurface and DecisionCorrect definition.
+
+Evaluated result: exitCode=0, model and audit built, all six expected-failure
+diagnostics matched. All 36 theorem dependency reports were produced; only
+the standard propext and Quot.sound axioms appear, with no sorryAx or custom
+axioms. A reserved-keyword field initially caused a compile failure; renaming
+it to instanceId repaired the model without weakening a proposition.
+
+*** E2 Executable Reflection Cases
+:PROPERTIES:
+:CUSTOM_ID: E2
+:EVIDENCE_KIND: deterministic-model-execution
+:RESULT: pass-20-of-20
+:END:
+
+[[file:../SearchEvidenceReflectionMain.lean][Executable checker]].
+
+#+begin_src sh
+./.devenv/devenv-profile-exec elan run leanprover/lean4:v4.32.2 lake --dir packages/proofs env lean --run packages/proofs/SearchEvidenceReflectionMain.lean
+#+end_src
+
+Run from the repository root. Lake's package directory option does not change
+the caller's working directory for this env command, so the runner path includes
+packages/proofs. An earlier package-relative path failed to locate the file
+and was not a test result.
+Evaluated result: exitCode=0, checks=20, passed=20.
+
+*** E3 Native Org Contract Trace
+:PROPERTIES:
+:CUSTOM_ID: E3
+:EVIDENCE_KIND: org-parser-contract-evaluation
+:RESULT: pass-61-assertions-10-answers
+:END:
+
+#+begin_src sh
+./.devenv/devenv-profile-exec ./target/debug/asp org contract trace --org-contract-registry org/contracts/agent.sdd.v1.org --org-contract-registry org/contracts/agent.adversarial-review.v1.org --org-contract-registry org/contracts/agent.reflection-answers.v1.org docs/10-19-rfcs/10.06-agent-search-projection/10.06.14-search-evidence-output-reflection.org packages/proofs/receipts/search-evidence-output-reflection.org
+#+end_src
+
+Check every evaluation assertion's status, not only process exitCode. The
+existing reflection contract requires at least one nonempty answer. This
+review additionally requires actualCount=10 for reflection-has-nonempty-answer;
+that stronger local check does not modify the shared contract.
+
+Evaluated result: exitCode=0, schemaVersion=1, two document traces; 61
+assertions passed, zero failed. RFC: basic=6 and SDD=32. Review: basic=6,
+adversarial=13, reflection=4. Nonempty reflection answer actualCount=10.
+The repository-local ASP candidate was subsequently run with the documented
+relative-path trace command: exitCode=0, 61 assertions passed, zero failed,
+and nonempty reflection answer actualCount=10.
+
+*** E4 Validation Scope
+
+The replay examples use repository-relative paths and the local ASP candidate.
+Initial results came from a different execution environment and must not be
+relabeled as local-candidate acceptance. Local-candidate reruns are recorded
+separately below. No install, start, restart, plugin refresh, Hook edit, branch
+switch, or serving publication is performed.
+Earlier prototype execution used Lean 4.33.1 and is superseded only by successful
+package-pinned reruns; it is not silently relabeled as a 4.32.2 result.
+
+*** E5 Aggregate Library Gate
+:PROPERTIES:
+:CUSTOM_ID: E5
+:EVIDENCE_KIND: aggregate-lean-build
+:RESULT: failed-outside-new-research-modules
+:END:
+
+#+begin_src sh
+./.devenv/devenv-profile-exec elan run leanprover/lean4:v4.32.2 lake --dir packages/proofs build ASPProof
+#+end_src
+
+Evaluated result: exitCode=1. Reported failed targets include job computation,
+ASPProof.MultiAgentResidentNamespace, ASPProof, and two existing audit modules.
+Audit.SemanticProjectionRuntimeWrapping reports unknown identifier
+root_digest_does_not_replace_generation_binding. The existing
+Audit.WorkspaceSearchPlaybookPlanner reports unknown constants
+five_axes_are_pairwise_distinct, no_axis_consumes_another_axis_candidates,
+warm_start_cannot_prune_fresh_axes, and ext_schedule_preserves_five_axis_receipts.
+Those owner files were not edited in this research task. The aggregate gate
+is not green, despite the new focused model/audit and executable passing.
+
+** Verdict
+
+*** Validation-Layer Reflection
+
+Native lint initially returned ORG031 (semantic text used instead of a
+UUID/ULID ID) and ORG032 (unsupported SDD_KIND). The contract trace had already
+passed, demonstrating that presence-only structure assertions are weaker than
+the native metadata checks. The RFC now has a stable UUID, a semantic CUSTOM_ID,
+and the system kind for the bounded evidence-presentation subsystem. A
+subsequent attempt to classify the root as view was rejected by ORG033/ORG037
+because a child view needs a visible parent and viewpoint. Inspection of the
+native SDD model confirmed that this root describes the subsystem containing
+the three views, not a detached view. No synthetic parent was added and neither
+the shared contracts nor lint rules were weakened. Contract trace and native
+lint must both pass.
+
+Evaluated native lint result after correction: exitCode=0, [ok] orgize lint.
+The repository-local ASP candidate was subsequently run with the documented
+relative-path command: exitCode=0, [ok] orgize lint.
+
+#+begin_src sh
+./.devenv/devenv-profile-exec ./target/debug/asp org lint --org-contract-registry org/contracts/agent.sdd.v1.org --org-contract-registry org/contracts/agent.adversarial-review.v1.org --org-contract-registry org/contracts/agent.reflection-answers.v1.org docs/10-19-rfcs/10.06-agent-search-projection/10.06.14-search-evidence-output-reflection.org packages/proofs/receipts/search-evidence-output-reflection.org
+#+end_src
+
+*** Design Disposition
+
+The user accepted the minimal native Org Query envelope and the Search/Query
+semantic boundaries recorded in the RFC's Accepted Output Boundary section.
+Evidence grouping, optional flag namespace, relation grammar, and coverage
+encoding remain open. This is design approval, not a new implementation gate.
+The research gate establishes abstract constraints, not product behavior. Advance to a
+shared-schema/rendering candidate only after the RFC's unresolved affiliation,
+scope, coverage, and replay questions are addressed. Then use real parser
+round-trip tests and controlled Agent-task evaluation to compare A/B/C.

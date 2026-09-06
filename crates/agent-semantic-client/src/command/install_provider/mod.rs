@@ -14,3 +14,7 @@ mod workspace;
 mod workspace_receipt;
 
 pub(crate) use core::run_install_command;
+
+pub(crate) async fn run_hook_refresh(args: &[String]) -> Result<(), String> {
+    binary::run_install_binary(args).await
+}

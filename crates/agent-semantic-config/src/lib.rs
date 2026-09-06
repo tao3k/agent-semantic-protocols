@@ -82,6 +82,7 @@ pub use hook_client_config::HookClientAgentOrgArtifactsArchiveWarningConfig;
 pub use hook_client_config::HookClientAgentOrgArtifactsConfig;
 pub use hook_client_config::HookClientAgentSelector;
 pub use hook_client_config::HookClientCapabilityPolicyConfig;
+pub use hook_client_config::HookClientCommandActionPatternConfig;
 pub use hook_client_config::HookClientCommandCategory;
 pub use hook_client_config::HookClientCommandProfileConfig;
 pub use hook_client_config::HookClientCommandProfileId;

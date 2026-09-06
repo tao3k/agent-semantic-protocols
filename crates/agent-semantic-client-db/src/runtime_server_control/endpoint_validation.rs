@@ -9,22 +9,20 @@ pub fn validate_runtime_server_endpoint_for_state_home(
 ) -> Result<(), String> {
     endpoint.validate()?;
     let runtime_base = runtime_server_runtime_base(state_home)?;
-    let digest = blake3::hash(
-        format!(
-            "{}\0{}\0{}",
+    let expected_status_memory =
+        super::endpoint_identity::runtime_server_status_memory_path_for_identity(
+            &runtime_base,
             endpoint.owner_epoch,
-            endpoint.binding_token,
-            endpoint.runtime_binary_identity.content_digest()
-        )
-        .as_bytes(),
-    )
-    .to_hex();
-    let expected_status_memory = runtime_base.join(format!("status-{}.memory", &digest[..16]));
+            &endpoint.binding_token,
+            endpoint.runtime_binary_identity.content_digest(),
+        );
     if Path::new(&endpoint.status_memory_path) != expected_status_memory {
         return Err(format!(
-            "Runtime Server endpoint State Home or binding identity mismatch: stateHome={} ownerEpoch={}",
+            "Runtime Server endpoint State Home or binding identity mismatch: stateHome={} ownerEpoch={} expectedStatusMemory={} observedStatusMemory={}",
             state_home.display(),
-            endpoint.owner_epoch
+            endpoint.owner_epoch,
+            expected_status_memory.display(),
+            endpoint.status_memory_path,
         ));
     }
     Ok(())

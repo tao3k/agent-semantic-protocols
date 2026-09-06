@@ -22,9 +22,19 @@
       "type": "array", "maxItems": 32, "uniqueItems": true,
       "items": {"type": "string", "minLength": 1, "maxLength": 256}
     },
+    "queryClauses": {
+      "description": "Ordered Agent-authored Graph reasoning clauses; array order is semantic priority.",
+      "type": "array", "maxItems": 64,
+      "items": {"type": "string", "minLength": 1, "maxLength": 4096}
+    },
     "profile": {"enum": ["balanced", "structural", "dependency"]},
     "entryNodeIds": {
-      "type": "array", "maxItems": 128, "uniqueItems": true,
+      "type": "array", "maxItems": 4096, "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1, "maxLength": 1024}
+    },
+    "candidateNodeIds": {
+      "description": "Acquisition frontier that Graph may rank or filter but may not extend.",
+      "type": "array", "maxItems": 4096, "uniqueItems": true,
       "items": {"type": "string", "minLength": 1, "maxLength": 1024}
     },
     "budget": {

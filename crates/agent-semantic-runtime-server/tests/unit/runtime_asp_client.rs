@@ -115,10 +115,7 @@ fn assert_exact_query_not_ready_terminal(response_frame: &ClientFrame, params: &
             .is_some_and(|error| error.contains("intentionally unavailable")),
         "fixture must preserve the deterministic generation-builder failure: {terminal}"
     );
-    assert_eq!(
-        terminal["recommendedNext"]["action"],
-        "publish-complete-workspace-generation"
-    );
+    assert!(terminal.get("recommendedNext").is_none());
     assert_eq!(
         terminal["elapsedMicros"],
         terminal["residentReadElapsedMicros"].as_u64().unwrap()
@@ -174,7 +171,12 @@ async fn warm_dispatch_without_resident_generation_returns_query_not_ready(
         workspace_registry,
         digest('a'),
         Arc::from(registered_language_provider_pairs()),
-        Arc::from([]),
+        Arc::new(
+            agent_semantic_client_db::runtime_provider_register::RuntimeProviderRegister::from_seed(
+                Vec::new(),
+            )
+            .expect("empty provider register"),
+        ),
         directory.path().join("workspace-store"),
         agent_semantic_runtime_server::RuntimeQueryGenerationAuthority::new(),
         telemetry.sender,
@@ -228,6 +230,22 @@ async fn warm_dispatch_without_resident_generation_returns_query_not_ready(
         .expect("request frame")
         .expect("request response");
 
+    if method == agent_semantic_client_protocol::WORKSPACE_SEARCH_PLAYBOOK_METHOD
+        && params.get("fd").is_none()
+    {
+        let ClientFrame::Response {
+            result: Some(result),
+            error: None,
+            ..
+        } = response_frame
+        else {
+            panic!("contract query must bypass generation admission")
+        };
+        assert_eq!(result["result"], "provider-contract-failure");
+        assert_eq!(result["reason"], "provider-not-registered");
+        return;
+    }
+
     if method.ends_with(".query") {
         assert_exact_query_not_ready_terminal(&response_frame, &params);
     }
@@ -246,6 +264,20 @@ async fn warm_dispatch_without_resident_generation_returns_query_not_ready(
     assert_eq!(error["terminal"]["phase"], "runtime-generation-authority");
     assert_eq!(error["terminal"]["workCounters"]["filesystemReadCount"], 0);
     assert_eq!(error["terminal"]["workCounters"]["providerProcessCount"], 0);
+}
+
+#[tokio::test]
+async fn workspace_search_playbook_contract_query_bypasses_generation_admission() {
+    warm_dispatch_without_resident_generation_returns_query_not_ready(
+        "request-workspace-search-playbook-contract",
+        agent_semantic_client_protocol::WORKSPACE_SEARCH_PLAYBOOK_METHOD,
+        serde_json::json!({
+            "schemaId": "agent.semantic-protocols.asp-client-workspace-search-playbook-request",
+            "schemaVersion": "1",
+            "languages": "rust"
+        }),
+    )
+    .await;
 }
 
 #[tokio::test]
@@ -276,14 +308,44 @@ async fn workspace_search_playbook_requires_a_committed_complete_generation() {
         serde_json::json!({
             "schemaId": "agent.semantic-protocols.asp-client-workspace-search-playbook-request",
             "schemaVersion": "1",
-            "language": null,
-            "intent": "conceptual",
-            "query": "ready",
-            "scope": "workspace",
-            "coverage": "candidates",
-            "maxOwners": 16,
-            "deadlineMs": 250,
-            "explain": "compact"
+            "languages": "rust",
+            "fd": [["-t", "f", "-e", "rs", "ready", "."]],
+            "rg": [["-n", "ready", "."]],
+            "tantivy": [["ready"]],
+            "syntax": [{
+                "producer": "rust",
+                "argv": ["--treesitter-query", "((identifier) @symbol)"]
+            }],
+            "graph": [{
+                "language": "gql",
+                "argv": ["MATCH (a:Owner)-[:DEPENDS_ON]->(b:Owner) RETURN a, b"]
+            }],
+            "clauseOrder": [
+                {"axis": "fd", "blockIndex": 0},
+                {"axis": "rg", "blockIndex": 0},
+                {"axis": "tantivy", "blockIndex": 0},
+                {"axis": "syntax", "blockIndex": 0},
+                {"axis": "graph", "blockIndex": 0}
+            ]
+        }),
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn workspace_syntax_query_requires_a_committed_complete_generation() {
+    warm_dispatch_without_resident_generation_returns_query_not_ready(
+        "request-workspace-syntax-query",
+        agent_semantic_client_protocol::WORKSPACE_SYNTAX_QUERY_METHOD,
+        serde_json::json!({
+            "schemaId": "agent.semantic-protocols.asp-client-workspace-syntax-query-request",
+            "schemaVersion": "1",
+            "languages": "rust",
+            "syntax": [{
+                "producer": "rust",
+                "argv": ["--treesitter-query", "((identifier) @symbol)"]
+            }],
+            "projection": "matches"
         }),
     )
     .await;
@@ -520,7 +582,12 @@ async fn host_uds_schema_bundle_route_bypasses_workspace_generation() {
         workspace_registry,
         digest('a'),
         Arc::from(registered_language_provider_pairs()),
-        Arc::from([]),
+        Arc::new(
+            agent_semantic_client_db::runtime_provider_register::RuntimeProviderRegister::from_seed(
+                Vec::new(),
+            )
+            .expect("empty provider register"),
+        ),
         directory.path().join("workspace-store"),
         agent_semantic_runtime_server::RuntimeQueryGenerationAuthority::new(),
         telemetry.sender,

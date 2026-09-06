@@ -35,7 +35,11 @@ use super::process::run_permission_candidate;
 // One cold observation owns a single end-to-end deadline covering secure cache
 // preparation, candidate launch, permission observation, termination, and reap. Cache hits do
 // not enter this path and retain their sub-millisecond contract.
-const PROBE_COLD_TIMEOUT: Duration = Duration::from_millis(100);
+// Interpreter-backed command façades (including shell and Python launchers)
+// require one extra process boundary before their actual Reader behavior can
+// be observed. Keep a strict bounded cold path while allowing that supported
+// Host shape to complete; warm catalog hits never enter this budget.
+const PROBE_COLD_TIMEOUT: Duration = Duration::from_secs(1);
 #[cfg(target_os = "macos")]
 const CACHE_WAIT_PARK: Duration = Duration::from_micros(250);
 #[cfg(target_os = "macos")]
@@ -308,10 +312,14 @@ fn observe_one_with_wrapped(
         };
         let readable_sentinel = sentinels.readable.to_string_lossy().into_owned();
         let denied_sentinel = sentinels.denied.to_string_lossy().into_owned();
-        let invocations = resolve_probe_invocations(tokens, &subject, wrapped_command)
-            .into_iter()
-            .filter(|(executable, _)| !is_script_executable(executable))
-            .collect::<Vec<_>>();
+        // Probe the resolved executable itself, including interpreter-backed
+        // tools. Codex exposes many real reader commands through shell or
+        // Python launchers; excluding shebang executables loses the actual
+        // Host Read action and turns the dynamic probe into a native-binary
+        // allowlist. The probe still runs only the normalized argv against
+        // private permission sentinels, with a cleared environment, process
+        // group cleanup, and the shared cold deadline.
+        let invocations = resolve_probe_invocations(tokens, &subject, wrapped_command);
         let global_deadline = started + PROBE_COLD_TIMEOUT;
         let mut last_terminal = "no-native-candidate";
         for (executable, probe_tokens) in invocations {
@@ -500,17 +508,6 @@ fn resolve_probe_invocations(
                 .map(|(resolved, _)| (resolved, tokens[index..].to_vec()))
         })
         .collect()
-}
-
-#[cfg(target_os = "macos")]
-fn is_script_executable(executable: &Path) -> bool {
-    use std::io::Read as _;
-
-    let Ok(mut file) = std::fs::File::open(executable) else {
-        return false;
-    };
-    let mut magic = [0_u8; 2];
-    file.read_exact(&mut magic).is_ok() && magic == *b"#!"
 }
 
 fn static_reader_behavior_matches(

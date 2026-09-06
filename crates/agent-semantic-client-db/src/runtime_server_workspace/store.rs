@@ -8,7 +8,12 @@ pub struct RuntimeServerWorkspaceStore {
 
 impl RuntimeServerWorkspaceStore {
     pub fn for_runtime_base(runtime_base: &Path) -> Self {
-        Self::for_root(runtime_base.join("workspaces"))
+        Self::for_root(
+            agent_semantic_artifacts::RuntimeServingStateLayout::from_root(
+                runtime_base.to_path_buf(),
+            )
+            .workspaces(),
+        )
     }
 
     pub fn for_root(root: PathBuf) -> Self {

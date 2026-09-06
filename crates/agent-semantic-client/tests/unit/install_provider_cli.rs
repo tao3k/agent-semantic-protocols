@@ -81,7 +81,7 @@ fn install_binary_reconciles_provider_artifacts_without_starting_runtime() {
         "{stdout}"
     );
     assert!(
-        stdout.contains("installedProviderArtifactsGeneration=sha256:"),
+        stdout.contains("installedProviderArtifactsGeneration=blake3-256:"),
         "{stdout}"
     );
     assert!(

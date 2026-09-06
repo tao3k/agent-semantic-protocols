@@ -11,6 +11,7 @@
       "provider-manifest.schema.json",
       "provider-route.schema.json",
       "provider-query-pack-descriptor.schema.json",
+      "provider-search-playbook-contract.schema.json",
       "provider-runtime-contract-descriptor.schema.json",
       "asp-client-server-descriptor.schema.json",
       "provider-runtime-request-stream-frame.schema.json",
@@ -27,9 +28,12 @@
       "asp-client-conformance.schema.json",
       "asp-client-search-request.schema.json",
       "asp-client-workspace-search-playbook-request.v1.schema.json",
+      "asp-client-workspace-syntax-query-request.v1.schema.json",
+      "asp-client-workspace-syntax-query-response.v1.schema.json",
+      "search-playbook-contract-projection.v1.schema.json",
       "semantic-agent-search-playbook-receipt.v1.schema.json",
       "large-search-playbook-performance-receipt.v1.schema.json",
-      "workspace-search-playbook-plan.v1.schema.json",
+      "workspace-search-playbook-result.v1.schema.json",
       "asp-client-source-index-lookup-request.schema.json",
       "resident-search-result.v1.schema.json",
       "asp-client-exact-query-request.schema.json",
@@ -530,7 +534,9 @@
           "schemas/lexical-postings-work-reduction-receipt.schema.json",
           "schemas/rg-coverage-receipt.schema.json",
           "schemas/asp-client-workspace-search-playbook-request.v1.schema.json",
-          "schemas/workspace-search-playbook-plan.v1.schema.json"
+          "schemas/asp-client-workspace-syntax-query-request.v1.schema.json",
+          "schemas/asp-client-workspace-syntax-query-response.v1.schema.json",
+          "schemas/workspace-search-playbook-result.v1.schema.json"
         ]
       }
     },

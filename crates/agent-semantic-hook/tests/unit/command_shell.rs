@@ -67,12 +67,15 @@ fn bash_ast_tokens_preserve_absolute_shell_and_nested_command_modes() {
 #[test]
 fn bash_ast_tokens_keep_playbook_stage_and_following_pipeline_words() {
     assert_eq!(
-        semantic_shell_tokens("asp search playbook --language rust workspace | rg HookDecision src/lib.rs"),
+        semantic_shell_tokens(
+            "asp search playbook --language rust workspace | rg HookDecision src/lib.rs"
+        ),
         vec![
             "asp",
-            "rust",
             "search",
             "playbook",
+            "--language",
+            "rust",
             "workspace",
             "|",
             "rg",
@@ -146,9 +149,10 @@ fn bash_ast_tokens_keep_quoted_search_playbook_stage() {
         ),
         vec![
             "asp",
-            "typescript",
             "search",
             "playbook",
+            "--language",
+            "typescript",
             "Effect concurrency Fiber",
             "--workspace",
             ".",

@@ -172,6 +172,17 @@ impl RuntimeResidentReadClient {
             .read_source_index_for_owner_scope(query, owner_path, authority, limit)
     }
 
+    pub fn read_source_index_for_language(
+        &self,
+        query: &str,
+        language_id: &agent_semantic_client_core::LanguageId,
+        limit: u32,
+    ) -> Result<std::sync::Arc<agent_semantic_search_projection::ResidentSearchReadyResult>, String>
+    {
+        self.search_projection
+            .read_source_index_for_language(query, language_id, limit)
+    }
+
     pub fn read_cold_rg_candidates(
         &self,
         query: &str,

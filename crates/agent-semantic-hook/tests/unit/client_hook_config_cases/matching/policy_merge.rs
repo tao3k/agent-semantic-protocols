@@ -259,7 +259,6 @@ fn registered_reasoning_search_dispatches_before_raw_search_rules_and_lazy_loads
         source_rule.match_config.argv_pattern_any,
         [vec![
             "asp".to_owned(),
-            "<registered-language>".to_owned(),
             "search".to_owned(),
             "playbook".to_owned(),
         ]]
@@ -280,7 +279,7 @@ fn registered_reasoning_search_dispatches_before_raw_search_rules_and_lazy_loads
     assert!(
         agent_semantic_shell_parser::command_stages_match_wrapped_prefix(
             &stages,
-            &["asp".to_owned(), "rust".to_owned(), "search".to_owned()],
+            &["asp".to_owned(), "search".to_owned(), "playbook".to_owned(),],
         )
         .routes_protected(),
         "direct ASP search must satisfy the wrapped-prefix matcher"
@@ -323,10 +322,10 @@ fn registered_reasoning_search_dispatches_before_raw_search_rules_and_lazy_loads
         asp_search_decision.message
     );
     assert!(
-        asp_search_decision
-            .message
-            .contains("materialize only that selector from the main thread"),
-        "registered search dispatch must return exact query materialization to the main thread: {}",
+        asp_search_decision.message.contains(
+            "returns bounded selector evidence without prescribing the parent Agent's next action"
+        ),
+        "registered search dispatch must keep the Explorer receipt source-free and executable: {}",
         asp_search_decision.message
     );
     assert!(
@@ -359,12 +358,10 @@ fn registered_reasoning_search_dispatches_before_raw_search_rules_and_lazy_loads
             .and_then(|value| value.as_str()),
         Some("hook-auto")
     );
-    assert_eq!(
-        asp_search_decision
+    assert!(
+        !asp_search_decision
             .fields
-            .get("providerLazyLoadCommand")
-            .and_then(|value| value.as_str()),
-        Some("asp install language rust")
+            .contains_key("providerLazyLoadCommand")
     );
     assert!(
         asp_search_decision

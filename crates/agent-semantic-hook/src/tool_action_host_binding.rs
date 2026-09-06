@@ -10,6 +10,7 @@ fn host_invocation_from_matcher(matcher: &str) -> Option<HostInvocationKind> {
     match matcher {
         "apply_patch" => Some(HostInvocationKind::Edit),
         "Bash" => Some(HostInvocationKind::Execute),
+        "Read" => Some(HostInvocationKind::Read),
         "spawn_agent" => Some(HostInvocationKind::SpawnAgent),
         matcher if matcher.starts_with("mcp__") => Some(HostInvocationKind::Mcp),
         _ => None,

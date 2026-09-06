@@ -73,7 +73,7 @@ async fn production_publication_atomically_switches_active_and_retains_previous_
         .await
         .expect("commit previous serving generation");
     let slots =
-        RuntimeArtifactSlotAuthority::for_artifact(&state_home.join("runtime/resident"), "asp");
+        RuntimeArtifactSlotAuthority::for_artifact(&state_home.join("runtime/artifacts"), "asp");
     let active_before = slots.active_target().await.unwrap();
     let healthy_before = slots.healthy_target().await.unwrap();
 
@@ -106,7 +106,7 @@ async fn runtime_and_hook_launchers_follow_one_active_bundle_selector() {
     let asp_source = temporary.path().join("asp");
     let hook_source = temporary.path().join("asp-hook");
     let asp_target = state_home.join("runtime/bin/asp");
-    let hook_target = state_home.join("runtime/bin/asp-hook");
+    let hook_target = state_home.join("runtime/artifacts/active/asp-hook");
     write_executable(&asp_source, "#!/bin/sh\nexit 0\n");
     write_executable(&hook_source, "#!/bin/sh\nexit 0\n");
 
@@ -115,7 +115,7 @@ async fn runtime_and_hook_launchers_follow_one_active_bundle_selector() {
             .await
             .expect("publish one immutable Runtime/Hook bundle");
 
-    let slots = RuntimeArtifactSlotAuthority::new(state_home.join("runtime/resident"));
+    let slots = RuntimeArtifactSlotAuthority::new(state_home.join("runtime/artifacts"));
     let active = slots.active_target().await.unwrap().expect("active bundle");
     assert_eq!(
         std::fs::canonicalize(&asp_target).unwrap(),
@@ -135,14 +135,15 @@ async fn runtime_and_hook_launchers_follow_one_active_bundle_selector() {
     assert_eq!(pending.bundle_digest, publication.bundle_digest);
     assert_ne!(pending.bundle_digest, pending.artifact_digest);
     let pending_bytes = std::fs::read(&publication.activation_event_path).unwrap();
-    let mut legacy_generation: serde_json::Value = serde_json::from_slice(&pending_bytes).unwrap();
-    legacy_generation["activationGeneration"] = serde_json::json!(54);
+    let mut unexpected_generation: serde_json::Value =
+        serde_json::from_slice(&pending_bytes).unwrap();
+    unexpected_generation["activationGeneration"] = serde_json::json!(54);
     assert!(
         decode_runtime_artifact_activation_event(
-            &serde_json::to_vec(&legacy_generation).unwrap(),
-            "legacy numeric generation fixture",
+            &serde_json::to_vec(&unexpected_generation).unwrap(),
+            "unexpected numeric generation fixture",
         )
-        .is_err()
+        .is_ok()
     );
     let mut missing_bundle: serde_json::Value = serde_json::from_slice(&pending_bytes).unwrap();
     missing_bundle
@@ -189,7 +190,7 @@ async fn optional_capability_is_an_exact_member_of_the_same_active_bundle() {
         .await
         .expect("publish one bundle with optional graph capability");
 
-    let slots = RuntimeArtifactSlotAuthority::new(state_home.join("runtime/resident"));
+    let slots = RuntimeArtifactSlotAuthority::new(state_home.join("runtime/artifacts"));
     let active = slots.active_target().await.unwrap().expect("active bundle");
     assert_eq!(
         std::fs::read(active.join("asp-python-graphs")).unwrap(),
@@ -202,7 +203,7 @@ async fn optional_capability_is_an_exact_member_of_the_same_active_bundle() {
 }
 
 #[tokio::test]
-async fn repeated_bundle_publication_moves_only_active_and_keeps_launchers_fixed() {
+async fn repeated_bundle_publication_moves_only_the_shared_active_selector() {
     let temporary = tempfile::tempdir().expect("fixed bundle launcher fixture");
     let state_home = temporary.path().join("state");
     let first_asp = temporary.path().join("asp-first");
@@ -210,7 +211,6 @@ async fn repeated_bundle_publication_moves_only_active_and_keeps_launchers_fixed
     let next_asp = temporary.path().join("asp-next");
     let next_hook = temporary.path().join("asp-hook-next");
     let asp_target = state_home.join("runtime/bin/asp");
-    let hook_target = state_home.join("runtime/bin/asp-hook");
     write_executable(&first_asp, "#!/bin/sh\nexit 10\n");
     write_executable(&first_hook, "#!/bin/sh\nexit 11\n");
     write_executable(&next_asp, "#!/bin/sh\nexit 20\n");
@@ -227,8 +227,7 @@ async fn repeated_bundle_publication_moves_only_active_and_keeps_launchers_fixed
         .await
         .expect("mark first bundle healthy");
     let fixed_asp_launcher = std::fs::read_link(&asp_target).unwrap();
-    let fixed_hook_launcher = std::fs::read_link(&hook_target).unwrap();
-    let slots = RuntimeArtifactSlotAuthority::new(state_home.join("runtime/resident"));
+    let slots = RuntimeArtifactSlotAuthority::new(state_home.join("runtime/artifacts"));
     let healthy_before = slots.healthy_target().await.unwrap();
 
     publish_runtime_artifact_bundle(&state_home, &next_asp, &asp_target, "dev", &next_hook)
@@ -239,10 +238,6 @@ async fn repeated_bundle_publication_moves_only_active_and_keeps_launchers_fixed
     assert_ne!(active_after, healthy_before);
     assert_eq!(slots.healthy_target().await.unwrap(), healthy_before);
     assert_eq!(std::fs::read_link(&asp_target).unwrap(), fixed_asp_launcher);
-    assert_eq!(
-        std::fs::read_link(&hook_target).unwrap(),
-        fixed_hook_launcher
-    );
 }
 
 #[tokio::test]
@@ -273,7 +268,7 @@ async fn activation_failure_restores_active_from_healthy_without_moving_healthy(
         .await
         .unwrap()
         .unwrap();
-    let slots = RuntimeArtifactSlotAuthority::new(state_home.join("runtime/resident"));
+    let slots = RuntimeArtifactSlotAuthority::new(state_home.join("runtime/artifacts"));
     let healthy_before = slots.healthy_target().await.unwrap();
     assert_eq!(
         slots.active_target().await.unwrap(),
@@ -334,7 +329,7 @@ async fn publication_derives_previous_serving_after_acquiring_the_mutation_guard
     let new_bundle_digest = runtime_artifact_bundle_digest(&new_members);
     let new_token = new_bundle_digest.content_digest().as_str();
     let new_candidate_dir = state_home
-        .join("runtime/resident/candidates/asp")
+        .join("runtime/artifacts/bundles/asp")
         .join(new_token);
     let new_prepared = crate::runtime_artifact_slots::prepare_runtime_artifact_candidate_for_kind(
         &state_home,
@@ -345,7 +340,7 @@ async fn publication_derives_previous_serving_after_acquiring_the_mutation_guard
     .await
     .expect("prepare newer serving identity");
     let slots =
-        RuntimeArtifactSlotAuthority::for_artifact(state_home.join("runtime/resident"), "asp");
+        RuntimeArtifactSlotAuthority::for_artifact(state_home.join("runtime/artifacts"), "asp");
     slots
         .stage_candidate_artifact(&new_candidate_dir, &new_prepared.path)
         .await
@@ -366,6 +361,7 @@ async fn publication_derives_previous_serving_after_acquiring_the_mutation_guard
         new_serving_digest.content_digest().as_str()
     );
     let new_applied = RuntimeArtifactActivationEvent {
+        activation_generation: 2,
         schema_id: "agent.semantic-protocols.runtime-artifact-activation".to_owned(),
         schema_version: 1,
         bundle_digest: new_bundle_digest,
@@ -401,6 +397,7 @@ async fn publication_derives_previous_serving_after_acquiring_the_mutation_guard
             &publish_target,
             "release",
             &[],
+            None,
             move || async move {
                 before_guard_tx
                     .send(())
@@ -467,7 +464,7 @@ async fn alias_and_malformed_state_failures_preserve_previous_client_and_serving
         .unwrap();
     let client_before = std::fs::canonicalize(&target).unwrap();
     let slots =
-        RuntimeArtifactSlotAuthority::for_artifact(&state_home.join("runtime/resident"), "asp");
+        RuntimeArtifactSlotAuthority::for_artifact(&state_home.join("runtime/artifacts"), "asp");
     let active_before = slots.active_target().await.unwrap();
     let healthy_before = slots.healthy_target().await.unwrap();
 
@@ -479,7 +476,7 @@ async fn alias_and_malformed_state_failures_preserve_previous_client_and_serving
     let malformed = publish_runtime_artifact(&state_home, &next_source, &target, "release")
         .await
         .expect_err("malformed pending must fail closed");
-    assert!(malformed.contains("reasonKind=legacy-activation-receipt-invalid"));
+    assert!(malformed.contains("reasonKind=activation-receipt-invalid"));
     assert_eq!(std::fs::canonicalize(&target).unwrap(), client_before);
     assert_eq!(slots.active_target().await.unwrap(), active_before);
     assert_eq!(slots.healthy_target().await.unwrap(), healthy_before);
@@ -647,7 +644,7 @@ async fn digest_validation_failure_preserves_lease_and_artifact_slots() {
     publish_runtime_artifact(&state_home, &initial_source, &target, "dev")
         .await
         .expect("initial publication");
-    let slots = RuntimeArtifactSlotAuthority::new(state_home.join("runtime/resident"));
+    let slots = RuntimeArtifactSlotAuthority::new(state_home.join("runtime/artifacts"));
     let active_before = slots.active_target().await.expect("active before");
     let healthy_before = slots.healthy_target().await.expect("healthy before");
 

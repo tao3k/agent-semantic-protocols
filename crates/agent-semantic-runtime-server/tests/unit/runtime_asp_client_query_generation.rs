@@ -20,10 +20,6 @@ fn projection_missing_is_a_precise_runtime_terminal() {
         failure.resolved_selector.as_deref(),
         Some("rust://src/lib.rs#item/function/missing")
     );
-    assert_eq!(
-        failure.recommended_next["action"],
-        "query-owner-or-admitted-scope"
-    );
 }
 
 #[test]
@@ -59,6 +55,10 @@ fn unpublished_generation_returns_typed_query_not_ready_after_readiness_submissi
     .expect("typed query readiness terminal");
 
     assert_eq!(error.reason_kind, "query-not-ready");
+    assert_eq!(
+        error.message,
+        "no immutable CompleteGeneration is published for this workspace: state=unpublished"
+    );
     let terminal = error.details.expect("typed exact-query terminal");
     assert_eq!(terminal["state"], "failed");
     assert_eq!(terminal["phase"], "runtime-generation-authority");
@@ -66,10 +66,7 @@ fn unpublished_generation_returns_typed_query_not_ready_after_readiness_submissi
     assert_eq!(terminal["workCounters"]["filesystemReadCount"], 0);
     assert_eq!(terminal["workCounters"]["databaseReadCount"], 0);
     assert_eq!(terminal["workCounters"]["providerProcessCount"], 0);
-    assert_eq!(
-        terminal["recommendedNext"]["action"],
-        "publish-complete-workspace-generation"
-    );
+    assert!(terminal.get("recommendedNext").is_none());
 }
 
 #[test]
@@ -94,6 +91,10 @@ fn readiness_submission_failure_remains_one_typed_query_not_ready_terminal() {
     .expect("typed readiness submission failure");
 
     assert_eq!(error.reason_kind, "query-not-ready");
+    assert_eq!(
+        error.message,
+        "no immutable CompleteGeneration is published for this workspace: state=submission-failed cause=runtime generation admission dispatcher is closed"
+    );
     let terminal = error.details.expect("typed exact-query terminal");
     assert_eq!(terminal["details"]["generationState"], "submission-failed");
     assert_eq!(

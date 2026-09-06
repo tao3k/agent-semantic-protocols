@@ -596,7 +596,7 @@ pub fn subagent_deny_message(message: &str) -> String {
         {
             if !inserted_subagent_instruction {
                 lines.push(
-                    "Codex: already running inside a subagent; run the safe route below directly and return selector-only `[asp-search-subagent]` evidence with owner/read/next. Do not return source bodies, snippets, or line-range selectors.",
+                    "Codex: already running inside a subagent; run the safe route below directly and return compact executable `[asp-search-subagent]` evidence with QueryGrammar, owner, item, selector, matchedBy, and relation. Do not return source bodies, snippets, line-range selectors, or a prescribed next command.",
                 );
                 inserted_subagent_instruction = true;
             }

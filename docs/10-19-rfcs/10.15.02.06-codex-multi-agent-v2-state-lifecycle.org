@@ -14,6 +14,20 @@ The corresponding executable proof kernel is
 
 * Host capability assumption boundary
 
+The V1 integration makes Codex =multi_agent_v2= a hard Host prerequisite; it
+does not downgrade to a legacy agent tool family.  Before Runtime or AgentSession
+diagnostics, =asp hook doctor= resolves =$CODEX_HOME/config.toml=, falling back
+to =$HOME/.codex/config.toml=, parses TOML, and verifies the exact boolean
+=[features].multi_agent_v2 = true=.  Missing, malformed, misplaced, or false
+configuration emits a typed degraded =codex-host-config= result and never edits
+the file.
+
+Configuration is necessary but not sufficient.  Dispatch separately requires
+the current Host capability snapshot to expose the complete =collaboration.*=
+operation family.  This prevents a stale configuration file from being treated
+as executable authority and prevents an already initialized V1 task from being
+misreported as V2-capable.
+
 ASP assumes that the host exposes this public operation set:
 
 - =spawn_agent=: create and register a child agent;

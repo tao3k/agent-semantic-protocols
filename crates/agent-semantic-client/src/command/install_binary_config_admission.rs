@@ -14,9 +14,11 @@ pub(super) fn admit_embedded_hook_config() -> Result<(), String> {
 /// Materialize the human-readable operator copy of the embedded Hook config.
 ///
 /// Serving evaluation never reads this path. Matcher, policy and Agent
-/// registry bytes are compiled into the canonical `runtime/bin/asp-hook`
-/// executable.
-pub(super) fn publish_embedded_hook_config(protocol_home: &Path) -> Result<&'static str, String> {
+/// registry bytes are compiled into the `active/asp-hook` member of the sole
+/// verified Runtime artifact bundle.
+pub(in crate::command) fn publish_embedded_hook_config(
+    protocol_home: &Path,
+) -> Result<&'static str, String> {
     let path = protocol_home.join("hooks/config.toml");
     let status = super::managed_hook_config::materialize(&path).map_err(|error| {
         format!(

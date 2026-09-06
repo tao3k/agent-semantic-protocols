@@ -92,12 +92,12 @@ fn referenced_projection_rejects_context_identity_drift() {
         agent_semantic_content_identity::projection_evidence_context::ProjectionEvidenceContext {
             schema_id: "agent.semantic-protocols.projection-evidence-context".to_owned(),
             schema_version: "1".to_owned(),
-            evidence_context_ref: format!("blake3-256:{}", "e".repeat(64)).into(),
+            evidence_context_ref: fixture_evidence_context_ref().into(),
             language_id: "rust".into(),
             provider_id: "asp-rust".into(),
-            generation_identity_digest: format!("blake3-256:{}", "0".repeat(64)),
-            parser_identity_digest: format!("blake3-256:{}", "1".repeat(64)),
-            query_pack_digest: format!("blake3-256:{}", "2".repeat(64)),
+            generation_identity_digest: "0".repeat(64),
+            parser_identity_digest: "1".repeat(64),
+            query_pack_digest: "2".repeat(64),
         };
     context.provider_id = "asp-other".into();
     projection.evidence_context = Some(context);
@@ -111,28 +111,24 @@ fn referenced_projection_rejects_context_identity_drift() {
 }
 
 #[test]
-fn inline_projection_rejects_runtime_only_context() {
+fn runtime_projection_accepts_its_bound_evidence_context() {
     let (owner, mut selector) = callable_fixture();
     let projection = &mut selector.derived_projections[0];
     projection.evidence_context = Some(
         agent_semantic_content_identity::projection_evidence_context::ProjectionEvidenceContext {
             schema_id: "agent.semantic-protocols.projection-evidence-context".to_owned(),
             schema_version: "1".to_owned(),
-            evidence_context_ref: format!("blake3-256:{}", "e".repeat(64)).into(),
+            evidence_context_ref: fixture_evidence_context_ref().into(),
             language_id: "rust".into(),
             provider_id: "asp-rust".into(),
-            generation_identity_digest: format!("blake3-256:{}", "0".repeat(64)),
-            parser_identity_digest: format!("blake3-256:{}", "1".repeat(64)),
-            query_pack_digest: format!("blake3-256:{}", "2".repeat(64)),
+            generation_identity_digest: "0".repeat(64),
+            parser_identity_digest: "1".repeat(64),
+            query_pack_digest: "2".repeat(64),
         },
     );
 
-    let error = validate_selector(&owner, &selector)
-        .expect_err("provider input cannot smuggle a Runtime-only catalog context");
-    assert!(
-        error.contains("unexpectedly carries an evidence context"),
-        "error={error}"
-    );
+    validate_selector(&owner, &selector)
+        .expect("Runtime-materialized projection must retain its bound evidence context");
 }
 
 fn callable_fixture() -> (WorkspaceOwnerSnapshot, WorkspaceSelectorSnapshot) {
@@ -152,9 +148,14 @@ fn callable_fixture() -> (WorkspaceOwnerSnapshot, WorkspaceSelectorSnapshot) {
         "relations": [],
         "cost": { "sourceBytes": 0, "projectedBytes": 0, "omittedBytes": 0 }
     });
+    let typed_payload: agent_semantic_content_identity::callable_skeleton_projection::CallableSkeletonPayload =
+        serde_json::from_value(payload.clone()).expect("decode typed callable payload");
     let payload_digest = format!(
         "blake3-256:{}",
-        blake3::hash(&serde_json::to_vec(&payload).expect("callable payload bytes")).to_hex()
+        blake3::hash(
+            &serde_json::to_vec(&typed_payload).expect("canonical callable payload bytes"),
+        )
+        .to_hex()
     );
     let projection = WorkspaceDerivedProjectionSnapshot {
         projection_kind: ExactProjectionKind::CallableSkeleton,
@@ -165,7 +166,7 @@ fn callable_fixture() -> (WorkspaceOwnerSnapshot, WorkspaceSelectorSnapshot) {
             "languageId": "rust",
             "providerId": "asp-rust",
             "rootSelector": structural_selector,
-            "evidenceContextRef": format!("blake3-256:{}", "e".repeat(64)),
+            "evidenceContextRef": fixture_evidence_context_ref(),
             "payloadSchemaId": "agent.semantic-protocols.callable-skeleton",
             "payloadDigest": payload_digest,
             "payload": payload
@@ -189,4 +190,20 @@ fn callable_fixture() -> (WorkspaceOwnerSnapshot, WorkspaceSelectorSnapshot) {
         selectors: Vec::new(),
     };
     (owner, selector)
+}
+
+fn fixture_evidence_context_ref() -> String {
+    let mut hasher = blake3::Hasher::new();
+    hasher.update(b"asp.projection-evidence-context.v1\0");
+    for component in [
+        "rust".to_owned(),
+        "asp-rust".to_owned(),
+        "0".repeat(64),
+        "1".repeat(64),
+        "2".repeat(64),
+    ] {
+        hasher.update(&(component.len() as u64).to_le_bytes());
+        hasher.update(component.as_bytes());
+    }
+    format!("blake3-256:{}", hasher.finalize().to_hex())
 }

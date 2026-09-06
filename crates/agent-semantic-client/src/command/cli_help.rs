@@ -179,29 +179,24 @@ fn graph_command() -> Command {
 fn workspace_search_playbook_command() -> Command {
     Command::new("playbook")
         .bin_name("asp search playbook")
-        .about("Plan deterministic workspace Search routes from Runtime authority")
-        .arg(Arg::new("query").value_name("QUERY").required(true))
-        .arg(Arg::new("intent").long("intent").value_name("INTENT"))
-        .arg(Arg::new("scope").long("scope").value_name("SCOPE"))
-        .arg(Arg::new("coverage").long("coverage").value_name("COVERAGE"))
-        .arg(
-            Arg::new("language")
-                .long("language")
-                .short('l')
-                .value_name("LANGUAGE_ID"),
+        .about("Run or recover the provider-owned Search Playbook contract")
+        .override_usage(
+            "asp search playbook [--languages <LANGUAGE(|LANGUAGE)*>] [--documents <DOCUMENT(|DOCUMENT)*>] [--workspace <WORKSPACE>] [--fd <NATIVE_ARG>...] [--rg <NATIVE_ARG>...] [--tantivy <QUERY(|QUERY)*>] [--syntax <PRODUCER> <NATIVE_ARG>...] [--graph <LANGUAGE> <NATIVE_ARG>...]",
         )
         .arg(
-            Arg::new("max-owners")
-                .long("max-owners")
-                .value_name("COUNT"),
+            Arg::new("languages")
+                .long("languages")
+                .value_name("LANGUAGE(|LANGUAGE)*"),
         )
         .arg(
-            Arg::new("deadline-ms")
-                .long("deadline-ms")
-                .value_name("MILLIS"),
+            Arg::new("documents")
+                .long("documents")
+                .value_name("DOCUMENT(|DOCUMENT)*"),
         )
-        .arg(Arg::new("explain").long("explain").value_name("MODE"))
         .arg(Arg::new("workspace").long("workspace").value_name("ROOT"))
+        .after_help(
+            "With missing axes, returns only the targeted Example and Grammar contract. Native --fd/--rg/--syntax/--graph tokens are forwarded unchanged; `|` composes alternatives inside each independent axis.",
+        )
 }
 
 fn facade_command(name: &'static str, bin_name: &'static str) -> Command {
@@ -501,7 +496,10 @@ fn selected_command_default(args: &[String]) -> Command {
             .subcommand(workspace_search_playbook_command()),
         (Some("query"), _) => Command::new("query")
             .bin_name("asp query")
-            .about("Removed root command; use asp <language> query after asp search playbook"),
+            .about("Materialize one exact selector or run a provider-native syntax query")
+            .override_usage(
+                "asp query --selector <SELECTOR> [--projection <source|callable-skeleton>] [--json] [--workspace <WORKSPACE>]\n    asp query (--languages <LANGUAGE(|LANGUAGE)*>|--documents <DOCUMENT(|DOCUMENT)*>) --syntax <PRODUCER> <NATIVE_ARG>... [--projection matches] [--json] [--workspace <WORKSPACE>]",
+            ),
         (Some(document), Some(command))
             if is_document_facade(document)
                 && DOCUMENT_COMMANDS

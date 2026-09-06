@@ -221,12 +221,11 @@ fn validate_launcher_payload(plugin_root: &Path, launcher: &[u8]) -> Result<(), 
         )
     })?;
     if !launcher_text.starts_with("#!/bin/sh\n")
-        || !launcher_text.contains("runtime/bin/asp-hook")
+        || !launcher_text.contains("runtime/artifacts/active/asp-hook")
         || launcher_text.contains("hooks/current")
         || launcher_text.contains("ASP_HOOK_GENERATION_ROOT")
-        || launcher_text.contains("runtime/bin/asp\"")
-        || launcher_text.contains("runtime/profiles/asp/active")
-        || launcher_text.contains("runtime/profiles/asp/healthy")
+        || launcher_text.contains("runtime/bin/")
+        || launcher_text.contains("runtime/artifacts/active")
     {
         return Err(format!(
             "{} must resolve only the canonical Runtime Hook binary",

@@ -207,7 +207,10 @@ async fn run_install_provider(args: &[String]) -> Result<(), String> {
     )?;
     let runtime_state = project_runtime_state(&invocation_root)?;
     let stable_entry = install_target.path.clone();
-    let artifact_root = runtime_state.protocol_home.join("runtime/artifacts");
+    let artifact_root =
+        agent_semantic_artifacts::RuntimeArtifactStateLayout::new(&runtime_state.protocol_home)
+            .root()
+            .to_path_buf();
     let published = super::protocol_binary::install_protocol_binary_target(
         &installed_entrypoint,
         &stable_entry,

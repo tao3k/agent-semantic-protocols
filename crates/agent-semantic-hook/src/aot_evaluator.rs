@@ -1,6 +1,11 @@
 use std::borrow::Cow;
 
 use serde::Deserialize;
+
+#[path = "aot_evaluator_parts/matching.rs"]
+mod matching;
+pub use matching::host_matcher_matches_tool_name;
+use matching::{configured_matcher_matches, normalized_agent_eq, rule_conditions_match};
 use serde::Serialize;
 
 pub const HOOK_POLICY_BUNDLE_SCHEMA_ID: &str = "agent.semantic-protocols.hook-policy-bundle";
@@ -15,13 +20,22 @@ pub struct CompiledHookPolicyBundle<'a> {
     #[serde(borrow)]
     pub generation_digest: &'a str,
     #[serde(default, borrow)]
-    pub reader_behavior_patterns: Vec<Vec<&'a str>>,
+    pub command_action_patterns: Vec<CompiledCommandActionPattern<'a>>,
     #[serde(default, borrow)]
     pub registered_languages: Vec<&'a str>,
     #[serde(default = "default_agent_calling_pattern", borrow)]
     pub agent_calling_pattern: &'a str,
     #[serde(borrow)]
     pub rules: Vec<CompiledDecisionRule<'a>>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CompiledCommandActionPattern<'a> {
+    #[serde(borrow)]
+    pub action: &'a str,
+    #[serde(borrow)]
+    pub argv_pattern_any: Vec<Vec<&'a str>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -153,7 +167,7 @@ pub struct AotHookDecision<'a> {
     pub message: String,
     pub context: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub recovery_command: Option<String>,
+    pub search_playbook_contract: Option<String>,
     pub access: &'static str,
     pub access_mode: &'static str,
     pub backend: &'a str,
@@ -213,8 +227,11 @@ fn confirmed_read_subject<'a>(
     let input: BorrowedShellToolInput<'a> = serde_json::from_str(tool_input)
         .map_err(|error| format!("decode Bash tool input for Read classification: {error}"))?;
     if let Some(probe) = input.reader_probe {
-        if probe.schema_id == "agent.semantic-protocols.reader-probe-observation"
+        let valid_registered_probe = probe.schema_id
+            == "agent.semantic-protocols.reader-probe-observation"
             && probe.schema_version == 1
+            && registered_source_operand(probe.subject, registered_extensions);
+        if valid_registered_probe
             && probe.access == "read"
             && probe.access_mode == "read-permission"
             && matches!(
@@ -224,7 +241,6 @@ fn confirmed_read_subject<'a>(
                     | "reader-behavior-cache-hit"
             )
             && probe.cleanup_verified
-            && registered_source_operand(probe.subject, registered_extensions)
         {
             return Ok(Some(ConfirmedRead {
                 subject: Cow::Borrowed(probe.subject),
@@ -235,6 +251,23 @@ fn confirmed_read_subject<'a>(
                     }
                     _ => "reader-probe-read-permission",
                 },
+                backend: probe.backend,
+                terminal: probe.terminal,
+                elapsed_micros: u64::try_from(probe.elapsed_micros).unwrap_or(u64::MAX),
+                process_launched: probe.process_launched,
+                probe_process_launched: probe.probe_process_launched,
+                timeout: probe.timeout,
+                policy_fast_path: probe.policy_fast_path,
+                cleanup_verified: probe.cleanup_verified,
+            }));
+        }
+        if valid_registered_probe
+            && probe.access == "unknown"
+            && reader_probe_indeterminate_requires_deny(probe.terminal)
+        {
+            return Ok(Some(ConfirmedRead {
+                subject: Cow::Borrowed(probe.subject),
+                evidence: "reader-probe-indeterminate-fail-closed",
                 backend: probe.backend,
                 terminal: probe.terminal,
                 elapsed_micros: u64::try_from(probe.elapsed_micros).unwrap_or(u64::MAX),
@@ -275,6 +308,21 @@ fn confirmed_read_subject<'a>(
         }
     }
     Ok(None)
+}
+
+fn reader_probe_indeterminate_requires_deny(terminal: &str) -> bool {
+    matches!(
+        terminal,
+        "probe-timeout"
+            | "probe-deferred"
+            | "reader-behavior-cache-wait-timeout"
+            | "cleanup-failed"
+            | "readable-wait-failed"
+            | "denied-wait-failed"
+            | "permission-observation-incomplete"
+    ) || terminal.starts_with("probe-candidates-exhausted:readable-wait-failed")
+        || terminal.starts_with("probe-candidates-exhausted:denied-wait-failed")
+        || terminal.starts_with("probe-candidates-exhausted:permission-observation-incomplete")
 }
 
 fn registered_source_operand(subject: &str, registered_extensions: &[&str]) -> bool {
@@ -319,7 +367,14 @@ pub fn reader_probe_request(
         Ok(stages) => stages,
         Err(_) => return Ok(None),
     };
-    for rule in generation.rules {
+    // Search owns the entire Host call before Reader probing. A mixed pipeline
+    // such as `rg ... | sed ...` is still a search operation; probing the
+    // downstream formatter would both launch unnecessary work and manufacture
+    // read evidence for a command that must be denied before execution.
+    if configured_semantic_actions(&generation, host_matcher, Some(&stages)).contains(&"search") {
+        return Ok(None);
+    }
+    for rule in &generation.rules {
         if !rule.matchers.iter().any(|matcher| *matcher == host_matcher)
             || !rule.actions.iter().any(|action| *action == "read")
             || rule.registered_extensions.is_empty()
@@ -351,15 +406,51 @@ pub fn reader_probe_request(
                 command_tokens: stage.words().to_vec(),
                 subject,
                 wrapped_command: rule.wrapped_command,
-                reader_behavior_patterns: generation
-                    .reader_behavior_patterns
-                    .iter()
-                    .map(|pattern| pattern.iter().map(|token| (*token).to_owned()).collect())
-                    .collect(),
+                reader_behavior_patterns: reader_patterns(&generation),
             }));
         }
     }
     Ok(None)
+}
+
+fn reader_patterns(generation: &CompiledHookPolicyBundle<'_>) -> Vec<Vec<String>> {
+    generation
+        .command_action_patterns
+        .iter()
+        .filter(|family| family.action == "read")
+        .flat_map(|family| family.argv_pattern_any.iter())
+        .map(|pattern| pattern.iter().map(|token| (*token).to_owned()).collect())
+        .collect()
+}
+
+fn configured_semantic_actions<'a>(
+    generation: &'a CompiledHookPolicyBundle<'a>,
+    host_matcher: &str,
+    stages: Option<&[agent_semantic_shell_parser::CommandStage]>,
+) -> Vec<&'a str> {
+    let mut actions = Vec::new();
+    for family in &generation.command_action_patterns {
+        if stages.is_some_and(|stages| {
+            stages.iter().any(|stage| {
+                family.argv_pattern_any.iter().any(|pattern| {
+                    let pattern = pattern
+                        .iter()
+                        .map(|token| (*token).to_owned())
+                        .collect::<Vec<_>>();
+                    agent_semantic_shell_parser::command_tokens_match_argv_pattern(
+                        stage.words(),
+                        &pattern,
+                        true,
+                        "|",
+                    )
+                })
+            })
+        }) && !actions.contains(&family.action)
+        {
+            actions.push(family.action);
+        }
+    }
+    actions
 }
 
 pub fn evaluate_pre_tool<'a>(
@@ -398,6 +489,8 @@ pub fn evaluate_pre_tool<'a>(
         .map(agent_semantic_shell_parser::parse_bash_command_candidates)
         .transpose()
         .map_err(|error| format!("parse Bash command for AOT rule matching: {error}"))?;
+    let mut semantic_actions =
+        configured_semantic_actions(&generation, host_matcher, shell_stages.as_deref());
     let mut registered_extensions = generation
         .rules
         .iter()
@@ -405,17 +498,35 @@ pub fn evaluate_pre_tool<'a>(
         .collect::<Vec<_>>();
     registered_extensions.sort_unstable();
     registered_extensions.dedup();
-    let invocation_read = if host_matcher == "Bash" && !registered_extensions.is_empty() {
-        confirmed_read_subject(payload.tool_input.get(), &registered_extensions)?
-    } else {
-        None
+    let invocation_read = match host_matcher {
+        "Bash" if !registered_extensions.is_empty() => {
+            confirmed_read_subject(payload.tool_input.get(), &registered_extensions)?
+        }
+        _ => None,
     };
+    // A dynamic Reader probe is a Host-observed filesystem permission, not a
+    // configured command alias.  Promote a validated observation before the
+    // action gate so the second evaluation can select the same read rule as a
+    // native `Read` or catalog-known reader.  Without this, an unknown
+    // interpreter-backed reader records `access=read` but is incorrectly
+    // allowed because no static command pattern supplied the action.
+    if invocation_read.is_some() && !semantic_actions.contains(&"read") {
+        semantic_actions.push("read");
+    }
 
     for rule in &generation.rules {
         if !rule
             .matchers
             .iter()
             .any(|matcher| configured_matcher_matches(matcher, host_matcher))
+        {
+            continue;
+        }
+        if !rule.actions.is_empty()
+            && !rule
+                .actions
+                .iter()
+                .any(|action| semantic_actions.contains(action))
         {
             continue;
         }
@@ -428,11 +539,15 @@ pub fn evaluate_pre_tool<'a>(
         )? {
             continue;
         }
-        let rule_confirmed_read = if host_matcher == "Bash"
-            && rule.actions.iter().any(|action| *action == "read")
+        let rule_confirmed_read = if rule.actions.iter().any(|action| *action == "read")
             && !rule.registered_extensions.is_empty()
         {
-            confirmed_read_subject(payload.tool_input.get(), &rule.registered_extensions)?
+            match host_matcher {
+                "Bash" => {
+                    confirmed_read_subject(payload.tool_input.get(), &rule.registered_extensions)?
+                }
+                _ => None,
+            }
         } else {
             None
         };
@@ -451,18 +566,11 @@ pub fn evaluate_pre_tool<'a>(
         }
         let subject = confirmed_read.map(|read| read.subject.clone());
         let read_evidence = confirmed_read.map(|read| read.evidence);
-        let recovery_command = rule
-            .language
-            .zip(subject.as_deref())
-            .map(|(language, subject)| {
-                let query = crate::classifier::shell_quote_arg(subject);
-                let scope = crate::classifier::shell_quote_arg(&format!("owner:{subject}"));
-                let workspace = crate::classifier::shell_quote_arg(payload.cwd.unwrap_or("."));
-                format!(
-                    "asp search playbook {query} --language {language} --intent conceptual --scope {scope} --coverage candidates --explain compact --workspace {workspace}"
-                )
-            });
-        let parent_task = recovery_command.as_deref().map_or_else(
+        let search_playbook_contract = rule.language.map(|language| {
+            let language = crate::classifier::shell_quote_arg(language);
+            format!("asp search playbook --languages {language}")
+        });
+        let parent_task = search_playbook_contract.as_deref().map_or_else(
             || {
                 format!(
                     "Invoke Host tool `{}` exactly once with input {}",
@@ -488,6 +596,10 @@ pub fn evaluate_pre_tool<'a>(
                 "{{languageId}}",
                 rule.language.unwrap_or("registered-language"),
             )
+            .replace(
+                "{{searchPlaybookContract}}",
+                search_playbook_contract.as_deref().unwrap_or_default(),
+            )
             .replace("{{agentDispatchMessage}}", &agent_dispatch_message);
         return Ok(Some(AotHookDecision {
             schema_id: "agent.semantic-protocols.hook.decision",
@@ -507,7 +619,7 @@ pub fn evaluate_pre_tool<'a>(
             tool_use_id: payload.tool_use_id,
             message: message.clone(),
             context: message,
-            recovery_command,
+            search_playbook_contract,
             access: if read_evidence.is_some() {
                 "read"
             } else {
@@ -530,215 +642,6 @@ pub fn evaluate_pre_tool<'a>(
         }));
     }
     Ok(None)
-}
-
-fn normalized_agent_eq(left: &str, right: &str) -> bool {
-    left.chars()
-        .map(|character| if character == '-' { '_' } else { character })
-        .eq(right
-            .chars()
-            .map(|character| if character == '-' { '_' } else { character }))
-}
-
-fn rule_conditions_match(
-    rule: &CompiledDecisionRule<'_>,
-    generation: &CompiledHookPolicyBundle<'_>,
-    payload: &BorrowedHookPayload<'_>,
-    shell_command: Option<&str>,
-    shell_stages: Option<&[agent_semantic_shell_parser::CommandStage]>,
-) -> Result<bool, String> {
-    let has_conditions = !rule.argv_prefix_any.is_empty()
-        || !rule.command_contains_any.is_empty()
-        || !rule.argv_token_all.is_empty()
-        || !rule.argv_source_glob_any.is_empty()
-        || !rule.command_any.is_empty()
-        || !rule.process_environment_assignment_any.is_empty()
-        || !rule.path_glob_any.is_empty()
-        || rule.argv_workspace_regular_file
-        || rule.argv_structured_document_file
-        || rule.structured_projection.is_some();
-    if !has_conditions {
-        return Ok(true);
-    }
-    if payload.tool_name != "Bash" {
-        return Ok(rule.path_glob_any.is_empty() || payload.tool_input.get().contains("*** "));
-    }
-    let Some(command) = shell_command else {
-        return Ok(false);
-    };
-    let Some(stages) = shell_stages else {
-        return Ok(false);
-    };
-    let words = stages
-        .iter()
-        .filter(|stage| !stage.is_separator())
-        .flat_map(|stage| stage.words().iter())
-        .map(String::as_str)
-        .collect::<Vec<_>>();
-    if !rule.process_environment_assignment_any.is_empty()
-        && !agent_semantic_shell_parser::command_stages_match_process_environment_assignment(
-            stages,
-            &rule.process_environment_assignment_any,
-        )
-    {
-        return Ok(false);
-    }
-    if !rule.argv_prefix_any.is_empty()
-        && !rule
-            .argv_prefix_any
-            .iter()
-            .any(|pattern| match_argv_pattern(stages, pattern, &generation.registered_languages))
-    {
-        return Ok(false);
-    }
-    if !rule.command_contains_any.is_empty()
-        && !rule
-            .command_contains_any
-            .iter()
-            .any(|needle| command.contains(needle))
-    {
-        return Ok(false);
-    }
-    if !rule.argv_token_all.is_empty()
-        && !rule
-            .argv_token_all
-            .iter()
-            .all(|required| words.iter().any(|word| word == required))
-    {
-        return Ok(false);
-    }
-    let source_paths = stages
-        .iter()
-        .filter(|stage| !stage.is_separator())
-        .flat_map(agent_semantic_shell_parser::command_stage_source_paths)
-        .collect::<Vec<_>>();
-    if !rule.argv_source_glob_any.is_empty()
-        && !source_paths.iter().any(|path| {
-            rule.argv_source_glob_any
-                .iter()
-                .any(|pattern| simple_path_glob_matches(pattern, path))
-        })
-    {
-        return Ok(false);
-    }
-    if !rule.path_glob_any.is_empty()
-        && !source_paths.iter().any(|path| {
-            rule.path_glob_any
-                .iter()
-                .any(|pattern| simple_path_glob_matches(pattern, path))
-        })
-    {
-        return Ok(false);
-    }
-    if !rule.command_any.is_empty()
-        && !stages
-            .iter()
-            .filter_map(|stage| stage.executable())
-            .any(|executable| {
-                let basename = executable.rsplit('/').next().unwrap_or(executable);
-                rule.command_any.iter().any(|command| basename == *command)
-            })
-    {
-        return Ok(false);
-    }
-    if rule.argv_structured_document_file
-        && !source_paths
-            .iter()
-            .any(|path| has_any_extension(path, &["json", "toml"]))
-    {
-        return Ok(false);
-    }
-    if rule.argv_workspace_regular_file {
-        let cwd = std::path::Path::new(payload.cwd.unwrap_or("."));
-        if !source_paths.iter().any(|path| {
-            let path = std::path::Path::new(path);
-            let resolved = if path.is_absolute() {
-                path.to_path_buf()
-            } else {
-                cwd.join(path)
-            };
-            resolved.is_file()
-        }) {
-            return Ok(false);
-        }
-    }
-    if let Some(spec) = &rule.structured_projection {
-        let classification =
-            agent_semantic_shell_parser::structured::classify_single_bounded_path_command(
-                command,
-                agent_semantic_shell_parser::structured::BoundedPathCommandSpec {
-                    binary: spec.binary,
-                    optional_subcommand_any: &spec.optional_subcommand_any,
-                    option_any: &spec.option_any,
-                    option_value_arity: &spec.option_value_arity,
-                    max_slice_items: spec.max_slice_items,
-                },
-            );
-        if !matches!(
-            classification,
-            agent_semantic_shell_parser::structured::StructuredFilterClassification::BoundedPath { .. }
-                | agent_semantic_shell_parser::structured::StructuredFilterClassification::BoundedScalarPredicate { .. }
-        ) {
-            return Ok(false);
-        }
-    }
-    Ok(true)
-}
-
-fn match_argv_pattern(
-    stages: &[agent_semantic_shell_parser::CommandStage],
-    pattern: &[&str],
-    registered_languages: &[&str],
-) -> bool {
-    if let Some(index) = pattern
-        .iter()
-        .position(|token| *token == "<registered-language>")
-    {
-        return registered_languages.iter().any(|language| {
-            let mut concrete = pattern
-                .iter()
-                .map(|token| (*token).to_owned())
-                .collect::<Vec<_>>();
-            concrete[index] = (*language).to_owned();
-            agent_semantic_shell_parser::command_stages_match_wrapped_prefix(stages, &concrete)
-                .routes_protected()
-        });
-    }
-    let concrete = pattern
-        .iter()
-        .map(|token| (*token).to_owned())
-        .collect::<Vec<_>>();
-    agent_semantic_shell_parser::command_stages_match_wrapped_prefix(stages, &concrete)
-        .routes_protected()
-}
-
-fn simple_path_glob_matches(pattern: &str, path: &str) -> bool {
-    if pattern == "**" || pattern == "*" {
-        return true;
-    }
-    pattern
-        .rsplit_once("*.")
-        .is_some_and(|(_, extension)| has_any_extension(path, &[extension]))
-        || pattern == path
-}
-
-fn has_any_extension(path: &str, extensions: &[&str]) -> bool {
-    path.rsplit_once('.')
-        .is_some_and(|(_, extension)| extensions.contains(&extension))
-}
-
-pub fn host_matcher_matches_tool_name(host_matcher: &str, tool_name: &str) -> bool {
-    host_matcher == tool_name
-        || (tool_name == "apply_patch" && matches!(host_matcher, "apply_patch" | "Edit" | "Write"))
-        || (tool_name == "spawn_agent" && matches!(host_matcher, "spawn_agent" | "Agent"))
-}
-
-fn configured_matcher_matches(configured: &str, host_matcher: &str) -> bool {
-    configured == host_matcher
-        || configured
-            .strip_prefix('^')
-            .and_then(|matcher| matcher.strip_suffix('$'))
-            == Some(host_matcher)
 }
 
 #[cfg(test)]

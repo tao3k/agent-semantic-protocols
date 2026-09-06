@@ -3,7 +3,7 @@ schemaVersion = "v1"
 productionConfig = "config.toml"
 
 wrapperTemplates = [
-  "direnv exec . {command}",
+  ".devenv/devenv-profile-exec {command}",
   "organization-local-wrapper --profile ci {command}",
   "future-wrapper alpha beta {command}",
   "env ASP_MATCH_SCENARIO=1 {command}",
@@ -274,11 +274,9 @@ ruleComposition = [
 ]
 positiveCommands = [
   "/Users/example/project/.devenv/devenv-profile-exec rtk read -n --max-lines 110 crates/agent-semantic-client/src/client_cli.rs",
-  "/Users/example/project/.devenv/devenv-profile-exec rtk run 'rg -n . crates/agent-semantic-content-identity/src/content_binding.rs | sed -n \"238,300p\"; rg -n . crates/agent-semantic-client-db/src/runtime_server_workspace/content_binding.rs | head -n 90'",
 ]
 positiveSubjects = [
   "crates/agent-semantic-client/src/client_cli.rs",
-  "crates/agent-semantic-client-db/src/runtime_server_workspace/content_binding.rs",
 ]
 negativeCommands = [
   "future-source-producer > generated.rs",
@@ -302,6 +300,30 @@ negativeCommands = [
   "future-source-producer > generated.json",
   "arbitrary-consumer Cargo.lock",
 ]
+
+[[rules]]
+id = "deny-shell-search-before-execution"
+ruleComposition = [
+  { pointer = "/matcher", equals = "Bash" },
+  { pointer = "/actions", contains = "search" },
+]
+positiveCommands = [
+  "rg Hook crates/agent-semantic-hook/src/lib.rs",
+  "/Users/example/project/.devenv/devenv-profile-exec rtk run 'rg -n . crates/agent-semantic-content-identity/src/content_binding.rs | sed -n \"238,300p\"; rg -n . crates/agent-semantic-client-db/src/runtime_server_workspace/content_binding.rs | head -n 90'",
+]
+negativeCommands = ["cat crates/agent-semantic-hook/src/lib.rs"]
+
+[[rules]]
+id = "route-org-document-read-to-asp-explorer"
+ruleComposition = [{ pointer = "/profilesList", contains = "org" }]
+positiveCommands = ["cat docs/example.org"]
+negativeCommands = ["cat docs/example.txt"]
+
+[[rules]]
+id = "route-markdown-document-read-to-asp-explorer"
+ruleComposition = [{ pointer = "/profilesList", contains = "markdown" }]
+positiveCommands = ["cat docs/example.md"]
+negativeCommands = ["cat fixtures/example.txt"]
 
 [[rules]]
 id = "allow-bounded-json-projection"

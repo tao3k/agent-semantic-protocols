@@ -56,8 +56,8 @@ Deleting a build tree therefore cannot remove the installed Hook evaluator.
 
 Each binary identity owns exactly two retained atomic slots:
 
-- =runtime/profiles/<binary>/active= selects the current generation;
-- =runtime/profiles/<binary>/healthy= selects the last health-qualified
+- =runtime/artifacts/active= selects the current complete bundle;
+- =runtime/artifacts/healthy= selects the last health-qualified complete
   generation.
 
 =runtime/bin/<binary>= is only the stable public alias of =active=. The plugin

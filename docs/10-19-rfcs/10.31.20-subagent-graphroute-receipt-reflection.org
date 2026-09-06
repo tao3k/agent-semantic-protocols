@@ -136,6 +136,21 @@ needs:
 6. Add a scenario for =inventory-only= and =stale-index= receipts so the parent
    does not mistake polluted source-index evidence for final selector proof.
 
+* Selector-only handoff
+
+The GraphRoute receipt is the complete ASP Explorer final-output grammar.  It
+returns at most three ranked evidence nodes with owner, canonical selector, and
+relation only.  Runtime retains freshness and producer/parser integrity outside
+the Agent projection.  The schema is recursively closed: there is no generic
+=fields= map and no source-bearing extension point.
+
+ASP Explorer MUST NOT emit source bytes, snippets, excerpts, display line
+ranges, fenced source, or a prose restatement of source content.  The receipt
+contains no =next= field and prescribes no command.  The parent
+reasons from the grounded evidence and may choose Query, further Search,
+comparison, or termination.  Query alone performs source materialization when
+the parent chooses it.
+
 * Reflection
 
 The current flat return style costs the parent twice: it repeats fields that are

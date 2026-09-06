@@ -7,6 +7,7 @@ use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 
 const MAX_RG_LINE_BYTES: usize = 4096;
+const MAX_NATIVE_RG_MATCHES: u32 = 4096;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct RuntimeColdRgReceipt {
@@ -15,6 +16,63 @@ pub(crate) struct RuntimeColdRgReceipt {
     pub candidate_owner_paths: Vec<String>,
     pub elapsed_micros: u64,
     pub process_count: u8,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct RuntimeNativeRgAxisReceipt {
+    pub content_generation_digest: String,
+    pub candidate_owner_paths: Vec<String>,
+    pub branch_candidate_owner_paths: Vec<Vec<String>>,
+    pub branch_matches: Vec<Vec<RuntimeRgMatch>>,
+    pub process_count: u8,
+    pub truncated: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct RuntimeRgMatch {
+    pub owner_path: String,
+    pub owner_line: u64,
+}
+
+pub(crate) async fn execute_runtime_native_rg_blocks(
+    corpus: &agent_semantic_search::ColdRgCorpusArtifact,
+    blocks: &[Vec<String>],
+    limit: u32,
+    deadline: Duration,
+) -> Result<RuntimeNativeRgAxisReceipt, String> {
+    if blocks.is_empty() || !(1..=MAX_NATIVE_RG_MATCHES).contains(&limit) || deadline.is_zero() {
+        return Err("native rg axis is outside the bounded Runtime envelope".to_owned());
+    }
+    let receipt = tokio::time::timeout(
+        deadline,
+        agent_semantic_search::execute_content_bound_native_rg_blocks(
+            corpus,
+            blocks,
+            limit as usize,
+        ),
+    )
+    .await
+    .map_err(|_| "native rg axis deadline exceeded; process capability dropped".to_owned())??;
+    Ok(RuntimeNativeRgAxisReceipt {
+        content_generation_digest: corpus.receipt.content_generation_digest.clone(),
+        candidate_owner_paths: receipt.axis.candidate_owner_paths,
+        branch_candidate_owner_paths: receipt.axis.branch_candidate_owner_paths,
+        branch_matches: receipt
+            .branch_matches
+            .into_iter()
+            .map(|branch| {
+                branch
+                    .into_iter()
+                    .map(|item| RuntimeRgMatch {
+                        owner_path: item.owner_path,
+                        owner_line: item.owner_line,
+                    })
+                    .collect()
+            })
+            .collect(),
+        process_count: u8::try_from(receipt.process_count).unwrap_or(u8::MAX),
+        truncated: receipt.truncated,
+    })
 }
 
 pub(crate) async fn execute_runtime_cold_rg(
@@ -121,6 +179,22 @@ fn owner_paths_from_rg_output(
     limit: usize,
 ) -> Result<Vec<String>, String> {
     let mut owners = BTreeSet::new();
+    for item in matches_from_rg_output(corpus, output, limit)? {
+        owners.insert(item.owner_path);
+        if owners.len() == limit {
+            break;
+        }
+    }
+    Ok(owners.into_iter().collect())
+}
+
+fn matches_from_rg_output(
+    corpus: &agent_semantic_search::ColdRgCorpusArtifact,
+    output: &[u8],
+    limit: usize,
+) -> Result<Vec<RuntimeRgMatch>, String> {
+    let mut seen = BTreeSet::new();
+    let mut matches = Vec::new();
     for line in output
         .split(|byte| *byte == b'\n')
         .filter(|line| !line.is_empty())
@@ -135,12 +209,18 @@ fn owner_paths_from_rg_output(
             .map_err(|_| "cold rg line-number prefix is invalid".to_owned())?;
         let owner = agent_semantic_search::owner_for_corpus_line(&corpus.owner_spans, line_number)
             .ok_or_else(|| "cold rg result is outside the admitted owner corpus".to_owned())?;
-        owners.insert(owner.owner_path.clone());
-        if owners.len() == limit {
+        let item = RuntimeRgMatch {
+            owner_path: owner.owner_path.clone(),
+            owner_line: line_number - owner.start_line + 1,
+        };
+        if seen.insert((item.owner_path.clone(), item.owner_line)) {
+            matches.push(item);
+        }
+        if matches.len() == limit {
             break;
         }
     }
-    Ok(owners.into_iter().collect())
+    Ok(matches)
 }
 
 fn coverage_input_digest(

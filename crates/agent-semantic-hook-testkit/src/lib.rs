@@ -1,11 +1,14 @@
 //! Process-safe scenario execution and typed acceptance helpers for ASP Hooks.
 
+mod codex_rollout;
 #[cfg(feature = "compiler")]
 pub mod hook_scenarios;
 #[cfg(feature = "compiler")]
 pub mod installed_publication;
 mod runtime;
 
+pub use codex_rollout::CodexPreToolContext;
+pub use codex_rollout::project_codex_exec_command_calls;
 pub use runtime::DEFAULT_HOOK_TIMEOUT;
 pub use runtime::DEFAULT_SCENARIO_CONCURRENCY;
 pub use runtime::HookProcessRecoveryReceipt;

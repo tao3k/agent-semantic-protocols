@@ -144,7 +144,6 @@ pub(super) fn dispatch_exact_query(
             reason_kind: failure.reason_kind.to_owned(),
             generation_digest: Some(generation.generation_digest().to_owned()),
             root_digest: Some(generation.resident().source_root_digest()),
-            recommended_next: failure.recommended_next,
             resident_read_elapsed_micros,
             service_elapsed_micros,
             elapsed_micros,

@@ -56,6 +56,7 @@ pub struct ClientHookConfig {
         Vec<crate::protocol_activation::protocol_activation_manifest::HookProviderProjection>,
     contract_fingerprint: Option<String>,
     agent_org_artifacts: CompiledAgentOrgArtifactsConfig,
+    command_action_patterns: Vec<agent_semantic_config::HookClientCommandActionPatternConfig>,
 }
 
 #[derive(Debug)]
@@ -316,6 +317,7 @@ impl RuleMatch {
                     policy_all: policies.all,
                     policy_any: policies.any,
                     policy_none: policies.none,
+                    command_action_patterns: Vec::new(),
                 },
             ),
             wrapper_match: agent_semantic_config::WrapperMatchMode::default(),
@@ -529,6 +531,7 @@ impl TryFrom<HookClientRuleConfig> for CompiledHookRule {
             &[],
             &[],
             &[],
+            &[],
             agent_semantic_config::WrapperMatchMode::default(),
             &agent_semantic_config::HookClientAgentCallingConfig::default(),
         )
@@ -541,6 +544,7 @@ impl CompiledHookRule {
         command_profiles: &[agent_semantic_config::HookClientCommandProfileConfig],
         command_sets: &[agent_semantic_config::HookClientCommandSetConfig],
         capability_policies: &[agent_semantic_config::HookClientCapabilityPolicyConfig],
+        command_action_patterns: &[agent_semantic_config::HookClientCommandActionPatternConfig],
         wrapper_match: agent_semantic_config::WrapperMatchMode,
         agent_calling: &agent_semantic_config::HookClientAgentCallingConfig,
     ) -> Result<Self, String> {
@@ -549,6 +553,7 @@ impl CompiledHookRule {
             command_profiles,
             command_sets,
             capability_policies,
+            command_action_patterns,
             wrapper_match,
             agent_calling,
             None,
@@ -561,6 +566,7 @@ impl CompiledHookRule {
         command_profiles: &[agent_semantic_config::HookClientCommandProfileConfig],
         command_sets: &[agent_semantic_config::HookClientCommandSetConfig],
         capability_policies: &[agent_semantic_config::HookClientCapabilityPolicyConfig],
+        command_action_patterns: &[agent_semantic_config::HookClientCommandActionPatternConfig],
         wrapper_match: agent_semantic_config::WrapperMatchMode,
         agent_calling: &agent_semantic_config::HookClientAgentCallingConfig,
         durable_matcher: Option<DurableRuleMatcherArtifact>,
@@ -693,6 +699,7 @@ impl CompiledHookRule {
             },
             executable_capabilities,
         )?;
+        match_config.agent_action.command_action_patterns = command_action_patterns.to_vec();
         match_config.wrapper_match = wrapper_match;
         Ok(Self {
             id: config.id,

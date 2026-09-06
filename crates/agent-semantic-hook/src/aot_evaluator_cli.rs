@@ -4,6 +4,13 @@ use std::path::PathBuf;
 use crate::aot_evaluator;
 use crate::reader_probe;
 
+/// Internal audit result kept separate from the Codex Host response envelope.
+#[doc(hidden)]
+pub struct AotHookEvaluationReceipt {
+    pub host_output: Option<serde_json::Value>,
+    pub reader_probe_event_path: Option<PathBuf>,
+}
+
 /// Runs the Hook evaluator embedded in the canonical ASP binary.
 pub fn main_entry() {
     if inherited_no_agent_bypass() {
@@ -35,9 +42,13 @@ pub fn main_entry() {
         // Observational Host events must still return one valid JSON object.
         // Producing no stdout makes Codex report an invalid PostToolUse Hook
         // response even though no policy decision is required for the event.
+        Some("subagent-stop") => {
+            emit_subagent_stop_terminal();
+            return;
+        }
         Some(
             event @ ("post-tool" | "stop" | "notification" | "user-prompt" | "session-start"
-            | "subagent-start" | "subagent-stop"),
+            | "subagent-start"),
         ) => {
             emit_observational_event(event);
             return;
@@ -55,8 +66,8 @@ pub fn main_entry() {
                 message,
             ),
             EvaluationFailure::GenerationAuthority(message) => (
-                "hook-policy-bundle-unavailable",
-                "hook-policy-bundle-unavailable",
+                "hook-serving-config-unavailable",
+                "hook-serving-config-unavailable",
                 message,
             ),
         };
@@ -104,6 +115,23 @@ fn emit_observational_event(event: &str) {
     println!("{{}}");
 }
 
+fn emit_subagent_stop_terminal() {
+    let mut payload_json = String::new();
+    if std::io::stdin().read_to_string(&mut payload_json).is_err() {
+        println!(
+            "{}",
+            crate::search_subagent_output_contract::evaluate_subagent_stop(&serde_json::json!({}))
+        );
+        return;
+    }
+    let terminal = serde_json::from_str::<serde_json::Value>(&payload_json)
+        .map(|payload| crate::search_subagent_output_contract::evaluate_subagent_stop(&payload))
+        .unwrap_or_else(|_| {
+            crate::search_subagent_output_contract::evaluate_subagent_stop(&serde_json::json!({}))
+        });
+    println!("{terminal}");
+}
+
 /// PermissionRequest is the Host approval plane after PreToolUse policy.
 ///
 /// This event carries no authenticated PreTool admission receipt, so it cannot
@@ -125,11 +153,14 @@ enum EvaluationFailure {
 
 fn evaluate() -> Result<(), EvaluationFailure> {
     let mut args = std::env::args_os().skip(1);
-    let mut policy_bundle_path = None;
     let mut host_matcher = None;
     while let Some(argument) = args.next() {
         match argument.to_str() {
-            Some("--policy-bundle") => policy_bundle_path = args.next().map(PathBuf::from),
+            Some("--policy-bundle") => {
+                return Err(EvaluationFailure::GenerationAuthority(
+                    "--policy-bundle is not a supported asp-hook production argument".to_owned(),
+                ));
+            }
             Some("--host-match") => {
                 if host_matcher.is_some() {
                     return Err(EvaluationFailure::HostMatcherAuthority(
@@ -171,11 +202,8 @@ fn evaluate() -> Result<(), EvaluationFailure> {
     let payload_json = serde_json::to_string(&payload).map_err(|error| {
         EvaluationFailure::GenerationAuthority(format!("encode enriched Hook payload: {error}"))
     })?;
-    let evaluated = match policy_bundle_path {
-        Some(path) => evaluate_payload_at_policy_bundle(&path, &payload_json, &host_matcher),
-        None => evaluate_payload_from_embedded(&payload_json, &host_matcher),
-    }
-    .map_err(EvaluationFailure::GenerationAuthority)?;
+    let evaluated = evaluate_payload_from_serving_config(&payload_json, &host_matcher)
+        .map_err(EvaluationFailure::GenerationAuthority)?;
     match evaluated {
         Some(typed) => println!("{typed}"),
         None => println!("{{}}"),
@@ -183,10 +211,11 @@ fn evaluate() -> Result<(), EvaluationFailure> {
     Ok(())
 }
 
-/// Evaluate one already-bounded Host payload against the immutable current
-/// HookPolicyBundle. This is shared by the standalone evaluator and the direct
-/// canonical Runtime Hook binary so there is only one policy engine.
-pub fn evaluate_payload_from_embedded(
+/// Evaluate one already-bounded Host payload against the current serving
+/// Hook configuration. The system template is the base and an admitted State
+/// Home config is its overlay; both compile to one immutable HookPolicyBundle
+/// for this evaluation.
+pub fn evaluate_payload_from_serving_config(
     payload_json: &str,
     host_matcher: &str,
 ) -> Result<Option<serde_json::Value>, String> {
@@ -197,9 +226,9 @@ pub fn evaluate_payload_from_embedded(
     }
     let payload_json = serde_json::to_string(&payload)
         .map_err(|error| format!("encode enriched Hook payload: {error}"))?;
-    let policy_bundle = crate::aot_compiler::compile_embedded_hook_policy_bundle()?;
+    let policy_bundle = crate::aot_compiler::compile_serving_hook_policy_bundle()?;
     let policy_bundle = std::str::from_utf8(&policy_bundle)
-        .map_err(|error| format!("embedded Hook policy bundle is not UTF-8: {error}"))?;
+        .map_err(|error| format!("serving Hook policy bundle is not UTF-8: {error}"))?;
     evaluate_payload_with_policy_bundle(policy_bundle, &payload_json, host_matcher)
 }
 
@@ -217,35 +246,69 @@ pub fn payload_has_process_no_agent_assignment(payload: &serde_json::Value) -> b
     crate::no_agent_escape::payload_declares_process_escape(payload)
 }
 
-fn evaluate_payload_at_policy_bundle(
-    policy_bundle_path: &std::path::Path,
-    payload_json: &str,
-    host_matcher: &str,
-) -> Result<Option<serde_json::Value>, String> {
-    let policy_bundle = load_policy_bundle(policy_bundle_path)?;
-    evaluate_payload_with_policy_bundle(&policy_bundle, payload_json, host_matcher)
-}
-
-fn evaluate_payload_with_policy_bundle(
+#[doc(hidden)]
+pub fn evaluate_payload_with_policy_bundle(
     policy_bundle: &str,
     payload_json: &str,
     host_matcher: &str,
 ) -> Result<Option<serde_json::Value>, String> {
+    evaluate_payload_with_policy_bundle_and_state_home(
+        policy_bundle,
+        payload_json,
+        host_matcher,
+        std::env::var_os("ASP_STATE_HOME")
+            .filter(|path| !path.is_empty())
+            .as_deref()
+            .map(std::path::Path::new),
+    )
+}
+
+#[doc(hidden)]
+pub fn evaluate_payload_with_policy_bundle_and_state_home(
+    policy_bundle: &str,
+    payload_json: &str,
+    host_matcher: &str,
+    state_home: Option<&std::path::Path>,
+) -> Result<Option<serde_json::Value>, String> {
+    evaluate_payload_with_policy_bundle_and_state_home_with_receipt(
+        policy_bundle,
+        payload_json,
+        host_matcher,
+        state_home,
+    )
+    .map(|receipt| receipt.host_output)
+}
+
+#[doc(hidden)]
+pub fn evaluate_payload_with_policy_bundle_and_state_home_with_receipt(
+    policy_bundle: &str,
+    payload_json: &str,
+    host_matcher: &str,
+    state_home: Option<&std::path::Path>,
+) -> Result<AotHookEvaluationReceipt, String> {
     let mut payload_json = payload_json.to_owned();
     if let Some(decision) =
         aot_evaluator::evaluate_pre_tool(policy_bundle, &payload_json, host_matcher)?
     {
         if decision.decision == "allow" {
-            return Ok(Some(serde_json::json!({})));
+            return Ok(AotHookEvaluationReceipt {
+                host_output: Some(serde_json::json!({})),
+                reader_probe_event_path: None,
+            });
         }
-        return render_and_record_deny(&decision, &payload_json).map(Some);
+        return render_and_record_deny(&decision, &payload_json).map(|host_output| {
+            AotHookEvaluationReceipt {
+                host_output: Some(host_output),
+                reader_probe_event_path: None,
+            }
+        });
     }
     if let Some(request) =
         aot_evaluator::reader_probe_request(policy_bundle, &payload_json, host_matcher)?
     {
         let mut payload: serde_json::Value = serde_json::from_str(&payload_json)
             .map_err(|error| format!("decode Hook payload for Reader probe: {error}"))?;
-        let observation = match std::env::var_os("ASP_STATE_HOME").filter(|path| !path.is_empty()) {
+        let observation = match state_home {
             Some(state_home) => reader_probe::diagnose_reader_probe_with_state_home(
                 request.command_tokens,
                 request.subject,
@@ -263,16 +326,65 @@ fn evaluate_payload_with_policy_bundle(
         reader_probe::bind_reader_probe_observation(&mut payload, observation.as_ref())?;
         payload_json = serde_json::to_string(&payload)
             .map_err(|error| format!("encode Hook payload with Reader probe: {error}"))?;
+        let decision =
+            aot_evaluator::evaluate_pre_tool(policy_bundle, &payload_json, host_matcher)?;
+        let project_root = payload
+            .get("cwd")
+            .and_then(serde_json::Value::as_str)
+            .map(PathBuf::from)
+            .or_else(|| std::env::current_dir().ok())
+            .ok_or_else(|| "Reader probe has no workspace root".to_owned())?;
+        let reader_probe_event_path = if let Some(observation) = observation.as_ref() {
+            Some(crate::append_reader_probe_event_state(
+                &project_root,
+                state_home,
+                host_matcher,
+                &payload,
+                observation,
+                decision.as_ref(),
+            )?)
+        } else {
+            None
+        };
+        if let Some(decision) = decision {
+            if decision.decision == "allow" {
+                return Ok(AotHookEvaluationReceipt {
+                    host_output: Some(serde_json::json!({})),
+                    reader_probe_event_path,
+                });
+            }
+            return render_and_record_deny(&decision, &payload_json).map(|host_output| {
+                AotHookEvaluationReceipt {
+                    host_output: Some(host_output),
+                    reader_probe_event_path,
+                }
+            });
+        }
+        return Ok(AotHookEvaluationReceipt {
+            host_output: Some(serde_json::json!({})),
+            reader_probe_event_path,
+        });
     }
     if let Some(decision) =
         aot_evaluator::evaluate_pre_tool(policy_bundle, &payload_json, host_matcher)?
     {
         if decision.decision == "allow" {
-            return Ok(Some(serde_json::json!({})));
+            return Ok(AotHookEvaluationReceipt {
+                host_output: Some(serde_json::json!({})),
+                reader_probe_event_path: None,
+            });
         }
-        return render_and_record_deny(&decision, &payload_json).map(Some);
+        return render_and_record_deny(&decision, &payload_json).map(|host_output| {
+            AotHookEvaluationReceipt {
+                host_output: Some(host_output),
+                reader_probe_event_path: None,
+            }
+        });
     }
-    Ok(Some(serde_json::json!({})))
+    Ok(AotHookEvaluationReceipt {
+        host_output: Some(serde_json::json!({})),
+        reader_probe_event_path: None,
+    })
 }
 
 fn render_and_record_deny(
@@ -296,18 +408,4 @@ fn render_and_record_deny(
         .and_then(serde_json::Value::as_str)
         .unwrap_or("ASP Hook denied the operation.");
     Ok(crate::render_codex_pre_tool_deny(&typed, message))
-}
-
-fn load_policy_bundle(path: &std::path::Path) -> Result<String, String> {
-    let metadata = std::fs::symlink_metadata(path)
-        .map_err(|error| format!("failed to inspect compiled Hook policy bundle: {error}"))?;
-    if !metadata.file_type().is_file() || metadata.file_type().is_symlink() {
-        return Err("Hook policy bundle is not a regular immutable file".to_owned());
-    }
-    std::fs::read_to_string(path).map_err(|error| {
-        format!(
-            "failed to read Hook policy bundle {}: {error}",
-            path.display()
-        )
-    })
 }

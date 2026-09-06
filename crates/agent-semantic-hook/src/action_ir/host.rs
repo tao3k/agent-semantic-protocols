@@ -1,6 +1,7 @@
 #[derive(Clone, Debug, Copy, Eq, PartialEq)]
 pub(crate) enum AgentActionKind {
     Read,
+    Search,
     Edit,
     Execute,
     Mcp,

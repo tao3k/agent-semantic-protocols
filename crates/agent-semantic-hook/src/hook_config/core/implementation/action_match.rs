@@ -12,6 +12,8 @@ pub(super) struct AgentActionMatch {
     policy_all: Vec<ActionPredicate>,
     policy_any: Vec<ActionPredicate>,
     policy_none: Vec<ActionPredicate>,
+    pub(super) command_action_patterns:
+        Vec<agent_semantic_config::HookClientCommandActionPatternConfig>,
 }
 
 #[derive(Debug)]
@@ -77,6 +79,8 @@ pub(super) struct AgentActionMatchConfig {
     pub(super) policy_all: Vec<agent_semantic_config::HookClientCapabilityPolicyConfig>,
     pub(super) policy_any: Vec<agent_semantic_config::HookClientCapabilityPolicyConfig>,
     pub(super) policy_none: Vec<agent_semantic_config::HookClientCapabilityPolicyConfig>,
+    pub(super) command_action_patterns:
+        Vec<agent_semantic_config::HookClientCommandActionPatternConfig>,
 }
 
 impl AgentActionMatch {
@@ -88,6 +92,7 @@ impl AgentActionMatch {
             policy_all,
             policy_any,
             policy_none,
+            command_action_patterns,
         } = config;
         Self {
             native_matcher_any: native_matcher_any
@@ -99,6 +104,7 @@ impl AgentActionMatch {
             policy_all: policy_all.into_iter().map(ActionPredicate::from).collect(),
             policy_any: policy_any.into_iter().map(ActionPredicate::from).collect(),
             policy_none: policy_none.into_iter().map(ActionPredicate::from).collect(),
+            command_action_patterns,
         }
     }
 
@@ -245,6 +251,7 @@ impl AgentActionMatch {
             action,
             match_paths,
             structured_source_operands,
+            &self.command_action_patterns,
         );
         if include_subjects {
             if !self.subject_kind_any.is_empty() {

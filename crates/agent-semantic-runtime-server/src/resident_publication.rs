@@ -46,7 +46,10 @@ impl ResidentPublicationReceipt {
                 self.state
             ));
         }
-        Ok(())
+        Err(
+            "runtime artifact slot pruning was removed; bundle retention is the sole cleanup authority"
+                .to_owned(),
+        )
     }
 }
 
@@ -93,7 +96,7 @@ impl AtomicResidentPublisher {
 
     /// Remove candidate publications unreachable from active or healthy slots.
     pub async fn prune_unreachable_publications(&self) -> Result<(), String> {
-        self.slots.prune_unreachable_publications().await
+        Ok(())
     }
 
     /// Return the immutable path authority used by this publisher.
@@ -352,10 +355,6 @@ pub async fn resident_readiness_root(
             state_home.display()
         )
     })?;
-    let mut identity = blake3::Hasher::new();
-    identity.update(b"agent.semantic-protocols.runtime-server-readiness-socket.v1\0");
-    identity.update(canonical_state_home.as_os_str().as_bytes());
-    let identity = identity.finalize().to_hex();
     let expected_uid = tokio::fs::symlink_metadata(&canonical_state_home)
         .await
         .map_err(|error| {
@@ -367,33 +366,37 @@ pub async fn resident_readiness_root(
         .uid();
     let runtime_base =
         agent_semantic_client_db::runtime_server_control::runtime_server_runtime_base(state_home)?;
-    let runtime_uid_root = runtime_base
-        .parent()
-        .ok_or_else(|| "Runtime readiness root has no UID parent".to_owned())?;
-    let uid = runtime_uid_root
-        .file_name()
-        .and_then(|name| name.to_str())
-        .and_then(|name| name.strip_prefix("asp-runtime-server-"))
-        .filter(|uid| !uid.is_empty() && uid.bytes().all(|byte| byte.is_ascii_digit()))
-        .ok_or_else(|| {
-            format!(
-                "Runtime Server UID root has invalid identity: {}",
-                runtime_uid_root.display()
-            )
-        })?;
-    let readiness_uid_root = std::path::PathBuf::from("/tmp").join(format!("asp-r-{uid}"));
-    let root = readiness_uid_root.join(&identity[..24]);
-    for directory in [readiness_uid_root.as_path(), root.as_path()] {
-        match tokio::fs::create_dir(directory).await {
-            Ok(()) => {}
-            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
-            Err(error) => {
-                return Err(format!(
-                    "create Runtime readiness directory {}: {error}",
-                    directory.display()
-                ));
-            }
-        }
+    let root = agent_semantic_artifacts::RuntimeServingStateLayout::from_root(runtime_base.clone())
+        .readiness();
+    let socket = root.join("r").join(format!("{}.sock", "0".repeat(32)));
+    const MAX_PORTABLE_UNIX_SOCKET_PATH_BYTES: usize = 100;
+    if socket.as_os_str().as_bytes().len() > MAX_PORTABLE_UNIX_SOCKET_PATH_BYTES {
+        return Err(format!(
+            "reasonKind=runtime-readiness-path-unrepresentable Runtime readiness socket identity exceeds portable sun_path budget: bytes={} path={}",
+            socket.as_os_str().as_bytes().len(),
+            socket.display()
+        ));
+    }
+    tokio::fs::create_dir_all(&root).await.map_err(|error| {
+        format!(
+            "create Runtime readiness directory {}: {error}",
+            root.display()
+        )
+    })?;
+    let canonical_root = tokio::fs::canonicalize(&root).await.map_err(|error| {
+        format!(
+            "canonicalize Runtime readiness directory {}: {error}",
+            root.display()
+        )
+    })?;
+    if !canonical_root.starts_with(&canonical_state_home) {
+        return Err(format!(
+            "reasonKind=runtime-readiness-state-home-escape Runtime readiness directory escaped canonical State Home: stateHome={} readinessRoot={}",
+            canonical_state_home.display(),
+            canonical_root.display()
+        ));
+    }
+    for directory in [runtime_base.as_path(), canonical_root.as_path()] {
         let metadata = tokio::fs::symlink_metadata(directory)
             .await
             .map_err(|error| {
@@ -407,7 +410,7 @@ pub async fn resident_readiness_root(
             || metadata.uid() != expected_uid
         {
             return Err(format!(
-                "Runtime readiness directory is not a non-symlink State Home UID directory: {}",
+                "Runtime readiness directory is not a non-symlink State Home-owned directory: {}",
                 directory.display()
             ));
         }
@@ -422,14 +425,5 @@ pub async fn resident_readiness_root(
                 )
             })?;
     }
-    let socket = root.join("r").join(format!("{}.sock", "0".repeat(32)));
-    const MAX_PORTABLE_UNIX_SOCKET_PATH_BYTES: usize = 100;
-    if socket.as_os_str().as_bytes().len() > MAX_PORTABLE_UNIX_SOCKET_PATH_BYTES {
-        return Err(format!(
-            "Runtime readiness socket identity exceeds portable sun_path budget: bytes={} path={}",
-            socket.as_os_str().as_bytes().len(),
-            socket.display()
-        ));
-    }
-    crate::readiness::RuntimeServerReadinessRoot::new(root)
+    crate::readiness::RuntimeServerReadinessRoot::new(canonical_root)
 }

@@ -17,6 +17,15 @@ def test_request_is_intent_only() -> None:
     assert not ({"graph", "sourceSnapshot", "workspaceGeneration", "providerId", "algorithm"} & properties.keys())
 
 
+def test_request_preserves_ordered_graph_clauses_and_large_candidate_frontier() -> None:
+    properties = load("semantic-graph-resident-evaluation-request.v1.schema.json")[
+        "properties"
+    ]
+    assert properties["queryClauses"]["type"] == "array"
+    assert properties["candidateNodeIds"]["maxItems"] == 4096
+    assert properties["entryNodeIds"]["maxItems"] == 4096
+
+
 def test_result_binds_ready_generation_and_forbids_query_time_side_effects() -> None:
     schema = load("semantic-graph-resident-evaluation-result.v1.schema.json")
     assert schema["properties"]["state"]["const"] == "Ready"

@@ -19,12 +19,23 @@ fn collaboration_message_names_the_configured_agent_and_native_tool() {
     assert!(message.contains("Host-native authority"));
     assert!(message.contains("sandbox_permissions: \"require_escalated\""));
     assert!(message.contains("Do not first launch it inside the child sandbox"));
-    assert!(
-        message
-            .contains("Run `asp search playbook --language rust 'HookDecision' --workspace .` exactly once")
-    );
+    assert!(message.contains(
+        "Run `asp search playbook --language rust 'HookDecision' --workspace .` exactly once"
+    ));
     assert!(message.contains("execute this parent-authored task exactly as written"));
     assert!(message.contains("/root/asp_explorer"));
+    assert!(message.contains("attached typed"));
+    assert!(message.contains("multi_agent_v2"));
+    assert!(message.contains("codex-multi-agent-v2-capability-unavailable"));
+    assert!(!message.contains("multi_agent_v1"));
+    assert!(message.contains("host-agent-observation-capability-unavailable"));
+    assert!(message.contains("Never emit or execute an unavailable tool spelling"));
+    assert!(
+        message.find("requiredAction=followup-task")
+            < message.find("requiredAction=observe-host-path"),
+        "follow-up must precede Host-tree observation"
+    );
+    assert!(!message.contains("First inspect the Codex Host"));
     assert!(message.contains("collaboration.list_agents({\n  path_prefix: \"/root\"\n})"));
     assert!(message.contains("collaboration.followup_task({"));
     assert!(message.contains("collaboration.send_message({"));
@@ -49,11 +60,12 @@ fn collaboration_message_names_the_configured_agent_and_native_tool() {
     assert!(message.contains("prevents a Host snapshot race"));
     assert!(message.contains("receipt is missing or stale"));
     assert!(message.contains("standardized JSON"));
-    assert!(message.contains("current lifecycle authority"));
+    assert!(message.contains("Host path/status"));
+    assert!(message.contains("does not replace the Registry disposition"));
     assert!(message.contains("existing AgentSession Registry"));
     assert!(message.contains("does not create a second filesystem mirror"));
     assert!(message.contains("`asp clean --day` owns expiry"));
-    assert!(message.contains("dispatch the required operation with =followup_task="));
+    assert!(message.contains("requiredAction=followup-task"));
     assert!(message.contains("interrupt that same canonical Agent path without deleting"));
     assert!(message.contains("Waiting only observes activity"));
     assert!(

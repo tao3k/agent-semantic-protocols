@@ -13,9 +13,9 @@ fn loopback(port: u16) -> crate::runtime_server_control::RuntimeServerLoopbackEn
 }
 
 fn endpoint(root: &std::path::Path) -> RuntimeServerEndpoint {
+    let runtime_binary_identity = RuntimeBinaryIdentity::from_bytes(b"hook-admission-runtime");
     RuntimeServerEndpoint {
-        binary_content_digest:
-            "blake3-256:0000000000000000000000000000000000000000000000000000000000000000".to_owned(),
+        binary_content_digest: runtime_binary_identity.content_digest().to_string(),
         runtime_generation_digest:
             "blake3-256:1111111111111111111111111111111111111111111111111111111111111111".to_owned(),
         schema_digest:
@@ -26,7 +26,7 @@ fn endpoint(root: &std::path::Path) -> RuntimeServerEndpoint {
         owner_epoch: 7,
         owner_process_id: 0,
         runtime_artifact_path: root.join("runtime/bin/asp").display().to_string(),
-        runtime_binary_identity: RuntimeBinaryIdentity::from_bytes(b"hook-admission-runtime"),
+        runtime_binary_identity,
         monitor_capability: true,
         observed_runtime_binary_identity: RuntimeBinaryIdentity::from_bytes(
             b"hook-admission-runtime",

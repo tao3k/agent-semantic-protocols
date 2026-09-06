@@ -1,5 +1,7 @@
 //! Typed provider route request and response bindings for the ASP Client Protocol.
 
+use std::collections::BTreeSet;
+
 use serde::Deserialize;
 use serde::Serialize;
 use serde_json::Value;
@@ -8,6 +10,8 @@ const SEARCH_REQUEST: &str = "agent.semantic-protocols.runtime-provider-search-r
 const CLIENT_SEARCH_REQUEST: &str = "agent.semantic-protocols.asp-client-search-request";
 const CLIENT_WORKSPACE_SEARCH_PLAYBOOK_REQUEST: &str =
     "agent.semantic-protocols.asp-client-workspace-search-playbook-request";
+const CLIENT_WORKSPACE_SYNTAX_QUERY_REQUEST: &str =
+    "agent.semantic-protocols.asp-client-workspace-syntax-query-request";
 const CLIENT_SOURCE_INDEX_LOOKUP_REQUEST: &str =
     "agent.semantic-protocols.asp-client-source-index-lookup-request";
 const CLIENT_EXACT_QUERY_REQUEST: &str = "agent.semantic-protocols.asp-client-exact-query-request";
@@ -40,24 +44,100 @@ pub struct AspClientSearchRequest {
     pub explain: String,
 }
 
-/// Workspace-scoped Search planner request owned by the Runtime Server.
+/// One provider-native Syntax block inside Search Playbook.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AspClientSearchPlaybookSyntaxBlock {
+    pub producer: String,
+    pub argv: Vec<String>,
+}
+
+/// One native Graph-language block inside Search Playbook.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AspClientSearchPlaybookGraphBlock {
+    pub language: String,
+    pub argv: Vec<String>,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum AspClientSearchPlaybookClauseAxis {
+    Fd,
+    Rg,
+    Tantivy,
+    Syntax,
+    Graph,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AspClientSearchPlaybookClauseRef {
+    pub axis: AspClientSearchPlaybookClauseAxis,
+    pub block_index: usize,
+}
+
+/// Workspace-scoped Search Playbook request owned by the Runtime Server.
 ///
-/// Unlike a language Search request, `language` is only an optional filter on
-/// the Runtime's immutable provider snapshot.  The client never turns it into
-/// a provider route or infers it from a path.
+/// With no search clauses this is a provider contract query. One or more
+/// acquisition clauses form an executable request; optional Graph clauses are
+/// the final dependent fan-in barrier. No public mode or intent field exists.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AspClientWorkspaceSearchPlaybookRequest {
     pub schema_id: String,
     pub schema_version: String,
-    pub language: Option<String>,
-    pub intent: String,
-    pub query: String,
-    pub scope: String,
-    pub coverage: String,
-    pub max_owners: u32,
-    pub deadline_ms: u64,
-    pub explain: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub languages: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub documents: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workspace: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fd: Option<Vec<Vec<String>>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rg: Option<Vec<Vec<String>>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tantivy: Option<Vec<Vec<String>>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub syntax: Option<Vec<AspClientSearchPlaybookSyntaxBlock>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub graph: Option<Vec<AspClientSearchPlaybookGraphBlock>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub clause_order: Option<Vec<AspClientSearchPlaybookClauseRef>>,
+}
+
+/// Direct provider-native syntax Query over the current immutable workspace.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AspClientWorkspaceSyntaxQueryRequest {
+    pub schema_id: String,
+    pub schema_version: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub languages: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub documents: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workspace: Option<String>,
+    pub syntax: Vec<AspClientSearchPlaybookSyntaxBlock>,
+    pub projection: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AspClientWorkspaceSyntaxQueryEvidence {
+    pub owner: String,
+    pub selector: String,
+    pub relation: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AspClientWorkspaceSyntaxQueryResponse {
+    pub schema_id: String,
+    pub schema_version: String,
+    pub state: String,
+    pub evidence: Vec<AspClientWorkspaceSyntaxQueryEvidence>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -273,7 +353,7 @@ pub struct AspClientExactQueryResponse {
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-/// Typed exact-query failure with selector evidence and a recommended next action.
+/// Typed exact-query failure with selector evidence and no prescribed continuation.
 pub struct AspClientExactQueryFailure {
     pub schema_id: String,
     pub schema_version: String,
@@ -290,7 +370,6 @@ pub struct AspClientExactQueryFailure {
     pub reason_kind: String,
     pub generation_digest: Option<String>,
     pub root_digest: Option<String>,
-    pub recommended_next: Value,
     pub resident_read_elapsed_micros: u64,
     pub service_elapsed_micros: u64,
     pub elapsed_micros: u64,
@@ -486,21 +565,122 @@ impl AspClientWorkspaceSearchPlaybookRequest {
             CLIENT_WORKSPACE_SEARCH_PLAYBOOK_REQUEST,
             &self.schema_version,
         )?;
-        if self.language.as_deref().is_some_and(str::is_empty) {
-            return Err("ASP workspace Search language filter must not be empty".to_owned());
+        for (name, value) in [
+            ("languages", self.languages.as_deref()),
+            ("documents", self.documents.as_deref()),
+            ("workspace", self.workspace.as_deref()),
+        ] {
+            if value.is_some_and(str::is_empty) {
+                return Err(format!("ASP workspace Search {name} must not be empty"));
+            }
         }
-        AspClientSearchRequest {
-            schema_id: CLIENT_SEARCH_REQUEST.to_owned(),
-            schema_version: self.schema_version.clone(),
-            intent: self.intent.clone(),
-            query: self.query.clone(),
-            scope: self.scope.clone(),
-            coverage: self.coverage.clone(),
-            max_owners: self.max_owners,
-            deadline_ms: self.deadline_ms,
-            explain: self.explain.clone(),
+
+        let acquisition_count = self.fd.as_ref().map_or(0, Vec::len)
+            + self.rg.as_ref().map_or(0, Vec::len)
+            + self.tantivy.as_ref().map_or(0, Vec::len)
+            + self.syntax.as_ref().map_or(0, Vec::len);
+        let graph_count = self.graph.as_ref().map_or(0, Vec::len);
+        if acquisition_count == 0 && graph_count != 0 {
+            return Err("ASP workspace Search Graph requires preceding acquisition".to_owned());
         }
-        .validate_schema_identity()
+        if acquisition_count != 0 && self.languages.is_none() && self.documents.is_none() {
+            return Err(
+                "ASP workspace Search Playbook execution requires languages or documents"
+                    .to_owned(),
+            );
+        }
+        let Some(clause_order) = self.clause_order.as_ref() else {
+            if acquisition_count == 0 && graph_count == 0 {
+                return Ok(());
+            }
+            return Err("ASP workspace Search execution requires clauseOrder".to_owned());
+        };
+        if acquisition_count == 0 || clause_order.len() != acquisition_count + graph_count {
+            return Err("ASP workspace Search clauseOrder coverage is invalid".to_owned());
+        }
+        let mut graph_started = false;
+        let mut covered = BTreeSet::new();
+        for clause in clause_order {
+            let block_count = match clause.axis {
+                AspClientSearchPlaybookClauseAxis::Fd => self.fd.as_ref().map_or(0, Vec::len),
+                AspClientSearchPlaybookClauseAxis::Rg => self.rg.as_ref().map_or(0, Vec::len),
+                AspClientSearchPlaybookClauseAxis::Tantivy => {
+                    self.tantivy.as_ref().map_or(0, Vec::len)
+                }
+                AspClientSearchPlaybookClauseAxis::Syntax => {
+                    self.syntax.as_ref().map_or(0, Vec::len)
+                }
+                AspClientSearchPlaybookClauseAxis::Graph => {
+                    graph_started = true;
+                    graph_count
+                }
+            };
+            if clause.axis != AspClientSearchPlaybookClauseAxis::Graph && graph_started {
+                return Err(
+                    "ASP workspace Search acquisition clauses must precede Graph".to_owned(),
+                );
+            }
+            if clause.block_index >= block_count
+                || !covered.insert((clause.axis, clause.block_index))
+            {
+                return Err("ASP workspace Search clauseOrder reference is invalid".to_owned());
+            }
+        }
+
+        for argv in self
+            .fd
+            .iter()
+            .chain(self.rg.iter())
+            .chain(self.tantivy.iter())
+            .flatten()
+        {
+            if argv.is_empty() {
+                return Err("ASP workspace Search native argv must not be empty".to_owned());
+            }
+        }
+        if self
+            .syntax
+            .iter()
+            .flatten()
+            .any(|block| block.producer.is_empty() || block.argv.is_empty())
+        {
+            return Err("ASP workspace Search Syntax block must not be empty".to_owned());
+        }
+        if self
+            .graph
+            .iter()
+            .flatten()
+            .any(|block| block.language.is_empty() || block.argv.is_empty())
+        {
+            return Err("ASP workspace Search Graph block must not be empty".to_owned());
+        }
+        Ok(())
+    }
+}
+
+impl AspClientWorkspaceSyntaxQueryRequest {
+    pub fn validate_schema_identity(&self) -> Result<(), String> {
+        check(
+            &self.schema_id,
+            CLIENT_WORKSPACE_SYNTAX_QUERY_REQUEST,
+            &self.schema_version,
+        )?;
+        if self.languages.is_none() && self.documents.is_none() {
+            return Err("workspace syntax Query requires a producer selector".to_owned());
+        }
+        if self.syntax.is_empty()
+            || self.syntax.iter().any(|block| {
+                block.producer.trim().is_empty()
+                    || block.argv.is_empty()
+                    || block.argv.iter().any(|argument| argument.is_empty())
+            })
+        {
+            return Err("workspace syntax Query requires complete native blocks".to_owned());
+        }
+        if self.projection != "matches" {
+            return Err("workspace syntax Query projection must be matches".to_owned());
+        }
+        Ok(())
     }
 }
 
@@ -583,10 +763,8 @@ impl AspClientExactQueryFailure {
         if let Some(root_digest) = &self.root_digest {
             validate_digest("rootDigest", root_digest, false)?;
         }
-        if self.recommended_next.is_null() || !self.details.is_object() {
-            return Err(
-                "exact-query failure requires recommendedNext and object details".to_owned(),
-            );
+        if !self.details.is_object() {
+            return Err("exact-query failure requires object details".to_owned());
         }
         if self.elapsed_micros
             != self

@@ -125,6 +125,100 @@ pattern where an initialized server may answer against whichever document
 version it currently holds: ASP requires the exact content-bound generation at
 admission.
 
+* Artifact publication and resident activation use one durable authority
+
+The immutable pending activation event in the canonical State Home is the only
+cross-process activation fact.  Its identity is the ordered tuple of bundle
+digest, Runtime artifact digest, publication nonce, and expected previous
+applied commit.  Publication commits that event under the artifact mutation
+guard and returns its exact identity.  It does not open, bind, discover, or
+send to a socket.
+
+An already admitted Runtime may be prompted through its existing content-bound
+control/data capability.  The prompt carries only the pending event identity;
+it is not an activation payload and cannot select a path, executable, provider,
+or generation.  The Runtime re-reads the canonical pending event, verifies the
+identity and current applied commit, and submits it to one bounded per-bundle
+activation actor.  Process-local delivery uses Tokio channels.  Duplicate
+prompts coalesce on the exact event identity.  The actor serializes commit for
+one bundle while unrelated Runtime services remain available.
+
+The prompt is an optimization, never authority.  Runtime startup always
+reconciles the durable pending event before publishing Healthy.  A lost prompt
+therefore cannot lose an activation.  Conversely, a prompt without the exact
+pending event cannot activate anything.  If no admitted Runtime handoff is
+available, publication returns a typed
+=published-active-awaiting-runtime= receipt and never launches Runtime.  Only
+the Host supervisor may decide to start it.
+
+Every accepted activation event has exactly one terminal outcome:
+
+- =applied=: the exact event becomes the applied commit and the matching
+  pending event is retired;
+- =successor-required=: active remains published but the old process does not
+  claim the new executable; the Host supervisor owns successor handoff;
+- =failed=: the transaction restores the previous healthy selection and emits
+  a typed failure;
+- =cancelled=: no applied commit or healthy mutation is written.
+
+=activationGeneration= remains an internal monotonic publication/fencing
+sequence.  It is absent from event equality, actor keys, executable identity,
+cache keys, selectors, provider requests, and Query admission.
+
+The following V1 mechanisms are deleted rather than retained as compatibility
+paths:
+
+- =runtime_artifact_activation_socket_path=;
+- the =/tmp/asp-activation= and =/tmp/asp-ar-*= socket layouts;
+- best-effort datagram notification after artifact commit;
+- client-side activation listeners and implicit Runtime spawn from Search,
+  Query, status, doctor, or source inspection;
+- endpoint rediscovery after a validated Runtime handoff;
+- any provider-private activation cache or filesystem watcher that can commit
+  independently of the Runtime activation actor.
+
+Filesystem observation may be used only as a wake-up hint if it feeds the same
+bounded actor and periodic durable reconciliation remains enabled.  It never
+changes the identity or terminal rules above.
+
+* Activation performance and resource bounds
+
+Artifact hashing and immutable materialization occur before the short commit
+guard.  The guard performs only compare-and-swap publication, slot selection,
+and pending-event commit.  Runtime reconciliation reads at most one pending
+event per wake-up and keeps at most one in-flight event per bundle identity.
+The channel has a fixed capacity and reserves terminal delivery; overload
+coalesces identical event identities and rejects distinct excess work with a
+typed terminal instead of allocating an unbounded queue.
+
+Required measurements report hashing/materialization, guard wait, pending CAS,
+Runtime admission queue, activation, drain, and terminal egress separately.
+The qualification matrix is resident cold, resident warm, ten sequential
+publications, and thirty-two concurrent same-key publications.  Same-key
+execution count must be one; cancellation before commit must leave the applied
+identity unchanged; RSS and open descriptor counts must return to their steady
+state after drain.
+
+* Deterministic activation gates
+
+- publication succeeds without creating or contacting any Unix-domain socket;
+- startup consumes one exact pending event before Healthy;
+- an online exact prompt and startup replay coalesce to one activation;
+- same artifact content with a newer publication sequence preserves content
+  identity while still fencing stale actors;
+- same policy with a different executable and same executable with a different
+  policy both fail exact Runtime execution admission;
+- stale nonce, stale expected commit, cross-State-Home event, and event identity
+  mismatch fail before activation;
+- cancellation writes neither applied nor healthy state;
+- thirty-two same-key submissions execute once and emit one terminal per
+  caller;
+- Search and Query without a Host handoff never spawn Runtime and return one
+  typed =transport-unavailable= terminal;
+- source inspection and tests contain no production reference to
+  =runtime_artifact_activation_socket_path=, =asp-activation=, or
+  =asp-ar-=.
+
 * Performance budget
 
 Warm control and ClientFrame exchanges reuse bounded Tokio connection pools.

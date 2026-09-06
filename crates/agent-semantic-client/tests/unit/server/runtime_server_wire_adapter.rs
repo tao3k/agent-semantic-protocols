@@ -14,7 +14,7 @@ fn event() -> agent_semantic_artifacts::runtime_artifact_activation::RuntimeArti
         bundle_digest: artifact_digest.clone(),
         artifact_digest: artifact_digest.clone(),
         artifact_path: artifact_path.clone(),
-        candidate_slot_path: std::path::PathBuf::from("/runtime/resident/candidate"),
+        candidate_slot_path: std::path::PathBuf::from("/runtime/artifacts/bundles/candidate"),
         previous_artifact_digest: None,
         artifact_mode: "dev".to_owned(),
         published_at_unix_millis: 1,

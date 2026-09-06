@@ -13,10 +13,17 @@ struct OwnedCompiledHookPolicyBundle {
     schema_id: &'static str,
     schema_version: u32,
     generation_digest: String,
-    reader_behavior_patterns: Vec<Vec<String>>,
+    command_action_patterns: Vec<OwnedCommandActionPattern>,
     registered_languages: Vec<String>,
     agent_calling_pattern: String,
     rules: Vec<OwnedCompiledDecisionRule>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct OwnedCommandActionPattern {
+    action: String,
+    argv_pattern_any: Vec<Vec<String>>,
 }
 
 #[derive(Debug, Serialize)]
@@ -71,12 +78,56 @@ pub fn compile_aot_hook_policy_bundle(
 /// The canonical Runtime Hook binary is the only executable authority for Hook
 /// evaluation. The returned digest therefore identifies the embedded policy
 /// inputs; there is no separately published evaluator binary or
-/// standalone `runtime/bin/asp-hook` executable.
+/// standalone stable-path Hook executable.
 pub fn compile_embedded_hook_policy_bundle() -> Result<Vec<u8>, String> {
     let generation_digest = embedded_hook_policy_content_digest()?;
     let config = agent_semantic_config::default_hook_client_config_file()
         .map_err(|error| format!("load embedded Hook config: {error}"))?;
     compile_aot_hook_policy_bundle(&config, generation_digest)
+}
+
+/// Compile the serving Hook policy from the immutable system defaults plus an
+/// optional user-level State Home overlay.
+///
+/// The system template is always the base policy.  When present,
+/// `$ASP_STATE_HOME/hooks/config.toml` is a declarative overlay, not a second
+/// executable authority and not a best-effort hint: invalid user policy fails
+/// closed before a Host action can be admitted.  The normal `asp-hook` path
+/// calls this function directly.
+pub fn compile_serving_hook_policy_bundle() -> Result<Vec<u8>, String> {
+    compile_serving_hook_policy_bundle_at(
+        crate::hook_config_global::default_global_client_config_path().as_deref(),
+    )
+}
+
+fn compile_serving_hook_policy_bundle_at(
+    path: Option<&std::path::Path>,
+) -> Result<Vec<u8>, String> {
+    let Some(path) = path else {
+        return compile_embedded_hook_policy_bundle();
+    };
+    if !path.exists() {
+        return compile_embedded_hook_policy_bundle();
+    }
+    if !path.is_file() {
+        return Err(format!(
+            "Hook user config is not a regular file: {}",
+            path.display()
+        ));
+    }
+    let source = std::fs::read(&path)
+        .map_err(|error| format!("read Hook user config {}: {error}", path.display()))?;
+    let config = agent_semantic_config::load_hook_client_config_overlay_file(&path)
+        .map_err(|error| format!("load Hook user config {}: {error}", path.display()))?;
+    let mut identity = blake3::Hasher::new();
+    identity.update(b"agent-semantic-hook-serving-policy.v1\0");
+    identity.update(embedded_hook_policy_content_digest()?.as_bytes());
+    identity.update(b"\0");
+    identity.update(&source);
+    compile_aot_hook_policy_bundle(
+        &config,
+        format!("blake3-256:{}", identity.finalize().to_hex()),
+    )
 }
 
 /// Project the identity of the immutable Hook inputs linked into this build.
@@ -147,7 +198,7 @@ fn compile_aot_hook_policy_bundle_projection(
         schema_id: HOOK_POLICY_BUNDLE_SCHEMA_ID,
         schema_version: HOOK_POLICY_BUNDLE_SCHEMA_VERSION,
         generation_digest: generation_digest.into(),
-        reader_behavior_patterns: compile_reader_behavior_patterns(projection)?,
+        command_action_patterns: compile_command_action_patterns(projection)?,
         registered_languages,
         agent_calling_pattern,
         rules,
@@ -155,33 +206,56 @@ fn compile_aot_hook_policy_bundle_projection(
     .map_err(|error| format!("failed to encode compiled HookPolicyBundle: {error}"))
 }
 
-fn compile_reader_behavior_patterns(projection: &Value) -> Result<Vec<Vec<String>>, String> {
-    let mut patterns = projection
-        .get("readerBehaviorPatterns")
+fn compile_command_action_patterns(
+    projection: &Value,
+) -> Result<Vec<OwnedCommandActionPattern>, String> {
+    let mut families = projection
+        .get("commandActionPatterns")
         .and_then(Value::as_array)
         .into_iter()
         .flatten()
-        .map(|pattern| {
-            pattern
-                .as_array()
-                .ok_or("readerBehaviorPatterns entries must be argv arrays")?
+        .map(|family| {
+            let action = family
+                .get("action")
+                .and_then(Value::as_str)
+                .filter(|action| matches!(*action, "read" | "search"))
+                .ok_or("commandActionPatterns action must be read or search")?
+                .to_owned();
+            let mut argv_pattern_any = family
+                .get("argvPatternAny")
+                .and_then(Value::as_array)
+                .ok_or("commandActionPatterns entries must contain argvPatternAny")?
                 .iter()
-                .map(|token| {
-                    token
-                        .as_str()
-                        .filter(|token| !token.is_empty())
-                        .map(str::to_owned)
-                        .ok_or("readerBehaviorPatterns tokens must be non-empty strings")
+                .map(|pattern| {
+                    pattern
+                        .as_array()
+                        .ok_or("commandActionPatterns argvPatternAny entries must be argv arrays")?
+                        .iter()
+                        .map(|token| {
+                            token
+                                .as_str()
+                                .filter(|token| !token.is_empty())
+                                .map(str::to_owned)
+                                .ok_or("commandActionPatterns tokens must be non-empty strings")
+                        })
+                        .collect::<Result<Vec<_>, _>>()
                 })
-                .collect::<Result<Vec<_>, _>>()
+                .collect::<Result<Vec<_>, _>>()?;
+            if argv_pattern_any.iter().any(Vec::is_empty) || argv_pattern_any.is_empty() {
+                return Err(
+                    "commandActionPatterns argvPatternAny entries must not be empty".to_owned(),
+                );
+            }
+            argv_pattern_any.sort();
+            argv_pattern_any.dedup();
+            Ok(OwnedCommandActionPattern {
+                action,
+                argv_pattern_any,
+            })
         })
-        .collect::<Result<Vec<_>, _>>()?;
-    if patterns.iter().any(Vec::is_empty) {
-        return Err("readerBehaviorPatterns entries must not be empty".to_owned());
-    }
-    patterns.sort();
-    patterns.dedup();
-    Ok(patterns)
+        .collect::<Result<Vec<_>, String>>()?;
+    families.sort_by(|left, right| left.action.cmp(&right.action));
+    Ok(families)
 }
 
 fn compile_profiles(projection: &Value) -> Result<BTreeMap<String, CompiledProfile>, String> {
@@ -254,7 +328,10 @@ fn compile_rules(
             .flatten()
             .filter_map(Value::as_str)
             .any(|policy| policy == "wrapped_command");
-    if wrapped_command {
+    // A matcher-less shell rule is a legacy shorthand for Bash admission.
+    // Do not add Bash to an explicitly native `Read` rule: Host action
+    // boundaries are part of the policy identity.
+    if wrapped_command && matchers.is_empty() {
         matchers.push("Bash".to_owned());
     }
     matchers.sort();

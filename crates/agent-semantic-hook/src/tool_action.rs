@@ -94,23 +94,6 @@ pub(crate) struct ToolAction {
 }
 
 impl ToolAction {
-    pub(crate) fn normalized_direct_policy_action(path: String) -> Self {
-        Self {
-            tool_name: "Read".to_owned(),
-            host_payload: serde_json::json!({ "path": path.as_str() }),
-            invocation_source: None,
-            host_action: HostInvocationKind::Read,
-            surface: ToolSurface::CodexDirectRead,
-            operation: OperationIntent::DirectRead,
-            command: None,
-            command_tokens: None,
-            shell_envelope_command: None,
-            paths: vec![path],
-            // Synthetic policy action; no parser-owned shell projection here.
-            has_declared_filesystem_access: false,
-        }
-    }
-
     pub(crate) fn normalized_shell_policy_action(command: String, path: String) -> Self {
         let command_tokens = semantic_shell_tokens(&command);
         Self {

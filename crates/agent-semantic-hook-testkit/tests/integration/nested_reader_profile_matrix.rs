@@ -54,35 +54,77 @@ fn exact_nested_run_pipeline_routes_the_entire_host_call() {
     let command = format!(
         "/workspace/.devenv/devenv-profile-exec rtk run 'rg -n . {first} | sed -n \"238,300p\"; rg -n . {second} | head -n 90'"
     );
-    assert_static_reader_denied(&generation, "testkit-nested-run-readers", &command);
+    let payload = serde_json::json!({
+        "session_id": "testkit-nested-run-search",
+        "cwd": ".",
+        "hook_event_name": "PreToolUse",
+        "tool_name": "Bash",
+        "tool_input": { "command": command }
+    })
+    .to_string();
+    assert!(
+        reader_probe_request(&generation, &payload, "Bash")
+            .expect("project nested Search request")
+            .is_none()
+    );
+    let decision = evaluate_pre_tool(&generation, &payload, "Bash")
+        .expect("evaluate nested Search")
+        .expect("nested Search must deny");
+    assert_eq!(
+        decision.config_rule_id,
+        "deny-shell-search-before-execution"
+    );
 }
 
 #[test]
 fn wrapper_and_argv_variants_share_one_reader_profile_composition() {
     let generation = canonical_generation();
     let registered_source = "crates/agent-semantic-hook/src/lib.rs";
-    let positive_commands = [
-        format!("future-wrapper run 'rg -n needle {registered_source} | sed -n \"1,4p\"'"),
-        format!(
-            "project-launcher alpha run '/usr/bin/rg -n needle {registered_source}; head -n 4 {registered_source}'"
-        ),
-        format!(
-            "env TRACE=1 custom-launcher run 'sed -n \"1,4p\" {registered_source} | head -n 2'"
-        ),
-        format!("rg 'alpha|beta' {registered_source}"),
-    ];
+    let reader_commands = [format!(
+        "env TRACE=1 custom-launcher run 'sed -n \"1,4p\" {registered_source} | head -n 2'"
+    )];
 
-    for (index, command) in positive_commands.iter().enumerate() {
+    for (index, command) in reader_commands.iter().enumerate() {
         assert_static_reader_denied(
             &generation,
             &format!("testkit-nested-reader-matrix-{index}"),
             command,
         );
     }
+
+    for command in [
+        format!("future-wrapper run 'rg -n needle {registered_source} | sed -n \"1,4p\"'"),
+        format!(
+            "project-launcher alpha run '/usr/bin/rg -n needle {registered_source}; head -n 4 {registered_source}'"
+        ),
+        format!("rg 'alpha|beta' {registered_source}"),
+    ] {
+        let payload = serde_json::json!({
+            "session_id": "testkit-nested-search-matrix",
+            "cwd": ".",
+            "hook_event_name": "PreToolUse",
+            "tool_name": "Bash",
+            "tool_input": { "command": command }
+        })
+        .to_string();
+        assert!(
+            reader_probe_request(&generation, &payload, "Bash")
+                .expect("project Search request")
+                .is_none(),
+            "Search must not launch a Reader probe: {command}"
+        );
+        let decision = evaluate_pre_tool(&generation, &payload, "Bash")
+            .expect("evaluate Search")
+            .expect("Search must deny");
+        assert_eq!(
+            decision.config_rule_id, "deny-shell-search-before-execution",
+            "command={command}"
+        );
+    }
 }
 
 #[test]
-fn commands_without_a_registered_source_operand_remain_allowed() {
+fn commands_without_a_registered_source_operand_route_to_search_without_reader_probe() {
     let generation = canonical_generation();
     for command in [
         "future-wrapper run 'just --list | rg hook'",
@@ -105,8 +147,8 @@ fn commands_without_a_registered_source_operand_remain_allowed() {
         assert!(
             evaluate_pre_tool(&generation, &payload, "Bash")
                 .unwrap_or_else(|error| panic!("evaluate negative {command:?}: {error}"))
-                .is_none(),
-            "non-source command must remain allowed: {command:?}"
+                .is_some(),
+            "shell search must route without a Reader probe: {command:?}"
         );
     }
 }

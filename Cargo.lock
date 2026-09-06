@@ -87,7 +87,7 @@ dependencies = [
  "agent-semantic-search-projection",
  "agent-semantic-tree-sitter",
  "aho-corasick",
- "asp-rust",
+ "asp-rust 0.1.2",
  "asp-rust-project-harness-policy",
  "base64 0.22.1",
  "blake3",
@@ -411,6 +411,9 @@ dependencies = [
  "asp-rust-project-harness-policy",
  "blake3",
  "criterion",
+ "gql-catalog",
+ "gql-compiler",
+ "gql-ir",
  "hyper-util",
  "prost",
  "serde",
@@ -451,6 +454,7 @@ dependencies = [
  "ignore",
  "memchr",
  "memmap2",
+ "regex",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -489,7 +493,7 @@ name = "agent-semantic-tree-sitter"
 version = "0.1.0"
 dependencies = [
  "agent-semantic-provider-protocol",
- "asp-rust",
+ "asp-rust 0.1.2",
  "asp-rust-project-harness-policy",
 ]
 
@@ -687,6 +691,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "asp-rust"
+version = "0.1.2"
+source = "git+https://github.com/tao3k/asp-rust?rev=b64f80401c8e2688d7aa7809de714d5f22890ebf#b64f80401c8e2688d7aa7809de714d5f22890ebf"
+dependencies = [
+ "asp-rust-build-support 0.1.0 (git+https://github.com/tao3k/asp-rust?rev=b64f80401c8e2688d7aa7809de714d5f22890ebf)",
+ "blake3",
+ "cargo-lock",
+ "cargo_toml",
+ "globset",
+ "libc",
+ "proc-macro2",
+ "quote",
+ "regex",
+ "semver",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "syn 3.0.4",
+ "toml 1.1.2+spec-1.1.0",
+]
+
+[[package]]
 name = "asp-rust-build-support"
 version = "0.1.0"
 dependencies = [
@@ -702,10 +728,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "asp-rust-build-support"
+version = "0.1.0"
+source = "git+https://github.com/tao3k/asp-rust?rev=b64f80401c8e2688d7aa7809de714d5f22890ebf#b64f80401c8e2688d7aa7809de714d5f22890ebf"
+dependencies = [
+ "blake3",
+]
+
+[[package]]
 name = "asp-rust-project-harness-policy"
 version = "0.1.0"
 dependencies = [
- "asp-rust",
+ "asp-rust 0.1.2",
  "asp-rust-build-support 0.1.0",
  "blake3",
  "criterion",
@@ -2956,6 +2990,88 @@ dependencies = [
 ]
 
 [[package]]
+name = "gql-ast"
+version = "0.1.0"
+source = "git+https://github.com/tao3k/gql-rust.git?rev=305e967b06d98efe362b56dc26f43463e34657be#305e967b06d98efe362b56dc26f43463e34657be"
+dependencies = [
+ "gql-source",
+ "gql-syntax",
+ "mrr-asp-rust-project-policy",
+]
+
+[[package]]
+name = "gql-catalog"
+version = "0.1.0"
+source = "git+https://github.com/tao3k/gql-rust.git?rev=305e967b06d98efe362b56dc26f43463e34657be#305e967b06d98efe362b56dc26f43463e34657be"
+dependencies = [
+ "gql-types",
+ "mrr-asp-rust-project-policy",
+]
+
+[[package]]
+name = "gql-compiler"
+version = "0.1.0"
+source = "git+https://github.com/tao3k/gql-rust.git?rev=305e967b06d98efe362b56dc26f43463e34657be#305e967b06d98efe362b56dc26f43463e34657be"
+dependencies = [
+ "gql-ast",
+ "gql-catalog",
+ "gql-sema",
+ "gql-source",
+ "gql-syntax",
+ "gql-types",
+ "mrr-asp-rust-project-policy",
+]
+
+[[package]]
+name = "gql-ir"
+version = "0.1.0"
+source = "git+https://github.com/tao3k/gql-rust.git?rev=305e967b06d98efe362b56dc26f43463e34657be#305e967b06d98efe362b56dc26f43463e34657be"
+dependencies = [
+ "gql-types",
+ "mrr-asp-rust-project-policy",
+]
+
+[[package]]
+name = "gql-sema"
+version = "0.1.0"
+source = "git+https://github.com/tao3k/gql-rust.git?rev=305e967b06d98efe362b56dc26f43463e34657be#305e967b06d98efe362b56dc26f43463e34657be"
+dependencies = [
+ "gql-ast",
+ "gql-catalog",
+ "gql-ir",
+ "gql-source",
+ "gql-types",
+ "mrr-asp-rust-project-policy",
+]
+
+[[package]]
+name = "gql-source"
+version = "0.1.0"
+source = "git+https://github.com/tao3k/gql-rust.git?rev=305e967b06d98efe362b56dc26f43463e34657be#305e967b06d98efe362b56dc26f43463e34657be"
+dependencies = [
+ "mrr-asp-rust-project-policy",
+]
+
+[[package]]
+name = "gql-syntax"
+version = "0.1.0"
+source = "git+https://github.com/tao3k/gql-rust.git?rev=305e967b06d98efe362b56dc26f43463e34657be#305e967b06d98efe362b56dc26f43463e34657be"
+dependencies = [
+ "gql-source",
+ "icu_properties",
+ "mrr-asp-rust-project-policy",
+ "rowan",
+]
+
+[[package]]
+name = "gql-types"
+version = "0.1.0"
+source = "git+https://github.com/tao3k/gql-rust.git?rev=305e967b06d98efe362b56dc26f43463e34657be#305e967b06d98efe362b56dc26f43463e34657be"
+dependencies = [
+ "mrr-asp-rust-project-policy",
+]
+
+[[package]]
 name = "h2"
 version = "0.4.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3951,6 +4067,17 @@ dependencies = [
  "libc",
  "wasi",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "mrr-asp-rust-project-policy"
+version = "0.1.0"
+source = "git+https://github.com/tao3k/gql-rust.git?rev=305e967b06d98efe362b56dc26f43463e34657be#305e967b06d98efe362b56dc26f43463e34657be"
+dependencies = [
+ "asp-rust 0.1.2 (git+https://github.com/tao3k/asp-rust?rev=b64f80401c8e2688d7aa7809de714d5f22890ebf)",
+ "asp-rust-build-support 0.1.0 (git+https://github.com/tao3k/asp-rust?rev=b64f80401c8e2688d7aa7809de714d5f22890ebf)",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

@@ -110,15 +110,20 @@ pub(crate) async fn reconcile_runtime_server_activation_event(
         ));
     }
 
+    let previous_serving_digest = serving_digest.cloned();
+
     let environment = runtime_activation_environment(state_home, event);
-    let owner_stderr_path = state_home.join("runtime/server/owner-stderr.log");
+    let owner_stderr_path = agent_semantic_artifacts::StateHomeLayout::new(state_home)
+        .runtime_state()
+        .serving()
+        .owner_stderr_log();
     let request =
         agent_semantic_client_db::runtime_server_supervisor::SupervisorRequest::for_activation(
             state_home.to_owned(),
             event.artifact_path.clone(),
             event.publication_nonce.clone(),
             event.artifact_digest.clone(),
-            event.previous_artifact_digest.clone(),
+            previous_serving_digest,
             event.artifact_path.clone(),
             vec!["server".to_owned(), "daemon".to_owned()],
             None,
@@ -214,7 +219,8 @@ pub(crate) async fn reconcile_runtime_server_activation_event(
             }
         }
     }
-    let ready = crate::server::runtime_server::observe_runtime_server_readiness(state_home).await?;
+    let mut ready =
+        crate::server::runtime_server::observe_runtime_server_readiness(state_home).await?;
     let transaction = match observed_transaction {
         Some(transaction) => transaction,
         None => {
@@ -239,7 +245,7 @@ pub(crate) async fn reconcile_runtime_server_activation_event(
                 .to_owned(),
         );
     }
-    let _ = serving_digest;
+    ready.resident_transaction = Some(transaction);
     Ok(ready)
 }
 

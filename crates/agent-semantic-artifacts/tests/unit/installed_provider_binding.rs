@@ -11,7 +11,6 @@ fn digest(byte: char) -> String {
 
 fn input() -> InstalledProviderBindingInput {
     InstalledProviderBindingInput {
-        binary_catalog_digest: digest('a'),
         provider_registration_digest: digest('b'),
         hook_policy_digest: digest('d'),
         providers: vec![InstalledProviderArtifactIdentity {
@@ -26,11 +25,15 @@ fn input() -> InstalledProviderBindingInput {
 }
 
 #[test]
-fn binding_refreshes_when_binary_catalog_changes() {
+fn provider_binding_identity_is_independent_from_runtime_binary_identity() {
     let binding = InstalledProviderBinding::build(input()).expect("binding");
-    let mut changed = input();
-    changed.binary_catalog_digest = digest('9');
-    assert!(binding.requires_refresh(&changed));
+    assert!(!binding.requires_refresh(&input()));
+    assert_eq!(
+        binding.generation,
+        InstalledProviderBinding::build(input())
+            .expect("same provider closure")
+            .generation
+    );
 }
 
 #[test]

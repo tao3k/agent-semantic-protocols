@@ -6,7 +6,7 @@ use super::stage_runtime_artifact;
 async fn dev_candidate_is_digest_materialized_reused_and_removed_on_abort() {
     let temporary = tempfile::tempdir().expect("temporary artifact catalog");
     let state_home = temporary.path().join("state");
-    let candidate_dir = state_home.join("runtime/resident/candidates/dev");
+    let candidate_dir = state_home.join("runtime/artifacts/bundles/dev");
     std::fs::create_dir_all(&candidate_dir).expect("candidate directory");
     let source = temporary.path().join("target-debug-asp");
     std::fs::write(&source, b"immutable-dev-runtime-candidate").expect("dev Runtime source");

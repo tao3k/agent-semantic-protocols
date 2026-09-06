@@ -80,8 +80,7 @@ impl AspClientDispatcher for ExactQueryDispatcher {
                     "resolvedSelector": "rust://src/lib.rs#item/function/missing",
                     "projectionKind": "source",
                     "phase": "resident-selector-read",
-                    "reasonKind": "projection-missing",
-                    "recommendedNext": {"action": "query-owner-or-admitted-scope"}
+                    "reasonKind": "projection-missing"
                 })),
             })
         })

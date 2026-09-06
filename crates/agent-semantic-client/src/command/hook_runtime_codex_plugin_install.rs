@@ -17,7 +17,6 @@ use fs2::FileExt;
 
 use super::ASP_CODEX_PLUGIN_MARKETPLACE_NAME;
 use super::ASP_CODEX_PLUGIN_NAME;
-use super::codex_plugin_installed_path;
 use super::codex_plugin_source_root;
 use super::ensure_codex_plugin_marketplace_registered;
 use super::global_codex_config_path;
@@ -49,6 +48,14 @@ pub(in crate::command) fn publish_codex_plugin_payload(
     project_root: &Path,
     source_root_source: &str,
 ) -> Result<(), String> {
+    // Policy is a State Home artifact, not part of the fixed Codex plugin
+    // payload. Always synchronize it first; a current hooks.json must never
+    // force a cache-busted plugin reinstall just to publish config.toml.
+    let protocol_home = agent_semantic_runtime::project_protocol_home_path(project_root)?;
+    let hook_config_status =
+        crate::command::install_binary_config_admission::publish_embedded_hook_config(
+            &protocol_home,
+        )?;
     let codex_home = codex_home()?;
     fs::create_dir_all(codex_home.join("plugins")).map_err(|error| {
         format!(
@@ -72,6 +79,34 @@ pub(in crate::command) fn publish_codex_plugin_payload(
 
     let before = inspect_current_publication(project_root)?;
     if before.state == CodexPluginPayloadState::Current {
+        if !launcher_is_executable(&before.installed_root)? {
+            // The payload bytes are still Codex-trusted, but a cache write may
+            // have lost the launcher mode. Codex renders that as a bare
+            // `hook exited with code 126`; repair this metadata-only cache
+            // defect atomically without changing the reviewed payload.
+            let marketplace_root = codex_plugin_source_root(project_root)?;
+            let source_root = marketplace_root.join(ASP_CODEX_PLUGIN_NAME);
+            let repaired = publish_direct_global_cache(&source_root, &codex_home)?;
+            if !launcher_is_executable(&repaired.installed_root)? {
+                return Err(format!(
+                    "reasonKind=plugin-launcher-not-executable installedRoot={}",
+                    repaired.installed_root.display()
+                ));
+            }
+            print_inspection(
+                "plugin-publish",
+                &repaired,
+                "repaired-launcher-mode",
+                project_root,
+                source_root_source,
+            );
+            return Ok(());
+        }
+        println!(
+            "[hook-config-sync] path={} status={} pluginPayload=current",
+            protocol_home.join("hooks/config.toml").display(),
+            hook_config_status
+        );
         print_inspection(
             "plugin-publish",
             &before,
@@ -84,25 +119,19 @@ pub(in crate::command) fn publish_codex_plugin_payload(
 
     let marketplace_root = codex_plugin_source_root(project_root)?;
     let source_root = marketplace_root.join(ASP_CODEX_PLUGIN_NAME);
-    let manifest_path = source_root.join(CODEX_PLUGIN_MANIFEST_RELATIVE_PATH);
-    let previous_manifest = fs::read(&manifest_path)
-        .map_err(|error| format!("failed to read {}: {error}", manifest_path.display()))?;
-    let next_manifest = render_cachebusted_manifest(&previous_manifest, &before.source.digest)?;
-    write_file_atomically(&manifest_path, &next_manifest)?;
-
-    let publish =
-        publish_changed_payload(project_root, &marketplace_root, &source_root, &codex_home);
-    let after = match publish {
-        Ok(after) => after,
-        Err(error) => {
-            let restore_source = write_file_atomically(&manifest_path, &previous_manifest);
-            let rollback =
-                rollback_installed_plugin(project_root, &source_root, &codex_home, &before);
-            return Err(format!(
-                "reasonKind=plugin-payload-publication-failed error={error} sourceRollback={restore_source:?} installedRollback={rollback:?}"
-            ));
-        }
-    };
+    let (after, transport) =
+        match publish_changed_payload(project_root, &marketplace_root, &source_root, &codex_home) {
+            Ok(inspection) => (inspection, "codex-plugin-cli"),
+            Err(error) if native_codex_cli_unavailable(&error) => (
+                publish_direct_global_cache(&source_root, &codex_home)?,
+                "direct-global-cache",
+            ),
+            Err(error) => {
+                return Err(format!(
+                    "reasonKind=plugin-payload-publication-failed error={error}"
+                ));
+            }
+        };
     print_inspection(
         "plugin-publish",
         &after,
@@ -110,7 +139,24 @@ pub(in crate::command) fn publish_codex_plugin_payload(
         project_root,
         source_root_source,
     );
+    println!("[plugin-publish] publicationTransport={transport} hookTrust=codex-review-required");
     Ok(())
+}
+
+fn launcher_is_executable(installed_root: &Path) -> Result<bool, String> {
+    let launcher = installed_root.join(CODEX_PLUGIN_LAUNCHER_RELATIVE_PATH);
+    let metadata = fs::metadata(&launcher)
+        .map_err(|error| format!("failed to stat {}: {error}", launcher.display()))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        return Ok(metadata.permissions().mode() & 0o111 != 0);
+    }
+    #[cfg(not(unix))]
+    {
+        Ok(metadata.is_file())
+    }
 }
 
 fn publish_changed_payload(
@@ -126,7 +172,7 @@ fn publish_changed_payload(
         Some(codex_home),
         ASP_CODEX_PLUGIN_MARKETPLACE_NAME,
     )?;
-    let stdout = run_codex_plugin_command(
+    let _stdout = run_codex_plugin_command(
         &[
             "plugin".to_owned(),
             "add".to_owned(),
@@ -136,16 +182,12 @@ fn publish_changed_payload(
         project_root,
         Some(codex_home),
     )?;
-    let installed_root = codex_plugin_installed_path(&stdout)
-        .map(PathBuf::from)
-        .unwrap_or_else(|| {
-            codex_plugin_cache_root(
-                codex_home,
-                ASP_CODEX_PLUGIN_MARKETPLACE_NAME,
-                &source.plugin_name,
-                &source.version,
-            )
-        });
+    let installed_root = codex_plugin_cache_root(
+        codex_home,
+        ASP_CODEX_PLUGIN_MARKETPLACE_NAME,
+        &source.plugin_name,
+        &source.version,
+    );
     let inspection = inspect_codex_plugin_payload(source_root, &installed_root)?;
     if inspection.state != CodexPluginPayloadState::Current {
         return Err(format!(
@@ -160,6 +202,41 @@ fn publish_changed_payload(
         ));
     }
     Ok(inspection)
+}
+
+/// Publish directly to Codex's deterministic global cache only when its native
+/// CLI cannot be launched. Codex remains the trust authority for changed hooks.
+fn publish_direct_global_cache(
+    source_root: &Path,
+    codex_home: &Path,
+) -> Result<CodexPluginPayloadInspection, String> {
+    let source = load_codex_plugin_payload_identity(source_root)?;
+    let installed_root = codex_plugin_cache_root(
+        codex_home,
+        ASP_CODEX_PLUGIN_MARKETPLACE_NAME,
+        &source.plugin_name,
+        &source.version,
+    );
+    for relative in PAYLOAD_FILES {
+        let source_path = source_root.join(relative);
+        let bytes = fs::read(&source_path)
+            .map_err(|error| format!("failed to read plugin source payload {relative}: {error}"))?;
+        write_file_atomically(&source_path, &installed_root.join(relative), &bytes)?;
+    }
+    let inspection = inspect_codex_plugin_payload(source_root, &installed_root)?;
+    if inspection.state != CodexPluginPayloadState::Current {
+        return Err(format!(
+            "direct global plugin cache publication is not current: state={} sourceDigest={} installedRoot={}",
+            inspection.state.as_str(),
+            inspection.source.digest,
+            inspection.installed_root.display()
+        ));
+    }
+    Ok(inspection)
+}
+
+fn native_codex_cli_unavailable(error: &str) -> bool {
+    error.contains("failed to run codex") && error.contains("No such file or directory")
 }
 
 fn inspect_current_publication(
@@ -183,11 +260,15 @@ fn installed_plugin_version(
     project_root: &Path,
     codex_home: &Path,
 ) -> Result<Option<String>, String> {
-    let stdout = run_codex_plugin_command(
+    let stdout = match run_codex_plugin_command(
         &["plugin".to_owned(), "list".to_owned(), "--json".to_owned()],
         project_root,
         Some(codex_home),
-    )?;
+    ) {
+        Ok(stdout) => stdout,
+        Err(error) if native_codex_cli_unavailable(&error) => return Ok(None),
+        Err(error) => return Err(error),
+    };
     let value = serde_json::from_str::<serde_json::Value>(&stdout)
         .map_err(|error| format!("invalid codex plugin list JSON: {error}"))?;
     Ok(value
@@ -203,103 +284,7 @@ fn installed_plugin_version(
         .map(ToOwned::to_owned))
 }
 
-fn render_cachebusted_manifest(manifest: &[u8], source_digest: &str) -> Result<Vec<u8>, String> {
-    let mut value = serde_json::from_slice::<serde_json::Value>(manifest)
-        .map_err(|error| format!("invalid Codex plugin manifest JSON: {error}"))?;
-    let version = value
-        .get("version")
-        .and_then(serde_json::Value::as_str)
-        .filter(|version| !version.is_empty())
-        .ok_or_else(|| "Codex plugin manifest is missing version".to_owned())?;
-    let base = version.split_once('+').map_or(version, |(base, _)| base);
-    let digest = source_digest
-        .strip_prefix("blake3-256:")
-        .ok_or_else(|| format!("unexpected plugin payload digest {source_digest}"))?;
-    let cachebuster = digest
-        .get(..20)
-        .ok_or_else(|| format!("plugin payload digest is too short: {source_digest}"))?;
-    value["version"] = serde_json::Value::String(format!("{base}+codex.{cachebuster}"));
-    let mut bytes = serde_json::to_vec_pretty(&value)
-        .map_err(|error| format!("encode cachebusted plugin manifest: {error}"))?;
-    bytes.push(b'\n');
-    Ok(bytes)
-}
-
-fn rollback_installed_plugin(
-    project_root: &Path,
-    source_root: &Path,
-    codex_home: &Path,
-    before: &CodexPluginPayloadInspection,
-) -> Result<(), String> {
-    let Some(previous) = before.installed.as_ref() else {
-        return Ok(());
-    };
-    let previous_root = codex_plugin_cache_root(
-        codex_home,
-        ASP_CODEX_PLUGIN_MARKETPLACE_NAME,
-        &previous.plugin_name,
-        &previous.version,
-    );
-    if !previous_root.is_dir() {
-        return Err(format!(
-            "previous installed plugin cache is unavailable: {}",
-            previous_root.display()
-        ));
-    }
-    let source_snapshot = snapshot_payload(source_root)?;
-    let rollback_result = (|| {
-        copy_payload(&previous_root, source_root)?;
-        run_codex_plugin_command(
-            &[
-                "plugin".to_owned(),
-                "add".to_owned(),
-                PLUGIN_ID.to_owned(),
-                "--json".to_owned(),
-            ],
-            project_root,
-            Some(codex_home),
-        )?;
-        Ok(())
-    })();
-    let restore_result = restore_payload(source_root, &source_snapshot);
-    match (rollback_result, restore_result) {
-        (Ok(()), Ok(())) => Ok(()),
-        (Err(error), Ok(())) | (Ok(()), Err(error)) => Err(error),
-        (Err(rollback), Err(restore)) => Err(format!(
-            "installed rollback failed: {rollback}; source restore failed: {restore}"
-        )),
-    }
-}
-
-fn snapshot_payload(root: &Path) -> Result<Vec<(String, Vec<u8>)>, String> {
-    PAYLOAD_FILES
-        .iter()
-        .map(|relative| {
-            fs::read(root.join(relative))
-                .map(|bytes| ((*relative).to_owned(), bytes))
-                .map_err(|error| {
-                    format!(
-                        "failed to snapshot {}: {error}",
-                        root.join(relative).display()
-                    )
-                })
-        })
-        .collect()
-}
-
-fn restore_payload(root: &Path, payload: &[(String, Vec<u8>)]) -> Result<(), String> {
-    for (relative, bytes) in payload {
-        write_file_atomically(&root.join(relative), bytes)?;
-    }
-    Ok(())
-}
-
-fn copy_payload(from: &Path, to: &Path) -> Result<(), String> {
-    let payload = snapshot_payload(from)?;
-    restore_payload(to, &payload)
-}
-
-fn write_file_atomically(path: &Path, bytes: &[u8]) -> Result<(), String> {
+fn write_file_atomically(source_path: &Path, path: &Path, bytes: &[u8]) -> Result<(), String> {
     let parent = path
         .parent()
         .ok_or_else(|| format!("plugin payload path has no parent: {}", path.display()))?;
@@ -315,6 +300,22 @@ fn write_file_atomically(path: &Path, bytes: &[u8]) -> Result<(), String> {
     let publish = (|| {
         let mut file = fs::File::create(&temporary)
             .map_err(|error| format!("failed to create {}: {error}", temporary.display()))?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt as _;
+
+            let source_mode = fs::metadata(source_path)
+                .map_err(|error| format!("failed to stat {}: {error}", source_path.display()))?
+                .permissions()
+                .mode();
+            file.set_permissions(fs::Permissions::from_mode(source_mode))
+                .map_err(|error| {
+                    format!(
+                        "failed to preserve mode on {}: {error}",
+                        temporary.display()
+                    )
+                })?;
+        }
         file.write_all(bytes)
             .map_err(|error| format!("failed to write {}: {error}", temporary.display()))?;
         file.sync_all()

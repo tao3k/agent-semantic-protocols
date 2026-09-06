@@ -85,9 +85,17 @@ fn required_non_empty_for(
 }
 
 async fn register_child(args: RegisterChildArgs) -> Result<(), String> {
+    let mut ready =
+        crate::server::runtime_server::ensure_healthy_runtime_server_for_bounded_operation()
+            .await?;
+    let transaction = ready.resident_transaction.take().ok_or_else(|| {
+        "reasonKind=runtime-client-handoff-unavailable failureLayer=runtime-resident-transaction Runtime bootstrap returned Healthy without its resident transaction"
+            .to_owned()
+    })?;
+    let handoff = crate::AspClientRuntimeHandoff::try_from(&transaction)?;
     let binding = current_codex_thread_binding(&args.parent_thread_id)?;
 
-    register_session_binding(binding, args.agent_name).await
+    register_session_binding(binding, args.agent_name, handoff).await
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -100,6 +108,7 @@ struct CodexThreadBinding {
 async fn register_session_binding(
     binding: CodexThreadBinding,
     agent_name: String,
+    handoff: crate::AspClientRuntimeHandoff,
 ) -> Result<(), String> {
     let state_home = agent_semantic_runtime::resolve_state_home()?;
     let registry_path = state_home.join("agents/config.toml");
@@ -143,9 +152,11 @@ async fn register_session_binding(
     request.validate()?;
     let params = serde_json::to_value(&request)
         .map_err(|error| format!("encode child registration request: {error}"))?;
-    let frame = crate::runtime_language_client::AspClient::new(state_home, cwd)
-        .dispatch_method(AGENT_SESSION_REGISTER_METHOD.to_owned(), params)
-        .await?;
+    let frame = crate::runtime_language_client::AspClient::new_from_runtime_handoff(
+        state_home, cwd, handoff,
+    )
+    .dispatch_method(AGENT_SESSION_REGISTER_METHOD.to_owned(), params)
+    .await?;
     let receipt: AgentSessionRegisterReceipt = match frame {
         ClientFrame::Response {
             outcome: ClientOutcome::Ready,

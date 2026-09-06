@@ -11,9 +11,15 @@ fn every_declared_reader_pattern_accepts_minimal_and_extended_argv() {
     let generation = canonical_generation();
     let config = agent_semantic_config::default_hook_client_config_file()
         .expect("load canonical Hook Config V1");
-    assert!(!config.reader_behavior_patterns.is_empty());
+    let patterns = config
+        .command_action_patterns
+        .iter()
+        .filter(|family| family.action == agent_semantic_config::HookClientActionKind::Read)
+        .flat_map(|family| family.argv_pattern_any.iter())
+        .collect::<Vec<_>>();
+    assert!(!patterns.is_empty());
 
-    for pattern in &config.reader_behavior_patterns {
+    for pattern in patterns {
         for tokens in pattern_witnesses(pattern, "src/lib.rs") {
             assert_reader_route(&generation, &config, pattern, tokens);
         }

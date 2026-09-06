@@ -255,6 +255,43 @@ fn shell_redirection_ast_projects_read_and_edit_capabilities() {
 }
 
 #[test]
+fn wrapped_ripgrep_projects_search_before_host_execution() {
+    let matcher = AgentActionMatch::new(AgentActionMatchConfig {
+        native_matcher_any: vec!["Bash".to_owned()],
+        policy_all: vec![semantic_policy(
+            "shell-search",
+            vec![HookClientActionKind::Search],
+        )],
+        command_action_patterns: vec![
+            agent_semantic_config::HookClientCommandActionPatternConfig {
+                action: HookClientActionKind::Search,
+                argv_pattern_any: vec![vec!["rg".to_owned()]],
+            },
+        ],
+        ..AgentActionMatchConfig::default()
+    });
+    let action = ToolAction::normalized_shell_command_action(
+        "/workspace/.devenv/devenv-profile-exec rtk run 'rg -n 4 .devenv/devenv-profile-exec'"
+            .to_owned(),
+        "Bash".to_owned(),
+    );
+
+    assert!(matcher.matches(&runtime(), "codex", &action, None));
+    let receipt = matcher
+        .derive_agent_action_for_rule(&runtime(), "codex", &action, None, None)
+        .expect("search action receipt")
+        .receipt_value();
+    assert!(
+        receipt["semanticCapabilities"]
+            .as_array()
+            .is_some_and(|capabilities| capabilities.iter().any(|capability| {
+                capability["action"] == "search"
+                    && capability["evidence"] == "configured-command-pattern"
+            }))
+    );
+}
+
+#[test]
 fn unresolved_source_access_projection_is_independent_of_the_executable_name() {
     let matcher = AgentActionMatch::new(AgentActionMatchConfig {
         native_matcher_any: vec!["Bash".to_owned()],

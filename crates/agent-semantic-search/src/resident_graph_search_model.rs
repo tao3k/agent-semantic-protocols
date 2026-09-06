@@ -152,6 +152,20 @@ impl ResidentGraphGeneration {
         self.build_metrics
     }
 
+    /// Resolve graph-label entry nodes without approximating labels through
+    /// source-text terms. The boolean reports conservative truncation.
+    pub fn node_ids_for_kind(&self, kind: &str, limit: usize) -> (Vec<String>, bool) {
+        let mut matches = self
+            .nodes_by_id
+            .iter()
+            .filter(|(_, node)| node.kind.eq_ignore_ascii_case(kind))
+            .map(|(id, _)| id.clone())
+            .collect::<Vec<_>>();
+        let truncated = matches.len() > limit;
+        matches.truncate(limit);
+        (matches, truncated)
+    }
+
     /// Return the exact provider-fact request that produced this generation.
     ///
     /// Published generations always retain this immutable request so an

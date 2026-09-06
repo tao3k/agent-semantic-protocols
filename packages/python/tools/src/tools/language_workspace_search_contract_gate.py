@@ -1,23 +1,18 @@
-"""Scenario runner for the cross-language workspace/search contract gate."""
+"""Scenario runner for the single public Search Playbook contract gate."""
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from pathlib import Path
 
-from .language_workspace_search_contract_assertions import (
-    assert_failure_contains,
-    assert_ingest_result,
-    assert_registry,
-    assert_workspace_result,
-    expect_success,
-)
+from .language_workspace_search_contract_assertions import assert_failure_contains
 from .language_workspace_search_contract_cases import (
     CONTRACT_CASES,
     SearchContractCase,
 )
 from .language_workspace_search_contract_runner import _run_asp
-from .language_workspace_search_contract_types import RunAsp
+from .language_workspace_search_contract_types import ContractFailure, RunAsp
 from .paths import repo_root as default_repo_root
 
 
@@ -38,11 +33,18 @@ def run_contract(
     run_asp: RunAsp | None = None,
 ) -> None:
     context = _contract_context(repo_root, asp_bin, run_asp)
+    _validate_search_playbook_contract(context)
     for case in CONTRACT_CASES:
-        _validate_workspace(context, case)
-        _validate_ingest(context, case)
-    for case in CONTRACT_CASES:
-        _validate_registry(context, case)
+        assert_failure_contains(
+            context.run(_workspace_args(case)),
+            f"{case.language} removed workspace search",
+            "language-first Search was removed",
+        )
+        assert_failure_contains(
+            context.run(_ingest_args(case)),
+            f"{case.language} removed ingest search",
+            "language-first Search was removed",
+        )
 
 
 def _contract_context(
@@ -57,32 +59,40 @@ def _contract_context(
     )
 
 
-def _validate_workspace(context: ContractContext, case: SearchContractCase) -> None:
-    result = expect_success(
-        context.run(_workspace_args(case)),
-        f"{case.language} workspace",
+def _validate_search_playbook_contract(context: ContractContext) -> None:
+    registration = json.loads(
+        (context.root / "languages/asp-rust/provider/asp-provider-registration.json")
+        .read_text()
     )
-    assert_workspace_result(result, case)
-
-
-def _validate_ingest(context: ContractContext, case: SearchContractCase) -> None:
-    ingest = expect_success(context.run(_ingest_args(case)), f"{case.language} ingest")
-    assert_ingest_result(ingest, case)
-    assert_failure_contains(
-        context.run([*_ingest_args(case), "."]),
-        f"{case.language} ingest extra root",
-        "expected at most one PROJECT_ROOT argument",
-    )
-
-
-def _validate_registry(context: ContractContext, case: SearchContractCase) -> None:
-    result = expect_success(
-        context.run(
-            [case.language, "agent", "doctor", "--json", case.project_root],
-        ),
-        f"{case.language} registry",
-    )
-    assert_registry(result.stdout, case)
+    contract = registration.get("searchPlaybookContract")
+    if not isinstance(contract, dict) or set(contract) != {
+        "contractId",
+        "contractVersion",
+        "languageId",
+        "providerId",
+        "syntaxContractId",
+        "syntaxContractDigest",
+        "projection",
+    }:
+        raise ContractFailure("rust Search Playbook contract is absent or not closed")
+    projection = contract.get("projection")
+    if not isinstance(projection, dict) or set(projection) != {"example", "grammar"}:
+        raise ContractFailure("Search Playbook projection must be exactly Example + Grammar")
+    example = projection["example"]
+    grammar = projection["grammar"]
+    for value in [example, grammar]:
+        if "--intent" in value or "--graph pgql" in value or "next=" in value.lower():
+            raise ContractFailure("Search Playbook contract exposes a removed reasoning control")
+    for needle in [
+        "asp search playbook",
+        "--fd",
+        "--rg",
+        "--tantivy",
+        "--syntax rust",
+        "--graph gql",
+    ]:
+        if needle not in example or needle not in grammar:
+            raise ContractFailure(f"Search Playbook contract omits {needle!r}")
 
 
 def _workspace_args(case: SearchContractCase) -> list[str]:

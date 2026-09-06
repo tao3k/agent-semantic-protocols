@@ -39,7 +39,9 @@ fn status_transport_failure_never_fabricates_stopped_lifecycle() {
         "Runtime Server control listener is unreachable: Operation not permitted (os error 1)",
     );
 
-    assert!(failure.contains("reasonKind=transport-unavailable"));
+    assert!(failure.contains("reasonKind=host-operation-not-permitted"));
+    assert!(failure.contains("failureLayer=runtime-verified-endpoint-transport"));
+    assert!(!failure.contains("reasonKind=transport-unavailable"));
     assert!(!failure.contains("state=stopped"));
 }
 
@@ -97,7 +99,9 @@ async fn operator_start_recovers_the_durable_applied_activation_without_pending_
             publication_nonce: "operator-start-applied".to_owned(),
         },
     };
-    let applied = state_home.path().join("runtime/activation/applied.json");
+    let applied = state_home
+        .path()
+        .join("runtime/artifacts/activation/applied.json");
     tokio::fs::create_dir_all(applied.parent().expect("applied activation parent"))
         .await
         .expect("create applied activation parent");

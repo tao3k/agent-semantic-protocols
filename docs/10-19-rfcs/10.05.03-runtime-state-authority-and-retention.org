@@ -1,0 +1,194 @@
+#+title: Runtime State Authority and Bounded Content Retention
+#+startup: overview
+
+* Status
+
+This RFC defines the V1 Runtime State Home authority, reachability model, and
+migration boundary.  It does not introduce a second Runtime, a second artifact
+catalog, or a protocol version bump.
+
+* Problem
+
+The Runtime State Home accumulated overlapping state families:
+
+- immutable Runtime binaries under =runtime/artifacts=;
+- immutable bundles plus the sole =runtime/artifacts/active= and
+  =runtime/artifacts/healthy= selectors;
+- provider artifacts, builds, launchers, locks, and legacy provider trees;
+- server databases, workspace materializations, receipts, and telemetry.
+
+The active and healthy bundle slots already expressed the intended rollback
+window, but the canonical bundle publication path did not invoke retention.
+Consequently unreachable content-addressed binaries and artifact bundles
+survived every successful update.  A second defect made retention unsafe for
+concurrent publishers: candidate materialization occurs before the artifact
+mutation guard, so reachability from only active and healthy can delete an
+in-flight candidate.  A third defect hashed current activation binaries while
+holding the publication guard, making lock duration scale with artifact size.
+
+* Decision
+
+** One durable artifact authority
+
+=runtime/artifacts/blake3-256/<content-digest>/<member-name>= is the only
+durable executable content store.  A Runtime bundle manifest binds member names
+and member content digests to one bundle digest.  A member name is a lookup key,
+not an identity authority.
+
+The target state is:
+
+#+begin_src text
+runtime/
+  artifacts/
+    blake3-256/<content-digest>/<bundle-member>
+    retired/<retention-transaction>/...
+    retention-receipt.json
+  resident/
+    candidates/<primary-binary>/<bundle-digest>/...
+    active  -> candidates/<primary-binary>/<bundle-digest>
+    healthy -> candidates/<primary-binary>/<bundle-digest>
+    retired/<retention-transaction>/...
+  leases/
+    candidates/<primary-binary>/<bundle-digest>.lock
+  activation/
+    pending.json
+    applied.json
+#+end_src
+
+The stable =active= and =healthy= references are the only serving and rollback
+roots.  At quiescence, each binary bundle therefore retains at most two content
+identities.  A same-content republication may have a different transaction
+nonce, but it does not create a new content identity.
+
+** Candidate preparation lease
+
+A publisher acquires an operating-system shared lock keyed by primary binary
+name and bundle digest before materializing a candidate outside the mutation
+guard.  Retention must acquire the corresponding exclusive lock before retiring
+that candidate.  Process death releases the shared lock without an mtime grace
+period or a second liveness database.
+
+This rule distinguishes three states:
+
+#+begin_src text
+active or healthy candidate -> reachable, retain
+unreferenced candidate with live shared lease -> in flight, retain
+unreferenced candidate with obtainable exclusive lease -> dead, retire
+#+end_src
+
+** Two transactions, one owner
+
+Publication and retention are separate transactions owned by the Artifacts
+package and serialized by the same artifact mutation guard.
+
+Publication commits the pending event, stable launchers, and active/healthy
+slots.  It never recursively deletes history.  Retention then rereads the
+committed roots, atomically renames unreachable candidate and CAS directories
+into transaction-scoped retired directories, and releases the guard.  Recursive
+deletion and receipt serialization occur outside the guard.
+
+This split preserves a single authority while preventing deletion latency from
+becoming publication latency.  A retention failure after publication is
+reported as a typed post-commit maintenance failure; it must not be interpreted
+as permission to replay the publication transaction.
+
+** Activation receipts and validation order
+
+Activation transaction sequence and publication nonce are fencing and
+observability data.  They are not artifact, evaluator, provider, source, or
+workspace identity.
+
+A commit first compares the attempted bundle digest, artifact digest, and
+publication nonce with the current pending receipt.  A superseded actor fails
+with =stale-active-bundle= before reading its retired candidate.  A current
+actor validates executable content outside the mutation guard and repeats the
+pending identity comparison under the guard before committing.
+
+Legacy receipt canonicalization validates legacy content while migrating it.
+For already-current receipts, canonical publication performs content validation
+before acquiring the guard; the guarded canonicalizer must not hash the binary
+a second time.
+
+* Rejected alternatives
+
+** Retain every historical digest
+
+This avoids stale path errors but makes State Home growth unbounded and turns
+disk capacity into an implicit lifecycle authority.  Rejected.
+
+** Delete everything not named by active and healthy
+
+This deletes candidates prepared concurrently outside the mutation guard and
+changes a deterministic stale-actor rejection into a filesystem error.
+Rejected.
+
+** Use timestamps to protect recent candidates
+
+Clock windows cannot distinguish a slow live publisher from a dead publisher.
+They also make crash recovery and tests nondeterministic.  Rejected in favor of
+operating-system locks.
+
+** Delete large artifacts while holding the publication guard
+
+This is safe but makes lock duration scale with historical bytes.  Rejected in
+favor of atomic retirement under the guard and deletion outside it.
+
+** Treat activation generation as freshness
+
+The same content may be republished with a later sequence, and different
+content cannot be proven equal by a number.  Generation remains a monotonic
+fence only.  Rejected as artifact selection, cache, or admission identity.
+
+* Provider state migration
+
+The existing =provider-artifacts= catalog remains an admitted legacy input until
+provider publication is moved to the common content-addressed artifact store.
+The directories =provider-builds=, =provider-launchers=, =provider-locks=, and
+=providers= must not be deleted merely because their names overlap.  Migration
+requires one typed catalog commit that binds provider id, provider binary
+digest, schema/config digest, and Runtime execution binding to the common CAS.
+
+After that commit is active, legacy provider directories become read-once
+migration inputs and then retention candidates.  They must never remain a
+fallback, cache authority, or alternate launcher lookup path.
+
+* Server and derived state
+
+Workspace indexes, telemetry databases, endpoint observations, and live-corpus
+materializations are derived Runtime state, not executable identities.  Each
+family requires its own bounded retention policy and typed receipt.  Deleting
+or rebuilding derived state must not change active artifact identity.
+
+A resident transaction receipt with =state= =ready= proves that a Runtime
+artifact transaction completed.  It does not prove that the invoking client
+has rebound to the endpoint contract of that artifact.  A client that activates
+a different executable and then continues with its own endpoint-path algorithm
+must hand off to the content-bound executable or fail as superseded; it must not
+report the missing path as Runtime termination.
+
+* Deterministic obligations
+
+- Three sequential distinct publications retain only the healthy and active
+  CAS digests and artifact bundles.
+- A live preparation lease prevents retirement; releasing the lease makes the
+  dead candidate reclaimable on the next retention transaction.
+- A stale actor is rejected by pending content identity even after its files are
+  retired.
+- Current receipt content validation remains fail-closed.
+- Publication guard latency does not scale with previous artifact bytes.
+- Recursive retirement deletion occurs after the artifact mutation guard is
+  released.
+- Retention receipt candidate counters are additive V1 fields so historical V1
+  receipts remain decodable.
+
+* Rollout
+
+1. Wire canonical Runtime bundle publication to bounded artifact and candidate
+   retention.  This is the P0 closure implemented with this RFC.
+2. Add State Home doctor output for active, healthy, in-flight, retired, and
+   legacy provider families without mutating them.
+3. Move provider publication to the common CAS with one typed catalog commit.
+4. Verify no admitted caller reads legacy provider launcher/build directories,
+   then retire them through the same maintenance authority.
+5. Add bounded policies for server workspace, telemetry, and live-corpus derived
+   state independently of artifact identity.

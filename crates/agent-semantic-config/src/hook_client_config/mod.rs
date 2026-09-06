@@ -21,6 +21,7 @@ pub use document::CLIENT_HOOK_CONFIG_SCHEMA_VERSION;
 pub use document::HookClientAgentCallingConfig;
 pub use document::HookClientAgentOrgArtifactsArchiveWarningConfig;
 pub use document::HookClientAgentOrgArtifactsConfig;
+pub use document::HookClientCommandActionPatternConfig;
 pub use document::HookClientConfigFile;
 pub use document::HookClientProfileConfig;
 pub use document::HookClientProviderRouteIdentity;

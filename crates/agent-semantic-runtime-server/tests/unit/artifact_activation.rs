@@ -5,6 +5,74 @@ use super::RuntimeArtifactActivationDisposition;
 use super::activate_and_acknowledge;
 use super::read_runtime_artifact_activation_event;
 
+#[test]
+fn runtime_artifact_activation_has_no_socket_authority() {
+    let runtime_actor = include_str!("../../src/artifact_activation.rs");
+    let artifact_event =
+        include_str!("../../../agent-semantic-artifacts/src/runtime_artifact_activation.rs");
+    let artifact_publication =
+        include_str!("../../../agent-semantic-artifacts/src/runtime_artifact_publication.rs");
+
+    for (owner, source) in [
+        ("runtime actor", runtime_actor),
+        ("artifact event", artifact_event),
+        ("artifact publication", artifact_publication),
+    ] {
+        assert!(
+            !source.contains("runtime_artifact_activation_socket_path")
+                && !source.contains("asp-activation")
+                && !source.contains("UnixDatagram"),
+            "{owner} retains a second socket activation authority"
+        );
+    }
+}
+
+#[tokio::test]
+async fn resident_actor_reconciles_an_online_durable_publication() {
+    let temporary = tempfile::tempdir().expect("online activation fixture");
+    let state_home = temporary.path().join("state");
+    let source = temporary.path().join("asp");
+    let target = temporary.path().join("bin/asp");
+    tokio::fs::write(&source, b"#!/bin/sh\nexit 0\n")
+        .await
+        .expect("write Runtime artifact");
+    std::fs::set_permissions(&source, std::fs::Permissions::from_mode(0o755))
+        .expect("Runtime artifact permissions");
+    let activation_count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let observed_count = activation_count.clone();
+    let actor = super::spawn_runtime_artifact_activation_actor(state_home.clone(), move |_event| {
+        let observed_count = observed_count.clone();
+        async move {
+            observed_count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Ok(RuntimeArtifactActivationDisposition::Committed)
+        }
+    })
+    .await
+    .expect("mount resident activation reconciler");
+    let mut receipts = actor.receipts();
+
+    publish_runtime_artifact(&state_home, &source, &target, "dev")
+        .await
+        .expect("publish durable activation event");
+    tokio::time::timeout(std::time::Duration::from_secs(2), receipts.changed())
+        .await
+        .expect("online activation terminal deadline")
+        .expect("online activation terminal channel");
+    let terminal = receipts
+        .borrow()
+        .clone()
+        .expect("online activation terminal");
+    assert_eq!(terminal.state, "ready");
+    assert_eq!(
+        activation_count.load(std::sync::atomic::Ordering::SeqCst),
+        1
+    );
+    actor
+        .shutdown()
+        .await
+        .expect("shutdown activation reconciler");
+}
+
 #[tokio::test]
 async fn daemon_activation_transaction_consumes_startup_and_online_publications() {
     let temporary = tempfile::tempdir().expect("temporary state");
@@ -132,7 +200,7 @@ async fn developer_link_activation_is_event_bound_and_failure_preserves_slots() 
     std::os::unix::fs::symlink(&mutable_source, &developer_link)
         .expect("create real Developer symlink");
 
-    let profiles = state_home.join("runtime/profiles/asp");
+    let profiles = state_home.join("runtime/artifacts");
     let old_active = temporary.path().join("artifacts/old-active/asp");
     let old_healthy = temporary.path().join("artifacts/old-healthy/asp");
     tokio::fs::create_dir_all(old_active.parent().unwrap())

@@ -62,15 +62,10 @@ class SearchPlaybookReceiptSchemaTests(unittest.TestCase):
         value["evidence"]["residentGraph"]["seeds"] = ["owner:router"]
         self.assertTrue(list(validator().iter_errors(value)))
 
-    def test_rejects_placeholder_next_command(self):
-        value = search_playbook_receipt()
-        value["decision"]["nextCommand"] = "asp rust query --selector <selector>"
-        self.assertTrue(list(validator().iter_errors(value)))
-
-    def test_workspace_playbook_command_is_a_valid_public_receipt_command(self):
+    def test_rejects_any_prescribed_next_command(self):
         value = search_playbook_receipt()
         value["decision"]["nextCommand"] = "asp search playbook 'router ownership'"
-        validator().validate(value)
+        self.assertTrue(list(validator().iter_errors(value)))
 
     def test_absence_proof_requires_complete_coverage(self):
         value = search_playbook_receipt()

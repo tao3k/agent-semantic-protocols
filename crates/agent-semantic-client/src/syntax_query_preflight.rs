@@ -47,9 +47,8 @@ fn validate_exact_projection_selector_target(request: &ClientRequest) -> Result<
         return Ok(());
     }
     if let Some(language_id) = non_structural_selector_language(request, selector) {
-        let workspace_arg = query_workspace_arg(request).unwrap_or(".");
         return Err(format!(
-            "invalid exact-query selector `{selector}`: file selectors are not executable structural selectors; query an exact parser-owned item selector such as {language_id}://path#item/function/name; recover through ASP Search\nselectorState=file-selector\nallowed=false\nreason=file-selectors-are-not-structural-selectors\nnextAction=run-search\nnextCommand=asp {language_id} search 'source structure' --scope owner:{selector} --workspace {workspace_arg}\nrequiredSelector={language_id}://{selector}#item/<kind>/<name>"
+            "invalid exact-query selector `{selector}`: file selectors are not executable structural selectors\nselectorState=file-selector\nallowed=false\nreason=file-selectors-are-not-structural-selectors\nrequiredSelector={language_id}://{selector}#item/<kind>/<name>"
         ));
     }
     if let Some(owner) = selector_owner.as_deref() {

@@ -22,9 +22,5 @@ tempfile.workspace = true
 asp-rust-project-harness-policy.workspace = true
 
 [[test]]
-name = "resident_artifact_retention"
-path = "tests/integration/resident_artifact_retention.rs"
-
-[[test]]
 name = "runtime_artifact_publication_performance"
 path = "tests/integration/runtime_artifact_publication_performance.rs"

@@ -44,7 +44,7 @@ fn state_home_provider_binary_at(
         || binary_path.file_name().and_then(|name| name.to_str()) != Some(binary)
     {
         return Err(format!(
-            "provider binary for language `{language_id}` must be a logical basename resolved under State Home runtime/bin, got `{binary}`"
+            "provider binary for language `{language_id}` must be a logical basename resolved from the active Runtime artifact bundle, got `{binary}`"
         ));
     }
     Ok(state_home.join("runtime").join("bin").join(binary_path))

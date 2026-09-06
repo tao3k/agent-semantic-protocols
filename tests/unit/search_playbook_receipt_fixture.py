@@ -131,7 +131,6 @@ def search_playbook_receipt():
             "chosenPath": "owner:router",
             "explanation": "lexical identity, graph ownership, and source bytes agree",
             "residualUncertainty": [],
-            "nextCommand": "asp rust query --selector rust://src/router.rs#item/function/route",
             "selectors": ["rust://src/router.rs#item/function/route"],
             "ownerPaths": owners,
         },

@@ -4,28 +4,41 @@
   "title": "Provider Syntax Query Response",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaId", "schemaVersion", "languageId", "providerId", "ownerPath", "sourceContentDigest", "queryDigest", "parsed", "captures"],
+  "required": [
+    "schemaId", "schemaVersion", "languageId", "providerId", "ownerPath",
+    "sourceContentDigest", "queryDigest", "parsed", "captures"
+  ],
   "properties": {
-    "schemaId": { "const": "agent.semantic-protocols.provider-syntax-query-response" },
-    "schemaVersion": { "const": "1" },
-    "languageId": { "type": "string", "minLength": 1 },
-    "providerId": { "type": "string", "minLength": 1 },
-    "ownerPath": { "type": "string", "minLength": 1 },
-    "sourceContentDigest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
-    "queryDigest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
-    "parsed": { "type": "boolean" },
+    "schemaId": {"const": "agent.semantic-protocols.provider-syntax-query-response"},
+    "schemaVersion": {"const": "1"},
+    "languageId": {"$ref": "#/$defs/identity"},
+    "providerId": {"$ref": "#/$defs/identity"},
+    "ownerPath": {"type": "string", "minLength": 1},
+    "sourceContentDigest": {"$ref": "#/$defs/digest"},
+    "queryDigest": {"$ref": "#/$defs/digest"},
+    "parsed": {"type": "boolean"},
     "captures": {
       "type": "array",
-      "items": {
-        "type": "object", "additionalProperties": false,
-        "required": ["patternIndex", "captureName", "nativeFactRef", "sourceByteStart", "sourceByteEnd"],
-        "properties": {
-          "patternIndex": { "type": "integer", "minimum": 0 },
-          "captureName": { "type": "string", "minLength": 1 },
-          "nativeFactRef": { "type": "string", "minLength": 1 },
-          "sourceByteStart": { "type": "integer", "minimum": 0 },
-          "sourceByteEnd": { "type": "integer", "minimum": 0 }
-        }
+      "items": {"$ref": "#/$defs/capture"}
+    }
+  },
+  "$defs": {
+    "identity": {"type": "string", "minLength": 1, "maxLength": 2048},
+    "digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "capture": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "patternIndex", "captureName", "nativeFactRef", "structuralSelector",
+        "sourceByteStart", "sourceByteEnd"
+      ],
+      "properties": {
+        "patternIndex": {"type": "integer", "minimum": 0},
+        "captureName": {"type": "string", "minLength": 1},
+        "nativeFactRef": {"$ref": "#/$defs/identity"},
+        "structuralSelector": {"$ref": "#/$defs/identity"},
+        "sourceByteStart": {"type": "integer", "minimum": 0},
+        "sourceByteEnd": {"type": "integer", "minimum": 0}
       }
     }
   }

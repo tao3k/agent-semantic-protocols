@@ -43,8 +43,6 @@ const ROOT_COMMANDS: &[(&str, &str)] = &[
 
 const LANGUAGE_COMMANDS: &[(&str, &str)] = &[
     ("guide", "Show the language provider guide"),
-    ("search", "Search language-owned evidence"),
-    ("query", "Query an exact parser-owned selector"),
     ("check", "Run language-owned policy checks"),
     ("cache", "Inspect language-owned cache state"),
     ("info", "Show provider information"),
@@ -124,12 +122,10 @@ fn cache_command() -> Command {
         "cache",
         "asp cache",
         "Maintain Runtime-owned workspace cache metadata",
-        &[
-            (
-                "source-index",
-                "Use the language-scoped ClientFrame source-index lookup",
-            ),
-        ],
+        &[(
+            "source-index",
+            "Use the language-scoped ClientFrame source-index lookup",
+        )],
     )
     .arg(
         Arg::new("workspace")
@@ -209,6 +205,12 @@ fn hook_accept_host_command() -> Command {
         .arg(
             Arg::new("host-rollout")
                 .long("host-rollout")
+                .value_name("PATH")
+                .required(true),
+        )
+        .arg(
+            Arg::new("hook-events")
+                .long("hook-events")
                 .value_name("PATH")
                 .required(true),
         )

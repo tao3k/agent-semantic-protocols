@@ -172,9 +172,23 @@ pub(crate) async fn run_live_corpus_command(args: &[String]) -> Result<(), Strin
     match args.first().map(String::as_str) {
         Some("materialize") => materialize(parse_materialize_request(&args[1..])?).await,
         Some("qualify") => {
-            crate::server::runtime_server::ensure_healthy_runtime_server_for_bounded_operation()
+            // Reject malformed CLI input before touching Runtime authority. This
+            // keeps argument validation deterministic even when no Runtime
+            // endpoint is available.
+            qualification::validate_args(&args[1..])?;
+            let mut ready =
+                crate::server::runtime_server::ensure_healthy_runtime_server_for_bounded_operation(
+                )
                 .await?;
-            qualification::run(&args[1..]).await
+            let transaction = ready.resident_transaction.take().ok_or_else(|| {
+                "reasonKind=runtime-client-handoff-unavailable failureLayer=runtime-resident-transaction Runtime bootstrap returned Healthy without its resident transaction"
+                    .to_owned()
+            })?;
+            qualification::run(
+                &args[1..],
+                crate::AspClientRuntimeHandoff::try_from(&transaction)?,
+            )
+            .await
         }
         Some("path") => print_path(parse_path_request(&args[1..])?),
         Some("sync") => sync_resource(parse_resource_request(&args[1..], sync_usage)?),
@@ -303,13 +317,16 @@ async fn materialize(request: MaterializeRequest) -> Result<(), String> {
     }
     emit_live_corpus_timing("git-status", &mut step_started);
 
-    let endpoint = agent_semantic_client_db::read_runtime_server_endpoint(&state_home)
-        .await?
-        .ok_or_else(|| {
-            "Live Corpus materialization requires a healthy Runtime Server".to_owned()
-        })?;
+    let mut ready =
+        crate::server::runtime_server::ensure_healthy_runtime_server_for_bounded_operation()
+            .await?;
+    let transaction = ready.resident_transaction.take().ok_or_else(|| {
+        "reasonKind=runtime-client-handoff-unavailable failureLayer=runtime-resident-transaction Runtime bootstrap returned Healthy without its resident transaction"
+            .to_owned()
+    })?;
+    let handoff = crate::AspClientRuntimeHandoff::try_from(&transaction)?;
     let registration =
-        runtime_provider_registration(endpoint.provider_endpoint.socket_addr(), corpus).await?;
+        runtime_provider_registration(handoff.provider_socket_addr(), corpus).await?;
     if registration.provider_id != corpus.provider_id {
         return Err(format!(
             "live corpus provider mismatch: lock={} registration={}",

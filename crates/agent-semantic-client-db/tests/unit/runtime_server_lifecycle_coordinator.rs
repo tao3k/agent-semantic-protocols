@@ -373,6 +373,16 @@ fn fixture_endpoint(state_home: &std::path::Path, owner_epoch: u64) -> RuntimeSe
     let binding_token = format!("binding-{owner_epoch}");
     let runtime_binary_identity = RuntimeBinaryIdentity::from_bytes(b"runtime-digest");
     let identity_value = runtime_binary_identity.content_digest().to_string();
+    let status_identity = blake3::hash(
+        format!(
+            "{}\0{}\0{}",
+            owner_epoch,
+            binding_token,
+            runtime_binary_identity.content_digest()
+        )
+        .as_bytes(),
+    )
+    .to_hex();
     let loopback = |port| {
         agent_semantic_client_db::runtime_server_control::RuntimeServerLoopbackEndpoint::from_socket_addr(
             ([127, 0, 0, 1], port).into(),
@@ -400,7 +410,10 @@ fn fixture_endpoint(state_home: &std::path::Path, owner_epoch: u64) -> RuntimeSe
         data_endpoint: loopback(44101 + (owner_epoch % 100) as u16),
         provider_endpoint: loopback(44201 + (owner_epoch % 100) as u16),
         workspace_store_path: runtime_root.join("workspaces").display().to_string(),
-        status_memory_path: runtime_root.join("status.v1.memory").display().to_string(),
+        status_memory_path: runtime_root
+            .join(format!("status-{}.memory", &status_identity[..16]))
+            .display()
+            .to_string(),
     }
 }
 
@@ -491,7 +504,20 @@ async fn resident_transaction_requires_the_matching_previous_owner_drain() {
     endpoint.observed_runtime_binary_identity = runtime_identity;
     let runtime_root =
         agent_semantic_client_db::runtime_server_runtime_base(&state_home).expect("Runtime root");
-    endpoint.status_memory_path = runtime_root.join("status.v1.memory").display().to_string();
+    let status_identity = blake3::hash(
+        format!(
+            "{}\0{}\0{}",
+            endpoint.owner_epoch,
+            endpoint.binding_token,
+            endpoint.runtime_binary_identity.content_digest()
+        )
+        .as_bytes(),
+    )
+    .to_hex();
+    endpoint.status_memory_path = runtime_root
+        .join(format!("status-{}.memory", &status_identity[..16]))
+        .display()
+        .to_string();
     tokio::fs::create_dir_all(&runtime_root)
         .await
         .expect("create Runtime root");
@@ -606,6 +632,28 @@ async fn resident_transaction_requires_the_matching_previous_owner_drain() {
         .expect("observe complete resident transaction");
     assert_eq!(transaction.previous_owner_epoch, Some(41));
     assert_eq!(transaction.previous_drain_state, "clean");
+
+    let (transaction, serving_endpoint) = agent_semantic_client_db::runtime_server_lifecycle::
+        observe_resident_transaction_with_endpoint(&state_home)
+        .await
+        .expect("observe one content-bound transaction and endpoint");
+    assert_eq!(
+        transaction.endpoint_owner_epoch,
+        serving_endpoint.owner_epoch
+    );
+    assert_eq!(
+        transaction.endpoint_binary_content_digest.as_str(),
+        serving_endpoint.binary_content_digest
+    );
+    assert_eq!(
+        transaction.control_endpoint,
+        serving_endpoint.control_endpoint
+    );
+    assert_eq!(transaction.data_endpoint, serving_endpoint.data_endpoint);
+    assert_eq!(
+        transaction.provider_endpoint,
+        serving_endpoint.provider_endpoint
+    );
 }
 
 #[tokio::test]

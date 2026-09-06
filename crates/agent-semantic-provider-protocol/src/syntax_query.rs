@@ -109,6 +109,7 @@ pub struct ProviderSyntaxQueryCapture {
     pub pattern_index: usize,
     pub capture_name: String,
     pub native_fact_ref: String,
+    pub structural_selector: String,
     pub source_byte_start: u64,
     pub source_byte_end: u64,
 }

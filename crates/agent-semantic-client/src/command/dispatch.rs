@@ -14,7 +14,7 @@ use super::install_provider::run_install_command;
 use super::live_corpus::run_live_corpus_command;
 use super::paths::run_paths_command;
 use super::provider_dispatch::run_language_command;
-use super::root_language_facade::run_workspace_search_playbook;
+use super::root_language_facade::{run_workspace_query, run_workspace_search_playbook};
 use super::run_protocol_version_command;
 use super::runtime_server::run_runtime_server_command;
 use super::schema::run_schema_command;
@@ -61,10 +61,7 @@ pub(crate) async fn run_protocol_command_started(
             run_client_command(args).await
         }
         Some("search") => run_workspace_search_playbook(&args[1..]).await,
-        Some("query") => Err(
-            "asp query is not a public command surface; use `asp <language> query --selector <exact-selector>` after `asp search playbook` returns an exact selector."
-                .to_string(),
-        ),
+        Some("query") => run_workspace_query(&args[1..]).await,
         Some("check") => Err(
             "asp check is not a public command surface; use asp <rust|typescript|python|julia> check ..."
                 .to_string(),

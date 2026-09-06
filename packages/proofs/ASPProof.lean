@@ -215,6 +215,8 @@ import ASPProof.SearchRouteRobustWindowedCalibrationHysteresis
 import ASPProof.RuntimeServerSearchGeneration
 import ASPProof.WorkspaceSearchPlaybookPlanner
 import ASPProof.Audit.WorkspaceSearchPlaybookPlanner
+import ASPProof.ChangeAwareEvidencePlanning
+import ASPProof.Audit.ChangeAwareEvidencePlanning
 import ASPProof.RuntimeServerRestoreAuthority
 import ASPProof.RuntimeServerIncrementalIndex
 import ASPProof.RuntimeOwnerIdentityJournal
@@ -300,3 +302,5 @@ import ASPProof.Audit.HookSourceAccessReplayIdentity
 import ASPProof.IncrementalCacheAuthority
 import ASPProof.RuntimeEndpointAuthority
 import ASPProof.HotPathEffectIsolation
+import ASPProof.SearchEvidenceReflection
+import ASPProof.Audit.SearchEvidenceReflection

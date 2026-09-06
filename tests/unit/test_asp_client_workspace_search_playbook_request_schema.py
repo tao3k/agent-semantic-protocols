@@ -15,29 +15,32 @@ def request() -> dict:
     return {
         "schemaId": "agent.semantic-protocols.asp-client-workspace-search-playbook-request",
         "schemaVersion": "1",
-        "language": None,
-        "intent": "relationship",
-        "query": "runtime transport authority",
-        "scope": "workspace",
-        "coverage": "candidates",
-        "maxOwners": 32,
-        "deadlineMs": 1000,
-        "explain": "full",
     }
 
 
-def test_workspace_playbook_request_v1_accepts_no_language_filter() -> None:
+def test_workspace_playbook_request_v1_accepts_minimal_contract_query() -> None:
     jsonschema.Draft202012Validator(SCHEMA).validate(request())
 
 
-def test_workspace_playbook_request_v1_accepts_one_explicit_language_filter() -> None:
+def test_workspace_playbook_request_v1_accepts_pipe_ordered_producers() -> None:
     value = request()
-    value["language"] = "rust"
+    value["languages"] = "rust|python"
+    value["documents"] = "org|md"
     jsonschema.Draft202012Validator(SCHEMA).validate(value)
 
 
 def test_workspace_playbook_request_v1_rejects_empty_filter() -> None:
     value = request()
-    value["language"] = ""
+    value["languages"] = ""
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.Draft202012Validator(SCHEMA).validate(value)
+
+
+@pytest.mark.parametrize("legacy_field", ["intent", "query", "language", "next"])
+def test_workspace_playbook_request_v1_rejects_reasoning_and_continuation_fields(
+    legacy_field: str,
+) -> None:
+    value = request()
+    value[legacy_field] = "must remain agent-owned"
     with pytest.raises(jsonschema.ValidationError):
         jsonschema.Draft202012Validator(SCHEMA).validate(value)

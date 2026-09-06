@@ -446,8 +446,8 @@ pub(super) async fn publish_provider_workspace(
     registration: &super::super::provider_install_registry::ProviderInstallRegistration,
     built: BuiltProviderWorkspace,
 ) -> Result<PublishedProviderWorkspace, String> {
-    let publication_root = protocol_home
-        .join("runtime/provider-artifacts")
+    let publication_root = agent_semantic_artifacts::RuntimeArtifactStateLayout::new(protocol_home)
+        .provider_content_store()
         .join(&registration.provider_id)
         .join("artifacts/blake3-merkle-v1");
     fs::create_dir_all(&publication_root)

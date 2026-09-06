@@ -113,8 +113,8 @@ impl HookClientRuleDispatchTransport {
 #[derive(Hash)]
 pub enum HookClientActionKind {
     Read,
-    Edit,
     Search,
+    Edit,
     Enumerate,
     Execute,
     Mcp,
@@ -129,6 +129,7 @@ pub enum HookClientActionKind {
 pub enum HookClientHostInvocationKind {
     Read,
     Edit,
+    Search,
     Execute,
     Mcp,
     SpawnAgent,

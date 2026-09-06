@@ -28,6 +28,8 @@ fn shell_registered_source_reads_fail_closed_through_provider_profiles() {
         ("python", "future-source-consumer < src/main.py"),
         ("julia", "future-source-consumer < src/main.jl"),
         ("gerbil-scheme", "future-source-consumer < src/main.ss"),
+        ("org", "future-source-consumer < docs/plan.org"),
+        ("md", "future-source-consumer < README.md"),
     ] {
         let decision = classify_codex_plugin_scenario(
             &empty_runtime(),
@@ -43,7 +45,12 @@ fn shell_registered_source_reads_fail_closed_through_provider_profiles() {
             "the physical Bash matcher owns the Host action"
         );
         assert_eq!(
-            decision["fields"]["configRuleId"], "route-read-to-asp-languages",
+            decision["fields"]["configRuleId"],
+            match language_id {
+                "org" => "route-org-document-read-to-asp-explorer",
+                "md" => "route-markdown-document-read-to-asp-explorer",
+                _ => "route-read-to-asp-languages",
+            },
             "language={language_id}"
         );
         assert_eq!(decision["languageIds"][0], language_id);
@@ -51,10 +58,10 @@ fn shell_registered_source_reads_fail_closed_through_provider_profiles() {
 }
 
 #[test]
-fn document_reads_do_not_fabricate_an_unregistered_search_provider_route() {
-    for command in [
-        "future-source-consumer < docs/plan.org",
-        "future-source-consumer < README.md",
+fn document_reads_route_without_fabricating_a_lazy_runtime_provider() {
+    for (language_id, command) in [
+        ("org", "future-source-consumer < docs/plan.org"),
+        ("md", "future-source-consumer < README.md"),
     ] {
         let decision = classify_codex_plugin_scenario(
             &empty_runtime(),
@@ -63,9 +70,17 @@ fn document_reads_do_not_fabricate_an_unregistered_search_provider_route() {
             &shell_read(command),
             "Bash",
         )
-        .expect("classify document read without a registered Runtime provider");
-        assert_eq!(decision["decision"], "allow", "command={command}");
-        assert!(decision["fields"]["configRuleId"].is_null());
+        .expect("classify document read without a lazy Runtime provider");
+        assert_eq!(decision["decision"], "deny", "command={command}");
+        assert_eq!(
+            decision["fields"]["configRuleId"],
+            match language_id {
+                "org" => "route-org-document-read-to-asp-explorer",
+                "md" => "route-markdown-document-read-to-asp-explorer",
+                _ => unreachable!("document matrix has only org and md"),
+            }
+        );
+        assert_eq!(decision["languageIds"][0], language_id);
     }
 }
 
@@ -113,7 +128,7 @@ fn unresolved_registered_source_operands_remain_allow_without_fabricating_read_p
 
 #[test]
 fn metadata_command_without_a_registered_source_operand_remains_execute_only() {
-    for command in ["git status --short", "just --list | rg 'hook'"] {
+    for command in ["git status --short"] {
         let decision = classify_codex_plugin_scenario(
             &empty_runtime(),
             &ClientHookConfig::default(),
@@ -134,6 +149,23 @@ fn metadata_command_without_a_registered_source_operand_remains_execute_only() {
             "execute"
         );
     }
+}
+
+#[test]
+fn shell_search_without_a_registered_source_operand_routes_to_search_playbook() {
+    let decision = classify_codex_plugin_scenario(
+        &empty_runtime(),
+        &ClientHookConfig::default(),
+        "pre-tool",
+        &shell_read("just --list | rg 'hook'"),
+        "Bash",
+    )
+    .expect("classify shell search");
+    assert_eq!(decision["decision"], "deny");
+    assert_eq!(
+        decision["fields"]["configRuleId"],
+        "deny-shell-search-before-execution"
+    );
 }
 
 #[test]

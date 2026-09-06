@@ -515,7 +515,7 @@ fn claude_hook_command(hook_event: &str, project_root: &Path) -> String {
     let project_root = shell_single_quoted(&project_root.display().to_string());
     let activation_path = shell_single_quoted(&activation_path.display().to_string());
     format!(
-        "{CLAUDE_MANAGED_COMMAND_MARKER}\nrepo_root={project_root}\ncd \"$repo_root\"\nactivation={activation_path}\nhook_bin=\"${{ASP_STATE_HOME:-${{HOME}}/.agent-semantic-protocols}}/runtime/bin/asp-hook\"\nexec \"$hook_bin\" {hook_event} --client claude --activation \"$activation\"\n"
+        "{CLAUDE_MANAGED_COMMAND_MARKER}\nrepo_root={project_root}\ncd \"$repo_root\"\nactivation={activation_path}\nhook_bin=\"${{ASP_STATE_HOME:-${{HOME}}/.agent-semantic-protocols}}/runtime/artifacts/active/asp-hook\"\nexec \"$hook_bin\" {hook_event} --client claude --activation \"$activation\"\n"
     )
 }
 

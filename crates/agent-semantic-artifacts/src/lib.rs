@@ -12,7 +12,6 @@ pub mod runtime_artifact_quiescence;
 pub mod runtime_artifact_retention;
 pub mod runtime_artifact_slots;
 pub mod runtime_artifact_store;
-pub mod runtime_provider_catalog;
 mod schema_v1_digest;
 mod state_home_binding;
 mod state_home_catalog;
@@ -108,6 +107,13 @@ mod state_home_catalog_tests;
 #[path = "../tests/unit/state_home_layout.rs"]
 mod state_home_layout_tests;
 
+mod runtime_artifact_state_layout;
+mod runtime_state_layout;
 #[cfg(test)]
 #[path = "../tests/unit/state_home_retention.rs"]
 mod state_home_retention_tests;
+pub use runtime_artifact_state_layout::RuntimeArtifactStateLayout;
+pub use runtime_state_layout::RuntimeLifecycleReceiptName;
+pub use runtime_state_layout::RuntimeServingStateLayout;
+pub use runtime_state_layout::RuntimeStateLayout;
+pub mod runtime_state_cleanup;

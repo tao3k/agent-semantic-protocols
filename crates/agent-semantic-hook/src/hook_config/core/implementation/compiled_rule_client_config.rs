@@ -48,6 +48,7 @@ impl ClientHookConfig {
             action,
             Some(action.paths.as_slice()),
             None,
+            &self.command_action_patterns,
         );
         let mut language_ids = crate::collect_source_selector_matches(
             &classification_runtime,
@@ -419,6 +420,7 @@ fn compile_resolved_config(
                 &config.command_profiles,
                 &config.command_sets,
                 &config.capability_policies,
+                &config.command_action_patterns,
                 wrapper_match,
                 &agent_calling,
                 durable_matcher,
@@ -463,6 +465,7 @@ fn compile_resolved_config(
         provider_projections,
         contract_fingerprint,
         agent_org_artifacts: compile_agent_org_artifacts_config(config.agent_org_artifacts)?,
+        command_action_patterns: config.command_action_patterns,
     })
 }
 
@@ -555,67 +558,6 @@ impl ClientHookConfig {
             policy_generation_digest: self.policy_generation_digest.clone(),
             provider_projections: self.provider_projections.clone(),
         }
-    }
-
-    /// Build policy-derived direct-read decision templates keyed by extension.
-    /// The template is produced by the complete matcher; the hot loader only
-    /// substitutes the normalized source path into that already-admitted
-    /// decision and never re-implements rule selection.
-    pub fn durable_direct_read_decision_shards(
-        &self,
-    ) -> Result<Vec<(String, String, Vec<u8>)>, String> {
-        let source = self
-            .source_config
-            .as_ref()
-            .ok_or_else(|| "only a source-compiled Hook config may publish shards".to_owned())?;
-        let extensions = source
-            .profiles
-            .values()
-            .flat_map(|profile| {
-                profile
-                    .extension_any
-                    .iter()
-                    .map(|extension| format!(".{extension}"))
-            })
-            .collect::<std::collections::BTreeSet<_>>();
-        let target_paths = extensions
-            .iter()
-            .flat_map(|extension| {
-                let registered_path = format!("__ASP_DIRECT_READ_PATH__{extension}");
-                let negative_path =
-                    agent_semantic_config::mutate_path_outside_registered_extensions(
-                        &registered_path,
-                        &extensions,
-                    );
-                [registered_path, negative_path]
-            })
-            .filter_map(|path| {
-                let dot = path.rfind('.')?;
-                Some((path[dot..].to_ascii_lowercase(), path))
-            })
-            .collect::<std::collections::BTreeMap<_, _>>();
-        let runtime = HookRuntime {
-            project_root: ".".to_owned(),
-            rankers: Vec::new(),
-            providers: Vec::new(),
-            policy_providers: self.provider_projections.clone(),
-        };
-        let mut shards = Vec::with_capacity(target_paths.len());
-        for (extension, path) in target_paths {
-            let action =
-                crate::tool_action::ToolAction::normalized_direct_policy_action(path.clone());
-            let mut decision = self
-                .classify_candidate(&runtime, "codex", "pre-tool", &action)
-                .map(|candidate| candidate.decision)
-                .unwrap_or_else(|| {
-                    crate::classifier::default_allow_for_normalized_action(
-                        "codex", "pre-tool", &action,
-                    )
-                });
-            self.attach_hook_policy_receipt(&mut decision);
-            shards.push((extension, path, decision.to_compact_binary()?));
-        }
-        Ok(shards)
     }
 
     /// Compile wrapped registered-source winner tables from the complete

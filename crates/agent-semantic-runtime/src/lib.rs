@@ -19,7 +19,6 @@ mod live_corpus;
 pub mod provider_workspace_artifact;
 pub mod runtime_identity_monitor;
 pub mod runtime_process_lifecycle;
-pub mod runtime_serving_endpoint;
 mod runtime_source;
 pub mod state;
 pub mod state_core;
@@ -134,13 +133,9 @@ mod runtime_identity_monitor_tests;
 #[path = "../tests/unit/runtime_process_lifecycle.rs"]
 mod runtime_process_lifecycle_tests;
 #[cfg(test)]
-#[path = "../tests/unit/runtime_serving_endpoint.rs"]
-mod runtime_serving_endpoint_tests;
-#[cfg(test)]
 #[path = "../tests/unit/timeout_policy.rs"]
 mod timeout_policy_tests;
 
 pub use state::discover_project_activation_path;
 pub use state::is_project_activation_path;
 pub use state::project_root_for_activation_path;
-pub mod runtime_artifact_identity;

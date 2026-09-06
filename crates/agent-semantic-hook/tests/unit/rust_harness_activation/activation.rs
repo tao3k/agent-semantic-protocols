@@ -59,28 +59,6 @@ fn rust_harness_activation_uses_provider_identity() {
 }
 
 #[test]
-fn rust_harness_activation_routes_explicit_reads_to_owner_frontier() {
-    let decision = classify_hook(
-        &rust_harness_activation(),
-        "codex",
-        "pre-tool",
-        &json!({
-            "tool_name": "Read",
-            "tool_input": {"path": "src/lib.rs"}
-        }),
-    );
-
-    assert_eq!(decision.decision, DecisionKind::Deny);
-    assert_eq!(
-        decision.reason_kind,
-        ReasonKind::RegisteredSourceRouteRequired
-    );
-    assert_eq!(decision.language_ids, ["rust"]);
-    assert_eq!(decision.routes[0].kind, DecisionRouteKind::Playbook);
-    assert_eq!(decision.routes[0].provider_id, "asp-rust");
-}
-
-#[test]
 fn rust_harness_activation_routes_source_glob_search_to_lexical_frontier() {
     let decision = classify_hook(
         &rust_harness_activation(),

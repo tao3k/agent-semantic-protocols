@@ -38,18 +38,3 @@ fn non_mutating_tool_action_has_no_workspace_mutation_projection() {
         .is_empty()
     );
 }
-
-#[test]
-fn apply_patch_payload_cannot_enter_the_direct_read_decision_shard() {
-    let payload = serde_json::json!({
-        "tool_name": "apply_patch",
-        "tool_input": {
-            "command": "*** Begin Patch\\n*** Update File: /workspace/src/lib.rs\\n@@\\n+// edit\\n*** End Patch"
-        }
-    });
-
-    assert!(
-        crate::direct_read_source_key(&payload).is_none(),
-        "ApplyPatch must never enter a DirectRead decision shard"
-    );
-}

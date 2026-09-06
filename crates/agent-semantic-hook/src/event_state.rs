@@ -6,22 +6,19 @@ use std::fs::OpenOptions;
 use std::fs::{self};
 use std::io::BufRead;
 use std::io::BufReader;
-use std::io::Read;
-use std::io::Seek;
-use std::io::SeekFrom;
 use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 use std::time::Duration;
 use std::time::Instant;
-use std::time::SystemTime;
-use std::time::UNIX_EPOCH;
 
 use agent_semantic_runtime::ensure_project_hook_state_dir;
 use fs2::FileExt;
 use serde_json::Value;
 use serde_json::json;
 
+use crate::ReaderProbeAccess;
+use crate::ReaderProbeObservation;
 use crate::event_replay::compact_source_access_deny_message;
 use crate::event_replay::deny_replay_key;
 use crate::event_replay::is_source_access_replay_key;
@@ -30,6 +27,14 @@ use crate::event_replay::repeated_deny_message;
 use crate::event_replay::should_compact_source_access_deny_message;
 use crate::protocol::HOOK_PROTOCOL_ID;
 use crate::protocol::HookDecision;
+
+#[path = "event_state_parts/replay_window.rs"]
+mod replay_window;
+pub(crate) use replay_window::read_hook_event_state_tail;
+use replay_window::{
+    event_matches_prompt_scope, has_recent_matching_deny, is_current_hook_event_state_line,
+    is_prompt_scope_boundary, is_recent_for_window, unix_time_ms,
+};
 
 pub(crate) const HOOK_EVENT_STATE_FILE: &str = "events.jsonl";
 const PROMPT_SCOPE_WINDOW_MS: u128 = 10 * 60 * 1000;
@@ -332,6 +337,94 @@ pub fn try_append_hook_event_state(
     append_hook_event_state_with_lock_timeout(project_root, decision, Duration::ZERO)
 }
 
+/// Persist a dynamic Reader observation beside Hook decisions without placing
+/// internal receipt fields on the Codex Host wire envelope.
+///
+/// A probe record deliberately uses the existing V1 Hook event identity: it
+/// has the same retention, locking, and project authority as a policy
+/// decision, while `fields.recordKind` keeps it out of route/replay selection.
+pub fn append_reader_probe_event_state(
+    project_root: &Path,
+    state_home: Option<&Path>,
+    host_matcher: &str,
+    payload: &Value,
+    observation: &ReaderProbeObservation,
+    decision: Option<&crate::aot_evaluator::AotHookDecision<'_>>,
+) -> Result<PathBuf, String> {
+    let state_dir = match state_home {
+        Some(state_home) => {
+            let paths = agent_semantic_runtime::project_state_paths_with_state_home(
+                project_root,
+                state_home,
+            )?;
+            fs::create_dir_all(&paths.hook_state_dir).map_err(|error| {
+                format!(
+                    "create Reader probe Hook state {}: {error}",
+                    paths.hook_state_dir.display()
+                )
+            })?;
+            paths.hook_state_dir
+        }
+        None => ensure_project_hook_state_dir(project_root)?,
+    };
+    let state_path = state_dir.join(HOOK_EVENT_STATE_FILE);
+    let writer_lock = acquire_event_state_writer(&state_dir, HOOK_EVENT_STATE_LOCK_TIMEOUT)?;
+    let reader_probe = json!({
+        "schemaId": "agent.semantic-protocols.reader-probe-observation",
+        "schemaVersion": 1,
+        "subject": observation.subject,
+        "access": match observation.access {
+            ReaderProbeAccess::Read => "read",
+            ReaderProbeAccess::Unknown => "unknown",
+        },
+        "accessMode": match observation.access {
+            ReaderProbeAccess::Read => "read-permission",
+            ReaderProbeAccess::Unknown => "unknown",
+        },
+        "backend": observation.backend,
+        "terminal": observation.terminal,
+        "elapsedMicros": observation.elapsed_micros,
+        "probeProcessLaunched": observation.probe_process_launched,
+        "cleanupVerified": observation.cleanup_verified,
+        "cacheHit": observation.cache_hit,
+        "behaviorKey": observation.behavior_key,
+    });
+    let policy = decision
+        .map(serde_json::to_value)
+        .transpose()
+        .map_err(|error| format!("encode Reader probe policy decision: {error}"))?
+        .unwrap_or_else(|| json!({ "decision": "allow", "state": "no-matching-rule" }));
+    let event = json!({
+        "schemaId": HOOK_EVENT_SCHEMA_ID,
+        "schemaVersion": "1",
+        "protocolId": HOOK_PROTOCOL_ID,
+        "protocolVersion": crate::protocol::HOOK_PROTOCOL_VERSION,
+        "recordedAtUnixMs": unix_time_ms(),
+        "platform": "codex",
+        "event": "pre-tool",
+        "decision": decision.map_or("allow", |value| value.decision),
+        "reasonKind": decision.map_or("none", |value| value.reason_kind),
+        "languageIds": decision
+            .and_then(|value| value.language)
+            .map(|language| vec![language])
+            .unwrap_or_default(),
+        "subject": { "path": observation.subject },
+        "routeKinds": [],
+        "fields": {
+            "recordKind": "reader-probe-observation",
+            "hostMatcher": host_matcher,
+            "sessionId": payload.get("session_id").and_then(Value::as_str),
+            "toolUseId": payload.get("tool_use_id").and_then(Value::as_str),
+            "readerProbe": reader_probe,
+            "policyDecision": policy,
+        },
+    });
+    append_hook_event_value(&state_path, &event)?;
+    FileExt::unlock(&writer_lock)
+        .map_err(|error| format!("unlock Hook event writer {}: {error}", state_dir.display()))?;
+    Ok(state_path)
+}
+
 fn append_hook_event_state_with_lock_timeout(
     project_root: &Path,
     decision: &HookDecision,
@@ -604,127 +697,4 @@ fn remove_incompatible_hook_event_state_path(state_path: &Path) -> Result<Option
         )
     })?;
     Ok(Some(state_path.to_path_buf()))
-}
-
-fn is_current_hook_event_state_line(line: &str) -> bool {
-    let Ok(value) = serde_json::from_str::<serde_json::Value>(line) else {
-        return false;
-    };
-    value.get("schemaId").and_then(serde_json::Value::as_str) == Some(HOOK_EVENT_SCHEMA_ID)
-        && value.get("protocolId").and_then(serde_json::Value::as_str) == Some(HOOK_PROTOCOL_ID)
-}
-
-fn unix_time_ms() -> u128 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_millis())
-        .unwrap_or_default()
-}
-
-fn has_recent_matching_deny(project_root: &Path, replay_key: &str) -> Result<bool, String> {
-    let state_path = ensure_project_hook_state_dir(project_root)?.join(HOOK_EVENT_STATE_FILE);
-    if !state_path.is_file() {
-        return Ok(false);
-    }
-    let now = unix_time_ms();
-    let replay_key_json = serde_json::to_string(replay_key)
-        .map_err(|error| format!("failed to encode hook replay key: {error}"))?;
-    let lines = read_hook_event_state_tail(&state_path)?;
-    for line in lines.iter().rev() {
-        if !line.contains(&replay_key_json) {
-            continue;
-        }
-        let Ok(event) = serde_json::from_str::<Value>(line) else {
-            continue;
-        };
-        if !is_recent_event(&event, now) {
-            break;
-        }
-        if event.get("decision").and_then(Value::as_str) == Some("deny")
-            && event.get("denyReplayKey").and_then(Value::as_str) == Some(replay_key)
-        {
-            return Ok(true);
-        }
-    }
-    Ok(false)
-}
-
-pub(crate) fn read_hook_event_state_tail(state_path: &Path) -> Result<Vec<String>, String> {
-    let mut file = fs::File::open(state_path).map_err(|error| {
-        format!(
-            "failed to read hook state {}: {error}",
-            state_path.display()
-        )
-    })?;
-    let file_len = file
-        .metadata()
-        .map_err(|error| {
-            format!(
-                "failed to stat hook state {}: {error}",
-                state_path.display()
-            )
-        })?
-        .len();
-    let start = file_len.saturating_sub(HOOK_EVENT_STATE_TAIL_BYTES);
-    file.seek(SeekFrom::Start(start)).map_err(|error| {
-        format!(
-            "failed to seek hook state {}: {error}",
-            state_path.display()
-        )
-    })?;
-
-    let mut content = Vec::new();
-    file.read_to_end(&mut content).map_err(|error| {
-        format!(
-            "failed to read hook state {}: {error}",
-            state_path.display()
-        )
-    })?;
-    if start > 0 {
-        let Some(first_newline) = content.iter().position(|byte| *byte == b'\n') else {
-            return Ok(Vec::new());
-        };
-        content.drain(..=first_newline);
-    }
-    let content = String::from_utf8(content).map_err(|error| {
-        format!(
-            "failed to decode hook state {} as UTF-8: {error}",
-            state_path.display()
-        )
-    })?;
-    let lines = content.lines().collect::<Vec<_>>();
-    let first_line = lines.len().saturating_sub(HOOK_EVENT_STATE_TAIL_LINE_CAP);
-    Ok(lines[first_line..]
-        .iter()
-        .map(|line| (*line).to_string())
-        .collect())
-}
-
-fn is_recent_event(event: &Value, now: u128) -> bool {
-    is_recent_for_window(event, now, DENY_REPLAY_WINDOW_MS)
-}
-
-fn is_recent_for_window(event: &Value, now: u128, window_ms: u128) -> bool {
-    let Some(recorded_at) = event.get("recordedAtUnixMs").and_then(Value::as_u64) else {
-        return false;
-    };
-    now.saturating_sub(u128::from(recorded_at)) <= window_ms
-}
-
-fn event_matches_prompt_scope(
-    event: &Value,
-    session_id: Option<&str>,
-    transcript_path: Option<&str>,
-) -> bool {
-    let fields = event.get("fields").unwrap_or(event);
-    let session_matches = session_id
-        .is_some_and(|expected| fields.get("sessionId").and_then(Value::as_str) == Some(expected));
-    let transcript_matches = transcript_path.is_some_and(|expected| {
-        fields.get("transcriptPath").and_then(Value::as_str) == Some(expected)
-    });
-    session_matches || transcript_matches
-}
-
-fn is_prompt_scope_boundary(event: &Value) -> bool {
-    event.get("event").and_then(Value::as_str) == Some("user-prompt")
 }

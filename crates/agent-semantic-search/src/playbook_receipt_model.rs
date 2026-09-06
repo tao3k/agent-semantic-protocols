@@ -166,7 +166,6 @@ pub struct SearchPlaybookDecision {
     pub chosen_path: String,
     pub explanation: String,
     pub residual_uncertainty: Vec<String>,
-    pub next_command: Option<String>,
     pub selectors: Vec<String>,
     pub owner_paths: Vec<String>,
 }

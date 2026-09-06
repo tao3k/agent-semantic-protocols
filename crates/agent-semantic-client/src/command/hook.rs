@@ -31,7 +31,7 @@ pub(super) fn is_help_request(args: &[String]) -> bool {
 pub(super) fn is_lifecycle_help_request(args: &[String]) -> bool {
     matches!(
         args.first().map(String::as_str),
-        Some("accept-host" | "doctor" | "enablement" | "paths")
+        Some("accept-host" | "doctor" | "enablement" | "paths" | "refresh")
     ) && is_help_request(&args[1..])
 }
 
@@ -61,5 +61,5 @@ pub(super) fn forwarded_hook_args(args: &[String]) -> Result<Vec<String>, String
 }
 
 fn usage() -> String {
-    "usage: asp install hook --client claude [PROJECT_ROOT] [--subagent-model MODEL]\n       asp hook accept-host --host-rollout PATH --host-probe-path PATH --host-sentinel TOKEN\n       asp hook doctor --client <codex|claude> [--host-rollout PATH --host-probe-path PATH --host-sentinel TOKEN] ...\n       asp hook enablement [PROJECT_ROOT] [--json]\n       asp hook paths [PROJECT_ROOT]\n       asp hook break-glass mint --defect-kind <KIND> --command <COMMAND> [PROJECT_ROOT]\n       asp install plugin <status|publish> --codex [PROJECT_ROOT]\n\nHost events are accepted only by the standalone `asp-hook <event> ...` executable.".to_string()
+    "usage: asp install hook --client claude [PROJECT_ROOT] [--subagent-model MODEL]\n       asp hook accept-host --host-rollout PATH --hook-events PATH --host-probe-path PATH --host-sentinel TOKEN\n       asp hook doctor --client <codex|claude>\n       asp hook enablement [PROJECT_ROOT] [--json]\n       asp hook paths [PROJECT_ROOT]\n       asp hook break-glass mint --defect-kind <KIND> --command <COMMAND> [PROJECT_ROOT]\n       asp install plugin <status|publish> --codex [PROJECT_ROOT]\n\nHost events are accepted only by the standalone `asp-hook <event> ...` executable.".to_string()
 }

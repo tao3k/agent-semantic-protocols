@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/asp-client-workspace-syntax-query-request.v1.schema.json",
+  "title": "ASP Client Workspace Syntax Query Request V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaId", "schemaVersion", "syntax", "projection"],
+  "properties": {
+    "schemaId": {"const": "agent.semantic-protocols.asp-client-workspace-syntax-query-request"},
+    "schemaVersion": {"const": "1"},
+    "languages": {"type": "string", "pattern": "^[^|\\s]+(\\|[^|\\s]+)*$"},
+    "documents": {"type": "string", "pattern": "^[^|\\s]+(\\|[^|\\s]+)*$"},
+    "workspace": {"type": "string", "minLength": 1},
+    "syntax": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["producer", "argv"],
+        "properties": {
+          "producer": {"type": "string", "minLength": 1},
+          "argv": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}}
+        }
+      }
+    },
+    "projection": {"const": "matches"}
+  },
+  "anyOf": [{"required": ["languages"]}, {"required": ["documents"]}]
+}

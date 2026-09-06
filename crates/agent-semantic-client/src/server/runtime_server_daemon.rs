@@ -43,9 +43,12 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
         .await
         .map_err(|error| format!("failed to acquire Runtime Server election: {error}"))?;
     let (owner_epoch, binding_token) = daemon_identity().await?;
+    let runtime_serving = agent_semantic_artifacts::StateHomeLayout::new(state_home)
+        .runtime_state()
+        .serving();
     let workspace_store =
         agent_semantic_client_db::runtime_server_workspace::prepare_runtime_server_workspace_store(
-            &state_home.join("runtime").join("server"),
+            runtime_serving.root(),
         )
         .await
         .map_err(|error| format!("failed to prepare Runtime Server workspace store: {error}"))?;
@@ -87,25 +90,39 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
             digest: expected_digest,
         }
     } else {
-        let runtime_artifact_identity =
-            agent_semantic_runtime::runtime_artifact_identity::read_runtime_artifact_identity(
-                state_home, "asp",
+        let active_bundle =
+            agent_semantic_artifacts::runtime_artifact_slots::verify_runtime_artifact_bound_bundle(
+                &agent_semantic_artifacts::RuntimeArtifactStateLayout::new(state_home)
+                    .active_slot(),
             )
             .await?;
-        agent_semantic_runtime::runtime_artifact_identity::admit_runtime_invoker(
-            &runtime_artifact_path,
-            &runtime_artifact_identity,
-            &state_home.join("runtime/bin/asp"),
-        )?;
-        runtime_artifact_identity.identity()?
+        let active_asp = active_bundle
+            .member_path("asp")
+            .ok_or_else(|| "active Runtime bundle omits asp".to_owned())?;
+        let active_identity =
+            agent_semantic_artifacts::runtime_artifact_catalog::RuntimeBinaryIdentity::from_bytes(
+                &tokio::fs::read(&active_asp).await.map_err(|error| {
+                    format!("read active Runtime asp {}: {error}", active_asp.display())
+                })?,
+            );
+        let invoker_identity =
+            agent_semantic_artifacts::runtime_artifact_catalog::RuntimeBinaryIdentity::from_bytes(
+                &tokio::fs::read(&runtime_artifact_path)
+                    .await
+                    .map_err(|error| {
+                        format!(
+                            "read Runtime Server executable {}: {error}",
+                            runtime_artifact_path.display()
+                        )
+                    })?,
+            );
+        if invoker_identity != active_identity {
+            return Err(
+                "Runtime Server executable differs from the active bound bundle".to_owned(),
+            );
+        }
+        active_identity
     };
-    crate::command::installed_provider_artifacts::reconcile_runtime_provider_catalog_for_binary(
-        state_home,
-        &runtime_binary_identity.content_digest().to_string(),
-    )?;
-    crate::command::installed_provider_artifacts::publish_current_installed_provider_artifacts(
-        state_home,
-    )?;
     let runtime_provider_catalog =
         crate::command::installed_provider_artifacts::load_runtime_provider_artifacts(state_home)
             .await?;
@@ -141,7 +158,7 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
         provider_endpoint,
     )
     .await?;
-    let provider_register_state_path = state_home.join("runtime/server/provider-register.v1.json");
+    let provider_register_state_path = runtime_serving.provider_register_receipt();
     let provider_seed = agent_semantic_provider_protocol::builtin_provider_registrations()?;
     let provider_register = if artifact_catalog
         .installed_provider_binding_generation()
@@ -161,10 +178,6 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
         .await?
     };
     let provider_register = std::sync::Arc::new(provider_register);
-    let workspace_search_providers =
-        agent_semantic_runtime_server::workspace_search_providers_from_provider_register(
-            provider_register.as_ref(),
-        )?;
     let telemetry_socket_path = runtime_server_telemetry_socket_path(&state_home)?;
     let telemetry_query_socket_path = runtime_server_telemetry_query_socket_path(&state_home)?;
     remove_stale_socket(&telemetry_socket_path).await?;
@@ -172,10 +185,7 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
 
     let admission_catalog =
         agent_semantic_client_db::runtime_server_admission_catalog::RuntimeWorkspaceAdmissionCatalog::load(
-            state_home
-                .join("runtime")
-                .join("server")
-                .join("workspace-admissions.v1.json"),
+            runtime_serving.workspace_admission_catalog(),
         )
         .await?;
     // Agent-session state is a host/Hook control-plane concern.  It may be
@@ -186,10 +196,7 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
     // the host's session-registry lock during daemon bootstrap.
     let (diagnostic_events, diagnostics) =
         agent_semantic_client_db::runtime_server_diagnostics::RuntimeServerDiagnostics::start(
-            state_home
-                .join("runtime")
-                .join("server")
-                .join("runtime-server-diagnostic.v1.json"),
+            runtime_serving.diagnostic_receipt(),
         )
         .await?;
     let lifecycle_bus = agent_semantic_client_db::runtime_telemetry_bus::RuntimeTelemetryBus::new();
@@ -200,7 +207,7 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
     // lifecycle. The optional executable is admitted only as a content-proven
     // member of the active Runtime bundle. Connection establishment is lazy,
     // and all callers share this one manager and its one long-lived UDS stream.
-    let graph_socket = state_home.join("runtime/server/asp-python-graphs.sock");
+    let graph_socket = runtime_serving.python_graphs_socket();
     let graph_server = match agent_semantic_runtime_server::asp_python_graphs_artifact::VerifiedAspPythonGraphsArtifact::load_from_active_runtime_bundle(state_home).await {
         Ok(artifact) => agent_semantic_runtime_server::asp_python_graphs_transport::AspPythonGraphsServer::from_artifact(artifact, graph_socket, 32)?,
         Err(error) => agent_semantic_runtime_server::asp_python_graphs_transport::AspPythonGraphsServer::unavailable(graph_socket, 32, error)?,
@@ -256,9 +263,10 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
                         load_runtime_provider_artifacts(&state_home)
                         .await?;
                     let required_languages = crate::command::installed_provider_artifacts::
-                        workspace_required_provider_languages_for_inventory(
+                        provider_languages_for_generation_demand(
                             &provider_register,
                             &inventory.owner_paths,
+                            provider_target.as_ref(),
                         )?;
                     let (registry, current_catalog_generation) =
                         crate::command::installed_provider_artifacts::runtime_source_index_provider_projection(
@@ -376,6 +384,7 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
             resource_supervisor,
             Some(workspace_store_root.join("runtime-search-calibration.v1.json")),
         )?;
+    let query_generation_workspace_registry = std::sync::Arc::clone(server.workspace_registry());
     let mut generation_publications = server.workspace_generation_publication_subscribe();
     let generation_admission = server.workspace_generation_admission().ok_or_else(|| {
         "Runtime ClientFrame service requires the server-owned workspace generation admission authority"
@@ -389,7 +398,7 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
         std::sync::Arc::clone(server.workspace_registry()),
         runtime_provider_catalog.generation().to_owned(),
         std::sync::Arc::from(runtime_provider_catalog.installed_provider_targets()),
-        workspace_search_providers,
+        std::sync::Arc::clone(&provider_register),
         workspace_store_root,
         query_generation_authority.clone(),
         lifecycle_bus.sender.clone(),
@@ -479,14 +488,28 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
                             publication.project_id.clone(),
                             publication.workspace_id.clone(),
                         );
-                    let _ = generation_authority
-                        .ensure_ready(
-                            &project_workspace_key,
-                            &publication.resident_pointer_path,
-                            &publication.project_root,
-                            &publication.generation_digest,
-                        )
-                        .await;
+                    let resident = query_generation_workspace_registry.resident_read_client(
+                        publication.workspace_id.as_str(),
+                        &publication.project_root,
+                    );
+                    match resident {
+                        Ok(resident) => {
+                            let _ = generation_authority
+                                .ensure_ready_resident(
+                                    &project_workspace_key,
+                                    &publication.project_root,
+                                    resident,
+                                    &publication.generation_digest,
+                                )
+                                .await;
+                        }
+                        Err(error) => generation_authority.publish_failed(
+                            project_workspace_key,
+                            0,
+                            publication.generation_digest,
+                            error,
+                        ),
+                    }
                 }
                 None => generation_authority.clear_all(),
             }
@@ -632,6 +655,7 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
     let mut identity_monitor = spawn_runtime_identity_monitor(
         monitor_state_home.clone(),
         owner_epoch,
+        startup_activation.activation_generation,
         startup_activation.publication_nonce.clone(),
         running_artifact_digest.clone(),
         endpoint.artifact_mode.as_str(),

@@ -54,5 +54,8 @@ impl RuntimeServerLifecycleCoordinator {
 }
 
 pub fn owner_receipt_path(state_home: &Path) -> PathBuf {
-    state_home.join("runtime/server/owner-spawn.v1.json")
+    agent_semantic_artifacts::StateHomeLayout::new(state_home)
+        .runtime_state()
+        .serving()
+        .owner_spawn_receipt()
 }

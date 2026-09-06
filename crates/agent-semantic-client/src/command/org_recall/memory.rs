@@ -379,7 +379,7 @@ fn asp_memory_engine_command(project_root: &Path) -> Result<Command, String> {
         return Ok(Command::new(binary));
     }
     Err(
-        "asp org recall plans requires ASP_MEMORY_ENGINE or State Home runtime/bin/asp-memory-engine"
+        "asp org recall plans requires ASP_MEMORY_ENGINE or an asp-memory-engine member in the active Runtime artifact bundle"
             .to_string(),
     )
 }

@@ -4,9 +4,9 @@ use std::future::Future;
 use std::path::PathBuf;
 use std::pin::Pin;
 
-use crate::AspClient;
 use crate::projection_presentation::ProjectionPresentation;
 use crate::projection_presentation::render_exact_projection_response;
+use crate::{AspClient, AspClientRuntimeHandoff};
 use agent_semantic_client_core::LanguageId;
 use agent_semantic_client_protocol::AspClientExactQueryRequest;
 use agent_semantic_client_protocol::AspClientSearchRequest;
@@ -88,11 +88,28 @@ impl LanguageCommandClient for RuntimeLanguageCommandClient {
     fn dispatch(&self, request: LanguageCommandRequest) -> LanguageCommandDispatchFuture<'_> {
         Box::pin(async move {
             let state_home = agent_semantic_runtime::state_core::resolve_state_home()?;
-            #[cfg(unix)]
-            let client = AspClient::new_from_host_capability(state_home, &request.project_root)?;
-            #[cfg(not(unix))]
-            let client = AspClient::new(state_home, &request.project_root);
             let (route, params) = request.operation.into_route_and_params()?;
+            #[cfg(unix)]
+            let mut client =
+                AspClient::new_from_host_capability(&state_home, &request.project_root)?;
+            #[cfg(not(unix))]
+            let mut client = AspClient::new(&state_home, &request.project_root);
+            // A language facade is a client of one content-bound Runtime
+            // transaction, never of a re-derived endpoint path. Host-inherited
+            // descriptors remain strict; published loopback transport must be
+            // delivered by the same verified handoff before Tokio opens the
+            // multiplexed ClientFrame session.
+            if client.uses_published_loopback_transport() {
+                let transaction = agent_semantic_client_db::runtime_server_lifecycle::observe_resident_transaction(&state_home)
+                    .await
+                    .map_err(|error| {
+                        format!(
+                            "reasonKind=runtime-client-handoff-unavailable failureLayer=runtime-resident-transaction Runtime Query requires a content-bound Host handoff: {error}"
+                        )
+                    })?;
+                client =
+                    client.with_runtime_handoff(AspClientRuntimeHandoff::try_from(&transaction)?);
+            }
             let frame = client
                 .dispatch(request.language_id.as_str(), route, params)
                 .await?;

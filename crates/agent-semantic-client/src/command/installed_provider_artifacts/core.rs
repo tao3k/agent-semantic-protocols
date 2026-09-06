@@ -167,22 +167,6 @@ fn reconcile_authoritative_binding(
 > {
     let registry_digest =
         super::super::provider_install_registry::provider_install_registry_digest()?;
-    let mut catalog =
-        agent_semantic_artifacts::runtime_provider_catalog::load_runtime_provider_catalog_identity(
-            state_home,
-        )?
-        .ok_or_else(|| "runtime provider catalog identity is not published".to_owned())?;
-    if catalog.install_registry_digest != registry_digest {
-        agent_semantic_artifacts::runtime_provider_catalog::publish_runtime_provider_catalog(
-            state_home,
-            &catalog.binary_artifact_digest,
-            &registry_digest,
-        )?;
-        catalog = agent_semantic_artifacts::runtime_provider_catalog::load_runtime_provider_catalog_identity(
-            state_home,
-        )?
-        .ok_or_else(|| "runtime provider catalog identity disappeared after refresh".to_owned())?;
-    }
     let hook_policy_digest =
         agent_semantic_hook::aot_compiler::embedded_hook_policy_content_digest()?;
     let identities = providers
@@ -213,24 +197,10 @@ fn reconcile_authoritative_binding(
     agent_semantic_artifacts::installed_provider_binding::reconcile_installed_provider_binding(
         state_home,
         agent_semantic_artifacts::installed_provider_binding::InstalledProviderBindingInput {
-            binary_catalog_digest: catalog.catalog_generation,
             provider_registration_digest: registry_digest,
             hook_policy_digest,
             providers: identities,
         },
-    )
-}
-
-pub(crate) fn reconcile_runtime_provider_catalog_for_binary(
-    state_home: &Path,
-    binary_artifact_digest: &str,
-) -> Result<String, String> {
-    let registry_digest =
-        super::super::provider_install_registry::provider_install_registry_digest()?;
-    agent_semantic_artifacts::runtime_provider_catalog::publish_runtime_provider_catalog(
-        state_home,
-        binary_artifact_digest,
-        &registry_digest,
     )
 }
 
@@ -350,17 +320,11 @@ fn load_authoritative_runtime_projection(
     let Some(binding) = binding else {
         return Ok((empty_document()?, None));
     };
-    let catalog =
-        agent_semantic_artifacts::runtime_provider_catalog::load_runtime_provider_catalog_identity(
-            state_home,
-        )?
-        .ok_or_else(|| "runtime provider catalog identity is not published".to_owned())?;
     let registry_digest =
         super::super::provider_install_registry::provider_install_registry_digest()?;
     let hook_policy_digest =
         agent_semantic_hook::aot_compiler::embedded_hook_policy_content_digest()?;
-    if binding.binary_catalog_digest != catalog.catalog_generation
-        || binding.provider_registration_digest != registry_digest
+    if binding.provider_registration_digest != registry_digest
         || binding.hook_policy_digest != hook_policy_digest
     {
         return Err(INSTALLED_PROVIDER_BINDING_AUTHORITY_DRIFT.to_owned());
@@ -626,12 +590,12 @@ pub(crate) fn publish_current_installed_provider_artifacts(
             )
         })?;
         let artifact_authority_root = if developer_mode {
-            state_home
-                .join("runtime/provider-artifacts")
+            agent_semantic_artifacts::RuntimeArtifactStateLayout::new(state_home)
+                .provider_content_store()
                 .join(&receipt.provider_id)
                 .join("artifacts")
         } else {
-            state_home.join("runtime/artifacts/blake3-256")
+            agent_semantic_artifacts::RuntimeArtifactStateLayout::new(state_home).content_store()
         }
         .canonicalize()
         .map_err(|error| {
@@ -771,6 +735,19 @@ pub(crate) fn workspace_required_provider_languages_for_inventory(
 ) -> Result<BTreeSet<String>, String> {
     let paths = paths.iter().map(Path::new).collect::<Vec<_>>();
     workspace_required_provider_languages_for_paths(register, paths)
+}
+
+pub(crate) fn provider_languages_for_generation_demand(
+    register: &agent_semantic_client_db::runtime_provider_register::RuntimeProviderRegister,
+    paths: &[String],
+    provider_target: Option<
+        &agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationProviderTarget,
+    >,
+) -> Result<BTreeSet<String>, String> {
+    match provider_target {
+        Some(provider_target) => Ok(BTreeSet::from([provider_target.language_id.clone()])),
+        None => workspace_required_provider_languages_for_inventory(register, paths),
+    }
 }
 
 fn runtime_source_index_provider_projection_for_registrations(

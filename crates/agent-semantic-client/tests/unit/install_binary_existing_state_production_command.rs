@@ -64,12 +64,12 @@ async fn built_asp_install_canonicalizes_pending_identity_and_publishes_a_new_ge
         Some(migrated_event.artifact_path.to_string_lossy().as_ref()),
         "same content must reuse one immutable artifact while publishing a distinct publication"
     );
-    assert!(!state_home.path().join("runtime/resident/active").exists());
-    assert!(!state_home.path().join("runtime/resident/healthy").exists());
+    assert!(!state_home.path().join("runtime/artifacts/active").exists());
+    assert!(!state_home.path().join("runtime/artifacts/healthy").exists());
     assert!(
         !state_home
             .path()
-            .join("runtime/activation/applied.json")
+            .join("runtime/artifacts/activation/applied.json")
             .exists()
     );
 
@@ -87,7 +87,7 @@ async fn built_asp_install_canonicalizes_pending_identity_and_publishes_a_new_ge
     assert!(
         !state_home
             .path()
-            .join("runtime/activation/applied.json")
+            .join("runtime/artifacts/activation/applied.json")
             .exists()
     );
 }

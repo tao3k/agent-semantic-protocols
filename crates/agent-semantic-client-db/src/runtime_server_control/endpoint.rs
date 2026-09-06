@@ -10,6 +10,7 @@ use super::model::{
     ENDPOINT_SCHEMA_ID, RuntimeServerEndpoint, RuntimeServerEndpointOwnerBinding, SCHEMA_VERSION,
     runtime_server_transport_contract_digest,
 };
+use agent_semantic_artifacts::RuntimeServingStateLayout;
 use agent_semantic_artifacts::runtime_artifact_catalog::RuntimeBinaryIdentity;
 
 unsafe extern "C" {
@@ -250,7 +251,8 @@ async fn open_runtime_server_election_file(
                 runtime_base.display()
             )
         })?;
-    let lock_path = runtime_base.join("runtime-server.owner.lock");
+    let lock_path =
+        RuntimeServingStateLayout::from_root(runtime_base.clone()).owner_election_lock();
     let file = tokio::fs::OpenOptions::new()
         .create(true)
         .read(true)
@@ -297,7 +299,8 @@ pub async fn acquire_runtime_server_supervisor_transaction(
     tokio::fs::create_dir_all(&runtime_base)
         .await
         .map_err(|error| format!("failed to create Runtime Server directory: {error}"))?;
-    let lock_path = runtime_base.join("runtime-server.supervisor.lock");
+    let lock_path =
+        RuntimeServingStateLayout::from_root(runtime_base.clone()).supervisor_transaction_lock();
     let file = tokio::fs::OpenOptions::new()
         .create(true)
         .read(true)
@@ -334,7 +337,8 @@ pub async fn prepare_runtime_server_endpoint(
     binding_token: &str,
 ) -> Result<RuntimeServerEndpoint, String> {
     let runtime_base = runtime_server_runtime_base_async(state_home).await?;
-    let workspace_store_path = runtime_base.join("workspaces");
+    let workspace_store_path =
+        RuntimeServingStateLayout::from_root(runtime_base.clone()).workspaces();
     prepare_runtime_server_endpoint_in_with_workspace_store(
         &runtime_base,
         &workspace_store_path,
@@ -409,7 +413,8 @@ pub async fn prepare_runtime_server_endpoint_in(
     owner_epoch: u64,
     binding_token: &str,
 ) -> Result<RuntimeServerEndpoint, String> {
-    let workspace_store_path = runtime_base.join("workspaces");
+    let workspace_store_path =
+        RuntimeServingStateLayout::from_root(runtime_base.to_path_buf()).workspaces();
     prepare_runtime_server_endpoint_in_with_workspace_store(
         runtime_base,
         &workspace_store_path,
@@ -464,13 +469,10 @@ async fn prepare_runtime_server_endpoint_in_with_workspace_store_and_identity(
         super::RuntimeServerLoopbackEndpoint,
     )>,
 ) -> Result<RuntimeServerEndpoint, String> {
-    let uid_root = runtime_base
+    let runtime_root = runtime_base
         .parent()
-        .ok_or_else(|| "Runtime Server directory has no UID root".to_owned())?;
-    let canonical_uid_root_name = format!("asp-runtime-server-{}", unsafe { getuid() });
-    if uid_root.file_name().and_then(|name| name.to_str()) == Some(&canonical_uid_root_name) {
-        super::listener::prepare_private_runtime_directory(uid_root).await?;
-    }
+        .ok_or_else(|| "Runtime Server serving directory has no Runtime root".to_owned())?;
+    super::listener::prepare_private_runtime_directory(runtime_root).await?;
     super::listener::prepare_private_runtime_directory(runtime_base).await?;
     let binary_content_digest = runtime_binary_identity.content_digest().to_string();
     let transport_contract_digest = runtime_server_transport_contract_digest();
@@ -483,15 +485,13 @@ async fn prepare_runtime_server_endpoint_in_with_workspace_store_and_identity(
             artifact_catalog_digest,
             owner_epoch,
         );
-    let digest = blake3::hash(
-        format!(
-            "{owner_epoch}\0{binding_token}\0{}",
-            runtime_binary_identity.content_digest()
-        )
-        .as_bytes(),
-    )
-    .to_hex();
-    let status_memory_path = runtime_base.join(format!("status-{}.memory", &digest[..16]));
+    let status_memory_path =
+        super::endpoint_identity::runtime_server_status_memory_path_for_identity(
+            runtime_base,
+            owner_epoch,
+            binding_token,
+            runtime_binary_identity.content_digest(),
+        );
     let (control_endpoint, data_endpoint, provider_endpoint) = match endpoints {
         Some(endpoints) => endpoints,
         None => (

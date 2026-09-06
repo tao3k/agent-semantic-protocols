@@ -52,6 +52,19 @@ ClientFrame product identity, workspace identity, provider input, or cache key.
 ProjectId and WorkspaceId are explicit execution-scope identities; a filesystem
 project root is never their replacement.
 
+** V1 serving-endpoint path identity
+
+The daemon publisher and every ClientFrame resolver derive the fallback
+endpoint path from one platform-stable Runtime root.  On Unix that root is
+=/tmp/asp-runtime-server-<uid>/=; a process-local =temp_dir()= value is not an
+authority because macOS may project it as =/var/folders/...= while the daemon
+publishes under =/tmp=.  State Home canonicalization and the existing content
+identity suffix remain unchanged.  A resolver must first honor the resident
+publication and explicit publication directory, then use this same canonical
+fallback.  It must not prescribe a restart or another command when the endpoint
+is absent; it returns the typed transport result and leaves continuation to the
+Agent.
+
 * Authority and data flow
 
 ASP Server owns artifact receipt validation, exact execution-binding admission,

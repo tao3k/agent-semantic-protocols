@@ -11,7 +11,7 @@ use super::ASP_PYTHON_GRAPHS_BUNDLE_MEMBER;
 use super::VerifiedAspPythonGraphsArtifact;
 
 fn publish_bundle_fixture(state_home: &Path, members: &[(&str, &[u8])]) -> PathBuf {
-    let candidate = state_home.join("runtime/resident/candidates/asp/test-bundle");
+    let candidate = state_home.join("runtime/artifacts/bundles/asp/test-bundle");
     std::fs::create_dir_all(&candidate).expect("candidate directory");
     let mut digests = BTreeMap::new();
     for (name, bytes) in members {
@@ -33,7 +33,7 @@ fn publish_bundle_fixture(state_home: &Path, members: &[(&str, &[u8])]) -> PathB
         .expect("bundle manifest"),
     )
     .expect("write bundle manifest");
-    let active = state_home.join("runtime/resident/active");
+    let active = state_home.join("runtime/artifacts/active");
     std::fs::create_dir_all(active.parent().expect("active parent")).expect("resident directory");
     symlink(&candidate, &active).expect("active selector");
     candidate

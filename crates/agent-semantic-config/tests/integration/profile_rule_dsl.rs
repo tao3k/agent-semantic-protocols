@@ -96,7 +96,7 @@ fn language_route_materializes_default_wrapped_read_action_in_internal_ir() {
         .iter_mut()
         .find(|rule| rule.id == "route-read-to-asp-languages")
         .expect("language route rule");
-    assert!(public_rule.matcher.is_none());
+    assert_eq!(public_rule.matcher.as_deref(), Some("Bash"));
     assert!(public_rule.matcher_policies.is_empty());
     assert_eq!(
         public_rule.profiles_list,
@@ -110,7 +110,11 @@ fn language_route_materializes_default_wrapped_read_action_in_internal_ir() {
         .iter()
         .find(|rule| rule.id == "route-read-to-asp-languages")
         .expect("compiled language route rule");
-    assert!(compiled_rule.match_config.native_matcher_any.is_empty());
+    assert_eq!(
+        compiled_rule.match_config.native_matcher_any,
+        ["Bash"],
+        "the Bash read route declares only the Bash Host action"
+    );
     assert!(compiled_rule.matcher_policies.is_empty());
     assert!(compiled_rule.match_config.host_invocation_any.is_empty());
     assert_eq!(

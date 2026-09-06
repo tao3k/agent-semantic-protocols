@@ -91,6 +91,26 @@ def test_warm_evaluation_uses_only_controls_and_exact_generation_identity() -> N
     assert receipt["generationDigest"] == DIGEST_B
     assert receipt["payload"]["graphArtifactDigest"] == artifact_digest  # type: ignore[index]
     assert receipt["payload"]["result"]["rank"]  # type: ignore[index]
+    assert receipt["payload"]["result"]["rank"] == ["owner:src/a.py"]  # type: ignore[index]
+
+
+def test_candidate_projection_rejects_nodes_outside_entry_frontier() -> None:
+    session = _hello_session()
+    _retain_generation(session)
+    payload = resident_evaluation_payload()
+    payload["candidateNodeIds"] = ["owner:src/b.py"]
+    with pytest.raises(ServiceProtocolError) as error:
+        session.handle(
+            message(
+                "evaluate-resident",
+                "evaluate-invalid-candidate-frontier",
+                sequence=3,
+                workspaceIdentity="workspace-test",
+                generationDigest=DIGEST_B,
+                payload=payload,
+            )
+        )
+    assert error.value.code == "invalid-resident-evaluation"
 
 
 def test_wrong_generation_fails_closed_without_retransmitting_graph() -> None:

@@ -4,6 +4,10 @@ const GENERATION: &str = r#"{
   "schemaId":"agent.semantic-protocols.hook-policy-bundle",
   "schemaVersion":1,
   "generationDigest":"blake3-256:g1",
+  "commandActionPatterns":[{
+    "action":"read",
+    "argvPatternAny":[["cat"],["sed","-n"]]
+  }],
   "rules":[{
     "id":"route-read-to-asp-languages",
     "matchers":["Bash"],
@@ -183,7 +187,7 @@ fn registered_org_and_markdown_operands_require_a_reader_fact() {
 }
 
 #[test]
-fn search_recovery_shell_quotes_globbed_owner_scope_and_workspace() {
+fn search_recovery_forwards_only_the_registered_language_contract_query() {
     let payload = serde_json::json!({
         "tool_name": "Bash",
         "tool_input": {
@@ -213,15 +217,10 @@ fn search_recovery_shell_quotes_globbed_owner_scope_and_workspace() {
         .expect("deny direct registered source read");
 
     let recovery = decision
-        .recovery_command
+        .search_playbook_contract
         .expect("deny carries an executable Search recovery command");
     assert!(
-        recovery.starts_with("asp search playbook 'src/*.rs' --language rust "),
-        "{recovery}"
-    );
-    assert!(recovery.contains("--scope 'owner:src/*.rs'"), "{recovery}");
-    assert!(
-        recovery.contains("--workspace '/workspace with spaces'"),
+        recovery == "asp search playbook --languages rust",
         "{recovery}"
     );
 }
@@ -260,9 +259,7 @@ fn markdown_read_recovery_uses_runtime_owned_root_playbook() {
         .expect("evaluate Markdown read")
         .expect("deny direct Markdown read");
     assert_eq!(
-        decision.recovery_command.as_deref(),
-        Some(
-            "asp search playbook README.md --language md --intent conceptual --scope owner:README.md --coverage candidates --explain compact --workspace /workspace"
-        )
+        decision.search_playbook_contract.as_deref(),
+        Some("asp search playbook --languages md")
     );
 }

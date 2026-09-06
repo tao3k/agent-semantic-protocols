@@ -157,9 +157,13 @@ fn plugin_launcher_types_missing_binary_instead_of_exiting_127() {
 #[test]
 fn plugin_launcher_types_non_executable_runtime_hook_binary() {
     let root = temp_root("launcher-non-executable-runtime-hook");
-    std::fs::create_dir_all(root.join("runtime/bin")).expect("create Runtime bin fixture");
-    std::fs::write(root.join("runtime/bin/asp-hook"), b"not executable")
-        .expect("write non-executable Runtime Hook binary");
+    std::fs::create_dir_all(root.join("runtime/artifacts/active"))
+        .expect("create active Runtime slot fixture");
+    std::fs::write(
+        root.join("runtime/artifacts/active/asp-hook"),
+        b"not executable",
+    )
+    .expect("write non-executable Runtime Hook binary");
     let launcher = root.join("asp-hook");
     std::fs::write(&launcher, ASP_CODEX_PLUGIN_HOOK_LAUNCHER)
         .expect("write isolated plugin launcher");
@@ -190,9 +194,10 @@ fn plugin_launcher_executes_only_the_canonical_runtime_hook_binary() {
     use std::os::unix::fs::PermissionsExt;
 
     let root = temp_root("launcher-runtime-hook");
-    std::fs::create_dir_all(root.join("runtime/bin")).expect("create Runtime bin fixture");
+    std::fs::create_dir_all(root.join("runtime/artifacts/active"))
+        .expect("create active Runtime slot fixture");
     let invocation = root.join("invocation.txt");
-    let runtime = root.join("runtime/bin/asp-hook");
+    let runtime = root.join("runtime/artifacts/active/asp-hook");
     std::fs::write(
         &runtime,
         format!(
@@ -238,7 +243,7 @@ fn plugin_launcher_never_falls_back_to_legacy_profile_slots() {
     use std::os::unix::fs::PermissionsExt;
 
     let root = temp_root("launcher-healthy-fallback");
-    let profile = root.join("runtime/profiles/asp");
+    let profile = root.join("runtime/artifacts");
     std::fs::create_dir_all(&profile).expect("create ASP artifact profile");
     let invocation = root.join("legacy-invocation.txt");
     let artifact = root
@@ -315,7 +320,7 @@ fn plugin_launcher_contains_no_policy_or_runtime_server_plane() {
         .find("ASP_NO_AGENT")
         .expect("inherited process escape layer");
     let current = ASP_CODEX_PLUGIN_HOOK_LAUNCHER
-        .find("runtime/bin/asp-hook")
+        .find("runtime/artifacts/active/asp-hook")
         .expect("canonical Runtime Hook binary resolution");
     assert!(
         escape < current,

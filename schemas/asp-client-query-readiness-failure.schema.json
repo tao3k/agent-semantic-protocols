@@ -7,7 +7,7 @@
   "required": [
     "schemaId", "schemaVersion", "state", "phase", "reasonKind",
     "projectId", "workspaceId", "languageId", "providerId", "generationState",
-    "publicationError", "recommendedNext", "elapsedMicros", "workCounters"
+    "publicationError", "elapsedMicros", "workCounters"
   ],
   "properties": {
     "schemaId": {
@@ -23,7 +23,6 @@
     "providerId": { "type": "string", "minLength": 1 },
     "generationState": { "enum": ["unpublished", "failed"] },
     "publicationError": { "type": ["string", "null"] },
-    "recommendedNext": { "type": "object" },
     "elapsedMicros": { "type": "integer", "minimum": 0 },
     "workCounters": { "$ref": "asp-client-work-counters.schema.json" }
   }

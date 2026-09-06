@@ -1,0 +1,56 @@
+"""Workspace native Syntax Query contract tests."""
+
+from pathlib import Path
+
+from unit.schema_validation import schema_validator_for
+
+
+ROOT = Path(__file__).resolve().parents[2]
+SCHEMAS = ROOT / "schemas"
+
+
+def test_workspace_syntax_query_request_preserves_pipe_and_native_argv() -> None:
+    packet = {
+        "schemaId": "agent.semantic-protocols.asp-client-workspace-syntax-query-request",
+        "schemaVersion": "1",
+        "languages": "rust|python",
+        "documents": "org|md",
+        "workspace": ".",
+        "syntax": [
+            {
+                "producer": "rust",
+                "argv": [
+                    "--treesitter-query",
+                    '((identifier) @symbol (#match? @symbol "Runtime|Client"))',
+                ],
+            }
+        ],
+        "projection": "matches",
+    }
+    schema_validator_for(
+        SCHEMAS / "asp-client-workspace-syntax-query-request.v1.schema.json"
+    ).validate(packet)
+
+
+def test_workspace_syntax_query_response_is_top3_selector_only_evidence() -> None:
+    packet = {
+        "schemaId": "agent.semantic-protocols.asp-client-workspace-syntax-query-response",
+        "schemaVersion": "1",
+        "state": "ready",
+        "evidence": [
+            {
+                "owner": "src/lib.rs",
+                "selector": "rust://src/lib.rs#item/function/run",
+                "relation": "syntax-capture:function.name",
+            }
+        ],
+    }
+    schema_validator_for(
+        SCHEMAS / "asp-client-workspace-syntax-query-response.v1.schema.json"
+    ).validate(packet)
+    encoded = str(packet)
+    assert "recommendedNext" not in encoded
+    assert "nextCommand" not in encoded
+    assert "sourceContent" not in encoded
+    assert "digest" not in encoded
+

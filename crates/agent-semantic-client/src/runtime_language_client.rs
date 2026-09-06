@@ -42,10 +42,6 @@ static HOST_RUNTIME_DESCRIPTOR_CONSUMED: std::sync::atomic::AtomicBool =
 #[cfg(unix)]
 pub const ASP_RUNTIME_CLIENT_FD_ENV: &str = "ASP_RUNTIME_CLIENT_FD";
 
-fn transport_unavailable(message: &str) -> String {
-    format!("reasonKind=transport-unavailable {message}")
-}
-
 fn verified_runtime_endpoint_connect_failure(error: String) -> String {
     let lower = error.to_ascii_lowercase();
     if lower.contains("operation not permitted") || lower.contains("os error 1") {
@@ -53,9 +49,12 @@ fn verified_runtime_endpoint_connect_failure(error: String) -> String {
             "reasonKind=host-operation-not-permitted failureLayer=runtime-verified-endpoint-transport osError=EPERM originalError={error}"
         );
     }
-    transport_unavailable(&format!(
-        "Runtime serving endpoint was content-proven but could not be connected: {error}"
-    ))
+    let original = error
+        .strip_prefix("reasonKind=transport-unavailable ")
+        .unwrap_or(&error);
+    format!(
+        "reasonKind=runtime-verified-endpoint-connect-failed failureLayer=runtime-verified-endpoint-transport Runtime serving endpoint was content-proven but could not be connected: {original}"
+    )
 }
 
 /// A multiplexed gRPC session pinned to one published Runtime endpoint.
@@ -143,7 +142,7 @@ pub struct ClientBackpressureProbeReceipt {
 
 impl SessionKey {
     fn from_publication(
-        publication: &agent_semantic_runtime::runtime_serving_endpoint::RuntimeServingEndpoint,
+        publication: &AspClientRuntimeHandoff,
         project_id: String,
         workspace_id: String,
     ) -> Self {
@@ -357,7 +356,7 @@ async fn session_for_endpoint(
                     .map_err(|_| "inherited Runtime descriptor capability poisoned".to_owned())?
                     .take()
                     .ok_or_else(|| {
-                        "reasonKind=transport-unavailable inherited Runtime descriptor capability was already consumed"
+                        "reasonKind=host-runtime-transport-capability-consumed failureLayer=host-transport-capability inherited Runtime descriptor capability was already consumed"
                             .to_owned()
                     })?;
                 AspClientGrpcTransport::connect_inherited_descriptor(descriptor).await?
@@ -390,10 +389,109 @@ enum AspClientTransportCapability {
     InheritedDescriptor(std::sync::Mutex<Option<std::os::fd::OwnedFd>>),
 }
 
+/// Immutable, content-bound transport authority minted by the Runtime's
+/// resident transaction.  It deliberately excludes `activationGeneration`:
+/// the publication nonce fences the transaction while the artifact digest
+/// identifies the executable content served by the endpoint.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AspClientRuntimeHandoff {
+    control_socket_addr: std::net::SocketAddr,
+    data_socket_addr: std::net::SocketAddr,
+    provider_socket_addr: std::net::SocketAddr,
+    publication_nonce: String,
+    artifact_digest: agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest,
+    owner_epoch: u64,
+    runtime_generation_digest: String,
+}
+
+impl AspClientRuntimeHandoff {
+    pub fn control_socket_addr(&self) -> std::net::SocketAddr {
+        self.control_socket_addr
+    }
+
+    pub fn data_socket_addr(&self) -> std::net::SocketAddr {
+        self.data_socket_addr
+    }
+
+    pub fn provider_socket_addr(&self) -> std::net::SocketAddr {
+        self.provider_socket_addr
+    }
+
+    pub fn publication_nonce(&self) -> &str {
+        &self.publication_nonce
+    }
+
+    pub fn artifact_digest(
+        &self,
+    ) -> &agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest {
+        &self.artifact_digest
+    }
+
+    pub fn owner_epoch(&self) -> u64 {
+        self.owner_epoch
+    }
+
+    pub fn runtime_generation_digest(&self) -> &str {
+        &self.runtime_generation_digest
+    }
+}
+
+impl
+    TryFrom<
+        &agent_semantic_client_db::runtime_server_owner_receipt::RuntimeServerResidentTransactionReceipt,
+    > for AspClientRuntimeHandoff
+{
+    type Error = String;
+
+    fn try_from(
+        receipt: &agent_semantic_client_db::runtime_server_owner_receipt::RuntimeServerResidentTransactionReceipt,
+    ) -> Result<Self, Self::Error> {
+        const SCHEMA_ID: &str =
+            "agent.semantic-protocols.runtime-server-resident-transaction-receipt";
+        let identity_matches = receipt.schema_id == SCHEMA_ID
+            && receipt.schema_version == "1"
+            && receipt.state == "ready"
+            && receipt.publication_nonce == receipt.applied_publication_nonce
+            && receipt.launcher_artifact_digest == receipt.applied_artifact_digest
+            && receipt.applied_artifact_digest == receipt.endpoint_binary_content_digest;
+        if !identity_matches
+            || receipt.publication_nonce.is_empty()
+            || receipt.endpoint_owner_epoch == 0
+            || !receipt
+                .endpoint_runtime_generation_digest
+                .strip_prefix("blake3-256:")
+                .is_some_and(|digest| {
+                    digest.len() == 64
+                        && digest.bytes().all(|byte| {
+                            byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte)
+                        })
+                })
+        {
+            return Err(
+                "reasonKind=runtime-client-handoff-identity-mismatch resident transaction does not bind one exact Runtime publication"
+                    .to_owned(),
+            );
+        }
+        receipt.control_endpoint.validate()?;
+        receipt.data_endpoint.validate()?;
+        receipt.provider_endpoint.validate()?;
+        Ok(Self {
+            control_socket_addr: receipt.control_endpoint.socket_addr(),
+            data_socket_addr: receipt.data_endpoint.socket_addr(),
+            provider_socket_addr: receipt.provider_endpoint.socket_addr(),
+            publication_nonce: receipt.publication_nonce.clone(),
+            artifact_digest: receipt.endpoint_binary_content_digest.clone(),
+            owner_epoch: receipt.endpoint_owner_epoch,
+            runtime_generation_digest: receipt.endpoint_runtime_generation_digest.clone(),
+        })
+    }
+}
+
 pub struct AspClient {
     state_home: PathBuf,
     project_root: PathBuf,
     transport_capability: AspClientTransportCapability,
+    runtime_handoff: Option<AspClientRuntimeHandoff>,
 }
 
 impl AspClient {
@@ -403,7 +501,45 @@ impl AspClient {
             state_home: state_home.into(),
             project_root: project_root.into(),
             transport_capability: AspClientTransportCapability::PublishedLoopbackTcp,
+            runtime_handoff: None,
         }
+    }
+
+    /// Create a client pinned to the exact Runtime publication returned by the
+    /// resident transaction.  No State Home endpoint discovery is performed
+    /// for this client.
+    pub fn new_from_runtime_handoff(
+        state_home: impl Into<PathBuf>,
+        project_root: impl Into<PathBuf>,
+        runtime_handoff: AspClientRuntimeHandoff,
+    ) -> Self {
+        Self {
+            state_home: state_home.into(),
+            project_root: project_root.into(),
+            transport_capability: AspClientTransportCapability::PublishedLoopbackTcp,
+            runtime_handoff: Some(runtime_handoff),
+        }
+    }
+
+    pub(crate) fn with_runtime_handoff(mut self, runtime_handoff: AspClientRuntimeHandoff) -> Self {
+        self.runtime_handoff = Some(runtime_handoff);
+        self
+    }
+
+    async fn runtime_handoff(&self) -> Result<AspClientRuntimeHandoff, String> {
+        if let Some(handoff) = &self.runtime_handoff {
+            return Ok(handoff.clone());
+        }
+        let receipt = agent_semantic_client_db::runtime_server_lifecycle::observe_resident_transaction(
+            &self.state_home,
+        )
+        .await
+        .map_err(|error| {
+            format!(
+                "reasonKind=runtime-client-handoff-unavailable failureLayer=runtime-resident-transaction Runtime lifecycle authority did not return a content-bound serving capability: {error}"
+            )
+        })?;
+        AspClientRuntimeHandoff::try_from(&receipt)
     }
 
     /// Select an optional Host-published transport capability exactly once.
@@ -435,17 +571,17 @@ impl AspClient {
         };
         let raw_descriptor = raw_descriptor.parse::<std::os::fd::RawFd>().map_err(|_| {
             format!(
-                "reasonKind=transport-unavailable {ASP_RUNTIME_CLIENT_FD_ENV} must be an open descriptor number"
+                "reasonKind=host-runtime-transport-capability-invalid failureLayer=host-transport-capability {ASP_RUNTIME_CLIENT_FD_ENV} must be an open descriptor number"
             )
         })?;
         if raw_descriptor < 3 {
             return Err(format!(
-                "reasonKind=transport-unavailable {ASP_RUNTIME_CLIENT_FD_ENV} must not alias stdin/stdout/stderr"
+                "reasonKind=host-runtime-transport-capability-invalid failureLayer=host-transport-capability {ASP_RUNTIME_CLIENT_FD_ENV} must not alias stdin/stdout/stderr"
             ));
         }
         if HOST_RUNTIME_DESCRIPTOR_CONSUMED.swap(true, Ordering::AcqRel) {
             return Err(
-                "reasonKind=transport-unavailable inherited Runtime descriptor capability was replayed"
+                "reasonKind=host-runtime-transport-capability-replayed failureLayer=host-transport-capability inherited Runtime descriptor capability was replayed"
                     .to_owned(),
             );
         }
@@ -454,7 +590,7 @@ impl AspClient {
         // before OwnedFd assumes responsibility for closing it.
         if unsafe { libc::fcntl(raw_descriptor, libc::F_GETFD) } < 0 {
             return Err(format!(
-                "reasonKind=transport-unavailable inherited Runtime descriptor is not open: {}",
+                "reasonKind=host-runtime-transport-capability-invalid failureLayer=host-transport-capability inherited Runtime descriptor is not open: {}",
                 std::io::Error::last_os_error()
             ));
         }
@@ -483,10 +619,10 @@ impl AspClient {
             transport_capability: AspClientTransportCapability::InheritedDescriptor(
                 std::sync::Mutex::new(Some(descriptor)),
             ),
+            runtime_handoff: None,
         }
     }
 
-    #[cfg(test)]
     pub(crate) fn uses_published_loopback_transport(&self) -> bool {
         matches!(
             self.transport_capability,
@@ -508,12 +644,7 @@ impl AspClient {
         request: LiveCorpusCacheStateRequest,
     ) -> Result<LiveCorpusCacheStateReceipt, String> {
         request.validate()?;
-        let publication =
-            agent_semantic_runtime::runtime_serving_endpoint::resolve_runtime_serving_endpoint(
-                &self.state_home,
-            )
-            .await
-            .map_err(|error| transport_unavailable(&error))?;
+        let publication = self.runtime_handoff().await?;
         let (project_id, workspace_id) = project_workspace_ids(&self.project_root)?;
         let session_key = SessionKey::from_publication(&publication, project_id, workspace_id);
         let cache_state = request.cache_state.clone();
@@ -589,11 +720,11 @@ impl AspClient {
         ),
         String,
     > {
-        let publication = match agent_semantic_runtime::runtime_serving_endpoint::resolve_runtime_serving_endpoint(&self.state_home).await {
+        let publication = match self.runtime_handoff().await {
             Ok(publication) => publication,
             Err(error) => {
                 self.drain_cached_sessions().await;
-                return Err(transport_unavailable(&error));
+                return Err(error);
             }
         };
         let (project_id, workspace_id) = project_workspace_ids(&self.project_root)?;
@@ -601,7 +732,7 @@ impl AspClient {
             SessionKey::from_publication(&publication, project_id.clone(), workspace_id.clone());
         let (session, session_cell) = session_for_endpoint(
             &session_key,
-            publication.data_socket_addr,
+            publication.data_socket_addr(),
             &self.transport_capability,
         )
         .await?;
@@ -723,14 +854,9 @@ impl AspClient {
     /// rejected deterministically and every admitted call can still receive a
     /// correlated Cancelled terminal.
     pub async fn backpressure_probe(&self) -> Result<ClientBackpressureProbeReceipt, String> {
-        let endpoint =
-            agent_semantic_runtime::runtime_serving_endpoint::resolve_runtime_serving_endpoint(
-                &self.state_home,
-            )
-            .await
-            .map_err(|error| transport_unavailable(&error))?;
+        let endpoint = self.runtime_handoff().await?;
         let (project_id, workspace_id) = project_workspace_ids(&self.project_root)?;
-        let transport = AspClientGrpcTransport::connect_tcp(endpoint.data_socket_addr)
+        let transport = AspClientGrpcTransport::connect_tcp(endpoint.data_socket_addr())
             .await
             .map_err(verified_runtime_endpoint_connect_failure)?;
         let session_id = ClientSessionId::new(format!(

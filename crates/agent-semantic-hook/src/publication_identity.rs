@@ -46,14 +46,28 @@ pub fn hook_runtime_identity_receipt() -> Result<HookRuntimeIdentityReceipt, Str
 }
 
 pub fn is_typed_hook_deny(value: &Value) -> bool {
+    is_classic_typed_hook_deny(value) || is_aot_typed_hook_deny(value)
+}
+
+fn is_classic_typed_hook_deny(value: &Value) -> bool {
     value.get("schemaId").and_then(Value::as_str) == Some("agent.semantic-protocols.hook.decision")
         && value.get("schemaVersion").and_then(Value::as_str) == Some("1")
         && value.get("event").and_then(Value::as_str) == Some("pre-tool")
         && value.get("decision").and_then(Value::as_str) == Some("deny")
 }
 
+fn is_aot_typed_hook_deny(value: &Value) -> bool {
+    value.get("schemaId").and_then(Value::as_str) == Some("agent.semantic-protocols.hook.decision")
+        && value.get("schemaVersion").and_then(Value::as_u64) == Some(1)
+        && value.get("decision").and_then(Value::as_str) == Some("deny")
+}
+
 pub fn is_generation_bound_hook_deny(value: &Value) -> bool {
-    is_typed_hook_deny(value)
+    is_classic_generation_bound_hook_deny(value) || is_aot_generation_bound_hook_deny(value)
+}
+
+fn is_classic_generation_bound_hook_deny(value: &Value) -> bool {
+    is_classic_typed_hook_deny(value)
         && value
             .pointer("/fields/configRuleId")
             .and_then(Value::as_str)
@@ -74,4 +88,51 @@ pub fn is_generation_bound_hook_deny(value: &Value) -> bool {
                     hex.len() == 64 && hex.bytes().all(|byte| byte.is_ascii_hexdigit())
                 })
             })
+}
+
+fn is_aot_generation_bound_hook_deny(value: &Value) -> bool {
+    value.get("schemaId").and_then(Value::as_str) == Some("agent.semantic-protocols.hook.decision")
+        && value.get("schemaVersion").and_then(Value::as_u64) == Some(1)
+        && value.get("decision").and_then(Value::as_str) == Some("deny")
+        && value
+            .get("configRuleId")
+            .and_then(Value::as_str)
+            .is_some_and(|rule_id| !rule_id.is_empty())
+        && value
+            .get("generationDigest")
+            .and_then(Value::as_str)
+            .is_some_and(valid_blake3_digest)
+}
+
+fn valid_blake3_digest(digest: &str) -> bool {
+    digest
+        .strip_prefix("blake3-256:")
+        .is_some_and(|hex| hex.len() == 64 && hex.bytes().all(|byte| byte.is_ascii_hexdigit()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_generation_bound_hook_deny;
+    use serde_json::json;
+
+    #[test]
+    fn aot_reader_deny_is_generation_bound_by_compiled_policy_digest() {
+        let decision = json!({
+            "schemaId": "agent.semantic-protocols.hook.decision",
+            "schemaVersion": 1,
+            "decision": "deny",
+            "configRuleId": "route-read-to-asp-languages",
+            "generationDigest": format!("blake3-256:{}", "a".repeat(64)),
+        });
+        assert!(is_generation_bound_hook_deny(&decision));
+    }
+
+    #[test]
+    fn aot_reader_deny_without_rule_or_generation_is_not_bound() {
+        assert!(!is_generation_bound_hook_deny(&json!({
+            "schemaId": "agent.semantic-protocols.hook.decision",
+            "schemaVersion": 1,
+            "decision": "deny",
+        })));
+    }
 }

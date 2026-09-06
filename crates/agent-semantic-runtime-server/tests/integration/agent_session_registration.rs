@@ -138,7 +138,12 @@ async fn child_registration_uses_the_grpc_client_frame_and_runtime_registry_owne
         workspace_registry,
         digest('a'),
         Arc::from(registered_language_provider_pairs()),
-        Arc::from([]),
+        Arc::new(
+            agent_semantic_client_db::runtime_provider_register::RuntimeProviderRegister::from_seed(
+                Vec::new(),
+            )
+            .expect("empty provider register"),
+        ),
         directory.path().join("workspace-store"),
         agent_semantic_runtime_server::RuntimeQueryGenerationAuthority::new(),
         telemetry.sender,

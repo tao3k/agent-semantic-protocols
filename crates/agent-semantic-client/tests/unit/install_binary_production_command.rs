@@ -115,7 +115,7 @@ async fn built_asp_install_binary_publishes_runtime_hook_independent_of_runtime_
     assert!(install_stdout.contains("hookBinarySwitch=active-healthy-bundle"));
     assert!(install_stdout.contains("runtimeServerLifecycle=resident-owner-independent"));
     assert!(install_stdout.contains("legacyHookGeneration=retired"));
-    assert!(install_stdout.contains("hookAuthority=runtime-bin-content-digest"));
+    assert!(install_stdout.contains("hookAuthority=runtime-active-bundle-content-digest"));
     assert_eq!(
         directory_identity(&plugin_source),
         plugin_source_before,
@@ -157,7 +157,7 @@ async fn built_asp_install_binary_publishes_runtime_hook_independent_of_runtime_
     assert!(
         !state_home
             .path()
-            .join("runtime/activation/applied.json")
+            .join("runtime/artifacts/activation/applied.json")
             .exists(),
         "install cannot claim applied authority before the Runtime actor commits"
     );
@@ -176,13 +176,13 @@ async fn built_asp_install_binary_publishes_runtime_hook_independent_of_runtime_
         "install must switch only the client launcher to the pending immutable candidate"
     );
     assert!(
-        !state_home.path().join("runtime/resident/active").exists(),
+        !state_home.path().join("runtime/artifacts/active").exists(),
         "install cannot switch the resident serving slot before activation commit"
     );
     assert!(
         !state_home
             .path()
-            .join("runtime/leases/artifact-publication.v1.json")
+            .join("runtime/artifacts/leases/artifact-publication.v1.json")
             .exists(),
         "successful production command consumes its publication lease exactly once"
     );
@@ -197,13 +197,18 @@ async fn built_asp_install_binary_publishes_runtime_hook_independent_of_runtime_
             "pending" => std::fs::write(&pending_path, &pending_bytes).expect("restore pending"),
             "stopped" => {
                 let _ = std::fs::remove_file(&pending_path);
-                let _ =
-                    std::fs::remove_file(state_home.path().join("runtime/activation/failed.json"));
+                let _ = std::fs::remove_file(
+                    state_home
+                        .path()
+                        .join("runtime/artifacts/activation/failed.json"),
+                );
             }
             "failed" => {
                 let _ = std::fs::remove_file(&pending_path);
                 std::fs::write(
-                    state_home.path().join("runtime/activation/failed.json"),
+                    state_home
+                        .path()
+                        .join("runtime/artifacts/activation/failed.json"),
                     br#"{"state":"failed"}"#,
                 )
                 .expect("write failed Runtime observation");

@@ -236,7 +236,10 @@ fn qualification_receipt_path(
     }
 }
 
-pub(crate) async fn run(args: &[String]) -> Result<(), String> {
+pub(crate) async fn run(
+    args: &[String],
+    runtime_handoff: agent_semantic_client::AspClientRuntimeHandoff,
+) -> Result<(), String> {
     let args = args.to_vec();
     let prepared = tokio::task::spawn_blocking(move || prepare_run(&args))
         .await
@@ -276,8 +279,11 @@ pub(crate) async fn run(args: &[String]) -> Result<(), String> {
         let retained_path = checkout_path.clone();
         let case_result: Result<(QualificationCaseReceipt, u64), String> = async {
             let client = agent_semantic_client::RuntimeLanguageCommandClient;
-            let cache_client =
-                agent_semantic_client::AspClient::new(state_home.clone(), checkout_path.clone());
+            let cache_client = agent_semantic_client::AspClient::new_from_runtime_handoff(
+                state_home.clone(),
+                checkout_path.clone(),
+                runtime_handoff.clone(),
+            );
             let cold_build = cache_client
                 .prepare_live_corpus_cache_state(
                     agent_semantic_client_protocol::LiveCorpusCacheStateRequest {
@@ -311,9 +317,13 @@ pub(crate) async fn run(args: &[String]) -> Result<(), String> {
                 ));
             }
             let cancellation_elapsed =
-                agent_semantic_client::AspClient::new(state_home.clone(), checkout_path.clone())
-                    .cancellation_probe()
-                    .await?;
+                agent_semantic_client::AspClient::new_from_runtime_handoff(
+                    state_home.clone(),
+                    checkout_path.clone(),
+                    runtime_handoff.clone(),
+                )
+                .cancellation_probe()
+                .await?;
             if cancellation_elapsed > 1_000 {
                 return Err(format!(
                     "Live Corpus cancellation probe exceeded resident budget: case={} elapsedMicros={} maximumMicros=1000",
@@ -321,9 +331,13 @@ pub(crate) async fn run(args: &[String]) -> Result<(), String> {
                 ));
             }
             let backpressure =
-                agent_semantic_client::AspClient::new(state_home.clone(), checkout_path.clone())
-                    .backpressure_probe()
-                    .await?;
+                agent_semantic_client::AspClient::new_from_runtime_handoff(
+                    state_home.clone(),
+                    checkout_path.clone(),
+                    runtime_handoff.clone(),
+                )
+                .backpressure_probe()
+                .await?;
             let source_merkle_root = prepared_case.qualification.source_merkle_root.clone();
             let mut qualified = qualify_case(
                 &client,
@@ -550,6 +564,10 @@ pub(crate) async fn run(args: &[String]) -> Result<(), String> {
         );
     }
     Ok(())
+}
+
+pub(crate) fn validate_args(args: &[String]) -> Result<(), String> {
+    parse_args(args).map(|_| ())
 }
 
 fn prepare_run(args: &[String]) -> Result<PreparedRun, String> {

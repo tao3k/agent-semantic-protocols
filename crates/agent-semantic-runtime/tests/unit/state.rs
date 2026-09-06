@@ -47,8 +47,10 @@ fn runtime_state_materializes_state_core_layout() {
     );
     assert!(state.artifacts_dir.ends_with("artifacts"));
     assert_eq!(state.runtime_home, state_home.join("runtime"));
-    assert_eq!(state.provider_bin_dir, state_home.join("runtime/bin"));
-    assert_eq!(state.runtime_bin_dir, state_home.join("runtime/bin"));
+    let active_bundle =
+        agent_semantic_artifacts::RuntimeArtifactStateLayout::new(&state_home).active_slot();
+    assert_eq!(state.provider_bin_dir, active_bundle);
+    assert_eq!(state.runtime_bin_dir, active_bundle);
     assert_eq!(state.provider_lock_dir, provider_receipt_dir(&state_home));
     assert!(state.hook_cache_dir.is_dir());
     assert!(state.hook_state_dir.is_dir());

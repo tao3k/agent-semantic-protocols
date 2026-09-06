@@ -37,6 +37,8 @@ fn lifecycle_commands_delegate_to_hook_runtime() {
             "accept-host",
             "--host-rollout",
             "task.jsonl",
+            "--hook-events",
+            "events.jsonl",
             "--host-probe-path",
             "probe.rs",
             "--host-sentinel",
@@ -47,6 +49,8 @@ fn lifecycle_commands_delegate_to_hook_runtime() {
             "accept-host",
             "--host-rollout",
             "task.jsonl",
+            "--hook-events",
+            "events.jsonl",
             "--host-probe-path",
             "probe.rs",
             "--host-sentinel",
@@ -125,16 +129,24 @@ fn help_requests_do_not_forward_to_hook_runtime() {
 fn accept_host_cli_returns_a_schema_valid_success_receipt() {
     let root = temp_project_root("accept-host-cli");
     let rollout_path = root.join("normal-task.jsonl");
+    let hook_events_path = root.join("events.jsonl");
     std::fs::write(
         &rollout_path,
         concat!(
             "{\"type\":\"world_state\",\"payload\":{\"state\":{\"plugins_instructions\":true}}}\n",
-            "{\"type\":\"response_item\",\"payload\":{\"type\":\"function_call\",\"arguments\":\"probe.rs\"}}\n",
+            "{\"type\":\"response_item\",\"payload\":{\"type\":\"function_call\",\"name\":\"exec_command\",\"call_id\":\"probe-call\",\"arguments\":\"probe.rs\"}}\n",
         "{\"type\":\"response_item\",\"payload\":{\"type\":\"message\",\"content\":\"<hook_prompt>[asp-hook] {\\\"schemaId\\\":\\\"agent.semantic-protocols.hook.decision\\\",\\\"schemaVersion\\\":\\\"1\\\",\\\"event\\\":\\\"pre-tool\\\",\\\"decision\\\":\\\"deny\\\",\\\"fields\\\":{\\\"configRuleId\\\":\\\"route-read-to-asp-languages\\\",\\\"hookMatcherGeneration\\\":\\\"blake3-256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\\\",\\\"hookPolicySnapshotDigest\\\":\\\"blake3-256:policy\\\",\\\"hookRuntimeArtifactFingerprint\\\":\\\"blake3-256:artifact\\\"}}</hook_prompt>\"}}\n",
             "{\"type\":\"response_item\",\"payload\":{\"type\":\"function_call_output\",\"output\":\"\"}}\n"
         ),
     )
     .expect("write normal-task rollout");
+    std::fs::write(
+        &hook_events_path,
+        concat!(
+            "{\"schemaId\":\"agent.semantic-protocols.hook.event\",\"schemaVersion\":\"1\",\"event\":\"pre-tool\",\"decision\":\"deny\",\"fields\":{\"hostMatcher\":\"Bash\",\"toolUseId\":\"probe-call\",\"policyDecision\":{\"schemaId\":\"agent.semantic-protocols.hook.decision\",\"schemaVersion\":1,\"decision\":\"deny\",\"configRuleId\":\"route-read-to-asp-languages\",\"generationDigest\":\"blake3-256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}}}\n"
+        ),
+    )
+    .expect("write Hook events");
 
     let output = Command::new(env!("CARGO_BIN_EXE_asp"))
         .current_dir(&root)
@@ -143,6 +155,8 @@ fn accept_host_cli_returns_a_schema_valid_success_receipt() {
             "accept-host",
             "--host-rollout",
             rollout_path.to_str().expect("utf8 rollout path"),
+            "--hook-events",
+            hook_events_path.to_str().expect("utf8 Hook events path"),
             "--host-probe-path",
             "probe.rs",
             "--host-sentinel",
@@ -347,11 +361,11 @@ fn hook_binaries_follow_the_policy_and_lifecycle_package_boundary() {
         serde_json::from_slice(&output.stdout).expect("metadata JSON");
     assert_eq!(
         package_bin_targets(&metadata, "agent-semantic-hook"),
-        Vec::<String>::new()
+        vec!["asp-hook".to_string()]
     );
     assert_eq!(
         package_bin_targets(&metadata, "agent-semantic-client"),
-        vec!["asp".to_string(), "asp-hook".to_string()]
+        vec!["asp".to_string()]
     );
 }
 

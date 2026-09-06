@@ -9,6 +9,7 @@ pub(crate) fn action_kind_matches(
     matches!(
         (candidate, configured),
         (AgentActionKind::Read, Configured::Read)
+            | (AgentActionKind::Search, Configured::Search)
             | (AgentActionKind::Edit, Configured::Edit)
             | (AgentActionKind::Execute, Configured::Execute)
             | (AgentActionKind::Mcp, Configured::Mcp)

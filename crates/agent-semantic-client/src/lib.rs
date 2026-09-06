@@ -41,8 +41,8 @@ pub use language_command::LanguageCommandResponse;
 pub use language_command::RuntimeLanguageCommandApplication;
 pub use language_command::RuntimeLanguageCommandClient;
 pub use language_command::execute_language_command;
-pub use runtime_language_client::AspClient;
 pub use runtime_language_client::ClientBackpressureProbeReceipt;
+pub use runtime_language_client::{AspClient, AspClientRuntimeHandoff};
 
 pub mod cli_failure;
 pub use command::protocol_binary::publish_runtime_server_artifact;

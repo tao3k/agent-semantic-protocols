@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/asp-client-workspace-syntax-query-response.v1.schema.json",
+  "title": "ASP Client Workspace Syntax Query Response V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaId", "schemaVersion", "state", "evidence"],
+  "properties": {
+    "schemaId": {"const": "agent.semantic-protocols.asp-client-workspace-syntax-query-response"},
+    "schemaVersion": {"const": "1"},
+    "state": {"const": "ready"},
+    "evidence": {
+      "type": "array",
+      "maxItems": 3,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["owner", "selector", "relation"],
+        "properties": {
+          "owner": {"type": "string", "minLength": 1},
+          "selector": {"type": "string", "pattern": "^[^:]+://.+#item/.+$"},
+          "relation": {"type": "string", "minLength": 1}
+        }
+      }
+    }
+  }
+}

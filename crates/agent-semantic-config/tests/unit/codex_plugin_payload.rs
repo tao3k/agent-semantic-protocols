@@ -24,7 +24,10 @@ fn disk_validator_rejects_client_binary_as_hook_authority() {
     let fixture = tempfile::tempdir().expect("payload fixture");
     let launcher = String::from_utf8(LAUNCHER.to_vec())
         .expect("launcher UTF-8")
-        .replace("runtime/bin/asp-hook", "runtime/bin/asp");
+        .replace(
+            "runtime/artifacts/active/asp-hook",
+            "runtime/artifacts/active/asp",
+        );
     write_bundle(fixture.path(), MANIFEST, HOOKS, launcher.as_bytes());
     assert!(
         load_codex_plugin_payload_identity(fixture.path())

@@ -23,7 +23,9 @@ pub(crate) async fn run_install_binary(args: &[String]) -> Result<(), String> {
         .map_err(|error| format!("failed to resolve current project root: {error}"))?;
     let runtime_state = agent_semantic_runtime::project_runtime_state(&project_root)?;
     install_binary_config_admission::admit_embedded_hook_config()?;
-    let artifact_root = runtime_state.protocol_home.join("runtime/artifacts");
+    let artifact_layout =
+        agent_semantic_artifacts::RuntimeArtifactStateLayout::new(&runtime_state.protocol_home);
+    let artifact_root = artifact_layout.root().to_path_buf();
     let plan = protocol_binary::ProtocolBinaryInstallPlan::capture(artifact_root)?;
     let hook_candidate =
         install_binary_config_admission::admit_embedded_hook_runtime_candidate(plan.current_exe())
@@ -38,12 +40,6 @@ pub(crate) async fn run_install_binary(args: &[String]) -> Result<(), String> {
     .await?;
     let install_registry_digest =
         crate::command::provider_install_registry::provider_install_registry_digest()?;
-    let provider_catalog_generation =
-        agent_semantic_artifacts::runtime_provider_catalog::publish_runtime_provider_catalog(
-            &runtime_state.protocol_home,
-            installed.artifact_digest.as_str(),
-            &install_registry_digest,
-        )?;
     let legacy_hook_generation =
         install_binary_config_admission::retire_legacy_hook_generation_pointer(
             &runtime_state.protocol_home,
@@ -69,22 +65,19 @@ pub(crate) async fn run_install_binary(args: &[String]) -> Result<(), String> {
     let pending_activation_path = agent_semantic_artifacts::runtime_artifact_activation::runtime_artifact_activation_event_path(
         &runtime_state.protocol_home,
     );
-    let applied_activation_path = runtime_state
-        .protocol_home
-        .join("runtime/activation/applied.json");
+    let applied_activation_path = artifact_layout.applied_activation();
     let runtime_endpoint_path =
         agent_semantic_client_db::runtime_server_endpoint_path(&runtime_state.protocol_home)?;
     println!(
-        "[asp-install-binary] binaryPath={} binaryInstall={} binaryContentDigest={} digestAlgorithm=blake3-256 binaryCurrent={} binarySwitch=atomic providerCatalogGeneration={} providerInstallRegistryDigest={} hookBinaryPath={} hookBinaryDigest={} hookBinarySwitch=active-healthy-bundle bundleLockAcquisitionCount={} hookConfigPublication={} hookConfigCoupling=embedded-in-hook-binary legacyHookGeneration={} hookAuthority=runtime-active-bundle-content-digest agentConfigPublication=current agentConfigCoupling=embedded-in-hook-binary runtimeServerLifecycle=resident-owner-independent reasonKind=none providerReconciliation=automatic installedProviderArtifactsGeneration={} installedProviderArtifactsWrite={} installedProviderArtifactsChangedLeaves={} developerIdentityReceipt={} installSource={} installScope=state-home projectRoot={} executablePath={} stateHome={} stateHomeSource={:?} aspStateHomePresent={} homePresent={} pendingActivationPath={} appliedActivationPath={} runtimeEndpointPath={}",
+        "[asp-install-binary] binaryPath={} binaryInstall={} binaryContentDigest={} digestAlgorithm=blake3-256 binaryCurrent={} binarySwitch=atomic providerInstallRegistryDigest={} hookBinaryPath={} hookBinaryDigest={} hookBinarySwitch=active-healthy-bundle bundleLockAcquisitionCount={} hookConfigPublication={} hookConfigCoupling=embedded-in-hook-binary legacyHookGeneration={} hookAuthority=runtime-active-bundle-content-digest agentConfigPublication=current agentConfigCoupling=embedded-in-hook-binary runtimeServerLifecycle=resident-owner-independent reasonKind=none providerReconciliation=automatic installedProviderArtifactsGeneration={} installedProviderArtifactsWrite={} installedProviderArtifactsChangedLeaves={} developerIdentityReceipt={} installSource={} installScope=state-home projectRoot={} executablePath={} stateHome={} stateHomeSource={:?} aspStateHomePresent={} homePresent={} pendingActivationPath={} appliedActivationPath={} runtimeEndpointPath={}",
         installed.path.display(),
         installed.status,
         installed.artifact_digest,
         installed.path.display(),
-        provider_catalog_generation,
         install_registry_digest,
-        runtime_state
-            .protocol_home
-            .join("runtime/bin/asp-hook")
+        agent_semantic_artifacts::RuntimeArtifactStateLayout::new(&runtime_state.protocol_home)
+            .active_slot()
+            .join("asp-hook")
             .display(),
         hook_candidate.artifact_digest,
         installed.lock_acquisition_count,

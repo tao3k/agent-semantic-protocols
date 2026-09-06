@@ -57,11 +57,36 @@ pub fn workspace_search_providers_from_provider_register(
                     provider.language_id
                 ));
             }
+            let search_playbook_contract = provider
+                .registration_field("searchPlaybookContract")
+                .ok()
+                .map(|value| {
+                    serde_json::from_value::<agent_semantic_search::ProviderSearchPlaybookContract>(
+                        value.clone(),
+                    )
+                    .map_err(|error| {
+                        format!(
+                            "provider searchPlaybookContract is invalid: languageId={}: {error}",
+                            provider.language_id
+                        )
+                    })
+                })
+                .transpose()?;
+            if search_playbook_contract.as_ref().is_some_and(|contract| {
+                contract.language_id != provider.language_id
+                    || contract.provider_id != provider.provider_id
+            }) {
+                return Err(format!(
+                    "provider searchPlaybookContract identity mismatch: languageId={}",
+                    provider.language_id
+                ));
+            }
             Ok(WorkspaceSearchProvider {
                 language_id: provider.language_id.clone(),
                 provider_id: provider.provider_id.clone(),
                 source_extensions,
                 search_supported,
+                search_playbook_contract,
             })
         })
         .collect::<Result<Vec<_>, String>>()?;
@@ -93,10 +118,11 @@ pub struct RuntimeAspClientDispatcher {
     pub(super) workspace_registry:
         Arc<agent_semantic_client_db::runtime_server_workspace::RuntimeServerWorkspaceRegistry>,
     pub(super) installed_provider_targets: Arc<[(String, String)]>,
-    /// Immutable provider facts captured once when this Runtime daemon starts.
-    /// Workspace Search planning reads this snapshot; it never asks a client to
-    /// supply or infer a language/provider mapping.
-    pub(super) workspace_search_providers: Arc<[WorkspaceSearchProvider]>,
+    /// Runtime-owned provider authority. Each Search/Query request derives one
+    /// immutable snapshot, so a committed provider refresh is visible to the
+    /// next request without client inference or daemon restart.
+    pub(super) provider_register:
+        Arc<agent_semantic_client_db::runtime_provider_register::RuntimeProviderRegister>,
     pub(super) workspace_store_root: std::path::PathBuf,
     pub(super) query_generation_authority: RuntimeQueryGenerationAuthority,
     pub(super) telemetry_sender:
@@ -117,7 +143,9 @@ impl RuntimeAspClientDispatcher {
         >,
         initialized_workspaces: Arc<Mutex<HashMap<ClientWorkspaceKey, InitializedWorkspace>>>,
         installed_provider_targets: Arc<[(String, String)]>,
-        workspace_search_providers: Arc<[WorkspaceSearchProvider]>,
+        provider_register: Arc<
+            agent_semantic_client_db::runtime_provider_register::RuntimeProviderRegister,
+        >,
         workspace_store_root: std::path::PathBuf,
         query_generation_authority: RuntimeQueryGenerationAuthority,
         telemetry_sender: agent_semantic_client_db::runtime_telemetry_bus::RuntimeTelemetryBusSender,
@@ -130,7 +158,7 @@ impl RuntimeAspClientDispatcher {
             workspace_registry,
             initialized_workspaces,
             installed_provider_targets,
-            workspace_search_providers,
+            provider_register,
             workspace_store_root,
             query_generation_authority,
             telemetry_sender,
@@ -152,7 +180,9 @@ pub fn build_frame_service(
     >,
     client_catalog_generation: String,
     installed_provider_targets: Arc<[(String, String)]>,
-    workspace_search_providers: Arc<[WorkspaceSearchProvider]>,
+    provider_register: Arc<
+        agent_semantic_client_db::runtime_provider_register::RuntimeProviderRegister,
+    >,
     workspace_store_root: std::path::PathBuf,
     query_generation_authority: RuntimeQueryGenerationAuthority,
     telemetry_sender: agent_semantic_client_db::runtime_telemetry_bus::RuntimeTelemetryBusSender,
@@ -168,7 +198,7 @@ pub fn build_frame_service(
         workspace_registry,
         Arc::clone(&initialized_workspaces),
         installed_provider_targets,
-        workspace_search_providers,
+        provider_register,
         workspace_store_root,
         query_generation_authority,
         telemetry_sender,
@@ -217,31 +247,5 @@ pub fn build_frame_service(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::workspace_search_providers_from_provider_register;
-
-    #[test]
-    fn workspace_search_provider_snapshot_uses_admitted_register_facts() {
-        let register = agent_semantic_client_db::runtime_provider_register::RuntimeProviderRegister::from_seed(
-            agent_semantic_provider_protocol::builtin_provider_registrations()
-                .expect("builtin provider registrations"),
-        )
-        .expect("validated provider register");
-        let providers = workspace_search_providers_from_provider_register(&register)
-            .expect("immutable workspace Search provider snapshot");
-        assert!(!providers.is_empty());
-        assert!(providers.iter().all(|provider| {
-            provider.search_supported
-                && !provider.source_extensions.is_empty()
-                && provider
-                    .source_extensions
-                    .iter()
-                    .all(|extension| !extension.starts_with('.'))
-        }));
-        assert!(
-            providers
-                .windows(2)
-                .all(|pair| pair[0].language_id < pair[1].language_id)
-        );
-    }
-}
+#[path = "../tests/unit/runtime_asp_client_service.rs"]
+mod tests;

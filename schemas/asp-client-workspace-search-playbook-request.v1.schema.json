@@ -4,17 +4,90 @@
   "title": "ASP Client Workspace Search Playbook Request V1",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaId", "schemaVersion", "language", "intent", "query", "scope", "coverage", "maxOwners", "deadlineMs", "explain"],
+  "required": ["schemaId", "schemaVersion"],
   "properties": {
     "schemaId": {"const": "agent.semantic-protocols.asp-client-workspace-search-playbook-request"},
     "schemaVersion": {"const": "1"},
-    "language": {"oneOf": [{"type": "null"}, {"type": "string", "minLength": 1}]},
-    "intent": {"enum": ["conceptual", "relationship", "exact-literal", "absence-proof"]},
-    "query": {"type": "string", "minLength": 1},
-    "scope": {"pattern": "^(workspace|owner:.+)$"},
-    "coverage": {"enum": ["candidates", "complete"]},
-    "maxOwners": {"type": "integer", "minimum": 1, "maximum": 100},
-    "deadlineMs": {"type": "integer", "minimum": 1, "maximum": 5000},
-    "explain": {"enum": ["compact", "full"]}
+    "languages": {"$ref": "#/$defs/producerExpression"},
+    "documents": {"$ref": "#/$defs/producerExpression"},
+    "workspace": {"$ref": "#/$defs/identity"},
+    "fd": {"$ref": "#/$defs/nativeBlocks"},
+    "rg": {"$ref": "#/$defs/nativeBlocks"},
+    "tantivy": {"$ref": "#/$defs/nativeBlocks"},
+    "syntax": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/producerNativeBlock"}},
+    "graph": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/graphNativeBlock"}},
+    "clauseOrder": {
+      "description": "Agent-authored acquisition priority followed by dependent graph barriers, preserved from CLI occurrence order.",
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/clauseRef"}
+    }
+  },
+  "oneOf": [
+    {
+      "not": {
+        "anyOf": [
+          {"required": ["fd"]},
+          {"required": ["rg"]},
+          {"required": ["tantivy"]},
+          {"required": ["syntax"]},
+          {"required": ["graph"]},
+          {"required": ["clauseOrder"]}
+        ]
+      }
+    },
+    {
+      "required": ["clauseOrder"],
+      "allOf": [
+        {
+          "anyOf": [
+            {"required": ["fd"]},
+            {"required": ["rg"]},
+            {"required": ["tantivy"]},
+            {"required": ["syntax"]}
+          ]
+        }
+      ],
+      "anyOf": [
+        {"required": ["languages"]},
+        {"required": ["documents"]}
+      ]
+    }
+  ],
+  "$defs": {
+    "identity": {"type": "string", "minLength": 1, "maxLength": 512},
+    "producerExpression": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._+-]*(\\|[A-Za-z0-9][A-Za-z0-9._+-]*)*$"
+    },
+    "nativeArgv": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+    "nativeBlocks": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/nativeArgv"}},
+    "producerNativeBlock": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["producer", "argv"],
+      "properties": {
+        "producer": {"$ref": "#/$defs/identity"},
+        "argv": {"$ref": "#/$defs/nativeArgv"}
+      }
+    },
+    "graphNativeBlock": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["language", "argv"],
+      "properties": {
+        "language": {"$ref": "#/$defs/identity"},
+        "argv": {"$ref": "#/$defs/nativeArgv"}
+      }
+    },
+    "clauseRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["axis", "blockIndex"],
+      "properties": {
+        "axis": {"enum": ["fd", "rg", "tantivy", "syntax", "graph"]},
+        "blockIndex": {"type": "integer", "minimum": 0}
+      }
+    }
   }
 }

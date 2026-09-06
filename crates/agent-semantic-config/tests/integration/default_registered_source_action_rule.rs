@@ -8,7 +8,7 @@ fn registered_source_rule_uses_read_default_wrapping_plus_language_profiles() {
         .iter()
         .find(|rule| rule.id == "route-read-to-asp-languages")
         .expect("registered source rule");
-    assert!(rule.matcher.is_none());
+    assert_eq!(rule.matcher.as_deref(), Some("Bash"));
     assert!(rule.matcher_policies.is_empty());
     assert_eq!(
         rule.actions,

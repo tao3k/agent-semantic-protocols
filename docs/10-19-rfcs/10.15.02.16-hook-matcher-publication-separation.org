@@ -31,7 +31,7 @@ Only canonical =asp install binary= may:
 Matcher, policy, Reader catalog, and Agent registry inputs are compiled into
 that binary. Artifacts materializes =asp= and =asp-hook= as one immutable bundle
 under the shared =ASP_STATE_HOME/runtime/artifacts= catalog and atomically
-switches the sole =runtime/resident/active= selector. The fixed
+switches the sole =runtime/artifacts/active= selector. The fixed
 =ASP_STATE_HOME/runtime/bin/asp-hook= launcher always traverses
 =../resident/active/asp-hook=; repeated developer installs do not rewrite it.
 There is no =hooks/current=, no copied evaluator under =hooks/generations=, no

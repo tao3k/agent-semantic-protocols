@@ -6,15 +6,18 @@ use crate::{
 };
 use std::path::{Path, PathBuf};
 
-const SERVER_DIR: &str = "runtime/server";
-fn server_dir(home: &Path) -> PathBuf {
+fn server_layout(home: &Path) -> agent_semantic_artifacts::RuntimeServingStateLayout {
     if let Some(publication_dir) = std::env::var_os("ASP_RUNTIME_SERVER_PUBLICATION_DIR") {
-        return PathBuf::from(publication_dir).join("lifecycle");
+        return agent_semantic_artifacts::RuntimeServingStateLayout::from_injected_publication_root(
+            publication_dir,
+        );
     }
-    home.join(SERVER_DIR)
+    agent_semantic_artifacts::StateHomeLayout::new(home)
+        .runtime_state()
+        .serving()
 }
-fn marker(home: &Path, name: &str) -> PathBuf {
-    server_dir(home).join(name)
+fn marker(home: &Path, name: agent_semantic_artifacts::RuntimeLifecycleReceiptName) -> PathBuf {
+    server_layout(home).lifecycle_receipt(name)
 }
 
 pub fn spawn_receipt_digest(
@@ -47,10 +50,18 @@ async fn atomic_empty(path: &Path) -> Result<(), String> {
 }
 
 pub async fn create_run_intent(home: &Path) -> Result<(), String> {
-    atomic_empty(&marker(home, "run-intent.v1")).await
+    atomic_empty(&marker(
+        home,
+        agent_semantic_artifacts::RuntimeLifecycleReceiptName::RunIntent,
+    ))
+    .await
 }
 pub async fn remove_run_intent(home: &Path) -> Result<(), String> {
-    remove_if_present(&marker(home, "run-intent.v1")).await
+    remove_if_present(&marker(
+        home,
+        agent_semantic_artifacts::RuntimeLifecycleReceiptName::RunIntent,
+    ))
+    .await
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
@@ -67,9 +78,12 @@ pub struct RuntimeServerOperatorStopReceipt {
 pub async fn mark_operator_stopped(home: &Path) -> Result<(), String> {
     let _mutation_guard =
         agent_semantic_artifacts::runtime_artifact_retention::RuntimeArtifactMutationGuard::try_acquire(
-            &home.join("runtime/artifacts"),
+            agent_semantic_artifacts::RuntimeArtifactStateLayout::new(home).root(),
         )?;
-    let path = marker(home, "operator-stop.v1.json");
+    let path = marker(
+        home,
+        agent_semantic_artifacts::RuntimeLifecycleReceiptName::OperatorStop,
+    );
     let parent = path
         .parent()
         .ok_or_else(|| "operator marker has no parent".to_owned())?;
@@ -80,11 +94,18 @@ pub async fn mark_operator_stopped(home: &Path) -> Result<(), String> {
         "stage-{}",
         agent_semantic_runtime::runtime_process_lifecycle::current_process_id()
     ));
-    let stopped_publication =
+    let stopped_publication = if let Some(pending) =
         agent_semantic_artifacts::runtime_artifact_activation::read_runtime_artifact_activation_event(
             home,
         )
-        .await?;
+        .await?
+    {
+        Some(pending)
+    } else {
+        agent_semantic_artifacts::runtime_artifact_activation::
+            read_applied_runtime_artifact_activation_event(home)
+            .await?
+    };
     let bytes = serde_json::to_vec(&RuntimeServerOperatorStopReceipt {
         schema_id: "agent.semantic-protocols.runtime-server-operator-stop".to_owned(),
         schema_version: "1".to_owned(),
@@ -106,9 +127,13 @@ pub async fn mark_operator_stopped(home: &Path) -> Result<(), String> {
 pub async fn clear_operator_stopped(home: &Path) -> Result<(), String> {
     let _mutation_guard =
         agent_semantic_artifacts::runtime_artifact_retention::RuntimeArtifactMutationGuard::try_acquire(
-            &home.join("runtime/artifacts"),
+            agent_semantic_artifacts::RuntimeArtifactStateLayout::new(home).root(),
         )?;
-    remove_if_present(&marker(home, "operator-stop.v1.json")).await
+    remove_if_present(&marker(
+        home,
+        agent_semantic_artifacts::RuntimeLifecycleReceiptName::OperatorStop,
+    ))
+    .await
 }
 pub async fn operator_stopped(home: &Path) -> Result<bool, String> {
     Ok(read_operator_stop_receipt(home).await?.is_some())
@@ -123,7 +148,10 @@ pub async fn read_operator_stop_receipt(
 async fn read_operator_stop_receipt_locked(
     home: &Path,
 ) -> Result<Option<RuntimeServerOperatorStopReceipt>, String> {
-    let path = marker(home, "operator-stop.v1.json");
+    let path = marker(
+        home,
+        agent_semantic_artifacts::RuntimeLifecycleReceiptName::OperatorStop,
+    );
     let bytes = match tokio::fs::read(&path).await {
         Ok(bytes) => bytes,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
@@ -183,15 +211,18 @@ pub async fn admit_activation_after_operator_stop(
     artifact_digest: &agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest,
     publication_nonce: &str,
 ) -> Result<bool, String> {
-    if !tokio::fs::try_exists(marker(home, "operator-stop.v1.json"))
-        .await
-        .map_err(|error| error.to_string())?
+    if !tokio::fs::try_exists(marker(
+        home,
+        agent_semantic_artifacts::RuntimeLifecycleReceiptName::OperatorStop,
+    ))
+    .await
+    .map_err(|error| error.to_string())?
     {
         return Ok(true);
     }
     let _mutation_guard =
         agent_semantic_artifacts::runtime_artifact_retention::RuntimeArtifactMutationGuard::try_acquire(
-            &home.join("runtime/artifacts"),
+            agent_semantic_artifacts::RuntimeArtifactStateLayout::new(home).root(),
         )?;
     let Some(receipt) = read_operator_stop_receipt_locked(home).await? else {
         return Ok(true);
@@ -201,12 +232,19 @@ pub async fn admit_activation_after_operator_stop(
     {
         return Ok(false);
     }
-    remove_if_present(&marker(home, "operator-stop.v1.json")).await?;
+    remove_if_present(&marker(
+        home,
+        agent_semantic_artifacts::RuntimeLifecycleReceiptName::OperatorStop,
+    ))
+    .await?;
     Ok(true)
 }
 
 fn owner_receipt(home: &Path) -> PathBuf {
-    marker(home, "owner-spawn.v1.json")
+    marker(
+        home,
+        agent_semantic_artifacts::RuntimeLifecycleReceiptName::OwnerSpawn,
+    )
 }
 pub async fn read_owner_receipt(home: &Path) -> Result<Option<RuntimeServerSpawnReceipt>, String> {
     match read_owner_receipt_state(home).await? {
@@ -268,10 +306,16 @@ pub async fn remove_owner_receipt(home: &Path) -> Result<(), String> {
 }
 
 fn exit_receipt(home: &Path) -> PathBuf {
-    marker(home, "daemon-exit.v1.json")
+    marker(
+        home,
+        agent_semantic_artifacts::RuntimeLifecycleReceiptName::DaemonExit,
+    )
 }
 fn drain_receipt(home: &Path) -> PathBuf {
-    marker(home, "daemon-drain.v1.json")
+    marker(
+        home,
+        agent_semantic_artifacts::RuntimeLifecycleReceiptName::DaemonDrain,
+    )
 }
 pub async fn publish_drain(home: &Path, receipt: RuntimeServerDrainReceipt) -> Result<(), String> {
     let path = drain_receipt(home);
@@ -407,6 +451,22 @@ pub async fn resolve_runtime_server_serving_publication(
 pub async fn observe_resident_transaction(
     home: &Path,
 ) -> Result<RuntimeServerResidentTransactionReceipt, String> {
+    Ok(observe_resident_transaction_with_endpoint(home).await?.0)
+}
+
+/// Observe one content-bound Runtime transaction and retain the exact endpoint
+/// value validated in that same observation.  Callers must not resolve or read
+/// an endpoint path again after this function returns: doing so would create a
+/// TOCTOU boundary between handoff admission and transport use.
+pub async fn observe_resident_transaction_with_endpoint(
+    home: &Path,
+) -> Result<
+    (
+        RuntimeServerResidentTransactionReceipt,
+        crate::runtime_server_control::RuntimeServerEndpoint,
+    ),
+    String,
+> {
     let CurrentRuntimeServingIdentity {
         spawn,
         applied,
@@ -434,7 +494,7 @@ pub async fn observe_resident_transaction(
         None => "not-required",
     };
 
-    Ok(RuntimeServerResidentTransactionReceipt {
+    let receipt = RuntimeServerResidentTransactionReceipt {
         schema_id: "agent.semantic-protocols.runtime-server-resident-transaction-receipt"
             .to_owned(),
         schema_version: "1".to_owned(),
@@ -447,14 +507,15 @@ pub async fn observe_resident_transaction(
         applied_publication_nonce: applied.publication_nonce,
         endpoint_owner_epoch: endpoint.owner_epoch,
         endpoint_binary_content_digest,
-        endpoint_runtime_generation_digest: endpoint.runtime_generation_digest,
+        endpoint_runtime_generation_digest: endpoint.runtime_generation_digest.clone(),
         control_endpoint: endpoint.control_endpoint.clone(),
         data_endpoint: endpoint.data_endpoint.clone(),
         provider_endpoint: endpoint.provider_endpoint.clone(),
         previous_serving_digest: applied.previous_artifact_digest,
         previous_owner_epoch: spawn.previous_owner_epoch,
         previous_drain_state: previous_drain_state.to_owned(),
-    })
+    };
+    Ok((receipt, endpoint))
 }
 pub async fn publish_with_errors(
     home: &Path,

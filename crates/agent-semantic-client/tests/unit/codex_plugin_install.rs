@@ -59,6 +59,65 @@ mod unix {
     }
 
     #[test]
+    fn plugin_publish_falls_back_to_the_deterministic_global_cache_without_codex_cli() {
+        let fixture = Fixture::new("plugin-publish-direct-global-cache");
+        let root = fixture.root.to_str().expect("fixture root");
+        let output = fixture.run_without_codex(&["publish", "--codex", root]);
+        assert_success(&output);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(
+            stdout.contains("publicationTransport=direct-global-cache"),
+            "{stdout}"
+        );
+        assert!(
+            stdout.contains("hookTrust=codex-review-required"),
+            "{stdout}"
+        );
+        let version = fixture.payload_version();
+        assert_eq!(
+            fixture.installed_payload_digest(&version),
+            fixture.payload_digest()
+        );
+        assert_eq!(fixture.add_count(), 0);
+        assert!(
+            fixture
+                .installed_payload_root(&version)
+                .join("bin/asp-hook-exec")
+                .metadata()
+                .expect("published Hook launcher metadata")
+                .permissions()
+                .mode()
+                & 0o111
+                != 0,
+            "direct global cache publication must preserve the launcher executable bit; otherwise Codex only renders `hook exited with code 126`"
+        );
+
+        let launcher = fixture
+            .installed_payload_root(&version)
+            .join("bin/asp-hook-exec");
+        std::fs::set_permissions(&launcher, std::fs::Permissions::from_mode(0o600))
+            .expect("remove launcher executable bit");
+        let repaired = fixture.run_without_codex(&["publish", "--codex", root]);
+        assert_success(&repaired);
+        assert!(
+            String::from_utf8_lossy(&repaired.stdout)
+                .contains("publicationStatus=repaired-launcher-mode"),
+            "{}",
+            String::from_utf8_lossy(&repaired.stdout)
+        );
+        assert_ne!(
+            launcher
+                .metadata()
+                .expect("repaired launcher metadata")
+                .permissions()
+                .mode()
+                & 0o111,
+            0,
+            "mode-only cache repair must remove the Codex exit-126 condition"
+        );
+    }
+
+    #[test]
     fn failed_publication_restores_source_and_previous_global_cache() {
         let fixture = Fixture::new("plugin-publish-rollback");
         let root = fixture.root.to_str().expect("fixture root");
@@ -169,10 +228,29 @@ mod unix {
                 .expect("run plugin command")
         }
 
+        fn run_without_codex(&self, args: &[&str]) -> Output {
+            Command::new(env!("CARGO_BIN_EXE_asp"))
+                .current_dir(&self.root)
+                .env("CODEX_HOME", &self.codex_home)
+                .env("ASP_STATE_HOME", &self.state_home)
+                .env("PATH", "/usr/bin:/bin")
+                .arg("install")
+                .arg("plugin")
+                .args(args)
+                .output()
+                .expect("run plugin command without Codex CLI")
+        }
+
         fn payload_digest(&self) -> String {
             agent_semantic_config::load_codex_plugin_payload_identity(&self.plugin_root)
                 .expect("payload identity")
                 .digest
+        }
+
+        fn payload_version(&self) -> String {
+            agent_semantic_config::load_codex_plugin_payload_identity(&self.plugin_root)
+                .expect("payload identity")
+                .version
         }
 
         fn installed_version(&self) -> String {
@@ -183,13 +261,16 @@ mod unix {
         }
 
         fn installed_payload_digest(&self, version: &str) -> String {
-            let root = self
-                .codex_home
-                .join("plugins/cache/asp-project/asp-codex-plugin")
-                .join(version);
+            let root = self.installed_payload_root(version);
             agent_semantic_config::load_codex_plugin_payload_identity(&root)
                 .expect("installed payload identity")
                 .digest
+        }
+
+        fn installed_payload_root(&self, version: &str) -> PathBuf {
+            self.codex_home
+                .join("plugins/cache/asp-project/asp-codex-plugin")
+                .join(version)
         }
 
         fn add_count(&self) -> u64 {
@@ -216,6 +297,13 @@ mod unix {
             std::fs::create_dir_all(path.parent().expect("payload parent"))
                 .expect("create payload parent");
             std::fs::write(path, bytes).expect("write payload");
+            if relative == "bin/asp-hook-exec" {
+                std::fs::set_permissions(
+                    root.join(relative),
+                    std::fs::Permissions::from_mode(0o500),
+                )
+                .expect("make source Hook launcher executable");
+            }
         }
     }
 

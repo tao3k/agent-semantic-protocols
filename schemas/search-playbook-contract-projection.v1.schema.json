@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/search-playbook-contract-projection.v1.schema.json",
+  "title": "Search Playbook Contract Projection V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaId", "schemaVersion", "result", "requestedProducers"],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.search-playbook-contract-projection"
+    },
+    "schemaVersion": {"const": "1"},
+    "result": {
+      "enum": ["ready", "provider-contract-failure"]
+    },
+    "requestedProducers": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1},
+      "uniqueItems": true
+    },
+    "projection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["example", "grammar"],
+      "properties": {
+        "example": {"type": "string", "minLength": 1},
+        "grammar": {"type": "string", "minLength": 1}
+      }
+    },
+    "reason": {"type": "string", "minLength": 1}
+  },
+  "oneOf": [
+    {
+      "properties": {"result": {"const": "ready"}},
+      "required": ["projection"],
+      "not": {"required": ["reason"]}
+    },
+    {
+      "properties": {"result": {"const": "provider-contract-failure"}},
+      "required": ["reason"],
+      "not": {
+        "anyOf": [
+          {"required": ["projection"]}
+        ]
+      }
+    }
+  ]
+}

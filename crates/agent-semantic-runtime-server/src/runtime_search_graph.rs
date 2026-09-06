@@ -24,6 +24,36 @@ pub(crate) async fn evaluate_python_relationship_graph(
     lexical_hits: &[ResidentSearchHit],
     runtime_search_service: &agent_semantic_client_db::runtime_search_service::RuntimeSearchServiceHandle,
 ) -> Result<agent_semantic_search::SearchPlaybookPythonGraphExecution, RuntimeSearchGraphFailure> {
+    let query_clauses = vec![query.to_owned()];
+    let candidate_owners = lexical_hits
+        .iter()
+        .map(|hit| hit.owner_path.clone())
+        .collect::<Vec<_>>();
+    evaluate_python_workspace_playbook_graph(
+        request_id,
+        language_id,
+        &query_clauses,
+        &candidate_owners,
+        100,
+        resident,
+        runtime_search_service,
+    )
+    .await
+}
+
+/// Apply ordered Graph clauses to the candidate frontier produced by earlier
+/// Search Playbook clauses. Python owns the graph algorithm; Rust owns the
+/// exact generation, candidate whitelist, limit, and public result contract.
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn evaluate_python_workspace_playbook_graph(
+    request_id: &str,
+    language_id: &str,
+    query_clauses: &[String],
+    candidate_owners: &[String],
+    max_results: usize,
+    resident: &RuntimeResidentReadClient,
+    runtime_search_service: &agent_semantic_client_db::runtime_search_service::RuntimeSearchServiceHandle,
+) -> Result<agent_semantic_search::SearchPlaybookPythonGraphExecution, RuntimeSearchGraphFailure> {
     let graph_generation = resident
         .graph_generation()
         .map_err(RuntimeSearchGraphFailure::invalid)?
@@ -55,14 +85,15 @@ pub(crate) async fn evaluate_python_relationship_graph(
         .validate_for(generation_request)
         .map_err(RuntimeSearchGraphFailure::python)?;
 
-    let mut entry_node_ids = lexical_hits
+    let mut seen_nodes = std::collections::BTreeSet::new();
+    let entry_node_ids = candidate_owners
         .iter()
-        .map(|hit| stable_graph_node_id("owner", &hit.owner_path))
+        .map(|owner| stable_graph_node_id("owner", owner))
+        .filter(|node_id| seen_nodes.insert(node_id.clone()))
         .collect::<Vec<_>>();
-    entry_node_ids.sort();
-    entry_node_ids.dedup();
-    let mut query_terms = query
-        .split_whitespace()
+    let mut query_terms = query_clauses
+        .iter()
+        .flat_map(|query| query.split_whitespace())
         .filter(|term| !term.is_empty())
         .map(|term| term.chars().take(256).collect::<String>())
         .collect::<Vec<_>>();
@@ -78,13 +109,15 @@ pub(crate) async fn evaluate_python_relationship_graph(
         "languageId": language_id,
         "surface": "search-playbook",
         "queryTerms": query_terms,
+        "queryClauses": query_clauses,
         "profile": "dependency",
         "entryNodeIds": entry_node_ids,
+        "candidateNodeIds": entry_node_ids,
         "budget": {
             "maxDepth": 16,
             "maxNodes": 256,
             "maxEdges": 1024,
-            "maxResults": 100,
+            "maxResults": max_results,
         },
     });
     let started = tokio::time::Instant::now();
@@ -115,16 +148,16 @@ pub(crate) async fn evaluate_python_relationship_graph(
     let result = evaluation
         .get("result")
         .ok_or_else(|| RuntimeSearchGraphFailure::python("Python graph result is absent"))?;
-    let mut candidate_owner_ids = result
+    let mut seen_owners = std::collections::BTreeSet::new();
+    let candidate_owner_ids = result
         .get("rankedNodes")
         .and_then(Value::as_array)
         .into_iter()
         .flatten()
         .filter_map(|node| node.get("ownerPath").and_then(Value::as_str))
+        .filter(|owner| seen_owners.insert((*owner).to_owned()))
         .map(str::to_owned)
         .collect::<Vec<_>>();
-    candidate_owner_ids.sort();
-    candidate_owner_ids.dedup();
     let result_bytes = serde_json::to_vec(result)
         .map_err(|error| RuntimeSearchGraphFailure::python(error.to_string()))?;
     Ok(agent_semantic_search::SearchPlaybookPythonGraphExecution {

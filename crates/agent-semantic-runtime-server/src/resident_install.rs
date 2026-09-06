@@ -122,6 +122,49 @@ pub async fn install_resident_runtime_bundle_members(
     })
 }
 
+/// Publishes one executable cohort together with its complete V1 execution
+/// closure.  The binding is part of the immutable bundle identity; it is not a
+/// mutable Runtime-side catalog and cannot be refreshed independently from the
+/// executable bytes.
+pub async fn install_resident_runtime_bound_bundle_members(
+    state_home: &Path,
+    source: &Path,
+    target: &Path,
+    members: &[agent_semantic_artifacts::runtime_artifact_publication::RuntimeArtifactBundleMemberSource<'_>],
+    binding: &agent_semantic_artifacts::runtime_artifact_slots::RuntimeArtifactBundleBinding,
+    artifact_mode: &str,
+    qualified_source: Option<
+        agent_semantic_artifacts::runtime_artifact_catalog::QualifiedRuntimeArtifactSource,
+    >,
+) -> Result<ResidentRuntimeInstallReceipt, String> {
+    if let Some(authority) = qualified_source.as_ref() {
+        authority.validate_source(state_home, source, "asp")?;
+        for member in members {
+            authority.validate_source(state_home, member.source, member.name)?;
+        }
+    }
+    let receipt = agent_semantic_artifacts::runtime_artifact_publication::publish_runtime_artifact_bound_bundle_members(
+        state_home,
+        source,
+        target,
+        artifact_mode,
+        members,
+        binding,
+    )
+    .await?;
+    Ok(ResidentRuntimeInstallReceipt {
+        path: receipt.path,
+        status: receipt.status,
+        artifact_digest: receipt.artifact_digest,
+        bundle_digest: receipt.bundle_digest,
+        lock_acquisition_count: receipt.lock_acquisition_count,
+        quiescence_operation: receipt.quiescence_operation,
+        quiescence_lease_nonce: receipt.quiescence_lease_nonce,
+        lease_producer_process_id: receipt.lease_producer_process_id,
+        lease_consumer_process_id: receipt.lease_consumer_process_id,
+    })
+}
+
 #[cfg(all(test, unix))]
 #[path = "../tests/unit/resident_install.rs"]
 mod tests;

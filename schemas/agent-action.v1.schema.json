@@ -64,6 +64,7 @@
         "evidence": {
           "enum": [
             "host-matcher",
+            "configured-command-pattern",
             "reader-probe",
             "shell-redirection",
             "registered-source-operand"

@@ -48,15 +48,25 @@ fn canonical_config_covers_registered_source_bash_matrix() {
     fs::write(&config_path, default_client_config_template()).expect("write config");
     fs::write(root.join("package.json"), r#"{"name":"fixture"}"#)
         .expect("write structured projection fixture");
-    let profiles = agent_semantic_config::default_hook_client_config_file()
-        .expect("canonical config")
-        .profiles;
+    let profiles =
+        agent_semantic_config::default_hook_client_config_file().expect("canonical config");
+    let registered_source_profiles = profiles
+        .rules
+        .iter()
+        .find(|rule| rule.id == "route-read-to-asp-languages")
+        .expect("registered source Bash rule")
+        .profiles_list
+        .iter()
+        .collect::<BTreeSet<_>>();
     let config = agent_semantic_hook::load_client_config_for_project(&config_path, &root)
         .expect("compile config");
     let mut runtime = builtin_programming_runtime();
     runtime.project_root = root.to_string_lossy().into_owned();
     let mut count = 0usize;
-    for profile in profiles.values() {
+    for (profile_id, profile) in &profiles.profiles {
+        if !registered_source_profiles.contains(profile_id) {
+            continue;
+        }
         for extension in &profile.extension_any {
             let path = format!("src/witness.{extension}");
             let mut payload = json!({
@@ -97,12 +107,6 @@ fn canonical_config_covers_registered_source_bash_matrix() {
                     ReasonKind::RegisteredSourceRouteRequired
                 );
                 assert_eq!(decision.language_ids, [profile.language_id.as_str()]);
-                assert!(
-                    decision
-                        .fields
-                        .get("normalizedActions")
-                        .is_some_and(|v| v.to_string().contains("shell-command"))
-                );
                 assert!(
                     decision
                         .routes

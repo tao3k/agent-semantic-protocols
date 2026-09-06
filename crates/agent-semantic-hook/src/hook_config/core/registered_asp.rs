@@ -29,6 +29,18 @@ pub(super) fn match_registered_asp_command<'a>(
     }
     for language_id in language_ids {
         for pattern in patterns {
+            if registered_root_search_playbook_pattern(pattern) {
+                if registered_root_search_playbook_matches(&stages, language_id.as_str()) {
+                    return Some(RegisteredAspMatch {
+                        provider: runtime
+                            .providers
+                            .iter()
+                            .find(|provider| provider.language_id == language_id),
+                        language_id,
+                    });
+                }
+                continue;
+            }
             let concrete_prefix = pattern
                 .iter()
                 .map(|token| {
@@ -56,6 +68,35 @@ pub(super) fn match_registered_asp_command<'a>(
         }
     }
     None
+}
+
+fn registered_root_search_playbook_pattern(pattern: &[String]) -> bool {
+    pattern == ["asp".to_owned(), "search".to_owned(), "playbook".to_owned()]
+        || pattern
+            == [
+                "asp".to_owned(),
+                "<registered-language>".to_owned(),
+                "search".to_owned(),
+            ]
+}
+
+/// Match the canonical root playbook spelling against the same declarative
+/// registered-language search pattern. The root command carries the language
+/// in `--language`, rather than in the second argv position used by the
+/// language-specific command spelling.
+fn registered_root_search_playbook_matches(
+    stages: &[agent_semantic_shell_parser::CommandStage],
+    language_id: &str,
+) -> bool {
+    stages.iter().any(|stage| {
+        let words = stage.words();
+        words.windows(3).any(|prefix| {
+            prefix == ["asp", "search", "playbook"]
+                && words
+                    .windows(2)
+                    .any(|argument| argument == ["--language", language_id])
+        })
+    })
 }
 
 pub(super) fn append_materialization_fields(

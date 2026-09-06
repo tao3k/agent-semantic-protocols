@@ -38,6 +38,7 @@ ignore = { workspace = true }
 serde_json = { workspace = true }
 memmap2.workspace = true
 memchr = "2"
+regex.workspace = true
 toml = { workspace = true }
 tokio = { workspace = true }
 tokio-stream.workspace = true

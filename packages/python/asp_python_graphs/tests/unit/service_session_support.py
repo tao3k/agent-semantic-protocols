@@ -75,8 +75,10 @@ def resident_evaluation_payload() -> dict[str, object]:
         "languageId": "python",
         "surface": "search-playbook",
         "queryTerms": [],
+        "queryClauses": ["imports|depends-on"],
         "profile": "dependency",
         "entryNodeIds": ["owner:src/a.py"],
+        "candidateNodeIds": ["owner:src/a.py"],
         "budget": {"maxDepth": 4, "maxNodes": 64, "maxEdges": 128, "maxResults": 8},
     }
 

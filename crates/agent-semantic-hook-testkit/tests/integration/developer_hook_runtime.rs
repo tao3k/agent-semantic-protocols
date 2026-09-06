@@ -131,7 +131,7 @@ async fn mutable_config_source_edit_does_not_change_runtime_hook_binary() {
     .expect("edit mutable config source");
     let receipt = invoke(&state_home).await;
     assert_eq!(receipt["runtimeHookBinary"], "active");
-    let active = std::fs::read_link(state_home.join("runtime/resident/active"))
+    let active = std::fs::read_link(state_home.join("runtime/artifacts/active"))
         .expect("active Runtime bundle");
     let active_digest =
         agent_semantic_artifacts::runtime_artifact_slots::runtime_artifact_candidate_bundle_digest(
@@ -144,7 +144,7 @@ async fn mutable_config_source_edit_does_not_change_runtime_hook_binary() {
     assert_eq!(
         std::fs::read_link(state_home.join("runtime/bin/asp-hook"))
             .expect("fixed Runtime Hook launcher"),
-        state_home.join("runtime/resident/active/asp-hook")
+        state_home.join("runtime/artifacts/active/asp-hook")
     );
     assert!(!state_home.join("hooks/current").exists());
 }

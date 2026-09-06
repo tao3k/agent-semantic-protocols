@@ -216,7 +216,7 @@ pub fn classify_hook_with_config(request: HookClassificationRequest<'_>) -> Hook
     if decision.reason_kind == ReasonKind::RegisteredSourceRouteRequired {
         super::materialize_source_access_deny_message(&mut decision);
     }
-    let decision = super::with_selector_only_subagent_message(decision);
+    let decision = super::with_executable_evidence_subagent_message(decision);
     let decision = with_prompt_scope_fields(decision, request.payload);
     let decision =
         with_agent_org_artifact_recovery(decision, request.config, &request.registry.project_root);
@@ -367,13 +367,6 @@ pub(super) fn collect_payload_tool_actions(payload: &Value) -> Vec<ToolAction> {
     actions
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct DirectReadSourceKey {
-    pub path: String,
-    pub extension: String,
-    pub tool_name: String,
-}
-
 /// Normalized lookup key for a wrapped registered-source decision shard.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ShellReadSourceKey {
@@ -382,39 +375,6 @@ pub struct ShellReadSourceKey {
     pub command: String,
     pub command_tokens: Vec<String>,
     pub tool_name: String,
-}
-
-/// Return the normalized path and extension key for the direct-read matcher.
-///
-/// This consumes the same ToolAction normalization as the full policy engine;
-/// no Host tool name is matched by the cache layer itself.
-pub fn direct_read_source_key(payload: &Value) -> Option<DirectReadSourceKey> {
-    let actions = collect_payload_tool_actions(payload);
-    direct_read_source_key_from_actions(&actions)
-}
-
-pub(super) fn direct_read_source_key_from_actions(
-    actions: &[ToolAction],
-) -> Option<DirectReadSourceKey> {
-    let [action] = actions else {
-        return None;
-    };
-    if action.operation != crate::tool_action::OperationIntent::DirectRead {
-        return None;
-    }
-    let [path] = action.paths.as_slice() else {
-        return None;
-    };
-    let dot = path.rfind('.')?;
-    Some(DirectReadSourceKey {
-        path: path.clone(),
-        extension: path[dot..].to_ascii_lowercase(),
-        tool_name: action.tool_name.clone(),
-    })
-}
-
-pub fn direct_read_source_extension(payload: &Value) -> Option<String> {
-    direct_read_source_key(payload).map(|key| key.extension)
 }
 
 /// Return every normalized command/path key for a one-action shell read.

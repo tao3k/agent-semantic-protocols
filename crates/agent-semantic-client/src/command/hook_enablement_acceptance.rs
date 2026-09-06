@@ -325,7 +325,9 @@ async fn launcher_scenario_samples(
         std::process::id(),
         ACCEPTANCE_NONCE.fetch_add(1, Ordering::Relaxed)
     ));
-    let public_path = root.join("runtime/bin/asp");
+    let public_path = agent_semantic_artifacts::RuntimeArtifactStateLayout::new(&root)
+        .active_slot()
+        .join("asp");
     tokio::fs::create_dir_all(public_path.parent().expect("public binary parent"))
         .await
         .map_err(|error| format!("create Hook acceptance scenario: {error}"))?;

@@ -1,4 +1,4 @@
-"""Cross-language workspace/search ingest contract gate."""
+"""Single public Search Playbook contract gate."""
 
 from __future__ import annotations
 
@@ -24,14 +24,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     except ContractFailure as error:
         emit(error, file=sys.stderr)
         return 1
-    emit("language workspace/search ingest contract is valid")
+    emit("language Search Playbook contract is valid")
     return 0
 
 
 def _parse_args(argv: Sequence[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="python -m tools validate language-workspace-search-contract",
-        description="Validate the cross-language workspace/search ingest contract.",
+        description="Validate the single public Search Playbook contract.",
     )
     parser.add_argument(
         "--repo-root",

@@ -70,7 +70,6 @@ fn error_frame(
                 "reasonKind": reason_kind,
                 "generationDigest": null,
                 "rootDigest": null,
-                "recommendedNext": {"action": "observe-runtime-generation"},
                 "residentReadElapsedMicros": 0,
                 "serviceElapsedMicros": 1,
                 "elapsedMicros": 1,

@@ -627,6 +627,17 @@ fn read_owner_selector(
             });
         }
     }
+    // Source is an owner-level projection when this admitted owner has no
+    // parser selectors.  Derived projections still fail closed below: they
+    // need parser materialization rather than raw source bytes.
+    if projection_kind == super::model::ExactProjectionKind::Source && owner.selectors.is_empty() {
+        return Ok(WorkspaceRuntimeSelectorRead::Projection {
+            generation_digest: generation_digest.to_owned(),
+            root_digest: root_digest.to_owned(),
+            resolved_selector: owner.owner_path.clone(),
+            bytes: owner.bytes.clone(),
+        });
+    }
     Ok(WorkspaceRuntimeSelectorRead::OwnerForRepair {
         generation_digest: generation_digest.to_owned(),
         root_digest: root_digest.to_owned(),

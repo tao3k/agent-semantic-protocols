@@ -230,17 +230,6 @@ fn run_codex_plugin_command(
     Ok(String::from_utf8_lossy(&output.stdout).into_owned())
 }
 
-fn codex_plugin_installed_path(add_stdout: &str) -> Option<String> {
-    serde_json::from_str::<serde_json::Value>(add_stdout)
-        .ok()
-        .and_then(|value| {
-            value
-                .get("installedPath")
-                .and_then(serde_json::Value::as_str)
-                .map(ToString::to_string)
-        })
-}
-
 fn global_codex_config_path() -> Result<PathBuf, String> {
     if let Some(path) = env::var_os("CODEX_HOME").filter(|value| !value.is_empty()) {
         return Ok(PathBuf::from(path).join("config.toml"));

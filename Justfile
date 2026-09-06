@@ -341,7 +341,7 @@ check-live-corpus-search-query-all:
     PATH="$PWD/.bin:$PATH" .bin/asp server start >/dev/null
     PATH="$PWD/.bin:$PATH" .bin/asp live-corpus qualify --plan benchmarks/live-corpus-search-query-qualification.json
 
-provider-gate: check-rust-workspace-policy check-rust-warnings check-schema-profiles check-rfc-docs check-schema-manager check-tree-sitter-query-contracts check-language-workspace-search-contracts check-graph-turbo-focused provider-gate-root provider-gate-rust provider-gate-typescript provider-gate-python provider-gate-julia provider-gate-gerbil
+provider-gate: check-rust-warnings check-schema-profiles check-rfc-docs check-rust-workspace-policy check-schema-manager check-tree-sitter-query-contracts check-language-workspace-search-contracts check-graph-turbo-focused provider-gate-root provider-gate-rust provider-gate-typescript provider-gate-python provider-gate-julia provider-gate-gerbil
 
 # Run the parser-owned whole-workspace policy exactly once. Ordinary member
 # builds keep the O(1) manifest/policy-identity dependency and never rescan the

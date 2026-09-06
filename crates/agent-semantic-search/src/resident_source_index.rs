@@ -392,9 +392,9 @@ impl ResidentSourceIndex {
         authority: Option<&ResidentSearchAuthority>,
         limit: u32,
     ) -> Result<Arc<agent_semantic_search_projection::ResidentSearchReadyResult>, String> {
-        if !(1..=100).contains(&limit) {
+        if !(1..=4096).contains(&limit) {
             return Err(format!(
-                "resident source-index query limit must be in 1..=100: limit={limit}"
+                "resident source-index query limit must be in 1..=4096: limit={limit}"
             ));
         }
         let cache_key = QueryCacheKey {

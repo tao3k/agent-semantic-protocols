@@ -92,10 +92,7 @@ impl PreparedRuntimeArtifactQuiescenceLease {
 }
 
 pub fn runtime_artifact_quiescence_lease_path(state_home: &Path) -> PathBuf {
-    state_home
-        .join("runtime")
-        .join("leases")
-        .join("artifact-publication.v1.json")
+    crate::RuntimeArtifactStateLayout::new(state_home).publication_lease()
 }
 
 pub(crate) fn prepare_runtime_artifact_quiescence_lease(
@@ -110,7 +107,9 @@ pub(crate) fn prepare_runtime_artifact_quiescence_lease(
                 .to_owned(),
         );
     }
-    let artifact_root = state_home.join("runtime/artifacts");
+    let artifact_root = crate::RuntimeArtifactStateLayout::new(state_home)
+        .root()
+        .to_path_buf();
     if !guard.admits(&artifact_root) {
         return Err(
             "reasonKind=runtime-artifact-quiescence-guard-mismatch lease recovery requires the canonical Artifact mutation guard"

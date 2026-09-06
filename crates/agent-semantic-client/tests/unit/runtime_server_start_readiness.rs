@@ -9,7 +9,6 @@ use agent_semantic_artifacts::runtime_artifact_activation::read_runtime_artifact
 use agent_semantic_artifacts::runtime_artifact_publication::publish_runtime_artifact;
 
 const RUNTIME_CLIENT_QUERY_ARGS: &[&str] = &[
-    "rust",
     "query",
     "--selector",
     "rust://src/lib.rs#item/function/missing",
@@ -50,6 +49,38 @@ fn assert_success(output: &Output, operation: &str) {
     );
 }
 
+fn assert_workspace_admission_missing(output: &Output, operation: &str) {
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        !output.status.success(),
+        "{operation} unexpectedly succeeded: {text}"
+    );
+    assert!(
+        text.contains("Runtime Server workspace admission catalog has no binding"),
+        "{operation} did not reach the healthy Runtime workspace boundary: {text}"
+    );
+}
+
+fn assert_operator_stopped(output: &Output, operation: &str) {
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        !output.status.success(),
+        "{operation} unexpectedly succeeded: {text}"
+    );
+    assert!(
+        text.contains("reasonKind=runtime-server-operator-stopped"),
+        "{operation} did not preserve operator-stop authority: {text}"
+    );
+}
+
 async fn publish_pending_runtime(state_home: &Path) {
     let source = asp_binary();
     let target = state_home.join("runtime/bin/asp");
@@ -77,6 +108,7 @@ async fn pending_activation_bootstrap_waits_for_one_healthy_runtime_owner() {
     publish_pending_runtime(&state_home).await;
 
     let bootstrap = run_asp(&state_home, RUNTIME_CLIENT_QUERY_ARGS);
+    assert_workspace_admission_missing(&bootstrap, "pending-activation client bootstrap");
     assert!(
         state_home
             .join("runtime/server/owner-spawn.v1.json")
@@ -278,6 +310,7 @@ async fn no_agent_client_recovers_one_dead_applied_owner_and_respects_operator_s
     }
 
     let recovered = run_asp_no_agent(&state_home, RUNTIME_CLIENT_QUERY_ARGS);
+    assert_workspace_admission_missing(&recovered, "dead-owner recovery query");
     let recovery_output = format!(
         "{}{}",
         String::from_utf8_lossy(&recovered.stdout),
@@ -340,7 +373,7 @@ async fn no_agent_client_recovers_one_dead_applied_owner_and_respects_operator_s
         String::from_utf8_lossy(&stopped.stderr)
     );
     assert!(
-        stopped_output.contains("operator-stop-is-authoritative"),
+        stopped_output.contains("runtime-server-operator-stopped"),
         "missing typed operator-stop denial: {stopped_output}"
     );
     assert!(
@@ -376,7 +409,7 @@ async fn activation_child_exit_terminalizes_and_preserves_pending_without_pollin
     );
     let terminal = String::from_utf8_lossy(&start.stderr);
     assert!(
-        terminal.contains("runtime-owner-exited-before-ready"),
+        terminal.contains("runtime-owner-exited-before-healthy"),
         "unexpected child-exit terminal: {terminal}"
     );
     assert!(
@@ -406,11 +439,11 @@ async fn concurrent_pending_activation_bootstraps_share_one_runtime_server_owner
     let second_home = state_home.clone();
     let first = thread::spawn(move || run_asp(&first_home, RUNTIME_CLIENT_QUERY_ARGS));
     let second = thread::spawn(move || run_asp(&second_home, RUNTIME_CLIENT_QUERY_ARGS));
-    assert_success(
+    assert_workspace_admission_missing(
         &first.join().expect("join first bootstrap"),
         "first bootstrap",
     );
-    assert_success(
+    assert_workspace_admission_missing(
         &second.join().expect("join second bootstrap"),
         "second bootstrap",
     );
@@ -443,7 +476,7 @@ async fn operator_stop_suppresses_old_activation_until_a_newer_publication() {
         .expect("mark operator stopped");
 
     let suppressed = run_asp(&state_home, RUNTIME_CLIENT_QUERY_ARGS);
-    assert_success(&suppressed, "suppressed client bootstrap");
+    assert_operator_stopped(&suppressed, "suppressed client bootstrap");
     assert!(
         !state_home
             .join("runtime/server/owner-spawn.v1.json")
@@ -475,7 +508,7 @@ async fn operator_stop_suppresses_old_activation_until_a_newer_publication() {
     );
 
     let resumed = run_asp(&state_home, RUNTIME_CLIENT_QUERY_ARGS);
-    assert_success(&resumed, "newer activation bootstrap");
+    assert_workspace_admission_missing(&resumed, "newer activation bootstrap");
     assert!(
         state_home
             .join("runtime/server/owner-spawn.v1.json")
@@ -512,7 +545,7 @@ async fn current_schema_v1_operator_stop_suppresses_covered_activation() {
     .expect("seed current schema v1 operator stop");
 
     let suppressed = run_asp(&state_home, RUNTIME_CLIENT_QUERY_ARGS);
-    assert_success(&suppressed, "current v1 suppressed bootstrap");
+    assert_operator_stopped(&suppressed, "current v1 suppressed bootstrap");
     assert!(
         !state_home
             .join("runtime/server/owner-spawn.v1.json")
@@ -534,7 +567,7 @@ async fn current_schema_v1_operator_stop_suppresses_covered_activation() {
 
     publish_pending_runtime(&state_home).await;
     let resumed = run_asp(&state_home, RUNTIME_CLIENT_QUERY_ARGS);
-    assert_success(&resumed, "newer activation after canonical stop");
+    assert_workspace_admission_missing(&resumed, "newer activation after canonical stop");
     assert!(
         state_home
             .join("runtime/server/owner-spawn.v1.json")

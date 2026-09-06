@@ -96,17 +96,19 @@ fn shell_quote(word: &str) -> String {
     }
 }
 
-pub(crate) fn with_selector_only_subagent_message(mut decision: HookDecision) -> HookDecision {
+pub(crate) fn with_executable_evidence_subagent_message(
+    mut decision: HookDecision,
+) -> HookDecision {
     if decision
         .message
         .contains("Return one compact `[asp-search-subagent]` graph-route receipt")
         && !decision
             .message
-            .contains("Return selector-only `[asp-search-subagent]` evidence")
+            .contains("Return executable `[asp-search-subagent]` evidence")
     {
         decision.message = decision.message.replace(
             "Return one compact `[asp-search-subagent]` graph-route receipt",
-            "Return selector-only `[asp-search-subagent]` evidence. Return one compact `[asp-search-subagent]` graph-route receipt",
+            "Return executable `[asp-search-subagent]` evidence with QueryGrammar, owner, item, selector, matchedBy, and relation. Return one compact `[asp-search-subagent]` graph-route receipt",
         );
     }
     decision

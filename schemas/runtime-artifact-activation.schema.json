@@ -9,6 +9,7 @@
     "schemaVersion",
     "bundleDigest",
     "artifactDigest",
+    "activationGeneration",
     "artifactPath",
     "candidateSlotPath",
     "previousArtifactDigest",
@@ -26,6 +27,10 @@
     },
     "bundleDigest": {
       "$ref": "#/$defs/digest"
+    },
+    "activationGeneration": {
+      "type": "integer",
+      "minimum": 1
     },
     "artifactDigest": {
       "$ref": "#/$defs/digest"

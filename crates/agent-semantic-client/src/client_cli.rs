@@ -90,10 +90,14 @@ async fn run_providers(parsed: ParsedArgs) -> Result<(), String> {
             );
         }
     };
-    let state_home = agent_semantic_runtime::state_core::resolve_state_home()?;
-    let endpoint = agent_semantic_client_db::read_runtime_server_endpoint(&state_home)
-        .await?
-        .ok_or_else(|| "runtime-server-endpoint-unavailable".to_owned())?;
+    let mut ready =
+        crate::server::runtime_server::ensure_healthy_runtime_server_for_bounded_operation()
+            .await?;
+    let transaction = ready.resident_transaction.take().ok_or_else(|| {
+        "reasonKind=runtime-client-handoff-unavailable failureLayer=runtime-resident-transaction Runtime bootstrap returned Healthy without its resident transaction"
+            .to_owned()
+    })?;
+    let handoff = crate::AspClientRuntimeHandoff::try_from(&transaction)?;
     let request = agent_semantic_provider_protocol::ProviderRegisterRequest {
         schema_id: agent_semantic_provider_protocol::PROVIDER_REGISTER_REQUEST_SCHEMA_ID.to_owned(),
         schema_version: agent_semantic_provider_protocol::PROVIDER_REGISTER_SCHEMA_VERSION
@@ -103,7 +107,7 @@ async fn run_providers(parsed: ParsedArgs) -> Result<(), String> {
     };
     let response =
         agent_semantic_provider_transport::grpc_session::call_runtime_provider_register_tcp(
-            endpoint.provider_endpoint.socket_addr(),
+            handoff.provider_socket_addr(),
             &request,
         )
         .await?;

@@ -68,6 +68,26 @@ fn canonical_agent_prompts_contain_only_role_boundary_and_playbook_flow() {
 }
 
 #[test]
+fn explorer_host_projections_carry_selector_only_output_guidance() {
+    for file_name in ["asp_explorer_codex.toml", "asp_explorer_claude.md"] {
+        let prompt = canonical_agent_prompt(file_name);
+        for required in [
+            "Output guidance:",
+            "at most three ranked evidence entries",
+            "Never return source text, snippets, excerpts",
+            "Do not read source merely to summarize it",
+            "Do not prescribe a next command",
+            "The parent reasons from the returned evidence",
+        ] {
+            assert!(
+                prompt.contains(required),
+                "{file_name} omits selector-only output guidance `{required}`"
+            );
+        }
+    }
+}
+
+#[test]
 fn codex_worker_and_default_roles_resolve_only_to_owner_scoped_coding() {
     let loaded =
         load_agent_route_registry(&canonical_registry_path()).expect("canonical agent registry");

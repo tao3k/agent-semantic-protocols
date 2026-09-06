@@ -40,6 +40,7 @@
     },
     "providerId": { "$ref": "#/$defs/nonEmptyString" },
     "queryPackDescriptor": { "$ref": "provider-query-pack-descriptor.schema.json" },
+    "searchPlaybookContract": { "$ref": "provider-search-playbook-contract.schema.json" },
     "runtimeContract": { "$ref": "provider-runtime-contract-descriptor.schema.json" },
     "searchCapabilities": { "type": "object" },
     "sourceInventory": { "$ref": "#/$defs/sourceInventory" },

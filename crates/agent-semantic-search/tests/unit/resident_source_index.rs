@@ -219,7 +219,7 @@ fn a_published_empty_generation_is_a_miss_not_a_cold_or_db_state() {
 }
 
 #[test]
-fn query_limit_is_fail_closed_at_the_shared_top_k_boundary() {
+fn query_limit_separates_progressive_acquisition_from_top_k_projection() {
     let index = ResidentSourceIndex::new(
         BTreeMap::new(),
         source_snapshot(),
@@ -230,11 +230,12 @@ fn query_limit_is_fail_closed_at_the_shared_top_k_boundary() {
 
     assert_eq!(
         index.query("runtime", None, 0).unwrap_err(),
-        "resident source-index query limit must be in 1..=100: limit=0"
+        "resident source-index query limit must be in 1..=4096: limit=0"
     );
+    assert!(index.query("runtime", None, 4096).is_ok());
     assert_eq!(
-        index.query("runtime", None, 101).unwrap_err(),
-        "resident source-index query limit must be in 1..=100: limit=101"
+        index.query("runtime", None, 4097).unwrap_err(),
+        "resident source-index query limit must be in 1..=4096: limit=4097"
     );
 }
 

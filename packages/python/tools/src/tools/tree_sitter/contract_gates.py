@@ -113,7 +113,7 @@ def _build_runtime(asp_bin: Path) -> None:
             "--manifest-path",
             "languages/asp-rust/Cargo.toml",
             "--features",
-            "cli,search",
+            "provider-server",
             "--bin",
             "asp-rust",
         ],
@@ -127,8 +127,6 @@ class _runtime_env:
         self.asp_bin = asp_bin
         self._tmp: tempfile.TemporaryDirectory[str] | None = None
         self._asp_toml_backup: Path | None = None
-        self._codex_config_backup: Path | None = None
-        self._hook_config_backup: Path | None = None
 
     def __enter__(self) -> dict[str, str]:
         self._tmp = tempfile.TemporaryDirectory()
@@ -137,14 +135,6 @@ class _runtime_env:
             self._asp_toml_backup = _backup_runtime_file(
                 shim_dir,
                 ROOT / ".agents/asp.toml",
-            )
-            self._codex_config_backup = _backup_runtime_file(
-                shim_dir,
-                ROOT / ".codex/config.toml",
-            )
-            self._hook_config_backup = _backup_runtime_file(
-                shim_dir,
-                ROOT / ".codex/agent-semantic-protocol/hooks/config.toml",
             )
             (ROOT / ".agents/asp.toml").write_text(_CORE_FAST_ASP_TOML, encoding="utf-8")
             _write_shim(
@@ -163,7 +153,6 @@ class _runtime_env:
             env["PATH"] = f"{shim_dir}{os.pathsep}{env.get('PATH', '')}"
             env["SEMANTIC_AGENT_PROTOCOL_BIN"] = str(self.asp_bin)
             env["ASP_NO_AGENT"] = "1"
-            run([str(self.asp_bin), "install", "plugin", "--codex", "."], env=env)
             return env
         except Exception:
             self.__exit__(None, None, None)
@@ -171,11 +160,6 @@ class _runtime_env:
 
     def __exit__(self, *_exc: object) -> None:
         _restore_runtime_file(ROOT / ".agents/asp.toml", self._asp_toml_backup)
-        _restore_runtime_file(ROOT / ".codex/config.toml", self._codex_config_backup)
-        _restore_runtime_file(
-            ROOT / ".codex/agent-semantic-protocol/hooks/config.toml",
-            self._hook_config_backup,
-        )
         if self._tmp is not None:
             self._tmp.cleanup()
 

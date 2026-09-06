@@ -1,5 +1,24 @@
 use agent_semantic_client_db::runtime_server_control::acquire_runtime_server_election;
+use agent_semantic_client_db::runtime_server_control::runtime_server_endpoint_path;
 use agent_semantic_client_db::runtime_server_control::runtime_server_runtime_base;
+
+#[test]
+fn canonical_state_home_owns_runtime_transport_publication() {
+    let fixture = tempfile::tempdir().expect("create State Home transport fixture");
+    let state_home = fixture.path().join("state");
+    std::fs::create_dir_all(&state_home).expect("create canonical State Home");
+    let canonical = std::fs::canonicalize(&state_home).expect("canonical State Home");
+    let expected_base = canonical.join("runtime/serving");
+
+    assert_eq!(
+        runtime_server_runtime_base(&state_home).expect("resolve Runtime serving base"),
+        expected_base
+    );
+    assert_eq!(
+        runtime_server_endpoint_path(&state_home).expect("resolve Runtime endpoint publication"),
+        canonical.join("runtime/serving/endpoint.v1.json")
+    );
+}
 
 #[tokio::test(flavor = "current_thread")]
 async fn election_is_singleton_per_state_home_and_isolated_across_state_homes() {
@@ -14,11 +33,17 @@ async fn election_is_singleton_per_state_home_and_isolated_across_state_homes() 
     let runtime_base_b =
         runtime_server_runtime_base(&state_home_b).expect("resolve second State Home runtime base");
     assert_ne!(runtime_base_a, runtime_base_b);
-    assert!(
-        runtime_base_a
-            .file_name()
-            .and_then(std::ffi::OsStr::to_str)
-            .is_some_and(|name| name.starts_with("state-"))
+    assert_eq!(
+        runtime_base_a,
+        std::fs::canonicalize(&state_home_a)
+            .expect("canonical first State Home")
+            .join("runtime/serving")
+    );
+    assert_eq!(
+        runtime_base_b,
+        std::fs::canonicalize(&state_home_b)
+            .expect("canonical second State Home")
+            .join("runtime/serving")
     );
 
     let election_a = acquire_runtime_server_election(&state_home_a)

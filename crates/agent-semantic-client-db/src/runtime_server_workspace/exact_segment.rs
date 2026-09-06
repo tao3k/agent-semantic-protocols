@@ -223,6 +223,24 @@ impl MappedWorkspaceExactProjection {
                 resolved_selector: owner_path,
             });
         }
+        // A generation may deliberately carry an admitted source owner before
+        // that language has emitted parser selectors.  Source remains a valid
+        // owner-level Query projection in that state; only parser-derived
+        // projections require selector repair.  Do not turn the owner bytes
+        // into a JSON repair terminal for a normal source query.
+        if projection_kind == super::model::ExactProjectionKind::Source
+            && self
+                .selector_indices_by_owner
+                .get(owner_index)
+                .is_some_and(Vec::is_empty)
+        {
+            return Ok(WorkspaceRuntimeSelectorRead::Projection {
+                generation_digest: self.generation_digest.clone(),
+                root_digest: self.root_digest.clone(),
+                resolved_selector: owner_path,
+                bytes: self.owner_bytes(&owner)?.to_vec(),
+            });
+        }
         Ok(WorkspaceRuntimeSelectorRead::OwnerForRepair {
             generation_digest: self.generation_digest.clone(),
             root_digest: self.root_digest.clone(),

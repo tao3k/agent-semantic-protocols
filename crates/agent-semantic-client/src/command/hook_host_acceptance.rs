@@ -46,11 +46,18 @@ impl HostAcceptanceReceipt {
 pub(super) fn run_accept_host(args: &[String]) -> Result<(), String> {
     let rollout_path = argument_value(args, "--host-rollout")
         .ok_or_else(|| "missing required --host-rollout PATH".to_owned())?;
+    let hook_events_path = argument_value(args, "--hook-events")
+        .ok_or_else(|| "missing required --hook-events PATH".to_owned())?;
     let probe_path = argument_value(args, "--host-probe-path")
         .ok_or_else(|| "missing required --host-probe-path PATH".to_owned())?;
     let source_sentinel = argument_value(args, "--host-sentinel")
         .ok_or_else(|| "missing required --host-sentinel TOKEN".to_owned())?;
-    let receipt = inspect_host_rollout(Path::new(rollout_path), probe_path, source_sentinel)?;
+    let receipt = inspect_host_rollout(
+        Path::new(rollout_path),
+        Path::new(hook_events_path),
+        probe_path,
+        source_sentinel,
+    )?;
     println!(
         "{}",
         serde_json::to_string(&receipt)
@@ -79,8 +86,11 @@ struct HostAcceptanceEvidence {
     probe_call_observed: bool,
     probe_call_ids: std::collections::HashSet<String>,
     hook_event_observed: bool,
+    hook_event_call_ids: std::collections::HashSet<String>,
     typed_deny_observed: bool,
+    typed_deny_call_ids: std::collections::HashSet<String>,
     generation_bound_deny_observed: bool,
+    generation_bound_deny_call_ids: std::collections::HashSet<String>,
     source_bytes_returned: bool,
 }
 
@@ -92,6 +102,7 @@ struct HostAcceptanceContext<'a> {
 
 pub(super) fn inspect_host_rollout(
     rollout_path: &Path,
+    hook_events_path: &Path,
     probe_path: &str,
     source_sentinel: &str,
 ) -> Result<HostAcceptanceReceipt, String> {
@@ -132,6 +143,15 @@ pub(super) fn inspect_host_rollout(
             &mut evidence,
         )?;
     }
+    inspect_hook_events(hook_events_path, &mut evidence)?;
+    evidence.hook_event_observed =
+        all_probe_calls_are_covered(&evidence.probe_call_ids, &evidence.hook_event_call_ids);
+    evidence.typed_deny_observed =
+        all_probe_calls_are_covered(&evidence.probe_call_ids, &evidence.typed_deny_call_ids);
+    evidence.generation_bound_deny_observed = all_probe_calls_are_covered(
+        &evidence.probe_call_ids,
+        &evidence.generation_bound_deny_call_ids,
+    );
 
     let (state, reason_kind) = if !evidence.plugin_loaded {
         ("rejected", "plugin-not-loaded")
@@ -234,6 +254,15 @@ fn observe_rollout_item(
     source_sentinel: &str,
     evidence: &mut HostAcceptanceEvidence,
 ) {
+    if value.pointer("/payload/type").and_then(Value::as_str) == Some("world_state")
+        || value.get("type").and_then(Value::as_str) == Some("world_state")
+    {
+        let plugins = value
+            .pointer("/payload/state/plugins_instructions")
+            .or_else(|| value.pointer("/payload/plugins_instructions"));
+        evidence.plugin_loaded |=
+            plugins.is_some_and(|value| value != &Value::Null && value != &Value::Bool(false));
+    }
     let payload_type = value.pointer("/payload/type").and_then(Value::as_str);
     let probe_call = match payload_type {
         Some("function_call") => value.pointer("/payload/arguments"),
@@ -250,15 +279,13 @@ fn observe_rollout_item(
     }
 
     let output = value.pointer("/payload/output");
+    let output_is_for_probe = value
+        .pointer("/payload/call_id")
+        .and_then(Value::as_str)
+        .is_some_and(|call_id| evidence.probe_call_ids.contains(call_id));
     let source_sentinel_observed = match payload_type {
-        Some("function_call_output") => output
-            .and_then(Value::as_str)
-            .is_some_and(|output| output.contains(source_sentinel)),
-        Some("custom_tool_call_output") => {
-            value
-                .pointer("/payload/call_id")
-                .and_then(Value::as_str)
-                .is_some_and(|call_id| evidence.probe_call_ids.contains(call_id))
+        Some("function_call_output" | "custom_tool_call_output") => {
+            output_is_for_probe
                 && output.is_some_and(|output| value_contains_text(output, source_sentinel))
         }
         _ => false,
@@ -266,21 +293,53 @@ fn observe_rollout_item(
     if source_sentinel_observed {
         evidence.source_bytes_returned = true;
     }
+}
 
-    let serialized = serde_json::to_string(value).unwrap_or_default();
-    let asp_hook_evidence = serialized.contains("agent.semantic-protocols.hook.decision")
-        || serialized.contains("[asp-hook]")
-        || serialized.contains("[agent-hook-decision]");
-    if asp_hook_evidence {
-        evidence.plugin_loaded = true;
-        evidence.hook_event_observed = true;
+fn inspect_hook_events(path: &Path, evidence: &mut HostAcceptanceEvidence) -> Result<(), String> {
+    let file = File::open(path)
+        .map_err(|error| format!("failed to open Hook events {}: {error}", path.display()))?;
+    for (line_index, line) in BufReader::new(file).lines().enumerate() {
+        let line = line
+            .map_err(|error| format!("failed to read Hook events {}: {error}", path.display()))?;
+        if line.trim().is_empty() {
+            continue;
+        }
+        let value: Value = serde_json::from_str(&line).map_err(|error| {
+            format!(
+                "invalid Hook event JSON at {}:{}: {error}",
+                path.display(),
+                line_index + 1
+            )
+        })?;
+        let matching_call_id = value
+            .pointer("/fields/toolUseId")
+            .and_then(Value::as_str)
+            .filter(|call_id| evidence.probe_call_ids.contains(*call_id));
+        let exact_probe_event = value.get("event").and_then(Value::as_str) == Some("pre-tool")
+            && value.pointer("/fields/hostMatcher").and_then(Value::as_str) == Some("Bash")
+            && matching_call_id.is_some();
+        if !exact_probe_event {
+            continue;
+        }
+        let call_id = matching_call_id.expect("exact probe event has a matching call id");
+        evidence.hook_event_call_ids.insert(call_id.to_owned());
+        if value_contains_typed_hook_deny(&value) {
+            evidence.typed_deny_call_ids.insert(call_id.to_owned());
+        }
+        if value_contains_generation_bound_hook_deny(&value) {
+            evidence
+                .generation_bound_deny_call_ids
+                .insert(call_id.to_owned());
+        }
     }
-    if value_contains_generation_bound_hook_deny(value) {
-        evidence.generation_bound_deny_observed = true;
-    }
-    if value_contains_typed_hook_deny(value) {
-        evidence.typed_deny_observed = true;
-    }
+    Ok(())
+}
+
+fn all_probe_calls_are_covered(
+    probe_call_ids: &std::collections::HashSet<String>,
+    evidence_call_ids: &std::collections::HashSet<String>,
+) -> bool {
+    !probe_call_ids.is_empty() && probe_call_ids.is_subset(evidence_call_ids)
 }
 
 fn value_contains_typed_hook_deny(value: &Value) -> bool {

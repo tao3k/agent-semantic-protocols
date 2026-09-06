@@ -190,12 +190,10 @@ fn canonical_config_document_sections_are_owned_by_testkit_and_aot_projection() 
         "batcat",
         "cat",
         "git",
-        "grep",
         "head",
         "less",
         "more",
         "nl",
-        "rg",
         "sed",
         "tail",
     ]
@@ -204,8 +202,10 @@ fn canonical_config_document_sections_are_owned_by_testkit_and_aot_projection() 
     .collect::<BTreeSet<_>>();
     assert_eq!(
         config
-            .reader_behavior_patterns
+            .command_action_patterns
             .iter()
+            .filter(|family| family.action == agent_semantic_config::HookClientActionKind::Read)
+            .flat_map(|family| family.argv_pattern_any.iter())
             .filter_map(|pattern| pattern.first().cloned())
             .collect::<BTreeSet<_>>(),
         expected_readers

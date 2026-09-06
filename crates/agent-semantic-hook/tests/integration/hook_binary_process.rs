@@ -67,19 +67,9 @@ fn inherited_no_agent_returns_valid_json_for_every_host_event() {
 #[test]
 fn only_the_exact_inherited_no_agent_value_bypasses_policy_bootstrap() {
     let _test_guard = hook_process_test_guard();
-    let temp = tempfile::tempdir().expect("temporary missing policy bundle");
-    let missing = temp.path().join("missing-policy-bundle.json");
     for value in ["", "0", "true", "2"] {
         let mut child = hook_command()
-            .args([
-                "pre-tool",
-                "--client",
-                "codex",
-                "--policy-bundle",
-                missing.to_str().expect("UTF-8 missing path"),
-                "--host-match",
-                "Bash",
-            ])
+            .args(["pre-tool", "--client", "codex", "--host-match", "Bash"])
             .env("ASP_NO_AGENT", value)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -89,7 +79,7 @@ fn only_the_exact_inherited_no_agent_value_bypasses_policy_bootstrap() {
             child.stdin.as_mut().expect("Hook stdin"),
             &serde_json::json!({
                 "tool_name": "Bash",
-                "tool_input": {"command": "arbitrary-command fixture.rs"}
+                "tool_input": {"command": "rg HookDecision fixture.rs"}
             }),
         )
         .expect("write Host payload");
@@ -108,7 +98,7 @@ fn only_the_exact_inherited_no_agent_value_bypasses_policy_bootstrap() {
 }
 
 #[test]
-fn temporary_subagent_events_are_observational_without_registration_authority() {
+fn temporary_subagent_start_is_observational_and_stop_requires_identity() {
     let _test_guard = hook_process_test_guard();
     let temp = tempfile::tempdir().expect("isolated State Home");
     for event in ["subagent-start", "subagent-stop"] {
@@ -122,14 +112,69 @@ fn temporary_subagent_events_are_observational_without_registration_authority() 
             .expect("run observational SubAgent event");
         assert!(started.elapsed() < Duration::from_secs(1), "event={event}");
         assert_eq!(output.status.code(), Some(0), "event={event}");
-        assert_eq!(
-            serde_json::from_slice::<serde_json::Value>(&output.stdout)
-                .expect("observational Host JSON"),
-            serde_json::json!({}),
-            "event={event}"
-        );
+        let terminal = serde_json::from_slice::<serde_json::Value>(&output.stdout)
+            .expect("SubAgent Host JSON");
+        if event == "subagent-start" {
+            assert_eq!(terminal, serde_json::json!({}), "event={event}");
+        } else {
+            assert_eq!(terminal["decision"], "block", "event={event}");
+            assert!(
+                terminal["reason"]
+                    .as_str()
+                    .is_some_and(|reason| reason.starts_with("Example\n")),
+                "event={event}"
+            );
+        }
         assert!(output.stderr.is_empty(), "event={event}");
     }
+}
+
+#[test]
+fn asp_explorer_stop_requires_executable_source_free_evidence() {
+    let _test_guard = hook_process_test_guard();
+    let run = |last_assistant_message: &str| {
+        let mut child = hook_command()
+            .arg("subagent-stop")
+            .args(["--client", "codex"])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()
+            .expect("spawn SubagentStop Hook");
+        serde_json::to_writer(
+            child.stdin.as_mut().expect("Hook stdin"),
+            &serde_json::json!({
+                "hook_event_name": "SubagentStop",
+                "agent_id": "explorer-child",
+                "agent_type": "asp_explorer",
+                "last_assistant_message": last_assistant_message,
+            }),
+        )
+        .expect("write SubagentStop payload");
+        drop(child.stdin.take());
+        child.wait_with_output().expect("SubagentStop terminal")
+    };
+
+    let valid = run(
+        "[asp-search-subagent]\nstate=candidates\nQueryGrammar: asp query --selector <exact-selector> --projection <callable-skeleton|source>\nE1 | owner=crates/runtime | item=struct/Endpoint | selector=rust://crates/runtime#item/struct/Endpoint | matchedBy=rg:0|syntax:0 | relation=publishes",
+    );
+    assert_eq!(valid.status.code(), Some(0));
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&valid.stdout).expect("valid Host JSON"),
+        serde_json::json!({})
+    );
+
+    let source_dump = run(
+        "[asp-search-subagent]\nstate=candidates\nQueryGrammar: asp query --selector <exact-selector> --projection <callable-skeleton|source>\nE1 | owner=crates/runtime | item=struct/Endpoint | selector=rust://crates/runtime#item/struct/Endpoint | matchedBy=rg:0|syntax:0 | relation=publishes\n```rust\nfn endpoint() {}\n```",
+    );
+    assert_eq!(source_dump.status.code(), Some(0));
+    let terminal: serde_json::Value =
+        serde_json::from_slice(&source_dump.stdout).expect("blocking Host JSON");
+    assert_eq!(terminal["decision"], "block");
+    assert!(
+        terminal["reason"].as_str().is_some_and(
+            |reason| reason.starts_with("Example\n") && reason.contains("\n\nGrammar\n")
+        )
+    );
 }
 
 #[test]
@@ -350,6 +395,265 @@ fn binary_projects_its_embedded_policy_content_identity() {
 }
 
 #[test]
+fn default_hook_process_applies_state_home_config_overlay_without_policy_bundle_flag() {
+    let _test_guard = hook_process_test_guard();
+    let state_home = tempfile::tempdir().expect("create State Home fixture");
+    let config_path = state_home.path().join("hooks/config.toml");
+    std::fs::create_dir_all(
+        config_path
+            .parent()
+            .expect("State Home Hook config has parent"),
+    )
+    .expect("create State Home Hook config root");
+    let source = agent_semantic_config::default_hook_client_config_template().replace(
+        "Agent-facing search JSON is denied; use the compact ASP search route.",
+        "State Home overlay policy is active.",
+    );
+    std::fs::write(&config_path, source).expect("write State Home Hook config");
+
+    let mut child = hook_command()
+        .args(["pre-tool", "--client", "codex", "--host-match", "Bash"])
+        .env("ASP_STATE_HOME", state_home.path())
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn default Hook binary");
+    serde_json::to_writer(
+        child.stdin.as_mut().expect("Hook stdin"),
+        &serde_json::json!({
+            "tool_name": "Bash",
+            "tool_input": {"command": "asp rust search --json HookDecision"}
+        }),
+    )
+    .expect("write Host payload");
+    drop(child.stdin.take());
+    let output = child.wait_with_output().expect("wait for Hook binary");
+    let terminal: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("valid Hook Host JSON");
+    assert_eq!(output.status.code(), Some(0));
+    assert_eq!(terminal["hookSpecificOutput"]["permissionDecision"], "deny");
+    assert!(
+        terminal["hookSpecificOutput"]["permissionDecisionReason"]
+            .as_str()
+            .is_some_and(|message| message.contains("State Home overlay policy is active.")),
+        "default Hook path ignored State Home config overlay: {terminal}"
+    );
+    assert!(output.stderr.is_empty());
+}
+
+#[test]
+fn default_hook_process_denies_rtk_style_script_reader_from_dynamic_probe() {
+    #[cfg(target_os = "macos")]
+    {
+        let _test_guard = hook_process_test_guard();
+        let state_home = tempfile::tempdir().expect("create Reader State Home fixture");
+        let project_root = tempfile::tempdir().expect("create Reader project fixture");
+        let bin = project_root.path().join("bin");
+        std::fs::create_dir_all(project_root.path().join("docs")).expect("create docs root");
+        std::fs::create_dir_all(&bin).expect("create fake RTK bin");
+        let rtk = bin.join("rtk");
+        std::fs::write(
+            &rtk,
+            "#!/bin/sh\nset -eu\n[ \"$1\" = read ] || exit 64\nshift\nwhile [ \"$#\" -gt 1 ]; do shift; done\ncase \"$1\" in\n  *readable-sentinel*) exit 0 ;;\n  *denied-sentinel*) exit 1 ;;\n  *) exit 65 ;;\nesac\n",
+        )
+        .expect("write interpreter-backed Reader fixture");
+        std::fs::set_permissions(&rtk, std::fs::Permissions::from_mode(0o500))
+            .expect("make interpreter-backed Reader fixture executable");
+
+        let probe_payload = serde_json::json!({
+            "tool_name": "Bash",
+            "tool_input": {"command": "rtk read --max-lines 1 docs/hook-contract.md"}
+        })
+        .to_string();
+        let policy = agent_semantic_hook::aot_compiler::compile_embedded_hook_policy_bundle()
+            .expect("compile embedded Hook policy");
+        let probe = agent_semantic_hook::aot_evaluator::reader_probe_request(
+            std::str::from_utf8(&policy).expect("Hook policy UTF-8"),
+            &probe_payload,
+            "Bash",
+        )
+        .expect("admit unknown reader to dynamic probe")
+        .expect("RTK-style reader must not be lost before the dynamic probe");
+        assert_eq!(
+            probe.command_tokens,
+            ["rtk", "read", "--max-lines", "1", "docs/hook-contract.md"]
+        );
+        assert_eq!(probe.subject, "docs/hook-contract.md");
+
+        let mut child = hook_command()
+            .args(["pre-tool", "--client", "codex", "--host-match", "Bash"])
+            .current_dir(project_root.path())
+            .env("ASP_STATE_HOME", state_home.path())
+            .env("PATH", format!("{}:/usr/bin:/bin", bin.display()))
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("spawn dynamic Reader Hook binary");
+        serde_json::to_writer(
+            child.stdin.as_mut().expect("Hook stdin"),
+            &serde_json::json!({
+                "tool_name": "Bash",
+                "session_id": "rtk-dynamic-reader-hook-test",
+                "tool_use_id": "rtk-dynamic-reader-hook-tool-use",
+                "cwd": project_root.path(),
+                "tool_input": {
+                    "command": "rtk read --max-lines 1 docs/hook-contract.md"
+                }
+            }),
+        )
+        .expect("write dynamic Reader Host payload");
+        drop(child.stdin.take());
+        let output = child
+            .wait_with_output()
+            .expect("wait for dynamic Reader Hook binary");
+        let terminal: serde_json::Value =
+            serde_json::from_slice(&output.stdout).expect("valid dynamic Reader Host JSON");
+
+        let paths = agent_semantic_runtime::project_state_paths_with_state_home(
+            project_root.path(),
+            state_home.path(),
+        )
+        .expect("resolve Hook event state");
+        let events = std::fs::read_to_string(paths.hook_state_dir.join("events.jsonl"))
+            .expect("dynamic Reader probe event");
+        let event = events
+            .lines()
+            .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
+            .find(|event| event["fields"]["toolUseId"] == "rtk-dynamic-reader-hook-tool-use")
+            .expect("linked dynamic Reader probe receipt");
+        let access = event["fields"]["readerProbe"]["access"]
+            .as_str()
+            .expect("Reader access");
+        assert!(matches!(access, "read" | "unknown"), "event={event}");
+        if access == "unknown" {
+            assert_eq!(
+                event["fields"]["policyDecision"]["evidence"],
+                "reader-probe-indeterminate-fail-closed",
+                "event={event}"
+            );
+            assert!(
+                matches!(
+                    event["fields"]["readerProbe"]["terminal"].as_str(),
+                    Some("probe-timeout" | "probe-deferred")
+                ),
+                "event={event}"
+            );
+        }
+        assert_eq!(
+            event["fields"]["readerProbe"]["backend"],
+            "permission-differential"
+        );
+        assert_eq!(event["fields"]["readerProbe"]["probeProcessLaunched"], true);
+        assert_eq!(
+            event["fields"]["policyDecision"]["configRuleId"],
+            "route-markdown-document-read-to-asp-explorer",
+            "event={event}"
+        );
+        assert_eq!(event["decision"], "deny", "event={event}");
+        assert_eq!(output.status.code(), Some(0));
+        assert_eq!(
+            terminal["hookSpecificOutput"]["permissionDecision"], "deny",
+            "dynamic script reader unexpectedly reached Host allow: {terminal}"
+        );
+        assert!(
+            terminal["hookSpecificOutput"]["permissionDecisionReason"]
+                .as_str()
+                .is_some_and(|message| message.contains("Direct Markdown reads are denied")),
+            "{terminal}"
+        );
+        assert!(output.stderr.is_empty());
+    }
+}
+
+#[test]
+fn default_hook_process_rejects_retired_policy_bundle_flag() {
+    let _test_guard = hook_process_test_guard();
+    let mut child = hook_command()
+        .args([
+            "pre-tool",
+            "--client",
+            "codex",
+            "--policy-bundle",
+            "/tmp/not-a-serving-policy.json",
+            "--host-match",
+            "Bash",
+        ])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn default Hook binary");
+    serde_json::to_writer(
+        child.stdin.as_mut().expect("Hook stdin"),
+        &serde_json::json!({
+            "tool_name": "Bash",
+            "tool_input": {"command": "rg HookDecision fixture.rs"}
+        }),
+    )
+    .expect("write Host payload");
+    drop(child.stdin.take());
+    let output = child.wait_with_output().expect("wait for Hook binary");
+    let terminal: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("valid Hook Host JSON");
+    assert_eq!(output.status.code(), Some(0));
+    assert_eq!(terminal["hookSpecificOutput"]["permissionDecision"], "deny");
+    assert!(
+        terminal["hookSpecificOutput"]["permissionDecisionReason"]
+            .as_str()
+            .is_some_and(|message| message.contains("--policy-bundle is not a supported")),
+        "retired policy flag must not be silently accepted: {terminal}"
+    );
+    assert!(output.stderr.is_empty());
+}
+
+#[test]
+fn invalid_state_home_config_fails_closed_on_the_default_hook_path() {
+    let _test_guard = hook_process_test_guard();
+    let state_home = tempfile::tempdir().expect("create State Home fixture");
+    let config_path = state_home.path().join("hooks/config.toml");
+    std::fs::create_dir_all(
+        config_path
+            .parent()
+            .expect("State Home Hook config has parent"),
+    )
+    .expect("create State Home Hook config root");
+    std::fs::write(&config_path, "[[rules]\nid = [\n")
+        .expect("write invalid State Home Hook config");
+
+    let mut child = hook_command()
+        .args(["pre-tool", "--client", "codex", "--host-match", "Bash"])
+        .env("ASP_STATE_HOME", state_home.path())
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn default Hook binary");
+    serde_json::to_writer(
+        child.stdin.as_mut().expect("Hook stdin"),
+        &serde_json::json!({
+            "tool_name": "Bash",
+            "tool_input": {"command": "rg HookDecision fixture.rs"}
+        }),
+    )
+    .expect("write Host payload");
+    drop(child.stdin.take());
+    let output = child.wait_with_output().expect("wait for Hook binary");
+    let terminal: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("valid Hook Host JSON");
+    assert_eq!(output.status.code(), Some(0));
+    assert_eq!(terminal["hookSpecificOutput"]["permissionDecision"], "deny");
+    assert!(
+        terminal["hookSpecificOutput"]["permissionDecisionReason"]
+            .as_str()
+            .is_some_and(|message| message.contains("failed to parse")),
+        "invalid State Home config must fail closed with the parse evidence: {terminal}"
+    );
+    assert!(output.stderr.is_empty());
+}
+
+#[test]
 fn repeated_hook_subcommand_is_not_a_host_event_namespace() {
     let _test_guard = hook_process_test_guard();
     let output = hook_command()
@@ -377,15 +681,7 @@ fn repeated_hook_subcommand_is_not_a_host_event_namespace() {
 fn malformed_host_payload_returns_valid_fail_closed_json_instead_of_code_101() {
     let _test_guard = hook_process_test_guard();
     let mut child = hook_command()
-        .args([
-            "pre-tool",
-            "--client",
-            "codex",
-            "--policy-bundle",
-            "/definitely/missing/compiled-hook-policy-bundle.json",
-            "--host-match",
-            "Bash",
-        ])
+        .args(["pre-tool", "--client", "codex", "--host-match", "Bash"])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -409,16 +705,7 @@ fn malformed_host_payload_returns_valid_fail_closed_json_instead_of_code_101() {
 #[test]
 fn process_bound_no_agent_forms_bypass_the_installed_policy_engine() {
     let _test_guard = hook_process_test_guard();
-    let config = agent_semantic_config::default_hook_client_config_file()
-        .expect("load canonical Hook Config V1");
-    let generation = agent_semantic_hook::aot_compiler::compile_aot_hook_policy_bundle(
-        &config,
-        "blake3-256:process-bound-no-agent",
-    )
-    .expect("compile canonical HookPolicyBundle");
-    let temp = tempfile::tempdir().expect("temporary HookPolicyBundle");
-    let policy_bundle_path = temp.path().join("compiled-hook-policy-bundle.json");
-    std::fs::write(&policy_bundle_path, generation).expect("write HookPolicyBundle");
+    let temp = tempfile::tempdir().expect("temporary Hook fixture");
     std::fs::write(temp.path().join("fixture.rs"), "fn fixture() {}\n")
         .expect("write registered source operand");
     let probe_marker = temp.path().join("reader-probe-must-not-run");
@@ -442,17 +729,7 @@ fn process_bound_no_agent_forms_bypass_the_installed_policy_engine() {
     ] {
         let started = Instant::now();
         let mut child = hook_command()
-            .args([
-                "pre-tool",
-                "--client",
-                "codex",
-                "--policy-bundle",
-                policy_bundle_path
-                    .to_str()
-                    .expect("UTF-8 policy bundle path"),
-                "--host-match",
-                "Bash",
-            ])
+            .args(["pre-tool", "--client", "codex", "--host-match", "Bash"])
             .current_dir(temp.path())
             .env("PATH", temp.path())
             .stdin(Stdio::piped())
@@ -491,26 +768,16 @@ fn process_bound_no_agent_forms_bypass_the_installed_policy_engine() {
 }
 
 #[test]
-fn command_local_no_agent_escape_precedes_missing_policy_bundle() {
+fn command_local_no_agent_escape_precedes_the_default_policy() {
     let _test_guard = hook_process_test_guard();
-    let temp = tempfile::tempdir().expect("temporary missing policy bundle");
-    let missing = temp.path().join("missing-policy-bundle.json");
     for command in [
-        "ASP_NO_AGENT=1 arbitrary-command fixture.rs",
-        "/usr/bin/env ASP_NO_AGENT=1 arbitrary-command fixture.rs",
-        "export ASP_NO_AGENT=1; arbitrary-command fixture.rs",
-        "export ASP_NO_AGENT=1; exec arbitrary-command fixture.rs",
+        "ASP_NO_AGENT=1 rg HookDecision fixture.rs",
+        "/usr/bin/env ASP_NO_AGENT=1 rg HookDecision fixture.rs",
+        "export ASP_NO_AGENT=1; rg HookDecision fixture.rs",
+        "export ASP_NO_AGENT=1; exec rg HookDecision fixture.rs",
     ] {
         let mut child = hook_command()
-            .args([
-                "pre-tool",
-                "--client",
-                "codex",
-                "--policy-bundle",
-                missing.to_str().expect("UTF-8 missing path"),
-                "--host-match",
-                "Bash",
-            ])
+            .args(["pre-tool", "--client", "codex", "--host-match", "Bash"])
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -536,15 +803,7 @@ fn command_local_no_agent_escape_precedes_missing_policy_bundle() {
     }
 
     let mut child = hook_command()
-        .args([
-            "pre-tool",
-            "--client",
-            "codex",
-            "--policy-bundle",
-            missing.to_str().expect("UTF-8 missing path"),
-            "--host-match",
-            "Bash",
-        ])
+        .args(["pre-tool", "--client", "codex", "--host-match", "Bash"])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .spawn()
@@ -553,7 +812,7 @@ fn command_local_no_agent_escape_precedes_missing_policy_bundle() {
         child.stdin.as_mut().expect("Hook stdin"),
         &serde_json::json!({
             "tool_name": "Bash",
-            "tool_input": {"command": "printf 'ASP_NO_AGENT=1'; arbitrary-command fixture.rs"}
+            "tool_input": {"command": "printf 'ASP_NO_AGENT=1'; rg HookDecision fixture.rs"}
         }),
     )
     .expect("write negative Host payload");
@@ -565,23 +824,8 @@ fn command_local_no_agent_escape_precedes_missing_policy_bundle() {
         serde_json::from_slice(&output.stdout).expect("valid fail-closed Host JSON");
     assert_eq!(output.status.code(), Some(0));
     assert_eq!(terminal["hookSpecificOutput"]["permissionDecision"], "deny");
-    assert!(
-        terminal["hookSpecificOutput"]["permissionDecisionReason"]
-            .as_str()
-            .is_some_and(|message| message.contains("Hook policy bundle")),
-        "terminal={terminal}"
-    );
-
     let mut child = hook_command()
-        .args([
-            "pre-tool",
-            "--client",
-            "codex",
-            "--policy-bundle",
-            missing.to_str().expect("UTF-8 missing path"),
-            "--host-match",
-            "Bash",
-        ])
+        .args(["pre-tool", "--client", "codex", "--host-match", "Bash"])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .spawn()
@@ -590,7 +834,7 @@ fn command_local_no_agent_escape_precedes_missing_policy_bundle() {
         child.stdin.as_mut().expect("Hook stdin"),
         &serde_json::json!({
             "tool_name": "Bash",
-            "tool_input": {"command": "ASP_NO_ASP=1 arbitrary-command fixture.rs"}
+            "tool_input": {"command": "ASP_NO_ASP=1 rg HookDecision fixture.rs"}
         }),
     )
     .expect("write lookalike-variable Host payload");

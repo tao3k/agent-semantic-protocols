@@ -66,6 +66,7 @@ pub struct RuntimeIdentityMonitorHandle {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ResidentActivationIdentity {
+    pub(crate) activation_generation: u64,
     pub(crate) artifact_digest:
         agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest,
     pub(crate) publication_nonce: String,
@@ -104,6 +105,7 @@ struct RuntimeIdentityMonitorReceipt<'a> {
 pub fn spawn_runtime_identity_monitor(
     state_home: PathBuf,
     owner_epoch: u64,
+    activation_generation: u64,
     publication_nonce: String,
     artifact_digest: agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest,
     artifact_mode: &str,
@@ -112,6 +114,7 @@ pub fn spawn_runtime_identity_monitor(
         state_home,
         owner_epoch,
         Some(ResidentActivationIdentity {
+            activation_generation,
             artifact_digest,
             publication_nonce,
             owner_epoch,
@@ -149,9 +152,9 @@ pub(crate) fn spawn_runtime_identity_monitor_with_intervals(
             false,
         )
         .await;
-        let mut tick = tokio::time::interval(poll_interval);
+        let mut tick =
+            tokio::time::interval_at(tokio::time::Instant::now() + poll_interval, poll_interval);
         tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-        let mut awaiting_running_confirmation = running_identity.is_some();
         let mut last_identity = running_identity;
         let mut last_heartbeat = tokio::time::Instant::now();
         let mut last_applied_failure = None;
@@ -202,8 +205,9 @@ pub(crate) fn spawn_runtime_identity_monitor_with_intervals(
                             continue;
                         }
                     };
-                    let identity = ResidentActivationIdentity {
-                        artifact_digest: applied.artifact_digest,
+                let identity = ResidentActivationIdentity {
+                    activation_generation: applied.activation_generation,
+                    artifact_digest: applied.artifact_digest,
                         publication_nonce: applied.publication_nonce,
                         owner_epoch,
                     };
@@ -222,16 +226,15 @@ pub(crate) fn spawn_runtime_identity_monitor_with_intervals(
                             last_heartbeat = tokio::time::Instant::now();
                             last_identity = Some(identity);
                         }
-                        Some(previous) if awaiting_running_confirmation && previous != &identity => {
-                            // The candidate is already Active, while the prior Healthy
-                            // receipt remains applied until readiness commits. It is
-                            // convergence lag, never successor authority.
-                            continue;
-                        }
-                        Some(previous) if awaiting_running_confirmation && previous == &identity => {
-                            awaiting_running_confirmation = false;
-                        }
-                        Some(previous) if previous != &identity => {
+                    Some(previous)
+                        if identity.activation_generation < previous.activation_generation =>
+                    {
+                        // The applied receipt is an older Healthy publication.
+                        // Sequence is used only as a fence; it never makes two
+                        // different content identities equal.
+                        continue;
+                    }
+                    Some(previous) if previous != &identity => {
                             let previous_label = runtime_identity_label(previous);
                             let event = RuntimeIdentityChanged {
                                 previous_identity: previous_label.clone(),

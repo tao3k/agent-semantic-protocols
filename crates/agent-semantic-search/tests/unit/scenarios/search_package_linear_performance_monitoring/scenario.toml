@@ -31,8 +31,11 @@ reference_patterns = [
   "mod",
   "playbook_receipt",
   "playbook_pipeline_performance",
-  "public_playbook",
+  "native_fd_query",
+  "progressive_playbook",
+  "progressive_query",
   "provider_candidate_annotations",
+  "provider_playbook_contract",
   "resident_source_index",
   "resident_byte_coverage",
   "resident_graph_search",
@@ -55,6 +58,7 @@ reference_patterns = [
   "unit_test",
   "unit_test_smoke",
   "workspace_playbook_plan",
+  "workspace_playbook_result",
 ]
 inputs = "inputs"
 expected = "expected"

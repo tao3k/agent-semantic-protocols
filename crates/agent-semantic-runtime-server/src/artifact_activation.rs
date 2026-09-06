@@ -6,7 +6,6 @@ use agent_semantic_artifacts::runtime_artifact_activation::RuntimeArtifactActiva
 use agent_semantic_artifacts::runtime_artifact_activation::acknowledge_runtime_artifact_activation;
 use agent_semantic_artifacts::runtime_artifact_activation::read_runtime_artifact_activation_event;
 use agent_semantic_artifacts::runtime_artifact_activation::rollback_runtime_artifact_activation;
-use agent_semantic_artifacts::runtime_artifact_activation::runtime_artifact_activation_socket_path;
 use tokio::sync::oneshot;
 use tokio::sync::watch;
 
@@ -24,17 +23,12 @@ pub enum RuntimeArtifactActivationDisposition {
 }
 
 pub struct RuntimeArtifactActivationActor {
-    endpoint: PathBuf,
     shutdown: Option<oneshot::Sender<()>>,
     task: Option<tokio::task::JoinHandle<Result<(), String>>>,
     receipts: watch::Receiver<Option<RuntimeArtifactActivationReceipt>>,
 }
 
 impl RuntimeArtifactActivationActor {
-    pub fn endpoint(&self) -> &Path {
-        &self.endpoint
-    }
-
     pub fn receipts(&self) -> watch::Receiver<Option<RuntimeArtifactActivationReceipt>> {
         self.receipts.clone()
     }
@@ -68,31 +62,16 @@ where
     F: Fn(RuntimeArtifactActivationEvent) -> Fut + Send + Sync + 'static,
     Fut: Future<Output = Result<RuntimeArtifactActivationDisposition, String>> + Send + 'static,
 {
-    let endpoint = runtime_artifact_activation_socket_path(&state_home);
-    let parent = endpoint.parent().ok_or_else(|| {
-        format!(
-            "Runtime activation endpoint has no parent: {}",
-            endpoint.display()
-        )
-    })?;
-    tokio::fs::create_dir_all(parent)
-        .await
-        .map_err(|error| format!("create Runtime activation endpoint directory: {error}"))?;
-    if tokio::fs::try_exists(&endpoint)
-        .await
-        .map_err(|error| format!("inspect Runtime activation endpoint: {error}"))?
-    {
-        tokio::fs::remove_file(&endpoint)
-            .await
-            .map_err(|error| format!("remove stale Runtime activation endpoint: {error}"))?;
-    }
-    let socket = tokio::net::UnixDatagram::bind(&endpoint)
-        .map_err(|error| format!("bind Runtime artifact activation actor: {error}"))?;
     let (shutdown_tx, mut shutdown_rx) = oneshot::channel();
     let (receipt_tx, receipt_rx) = watch::channel(None);
-    let task_endpoint = endpoint.clone();
     let task = tokio::spawn(async move {
+        let mut last_observed_event = None;
         if let Some(event) = read_runtime_artifact_activation_event(&state_home).await? {
+            last_observed_event = Some((
+                event.bundle_digest.clone(),
+                event.artifact_digest.clone(),
+                event.publication_nonce.clone(),
+            ));
             match activate_and_acknowledge(&state_home, &activate, event.clone()).await {
                 Ok(receipt) => {
                     let _ = receipt_tx.send(Some(receipt));
@@ -106,35 +85,41 @@ where
                 }
             }
         }
-        let mut buffer = vec![0_u8; 16 * 1024];
+        let mut reconcile = tokio::time::interval(std::time::Duration::from_millis(50));
+        reconcile.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         loop {
             tokio::select! {
                 _ = &mut shutdown_rx => break,
-                received = socket.recv(&mut buffer) => {
-                    let received = received
-                        .map_err(|error| format!("receive Runtime artifact activation event: {error}"))?;
-                    let event: RuntimeArtifactActivationEvent = serde_json::from_slice(&buffer[..received])
-                        .map_err(|error| format!("decode Runtime artifact activation datagram: {error}"))?;
-                    match activate_and_acknowledge(&state_home, &activate, event.clone()).await {
-                        Ok(receipt) => {
-                            let _ = receipt_tx.send(Some(receipt));
-                        }
-                        Err(error) => {
-                            let _ = receipt_tx.send(Some(RuntimeArtifactActivationReceipt {
-                                artifact_digest: event.artifact_digest,
-                                state: "failed",
-                                reason: Some(error),
-                            }));
-                        }
+                _ = reconcile.tick() => {
+                    let Some(event) = read_runtime_artifact_activation_event(&state_home).await? else {
+                        continue;
+                    };
+                    let event_identity = (
+                        event.bundle_digest.clone(),
+                        event.artifact_digest.clone(),
+                        event.publication_nonce.clone(),
+                    );
+                    if last_observed_event.as_ref() == Some(&event_identity) {
+                        continue;
+                    }
+                    last_observed_event = Some(event_identity);
+                    let receipt = match activate_and_acknowledge(&state_home, &activate, event.clone()).await {
+                        Ok(receipt) => receipt,
+                        Err(error) => RuntimeArtifactActivationReceipt {
+                            artifact_digest: event.artifact_digest,
+                            state: "failed",
+                            reason: Some(error),
+                        },
+                    };
+                    if receipt_tx.send(Some(receipt)).is_err() {
+                        break;
                     }
                 }
             }
         }
-        let _ = tokio::fs::remove_file(&task_endpoint).await;
         Ok(())
     });
     Ok(RuntimeArtifactActivationActor {
-        endpoint,
         shutdown: Some(shutdown_tx),
         task: Some(task),
         receipts: receipt_rx,

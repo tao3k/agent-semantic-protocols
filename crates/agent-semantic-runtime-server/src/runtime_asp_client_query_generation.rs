@@ -38,7 +38,6 @@ pub(super) fn dispatch_budget_for_method(method: &str) -> Option<std::time::Dura
 pub(super) struct ExactQueryFailure {
     pub(super) reason_kind: &'static str,
     pub(super) resolved_selector: Option<String>,
-    pub(super) recommended_next: serde_json::Value,
 }
 
 pub(super) fn classify_exact_query_failure(
@@ -52,50 +51,31 @@ pub(super) fn classify_exact_query_failure(
         WorkspaceRuntimeSelectorRead::GenerationMissing => Some(ExactQueryFailure {
             reason_kind: "runtime-generation-missing",
             resolved_selector: None,
-            recommended_next: serde_json::json!({"action": "admit-runtime-generation"}),
         }),
         WorkspaceRuntimeSelectorRead::ProjectionMissing {
             resolved_selector, ..
         } => Some(ExactQueryFailure {
             reason_kind: "projection-missing",
             resolved_selector: Some(resolved_selector.clone()),
-            recommended_next: serde_json::json!({
-                "action": "query-owner-or-admitted-scope",
-                "selector": resolved_selector,
-            }),
         }),
         WorkspaceRuntimeSelectorRead::ProjectionScopeOmitted {
-            resolved_selector,
-            projection_scope,
-            ..
+            resolved_selector, ..
         } => Some(ExactQueryFailure {
             reason_kind: "projection-scope-omitted",
             resolved_selector: Some(resolved_selector.clone()),
-            recommended_next: serde_json::json!({
-                "action": "select-admitted-projection-scope",
-                "projectionScope": projection_scope,
-            }),
         }),
         WorkspaceRuntimeSelectorRead::OwnerForRepair { .. } => Some(ExactQueryFailure {
             reason_kind: "owner-repair-required",
             resolved_selector: None,
-            recommended_next: serde_json::json!({"action": "repair-resident-owner-projection"}),
         }),
         WorkspaceRuntimeSelectorRead::OwnerMissing { .. } => Some(ExactQueryFailure {
             reason_kind: "owner-missing",
             resolved_selector: None,
-            recommended_next: serde_json::json!({"action": "reconcile-runtime-owner"}),
         }),
-        WorkspaceRuntimeSelectorRead::RelocationAmbiguous { candidates, .. } => {
-            Some(ExactQueryFailure {
-                reason_kind: "relocation-ambiguous",
-                resolved_selector: None,
-                recommended_next: serde_json::json!({
-                    "action": "choose-relocation-candidate",
-                    "candidates": candidates,
-                }),
-            })
-        }
+        WorkspaceRuntimeSelectorRead::RelocationAmbiguous { .. } => Some(ExactQueryFailure {
+            reason_kind: "relocation-ambiguous",
+            resolved_selector: None,
+        }),
     }
 }
 
@@ -130,11 +110,18 @@ pub(super) fn query_generation_not_ready_error(
         elapsed_micros,
     } = context;
     let reason_kind = "query-not-ready";
-    let recommended_next = serde_json::json!({
-        "action": "publish-complete-workspace-generation",
-        "projectId": project_id,
-        "workspaceId": workspace_id,
-    });
+    let message = publication_error.map_or_else(
+        || {
+            format!(
+                "no immutable CompleteGeneration is published for this workspace: state={generation_state}"
+            )
+        },
+        |error| {
+            format!(
+                "no immutable CompleteGeneration is published for this workspace: state={generation_state} cause={error}"
+            )
+        },
+    );
     if let Some(exact_query) = exact_query {
         let failure = AspClientExactQueryFailure {
             schema_id: "agent.semantic-protocols.asp-client-exact-query-failure".to_owned(),
@@ -152,7 +139,6 @@ pub(super) fn query_generation_not_ready_error(
             reason_kind: reason_kind.to_owned(),
             generation_digest: None,
             root_digest: None,
-            recommended_next,
             resident_read_elapsed_micros: 0,
             service_elapsed_micros: elapsed_micros,
             elapsed_micros,
@@ -165,13 +151,13 @@ pub(super) fn query_generation_not_ready_error(
         failure.validate()?;
         return Ok(AspClientDispatchError {
             reason_kind: reason_kind.to_owned(),
-            message: "no immutable CompleteGeneration is published for this workspace".to_owned(),
+            message,
             details: Some(serde_json::to_value(failure).map_err(|error| error.to_string())?),
         });
     }
     Ok(AspClientDispatchError {
         reason_kind: reason_kind.to_owned(),
-        message: "no immutable CompleteGeneration is published for this workspace".to_owned(),
+        message,
         details: Some(serde_json::json!({
             "schemaId": "agent.semantic-protocols.asp-client-query-readiness-failure",
             "schemaVersion": "1",
@@ -184,7 +170,6 @@ pub(super) fn query_generation_not_ready_error(
             "providerId": provider_id,
             "generationState": generation_state,
             "publicationError": publication_error,
-            "recommendedNext": recommended_next,
             "elapsedMicros": elapsed_micros,
             "workCounters": AspClientRuntimeWorkCounters::default(),
         })),
@@ -219,7 +204,7 @@ pub(super) async fn install_runtime_query_generation_terminal(
     project_workspace_key: &RuntimeProjectWorkspaceKey,
     workspace_identity: &str,
     project_root: &std::path::Path,
-) -> Result<(), RuntimeQueryGenerationInstallError> {
+) -> Result<Arc<crate::RuntimeQueryGeneration>, RuntimeQueryGenerationInstallError> {
     let commit = terminal.commit.as_ref().ok_or_else(|| {
         RuntimeQueryGenerationInstallError::pending(
             "workspace generation readiness terminal is missing its commit",
@@ -228,18 +213,31 @@ pub(super) async fn install_runtime_query_generation_terminal(
     let resident_read = workspace_registry
         .resident_read_client(workspace_identity, project_root)
         .map_err(RuntimeQueryGenerationInstallError::published)?;
+    let resident_generation_digest = resident_read.generation_digest();
+    let resident_source_root_digest = resident_read.source_root_digest();
+    if resident_source_root_digest != commit.source_root_digest {
+        return Err(RuntimeQueryGenerationInstallError::published(format!(
+            "workspace generation resident root mismatch: expected={} actual={resident_source_root_digest}",
+            commit.source_root_digest,
+        )));
+    }
+    // The admission commit is the lower-bound publication witnessed by this
+    // request. The resident registry may already have advanced to a later
+    // CompleteGeneration while the terminal callback was being delivered.
+    // Follow that generation only when it proves the same source root; this
+    // closes the first-request race without retrying or reopening the pointer.
     let resident = query_generation_authority
         .ensure_ready_resident(
             project_workspace_key,
             project_root,
             resident_read,
-            &commit.generation_digest,
+            &resident_generation_digest,
         )
         .await
         .map_err(RuntimeQueryGenerationInstallError::published)?;
     let actual_root_digest = resident.resident().source_root_digest();
     if actual_root_digest == commit.source_root_digest {
-        return Ok(());
+        return Ok(resident);
     }
     let error = format!(
         "workspace generation resident root mismatch: expected={} actual={actual_root_digest}",
@@ -261,6 +259,56 @@ pub(super) async fn install_runtime_query_generation_terminal(
         error.clone(),
     );
     Err(RuntimeQueryGenerationInstallError::published(error))
+}
+
+/// Revalidate every serving reuse against the current Runtime admission.
+///
+/// A resident query generation may have been opened by a non-language request
+/// before a V1 provider-execution binding existed.  Reusing that handle for a
+/// later language operation without returning through the admission validator
+/// would bypass the legacy-refresh barrier.  The admission owner either proves
+/// the current binding unchanged or rebuilds and publishes one replacement
+/// CompleteGeneration before this returns.
+pub(super) async fn revalidate_runtime_query_generation(
+    generation_admission: &WorkspaceGenerationAdmission,
+    query_generation_authority: &RuntimeQueryGenerationAuthority,
+    workspace_registry: &Arc<
+        agent_semantic_client_db::runtime_server_workspace::RuntimeServerWorkspaceRegistry,
+    >,
+    project_workspace_key: &RuntimeProjectWorkspaceKey,
+    workspace_identity: String,
+    project_root: std::path::PathBuf,
+    provider_targets: &[agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationProviderTarget],
+) -> Result<Arc<crate::RuntimeQueryGeneration>, String> {
+    let terminal = if provider_targets.is_empty() {
+        generation_admission
+            .ensure_runtime_generation_ready(workspace_identity.clone(), project_root.clone())
+            .await?
+    } else {
+        let mut last_terminal = None;
+        for provider_target in provider_targets {
+            last_terminal = Some(
+                generation_admission
+                    .ensure_runtime_generation_ready_for_provider(
+                        workspace_identity.clone(),
+                        project_root.clone(),
+                        Some(provider_target.clone()),
+                    )
+                    .await?,
+            );
+        }
+        last_terminal.expect("non-empty provider target set")
+    };
+    install_runtime_query_generation_terminal(
+        &terminal,
+        query_generation_authority,
+        workspace_registry.as_ref(),
+        project_workspace_key,
+        &workspace_identity,
+        &project_root,
+    )
+    .await
+    .map_err(|error| error.message)
 }
 
 async fn publish_runtime_query_generation_terminal(
@@ -322,6 +370,9 @@ pub(super) fn request_runtime_query_generation_ready(
     project_workspace_key: &RuntimeProjectWorkspaceKey,
     workspace_identity: String,
     project_root: std::path::PathBuf,
+    provider_targets: Vec<
+        agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationProviderTarget,
+    >,
 ) -> Result<
     agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationReadinessRequestState,
     String,
@@ -331,9 +382,10 @@ pub(super) fn request_runtime_query_generation_ready(
     let terminal_key = project_workspace_key.clone();
     let terminal_workspace_identity = workspace_identity.clone();
     let terminal_project_root = project_root.clone();
-    generation_admission.request_runtime_generation_ready_with_terminal(
+    generation_admission.request_runtime_generations_ready_for_providers_with_terminal(
         workspace_identity,
         project_root,
+        provider_targets,
         move |terminal| {
             publish_runtime_query_generation_terminal(
                 terminal,

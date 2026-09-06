@@ -6,7 +6,7 @@
   "additionalProperties": false,
   "required": [
     "schemaId", "schemaVersion", "state", "operationId", "projectId", "workspaceId", "languageId",
-    "providerId", "phase", "reasonKind", "recommendedNext",
+    "providerId", "phase", "reasonKind",
     "residentReadElapsedMicros", "serviceElapsedMicros", "elapsedMicros",
     "workCounters", "details"
   ],
@@ -34,7 +34,6 @@
       "type": ["string", "null"],
       "pattern": "^[0-9a-f]{64}$"
     },
-    "recommendedNext": {},
     "residentReadElapsedMicros": { "type": "integer", "minimum": 0 },
     "serviceElapsedMicros": { "type": "integer", "minimum": 0 },
     "elapsedMicros": { "type": "integer", "minimum": 0 },

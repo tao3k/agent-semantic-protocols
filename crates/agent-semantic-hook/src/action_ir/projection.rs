@@ -19,9 +19,33 @@ pub(crate) fn project_agent_action(
     action: &ToolAction,
     match_paths: Option<&[String]>,
     structured_source_operands: Option<&[String]>,
+    command_action_patterns: &[agent_semantic_config::HookClientCommandActionPatternConfig],
 ) -> AgentAction {
     let (mut agent_action, command_stages, behavior_facts) =
         action.derive_agent_action_with_shell_facts();
+
+    for family in command_action_patterns {
+        let semantic_action = match family.action {
+            agent_semantic_config::HookClientActionKind::Read => AgentActionKind::Read,
+            agent_semantic_config::HookClientActionKind::Search => AgentActionKind::Search,
+            _ => continue,
+        };
+        if command_stages.iter().any(|stage| {
+            family.argv_pattern_any.iter().any(|pattern| {
+                agent_semantic_shell_parser::command_tokens_match_argv_pattern(
+                    stage.words(),
+                    pattern,
+                    true,
+                    "|",
+                )
+            })
+        }) {
+            agent_action.add_capability(SemanticCapability {
+                action: semantic_action,
+                evidence: SemanticCapabilityEvidence::ConfiguredCommandPattern,
+            });
+        }
+    }
 
     let mut subject_paths = structured_source_operands.unwrap_or_default().to_vec();
     let mut candidate_subject_paths = command_stages

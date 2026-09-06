@@ -1,5 +1,6 @@
 """Shared SCM typed-plan operation schema checks."""
 
+import json
 from pathlib import Path
 
 from unit.schema_validation import schema_validator_for
@@ -46,7 +47,7 @@ def test_provider_syntax_query_request_is_grammarless_and_schema_v1() -> None:
         assert forbidden not in encoded
 
 
-def test_provider_syntax_query_response_returns_native_fact_spans() -> None:
+def test_provider_syntax_query_response_maps_every_capture_to_exact_query() -> None:
     response = {
         "schemaId": "agent.semantic-protocols.provider-syntax-query-response",
         "schemaVersion": "1",
@@ -61,6 +62,7 @@ def test_provider_syntax_query_response_returns_native_fact_spans() -> None:
                 "patternIndex": 0,
                 "captureName": "function.name",
                 "nativeFactRef": "rust:item:src/lib.rs:1:1:run",
+                "structuralSelector": "rust://src/lib.rs#item/function/run",
                 "sourceByteStart": 7,
                 "sourceByteEnd": 10,
             }
@@ -69,3 +71,17 @@ def test_provider_syntax_query_response_returns_native_fact_spans() -> None:
     schema_validator_for(SCHEMAS / "provider-syntax-query-response.schema.json").validate(
         response
     )
+
+
+def test_rust_registration_publishes_provider_owned_search_playbook_contract() -> None:
+    registration = json.loads(
+        (ROOT / "languages/asp-rust/provider/asp-provider-registration.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    contract = registration["searchPlaybookContract"]
+    schema_validator_for(
+        SCHEMAS / "provider-search-playbook-contract.schema.json"
+    ).validate(contract)
+    projection = contract["projection"]
+    assert set(projection) == {"example", "grammar"}

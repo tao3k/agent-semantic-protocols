@@ -1,6 +1,5 @@
 //! Immutable content-store publication and stable artifact links.
 
-use std::io::ErrorKind;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -182,10 +181,11 @@ pub async fn publish_qualified_runtime_artifact_under_guard(
     .map_err(|error| format!("qualified Runtime artifact publication task failed: {error}"))?
 }
 
-/// Promotes the current immutable generation only after an external Runtime
-/// health authority has qualified the exact same content digest. The empty
-/// active/healthy pair is seeded during first publication; later publications cannot move
-/// the healthy slot through this API without matching health evidence.
+/// Qualifies the complete active Runtime bundle after verifying the named
+/// member has the exact health-qualified content digest.
+///
+/// There is only one active/healthy pair. The binary name selects a member for
+/// validation; it never selects an independent mutable slot.
 pub async fn promote_active_runtime_artifact_to_healthy(
     state_home: &Path,
     binary: &str,
@@ -202,67 +202,40 @@ pub async fn promote_active_runtime_artifact_to_healthy(
     let state_home = state_home.to_path_buf();
     let binary = binary.to_owned();
     let qualified_digest = qualified_digest.clone();
-    let artifact_root = state_home.join("runtime/artifacts");
     tokio::task::spawn_blocking(move || {
-        let _mutation_guard =
-            crate::runtime_artifact_retention::RuntimeArtifactMutationGuard::try_acquire(
-                &artifact_root,
-            )?;
-        let runtime_root = state_home.join("runtime");
-        let algorithm_root = artifact_root.join("blake3-256");
-        let profile_root = runtime_root.join("profiles").join(&binary);
-        let active_slot = profile_root.join("active");
-        let healthy_slot = profile_root.join("healthy");
-        let active_identity = std::fs::canonicalize(&active_slot).map_err(|error| {
-            format!(
-                "resolve active Runtime artifact {}: {error}",
-                active_slot.display()
-            )
-        })?;
-        let canonical_algorithm_root = std::fs::canonicalize(&algorithm_root).map_err(|error| {
-            format!(
-                "resolve Runtime artifact content store {}: {error}",
-                algorithm_root.display()
-            )
-        })?;
-        let relative = active_identity
-            .strip_prefix(&canonical_algorithm_root)
-            .map_err(|_| {
-                format!(
-                    "active Runtime artifact escapes content store: {}",
-                    active_identity.display()
-                )
-            })?;
-        let mut components = relative.components();
-        let digest_hex = components
-            .next()
-            .and_then(|component| component.as_os_str().to_str())
-            .ok_or_else(|| "active Runtime artifact has no valid content digest".to_owned())?;
-        let digest = crate::blake3_content_digest::Blake3ContentDigest::parse(&format!(
-            "blake3-256:{digest_hex}"
-        ))?;
-        if digest != qualified_digest {
-            return Err(format!(
-                "Runtime health identity does not qualify active artifact: qualified={qualified_digest} active={digest}"
-            ));
-        }
-        let artifact_binary = components
-            .next()
-            .and_then(|component| component.as_os_str().to_str());
-        if artifact_binary != Some(binary.as_str()) || components.next().is_some() {
-            return Err(format!(
-                "active Runtime artifact identity drift: expected={binary} actual={}",
-                active_identity.display()
-            ));
-        }
-        publish_runtime_artifact_link(&active_identity, &healthy_slot)?;
-        crate::runtime_artifact_retention::prune_unreachable_runtime_artifacts_blocking(
-            &artifact_root,
+        let layout = crate::RuntimeArtifactStateLayout::new(&state_home);
+        let _guard = crate::runtime_artifact_retention::RuntimeArtifactMutationGuard::try_acquire(
+            layout.root(),
         )?;
-        Ok(digest)
+        let active_bundle = std::fs::canonicalize(layout.active_slot()).map_err(|error| {
+            format!("resolve active Runtime bundle: {error}")
+        })?;
+        let canonical_bundle_store = std::fs::canonicalize(layout.bundle_store()).map_err(|error| {
+            format!("resolve Runtime bundle store: {error}")
+        })?;
+        if !active_bundle.starts_with(&canonical_bundle_store) {
+            return Err(format!(
+                "active Runtime bundle escapes bundle store: {}",
+                active_bundle.display()
+            ));
+        }
+        let active_member = std::fs::canonicalize(active_bundle.join(&binary)).map_err(|error| {
+            format!("resolve active Runtime bundle member `{binary}`: {error}")
+        })?;
+        let observed = runtime_artifact_content_digest(&active_member)?;
+        if observed != qualified_digest {
+            return Err(format!(
+                "Runtime health identity does not qualify active bundle member: qualified={qualified_digest} active={observed}"
+            ));
+        }
+        publish_runtime_artifact_link(&active_bundle, &layout.healthy_slot())?;
+        crate::runtime_artifact_retention::prune_unreachable_runtime_artifacts_blocking(
+            layout.root(),
+        )?;
+        Ok(observed)
     })
     .await
-    .map_err(|error| format!("Runtime artifact health promotion task failed: {error}"))?
+    .map_err(|error| format!("Runtime bundle health promotion task failed: {error}"))?
 }
 
 fn artifact_publication_semaphore() -> &'static Arc<tokio::sync::Semaphore> {
@@ -421,50 +394,23 @@ fn publish_content_artifact(
             artifact_path.display()
         )
     })?;
-    let runtime_root = artifact_root.parent().ok_or_else(|| {
-        format!(
-            "runtime artifact root has no runtime parent: {}",
-            artifact_root.display()
-        )
-    })?;
-    let profile_root = runtime_root.join("profiles").join(file_name);
-    let active_slot = profile_root.join("active");
-    let healthy_slot = profile_root.join("healthy");
-    std::fs::create_dir_all(&profile_root)
-        .map_err(|error| format!("failed to create {}: {error}", profile_root.display()))?;
-
-    let previous_active = resolve_artifact_profile_slot(&active_slot, artifact_root, file_name)?;
-    let current_healthy = resolve_artifact_profile_slot(&healthy_slot, artifact_root, file_name)?;
-    if current_healthy.is_none() {
-        publish_runtime_artifact_link(
-            previous_active.as_deref().unwrap_or(&artifact_identity),
-            &healthy_slot,
-        )?;
-    }
-    let target_is_current = std::fs::canonicalize(&active_slot)
+    // This API only stages a qualified immutable member. It never selects
+    // serving content: the complete Runtime bundle publication owns the sole
+    // active/healthy pair.
+    let target_is_current = std::fs::canonicalize(target)
         .ok()
         .is_some_and(|identity| identity == artifact_identity);
     let status = if target_is_current {
         "current"
     } else {
-        let status = if std::fs::symlink_metadata(&active_slot).is_ok() {
+        let status = if std::fs::symlink_metadata(target).is_ok() {
             "updated"
         } else {
             "installed"
         };
-        publish_runtime_artifact_link(&artifact_identity, &active_slot)?;
+        publish_runtime_artifact_link(&artifact_identity, target)?;
         status
     };
-    let target_is_active_slot = std::fs::read_link(target)
-        .ok()
-        .is_some_and(|link| link == active_slot);
-    if !target_is_active_slot {
-        if let Some(parent) = target.parent() {
-            std::fs::create_dir_all(parent)
-                .map_err(|error| format!("failed to create {}: {error}", parent.display()))?;
-        }
-        publish_runtime_artifact_link(&active_slot, target)?;
-    }
     let reference = RuntimeArtifactReference {
         schema_id: RUNTIME_ARTIFACT_REFERENCE_SCHEMA_ID.to_owned(),
         schema_version: RUNTIME_ARTIFACT_REFERENCE_SCHEMA_VERSION,
@@ -478,7 +424,6 @@ fn publish_content_artifact(
         checkout_root,
     };
     reference.validate()?;
-    crate::runtime_artifact_retention::prune_unreachable_runtime_artifacts_blocking(artifact_root)?;
     Ok(RuntimeArtifactPublication {
         path: target.to_path_buf(),
         source_path: source_identity,
@@ -505,55 +450,6 @@ pub(crate) fn publish_runtime_artifact_link(artifact: &Path, target: &Path) -> R
     remove_stale_staged_artifact(&staged)?;
     stage_runtime_artifact_link(artifact, &staged)?;
     atomic_replace_runtime_artifact(&staged, target)
-}
-
-fn resolve_artifact_profile_slot(
-    slot: &Path,
-    artifact_root: &Path,
-    binary: &std::ffi::OsStr,
-) -> Result<Option<PathBuf>, String> {
-    let identity = match std::fs::canonicalize(slot) {
-        Ok(identity) => identity,
-        Err(error) if error.kind() == ErrorKind::NotFound => return Ok(None),
-        Err(error) => {
-            return Err(format!(
-                "failed to resolve Runtime artifact slot {}: {error}",
-                slot.display()
-            ));
-        }
-    };
-    let algorithm_root =
-        std::fs::canonicalize(artifact_root.join("blake3-256")).map_err(|error| {
-            format!(
-                "failed to resolve Runtime artifact content store {}: {error}",
-                artifact_root.display()
-            )
-        })?;
-    let relative = identity.strip_prefix(&algorithm_root).map_err(|_| {
-        format!(
-            "Runtime artifact slot escapes content store: slot={} target={}",
-            slot.display(),
-            identity.display()
-        )
-    })?;
-    let mut components = relative.components();
-    let digest_valid = components
-        .next()
-        .and_then(|component| component.as_os_str().to_str())
-        .is_some_and(|digest| {
-            digest.len() == 64 && digest.bytes().all(|byte| byte.is_ascii_hexdigit())
-        });
-    let binary_matches = components
-        .next()
-        .is_some_and(|component| component.as_os_str() == binary);
-    if !digest_valid || !binary_matches || components.next().is_some() {
-        return Err(format!(
-            "Runtime artifact slot identity drift: slot={} target={}",
-            slot.display(),
-            identity.display()
-        ));
-    }
-    Ok(Some(identity))
 }
 
 fn temporary_runtime_artifact_path(target: &Path) -> PathBuf {

@@ -41,24 +41,41 @@ pub(super) async fn run_healthcheck_command(args: &[String]) -> Result<(), Strin
         )?
         .is_some()
         {
-            let identity =
-                agent_semantic_runtime::runtime_artifact_identity::read_runtime_artifact_identity(
-                    &state_home,
-                    "asp",
+            let active_bundle =
+                agent_semantic_artifacts::runtime_artifact_slots::verify_runtime_artifact_bound_bundle(
+                    &agent_semantic_artifacts::RuntimeArtifactStateLayout::new(&state_home)
+                        .active_slot(),
                 )
                 .await?;
-            if identity.identity()? != health.resident.runtime_binary_identity {
+            let active_asp = active_bundle
+                .member_path("asp")
+                .ok_or_else(|| "active Runtime bundle omits asp".to_owned())?;
+            let active_identity =
+                agent_semantic_artifacts::runtime_artifact_catalog::RuntimeBinaryIdentity::from_bytes(
+                    &tokio::fs::read(&active_asp).await.map_err(|error| {
+                        format!("read active Runtime asp {}: {error}", active_asp.display())
+                    })?,
+                );
+            if active_identity != health.resident.runtime_binary_identity {
                 return Err(
-                    "Developer Runtime health identity differs from the direct-link publication"
+                    "Developer Runtime health identity differs from the active bound bundle"
                         .to_owned(),
                 );
             }
-            agent_semantic_runtime::runtime_artifact_identity::admit_runtime_invoker(
-                &std::env::current_exe()
-                    .map_err(|error| format!("resolve healthcheck Runtime executable: {error}"))?,
-                &identity,
-                &state_home.join("runtime/bin/asp"),
-            )?;
+            let current_exe = std::env::current_exe()
+                .map_err(|error| format!("resolve healthcheck Runtime executable: {error}"))?;
+            let current_identity =
+                agent_semantic_artifacts::runtime_artifact_catalog::RuntimeBinaryIdentity::from_bytes(
+                    &tokio::fs::read(&current_exe).await.map_err(|error| {
+                        format!("read healthcheck Runtime executable {}: {error}", current_exe.display())
+                    })?,
+                );
+            if current_identity != active_identity {
+                return Err(
+                    "healthcheck Runtime executable differs from the active bound bundle"
+                        .to_owned(),
+                );
+            }
         } else {
             agent_semantic_artifacts::runtime_artifact_store::promote_active_runtime_artifact_to_healthy(
                 &state_home,

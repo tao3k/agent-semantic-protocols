@@ -218,7 +218,7 @@ configuration at daemon startup, or return a final Hook platform response.
 The plugin-owned =$PLUGIN_ROOT/bin/asp-hook= is a Host-discoverable artifact
 slot resolver, not a Hook Runtime or policy authority. It resolves the stable
 =runtime/bin/asp= alias, then the independently retained
-=runtime/profiles/asp/active= and =runtime/profiles/asp/healthy= slots, and
+=runtime/artifacts/active= and =runtime/artifacts/healthy= bundle slots, and
 executes exactly =asp hook EVENT --client codex= by replacing the launcher
 process with the first present executable slot. Missing or non-executable slots
 advance to the next artifact slot; exhaustion becomes one typed local
