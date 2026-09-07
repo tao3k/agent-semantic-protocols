@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 use super::PROVIDER_RUNTIME_FRAME_SCHEMA_VERSION;
 use super::PROVIDER_RUNTIME_RESPONSE_FRAME_SCHEMA_ID;
 use super::ProviderRuntimeRequestFrame;

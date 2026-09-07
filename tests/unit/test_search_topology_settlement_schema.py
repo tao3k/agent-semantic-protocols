@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Shape and negative contracts for a Search projection of Project Topology."""
 
 from __future__ import annotations
@@ -68,15 +72,15 @@ def test_json_selector_may_carry_a_compact_jq_projection(validator, packet):
         (lambda p: p["rendering"].update({"gqlBlockCount": 2}), "multiple GQL results"),
         (lambda p: p["terminal"].update({"terminalCount": 2}), "multiple terminals"),
         (
-            lambda p: p["fixedPoint"].update({"postRankingCertified": False}),
+            lambda p: p["inference"].update({"postRankingCertified": False}),
             "uncertified Python selection",
         ),
         (
-            lambda p: p["fixedPoint"].pop("candidateRelationSetDigest"),
+            lambda p: p["inference"].pop("candidateRelationSetDigest"),
             "fixed point without candidate relation digest",
         ),
         (
-            lambda p: p["fixedPoint"].pop("nextRelationSetDigest"),
+            lambda p: p["inference"].pop("nextRelationSetDigest"),
             "fixed point without next relation digest",
         ),
         (

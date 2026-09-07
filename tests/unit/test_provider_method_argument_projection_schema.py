@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 from __future__ import annotations
 
 import json
@@ -45,7 +49,7 @@ def test_provider_registrations_use_canonical_identity() -> None:
         "typescript": "languages/asp-typescript/provider/asp-provider-registration.json",
         "python": "languages/asp-python/provider/asp-provider-registration.json",
         "julia": "languages/AspJulia.jl/juliac/asp-provider-registration.json",
-        "gerbil-scheme": "languages/gerbil-scheme-language-project-harness/provider/asp-provider-registration.json",
+        "gerbil-scheme": "languages/asp-gerbil-scheme/provider/asp-provider-registration.json",
     }
     registrations = {
         language: _load(ROOT / registration_paths[language])

@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 #+title: SearchRoute Graph Router Pareto Cost Selection
 #+subtitle: RFC 10.05.40 / Proof stage 01.08
 #+startup: overview

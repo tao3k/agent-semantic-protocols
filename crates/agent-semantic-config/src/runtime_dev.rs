@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 //! Typed runtime development configuration and artifact-origin admission.
 
@@ -9,7 +9,39 @@ use std::path::PathBuf;
 
 use serde::Deserialize;
 
-/// Runtime artifact source selected by the state-home `asp.toml` document.
+/// Process-wide Hook engine policy from the State Home `asp.toml` contract.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct HookEngineConfig {
+    enabled: bool,
+}
+
+impl HookEngineConfig {
+    #[must_use]
+    pub const fn enabled(self) -> bool {
+        self.enabled
+    }
+}
+
+/// One parsed generation of the global ASP configuration.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AspGlobalConfig {
+    runtime_artifact_mode: RuntimeArtifactMode,
+    hook_engine: HookEngineConfig,
+}
+
+impl AspGlobalConfig {
+    #[must_use]
+    pub const fn runtime_artifact_mode(&self) -> &RuntimeArtifactMode {
+        &self.runtime_artifact_mode
+    }
+
+    #[must_use]
+    pub const fn hook_engine(&self) -> HookEngineConfig {
+        self.hook_engine
+    }
+}
+
+/// Runtime artifact source selected by the State Home `asp.toml` contract.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum RuntimeArtifactMode {
     /// Only release-lock artifacts are eligible.
@@ -37,22 +69,42 @@ struct DevSection {
 }
 
 #[derive(Debug, Deserialize)]
-struct AspConfigDocument {
-    dev: Option<DevSection>,
+#[serde(deny_unknown_fields)]
+struct HookEngineSection {
+    enabled: bool,
 }
 
-/// Parse the artifact mode from one state-home `asp.toml` document.
-pub fn parse_runtime_artifact_mode(input: &str) -> Result<RuntimeArtifactMode, String> {
+#[derive(Debug, Deserialize)]
+struct AspConfigDocument {
+    dev: Option<DevSection>,
+    #[serde(rename = "hook-engine")]
+    hook_engine: Option<HookEngineSection>,
+}
+
+/// Parse one immutable generation of the State Home `asp.toml` contract.
+pub fn parse_asp_global_config(input: &str) -> Result<AspGlobalConfig, String> {
     let document: AspConfigDocument =
-        toml::from_str(input).map_err(|error| format!("parse asp.toml dev model: {error}"))?;
-    match document.dev {
+        toml::from_str(input).map_err(|error| format!("parse global asp.toml: {error}"))?;
+    let runtime_artifact_mode = match document.dev {
         None => Ok(RuntimeArtifactMode::Release),
         Some(DevSection { enabled: false, .. }) => Ok(RuntimeArtifactMode::Release),
         Some(DevSection {
             enabled: true,
             root,
         }) => validate_dev_root(root),
-    }
+    }?;
+    let hook_engine = HookEngineConfig {
+        enabled: document.hook_engine.map_or(true, |section| section.enabled),
+    };
+    Ok(AspGlobalConfig {
+        runtime_artifact_mode,
+        hook_engine,
+    })
+}
+
+/// Parse only the artifact mode while retaining one global document grammar.
+pub fn parse_runtime_artifact_mode(input: &str) -> Result<RuntimeArtifactMode, String> {
+    parse_asp_global_config(input).map(|config| config.runtime_artifact_mode)
 }
 
 fn validate_dev_root(root: PathBuf) -> Result<RuntimeArtifactMode, String> {

@@ -1,3 +1,7 @@
+-- SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+--
+-- SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 import ASPProof.SearchRouteCost
 import ASPProof.SearchRouteDAG
 import ASPProof.SearchRouteDAGEnumeration
@@ -14,6 +18,7 @@ import ASPProof.Audit.RuntimeSelectorOverlay
 import ASPProof.Audit.SearchEvidenceDerivation
 import ASPProof.Audit.ProjectTopologyProgram
 import ASPProof.Audit.ProjectTopologyIdentityRefinement
+import ASPProof.Audit.RuntimeProjectTopologyAttachment
 import Lean.Elab.Command
 
 namespace ASPProof.Audit

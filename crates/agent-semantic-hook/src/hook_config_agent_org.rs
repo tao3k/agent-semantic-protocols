@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 //! Compiles `agentOrgArtifacts` hook policy and caches filesystem-derived Org artifact state.
 
 use agent_semantic_config::HookClientAgentOrgArtifactsArchiveWarningConfig;

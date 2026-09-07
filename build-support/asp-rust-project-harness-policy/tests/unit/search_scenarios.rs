@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 use asp_rust_project_harness_policy::ASP_SEARCH_SCENARIO_PACKAGE_NAME;
 use asp_rust_project_harness_policy::LEXICAL_SEARCH_FRAME_GRAPH_ROUTER_WARM_PATH_SCENARIO_ID;

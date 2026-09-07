@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 use super::{
     ProgressiveSearchPlaybookError, ProgressiveSearchPlaybookRequest, SearchPlaybookClauseAxis,
     parse_progressive_search_playbook_args,
@@ -8,15 +12,14 @@ fn args(values: &[&str]) -> Vec<String> {
 }
 
 #[test]
-fn empty_invocation_becomes_a_contract_index_query() {
-    assert_eq!(
-        parse_progressive_search_playbook_args(&args(&["search", "playbook"])),
-        Ok(ProgressiveSearchPlaybookRequest::ContractQuery {
-            languages: None,
-            documents: None,
-            workspace: None,
-        })
-    );
+fn empty_invocation_is_an_incomplete_request() {
+    let error = parse_progressive_search_playbook_args(&args(&["search", "playbook"]))
+        .expect_err("empty Search has no alternate contract projection");
+    assert!(matches!(
+        error,
+        ProgressiveSearchPlaybookError::IncompleteRequest(_)
+    ));
+    assert_eq!(error.reason_kind(), "search-playbook-request-incomplete");
 }
 
 #[test]
@@ -55,21 +58,20 @@ fn playbook_preserves_native_argv_and_pipe_expressions() {
         "rust",
         "--treesitter-query",
         "((identifier) @symbol)",
+        "--native-syntax",
+        "rust://src/registry.rs#item/implementation/type/Registry",
         "--graph",
         "pgql",
         "MATCH (a)-[r]->(b) RETURN a, r, b",
     ]))
     .expect("complete playbook request");
 
-    let ProgressiveSearchPlaybookRequest::Execute {
+    let ProgressiveSearchPlaybookRequest {
         languages,
         fd,
         clause_order,
         ..
-    } = request
-    else {
-        panic!("expected executable playbook request");
-    };
+    } = request;
     assert_eq!(languages.as_deref(), Some("rust|python"));
     assert_eq!(fd[0], args(&["-t", "f", "runtime|client", "."]));
     assert_eq!(
@@ -82,6 +84,7 @@ fn playbook_preserves_native_argv_and_pipe_expressions() {
             (SearchPlaybookClauseAxis::Rg, 0),
             (SearchPlaybookClauseAxis::Tantivy, 0),
             (SearchPlaybookClauseAxis::Syntax, 0),
+            (SearchPlaybookClauseAxis::NativeSyntax, 0),
             (SearchPlaybookClauseAxis::Graph, 0),
         ]
     );
@@ -101,12 +104,9 @@ fn one_acquisition_clause_executes_without_graph() {
     ]))
     .expect("first broad search does not require graph reasoning");
 
-    let ProgressiveSearchPlaybookRequest::Execute {
+    let ProgressiveSearchPlaybookRequest {
         rg, clause_order, ..
-    } = request
-    else {
-        panic!("expected executable broad search");
-    };
+    } = request;
     assert_eq!(rg.len(), 1);
     assert_eq!(clause_order.len(), 1);
     assert_eq!(clause_order[0].axis, SearchPlaybookClauseAxis::Rg);
@@ -135,9 +135,7 @@ fn repeated_clauses_preserve_agent_authored_priority() {
     ]))
     .expect("ordered clauses");
 
-    let ProgressiveSearchPlaybookRequest::Execute { clause_order, .. } = request else {
-        panic!("expected executable ordered search");
-    };
+    let ProgressiveSearchPlaybookRequest { clause_order, .. } = request;
     assert_eq!(
         clause_order
             .iter()
@@ -149,6 +147,29 @@ fn repeated_clauses_preserve_agent_authored_priority() {
             (SearchPlaybookClauseAxis::Rg, 1),
             (SearchPlaybookClauseAxis::Graph, 0),
         ]
+    );
+}
+
+#[test]
+fn native_syntax_is_a_distinct_exact_selector_axis() {
+    let request = parse_progressive_search_playbook_args(&args(&[
+        "search",
+        "playbook",
+        "--languages",
+        "rust",
+        "--native-syntax",
+        "rust://src/registry.rs#item/implementation/type/Registry",
+    ]))
+    .expect("canonical native-syntax selector");
+
+    assert!(request.syntax.is_empty());
+    assert_eq!(
+        request.native_syntax,
+        ["rust://src/registry.rs#item/implementation/type/Registry"]
+    );
+    assert_eq!(
+        request.clause_order[0].axis,
+        SearchPlaybookClauseAxis::NativeSyntax
     );
 }
 
@@ -179,22 +200,18 @@ fn acquisition_after_graph_is_rejected() {
 }
 
 #[test]
-fn incomplete_request_becomes_a_provider_contract_query() {
-    let request = parse_progressive_search_playbook_args(&args(&[
+fn incomplete_request_is_rejected_without_a_contract_projection() {
+    let error = parse_progressive_search_playbook_args(&args(&[
         "search",
         "playbook",
         "--languages",
         "rust|python",
     ]))
-    .expect("partial invocation is a contract query");
-    assert_eq!(
-        request,
-        ProgressiveSearchPlaybookRequest::ContractQuery {
-            languages: Some("rust|python".to_owned()),
-            documents: None,
-            workspace: None,
-        }
-    );
+    .expect_err("partial invocation must not return Example/Grammar");
+    assert!(matches!(
+        error,
+        ProgressiveSearchPlaybookError::IncompleteRequest(_)
+    ));
 }
 
 #[test]

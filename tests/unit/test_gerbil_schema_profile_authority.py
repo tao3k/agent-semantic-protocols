@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 import json
 from pathlib import Path
 
@@ -25,7 +29,7 @@ def test_gerbil_profile_and_provider_registry_have_one_schema_authority_each() -
     provider_registry = (
         REPO_ROOT
         / "languages"
-        / "gerbil-scheme-language-project-harness"
+        / "asp-gerbil-scheme"
         / "src"
         / "protocol"
         / "registry.ss"
@@ -52,7 +56,7 @@ def test_ci_projects_canonical_profiles_and_checks_the_provider_registry() -> No
     gerbil_ci = (
         REPO_ROOT
         / "languages"
-        / "gerbil-scheme-language-project-harness"
+        / "asp-gerbil-scheme"
         / ".github"
         / "workflows"
         / "ci.yml"

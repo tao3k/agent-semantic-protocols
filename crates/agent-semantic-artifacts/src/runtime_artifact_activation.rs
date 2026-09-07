@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 //! Runtime artifact activation event validation, commit, acknowledgement, and rollback.
 
@@ -50,6 +50,23 @@ pub struct RuntimeArtifactActivationEvent {
     pub published_at_unix_millis: u128,
     pub publication_nonce: String,
     pub candidate_identity: RuntimeArtifactCandidateIdentityReceipt,
+}
+
+impl RuntimeArtifactActivationEvent {
+    /// Validate the receipt identity without reopening mutable artifact paths.
+    pub fn validate_identity(&self) -> Result<(), String> {
+        validate_runtime_artifact_activation_event(self, "Runtime artifact activation event")
+    }
+
+    /// Canonical content identity of the complete activation receipt.
+    /// `activationGeneration` remains an observed fence inside the receipt; it
+    /// is never accepted as a replacement for this digest.
+    #[must_use]
+    pub fn content_digest(&self) -> Blake3ContentDigest {
+        Blake3ContentDigest::from_bytes(
+            &serde_json::to_vec(self).expect("Runtime activation event is serializable"),
+        )
+    }
 }
 
 pub fn runtime_artifact_activation_event_path(state_home: &Path) -> PathBuf {
@@ -405,7 +422,7 @@ pub async fn commit_runtime_artifact_activation(
         .ok_or_else(|| "Runtime activation target has no artifact kind".to_owned())?;
     let slots = RuntimeArtifactSlotAuthority::for_artifact(layout.root(), artifact_kind);
     // Reject a superseded actor before touching its immutable candidate. A
-    // newer publication is allowed to retire that unreachable candidate, so
+    // newer publication is allowed to remove that unreachable candidate, so
     // filesystem availability cannot be the authority for stale admission.
     validate_current_pending_activation_identity(state_home, event)?;
     // Content validation is deliberately outside the mutation guard. The candidate is
@@ -461,7 +478,7 @@ pub async fn commit_runtime_artifact_activation(
         ));
     }
     // Revalidate after acquiring the mutation guard. The first check keeps a
-    // retired stale candidate from turning into a path error; this second
+    // removed stale candidate from turning into a path error; this second
     // check is the linearizable CAS fence for a current actor.
     validate_current_pending_activation_identity(state_home, event)?;
     let active_before = slots.active_target().await?;
@@ -693,7 +710,7 @@ pub(crate) fn publish_applied_runtime_artifact_activation(
     match std::fs::remove_file(pending) {
         Ok(()) => Ok(()),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(error) => Err(format!("retire Runtime activation pending event: {error}")),
+        Err(error) => Err(format!("remove Runtime activation pending event: {error}")),
     }
 }
 

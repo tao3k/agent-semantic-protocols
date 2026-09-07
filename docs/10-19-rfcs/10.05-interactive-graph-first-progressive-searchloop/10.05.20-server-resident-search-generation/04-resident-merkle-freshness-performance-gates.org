@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 #+title: Resident Merkle Freshness and Performance Gates
 #+startup: overview
 
@@ -325,9 +329,11 @@ canonical executable identity, but MUST NOT hash executable bytes or recompute
 artifact metadata.  Content or metadata reads of the ASP/provider executable
 on an agent-facing path are a performance-contract violation.
 
-The canonical Runtime Server entry is a stable symlink to an immutable
-=runtime/artifacts/blake3-256/<digest>/asp= object.  Install verifies bytes
-before publishing that object and atomically switches the symlink.  Supervisor
+The canonical PATH-visible ASP entry is a stable symlink to an immutable
+=runtime/artifacts/blake3-256/<digest>/asp= object. The Runtime compatibility
+entry points to that PATH-visible entry. Install verifies bytes before
+publishing the immutable object, atomically switches the public symlink, and
+then switches the Runtime compatibility alias in the same transaction. Supervisor
 =status|start|restart= derives the expected digest from the canonical
 artifact path identity; it MUST NOT read executable bytes.  In particular, a
 restart control frame is sent before the supervisor boundary and binary

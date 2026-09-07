@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 use super::core::runtime_server_shutdown_signal;
 use super::core::{RuntimeServer, RuntimeServerExit, RuntimeServerShutdownHandle};
@@ -165,8 +165,6 @@ impl RuntimeServer {
             agent_semantic_artifacts::runtime_artifact_catalog::RuntimeArtifactCatalog,
         >,
     ) -> Result<Self, String> {
-        let provider_register_state_path = std::path::PathBuf::from(&endpoint.workspace_store_path)
-            .join("provider-register.v1.json");
         let mut status_memory = RuntimeServerStatusMemoryWriter::create(&endpoint).await?;
         let entry_counts = registry.workspace_entry_counts();
         let slot_count = entry_counts.slot_count;
@@ -184,27 +182,18 @@ impl RuntimeServer {
         let (shutdown_sender, shutdown) = watch::channel(false);
         let (readiness_sender, _readiness) =
             watch::channel(crate::runtime_server_control::RuntimeServerState::Starting);
-        let provider_seed = agent_semantic_provider_protocol::builtin_provider_registrations()?;
-        let provider_register = if artifact_catalog.runtime_bundle_digest().is_some() {
-            crate::runtime_provider_register::RuntimeProviderRegister::from_verified_seed_with_store(
-                provider_seed,
-                provider_register_state_path,
-                artifact_catalog.active_provider_targets(),
-            )
-            .await?
-        } else {
-            crate::runtime_provider_register::RuntimeProviderRegister::from_seed_with_store(
-                provider_seed,
-                provider_register_state_path,
-            )
-            .await?
-        };
         Ok(Self {
             artifact_catalog,
             workspace_registry,
             endpoint,
             listener,
-            provider_register: Arc::new(provider_register),
+            // Provider authority is injected by the daemon only after one
+            // active bound Runtime bundle has been verified.  The generic
+            // server constructor must not recover a second provider set from
+            // a mutable workspace-side register file.
+            provider_register: Arc::new(
+                crate::runtime_provider_register::RuntimeProviderRegister::new(),
+            ),
             registry,
             workspace_count,
             shutdown,

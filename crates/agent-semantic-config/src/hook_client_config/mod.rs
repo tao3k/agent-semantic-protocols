@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 //! Hook client configuration interface.
 
@@ -29,7 +29,6 @@ pub use document::HookClientCommandActionPatternConfig;
 pub use document::HookClientConfigFile;
 pub use document::HookClientProfileConfig;
 pub use document::HookClientProviderRouteIdentity;
-pub use document::HookClientRecoveryPromptConfig;
 pub use document::WrapperMatchMode;
 pub use document::default_hook_client_config_file;
 pub use document::default_hook_client_config_template;

@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 #+TITLE: Interactive Graph-First Progressive SearchLoop
 #+OPTIONS: toc:2 num:nil
 #+STARTUP: overview
@@ -224,30 +228,31 @@ as any other typed input.  It does not create a second text protocol.
 
 The following clauses are normative and stable search/proof anchors.
 
-*** SP-CONTRACT-001 — Contract discovery is not a reasoning layer
+*** SP-CONTRACT-001 — Invalid requests do not create a projection layer
 
 The Agent's intent remains in its own conversation context.  =--intent= is not
 a Search Playbook option: the Agent reasons over that context and directly
 constructs one composed request.
 
-An empty =asp search playbook= invocation returns a schema-owned contract index
-containing exactly =Example:= and =Grammar:=.  Its example selects one
-registered language or document producer.  A partial invocation that already
-contains =--languages= or =--documents= resolves the admitted provider-owned
-=searchPlaybookContract= and returns its complete native =Example:= and
-=Grammar:=.  Neither form opens a generation read or creates search state.
-They are parser recovery projections, not a reasoning layer.
+An empty or incomplete =asp search playbook= invocation fails top-level request
+admission.  It returns no successful projection, example, grammar, guide, or
+command template.  The parser failure occurs before a generation read or
+search-state construction and preserves the invalid argv as diagnostic
+evidence.
 
 *** SP-REQUEST-002 — The public request is single-layer
 
 The executable request contains global =--languages= and =--documents=
 producer-set selections, an optional cross-workspace
 =--workspace <registered WorkspaceId>=,
-and exactly five backend positions: =--fd=, =--rg=, =--tantivy=, =--syntax=,
-and =--graph=.  =--intent= is always rejected before retrieval.
+and the distinct positions =--fd=, =--rg=, =--tantivy=, =--syntax=,
+=--native-syntax=, and =--graph=.  =--syntax= carries a registered producer plus
+its native query argv; =--native-syntax= carries one canonical exact selector.
+=--intent= is always rejected before retrieval.
 
-Every position is present with one or more native blocks.  An absent or invalid
-position requests the targeted schema-owned contract.  The
+At least one acquisition position is present with one or more native blocks.
+An absent producer set, an absent acquisition clause, an incomplete native
+block, or an invalid option is a typed request failure.  The
 top-level parser recognizes only global parameters and block boundaries.  It
 passes each block's token sequence
 unchanged to its registered native parser; it MUST NOT stringify, split,
@@ -276,7 +281,7 @@ The schema-owned contract teaches the Agent to use pipe alternatives for
 independent, complementary facets such as surface evidence, mechanism,
 authority/invariant, and impact.  Within one option occurrence those
 alternatives occupy the same priority band.  Repeating =--fd=, =--rg=,
-=--tantivy=, or =--syntax= creates a later, lower-priority band.  No synthetic
+=--tantivy=, =--syntax=, or =--native-syntax= creates a later, lower-priority band.  No synthetic
 =--priority= number is admitted: left-to-right option occurrence is the
 Agent-authored priority order.
 
@@ -302,19 +307,14 @@ progressive relation-filtering fan-in, not a fifth independent candidate vote.
 The Agent may omit Graph in an initial broad round, reason over the resulting
 evidence, and include Graph in a later complete request.
 
-*** SP-RECOVERY-005 — Targeted recovery has exactly two fields
+*** SP-RECOVERY-005 — Invalid requests fail without alternate rendering
 
-An incomplete request or backend-native parse error returns exactly =Example:=
-and =Grammar:= from the admitted provider's =searchPlaybookContract=.
-=Example:= is contextual and directly usable; =Grammar:= is the smallest
-complete grammar needed to repair the request.  Recovery exposes no state,
-reason-kind, missing, accepted, purpose, required-for, or whole-guide table.
-The shared schema defines the projection shape; each provider owns its native
-syntax content and binds it to =syntaxContractId= and
-=syntaxContractDigest=.  Hook AOT compilation resolves the contract by
-=languageId= and =providerId= and embeds the projection into the compiled rule.
-The evaluator only replaces ={{searchPlaybookContract}}=; it performs no schema
-read, source search, package import, or command synthesis.
+An incomplete request is typed =search-playbook-request-incomplete=.  A
+backend-native parse error preserves that backend's typed reason and exact
+argv.  Neither failure is converted into =Example=, =Grammar=, a Guide, a GQL
+success block, or a prescribed repair command.  Provider route descriptors
+register native syntax-query request and response schemas for Runtime
+admission; the Hook does not embed a provider command template.
 
 *** SP-PROGRESS-006 — Fresh progressive reasoning
 
@@ -339,20 +339,19 @@ its cardinality; therefore completeness is reachable without a contract-discover
 terminal.  The Runtime may construct an execution plan, but it MUST obtain one
 generation-bound completion witness for every Agent-authored acquisition
 clause and, when present, the ordered Graph fan-in before constructing a
-successful public result.  The agent-facing projection is exactly one =Result=
-line, one =QueryGrammar= line when evidence exists, followed by at most thirty
-=owner + exact item + exact selector + supporting clauses + compact semantic
-relation= evidence lines.  It contains no
-plan, digest, source payload, prescribed command, or =Next= field.  Axis
-receipts and identity digests remain Runtime audit evidence and are not copied
-into the save-token projection.
+successful public result.  The agent-facing Search projection is exactly one
+Org-bound GQL graph containing the admitted nodes, selectors, supporting
+relations, and frontier.  It contains no parallel Result line, QueryGrammar
+line, flat evidence rows, plan, digest, source payload, prescribed command, or
+=Next= field.  Axis receipts and identity digests remain Runtime audit evidence
+and are not copied into the save-token projection.
 
 *** SP-RESULT-007 — Syntax results are exact-query complete
 
-Every public Syntax result carries a parser-owned structural
-identity and exactly one generation-current exact selector.  The result also
-carries one canonical exact-query request with an explicit projection.  Querying
-that selector round-trips to the same parser node.  A path, display range, byte
+Every public Syntax result carries a parser-owned structural identity and
+exactly one generation-current exact selector inside the single GQL graph. It
+does not carry a Query request or command grammar. Querying that selector
+independently through Query Playbook round-trips to the same parser node. A path, display range, byte
 range, GraphRelationalIR row, or derived relation is not a selector.  A capture
 that cannot satisfy totality, uniqueness, current-generation admission, and
 round-trip identity is a =provider-contract-failure=, not a candidate.
@@ -371,10 +370,15 @@ insufficient.
 *** SP-SYNTAX-007A — Syntax Search and Query share one native contract
 
 =--syntax <registered-producer> <native syntax query tokens...>= is the public
-Syntax Search block.  It is not Tree-sitter-specific: language and document
+provider-query Search block.  It is not Tree-sitter-specific: language and document
 producers register their own native grammar identity and parser receipt.
 =--treesitter-query '<s-expression>'= is one possible native token sequence
 inside such a block.
+
+=--native-syntax <canonical-exact-selector>= is not that query block.  It
+admits one already-known parser-owned selector from the current generation as
+Search evidence.  It is repeatable, accepts no producer name or query argv,
+and MUST reject values without a canonical =scheme://...#item/...= identity.
 
 Clause order is executable progressive scope.  A Syntax block following one
 or more acquisition blocks MUST evaluate only the union of owner candidates
@@ -384,10 +388,11 @@ selected workspace as its owner domain.  Axis-internal =|= alternatives remain
 one composed clause and do not erase this inter-clause priority.
 
 Every admitted Search syntax block maps without semantic rewriting to one
-canonical =asp query --syntax ...= request.  Its result maps back to the same
-structural selector and parser node.  Known selectors use
-=asp query --selector ...= for materialization.  These are two modes of one
-Query contract, not two selector authorities.
+registered provider parser request. Its result maps back to the same
+structural selector and parser node. Query Playbook later accepts that public
+selector directly, without a Search handle or embedded command. Search syntax
+acquisition and exact Query materialization are independent operations over one
+selector authority.
 
 The common request/result envelope follows LSP-compatible shapes for document
 selection and locations: a document selector resolves registered language or
@@ -1302,11 +1307,16 @@ and zero =rg= processes.  A later accelerator may replace only the accelerator
 pointer for the same complete content identity; it never mutates source,
 syntax, graph, or generation admission authority.
 
-Cold performance evidence distinguishes =coldRgQuery= (complete content
-generation, accelerator absent), =bootstrapAccelerator= (no prior shard
-artifact), =deltaAccelerator= (prior accelerator plus a declared owner change
-set), and =firstTantivyOpen=.  The first reports =fd= inventory reuse, bounded
-=rg= execution, content verification and native-syntax verification.  The
+Cold performance evidence distinguishes =residentLexicalQuery= (complete
+content generation, accelerator absent), =bootstrapAccelerator= (no prior
+shard artifact), =deltaAccelerator= (prior accelerator plus a declared owner
+change set), and =firstTantivyOpen=.  The first reports immutable corpus reuse,
+zero process launches, content-generation identity validation, bounded
+fixed-string scan work, and native-syntax verification.  It MUST NOT be named
+or reported as ripgrep execution.  Native =--rg= Playbook clauses remain real
+bounded ripgrep passthrough and produce their own process-backed evidence; the
+resident lexical fallback is an internal zero-process read over the already
+published generation.  The
 accelerator phases report reused/rebuilt/retired shard counts, Tantivy
 attach/commit, equivalence validation and pointer publication.  Reporting one
 monolithic =cold= or =tantivyCommit= duration is insufficient to diagnose or
@@ -1425,12 +1435,10 @@ Each native block binds its backend grammar and registry identity.  Omitted
 clause kinds require no synthetic reason field.  The request contains no
 executable command string.
 
-When producer selectors are present without an executable acquisition clause,
-the command recovers the selected providers' minimum contract.  Its default
-Agent rendering is exactly two sections, =Example= and =Grammar=, composed in
-pipe order.  Provider, parser, contract, generation, and content digests remain
-Runtime admission facts; they are not Agent search evidence and MUST NOT appear
-in that rendering.  The contract projection contains no continuation directive.
+Producer selectors without an executable acquisition clause are rejected as an
+incomplete request before Runtime dispatch.  Provider, parser, schema,
+generation, and content digests remain Runtime admission facts; they are not
+Agent search evidence and MUST NOT appear in the successful GQL rendering.
 
 The Server may execute the acquisition plan with bounded fan-out/fan-in.
 Acquisition clauses never consume each other's output.  Their candidate union
@@ -1513,6 +1521,7 @@ asp search playbook --languages '<language|...>' \
   --fd <native fd argv...> --rg <native rg argv...> \
   --tantivy <native Tantivy query...> \
   --syntax <registered-producer> <native syntax query tokens...> \
+  [--native-syntax <canonical-exact-selector>] \
   --graph <pgql|sql-pgq> <native graph query...>
 
 asp query --selector <exact-selector> \
@@ -1558,21 +1567,22 @@ correlation, and residual uncertainty.  It contains no prescribed next command.
 Flags select semantic constraints; they never select a storage backend or
 graph algorithm implementation.
 
-Search-agent handoff is executable evidence, not source.  ASP Explorer MUST
-return a bounded, ranked evidence graph whose nodes carry owner, exact item,
-parser-owned exact selector, ordered supporting clause references, and compact
-semantic relation.  Every nonempty handoff carries the packet-level exact Query
-Grammar once.  Runtime validates generation, provider, parser, and
-artifact identity without serializing those digests into the handoff.  It MUST
+Search-agent handoff is executable GQL evidence, not source.  ASP Explorer MUST
+return one bounded, ranked Org-bound GQL graph whose nodes carry owner, exact
+item, parser-owned exact selector, ordered supporting clause references, and
+semantic relations.  It has no separate Query Grammar or flat evidence-row
+projection.  Runtime validates generation, provider, parser, and artifact
+identity without serializing those digests into the handoff.  Search MUST
 NOT return source bytes, snippets, excerpts, display line ranges, fenced source, or a
 natural-language restatement of source text.  An open-ended extension map is
 also forbidden because it can smuggle the same payload under an unknown key.
-The handoff ends after the Top-K executable evidence.  Query Grammar describes
-a capability and is not a prescribed invocation.  The handoff does not prescribe a
+The handoff ends after the GQL evidence graph.  It does not prescribe a
 next command: the parent reasons over the evidence and may choose Query,
 refinement, comparison, or no further action.  Query alone materializes source
-when the parent chooses it.  Search therefore pays for evidence once without
-duplicating Query's source payload or constraining the Agent's reasoning policy.
+when the parent chooses it, and renders the admitted GQL relationship keyword directly
+before each native source block.  Search therefore pays for evidence once
+without duplicating Query's source payload or constraining the Agent's
+reasoning policy.
 Typed Query failures follow the same boundary: they report failure evidence,
 not =next=, =recommendedNext=, or an equivalent prescribed action.
 

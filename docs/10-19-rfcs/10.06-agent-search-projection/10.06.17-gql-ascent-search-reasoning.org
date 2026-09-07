@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 #+TITLE: RFC 10.06.17 - Project Topology Settlement and Internal Logical Inference
 #+LANGUAGE: en
 #+DATE: 2026-09-06
@@ -92,8 +96,7 @@ derived descendant of a deleted premise before issuing that receipt.
 The following is the complete default shape. There is no following Ascent block.
 
 #+begin_example
-#+SEARCH_EVIDENCE: v1 topology=project-topology.v1@topology-1 inference=project-topology-inference.v1 fixed-point=bounded-reached
-#+begin_src gql :profile search-evidence.v1
+#+begin_src gql :profile search-evidence.v1 :eval never
 (rust:Language)-[:RESULTS]->[(registry:RustImpl {name:"Registry",selector:"rust://src/registry.rs#item/implementation/type/Registry",projection:{rank:1,depth:0,hit:{fd:true,rg:[[42,46]],tantivy:["artifact refresh"]}}})]
 (registry)-[:DECLARES]->[(refresh:RustMethod {name:"refresh_registry",selector:"rust://src/registry.rs#item/method/refresh_registry/scope/implementation-owner/type/Registry"}),(publish:RustMethod {name:"publish_artifact",selector:"rust://src/registry.rs#item/method/publish_artifact/scope/implementation-owner/type/Registry"})]
 (refresh)-[:CALLS {witness:"call-refresh-publish"}]->(publish)

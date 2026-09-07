@@ -1,3 +1,7 @@
+-- SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+--
+-- SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 namespace ASPProof.SearchRouteDecisionSufficientInspect
 
 structure InspectSurface
@@ -117,4 +121,3 @@ theorem compactness_does_not_imply_decision_sufficiency :
   ⟩
 
 end ASPProof.SearchRouteDecisionSufficientInspect
-

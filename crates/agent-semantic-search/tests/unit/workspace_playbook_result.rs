@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 use crate::{
     WorkspaceSearchAxisKind, WorkspaceSearchClauseReceipt, WorkspaceSearchGraphFanIn,
     WorkspaceSearchPlaybookEvidence, WorkspaceSearchPlaybookResultKind,
@@ -240,7 +244,6 @@ fn acquisition_candidates_without_exact_syntax_mapping_require_refinement() {
         WorkspaceSearchPlaybookResultKind::RefinementRequired
     );
     assert!(result.evidence.is_empty());
-    assert!(result.query_grammar.is_none());
 }
 
 #[test]
@@ -254,5 +257,4 @@ fn complete_empty_acquisition_may_prove_no_match() {
 
     assert_eq!(result.result, WorkspaceSearchPlaybookResultKind::NoMatch);
     assert!(result.evidence.is_empty());
-    assert!(result.query_grammar.is_none());
 }

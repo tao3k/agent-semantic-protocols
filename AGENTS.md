@@ -1,6 +1,6 @@
 <!--
 SPDX-FileCopyrightText: 2026 tao3k team and Contributors
-SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 -->
 
 @/Users/guangtao/.agent-semantic-protocols/org/templates/ASP_ORG_SKILL.org
@@ -99,7 +99,7 @@ do not add a second provider policy command surface. Invoke the public API
 from build/test ownership when you need the actual policy gate:
 
 ```sh
-uv run --project languages/asp-python --frozen python -c 'from asp_python import assert_python_project_harness_clean; assert_python_project_harness_clean(".")'
+uv run --project languages/asp-python --frozen python -c 'from asp_python import assert_python_lang_harness_clean; assert_python_lang_harness_clean(["."])'
 ```
 
 If `just` is available in the active shell, `just check-python-policy` is the

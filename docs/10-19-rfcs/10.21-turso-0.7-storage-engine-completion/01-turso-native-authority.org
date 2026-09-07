@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 #+title: Turso 0.7 Native Storage Authority
 #+startup: overview
 
@@ -79,4 +83,3 @@ store implicitly.
    Merkle/CAS artifacts invalidate without a compatibility migration.
 6. Benchmarks report single-lane and multi-lane throughput plus p50/p95 latency;
    a stored Criterion baseline is evidence, not an architectural authority.
-

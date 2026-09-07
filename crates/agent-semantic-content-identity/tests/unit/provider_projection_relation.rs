@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 use agent_semantic_content_identity::provider_projection_relation::PROVIDER_RELATION_ITEM_ENDPOINT_KIND;
 use agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelation;
 use agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelationEndpoint;

@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 #+title: State Home Project Binding and Retention Authority
 #+author: ASP Architecture
 #+property: header-args :mkdirp yes
@@ -14,7 +18,7 @@ The previous tree nested workspace state under a truncated repository token,
 materialized directories during resolution, and treated directory timestamps
 as activity. Tests consequently left hundreds of partial project/workspace
 trees, while reachability receipts protected only a small subset of artifact
-content. A 36 GiB retired database and whole-repository source snapshots were
+content. A 36 GiB obsolete database and whole-repository source snapshots were
 not bounded by one cleanup authority.
 
 * Identity product
@@ -100,12 +104,12 @@ independent typed axis.  The public command supports exactly one of:
 
 A selector narrows the plan but never bypasses a live lease, active/healthy
 Runtime reference, age threshold, or generation revalidation.  Every selected
-object appears in the receipt as retained, retired, or rejected.  A missing
+object appears in the receipt as retained, deleted, or rejected. A missing
 selector is a typed no-match terminal rather than a successful zero-effect
 cleanup.
 
 Cleanup operates on catalog objects, not repository container directories.
-It can therefore retire a disappeared worktree, a partial imported shell, or
+It can therefore delete a disappeared worktree, a partial imported shell, or
 one cache object while another worktree of the same repository remains live.
 It never invokes =git clean= and never deletes a checkout, Git directory,
 object database, index, or worktree file.
@@ -119,22 +123,17 @@ trees.
 * Required invariants
 
 - resolving identity cannot mutate State Home;
-- a live lease is never retired;
+- a live lease is never deleted;
 - Host project, repository, and workspace axes cannot collapse;
 - concurrent open and cleanup cannot cross-delete;
 - cleanup failure preserves all admitted authority;
 - tests cannot write global State Home;
 - retained object count and bytes are bounded by policy.
 
-* Migration hard cut
+* V1 layout closure
 
-The retired =projects/by-id= hierarchy is cleanup input only. Runtime code does
-not import from it. The cleanup planner may atomically retire its bytes, but it
-cannot turn an old identity record into a current binding. There is no runtime
-fallback, dual writer, compatibility facade, or mtime-based admission.
-
-The legacy filesystem-scanning =ProjectRegistryGc= and =asp cache gc= surfaces
-are removed.  New writes and cleanup MUST use =ProjectBinding=,
-=StateHomeLayout=, and =StateHomeCatalog=. There is no =StatePaths= operational
-or migration type. After retirement, the old hierarchy is not retained as
-operational documentation.
+Runtime resolution, writes, and retention use only =ProjectBinding=,
+=StateHomeLayout=, and =StateHomeCatalog=. No alternative operational or
+migration identity type exists. Installation converges required content once;
+after that transaction, =asp state sync= removes any output outside the closed
+V1 layout without decoding it or admitting it as authority.

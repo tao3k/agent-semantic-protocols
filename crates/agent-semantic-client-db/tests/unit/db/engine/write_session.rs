@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 #[tokio::test]
 async fn db_engine_rejects_uncommitted_state_core_path_without_creating_project_shell() {
@@ -22,14 +22,14 @@ async fn db_engine_rejects_uncommitted_state_core_path_without_creating_project_
 }
 
 #[tokio::test]
-async fn db_engine_write_session_imports_manifest_without_exposing_retired_db_handle() {
+async fn db_engine_write_session_imports_manifest_without_exposing_removed_db_handle() {
     let project_root = temp_root("db-engine-write-session-project");
     let state_home = temp_root("db-engine-write-session-state-home");
     init_git_repository(&project_root);
     let state = ResolvedState::resolve_with_state_home(&project_root, &state_home)
         .expect("resolve state with explicit state home");
-    state
-        .ensure_minimal_layout()
+    let workspace_paths = state
+        .ensure_workspace_state_layout()
         .expect("commit State Core identity before DB write");
     fs::create_dir_all(project_root.join("src")).expect("create src dir");
     fs::write(
@@ -42,7 +42,7 @@ async fn db_engine_write_session_imports_manifest_without_exposing_retired_db_ha
         "schemaVersion": "1",
         "protocolId": "agent.semantic-protocols.client",
         "protocolVersion": "1",
-        "cacheRoot": state.paths.client_dir.display().to_string(),
+        "cacheRoot": workspace_paths.root.display().to_string(),
         "generations": [
             {
                 "generationId": "rust-main-1",
@@ -68,7 +68,7 @@ async fn db_engine_write_session_imports_manifest_without_exposing_retired_db_ha
     }))
     .expect("manifest fixture");
 
-    let mut write_session = ClientDbEngine::open_write_session_client_dir(&state.paths.client_dir)
+    let mut write_session = ClientDbEngine::open_write_session_client_dir(&workspace_paths.root)
         .expect("open DB Engine write session");
     write_session
         .import_manifest(&manifest)
@@ -78,9 +78,9 @@ async fn db_engine_write_session_imports_manifest_without_exposing_retired_db_ha
         write_report.status,
         agent_semantic_client_db::ClientDbStatus::Present
     );
-    assert!(ClientDbEngine::turso_path_for_client_dir(&state.paths.client_dir).exists());
+    assert!(ClientDbEngine::turso_path_for_client_dir(&workspace_paths.root).exists());
 
-    let read_session = ClientDbEngine::open_read_session_client_dir(&state.paths.client_dir)
+    let read_session = ClientDbEngine::open_read_session_client_dir(&workspace_paths.root)
         .expect("open DB Engine read session")
         .expect("read session exists");
     let hit = read_session
@@ -101,13 +101,13 @@ async fn db_engine_write_session_imports_manifest_without_exposing_retired_db_ha
         engine.db_path().exists(),
         "write-session import must materialize active Turso cache-generation read model"
     );
-    let mut write_session = ClientDbEngine::open_write_session_client_dir(&state.paths.client_dir)
+    let mut write_session = ClientDbEngine::open_write_session_client_dir(&workspace_paths.root)
         .expect("open DB Engine write session for Turso invalidate");
     let invalidated = write_session
         .invalidate_generations_for_project(&project_root)
         .expect("invalidate DB Engine cache-generation rows");
     assert_eq!(invalidated, 1);
-    let read_session = ClientDbEngine::open_read_session_client_dir(&state.paths.client_dir)
+    let read_session = ClientDbEngine::open_read_session_client_dir(&workspace_paths.root)
         .expect("open DB Engine read session after Turso invalidation")
         .expect("read session exists after Turso invalidation");
     let miss = read_session
@@ -129,8 +129,8 @@ async fn db_engine_cache_status_survives_concurrent_read_write_smoke() {
     init_git_repository(&project_root);
     let state = ResolvedState::resolve_with_state_home(&project_root, &state_home)
         .expect("resolve state with explicit state home");
-    state
-        .ensure_minimal_layout()
+    let workspace_paths = state
+        .ensure_workspace_state_layout()
         .expect("commit State Core identity before DB write");
     ClientDbEngine::from_resolved_state(&state)
         .bootstrap_active_turso()
@@ -143,7 +143,7 @@ async fn db_engine_cache_status_survives_concurrent_read_write_smoke() {
     )
     .expect("write source fixture");
 
-    let client_dir = Arc::new(state.paths.client_dir.clone());
+    let client_dir = Arc::new(workspace_paths.root);
     let project_root = Arc::new(project_root);
     let reader_count = 6usize;
     let barrier = Arc::new(Barrier::new(reader_count + 1));

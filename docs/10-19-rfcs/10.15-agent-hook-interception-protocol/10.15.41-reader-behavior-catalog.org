@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 #+title: Reader Behavior Catalog and Bounded Cold Observation
 #+startup: overview
 
@@ -102,9 +106,10 @@ cache misses.  They are not accepted and do not become policy authority.
 - The cold observer is the only layer that executes a candidate command; cache
   hits and static patterns never launch a process.
 - The Hook timeout is terminal and cleanup is part of the receipt.
-- =ASP_NO_AGENT=1= has two independent pre-policy paths.  An inherited Hook
-  process environment returns the Host pass-through envelope before reading
-  state or stdin. For a Bash PreTool payload, the Rust process boundary and
+- =[hook-engine] enabled = false= has one pre-policy path. The Hook process
+  reads the typed State Home configuration once and returns the Host
+  pass-through envelope before reading the action payload. Shell environments
+  and Bash payload assignments have no enablement authority. The Rust boundary
   Shell Parser recognize
   exactly =NAME=VALUE command=, =env NAME=VALUE command=, and
   =export NAME=VALUE; command= process-transfer forms before loading the

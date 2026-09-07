@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 use crate::protocol::normalize_source_route_selector;
 use crate::protocol::normalize_source_selector;
 use crate::protocol_activation::protocol_activation_manifest::HookProviderProjection;

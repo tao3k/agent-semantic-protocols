@@ -1,6 +1,9 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Shared SCM typed-plan operation schema checks."""
 
-import json
 from pathlib import Path
 
 from unit.schema_validation import schema_validator_for
@@ -73,15 +76,13 @@ def test_provider_syntax_query_response_maps_every_capture_to_exact_query() -> N
     )
 
 
-def test_rust_registration_publishes_provider_owned_search_playbook_contract() -> None:
-    registration = json.loads(
+def test_search_and_query_requests_are_client_owned_not_provider_contracts() -> None:
+    registration = __import__("json").loads(
         (ROOT / "languages/asp-rust/provider/asp-provider-registration.json").read_text(
             encoding="utf-8"
         )
     )
-    contract = registration["searchPlaybookContract"]
-    schema_validator_for(
-        SCHEMAS / "provider-search-playbook-contract.schema.json"
-    ).validate(contract)
-    projection = contract["projection"]
-    assert set(projection) == {"example", "grammar"}
+    assert "searchPlaybookContract" not in registration
+    route_schema = schema_validator_for(SCHEMAS / "provider-route.schema.json")
+    for route in registration["routes"]:
+        route_schema.validate(route)

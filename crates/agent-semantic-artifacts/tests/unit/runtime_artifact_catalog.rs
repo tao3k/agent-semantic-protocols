@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 //! Runtime artifact catalog tests.
 
@@ -14,16 +14,27 @@ use agent_semantic_artifacts::runtime_artifact_catalog::load_runtime_artifact_ca
 use agent_semantic_config::runtime_dev::ArtifactOrigin;
 use agent_semantic_config::runtime_dev::RuntimeArtifactMode;
 
+fn runtime_config_path(state_home: &Path) -> PathBuf {
+    agent_semantic_artifacts::StateHomeLayout::new(state_home)
+        .control()
+        .asp_config()
+}
+
+fn write_runtime_config(state_home: &Path, contents: impl AsRef<[u8]>) {
+    let path = runtime_config_path(state_home);
+    std::fs::create_dir_all(path.parent().expect("runtime config parent"))
+        .expect("create runtime config parent");
+    std::fs::write(path, contents).expect("write runtime config");
+}
+
 #[tokio::test]
 async fn tokio_loader_constructs_one_dev_catalog_generation() {
     let state_home = tempfile::tempdir().expect("state home");
     let checkout = tempfile::tempdir().expect("checkout");
-    tokio::fs::write(
-        state_home.path().join("asp.toml"),
+    write_runtime_config(
+        state_home.path(),
         format!("[dev]\nenabled = true\nroot = {:?}\n", checkout.path()),
-    )
-    .await
-    .expect("dev config");
+    );
     let catalog = load_runtime_artifact_catalog(state_home.path())
         .await
         .expect("runtime catalog");
@@ -35,7 +46,7 @@ async fn tokio_loader_constructs_one_dev_catalog_generation() {
     );
     assert_eq!(catalog.mode_label(), "dev");
     assert!(catalog.digest().starts_with("blake3-256:"));
-    tokio::fs::remove_file(state_home.path().join("asp.toml"))
+    tokio::fs::remove_file(runtime_config_path(state_home.path()))
         .await
         .expect("remove config after load");
 
@@ -55,12 +66,10 @@ async fn tokio_loader_constructs_one_dev_catalog_generation() {
 async fn enabled_dev_root_must_exist_when_the_daemon_catalog_is_loaded() {
     let state_home = tempfile::tempdir().expect("state home");
     let missing = state_home.path().join("missing-checkout");
-    tokio::fs::write(
-        state_home.path().join("asp.toml"),
+    write_runtime_config(
+        state_home.path(),
         format!("[dev]\nenabled = true\nroot = {:?}\n", missing),
-    )
-    .await
-    .expect("dev config");
+    );
 
     let error = load_runtime_artifact_catalog(state_home.path())
         .await
@@ -161,14 +170,13 @@ async fn developer_publication_rejects_a_source_outside_the_configured_checkout(
         .expect("create foreign build directory");
     std::fs::create_dir_all(&state_home).expect("create state home");
     std::fs::write(&source, b"foreign-runtime-artifact").expect("write foreign artifact");
-    std::fs::write(
-        state_home.join("asp.toml"),
+    write_runtime_config(
+        &state_home,
         format!(
             "[dev]\nenabled = true\nroot = {:?}\n",
             checkout.display().to_string()
         ),
-    )
-    .expect("write runtime configuration");
+    );
 
     let authority = QualifiedRuntimeArtifactSource::develop_state_home_staging(checkout)
         .expect("developer staging authority");
@@ -237,14 +245,13 @@ async fn developer_publication_is_tokio_owned_and_survives_checkout_cleanup() {
         .expect("create developer build directory");
     std::fs::create_dir_all(&state_home).expect("create state home");
     std::fs::write(&source, b"developer-v1").expect("write developer artifact");
-    std::fs::write(
-        state_home.join("asp.toml"),
+    write_runtime_config(
+        &state_home,
         format!(
             "[dev]\nenabled = true\nroot = {:?}\n",
             checkout.display().to_string()
         ),
-    )
-    .expect("write runtime configuration");
+    );
 
     let publication =
         agent_semantic_artifacts::runtime_artifact_publication::publish_runtime_artifact(

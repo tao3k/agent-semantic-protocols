@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -18,6 +18,7 @@ use agent_semantic_client_protocol::ClientRequestId;
 use agent_semantic_client_protocol::ClientSessionId;
 use agent_semantic_client_protocol::ClientTransport;
 use agent_semantic_client_protocol::ClientWorkspaceIdentity;
+use agent_semantic_client_protocol::RuntimeSearchClientTimingWitness;
 use agent_semantic_client_protocol::protocol_identity::CLIENT_CATALOG_SCHEMA_ID;
 use agent_semantic_client_protocol::protocol_identity::CLIENT_FRAME_SCHEMA_ID;
 use agent_semantic_client_protocol::protocol_identity::CLIENT_PROTOCOL_ID;
@@ -30,6 +31,7 @@ use agent_semantic_client_server::AspClientDispatchRequest;
 use agent_semantic_client_server::AspClientDispatcher;
 use agent_semantic_client_server::AspClientFrameService;
 use agent_semantic_client_server::AspClientGrpcTransport;
+use agent_semantic_client_server::AspClientResponseTelemetry;
 use agent_semantic_client_server::CLIENT_FRAME_SESSION_CAPACITY;
 use agent_semantic_client_server::bind_asp_client_grpc_tcp;
 use agent_semantic_client_server::serve_asp_client_grpc_tcp;
@@ -37,6 +39,7 @@ use serde_json::json;
 
 struct ExactQueryDispatcher {
     cancellation_by_request: Arc<Mutex<BTreeMap<String, Arc<tokio::sync::Notify>>>>,
+    response_boundaries: Arc<Mutex<Vec<(String, String, bool)>>>,
 }
 
 impl AspClientDispatcher for ExactQueryDispatcher {
@@ -112,6 +115,39 @@ impl AspClientDispatcher for ExactQueryDispatcher {
             }
         })
     }
+
+    fn response_serialized(&self, response: &AspClientResponseTelemetry, _elapsed_micros: u64) {
+        if response.request_id.as_str() != "exact-query" {
+            return;
+        }
+        self.response_boundaries
+            .lock()
+            .expect("response boundary registry")
+            .push((
+                response.request_id.as_str().to_owned(),
+                "schema-validate-serialize".to_owned(),
+                true,
+            ));
+    }
+
+    fn terminal_egressed(
+        &self,
+        response: &AspClientResponseTelemetry,
+        _elapsed_micros: u64,
+        delivered: bool,
+    ) {
+        if response.request_id.as_str() != "exact-query" {
+            return;
+        }
+        self.response_boundaries
+            .lock()
+            .expect("response boundary registry")
+            .push((
+                response.request_id.as_str().to_owned(),
+                "terminal-egress".to_owned(),
+                delivered,
+            ));
+    }
 }
 
 fn base() -> ClientFrameBase {
@@ -136,6 +172,7 @@ fn exact_query_frame(request_id: String) -> ClientFrame {
         workspace_generation: format!("blake3-256:{}", "b".repeat(64)),
         method: "rust.query".to_owned(),
         params: json!({}),
+        client_timing_witness: None,
     }
 }
 
@@ -147,6 +184,7 @@ fn large_response_frame() -> ClientFrame {
         workspace_generation: format!("blake3-256:{}", "b".repeat(64)),
         method: "test.large-response".to_owned(),
         params: json!({}),
+        client_timing_witness: None,
     }
 }
 
@@ -192,15 +230,129 @@ fn catalog() -> ClientProtocolCatalog {
     }
 }
 
+#[tokio::test]
+async fn client_timing_witness_must_match_the_admitted_frame_identity() {
+    let service = AspClientFrameService::new(
+        Arc::new(ExactQueryDispatcher {
+            cancellation_by_request: Arc::new(Mutex::new(BTreeMap::new())),
+            response_boundaries: Arc::new(Mutex::new(Vec::new())),
+        }),
+        |_| Ok(catalog()),
+    );
+    service
+        .handle_frame(ClientFrame::Initialize {
+            base: base(),
+            request_id: ClientRequestId::new("initialize-timing").expect("request id"),
+            client_info: ClientInfo {
+                name: "timing-test".into(),
+                version: "1".into(),
+            },
+            capabilities: json!({}),
+        })
+        .await
+        .expect("initialize terminal");
+    let mut request = exact_query_frame("timed-request".into());
+    let ClientFrame::Request {
+        client_timing_witness,
+        ..
+    } = &mut request
+    else {
+        unreachable!()
+    };
+    *client_timing_witness = Some(
+        RuntimeSearchClientTimingWitness::new(
+            "grpc-exact-query-session",
+            "foreign-request",
+            [1, 2, 3],
+        )
+        .expect("well-formed but foreign witness"),
+    );
+
+    let response = service
+        .handle_frame(request)
+        .await
+        .expect("typed mismatch terminal");
+    let Some(ClientFrame::Response {
+        outcome: ClientOutcome::Error,
+        error: Some(error),
+        ..
+    }) = response
+    else {
+        panic!("foreign timing witness must fail before dispatch")
+    };
+    assert_eq!(
+        error["reasonKind"],
+        "runtime-search-client-timing-identity-mismatch"
+    );
+}
+
+#[tokio::test]
+async fn grpc_transport_reports_serialization_before_terminal_egress() {
+    let listener = bind_asp_client_grpc_tcp()
+        .await
+        .expect("bind response-boundary endpoint");
+    let endpoint = listener.local_addr().expect("response-boundary endpoint");
+    let response_boundaries = Arc::new(Mutex::new(Vec::new()));
+    let service = Arc::new(AspClientFrameService::new(
+        Arc::new(ExactQueryDispatcher {
+            cancellation_by_request: Arc::new(Mutex::new(BTreeMap::new())),
+            response_boundaries: Arc::clone(&response_boundaries),
+        }),
+        |_| Ok(catalog()),
+    ));
+    let (shutdown, shutdown_rx) = tokio::sync::watch::channel(false);
+    let server = tokio::spawn(serve_asp_client_grpc_tcp(listener, service, shutdown_rx));
+    let client = AspClientGrpcTransport::connect_tcp(endpoint)
+        .await
+        .expect("connect response-boundary session");
+    client
+        .call(ClientFrame::Initialize {
+            base: base(),
+            request_id: ClientRequestId::new("initialize-boundary").expect("request id"),
+            client_info: ClientInfo {
+                name: "boundary-test".into(),
+                version: "1".into(),
+            },
+            capabilities: json!({}),
+        })
+        .await
+        .expect("initialize response-boundary session");
+
+    let _ = client
+        .call(exact_query_frame("exact-query".to_owned()))
+        .await
+        .expect("receive exact-query terminal");
+    assert_eq!(
+        *response_boundaries.lock().expect("response boundaries"),
+        vec![
+            (
+                "exact-query".to_owned(),
+                "schema-validate-serialize".to_owned(),
+                true,
+            ),
+            ("exact-query".to_owned(), "terminal-egress".to_owned(), true,),
+        ]
+    );
+
+    drop(client);
+    shutdown.send(true).expect("signal server shutdown");
+    server
+        .await
+        .expect("join response-boundary server")
+        .expect("response-boundary server");
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn grpc_loopback_exact_query_returns_typed_terminal() {
     let listener = bind_asp_client_grpc_tcp()
         .await
         .expect("bind public ASP Client Protocol endpoint");
     let endpoint = listener.local_addr().expect("client endpoint");
+    let response_boundaries = Arc::new(Mutex::new(Vec::new()));
     let service = Arc::new(AspClientFrameService::new(
         Arc::new(ExactQueryDispatcher {
             cancellation_by_request: Arc::new(Mutex::new(BTreeMap::new())),
+            response_boundaries: Arc::clone(&response_boundaries),
         }),
         |_| Ok(catalog()),
     ));
@@ -250,6 +402,23 @@ async fn grpc_loopback_exact_query_returns_typed_terminal() {
     assert_eq!(
         error["terminal"]["schemaId"],
         "agent.semantic-protocols.asp-client-exact-query-failure"
+    );
+    assert_eq!(
+        response_boundaries
+            .lock()
+            .expect("response boundaries")
+            .iter()
+            .filter(|(request_id, _, _)| request_id == "exact-query")
+            .cloned()
+            .collect::<Vec<_>>(),
+        vec![
+            (
+                "exact-query".to_owned(),
+                "schema-validate-serialize".to_owned(),
+                true,
+            ),
+            ("exact-query".to_owned(), "terminal-egress".to_owned(), true,),
+        ]
     );
     assert_eq!(error["terminal"]["phase"], "resident-selector-read");
 
@@ -358,6 +527,7 @@ async fn grpc_loopback_exact_query_returns_typed_terminal() {
             workspace_generation: format!("blake3-256:{}", "b".repeat(64)),
             method: "test.cancellation-probe".to_owned(),
             params: json!({}),
+            client_timing_witness: None,
         })
         .await
         .expect("begin cancellable request");
@@ -397,6 +567,7 @@ async fn full_session_rejects_one_excess_data_call_and_preserves_cancellation_la
     let service = Arc::new(AspClientFrameService::new(
         Arc::new(ExactQueryDispatcher {
             cancellation_by_request: Arc::new(Mutex::new(BTreeMap::new())),
+            response_boundaries: Arc::new(Mutex::new(Vec::new())),
         }),
         |_| Ok(catalog()),
     ));
@@ -431,6 +602,7 @@ async fn full_session_rejects_one_excess_data_call_and_preserves_cancellation_la
                 workspace_generation: format!("blake3-256:{}", "b".repeat(64)),
                 method: "test.cancellation-probe".to_owned(),
                 params: json!({}),
+                client_timing_witness: None,
             })
             .await
             .expect("admit bounded data call");

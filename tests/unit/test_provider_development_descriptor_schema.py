@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 import json
 from pathlib import Path
 
@@ -12,7 +16,7 @@ MANIFESTS = (
     ROOT / "languages/asp-typescript/schemas/asp-provider.json",
     ROOT / "languages/asp-python/schemas/asp-provider.json",
     ROOT
-    / "languages/gerbil-scheme-language-project-harness/schemas/asp-provider.json",
+    / "languages/asp-gerbil-scheme/schemas/asp-provider.json",
     ROOT / "languages/AspJulia.jl/schemas/asp-provider.json",
     ROOT / "languages/orgize/schemas/asp-org-provider.json",
     ROOT / "languages/orgize/schemas/asp-md-provider.json",

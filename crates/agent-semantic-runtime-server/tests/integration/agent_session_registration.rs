@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 //! Agent session registration integration tests.
 
 use std::sync::Arc;
@@ -86,6 +90,24 @@ fn digest(character: char) -> String {
     format!("blake3-256:{}", character.to_string().repeat(64))
 }
 
+fn test_project_workspace_resolver()
+-> agent_semantic_runtime_server::HostWorkspaceInitializationBindingResolver {
+    Arc::new(|_| {
+        let project_workspace = agent_semantic_content_identity::ProjectWorkspaceBinding::new(
+            "git+file:///runtime-test.git#workspace/main",
+            ".",
+            "local-only",
+            Vec::new(),
+        )
+        .map_err(|error| error.to_string())?;
+        agent_semantic_content_identity::HostWorkspaceInitializationBinding::new(
+            project_workspace,
+            "worktree-main",
+        )
+        .map_err(|error| error.to_string())
+    })
+}
+
 fn registered_language_provider_pairs() -> Vec<(String, String)> {
     let workspace_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     SchemaManager::new(workspace_root)
@@ -145,6 +167,7 @@ async fn child_registration_uses_the_grpc_client_frame_and_runtime_registry_owne
             .expect("empty provider register"),
         ),
         directory.path().join("workspace-store"),
+        test_project_workspace_resolver(),
         agent_semantic_runtime_server::RuntimeQueryGenerationAuthority::new(),
         telemetry.sender,
     )
@@ -212,6 +235,7 @@ async fn child_registration_uses_the_grpc_client_frame_and_runtime_registry_owne
             workspace_generation: catalog.workspace_generation,
             method: AGENT_SESSION_REGISTER_METHOD.to_owned(),
             params,
+            client_timing_witness: None,
         })
         .await
         .expect("registration response");

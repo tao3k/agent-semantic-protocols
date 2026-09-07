@@ -11,9 +11,9 @@
     "retainForMs",
     "selection",
     "retainedCount",
-    "retiredCount",
+    "deletedCount",
     "retainedBytes",
-    "retiredBytes",
+    "deletedBytes",
     "entries"
   ],
   "properties": {
@@ -50,9 +50,9 @@
       ]
     },
     "retainedCount": { "type": "integer", "minimum": 0 },
-    "retiredCount": { "type": "integer", "minimum": 0 },
+    "deletedCount": { "type": "integer", "minimum": 0 },
     "retainedBytes": { "type": "integer", "minimum": 0 },
-    "retiredBytes": { "type": "integer", "minimum": 0 },
+    "deletedBytes": { "type": "integer", "minimum": 0 },
     "entries": {
       "type": "array",
       "items": {
@@ -89,7 +89,7 @@
                 "additionalProperties": false,
                 "required": ["state", "reason"],
                 "properties": {
-                  "state": { "const": "retire" },
+                  "state": { "const": "delete" },
                   "reason": { "type": "string", "minLength": 1 }
                 }
               }

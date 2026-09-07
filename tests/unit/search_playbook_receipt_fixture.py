@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 def digest(byte):
     return "blake3-256:" + byte * 64
 
@@ -7,7 +11,7 @@ def search_playbook_receipt():
     owners = ["src/router.rs"]
     stages = [
         {"family": "acquire", "capabilityId": "search.source-byte-acquisition"},
-        {"family": "acquire", "capabilityId": "search.cold-rg-recall"},
+        {"family": "acquire", "capabilityId": "search.resident-lexical-recall"},
         {"family": "syntax", "capabilityId": "search.native-syntax-playbook"},
         {"family": "acquire", "capabilityId": "search.tantivy-lexical"},
         {"family": "reason", "capabilityId": "search.rust-resident-graph"},

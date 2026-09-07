@@ -1,3 +1,7 @@
+-- SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+--
+-- SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 import ASPProof.HookEnforcementKernel
 
 #check ASPProof.HookEnforcementKernel.control_plane_unavailability_cannot_change_decision

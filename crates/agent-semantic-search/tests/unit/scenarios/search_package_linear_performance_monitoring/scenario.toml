@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 id = "search-package-linear-performance-monitoring"
 title = "Search package surfaces stay under scenario benchmark monitoring"
 policy_ids = [
@@ -35,7 +39,6 @@ reference_patterns = [
   "progressive_playbook",
   "progressive_query",
   "provider_candidate_annotations",
-  "provider_playbook_contract",
   "resident_source_index",
   "resident_byte_coverage",
   "resident_graph_search",

@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 #
-# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 set shell := ["bash", "-cu"]
 
@@ -662,7 +662,12 @@ perf-calibrate-julia-cache:
 	  uv run --project packages/python --frozen --exact python -m tools cache validate julia-performance "${tmp}"
 
 check-python-policy:
-    uv run --project {{python_harness_project}} --frozen python -c 'from asp_python import assert_python_project_harness_clean; assert_python_project_harness_clean("{{repo}}")'
+    uv run --project {{python_harness_project}} --frozen python -c 'from asp_python import assert_python_lang_harness_clean; assert_python_lang_harness_clean(["{{repo}}"])'
+
+# Validate repository SPDX/REUSE coverage and package license metadata.
+check-license-contract:
+    uv run --frozen python scripts/check_license_contract.py
+    uv run --frozen reuse --root . lint
 
 report-python-policy:
     uv run --project {{python_harness_project}} --frozen python -c 'from asp_python import render_python_lang_harness, run_python_project_harness; print(render_python_lang_harness(run_python_project_harness("{{repo}}")), end="")'

@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Explicit cold, load, warm, release, and concurrency budgets."""
 
 from tests.unit.live_corpus_search_query_qualification_support import PLAN_PATH, load_json

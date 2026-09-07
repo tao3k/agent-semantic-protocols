@@ -1,13 +1,25 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 [package]
 name = "agent-semantic-topology"
 version = "0.1.0"
 edition = "2024"
-license = "MIT OR Apache-2.0"
+license.workspace = true
 description = "Reusable Project Topology identity, admission, and incremental generation contracts for ASP"
 
 [dependencies]
+agent-semantic-content-identity = { path = "../agent-semantic-content-identity" }
+blake3.workspace = true
 meta-relational-reasoning.workspace = true
+orgize.workspace = true
+serde.workspace = true
 serde_json.workspace = true
+tokio.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
 
 [build-dependencies]
 asp-rust-project-harness-policy.workspace = true

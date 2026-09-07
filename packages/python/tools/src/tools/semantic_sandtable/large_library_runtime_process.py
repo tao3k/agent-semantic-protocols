@@ -1,6 +1,6 @@
-# SPDX-FileCopyrightText: Contributors to Agent Semantic Protocols
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 #
-# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 """Execute public ASP commands with bounded provider-process cleanup."""
 
@@ -86,7 +86,6 @@ def _drain_terminated_process(
 def facade_environment(provider_timeout_ms: int) -> dict[str, str]:
     return {
         **os.environ,
-        "ASP_NO_AGENT": "1",
         "ASP_PROVIDER_TIMEOUT_MS": str(provider_timeout_ms),
     }
 

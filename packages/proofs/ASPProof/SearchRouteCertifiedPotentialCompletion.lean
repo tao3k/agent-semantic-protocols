@@ -1,3 +1,7 @@
+-- SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+--
+-- SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 universe u
 
 namespace ASPProof.SearchRouteCertifiedPotentialCompletion
@@ -201,4 +205,3 @@ theorem current_exact_completion_is_optimal :
     current_exact_certificate_is_admitted
 
 end ASPProof.SearchRouteCertifiedPotentialCompletion
-

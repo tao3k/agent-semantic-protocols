@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 //! Language provider command facade.
 
@@ -74,7 +74,7 @@ pub(crate) async fn run_language_command(
         }
         Some("query") => {
             return Err(
-                "language-first Query was removed; use `asp query --selector <exact-selector>` or `asp query --languages <language|...> --syntax ...`"
+                "language-first Query was removed; use `asp query playbook --selector <exact-selector>...`; provider-native syntax discovery belongs to `asp search playbook`"
                     .to_owned(),
             );
         }

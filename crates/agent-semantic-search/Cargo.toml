@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 [[test]]
 name = "file_locator"
 path = "tests/integration/file_locator.rs"
@@ -19,7 +23,7 @@ name = "agent-semantic-search"
 version = "0.1.0"
 edition.workspace = true
 description = "Search orchestration services for ASP agent-facing queries."
-license = "MIT"
+license.workspace = true
 
 [features]
 default = ["tantivy-accelerator"]

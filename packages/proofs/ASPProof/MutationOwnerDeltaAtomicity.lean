@@ -1,3 +1,7 @@
+-- SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+--
+-- SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 namespace ASPProof.MutationOwnerDeltaAtomicity
 
 def candidateDomain : String := "workspace-mutation-candidate-v1\u0000"

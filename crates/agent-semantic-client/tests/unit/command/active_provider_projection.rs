@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 use std::path::Path;
 use std::sync::Arc;
@@ -163,9 +163,25 @@ fn runtime_source_index_projection_is_derived_from_live_register() {
         provider_id: "asp-rust".to_owned(),
         materialized_path: "/runtime/artifacts/asp-rust".to_owned(),
         artifact_digest: format!("blake3-256:{}", "a".repeat(64)),
-        artifact_metadata_digest: format!("blake3-256:{}", "b".repeat(64)),
-        execution_command_digest: format!("sha256:{}", "c".repeat(64)),
     }];
+    let execution_binding =
+        agent_semantic_artifacts::runtime_artifact_slots::RuntimeArtifactBundleBinding::new(
+            agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest::from_bytes(
+                b"provider-registration",
+            ),
+            agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest::from_bytes(
+                b"provider-artifact-set",
+            ),
+            agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest::from_bytes(
+                b"evaluator-policy",
+            ),
+            agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest::from_bytes(
+                b"evaluator-abi",
+            ),
+            agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest::from_bytes(
+                b"schema-bundle",
+            ),
+        );
     let artifacts = RuntimeActiveProviderProjection {
         document: Arc::new(ActiveProviderProjectionDocument {
             schema_id: SCHEMA_ID.to_owned(),
@@ -174,6 +190,7 @@ fn runtime_source_index_projection_is_derived_from_live_register() {
             providers,
         }),
         active_bundle_digest: format!("blake3-256:{}", "d".repeat(64)),
+        execution_binding: execution_binding.clone(),
     };
 
     let rust_only = std::collections::BTreeSet::from(["rust".to_owned()]);
@@ -218,9 +235,14 @@ fn runtime_source_index_projection_is_derived_from_live_register() {
         "/different-state-home/runtime/artifacts/asp-rust".to_owned();
     relocated_document.generation =
         super::generation(&relocated_document.providers).expect("relocated legacy projection");
+    assert_eq!(
+        relocated_document.generation, artifacts.document.generation,
+        "provider generation identity must not contain an absolute materialization path"
+    );
     let relocated = RuntimeActiveProviderProjection {
         document: Arc::new(relocated_document),
         active_bundle_digest: artifacts.active_bundle_digest.clone(),
+        execution_binding,
     };
     let (_, relocated_closure) =
         runtime_source_index_provider_projection(&relocated, &register, &rust_only)
@@ -260,7 +282,60 @@ async fn runtime_provider_projection_is_derived_only_from_the_verified_active_bu
     std::fs::write(&asp, b"asp-v1").expect("write asp fixture");
     std::fs::write(&hook, b"hook-v1").expect("write hook fixture");
     std::fs::write(&provider, b"provider-v1").expect("write provider fixture");
-    let members = [
+    let source_members = std::collections::BTreeMap::from([
+        (
+            "asp".to_owned(),
+            agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest::from_bytes(
+                b"asp-v1",
+            ),
+        ),
+        (
+            "asp-hook".to_owned(),
+            agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest::from_bytes(
+                b"hook-v1",
+            ),
+        ),
+        (
+            "asp-rust".to_owned(),
+            agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest::from_bytes(
+                b"provider-v1",
+            ),
+        ),
+    ]);
+    let closure = agent_semantic_artifacts::runtime_artifact_execution_closure::
+        RuntimeArtifactExecutionClosure::from_runtime_bundle_members(
+            &source_members,
+            vec![agent_semantic_artifacts::runtime_artifact_execution_closure::
+                NamedRuntimeDigestClosureEntry {
+                    id: "query-admission".to_owned(),
+                    digest: agent_semantic_artifacts::blake3_content_digest::
+                        Blake3ContentDigest::from_bytes(b"policy"),
+                }],
+            vec![agent_semantic_artifacts::runtime_artifact_execution_closure::
+                NamedRuntimeDigestClosureEntry {
+                    id: "query-playbook-v1".to_owned(),
+                    digest: agent_semantic_artifacts::blake3_content_digest::
+                        Blake3ContentDigest::from_bytes(b"abi"),
+                }],
+            vec![agent_semantic_artifacts::runtime_artifact_execution_closure::
+                LanguageSchemaClosureEntry {
+                    language_id: "rust".to_owned(),
+                    schema_digest: agent_semantic_artifacts::blake3_content_digest::
+                        Blake3ContentDigest::from_bytes(b"schemas"),
+                }],
+        )
+        .expect("execution closure");
+    let closure_sources = closure
+        .materialized_members()
+        .expect("closure members")
+        .into_iter()
+        .map(|(name, bytes)| {
+            let source = sources.join(name);
+            std::fs::write(&source, bytes).expect("closure source");
+            (name, source)
+        })
+        .collect::<Vec<_>>();
+    let mut members = vec![
         agent_semantic_artifacts::runtime_artifact_publication::RuntimeArtifactBundleMemberSource {
             name: "asp-hook",
             source: &hook,
@@ -270,12 +345,20 @@ async fn runtime_provider_projection_is_derived_only_from_the_verified_active_bu
             source: &provider,
         },
     ];
-    let publication = agent_semantic_artifacts::runtime_artifact_publication::publish_runtime_artifact_bundle_members(
+    members.extend(closure_sources.iter().map(|(name, source)| {
+        agent_semantic_artifacts::runtime_artifact_publication::RuntimeArtifactBundleMemberSource {
+            name,
+            source,
+        }
+    }));
+    let execution_binding = closure.binding().expect("execution binding");
+    let publication = agent_semantic_artifacts::runtime_artifact_publication::publish_runtime_artifact_bound_bundle_members(
         &root,
         &asp,
         &root.join("runtime/bin/asp"),
         "dev",
         &members,
+        &execution_binding,
     )
     .await
     .expect("publish active Runtime bundle");

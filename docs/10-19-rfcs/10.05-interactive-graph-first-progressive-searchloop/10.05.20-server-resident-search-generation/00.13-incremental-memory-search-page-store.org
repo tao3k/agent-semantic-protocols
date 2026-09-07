@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 #+title: Incremental Memory Search Page Store
 #+startup: overview
 
@@ -75,4 +79,3 @@ touched, source bytes returned, and zero-side-effect counters.
 - cancellation before pointer commit leaves the previous generation readable;
 - long-run publication and collection return task, descriptor, mapped-byte, and
   disk-write counters to their configured bounds.
-

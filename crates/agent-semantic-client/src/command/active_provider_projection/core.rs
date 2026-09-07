@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 //! Runtime provider executables derived from the verified active bundle.
 
@@ -21,8 +21,6 @@ struct ActiveProviderMember {
     provider_id: String,
     materialized_path: String,
     artifact_digest: String,
-    artifact_metadata_digest: String,
-    execution_command_digest: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -37,6 +35,8 @@ struct ActiveProviderProjectionDocument {
 pub(crate) struct RuntimeActiveProviderProjection {
     document: Arc<ActiveProviderProjectionDocument>,
     active_bundle_digest: String,
+    execution_binding:
+        agent_semantic_artifacts::runtime_artifact_slots::RuntimeArtifactBundleBinding,
 }
 
 pub(crate) struct RuntimeProviderLaunch {
@@ -46,7 +46,17 @@ pub(crate) struct RuntimeProviderLaunch {
 }
 
 fn generation(providers: &[ActiveProviderMember]) -> Result<String, String> {
-    let bytes = serde_json::to_vec(providers)
+    let stable_members = providers
+        .iter()
+        .map(|provider| {
+            (
+                provider.language_id.as_str(),
+                provider.provider_id.as_str(),
+                provider.artifact_digest.as_str(),
+            )
+        })
+        .collect::<Vec<_>>();
+    let bytes = serde_json::to_vec(&stable_members)
         .map_err(|error| format!("encode active provider projection: {error}"))?;
     Ok(format!("sha256:{:x}", Sha256::digest(bytes)))
 }
@@ -69,8 +79,6 @@ fn validate_serialized_document(document: &ActiveProviderProjectionDocument) -> 
         for (field, value) in [
             ("materializedPath", &provider.materialized_path),
             ("artifactDigest", &provider.artifact_digest),
-            ("artifactMetadataDigest", &provider.artifact_metadata_digest),
-            ("executionCommandDigest", &provider.execution_command_digest),
         ] {
             if value.is_empty() {
                 return Err(format!("active provider member {field} is empty"));
@@ -128,6 +136,12 @@ impl RuntimeActiveProviderProjection {
             .iter()
             .map(|provider| (provider.language_id.clone(), provider.provider_id.clone()))
             .collect()
+    }
+
+    pub(crate) fn execution_binding(
+        &self,
+    ) -> &agent_semantic_artifacts::runtime_artifact_slots::RuntimeArtifactBundleBinding {
+        &self.execution_binding
     }
 
     pub(crate) fn runtime_launch(
@@ -215,24 +229,16 @@ impl RuntimeActiveProviderProjection {
 fn runtime_provider_artifacts_from_active_bundle(
     state_home: &Path,
 ) -> Result<RuntimeActiveProviderProjection, String> {
-    let active =
-        agent_semantic_artifacts::runtime_active_provider_set::load_active_runtime_provider_set(
-            state_home,
-        )?;
+    let active = agent_semantic_artifacts::runtime_active_provider_set::
+        load_active_runtime_bound_provider_set(state_home)?;
     let mut providers = Vec::new();
     for provider in active.providers {
         let artifact_digest = provider.artifact_digest;
-        let execution_command_digest = agent_semantic_hook::provider_execution_command_digest(
-            &[provider.materialized_path.to_string_lossy().into_owned()],
-            &artifact_digest,
-        )?;
         providers.push(ActiveProviderMember {
             language_id: provider.language_id,
             provider_id: provider.provider_id,
             materialized_path: provider.materialized_path.to_string_lossy().into_owned(),
             artifact_digest,
-            artifact_metadata_digest: provider.artifact_metadata_digest,
-            execution_command_digest,
         });
     }
     providers.sort_by(|left, right| left.language_id.cmp(&right.language_id));
@@ -246,6 +252,7 @@ fn runtime_provider_artifacts_from_active_bundle(
     Ok(RuntimeActiveProviderProjection {
         document: Arc::new(document),
         active_bundle_digest: active.runtime_bundle_digest,
+        execution_binding: active.execution_binding,
     })
 }
 
@@ -484,7 +491,6 @@ fn runtime_source_index_provider_projection_for_registrations(
                     provider.provider_id.as_str(),
                     provider.registration_digest.as_str(),
                     artifact.artifact_digest.as_str(),
-                    artifact.execution_command_digest.as_str(),
                 ))
             })
             .collect::<Result<Vec<_>, String>>()?,

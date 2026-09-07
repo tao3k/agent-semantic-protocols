@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 use agent_semantic_content_identity::exact_selector_merkle::blake3_content_digest_v1;
 use agent_semantic_hook::materialize_active_asp_artifact_receipt;
 use std::fs;

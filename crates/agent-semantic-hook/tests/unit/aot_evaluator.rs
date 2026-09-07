@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 use super::evaluate_pre_tool;
 
 const GENERATION: &str = r#"{
@@ -216,13 +220,14 @@ fn search_recovery_forwards_only_the_registered_language_contract_query() {
         .expect("evaluate registered source read")
         .expect("deny direct registered source read");
 
-    let recovery = decision
-        .search_playbook_contract
-        .expect("deny carries an executable Search recovery command");
     assert!(
-        recovery == "asp search playbook --languages rust",
-        "{recovery}"
+        decision
+            .message
+            .contains("registered rust Search Playbook route"),
+        "{}",
+        decision.message
     );
+    assert!(!decision.message.contains("asp search playbook"));
 }
 
 #[test]
@@ -258,8 +263,12 @@ fn markdown_read_recovery_uses_runtime_owned_root_playbook() {
     let decision = evaluate_pre_tool(&generation, &payload, "Bash")
         .expect("evaluate Markdown read")
         .expect("deny direct Markdown read");
-    assert_eq!(
-        decision.search_playbook_contract.as_deref(),
-        Some("asp search playbook --languages md")
+    assert!(
+        decision
+            .message
+            .contains("registered Markdown Search Playbook route"),
+        "{}",
+        decision.message
     );
+    assert!(!decision.message.contains("asp search playbook"));
 }

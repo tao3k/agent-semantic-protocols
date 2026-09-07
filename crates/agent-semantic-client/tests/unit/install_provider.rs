@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 use super::ProviderArtifactAuthority;
 use super::ProviderInstallLock;
@@ -18,6 +18,42 @@ fn release_reconciliation_without_an_active_bundle_is_empty_and_offline() {
     assert_eq!(plan.provider_count(), 0);
     assert!(plan.member_sources().is_empty());
     assert!(!plan.staging_root.exists());
+}
+
+#[tokio::test]
+async fn binary_refresh_builds_a_complete_bound_closure_for_an_empty_provider_set() {
+    let state_home = tempfile::tempdir().expect("state home");
+    let sources = tempfile::tempdir().expect("binary sources");
+    let asp = sources.path().join("asp");
+    let hook = sources.path().join("asp-hook");
+    std::fs::write(&asp, b"asp").expect("asp candidate");
+    std::fs::write(&hook, b"hook").expect("hook candidate");
+    let mut plan = super::prepare_active_release_provider_reconciliation(state_home.path())
+        .expect("empty release reconciliation");
+
+    let binding = plan
+        .bind_runtime_execution_closure(&asp, &hook)
+        .await
+        .expect("bound Runtime execution closure");
+
+    assert_eq!(plan.provider_count(), 0);
+    let members = plan.member_sources();
+    assert_eq!(members.len(), 5);
+    let registration = members
+        .iter()
+        .find(|member| member.name == "provider-registration.json")
+        .expect("provider registration member");
+    let registration_digest =
+        agent_semantic_artifacts::runtime_artifact_slots::runtime_artifact_candidate_digest(
+            registration.source,
+        )
+        .await
+        .expect("registration digest");
+    assert_eq!(binding.provider_registration_digest(), &registration_digest);
+    let registration_json: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(registration.source).expect("registration bytes"))
+            .expect("registration JSON");
+    assert_eq!(registration_json["entries"], serde_json::json!([]));
 }
 
 #[test]

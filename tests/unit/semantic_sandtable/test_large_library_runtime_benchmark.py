@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Large-library runtime benchmark receipt tests."""
 
 from __future__ import annotations
@@ -249,7 +253,7 @@ def test_runtime_workspace_deployment_uses_release_install_command(
     assert call["check"] is False
     assert call["timeout"] == 120
     assert isinstance(call["env"], dict)
-    assert call["env"]["ASP_NO_AGENT"] == "1"
+    assert call["env"] == dict(os.environ)
 
 
 def test_runtime_process_listing_failure_is_explicit(

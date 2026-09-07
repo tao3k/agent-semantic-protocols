@@ -1,7 +1,8 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
+use agent_semantic_content_identity::ProjectWorkspaceBinding;
 use agent_semantic_content_identity::content_binding::AuthorityStamp;
 use agent_semantic_content_identity::content_binding::ContentBinding;
 use agent_semantic_content_identity::content_binding::ContentIdentity;
@@ -66,10 +67,10 @@ fn frame(
 fn binding_pins_all_search_operations_to_one_content_commit() {
     let commit = commit('a');
     let binding = ContentBinding::new(
-        commit.identity.clone(),
+        commit.identity().clone(),
         AuthorityStamp {
             key_id: "test-key".into(),
-            canonical_digest: commit.commit_digest.clone(),
+            canonical_digest: commit.identity().digest(),
             signature: "test-signature".into(),
         },
     )
@@ -92,10 +93,10 @@ fn a_cross_commit_frame_is_rejected_even_when_its_selector_is_valid() {
     let first = commit('a');
     let second = commit('b');
     let binding = ContentBinding::new(
-        first.identity.clone(),
+        first.identity().clone(),
         AuthorityStamp {
             key_id: "test-key".into(),
-            canonical_digest: first.commit_digest.clone(),
+            canonical_digest: first.identity().digest(),
             signature: "test-signature".into(),
         },
     )
@@ -115,10 +116,10 @@ fn a_cross_commit_frame_is_rejected_even_when_its_selector_is_valid() {
 fn cancellation_emits_the_only_terminal_and_blocks_late_success() {
     let commit = commit('a');
     let binding = ContentBinding::new(
-        commit.identity.clone(),
+        commit.identity().clone(),
         AuthorityStamp {
             key_id: "test-key".into(),
-            canonical_digest: commit.commit_digest.clone(),
+            canonical_digest: commit.identity().digest(),
             signature: "test-signature".into(),
         },
     )
@@ -137,37 +138,105 @@ fn binding_can_pin_the_exact_runtime_and_evaluator_binding() {
     let commit = commit('a');
     let digest = "blake3-256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
     let runtime_binding = RuntimeExecutionBinding::new(RuntimeExecutionBindingInput {
-        project_id: "project-a".into(),
-        workspace_id: "workspace-a".into(),
+        project_workspace: ProjectWorkspaceBinding::new(
+            "git+https://github.com/tao3k/agent-semantic-protocols.git#workspace/root",
+            ".",
+            "cross-machine",
+            Vec::new(),
+        )
+        .expect("Project Workspace"),
+        worktree_instance_id: "workspace-a".into(),
         publication_nonce: "publication-a".into(),
         content_binding: ContentBinding::new(
-            commit.identity.clone(),
+            commit.identity().clone(),
             AuthorityStamp {
                 key_id: "test-key".into(),
-                canonical_digest: commit.commit_digest.clone(),
+                canonical_digest: commit.identity().digest(),
                 signature: "test-signature".into(),
             },
         )
         .expect("valid binding"),
-        runtime_artifact_digest: commit.identity.runtime_artifact_digest.clone().into(),
+        runtime_artifact_digest: commit.identity().runtime_artifact_digest.clone().into(),
         evaluator_policy_digest: digest.into(),
         active_artifact_receipt_digest: digest.into(),
         evaluator_abi_digest: digest.into(),
     })
     .expect("valid runtime binding");
+    let manifest_project_workspace = runtime_binding.project_workspace.clone();
     let execution = SearchExecution::bind_with_runtime_binding(
         ContentBinding::new(
-            commit.identity.clone(),
+            commit.identity().clone(),
             AuthorityStamp {
                 key_id: "test-key".into(),
-                canonical_digest: commit.commit_digest.clone(),
+                canonical_digest: commit.identity().digest(),
                 signature: "test-signature".into(),
             },
         )
         .expect("valid binding"),
         &commit,
         runtime_binding.clone(),
+        &manifest_project_workspace,
     )
     .expect("bind");
     assert_eq!(execution.context().runtime_binding, Some(runtime_binding));
+}
+
+#[test]
+fn runtime_search_binding_rejects_a_foreign_workspace_against_the_manifest() {
+    let commit = commit('a');
+    let manifest_project_workspace = ProjectWorkspaceBinding::new(
+        "git+https://github.com/tao3k/agent-semantic-protocols.git#workspace/root",
+        ".",
+        "cross-machine",
+        Vec::new(),
+    )
+    .expect("manifest Project Workspace");
+    let foreign_project_workspace = ProjectWorkspaceBinding::new(
+        "git+https://github.com/tao3k/foreign.git#workspace/root",
+        ".",
+        "cross-machine",
+        Vec::new(),
+    )
+    .expect("valid but foreign Project Workspace");
+    let runtime_binding = RuntimeExecutionBinding::new(RuntimeExecutionBindingInput {
+        project_workspace: foreign_project_workspace,
+        worktree_instance_id: "workspace-a".into(),
+        publication_nonce: "publication-a".into(),
+        content_binding: ContentBinding::new(
+            commit.identity().clone(),
+            AuthorityStamp {
+                key_id: "test-key".into(),
+                canonical_digest: commit.identity().digest(),
+                signature: "test-signature".into(),
+            },
+        )
+        .expect("valid binding"),
+        runtime_artifact_digest: commit.identity().runtime_artifact_digest.clone().into(),
+        evaluator_policy_digest:
+            "blake3-256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".into(),
+        active_artifact_receipt_digest:
+            "blake3-256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".into(),
+        evaluator_abi_digest:
+            "blake3-256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".into(),
+    })
+    .expect("valid foreign Runtime binding");
+
+    let result = SearchExecution::bind_with_runtime_binding(
+        ContentBinding::new(
+            commit.identity().clone(),
+            AuthorityStamp {
+                key_id: "test-key".into(),
+                canonical_digest: commit.identity().digest(),
+                signature: "test-signature".into(),
+            },
+        )
+        .expect("valid binding"),
+        &commit,
+        runtime_binding,
+        &manifest_project_workspace,
+    );
+    assert!(matches!(
+        result,
+        Err(SearchExecutionError::ProjectWorkspaceManifestMismatch)
+    ));
 }

@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 //! Read-only acceptance authority for enabling the Codex Hook.
 
@@ -280,7 +280,6 @@ async fn policy_decision_sample(
         ],
         project_root,
         state_home,
-        false,
         serde_json::to_vec(&payload)
             .map_err(|error| format!("encode Hook acceptance payload: {error}"))?,
     )
@@ -338,6 +337,13 @@ async fn launcher_scenario_samples(
         .await
         .map_err(|error| format!("create Hook acceptance scenario: {error}"))?;
     create_file_symlink(artifact, &public_path).await?;
+    let asp_config = root.join("control/config/asp.toml");
+    tokio::fs::create_dir_all(asp_config.parent().expect("ASP config parent"))
+        .await
+        .map_err(|error| format!("create Hook acceptance init config: {error}"))?;
+    tokio::fs::write(&asp_config, b"[hook-engine]\nenabled = false\n")
+        .await
+        .map_err(|error| format!("write Hook acceptance init config: {error}"))?;
     let mut samples = Vec::with_capacity(count);
     let result = async {
         for _ in 0..count {
@@ -347,7 +353,6 @@ async fn launcher_scenario_samples(
                 &["pre-tool", "--client", "codex"],
                 Path::new("/"),
                 &root,
-                true,
                 Vec::new(),
             )
             .await
@@ -380,7 +385,6 @@ async fn run_process(
     args: &[&str],
     cwd: &Path,
     state_home: &Path,
-    no_agent: bool,
     stdin: Vec<u8>,
 ) -> Result<Vec<u8>, String> {
     let mut command = tokio::process::Command::new(program);
@@ -388,14 +392,10 @@ async fn run_process(
         .args(args)
         .current_dir(cwd)
         .env("ASP_STATE_HOME", state_home)
-        .env_remove("ASP_NO_AGENT")
         .kill_on_drop(true)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
-    if no_agent {
-        command.env("ASP_NO_AGENT", "1");
-    }
     let mut child = command.spawn().map_err(|error| {
         format!(
             "spawn Hook enablement process {}: reasonKind=launcher-spawn-failed error={error}",

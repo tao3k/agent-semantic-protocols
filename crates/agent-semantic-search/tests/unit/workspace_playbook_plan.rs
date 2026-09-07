@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 use agent_semantic_search::{
     GraphNativeBlock, ProducerNativeBlock, ProgressiveSearchPlaybookRequest,
     SearchPlaybookClauseAxis, SearchPlaybookClauseRef, WorkspaceSearchPlanBinding,
@@ -10,12 +14,11 @@ fn provider(language: &str) -> WorkspaceSearchProvider {
         provider_id: format!("asp-{language}"),
         source_extensions: vec![if language == "rust" { "rs" } else { "py" }.to_owned()],
         search_supported: true,
-        search_playbook_contract: None,
     }
 }
 
 fn request() -> ProgressiveSearchPlaybookRequest {
-    ProgressiveSearchPlaybookRequest::Execute {
+    ProgressiveSearchPlaybookRequest {
         languages: Some("rust|python".to_owned()),
         documents: None,
         workspace: None,
@@ -33,6 +36,7 @@ fn request() -> ProgressiveSearchPlaybookRequest {
                 "((identifier) @id)".to_owned(),
             ],
         }],
+        native_syntax: vec!["rust://src/registry.rs#item/implementation/type/Registry".to_owned()],
         graph: vec![GraphNativeBlock {
             language: "pgql".to_owned(),
             argv: vec!["MATCH (a)-[r]->(b) RETURN a, r, b".to_owned()],
@@ -44,6 +48,10 @@ fn request() -> ProgressiveSearchPlaybookRequest {
             },
             SearchPlaybookClauseRef {
                 axis: SearchPlaybookClauseAxis::Syntax,
+                block_index: 0,
+            },
+            SearchPlaybookClauseRef {
+                axis: SearchPlaybookClauseAxis::NativeSyntax,
                 block_index: 0,
             },
             SearchPlaybookClauseRef {
@@ -88,6 +96,10 @@ fn plan_preserves_agent_authored_clause_priority_and_graph_barrier() {
                 block_index: 0,
             },
             SearchPlaybookClauseRef {
+                axis: SearchPlaybookClauseAxis::NativeSyntax,
+                block_index: 0,
+            },
+            SearchPlaybookClauseRef {
                 axis: SearchPlaybookClauseAxis::Rg,
                 block_index: 0,
             },
@@ -106,12 +118,22 @@ fn plan_preserves_agent_authored_clause_priority_and_graph_barrier() {
 }
 
 #[test]
-fn contract_query_cannot_become_an_execution_plan() {
+fn request_without_a_producer_cannot_become_an_execution_plan() {
     let error = build_workspace_search_playbook_plan(
-        &ProgressiveSearchPlaybookRequest::ContractQuery {
-            languages: Some("rust".to_owned()),
+        &ProgressiveSearchPlaybookRequest {
+            languages: None,
             documents: None,
             workspace: None,
+            fd: vec![vec![".".to_owned()]],
+            rg: vec![],
+            tantivy: vec![],
+            syntax: vec![],
+            native_syntax: vec![],
+            graph: vec![],
+            clause_order: vec![SearchPlaybookClauseRef {
+                axis: SearchPlaybookClauseAxis::Fd,
+                block_index: 0,
+            }],
         },
         WorkspaceSearchPlanBinding {
             project_id: "project".to_owned(),
@@ -120,6 +142,6 @@ fn contract_query_cannot_become_an_execution_plan() {
         },
         [provider("rust")],
     )
-    .expect_err("contract projection precedes execution planning");
-    assert!(error.contains("does not create"));
+    .expect_err("execution planning requires a producer");
+    assert!(error.contains("requires a producer"));
 }

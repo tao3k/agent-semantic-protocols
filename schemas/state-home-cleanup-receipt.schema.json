@@ -10,8 +10,7 @@
     "state",
     "retainedForDays",
     "catalogGeneration",
-    "canonicalWorkspacesRetired",
-    "retiredStateRoots",
+    "canonicalWorkspacesDeleted",
     "catalogPlan"
   ],
   "properties": {
@@ -20,8 +19,7 @@
     "state": { "const": "applied" },
     "retainedForDays": { "type": "integer", "minimum": 1 },
     "catalogGeneration": { "type": "integer", "minimum": 0 },
-    "canonicalWorkspacesRetired": { "type": "integer", "minimum": 0 },
-    "retiredStateRoots": { "type": "integer", "minimum": 0 },
+    "canonicalWorkspacesDeleted": { "type": "integer", "minimum": 0 },
     "catalogPlan": {
       "type": "object",
       "required": [
@@ -30,9 +28,9 @@
         "evaluatedAtMs",
         "retainForMs",
         "retainedCount",
-        "retiredCount",
+        "deletedCount",
         "retainedBytes",
-        "retiredBytes",
+        "deletedBytes",
         "entries"
       ],
       "properties": {

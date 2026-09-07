@@ -1,8 +1,12 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 [package]
 name = "agent-semantic-runtime"
 version = "0.1.0"
 edition = "2024"
-license = "MIT"
+license.workspace = true
 description = "Runtime state materialization for ASP project-local storage."
 
 [dependencies]

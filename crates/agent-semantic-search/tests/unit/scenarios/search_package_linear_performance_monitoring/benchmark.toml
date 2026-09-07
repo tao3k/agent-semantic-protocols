@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 harness = "libtest"
 test = "search_package_linear_performance_monitoring_covers_all_unit_surfaces"
 target_total = "2ms"
@@ -44,7 +48,6 @@ native_fd_query = "not-measured"
 progressive_playbook = "not-measured"
 progressive_query = "not-measured"
 provider_candidate_annotations = "not-measured"
-provider_playbook_contract = "not-measured"
 runtime_search_receipt = "not-measured"
 resident_source_index = "not-measured"
 resident_byte_coverage = "not-measured"

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 use agent_semantic_content_identity::SourceSnapshotEvidence;
 use agent_semantic_content_identity::SourceSnapshotKind;
 use agent_semantic_content_identity::workspace_generation_evidence::ValidatedWorkspaceGenerationV1;

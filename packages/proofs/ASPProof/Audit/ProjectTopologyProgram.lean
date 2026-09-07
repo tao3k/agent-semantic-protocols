@@ -1,3 +1,7 @@
+-- SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+--
+-- SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 import ASPProof.ProjectTopologyProgram
 
 /-!
@@ -21,8 +25,14 @@ theorem display_shape_erases_the_authority_difference :
   decide
 
 theorem an_ascent_candidate_is_not_an_admitted_closure :
-    exhaustedCandidate.proofDependenciesComplete = true ∧
-      admitClosure [parserOwner] exhaustedCandidate = none := by
+    closureProofDependenciesComplete exhaustedCandidate = true ∧
+      admitClosure 11 17 [] [parserOwner] exhaustedCandidate = none := by
+  decide
+
+theorem a_self_declared_fixed_point_is_not_an_independent_receipt :
+    completeCandidate.terminal = .fixedPoint ∧
+      completeCandidate.facts = completeCandidate.nextFacts ∧
+      admitClosure 11 17 [] [parserOwner] completeCandidate = none := by
   decide
 
 theorem a_project_extension_cannot_shadow_a_core_signature :
@@ -33,6 +43,11 @@ theorem a_project_extension_cannot_shadow_a_core_signature :
 theorem a_proposed_summary_cannot_justify_a_factual_edge :
     projectProgramMayProduce proposedMeaning.modality = true ∧
       factualPremise proposedMeaning.modality = false := by
+  decide
+
+theorem attaching_a_derived_cross_segment_edge_to_a_source_segment_is_unsound :
+    ownershipValid .derived (.sourceSegment 1) = false ∧
+      ownershipValid .derived (.topologyGeneration 2) = true := by
   decide
 
 theorem equal_activation_generation_allows_stale_topology :
@@ -60,7 +75,7 @@ theorem fuel_zero_returns_even_though_the_relation_is_not_closed :
   decide
 
 theorem a_delta_for_another_predecessor_cannot_be_replayed :
-    applyDelta 40 previousFacts removalDelta = none := by
+    applyDelta 40 previousFacts [] removalDelta = none := by
   decide
 
 theorem scheme_source_without_compiled_abi_is_not_runtime_ready :

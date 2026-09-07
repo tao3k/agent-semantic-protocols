@@ -1,3 +1,7 @@
+-- SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+--
+-- SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 import ASPProof.SearchRouteProofCarryingStateMachine
 
 namespace ASPProof.SearchRouteEndToEndTraceSafety
@@ -158,4 +162,3 @@ theorem cross_context_trace_is_impossible
   drift (execution_trace_preserves_context trace)
 
 end ASPProof.SearchRouteEndToEndTraceSafety
-

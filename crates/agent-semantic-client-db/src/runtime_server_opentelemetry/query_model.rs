@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 const QUERY_SCHEMA_ID: &str = "agent.semantic-protocols.runtime-server-performance-query";
 const QUERY_RECEIPT_SCHEMA_ID: &str =

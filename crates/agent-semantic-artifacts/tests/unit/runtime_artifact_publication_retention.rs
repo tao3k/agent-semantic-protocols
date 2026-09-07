@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 use std::collections::BTreeSet;
 
@@ -52,7 +52,7 @@ async fn canonical_publication_retains_only_active_and_healthy_artifact_digests(
 }
 
 #[tokio::test]
-async fn canonical_publication_retires_superseded_physical_stores() {
+async fn canonical_publication_removes_superseded_physical_stores() {
     let temp = tempfile::tempdir().expect("create temporary State Home");
     let state_home = temp.path();
     let artifact_root = state_home.join("runtime/artifacts");
@@ -90,7 +90,7 @@ async fn canonical_publication_retires_superseded_physical_stores() {
 }
 
 #[tokio::test]
-async fn retention_does_not_retire_superseded_stores_before_a_canonical_selection() {
+async fn retention_does_not_remove_superseded_stores_before_a_canonical_selection() {
     let temp = tempfile::tempdir().expect("create temporary State Home");
     let artifact_root = temp.path().join("runtime/artifacts");
     let old_member_store = artifact_root.join("blake3-256");
@@ -102,7 +102,7 @@ async fn retention_does_not_retire_superseded_stores_before_a_canonical_selectio
         .await
         .expect("retention without a canonical selection");
 
-    assert_eq!(receipt.retired_superseded_store_count, 0);
+    assert_eq!(receipt.removed_superseded_store_count, 0);
     assert!(old_member_store.is_dir());
 }
 
@@ -137,7 +137,7 @@ async fn retention_rejects_a_superseded_store_symlink_without_following_it() {
 }
 
 #[tokio::test]
-async fn retention_retires_binary_namespaced_candidate_leases() {
+async fn retention_removes_binary_namespaced_candidate_leases() {
     let temp = tempfile::tempdir().expect("create temporary State Home");
     let state_home = temp.path();
     let artifact_root = state_home.join("runtime/artifacts");
@@ -159,16 +159,16 @@ async fn retention_retires_binary_namespaced_candidate_leases() {
 
     let receipt = prune_unreachable_runtime_artifacts(&artifact_root)
         .await
-        .expect("retire binary-namespaced lease root");
+        .expect("remove binary-namespaced lease root");
 
-    assert_eq!(receipt.retired_superseded_lease_directory_count, 1);
+    assert_eq!(receipt.removed_superseded_lease_directory_count, 1);
     assert!(!old_lease_root.exists());
-    assert!(!artifact_root.join("retired").exists());
+    assert!(!artifact_root.join("staging/removal").exists());
 }
 
 #[cfg(unix)]
 #[tokio::test]
-async fn canonical_publication_retires_only_the_misplaced_state_home_launcher_root() {
+async fn canonical_publication_removes_only_the_misplaced_state_home_launcher_root() {
     let temp = tempfile::tempdir().expect("create temporary State Home");
     let state_home = temp.path();
     let misplaced_root = state_home.join("bin");
@@ -194,7 +194,7 @@ async fn canonical_publication_retires_only_the_misplaced_state_home_launcher_ro
                 .expect("read retention receipt"),
         )
         .expect("decode retention receipt");
-    assert_eq!(receipt.retired_misplaced_launcher_root_count, 1);
+    assert_eq!(receipt.removed_misplaced_launcher_root_count, 1);
 }
 
 #[tokio::test]

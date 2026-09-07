@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 use super::ASP_CODEX_PLUGIN_HOOK_LAUNCHER;
 use super::ASP_CODEX_PLUGIN_HOOKS_JSON;
@@ -142,7 +142,6 @@ fn plugin_launcher_types_missing_binary_instead_of_exiting_127() {
         .env("ASP_STATE_HOME", root.join("missing-state"))
         .env("HOME", root.join("missing-home"))
         .env("PATH", "")
-        .env_remove("ASP_NO_AGENT")
         .output()
         .expect("run plugin launcher without PATH");
     assert_eq!(output.status.code(), Some(0));
@@ -178,7 +177,6 @@ fn plugin_launcher_types_non_executable_runtime_hook_binary() {
         .env("ASP_STATE_HOME", &root)
         .env("HOME", root.join("missing-home"))
         .env("PATH", "")
-        .env_remove("ASP_NO_AGENT")
         .output()
         .expect("run plugin launcher without Hook binary");
     assert_eq!(output.status.code(), Some(0));
@@ -225,7 +223,6 @@ fn plugin_launcher_executes_only_the_canonical_runtime_hook_binary() {
         .env("ASP_STATE_HOME", &root)
         .env("HOME", root.join("missing-home"))
         .env("PATH", "")
-        .env_remove("ASP_NO_AGENT")
         .output()
         .expect("run plugin launcher with canonical runtime");
     assert_eq!(output.status.code(), Some(0));
@@ -283,7 +280,6 @@ fn plugin_launcher_never_falls_back_to_legacy_profile_slots() {
         .args(["pre-tool", "--client", "codex"])
         .env("ASP_STATE_HOME", &root)
         .env("PATH", "")
-        .env_remove("ASP_NO_AGENT")
         .output()
         .expect("run launcher with only legacy slots");
     assert_eq!(output.status.code(), Some(0));
@@ -320,15 +316,12 @@ fn plugin_launcher_contains_no_policy_or_runtime_server_plane() {
             "plugin launcher crossed into evaluator/server responsibility: {forbidden}"
         );
     }
-    let escape = ASP_CODEX_PLUGIN_HOOK_LAUNCHER
-        .find("ASP_NO_AGENT")
-        .expect("inherited process escape layer");
     let current = ASP_CODEX_PLUGIN_HOOK_LAUNCHER
         .find("runtime/artifacts/active/asp-hook")
         .expect("canonical Runtime Hook binary resolution");
     assert!(
-        escape < current,
-        "escape authority must precede Runtime Hook binary resolution"
+        current > 0,
+        "launcher must resolve the canonical Hook artifact"
     );
 }
 

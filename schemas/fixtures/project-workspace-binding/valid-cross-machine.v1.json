@@ -1,0 +1,8 @@
+{
+  "schemaId": "agent.semantic-protocols.project-workspace-binding",
+  "schemaVersion": "1",
+  "projectWorkspaceIdentity": "git+https://github.com/tao3k/agent-semantic-protocols.git#workspace/root",
+  "workspaceRootPath": ".",
+  "portability": "cross-machine",
+  "repositoryAliases": []
+}

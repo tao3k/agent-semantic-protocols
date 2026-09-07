@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 //! Runtime Server identity successor handoff and its ordered test contract.
 
@@ -22,8 +22,8 @@ impl<'a> RuntimeIdentityHandoffCoordinator<'a> {
         }
     }
 
-    pub(super) async fn retire(&self) -> Result<(), String> {
-        agent_semantic_client_db::runtime_server_supervisor::retire_runtime_server_owner_for_handoff(
+    pub(super) async fn drain(&self) -> Result<(), String> {
+        agent_semantic_client_db::runtime_server_supervisor::drain_runtime_server_owner_for_handoff(
             self.state_home,
             self.endpoint,
         )

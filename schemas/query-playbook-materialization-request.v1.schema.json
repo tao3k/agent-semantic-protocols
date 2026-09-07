@@ -1,7 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://agent-semantic-protocols.dev/schemas/query-playbook-materialization-request.v1.schema.json",
+  "$id": "https://schemas.agent-semantic-protocols.dev/query-playbook-materialization-request.v1.schema.json",
   "title": "Query Playbook Materialization Request V1",
+  "description": "An internal Runtime-bound packet for selector-native Query Playbook materialization. It is independent of any preceding Search result.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -9,11 +10,13 @@
     "schemaVersion",
     "protocolId",
     "protocolVersion",
-    "settlementBinding",
-    "searchRequestId",
-    "materializationSetDigest",
+    "requestId",
+    "projectWorkspaceIdentity",
+    "worktreeInstanceId",
+    "runtimeExecutionBinding",
+    "runtimeWorkspaceExecutionPublicationDigest",
+    "runtimeBundleDigest",
     "selectors",
-    "proofDependencies",
     "projection"
   ],
   "properties": {
@@ -21,54 +24,31 @@
     "schemaVersion": {"const": "1"},
     "protocolId": {"const": "agent.semantic-protocols.query-playbook"},
     "protocolVersion": {"const": "1"},
-    "settlementBinding": {"$ref": "#/$defs/settlementBinding"},
-    "searchRequestId": {"type": "string", "minLength": 1},
-    "materializationSetDigest": {"$ref": "#/$defs/digest"},
+    "requestId": {"type": "string", "minLength": 1},
+    "projectWorkspaceIdentity": {
+      "$ref": "project-workspace-binding.v1.schema.json#/$defs/projectWorkspaceIdentity"
+    },
+    "worktreeInstanceId": {"type": "string", "minLength": 1},
+    "runtimeExecutionBinding": {
+      "$ref": "runtime-execution-binding.v2.schema.json"
+    },
+    "runtimeWorkspaceExecutionPublicationDigest": {"$ref": "#/$defs/contentDigest"},
+    "runtimeBundleDigest": {"$ref": "#/$defs/contentDigest"},
     "selectors": {
       "type": "array",
       "minItems": 1,
       "uniqueItems": true,
-      "items": {"$ref": "#/$defs/selector"}
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9+.-]*://[^\\s#]+#item/.+$(?![\\s\\S])"
+      }
     },
-    "proofDependencies": {
-      "type": "array",
-      "uniqueItems": true,
-      "items": {"type": "string", "minLength": 1}
-    },
-    "projection": {"enum": ["matches", "source", "callable-skeleton"]}
+    "projection": {"enum": ["source", "callable-skeleton"]}
   },
   "$defs": {
-    "digest": {
+    "contentDigest": {
       "type": "string",
-      "pattern": "^blake3-256:[0-9a-f]{64}$(?![\\s\\S])"
-    },
-    "selector": {
-      "type": "string",
-      "pattern": "^[A-Za-z][A-Za-z0-9+.-]*://[^\\s]+#item/[^\\s]+$(?![\\s\\S])"
-    },
-    "settlementBinding": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "workspaceIdentity",
-        "sourceGenerationDigest",
-        "providerCatalogDigest",
-        "topologyLibraryDigest",
-        "topologyGenerationDigest",
-        "structuralTopologyDigest",
-        "semanticTopologyDigest",
-        "inferenceProgramDigest"
-      ],
-      "properties": {
-        "workspaceIdentity": {"type": "string", "minLength": 1},
-        "sourceGenerationDigest": {"$ref": "#/$defs/digest"},
-        "providerCatalogDigest": {"$ref": "#/$defs/digest"},
-        "topologyLibraryDigest": {"$ref": "#/$defs/digest"},
-        "topologyGenerationDigest": {"$ref": "#/$defs/digest"},
-        "structuralTopologyDigest": {"$ref": "#/$defs/digest"},
-        "semanticTopologyDigest": {"$ref": "#/$defs/digest"},
-        "inferenceProgramDigest": {"$ref": "#/$defs/digest"}
-      }
+      "pattern": "^blake3-256:[0-9a-f]{64}$"
     }
   }
 }

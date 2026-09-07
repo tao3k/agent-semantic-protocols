@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 use agent_semantic_client_protocol::ClientFrame;
 use agent_semantic_client_protocol::ClientFrameBase;
@@ -39,6 +39,7 @@ fn request(method: &str) -> ClientFrame {
         workspace_generation: "workspace-generation".to_owned(),
         method: method.to_owned(),
         params: serde_json::json!({}),
+        client_timing_witness: None,
     }
 }
 

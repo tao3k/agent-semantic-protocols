@@ -1,3 +1,7 @@
+-- SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+--
+-- SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 namespace ASPProof.RuntimeClientServingPublication
 
 /-- V1 keeps client bootstrap and resident serving as two explicit authorities. -/

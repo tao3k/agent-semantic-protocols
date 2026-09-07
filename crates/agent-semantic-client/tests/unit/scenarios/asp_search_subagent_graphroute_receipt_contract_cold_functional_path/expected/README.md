@@ -1,15 +1,11 @@
-<!--
-SPDX-FileCopyrightText: 2026 tao3k team and Contributors
-SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
--->
-
-# ASP Search Subagent GraphRoute Receipt Contract
+# ASP Search Subagent Org/GQL Contract
 
 The scenario fixes the managed read-only `asp-explore` stop contract:
 
-- valid receipts include `schema`, `intent`, `route`, `state`, ranked selector evidence, and exactly one safe parent `next` action
-- malformed flat receipts with `owner/read/next` are rejected
+- successful output is exactly one Org source block with language `gql`
+- the block carries `:profile search-evidence.v1 :eval never`
+- malformed flat receipts and multiple blocks are rejected
 - source bodies, snippets, line-range selectors, confidence labels, and not-found inventories are rejected
-- the recovery action asks the same child session to re-emit a compact graph-route receipt
+- the recovery action asks the same child session to re-emit the sole Org/GQL format without Example/Grammar text
 
-This scenario protects the parent model from noisy subagent transcripts and keeps the search path aligned with `ReasoningTree -> EvidenceGraph -> GraphRoute -> exact parent action`.
+This scenario keeps subagent Search output identical to the root Search presentation contract.

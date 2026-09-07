@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 use serde_json::Value;
 use serde_json::json;
 
@@ -128,7 +132,7 @@ pub(crate) fn compact_source_access_deny_message(
         .unwrap_or(false)
     {
         return format!(
-            "ASP denied source access (`{reason}`) inside a delegated Agent. Use ASP Search Playbook and return one compact `[asp-search-subagent]` receipt with state plus executable QueryGrammar/owner/item/selector/matchedBy/relation evidence; do not return source bodies, snippets, line-range selectors, or a prescribed next command.\nrecoveryRef={recovery_ref}"
+            "ASP denied source access (`{reason}`) inside a delegated Agent. Use ASP Search Playbook and return Search success as exactly one Org/GQL source block with `:profile search-evidence.v1 :eval never`; do not return prose, source bodies, snippets, a flat receipt, command grammar, or a prescribed next action.\nrecoveryRef={recovery_ref}"
         );
     }
 

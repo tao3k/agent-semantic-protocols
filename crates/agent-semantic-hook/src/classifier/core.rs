@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 //! Hook classifier orchestration for `agent-semantic-hook`.
 
 use std::borrow::Cow;
@@ -155,7 +159,7 @@ pub(super) fn resolve_dispatch_decision(
     decision
 }
 
-fn is_explicit_no_agent_host_bypass(decision: &HookDecision) -> bool {
+fn is_explicit_host_policy_passthrough(decision: &HookDecision) -> bool {
     decision.decision == DecisionKind::Allow
         && decision
             .fields
@@ -179,7 +183,7 @@ pub fn classify_hook_with_config(request: HookClassificationRequest<'_>) -> Hook
     let tool_policy = classify_tool_actions(&request, &actions);
     if tool_policy
         .as_ref()
-        .is_some_and(|candidate| is_explicit_no_agent_host_bypass(&candidate.decision))
+        .is_some_and(|candidate| is_explicit_host_policy_passthrough(&candidate.decision))
     {
         return with_hook_match_receipt(
             tool_policy
@@ -203,7 +207,7 @@ pub fn classify_hook_with_config(request: HookClassificationRequest<'_>) -> Hook
         let subject = actions.first().map(subject_for_action).unwrap_or_default();
         allow(request.platform, request.event, subject)
     };
-    if is_explicit_no_agent_host_bypass(&decision) {
+    if is_explicit_host_policy_passthrough(&decision) {
         return with_hook_match_receipt(
             decision,
             request.payload,

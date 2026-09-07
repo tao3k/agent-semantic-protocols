@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 use super::OperationIntent;
 use super::collect_tool_actions;
 use super::workspace_mutation_paths;
@@ -156,7 +160,7 @@ fn compound_shell_commands_preserve_one_normalized_action_per_stage() {
     let actions = collect_tool_actions(
         "functions.exec_command",
         &json!({
-            "cmd": "asp server status && ASP_NO_AGENT=1 shasum -a 256 target/release/asp .bin/asp && ASP_NO_AGENT=1 git diff --check"
+            "cmd": "asp server status && CHECK_MODE=1 shasum -a 256 target/release/asp .bin/asp && CHECK_MODE=1 git diff --check"
         }),
     );
     assert_eq!(actions.len(), 3);
@@ -166,7 +170,7 @@ fn compound_shell_commands_preserve_one_normalized_action_per_stage() {
     );
     assert_eq!(
         actions[1].command_tokens.as_deref().unwrap()[0],
-        "ASP_NO_AGENT=1"
+        "CHECK_MODE=1"
     );
     assert_eq!(actions[1].command_tokens.as_deref().unwrap()[1], "shasum");
     assert_eq!(

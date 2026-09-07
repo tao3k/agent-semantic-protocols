@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 use super::compile_aot_hook_policy_bundle_projection;
 use super::compile_serving_hook_policy_bundle_at;
 

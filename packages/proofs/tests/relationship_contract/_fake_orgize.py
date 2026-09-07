@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 FAKE_ORGIZE_SOURCE = """#!/usr/bin/env python3
 import json
 from pathlib import Path

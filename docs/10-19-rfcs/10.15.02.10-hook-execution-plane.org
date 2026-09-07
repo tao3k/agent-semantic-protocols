@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 #+title: RFC 10.15.02.10 - Hook Execution Plane and Stateful Runtime Boundary
 #+property: RFC_ID ASP-RFC-10.15-HOOK-EXECUTION-PLANE
 #+property: LEAN_MODULE ASPProof.HookExecutionPlane
@@ -178,9 +182,10 @@ The planes are:
    process. Missing identity fails closed here; Runtime availability is not a
    prerequisite for a deny.
 
-An explicitly inherited =ASP_NO_AGENT=1= is the layer-zero emergency bypass
-for the Host Hook adapter.  For an actual Hook event, the bootstrap MUST return
-the empty Host success response before reading the action payload, loading
+The typed =[hook-engine] enabled = false= value in State Home
+=control/config/asp.toml= disables the Host Hook adapter. For an actual Hook
+event, the bootstrap MUST return the empty Host success response before reading
+the action payload, loading
 matcher state, or evaluating policy. The second recovery layer is the Codex
 Bash PreTool Rust process guard mirrored by its Config V1 rule: only
 parser-proven process transfer of
@@ -353,9 +358,10 @@ The command MUST fail closed unless one receipt proves all of the following:
   globally enables it, while the current =hooks.json= and =bin/asp-hook=
   payloads are present; project-local marketplace or plugin enablement is not
   an installation authority;
-- =runtime/bin/asp= aliases =profiles/asp/active=, while =active= and =healthy=
-  resolve to executable, digest-addressed content protected by the retention
-  receipt;
+- =runtime/bin/asp= aliases the configured PATH-visible =asp= entry, that
+  public entry resolves through =profiles/asp/active=, and =active= plus
+  =healthy= resolve to executable, digest-addressed content protected by the
+  retention receipt; the reverse PATH-to-Runtime alias is rejected;
 - isolated active-only and healthy-only launcher scenarios both execute the
   operator passthrough without a second launcher or policy implementation;
 - the acceptance control plane warms the immutable active matcher generation

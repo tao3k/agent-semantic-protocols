@@ -11,7 +11,6 @@
       "provider-manifest.schema.json",
       "provider-route.schema.json",
       "provider-query-pack-descriptor.schema.json",
-      "provider-search-playbook-contract.schema.json",
       "provider-runtime-contract-descriptor.schema.json",
       "asp-client-server-descriptor.schema.json",
       "provider-runtime-request-stream-frame.schema.json",
@@ -28,17 +27,17 @@
       "asp-client-conformance.schema.json",
       "asp-client-search-request.schema.json",
       "asp-client-workspace-search-playbook-request.v1.schema.json",
+      "asp-client-workspace-query-playbook-request.v1.schema.json",
       "asp-client-workspace-syntax-query-request.v1.schema.json",
       "asp-client-workspace-syntax-query-response.v1.schema.json",
-      "search-playbook-contract-projection.v1.schema.json",
-      "semantic-agent-search-playbook-receipt.v1.schema.json",
+      "search-topology-settlement.v1.schema.json",
       "large-search-playbook-performance-receipt.v1.schema.json",
-      "workspace-search-playbook-result.v1.schema.json",
       "asp-client-source-index-lookup-request.schema.json",
       "resident-search-result.v1.schema.json",
       "asp-client-exact-query-request.schema.json",
       "asp-client-exact-query-response.schema.json",
       "asp-client-exact-query-failure.schema.json",
+      "query-playbook-materialization-receipt.v1.schema.json",
       "asp-client-query-readiness-failure.schema.json",
       "asp-client-dispatch-failure.schema.json",
       "asp-client-work-counters.schema.json",
@@ -66,6 +65,16 @@
       "semantic-search-packet.v1.schema.json",
       "semantic-search-storage-route.v1.schema.json",
       "semantic-query-packet.v1.schema.json",
+      "runtime-execution-binding.v2.schema.json",
+      "host-workspace-initialization-binding.v1.schema.json",
+      "runtime-artifact-bundle-binding.v2.schema.json",
+      "runtime-artifact-execution-closure-member.v1.schema.json",
+      "runtime-binary-bundle.v2.schema.json",
+      "content-publication-commit.v1.schema.json",
+      "runtime-workspace-execution-publication.v1.schema.json",
+      "runtime-workspace-execution-pointer.v1.schema.json",
+      "query-playbook-materialization-request.v1.schema.json",
+      "query-playbook-materialization-receipt.v1.schema.json",
       "semantic-exact-selector-receipt.v1.schema.json",
       "semantic-owner-item-evidence.v1.schema.json",
       "semantic-content-compaction.v1.schema.json",
@@ -458,7 +467,8 @@
       "parentFamilyId": "asp.schema-family.semantic",
       "namespace": {
         "filenamePrefixes": [
-          "content-binding"
+          "content-binding",
+          "content-publication-"
         ]
       }
     },
@@ -543,13 +553,14 @@
       "includeSchemaPaths": [
         "schemas/asp.exact-selector-execution-receipt.v1.schema.json",
         "schemas/query-playbook-materialization-request.v1.schema.json",
+        "schemas/query-playbook-materialization-receipt.v1.schema.json",
         "schemas/projection-evidence-context.v1.schema.json",
           "schemas/lexical-postings-work-reduction-receipt.schema.json",
           "schemas/rg-coverage-receipt.schema.json",
           "schemas/asp-client-workspace-search-playbook-request.v1.schema.json",
           "schemas/asp-client-workspace-syntax-query-request.v1.schema.json",
           "schemas/asp-client-workspace-syntax-query-response.v1.schema.json",
-          "schemas/workspace-search-playbook-result.v1.schema.json"
+          "schemas/search-topology-settlement.v1.schema.json"
         ]
       }
     },
@@ -703,6 +714,8 @@
           "schemas/asp.active-workspace-generation.v1.schema.json",
           "schemas/active-generation-projection-capability.v1.schema.json",
           "schemas/active-search-generation.schema.json",
+          "schemas/project-workspace-binding.v1.schema.json",
+          "schemas/host-workspace-initialization-binding.v1.schema.json",
           "schemas/state-home-project-binding.schema.json"
         ]
       },
@@ -766,7 +779,8 @@
       "membershipOverrides": {
         "includeSchemaPaths": [
           "schemas/state-home-cleanup-receipt.schema.json",
-          "schemas/state-home-retention-plan.schema.json"
+          "schemas/state-home-retention-plan.schema.json",
+          "schemas/state-home-sync-receipt.schema.json"
         ]
       }
     },

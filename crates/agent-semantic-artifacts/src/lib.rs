@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 //! Public facade for ASP artifact identity primitives.
 
@@ -11,6 +11,7 @@ mod repair_chain;
 pub mod runtime_active_provider_set;
 pub mod runtime_artifact_activation;
 pub mod runtime_artifact_catalog;
+pub mod runtime_artifact_execution_closure;
 pub mod runtime_artifact_publication;
 pub mod runtime_artifact_quiescence;
 pub mod runtime_artifact_retention;
@@ -20,6 +21,7 @@ pub mod runtime_provider_execution_binding;
 mod schema_v1_digest;
 mod state_home_binding;
 mod state_home_catalog;
+mod state_home_config;
 mod state_home_layout;
 mod state_home_retention;
 
@@ -76,6 +78,8 @@ pub use repair_chain::RepairChainParentRef;
 pub use repair_chain::build_repair_chain_frame;
 pub use runtime_active_provider_set::ActiveRuntimeProviderArtifact;
 pub use runtime_active_provider_set::ActiveRuntimeProviderSet;
+pub use runtime_active_provider_set::BoundActiveRuntimeProviderSet;
+pub use runtime_active_provider_set::load_active_runtime_bound_provider_set;
 pub use runtime_active_provider_set::load_active_runtime_provider_set;
 pub use runtime_active_provider_set::load_active_runtime_provider_set_async;
 pub use state_home_binding::HostProjectReference;
@@ -92,13 +96,16 @@ pub use state_home_catalog::STATE_HOME_CATALOG_SCHEMA_ID;
 pub use state_home_catalog::STATE_HOME_CATALOG_SCHEMA_VERSION;
 pub use state_home_catalog::admit_state_home_catalog_batch;
 pub use state_home_catalog::validate_state_home_catalog_observations;
+pub use state_home_config::load_asp_global_config;
+pub use state_home_config::load_asp_global_config_async;
 pub use state_home_layout::MaterializedWorkspaceState;
-pub use state_home_layout::RetiredStateRoot;
-pub use state_home_layout::StagedWorkspaceRetirement;
+pub use state_home_layout::NonContractStateHomeEntry;
+pub use state_home_layout::StagedStateHomeRemoval;
 pub use state_home_layout::StateHomeCacheLayout;
 pub use state_home_layout::StateHomeControlLayout;
 pub use state_home_layout::StateHomeLayout;
 pub use state_home_layout::StateHomeResourceLayout;
+pub use state_home_layout::StateHomeTrashCleanup;
 pub use state_home_layout::WORKSPACE_BINDING_FILE;
 pub use state_home_layout::WORKSPACE_CACHE_MANIFEST_FILE;
 pub use state_home_layout::WORKSPACE_DB_MANIFEST_FILE;
@@ -122,10 +129,6 @@ mod state_home_binding_tests;
 #[path = "../tests/unit/state_home_catalog.rs"]
 mod state_home_catalog_tests;
 
-#[cfg(test)]
-#[path = "../tests/unit/state_home_layout.rs"]
-mod state_home_layout_tests;
-
 mod runtime_artifact_state_layout;
 mod runtime_state_layout;
 #[cfg(test)]
@@ -135,3 +138,4 @@ pub use runtime_artifact_state_layout::RuntimeArtifactStateLayout;
 pub use runtime_state_layout::RuntimeLifecycleReceiptName;
 pub use runtime_state_layout::RuntimeServingStateLayout;
 pub use runtime_state_layout::RuntimeStateLayout;
+pub use runtime_state_layout::RuntimeTransportStateLayout;

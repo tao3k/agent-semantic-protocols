@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 //! Server-owned content publication ledger.
 //!
@@ -59,7 +59,10 @@ impl ContentPublicationLedger {
             .active
             .as_ref()
             .ok_or(ContentBindingError::ContentMismatch)?;
-        active.admit_exact(identity)?;
+        if active.identity() != identity {
+            return Err(ContentBindingError::ContentMismatch);
+        }
+        active.validate()?;
         Ok(active)
     }
 
@@ -68,7 +71,9 @@ impl ContentPublicationLedger {
         binding: &ContentBinding,
     ) -> Result<&ContentPublicationCommit, ContentBindingError> {
         binding.validate()?;
-        self.admit_exact(&binding.identity)
+        let active = self.admit_exact(&binding.identity)?;
+        active.admit_exact(binding)?;
+        Ok(active)
     }
 
     pub fn active(&self) -> Option<&ContentPublicationCommit> {

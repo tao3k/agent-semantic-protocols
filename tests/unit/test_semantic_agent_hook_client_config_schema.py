@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Schema tests for semantic agent hook client configuration."""
 
 from __future__ import annotations
@@ -83,7 +87,7 @@ class SemanticAgentHookClientConfigSchemaTests(unittest.TestCase):
                 {
                     "rules": [
                         {
-                            "id": "allow-no-agent",
+                            "id": "allow-host-policy-passthrough",
                             "decision": "allow",
                             "terminal": True,
                             "match": {

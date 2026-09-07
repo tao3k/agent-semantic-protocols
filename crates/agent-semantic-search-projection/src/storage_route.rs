@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 //! Language-neutral storage profile and search-route decision contract.
 
 pub const SEMANTIC_SEARCH_STORAGE_ROUTE_SCHEMA_ID: &str =

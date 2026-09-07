@@ -1,11 +1,16 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Semantic admission for one MRR-defined Project Topology program."""
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 
 from jsonschema import Draft202012Validator
 from jsonschema.exceptions import ValidationError
+from referencing import Registry, Resource
 
 
 STANDARD_PROFILES = frozenset(
@@ -37,10 +42,18 @@ def _require(condition: bool, reason_kind: str) -> None:
         raise TopologyProgramError(reason_kind)
 
 
-def _validate_schema(manifest: dict, schema: dict) -> None:
+def _validate_schema(
+    manifest: dict, schema: dict, referenced_schemas: Sequence[dict]
+) -> None:
     try:
         Draft202012Validator.check_schema(schema)
-        Draft202012Validator(schema).validate(manifest)
+        registry = Registry().with_resources(
+            [
+                (referenced["$id"], Resource.from_contents(referenced))
+                for referenced in referenced_schemas
+            ]
+        )
+        Draft202012Validator(schema, registry=registry).validate(manifest)
     except ValidationError as exc:
         raise TopologyProgramError("topology-program-schema-invalid") from exc
 
@@ -116,10 +129,11 @@ def validate_project_topology_program(
     manifest: dict,
     schema: dict,
     admitted_receipts: Mapping[str, dict],
+    referenced_schemas: Sequence[dict] = (),
 ) -> None:
     """Validate one compiled MRR topology program and its materialization binding."""
 
-    _validate_schema(manifest, schema)
+    _validate_schema(manifest, schema, referenced_schemas)
     _validate_profiles(manifest)
     _validate_program_modules(manifest)
     _validate_compilation_receipt(manifest, admitted_receipts)

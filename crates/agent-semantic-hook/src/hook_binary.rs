@@ -1,19 +1,31 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 //! Process boundary for the canonical Runtime Hook executable.
 
 use std::ffi::OsString;
 
 /// Run the Hook evaluator while guaranteeing one valid Host JSON terminal.
 ///
-/// The inherited no-agent lane is deliberately checked before payload,
-/// embedded policy, reader-probe, or async-runtime work. This is
-/// distinct from the parser-proven command-local process-environment rule.
+/// Hook enablement is read once from the global State Home configuration before
+/// payload, policy, reader-probe, or asynchronous Runtime work.
 pub fn run_from_env() -> std::process::ExitCode {
     let arguments = std::env::args_os().skip(1).collect::<Vec<_>>();
-    if inherited_no_agent_bypass() && hook_event(&arguments).is_some() {
-        println!("{{}}");
-        return std::process::ExitCode::SUCCESS;
-    }
     let event = hook_event(&arguments).map(str::to_owned);
+    if event.is_some() {
+        match configured_hook_engine_enabled() {
+            Ok(false) => {
+                println!("{{}}");
+                return std::process::ExitCode::SUCCESS;
+            }
+            Ok(true) => {}
+            Err(error) => {
+                println!("{}", panic_terminal(event.as_deref(), error));
+                return std::process::ExitCode::SUCCESS;
+            }
+        }
+    }
     match std::panic::catch_unwind(crate::aot_evaluator_cli::main_entry) {
         Ok(()) => std::process::ExitCode::SUCCESS,
         Err(payload) => {
@@ -26,8 +38,13 @@ pub fn run_from_env() -> std::process::ExitCode {
     }
 }
 
-fn inherited_no_agent_bypass() -> bool {
-    crate::no_agent_escape::inherited()
+fn configured_hook_engine_enabled() -> Result<bool, String> {
+    let state_home = agent_semantic_artifacts::StateHomeLayout::from_process_environment()?;
+    Ok(
+        agent_semantic_artifacts::load_asp_global_config(state_home.root())?
+            .hook_engine()
+            .enabled(),
+    )
 }
 
 fn hook_event(arguments: &[OsString]) -> Option<&str> {

@@ -2,9 +2,9 @@
   "schemaId": "agent.semantic-protocols.asp-rust-live-query-warm-diagnostic",
   "schemaVersion": "1",
   "status": "diagnostic-not-acceptance",
-  "mode": "ASP_NO_AGENT_same_oracle_only",
+  "mode": "retired-environment-escape-diagnostic",
   "acceptanceEligible": false,
-  "command": "ASP_NO_AGENT=1 /Users/guangtao/ghq/github.com/tao3k/agent-semantic-protocols/.devenv/devenv-profile-exec .bin/asp rust query --selector 'rust://tokio/src/runtime/runtime.rs#item/method/spawn/scope/implementation-owner/type/Runtime' --projection source --workspace /Users/guangtao/.agent-semantic-protocols/git/repo/blake3-256/cdc5f1c0b2a72c82bbf2d228a61f09592f6b81b71a142e0d515360c17358dc45/checkouts/46c830117b82fb806f6a164fcda25050846cf5f9 --json",
+  "command": "retired diagnostic; no executable command",
   "workload": {
     "resource": "rust.tokio",
     "operation": "query",

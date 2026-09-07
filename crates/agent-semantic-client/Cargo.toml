@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 #
-# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 [package]
 
@@ -29,6 +29,7 @@ agent-semantic-runtime-server = { path = "../agent-semantic-runtime-server" }
 agent-semantic-client-protocol = { path = "../agent-semantic-client-protocol" }
 agent-semantic-context-product = { path = "../agent-semantic-context-product" }
 agent-semantic-search-projection = { path = "../agent-semantic-search-projection" }
+agent-semantic-topology = { path = "../agent-semantic-topology" }
 agent-semantic-config = { path = "../agent-semantic-config" }
 agent-semantic-hook = { path = "../agent-semantic-hook", features = ["compiler"] }
 agent-semantic-provider-transport = { path = "../agent-semantic-provider-transport" }

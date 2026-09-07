@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 use crate::protocol_identity::CLIENT_CATALOG_SCHEMA_ID;
 use crate::protocol_identity::CLIENT_FRAME_SCHEMA_ID;
@@ -152,15 +152,33 @@ fn northbound_client_requests_are_distinct_from_provider_runtime_requests() {
         documents: None,
         workspace: None,
         fd: None,
-        rg: None,
+        rg: Some(vec![vec!["RuntimeAspClient".to_owned(), ".".to_owned()]]),
         tantivy: None,
         syntax: None,
+        native_syntax: None,
         graph: None,
-        clause_order: None,
+        clause_order: vec![crate::AspClientSearchPlaybookClauseRef {
+            axis: crate::AspClientSearchPlaybookClauseAxis::Rg,
+            block_index: 0,
+        }],
     };
     workspace_playbook
         .validate_schema_identity()
         .expect("workspace playbook identity");
+
+    let query_playbook = crate::AspClientWorkspaceQueryPlaybookRequest {
+        schema_id: "agent.semantic-protocols.asp-client-workspace-query-playbook-request"
+            .to_owned(),
+        schema_version: "1".to_owned(),
+        selectors: vec![
+            "org://docs/publication.org#item/heading/Publication".to_owned(),
+            "rust://src/lib.rs#item/function/example".to_owned(),
+        ],
+        projection: "source".to_owned(),
+    };
+    query_playbook
+        .validate_schema_identity()
+        .expect("workspace Query Playbook identity");
 
     let syntax_query = crate::AspClientWorkspaceSyntaxQueryRequest {
         schema_id: "agent.semantic-protocols.asp-client-workspace-syntax-query-request".to_owned(),
@@ -227,11 +245,12 @@ fn workspace_playbook_clause_order_is_priority_and_graph_barrier() {
         ]]),
         tantivy: None,
         syntax: None,
+        native_syntax: None,
         graph: Some(vec![AspClientSearchPlaybookGraphBlock {
             language: "gql".to_owned(),
             argv: vec!["MATCH (a:Owner)-[:CALLS]->(b:Item) RETURN a, b".to_owned()],
         }]),
-        clause_order: Some(vec![
+        clause_order: vec![
             Clause {
                 axis: Axis::Rg,
                 block_index: 0,
@@ -244,14 +263,14 @@ fn workspace_playbook_clause_order_is_priority_and_graph_barrier() {
                 axis: Axis::Graph,
                 block_index: 0,
             },
-        ]),
+        ],
     };
     request
         .validate_schema_identity()
         .expect("written acquisition priority followed by Graph is valid");
 
     let mut acquisition_after_graph = request.clone();
-    acquisition_after_graph.clause_order = Some(vec![
+    acquisition_after_graph.clause_order = vec![
         Clause {
             axis: Axis::Graph,
             block_index: 0,
@@ -264,7 +283,7 @@ fn workspace_playbook_clause_order_is_priority_and_graph_barrier() {
             axis: Axis::Fd,
             block_index: 0,
         },
-    ]);
+    ];
     assert!(
         acquisition_after_graph
             .validate_schema_identity()
@@ -273,7 +292,7 @@ fn workspace_playbook_clause_order_is_priority_and_graph_barrier() {
     );
 
     let mut missing_clause = request;
-    missing_clause.clause_order.as_mut().unwrap().remove(1);
+    missing_clause.clause_order.remove(1);
     assert!(
         missing_clause
             .validate_schema_identity()
@@ -570,6 +589,7 @@ fn catalog_is_closed_and_generation_pinned() {
         workspace_generation: catalog.workspace_generation.clone(),
         method: "python.query".to_owned(),
         params: json!({}),
+        client_timing_witness: None,
     };
     let error = ClientSessionState::Initialized
         .admit(&unknown, &catalog)
@@ -629,6 +649,7 @@ fn request_parameters_are_executable_and_fail_closed() {
         workspace_generation: catalog.workspace_generation.clone(),
         method: "rust.search".to_owned(),
         params: json!({"query": 42}),
+        client_timing_witness: None,
     };
     let error = ClientSessionState::Initialized
         .admit(&request, &catalog)
@@ -665,6 +686,7 @@ fn runtime_context_cannot_be_injected_by_a_client() {
         workspace_generation: catalog.workspace_generation.clone(),
         method: "rust.search".to_owned(),
         params: json!({"query": "owner", "workspace": "../other"}),
+        client_timing_witness: None,
     };
     let error = ClientSessionState::Initialized
         .admit(&request, &catalog)
@@ -725,6 +747,7 @@ fn session_project_and_workspace_are_bound_at_initialize() {
                 workspace_generation: catalog.workspace_generation.clone(),
                 method: "rust.search".to_owned(),
                 params: json!({"query": "owner"}),
+                client_timing_witness: None,
             },
             &catalog,
         )
@@ -742,6 +765,7 @@ fn session_project_and_workspace_are_bound_at_initialize() {
                 workspace_generation: catalog.workspace_generation.clone(),
                 method: "rust.search".to_owned(),
                 params: json!({"query": "owner"}),
+                client_timing_witness: None,
             },
             &catalog,
         )

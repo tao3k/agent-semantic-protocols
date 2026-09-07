@@ -1,11 +1,12 @@
+-- SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+--
+-- SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 import ASPProof.WorkspaceSearchPlaybookPlanner
 
 open ASPProof.WorkspaceSearchPlaybookPlanner
 
 #print axioms admitted_request_has_direct_native_axes
-#print axioms successful_contract_compile_is_provider_owned
-#print axioms mismatched_provider_has_no_contract_fallback
-#print axioms contract_query_precedes_generation_admission
 #print axioms clause_kinds_are_pairwise_distinct
 #print axioms native_argument_is_forwarded_unchanged
 #print axioms standalone_shell_pipe_is_rejected

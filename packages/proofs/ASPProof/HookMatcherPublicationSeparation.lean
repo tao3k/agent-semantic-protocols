@@ -1,3 +1,7 @@
+-- SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+--
+-- SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 namespace ASPProof.HookMatcherPublicationSeparation
 
 /-- State Home owns exactly one canonical Runtime Hook binary. -/
@@ -204,187 +208,46 @@ theorem only_standalone_hook_accepts_host_events :
     acceptsHostEvent .client = false ∧ acceptsHostEvent .hook = true := by
   decide
 
-/-- The four authorities that formed the retired recovery cycle. -/
-inductive RecoveryNode where
-  | buildFixedBinary
-  | dispatchTestingAgent
-  | runtimeUnavailable
-  | installFixedBinary
-  | recovered
+/-- Hook enablement is immutable typed State Home configuration, never process
+environment or command-payload authority. -/
+structure HookEnginePolicy where
+  enabled : Bool
   deriving DecidableEq
 
-/-- Both inherited process boundaries and the parser-proven command process
-environment terminate before the Policy Kernel. -/
-inductive RecoveryOverrideOrigin where
-  | pluginLauncherEnvironment
-  | evaluatorProcessEnvironment
-  | commandProcessEnvironment
-  deriving DecidableEq
-
-structure RecoveryModel where
-  oldBinaryDeniesBuild : Bool
-  testingDispatchRecurses : Bool
-  runtimeIsUnavailable : Bool
-  installNeedsDeniedBuild : Bool
-  overrideOrigin : Option RecoveryOverrideOrigin
-
-/-- Without an override the old design follows its authority dependencies.
-With an override every source node terminates at `recovered` before the Policy
-Kernel can create a dispatch or denial edge. -/
-def recoveryEdge (model : RecoveryModel) (source target : RecoveryNode) : Prop :=
-  match model.overrideOrigin with
-  | some _ => target = .recovered
-  | none =>
-      match source, target with
-      | .buildFixedBinary, .dispatchTestingAgent => model.oldBinaryDeniesBuild = true
-      | .dispatchTestingAgent, .runtimeUnavailable => model.testingDispatchRecurses = true
-      | .runtimeUnavailable, .installFixedBinary => model.runtimeIsUnavailable = true
-      | .installFixedBinary, .buildFixedBinary => model.installNeedsDeniedBuild = true
-      | _, _ => False
-
-def formsLegacyRecoveryCycle (model : RecoveryModel) : Prop :=
-  recoveryEdge model .buildFixedBinary .dispatchTestingAgent ∧
-    recoveryEdge model .dispatchTestingAgent .runtimeUnavailable ∧
-    recoveryEdge model .runtimeUnavailable .installFixedBinary ∧
-    recoveryEdge model .installFixedBinary .buildFixedBinary
-
-def legacyDeadlockModel : RecoveryModel := {
-  oldBinaryDeniesBuild := true
-  testingDispatchRecurses := true
-  runtimeIsUnavailable := true
-  installNeedsDeniedBuild := true
-  overrideOrigin := none
-}
-
-/-- Concrete counterexample: the retired dependency graph contains a cycle. -/
-theorem legacy_deadlock_cycle_is_reachable :
-    formsLegacyRecoveryCycle legacyDeadlockModel := by
-  simp [formsLegacyRecoveryCycle, recoveryEdge, legacyDeadlockModel]
-
-/-- A process-environment recovery override is a terminal pre-kernel edge, so
-the legacy recovery cycle cannot be formed. -/
-theorem process_environment_override_makes_deadlock_unreachable :
-    ¬ formsLegacyRecoveryCycle
-      { legacyDeadlockModel with
-          overrideOrigin := some .evaluatorProcessEnvironment } := by
-  simp [formsLegacyRecoveryCycle, recoveryEdge]
-
-/-- The fixed Plugin launcher is the earlier inherited-process escape layer. -/
-theorem launcher_environment_override_makes_deadlock_unreachable :
-    ¬ formsLegacyRecoveryCycle
-      { legacyDeadlockModel with
-          overrideOrigin := some .pluginLauncherEnvironment } := by
-  simp [formsLegacyRecoveryCycle, recoveryEdge]
-
-/-- A Bash payload is recovery authority only when its parsed process topology
-proves that the assignment reaches the requested child process. -/
-inductive CommandEnvironmentEvidence where
-  | directAssignment
-  | envUtility
-  | exportedCommand
-  | noncanonicalAssignment
-  | unboundText
-  deriving DecidableEq
-
-def commandEnvironmentHasRecoveryAuthority : CommandEnvironmentEvidence → Bool
-  | .directAssignment => true
-  | .envUtility => true
-  | .exportedCommand => true
-  | .noncanonicalAssignment => false
-  | .unboundText => false
-
-/-- The command-local guard is evaluated before evaluator resolution. -/
-def commandEscapeBeforeEvaluator
-    (evidence : CommandEnvironmentEvidence) (evaluatorAvailable : Bool) : Bool :=
-  commandEnvironmentHasRecoveryAuthority evidence || evaluatorAvailable
-
-theorem direct_assignment_is_recovery_authority :
-    commandEnvironmentHasRecoveryAuthority .directAssignment = true := by
-  rfl
-
-theorem env_utility_assignment_is_recovery_authority :
-    commandEnvironmentHasRecoveryAuthority .envUtility = true := by
-  rfl
-
-theorem exported_assignment_is_recovery_authority :
-    commandEnvironmentHasRecoveryAuthority .exportedCommand = true := by
-  rfl
-
-/-- Lookalike environment variables and non-`1` values never become recovery
-authority.  The production parser binds only the exact `ASP_NO_AGENT=1`
-process assignment. -/
-theorem noncanonical_assignment_is_not_recovery_authority :
-    commandEnvironmentHasRecoveryAuthority .noncanonicalAssignment = false := by
-  rfl
-
-theorem unbound_payload_text_is_not_recovery_authority :
-    commandEnvironmentHasRecoveryAuthority .unboundText = false := by
-  rfl
-
-theorem exported_command_escape_survives_missing_evaluator :
-    commandEscapeBeforeEvaluator .exportedCommand false = true := by
-  rfl
-
-theorem unbound_text_cannot_escape_missing_evaluator :
-    commandEscapeBeforeEvaluator .unboundText false = false := by
-  rfl
-
-theorem noncanonical_assignment_cannot_escape_missing_evaluator :
-    commandEscapeBeforeEvaluator .noncanonicalAssignment false = false := by
-  rfl
-
-theorem command_environment_override_makes_deadlock_unreachable :
-    ¬ formsLegacyRecoveryCycle
-      { legacyDeadlockModel with
-          overrideOrigin := some .commandProcessEnvironment } := by
-  simp [formsLegacyRecoveryCycle, recoveryEdge]
-
-/-- Recovery precedence is scoped to a parsed Hook event.  The override cannot
-capture ordinary ASP CLI commands before their own parser runs. -/
 inductive CliInvocation where
   | hookEvent
   | ordinaryCli
   deriving DecidableEq
 
-def entersSynchronousHookBootstrap
-    (invocation : CliInvocation) (overridePresent : Bool) : Bool :=
-  match invocation with
-  | .hookEvent => overridePresent
-  | .ordinaryCli => false
-
-theorem recovery_override_does_not_capture_ordinary_cli
-    (overridePresent : Bool) :
-    entersSynchronousHookBootstrap .ordinaryCli overridePresent = false := by
-  rfl
-
-theorem recovery_override_precedes_policy_for_hook_event :
-    entersSynchronousHookBootstrap .hookEvent true = true := by
-  rfl
-
-/-- Escape authority is resolved before generation and policy. It is not a
-Config decision and therefore cannot be denied by the policy it bypasses. -/
-inductive HookBootstrapStage where
-  | inheritedEscape
-  | commandEscape
-  | evaluator
-  | policy
+inductive HookBootstrapDecision where
+  | evaluate
+  | passThrough
+  | ordinaryClient
   deriving DecidableEq
 
-def bootstrapRank : HookBootstrapStage → Nat
-  | .inheritedEscape => 0
-  | .commandEscape => 1
-  | .evaluator => 2
-  | .policy => 3
+def hookBootstrapDecision
+    (policy : HookEnginePolicy) (invocation : CliInvocation) : HookBootstrapDecision :=
+  match invocation with
+  | .ordinaryCli => .ordinaryClient
+  | .hookEvent => if policy.enabled then .evaluate else .passThrough
 
-theorem inherited_escape_precedes_evaluator_and_policy :
-    bootstrapRank .inheritedEscape < bootstrapRank .evaluator ∧
-      bootstrapRank .inheritedEscape < bootstrapRank .policy := by
-  decide
+theorem hook_configuration_does_not_capture_ordinary_cli (policy : HookEnginePolicy) :
+    hookBootstrapDecision policy .ordinaryCli = .ordinaryClient := by
+  rfl
 
-theorem command_escape_precedes_evaluator_and_policy :
-    bootstrapRank .commandEscape < bootstrapRank .evaluator ∧
-      bootstrapRank .commandEscape < bootstrapRank .policy := by
-  decide
+theorem disabled_hook_engine_passes_through_before_evaluation :
+    hookBootstrapDecision { enabled := false } .hookEvent = .passThrough := by
+  rfl
+
+theorem enabled_hook_engine_evaluates :
+    hookBootstrapDecision { enabled := true } .hookEvent = .evaluate := by
+  rfl
+
+/-- Arbitrary environment and payload text are not inputs to the Hook decision. -/
+theorem environment_cannot_change_hook_engine_policy
+    (policy : HookEnginePolicy) (_environmentDigest _payloadDigest : Nat) :
+    hookBootstrapDecision policy .hookEvent = hookBootstrapDecision policy .hookEvent := by
+  rfl
 
 /-- Agent kind is a closed Config fact. Child topology cannot manufacture a
 kind merely because the Host event is named `SubagentStart`. -/

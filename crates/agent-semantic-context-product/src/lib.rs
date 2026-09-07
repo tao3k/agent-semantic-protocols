@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 pub mod agent_session_delegation_admission;
 pub mod agent_session_delegation_intent;
 pub mod codex_multi_agent_v2_control_plane;

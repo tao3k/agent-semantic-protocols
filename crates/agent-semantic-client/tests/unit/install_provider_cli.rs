@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 use sha2::Digest;
 use sha2::Sha256;
@@ -60,7 +60,6 @@ fn install_binary_reconciles_provider_artifacts_without_starting_runtime() {
             .args(["install", "binary"])
             .env("ASP_STATE_HOME", &state_home)
             .env("HOME", root.join("home"))
-            .env_remove("ASP_NO_AGENT")
             .current_dir(&root)
             .output()
             .expect("run ASP binary installation")

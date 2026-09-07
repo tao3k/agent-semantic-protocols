@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Semantic admission for one reusable Project Topology library generation."""
 
 from __future__ import annotations
@@ -6,18 +10,32 @@ from collections.abc import Mapping
 
 from jsonschema import Draft202012Validator
 from jsonschema.exceptions import ValidationError
+from referencing import Registry, Resource
 
 from ._topology_admission import SettlementError, require_topology
 
 
 def _validate_shape_and_rebuild(
-    library: dict, schema: dict, admitted_receipts: Mapping[str, dict]
+    library: dict,
+    schema: dict,
+    project_workspace_schema: dict,
+    admitted_receipts: Mapping[str, dict],
 ) -> None:
     require_topology(
         "fromScratchRebuildReceipt" in library, "topology-rebuild-receipt-missing"
     )
+    project_workspace_schema_id = project_workspace_schema.get("$id")
+    require_topology(
+        isinstance(project_workspace_schema_id, str)
+        and bool(project_workspace_schema_id),
+        "project-workspace-schema-identity-missing",
+    )
+    registry = Registry().with_resource(
+        project_workspace_schema_id,
+        Resource.from_contents(project_workspace_schema),
+    )
     try:
-        Draft202012Validator(schema).validate(library)
+        Draft202012Validator(schema, registry=registry).validate(library)
     except ValidationError as exc:
         raise SettlementError("topology-library-schema-invalid") from exc
     generation = library["generation"]
@@ -173,11 +191,16 @@ def _validate_closure(library: dict, edges: dict[str, dict], derived: set[str]) 
 
 
 def validate_topology_library(
-    library: dict, schema: dict, admitted_receipts: Mapping[str, dict]
+    library: dict,
+    schema: dict,
+    project_workspace_schema: dict,
+    admitted_receipts: Mapping[str, dict],
 ) -> None:
     """Validate one complete library against independently admitted receipts."""
 
-    _validate_shape_and_rebuild(library, schema, admitted_receipts)
+    _validate_shape_and_rebuild(
+        library, schema, project_workspace_schema, admitted_receipts
+    )
     segments = _index_segments(library)
     nodes = _index_nodes(library, segments)
     _validate_annotations(library, nodes, admitted_receipts)

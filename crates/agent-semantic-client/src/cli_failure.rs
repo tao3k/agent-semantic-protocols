@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 //! Agent-facing materialization for failures that occur before an ASP evidence frame exists.
 
@@ -60,7 +60,7 @@ pub fn materialize_cli_failure(message: &str) -> String {
         "failureLayer": "asp-cli-startup-or-ipc-boundary",
         "osError": "EPERM",
         "message": "ASP could not produce semantic evidence because the Host OS denied a process, IPC, or filesystem operation. This is not a Hook policy denial; the failing lower layer is not attributable until a typed ASP frame exists.",
-        "recovery": "Repair Host filesystem/socket permission and rerun the exact ASP command. ASP_NO_AGENT is a Hook-policy recovery escape only; normal Search and Query always use the verified Runtime serving endpoint. It does not override operator-stop or endpoint identity denial.",
+        "recovery": "Repair Host filesystem/socket permission and rerun the exact ASP command. Hook enablement is controlled only by State Home control/config/asp.toml; it does not override operator-stop or endpoint identity denial.",
         "originalError": message,
     })
     .to_string()

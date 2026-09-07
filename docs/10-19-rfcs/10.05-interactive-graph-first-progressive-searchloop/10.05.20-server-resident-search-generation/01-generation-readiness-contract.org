@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 #+title: Runtime Server Workspace Generation Readiness Contract
 #+property: header-args :eval never-export
 
@@ -54,4 +58,3 @@ readiness receipt exists for its workspace.  A selector absent from the active
 generation may resolve only through an explicit relocation identity contained
 in that generation; retrying, weakening the selector, or reading live source is
 not a valid recovery transition.
-

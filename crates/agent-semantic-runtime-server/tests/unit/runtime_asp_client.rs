@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 use std::sync::Arc;
 
 use agent_semantic_client_protocol::ClientFrame;
@@ -21,6 +25,24 @@ use agent_semantic_schema_manager::SchemaManager;
 
 fn digest(character: char) -> String {
     format!("blake3-256:{}", character.to_string().repeat(64))
+}
+
+fn test_project_workspace_resolver()
+-> agent_semantic_runtime_server::HostWorkspaceInitializationBindingResolver {
+    Arc::new(|_| {
+        let project_workspace = agent_semantic_content_identity::ProjectWorkspaceBinding::new(
+            "git+file:///runtime-test.git#workspace/main",
+            ".",
+            "local-only",
+            Vec::new(),
+        )
+        .map_err(|error| error.to_string())?;
+        agent_semantic_content_identity::HostWorkspaceInitializationBinding::new(
+            project_workspace,
+            "worktree:runtime-test",
+        )
+        .map_err(|error| error.to_string())
+    })
 }
 
 fn registered_language_provider_pairs() -> Vec<(String, String)> {
@@ -178,6 +200,7 @@ async fn warm_dispatch_without_resident_generation_returns_query_not_ready(
             .expect("empty provider register"),
         ),
         directory.path().join("workspace-store"),
+        test_project_workspace_resolver(),
         agent_semantic_runtime_server::RuntimeQueryGenerationAuthority::new(),
         telemetry.sender,
     )
@@ -219,6 +242,7 @@ async fn warm_dispatch_without_resident_generation_returns_query_not_ready(
         workspace_generation: catalog.workspace_generation,
         method: method.to_owned(),
         params: params.clone(),
+        client_timing_witness: None,
     };
     // This is a dispatcher contract test, not a transport test. Exercise the
     // frame service directly so semantic coverage does not require the test
@@ -250,6 +274,27 @@ async fn warm_dispatch_without_resident_generation_returns_query_not_ready(
         assert_exact_query_not_ready_terminal(&response_frame, &params);
     }
 
+    if method == agent_semantic_client_protocol::WORKSPACE_QUERY_PLAYBOOK_METHOD {
+        let ClientFrame::Response {
+            outcome: agent_semantic_client_protocol::ClientOutcome::Error,
+            result: None,
+            error: Some(error),
+            ..
+        } = response_frame
+        else {
+            panic!("Query Playbook hard cut must emit one typed failure response")
+        };
+        assert_eq!(
+            error["reasonKind"],
+            "query-playbook-runtime-binding-unavailable"
+        );
+        assert_eq!(
+            error["terminal"]["failureStage"],
+            "runtime-execution-binding-admission"
+        );
+        return;
+    }
+
     assert!(
         matches!(response_frame, ClientFrame::Response { error: Some(_), .. }),
         "generation failure must be a typed client response: {response_frame:?}"
@@ -267,7 +312,7 @@ async fn warm_dispatch_without_resident_generation_returns_query_not_ready(
 }
 
 #[tokio::test]
-async fn workspace_search_playbook_contract_query_bypasses_generation_admission() {
+async fn workspace_search_playbook_without_acquisition_still_requires_generation_admission() {
     warm_dispatch_without_resident_generation_returns_query_not_ready(
         "request-workspace-search-playbook-contract",
         agent_semantic_client_protocol::WORKSPACE_SEARCH_PLAYBOOK_METHOD,
@@ -327,6 +372,24 @@ async fn workspace_search_playbook_requires_a_committed_complete_generation() {
                 {"axis": "syntax", "blockIndex": 0},
                 {"axis": "graph", "blockIndex": 0}
             ]
+        }),
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn query_playbook_never_falls_back_to_per_selector_exact_query() {
+    warm_dispatch_without_resident_generation_returns_query_not_ready(
+        "request-workspace-query-playbook",
+        agent_semantic_client_protocol::WORKSPACE_QUERY_PLAYBOOK_METHOD,
+        serde_json::json!({
+            "schemaId": "agent.semantic-protocols.asp-client-workspace-query-playbook-request",
+            "schemaVersion": "1",
+            "selectors": [
+                "org://docs/publication.org#item/heading/Publication",
+                "rust://src/registry.rs#item/function/refresh_registry"
+            ],
+            "projection": "source"
         }),
     )
     .await;
@@ -589,6 +652,7 @@ async fn host_uds_schema_bundle_route_bypasses_workspace_generation() {
             .expect("empty provider register"),
         ),
         directory.path().join("workspace-store"),
+        test_project_workspace_resolver(),
         agent_semantic_runtime_server::RuntimeQueryGenerationAuthority::new(),
         telemetry.sender,
     )
@@ -650,6 +714,7 @@ async fn host_uds_schema_bundle_route_bypasses_workspace_generation() {
             workspace_generation: catalog.workspace_generation,
             method: "asp.schema.bundle".to_owned(),
             params: serde_json::to_value(request).expect("request JSON"),
+            client_timing_witness: None,
         })
         .await
         .expect("schema bundle response");

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-# SPDX-FileCopyrightText: Contributors to Agent Semantic Protocols
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 #
-# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 """Validate the SPDX license contract for every Python workspace project."""
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 
-LICENSE_EXPRESSION = "Apache-2.0 AND LGPL-2.1-only"
+LICENSE_EXPRESSION = "Apache-2.0 AND LGPL-2.1-or-later"
 LICENSE_FILES = ["LICENSE"]
 SPDX_LICENSE_TAG = "SPDX-" + "License-Identifier"
 SPDX_LINE = f"{SPDX_LICENSE_TAG}: {LICENSE_EXPRESSION}"
@@ -23,7 +23,7 @@ REQUIRED_LICENSE_TEXT = (
     "GNU LESSER GENERAL PUBLIC LICENSE",
     "Version 2.1, February 1999",
 )
-COPYRIGHT_TEXT = "Contributors to Agent Semantic Protocols"
+COPYRIGHT_TEXT = "2026 tao3k team and Contributors"
 COMMENTABLE_SUFFIXES = frozenset({".lean", ".md", ".py", ".toml"})
 ANNOTATED_SUFFIXES = frozenset({".json", ".lock", ".typed"})
 
@@ -130,7 +130,7 @@ def validate_license_contract(root: Path) -> list[str]:
             errors.append(f"{license_path.relative_to(root)}: missing license declaration")
             continue
         lines = license_path.read_text(encoding="utf-8").splitlines()
-        if not lines or lines[0] != SPDX_LINE:
+        if SPDX_LINE not in lines[:3]:
             errors.append(f"{license_path.relative_to(root)}: invalid SPDX declaration")
         text = "\n".join(lines)
         if "The AND operator is intentional" not in text:

@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 #+title: Lexical SearchFrame and GraphRouter
 #+property: rfc_layer evidence-graph-routing
 
@@ -137,7 +141,7 @@ asp gerbil-scheme search owner src/contract/json-schema-valid.ss items --query '
 #+end_src
 must not force the agent to execute a raw source read from a =path:start-end= selector. The compact =seeds= view may render only the selected graph route, but the provider-owned evidence behind that route must include the def identity, native-parser proof, and bounded call edges needed for the router to choose the next exact action.
 
-JSON is a transport, not a view. =--view seeds --json= keeps the same route semantics as =--view seeds=, but in non-agent/debug automation it returns the bounded =OwnerItemEvidence= packet instead of the compact token-saving text receipt. Inside normal agent sessions, JSON remains disabled by default to avoid token blowups. Setting =ASP_NO_AGENT=1= is the explicit, complete non-Agent pass-through and MUST NOT still collapse the response into compact text.
+JSON is a transport, not a view. =--view seeds --json= keeps the same route semantics as =--view seeds= and returns the bounded =OwnerItemEvidence= packet instead of the compact token-saving text receipt. Client capability and the explicit output flag own rendering; Hook enablement never changes search semantics.
 
 For Lisp-family providers, owner item evidence is not limited to definitions and call forms. Module imports, exports, package/build inputs, and generated launcher inputs are first-class graph facts because they are the routeable evidence for build failures such as a compiled launcher reading an absent module while a package spec omits it. These facts should be projected into =OwnerItemEvidence= with =item.kind= values such as =import=, =export=, or =build-input= and explicit edges such as =imports=, =exports=, =builds=, and =generatedFrom=. The compact receipt may display only the winning route, but the backing packet must let GraphRouter explain whether a path came from parser syntax, source-index lookup, package spec, or generated build metadata. A source-index miss and a build-graph hit for the same term is a state delta, not an empty search result.
 

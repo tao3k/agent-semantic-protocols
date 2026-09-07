@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 const CHILD_REGISTRATION_SCHEMA: &str =
     include_str!("../../../../schemas/codex-child-session-registration-receipt.schema.json");
 const CHILD_REGISTRATION_REQUEST_SCHEMA: &str =

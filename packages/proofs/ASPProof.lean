@@ -1,3 +1,7 @@
+-- SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+--
+-- SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 import ASPProof.SearchLoopClauseFirst
 import ASPProof.SearchLoopTrace
 import ASPProof.SearchLoopMerge
@@ -309,3 +313,5 @@ import ASPProof.ProjectTopologyProgram
 import ASPProof.Audit.ProjectTopologyProgram
 import ASPProof.ProjectTopologyIdentityRefinement
 import ASPProof.Audit.ProjectTopologyIdentityRefinement
+import ASPProof.RuntimeProjectTopologyAttachment
+import ASPProof.Audit.RuntimeProjectTopologyAttachment

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 //! Compact immutable decision shard encoding for the one-shot Hook reader.
 
 use std::collections::BTreeMap;

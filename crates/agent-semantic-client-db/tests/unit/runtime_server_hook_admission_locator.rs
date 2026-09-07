@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 use super::RuntimeHookAdmissionLocatorAuthority;
 use super::connect_hook_workspace_session_with_receipt;
@@ -26,9 +26,16 @@ fn endpoint(root: &std::path::Path) -> RuntimeServerEndpoint {
             "blake3-256:2222222222222222222222222222222222222222222222222222222222222222".to_owned(),
         schema_id: "agent.semantic-protocols.runtime-server-endpoint".to_owned(),
         schema_version: "1".to_owned(),
-        transport_contract_digest: runtime_server_transport_contract_digest(),
-        owner_epoch: 7,
-        owner_process_id: 0,
+        transport_binding:
+            agent_semantic_client_db::runtime_server_control::RuntimeTransportBinding {
+                transport_contract_digest: runtime_server_transport_contract_digest(),
+                owner_epoch: 7,
+                owner_process_id: 1,
+                binding_token: "binding-token".to_owned(),
+                control_endpoint: loopback(43001),
+                data_endpoint: loopback(43002),
+                provider_endpoint: loopback(43003),
+            },
         runtime_artifact_path: root.join("runtime/bin/asp").display().to_string(),
         runtime_binary_identity,
         monitor_capability: true,
@@ -37,10 +44,6 @@ fn endpoint(root: &std::path::Path) -> RuntimeServerEndpoint {
         ),
         artifact_mode: "dev".to_owned(),
         artifact_catalog_digest: format!("blake3-256:{}", "3".repeat(64)),
-        binding_token: "binding-token".to_owned(),
-        control_endpoint: loopback(43001),
-        data_endpoint: loopback(43002),
-        provider_endpoint: loopback(43003),
         workspace_store_path: root.join("runtime/server/workspaces").display().to_string(),
         status_memory_path: root
             .join("runtime/server/status.memory")

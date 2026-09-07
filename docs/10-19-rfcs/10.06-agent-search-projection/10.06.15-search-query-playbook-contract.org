@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 #+TITLE: RFC 10.06.15 - Search and Query Playbook Contract
 #+LANGUAGE: en
 #+DATE: 2026-09-06
@@ -20,7 +24,7 @@
 :SDD_OWNER: ASP shared search contract
 :TRACEABILITY_STATUS: abstract-model-mapped
 :EVIDENCE_STATUS: see RFC 10.06.14 receipt
-:REVIEW_STATUS: handoff-formalized-source-admission-validated
+:REVIEW_STATUS: runtime-bound-query-source-admission-validated
 :END:
 
 ** Search Input
@@ -64,6 +68,14 @@ fired-rule tuples, or a second reasoning block in the default Agent projection.
 Full digests, fixed-point receipts, and proof-DAG identities remain in the typed
 packet. There is no =--evidence-skeleton= output switch.
 
+The one-block contract applies to every successful Search terminal, including
+path-only, text-only, mixed-language, and empty results. A Client or provider
+MUST NOT substitute a separate “Layer One”, candidate-owner list, acquisition
+receipt, or recovery document when exact selectors are unavailable. Those facts
+are nodes in the same admitted GQL settlement. If the Runtime cannot admit that
+settlement, Search returns one typed non-ready failure instead of a successful
+alternate rendering.
+
 Native nodes expose structure and exact Query selectors, not bodies. A
 non-native excerpt carries 1-based inclusive =match= and =read= ranges. The
 proposed shared source-context budget is 80 lines after overlap merging; it does
@@ -71,9 +83,24 @@ not imply structural completeness.
 
 Every queryable native node carries its canonical selector. Request-local rank,
 retrieval support, and optional jq projection are compressed into that node's
-single =projection= property. A =MaterializationSet= groups all exact selectors
-recommended for the next =asp query playbook= invocation; the renderer does not
+single =projection= property. A =MaterializationSet= records the exact selectors
+that are currently materializable under the Search binding. It is evidence,
+not a prescribed selection, command, or execution order; the renderer does not
 invent numbered Query or Search pseudo-steps.
+
+Public Search output has no =queryGrammar=, =next=, =nextAction=,
+=recommendedNext=, command plan, or equivalent planner field. Query capability
+is part of the CLI contract and is not repeated beside the GQL graph. A
+topology frontier states an admitted unknown or
+coverage-certified absence; it is not an instruction to Search, Query, edit,
+retry, or recover. The Agent remains the sole reasoning authority that decides
+whether any further operation is useful.
+
+The formal model represents the public projection as a closed product of
+settled relations, topology boundaries, and queryable selectors. It MUST NOT
+define an Agent-facing planner directive, action recommendation, or hidden
+decision channel beside that product. Two public projections with equal values
+for those three evidence components are observationally identical.
 
 ** Query Contract
 
@@ -84,31 +111,99 @@ asp query playbook \
   --selector 'json://config/runtime.json#item/pointer/runtime'
 #+end_example
 
-Repeated =--selector= arguments form one immutable =MaterializationSet= and one
-Query Playbook operation. Stable ordering makes the set digest deterministic;
-it does not encode execution order or create =Query 1=, =Query 2=, or =Query 3=.
+Repeated =--selector= arguments form one immutable Query request. Stable
+ordering makes its request digest deterministic; it does not encode execution
+order or create =Query 1=, =Query 2=, or =Query 3=. Each selector is governed by
+its provider's canonical native-syntax grammar. Query has no Search handle,
+settlement parameter, implicit latest-Search state, or requirement to reproduce
+one Search MaterializationSet.
 
-For a Search-recommended Query Playbook, selectors alone are not the handoff
-authority. Runtime constructs one =query-playbook-materialization-request.v1=
-from the admitted Search settlement. The request binds the exact eight-member
-Project Topology identity tuple, Search =requestId=, =materializationSetDigest=,
-the complete ordered selector set, and its complete proof dependencies. Query
-admission requires exact equality with the originating =MaterializationSet=.
-A subset, superset, reordered or duplicate selector list, changed proof set,
-foreign request identity, or cross-generation topology tuple fails before any
-provider read.
+Search evidence guides Agent reasoning but does not authorize Query. The Agent
+may choose the smallest useful subset, combine canonical selectors learned in
+different Search operations, or issue a direct selector Query from prior
+knowledge. Runtime independently admits every Query against one current,
+immutable workspace/source/provider binding and resolves every selector through
+the owning native parser before materialization. A stale, missing, ambiguous,
+or cross-binding selector fails before source bytes are returned. Optional
+Search correlation may appear in telemetry, but it is not Agent-facing grammar
+and cannot alter Query admission.
 
-Direct single-selector Query remains a separate exact-selector operation. It
-does not claim that Search recommended the selector and cannot manufacture a
-Search handoff receipt.
+Query preflights the complete selector set against one Runtime execution
+binding before any source bytes become visible. A successful request returns
+every requested selector exactly once, in canonical request order, under the
+requested projection. Any missing, stale, ambiguous, foreign-binding, or
+provider-failed selector makes the request fail as a whole and exposes zero
+materializations. Query emits exactly one typed terminal for the whole request;
+per-selector legacy exact-query terminals cannot be concatenated into a Query
+Playbook result.
+
+The northbound Client request is language-neutral and contains only the
+canonical selector set and projection. It does not carry a Runtime binding,
+workspace identity, source digest, provider choice, language list, Search
+handle, or planner field. The Runtime Server resolves the transport-bound
+workspace, admits its parser-owned Project Workspace manifest, constructs the
+V2 Runtime execution product, and only then creates the internal
+materialization request. The Client submits the selector set once; it must not
+loop over selectors or dispatch legacy language =query= methods.
+
+Native selectors never embed a Runtime workspace instance identifier or a Git
+remote. =rust://src/registry.rs#item/...= is resolved relative to the Query
+operation's admitted workspace context. That context carries three disjoint
+identity domains:
+
+#+begin_example
+projectWorkspaceIdentity =
+  git+https://github.com/tao3k/agent-semantic-protocols.git#workspace/root
+workspaceRootPath = .
+sourceSnapshotDigest = blake3-256:...
+worktreeInstanceId = workspace-23cc5ba784c605ae
+#+end_example
+
+=projectWorkspaceIdentity= is the product of a canonical repository locator
+and a Git-tracked logical workspace key. The key is declared by
+=.agents/asp/topology/manifest.org=; it is not a generated digest, checkout
+path, session identifier, or value the Agent must derive. A monorepo may
+declare =#workspace/runtime=, =#workspace/docs=, and other stable keys. A
+single-root repository SHOULD use =#workspace/root=.
+
+=workspaceRootPath= is the normalized repository-relative containment boundary
+declared for that key, such as =.= or =crates/agent-semantic-topology=. It is
+not an absolute checkout path and not an additional durable identity. It tells
+providers where relative selectors resolve and which source changes belong to
+the workspace. Moving that boundary republishes the manifest and topology
+binding without forcing a new logical workspace identity.
+
+The repository locator is a GitOps identity, not the transport spelling of the
+current clone. HTTPS, SSH, and local checkout configuration may resolve to the
+same manifest-declared canonical locator. Repository renames and mirrors require
+an admitted manifest alias; silent remote substitution changes identity.
+=git+file://...= MAY identify an explicitly local project, but MUST NOT claim
+cross-machine stability.
+
+=sourceSnapshotDigest= binds the exact committed tree plus any admitted dirty
+overlay. =worktreeInstanceId= isolates one physical checkout and Runtime
+registration on one host. A worktree is not cross-machine identity: another
+machine reconstructs equivalent source through the snapshot binding rather
+than reusing the local checkout identity. Neither value changes
+=projectWorkspaceIdentity=, and neither is part of native selector grammar.
+Query receives these bindings from Runtime admission; none is an Agent-facing
+CLI argument.
+
+A valid Search may settle with no queryable native selector: zero matches,
+path-only discovery, and non-native evidence are ordinary outcomes. Such a
+settlement contains an empty =MaterializationSet= in state =empty=. It MUST NOT
+mint a placeholder selector. A nonempty set is in state =available= and records
+only current queryability, not what the Agent should inspect next.
 
 Selector schemes identify providers, so Query has no language or documents
-switch. Each result renders relation affiliation before its native Org block.
-The block includes the exact selector and repository-relative filename, returns
+switch. Each result renders its admitted Project Topology relationship as one
+=#+gql:= keyword immediately before its native Org block. The block
+includes the exact selector and repository-relative filename, returns
 the complete selector-owned scope, preserves native bytes, inserts no ellipsis,
 and has no detached relation appendix after =#+end_src=.
 
 #+begin_example
+#+gql: Registry::refresh --calls--> Registry::publish
 #+begin_src rust :query "rust://src/registry.rs#item/method/refresh_registry/scope/implementation-owner/type/Registry" :filename "src/registry.rs"
 pub fn refresh_registry(store: &ArtifactStore) -> Result<Receipt, Error> {
     let artifact = store.load()?;
@@ -132,17 +227,32 @@ scope, proof-DAG digest and retrievable proof locator, coverage certificates,
 post-ranking certification, DecisionCore digest, FrontierSet digest,
 MaterializationSet digest, and topology-delta digest.
 
+Inference termination is an explicit union. A =complete= inference has
+=terminationKind=fixed-point=, an independently admitted fixed-point receipt,
+equal candidate and next relation-set identities, and may expose an available
+Query handoff. An =incomplete= inference has =terminationKind=budget-exhausted=
+or =blocked=, carries a typed =reasonKind=, and MUST have an empty
+MaterializationSet. Budget exhaustion is not failure and is never relabeled as
+fixed point. The exactly-one Search terminal is respectively =ready=,
+=incomplete=, or =failed=; only =ready= may expose a nonempty
+=MaterializationSet=. Search never authorizes Query materialization and never
+prescribes the Agent's next action.
+
 Missing or ambiguous providers, noncanonical or stale selectors, invalid
 projections, incomplete required witnesses, duplicate aliases, and incompatible
 bindings fail closed. Selector failure never downgrades to a line range.
 
 The initial shared packet contract is
 [[file:../../../schemas/search-topology-settlement.v1.schema.json][search-topology-settlement.v1]].
-The Search-to-Query handoff contract is
+The Runtime-bound Query request contract is
 [[file:../../../schemas/query-playbook-materialization-request.v1.schema.json][query-playbook-materialization-request.v1]].
+The northbound Client request contract is
+[[file:../../../schemas/asp-client-workspace-query-playbook-request.v1.schema.json][asp-client-workspace-query-playbook-request.v1]].
+Its all-or-nothing terminal contract is
+[[file:../../../schemas/query-playbook-materialization-receipt.v1.schema.json][query-playbook-materialization-receipt.v1]].
 It is an independent V1 schema rather than a breaking change to the existing
-Search packet. Provider bundle propagation begins only after this Runtime-owned
-settlement boundary passes semantic validation.
+Search packet. Provider materialization begins only after the Runtime-owned
+execution binding and every requested selector pass semantic validation.
 
 ** Implementation Order
 

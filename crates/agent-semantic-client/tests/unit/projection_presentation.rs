@@ -1,15 +1,15 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
-use agent_semantic_client::projection_presentation::ProjectionPresentation;
-use agent_semantic_client::projection_presentation::render_exact_projection_response;
-use agent_semantic_client::projection_presentation::render_search_playbook_contract_response;
-use agent_semantic_client::projection_presentation::render_workspace_search_playbook_result;
-use agent_semantic_client::projection_presentation::render_workspace_syntax_query_response;
+use agent_semantic_client::projection_presentation::{
+    ProjectionPresentation, render_exact_projection_response,
+    render_workspace_query_playbook_response, render_workspace_search_playbook_gql,
+};
 use agent_semantic_client_protocol::ClientFrame;
-use serde_json::Value;
-use serde_json::json;
+use orgize::Org;
+use orgize::ast::ElementData;
+use serde_json::{Value, json};
 
 fn response(result: Value) -> ClientFrame {
     serde_json::from_value(json!({
@@ -122,217 +122,131 @@ fn preserves_runtime_exact_query_failure_terminal() {
         .expect("explicit JSON preserves the typed terminal");
     assert!(machine.contains("\"reasonKind\":\"projection-missing\""));
     assert!(machine.contains("\"phase\":\"resident-selector-read\""));
-    assert!(machine.contains("\"serviceElapsedMicros\":3"));
     assert!(!machine.contains("\"recommendedNext\""));
 }
 
-#[test]
-fn search_playbook_contract_renders_only_example_and_grammar() {
-    let frame = response(json!({
-        "schemaId": "agent.semantic-protocols.search-playbook-contract-projection",
-        "schemaVersion": "1",
-        "result": "ready",
-        "requestedProducers": ["rust", "python"],
-        "projection": {
-            "example": "rust example\npython example",
-            "grammar": "rust grammar\npython grammar"
-        }
-    }));
-    let rendered = render_search_playbook_contract_response(&frame).unwrap();
-    assert_eq!(
-        rendered,
-        "Example\nrust example\npython example\n\nGrammar\nrust grammar\npython grammar"
-    );
-    assert!(!rendered.contains("digest"));
-    assert!(!rendered.contains("next"));
+fn search_result() -> ClientFrame {
+    response(
+        serde_json::from_str(include_str!(
+            "../../../../schemas/fixtures/search-topology-settlement/valid-derived-and-proposed.v1.json"
+        ))
+        .expect("valid Search settlement fixture"),
+    )
 }
 
 #[test]
-fn workspace_search_result_renders_no_plan_digest_source_or_next() {
-    let frame = response(serde_json::json!({
-        "schemaId": "agent.semantic-protocols.workspace-search-playbook-result",
-        "schemaVersion": "1",
-        "result": "relationship-supported",
-        "queryGrammar": "asp query --selector <exact-selector> --projection source",
-        "evidence": [
-            {
-                "owner": "src/runtime_search_graph.rs",
-                "item": "function/evaluate_python_workspace_playbook_graph",
-                "selector": "rust://src/runtime_search_graph.rs#item/function/evaluate_python_workspace_playbook_graph",
-                "matchedBy": ["rg:0", "syntax:0", "graph:0"],
-                "relation": "syntax-capture:function"
-            },
-            {
-                "owner": "src/workspace_playbook_result.rs",
-                "item": "function/synthesize_workspace_search_playbook_result",
-                "selector": "rust://src/workspace_playbook_result.rs#item/function/synthesize_workspace_search_playbook_result",
-                "matchedBy": ["fd:0", "syntax:0", "graph:0"],
-                "relation": "syntax-capture:function"
-            }
-        ]
-    }));
-    let rendered = render_workspace_search_playbook_result(&frame).unwrap();
-    assert_eq!(
-        rendered,
-        "[search-result] result=relationship-supported evidence=2\nQueryGrammar: asp query --selector <exact-selector> --projection source\nE1 | owner=src/runtime_search_graph.rs | item=function/evaluate_python_workspace_playbook_graph | selector=rust://src/runtime_search_graph.rs#item/function/evaluate_python_workspace_playbook_graph | matchedBy=rg:0|syntax:0|graph:0 | relation=syntax-capture:function\nE2 | owner=src/workspace_playbook_result.rs | item=function/synthesize_workspace_search_playbook_result | selector=rust://src/workspace_playbook_result.rs#item/function/synthesize_workspace_search_playbook_result | matchedBy=fd:0|syntax:0|graph:0 | relation=syntax-capture:function"
-    );
-    for forbidden in ["plan=", "digest=", "source=", "Next:", "recommendedNext"] {
-        assert!(!rendered.contains(forbidden));
+fn search_success_is_exactly_one_org_owned_gql_block() {
+    let rendered = render_workspace_search_playbook_gql(&search_result()).unwrap();
+    let parsed = Org::parse(&rendered);
+    let records = parsed.document().source_block_records();
+    assert_eq!(records.len(), 1);
+    assert_eq!(records[0].language.as_deref(), Some("gql"));
+    assert!(rendered.starts_with("#+begin_src gql :profile search-evidence.v1 :eval never\n"));
+    assert!(rendered.ends_with("#+end_src\n"));
+    for forbidden in [
+        "[search-result]",
+        "QueryGrammar",
+        "Example",
+        "Grammar",
+        "recommendedNext",
+    ] {
+        assert!(
+            !rendered.contains(forbidden),
+            "forbidden legacy output: {forbidden}"
+        );
     }
 }
 
 #[test]
-fn workspace_search_result_rejects_internal_plan_as_success() {
-    let frame = response(serde_json::json!({
+fn search_rejects_internal_plan_and_invalid_settlement() {
+    let plan = response(json!({
         "schemaId": "agent.semantic-protocols.workspace-search-playbook-plan",
         "schemaVersion": "1",
         "result": "plan-ready",
         "evidence": []
     }));
     assert!(
-        render_workspace_search_playbook_result(&frame)
+        render_workspace_search_playbook_gql(&plan)
             .unwrap_err()
-            .contains("did not execute")
+            .contains("schema")
     );
-}
 
-#[test]
-fn graph_rank_and_authored_clause_priority_survive_client_rendering() {
-    use agent_semantic_search::{
-        WorkspaceSearchAxisKind, WorkspaceSearchClauseReceipt, WorkspaceSearchGraphFanIn,
-        WorkspaceSearchSyntaxCandidate, synthesize_workspace_search_playbook_result,
-    };
-
-    let result = synthesize_workspace_search_playbook_result(
-        vec![
-            WorkspaceSearchClauseReceipt {
-                axis: WorkspaceSearchAxisKind::Rg,
-                block_index: 0,
-                priority_rank: 0,
-                candidate_owners: vec!["src/a.rs".to_owned(), "src/b.rs".to_owned()],
-                complete: true,
-                coverage_complete: true,
-                truncated: false,
-            },
-            WorkspaceSearchClauseReceipt {
-                axis: WorkspaceSearchAxisKind::Syntax,
-                block_index: 0,
-                priority_rank: 1,
-                candidate_owners: vec!["src/a.rs".to_owned(), "src/b.rs".to_owned()],
-                complete: true,
-                coverage_complete: true,
-                truncated: false,
-            },
-        ],
-        vec![
-            WorkspaceSearchSyntaxCandidate {
-                owner: "src/a.rs".to_owned(),
-                selector: "rust://src/a.rs#item/function/a".to_owned(),
-                relation: "syntax-capture:function".to_owned(),
-            },
-            WorkspaceSearchSyntaxCandidate {
-                owner: "src/b.rs".to_owned(),
-                selector: "rust://src/b.rs#item/function/b".to_owned(),
-                relation: "syntax-capture:function".to_owned(),
-            },
-        ],
-        Some(WorkspaceSearchGraphFanIn {
-            ranked_candidate_owners: vec!["src/b.rs".to_owned(), "src/a.rs".to_owned()],
-            applied_clause_count: 1,
-            complete: true,
-            truncated: false,
-        }),
-    )
+    let mut invalid: Value = serde_json::from_str(include_str!(
+        "../../../../schemas/fixtures/search-topology-settlement/valid-derived-and-proposed.v1.json"
+    ))
     .unwrap();
-    let rendered =
-        render_workspace_search_playbook_result(&response(serde_json::to_value(result).unwrap()))
-            .unwrap();
-    assert_eq!(
-        rendered,
-        "[search-result] result=relationship-supported evidence=2\nQueryGrammar: asp query --selector <exact-selector> --projection <callable-skeleton|source>\nE1 | owner=src/b.rs | item=function/b | selector=rust://src/b.rs#item/function/b | matchedBy=rg:0|syntax:0|graph:0 | relation=syntax-capture:function\nE2 | owner=src/a.rs | item=function/a | selector=rust://src/a.rs#item/function/a | matchedBy=rg:0|syntax:0|graph:0 | relation=syntax-capture:function"
+    invalid["rendering"]["gqlBlockCount"] = json!(2);
+    assert!(
+        render_workspace_search_playbook_gql(&response(invalid))
+            .unwrap_err()
+            .contains("exactly one GQL block")
     );
 }
 
 #[test]
-fn workspace_search_result_requires_query_grammar_only_for_nonempty_evidence() {
-    let nonempty = response(json!({
-        "schemaId": "agent.semantic-protocols.workspace-search-playbook-result",
-        "schemaVersion": "1",
-        "result": "exact-selector-ready",
-        "evidence": [{
-            "owner": "src/lib.rs",
-            "item": "function/run",
-            "selector": "rust://src/lib.rs#item/function/run",
-            "matchedBy": ["syntax:0"],
-            "relation": "syntax-capture:function"
-        }]
-    }));
-    assert!(
-        render_workspace_search_playbook_result(&nonempty)
-            .unwrap_err()
-            .contains("QueryGrammar")
-    );
-
-    let empty_with_grammar = response(json!({
-        "schemaId": "agent.semantic-protocols.workspace-search-playbook-result",
-        "schemaVersion": "1",
-        "result": "no-match",
-        "queryGrammar": "asp query --selector <exact-selector> --projection <callable-skeleton|source>",
-        "evidence": []
-    }));
-    assert!(
-        render_workspace_search_playbook_result(&empty_with_grammar)
-            .unwrap_err()
-            .contains("must not expose")
-    );
-}
-
-#[test]
-fn syntax_query_renders_bounded_selector_evidence_without_next_or_source() {
+fn query_success_is_gql_keyword_immediately_followed_by_native_source() {
     let frame = response(json!({
-        "schemaId": "agent.semantic-protocols.asp-client-workspace-syntax-query-response",
+        "schemaId": "agent.semantic-protocols.query-playbook-materialization-receipt",
         "schemaVersion": "1",
-        "state": "ready",
-        "evidence": [{
-            "owner": "src/lib.rs",
-            "selector": "rust://src/lib.rs#item/function/run",
-            "relation": "syntax-capture:function.name"
-        }]
+        "materializations": [{
+            "selector": "rust://src/registry.rs#item/function/refresh_registry",
+            "languageId": "rust",
+            "providerId": "asp-rust",
+            "ownerPath": "src/registry.rs",
+            "projection": "source",
+            "sourceContentDigest": "b".repeat(64),
+            "gqlRelationships": [{
+                "fromNode": "Registry::refresh",
+                "relation": "calls",
+                "toNode": "Registry::publish"
+            }],
+            "bytes": [112, 117, 98, 32, 102, 110, 32, 114, 101, 102, 114, 101, 115, 104, 95, 114, 101, 103, 105, 115, 116, 114, 121, 40, 41, 32, 123, 125]
+        }],
+        "terminal": {"state": "ready", "terminalCount": 1}
     }));
     let rendered =
-        render_workspace_syntax_query_response(&frame, ProjectionPresentation::Text).unwrap();
+        render_workspace_query_playbook_response(&frame, ProjectionPresentation::Text).unwrap();
     assert_eq!(
         rendered,
-        "[query-result] state=ready evidence=1\nE1 | owner=src/lib.rs | selector=rust://src/lib.rs#item/function/run | relation=syntax-capture:function.name"
+        "#+GQL: Registry::refresh --calls--> Registry::publish\n#+begin_src rust :query \"rust://src/registry.rs#item/function/refresh_registry\" :filename \"src/registry.rs\"\npub fn refresh_registry() {}\n#+end_src\n"
     );
-    assert!(!rendered.contains("next"));
-    assert!(!rendered.contains("source"));
-    assert!(!rendered.contains("digest"));
+    let parsed = Org::parse(&rendered);
+    assert_eq!(parsed.document().children.len(), 2);
+    assert!(matches!(
+        &parsed.document().children[0].data,
+        ElementData::Keyword(keyword) if keyword.key.eq_ignore_ascii_case("gql")
+    ));
+    assert_eq!(parsed.document().source_block_records().len(), 1);
+    assert!(!rendered.contains("gqlAffiliation"));
 }
 
 #[test]
-fn syntax_query_zero_match_is_an_explicit_result() {
+fn query_rejects_missing_relationship_instead_of_exposing_bare_source() {
     let frame = response(json!({
-        "schemaId": "agent.semantic-protocols.asp-client-workspace-syntax-query-response",
+        "schemaId": "agent.semantic-protocols.query-playbook-materialization-receipt",
         "schemaVersion": "1",
-        "state": "ready",
-        "evidence": []
+        "materializations": [{
+            "selector": "rust://src/lib.rs#item/function/run",
+            "languageId": "rust",
+            "providerId": "asp-rust",
+            "ownerPath": "src/lib.rs",
+            "projection": "source",
+            "sourceContentDigest": "b".repeat(64),
+            "gqlRelationships": [],
+            "bytes": [102, 110, 32, 114, 117, 110, 40, 41, 32, 123, 125]
+        }],
+        "terminal": {"state": "ready", "terminalCount": 1}
     }));
-    assert_eq!(
-        render_workspace_syntax_query_response(&frame, ProjectionPresentation::Text).unwrap(),
-        "[query-result] state=ready evidence=0"
+    assert!(
+        render_workspace_query_playbook_response(&frame, ProjectionPresentation::Text)
+            .unwrap_err()
+            .contains("exactly one GQL relationship")
     );
 }
 
 #[test]
-fn text_and_machine_presentations_share_one_typed_response() {
-    let frame = response(json!({
-        "result": {"bytes": [102, 110, 32, 109, 97, 105, 110, 40, 41, 32, 123, 125]}
-    }));
-    assert_eq!(
-        render_exact_projection_response(&frame, ProjectionPresentation::Text).unwrap(),
-        "fn main() {}"
-    );
+fn machine_presentation_preserves_the_typed_query_receipt() {
+    let frame = response(json!({"result": {"bytes": [102, 110, 32, 109, 97, 105, 110]}}));
     let machine =
         render_exact_projection_response(&frame, ProjectionPresentation::MachineJson).unwrap();
     assert!(machine.contains("\"bytes\":[102,110,32,109,97,105,110"));

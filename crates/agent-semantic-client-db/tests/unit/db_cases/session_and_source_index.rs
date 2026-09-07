@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 use super::{
     AGENT_SESSION_REGISTRY_DB_NAME, AgentSessionRegisterRequest, AgentSessionRegistry, Arc,
@@ -47,7 +47,9 @@ async fn agent_session_registry_project_open_without_runtime_owner_helper() {
         PathBuf::from(env::var_os("ASP_SESSION_PROJECT_ROOT").expect("ASP_SESSION_PROJECT_ROOT"));
     let state =
         ResolvedState::resolve_with_state_home(&project_root, &state_home).expect("resolve state");
-    state.ensure_minimal_layout().expect("ensure state layout");
+    let workspace_paths = state
+        .ensure_workspace_state_layout()
+        .expect("ensure canonical workspace state layout");
     let state_root =
         AgentSessionRegistry::state_root_for_project(&project_root).expect("resolve project root");
     assert_eq!(state_root, state.state_home);
@@ -64,17 +66,12 @@ async fn agent_session_registry_project_open_without_runtime_owner_helper() {
         "client must not create the Runtime Server-owned registry DB"
     );
     assert!(
-        !state
-            .paths
-            .project_dir
-            .join(AGENT_SESSION_REGISTRY_DB_NAME)
-            .exists(),
-        "agent session registry must not create a project-id DB"
+        !state_home.join("projects/by-id").exists(),
+        "agent session registry must not recreate the removed project-id namespace"
     );
     assert!(
-        !state
-            .paths
-            .client_dir
+        !workspace_paths
+            .root
             .join("agent")
             .join(AGENT_SESSION_REGISTRY_DB_NAME)
             .exists(),

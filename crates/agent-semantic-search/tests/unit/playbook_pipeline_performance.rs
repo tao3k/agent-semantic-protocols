@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::time::Duration;
@@ -699,7 +703,7 @@ fn large_workspace_playbook_measures_cold_warm_and_concurrent_triad() {
         native_syntax_elapsed_micros: native_syntax_elapsed.as_micros() as u64,
         runtime,
         graph,
-        cold_rg: None,
+        resident_lexical: None,
         python_graph: Some(SearchPlaybookPythonGraphExecution {
             generation_digest: generation.generation_digest.clone(),
             projection_digest: python_receipt.artifact_digest,

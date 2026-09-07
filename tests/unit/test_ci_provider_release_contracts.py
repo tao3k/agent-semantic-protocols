@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 from pathlib import Path
 
 
@@ -37,7 +41,7 @@ LANGUAGE_RELEASE_WORKFLOWS = {
             "aarch64-apple-darwin",
         },
     },
-    "languages/gerbil-scheme-language-project-harness": {
+    "languages/asp-gerbil-scheme": {
         "binary": "asp-gerbil-scheme",
         "darwin_os": "ubuntu-latest",
         "targets": {
@@ -98,7 +102,7 @@ def test_language_release_workflows_are_project_owned_and_publish_assets() -> No
 
         assert f"- os: {contract['darwin_os']}\n            target: aarch64-apple-darwin" in workflow
 
-        if language_path == "languages/gerbil-scheme-language-project-harness":
+        if language_path == "languages/asp-gerbil-scheme":
             assert "- name: Build canonical asp-gerbil-scheme binary" in workflow
             assert "gxpkg deps --install" in workflow
             registration = (

@@ -1,0 +1,168 @@
+#+TITLE: RFC 10.06.21 - Runtime Artifact Execution Closure
+#+LANGUAGE: en
+#+DATE: 2026-09-07
+#+AUTHOR: ASP Maintainers
+#+FILETAGS: :asp:rfc:runtime:artifact:identity:query:
+#+OPTIONS: toc:2 num:nil
+
+:PROPERTIES:
+:CONTRACT_ORG: [[../../../org/contracts/basic.template.v1.org][basic.template.v1]]
+:END:
+
+* SDD Runtime Artifact Execution Closure
+:PROPERTIES:
+:ID: 2dce2454-2e65-45ac-9a03-0752a9fa18bd
+:CUSTOM_ID: asp-runtime-artifact-execution-closure
+:SDD_KIND: system
+:SDD_STATUS: draft
+:SDD_CONCERN: deterministic Runtime bundle closure for Search and Query serving
+:SDD_SCOPE: provider registration provider artifacts evaluator policy evaluator ABI schema bundles
+:SDD_OWNER: ASP Runtime artifact publication
+:TRACEABILITY_STATUS: formal-model-mapped
+:EVIDENCE_STATUS: RFC schema Lean and Rust candidate
+:REVIEW_STATUS: architecture-candidate
+:END:
+
+** Problem
+
+=RuntimeArtifactBundleBinding= names five digests, but a digest name alone does
+not define the bytes that the installer must produce. An installer could hash
+an arbitrary filename, a mutable registry snapshot, or another digest and
+still populate the binding. Binary refresh could then preserve executable
+members while silently losing the provider or evaluator closure needed by
+Query Playbook.
+
+The historical members-only Runtime bundle is useful only as migration input.
+It cannot establish which provider registration, evaluator policy, evaluator
+ABI, or language schema set governed execution. Activation generation is a
+transaction fence and supplies none of these facts.
+
+** Decision
+
+Every serving Runtime bundle contains exactly five canonical closure member
+documents:
+
+| Bundle member | Typed content |
+|-
+| =provider-registration.json= | sorted provider, language, registration digest, and artifact-member tuples |
+| =provider-artifact-set= | sorted provider, artifact-member, and content digest tuples |
+| =evaluator-policy.json= | sorted policy identifiers and independently derived policy digests |
+| =evaluator-abi.json= | sorted evaluator interface identifiers and ABI digests |
+| =schema-bundle.json= | sorted language identifiers and Schema Manager bundle digests |
+
+All five use
+=runtime-artifact-execution-closure-member.v1.schema.json=. The =memberKind=
+selects one disjoint entry grammar. The document contains source-owned facts,
+not paths to mutable registries and not an activation sequence. Rust semantic
+admission additionally proves ordering, uniqueness, cross-member provider
+coverage, and equality between each document digest and the corresponding
+=RuntimeArtifactBundleBinding= field.
+
+The installer derives the documents during the same candidate transaction as
+the executable members. It validates them before publishing the candidate
+through the sole active Runtime slot. Binary refresh reads the currently
+verified bound bundle, replaces requested executable members, regenerates any
+content-dependent closure members, and publishes one complete successor. It
+does not run a separate provider-registry refresh after activation.
+
+** Automatic Refresh Boundary
+
+Provider registration is source-owned by the built-in provider registry.
+Provider artifact identity is derived from the candidate member bytes.
+Evaluator policy and ABI are produced by their owning build contracts. Schema
+bundle identity comes from Schema Manager receipts. The installer performs a
+fan-in over those independently admitted products; it does not scrape TOML or
+infer policy from executable names.
+
+Filesystem timestamps, inode metadata, and absolute paths are forbidden closure
+inputs. They change while identical bytes move from a build output into the
+immutable Runtime generation and are not stable across machines. If an
+executable mode or platform property affects evaluation, its owning build
+contract must express that property in the evaluator ABI document rather than
+hashing ambient filesystem metadata.
+
+A binary-only change may reuse unchanged provider registration, provider
+artifact, policy, ABI, and schema documents byte-for-byte. A provider change
+must regenerate both provider members. A policy, ABI, or schema change must
+regenerate its exact member. In all cases the bundle digest changes exactly
+when an executable or closure member changes.
+
+** V1 Build-Contract Owners
+
+The V1 evaluator-policy member contains the independently hashed canonical
+=runtime-server-workspace-generation-admission.schema.json= and
+=semantic-search-engine-admission.v1.schema.json= documents. The V1 evaluator
+ABI member contains the canonical =asp-client-frame=, workspace Query Playbook
+request, Query Playbook materialization request, and Query Playbook
+materialization receipt schemas. Entry identifiers are stable contract names;
+their digests are computed from the exact embedded schema bytes.
+
+The schema-bundle member is derived from the seven Schema Manager membership
+receipts embedded by the client build: Rust, TypeScript, Python, Julia, Gerbil
+Scheme, Org, and Markdown. The client does not walk provider directories during
+installation. A schema source change first changes its Schema Manager receipt;
+rebuilding the client then changes the embedded closure input. This makes the
+build graph, rather than a mutable installation registry, the refresh trigger.
+
+The provider-registration member is derived from the build-resolved built-in
+provider register, while provider-artifact-set is derived from the exact
+candidate executable members. These two lists must describe the same provider
+and artifact-member keys, including the valid explicit empty pair.
+Development provider installation must prove its workspace registration is
+byte-for-byte equal to that embedded registration. Registration source changes
+therefore require rebuilding the client before installation; installation does
+not mutate a resident in-memory register through a follow-up RPC.
+
+** Serving Admission
+
+The serving loader accepts only the bound V2 bundle and returns the complete
+execution binding together with provider artifacts. The historical loader may
+exist temporarily inside installation migration, but its result cannot reach
+provider dispatch, Query readiness, workspace execution publication, or the
+resident Search authority.
+
+The Runtime provider register is a read-only in-memory projection of that
+verified bundle. It is constructed only from embedded registration documents
+whose digests were admitted by the closure and from the provider targets in the
+same bundle. It does not read =provider-register.v1.json=. The provider-stream
+List operation may expose the projection, but Initialize, Register, and
+Unregister return the typed
+=provider-register-bound-bundle-read-only= rejection. Provider installation
+creates a new complete bound bundle; it never mutates a live register.
+
+Missing, empty, duplicated, reordered, cross-linked, or digest-drifting member
+facts fail closed before provider launch. There is no fallback to a mutable
+registry, provider-private cache, latest activation, or process environment.
+
+The provider registration and provider artifact documents may contain the same
+explicit empty set. This is the valid fresh-State-Home bootstrap product: the
+Runtime is installed but has no language capability to dispatch. One empty and
+one non-empty provider document is invalid. Policy, ABI, and schema documents
+remain non-empty. Absence of any of the five documents is always invalid.
+
+** Proof Obligations
+
+1. Exactly one document of every required member kind is present.
+2. Provider identifiers and artifact member names form a one-to-one relation
+   between registration and artifact-set documents.
+3. Every member document digest equals its named bundle-binding digest.
+4. Changing any one entry changes the bound Runtime bundle identity.
+5. Activation generation cannot fill or authorize a missing closure member.
+6. A members-only bundle cannot enter serving admission.
+7. Binary refresh preserves unchanged closure bytes and regenerates changed
+   content in the same atomic successor transaction.
+8. No closure member contains an absolute workspace or State Home path.
+
+** Implementation Order
+
+1. Publish the shared member schema and schema tests.
+2. Model exact five-kind completeness and cross-member coverage in Lean.
+3. Add typed Rust member documents and canonical digest validation.
+4. Teach installation to derive all five members and use bound publication.
+5. Teach binary and provider refresh to rebuild a complete bound successor.
+6. Cut daemon/provider dispatch to the strict bound provider-set loader.
+7. Delete the historical serving loader once no installation migration caller
+   remains.
+
+Query remains typed unavailable between steps 3 and 6. No installation,
+restart, or Runtime activation is an acceptance substitute.

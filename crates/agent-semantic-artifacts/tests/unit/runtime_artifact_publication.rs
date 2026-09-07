@@ -1,12 +1,14 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 
 use super::RuntimeArtifactBundleMemberSource;
 use super::publish_runtime_artifact;
+use super::publish_runtime_artifact_bound_bundle_members;
+use super::publish_runtime_artifact_bound_provider_member_from_active;
 use super::publish_runtime_artifact_bundle;
 use super::publish_runtime_artifact_bundle_member_from_active;
 use super::publish_runtime_artifact_bundle_members;
@@ -267,6 +269,110 @@ async fn provider_refresh_republishes_the_complete_active_generation() {
     );
     assert!(!state_home.join("runtime/artifacts/blake3-256").exists());
     assert!(!state_home.join("runtime/artifacts/bundles").exists());
+}
+
+#[tokio::test]
+async fn bound_provider_refresh_regenerates_registration_and_artifact_closure_atomically() {
+    use crate::runtime_artifact_execution_closure::{
+        LanguageSchemaClosureEntry, NamedRuntimeDigestClosureEntry, RuntimeArtifactExecutionClosure,
+    };
+
+    let temporary = tempfile::tempdir().expect("bound provider refresh fixture");
+    let state_home = temporary.path().join("state");
+    let sources = temporary.path().join("sources");
+    std::fs::create_dir_all(&sources).expect("source root");
+    let asp_source = sources.join("asp");
+    let hook_source = sources.join("asp-hook");
+    let rust_source = sources.join("asp-rust");
+    write_executable(&asp_source, "#!/bin/sh\nexit 0\n");
+    write_executable(&hook_source, "#!/bin/sh\nexit 1\n");
+    write_executable(&rust_source, "#!/bin/sh\nexit 2\n");
+    let base_members = std::collections::BTreeMap::from([
+        (
+            "asp".to_owned(),
+            runtime_artifact_candidate_digest(&asp_source)
+                .await
+                .unwrap(),
+        ),
+        (
+            "asp-hook".to_owned(),
+            runtime_artifact_candidate_digest(&hook_source)
+                .await
+                .unwrap(),
+        ),
+    ]);
+    let closure = RuntimeArtifactExecutionClosure::from_runtime_bundle_members(
+        &base_members,
+        vec![NamedRuntimeDigestClosureEntry {
+            id: "query-admission".into(),
+            digest: Blake3ContentDigest::from_bytes(b"policy"),
+        }],
+        vec![NamedRuntimeDigestClosureEntry {
+            id: "query-playbook-v1".into(),
+            digest: Blake3ContentDigest::from_bytes(b"abi"),
+        }],
+        vec![LanguageSchemaClosureEntry {
+            language_id: "rust".into(),
+            schema_digest: Blake3ContentDigest::from_bytes(b"schemas"),
+        }],
+    )
+    .expect("bootstrap closure");
+    let closure_sources = closure
+        .materialized_members()
+        .unwrap()
+        .into_iter()
+        .map(|(name, bytes)| {
+            let path = sources.join(name);
+            std::fs::write(&path, bytes).unwrap();
+            (name, path)
+        })
+        .collect::<Vec<_>>();
+    let mut publication_members = vec![RuntimeArtifactBundleMemberSource {
+        name: "asp-hook",
+        source: &hook_source,
+    }];
+    publication_members.extend(
+        closure_sources
+            .iter()
+            .map(|(name, path)| RuntimeArtifactBundleMemberSource { name, source: path }),
+    );
+    publish_runtime_artifact_bound_bundle_members(
+        &state_home,
+        &asp_source,
+        &state_home.join("runtime/bin/asp"),
+        "dev",
+        &publication_members,
+        &closure.binding().unwrap(),
+    )
+    .await
+    .expect("publish empty-provider bound bundle");
+
+    publish_runtime_artifact_bound_provider_member_from_active(
+        &state_home,
+        "asp-rust",
+        &rust_source,
+        "dev",
+    )
+    .await
+    .expect("publish provider and rebound closure");
+
+    let active = RuntimeArtifactSlotAuthority::new(state_home.join("runtime/artifacts"))
+        .active_target()
+        .await
+        .unwrap()
+        .unwrap();
+    let verified = crate::runtime_artifact_slots::verify_runtime_artifact_bound_bundle(&active)
+        .await
+        .expect("strict successor admission");
+    let closure =
+        RuntimeArtifactExecutionClosure::from_materialized_members(&active, verified.members())
+            .expect("successor closure");
+    assert_eq!(closure.provider_registration.entries.len(), 1);
+    assert_eq!(closure.provider_artifact_set.entries.len(), 1);
+    assert_eq!(
+        closure.provider_artifact_set.entries[0].artifact_digest,
+        *verified.member_digest("asp-rust").expect("Rust member")
+    );
 }
 
 #[tokio::test]

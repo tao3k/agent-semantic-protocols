@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 //! Application boundary for typed language-facade commands.
 
@@ -102,15 +102,22 @@ impl LanguageCommandClient for RuntimeLanguageCommandClient {
             // transaction, never of a re-derived endpoint path. Host-inherited
             // descriptors remain strict; published loopback transport must be
             // delivered by the same verified handoff before Tokio opens the
-            // multiplexed ClientFrame session.
+            // multiplexed ClientFrame session. When no Host descriptor was
+            // inherited, the Runtime service performs the bounded activation
+            // transaction; clients never observe or reconstruct an endpoint.
             if client.uses_published_loopback_transport() {
-                let transaction = agent_semantic_client_db::runtime_server_lifecycle::observe_resident_transaction(&state_home)
+                let mut ready = crate::server::runtime_server::ensure_healthy_runtime_server_for_workspace(
+                    &request.project_root,
+                )
                     .await
                     .map_err(|error| {
                         format!(
-                            "reasonKind=runtime-client-handoff-unavailable failureLayer=runtime-resident-transaction Runtime Query requires a content-bound Host handoff: {error}"
+                            "reasonKind=runtime-client-bootstrap-failed failureLayer=runtime-resident-transaction Runtime Query could not establish a content-bound handoff: {error}"
                         )
                     })?;
+                let transaction = ready.resident_transaction.take().ok_or_else(|| {
+                    "reasonKind=runtime-client-handoff-unavailable failureLayer=runtime-resident-transaction Runtime bootstrap returned Healthy without its resident transaction".to_owned()
+                })?;
                 client =
                     client.with_runtime_handoff(AspClientRuntimeHandoff::try_from(&transaction)?);
             }

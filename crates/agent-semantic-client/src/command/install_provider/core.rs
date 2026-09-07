@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 //! Install command routing and pinned language provider installer.
 
@@ -36,6 +36,7 @@ enum ProviderArtifactAuthority<'a> {
 pub(super) struct PreparedProviderReleaseReconciliation {
     staging_root: PathBuf,
     members: Vec<(String, PathBuf)>,
+    closure_members: Vec<(String, PathBuf)>,
 }
 
 impl PreparedProviderReleaseReconciliation {
@@ -48,6 +49,7 @@ impl PreparedProviderReleaseReconciliation {
     > {
         self.members
             .iter()
+            .chain(self.closure_members.iter())
             .map(|(name, source)| {
                 agent_semantic_artifacts::runtime_artifact_publication::RuntimeArtifactBundleMemberSource {
                     name,
@@ -60,6 +62,153 @@ impl PreparedProviderReleaseReconciliation {
     pub(super) fn provider_count(&self) -> usize {
         self.members.len()
     }
+
+    pub(super) async fn bind_runtime_execution_closure(
+        &mut self,
+        asp_source: &Path,
+        hook_source: &Path,
+    ) -> Result<
+        agent_semantic_artifacts::runtime_artifact_slots::RuntimeArtifactBundleBinding,
+        String,
+    > {
+        use agent_semantic_artifacts::runtime_artifact_execution_closure::RuntimeArtifactExecutionClosure;
+
+        let mut bundle_members = std::collections::BTreeMap::new();
+        for (name, path) in std::iter::once(("asp", asp_source))
+            .chain(std::iter::once(("asp-hook", hook_source)))
+            .chain(
+                self.members
+                    .iter()
+                    .map(|(name, path)| (name.as_str(), path.as_path())),
+            )
+        {
+            bundle_members.insert(
+                name.to_owned(),
+                agent_semantic_artifacts::runtime_artifact_slots::runtime_artifact_candidate_digest(
+                    path,
+                )
+                .await?,
+            );
+        }
+        let mut policy = vec![
+            named_digest(
+                "runtime-server-workspace-generation-admission.v1",
+                include_bytes!(
+                    "../../../../../schemas/runtime-server-workspace-generation-admission.schema.json"
+                ),
+            ),
+            named_digest(
+                "semantic-search-engine-admission.v1",
+                include_bytes!(
+                    "../../../../../schemas/semantic-search-engine-admission.v1.schema.json"
+                ),
+            ),
+        ];
+        policy.sort_by(|left, right| left.id.cmp(&right.id));
+        let mut abi = vec![
+            named_digest(
+                "asp-client-frame.v1",
+                include_bytes!("../../../../../schemas/asp-client-frame.schema.json"),
+            ),
+            named_digest(
+                "asp-client-workspace-query-playbook-request.v1",
+                include_bytes!(
+                    "../../../../../schemas/asp-client-workspace-query-playbook-request.v1.schema.json"
+                ),
+            ),
+            named_digest(
+                "query-playbook-materialization-receipt.v1",
+                include_bytes!(
+                    "../../../../../schemas/query-playbook-materialization-receipt.v1.schema.json"
+                ),
+            ),
+            named_digest(
+                "query-playbook-materialization-request.v1",
+                include_bytes!(
+                    "../../../../../schemas/query-playbook-materialization-request.v1.schema.json"
+                ),
+            ),
+        ];
+        abi.sort_by(|left, right| left.id.cmp(&right.id));
+        let mut schemas = [
+            include_str!("../../../../../languages/asp-rust/schemas/.asp-schema-manager-membership.json"),
+            include_str!("../../../../../languages/asp-typescript/schemas/.asp-schema-manager-membership.json"),
+            include_str!("../../../../../languages/asp-python/schemas/.asp-schema-manager-membership.json"),
+            include_str!("../../../../../languages/AspJulia.jl/schemas/.asp-schema-manager-membership.json"),
+            include_str!("../../../../../languages/asp-gerbil-scheme/schemas/.asp-schema-manager-membership.json"),
+            include_str!("../../../../../languages/orgize/provider/org/schemas/.asp-schema-manager-membership.json"),
+            include_str!("../../../../../languages/orgize/provider/md/schemas/.asp-schema-manager-membership.json"),
+        ]
+        .into_iter()
+        .map(schema_closure_entry)
+        .collect::<Result<Vec<_>, _>>()?;
+        schemas.sort_by(|left, right| left.language_id.cmp(&right.language_id));
+        let closure = RuntimeArtifactExecutionClosure::from_runtime_bundle_members(
+            &bundle_members,
+            policy,
+            abi,
+            schemas,
+        )?;
+        std::fs::create_dir_all(&self.staging_root).map_err(|error| {
+            format!(
+                "create Runtime execution closure staging root {}: {error}",
+                self.staging_root.display()
+            )
+        })?;
+        self.closure_members.clear();
+        for (name, bytes) in closure.materialized_members()? {
+            let path = self.staging_root.join(name);
+            std::fs::write(&path, bytes).map_err(|error| {
+                format!(
+                    "write Runtime execution closure member {}: {error}",
+                    path.display()
+                )
+            })?;
+            self.closure_members.push((name.to_owned(), path));
+        }
+        closure.binding()
+    }
+}
+
+fn named_digest(
+    id: &str,
+    bytes: &[u8],
+) -> agent_semantic_artifacts::runtime_artifact_execution_closure::NamedRuntimeDigestClosureEntry {
+    agent_semantic_artifacts::runtime_artifact_execution_closure::NamedRuntimeDigestClosureEntry {
+        id: id.to_owned(),
+        digest: agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest::from_bytes(
+            bytes,
+        ),
+    }
+}
+
+fn schema_closure_entry(
+    bytes: &str,
+) -> Result<
+    agent_semantic_artifacts::runtime_artifact_execution_closure::LanguageSchemaClosureEntry,
+    String,
+> {
+    let value: serde_json::Value = serde_json::from_str(bytes)
+        .map_err(|error| format!("decode embedded Schema Manager membership: {error}"))?;
+    let language_id = value
+        .get("languageId")
+        .and_then(serde_json::Value::as_str)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| "embedded Schema Manager membership omitted languageId".to_owned())?;
+    let bundle_digest = value
+        .get("bundleDigest")
+        .and_then(serde_json::Value::as_str)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| "embedded Schema Manager membership omitted bundleDigest".to_owned())?;
+    Ok(
+        agent_semantic_artifacts::runtime_artifact_execution_closure::LanguageSchemaClosureEntry {
+            language_id: language_id.to_owned(),
+            schema_digest:
+                agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest::parse(
+                    bundle_digest,
+                )?,
+        },
+    )
 }
 
 impl Drop for PreparedProviderReleaseReconciliation {
@@ -82,12 +231,13 @@ pub(super) fn prepare_active_release_provider_reconciliation(
     let mut reconciliation = PreparedProviderReleaseReconciliation {
         staging_root,
         members: Vec::new(),
+        closure_members: Vec::new(),
     };
-    if agent_semantic_artifacts::runtime_artifact_catalog::load_runtime_developer_root(state_home)?
-        .is_some()
-    {
-        return Ok(reconciliation);
-    }
+    let developer_mode =
+        agent_semantic_artifacts::runtime_artifact_catalog::load_runtime_developer_root(
+            state_home,
+        )?
+        .is_some();
     let active_slot = agent_semantic_artifacts::RuntimeArtifactStateLayout::new(state_home)
         .active_slot()
         .to_path_buf();
@@ -102,6 +252,17 @@ pub(super) fn prepare_active_release_provider_reconciliation(
     }
     let active = agent_semantic_artifacts::load_active_runtime_provider_set(state_home)?;
     if active.providers.is_empty() {
+        return Ok(reconciliation);
+    }
+    if developer_mode {
+        reconciliation.members = active
+            .providers
+            .into_iter()
+            .map(|provider| (provider.provider_id, provider.materialized_path))
+            .collect();
+        reconciliation
+            .members
+            .sort_by(|left, right| left.0.cmp(&right.0));
         return Ok(reconciliation);
     }
     let target = host_target_triple().ok_or_else(|| {

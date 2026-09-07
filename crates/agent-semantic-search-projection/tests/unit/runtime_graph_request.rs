@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 use agent_semantic_search_projection::adapt_graph_evaluate_payload;
 use agent_semantic_search_projection::bind_graph_generation_identity;
 use agent_semantic_search_projection::validate_graph_generation_receipt_identity;

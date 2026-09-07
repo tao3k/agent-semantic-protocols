@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 //! Runtime ASP Client latency measurement and telemetry projection.
 
 pub(super) fn elapsed_micros(started: tokio::time::Instant) -> u64 {

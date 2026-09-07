@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 use std::future::Future;
 use std::pin::Pin;
@@ -21,6 +21,15 @@ pub type AspClientDispatchFuture =
     Pin<Box<dyn Future<Output = Result<Value, AspClientDispatchError>> + Send>>;
 pub type AspClientCancelFuture = Pin<Box<dyn Future<Output = bool> + Send>>;
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AspClientResponseTelemetry {
+    pub project_id: ClientProjectId,
+    pub workspace_id: ClientWorkspaceIdentity,
+    pub session_id: ClientSessionId,
+    pub request_id: ClientRequestId,
+    pub outcome: ClientOutcome,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct AspClientDispatchRequest {
     pub project_id: ClientProjectId,
@@ -29,6 +38,8 @@ pub struct AspClientDispatchRequest {
     pub request_id: ClientRequestId,
     pub method: String,
     pub params: Value,
+    pub client_timing_witness:
+        Option<agent_semantic_client_protocol::RuntimeSearchClientTimingWitness>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -48,6 +59,16 @@ pub trait AspClientDispatcher: Send + Sync + 'static {
         session_id: &ClientSessionId,
         request_id: &ClientRequestId,
     ) -> AspClientCancelFuture;
+
+    fn response_serialized(&self, _response: &AspClientResponseTelemetry, _elapsed_micros: u64) {}
+
+    fn terminal_egressed(
+        &self,
+        _response: &AspClientResponseTelemetry,
+        _elapsed_micros: u64,
+        _delivered: bool,
+    ) {
+    }
 }
 
 /// One protocol session hosted by the ASP Client Server.  It is transport
@@ -86,8 +107,25 @@ async fn execute_admitted<D: AspClientDispatcher>(
             request_id,
             method,
             params,
+            client_timing_witness,
             ..
         } => {
+            if let Some(witness) = client_timing_witness.as_ref()
+                && let Err(error) =
+                    witness.admit_for_request(base.session_id.as_str(), request_id.as_str())
+            {
+                return Some(response(
+                    base,
+                    request_id,
+                    ClientOutcome::Error,
+                    None,
+                    Some(json!({
+                        "reasonKind": error.reason_kind(),
+                        "message": "client timing witness does not match the admitted ClientFrame"
+                    })),
+                    None,
+                ));
+            }
             let dispatched = dispatcher
                 .dispatch(AspClientDispatchRequest {
                     project_id: base.project_id.clone(),
@@ -96,6 +134,7 @@ async fn execute_admitted<D: AspClientDispatcher>(
                     request_id: request_id.clone(),
                     method,
                     params,
+                    client_timing_witness,
                 })
                 .await;
             Some(match dispatched {
@@ -207,6 +246,21 @@ impl<D: AspClientDispatcher> AspClientFrameService<D> {
             None
         };
         Ok(execute_admitted(Arc::clone(&self.dispatcher), catalog, frame).await)
+    }
+
+    pub fn response_serialized(&self, response: &AspClientResponseTelemetry, elapsed_micros: u64) {
+        self.dispatcher
+            .response_serialized(response, elapsed_micros);
+    }
+
+    pub fn terminal_egressed(
+        &self,
+        response: &AspClientResponseTelemetry,
+        elapsed_micros: u64,
+        delivered: bool,
+    ) {
+        self.dispatcher
+            .terminal_egressed(response, elapsed_micros, delivered);
     }
 }
 

@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 use super::{
     RuntimeServerControlRequest, RuntimeServerEndpoint, discard_closed_or_dirty_control_stream,
@@ -56,31 +56,33 @@ async fn stalled_control_exchange_is_bounded_and_discards_the_lane() {
             "blake3-256:2222222222222222222222222222222222222222222222222222222222222222".to_owned(),
         schema_id: "agent.semantic-protocols.runtime-server-endpoint".to_owned(),
         schema_version: "1".to_owned(),
-        transport_contract_digest: runtime_server_transport_contract_digest(),
-        owner_epoch: 1,
-        owner_process_id: 0,
+        transport_binding: crate::runtime_server_control::RuntimeTransportBinding {
+            transport_contract_digest: runtime_server_transport_contract_digest(),
+            owner_epoch: 1,
+            owner_process_id: 1,
+            binding_token: "binding".to_owned(),
+            control_endpoint:
+                crate::runtime_server_control::RuntimeServerLoopbackEndpoint::from_socket_addr(
+                    control_address,
+                )
+                .expect("control endpoint"),
+            data_endpoint:
+                crate::runtime_server_control::RuntimeServerLoopbackEndpoint::from_socket_addr(
+                    ([127, 0, 0, 1], 41012).into(),
+                )
+                .expect("data endpoint"),
+            provider_endpoint:
+                crate::runtime_server_control::RuntimeServerLoopbackEndpoint::from_socket_addr(
+                    ([127, 0, 0, 1], 41013).into(),
+                )
+                .expect("provider endpoint"),
+        },
         runtime_artifact_path: "/runtime/asp".to_owned(),
         runtime_binary_identity: RuntimeBinaryIdentity::from_bytes(b"runtime-digest"),
         monitor_capability: true,
         observed_runtime_binary_identity: RuntimeBinaryIdentity::from_bytes(b"runtime-digest"),
         artifact_mode: "dev".to_owned(),
         artifact_catalog_digest: format!("blake3-256:{}", "0".repeat(64)),
-        binding_token: "binding".to_owned(),
-        control_endpoint:
-            crate::runtime_server_control::RuntimeServerLoopbackEndpoint::from_socket_addr(
-                control_address,
-            )
-            .expect("control endpoint"),
-        data_endpoint:
-            crate::runtime_server_control::RuntimeServerLoopbackEndpoint::from_socket_addr(
-                ([127, 0, 0, 1], 41012).into(),
-            )
-            .expect("data endpoint"),
-        provider_endpoint:
-            crate::runtime_server_control::RuntimeServerLoopbackEndpoint::from_socket_addr(
-                ([127, 0, 0, 1], 41013).into(),
-            )
-            .expect("provider endpoint"),
         workspace_store_path: temporary.path().join("workspace").display().to_string(),
         status_memory_path: temporary.path().join("status").display().to_string(),
     };

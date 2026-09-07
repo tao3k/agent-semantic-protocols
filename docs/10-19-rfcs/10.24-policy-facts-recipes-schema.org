@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 * One-sentence summary
 ASP Policy should become an evidence-backed fact and recipe protocol: language harnesses keep parser/compiler authority, Rust validates and routes the packets, Python consumes them for production graph-route ranking, and Julia studies which policy/topology jumps reduce agent turns.
 * Scope

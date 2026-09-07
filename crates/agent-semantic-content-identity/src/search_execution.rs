@@ -1,12 +1,13 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 //! Exact-content execution identity for every public search operation.
 
 use serde::Deserialize;
 use serde::Serialize;
 
+use crate::ProjectWorkspaceBinding;
 use crate::content_binding::CONTENT_BINDING_SCHEMA_VERSION;
 use crate::content_binding::ContentBinding;
 use crate::content_binding::ContentBindingError;
@@ -51,11 +52,8 @@ impl SearchExecutionContext {
         commit: &ContentPublicationCommit,
     ) -> Result<Self, SearchExecutionError> {
         commit
-            .admit_exact(&binding.identity)
+            .admit_exact(&binding)
             .map_err(SearchExecutionError::Binding)?;
-        if commit.commit_digest != binding.identity.digest() {
-            return Err(SearchExecutionError::CommitDigestMismatch);
-        }
         Ok(Self {
             binding,
             commit_digest: commit.commit_digest.clone(),
@@ -68,10 +66,17 @@ impl SearchExecutionContext {
         binding: ContentBinding,
         commit: &ContentPublicationCommit,
         runtime_binding: RuntimeExecutionBinding,
+        manifest_project_workspace: &ProjectWorkspaceBinding,
     ) -> Result<Self, SearchExecutionError> {
         runtime_binding
             .validate()
             .map_err(SearchExecutionError::RuntimeBinding)?;
+        manifest_project_workspace
+            .validate()
+            .map_err(|_| SearchExecutionError::ProjectWorkspaceManifestMismatch)?;
+        if runtime_binding.project_workspace != *manifest_project_workspace {
+            return Err(SearchExecutionError::ProjectWorkspaceManifestMismatch);
+        }
         let mut context = Self::exact(binding, commit)?;
         context.runtime_binding = Some(runtime_binding);
         Ok(context)
@@ -86,11 +91,9 @@ impl SearchExecutionContext {
             .validate()
             .map_err(SearchExecutionError::Binding)?;
         commit
-            .admit_exact(&self.binding.identity)
+            .admit_exact(&self.binding)
             .map_err(SearchExecutionError::Binding)?;
-        if self.commit_digest != commit.commit_digest
-            || self.commit_digest != self.binding.identity.digest()
-        {
+        if self.commit_digest != commit.commit_digest {
             return Err(SearchExecutionError::CommitDigestMismatch);
         }
         if let Some(runtime_binding) = &self.runtime_binding {
@@ -219,6 +222,8 @@ pub enum SearchExecutionError {
     Binding(ContentBindingError),
     /// Runtime binding is invalid.
     RuntimeBinding(RuntimeExecutionBindingError),
+    /// Runtime binding Project Workspace differs from the parser-owned manifest.
+    ProjectWorkspaceManifestMismatch,
     /// Frame and publication commit digests differ.
     CommitDigestMismatch,
     /// Frame schema identity is not current.
@@ -256,12 +261,14 @@ impl SearchExecution {
         binding: ContentBinding,
         commit: &ContentPublicationCommit,
         runtime_binding: RuntimeExecutionBinding,
+        manifest_project_workspace: &ProjectWorkspaceBinding,
     ) -> Result<Self, SearchExecutionError> {
         Ok(Self {
             context: SearchExecutionContext::exact_with_runtime_binding(
                 binding,
                 commit,
                 runtime_binding,
+                manifest_project_workspace,
             )?,
             terminal: None,
         })

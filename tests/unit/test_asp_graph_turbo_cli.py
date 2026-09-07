@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Authority-boundary tests for the ASP Python Graphs package."""
 
 from __future__ import annotations
@@ -19,33 +23,17 @@ def test_asp_python_graphs_package_exposes_no_console_script() -> None:
     assert not (pyproject.parent / "src/asp_python_graphs/cli.py").exists()
 
 
-def test_gerbil_search_defers_source_index_to_asp_server() -> None:
-    search_evidence = (
+def test_gerbil_provider_publishes_facts_without_owning_search() -> None:
+    guide = (
         Path(__file__).resolve().parents[2]
-        / "languages/gerbil-scheme-language-project-harness/src/commands/search-evidence.ss"
+        / "languages/asp-gerbil-scheme/src/commands/guide-sections.ss"
     ).read_text(encoding="utf-8")
 
-    assert "run-process" not in search_evidence
-    assert "process-status" not in search_evidence
-    assert '"cache" "source-index"' not in search_evidence
-    assert "owner=asp-server" in search_evidence
-    assert "sourceIndexLookup deferred reason=asp-server-ipc-required" in search_evidence
-    assert "runtime-source-not-acquired" not in search_evidence
-    assert "provider-local-parse-failed" not in search_evidence
-    assert ":gslph/src/parser/query" not in search_evidence
-    assert "ranked-query-files" not in search_evidence
-
-    pattern = (
-        Path(__file__).resolve().parents[2]
-        / "languages/gerbil-scheme-language-project-harness/src/search-fast/gerbil-scheme-search-pattern.ss"
-    ).read_text(encoding="utf-8")
-    extension = (
-        Path(__file__).resolve().parents[2]
-        / "languages/gerbil-scheme-language-project-harness/src/search-fast/gerbil-scheme-search-extension.ss"
-    ).read_text(encoding="utf-8")
-    assert "indexOwner=asp-server" in pattern
-    assert "indexOwner=asp-server" in extension
-    assert "indexOwner=asp-client" not in pattern + extension
+    assert "search-playbook-owner=ASP-Rust-Runtime" in guide
+    assert "provider never plans, ranks, caches, or renders Search" in guide
+    assert "source-index-owner=asp-server" in guide
+    assert "native-fact-owner=gerbil-scheme" in guide
+    assert "contains no Search playbook" in guide
 
     source_index_schema = (
         Path(__file__).resolve().parents[2]
@@ -62,14 +50,18 @@ def test_gerbil_search_defers_source_index_to_asp_server() -> None:
 
     gerbil_path_contract = (
         Path(__file__).resolve().parents[2]
-        / "languages/gerbil-scheme-language-project-harness/src/build-api/build-path-contract.ss"
+        / "languages/asp-gerbil-scheme/src/build-api/build-path-contract.ss"
     ).read_text(encoding="utf-8")
     gxtest_build = (
         Path(__file__).resolve().parents[2]
-        / "languages/gerbil-scheme-language-project-harness/src/testing/gxtest-build.ss"
+        / "languages/asp-gerbil-scheme/src/testing/gxtest-build.ss"
     ).read_text(encoding="utf-8")
-    assert ".local/bin/asp-gerbil-scheme" not in gerbil_path_contract + gxtest_build
-    assert "runtime/bin" in gerbil_path_contract + gxtest_build
+    path_contract = gerbil_path_contract + gxtest_build
+    assert ".bin/asp-gerbil-scheme" in path_contract
+    assert ".local/bin/asp-gerbil-scheme" in path_contract
+    assert 'path-expand "asp-gerbil-scheme" (asp-install-launcher-directory)' in path_contract
+    assert "runtime/bin" in path_contract
+    assert "gslph" not in path_contract
 
 
 def test_runtime_session_does_not_depend_on_offline_cli_adapters() -> None:

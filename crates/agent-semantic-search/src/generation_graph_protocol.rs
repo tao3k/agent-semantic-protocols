@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 //! Typed boundary for optional `asp-python-graphs` analysis of a Rust-owned
 //! Search generation. These receipts are candidate evidence and never gate or
 //! publish the base resident generation.

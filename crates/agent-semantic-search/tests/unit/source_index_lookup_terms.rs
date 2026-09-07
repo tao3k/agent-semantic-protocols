@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 use agent_semantic_search::SourceIndexRankCandidate;
 use agent_semantic_search::SourceIndexRankRequest;
 use agent_semantic_search::rank_source_index_report;

@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 //! Runtime DB-owned transactional State Home catalog.
 
@@ -235,9 +235,9 @@ impl StateHomeCatalog {
         read_connection_generation(&connection).await
     }
 
-    /// CAS-retire exact catalog objects after their physical workspaces have
+    /// CAS-delete exact catalog objects after their physical workspaces have
     /// been atomically staged out of the live namespace.
-    pub async fn retire_objects(
+    pub async fn delete_objects(
         &self,
         expected_generation: CatalogGeneration,
         object_ids: &std::collections::BTreeSet<String>,
@@ -249,7 +249,7 @@ impl StateHomeCatalog {
         let transaction = connection
             .transaction_with_behavior(turso::transaction::TransactionBehavior::Immediate)
             .await
-            .map_err(|error| format!("begin State Home retirement transaction: {error}"))?;
+            .map_err(|error| format!("begin State Home deletion transaction: {error}"))?;
         let observed = read_generation(&transaction).await?;
         if observed != expected_generation {
             return Err(format!(
@@ -265,14 +265,14 @@ impl StateHomeCatalog {
                     [object_id.as_str()],
                 )
                 .await
-                .map_err(|error| format!("retire State Home object leases: {error}"))?;
+                .map_err(|error| format!("delete State Home object leases: {error}"))?;
             let removed = transaction
                 .execute(
                     "DELETE FROM asp_retained_object WHERE object_id = ?1",
                     [object_id.as_str()],
                 )
                 .await
-                .map_err(|error| format!("retire State Home object: {error}"))?;
+                .map_err(|error| format!("delete State Home object: {error}"))?;
             if removed != 1 {
                 return Err(format!(
                     "reasonKind=state-home-cleanup-object-not-current objectId={object_id}"
@@ -285,19 +285,19 @@ impl StateHomeCatalog {
                 (),
             )
             .await
-            .map_err(|error| format!("retire unreferenced State Home bindings: {error}"))?;
+            .map_err(|error| format!("delete unreferenced State Home bindings: {error}"))?;
         transaction
             .execute(
                 "UPDATE asp_state_home_catalog SET generation = generation + 1 WHERE singleton = 1",
                 (),
             )
             .await
-            .map_err(|error| format!("advance State Home retirement generation: {error}"))?;
+            .map_err(|error| format!("advance State Home deletion generation: {error}"))?;
         let generation = read_generation(&transaction).await?;
         transaction
             .commit()
             .await
-            .map_err(|error| format!("commit State Home retirement: {error}"))?;
+            .map_err(|error| format!("commit State Home deletion: {error}"))?;
         Ok(generation)
     }
 
@@ -549,8 +549,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn retirement_generation_mismatch_preserves_the_catalog_object() {
-        let temporary = tempfile::tempdir().expect("catalog retirement fixture");
+    async fn deletion_generation_mismatch_preserves_the_catalog_object() {
+        let temporary = tempfile::tempdir().expect("catalog deletion fixture");
         let workspace_root = temporary.path().join("workspace");
         std::fs::create_dir_all(&workspace_root).expect("workspace root");
         let catalog = StateHomeCatalog::open(temporary.path().join("catalog/state.turso"))
@@ -559,7 +559,7 @@ mod tests {
         let binding =
             ProjectBinding::resolve(None, "git-common-dir:repo", &workspace_root).expect("binding");
         let object = RetainedObject {
-            object_id: "workspace:retire".to_string(),
+            object_id: "workspace:delete".to_string(),
             kind: RetentionObjectKind::Workspace,
             last_observed_at_ms: 1,
             byte_count: 10,
@@ -571,7 +571,7 @@ mod tests {
         let selected = std::collections::BTreeSet::from([object.object_id.clone()]);
 
         let error = catalog
-            .retire_objects(
+            .delete_objects(
                 CatalogGeneration::new(observed.generation.get() - 1),
                 &selected,
             )
@@ -592,9 +592,9 @@ mod tests {
         assert_eq!(plan.entries.len(), 1);
 
         let committed = catalog
-            .retire_objects(observed.generation, &selected)
+            .delete_objects(observed.generation, &selected)
             .await
-            .expect("retire current object");
+            .expect("delete current object");
         assert_eq!(committed.get(), observed.generation.get() + 1);
         let error = catalog
             .plan_cleanup_selected(
@@ -605,7 +605,7 @@ mod tests {
                 },
             )
             .await
-            .expect_err("committed retirement must remove the object");
+            .expect_err("committed deletion must remove the object");
         assert!(error.contains("state-home-cleanup-selection-no-match"));
     }
 }

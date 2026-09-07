@@ -1,3 +1,7 @@
+-- SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+--
+-- SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 namespace ASPProof.SearchRouteVersionedCertificateInvalidation
 
 structure ArtifactKey where
@@ -178,4 +182,3 @@ theorem unrelated_artifact_is_not_invalidated :
     simp [unrelatedCapability, oldEffect] at revisionIdentity
 
 end ASPProof.SearchRouteVersionedCertificateInvalidation
-

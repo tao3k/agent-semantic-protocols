@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 use super::ActivationObservation;
 use super::AuthorityStamp;
 use super::ContentBindingError;
@@ -43,6 +47,35 @@ fn one_identity_has_one_deterministic_commit_digest() {
 }
 
 #[test]
+fn authority_stamp_is_part_of_publication_commit_identity() {
+    let content = identity('a');
+    let first = ContentPublicationCommit::linearize(content.clone(), authority(&content)).unwrap();
+    let second = ContentPublicationCommit::linearize(
+        content.clone(),
+        AuthorityStamp {
+            key_id: "other-authority".to_owned(),
+            canonical_digest: content.digest(),
+            signature: "other-signature".to_owned(),
+        },
+    )
+    .unwrap();
+    assert_ne!(first.commit_digest, second.commit_digest);
+}
+
+#[test]
+fn predecessor_fence_is_part_of_publication_commit_identity() {
+    let content = identity('a');
+    let first = ContentPublicationCommit::linearize(content.clone(), authority(&content)).unwrap();
+    let successor = ContentPublicationCommit::linearize_with_expected(
+        content.clone(),
+        authority(&content),
+        Some(&first.commit_digest),
+    )
+    .unwrap();
+    assert_ne!(first.commit_digest, successor.commit_digest);
+}
+
+#[test]
 fn same_numeric_label_different_content_is_rejected() {
     let content = identity('a');
     let commit = ContentPublicationCommit::linearize(content.clone(), authority(&content)).unwrap();
@@ -52,16 +85,18 @@ fn same_numeric_label_different_content_is_rejected() {
     };
     let mut different = identity('b');
     different.schema_digest = identity('c').schema_digest;
+    let different_authority = authority(&different);
+    let different_binding = super::ContentBinding::new(different, different_authority).unwrap();
     assert!(observation.matches_commit(&commit));
     assert_eq!(
-        commit.admit_exact(&different),
+        commit.admit_exact(&different_binding),
         Err(ContentBindingError::ContentMismatch)
     );
     assert!(!observation.is_product_authority());
 }
 
 #[test]
-fn corrupted_commit_and_non_durable_commit_fail_closed() {
+fn corrupted_commit_and_schema_identity_fail_closed() {
     let identity = identity('d');
     let authority = authority(&identity);
     let mut commit = ContentPublicationCommit::linearize(identity, authority).unwrap();
@@ -70,11 +105,15 @@ fn corrupted_commit_and_non_durable_commit_fail_closed() {
         commit.validate(),
         Err(ContentBindingError::CommitDigestMismatch)
     );
-    commit.commit_digest = commit.identity.digest();
-    commit.durable = false;
+    commit = ContentPublicationCommit::linearize(
+        commit.identity().clone(),
+        commit.authority_stamp().clone(),
+    )
+    .unwrap();
+    commit.schema_version = "2".to_owned();
     assert_eq!(
         commit.validate(),
-        Err(ContentBindingError::NonDurableCommit)
+        Err(ContentBindingError::InvalidCommitFence)
     );
 }
 
@@ -83,10 +122,10 @@ fn invalid_transaction_fence_fails_closed() {
     let content = identity('e');
     let mut commit =
         ContentPublicationCommit::linearize(content.clone(), authority(&content)).unwrap();
-    commit.expected_digest = Some(format!("{DIGEST_PREFIX}{}", "f".repeat(64)));
+    commit.predecessor_commit_digest = Some(format!("{DIGEST_PREFIX}{}", "f".repeat(64)));
     assert_eq!(
         commit.validate(),
-        Err(ContentBindingError::InvalidCommitFence)
+        Err(ContentBindingError::CommitDigestMismatch)
     );
 }
 

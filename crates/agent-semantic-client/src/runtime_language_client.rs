@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 //! Typed `ClientFrame` transport for commands sent to an existing ASP Runtime Server.
 
@@ -701,7 +701,7 @@ impl AspClient {
         route: &str,
         params: serde_json::Value,
     ) -> Result<ClientFrame, String> {
-        self.dispatch_method_on_session(format!("{language_id}.{route}"), params)
+        self.dispatch_method_on_session(format!("{language_id}.{route}"), params, None)
             .await
     }
 
@@ -710,7 +710,17 @@ impl AspClient {
         method: String,
         params: serde_json::Value,
     ) -> Result<ClientFrame, String> {
-        self.dispatch_method_on_session(method, params).await
+        self.dispatch_method_on_session(method, params, None).await
+    }
+
+    pub(crate) async fn dispatch_playbook_method(
+        &self,
+        method: String,
+        params: serde_json::Value,
+        launcher_elapsed_micros: u64,
+    ) -> Result<ClientFrame, String> {
+        self.dispatch_method_on_session(method, params, Some(launcher_elapsed_micros))
+            .await
     }
 
     async fn initialized_session(
@@ -784,21 +794,47 @@ impl AspClient {
         &self,
         method: String,
         params: serde_json::Value,
+        launcher_elapsed_micros: Option<u64>,
     ) -> Result<ClientFrame, String> {
+        let request_id = request_id("dispatch")?;
+        let frame_encode_started = tokio::time::Instant::now();
+        serde_json::to_vec(&serde_json::json!({"method": &method, "params": &params}))
+            .map_err(|error| format!("encode canonical ASP Client method payload: {error}"))?;
+        let frame_encode_elapsed_micros = frame_encode_started
+            .elapsed()
+            .as_micros()
+            .min(u128::from(u64::MAX)) as u64;
+        let ipc_connect_started = tokio::time::Instant::now();
         let (session, session_cell, base, session_key) = self.initialized_session().await?;
+        let ipc_connect_elapsed_micros = ipc_connect_started
+            .elapsed()
+            .as_micros()
+            .min(u128::from(u64::MAX)) as u64;
         let catalog = session
             .initialized
             .get()
             .expect("successful initialization publishes its catalog");
+        let client_timing_witness = launcher_elapsed_micros
+            .map(|launcher_elapsed_micros| {
+                build_playbook_client_timing_witness(
+                    base.session_id.as_str(),
+                    request_id.as_str(),
+                    launcher_elapsed_micros,
+                    frame_encode_elapsed_micros,
+                    ipc_connect_elapsed_micros,
+                )
+            })
+            .transpose()?;
         let result = session
             .transport
             .call(ClientFrame::Request {
                 base,
-                request_id: request_id("dispatch")?,
+                request_id,
                 catalog_generation: catalog.catalog_generation.clone(),
                 workspace_generation: catalog.workspace_generation.clone(),
                 method,
                 params,
+                client_timing_witness,
             })
             .await;
         if result.is_err() {
@@ -831,6 +867,7 @@ impl AspClient {
                     workspace_generation: catalog.workspace_generation.clone(),
                     method: CANCELLATION_PROBE_METHOD.to_owned(),
                     params: serde_json::json!({}),
+                    client_timing_witness: None,
                 })
                 .await?;
             session
@@ -910,6 +947,7 @@ impl AspClient {
                     workspace_generation: catalog.workspace_generation.clone(),
                     method: CANCELLATION_PROBE_METHOD.to_owned(),
                     params: serde_json::json!({}),
+                    client_timing_witness: None,
                 })
                 .await?;
             pending.push((request_id, call));
@@ -923,6 +961,7 @@ impl AspClient {
                 workspace_generation: catalog.workspace_generation.clone(),
                 method: CANCELLATION_PROBE_METHOD.to_owned(),
                 params: serde_json::json!({}),
+                client_timing_witness: None,
             })
             .await
         {
@@ -1042,6 +1081,25 @@ impl AspClient {
     }
 }
 
+fn build_playbook_client_timing_witness(
+    session_id: &str,
+    request_id: &str,
+    launcher_elapsed_micros: u64,
+    frame_encode_elapsed_micros: u64,
+    ipc_connect_elapsed_micros: u64,
+) -> Result<agent_semantic_client_protocol::RuntimeSearchClientTimingWitness, String> {
+    agent_semantic_client_protocol::RuntimeSearchClientTimingWitness::new(
+        session_id,
+        request_id,
+        [
+            launcher_elapsed_micros,
+            frame_encode_elapsed_micros,
+            ipc_connect_elapsed_micros,
+        ],
+    )
+    .map_err(|error| error.reason_kind().to_owned())
+}
+
 pub(crate) fn decode_graph_evaluation_response(
     frame: ClientFrame,
 ) -> Result<agent_semantic_search_projection::ResidentGraphEvaluationResultV1, String> {
@@ -1085,5 +1143,44 @@ pub(crate) fn decode_schema_bundle_response(
         frame => Err(format!(
             "schema bundle dispatch returned a non-response frame: {frame:?}"
         )),
+    }
+}
+
+#[cfg(test)]
+mod playbook_client_timing_tests {
+    use super::build_playbook_client_timing_witness;
+
+    #[test]
+    fn playbook_witness_preserves_real_phase_order_and_request_binding() {
+        let witness = build_playbook_client_timing_witness(
+            "asp-client-session-1",
+            "dispatch-request-1",
+            13,
+            21,
+            34,
+        )
+        .expect("valid Playbook client timing witness");
+
+        assert_eq!(
+            witness
+                .phases
+                .each_ref()
+                .map(|phase| (phase.name.as_str(), phase.elapsed_micros)),
+            [
+                ("launcher", 13),
+                ("client-frame-encode", 21),
+                ("ipc-connect", 34),
+            ]
+        );
+        witness
+            .admit_for_request("asp-client-session-1", "dispatch-request-1")
+            .expect("same request binding");
+        assert_eq!(
+            witness
+                .admit_for_request("asp-client-session-1", "dispatch-request-2")
+                .expect_err("foreign request")
+                .reason_kind(),
+            "runtime-search-client-timing-identity-mismatch"
+        );
     }
 }

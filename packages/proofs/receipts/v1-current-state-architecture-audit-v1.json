@@ -68,7 +68,7 @@
       "semanticFrameProduced": false
     },
     {
-      "operation": "authorized ASP_NO_AGENT Python diagnostic",
+      "operation": "retired environment-escape Python diagnostic",
       "state": "blocked",
       "failureLayer": "asp-cli-startup-or-ipc-boundary",
       "reasonKind": "host-operation-not-permitted",

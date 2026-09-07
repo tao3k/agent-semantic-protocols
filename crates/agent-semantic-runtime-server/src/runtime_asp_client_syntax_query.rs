@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
@@ -80,12 +84,6 @@ pub(super) async fn execute_workspace_syntax_query_evidence(
                 block.producer
             ))
         })?;
-        if provider.search_playbook_contract.is_none() {
-            return Err(AspClientOperationError::Message(format!(
-                "workspace syntax Query provider has no admitted syntax contract: {}",
-                block.producer
-            )));
-        }
         query_provider_block(
             &block.argv,
             project_root,

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 use std::borrow::Cow;
 
 use serde::Deserialize;
@@ -166,8 +170,6 @@ pub struct AotHookDecision<'a> {
     pub tool_use_id: Option<&'a str>,
     pub message: String,
     pub context: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub search_playbook_contract: Option<String>,
     pub access: &'static str,
     pub access_mode: &'static str,
     pub backend: &'a str,
@@ -371,7 +373,7 @@ pub fn reader_probe_request(
     // such as `rg ... | sed ...` is still a search operation; probing the
     // downstream formatter would both launch unnecessary work and manufacture
     // read evidence for a command that must be denied before execution.
-    if configured_semantic_actions(&generation, host_matcher, Some(&stages)).contains(&"search") {
+    if configured_semantic_actions(&generation, Some(&stages)).contains(&"search") {
         return Ok(None);
     }
     for rule in &generation.rules {
@@ -425,7 +427,6 @@ fn reader_patterns(generation: &CompiledHookPolicyBundle<'_>) -> Vec<Vec<String>
 
 fn configured_semantic_actions<'a>(
     generation: &'a CompiledHookPolicyBundle<'a>,
-    host_matcher: &str,
     stages: Option<&[agent_semantic_shell_parser::CommandStage]>,
 ) -> Vec<&'a str> {
     let mut actions = Vec::new();
@@ -489,8 +490,7 @@ pub fn evaluate_pre_tool<'a>(
         .map(agent_semantic_shell_parser::parse_bash_command_candidates)
         .transpose()
         .map_err(|error| format!("parse Bash command for AOT rule matching: {error}"))?;
-    let mut semantic_actions =
-        configured_semantic_actions(&generation, host_matcher, shell_stages.as_deref());
+    let mut semantic_actions = configured_semantic_actions(&generation, shell_stages.as_deref());
     let mut registered_extensions = generation
         .rules
         .iter()
@@ -566,11 +566,7 @@ pub fn evaluate_pre_tool<'a>(
         }
         let subject = confirmed_read.map(|read| read.subject.clone());
         let read_evidence = confirmed_read.map(|read| read.evidence);
-        let search_playbook_contract = rule.language.map(|language| {
-            let language = crate::classifier::shell_quote_arg(language);
-            format!("asp search playbook --languages {language}")
-        });
-        let parent_task = search_playbook_contract.as_deref().map_or_else(
+        let parent_task = rule.language.map_or_else(
             || {
                 format!(
                     "Invoke Host tool `{}` exactly once with input {}",
@@ -578,7 +574,11 @@ pub fn evaluate_pre_tool<'a>(
                     payload.tool_input.get()
                 )
             },
-            |command| format!("Run `{command}` exactly once"),
+            |language| {
+                format!(
+                    "Execute the registered {language} Search Playbook route for this read once"
+                )
+            },
         );
         let agent_dispatch_message = rule
             .route
@@ -595,10 +595,6 @@ pub fn evaluate_pre_tool<'a>(
             .replace(
                 "{{languageId}}",
                 rule.language.unwrap_or("registered-language"),
-            )
-            .replace(
-                "{{searchPlaybookContract}}",
-                search_playbook_contract.as_deref().unwrap_or_default(),
             )
             .replace("{{agentDispatchMessage}}", &agent_dispatch_message);
         return Ok(Some(AotHookDecision {
@@ -619,7 +615,6 @@ pub fn evaluate_pre_tool<'a>(
             tool_use_id: payload.tool_use_id,
             message: message.clone(),
             context: message,
-            search_playbook_contract,
             access: if read_evidence.is_some() {
                 "read"
             } else {

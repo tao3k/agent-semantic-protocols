@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 #[path = "unit/exact_selector_cache_contract.rs"]
 mod exact_selector_cache_contract;
 #[path = "unit/exact_selector_cache_performance.rs"]

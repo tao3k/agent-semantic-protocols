@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 * One-sentence summary
 ASP should treat agent reasoning as typed, replayable, graph-transforming evidence: =ReasoningTree= records how a run moved, =EvidenceGraph= stores reusable evidence across runs, =DynamicTopology= explains the current architecture state and legal reasoning branches, and =GraphRoute= navigates toward exact selectors, commands, tests, edits, and writing actions.
 * Scope

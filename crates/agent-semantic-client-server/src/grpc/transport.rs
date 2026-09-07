@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 //! Loopback TCP gRPC transport for multiplexed public ASP `ClientFrame` sessions.
 
@@ -146,11 +146,22 @@ impl<D: AspClientDispatcher> AspClientProtocol for AspClientGrpcService<D> {
                     completed = requests.next(), if !requests.is_empty() => {
                         if let Some(Some(result)) = completed {
                             match result {
-                                Ok(envelopes) => {
-                                    for envelope in envelopes {
+                                Ok(encoded) => {
+                                    let egress_started = tokio::time::Instant::now();
+                                    let mut delivered = true;
+                                    for envelope in encoded.envelopes {
                                         if outbound.send(Ok(envelope)).await.is_err() {
-                                            return;
+                                            delivered = false;
+                                            break;
                                         }
+                                    }
+                                    frames.terminal_egressed(
+                                        &encoded.telemetry,
+                                        elapsed_micros(egress_started),
+                                        delivered,
+                                    );
+                                    if !delivered {
+                                        return;
                                     }
                                 }
                                 Err(error) => {
@@ -174,15 +185,54 @@ impl<D: AspClientDispatcher> AspClientProtocol for AspClientGrpcService<D> {
 async fn dispatch_client_frame<D: AspClientDispatcher>(
     frames: Arc<AspClientFrameService<D>>,
     frame: ClientFrame,
-) -> Option<Result<Vec<ClientFrameEnvelope>, Status>> {
+) -> Option<Result<EncodedClientResponse, Status>> {
     match frames.handle_frame(frame).await {
-        Ok(Some(response)) => Some(
-            encode_response_partitions(response)
-                .map_err(|error| Status::resource_exhausted(error.to_string())),
-        ),
+        Ok(Some(response)) => {
+            let telemetry = response_telemetry(&response)?;
+            let serialization_started = tokio::time::Instant::now();
+            let encoded = encode_response_partitions(response)
+                .map_err(|error| Status::resource_exhausted(error.to_string()));
+            if encoded.is_ok() {
+                frames.response_serialized(&telemetry, elapsed_micros(serialization_started));
+            } else {
+                frames.terminal_egressed(&telemetry, elapsed_micros(serialization_started), false);
+            }
+            Some(encoded.map(|envelopes| EncodedClientResponse {
+                envelopes,
+                telemetry,
+            }))
+        }
         Ok(None) => None,
         Err(error) => Some(Err(Status::failed_precondition(error))),
     }
+}
+
+struct EncodedClientResponse {
+    envelopes: Vec<ClientFrameEnvelope>,
+    telemetry: crate::AspClientResponseTelemetry,
+}
+
+fn response_telemetry(frame: &ClientFrame) -> Option<crate::AspClientResponseTelemetry> {
+    let ClientFrame::Response {
+        base,
+        request_id,
+        outcome,
+        ..
+    } = frame
+    else {
+        return None;
+    };
+    Some(crate::AspClientResponseTelemetry {
+        project_id: base.project_id.clone(),
+        workspace_id: base.workspace_id.clone(),
+        session_id: base.session_id.clone(),
+        request_id: request_id.clone(),
+        outcome: *outcome,
+    })
+}
+
+fn elapsed_micros(started: tokio::time::Instant) -> u64 {
+    started.elapsed().as_micros().min(u128::from(u64::MAX)) as u64
 }
 
 fn encode_response_partitions(frame: ClientFrame) -> Result<Vec<ClientFrameEnvelope>, String> {

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 //! Execute-only Rule DSL facts projected from a Bash command envelope.
 //!
 //! Native Codex actions are represented by `AgentAction`. This module is only

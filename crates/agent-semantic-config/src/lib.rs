@@ -1,8 +1,7 @@
 #![deny(dead_code)]
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
-
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 //! Unified project identity, configuration, and local state layout for ASP.
 
@@ -102,7 +101,6 @@ pub use hook_client_config::HookClientLazyProviderPolicy;
 pub use hook_client_config::HookClientMatcherPolicy;
 pub use hook_client_config::HookClientProfileConfig;
 pub use hook_client_config::HookClientProviderRouteIdentity;
-pub use hook_client_config::HookClientRecoveryPromptConfig;
 pub use hook_client_config::HookClientRuleConfig;
 pub use hook_client_config::HookClientRuleDispatchConfig;
 pub use hook_client_config::HookClientRuleDispatchTransport;

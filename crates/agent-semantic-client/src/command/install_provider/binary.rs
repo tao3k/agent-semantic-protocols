@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 //! Thin owner for Protocol binary installation.
 
@@ -37,8 +37,11 @@ pub(crate) async fn run_install_binary(args: &[String]) -> Result<(), String> {
     let hook_config_status = install_binary_config_admission::publish_embedded_hook_config(
         &runtime_state.protocol_home,
     )?;
-    let provider_reconciliation =
+    let mut provider_reconciliation =
         super::core::prepare_active_release_provider_reconciliation(&runtime_state.protocol_home)?;
+    let execution_binding = provider_reconciliation
+        .bind_runtime_execution_closure(plan.candidate_source(), &hook_candidate.source)
+        .await?;
     let mut members = vec![
         agent_semantic_artifacts::runtime_artifact_publication::RuntimeArtifactBundleMemberSource {
             name: "asp-hook",
@@ -46,10 +49,13 @@ pub(crate) async fn run_install_binary(args: &[String]) -> Result<(), String> {
         },
     ];
     members.extend(provider_reconciliation.member_sources());
-    let installed = protocol_binary::ensure_protocol_binary_bundle_members_installed_transaction(
-        &plan, &members,
-    )
-    .await?;
+    let installed =
+        protocol_binary::ensure_protocol_binary_bound_bundle_members_installed_transaction(
+            &plan,
+            &members,
+            &execution_binding,
+        )
+        .await?;
     let install_registry_digest =
         crate::command::provider_install_registry::provider_install_registry_digest()?;
     let active_artifact_receipt = agent_semantic_hook::rebind_active_asp_binary_receipt_if_present(

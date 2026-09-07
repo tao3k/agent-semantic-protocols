@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 use std::io::Read as _;
 use std::path::PathBuf;
 
@@ -13,13 +17,6 @@ pub struct AotHookEvaluationReceipt {
 
 /// Runs the Hook evaluator embedded in the canonical ASP binary.
 pub fn main_entry() {
-    if inherited_no_agent_bypass() {
-        // An empty object is a valid pass-through response for every Codex
-        // command-hook output schema. Internal ASP receipt fields must never be
-        // flattened into the Host wire envelope.
-        println!("{{}}");
-        return;
-    }
     if std::env::args_os().any(|argument| argument == "--version") {
         println!("asp-hook schema=1");
         return;
@@ -142,10 +139,6 @@ fn emit_permission_request_terminal() {
     println!("{}", crate::render_codex_permission_request("allow", None));
 }
 
-fn inherited_no_agent_bypass() -> bool {
-    crate::no_agent_escape::inherited()
-}
-
 enum EvaluationFailure {
     HostMatcherAuthority(String),
     GenerationAuthority(String),
@@ -195,10 +188,6 @@ fn evaluate() -> Result<(), EvaluationFailure> {
             "plugin Host matcher binding mismatch: matcher={host_matcher} toolName={tool_name}"
         )));
     }
-    if command_local_no_agent_bypass(&payload, &host_matcher) {
-        println!("{{}}");
-        return Ok(());
-    }
     let payload_json = serde_json::to_string(&payload).map_err(|error| {
         EvaluationFailure::GenerationAuthority(format!("encode enriched Hook payload: {error}"))
     })?;
@@ -221,29 +210,12 @@ pub fn evaluate_payload_from_serving_config(
 ) -> Result<Option<serde_json::Value>, String> {
     let payload: serde_json::Value = serde_json::from_str(payload_json)
         .map_err(|error| format!("decode Hook payload: {error}"))?;
-    if command_local_no_agent_bypass(&payload, host_matcher) {
-        return Ok(Some(serde_json::json!({})));
-    }
     let payload_json = serde_json::to_string(&payload)
         .map_err(|error| format!("encode enriched Hook payload: {error}"))?;
     let policy_bundle = crate::aot_compiler::compile_serving_hook_policy_bundle()?;
     let policy_bundle = std::str::from_utf8(&policy_bundle)
         .map_err(|error| format!("serving Hook policy bundle is not UTF-8: {error}"))?;
     evaluate_payload_with_policy_bundle(policy_bundle, &payload_json, host_matcher)
-}
-
-fn command_local_no_agent_bypass(payload: &serde_json::Value, host_matcher: &str) -> bool {
-    if host_matcher != "Bash" {
-        return false;
-    }
-    payload_has_process_no_agent_assignment(payload)
-}
-
-/// Host payload evidence for the process-bound escape.  This is intentionally
-/// narrower than textual matching: only an actual Bash command stage with the
-/// exact environment assignment can activate it.
-pub fn payload_has_process_no_agent_assignment(payload: &serde_json::Value) -> bool {
-    crate::no_agent_escape::payload_declares_process_escape(payload)
 }
 
 #[doc(hidden)]

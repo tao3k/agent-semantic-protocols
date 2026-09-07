@@ -1,3 +1,7 @@
+-- SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+--
+-- SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 import ASPProof.SearchEvidenceDerivation
 
 open ASPProof.SearchEvidenceReflection ASPProof.SearchEvidenceDerivation
@@ -403,6 +407,8 @@ example : materializationSetAdmitted [10, 20, 30] [10, 10] = true := by decide
 #print axioms a_new_fact_that_skips_delta_violates_incremental_completeness
 #print axioms a_new_fact_exposed_by_delta_satisfies_incremental_completeness
 #print axioms gql_settlement_preserves_direct_and_marks_novel_derived
+#print axioms agent_facing_search_projection_is_fully_determined_by_evidence
+#print axioms public_search_projection_has_no_out_of_band_decision_state
 #print axioms default_agent_projection_is_one_gql_settlement
 #print axioms natural_language_proposal_guides_but_does_not_prove
 #print axioms admitted_natural_language_requires_current_binding
@@ -420,7 +426,12 @@ example : materializationSetAdmitted [10, 20, 30] [10, 10] = true := by decide
 #print axioms unadmitted_fixed_point_receipt_is_rejected
 #print axioms foreign_program_fixed_point_receipt_is_rejected
 #print axioms admitted_identity_collision_cannot_authorize_forged_inference_fields
-#print axioms exact_search_materialization_handoff_is_admitted
-#print axioms selector_subset_cannot_claim_search_materialization_origin
-#print axioms cross_generation_query_handoff_replay_is_rejected
-#print axioms changed_query_proof_dependencies_are_rejected
+#print axioms smallest_runtime_admitted_selector_subset_is_queryable
+#print axioms selectors_learned_across_searches_may_form_one_query
+#print axioms runtime_binding_drift_is_rejected_before_materialization
+#print axioms workspace_root_drift_is_rejected_before_materialization
+#print axioms worktree_context_drift_is_rejected_before_materialization
+#print axioms one_runtime_bound_terminal_materializes_the_complete_selector_set
+#print axioms a_partial_ready_receipt_is_rejected
+#print axioms a_failed_receipt_cannot_expose_partial_materialization
+#print axioms more_than_one_query_terminal_is_rejected

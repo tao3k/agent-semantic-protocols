@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 #+TITLE: RFC 10.06.16 - Project Topology Reasoning Library
 #+LANGUAGE: en
 #+DATE: 2026-09-06
@@ -92,6 +96,68 @@ and strata, verifies all additions and removals, and atomically switches only a
 complete topology generation. Unioning an old closure with a new delta is
 invalid because deleted nodes and edges could survive.
 
+*** Tokio Execution And Atomic Publication
+
+Project Topology construction is a Runtime-owned Tokio workflow. The public
+builder API is asynchronous. Parser acquisition, durable reads, cancellation,
+single-flight coordination, admission, and publication remain on Tokio-owned
+tasks. CPU-bound MRR/Ascent closure evaluation runs only in a bounded
+=spawn_blocking= section; the synchronous evaluator is an internal pure kernel,
+not a public Runtime or cache authority.
+
+The topology blocking lane has a supported-runtime floor of four concurrent
+workers and scales to the machine's available parallelism. Per-generation
+single-flight prevents duplicate work for an equal identity; it MUST NOT be
+implemented by reducing the whole topology service to one worker. Runtime
+resource admission may delay work before it enters the lane, but it may not
+silently run CPU closure on an async worker thread.
+
+The Runtime coordinator keys one in-flight build by the complete topology
+generation identity tuple, never by workspace path, activation generation, or
+provider name alone. Equal keys coalesce onto the same terminal. Unequal keys
+must not share a candidate or completion receipt. A canceled waiter does not
+necessarily stop already-running CPU work, but cancellation before commit makes
+its result inadmissible and the result is discarded. Cancellation therefore
+cannot publish a partial library or mutate the active generation.
+
+The cache contains only immutable admitted =Arc<ProjectTopologyLibrary>= values.
+It is owned by the Runtime generation authority and indexed by full content
+identity. Builders, providers, Search, and Query MUST NOT own process-global,
+provider-private, path-keyed, or latest-candidate caches. Incremental segment
+reuse is input to a new candidate; it is not mutation of an admitted library.
+
+Publication is one atomic state transition:
+
+#+begin_example
+Building(identity)
+  -> graph attachment complete
+  -> Tantivy attachment complete
+  -> Project Topology closure complete
+  -> independent rebuild receipt admitted
+  -> RuntimeProjectTopologyAttachment admitted
+  -> Ready(identity, graph, Tantivy, Arc<ProjectTopologyLibrary>, attachment)
+#+end_example
+
+Graph, Tantivy, and Project Topology are three members of one Tokio generation
+transaction. Their workers may run concurrently, but their individual
+completion events are observations rather than Search-ready terminals. Runtime
+emits exactly one generation terminal after all three attachments are admitted.
+No reader can observe the library, attachment, or Search-ready generation
+between these steps. Failure, budget exhaustion, join failure, or cancellation
+of any member produces the single typed non-ready terminal and leaves the
+previously admitted generation unchanged. =activationGeneration= may fence
+lifecycle transactions but cannot key, validate, or recover topology caching.
+
+The immutable Search data plane retains provider relations with their explicit
+source owner in both resident and mmap forms. The topology builder consumes
+that owner-attributed snapshot directly. Reconstructing ownership from a graph
+endpoint, a selector string, a workspace path, or a later provider query is
+forbidden because none of those values proves the relation's source segment.
+Parser item nodes carry exact Query-compatible selectors. Parser owner nodes
+instead carry a canonical language-qualified owner locator such as
+=rust://src/lib.rs=. An owner locator is structural topology evidence, not an
+exact item selector, and Query Playbook MUST NOT silently promote it into one.
+
 Deletion invalidation follows the proof dependency graph transitively. If a
 base fact is removed, every derived descendant that depends on it is removed
 before the successor generation can be admitted. The successor closure MUST be
@@ -103,6 +169,31 @@ receipt that binds the topology generation and recomputed library digest. A
 candidate cannot certify itself by copying its own =libraryDigest= into a field
 named =fromScratchEquivalentDigest=. Digest equality without an independently
 resolved rebuild receipt is an untrusted assertion.
+
+*** Executable Inference Profile
+
+The first executable MRR profile is deliberately narrower than the complete
+Topology relation vocabulary. It retains each parser-owned edge's relation
+kind, projects those edges into a separate bounded adjacency relation, and
+derives only =TOPOLOGY_REACHABLE= with the precompiled MRR/Ascent rule pack.
+It MUST NOT relabel a heterogeneous =DECLARES -> CALLS= path as either
+=DECLARES= or =CALLS=. A complete result carries the sorted
+direct-edge identities, every derived endpoint pair, the complete parser
+premise set for each pair, the MRR closure digest, and the separately
+materialized lineage/transition receipt digest. This receipt is defined by
+[[file:../../../schemas/project-topology-inference-receipt.v1.schema.json][project-topology-inference-receipt.v1]].
+
+This profile MUST NOT claim support for arbitrary Topology rules. Relation-kind
+compatibility, expected-edge gaps, lattice selection, and project-defined MRR
+extensions enter later executable profiles under their own admitted rule-pack
+and ABI identities. Unsupported rule shapes fail closed rather than being
+translated into string heuristics.
+
+Output truncation is an incomplete terminal and cannot be published as a fixed
+point. Deleting a parser premise requires rebuilding the affected closure; a
+derived relationship survives only when its complete premise set exists in the
+successor generation. Runtime publication consumes the typed receipt and never
+reconstructs or self-asserts it from a digest.
 
 The machine packet carries that evidence in =fromScratchRebuildReceipt=. Its
 complete record MUST equal the independently admitted receipt resolved by
@@ -136,7 +227,7 @@ semantic identity instead of mutating a hidden cache.
 Every Search projection MUST jointly bind the following library identity tuple:
 
 #+begin_example
-(workspaceIdentity,
+(projectWorkspaceIdentity,
  sourceGenerationDigest,
  providerCatalogDigest,
  topologyLibraryDigest,
@@ -145,6 +236,12 @@ Every Search projection MUST jointly bind the following library identity tuple:
  semanticTopologyDigest,
  inferenceProgramDigest)
 #+end_example
+
+=projectWorkspaceIdentity= is the manifest-declared product URI
+=<canonical-git-locator>#workspace/<logical-key>=. It is stable across clone
+paths and Runtime sessions. It MUST NOT contain a generated Runtime workspace
+identifier. =sourceGenerationDigest= independently binds source freshness; a
+shared project identity therefore never implies equal source bytes.
 
 Equality of publication or activation generations is neither necessary nor
 sufficient for this binding. Replay with any unequal tuple member fails before

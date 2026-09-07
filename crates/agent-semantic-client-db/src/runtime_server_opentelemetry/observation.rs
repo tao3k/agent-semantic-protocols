@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 pub const RUNTIME_SEARCH_TELEMETRY_PHASES: [&str; 10] = [
     "launcher",
@@ -15,35 +15,139 @@ pub const RUNTIME_SEARCH_TELEMETRY_PHASES: [&str; 10] = [
     "terminal-egress",
 ];
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+pub const RUNTIME_SEARCH_TELEMETRY_SCHEMA_REF: &str =
+    "runtime-server-opentelemetry-performance-event";
+
+#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RuntimeSearchTelemetryIdentity {
-    pub workspace_identity: String,
-    pub source_generation_digest: String,
-    pub runtime_artifact_digest: String,
-    pub provider_id: String,
+    pub schema_ref: String,
+    pub session_id: String,
     pub request_id: String,
+    pub workspace_identity: String,
+    pub workspace_snapshot_digest: String,
+    pub source_snapshot_digest: String,
+    pub source_generation_digest: String,
+    pub source_index_digest: String,
+    pub runtime_artifact_digest: String,
+    pub runtime_bundle_digest: String,
+    pub execution_publication_digest: String,
+    pub provider_catalog_digest: String,
+    pub language_ids: Vec<String>,
+    pub provider_ids: Vec<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RuntimeSearchTelemetryIdentityInput {
+    pub session_id: String,
+    pub request_id: String,
+    pub workspace_identity: String,
+    pub workspace_snapshot_digest: String,
+    pub source_snapshot_digest: String,
+    pub source_generation_digest: String,
+    pub source_index_digest: String,
+    pub runtime_artifact_digest: String,
+    pub runtime_bundle_digest: String,
+    pub execution_publication_digest: String,
+    pub provider_catalog_digest: String,
+    pub language_ids: Vec<String>,
+    pub provider_ids: Vec<String>,
 }
 
 impl RuntimeSearchTelemetryIdentity {
-    pub fn new(
-        workspace_identity: impl Into<String>,
-        source_generation_digest: impl Into<String>,
-        runtime_artifact_digest: impl Into<String>,
-        provider_id: impl Into<String>,
+    pub fn settle_client_timing(
+        publication: &agent_semantic_content_identity::runtime_workspace_execution_publication::RuntimeWorkspaceExecutionPublication,
+        witness: &agent_semantic_client_protocol::RuntimeSearchClientTimingWitness,
+        session_id: &str,
+        request_id: &str,
+        language_ids: Vec<String>,
+        provider_ids: Vec<String>,
+    ) -> Result<Self, RuntimeSearchTelemetryError> {
+        witness
+            .admit_for_request(session_id, request_id)
+            .map_err(|_| {
+                RuntimeSearchTelemetryError::new("runtime-search-client-timing-identity-mismatch")
+            })?;
+        Self::from_execution_publication(
+            publication,
+            session_id,
+            request_id,
+            language_ids,
+            provider_ids,
+        )
+    }
+
+    pub fn from_execution_publication(
+        publication: &agent_semantic_content_identity::runtime_workspace_execution_publication::RuntimeWorkspaceExecutionPublication,
+        session_id: impl Into<String>,
         request_id: impl Into<String>,
+        language_ids: Vec<String>,
+        provider_ids: Vec<String>,
+    ) -> Result<Self, RuntimeSearchTelemetryError> {
+        publication.validate().map_err(|_| {
+            RuntimeSearchTelemetryError::new("runtime-search-telemetry-identity-mismatch")
+        })?;
+        let content = &publication
+            .runtime_execution_binding
+            .content_binding
+            .identity;
+        Self::new(RuntimeSearchTelemetryIdentityInput {
+            session_id: session_id.into(),
+            request_id: request_id.into(),
+            workspace_identity: publication.workspace_identity.clone(),
+            workspace_snapshot_digest: content.workspace_snapshot_digest.clone(),
+            source_snapshot_digest: publication.source_root_digest.as_str().to_owned(),
+            source_generation_digest: content.source_generation_digest.clone(),
+            source_index_digest: content.source_index_digest.clone(),
+            runtime_artifact_digest: content.runtime_artifact_digest.clone(),
+            runtime_bundle_digest: publication.runtime_bundle_digest.as_str().to_owned(),
+            execution_publication_digest: publication.publication_digest.as_str().to_owned(),
+            provider_catalog_digest: content.provider_catalog_digest.clone(),
+            language_ids,
+            provider_ids,
+        })
+    }
+
+    pub fn new(
+        input: RuntimeSearchTelemetryIdentityInput,
     ) -> Result<Self, RuntimeSearchTelemetryError> {
         let identity = Self {
-            workspace_identity: workspace_identity.into(),
-            source_generation_digest: source_generation_digest.into(),
-            runtime_artifact_digest: runtime_artifact_digest.into(),
-            provider_id: provider_id.into(),
-            request_id: request_id.into(),
+            schema_ref: RUNTIME_SEARCH_TELEMETRY_SCHEMA_REF.into(),
+            session_id: input.session_id,
+            request_id: input.request_id,
+            workspace_identity: input.workspace_identity,
+            workspace_snapshot_digest: input.workspace_snapshot_digest,
+            source_snapshot_digest: input.source_snapshot_digest,
+            source_generation_digest: input.source_generation_digest,
+            source_index_digest: input.source_index_digest,
+            runtime_artifact_digest: input.runtime_artifact_digest,
+            runtime_bundle_digest: input.runtime_bundle_digest,
+            execution_publication_digest: input.execution_publication_digest,
+            provider_catalog_digest: input.provider_catalog_digest,
+            language_ids: input.language_ids,
+            provider_ids: input.provider_ids,
         };
-        if identity.workspace_identity.is_empty()
-            || identity.source_generation_digest.is_empty()
-            || identity.runtime_artifact_digest.is_empty()
-            || identity.provider_id.is_empty()
-            || identity.request_id.is_empty()
+        if [
+            identity.session_id.as_str(),
+            identity.request_id.as_str(),
+            identity.workspace_identity.as_str(),
+        ]
+        .iter()
+        .any(|value| value.is_empty())
+            || !runtime_search_identity_set_is_canonical(&identity.language_ids)
+            || !runtime_search_identity_set_is_canonical(&identity.provider_ids)
+            || [
+                identity.workspace_snapshot_digest.as_str(),
+                identity.source_snapshot_digest.as_str(),
+                identity.source_generation_digest.as_str(),
+                identity.source_index_digest.as_str(),
+                identity.runtime_artifact_digest.as_str(),
+                identity.runtime_bundle_digest.as_str(),
+                identity.execution_publication_digest.as_str(),
+                identity.provider_catalog_digest.as_str(),
+            ]
+            .iter()
+            .any(|value| !runtime_search_content_digest(value))
         {
             return Err(RuntimeSearchTelemetryError::new(
                 "runtime-search-telemetry-identity-mismatch",
@@ -51,6 +155,21 @@ impl RuntimeSearchTelemetryIdentity {
         }
         Ok(identity)
     }
+}
+
+fn runtime_search_identity_set_is_canonical(values: &[String]) -> bool {
+    !values.is_empty()
+        && values.iter().all(|value| !value.trim().is_empty())
+        && values.windows(2).all(|pair| pair[0] < pair[1])
+}
+
+fn runtime_search_content_digest(value: &str) -> bool {
+    value.strip_prefix("blake3-256:").is_some_and(|hex| {
+        hex.len() == 64
+            && hex
+                .bytes()
+                .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+    })
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -196,6 +315,248 @@ impl RuntimeSearchTelemetryCollector {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum RuntimeSearchTelemetryPhaseOwner {
+    Client,
+    Admission,
+    RuntimeRoute,
+    SearchExecution,
+    SearchProjection,
+    ResponseService,
+    TransportWriter,
+}
+
+fn runtime_search_telemetry_phase_owner(phase: &str) -> Option<RuntimeSearchTelemetryPhaseOwner> {
+    match phase {
+        "launcher" | "client-frame-encode" | "ipc-connect" => {
+            Some(RuntimeSearchTelemetryPhaseOwner::Client)
+        }
+        "server-admission-queue" => Some(RuntimeSearchTelemetryPhaseOwner::Admission),
+        "snapshot-resolve" | "provider-dispatch" => {
+            Some(RuntimeSearchTelemetryPhaseOwner::RuntimeRoute)
+        }
+        "parse-index-query" => Some(RuntimeSearchTelemetryPhaseOwner::SearchExecution),
+        "projection-rank" => Some(RuntimeSearchTelemetryPhaseOwner::SearchProjection),
+        "schema-validate-serialize" => Some(RuntimeSearchTelemetryPhaseOwner::ResponseService),
+        "terminal-egress" => Some(RuntimeSearchTelemetryPhaseOwner::TransportWriter),
+        _ => None,
+    }
+}
+
+#[derive(Debug, Default)]
+struct RuntimeSearchTelemetryTraceState {
+    observations: Vec<RuntimePerformanceObservation>,
+    next_phase: usize,
+    terminal_count: usize,
+}
+
+/// One bounded request-scoped trace. Its mutex protects only ten in-memory
+/// records and is never held across an await, provider call, or filesystem I/O.
+#[derive(Clone, Debug)]
+pub struct RuntimeSearchTelemetryTrace {
+    identity: RuntimeSearchTelemetryIdentity,
+    state: std::sync::Arc<std::sync::Mutex<RuntimeSearchTelemetryTraceState>>,
+}
+
+impl RuntimeSearchTelemetryTrace {
+    pub fn new(identity: RuntimeSearchTelemetryIdentity) -> Self {
+        Self {
+            identity,
+            state: std::sync::Arc::new(std::sync::Mutex::new(RuntimeSearchTelemetryTraceState {
+                observations: Vec::with_capacity(RUNTIME_SEARCH_TELEMETRY_PHASES.len()),
+                ..RuntimeSearchTelemetryTraceState::default()
+            })),
+        }
+    }
+
+    pub fn identity(&self) -> &RuntimeSearchTelemetryIdentity {
+        &self.identity
+    }
+
+    fn record_phase(
+        &self,
+        owner: RuntimeSearchTelemetryPhaseOwner,
+        phase: &str,
+        elapsed_micros: u64,
+        budget_micros: u64,
+    ) -> Result<RuntimePerformanceObservation, RuntimeSearchTelemetryError> {
+        if runtime_search_telemetry_phase_owner(phase) != Some(owner) {
+            return Err(RuntimeSearchTelemetryError::new(
+                "runtime-search-telemetry-phase-owner-mismatch",
+            ));
+        }
+        let mut state = self.state.lock().map_err(|_| {
+            RuntimeSearchTelemetryError::new("runtime-search-telemetry-trace-poisoned")
+        })?;
+        if state.next_phase >= RUNTIME_SEARCH_TELEMETRY_PHASES.len()
+            || RUNTIME_SEARCH_TELEMETRY_PHASES[state.next_phase] != phase
+        {
+            return Err(RuntimeSearchTelemetryError::new(
+                "runtime-search-telemetry-phase-order",
+            ));
+        }
+        let observation = RuntimePerformanceObservation::for_search_phase(
+            &self.identity,
+            phase,
+            elapsed_micros,
+            budget_micros,
+            if elapsed_micros <= budget_micros {
+                "within-budget"
+            } else {
+                "budget-exceeded"
+            },
+        )?;
+        state.observations.push(observation.clone());
+        state.next_phase += 1;
+        Ok(observation)
+    }
+
+    pub fn record_client_phase(
+        &self,
+        phase: &str,
+        elapsed_micros: u64,
+        budget_micros: u64,
+    ) -> Result<RuntimePerformanceObservation, RuntimeSearchTelemetryError> {
+        self.record_phase(
+            RuntimeSearchTelemetryPhaseOwner::Client,
+            phase,
+            elapsed_micros,
+            budget_micros,
+        )
+    }
+
+    pub fn record_server_admission_queue(
+        &self,
+        elapsed_micros: u64,
+        budget_micros: u64,
+    ) -> Result<RuntimePerformanceObservation, RuntimeSearchTelemetryError> {
+        self.record_phase(
+            RuntimeSearchTelemetryPhaseOwner::Admission,
+            "server-admission-queue",
+            elapsed_micros,
+            budget_micros,
+        )
+    }
+
+    pub fn record_snapshot_resolve(
+        &self,
+        elapsed_micros: u64,
+        budget_micros: u64,
+    ) -> Result<RuntimePerformanceObservation, RuntimeSearchTelemetryError> {
+        self.record_phase(
+            RuntimeSearchTelemetryPhaseOwner::RuntimeRoute,
+            "snapshot-resolve",
+            elapsed_micros,
+            budget_micros,
+        )
+    }
+
+    pub fn record_provider_dispatch(
+        &self,
+        elapsed_micros: u64,
+        budget_micros: u64,
+    ) -> Result<RuntimePerformanceObservation, RuntimeSearchTelemetryError> {
+        self.record_phase(
+            RuntimeSearchTelemetryPhaseOwner::RuntimeRoute,
+            "provider-dispatch",
+            elapsed_micros,
+            budget_micros,
+        )
+    }
+
+    pub fn record_search_execution(
+        &self,
+        elapsed_micros: u64,
+        budget_micros: u64,
+    ) -> Result<RuntimePerformanceObservation, RuntimeSearchTelemetryError> {
+        self.record_phase(
+            RuntimeSearchTelemetryPhaseOwner::SearchExecution,
+            "parse-index-query",
+            elapsed_micros,
+            budget_micros,
+        )
+    }
+
+    pub fn record_search_projection(
+        &self,
+        elapsed_micros: u64,
+        budget_micros: u64,
+    ) -> Result<RuntimePerformanceObservation, RuntimeSearchTelemetryError> {
+        self.record_phase(
+            RuntimeSearchTelemetryPhaseOwner::SearchProjection,
+            "projection-rank",
+            elapsed_micros,
+            budget_micros,
+        )
+    }
+
+    pub fn record_response_serialized(
+        &self,
+        elapsed_micros: u64,
+        budget_micros: u64,
+    ) -> Result<RuntimePerformanceObservation, RuntimeSearchTelemetryError> {
+        self.record_phase(
+            RuntimeSearchTelemetryPhaseOwner::ResponseService,
+            "schema-validate-serialize",
+            elapsed_micros,
+            budget_micros,
+        )
+    }
+
+    pub fn record_transport_terminal_egress(
+        &self,
+        terminal_state: &str,
+        elapsed_micros: u64,
+        budget_micros: u64,
+    ) -> Result<RuntimePerformanceObservation, RuntimeSearchTelemetryError> {
+        let mut state = self.state.lock().map_err(|_| {
+            RuntimeSearchTelemetryError::new("runtime-search-telemetry-trace-poisoned")
+        })?;
+        if state.terminal_count != 0 {
+            return Err(RuntimeSearchTelemetryError::new(
+                "runtime-search-terminal-duplicate",
+            ));
+        }
+        if state.next_phase >= RUNTIME_SEARCH_TELEMETRY_PHASES.len() {
+            return Err(RuntimeSearchTelemetryError::new(
+                "runtime-search-telemetry-phase-order",
+            ));
+        }
+        let mut observation = RuntimePerformanceObservation::for_search_phase(
+            &self.identity,
+            "terminal-egress",
+            elapsed_micros,
+            budget_micros,
+            if elapsed_micros <= budget_micros {
+                "within-budget"
+            } else {
+                "budget-exceeded"
+            },
+        )?;
+        state.next_phase = RUNTIME_SEARCH_TELEMETRY_PHASES.len();
+        state.terminal_count = 1;
+        if terminal_state != "ready" && terminal_state != "accepted" {
+            observation.failure_reason = Some(terminal_state.to_owned());
+        }
+        state.observations.push(observation.clone());
+        Ok(observation)
+    }
+
+    pub fn observations(&self) -> Vec<RuntimePerformanceObservation> {
+        self.state
+            .lock()
+            .map(|state| state.observations.clone())
+            .unwrap_or_default()
+    }
+
+    pub fn terminal_count(&self) -> usize {
+        self.state
+            .lock()
+            .map(|state| state.terminal_count)
+            .unwrap_or(0)
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RuntimePerformanceObservation {
@@ -204,9 +565,20 @@ pub struct RuntimePerformanceObservation {
     pub surface: String,
     pub stage: String,
     pub workspace_identity: Option<String>,
+    pub session_id: Option<String>,
+    pub request_id: Option<String>,
     pub language_id: Option<String>,
+    pub provider_id: Option<String>,
+    pub language_ids: Option<Vec<String>>,
+    pub provider_ids: Option<Vec<String>>,
+    pub workspace_snapshot_digest: Option<String>,
+    pub source_snapshot_digest: Option<String>,
+    pub source_index_digest: Option<String>,
     pub generation_digest: Option<String>,
     pub runtime_artifact_digest: Option<String>,
+    pub runtime_bundle_digest: Option<String>,
+    pub execution_publication_digest: Option<String>,
+    pub provider_catalog_digest: Option<String>,
     pub transport_contract_digest: Option<String>,
     pub operation_id: Option<String>,
     pub event_identity: Option<String>,
@@ -317,9 +689,20 @@ impl RuntimePerformanceObservation {
             surface: surface.into(),
             stage: stage.into(),
             workspace_identity: None,
+            session_id: None,
+            request_id: None,
             language_id: None,
+            provider_id: None,
+            language_ids: None,
+            provider_ids: None,
+            workspace_snapshot_digest: None,
+            source_snapshot_digest: None,
+            source_index_digest: None,
             generation_digest: None,
             runtime_artifact_digest: None,
+            runtime_bundle_digest: None,
+            execution_publication_digest: None,
+            provider_catalog_digest: None,
             transport_contract_digest: None,
             operation_id: None,
             event_identity: None,
@@ -372,6 +755,49 @@ impl RuntimePerformanceObservation {
             failure_reason: None,
             retry_after_ms: None,
         }
+    }
+
+    pub fn for_search_phase(
+        identity: &RuntimeSearchTelemetryIdentity,
+        phase: &str,
+        elapsed_micros: u64,
+        budget_micros: u64,
+        budget_status: impl Into<String>,
+    ) -> Result<Self, RuntimeSearchTelemetryError> {
+        if !RUNTIME_SEARCH_TELEMETRY_PHASES.contains(&phase) {
+            return Err(RuntimeSearchTelemetryError::new(
+                "runtime-search-telemetry-phase-order",
+            ));
+        }
+        let mut observation = Self::new(
+            "search-query-playbook",
+            phase,
+            elapsed_micros,
+            budget_micros,
+            budget_status,
+        );
+        observation.workspace_identity = Some(identity.workspace_identity.clone());
+        observation.session_id = Some(identity.session_id.clone());
+        observation.request_id = Some(identity.request_id.clone());
+        observation.language_ids = Some(identity.language_ids.clone());
+        observation.provider_ids = Some(identity.provider_ids.clone());
+        if let [language_id] = identity.language_ids.as_slice() {
+            observation.language_id = Some(language_id.clone());
+        }
+        if let [provider_id] = identity.provider_ids.as_slice() {
+            observation.provider_id = Some(provider_id.clone());
+        }
+        observation.workspace_snapshot_digest = Some(identity.workspace_snapshot_digest.clone());
+        observation.source_snapshot_digest = Some(identity.source_snapshot_digest.clone());
+        observation.source_index_digest = Some(identity.source_index_digest.clone());
+        observation.generation_digest = Some(identity.source_generation_digest.clone());
+        observation.runtime_artifact_digest = Some(identity.runtime_artifact_digest.clone());
+        observation.runtime_bundle_digest = Some(identity.runtime_bundle_digest.clone());
+        observation.execution_publication_digest =
+            Some(identity.execution_publication_digest.clone());
+        observation.provider_catalog_digest = Some(identity.provider_catalog_digest.clone());
+        observation.operation_id = Some(identity.request_id.clone());
+        Ok(observation)
     }
 
     /// Seals one canonical budget failure for resident de-duplication and

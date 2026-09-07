@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 //! Server-owned northbound method catalog.
 //!
@@ -42,7 +42,11 @@ const EXACT_QUERY_REQUEST_SCHEMA_ID: &str =
 const WORKSPACE_SEARCH_PLAYBOOK_REQUEST_SCHEMA_ID: &str =
     "agent.semantic-protocols.asp-client-workspace-search-playbook-request";
 const WORKSPACE_SEARCH_PLAYBOOK_RESPONSE_SCHEMA_ID: &str =
-    "agent.semantic-protocols.workspace-search-playbook-result";
+    "agent.semantic-protocols.search-topology-settlement";
+const WORKSPACE_QUERY_PLAYBOOK_REQUEST_SCHEMA_ID: &str =
+    "agent.semantic-protocols.asp-client-workspace-query-playbook-request";
+const WORKSPACE_QUERY_PLAYBOOK_RESPONSE_SCHEMA_ID: &str =
+    "agent.semantic-protocols.query-playbook-materialization-receipt";
 const WORKSPACE_SYNTAX_QUERY_REQUEST_SCHEMA_ID: &str =
     "agent.semantic-protocols.asp-client-workspace-syntax-query-request";
 const WORKSPACE_SYNTAX_QUERY_RESPONSE_SCHEMA_ID: &str =
@@ -66,6 +70,7 @@ pub const CANCELLATION_PROBE_RESPONSE_SCHEMA_ID: &str =
     "agent.semantic-protocols.asp-client-cancellation-probe-response";
 pub const WORKSPACE_GENERATION_ENSURE_READY_METHOD: &str = "asp.workspace.generation.ensure-ready";
 pub const WORKSPACE_SEARCH_PLAYBOOK_METHOD: &str = "asp.workspace.search.playbook";
+pub const WORKSPACE_QUERY_PLAYBOOK_METHOD: &str = "asp.workspace.query.playbook";
 pub const WORKSPACE_SYNTAX_QUERY_METHOD: &str = "asp.workspace.query.syntax";
 pub const WORKSPACE_GENERATION_ENSURE_READY_REQUEST_SCHEMA_ID: &str =
     "agent.semantic-protocols.asp-client-workspace-generation-ensure-ready-request";
@@ -87,6 +92,7 @@ pub fn classify_client_dispatch(method: &str) -> ClientDispatchClass {
     if method == WORKSPACE_GENERATION_ENSURE_READY_METHOD {
         ClientDispatchClass::ColdGenerationAdmission
     } else if method == WORKSPACE_SEARCH_PLAYBOOK_METHOD
+        || method == WORKSPACE_QUERY_PLAYBOOK_METHOD
         || method == WORKSPACE_SYNTAX_QUERY_METHOD
         || method.ends_with(".search")
         || method.ends_with(".query")
@@ -113,6 +119,7 @@ pub enum ServerClientRoute {
     LiveCorpusCacheState,
     WorkspaceGenerationEnsureReady,
     WorkspaceSearchPlaybook,
+    WorkspaceQueryPlaybook,
     WorkspaceSyntaxQuery,
     GraphEvaluate,
     GraphsTimeline,
@@ -140,6 +147,7 @@ impl ServerClientRoute {
             Self::LiveCorpusCacheState => "live-corpus.cache-state",
             Self::WorkspaceGenerationEnsureReady => "workspace.generation.ensure-ready",
             Self::WorkspaceSearchPlaybook => "workspace.search.playbook",
+            Self::WorkspaceQueryPlaybook => "workspace.query.playbook",
             Self::WorkspaceSyntaxQuery => "workspace.query.syntax",
             Self::GraphEvaluate => "graph.evaluate",
             Self::GraphsTimeline => "graphs.timeline",
@@ -175,6 +183,7 @@ pub fn server_client_methods(
         live_corpus_cache_state_method(),
         workspace_generation_ensure_ready_method(),
         workspace_search_playbook_method(),
+        workspace_query_playbook_method(),
         workspace_syntax_query_method(),
         schema_bundle_method(),
         graph_evaluate_method(),
@@ -407,6 +416,11 @@ pub fn resolve_server_client_method_owner(
             ServerClientRoute::WorkspaceSearchPlaybook,
         ));
     }
+    if method == WORKSPACE_QUERY_PLAYBOOK_METHOD {
+        return Ok(ResolvedServerClientMethod::Server(
+            ServerClientRoute::WorkspaceQueryPlaybook,
+        ));
+    }
     if method == WORKSPACE_SYNTAX_QUERY_METHOD {
         return Ok(ResolvedServerClientMethod::Server(
             ServerClientRoute::WorkspaceSyntaxQuery,
@@ -506,7 +520,27 @@ fn workspace_search_playbook_method() -> ClientMethod {
             optional("rg", ClientParameterType::Json),
             optional("tantivy", ClientParameterType::Json),
             optional("syntax", ClientParameterType::Json),
+            optional("nativeSyntax", ClientParameterType::StringArray),
             optional("graph", ClientParameterType::Json),
+            required("clauseOrder", ClientParameterType::Json),
+        ],
+        cancellable: true,
+        streaming: false,
+    }
+}
+
+fn workspace_query_playbook_method() -> ClientMethod {
+    ClientMethod {
+        method: WORKSPACE_QUERY_PLAYBOOK_METHOD.to_owned(),
+        route_id: client_route_id(WORKSPACE_QUERY_PLAYBOOK_METHOD),
+        request_schema_id: client_schema_id(WORKSPACE_QUERY_PLAYBOOK_REQUEST_SCHEMA_ID),
+        response_schema_id: client_schema_id(WORKSPACE_QUERY_PLAYBOOK_RESPONSE_SCHEMA_ID),
+        error_schema_ids: vec![client_schema_id(ROUTE_FAILURE_SCHEMA_ID)],
+        parameters: vec![
+            required_string("schemaId"),
+            required_string("schemaVersion"),
+            required("selectors", ClientParameterType::StringArray),
+            required_string("projection"),
         ],
         cancellable: true,
         streaming: false,

@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 //! Typed provider route request and response bindings for the ASP Client Protocol.
 
@@ -14,6 +14,8 @@ const SEARCH_REQUEST: &str = "agent.semantic-protocols.runtime-provider-search-r
 const CLIENT_SEARCH_REQUEST: &str = "agent.semantic-protocols.asp-client-search-request";
 const CLIENT_WORKSPACE_SEARCH_PLAYBOOK_REQUEST: &str =
     "agent.semantic-protocols.asp-client-workspace-search-playbook-request";
+const CLIENT_WORKSPACE_QUERY_PLAYBOOK_REQUEST: &str =
+    "agent.semantic-protocols.asp-client-workspace-query-playbook-request";
 const CLIENT_WORKSPACE_SYNTAX_QUERY_REQUEST: &str =
     "agent.semantic-protocols.asp-client-workspace-syntax-query-request";
 const CLIENT_SOURCE_INDEX_LOOKUP_REQUEST: &str =
@@ -71,6 +73,8 @@ pub enum AspClientSearchPlaybookClauseAxis {
     Rg,
     Tantivy,
     Syntax,
+    #[serde(rename = "native-syntax")]
+    NativeSyntax,
     Graph,
 }
 
@@ -83,9 +87,9 @@ pub struct AspClientSearchPlaybookClauseRef {
 
 /// Workspace-scoped Search Playbook request owned by the Runtime Server.
 ///
-/// With no search clauses this is a provider contract query. One or more
-/// acquisition clauses form an executable request; optional Graph clauses are
-/// the final dependent fan-in barrier. No public mode or intent field exists.
+/// One or more acquisition clauses form an executable request; optional Graph
+/// clauses are the final dependent fan-in barrier. Incomplete input fails
+/// before Runtime dispatch. No contract-query mode or intent field exists.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AspClientWorkspaceSearchPlaybookRequest {
@@ -106,9 +110,20 @@ pub struct AspClientWorkspaceSearchPlaybookRequest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub syntax: Option<Vec<AspClientSearchPlaybookSyntaxBlock>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub graph: Option<Vec<AspClientSearchPlaybookGraphBlock>>,
+    pub native_syntax: Option<Vec<String>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub clause_order: Option<Vec<AspClientSearchPlaybookClauseRef>>,
+    pub graph: Option<Vec<AspClientSearchPlaybookGraphBlock>>,
+    pub clause_order: Vec<AspClientSearchPlaybookClauseRef>,
+}
+
+/// One language-neutral Query Playbook request submitted to the Runtime Server.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AspClientWorkspaceQueryPlaybookRequest {
+    pub schema_id: String,
+    pub schema_version: String,
+    pub selectors: Vec<String>,
+    pub projection: String,
 }
 
 /// Direct provider-native syntax Query over the current immutable workspace.
@@ -463,12 +478,21 @@ pub struct ProviderNativeExactProjection {
 }
 
 fn check(id: &str, schema_id: &str, schema_version: &str) -> Result<(), String> {
+    check_version(id, schema_id, schema_version, "1")
+}
+
+fn check_version(
+    id: &str,
+    schema_id: &str,
+    schema_version: &str,
+    expected_version: &str,
+) -> Result<(), String> {
     if id != schema_id {
         return Err(format!(
             "route schema identity drift: expected={schema_id} actual={id}"
         ));
     }
-    if schema_version != "1" {
+    if schema_version != expected_version {
         return Err(format!(
             "route schema version unsupported: {schema_version}"
         ));
@@ -564,10 +588,11 @@ impl AspClientSearchRequest {
 
 impl AspClientWorkspaceSearchPlaybookRequest {
     pub fn validate_schema_identity(&self) -> Result<(), String> {
-        check(
+        check_version(
             &self.schema_id,
             CLIENT_WORKSPACE_SEARCH_PLAYBOOK_REQUEST,
             &self.schema_version,
+            "1",
         )?;
         for (name, value) in [
             ("languages", self.languages.as_deref()),
@@ -582,7 +607,8 @@ impl AspClientWorkspaceSearchPlaybookRequest {
         let acquisition_count = self.fd.as_ref().map_or(0, Vec::len)
             + self.rg.as_ref().map_or(0, Vec::len)
             + self.tantivy.as_ref().map_or(0, Vec::len)
-            + self.syntax.as_ref().map_or(0, Vec::len);
+            + self.syntax.as_ref().map_or(0, Vec::len)
+            + self.native_syntax.as_ref().map_or(0, Vec::len);
         let graph_count = self.graph.as_ref().map_or(0, Vec::len);
         if acquisition_count == 0 && graph_count != 0 {
             return Err("ASP workspace Search Graph requires preceding acquisition".to_owned());
@@ -593,12 +619,10 @@ impl AspClientWorkspaceSearchPlaybookRequest {
                     .to_owned(),
             );
         }
-        let Some(clause_order) = self.clause_order.as_ref() else {
-            if acquisition_count == 0 && graph_count == 0 {
-                return Ok(());
-            }
-            return Err("ASP workspace Search execution requires clauseOrder".to_owned());
-        };
+        if acquisition_count == 0 {
+            return Err("ASP workspace Search requires an acquisition clause".to_owned());
+        }
+        let clause_order = &self.clause_order;
         if acquisition_count == 0 || clause_order.len() != acquisition_count + graph_count {
             return Err("ASP workspace Search clauseOrder coverage is invalid".to_owned());
         }
@@ -613,6 +637,9 @@ impl AspClientWorkspaceSearchPlaybookRequest {
                 }
                 AspClientSearchPlaybookClauseAxis::Syntax => {
                     self.syntax.as_ref().map_or(0, Vec::len)
+                }
+                AspClientSearchPlaybookClauseAxis::NativeSyntax => {
+                    self.native_syntax.as_ref().map_or(0, Vec::len)
                 }
                 AspClientSearchPlaybookClauseAxis::Graph => {
                     graph_started = true;
@@ -648,7 +675,17 @@ impl AspClientWorkspaceSearchPlaybookRequest {
             .flatten()
             .any(|block| block.producer.is_empty() || block.argv.is_empty())
         {
-            return Err("ASP workspace Search Syntax block must not be empty".to_owned());
+            return Err("ASP workspace Search Syntax query block must not be empty".to_owned());
+        }
+        if self.native_syntax.iter().flatten().any(|selector| {
+            selector.is_empty()
+                || selector.contains(char::is_whitespace)
+                || !selector.contains("://")
+                || !selector.contains("#item/")
+        }) {
+            return Err(
+                "ASP workspace Search nativeSyntax must contain exact selectors".to_owned(),
+            );
         }
         if self
             .graph
@@ -657,6 +694,32 @@ impl AspClientWorkspaceSearchPlaybookRequest {
             .any(|block| block.language.is_empty() || block.argv.is_empty())
         {
             return Err("ASP workspace Search Graph block must not be empty".to_owned());
+        }
+        Ok(())
+    }
+}
+
+impl AspClientWorkspaceQueryPlaybookRequest {
+    pub fn validate_schema_identity(&self) -> Result<(), String> {
+        check(
+            &self.schema_id,
+            CLIENT_WORKSPACE_QUERY_PLAYBOOK_REQUEST,
+            &self.schema_version,
+        )?;
+        if self.selectors.is_empty()
+            || self
+                .selectors
+                .iter()
+                .any(|selector| !selector.contains("://") || !selector.contains("#item/"))
+            || self.selectors.windows(2).any(|pair| pair[0] >= pair[1])
+        {
+            return Err(
+                "workspace Query Playbook selectors must be canonical, unique, and sorted"
+                    .to_owned(),
+            );
+        }
+        if !matches!(self.projection.as_str(), "source" | "callable-skeleton") {
+            return Err("workspace Query Playbook projection is unsupported".to_owned());
         }
         Ok(())
     }

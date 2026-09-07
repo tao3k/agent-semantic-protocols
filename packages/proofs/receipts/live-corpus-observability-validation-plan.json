@@ -50,7 +50,12 @@
     "schemaRef",
     "requestId",
     "sessionId",
+    "workspaceIdentity",
+    "languageIds",
+    "providerIds",
     "runtimeArtifactDigest",
+    "runtimeBundleDigest",
+    "executionPublicationDigest",
     "workspaceSnapshotDigest",
     "sourceGenerationDigest",
     "sourceIndexDigest",
@@ -97,7 +102,6 @@
     "kind": "missing-immutable-resource",
     "resource": "julia.dataframes",
     "pointer": "artifacts/live-corpus/by-resource/julia.dataframes/current",
-    "acceptanceBlocked": true,
-    "nextAction": "prepublish-exact-resource-through-approved-owner"
+    "acceptanceBlocked": true
   }
 }

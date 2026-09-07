@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 //! Public ASP Client Protocol binding for the resident Runtime Server.
 
 use std::collections::hash_map::Entry;
@@ -16,6 +20,7 @@ use agent_semantic_client_protocol::AgentSessionRegistryOwner;
 use agent_semantic_client_protocol::AgentSessionTransport;
 use agent_semantic_client_protocol::AspClientExactQueryRequest;
 use agent_semantic_client_protocol::AspClientSearchRequest;
+use agent_semantic_client_protocol::AspClientWorkspaceQueryPlaybookRequest;
 use agent_semantic_client_protocol::AspClientWorkspaceSearchPlaybookRequest;
 use agent_semantic_client_protocol::AspClientWorkspaceSyntaxQueryRequest;
 use agent_semantic_client_protocol::ClientProjectId;
@@ -83,9 +88,89 @@ mod runtime_asp_client_recovery_tests;
 #[path = "runtime_asp_client_service.rs"]
 mod service;
 
+pub use service::HostWorkspaceInitializationBindingResolver;
 pub use service::RuntimeAspClientDispatcher;
 pub use service::build_frame_service;
 pub use service::workspace_search_providers_from_provider_register;
+
+fn response_telemetry_key(
+    response: &agent_semantic_client_server::AspClientResponseTelemetry,
+) -> service::ClientRequestKey {
+    (
+        response.project_id.clone(),
+        response.workspace_id.clone(),
+        response.session_id.clone(),
+        response.request_id.clone(),
+    )
+}
+
+fn record_runtime_response_serialized(
+    active_trace_count: &std::sync::atomic::AtomicUsize,
+    traces: &std::sync::Mutex<
+        std::collections::HashMap<
+            service::ClientRequestKey,
+            agent_semantic_client_db::runtime_server_opentelemetry::RuntimeSearchTelemetryTrace,
+        >,
+    >,
+    telemetry_sender: &agent_semantic_client_db::runtime_telemetry_bus::RuntimeTelemetryBusSender,
+    response: &agent_semantic_client_server::AspClientResponseTelemetry,
+    elapsed_micros: u64,
+) {
+    if active_trace_count.load(std::sync::atomic::Ordering::Acquire) == 0 {
+        return;
+    }
+    let trace = traces
+        .lock()
+        .ok()
+        .and_then(|traces| traces.get(&response_telemetry_key(response)).cloned());
+    if let Some(trace) = trace
+        && let Ok(observation) = trace.record_response_serialized(elapsed_micros, 1_000)
+    {
+        let _ = telemetry_sender.try_record_performance(observation);
+    }
+}
+
+fn record_runtime_terminal_egressed(
+    active_trace_count: &std::sync::atomic::AtomicUsize,
+    traces: &std::sync::Mutex<
+        std::collections::HashMap<
+            service::ClientRequestKey,
+            agent_semantic_client_db::runtime_server_opentelemetry::RuntimeSearchTelemetryTrace,
+        >,
+    >,
+    telemetry_sender: &agent_semantic_client_db::runtime_telemetry_bus::RuntimeTelemetryBusSender,
+    response: &agent_semantic_client_server::AspClientResponseTelemetry,
+    elapsed_micros: u64,
+    delivered: bool,
+) {
+    if active_trace_count.load(std::sync::atomic::Ordering::Acquire) == 0 {
+        return;
+    }
+    let trace = traces
+        .lock()
+        .ok()
+        .and_then(|mut traces| traces.remove(&response_telemetry_key(response)));
+    if let Some(trace) = trace {
+        active_trace_count.fetch_sub(1, std::sync::atomic::Ordering::AcqRel);
+        let terminal_state = if delivered {
+            match response.outcome {
+                agent_semantic_client_protocol::ClientOutcome::Ready => "ready",
+                agent_semantic_client_protocol::ClientOutcome::Cancelled => "cancelled",
+                agent_semantic_client_protocol::ClientOutcome::StaleGeneration => {
+                    "stale-generation"
+                }
+                agent_semantic_client_protocol::ClientOutcome::Error => "error",
+            }
+        } else {
+            "transport-closed"
+        };
+        if let Ok(observation) =
+            trace.record_transport_terminal_egress(terminal_state, elapsed_micros, 1_000)
+        {
+            let _ = telemetry_sender.try_record_performance(observation);
+        }
+    }
+}
 
 impl AspClientDispatcher for RuntimeAspClientDispatcher {
     fn dispatch(&self, request: AspClientDispatchRequest) -> AspClientDispatchFuture {
@@ -132,6 +217,8 @@ impl AspClientDispatcher for RuntimeAspClientDispatcher {
         let query_generation_authority = self.query_generation_authority.clone();
         let query_generation = query_generation_authority.subscribe();
         let telemetry_sender = self.telemetry_sender.clone();
+        let telemetry_traces = Arc::clone(&self.telemetry_traces);
+        let active_telemetry_trace_count = Arc::clone(&self.active_telemetry_trace_count);
         let cancellations = Arc::clone(&self.cancellations);
         let dispatch_budget = dispatch_budget_for_method(&request.method);
         Box::pin(async move {
@@ -494,6 +581,8 @@ impl AspClientDispatcher for RuntimeAspClientDispatcher {
                     query_generation_authority,
                     query_generation,
                     telemetry_sender,
+                    telemetry_traces,
+                    active_telemetry_trace_count,
                 })
                 .await
             };
@@ -544,6 +633,36 @@ impl AspClientDispatcher for RuntimeAspClientDispatcher {
                 .remove(&key);
             result
         })
+    }
+
+    fn response_serialized(
+        &self,
+        response: &agent_semantic_client_server::AspClientResponseTelemetry,
+        elapsed_micros: u64,
+    ) {
+        record_runtime_response_serialized(
+            &self.active_telemetry_trace_count,
+            &self.telemetry_traces,
+            &self.telemetry_sender,
+            response,
+            elapsed_micros,
+        );
+    }
+
+    fn terminal_egressed(
+        &self,
+        response: &agent_semantic_client_server::AspClientResponseTelemetry,
+        elapsed_micros: u64,
+        delivered: bool,
+    ) {
+        record_runtime_terminal_egressed(
+            &self.active_telemetry_trace_count,
+            &self.telemetry_traces,
+            &self.telemetry_sender,
+            response,
+            elapsed_micros,
+            delivered,
+        );
     }
 
     fn cancel(

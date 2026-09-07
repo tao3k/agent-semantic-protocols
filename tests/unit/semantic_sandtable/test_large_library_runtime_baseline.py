@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 from tools.semantic_sandtable.large_library_runtime_baseline import (
     BASELINE_SCHEMA_ID,
     validate_runtime_baseline,

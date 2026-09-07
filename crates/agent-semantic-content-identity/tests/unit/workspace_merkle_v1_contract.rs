@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 use agent_semantic_content_identity::exact_selector_merkle::ContentDigestV1;
 use agent_semantic_content_identity::workspace_merkle_v1::WorkspaceMerkleV1Error;
 use agent_semantic_content_identity::workspace_merkle_v1::WorkspaceOwnerInclusionV1;

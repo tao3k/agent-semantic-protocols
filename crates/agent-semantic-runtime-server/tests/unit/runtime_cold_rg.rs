@@ -1,6 +1,10 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 use std::time::Duration;
 
-use super::{execute_runtime_cold_rg, execute_runtime_native_rg_blocks};
+use super::{execute_runtime_native_rg_blocks, execute_runtime_resident_lexical_prefilter};
 
 fn digest(bytes: &[u8]) -> String {
     format!("blake3-256:{}", blake3::hash(bytes).to_hex())
@@ -87,7 +91,7 @@ async fn native_rg_rejects_path_filters_that_are_false_over_a_stdin_corpus() {
 }
 
 #[tokio::test]
-async fn cold_rg_reads_one_immutable_corpus_and_maps_hits_to_owners() {
+async fn resident_lexical_prefilter_reads_one_immutable_corpus_and_maps_hits_to_owners() {
     let first = b"pub fn cold_owner() {}\n";
     let second = b"pub fn unrelated() {}\n";
     let first_digest = digest(first);
@@ -109,17 +113,22 @@ async fn cold_rg_reads_one_immutable_corpus_and_maps_hits_to_owners() {
     )
     .expect("cold corpus");
 
-    let receipt = execute_runtime_cold_rg(&corpus, "cold_owner", 8, Duration::from_millis(500))
-        .await
-        .expect("bounded rg");
-    assert_eq!(receipt.process_count, 1);
+    let receipt = execute_runtime_resident_lexical_prefilter(
+        &corpus,
+        "cold_owner",
+        8,
+        Duration::from_millis(500),
+    )
+    .await
+    .expect("bounded resident lexical prefilter");
+    assert_eq!(receipt.process_count, 0);
     assert_eq!(receipt.candidate_owner_paths, ["src/cold.rs"]);
     assert!(receipt.elapsed_micros > 0);
     assert!(receipt.coverage_input_digest.starts_with("blake3-256:"));
 }
 
 #[tokio::test]
-async fn cold_rg_timeout_kills_and_reaps_the_only_process() {
+async fn resident_lexical_unrepresentable_deadline_fails_before_scan() {
     let bytes = b"pub fn cold_owner() {}\n";
     let content_digest = digest(bytes);
     let corpus = agent_semantic_search::build_cold_rg_corpus(
@@ -132,14 +141,19 @@ async fn cold_rg_timeout_kills_and_reaps_the_only_process() {
     )
     .expect("cold corpus");
 
-    let error = execute_runtime_cold_rg(&corpus, "cold_owner", 8, Duration::from_nanos(1))
-        .await
-        .expect_err("expired deadline must fail closed");
-    assert!(error.contains("process tree killed and reaped"), "{error}");
+    let error = execute_runtime_resident_lexical_prefilter(
+        &corpus,
+        "cold_owner",
+        8,
+        Duration::from_nanos(1),
+    )
+    .await
+    .expect_err("an unrepresentable deadline must fail closed");
+    assert!(error.contains("bounded Runtime envelope"), "{error}");
 }
 
 #[tokio::test]
-async fn cold_rg_4096_owner_corpus_stays_below_the_cold_budget() {
+async fn resident_lexical_4096_owner_corpus_stays_below_the_cold_budget() {
     const OWNER_COUNT: usize = 4096;
     // Nearest-rank p95 needs at least 20 samples to remain distinct from max.
     const SAMPLE_COUNT: usize = 20;
@@ -167,15 +181,22 @@ async fn cold_rg_4096_owner_corpus_stays_below_the_cold_budget() {
 
     let mut samples = Vec::with_capacity(SAMPLE_COUNT);
     for _ in 0..SAMPLE_COUNT {
-        let receipt = execute_runtime_cold_rg(&corpus, "owner_4095", 8, Duration::from_millis(250))
-            .await
-            .expect("bounded large cold rg");
+        let receipt = execute_runtime_resident_lexical_prefilter(
+            &corpus,
+            "owner_4095",
+            8,
+            Duration::from_millis(250),
+        )
+        .await
+        .expect("bounded large resident lexical prefilter");
         assert_eq!(receipt.candidate_owner_paths, ["src/owner_4095.rs"]);
         samples.push(receipt.elapsed_micros);
     }
     samples.sort_unstable();
     let p95 = samples[(SAMPLE_COUNT * 95).div_ceil(100) - 1];
     let max = samples[SAMPLE_COUNT - 1];
-    eprintln!("cold-rg owners={OWNER_COUNT} samples={SAMPLE_COUNT} p95={p95}us max={max}us");
-    assert!(p95 < 100_000, "cold rg p95={p95}us");
+    eprintln!(
+        "resident-lexical owners={OWNER_COUNT} samples={SAMPLE_COUNT} p95={p95}us max={max}us"
+    );
+    assert!(p95 < 100_000, "resident lexical p95={p95}us");
 }

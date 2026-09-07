@@ -1,6 +1,6 @@
-# SPDX-FileCopyrightText: Contributors to Agent Semantic Protocols
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 #
-# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 """Classify JSON Schema keyword occurrences for logical projection."""
 
@@ -62,7 +62,6 @@ SUPPORTED_KEYWORDS = frozenset(
 ANNOTATION_KEYWORDS = frozenset(
     {
         "$comment",
-        "searchPlaybookContract",
         "contentEncoding",
         "contentMediaType",
         "contentSchema",

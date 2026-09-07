@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 #+title: RFC 10.15.02.09 - Hook Bootstrap Repair and Server Warm Path
 #+property: RFC_ID ASP-RFC-10.15-HOOK-BOOTSTRAP-REPAIR
 #+property: LEAN_MODULE ASPProof.HookBootstrapRepair
@@ -51,7 +55,9 @@ the canonical installer below the configured =[dev].root=. It MUST NOT call
 The configured development root is build provenance, never executable
 residency. Development and release publication both copy the verified =asp=
 bytes into the same content-addressed State Home store. No stable Runtime
-slot may resolve into =target/=, a checkout, =~/.local/bin=, or ambient =PATH=.
+slot may resolve into =target/=, a checkout, or an unadmitted ambient =PATH=
+entry. The admitted =~/.local/bin/asp= and =~/.local/bin/asp-hook= entries are
+content-free links into the immutable active bundle, not executable residency.
 Deleting a build tree therefore cannot remove the installed Hook evaluator.
 
 Each binary identity owns exactly two retained atomic slots:
@@ -60,8 +66,11 @@ Each binary identity owns exactly two retained atomic slots:
 - =runtime/artifacts/healthy= selects the last health-qualified complete
   generation.
 
-=runtime/bin/<binary>= is only the stable public alias of =active=. The plugin
-launcher resolves =active= and then =healthy=; both point into
+=~/.local/bin/asp= and =~/.local/bin/asp-hook= are the stable public entries
+for the client bundle. Their =runtime/bin= counterparts are compatibility
+aliases that point toward those public entries; the reverse direction is
+invalid. The plugin launcher resolves the public entry through =active= and
+then may recover through =healthy=; both slots point into
 =runtime/artifacts/blake3-256/<digest>/<binary>=. Garbage collection retains
 only generations reachable from these slots. A missing public alias or active
 generation therefore does not deadlock repair while an independently retained

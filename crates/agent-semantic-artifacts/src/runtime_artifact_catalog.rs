@@ -1,10 +1,9 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 //! Immutable runtime artifact catalog owned by the Artifacts package.
 
-use std::io::ErrorKind;
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -56,7 +55,6 @@ pub fn runtime_artifact_source_generation(source_path: &Path) -> Result<String, 
 
 use agent_semantic_config::runtime_dev::ArtifactOrigin;
 use agent_semantic_config::runtime_dev::RuntimeArtifactMode;
-use agent_semantic_config::runtime_dev::parse_runtime_artifact_mode;
 
 /// Artifact provenance required for runtime catalog admission.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -373,26 +371,15 @@ impl RuntimeArtifactCatalog {
     }
 }
 
-/// Load one immutable catalog generation from `$ASP_STATE_HOME/asp.toml`.
+/// Load one immutable catalog generation from the typed control-plane config.
 ///
 /// The supervisor owns this asynchronous read. Search and query consumers keep
 /// the returned value in memory and never call this function.
 /// Load only the Runtime Artifact Authority mode for synchronous publishers.
 pub fn load_runtime_artifact_mode(state_home: &Path) -> Result<RuntimeArtifactMode, String> {
-    let config_path = state_home.join("asp.toml");
-    let input = match std::fs::read_to_string(&config_path) {
-        Ok(input) => input,
-        Err(error) if error.kind() == ErrorKind::NotFound => String::new(),
-        Err(error) => {
-            return Err(format!(
-                "read runtime configuration {}: {error}",
-                config_path.display()
-            ));
-        }
-    };
-    match parse_runtime_artifact_mode(&input)? {
+    match crate::load_asp_global_config(state_home)?.runtime_artifact_mode() {
         RuntimeArtifactMode::Dev { root } => {
-            let root = std::fs::canonicalize(&root).map_err(|error| {
+            let root = std::fs::canonicalize(root).map_err(|error| {
                 format!(
                     "canonicalize runtime [dev].root {}: {error}",
                     root.display()
@@ -424,21 +411,10 @@ pub fn load_runtime_developer_root(state_home: &Path) -> Result<Option<PathBuf>,
 pub async fn load_runtime_artifact_catalog(
     state_home: &Path,
 ) -> Result<RuntimeArtifactCatalog, String> {
-    let config_path = state_home.join("asp.toml");
-    let input = match tokio::fs::read_to_string(&config_path).await {
-        Ok(input) => input,
-        Err(error) if error.kind() == ErrorKind::NotFound => String::new(),
-        Err(error) => {
-            return Err(format!(
-                "read runtime configuration {}: {error}",
-                config_path.display()
-            ));
-        }
-    };
-    let mode = parse_runtime_artifact_mode(&input)?;
-    let mode = match mode {
+    let config = crate::load_asp_global_config_async(state_home).await?;
+    let mode = match config.runtime_artifact_mode() {
         RuntimeArtifactMode::Dev { root } => {
-            let root = tokio::fs::canonicalize(&root).await.map_err(|error| {
+            let root = tokio::fs::canonicalize(root).await.map_err(|error| {
                 format!(
                     "canonicalize runtime [dev].root {}: {error}",
                     root.display()

@@ -1,12 +1,16 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 use agent_semantic_search::NativeSyntaxDiagnostic;
 use agent_semantic_search::NativeSyntaxProjection;
 use agent_semantic_search::NativeSyntaxRelation;
 use agent_semantic_search::NativeSyntaxSelector;
 use agent_semantic_search::ResidentGraphSearchStage;
 use agent_semantic_search::ResidentGraphSearchWork;
-use agent_semantic_search::SearchPlaybookColdRgExecution;
 use agent_semantic_search::SearchPlaybookPythonGraphExecution;
 use agent_semantic_search::SearchPlaybookReceiptInput;
+use agent_semantic_search::SearchPlaybookResidentLexicalExecution;
 use agent_semantic_search::build_search_playbook_receipt;
 use agent_semantic_search_projection::ResidentSearchWorkCounters;
 use agent_semantic_search_projection::RuntimeProviderSearchReceipt;
@@ -78,7 +82,7 @@ fn input() -> SearchPlaybookReceiptInput {
             elapsed_micros: 11,
             work: ResidentGraphSearchWork::default(),
         },
-        cold_rg: None,
+        resident_lexical: None,
         python_graph: None,
     }
 }
@@ -107,58 +111,66 @@ fn production_playbook_receipt_projects_native_syntax_not_owner_only_evidence() 
 }
 
 #[test]
-fn cold_rg_receipt_records_one_exact_generation_process_without_tantivy() {
+fn resident_lexical_receipt_records_zero_processes_without_tantivy_or_ripgrep() {
     let mut input = input();
     input.indexed_lexical_executed = false;
     input.resident_graph_executed = false;
-    input.cold_rg = Some(SearchPlaybookColdRgExecution {
+    input.resident_lexical = Some(SearchPlaybookResidentLexicalExecution {
         generation_digest: digest('1'),
         coverage_input_digest: digest('a'),
         candidate_owner_ids: vec!["src/lib.rs".to_owned()],
         elapsed_micros: 41,
-        process_count: 1,
+        process_count: 0,
     });
 
-    let receipt = build_search_playbook_receipt(input).expect("cold rg playbook receipt");
-    assert_eq!(receipt.evidence.indexed_lexical.state, "skipped");
-    assert_eq!(receipt.evidence.ripgrep.state, "executed");
-    assert_eq!(receipt.evidence.ripgrep.process_count, 1);
-    assert_eq!(receipt.evidence.ripgrep.candidate_owner_ids, ["src/lib.rs"]);
-    assert_eq!(receipt.metrics.stage_elapsed_micros.ripgrep, 41);
+    let receipt = build_search_playbook_receipt(input).expect("resident lexical playbook receipt");
+    assert_eq!(receipt.evidence.indexed_lexical.state, "executed");
+    assert_eq!(
+        receipt.evidence.indexed_lexical.backend,
+        "resident-fixed-string"
+    );
+    assert_eq!(receipt.evidence.ripgrep.state, "skipped");
+    assert_eq!(receipt.evidence.ripgrep.process_count, 0);
+    assert!(receipt.evidence.ripgrep.candidate_owner_ids.is_empty());
+    assert_eq!(receipt.metrics.stage_elapsed_micros.indexed_lexical, 41);
+    assert_eq!(receipt.metrics.stage_elapsed_micros.ripgrep, 0);
     assert_eq!(receipt.evidence.resident_graph.state, "skipped");
-    assert_eq!(receipt.decision.chosen_path, "cold-rg-native-syntax-fusion");
+    assert_eq!(
+        receipt.decision.chosen_path,
+        "resident-lexical-native-syntax-fusion"
+    );
 }
 
 #[test]
-fn cold_rg_receipt_rejects_cross_generation_or_dual_lexical_execution() {
+fn resident_lexical_receipt_rejects_cross_generation_or_dual_lexical_execution() {
     let mut cross_generation = input();
     cross_generation.indexed_lexical_executed = false;
     cross_generation.resident_graph_executed = false;
-    cross_generation.cold_rg = Some(SearchPlaybookColdRgExecution {
+    cross_generation.resident_lexical = Some(SearchPlaybookResidentLexicalExecution {
         generation_digest: digest('f'),
         coverage_input_digest: digest('a'),
         candidate_owner_ids: vec!["src/lib.rs".to_owned()],
         elapsed_micros: 41,
-        process_count: 1,
+        process_count: 0,
     });
     assert_eq!(
         build_search_playbook_receipt(cross_generation)
-            .expect_err("cross-generation cold rg must fail closed"),
-        "search playbook ripgrep evidence is invalid"
+            .expect_err("cross-generation resident lexical evidence must fail closed"),
+        "search playbook indexed lexical evidence is invalid"
     );
 
     let mut dual = input();
-    dual.cold_rg = Some(SearchPlaybookColdRgExecution {
+    dual.resident_lexical = Some(SearchPlaybookResidentLexicalExecution {
         generation_digest: digest('1'),
         coverage_input_digest: digest('a'),
         candidate_owner_ids: vec!["src/lib.rs".to_owned()],
         elapsed_micros: 41,
-        process_count: 1,
+        process_count: 0,
     });
     assert_eq!(
         build_search_playbook_receipt(dual)
-            .expect_err("cold rg and Tantivy cannot execute in one request"),
-        "search playbook cannot execute cold rg and Tantivy in one request"
+            .expect_err("resident lexical and Tantivy cannot execute in one request"),
+        "search playbook cannot execute resident lexical and Tantivy in one request"
     );
 }
 

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 //! Save-token result projection for an executed Workspace Search Playbook.
 
 use serde::{Deserialize, Serialize};
@@ -5,8 +9,6 @@ use std::collections::{BTreeMap, BTreeSet};
 
 pub const WORKSPACE_SEARCH_PLAYBOOK_RESULT_SCHEMA_ID: &str =
     "agent.semantic-protocols.workspace-search-playbook-result";
-pub const WORKSPACE_SEARCH_QUERY_GRAMMAR: &str =
-    "asp query --selector <exact-selector> --projection source";
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
@@ -35,6 +37,7 @@ pub enum WorkspaceSearchAxisKind {
     Fd,
     Rg,
     Syntax,
+    NativeSyntax,
     Tantivy,
 }
 
@@ -44,6 +47,7 @@ impl WorkspaceSearchAxisKind {
             Self::Fd => "fd",
             Self::Rg => "rg",
             Self::Syntax => "syntax",
+            Self::NativeSyntax => "native-syntax",
             Self::Tantivy => "tantivy",
         }
     }
@@ -100,8 +104,6 @@ pub struct WorkspaceSearchPlaybookResult {
     pub schema_id: String,
     pub schema_version: String,
     pub result: WorkspaceSearchPlaybookResultKind,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub query_grammar: Option<String>,
     pub evidence: Vec<WorkspaceSearchPlaybookEvidence>,
 }
 
@@ -149,7 +151,6 @@ pub fn build_workspace_search_playbook_result(
         schema_id: WORKSPACE_SEARCH_PLAYBOOK_RESULT_SCHEMA_ID.to_owned(),
         schema_version: "1".to_owned(),
         result,
-        query_grammar: (!evidence.is_empty()).then(|| WORKSPACE_SEARCH_QUERY_GRAMMAR.to_owned()),
         evidence,
     })
 }

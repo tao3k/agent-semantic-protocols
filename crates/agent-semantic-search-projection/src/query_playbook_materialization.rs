@@ -1,26 +1,104 @@
-//! Replay-safe handoff from one admitted Search settlement to Query Playbook.
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+//! Runtime-bound admission for one selector-native Query Playbook request.
 
 use std::fmt;
 
+use agent_semantic_content_identity::ProjectWorkspaceBinding;
+use agent_semantic_content_identity::runtime_execution::RuntimeExecutionBinding;
+use serde::{Deserialize, Serialize};
 use serde_json::Map;
 use serde_json::Value;
 
 pub const QUERY_PLAYBOOK_MATERIALIZATION_REQUEST_SCHEMA_ID: &str =
     "agent.semantic-protocols.query-playbook-materialization-request";
 pub const QUERY_PLAYBOOK_MATERIALIZATION_REQUEST_SCHEMA_VERSION: &str = "1";
+pub const QUERY_PLAYBOOK_MATERIALIZATION_RECEIPT_SCHEMA_ID: &str =
+    "agent.semantic-protocols.query-playbook-materialization-receipt";
+pub const QUERY_PLAYBOOK_MATERIALIZATION_RECEIPT_SCHEMA_VERSION: &str = "1";
 
-/// One immutable Query Playbook request derived from Search MaterializationSet.
+/// One typed GQL relationship rendered immediately before a Query source block.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct QueryPlaybookGqlRelationship {
+    from_node: String,
+    relation: String,
+    to_node: String,
+}
+
+impl QueryPlaybookGqlRelationship {
+    pub fn new(
+        from_node: impl Into<String>,
+        relation: impl Into<String>,
+        to_node: impl Into<String>,
+    ) -> Result<Self, QueryPlaybookMaterializationError> {
+        let relationship = Self {
+            from_node: from_node.into(),
+            relation: relation.into(),
+            to_node: to_node.into(),
+        };
+        relationship.validate()?;
+        Ok(relationship)
+    }
+
+    pub fn from_node(&self) -> &str {
+        &self.from_node
+    }
+
+    pub fn relation(&self) -> &str {
+        &self.relation
+    }
+
+    pub fn to_node(&self) -> &str {
+        &self.to_node
+    }
+
+    pub fn render_gql(&self) -> String {
+        format!("{} --{}--> {}", self.from_node, self.relation, self.to_node)
+    }
+
+    fn validate(&self) -> Result<(), QueryPlaybookMaterializationError> {
+        if [&self.from_node, &self.to_node].iter().any(|node| {
+            node.trim().is_empty() || node.contains(['\r', '\n']) || node.contains("-->")
+        }) || self.relation.is_empty()
+            || !self
+                .relation
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
+            || !self
+                .relation
+                .bytes()
+                .next()
+                .is_some_and(|byte| byte.is_ascii_alphabetic())
+        {
+            return invalid(
+                "query-playbook-gql-relationship-invalid",
+                "GQL relationship requires single-line nodes and one typed relationship name",
+            );
+        }
+        Ok(())
+    }
+}
+
+/// One immutable Query Playbook request admitted against the current Runtime binding.
 #[derive(Clone, Debug, PartialEq)]
 pub struct QueryPlaybookMaterializationRequest {
     packet: Value,
 }
 
 impl QueryPlaybookMaterializationRequest {
-    /// Admit only an exact projection of the originating Search settlement.
-    pub fn admit_for_settlement(
+    /// Admit canonical selectors independently of any prior Search result.
+    pub fn admit_for_runtime(
         packet: Value,
-        settlement: &crate::SearchTopologySettlement,
+        expected_runtime_binding: &RuntimeExecutionBinding,
+        expected_execution_publication_digest: &str,
+        expected_runtime_bundle_digest: &str,
+        manifest_project_workspace: &ProjectWorkspaceBinding,
     ) -> Result<Self, QueryPlaybookMaterializationError> {
+        admit_expected_runtime_binding(expected_runtime_binding, manifest_project_workspace)?;
+
         let packet_object = object(&packet, "packet")?;
         text_eq(
             packet_object,
@@ -38,46 +116,52 @@ impl QueryPlaybookMaterializationRequest {
             "agent.semantic-protocols.query-playbook",
         )?;
         text_eq(packet_object, "protocolVersion", "1")?;
+        text(packet_object, "requestId")?;
         match text(packet_object, "projection")? {
-            "matches" | "source" | "callable-skeleton" => {}
+            "source" | "callable-skeleton" => {}
             _ => return invalid("schema-invalid", "unsupported Query projection"),
         }
 
-        let settlement_packet = object(settlement.as_json(), "settlement")?;
-        let expected_binding = object_field(settlement_packet, "binding")?;
-        let actual_binding = object_field(packet_object, "settlementBinding")?;
-        for field in [
-            "workspaceIdentity",
-            "sourceGenerationDigest",
-            "providerCatalogDigest",
-            "topologyLibraryDigest",
-            "topologyGenerationDigest",
-            "structuralTopologyDigest",
-            "semanticTopologyDigest",
-            "inferenceProgramDigest",
-        ] {
-            if text(actual_binding, field)? != text(expected_binding, field)? {
-                return invalid(
-                    "query-playbook-binding-mismatch",
-                    format!("Query handoff differs at {field}"),
-                );
-            }
-        }
-
-        let expected = object_field(settlement_packet, "materializationSet")?;
-        if text(packet_object, "searchRequestId")? != text(expected, "requestId")? {
-            return invalid(
-                "query-playbook-request-mismatch",
-                "Query handoff names another Search request",
-            );
-        }
-        if text(packet_object, "materializationSetDigest")? != text(expected, "digest")?
-            || packet_object.get("selectors") != expected.get("selectors")
-            || packet_object.get("proofDependencies") != expected.get("proofDependencies")
+        let actual_runtime_binding: RuntimeExecutionBinding = serde_json::from_value(
+            packet_object
+                .get("runtimeExecutionBinding")
+                .cloned()
+                .ok_or_else(|| error("schema-invalid", "runtimeExecutionBinding is required"))?,
+        )
+        .map_err(|decode_error| {
+            error(
+                "schema-invalid",
+                format!("runtimeExecutionBinding is invalid: {decode_error}"),
+            )
+        })?;
+        expected_runtime_binding
+            .admits(&actual_runtime_binding)
+            .map_err(|binding_error| {
+                error(
+                    "query-playbook-runtime-binding-mismatch",
+                    format!("Runtime execution binding drifted: {binding_error:?}"),
+                )
+            })?;
+        if text(packet_object, "runtimeWorkspaceExecutionPublicationDigest")?
+            != expected_execution_publication_digest
+            || text(packet_object, "runtimeBundleDigest")? != expected_runtime_bundle_digest
         {
             return invalid(
-                "query-playbook-materialization-mismatch",
-                "Query handoff is not the exact Search MaterializationSet",
+                "query-playbook-execution-publication-mismatch",
+                "Query execution publication or outer Runtime bundle identity drifted",
+            );
+        }
+
+        if text(packet_object, "projectWorkspaceIdentity")?
+            != expected_runtime_binding
+                .project_workspace
+                .project_workspace_identity()
+            || text(packet_object, "worktreeInstanceId")?
+                != expected_runtime_binding.worktree_instance_id
+        {
+            return invalid(
+                "query-playbook-runtime-context-mismatch",
+                "Query project/worktree context differs from the admitted Runtime binding",
             );
         }
 
@@ -94,7 +178,7 @@ impl QueryPlaybookMaterializationRequest {
             })
         {
             return invalid(
-                "query-playbook-materialization-mismatch",
+                "schema-invalid",
                 "Query selectors must be unique canonical selectors in stable order",
             );
         }
@@ -107,6 +191,223 @@ impl QueryPlaybookMaterializationRequest {
     }
 }
 
+/// One all-or-nothing terminal for an admitted Query Playbook request.
+#[derive(Clone, Debug, PartialEq)]
+pub struct QueryPlaybookMaterializationReceipt {
+    packet: Value,
+}
+
+impl QueryPlaybookMaterializationReceipt {
+    pub fn admit_for_runtime(
+        packet: Value,
+        request: &QueryPlaybookMaterializationRequest,
+        expected_runtime_binding: &RuntimeExecutionBinding,
+        expected_execution_publication_digest: &str,
+        expected_runtime_bundle_digest: &str,
+        manifest_project_workspace: &ProjectWorkspaceBinding,
+    ) -> Result<Self, QueryPlaybookMaterializationError> {
+        admit_expected_runtime_binding(expected_runtime_binding, manifest_project_workspace)?;
+
+        let receipt = object(&packet, "packet")?;
+        text_eq(
+            receipt,
+            "schemaId",
+            QUERY_PLAYBOOK_MATERIALIZATION_RECEIPT_SCHEMA_ID,
+        )?;
+        text_eq(
+            receipt,
+            "schemaVersion",
+            QUERY_PLAYBOOK_MATERIALIZATION_RECEIPT_SCHEMA_VERSION,
+        )?;
+        text_eq(
+            receipt,
+            "protocolId",
+            "agent.semantic-protocols.query-playbook",
+        )?;
+        text_eq(receipt, "protocolVersion", "1")?;
+
+        let actual_runtime_binding: RuntimeExecutionBinding = serde_json::from_value(
+            receipt
+                .get("runtimeExecutionBinding")
+                .cloned()
+                .ok_or_else(|| error("schema-invalid", "runtimeExecutionBinding is required"))?,
+        )
+        .map_err(|decode_error| {
+            error(
+                "schema-invalid",
+                format!("runtimeExecutionBinding is invalid: {decode_error}"),
+            )
+        })?;
+        expected_runtime_binding
+            .admits(&actual_runtime_binding)
+            .map_err(|binding_error| {
+                error(
+                    "query-playbook-runtime-binding-mismatch",
+                    format!("Runtime execution binding drifted: {binding_error:?}"),
+                )
+            })?;
+        if text(receipt, "runtimeWorkspaceExecutionPublicationDigest")?
+            != expected_execution_publication_digest
+            || text(receipt, "runtimeBundleDigest")? != expected_runtime_bundle_digest
+        {
+            return invalid(
+                "query-playbook-execution-publication-mismatch",
+                "Query receipt execution publication or outer Runtime bundle identity drifted",
+            );
+        }
+
+        let admitted_request = object(request.as_json(), "request")?;
+        for field in [
+            "requestId",
+            "projectWorkspaceIdentity",
+            "worktreeInstanceId",
+            "runtimeWorkspaceExecutionPublicationDigest",
+            "runtimeBundleDigest",
+            "projection",
+        ] {
+            if receipt.get(field) != admitted_request.get(field) {
+                return invalid(
+                    "query-playbook-request-binding-mismatch",
+                    format!("receipt {field} differs from the admitted request"),
+                );
+            }
+        }
+        if receipt.get("requestedSelectors") != admitted_request.get("selectors") {
+            return invalid(
+                "query-playbook-request-binding-mismatch",
+                "receipt selector set differs from the admitted request",
+            );
+        }
+
+        let terminal = receipt
+            .get("terminal")
+            .ok_or_else(|| error("schema-invalid", "terminal is required"))
+            .and_then(|value| object(value, "terminal"))?;
+        if terminal.get("terminalCount").and_then(Value::as_u64) != Some(1) {
+            return invalid(
+                "query-playbook-terminal-count-mismatch",
+                "Query Playbook must emit exactly one terminal",
+            );
+        }
+        let state = text(terminal, "state")?;
+        let materializations = array(receipt, "materializations")?;
+        match state {
+            "ready" => validate_complete_materializations(receipt, admitted_request)?,
+            "failed" => {
+                text(terminal, "reasonKind")?;
+                if !materializations.is_empty() {
+                    return invalid(
+                        "query-playbook-failure-exposed-partial-materialization",
+                        "failed Query Playbook terminal must expose zero materializations",
+                    );
+                }
+            }
+            _ => return invalid("schema-invalid", "unsupported Query terminal state"),
+        }
+
+        Ok(Self { packet })
+    }
+
+    pub fn as_json(&self) -> &Value {
+        &self.packet
+    }
+}
+
+fn admit_expected_runtime_binding(
+    expected_runtime_binding: &RuntimeExecutionBinding,
+    manifest_project_workspace: &ProjectWorkspaceBinding,
+) -> Result<(), QueryPlaybookMaterializationError> {
+    expected_runtime_binding.validate().map_err(|error| {
+        QueryPlaybookMaterializationError::new(
+            "query-playbook-runtime-binding-mismatch",
+            format!("independently admitted Runtime binding is invalid: {error:?}"),
+        )
+    })?;
+    manifest_project_workspace.validate().map_err(|error| {
+        QueryPlaybookMaterializationError::new(
+            "query-playbook-project-workspace-manifest-mismatch",
+            format!("parser-owned manifest Project Workspace is invalid: {error}"),
+        )
+    })?;
+    if expected_runtime_binding.project_workspace != *manifest_project_workspace {
+        return invalid(
+            "query-playbook-project-workspace-manifest-mismatch",
+            "Runtime Project Workspace differs from the parser-owned manifest binding",
+        );
+    }
+    Ok(())
+}
+
+fn validate_complete_materializations(
+    receipt: &Map<String, Value>,
+    request: &Map<String, Value>,
+) -> Result<(), QueryPlaybookMaterializationError> {
+    let requested = array(request, "selectors")?;
+    let materializations = array(receipt, "materializations")?;
+    let projection = text(request, "projection")?;
+    if materializations.len() != requested.len() {
+        return invalid(
+            "query-playbook-materialization-set-mismatch",
+            "Ready receipt must materialize every requested selector exactly once",
+        );
+    }
+    for (materialization, selector) in materializations.iter().zip(requested) {
+        let materialization = object(materialization, "materialization")?;
+        if materialization.get("selector") != Some(selector)
+            || text(materialization, "projection")? != projection
+        {
+            return invalid(
+                "query-playbook-materialization-set-mismatch",
+                "Ready materializations must preserve request selector order and projection",
+            );
+        }
+        for field in ["languageId", "providerId", "ownerPath"] {
+            text(materialization, field)?;
+        }
+        let relationships = array(materialization, "gqlRelationships")?;
+        let relationships = relationships
+            .iter()
+            .cloned()
+            .map(serde_json::from_value::<QueryPlaybookGqlRelationship>)
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|error| {
+                QueryPlaybookMaterializationError::new(
+                    "query-playbook-gql-relationship-invalid",
+                    format!("GQL relationship is not typed: {error}"),
+                )
+            })?;
+        if relationships.len() != 1
+            || relationships
+                .iter()
+                .any(|relationship| relationship.validate().is_err())
+        {
+            return invalid(
+                "query-playbook-gql-relationship-invalid",
+                "every Query materialization requires exactly one valid typed GQL relationship",
+            );
+        }
+        let digest = text(materialization, "sourceContentDigest")?;
+        if digest.len() != 64 || !digest.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+            return invalid(
+                "schema-invalid",
+                "sourceContentDigest must be 64 hex digits",
+            );
+        }
+        let bytes = array(materialization, "bytes")?;
+        if bytes.is_empty()
+            || bytes
+                .iter()
+                .any(|byte| byte.as_u64().is_none_or(|value| value > u8::MAX.into()))
+        {
+            return invalid(
+                "schema-invalid",
+                "materialized bytes must be non-empty octets",
+            );
+        }
+    }
+    Ok(())
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct QueryPlaybookMaterializationError {
     reason_kind: &'static str,
@@ -114,6 +415,13 @@ pub struct QueryPlaybookMaterializationError {
 }
 
 impl QueryPlaybookMaterializationError {
+    fn new(reason_kind: &'static str, message: impl Into<String>) -> Self {
+        Self {
+            reason_kind,
+            message: message.into(),
+        }
+    }
+
     pub fn reason_kind(&self) -> &'static str {
         self.reason_kind
     }
@@ -131,10 +439,7 @@ fn error(
     reason_kind: &'static str,
     message: impl Into<String>,
 ) -> QueryPlaybookMaterializationError {
-    QueryPlaybookMaterializationError {
-        reason_kind,
-        message: message.into(),
-    }
+    QueryPlaybookMaterializationError::new(reason_kind, message)
 }
 
 fn invalid<T>(
@@ -151,13 +456,6 @@ fn object<'a>(
     value
         .as_object()
         .ok_or_else(|| error("schema-invalid", format!("{field} must be an object")))
-}
-
-fn object_field<'a>(
-    map: &'a Map<String, Value>,
-    field: &str,
-) -> Result<&'a Map<String, Value>, QueryPlaybookMaterializationError> {
-    object(map.get(field).unwrap_or(&Value::Null), field)
 }
 
 fn text<'a>(

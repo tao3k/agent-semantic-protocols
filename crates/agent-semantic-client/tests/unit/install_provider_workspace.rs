@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 use super::ProviderWorkspaceInstallDescriptor;
 use super::WorkspaceLaunchDescriptor;
@@ -9,6 +9,7 @@ use super::artifact_snapshot;
 use super::copy_artifact_root;
 use super::materialize_runtime_dependencies;
 use super::resolve_runtime_dependencies;
+use super::validate_embedded_provider_registration;
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -41,6 +42,22 @@ fn write(path: &Path, bytes: &[u8]) {
     std::fs::create_dir_all(path.parent().expect("fixture file parent"))
         .expect("create fixture file parent");
     std::fs::write(path, bytes).expect("write fixture file");
+}
+
+#[test]
+fn provider_workspace_registration_must_equal_the_client_build_contract() {
+    let embedded = agent_semantic_provider_protocol::builtin_provider_registrations()
+        .expect("embedded registrations")
+        .into_iter()
+        .find(|registration| registration.provider_id == "asp-rust")
+        .expect("Rust registration");
+    validate_embedded_provider_registration(&embedded).expect("exact embedded registration");
+
+    let mut drifted = embedded;
+    drifted.registration["namespace"] = serde_json::json!("forged-rust");
+    let error = validate_embedded_provider_registration(&drifted)
+        .expect_err("workspace registration drift requires rebuilding the client");
+    assert!(error.contains("provider-registration-requires-client-rebuild"));
 }
 
 #[test]

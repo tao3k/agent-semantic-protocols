@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 //! Reachability retention and mutation locking owned by the Artifacts package.
 
@@ -36,13 +36,13 @@ pub struct RuntimeArtifactRetentionReceipt {
     #[serde(default)]
     pub removed_candidate_count: usize,
     #[serde(default)]
-    pub retired_superseded_store_count: usize,
+    pub removed_superseded_store_count: usize,
     #[serde(default)]
-    pub retired_superseded_lease_directory_count: usize,
+    pub removed_superseded_lease_directory_count: usize,
     #[serde(default)]
-    pub retired_misplaced_launcher_root_count: usize,
+    pub removed_misplaced_launcher_root_count: usize,
     #[serde(default)]
-    pub retired_superseded_provider_staging_root_count: usize,
+    pub removed_superseded_provider_staging_root_count: usize,
     pub ignored_entry_count: usize,
     pub reclaimed_bytes: u64,
     pub protected_digests: Vec<String>,
@@ -116,7 +116,7 @@ impl Drop for RuntimeArtifactCandidatePreparationLease {
 
 pub(crate) struct PreparedRuntimeArtifactRetention {
     artifact_root: PathBuf,
-    retired_roots: Vec<PathBuf>,
+    staged_removal_roots: Vec<PathBuf>,
     receipt: RuntimeArtifactRetentionReceipt,
 }
 
@@ -239,7 +239,10 @@ fn prepare_runtime_artifact_retention(
         std::process::id(),
         RETENTION_TRANSACTION_ID.fetch_add(1, Ordering::Relaxed)
     );
-    let retired_artifact_root = artifact_root.join("retired").join(&transaction);
+    let removal_staging_root = artifact_root
+        .join("staging")
+        .join("removal")
+        .join(&transaction);
     let generation_root = layout.generation_store();
     let (generations, ignored_entry_count) = runtime_artifact_generations(&generation_root)?;
     let canonical_generation_root =
@@ -256,18 +259,18 @@ fn prepare_runtime_artifact_retention(
             continue;
         }
         let path = generation_root.join(digest);
-        fs::create_dir_all(&retired_artifact_root).map_err(|error| {
+        fs::create_dir_all(&removal_staging_root).map_err(|error| {
             format!(
-                "failed to create Runtime artifact retirement root {}: {error}",
-                retired_artifact_root.display()
+                "failed to create Runtime artifact removal staging root {}: {error}",
+                removal_staging_root.display()
             )
         })?;
-        let retired = retired_artifact_root.join(digest);
-        fs::rename(&path, &retired).map_err(|error| {
+        let staged = removal_staging_root.join(digest);
+        fs::rename(&path, &staged).map_err(|error| {
             format!(
-                "failed to retire unreachable Runtime artifact {} to {}: {error}",
+                "failed to stage unreachable Runtime artifact {} for removal at {}: {error}",
                 path.display(),
-                retired.display()
+                staged.display()
             )
         })?;
         reclaimed_bytes = reclaimed_bytes.saturating_add(generation.bytes);
@@ -277,28 +280,28 @@ fn prepare_runtime_artifact_retention(
 
     // The old member-CAS and binary-namespaced bundle trees were two
     // additional physical authorities for the same executable content.  Once
-    // at least one canonical generation is selected by active/healthy, retire
-    // those exact roots under the same artifact mutation transaction.  Never
+    // at least one canonical generation is selected by active/healthy, stage
+    // those exact roots under the same artifact mutation transaction. Never
     // infer arbitrary siblings and never follow a symlink at either name.
-    let retired_superseded_store_count = if protected.is_empty() {
+    let removed_superseded_store_count = if protected.is_empty() {
         0
     } else {
-        retire_superseded_physical_stores(artifact_root, &retired_artifact_root)?
+        stage_superseded_physical_stores(artifact_root, &removal_staging_root)?
     };
-    let retired_superseded_lease_directory_count = if protected.is_empty() {
+    let removed_superseded_lease_directory_count = if protected.is_empty() {
         0
     } else {
-        retire_superseded_candidate_lease_directories(artifact_root, &retired_artifact_root)?
+        stage_superseded_candidate_lease_directories(artifact_root, &removal_staging_root)?
     };
-    let retired_misplaced_launcher_root_count = if protected.is_empty() {
+    let removed_misplaced_launcher_root_count = if protected.is_empty() {
         0
     } else {
-        retire_misplaced_state_home_launcher_root(artifact_root, &retired_artifact_root)?
+        stage_misplaced_state_home_launcher_root(artifact_root, &removal_staging_root)?
     };
-    let retired_superseded_provider_staging_root_count = if protected.is_empty() {
+    let removed_superseded_provider_staging_root_count = if protected.is_empty() {
         0
     } else {
-        retire_superseded_provider_staging_root(artifact_root, &retired_artifact_root)?
+        stage_superseded_provider_staging_root(artifact_root, &removal_staging_root)?
     };
 
     let receipt = RuntimeArtifactRetentionReceipt {
@@ -313,24 +316,24 @@ fn prepare_runtime_artifact_retention(
         scanned_candidate_count: 0,
         retained_candidate_count: 0,
         removed_candidate_count: 0,
-        retired_superseded_store_count,
-        retired_superseded_lease_directory_count,
-        retired_misplaced_launcher_root_count,
-        retired_superseded_provider_staging_root_count,
+        removed_superseded_store_count,
+        removed_superseded_lease_directory_count,
+        removed_misplaced_launcher_root_count,
+        removed_superseded_provider_staging_root_count,
         ignored_entry_count,
         reclaimed_bytes,
         protected_digests: protected.into_iter().collect(),
     };
     Ok(PreparedRuntimeArtifactRetention {
         artifact_root: artifact_root.to_path_buf(),
-        retired_roots: vec![retired_artifact_root],
+        staged_removal_roots: vec![removal_staging_root],
         receipt,
     })
 }
 
-fn retire_superseded_provider_staging_root(
+fn stage_superseded_provider_staging_root(
     artifact_root: &Path,
-    retired_artifact_root: &Path,
+    removal_staging_root: &Path,
 ) -> Result<usize, String> {
     let runtime_root = artifact_root.parent().ok_or_else(|| {
         format!(
@@ -355,17 +358,17 @@ fn retire_superseded_provider_staging_root(
             source.display()
         ));
     }
-    let retirement_root = retired_artifact_root.join("superseded-provider-staging");
-    fs::create_dir_all(&retirement_root).map_err(|error| {
+    let staged_root = removal_staging_root.join("superseded-provider-staging");
+    fs::create_dir_all(&staged_root).map_err(|error| {
         format!(
-            "failed to create superseded Provider staging retirement root {}: {error}",
-            retirement_root.display()
+            "failed to create superseded Provider removal staging root {}: {error}",
+            staged_root.display()
         )
     })?;
-    let target = retirement_root.join("providers");
+    let target = staged_root.join("providers");
     fs::rename(&source, &target).map_err(|error| {
         format!(
-            "failed to retire superseded Provider staging root {} to {}: {error}",
+            "failed to stage superseded Provider root {} for removal at {}: {error}",
             source.display(),
             target.display()
         )
@@ -373,9 +376,9 @@ fn retire_superseded_provider_staging_root(
     Ok(1)
 }
 
-fn retire_misplaced_state_home_launcher_root(
+fn stage_misplaced_state_home_launcher_root(
     artifact_root: &Path,
-    retired_artifact_root: &Path,
+    removal_staging_root: &Path,
 ) -> Result<usize, String> {
     let runtime_root = artifact_root.parent().ok_or_else(|| {
         format!(
@@ -447,17 +450,17 @@ fn retire_misplaced_state_home_launcher_root(
             ));
         }
     }
-    let retirement_root = retired_artifact_root.join("misplaced-launchers");
-    fs::create_dir_all(&retirement_root).map_err(|error| {
+    let staged_root = removal_staging_root.join("misplaced-launchers");
+    fs::create_dir_all(&staged_root).map_err(|error| {
         format!(
-            "failed to create misplaced launcher retirement root {}: {error}",
-            retirement_root.display()
+            "failed to create misplaced launcher removal staging root {}: {error}",
+            staged_root.display()
         )
     })?;
-    let target = retirement_root.join("state-home-bin");
+    let target = staged_root.join("state-home-bin");
     fs::rename(&misplaced_root, &target).map_err(|error| {
         format!(
-            "failed to retire misplaced State Home launcher root {} to {}: {error}",
+            "failed to stage misplaced State Home launcher root {} for removal at {}: {error}",
             misplaced_root.display(),
             target.display()
         )
@@ -465,15 +468,15 @@ fn retire_misplaced_state_home_launcher_root(
     Ok(1)
 }
 
-fn retire_superseded_candidate_lease_directories(
+fn stage_superseded_candidate_lease_directories(
     artifact_root: &Path,
-    retired_artifact_root: &Path,
+    removal_staging_root: &Path,
 ) -> Result<usize, String> {
     let lease_root = artifact_root.join("leases/candidates");
     if !lease_root.is_dir() {
         return Ok(0);
     }
-    let mut retired = 0_usize;
+    let mut removed = 0_usize;
     for entry in fs::read_dir(&lease_root)
         .map_err(|error| format!("failed to read {}: {error}", lease_root.display()))?
     {
@@ -492,31 +495,31 @@ fn retire_superseded_candidate_lease_directories(
         if !file_type.is_dir() {
             continue;
         }
-        let retirement_root = retired_artifact_root.join("superseded-candidate-leases");
-        fs::create_dir_all(&retirement_root).map_err(|error| {
+        let staged_root = removal_staging_root.join("superseded-candidate-leases");
+        fs::create_dir_all(&staged_root).map_err(|error| {
             format!(
-                "failed to create superseded candidate lease retirement root {}: {error}",
-                retirement_root.display()
+                "failed to create superseded candidate lease removal staging root {}: {error}",
+                staged_root.display()
             )
         })?;
-        let target = retirement_root.join(entry.file_name());
+        let target = staged_root.join(entry.file_name());
         fs::rename(entry.path(), &target).map_err(|error| {
             format!(
-                "failed to retire superseded candidate lease directory {} to {}: {error}",
+                "failed to stage superseded candidate lease directory {} for removal at {}: {error}",
                 entry.path().display(),
                 target.display()
             )
         })?;
-        retired += 1;
+        removed += 1;
     }
-    Ok(retired)
+    Ok(removed)
 }
 
-fn retire_superseded_physical_stores(
+fn stage_superseded_physical_stores(
     artifact_root: &Path,
-    retired_artifact_root: &Path,
+    removal_staging_root: &Path,
 ) -> Result<usize, String> {
-    let mut retired = 0_usize;
+    let mut removed = 0_usize;
     for name in ["blake3-256", "bundles"] {
         let source = artifact_root.join(name);
         let metadata = match fs::symlink_metadata(&source) {
@@ -535,24 +538,24 @@ fn retire_superseded_physical_stores(
                 source.display()
             ));
         }
-        let retirement_root = retired_artifact_root.join("superseded-stores");
-        fs::create_dir_all(&retirement_root).map_err(|error| {
+        let staged_root = removal_staging_root.join("superseded-stores");
+        fs::create_dir_all(&staged_root).map_err(|error| {
             format!(
-                "failed to create superseded Runtime artifact retirement root {}: {error}",
-                retirement_root.display()
+                "failed to create superseded Runtime artifact removal staging root {}: {error}",
+                staged_root.display()
             )
         })?;
-        let target = retirement_root.join(name);
+        let target = staged_root.join(name);
         fs::rename(&source, &target).map_err(|error| {
             format!(
-                "failed to retire superseded Runtime artifact store {} to {}: {error}",
+                "failed to stage superseded Runtime artifact store {} for removal at {}: {error}",
                 source.display(),
                 target.display()
             )
         })?;
-        retired += 1;
+        removed += 1;
     }
-    Ok(retired)
+    Ok(removed)
 }
 
 fn generation_has_live_preparation_lease(
@@ -627,20 +630,20 @@ fn generation_preparation_leases(
 fn finish_prepared_runtime_artifact_retention(
     prepared: PreparedRuntimeArtifactRetention,
 ) -> Result<RuntimeArtifactRetentionReceipt, String> {
-    for root in &prepared.retired_roots {
+    for root in &prepared.staged_removal_roots {
         match fs::remove_dir_all(root) {
             Ok(()) => {}
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
             Err(error) => {
                 return Err(format!(
-                    "failed to remove retired Runtime state {}: {error}",
+                    "failed to remove staged Runtime state {}: {error}",
                     root.display()
                 ));
             }
         }
     }
-    let retired_parent = prepared.artifact_root.join("retired");
-    match fs::remove_dir(&retired_parent) {
+    let removal_parent = prepared.artifact_root.join("staging/removal");
+    match fs::remove_dir(&removal_parent) {
         Ok(()) => {}
         Err(error)
             if matches!(
@@ -649,8 +652,8 @@ fn finish_prepared_runtime_artifact_retention(
             ) => {}
         Err(error) => {
             return Err(format!(
-                "failed to remove empty Runtime artifact retirement root {}: {error}",
-                retired_parent.display()
+                "failed to remove empty Runtime artifact removal staging root {}: {error}",
+                removal_parent.display()
             ));
         }
     }

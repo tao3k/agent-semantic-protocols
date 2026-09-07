@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 //! Owns assembly and coordinated shutdown of the long-lived Runtime Server.
 
@@ -22,21 +22,32 @@ use runtime_server_search_service::serve_runtime_search_requests;
 pub(super) async fn run_daemon() -> Result<(), String> {
     agent_semantic_client_db::AgentSessionRegistry::mark_runtime_server_owner_process();
     let state_home = state_home()?;
-    let result = run_daemon_at(&state_home).await;
-    if let Err(error) = &result {
-        // Endpoint publication happens after singleton election.  Failures before
-        // that point used to leave only stderr and forced the supervisor into a
-        // client-side timeout loop.  Project the daemon's own terminal state so
-        // the lifecycle owner can observe an immediate, typed failure instead.
-        let _ = agent_semantic_client_db::runtime_server_lifecycle::publish_with_errors(
-            &state_home,
-            u64::from(std::process::id()),
-            false,
-            vec![error.clone()],
-        )
-        .await;
-    }
-    result
+    // `run_daemon_at` is the sole owner-terminal publisher because only it has
+    // the elected owner epoch. Failures before election remain process-launch
+    // failures owned by the supervisor; publishing a PID-derived fallback here
+    // would create a second terminal authority and overwrite a valid receipt.
+    run_daemon_at(&state_home).await
+}
+
+fn resolve_host_workspace_initialization_binding(
+    project_root: &std::path::Path,
+) -> Result<agent_semantic_content_identity::HostWorkspaceInitializationBinding, String> {
+    let project_workspace =
+        agent_semantic_topology::ProjectTopologyManifest::load_from_project_root(project_root)
+            .map(|manifest| manifest.project_workspace().clone())
+            .map_err(|error| error.to_string())?;
+    let snapshot =
+        agent_semantic_runtime::git::discover_repository_candidate_snapshot(project_root)
+            .map_err(|error| error.to_string())?
+            .ok_or_else(|| {
+                "Host workspace initialization requires an admitted Git worktree identity"
+                    .to_owned()
+            })?;
+    agent_semantic_content_identity::HostWorkspaceInitializationBinding::new(
+        project_workspace,
+        snapshot.worktree_identity.worktree_id,
+    )
+    .map_err(|error| error.to_string())
 }
 
 async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
@@ -76,10 +87,13 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
             .await
             .map_err(|error| format!("canonicalize candidate Runtime artifact: {error}"))?;
         let observed_digest =
-            agent_semantic_content_identity::blake3_digest_from_canonical_artifact_path(
-                &canonical_artifact,
-            )
-            .ok_or_else(|| "candidate Runtime artifact is not content-addressed".to_owned())?;
+            agent_semantic_content_identity::file_content_digest_v1(&canonical_artifact).map_err(
+                |error| {
+                    format!(
+                        "owner=runtime_server_daemon field=currentExecutable reasonKind=runtime-binary-content-read-failed {error}"
+                    )
+                },
+            )?;
         if observed_digest != expected_digest.content_digest().as_str() {
             return Err(serde_json::json!({
                 "schemaId": "agent.semantic-protocols.runtime-server-generation-mismatch",
@@ -132,6 +146,9 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
             state_home,
         )
         .await?;
+    runtime_active_provider_projection
+        .execution_binding()
+        .validate()?;
     let artifact_catalog =
         agent_semantic_artifacts::runtime_artifact_catalog::load_runtime_artifact_catalog(
             &state_home,
@@ -164,23 +181,18 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
         provider_endpoint,
     )
     .await?;
-    let provider_register_state_path = runtime_serving.provider_register_receipt();
     let provider_seed = agent_semantic_provider_protocol::builtin_provider_registrations()?;
-    let provider_register = if artifact_catalog.runtime_bundle_digest().is_some() {
-        agent_semantic_client_db::runtime_provider_register::RuntimeProviderRegister::from_verified_seed_with_store(
-            provider_seed,
-            provider_register_state_path,
-            artifact_catalog.active_provider_targets(),
-        )
-        .await?
-    } else {
-        agent_semantic_client_db::runtime_provider_register::RuntimeProviderRegister::from_seed_with_store(
-            provider_seed,
-            provider_register_state_path,
-        )
-        .await?
-    };
+    let provider_targets = runtime_active_provider_projection.active_provider_targets();
+    let provider_register = agent_semantic_client_db::runtime_provider_register::
+        RuntimeProviderRegister::from_bound_seed(provider_seed, &provider_targets)?;
     let provider_register = std::sync::Arc::new(provider_register);
+    let transport_layout = agent_semantic_artifacts::StateHomeLayout::new(&state_home)
+        .runtime_state()
+        .transport();
+    agent_semantic_client_db::runtime_server_control::prepare_private_runtime_directory(
+        transport_layout.root(),
+    )
+    .await?;
     let telemetry_socket_path = runtime_server_telemetry_socket_path(&state_home)?;
     let telemetry_query_socket_path = runtime_server_telemetry_query_socket_path(&state_home)?;
     remove_stale_socket(&telemetry_socket_path).await?;
@@ -210,10 +222,10 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
     // lifecycle. The optional executable is admitted only as a content-proven
     // member of the active Runtime bundle. Connection establishment is lazy,
     // and all callers share this one manager and its one long-lived UDS stream.
-    let graph_socket = runtime_serving.python_graphs_socket();
+    let graph_socket = transport_layout.python_graphs_socket();
     let graph_server = match agent_semantic_runtime_server::asp_python_graphs_artifact::VerifiedAspPythonGraphsArtifact::load_from_active_runtime_bundle(state_home).await {
-        Ok(artifact) => agent_semantic_runtime_server::asp_python_graphs_transport::AspPythonGraphsServer::from_artifact(artifact, graph_socket, 32)?,
-        Err(error) => agent_semantic_runtime_server::asp_python_graphs_transport::AspPythonGraphsServer::unavailable(graph_socket, 32, error)?,
+        Ok(artifact) => agent_semantic_runtime_server::asp_python_graphs_transport::AspPythonGraphsServer::from_artifact(artifact, graph_socket.clone(), 32)?,
+        Err(error) => agent_semantic_runtime_server::asp_python_graphs_transport::AspPythonGraphsServer::unavailable(graph_socket.clone(), 32, error)?,
     };
     let generation_builder_state_home = state_home.to_path_buf();
     let generation_builder_provider_register = std::sync::Arc::clone(&provider_register);
@@ -265,6 +277,9 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
                     let runtime_active_provider_projection = crate::command::active_provider_projection::
                         load_runtime_active_provider_projection(&state_home)
                         .await?;
+                    runtime_active_provider_projection
+                        .execution_binding()
+                        .validate()?;
                     let required_languages = crate::command::active_provider_projection::
                         provider_languages_for_generation_demand(
                             &provider_register,
@@ -406,6 +421,7 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
         std::sync::Arc::from(runtime_active_provider_projection.active_provider_targets()),
         std::sync::Arc::clone(&provider_register),
         workspace_store_root,
+        std::sync::Arc::new(resolve_host_workspace_initialization_binding),
         query_generation_authority.clone(),
         lifecycle_bus.sender.clone(),
     )?;
@@ -469,6 +485,8 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
         ),
     )?;
     let generation_authority = query_generation_authority.clone();
+    let generation_state_home = state_home.to_path_buf();
+    let (activation_ready_sender, mut activation_ready) = tokio::sync::watch::channel(false);
     let generation_task = task_scope.spawn("runtime-query-generation", async move {
         loop {
             tokio::select! {
@@ -485,6 +503,15 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
                         break;
                     }
                 }
+                changed = activation_ready.changed() => {
+                    if changed.is_err() {
+                        generation_authority.clear_all();
+                        break;
+                    }
+                }
+            }
+            if !*activation_ready.borrow() {
+                continue;
             }
             let publication = generation_publications.borrow().clone();
             match publication {
@@ -500,12 +527,62 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
                     );
                     match resident {
                         Ok(resident) => {
+                            let execution_product = async {
+                                let activation = agent_semantic_artifacts::runtime_artifact_activation::
+                                    read_applied_runtime_artifact_activation_event(&generation_state_home)
+                                    .await?
+                                    .ok_or_else(|| {
+                                        "Runtime workspace execution publication requires an applied activation receipt"
+                                            .to_owned()
+                                    })?;
+                                let active_projection = crate::command::active_provider_projection::
+                                    load_runtime_active_provider_projection(&generation_state_home)
+                                    .await?;
+                                let active_bundle_digest = agent_semantic_artifacts::
+                                    blake3_content_digest::Blake3ContentDigest::parse(
+                                        active_projection.generation(),
+                                    )?;
+                                let host_workspace = resolve_host_workspace_initialization_binding(
+                                    &publication.project_root,
+                                )?;
+                                let execution_root = publication
+                                    .resident_pointer_path
+                                    .parent()
+                                    .ok_or_else(|| {
+                                        "Runtime workspace generation pointer has no publication directory"
+                                            .to_owned()
+                                    })?;
+                                agent_semantic_client_db::runtime_server_workspace::
+                                    publish_runtime_workspace_execution_product(
+                                        &publication.resident_pointer_path,
+                                        execution_root,
+                                        host_workspace,
+                                        &activation,
+                                        &active_bundle_digest,
+                                        active_projection.execution_binding(),
+                                    )
+                                    .await
+                            }
+                            .await;
+                            let execution_product = match execution_product {
+                                Ok(execution_product) => execution_product,
+                                Err(error) => {
+                                    generation_authority.publish_failed(
+                                        project_workspace_key,
+                                        0,
+                                        publication.generation_digest,
+                                        error,
+                                    );
+                                    continue;
+                                }
+                            };
                             let _ = generation_authority
-                                .ensure_ready_resident(
+                                .ensure_ready_resident_with_execution_publication(
                                     &project_workspace_key,
                                     &publication.project_root,
                                     resident,
                                     &publication.generation_digest,
+                                    execution_product,
                                 )
                                 .await;
                         }
@@ -653,6 +730,7 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
                 .map_err(|error| format!("encode Runtime resident transaction receipt: {error}"))?
         );
     }
+    activation_ready_sender.send_replace(true);
     // The identity monitor observes the durable applied activation. Starting it
     // before the startup transaction commits lets Tokio's immediate first
     // interval tick see the previous applied generation and incorrectly drain
@@ -816,15 +894,32 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
     if let Err(error) = drain_receipt_result {
         shutdown_errors.push(format!("drainReceipt={error}"));
     }
+    for socket in [
+        &graph_socket,
+        &telemetry_socket_path,
+        &telemetry_query_socket_path,
+    ] {
+        if let Err(error) = remove_stale_socket(socket).await {
+            shutdown_errors.push(format!("transportSocketCleanup={error}"));
+        }
+    }
+    match tokio::fs::remove_dir(transport_layout.root()).await {
+        Ok(()) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => shutdown_errors.push(format!(
+            "transportDirectoryCleanup path={} error={error}",
+            transport_layout.root().display()
+        )),
+    }
     let mut identity_handoff = identity_handoff_requested
         && !agent_semantic_client_db::runtime_server_lifecycle::operator_stopped(&state_home)
             .await?;
     if identity_handoff {
         if let Err(error) = RuntimeIdentityHandoffCoordinator::new(&state_home, &endpoint)
-            .retire()
+            .drain()
             .await
         {
-            shutdown_errors.push(format!("ownerHandoffRetirement={error}"));
+            shutdown_errors.push(format!("ownerHandoffDrain={error}"));
             identity_handoff = false;
         }
     }
@@ -834,13 +929,22 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
             serde_json::json!({
                 "schemaId": "agent.semantic-protocols.runtime-server-identity-handoff",
                 "schemaVersion": "1",
-                "state": "owner-retired",
+                "state": "owner-drained",
                 "ownerEpoch": owner_epoch,
                 "processId": std::process::id(),
             })
         );
     }
     drop(election);
+    // Endpoint cleanup is part of the elected owner's terminal transaction.
+    // It must not short-circuit terminal publication: the supervisor needs one
+    // typed receipt with the real owner epoch on both success and failure.
+    if let Err(error) = RuntimeIdentityHandoffCoordinator::new(&state_home, &endpoint)
+        .cleanup()
+        .await
+    {
+        shutdown_errors.push(format!("endpointCleanup={error}"));
+    }
     let result = if shutdown_errors.is_empty() {
         Ok(())
     } else {
@@ -849,21 +953,10 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
             shutdown_errors.join("; ")
         ))
     };
-    // Publish the owner terminal receipt immediately after every Tokio-owned
-    // service has joined. Supervisor stop can now observe the authoritative
-    // terminal state without waiting on filesystem/socket cleanup.
-    RuntimeIdentityHandoffCoordinator::new(&state_home, &endpoint)
-        .cleanup()
-        .await?;
     agent_semantic_client_db::runtime_server_lifecycle::publish_with_errors(
         &state_home,
         owner_epoch,
-        result.is_ok()
-            && (!identity_handoff
-                || !agent_semantic_client_db::runtime_server_lifecycle::operator_stopped(
-                    &state_home,
-                )
-                .await?),
+        result.is_ok(),
         shutdown_errors.clone(),
     )
     .await?;

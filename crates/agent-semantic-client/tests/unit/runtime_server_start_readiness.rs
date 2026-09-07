@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 use std::os::unix::fs::PermissionsExt as _;
 use std::path::Path;
@@ -14,6 +14,7 @@ use agent_semantic_artifacts::runtime_artifact_publication::publish_runtime_arti
 
 const RUNTIME_CLIENT_QUERY_ARGS: &[&str] = &[
     "query",
+    "playbook",
     "--selector",
     "rust://src/lib.rs#item/function/missing",
     "--workspace",
@@ -26,6 +27,12 @@ fn asp_binary() -> PathBuf {
     PathBuf::from(env!("CARGO_BIN_EXE_asp"))
 }
 
+fn runtime_serving(state_home: &Path) -> agent_semantic_artifacts::RuntimeServingStateLayout {
+    agent_semantic_artifacts::StateHomeLayout::new(state_home)
+        .runtime_state()
+        .serving()
+}
+
 fn run_asp(state_home: &Path, args: &[&str]) -> Output {
     Command::new(asp_binary())
         .env("ASP_STATE_HOME", state_home)
@@ -34,13 +41,12 @@ fn run_asp(state_home: &Path, args: &[&str]) -> Output {
         .expect("run isolated ASP command")
 }
 
-fn run_asp_no_agent(state_home: &Path, args: &[&str]) -> Output {
+fn run_runtime_client(state_home: &Path, args: &[&str]) -> Output {
     Command::new(asp_binary())
         .env("ASP_STATE_HOME", state_home)
-        .env("ASP_NO_AGENT", "1")
         .args(args)
         .output()
-        .expect("run isolated ASP no-agent command")
+        .expect("run isolated ASP Runtime client command")
 }
 
 fn assert_success(output: &Output, operation: &str) {
@@ -53,7 +59,7 @@ fn assert_success(output: &Output, operation: &str) {
     );
 }
 
-fn assert_workspace_admission_missing(output: &Output, operation: &str) {
+fn assert_workspace_admission_precedes_language_route(output: &Output, operation: &str) {
     let text = format!(
         "{}{}",
         String::from_utf8_lossy(&output.stdout),
@@ -64,8 +70,12 @@ fn assert_workspace_admission_missing(output: &Output, operation: &str) {
         "{operation} unexpectedly succeeded: {text}"
     );
     assert!(
-        text.contains("Runtime Server workspace admission catalog has no binding"),
-        "{operation} did not reach the healthy Runtime workspace boundary: {text}"
+        !text.contains("Runtime Server workspace admission catalog has no binding"),
+        "{operation} skipped automatic Runtime workspace admission: {text}"
+    );
+    assert!(
+        text.contains("reasonKind=method-not-in-server-client-catalog method=rust.query"),
+        "{operation} did not reach the language route catalog after workspace admission: {text}"
     );
 }
 
@@ -102,7 +112,19 @@ async fn publish_pending_runtime(state_home: &Path) {
 
 fn stop_isolated_runtime(state_home: &Path) {
     let output = run_asp(state_home, &["server", "stop"]);
-    assert_success(&output, "isolated Runtime stop");
+    if !output.status.success() {
+        let daemon_stderr_path = runtime_serving(state_home).owner_stderr_log();
+        let daemon_stderr = std::fs::read_to_string(&daemon_stderr_path)
+            .unwrap_or_else(|error| format!("unavailable: {error}"));
+        panic!(
+            "isolated Runtime stop failed: status={} stdout={} stderr={} daemonStderrPath={} daemonStderr={}",
+            output.status,
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr),
+            daemon_stderr_path.display(),
+            daemon_stderr,
+        );
+    }
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -112,12 +134,11 @@ async fn pending_activation_bootstrap_waits_for_one_healthy_runtime_owner() {
     publish_pending_runtime(&state_home).await;
 
     let bootstrap = run_asp(&state_home, RUNTIME_CLIENT_QUERY_ARGS);
-    assert_workspace_admission_missing(&bootstrap, "pending-activation client bootstrap");
-    assert!(
-        state_home
-            .join("runtime/server/owner-spawn.v1.json")
-            .is_file()
+    assert_workspace_admission_precedes_language_route(
+        &bootstrap,
+        "pending-activation client bootstrap",
     );
+    assert!(runtime_serving(&state_home).owner_spawn_receipt().is_file());
     let output = format!(
         "{}{}",
         String::from_utf8_lossy(&bootstrap.stdout),
@@ -140,7 +161,16 @@ async fn pending_activation_bootstrap_waits_for_one_healthy_runtime_owner() {
         .expect("bootstrap must publish one bound Runtime resident transaction");
     assert_eq!(transaction.state, "ready");
 
+    let transport_root = agent_semantic_artifacts::StateHomeLayout::new(&state_home)
+        .runtime_state()
+        .transport()
+        .root()
+        .to_path_buf();
     stop_isolated_runtime(&state_home);
+    assert!(
+        !transport_root.exists(),
+        "clean Runtime stop must remove the ephemeral transport directory"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -271,7 +301,7 @@ async fn restart_replaces_owner_from_applied_generation_in_one_typed_transaction
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn no_agent_client_recovers_one_dead_applied_owner_and_respects_operator_stop() {
+async fn runtime_client_recovers_one_dead_applied_owner_and_respects_operator_stop() {
     let temporary = tempfile::tempdir().expect("create isolated state home");
     let state_home = temporary.path().to_path_buf();
     publish_pending_runtime(&state_home).await;
@@ -313,8 +343,8 @@ async fn no_agent_client_recovers_one_dead_applied_owner_and_respects_operator_s
         tokio::time::sleep(std::time::Duration::from_millis(5)).await;
     }
 
-    let recovered = run_asp_no_agent(&state_home, RUNTIME_CLIENT_QUERY_ARGS);
-    assert_workspace_admission_missing(&recovered, "dead-owner recovery query");
+    let recovered = run_runtime_client(&state_home, RUNTIME_CLIENT_QUERY_ARGS);
+    assert_workspace_admission_precedes_language_route(&recovered, "dead-owner recovery query");
     let recovery_output = format!(
         "{}{}",
         String::from_utf8_lossy(&recovered.stdout),
@@ -324,7 +354,7 @@ async fn no_agent_client_recovers_one_dead_applied_owner_and_respects_operator_s
         !recovery_output.contains("runtime-server-activation-spawn-accepted")
             && !recovery_output.contains("runtime-server-owner-stale")
             && !recovery_output.contains("Connection refused"),
-        "no-agent client returned before recovery completed: {recovery_output}"
+        "Runtime client returned before recovery completed: {recovery_output}"
     );
     let owner_after =
         agent_semantic_client_db::runtime_server_lifecycle::read_owner_receipt(&state_home)
@@ -343,7 +373,7 @@ async fn no_agent_client_recovers_one_dead_applied_owner_and_respects_operator_s
             endpoint_after.owner_process_id
         )
         .await,
-        "no-agent command left a dead endpoint authority: {recovery_output}"
+        "Runtime client left a dead endpoint authority: {recovery_output}"
     );
     assert_ne!(endpoint_after.owner_epoch, endpoint_before.owner_epoch);
     assert_eq!(endpoint_after.owner_process_id, owner_after.process_id);
@@ -366,10 +396,10 @@ async fn no_agent_client_recovers_one_dead_applied_owner_and_respects_operator_s
     );
 
     stop_isolated_runtime(&state_home);
-    let stopped = run_asp_no_agent(&state_home, RUNTIME_CLIENT_QUERY_ARGS);
+    let stopped = run_runtime_client(&state_home, RUNTIME_CLIENT_QUERY_ARGS);
     assert!(
         !stopped.status.success(),
-        "operator-stop must remain authoritative in no-agent mode"
+        "operator-stop must remain authoritative for Runtime clients"
     );
     let stopped_output = format!(
         "{}{}",
@@ -383,9 +413,9 @@ async fn no_agent_client_recovers_one_dead_applied_owner_and_respects_operator_s
     assert!(
         agent_semantic_client_db::runtime_server_lifecycle::read_owner_receipt(&state_home)
             .await
-            .expect("read owner after stopped no-agent request")
+            .expect("read owner after stopped Runtime request")
             .is_none(),
-        "no-agent recovery must not cross operator-stop authority"
+        "Runtime recovery must not cross operator-stop authority"
     );
 }
 
@@ -443,16 +473,16 @@ async fn concurrent_pending_activation_bootstraps_share_one_runtime_server_owner
     let second_home = state_home.clone();
     let first = thread::spawn(move || run_asp(&first_home, RUNTIME_CLIENT_QUERY_ARGS));
     let second = thread::spawn(move || run_asp(&second_home, RUNTIME_CLIENT_QUERY_ARGS));
-    assert_workspace_admission_missing(
+    assert_workspace_admission_precedes_language_route(
         &first.join().expect("join first bootstrap"),
         "first bootstrap",
     );
-    assert_workspace_admission_missing(
+    assert_workspace_admission_precedes_language_route(
         &second.join().expect("join second bootstrap"),
         "second bootstrap",
     );
 
-    let owner_receipt = std::fs::read(state_home.join("runtime/server/owner-spawn.v1.json"))
+    let owner_receipt = std::fs::read(runtime_serving(&state_home).owner_spawn_receipt())
         .expect("read canonical owner receipt");
     let owner: serde_json::Value =
         serde_json::from_slice(&owner_receipt).expect("decode canonical owner receipt");
@@ -482,9 +512,7 @@ async fn operator_stop_suppresses_old_activation_until_a_newer_publication() {
     let suppressed = run_asp(&state_home, RUNTIME_CLIENT_QUERY_ARGS);
     assert_operator_stopped(&suppressed, "suppressed client bootstrap");
     assert!(
-        !state_home
-            .join("runtime/server/owner-spawn.v1.json")
-            .exists(),
+        !runtime_serving(&state_home).owner_spawn_receipt().exists(),
         "healthcheck/bootstrap must not cross operator-stop authority"
     );
     let tombstone =
@@ -512,11 +540,9 @@ async fn operator_stop_suppresses_old_activation_until_a_newer_publication() {
     );
 
     let resumed = run_asp(&state_home, RUNTIME_CLIENT_QUERY_ARGS);
-    assert_workspace_admission_missing(&resumed, "newer activation bootstrap");
+    assert_workspace_admission_precedes_language_route(&resumed, "newer activation bootstrap");
     assert!(
-        state_home
-            .join("runtime/server/owner-spawn.v1.json")
-            .is_file(),
+        runtime_serving(&state_home).owner_spawn_receipt().is_file(),
         "distinct content-bound publication must reacquire supervisor authority"
     );
 
@@ -532,7 +558,8 @@ async fn current_schema_v1_operator_stop_suppresses_covered_activation() {
         .await
         .expect("read stopped-through activation")
         .expect("pending activation");
-    let stop_path = state_home.join("runtime/server/operator-stop.v1.json");
+    let stop_path = runtime_serving(&state_home)
+        .lifecycle_receipt(agent_semantic_artifacts::RuntimeLifecycleReceiptName::OperatorStop);
     std::fs::create_dir_all(stop_path.parent().expect("operator stop parent"))
         .expect("create operator stop parent");
     std::fs::write(
@@ -550,11 +577,7 @@ async fn current_schema_v1_operator_stop_suppresses_covered_activation() {
 
     let suppressed = run_asp(&state_home, RUNTIME_CLIENT_QUERY_ARGS);
     assert_operator_stopped(&suppressed, "current v1 suppressed bootstrap");
-    assert!(
-        !state_home
-            .join("runtime/server/owner-spawn.v1.json")
-            .exists()
-    );
+    assert!(!runtime_serving(&state_home).owner_spawn_receipt().exists());
     let canonical =
         agent_semantic_client_db::runtime_server_lifecycle::read_operator_stop_receipt(&state_home)
             .await
@@ -571,12 +594,11 @@ async fn current_schema_v1_operator_stop_suppresses_covered_activation() {
 
     publish_pending_runtime(&state_home).await;
     let resumed = run_asp(&state_home, RUNTIME_CLIENT_QUERY_ARGS);
-    assert_workspace_admission_missing(&resumed, "newer activation after canonical stop");
-    assert!(
-        state_home
-            .join("runtime/server/owner-spawn.v1.json")
-            .is_file()
+    assert_workspace_admission_precedes_language_route(
+        &resumed,
+        "newer activation after canonical stop",
     );
+    assert!(runtime_serving(&state_home).owner_spawn_receipt().is_file());
     stop_isolated_runtime(&state_home);
 }
 
@@ -601,7 +623,8 @@ async fn invalid_operator_stop_receipts_fail_closed_without_starting_an_owner() 
         let temporary = tempfile::tempdir().expect("create isolated state home");
         let state_home = temporary.path().to_path_buf();
         publish_pending_runtime(&state_home).await;
-        let stop_path = state_home.join("runtime/server/operator-stop.v1.json");
+        let stop_path = runtime_serving(&state_home)
+            .lifecycle_receipt(agent_semantic_artifacts::RuntimeLifecycleReceiptName::OperatorStop);
         std::fs::create_dir_all(stop_path.parent().expect("operator stop parent"))
             .expect("create operator stop parent");
         std::fs::write(&stop_path, receipt).expect("seed invalid operator stop");
@@ -619,9 +642,7 @@ async fn invalid_operator_stop_receipts_fail_closed_without_starting_an_owner() 
         assert!(failure.contains("operator-stop"), "{case}: {failure}");
         assert!(stop_path.is_file(), "{case} marker must be preserved");
         assert!(
-            !state_home
-                .join("runtime/server/owner-spawn.v1.json")
-                .exists(),
+            !runtime_serving(&state_home).owner_spawn_receipt().exists(),
             "{case} marker must not start an owner"
         );
     }
@@ -636,7 +657,8 @@ async fn concurrent_current_schema_v1_reads_are_idempotent() {
         .await
         .expect("read stopped-through activation")
         .expect("pending activation");
-    let stop_path = state_home.join("runtime/server/operator-stop.v1.json");
+    let stop_path = runtime_serving(&state_home)
+        .lifecycle_receipt(agent_semantic_artifacts::RuntimeLifecycleReceiptName::OperatorStop);
     std::fs::create_dir_all(stop_path.parent().expect("operator stop parent"))
         .expect("create operator stop parent");
     std::fs::write(
@@ -679,9 +701,5 @@ async fn concurrent_current_schema_v1_reads_are_idempotent() {
         Some(stopped_event.publication_nonce.clone())
     );
     assert!(stop_path.is_file());
-    assert!(
-        !state_home
-            .join("runtime/server/owner-spawn.v1.json")
-            .exists()
-    );
+    assert!(!runtime_serving(&state_home).owner_spawn_receipt().exists());
 }

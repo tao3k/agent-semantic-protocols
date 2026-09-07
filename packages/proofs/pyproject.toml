@@ -1,6 +1,12 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 [project]
 name = "asp-proofs"
 version = "0.1.0"
+license = "Apache-2.0 AND LGPL-2.1-or-later"
+license-files = ["LICENSE"]
 description = "Lean, AXLE, and proof-receipt audit toolchain for Agent Semantic Protocols"
 requires-python = ">=3.13"
 dependencies = [

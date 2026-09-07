@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 //! Public V1 Search Playbook receipt model.
 
 use agent_semantic_search_projection::RuntimeProviderSearchReceipt;
@@ -209,11 +213,11 @@ pub struct SearchPlaybookReceiptInput {
     pub native_syntax_elapsed_micros: u64,
     pub runtime: RuntimeProviderSearchReceipt,
     pub graph: ResidentGraphSearchStage,
-    pub cold_rg: Option<SearchPlaybookColdRgExecution>,
+    pub resident_lexical: Option<SearchPlaybookResidentLexicalExecution>,
     pub python_graph: Option<SearchPlaybookPythonGraphExecution>,
 }
 
-pub struct SearchPlaybookColdRgExecution {
+pub struct SearchPlaybookResidentLexicalExecution {
     pub generation_digest: String,
     pub coverage_input_digest: String,
     pub candidate_owner_ids: Vec<String>,

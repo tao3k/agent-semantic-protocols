@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 use std::sync::Arc;
 
@@ -9,6 +9,75 @@ use crate::runtime_server_workspace::{
     WorkspaceGenerationBuild, WorkspaceGenerationDataPlaneClient, WorkspaceGenerationDataPlaneOpen,
     WorkspaceMemoryBackend, WorkspaceOwnerSnapshot, WorkspaceSelectorSnapshot,
 };
+
+fn execution_bundle_binding()
+-> agent_semantic_artifacts::runtime_artifact_slots::RuntimeArtifactBundleBinding {
+    let digest = |byte: char| {
+        agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest::parse(&format!(
+            "blake3-256:{}",
+            std::iter::repeat_n(byte, 64).collect::<String>()
+        ))
+        .expect("canonical fixture digest")
+    };
+    agent_semantic_artifacts::runtime_artifact_slots::RuntimeArtifactBundleBinding::new(
+        digest('a'),
+        digest('b'),
+        digest('c'),
+        digest('d'),
+        digest('e'),
+    )
+}
+
+fn execution_activation()
+-> agent_semantic_artifacts::runtime_artifact_activation::RuntimeArtifactActivationEvent {
+    let artifact_digest =
+        agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest::parse(&format!(
+            "blake3-256:{}",
+            "1".repeat(64)
+        ))
+        .expect("canonical artifact digest");
+    agent_semantic_artifacts::runtime_artifact_activation::RuntimeArtifactActivationEvent {
+        schema_id: "agent.semantic-protocols.runtime-artifact-activation".into(),
+        schema_version: 1,
+        activation_generation: 42,
+        bundle_digest:
+            agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest::parse(
+                &format!("blake3-256:{}", "2".repeat(64)),
+            )
+            .expect("canonical bundle digest"),
+        artifact_digest: artifact_digest.clone(),
+        artifact_path: "/runtime/asp".into(),
+        candidate_slot_path: "/runtime/candidate".into(),
+        previous_artifact_digest: None,
+        artifact_mode: "release".into(),
+        published_at_unix_millis: 123,
+        publication_nonce: "publication-1".into(),
+        candidate_identity:
+            agent_semantic_artifacts::runtime_artifact_activation::RuntimeArtifactCandidateIdentityReceipt {
+                artifact_digest,
+                artifact_path: "/runtime/asp".into(),
+                stable_path: "/runtime/stable/asp".into(),
+                artifact_mode: "release".into(),
+                publication_nonce: "publication-1".into(),
+            },
+    }
+}
+
+fn execution_host_workspace() -> agent_semantic_content_identity::HostWorkspaceInitializationBinding
+{
+    let project_workspace = agent_semantic_content_identity::ProjectWorkspaceBinding::new(
+        "git+https://github.com/tao3k/agent-semantic-protocols.git#workspace/main",
+        ".",
+        "cross-machine",
+        Vec::new(),
+    )
+    .expect("valid Project Workspace");
+    agent_semantic_content_identity::HostWorkspaceInitializationBinding::new(
+        project_workspace,
+        "worktree-main",
+    )
+    .expect("valid Host workspace binding")
+}
 
 fn generation(
     project_root: &std::path::Path,
@@ -36,6 +105,14 @@ fn generation(
 fn generation_from_owners(
     project_root: &std::path::Path,
     owners: Vec<WorkspaceOwnerSnapshot>,
+) -> Arc<crate::runtime_server_workspace::WorkspaceMemoryGeneration> {
+    generation_from_owners_and_relations(project_root, owners, Vec::new())
+}
+
+fn generation_from_owners_and_relations(
+    project_root: &std::path::Path,
+    owners: Vec<WorkspaceOwnerSnapshot>,
+    relations: Vec<crate::ClientDbSourceIndexOwnedRelation>,
 ) -> Arc<crate::runtime_server_workspace::WorkspaceMemoryGeneration> {
     use agent_semantic_search::{
         ContentSearchGenerationReceipt, SearchGenerationConstructionStage,
@@ -115,11 +192,100 @@ fn generation_from_owners(
                 content_search_generation,
                 project_resolutions: Vec::new(),
                 owners,
-                relations: Vec::new(),
+                relations,
             },
         )
         .expect("resident generation"),
     )
+}
+
+#[tokio::test]
+async fn topology_source_segments_preserve_owner_attribution_across_resident_and_mmap() {
+    let temporary = tempfile::tempdir().expect("temporary runtime root");
+    let project_root = temporary.path().join("project");
+    let first_selector = "rust://src/lib.rs#item/function/refresh";
+    let second_selector = "rust://src/lib.rs#item/function/publish";
+    let bytes = b"fn refresh() {}\nfn publish() {}\n".to_vec();
+    let generation = generation_from_owners_and_relations(
+        &project_root,
+        vec![WorkspaceOwnerSnapshot {
+            authority: None,
+            owner_path: "src/lib.rs".to_owned(),
+            content_digest: format!("blake3-256:{}", blake3::hash(&bytes).to_hex()),
+            native_syntax_diagnostic: None,
+            selectors: vec![
+                WorkspaceSelectorSnapshot {
+                    selector: first_selector.to_owned(),
+                    byte_start: 0,
+                    byte_end: 15,
+                    query_keys: vec!["refresh".to_owned()],
+                    derived_projections: Vec::new(),
+                },
+                WorkspaceSelectorSnapshot {
+                    selector: second_selector.to_owned(),
+                    byte_start: 16,
+                    byte_end: bytes.len(),
+                    query_keys: vec!["publish".to_owned()],
+                    derived_projections: Vec::new(),
+                },
+            ],
+            bytes,
+        }],
+        vec![crate::ClientDbSourceIndexOwnedRelation {
+            owner_path: "src/lib.rs".into(),
+            relation: agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelation {
+                from: agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelationEndpoint {
+                    kind: agent_semantic_content_identity::ProviderRelationEndpointKindV1::Item,
+                    id: first_selector.to_owned(),
+                },
+                kind: "calls".into(),
+                to: agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelationEndpoint {
+                    kind: agent_semantic_content_identity::ProviderRelationEndpointKindV1::Item,
+                    id: second_selector.to_owned(),
+                },
+            },
+        }],
+    );
+    let resident =
+        crate::runtime_server_workspace::WorkspaceSearchGenerationDataPlaneClient::from_generation(
+            Arc::clone(&generation),
+        )
+        .expect("resident search projection");
+    let resident_segments = resident
+        .topology_source_segments()
+        .expect("resident topology source segments");
+
+    let publisher = crate::runtime_server_workspace::WorkspaceGenerationPublisher::new(
+        temporary.path().join("runtime"),
+    )
+    .await
+    .expect("workspace generation publisher");
+    publisher
+        .publish(Arc::clone(&generation), false)
+        .await
+        .expect("durably publish generation");
+    let restored = crate::runtime_server_workspace::WorkspaceSearchGenerationDataPlaneClient::open(
+        publisher.pointer_path(),
+        &project_root,
+    )
+    .await
+    .expect("mapped search projection");
+    let restored_segments = restored
+        .topology_source_segments()
+        .expect("mapped topology source segments");
+
+    assert_eq!(resident_segments, restored_segments);
+    assert_eq!(resident_segments.len(), 1);
+    assert_eq!(resident_segments[0].owner_path, "src/lib.rs");
+    assert_eq!(
+        resident_segments[0].selectors,
+        [second_selector, first_selector]
+    );
+    assert_eq!(resident_segments[0].relations.len(), 1);
+    assert_eq!(
+        resident_segments[0].relations[0].owner_path.as_str(),
+        "src/lib.rs"
+    );
 }
 
 fn large_generation(
@@ -168,6 +334,9 @@ async fn publish_with_held_durability(
     >,
     tokio::sync::mpsc::UnboundedReceiver<DurabilityTask>,
     std::path::PathBuf,
+    tokio::task::JoinHandle<
+        Result<crate::runtime_server_workspace::WorkspaceRecoveryReceipt, String>,
+    >,
 ) {
     let project_root = publisher_directory
         .parent()
@@ -187,46 +356,57 @@ async fn publish_with_held_durability(
     );
     let pointer_path = publisher.pointer_path().to_path_buf();
     let (durability_tasks, durability_requests) = tokio::sync::mpsc::unbounded_channel();
-    publish_new_generation(
-        &current,
-        &durability,
-        &overlays,
-        publisher,
-        "resident-ready".to_owned(),
-        "workspace-resident-durability".to_owned(),
-        generation,
-        prepared_index,
-        0,
-        tokio::time::Instant::now(),
-        Arc::new(RuntimeDataPlaneCounterState::default()),
-        &durability_tasks,
-    )
-    .await
-    .expect("resident publication");
+    let publication_current = current.clone();
+    let publication_durability = durability.clone();
+    let publication = tokio::spawn(async move {
+        publish_new_generation(
+            &publication_current,
+            &publication_durability,
+            &overlays,
+            publisher,
+            "resident-ready".to_owned(),
+            "workspace-resident-durability".to_owned(),
+            generation,
+            prepared_index,
+            0,
+            tokio::time::Instant::now(),
+            Arc::new(RuntimeDataPlaneCounterState::default()),
+            &durability_tasks,
+        )
+        .await
+    });
     (
         current,
         durability_observer,
         durability_requests,
         pointer_path,
+        publication,
     )
 }
 
 #[tokio::test]
-async fn resident_read_is_ready_while_durability_is_blocked_then_restart_restore_succeeds() {
+async fn resident_read_waits_for_durable_commit_then_restart_restore_succeeds() {
     let temporary = tempfile::tempdir().expect("temporary runtime root");
     let project_root = temporary.path().join("project");
-    let (current, durability, mut tasks, pointer_path) =
+    let (current, durability, mut tasks, pointer_path, publication) =
         publish_with_held_durability(temporary.path().join("generation")).await;
 
+    tokio::task::yield_now().await;
     assert!(!pointer_path.exists(), "durability must still be blocked");
-    assert_eq!(
-        durability
-            .borrow()
-            .as_ref()
-            .expect("durability receipt")
-            .state,
-        crate::runtime_server_workspace::WorkspaceGenerationDurabilityState::ResidentReady,
+    assert!(
+        !publication.is_finished(),
+        "Ready must await canonical durability"
     );
+    assert!(
+        current.borrow().is_none(),
+        "no resident state before durability"
+    );
+
+    tasks.recv().await.expect("durability task").await;
+    publication
+        .await
+        .expect("publication task")
+        .expect("durable resident publication");
     let backend = current.borrow().clone().expect("resident generation");
     let resident = crate::runtime_resident_read::RuntimeResidentReadClient::from_resident_lease(
         crate::runtime_server_workspace::WorkspaceGenerationLease::from_backend(backend),
@@ -239,7 +419,6 @@ async fn resident_read_is_ready_while_durability_is_blocked_then_restart_restore
             .is_some()
     );
 
-    tasks.recv().await.expect("durability task").await;
     assert_eq!(
         durability
             .borrow()
@@ -292,13 +471,15 @@ async fn resident_read_is_ready_while_durability_is_blocked_then_restart_restore
 }
 
 #[tokio::test]
-async fn failed_durability_keeps_the_resident_generation_queryable() {
+async fn failed_durability_never_exposes_a_resident_generation() {
     let temporary = tempfile::tempdir().expect("temporary runtime root");
     let publisher_path = temporary.path().join("not-a-directory");
     std::fs::write(&publisher_path, b"blocks directory creation")
         .expect("durability failure fixture");
-    let (current, durability, mut tasks, _) = publish_with_held_durability(publisher_path).await;
+    let (current, durability, mut tasks, _, publication) =
+        publish_with_held_durability(publisher_path).await;
     tasks.recv().await.expect("durability task").await;
+    assert!(publication.await.expect("publication task").is_err());
 
     assert_eq!(
         durability
@@ -308,19 +489,9 @@ async fn failed_durability_keeps_the_resident_generation_queryable() {
             .state,
         crate::runtime_server_workspace::WorkspaceGenerationDurabilityState::Failed,
     );
-    let backend = current
-        .borrow()
-        .clone()
-        .expect("resident generation retained");
-    let resident = crate::runtime_resident_read::RuntimeResidentReadClient::from_resident_lease(
-        crate::runtime_server_workspace::WorkspaceGenerationLease::from_backend(backend),
-    )
-    .expect("resident read client");
     assert!(
-        resident
-            .owner_snapshot("src/lib.rs")
-            .expect("resident owner")
-            .is_some()
+        current.borrow().is_none(),
+        "failed durability must not expose a resident generation"
     );
 }
 
@@ -363,6 +534,75 @@ async fn unavailable_durability_lane_has_no_visible_resident_side_effect() {
     assert!(error.contains("durability attachment lane is unavailable"));
     assert!(current.borrow().is_none());
     assert!(durability.borrow().is_none());
+}
+
+#[tokio::test]
+async fn execution_product_requires_the_committed_source_pointer_and_binds_it_exactly() {
+    let temporary = tempfile::tempdir().expect("temporary runtime root");
+    let project_root = temporary.path().join("project");
+    std::fs::create_dir_all(&project_root).expect("project root");
+    let generation_directory = temporary.path().join("generation");
+    let execution_directory = temporary.path().join("execution");
+    let publisher =
+        crate::runtime_server_workspace::WorkspaceGenerationPublisher::new(generation_directory)
+            .await
+            .expect("generation publisher");
+    let generation = generation(&project_root);
+    let activation = execution_activation();
+    let bundle = execution_bundle_binding();
+
+    let before_source =
+        crate::runtime_server_workspace::publish_runtime_workspace_execution_product(
+            publisher.pointer_path(),
+            &execution_directory,
+            execution_host_workspace(),
+            &activation,
+            &activation.bundle_digest,
+            &bundle,
+        )
+        .await
+        .expect_err("execution publication cannot precede source durability");
+    assert!(before_source.contains("active-workspace-generation-required"));
+
+    let source_snapshot = publisher
+        .publish(Arc::clone(&generation), false)
+        .await
+        .expect("durably publish source generation");
+    let execution_publication =
+        crate::runtime_server_workspace::publish_runtime_workspace_execution_product(
+            publisher.pointer_path(),
+            &execution_directory,
+            execution_host_workspace(),
+            &activation,
+            &activation.bundle_digest,
+            &bundle,
+        )
+        .await
+        .expect("publish source-bound execution product");
+
+    assert_eq!(
+        execution_publication.generation_digest.as_str(),
+        source_snapshot.generation_digest
+    );
+    assert_eq!(
+        execution_publication.source_root_digest.as_str(),
+        source_snapshot.source_root_digest
+    );
+    assert_eq!(
+        execution_publication
+            .content_publication_commit
+            .identity()
+            .source_index_digest,
+        source_snapshot.durable_commit_digest
+    );
+    assert_eq!(
+        crate::runtime_server_workspace::RuntimeWorkspaceExecutionPublicationStore::read_active(
+            &execution_directory,
+        )
+        .await
+        .expect("read exact source-bound execution product"),
+        execution_publication
+    );
 }
 
 #[test]

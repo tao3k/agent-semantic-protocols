@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 use super::{
     ENDPOINT_SCHEMA_ID, REQUEST_SCHEMA_ID, RuntimeServerControlRequest, RuntimeServerEndpoint,
@@ -25,10 +25,16 @@ fn endpoint() -> RuntimeServerEndpoint {
         schema_digest: "blake3-256:2222222222222222222222222222222222222222222222222222222222222222".to_owned(),
         schema_id: ENDPOINT_SCHEMA_ID.to_owned(),
         schema_version: SCHEMA_VERSION.to_owned(),
-        transport_contract_digest:
-            agent_semantic_client_db::runtime_server_control::runtime_server_transport_contract_digest(),
-        owner_epoch: 7,
-        owner_process_id: 77,
+        transport_binding: agent_semantic_client_db::runtime_server_control::RuntimeTransportBinding {
+            transport_contract_digest:
+                agent_semantic_client_db::runtime_server_control::runtime_server_transport_contract_digest(),
+            owner_epoch: 7,
+            owner_process_id: 77,
+            binding_token: "binding-token".to_owned(),
+            control_endpoint: loopback(41001),
+            data_endpoint: loopback(41002),
+            provider_endpoint: loopback(41003),
+        },
         runtime_artifact_path: "/runtime/asp".to_owned(),
         runtime_binary_identity: RuntimeBinaryIdentity::from_bytes(b"running-runtime"),
         monitor_capability: true,
@@ -36,10 +42,6 @@ fn endpoint() -> RuntimeServerEndpoint {
         artifact_mode: "release".to_owned(),
         artifact_catalog_digest:
             "blake3-256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_owned(),
-        binding_token: "binding-token".to_owned(),
-        control_endpoint: loopback(41001),
-        data_endpoint: loopback(41002),
-        provider_endpoint: loopback(41003),
         workspace_store_path: "/runtime/workspaces".to_owned(),
         status_memory_path: "/runtime/status.memory".to_owned(),
     }
@@ -57,6 +59,42 @@ fn request(operation: RuntimeServerOperation) -> RuntimeServerControlRequest {
         owner_epoch: 7,
         binding_token: "binding-token".to_owned(),
     }
+}
+
+#[test]
+fn runtime_transport_binding_round_trips_as_the_single_flat_v1_authority() {
+    let endpoint = endpoint();
+    endpoint
+        .transport_binding
+        .validate()
+        .expect("complete transport binding");
+    let value = serde_json::to_value(&endpoint).expect("serialize endpoint");
+    assert!(value.get("transportBinding").is_none());
+    for field in [
+        "transportContractDigest",
+        "ownerEpoch",
+        "ownerProcessId",
+        "bindingToken",
+        "controlEndpoint",
+        "dataEndpoint",
+        "providerEndpoint",
+    ] {
+        assert!(value.get(field).is_some(), "missing flat V1 field {field}");
+    }
+    let decoded: RuntimeServerEndpoint =
+        serde_json::from_value(value).expect("decode flattened transport binding");
+    assert_eq!(decoded.transport_binding, endpoint.transport_binding);
+}
+
+#[test]
+fn runtime_transport_binding_rejects_any_unbound_plane() {
+    let mut binding = endpoint().transport_binding;
+    binding.data_endpoint.port = 0;
+    assert!(binding.validate().is_err());
+
+    let mut binding = endpoint().transport_binding;
+    binding.binding_token.clear();
+    assert!(binding.validate().is_err());
 }
 
 #[test]
@@ -214,7 +252,7 @@ fn stop_fallback_requires_epoch_process_and_executable_binding() {
 }
 
 #[tokio::test]
-async fn identity_handoff_retires_only_the_bound_runtime_server_owner() {
+async fn identity_handoff_drains_only_the_bound_runtime_server_owner() {
     let state_home = tempfile::tempdir().expect("temporary State Home");
     let runtime_artifact_path = state_home.path().join("runtime/bin/asp");
     let mut endpoint = agent_semantic_client_db::prepare_runtime_server_endpoint(
@@ -266,16 +304,16 @@ async fn identity_handoff_retires_only_the_bound_runtime_server_owner() {
     .await
     .expect("publish owner receipt");
 
-    agent_semantic_client_db::runtime_server_supervisor::retire_runtime_server_owner_for_handoff(
+    agent_semantic_client_db::runtime_server_supervisor::drain_runtime_server_owner_for_handoff(
         state_home.path(),
         &endpoint,
     )
     .await
-    .expect("retire the bound owner");
+    .expect("drain the bound owner");
     assert!(
         agent_semantic_client_db::runtime_server_lifecycle::read_owner_receipt(state_home.path())
             .await
-            .expect("read retired owner receipt")
+            .expect("read drained owner receipt")
             .is_none()
     );
 
@@ -288,7 +326,7 @@ async fn identity_handoff_retires_only_the_bound_runtime_server_owner() {
     let mut stale_endpoint = endpoint.clone();
     stale_endpoint.owner_epoch += 1;
     assert!(
-        agent_semantic_client_db::runtime_server_supervisor::retire_runtime_server_owner_for_handoff(
+        agent_semantic_client_db::runtime_server_supervisor::drain_runtime_server_owner_for_handoff(
             state_home.path(),
             &stale_endpoint,
         )

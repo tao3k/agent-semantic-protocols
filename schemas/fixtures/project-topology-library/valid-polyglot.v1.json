@@ -1,7 +1,14 @@
 {
   "schemaId": "agent.semantic-protocols.project-topology-library",
   "schemaVersion": "1",
-  "workspaceIdentity": "workspace-example",
+  "projectWorkspace": {
+    "schemaId": "agent.semantic-protocols.project-workspace-binding",
+    "schemaVersion": "1",
+    "projectWorkspaceIdentity": "git+https://github.com/tao3k/agent-semantic-protocols.git#workspace/root",
+    "workspaceRootPath": ".",
+    "portability": "cross-machine",
+    "repositoryAliases": []
+  },
   "sourceGenerationDigest": "blake3-256:1111111111111111111111111111111111111111111111111111111111111111",
   "providerCatalogDigest": "blake3-256:2222222222222222222222222222222222222222222222222222222222222222",
   "libraryDigest": "blake3-256:3333333333333333333333333333333333333333333333333333333333333333",
@@ -35,13 +42,13 @@
   },
   "segments": [
     {"id":"segment-rust","ownerPath":"src/registry.rs","contentDigest":"blake3-256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc","skeletonDigest":"blake3-256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd","locatorDigest":"blake3-256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee","sccDigest":"blake3-256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff","stratum":0,"nodeIds":["registry","refresh"],"edgeIds":["declares-refresh"]},
-    {"id":"segment-org","ownerPath":"docs/publication.org","contentDigest":"blake3-256:1212121212121212121212121212121212121212121212121212121212121212","skeletonDigest":"blake3-256:1313131313131313131313131313131313131313131313131313131313131313","locatorDigest":"blake3-256:1414141414141414141414141414141414141414141414141414141414141414","sccDigest":"blake3-256:1515151515151515151515151515151515151515151515151515151515151515","stratum":0,"nodeIds":["publication","meaning"],"edgeIds":["explains-refresh"]}
+    {"id":"segment-org","ownerPath":"docs/publication.org","contentDigest":"blake3-256:1212121212121212121212121212121212121212121212121212121212121212","skeletonDigest":"blake3-256:1313131313131313131313131313131313131313131313131313131313131313","locatorDigest":"blake3-256:1414141414141414141414141414141414141414141414141414141414141414","sccDigest":"blake3-256:1515151515151515151515151515151515151515151515151515151515151515","stratum":0,"nodeIds":["publication"],"edgeIds":["explains-refresh"]}
   ],
   "nodes": [
     {"id":"registry","segmentId":"segment-rust","plane":"structural","language":"rust","kind":"Impl","name":"Registry","selector":"rust://src/registry.rs#item/implementation/type/Registry"},
     {"id":"refresh","segmentId":"segment-rust","plane":"structural","language":"rust","kind":"Method","name":"refresh_registry","selector":"rust://src/registry.rs#item/method/refresh_registry/scope/implementation-owner/type/Registry"},
     {"id":"publication","segmentId":"segment-org","plane":"structural","language":"org","kind":"Heading","name":"Publication","selector":"org://docs/publication.org#item/heading/Publication"},
-    {"id":"meaning","segmentId":"segment-org","plane":"synthesized-semantic","language":"natural-language","kind":"SemanticAnnotation","annotation":{"text":"Publication is the durable boundary reached by registry refresh.","state":"proposed","premiseWitnesses":["declares-refresh","explains-refresh"],"producer":"model-reasoner@receipt-1","bindingDigest":"blake3-256:7777777777777777777777777777777777777777777777777777777777777777"}}
+    {"id":"meaning","segmentId":null,"plane":"synthesized-semantic","language":"natural-language","kind":"SemanticAnnotation","annotation":{"text":"Publication is the durable boundary reached by registry refresh.","state":"proposed","premiseWitnesses":["declares-refresh","explains-refresh"],"producer":"model-reasoner@receipt-1","bindingDigest":"blake3-256:7777777777777777777777777777777777777777777777777777777777777777"}}
   ],
   "edges": [
     {"id":"declares-refresh","segmentId":"segment-rust","from":"registry","to":"refresh","relation":"DECLARES","modality":"parser-direct","bindingDigest":"blake3-256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd","witnesses":["rust-parser-1"]},

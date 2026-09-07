@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 //! Tree-sitter Bash traversal that projects executable command stages.
 //!
 //! This module owns syntax traversal only. Semantic behavior classification remains in the

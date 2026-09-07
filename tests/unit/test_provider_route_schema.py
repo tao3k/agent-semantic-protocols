@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 import json
 from pathlib import Path
 
@@ -75,7 +79,7 @@ def test_all_seven_provider_registrations_have_canonical_inventory_and_root_iden
         "typescript": ROOT / "languages/asp-typescript/provider/asp-provider-registration.json",
         "python": ROOT / "languages/asp-python/provider/asp-provider-registration.json",
         "julia": ROOT / "languages/AspJulia.jl/juliac/asp-provider-registration.json",
-        "gerbil-scheme": ROOT / "languages/gerbil-scheme-language-project-harness/provider/asp-provider-registration.json",
+        "gerbil-scheme": ROOT / "languages/asp-gerbil-scheme/provider/asp-provider-registration.json",
         "org": ROOT / "languages/orgize/provider/asp-provider-registration.json",
         "md": ROOT / "languages/orgize/provider/asp-md-provider-registration.json",
     }

@@ -1,6 +1,6 @@
-# SPDX-FileCopyrightText: Contributors to Agent Semantic Protocols
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 #
-# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 """Deploy the current workspace providers before runtime measurement."""
 
@@ -97,4 +97,4 @@ def install_workspace_provider(
 
 
 def _automation_environment() -> dict[str, str]:
-    return {**os.environ, "ASP_NO_AGENT": "1"}
+    return dict(os.environ)

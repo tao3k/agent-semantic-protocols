@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 use agent_semantic_client_db::RuntimeServerControlReceipt;
 use agent_semantic_client_db::RuntimeServerOperation;
@@ -359,6 +359,55 @@ pub(crate) async fn ensure_healthy_runtime_server_for_bounded_operation()
     Ok(receipt)
 }
 
+/// Establish one content-bound Runtime handoff and admit the exact workspace
+/// through the Runtime control plane before any data-plane `ClientFrame` is
+/// opened.
+///
+/// Workspace admission is deliberately not inferred from a Query payload. The
+/// canonical project root is resolved by the shared State identity owner and
+/// committed by the Runtime's single workspace-admission catalog authority.
+pub(crate) async fn ensure_healthy_runtime_server_for_workspace(
+    project_root: &Path,
+) -> Result<RuntimeServerControlReceipt, String> {
+    let mut ready = ensure_healthy_runtime_server_for_bounded_operation().await?;
+    let state_home = state_home()?;
+    let (observed_transaction, endpoint) = agent_semantic_client_db::runtime_server_lifecycle::
+        observe_resident_transaction_with_endpoint(&state_home)
+        .await?;
+    let ready_transaction = ready.resident_transaction.as_ref().ok_or_else(|| {
+        "reasonKind=runtime-client-handoff-unavailable failureLayer=runtime-resident-transaction Runtime bootstrap returned Healthy without its resident transaction".to_owned()
+    })?;
+    if observed_transaction.publication_nonce != ready_transaction.publication_nonce
+        || observed_transaction.applied_artifact_digest != ready_transaction.applied_artifact_digest
+        || observed_transaction.endpoint_owner_epoch != ready_transaction.endpoint_owner_epoch
+        || endpoint.runtime_binary_identity.content_digest()
+            != &ready_transaction.endpoint_binary_content_digest
+    {
+        return Err(
+            "reasonKind=runtime-workspace-admission-handoff-mismatch failureLayer=runtime-control-admission Runtime workspace admission crossed its content-bound handoff"
+                .to_owned(),
+        );
+    }
+    let resolved = agent_semantic_client_core::state_core::ResolvedState::resolve(project_root)?;
+    let canonical_root = resolved.workspace.root;
+    agent_semantic_client_db::runtime_server_control::ensure_runtime_server_workspace(
+        &endpoint,
+        &canonical_root,
+        request_identity("ensure-workspace").await?,
+    )
+    .await
+    .map_err(|error| {
+        format!(
+            "reasonKind=runtime-workspace-admission-failed failureLayer=runtime-control-admission {error}"
+        )
+    })?;
+    // Preserve the original transaction as the only data-plane capability.
+    // The control receipt is an admission acknowledgement, never a replacement
+    // Runtime identity.
+    ready.resident_transaction = Some(observed_transaction);
+    Ok(ready)
+}
+
 pub(crate) fn state_home() -> Result<PathBuf, String> {
     agent_semantic_runtime::state_core::resolve_state_home()
 }
@@ -366,7 +415,7 @@ pub(crate) fn state_home() -> Result<PathBuf, String> {
 pub(crate) fn runtime_server_telemetry_socket_path(state_home: &Path) -> Result<PathBuf, String> {
     Ok(agent_semantic_artifacts::StateHomeLayout::new(state_home)
         .runtime_state()
-        .serving()
+        .transport()
         .opentelemetry_socket())
 }
 
@@ -375,7 +424,7 @@ pub(crate) fn runtime_server_telemetry_query_socket_path(
 ) -> Result<PathBuf, String> {
     Ok(agent_semantic_artifacts::StateHomeLayout::new(state_home)
         .runtime_state()
-        .serving()
+        .transport()
         .opentelemetry_query_socket())
 }
 

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 //! Semantic admission for an immutable, reusable Project Topology generation.
 
 use std::collections::BTreeMap;
@@ -7,6 +11,8 @@ use std::fmt;
 use serde_json::Map;
 use serde_json::Value;
 
+use agent_semantic_content_identity::ProjectWorkspaceBinding;
+
 pub const PROJECT_TOPOLOGY_LIBRARY_SCHEMA_ID: &str =
     "agent.semantic-protocols.project-topology-library";
 pub const PROJECT_TOPOLOGY_LIBRARY_SCHEMA_VERSION: &str = "1";
@@ -15,6 +21,7 @@ pub const PROJECT_TOPOLOGY_LIBRARY_SCHEMA_VERSION: &str = "1";
 #[derive(Clone, Debug, PartialEq)]
 pub struct ProjectTopologyLibrary {
     packet: Value,
+    project_workspace: ProjectWorkspaceBinding,
     node_count: usize,
     segment_count: usize,
     consumers: BTreeSet<String>,
@@ -24,6 +31,7 @@ impl ProjectTopologyLibrary {
     /// Validate cross-record invariants before Runtime publication.
     pub fn admit_with_receipts(
         packet: Value,
+        manifest_project_workspace: &ProjectWorkspaceBinding,
         admitted_receipts: &BTreeMap<String, Value>,
     ) -> Result<Self, ProjectTopologyLibraryError> {
         let object = required_object(&packet, "packet")?;
@@ -33,7 +41,23 @@ impl ProjectTopologyLibrary {
             "schemaVersion",
             PROJECT_TOPOLOGY_LIBRARY_SCHEMA_VERSION,
         )?;
-        required_text(object, "workspaceIdentity")?;
+        let project_workspace = required_object_field(object, "projectWorkspace")?;
+        let decoded_project_workspace: ProjectWorkspaceBinding =
+            serde_json::from_value(Value::Object(project_workspace.clone())).map_err(|error| {
+                crate::project_topology_library::error(
+                    "topology-project-workspace-schema-mismatch",
+                    format!("projectWorkspace cannot be decoded: {error}"),
+                )
+            })?;
+        decoded_project_workspace.validate().map_err(|error| {
+            crate::project_topology_library::error(error.reason_kind(), error.to_string())
+        })?;
+        if &decoded_project_workspace != manifest_project_workspace {
+            return invalid(
+                "topology-project-workspace-mismatch",
+                "topology library does not equal the parser-owned manifest binding",
+            );
+        }
         for field in [
             "sourceGenerationDigest",
             "providerCatalogDigest",
@@ -132,16 +156,36 @@ impl ProjectTopologyLibrary {
             }
         }
 
-        let mut nodes = BTreeMap::<String, String>::new();
+        let mut nodes = BTreeMap::<String, Option<String>>::new();
+        let mut source_nodes = BTreeMap::<String, String>::new();
         for node in required_array(object, "nodes")? {
             let node = required_object(node, "nodes[]")?;
             let id = required_text(node, "id")?.to_owned();
-            let segment_id = required_text(node, "segmentId")?.to_owned();
-            if !segments.contains_key(&segment_id) {
-                return invalid(
-                    "topology-node-segment-unresolved",
-                    format!("node {id} references absent segment {segment_id}"),
-                );
+            let plane = required_text(node, "plane")?;
+            let segment_id = optional_text(node, "segmentId")?.map(str::to_owned);
+            match (plane, segment_id.as_deref()) {
+                ("synthesized-semantic", None) => {}
+                ("synthesized-semantic", Some(_)) => {
+                    return invalid(
+                        "topology-synthesized-node-source-segment-forbidden",
+                        format!("synthesized node {id} cannot claim source-segment ownership"),
+                    );
+                }
+                (_, Some(segment_id)) if segments.contains_key(segment_id) => {
+                    source_nodes.insert(id.clone(), segment_id.to_owned());
+                }
+                (_, Some(segment_id)) => {
+                    return invalid(
+                        "topology-node-segment-unresolved",
+                        format!("node {id} references absent segment {segment_id}"),
+                    );
+                }
+                (_, None) => {
+                    return invalid(
+                        "topology-source-node-segment-missing",
+                        format!("source-backed node {id} has no segment"),
+                    );
+                }
             }
             if nodes.insert(id.clone(), segment_id).is_some() {
                 return invalid("topology-duplicate-node-id", format!("duplicate node {id}"));
@@ -182,21 +226,16 @@ impl ProjectTopologyLibrary {
                 );
             }
         }
-        validate_segment_membership(&segments, &nodes, |segment| &segment.node_ids)
+        validate_segment_membership(&segments, &source_nodes, |segment| &segment.node_ids)
             .map_err(|message| error("topology-segment-node-membership-mismatch", message))?;
 
-        let mut edges = BTreeMap::<String, String>::new();
+        let mut edges = BTreeMap::<String, Option<String>>::new();
+        let mut source_edges = BTreeMap::<String, String>::new();
         let mut derived_edges = BTreeSet::new();
         for edge in required_array(object, "edges")? {
             let edge = required_object(edge, "edges[]")?;
             let id = required_text(edge, "id")?.to_owned();
-            let segment_id = required_text(edge, "segmentId")?.to_owned();
-            let segment = segments.get(&segment_id).ok_or_else(|| {
-                error(
-                    "topology-edge-segment-unresolved",
-                    format!("edge {id} references absent segment {segment_id}"),
-                )
-            })?;
+            let segment_id = optional_text(edge, "segmentId")?.map(str::to_owned);
             let from = required_text(edge, "from")?;
             let to = required_text(edge, "to")?;
             if !nodes.contains_key(from) || !nodes.contains_key(to) {
@@ -205,13 +244,28 @@ impl ProjectTopologyLibrary {
                     format!("edge {id} has an absent endpoint"),
                 );
             }
-            if edges.insert(id.clone(), segment_id).is_some() {
+            if edges.insert(id.clone(), segment_id.clone()).is_some() {
                 return invalid("topology-duplicate-edge-id", format!("duplicate edge {id}"));
             }
             let modality = required_text(edge, "modality")?;
             let binding = required_text(edge, "bindingDigest")?;
             let expected_binding = match modality {
-                "parser-direct" | "declared" => segment.skeleton_digest.as_str(),
+                "parser-direct" | "declared" => {
+                    let segment_id = segment_id.as_deref().ok_or_else(|| {
+                        error(
+                            "topology-source-edge-segment-missing",
+                            format!("source-backed edge {id} has no segment"),
+                        )
+                    })?;
+                    let segment = segments.get(segment_id).ok_or_else(|| {
+                        error(
+                            "topology-edge-segment-unresolved",
+                            format!("edge {id} references absent segment {segment_id}"),
+                        )
+                    })?;
+                    source_edges.insert(id.clone(), segment_id.to_owned());
+                    segment.skeleton_digest.as_str()
+                }
                 "derived" => inference_digest,
                 "proposed" => semantic_digest,
                 other => {
@@ -221,6 +275,12 @@ impl ProjectTopologyLibrary {
                     );
                 }
             };
+            if matches!(modality, "derived" | "proposed") && segment_id.is_some() {
+                return invalid(
+                    "topology-inferred-edge-source-segment-forbidden",
+                    format!("inferred edge {id} cannot claim source-segment ownership"),
+                );
+            }
             if binding != expected_binding {
                 return invalid(
                     "topology-edge-binding-mismatch",
@@ -241,7 +301,7 @@ impl ProjectTopologyLibrary {
                 );
             }
         }
-        validate_segment_membership(&segments, &edges, |segment| &segment.edge_ids)
+        validate_segment_membership(&segments, &source_edges, |segment| &segment.edge_ids)
             .map_err(|message| error("topology-segment-edge-membership-mismatch", message))?;
 
         let closure = required_object_field(object, "closure")?;
@@ -298,6 +358,7 @@ impl ProjectTopologyLibrary {
 
         Ok(Self {
             packet,
+            project_workspace: decoded_project_workspace,
             node_count: nodes.len(),
             segment_count: segments.len(),
             consumers,
@@ -320,10 +381,20 @@ impl ProjectTopologyLibrary {
         &self.packet
     }
 
-    pub fn workspace_identity(&self) -> &str {
-        self.packet["workspaceIdentity"]
+    pub fn project_workspace(&self) -> &ProjectWorkspaceBinding {
+        &self.project_workspace
+    }
+
+    pub fn project_workspace_identity(&self) -> &str {
+        self.packet["projectWorkspace"]["projectWorkspaceIdentity"]
             .as_str()
-            .expect("admitted workspace identity")
+            .expect("admitted project workspace identity")
+    }
+
+    pub fn workspace_root_path(&self) -> &str {
+        self.packet["projectWorkspace"]["workspaceRootPath"]
+            .as_str()
+            .expect("admitted workspace root path")
     }
 
     pub fn source_generation_digest(&self) -> &str {
@@ -366,6 +437,12 @@ impl ProjectTopologyLibrary {
         self.packet["identities"]["inferenceProgramDigest"]
             .as_str()
             .expect("admitted inference program digest")
+    }
+
+    pub fn closure_digest(&self) -> &str {
+        self.packet["closure"]["digest"]
+            .as_str()
+            .expect("admitted topology closure digest")
     }
 }
 
@@ -485,6 +562,20 @@ fn required_text<'a>(
                 format!("{field} must be non-empty text"),
             )
         })
+}
+
+fn optional_text<'a>(
+    object: &'a Map<String, Value>,
+    field: &str,
+) -> Result<Option<&'a str>, ProjectTopologyLibraryError> {
+    match object.get(field) {
+        Some(Value::Null) => Ok(None),
+        Some(Value::String(value)) if !value.is_empty() => Ok(Some(value)),
+        _ => Err(error(
+            "topology-schema-invalid",
+            format!("{field} must be non-empty text or null"),
+        )),
+    }
 }
 
 fn required_u64(

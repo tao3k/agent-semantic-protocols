@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 //! Owner-local snapshots and compact read results.
 
@@ -46,6 +46,19 @@ pub struct WorkspaceOwnerSnapshot {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WorkspaceOwnerProjection {
     pub owner: WorkspaceOwnerSnapshot,
+    pub relations: Vec<crate::ClientDbSourceIndexOwnedRelation>,
+}
+
+/// Immutable parser-owned input for one Project Topology source segment.
+///
+/// Relations retain their source owner explicitly. Runtime must never recover
+/// ownership from an endpoint identifier after durable restoration.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WorkspaceTopologySourceSegment {
+    pub owner_path: String,
+    pub content_digest: String,
+    pub authority: Option<agent_semantic_search::ResidentSearchAuthority>,
+    pub selectors: Vec<String>,
     pub relations: Vec<crate::ClientDbSourceIndexOwnedRelation>,
 }
 

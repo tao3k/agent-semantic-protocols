@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 use super::RuntimeProjectWorkspaceKey;
 use super::RuntimeSearchDerivedAttachmentIdentity;
 use super::RuntimeSearchDerivedAttachmentKind;
@@ -321,8 +325,22 @@ fn test_generation(digest: &str) -> std::sync::Arc<super::RuntimeQueryGeneration
         generation_digest: digest.to_owned(),
         generation_token: std::sync::atomic::AtomicU64::new(0),
         resident: None,
+        execution_publication: None,
+        project_topology_attachment: None,
         build_resource_receipt: std::sync::OnceLock::new(),
     })
+}
+
+#[test]
+fn search_playbook_readiness_rejects_generation_without_topology_attachment() {
+    let generation = test_generation("blake3-256:missing-topology");
+    let error = generation
+        .require_search_playbook_topology_attachment()
+        .expect_err("flat resident evidence cannot mint a Search GQL settlement");
+    assert_eq!(
+        error,
+        "reasonKind=runtime-project-topology-attachment-missing"
+    );
 }
 
 #[tokio::test]
@@ -332,13 +350,17 @@ async fn republishing_old_arc_cannot_mint_or_rollback() {
     let old = test_generation("blake3-256:old");
     let newer = test_generation("blake3-256:newer");
     let old_token = authority
-        .publish_ready(workspace_key.clone(), std::sync::Arc::clone(&old))
+        .publish_ready_fixture(workspace_key.clone(), std::sync::Arc::clone(&old))
         .expect("first publication");
     let newer_token = authority
-        .publish_ready(workspace_key.clone(), std::sync::Arc::clone(&newer))
+        .publish_ready_fixture(workspace_key.clone(), std::sync::Arc::clone(&newer))
         .expect("newer publication");
     assert!(newer_token > old_token);
-    assert!(authority.publish_ready(workspace_key.clone(), old).is_err());
+    assert!(
+        authority
+            .publish_ready_fixture(workspace_key.clone(), old)
+            .is_err()
+    );
     let current = authority.subscribe();
     let snapshot = current.borrow().clone();
     let RuntimeQueryGenerationState::Ready(current) =
@@ -348,6 +370,21 @@ async fn republishing_old_arc_cannot_mint_or_rollback() {
     };
     assert_eq!(current.generation_digest(), "blake3-256:newer");
     assert_eq!(current.generation_token(), newer_token);
+}
+
+#[tokio::test]
+async fn ready_publication_rejects_a_generation_without_project_topology_attachment() {
+    let authority = authority();
+    let workspace_key = key("project-test", "workspace-test");
+    let incomplete = test_generation("blake3-256:missing-topology");
+    let error = authority
+        .publish_ready(workspace_key.clone(), incomplete)
+        .expect_err("Ready is not visible before Project Topology is attached");
+    assert_eq!(
+        error,
+        "state=query-not-ready reasonKind=runtime-project-topology-attachment-missing"
+    );
+    assert!(authority.subscribe().borrow().get(&workspace_key).is_none());
 }
 
 #[tokio::test]
@@ -372,7 +409,7 @@ async fn identical_workspace_ids_in_distinct_projects_never_alias() {
         .expect("ProjectId partitions identical WorkspaceId values");
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn runtime_builder_owns_independent_non_blocking_derived_jobs() {
     use std::sync::Arc;
     use std::sync::Barrier;
@@ -384,14 +421,16 @@ async fn runtime_builder_owns_independent_non_blocking_derived_jobs() {
     let task_scope = agent_semantic_client_db::runtime_server_runtime::RuntimeServerTaskScope::new(
         "runtime-search-generation-builder-test",
     );
-    let builder = RuntimeSearchGenerationBuilder::new(
-        task_scope.clone(),
-        agent_semantic_client_db::runtime_server_runtime::RuntimeServerResourceSupervisor::new(
-            4,
-            256 * 1024 * 1024,
-        ),
-    )
-    .expect("test Runtime-owned search generation builder");
+    let builder = Arc::new(
+        RuntimeSearchGenerationBuilder::new(
+            task_scope.clone(),
+            agent_semantic_client_db::runtime_server_runtime::RuntimeServerResourceSupervisor::new(
+                4,
+                256 * 1024 * 1024,
+            ),
+        )
+        .expect("test Runtime-owned search generation builder"),
+    );
     let mut attachment_events = builder.subscribe_attachment_events();
     let graph_gate = Arc::new(Barrier::new(2));
     let lexical_gate = Arc::new(Barrier::new(2));
@@ -404,8 +443,10 @@ async fn runtime_builder_owns_independent_non_blocking_derived_jobs() {
     let lexical_started = started_sender;
     let lexical_completed = Arc::clone(&completed);
     let lexical_worker_gate = Arc::clone(&lexical_gate);
-    builder
-            .schedule_job(RuntimeSearchGenerationBuildJob {
+    let joint_builder = Arc::clone(&builder);
+    let joint_terminal = tokio::spawn(async move {
+        joint_builder
+            .build_job_and_wait(RuntimeSearchGenerationBuildJob {
                 graph: RuntimeSearchGenerationBuildOperation {
                     name: "test-graph-build",
                     identity: attachment_identity(RuntimeSearchDerivedAttachmentKind::Graph),
@@ -439,7 +480,8 @@ async fn runtime_builder_owns_independent_non_blocking_derived_jobs() {
                     fail: Box::new(|_| {}),
                 },
             })
-            .expect("cold publication only enqueues bounded derived work");
+            .await
+    });
 
     let first = started_receiver
         .recv_timeout(Duration::from_secs(2))
@@ -501,6 +543,10 @@ async fn runtime_builder_owns_independent_non_blocking_derived_jobs() {
     })
     .await
     .expect("exact-generation attachment stream emits every independent transition");
+    joint_terminal
+        .await
+        .expect("joint generation terminal task joins")
+        .expect("all derived attachments terminalize together");
     let snapshot = builder.derived_attachment_snapshot();
     assert_eq!(snapshot.len(), 2);
     assert!(
@@ -513,4 +559,92 @@ async fn runtime_builder_owns_independent_non_blocking_derived_jobs() {
     assert_eq!(receipt.active, 0);
     assert_eq!(receipt.leaked, 0);
     assert_eq!(receipt.started, receipt.completed);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn derived_generation_terminal_waits_for_every_attachment() {
+    use std::sync::Arc;
+    use std::sync::Barrier;
+    use std::sync::mpsc;
+    use std::time::Duration;
+
+    let task_scope = agent_semantic_client_db::runtime_server_runtime::RuntimeServerTaskScope::new(
+        "runtime-search-generation-atomic-terminal-test",
+    );
+    let builder = Arc::new(
+        RuntimeSearchGenerationBuilder::new(
+            task_scope.clone(),
+            agent_semantic_client_db::runtime_server_runtime::RuntimeServerResourceSupervisor::new(
+                4,
+                256 * 1024 * 1024,
+            ),
+        )
+        .expect("test Runtime-owned search generation builder"),
+    );
+    let graph_gate = Arc::new(Barrier::new(2));
+    let lexical_gate = Arc::new(Barrier::new(2));
+    let (started_sender, started_receiver) = mpsc::channel();
+    let graph_started = started_sender.clone();
+    let lexical_started = started_sender;
+    let graph_worker_gate = Arc::clone(&graph_gate);
+    let lexical_worker_gate = Arc::clone(&lexical_gate);
+    let terminal_builder = Arc::clone(&builder);
+    let terminal = tokio::spawn(async move {
+        terminal_builder
+            .build_job_and_wait(RuntimeSearchGenerationBuildJob {
+                graph: RuntimeSearchGenerationBuildOperation {
+                    name: "atomic-terminal-graph",
+                    identity: attachment_identity(RuntimeSearchDerivedAttachmentKind::Graph),
+                    resources: agent_semantic_client_db::runtime_server_runtime::RuntimeServerResourceRequest {
+                        cpu: 1,
+                        memory_bytes: 1024 * 1024,
+                    },
+                    build: Box::new(move || {
+                        graph_started.send(()).expect("graph start receipt");
+                        graph_worker_gate.wait();
+                        Ok(agent_semantic_client_db::runtime_server_workspace::RuntimeDerivedAttachmentBuildTiming::default())
+                    }),
+                    fail: Box::new(|_| {}),
+                },
+                lexical: RuntimeSearchGenerationBuildOperation {
+                    name: "atomic-terminal-lexical",
+                    identity: attachment_identity(RuntimeSearchDerivedAttachmentKind::Tantivy),
+                    resources: agent_semantic_client_db::runtime_server_runtime::RuntimeServerResourceRequest {
+                        cpu: 1,
+                        memory_bytes: 1024 * 1024,
+                    },
+                    build: Box::new(move || {
+                        lexical_started.send(()).expect("lexical start receipt");
+                        lexical_worker_gate.wait();
+                        Ok(agent_semantic_client_db::runtime_server_workspace::RuntimeDerivedAttachmentBuildTiming::default())
+                    }),
+                    fail: Box::new(|_| {}),
+                },
+            })
+            .await
+    });
+
+    started_receiver
+        .recv_timeout(Duration::from_secs(2))
+        .expect("first attachment starts");
+    started_receiver
+        .recv_timeout(Duration::from_secs(2))
+        .expect("second attachment starts");
+    assert!(!terminal.is_finished());
+    graph_gate.wait();
+    tokio::time::sleep(Duration::from_millis(10)).await;
+    assert!(
+        !terminal.is_finished(),
+        "one attachment cannot terminalize the generation"
+    );
+    lexical_gate.wait();
+    terminal
+        .await
+        .expect("terminal task joins")
+        .expect("both attachments admit one generation terminal");
+
+    builder.shutdown().await.expect("builder drain and join");
+    let receipt = task_scope.finish(0).expect("owned task scope drained");
+    assert_eq!(receipt.active, 0);
+    assert_eq!(receipt.leaked, 0);
 }

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 use std::collections::BTreeSet;
 use std::path::Path;
 use std::path::PathBuf;
@@ -337,7 +341,7 @@ fn canonical_config_document_sections_are_owned_by_testkit_and_aot_projection() 
 fn canonical_dsl_has_one_scenario_contract_for_every_rule_and_no_legacy_action_axis() {
     let production_source = agent_semantic_hook::default_client_config_template();
     assert!(
-        !production_source.contains("ASP_NO_AGENT"),
+        !production_source.contains("REMOVED_ENVIRONMENT_ESCAPE"),
         "bootstrap escape authority must never be represented as a Config policy rule"
     );
     let production =

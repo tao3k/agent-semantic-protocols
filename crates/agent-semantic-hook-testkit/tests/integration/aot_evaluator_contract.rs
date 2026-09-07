@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 use std::time::Duration;
 
 use agent_semantic_hook::ReaderProbeAccess;
@@ -382,16 +386,12 @@ fn exact_rtk_read_shape_persists_a_dynamic_probe_receipt() {
                 "message must state why the action is denied: {message}"
             );
             assert!(
-                message.contains("Use `asp search playbook --languages md`."),
-                "message must contain the Rust-rendered ASP Search Playbook contract: {message}"
+                message.contains("registered Markdown Search Playbook route"),
+                "message must route through the registered Search Playbook: {message}"
             );
             assert!(
-                !message.contains("{{searchPlaybookContract}}") && !message.contains("<path>"),
+                !message.contains("asp search playbook") && !message.contains("<path>"),
                 "message must not expose an unresolved recovery placeholder: {message}"
-            );
-            assert!(
-                !message.contains("Delegate it to ASP Explorer"),
-                "Host delegation prose belongs in the typed receipt, not the Agent message: {message}"
             );
         }
 

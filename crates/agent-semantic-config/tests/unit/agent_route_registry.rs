@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 use super::AgentSessionLifetime;
 use super::compile_agent_route;
@@ -50,7 +50,7 @@ fn canonical_agent_prompts_contain_only_role_boundary_and_playbook_flow() {
         "asp.search.playbook-receipt",
         "seed products",
         "hookMatcherGeneration",
-        "ASP_NO_AGENT",
+        "REMOVED_ENVIRONMENT_ESCAPE",
         "/root/",
         "agent.semantic-protocols",
     ];

@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 #+TITLE: Canonical V1 Turso Source-Index Performance Decision
 #+STATUS: Active
 
@@ -93,10 +97,9 @@ the release ASP binary, the warm-up result, the registry snapshot, and the
 measured step receipt. A count of scenario JSON files or historical command
 strings does not pass this gate.
 
-The gate is automation, not an interactive agent prompt: it sets
-=ASP_NO_AGENT=1= only for its child commands so the public JSON
-receipt remains available even when the parent runs inside an agent platform
-session. That override belongs to the gate runner, never to the provider
+The gate is automation, not an interactive agent prompt: it requests the
+public JSON receipt explicitly for each child command. Output-mode authority
+belongs to the gate runner, never to Hook enablement or the provider
 contract or a user's interactive command.
 
 Each gate command owns an isolated process group. On timeout the runner must

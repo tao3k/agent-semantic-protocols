@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 use super::selector_is_workspace_owned;
 
 fn runtime(project_root: &std::path::Path) -> crate::HookRuntime {

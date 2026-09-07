@@ -165,7 +165,7 @@
     }
   ],
   "nonExecutingRefactorPlan": {
-    "phase1": "repair or obtain Host IPC permission and rerun parser-owned inventory; do not use ASP_NO_AGENT as acceptance",
+    "phase1": "repair or obtain Host IPC permission and rerun parser-owned inventory; environment escapes are not acceptance",
     "phase2": "write deterministic failing tests against current V1 owner boundaries",
     "phase3": "change existing V1 commit payload in one transaction to exact artifact/provider/workspace/source digests",
     "phase4": "change prime and subsequent pin/echo semantics at the existing route without adapters or dual-serving",

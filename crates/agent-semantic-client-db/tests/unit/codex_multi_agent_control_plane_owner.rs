@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 use agent_semantic_client_db::codex_multi_agent_control_plane_owner::CodexMultiAgentControlPlaneOwner;
 use agent_semantic_client_db::workspace_db_ipc::WorkspaceDbIpcOperation;

@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 fn shallow_database_route() -> agent_semantic_search_projection::SemanticSearchRouteDecision {
     use agent_semantic_search_projection::SemanticMutationClass;
@@ -37,7 +37,7 @@ async fn turso_0_7_bootstrap_rejects_existing_db_without_format_receipt() {
     let state = ResolvedState::resolve_with_state_home(&project_root, &state_home)
         .expect("resolve state with explicit state home");
     state
-        .ensure_minimal_layout()
+        .ensure_workspace_state_layout()
         .expect("commit State Core identity before DB bootstrap");
     let engine = ClientDbEngine::from_resolved_state(&state);
     let turso_path = engine.db_path().to_path_buf();
@@ -69,8 +69,8 @@ async fn turso_backend_bootstrap_smoke_creates_local_file() {
     init_git_repository(&project_root);
     let state = ResolvedState::resolve_with_state_home(&project_root, &state_home)
         .expect("resolve state with explicit state home");
-    state
-        .ensure_minimal_layout()
+    let workspace_paths = state
+        .ensure_workspace_state_layout()
         .expect("commit State Core identity before DB bootstrap");
     let engine = ClientDbEngine::from_resolved_state(&state);
     let turso_path = engine.db_path().to_path_buf();
@@ -95,7 +95,7 @@ async fn turso_backend_bootstrap_smoke_creates_local_file() {
     assert_eq!(report.schema_version, 1);
     assert_eq!(report.schema_bootstrap, "ready");
     assert_eq!(report.reason, None);
-    assert_eq!(report.db_path, state.paths.client_dir.join("facts.turso"));
+    assert_eq!(report.db_path, workspace_paths.facts);
     assert_eq!(report.db_path, turso_path);
     assert!(report.db_path.exists());
     let replacement_documents = [
@@ -173,7 +173,7 @@ async fn turso_backend_bootstrap_accepts_preexisting_empty_operation_lock_file()
     let state = ResolvedState::resolve_with_state_home(&project_root, &state_home)
         .expect("resolve state with explicit state home");
     state
-        .ensure_minimal_layout()
+        .ensure_workspace_state_layout()
         .expect("commit State Core identity before DB bootstrap");
     let engine = ClientDbEngine::from_resolved_state(&state);
     let turso_path = engine.db_path().to_path_buf();
@@ -207,7 +207,7 @@ async fn turso_backend_bootstrap_is_idempotent_across_two_sequential_calls() {
     let state = ResolvedState::resolve_with_state_home(&project_root, &state_home)
         .expect("resolve state with explicit state home");
     state
-        .ensure_minimal_layout()
+        .ensure_workspace_state_layout()
         .expect("commit State Core identity before DB bootstrap");
     let engine = ClientDbEngine::from_resolved_state(&state);
     let turso_path = engine.db_path().to_path_buf();

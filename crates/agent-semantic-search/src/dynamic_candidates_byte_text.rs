@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 //! Byte-oriented primitives used by dynamic candidate ingestion.
 
 pub(super) fn find_byte(needle: u8, haystack: &[u8]) -> Option<usize> {

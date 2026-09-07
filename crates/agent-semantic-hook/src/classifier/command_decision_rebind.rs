@@ -1,13 +1,15 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 //! Rebinds config-compiled shell decisions to exact one-shot Host envelopes.
 
 use serde_json::Value;
 
 use crate::HookDecision;
 
-use super::core::ShellReadSourceKey;
 use super::core::collect_payload_tool_actions;
 use super::core::resolve_dispatch_decision;
-use super::core::shell_read_source_keys_from_actions;
 use super::core::with_action_receipt_fields;
 
 /// Normalized lookup key for a one-action shell command decision shard.

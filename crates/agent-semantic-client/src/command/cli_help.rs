@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 include!("cli_help_model.rs");
 pub(crate) fn install_plugin_command() -> Command {
@@ -183,9 +183,9 @@ fn graph_command() -> Command {
 fn workspace_search_playbook_command() -> Command {
     Command::new("playbook")
         .bin_name("asp search playbook")
-        .about("Run or recover the provider-owned Search Playbook contract")
+        .about("Run the Runtime-owned Search Playbook")
         .override_usage(
-            "asp search playbook [--languages <LANGUAGE(|LANGUAGE)*>] [--documents <DOCUMENT(|DOCUMENT)*>] [--workspace <WORKSPACE>] [--fd <NATIVE_ARG>...] [--rg <NATIVE_ARG>...] [--tantivy <QUERY(|QUERY)*>] [--syntax <PRODUCER> <NATIVE_ARG>...] [--graph <LANGUAGE> <NATIVE_ARG>...]",
+            "asp search playbook [--languages <LANGUAGE(|LANGUAGE)*>] [--documents <DOCUMENT(|DOCUMENT)*>] [--workspace <WORKSPACE>] [--fd <NATIVE_ARG>...] [--rg <NATIVE_ARG>...] [--tantivy <QUERY(|QUERY)*>] [--native-syntax <SELECTOR>...] [--graph <LANGUAGE> <NATIVE_ARG>...]",
         )
         .arg(
             Arg::new("languages")
@@ -199,7 +199,7 @@ fn workspace_search_playbook_command() -> Command {
         )
         .arg(Arg::new("workspace").long("workspace").value_name("ROOT"))
         .after_help(
-            "With missing axes, returns only the targeted Example and Grammar contract. Native --fd/--rg/--syntax/--graph tokens are forwarded unchanged; `|` composes alternatives inside each independent axis.",
+            "One Runtime-bound playbook combines native fd and rg acquisition, Tantivy retrieval, parser-owned exact selectors, and graph projection. Missing evidence remains explicit; no provider-local contract or planner recommendation is substituted.",
         )
 }
 
@@ -500,10 +500,10 @@ fn selected_command_default(args: &[String]) -> Command {
             .about("Plan workspace Search routes")
             .subcommand(workspace_search_playbook_command()),
         (Some("query"), _) => Command::new("query")
-            .bin_name("asp query")
-            .about("Materialize one exact selector or run a provider-native syntax query")
+            .bin_name("asp query playbook")
+            .about("Materialize one canonical set of exact parser-owned selectors")
             .override_usage(
-                "asp query --selector <SELECTOR> [--projection <source|callable-skeleton>] [--json] [--workspace <WORKSPACE>]\n    asp query (--languages <LANGUAGE(|LANGUAGE)*>|--documents <DOCUMENT(|DOCUMENT)*>) --syntax <PRODUCER> <NATIVE_ARG>... [--projection matches] [--json] [--workspace <WORKSPACE>]",
+                "asp query playbook --selector <SELECTOR>... [--projection <source|callable-skeleton>] [--json] [--workspace <WORKSPACE>]",
             ),
         (Some(document), Some(command))
             if is_document_facade(document)

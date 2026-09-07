@@ -1,3 +1,7 @@
+-- SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+--
+-- SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 import ASPProof.RuntimeArtifactAuthority
 
 namespace ASPProof.Audit.RuntimeArtifactAuthority
@@ -26,6 +30,12 @@ open ASPProof.ASPActiveHealthyArtifactRetention
 #check same_digest_uses_one_physical_generation
 #check checkout_build_is_provenance_not_execution
 #check local_path_is_not_runtime_authority
+#check runtime_alias_points_to_path_visible_install
+#check path_visible_install_points_to_immutable_artifact
+#check reverse_path_to_runtime_alias_is_rejected
+#check runtime_alias_cannot_point_directly_to_artifact
+#check canonical_protocol_binary_chain_is_admitted
+#check two_node_protocol_binary_cycle_is_rejected
 #check delegated_receipt_cannot_reenter_build
 #check checkout_domain_does_not_admit_staging_only
 #check staging_domain_does_not_admit_checkout_only

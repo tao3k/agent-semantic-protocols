@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 //! Typed artifact retention planning and leases.
 
@@ -72,7 +72,7 @@ pub struct RetentionLease {
 #[serde(tag = "state", rename_all = "kebab-case")]
 pub enum CleanupDisposition {
     Keep { reason: String },
-    Retire { reason: String },
+    Delete { reason: String },
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -91,9 +91,9 @@ pub struct CleanupPlan {
     pub retain_for_ms: u64,
     pub selection: CleanupSelection,
     pub retained_count: usize,
-    pub retired_count: usize,
+    pub deleted_count: usize,
     pub retained_bytes: u64,
-    pub retired_bytes: u64,
+    pub deleted_bytes: u64,
     pub entries: Vec<CleanupPlanEntry>,
 }
 
@@ -159,7 +159,7 @@ impl RetentionPlanner {
                         reason: "inside-retention-window".to_string(),
                     }
                 } else {
-                    CleanupDisposition::Retire {
+                    CleanupDisposition::Delete {
                         reason: "unleased-and-expired".to_string(),
                     }
                 };
@@ -174,15 +174,15 @@ impl RetentionPlanner {
             .iter()
             .filter(|entry| matches!(entry.disposition, CleanupDisposition::Keep { .. }))
             .count();
-        let retired_count = entries.len() - retained_count;
+        let deleted_count = entries.len() - retained_count;
         let retained_bytes = entries
             .iter()
             .filter(|entry| matches!(entry.disposition, CleanupDisposition::Keep { .. }))
             .map(|entry| entry.object.byte_count)
             .sum();
-        let retired_bytes = entries
+        let deleted_bytes = entries
             .iter()
-            .filter(|entry| matches!(entry.disposition, CleanupDisposition::Retire { .. }))
+            .filter(|entry| matches!(entry.disposition, CleanupDisposition::Delete { .. }))
             .map(|entry| entry.object.byte_count)
             .sum();
 
@@ -193,9 +193,9 @@ impl RetentionPlanner {
             retain_for_ms: self.retain_for_ms,
             selection,
             retained_count,
-            retired_count,
+            deleted_count,
             retained_bytes,
-            retired_bytes,
+            deleted_bytes,
             entries,
         })
     }

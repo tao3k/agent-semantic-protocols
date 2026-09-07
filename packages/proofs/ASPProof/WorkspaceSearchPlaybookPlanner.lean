@@ -1,3 +1,7 @@
+-- SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+--
+-- SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 namespace ASPProof.WorkspaceSearchPlaybookPlanner
 
 /-! Search PlayBook is a single request, not a stored search session. -/
@@ -7,75 +11,6 @@ structure Binding where
   workspaceId : String
   contentGenerationDigest : String
   deriving DecidableEq
-
-structure SearchPlaybookProjection where
-  exampleText : String
-  grammarText : String
-  deriving DecidableEq
-
-structure ProviderSearchPlaybookContract where
-  languageId : String
-  providerId : String
-  syntaxContractId : String
-  syntaxContractDigest : String
-  projection : SearchPlaybookProjection
-  deriving DecidableEq
-
-def compileSearchPlaybookContract
-    (languageId providerId : String)
-    (contract : ProviderSearchPlaybookContract) :
-    Option SearchPlaybookProjection :=
-  if languageId = contract.languageId ∧ providerId = contract.providerId then
-    some contract.projection
-  else
-    none
-
-theorem successful_contract_compile_is_provider_owned
-    (languageId providerId : String)
-    (contract : ProviderSearchPlaybookContract)
-    (projection : SearchPlaybookProjection)
-    (compiled :
-      compileSearchPlaybookContract languageId providerId contract = some projection) :
-    languageId = contract.languageId ∧
-      providerId = contract.providerId ∧
-      projection = contract.projection := by
-  unfold compileSearchPlaybookContract at compiled
-  split at compiled
-  next matched =>
-    simp only [Option.some.injEq] at compiled
-    exact ⟨matched.1, matched.2, compiled.symm⟩
-  next =>
-    contradiction
-
-theorem mismatched_provider_has_no_contract_fallback
-    (languageId providerId : String)
-    (contract : ProviderSearchPlaybookContract)
-    (mismatch :
-      languageId ≠ contract.languageId ∨ providerId ≠ contract.providerId) :
-    compileSearchPlaybookContract languageId providerId contract = none := by
-  unfold compileSearchPlaybookContract
-  split
-  next matched =>
-    exact False.elim (mismatch.elim (fun h => h matched.1) (fun h => h matched.2))
-  next =>
-    rfl
-
-structure ContractQueryWork where
-  generationReadCount : Nat
-  filesystemReadCount : Nat
-  providerProcessCount : Nat
-  deriving DecidableEq
-
-def contractQueryWork : ContractQueryWork :=
-  { generationReadCount := 0
-    filesystemReadCount := 0
-    providerProcessCount := 0 }
-
-theorem contract_query_precedes_generation_admission :
-    contractQueryWork.generationReadCount = 0 ∧
-      contractQueryWork.filesystemReadCount = 0 ∧
-      contractQueryWork.providerProcessCount = 0 := by
-  exact ⟨rfl, rfl, rfl⟩
 
 structure Route where
   binding : Binding

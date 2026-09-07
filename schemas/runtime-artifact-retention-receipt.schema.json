@@ -31,28 +31,28 @@
     "scannedCandidateCount": { "type": "integer", "minimum": 0 },
     "retainedCandidateCount": { "type": "integer", "minimum": 0 },
     "removedCandidateCount": { "type": "integer", "minimum": 0 },
-    "retiredSupersededStoreCount": {
+    "removedSupersededStoreCount": {
       "type": "integer",
       "minimum": 0,
       "maximum": 2,
-      "description": "Number of pre-generation physical store roots atomically retired after a canonical active or healthy generation was admitted."
+      "description": "Number of pre-generation physical store roots atomically staged and removed after a canonical active or healthy generation was admitted."
     },
-    "retiredSupersededLeaseDirectoryCount": {
+    "removedSupersededLeaseDirectoryCount": {
       "type": "integer",
       "minimum": 0,
-      "description": "Number of binary-namespaced candidate lease directories retired after generation-keyed leases became authoritative."
+      "description": "Number of binary-namespaced candidate lease directories removed after generation-keyed leases became authoritative."
     },
-    "retiredMisplacedLauncherRootCount": {
-      "type": "integer",
-      "minimum": 0,
-      "maximum": 1,
-      "description": "Whether a State Home bin directory containing only managed links into the active Runtime generation was retired."
-    },
-    "retiredSupersededProviderStagingRootCount": {
+    "removedMisplacedLauncherRootCount": {
       "type": "integer",
       "minimum": 0,
       "maximum": 1,
-      "description": "Whether the superseded runtime/providers staging root was atomically retired after Artifacts staging became authoritative."
+      "description": "Whether a State Home bin directory containing only managed links into the active Runtime generation was removed."
+    },
+    "removedSupersededProviderStagingRootCount": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "Whether the superseded Provider staging root was atomically removed after Artifacts staging became authoritative."
     },
     "ignoredEntryCount": { "type": "integer", "minimum": 0 },
     "reclaimedBytes": { "type": "integer", "minimum": 0 },

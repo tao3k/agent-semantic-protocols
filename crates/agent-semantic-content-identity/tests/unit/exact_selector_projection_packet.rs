@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 use super::build_exact_selector_projection_packet_v1;
 use crate::exact_selector_merkle::ExactProjectionModeV1;
 use crate::exact_selector_merkle::canonical_content_digest;

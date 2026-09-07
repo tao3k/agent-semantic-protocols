@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 //! Parses global `asp` hook client configuration from TOML.
 
@@ -47,8 +47,6 @@ pub struct HookClientConfigFile {
     pub experimental: BTreeMap<String, BTreeMap<String, bool>>,
     #[serde(default)]
     pub agent_org_artifacts: Option<HookClientAgentOrgArtifactsConfig>,
-    #[serde(default)]
-    pub recovery_prompt: HookClientRecoveryPromptConfig,
     #[serde(default)]
     pub agent_calling: HookClientAgentCallingConfig,
     #[serde(default)]
@@ -182,20 +180,6 @@ pub(super) fn admit_canonical_provider_routes(
         );
     }
     Ok(())
-}
-
-/// Optional hook recovery prompt template and per-client agent-flow fragments.
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct HookClientRecoveryPromptConfig {
-    #[serde(default)]
-    pub template: Option<String>,
-    #[serde(default)]
-    pub codex_agent_flow: Option<String>,
-    #[serde(default)]
-    pub claude_agent_flow: Option<String>,
-    #[serde(default)]
-    pub default_agent_flow: Option<String>,
 }
 
 /// Optional agent-facing hook decision text for session routing.

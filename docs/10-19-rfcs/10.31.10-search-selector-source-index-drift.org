@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 * Purpose
 This note records a Search Frame / EvidenceGraph failure mode: search can
 advertise an exact parser-owned selector that the provider later cannot resolve

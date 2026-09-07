@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -9,19 +9,19 @@ use std::time::Duration;
 use tokio::sync::{Mutex, Notify};
 use tokio::task::JoinSet;
 
-use super::{durable_provider_binding_matches_current, spawn_runtime_owned_durability_task};
+use super::{durable_runtime_bundle_matches_current, spawn_runtime_owned_durability_task};
 
 #[test]
-fn provider_binding_drift_skips_restore_while_exact_binding_admits_it() {
-    assert!(!durable_provider_binding_matches_current(
+fn runtime_bundle_drift_skips_restore_while_exact_binding_admits_it() {
+    assert!(!durable_runtime_bundle_matches_current(
         None,
         Some("current")
     ));
-    assert!(!durable_provider_binding_matches_current(
+    assert!(!durable_runtime_bundle_matches_current(
         Some("stale"),
         Some("current")
     ));
-    assert!(durable_provider_binding_matches_current(
+    assert!(durable_runtime_bundle_matches_current(
         Some("current"),
         Some("current")
     ));

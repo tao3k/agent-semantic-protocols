@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 //! Catalog loading and fingerprinting for tree-sitter-compatible `.scm` query surfaces.
 //!
 //! This module does not link tree-sitter runtime or grammar crates. It prepares

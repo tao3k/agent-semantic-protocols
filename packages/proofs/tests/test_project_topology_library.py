@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Semantic admission tests for the reusable Project Topology library."""
 
 from __future__ import annotations
@@ -17,6 +21,9 @@ from asp_proofs.search_topology_settlement import (
 ROOT = Path(__file__).resolve().parents[3]
 SCHEMA = json.loads(
     (ROOT / "schemas/project-topology-library.v1.schema.json").read_text()
+)
+PROJECT_WORKSPACE_SCHEMA = json.loads(
+    (ROOT / "schemas/project-workspace-binding.v1.schema.json").read_text()
 )
 VALID = ROOT / "schemas/fixtures/project-topology-library/valid-polyglot.v1.json"
 
@@ -42,10 +49,14 @@ def admitted_receipts(library, *semantic_receipt_ids):
     return receipts
 
 
+def validate_library(library, receipts):
+    validate_topology_library(library, SCHEMA, PROJECT_WORKSPACE_SCHEMA, receipts)
+
+
 def test_complete_topology_library_requires_an_independently_admitted_rebuild(library):
-    validate_topology_library(library, SCHEMA, admitted_receipts(library))
+    validate_library(library, admitted_receipts(library))
     with pytest.raises(SettlementError) as caught:
-        validate_topology_library(library, SCHEMA, {})
+        validate_library(library, {})
     assert caught.value.reason_kind == "topology-rebuild-receipt-unadmitted"
 
 
@@ -62,7 +73,7 @@ def test_rebuild_receipt_cannot_replay_across_source_or_program(
     library["fromScratchRebuildReceipt"][field] = value
     admitted = admitted_receipts(library)
     with pytest.raises(SettlementError) as caught:
-        validate_topology_library(library, SCHEMA, admitted)
+        validate_library(library, admitted)
     assert caught.value.reason_kind == "topology-rebuild-receipt-mismatch"
 
 
@@ -81,19 +92,19 @@ def test_accepted_semantics_require_the_exact_admitted_annotation_receipt(librar
         }
     ]
     admitted = admitted_receipts(library, "annotation-admission-1")
-    validate_topology_library(library, SCHEMA, admitted)
+    validate_library(library, admitted)
     library["semanticAdmissionReceipts"][0]["semanticTopologyDigest"] = (
         "blake3-256:" + "f" * 64
     )
     with pytest.raises(SettlementError) as caught:
-        validate_topology_library(library, SCHEMA, admitted)
+        validate_library(library, admitted)
     assert caught.value.reason_kind == "annotation-admission-receipt-mismatch"
 
 
 def test_segment_inventory_must_exactly_cover_active_nodes(library):
     library["segments"][0]["nodeIds"].remove("refresh")
     with pytest.raises(SettlementError) as caught:
-        validate_topology_library(library, SCHEMA, admitted_receipts(library))
+        validate_library(library, admitted_receipts(library))
     assert caught.value.reason_kind == "topology-segment-node-membership-mismatch"
 
 
@@ -121,7 +132,7 @@ def test_deleted_premise_cannot_leave_a_derived_descendant(library):
     ]
     library["segments"][0]["edgeIds"].remove("declares-refresh")
     with pytest.raises(SettlementError) as caught:
-        validate_topology_library(library, SCHEMA, admitted_receipts(library))
+        validate_library(library, admitted_receipts(library))
     assert caught.value.reason_kind == "topology-derived-dependency-invalidated"
 
 
@@ -133,5 +144,5 @@ def test_derived_closure_requires_a_dependency_record(library):
     edge["proofRef"] = "proof-declares-refresh"
     changed["closure"]["derivedEdgeIds"] = [edge["id"]]
     with pytest.raises(SettlementError) as caught:
-        validate_topology_library(changed, SCHEMA, admitted_receipts(changed))
+        validate_library(changed, admitted_receipts(changed))
     assert caught.value.reason_kind == "topology-derived-dependency-missing"

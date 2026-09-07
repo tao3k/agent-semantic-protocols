@@ -1,11 +1,11 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 use std::process::Command;
 
 #[test]
-fn exact_query_requires_content_bound_handoff_before_any_endpoint_lookup() {
+fn exact_query_requires_a_published_activation_before_runtime_bootstrap() {
     let state_home = tempfile::tempdir().expect("isolated State Home");
     let workspace = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
@@ -14,6 +14,7 @@ fn exact_query_requires_content_bound_handoff_before_any_endpoint_lookup() {
     let output = Command::new(env!("CARGO_BIN_EXE_asp"))
         .args([
             "query",
+            "playbook",
             "--selector",
             "rust://crates/agent-semantic-client/src/language_command.rs#item/struct/RuntimeLanguageCommandClient",
             "--workspace",
@@ -34,8 +35,9 @@ fn exact_query_requires_content_bound_handoff_before_any_endpoint_lookup() {
         "isolated State Home has no handoff"
     );
     assert!(
-        terminal.contains("reasonKind=runtime-client-handoff-unavailable"),
-        "Query must fail at the content-bound handoff boundary: {terminal}"
+        terminal.contains("reasonKind=runtime-client-bootstrap-failed")
+            && terminal.contains("reasonKind=activation-event-missing"),
+        "Query must fail at the activation admission boundary: {terminal}"
     );
     assert!(
         !terminal.contains("endpoint.v1.json")

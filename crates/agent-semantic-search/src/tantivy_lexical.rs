@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 //! Generation-local Tantivy lexical authority.
 //!
 //! The index is built once from one immutable owner generation. Queries return
@@ -26,53 +30,6 @@ use tantivy::schema::IndexRecordOption;
 use tantivy::schema::Schema;
 use tantivy::schema::TextFieldIndexing;
 use tantivy::schema::TextOptions;
-
-pub(crate) fn execute_local_tantivy_blocks(
-    owners: &[crate::local_playbook_acquisition::WorkspaceOwner],
-    blocks: &[Vec<String>],
-) -> Result<crate::LocalSearchAxisReceipt, String> {
-    if blocks.is_empty() {
-        return Ok(crate::LocalSearchAxisReceipt::default());
-    }
-    let owner_terms = crate::local_playbook_acquisition::owner_terms(owners);
-    let (schema, term_field, owner_id_field) = lexical_schema();
-    let index = Index::create_in_ram(schema);
-    let mut writer = SingleSegmentIndexWriter::<TantivyDocument>::new(index, 50_000_000)
-        .map_err(|error| format!("create local Search Playbook Tantivy writer: {error}"))?;
-    for (owner_id, terms) in owner_terms.iter().enumerate() {
-        writer
-            .add_document(owner_document(term_field, owner_id_field, owner_id, terms))
-            .map_err(|error| format!("add local Search Playbook Tantivy owner: {error}"))?;
-    }
-    let index = writer
-        .finalize()
-        .map_err(|error| format!("finalize local Search Playbook Tantivy index: {error}"))?;
-    let reader = index
-        .reader()
-        .map_err(|error| format!("open local Search Playbook Tantivy reader: {error}"))?;
-    let lexical = TantivyLexicalIndex {
-        _index: index,
-        reader,
-        term_field,
-        owner_count: owners.len(),
-    };
-    let owner_paths = crate::local_playbook_acquisition::owner_paths(owners);
-    let mut branches = Vec::with_capacity(blocks.len());
-    for block in blocks {
-        let query = block.join(" ");
-        let terms = crate::source_index_lookup_terms(&query)
-            .into_iter()
-            .filter(|term| !term.chars().any(char::is_whitespace))
-            .collect::<Vec<_>>();
-        let paths = lexical
-            .search(&terms, 4_096)?
-            .into_iter()
-            .filter_map(|owner_id| owner_paths.get(owner_id).cloned())
-            .collect();
-        branches.push(paths);
-    }
-    Ok(crate::local_playbook_acquisition::axis_receipt(branches))
-}
 
 pub(crate) struct TantivyLexicalIndex {
     _index: Index,

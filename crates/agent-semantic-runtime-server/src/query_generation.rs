@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 //! Immutable Ready-generation query executor owned by Runtime Server.
 
 use std::pin::Pin;
@@ -80,7 +84,10 @@ struct RuntimeSearchGenerationBuildOperation {
 }
 
 enum RuntimeSearchGenerationBuilderCommand {
-    Build(RuntimeSearchGenerationBuildJob),
+    BuildAndWait(
+        RuntimeSearchGenerationBuildJob,
+        tokio::sync::oneshot::Sender<Result<(), String>>,
+    ),
     Shutdown(tokio::sync::oneshot::Sender<()>),
 }
 
@@ -106,120 +113,136 @@ fn emit_runtime_search_build_failure(
     );
 }
 
-fn spawn_runtime_search_generation_build(
-    builds: &mut tokio::task::JoinSet<Result<(), String>>,
+async fn run_runtime_search_generation_build(
     task_scope: agent_semantic_client_db::runtime_server_runtime::RuntimeServerTaskScope,
     resource_supervisor: agent_semantic_client_db::runtime_server_runtime::RuntimeServerResourceSupervisor,
     attachment_hub: RuntimeSearchDerivedAttachmentHub,
     operation: RuntimeSearchGenerationBuildOperation,
+) -> Result<(), String> {
+    let RuntimeSearchGenerationBuildOperation {
+        name,
+        identity,
+        resources,
+        build,
+        fail,
+    } = operation;
+    let permit = match resource_supervisor.acquire(resources).await {
+        Ok(permit) => permit,
+        Err(error) => {
+            fail(error.clone());
+            attachment_hub.publish(
+                &identity,
+                RuntimeSearchDerivedAttachmentState::Failed,
+                None,
+                Some("resource-admission-failed"),
+            );
+            emit_runtime_search_build_failure(name, "resource-admission-failed", &error, None);
+            return Err(error);
+        }
+    };
+    let permit_receipt = permit.receipt();
+    attachment_hub.publish(
+        &identity,
+        RuntimeSearchDerivedAttachmentState::Building,
+        None,
+        None,
+    );
+    let task = match task_scope.spawn_blocking(name, build) {
+        Ok(task) => task,
+        Err(error) => {
+            fail(error.clone());
+            attachment_hub.publish(
+                &identity,
+                RuntimeSearchDerivedAttachmentState::Failed,
+                None,
+                Some("task-admission-failed"),
+            );
+            emit_runtime_search_build_failure(
+                name,
+                "task-admission-failed",
+                &error,
+                Some(permit_receipt),
+            );
+            return Err(error);
+        }
+    };
+    let timing = match task.join().await {
+        Ok(Ok(timing)) => timing,
+        Ok(Err(error)) => {
+            fail(error.clone());
+            attachment_hub.publish(
+                &identity,
+                RuntimeSearchDerivedAttachmentState::Failed,
+                None,
+                Some("build-failed"),
+            );
+            emit_runtime_search_build_failure(name, "build-failed", &error, Some(permit_receipt));
+            return Err(error);
+        }
+        Err(error) => {
+            fail(error.clone());
+            attachment_hub.publish(
+                &identity,
+                RuntimeSearchDerivedAttachmentState::Failed,
+                None,
+                Some("task-join-failed"),
+            );
+            emit_runtime_search_build_failure(
+                name,
+                "task-join-failed",
+                &error,
+                Some(permit_receipt),
+            );
+            return Err(error);
+        }
+    };
+    attachment_hub.publish(
+        &identity,
+        RuntimeSearchDerivedAttachmentState::Ready,
+        Some((timing.build_micros, timing.finalize_micros)),
+        None,
+    );
+    eprintln!(
+        "[runtime-search-generation-build-resource] {}",
+        serde_json::json!({
+            "schemaId": "agent.semantic-protocols.runtime-search-generation-build-resource-use-receipt",
+            "schemaVersion": "1",
+            "state": "ready",
+            "task": name,
+            "permit": permit_receipt,
+            "buildMicros": timing.build_micros,
+            "finalizeMicros": timing.finalize_micros,
+        })
+    );
+    Ok(())
+}
+
+fn spawn_runtime_search_generation_build_and_wait(
+    builds: &mut tokio::task::JoinSet<Result<(), String>>,
+    task_scope: agent_semantic_client_db::runtime_server_runtime::RuntimeServerTaskScope,
+    resource_supervisor: agent_semantic_client_db::runtime_server_runtime::RuntimeServerResourceSupervisor,
+    attachment_hub: RuntimeSearchDerivedAttachmentHub,
+    job: RuntimeSearchGenerationBuildJob,
+    terminal: tokio::sync::oneshot::Sender<Result<(), String>>,
 ) {
     builds.spawn(async move {
-        let RuntimeSearchGenerationBuildOperation {
-            name,
-            identity,
-            resources,
-            build,
-            fail,
-        } = operation;
-        let permit = match resource_supervisor.acquire(resources).await {
-            Ok(permit) => permit,
-            Err(error) => {
-                fail(error.clone());
-                attachment_hub.publish(
-                    &identity,
-                    RuntimeSearchDerivedAttachmentState::Failed,
-                    None,
-                    Some("resource-admission-failed"),
-                );
-                emit_runtime_search_build_failure(
-                    name,
-                    "resource-admission-failed",
-                    &error,
-                    None,
-                );
-                return Err(error);
-            }
-        };
-        let permit_receipt = permit.receipt();
-        attachment_hub.publish(
-            &identity,
-            RuntimeSearchDerivedAttachmentState::Building,
-            None,
-            None,
+        let (graph, lexical) = tokio::join!(
+            run_runtime_search_generation_build(
+                task_scope.clone(),
+                resource_supervisor.clone(),
+                attachment_hub.clone(),
+                job.graph,
+            ),
+            run_runtime_search_generation_build(
+                task_scope,
+                resource_supervisor,
+                attachment_hub,
+                job.lexical,
+            ),
         );
-        let task = match task_scope.spawn_blocking(name, build) {
-            Ok(task) => task,
-            Err(error) => {
-                fail(error.clone());
-                attachment_hub.publish(
-                    &identity,
-                    RuntimeSearchDerivedAttachmentState::Failed,
-                    None,
-                    Some("task-admission-failed"),
-                );
-                emit_runtime_search_build_failure(
-                    name,
-                    "task-admission-failed",
-                    &error,
-                    Some(permit_receipt),
-                );
-                return Err(error);
-            }
-        };
-        let timing = match task.join().await {
-            Ok(Ok(timing)) => timing,
-            Ok(Err(error)) => {
-                fail(error.clone());
-                attachment_hub.publish(
-                    &identity,
-                    RuntimeSearchDerivedAttachmentState::Failed,
-                    None,
-                    Some("build-failed"),
-                );
-                emit_runtime_search_build_failure(
-                    name,
-                    "build-failed",
-                    &error,
-                    Some(permit_receipt),
-                );
-                return Err(error);
-            }
-            Err(error) => {
-                fail(error.clone());
-                attachment_hub.publish(
-                    &identity,
-                    RuntimeSearchDerivedAttachmentState::Failed,
-                    None,
-                    Some("task-join-failed"),
-                );
-                emit_runtime_search_build_failure(
-                    name,
-                    "task-join-failed",
-                    &error,
-                    Some(permit_receipt),
-                );
-                return Err(error);
-            }
-        };
-        attachment_hub.publish(
-            &identity,
-            RuntimeSearchDerivedAttachmentState::Ready,
-            Some((timing.build_micros, timing.finalize_micros)),
-            None,
-        );
-        eprintln!(
-            "[runtime-search-generation-build-resource] {}",
-            serde_json::json!({
-                "schemaId": "agent.semantic-protocols.runtime-search-generation-build-resource-use-receipt",
-                "schemaVersion": "1",
-                "state": "ready",
-                "task": name,
-                "permit": permit_receipt,
-                "buildMicros": timing.build_micros,
-                "finalizeMicros": timing.finalize_micros,
-            })
-        );
-        Ok(())
+        let result = graph.and(lexical);
+        let _ = terminal.send(result.clone());
+        result
     });
 }
 
@@ -258,16 +281,15 @@ impl RuntimeSearchGenerationBuilder {
                 tokio::select! {
                     command = receiver.recv() => {
                         match command {
-                            Some(RuntimeSearchGenerationBuilderCommand::Build(job)) => {
-                                for operation in [job.graph, job.lexical] {
-                                    spawn_runtime_search_generation_build(
-                                        &mut builds,
-                                        build_task_scope.clone(),
-                                        build_resources.clone(),
-                                        build_attachment_hub.clone(),
-                                        operation,
-                                    );
-                                }
+                            Some(RuntimeSearchGenerationBuilderCommand::BuildAndWait(job, terminal)) => {
+                                spawn_runtime_search_generation_build_and_wait(
+                                    &mut builds,
+                                    build_task_scope.clone(),
+                                    build_resources.clone(),
+                                    build_attachment_hub.clone(),
+                                    job,
+                                    terminal,
+                                );
                             }
                             Some(RuntimeSearchGenerationBuilderCommand::Shutdown(receipt)) => {
                                 receiver.close();
@@ -283,17 +305,18 @@ impl RuntimeSearchGenerationBuilder {
                 }
             }
             while let Ok(command) = receiver.try_recv() {
-                let RuntimeSearchGenerationBuilderCommand::Build(job) = command else {
-                    continue;
-                };
-                for operation in [job.graph, job.lexical] {
-                    spawn_runtime_search_generation_build(
-                        &mut builds,
-                        build_task_scope.clone(),
-                        build_resources.clone(),
-                        build_attachment_hub.clone(),
-                        operation,
-                    );
+                match command {
+                    RuntimeSearchGenerationBuilderCommand::BuildAndWait(job, terminal) => {
+                        spawn_runtime_search_generation_build_and_wait(
+                            &mut builds,
+                            build_task_scope.clone(),
+                            build_resources.clone(),
+                            build_attachment_hub.clone(),
+                            job,
+                            terminal,
+                        );
+                    }
+                    RuntimeSearchGenerationBuilderCommand::Shutdown(_) => {}
                 }
             }
             while builds.join_next().await.is_some() {}
@@ -320,7 +343,7 @@ impl RuntimeSearchGenerationBuilder {
         })
     }
 
-    pub(super) fn schedule(
+    pub(super) async fn build_and_wait(
         &self,
         key: &RuntimeProjectWorkspaceKey,
         _project_root: &std::path::Path,
@@ -338,19 +361,22 @@ impl RuntimeSearchGenerationBuilder {
             workload_bucket(lexical_bytes, owner_count, changed_owner_count, true);
         let parallel_workload_key =
             workload_bucket(lexical_bytes, owner_count, changed_owner_count, false);
-        let throughput_by_workload = self
-            .throughput_by_workload
-            .lock()
-            .map_err(|_| "search build throughput history is poisoned".to_owned())?;
-        let mut bulk_history = throughput_by_workload
-            .get(&bulk_workload_key)
-            .cloned()
-            .unwrap_or_default();
-        let mut parallel_history = throughput_by_workload
-            .get(&parallel_workload_key)
-            .cloned()
-            .unwrap_or_default();
-        drop(throughput_by_workload);
+        let (mut bulk_history, mut parallel_history) = {
+            let throughput_by_workload = self
+                .throughput_by_workload
+                .lock()
+                .map_err(|_| "search build throughput history is poisoned".to_owned())?;
+            (
+                throughput_by_workload
+                    .get(&bulk_workload_key)
+                    .cloned()
+                    .unwrap_or_default(),
+                throughput_by_workload
+                    .get(&parallel_workload_key)
+                    .cloned()
+                    .unwrap_or_default(),
+            )
+        };
         let cached_decisions = {
             let store = self
                 .calibration_store
@@ -447,7 +473,7 @@ impl RuntimeSearchGenerationBuilder {
         let process_memory_budget_bytes = self.process_memory_budget_bytes;
         let (lexical_cpu, lexical_memory) =
             (selected.1.chosen_workers, selected.1.memory_budget_bytes);
-        self.schedule_job(RuntimeSearchGenerationBuildJob {
+        self.build_job_and_wait(RuntimeSearchGenerationBuildJob {
             graph: RuntimeSearchGenerationBuildOperation {
                 name: "search-generation-graph-build",
                 identity: RuntimeSearchDerivedAttachmentIdentity {
@@ -551,21 +577,19 @@ impl RuntimeSearchGenerationBuilder {
                 }),
             },
         })
+        .await
     }
 
-    fn schedule_job(&self, job: RuntimeSearchGenerationBuildJob) -> Result<(), String> {
+    async fn build_job_and_wait(&self, job: RuntimeSearchGenerationBuildJob) -> Result<(), String> {
         if !self.accepting.load(Ordering::Acquire) {
             return Err("search generation builder is draining".to_owned());
         }
         let queued = [job.graph.identity.clone(), job.lexical.identity.clone()];
-        let permit = self.sender.try_reserve().map_err(|error| match error {
-            tokio::sync::mpsc::error::TrySendError::Full(_) => {
-                "search generation builder queue is full".to_owned()
-            }
-            tokio::sync::mpsc::error::TrySendError::Closed(_) => {
-                "search generation builder is closed".to_owned()
-            }
-        })?;
+        let permit = self
+            .sender
+            .reserve()
+            .await
+            .map_err(|_| "search generation builder is closed".to_owned())?;
         for identity in queued {
             self.attachment_hub.publish(
                 &identity,
@@ -574,8 +598,14 @@ impl RuntimeSearchGenerationBuilder {
                 None,
             );
         }
-        permit.send(RuntimeSearchGenerationBuilderCommand::Build(job));
-        Ok(())
+        let (terminal_sender, terminal_receiver) = tokio::sync::oneshot::channel();
+        permit.send(RuntimeSearchGenerationBuilderCommand::BuildAndWait(
+            job,
+            terminal_sender,
+        ));
+        terminal_receiver.await.map_err(|_| {
+            "search generation builder stopped before the joint attachment terminal".to_owned()
+        })?
     }
 
     pub(super) fn subscribe_attachment_events(

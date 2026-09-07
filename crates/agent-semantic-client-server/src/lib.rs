@@ -1,8 +1,7 @@
 #![deny(dead_code)]
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
-
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 //! Tokio client lifecycle and request contracts for ASP language servers.
 
@@ -16,6 +15,7 @@ pub use client_protocol::AspClientDispatchFuture;
 pub use client_protocol::AspClientDispatchRequest;
 pub use client_protocol::AspClientDispatcher;
 pub use client_protocol::AspClientFrameService;
+pub use client_protocol::AspClientResponseTelemetry;
 pub use grpc::AspClientGrpcService;
 pub use grpc::AspClientGrpcTransport;
 pub use grpc::CLIENT_FRAME_SESSION_CAPACITY;

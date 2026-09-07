@@ -1,4 +1,7 @@
 #![deny(dead_code)]
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 //! Root semantic agent hook runtime for provider manifests and project activations.
 
@@ -10,8 +13,6 @@ pub mod aot_evaluator;
 mod aot_evaluator_cli;
 #[cfg(feature = "evaluator")]
 mod hook_binary;
-#[cfg(feature = "evaluator")]
-mod no_agent_escape;
 #[cfg(feature = "evaluator")]
 mod search_subagent_output_contract;
 
@@ -27,8 +28,6 @@ pub use aot_evaluator_cli::evaluate_payload_with_policy_bundle_and_state_home;
 pub use aot_evaluator_cli::evaluate_payload_with_policy_bundle_and_state_home_with_receipt;
 #[cfg(feature = "evaluator")]
 pub use aot_evaluator_cli::main_entry as run_aot_evaluator_cli;
-#[cfg(feature = "evaluator")]
-pub use aot_evaluator_cli::payload_has_process_no_agent_assignment;
 #[cfg(feature = "evaluator")]
 pub use hook_binary::run_from_env as run_hook_binary_from_env;
 
@@ -127,7 +126,6 @@ mod hook_config_global;
 #[cfg(feature = "compiler")]
 mod hook_recovery_admission;
 #[cfg(feature = "compiler")]
-mod hook_recovery_prompt;
 #[cfg(feature = "compiler")]
 pub mod host_native_handoff;
 #[cfg(feature = "compiler")]
@@ -208,8 +206,6 @@ pub use crate::active_artifact_receipt::materialize_active_asp_artifact_receipt;
 #[cfg(feature = "compiler")]
 pub use crate::active_artifact_receipt::verify_active_asp_artifact_receipt;
 #[cfg(feature = "compiler")]
-pub use classifier::HOOK_TRIGGER_PROMPT_FILE_NAME;
-#[cfg(feature = "compiler")]
 pub use classifier::HookClassificationRequest;
 #[cfg(feature = "compiler")]
 pub use classifier::ShellCommandKey;
@@ -220,21 +216,11 @@ pub use classifier::classify_hook;
 #[cfg(feature = "compiler")]
 pub use classifier::classify_hook_with_config;
 #[cfg(feature = "compiler")]
-pub use classifier::default_hook_trigger_prompt_message;
-#[cfg(feature = "compiler")]
-pub use classifier::hook_trigger_prompt_document;
-#[cfg(feature = "compiler")]
-pub use classifier::materialize_hook_trigger_prompt_agent_flow_for_client;
-#[cfg(feature = "compiler")]
 pub use classifier::materialize_source_access_deny_message;
-#[cfg(feature = "compiler")]
-pub use classifier::merge_hook_trigger_prompt_document;
 #[cfg(feature = "compiler")]
 pub use classifier::rebind_command_decision_to_payload;
 #[cfg(feature = "compiler")]
 pub use classifier::rebind_command_decision_to_payload_with_keys;
-#[cfg(feature = "compiler")]
-pub use classifier::render_hook_trigger_prompt_document;
 #[cfg(feature = "compiler")]
 pub use classifier::shell_command_key;
 #[cfg(feature = "compiler")]

@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 use std::fs;
 use std::path::Path;
@@ -105,7 +105,6 @@ fn install(state_home: &Path) -> Output {
         .args(["install", "binary"])
         .current_dir(workspace)
         .env("ASP_STATE_HOME", state_home)
-        .env_remove("ASP_NO_AGENT")
         .output()
         .expect("run actual built asp install binary")
 }

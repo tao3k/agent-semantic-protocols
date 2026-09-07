@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 use agent_semantic_provider_protocol::validate_provider_stream_envelope;
 use tokio_stream::Stream;
 use tokio_stream::StreamExt;

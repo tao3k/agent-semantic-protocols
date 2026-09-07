@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 #+TITLE: RFC: Evidence-Layer Architecture — from lint collection to agent engineering system
 #+AUTHOR: agent-semantic-protocols
 #+DATE: 2026-01-18

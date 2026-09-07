@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 #+title: 10.06.11 Selector-seed typed topology
 #+subtitle: One graph authority for exact-selector SearchLoop entry and Compact Render
 #+options: toc:2 num:t

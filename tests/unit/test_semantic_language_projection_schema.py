@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Contract tests for query-free language projection artifacts."""
 
 from __future__ import annotations
@@ -23,7 +27,7 @@ def projection_packet() -> dict[str, object]:
         "protocolVersion": "1",
         "languageId": "gerbil-scheme",
         "harness": {
-            "harnessId": "gerbil-scheme-language-project-harness",
+            "harnessId": "asp-gerbil-scheme",
             "parserAbi": "gerbil-parser-v1",
             "selectorDialect": "gerbil-scheme",
         },

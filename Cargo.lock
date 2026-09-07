@@ -86,6 +86,7 @@ dependencies = [
  "agent-semantic-schema-manager",
  "agent-semantic-search",
  "agent-semantic-search-projection",
+ "agent-semantic-topology",
  "agent-semantic-tree-sitter",
  "aho-corasick",
  "asp-rust 0.1.2",
@@ -410,6 +411,7 @@ dependencies = [
  "agent-semantic-schema-manager",
  "agent-semantic-search",
  "agent-semantic-search-projection",
+ "agent-semantic-topology",
  "asp-rust-project-harness-policy",
  "blake3",
  "criterion",
@@ -475,7 +477,9 @@ dependencies = [
  "agent-semantic-content-identity",
  "agent-semantic-topology",
  "asp-rust-project-harness-policy",
+ "blake3",
  "jsonschema",
+ "orgize",
  "serde",
  "serde_json",
 ]
@@ -495,9 +499,15 @@ dependencies = [
 name = "agent-semantic-topology"
 version = "0.1.0"
 dependencies = [
+ "agent-semantic-content-identity",
  "asp-rust-project-harness-policy",
+ "blake3",
  "meta-relational-reasoning",
+ "orgize",
+ "serde",
  "serde_json",
+ "tempfile",
+ "tokio",
 ]
 
 [[package]]

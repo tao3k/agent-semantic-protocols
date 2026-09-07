@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 #+TITLE: ASP Client Server Authority
 #+STATUS: proposed
 
@@ -245,8 +249,8 @@ Transport selection is atomic and fail-closed.  The client selects the one
 published capability before opening a socket.  An absent or unreachable
 capability returns one typed =transport-unavailable= terminal before I/O; it
 does not first attempt a global =/tmp= socket, translate =EPERM= into lifecycle
-state, retry under a different transport, spawn another Runtime, or use
-=ASP_NO_AGENT=.  A Host may publish exactly one of the UID-scoped Unix binding,
+state, retry under a different transport, spawn another Runtime, or disable
+Hook policy. A Host may publish exactly one of the UID-scoped Unix binding,
 an inherited connected descriptor, or loopback HTTP/2.  All three mount the
 same Runtime-owned =ClientFrame= service and carry the same endpoint identity;
 none is a second admission, generation, cache, or provider authority.
@@ -265,7 +269,7 @@ performs initialization and request dispatch on the inherited =ClientFrame=
 channel.  Runtime observation, recovery, and replacement remain Host
 supervisor operations.  A sandboxed client without a complete usable
 capability returns typed =transport-unavailable= before socket I/O; it never
-falls through to pathname bootstrap, spawn, retry, or =ASP_NO_AGENT=.
+falls through to pathname bootstrap, spawn, retry, or Hook configuration.
 
 This rule is necessary even when the data request itself already supports an
 inherited descriptor.  A pathname-based control preflight in front of that

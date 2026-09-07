@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 //! Validation rules for hook client config files.
 
@@ -17,7 +17,6 @@ use super::document::HookClientAgentCallingConfig;
 use super::document::HookClientAgentOrgArtifactsArchiveWarningConfig;
 use super::document::HookClientAgentOrgArtifactsConfig;
 use super::document::HookClientConfigFile;
-use super::document::HookClientRecoveryPromptConfig;
 use super::expand_command_profile_prefixes;
 use super::expand_command_set_prefixes;
 use super::routing::HookClientRuleConfig;
@@ -32,7 +31,6 @@ pub(super) fn validate_config(config: &HookClientConfigFile) -> Result<(), Strin
         config.contract_fingerprint.as_deref(),
     )?;
     validate_agent_org_artifacts(config.agent_org_artifacts.as_ref())?;
-    validate_recovery_prompt(&config.recovery_prompt)?;
     validate_agent_calling(&config.agent_calling)?;
     validate_profiles(&config.profiles)?;
     validate_provider_routes(&config.provider_routes)?;
@@ -386,22 +384,6 @@ fn validate_rule_dispatches(rules: &[HookClientRuleConfig]) -> Result<(), String
         )?;
     }
     Ok(())
-}
-
-fn validate_recovery_prompt(config: &HookClientRecoveryPromptConfig) -> Result<(), String> {
-    validate_optional_non_empty("recoveryPrompt.template", config.template.as_deref())?;
-    validate_optional_non_empty(
-        "recoveryPrompt.codexAgentFlow",
-        config.codex_agent_flow.as_deref(),
-    )?;
-    validate_optional_non_empty(
-        "recoveryPrompt.claudeAgentFlow",
-        config.claude_agent_flow.as_deref(),
-    )?;
-    validate_optional_non_empty(
-        "recoveryPrompt.defaultAgentFlow",
-        config.default_agent_flow.as_deref(),
-    )
 }
 
 fn validate_command_profiles(configs: &[HookClientCommandProfileConfig]) -> Result<(), String> {

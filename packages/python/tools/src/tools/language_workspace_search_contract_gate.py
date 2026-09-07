@@ -1,6 +1,6 @@
-# SPDX-FileCopyrightText: Contributors to Agent Semantic Protocols
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 #
-# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 """Scenario runner for the single public Search Playbook contract gate."""
 
@@ -37,7 +37,7 @@ def run_contract(
     run_asp: RunAsp | None = None,
 ) -> None:
     context = _contract_context(repo_root, asp_bin, run_asp)
-    _validate_search_playbook_contract(context)
+    _validate_no_provider_local_search_playbook_contract(context)
     for case in CONTRACT_CASES:
         assert_failure_contains(
             context.run(_workspace_args(case)),
@@ -63,40 +63,15 @@ def _contract_context(
     )
 
 
-def _validate_search_playbook_contract(context: ContractContext) -> None:
+def _validate_no_provider_local_search_playbook_contract(context: ContractContext) -> None:
     registration = json.loads(
         (context.root / "languages/asp-rust/provider/asp-provider-registration.json")
         .read_text()
     )
-    contract = registration.get("searchPlaybookContract")
-    if not isinstance(contract, dict) or set(contract) != {
-        "contractId",
-        "contractVersion",
-        "languageId",
-        "providerId",
-        "syntaxContractId",
-        "syntaxContractDigest",
-        "projection",
-    }:
-        raise ContractFailure("rust Search Playbook contract is absent or not closed")
-    projection = contract.get("projection")
-    if not isinstance(projection, dict) or set(projection) != {"example", "grammar"}:
-        raise ContractFailure("Search Playbook projection must be exactly Example + Grammar")
-    example = projection["example"]
-    grammar = projection["grammar"]
-    for value in [example, grammar]:
-        if "--intent" in value or "--graph pgql" in value or "next=" in value.lower():
-            raise ContractFailure("Search Playbook contract exposes a removed reasoning control")
-    for needle in [
-        "asp search playbook",
-        "--fd",
-        "--rg",
-        "--tantivy",
-        "--syntax rust",
-        "--graph gql",
-    ]:
-        if needle not in example or needle not in grammar:
-            raise ContractFailure(f"Search Playbook contract omits {needle!r}")
+    if "searchPlaybookContract" in registration:
+        raise ContractFailure(
+            "provider registration retains removed provider-local Search Playbook authority"
+        )
 
 
 def _workspace_args(case: SearchContractCase) -> list[str]:

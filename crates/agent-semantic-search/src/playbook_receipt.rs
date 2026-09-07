@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 //! One public Search playbook receipt over an admitted resident generation.
 
 use std::collections::BTreeSet;
@@ -6,7 +10,6 @@ use std::collections::BTreeSet;
 mod model;
 pub use model::SEARCH_PLAYBOOK_RECEIPT_SCHEMA_ID;
 pub use model::SearchPlaybookByteEvidence;
-pub use model::SearchPlaybookColdRgExecution;
 pub use model::SearchPlaybookCorrelation;
 pub use model::SearchPlaybookDecision;
 pub use model::SearchPlaybookEvidence;
@@ -19,6 +22,7 @@ pub use model::SearchPlaybookPythonGraphEvidence;
 pub use model::SearchPlaybookPythonGraphExecution;
 pub use model::SearchPlaybookReceipt;
 pub use model::SearchPlaybookReceiptInput;
+pub use model::SearchPlaybookResidentLexicalExecution;
 pub use model::SearchPlaybookRgEvidence;
 pub use model::SearchPlaybookSourceAcquisitionEvidence;
 pub use model::SearchPlaybookStage;
@@ -27,9 +31,20 @@ pub use model::SearchPlaybookStageMetrics;
 pub fn build_search_playbook_receipt(
     input: SearchPlaybookReceiptInput,
 ) -> Result<SearchPlaybookReceipt, String> {
-    let cold_rg_executed = input.cold_rg.is_some();
-    if cold_rg_executed && input.indexed_lexical_executed {
-        return Err("search playbook cannot execute cold rg and Tantivy in one request".to_owned());
+    let resident_lexical_executed = input.resident_lexical.is_some();
+    if resident_lexical_executed && input.indexed_lexical_executed {
+        return Err(
+            "search playbook cannot execute resident lexical and Tantivy in one request".to_owned(),
+        );
+    }
+    if let Some(execution) = &input.resident_lexical {
+        if execution.generation_digest != input.runtime.generation_digest
+            || crate::canonical_blake3_digest(&execution.coverage_input_digest).as_deref()
+                != Ok(execution.coverage_input_digest.as_str())
+            || execution.process_count != 0
+        {
+            return Err("search playbook indexed lexical evidence is invalid".to_owned());
+        }
     }
     let python_graph_executed = input.python_graph.is_some();
     let mut lexical_owners = input.runtime.owner_paths.clone();
@@ -38,7 +53,7 @@ pub fn build_search_playbook_receipt(
     let mut graph_owners = input.graph.ranked_owner_paths.clone();
     graph_owners.sort();
     graph_owners.dedup();
-    let lexical = if input.indexed_lexical_executed || cold_rg_executed {
+    let lexical = if input.indexed_lexical_executed || resident_lexical_executed {
         lexical_owners.iter().cloned().collect::<BTreeSet<_>>()
     } else {
         BTreeSet::new()
@@ -120,23 +135,32 @@ pub fn build_search_playbook_receipt(
                 complete: input.native_syntax_state == "ready",
             },
             indexed_lexical: SearchPlaybookLexicalEvidence {
-                state: if input.indexed_lexical_executed {
+                state: if input.indexed_lexical_executed || resident_lexical_executed {
                     "executed"
                 } else {
                     "skipped"
                 }
                 .to_owned(),
-                backend: "tantivy".to_owned(),
+                backend: if input.indexed_lexical_executed {
+                    "tantivy"
+                } else if resident_lexical_executed {
+                    "resident-fixed-string"
+                } else {
+                    "unavailable"
+                }
+                .to_owned(),
                 generation_digest: generation_digest.clone(),
                 index_artifact_digest: index_artifact_digest.clone(),
-                candidate_owner_ids: if input.indexed_lexical_executed {
+                candidate_owner_ids: if input.indexed_lexical_executed
+                    || resident_lexical_executed
+                {
                     lexical.iter().cloned().collect()
                 } else {
                     Vec::new()
                 },
                 indexed_owner_count: input.indexed_owner_count,
                 admitted_owner_count: lexical.len(),
-                complete: input.indexed_lexical_executed,
+                complete: input.indexed_lexical_executed || resident_lexical_executed,
             },
             byte_evidence: SearchPlaybookByteEvidence {
                 state: if input.byte_evidence_executed {
@@ -193,44 +217,14 @@ pub fn build_search_playbook_receipt(
                 unresolved_frontier_count: 0,
             },
             ripgrep: SearchPlaybookRgEvidence {
-                state: if cold_rg_executed { "executed" } else { "skipped" }.to_owned(),
-                reason_kind: if cold_rg_executed {
-                    "content-generation-cold-recall"
-                } else {
-                    "ready-path-does-not-execute-ripgrep"
-                }
-                .to_owned(),
-                mode: if cold_rg_executed {
-                    "immutable-generation-corpus"
-                } else {
-                    "not-requested"
-                }
-                .to_owned(),
-                generation_digest: input
-                    .cold_rg
-                    .as_ref()
-                    .map_or_else(|| generation_digest.clone(), |execution| {
-                        execution.generation_digest.clone()
-                    }),
-                coverage_input_digest: input
-                    .cold_rg
-                    .as_ref()
-                    .map(|execution| execution.coverage_input_digest.clone()),
-                candidate_owner_ids: input
-                    .cold_rg
-                    .as_ref()
-                    .map(|execution| {
-                        let mut owners = execution.candidate_owner_ids.clone();
-                        owners.sort();
-                        owners.dedup();
-                        owners
-                    })
-                    .unwrap_or_default(),
-                process_count: input
-                    .cold_rg
-                    .as_ref()
-                    .map_or(0, |execution| execution.process_count),
-                complete: cold_rg_executed,
+                state: "skipped".to_owned(),
+                reason_kind: "ready-path-does-not-execute-ripgrep".to_owned(),
+                mode: "not-requested".to_owned(),
+                generation_digest: generation_digest.clone(),
+                coverage_input_digest: None,
+                candidate_owner_ids: Vec::new(),
+                process_count: 0,
+                complete: false,
             },
             python_graph: SearchPlaybookPythonGraphEvidence {
                 state: if input.python_graph.is_some() {
@@ -268,10 +262,10 @@ pub fn build_search_playbook_receipt(
         decision: SearchPlaybookDecision {
             chosen_path: if python_graph_executed {
                 "resident-native-syntax-python-graph-fusion"
-            } else if cold_rg_executed && input.resident_graph_executed {
-                "cold-rg-native-syntax-graph-fusion"
-            } else if cold_rg_executed {
-                "cold-rg-native-syntax-fusion"
+            } else if resident_lexical_executed && input.resident_graph_executed {
+                "resident-lexical-native-syntax-graph-fusion"
+            } else if resident_lexical_executed {
+                "resident-lexical-native-syntax-fusion"
             } else if !input.resident_graph_executed {
                 "resident-native-syntax-lexical"
             } else {
@@ -280,8 +274,8 @@ pub fn build_search_playbook_receipt(
             .to_owned(),
             explanation: if python_graph_executed {
                 "One admitted generation correlated provider-native syntax, the executed Tantivy frontier, Rust resident-graph ranking, and an exact generation-bound ASP Python Graph evaluation; ripgrep remains explicitly skipped without fabricated evidence."
-            } else if cold_rg_executed {
-                "One admitted content generation executed one bounded ripgrep process over its immutable corpus, then projected provider-native syntax without waiting for Tantivy or graph attachments."
+            } else if resident_lexical_executed {
+                "One admitted content generation performed a bounded zero-process resident lexical scan over its immutable corpus, then projected provider-native syntax without fabricating ripgrep execution or waiting for Tantivy."
             } else {
                 "One admitted generation correlated provider-native syntax with the actually executed Tantivy or resident byte-evidence read and Rust resident-graph ranking; ripgrep and Python Graph remain explicit skipped capabilities without fabricated evidence."
             }
@@ -297,7 +291,7 @@ pub fn build_search_playbook_receipt(
                 .saturating_add(input.native_syntax_elapsed_micros)
                 .saturating_add(
                     input
-                        .cold_rg
+                        .resident_lexical
                         .as_ref()
                         .map_or(0, |execution| execution.elapsed_micros),
                 ),
@@ -305,6 +299,8 @@ pub fn build_search_playbook_receipt(
                 native_syntax: input.native_syntax_elapsed_micros,
                 indexed_lexical: if input.indexed_lexical_executed {
                     input.runtime.resident_read_elapsed_micros
+                } else if let Some(execution) = &input.resident_lexical {
+                    execution.elapsed_micros
                 } else {
                     0
                 },
@@ -318,10 +314,7 @@ pub fn build_search_playbook_receipt(
                 } else {
                     0
                 },
-                ripgrep: input
-                    .cold_rg
-                    .as_ref()
-                    .map_or(0, |execution| execution.elapsed_micros),
+                ripgrep: 0,
                 python_graph: input
                     .python_graph
                     .as_ref()
@@ -438,29 +431,27 @@ impl SearchPlaybookReceipt {
                     && self.evidence.ripgrep.candidate_owner_ids.is_empty()
                     && self.evidence.ripgrep.process_count == 0
                     && !self.evidence.ripgrep.complete => {}
+            _ => return Err("search playbook ripgrep evidence is invalid".to_owned()),
+        }
+        match self.evidence.indexed_lexical.state.as_str() {
             "executed"
-                if self.evidence.ripgrep.reason_kind == "content-generation-cold-recall"
-                    && self.evidence.ripgrep.mode == "immutable-generation-corpus"
-                    && self.evidence.ripgrep.generation_digest == self.generation_digest
+                if matches!(
+                    self.evidence.indexed_lexical.backend.as_str(),
+                    "tantivy" | "resident-fixed-string"
+                ) && self.evidence.indexed_lexical.complete
                     && self
                         .evidence
-                        .ripgrep
-                        .coverage_input_digest
-                        .as_deref()
-                        .is_some_and(|digest| {
-                            crate::canonical_blake3_digest(digest).as_deref() == Ok(digest)
-                        })
-                    && self
-                        .evidence
-                        .ripgrep
+                        .indexed_lexical
                         .candidate_owner_ids
                         .iter()
                         .map(String::as_str)
                         .collect::<BTreeSet<_>>()
-                        == decision_owners
-                    && self.evidence.ripgrep.process_count == 1
-                    && self.evidence.ripgrep.complete => {}
-            _ => return Err("search playbook ripgrep evidence is invalid".to_owned()),
+                        == decision_owners => {}
+            "skipped"
+                if self.evidence.indexed_lexical.backend == "unavailable"
+                    && !self.evidence.indexed_lexical.complete
+                    && self.evidence.indexed_lexical.candidate_owner_ids.is_empty() => {}
+            _ => return Err("search playbook indexed lexical evidence is invalid".to_owned()),
         }
         match self.evidence.python_graph.state.as_str() {
             "skipped"
@@ -544,7 +535,7 @@ impl SearchPlaybookReceipt {
 fn canonical_search_playbook_stages() -> Vec<SearchPlaybookStage> {
     [
         ("acquire", "search.source-byte-acquisition"),
-        ("acquire", "search.cold-rg-recall"),
+        ("acquire", "search.resident-lexical-recall"),
         ("syntax", "search.native-syntax-playbook"),
         ("acquire", "search.tantivy-lexical"),
         ("reason", "search.rust-resident-graph"),

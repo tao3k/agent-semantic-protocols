@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 import json
 from pathlib import Path
 
@@ -73,9 +77,9 @@ def test_retention_plan_requires_typed_disposition_and_byte_accounting() -> None
         "retainForMs": 100,
         "selection": {"kind": "all"},
         "retainedCount": 1,
-        "retiredCount": 0,
+        "deletedCount": 0,
         "retainedBytes": 42,
-        "retiredBytes": 0,
+        "deletedBytes": 0,
         "entries": [
             {
                 "object": {
@@ -90,7 +94,7 @@ def test_retention_plan_requires_typed_disposition_and_byte_accounting() -> None
     }
     jsonschema.validate(document, schema("state-home-retention-plan.schema.json"))
 
-    document["entries"][0]["disposition"]["state"] = "delete"
+    document["entries"][0]["disposition"]["state"] = "retire"
     with pytest.raises(jsonschema.ValidationError):
         jsonschema.validate(document, schema("state-home-retention-plan.schema.json"))
 
@@ -102,8 +106,7 @@ def test_cleanup_receipt_has_one_canonical_workspace_authority() -> None:
         "state": "applied",
         "retainedForDays": 1,
         "catalogGeneration": 2,
-        "canonicalWorkspacesRetired": 0,
-        "retiredStateRoots": 0,
+        "canonicalWorkspacesDeleted": 0,
         "catalogPlan": {
             "schemaId": "agent.semantic-protocols.state-home-retention-plan",
             "schemaVersion": 1,
@@ -111,10 +114,26 @@ def test_cleanup_receipt_has_one_canonical_workspace_authority() -> None:
             "retainForMs": 100,
             "selection": {"kind": "all"},
             "retainedCount": 0,
-            "retiredCount": 0,
+            "deletedCount": 0,
             "retainedBytes": 0,
-            "retiredBytes": 0,
+            "deletedBytes": 0,
             "entries": [],
         },
     }
     jsonschema.validate(document, schema("state-home-cleanup-receipt.schema.json"))
+
+
+def test_state_home_sync_receipt_is_positive_convergence_not_retirement_history() -> None:
+    document = {
+        "schemaId": "agent.semantic-protocols.state-home-sync-receipt",
+        "schemaVersion": 1,
+        "state": "converged",
+        "stateHome": "/state-home",
+        "removedEntries": ["obsolete-root", "trash/contract-convergence"],
+        "removedBytes": 42,
+    }
+    jsonschema.validate(document, schema("state-home-sync-receipt.schema.json"))
+
+    document["state"] = "retired"
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(document, schema("state-home-sync-receipt.schema.json"))

@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 //! Lossless conversion between the shared protocol model and its canonical
 //! Schema Manager-owned protobuf wire projection.
@@ -46,6 +46,7 @@ pub(super) fn encode_frame(frame: ClientFrame) -> Result<wire::ClientFrameEnvelo
             workspace_generation,
             method,
             params,
+            client_timing_witness,
         } => (
             base,
             Frame::Request(wire::RequestFrame {
@@ -54,6 +55,9 @@ pub(super) fn encode_frame(frame: ClientFrame) -> Result<wire::ClientFrameEnvelo
                 workspace_generation,
                 method,
                 params_json: encode_json(&params)?,
+                client_timing_witness_json: encode_optional_serializable(
+                    client_timing_witness.as_ref(),
+                )?,
             }),
         ),
         ClientFrame::Cancel { base, request_id } => (
@@ -124,6 +128,10 @@ pub(super) fn decode_frame(envelope: wire::ClientFrameEnvelope) -> Result<Client
             workspace_generation: required(frame.workspace_generation, "workspaceGeneration")?,
             method: required(frame.method, "method")?,
             params: decode_json(&frame.params_json, "params")?,
+            client_timing_witness: decode_optional_serializable(
+                &frame.client_timing_witness_json,
+                "clientTimingWitness",
+            )?,
         }),
         Frame::Cancel(frame) => Ok(ClientFrame::Cancel {
             base,
@@ -420,6 +428,16 @@ fn encode_optional_json(value: Option<&Value>) -> Result<Vec<u8>, String> {
         .map(Option::unwrap_or_default)
 }
 
+fn encode_optional_serializable<T: serde::Serialize>(value: Option<&T>) -> Result<Vec<u8>, String> {
+    value
+        .map(|value| {
+            serde_json::to_vec(value)
+                .map_err(|error| format!("encode typed protobuf payload: {error}"))
+        })
+        .transpose()
+        .map(Option::unwrap_or_default)
+}
+
 fn decode_json(bytes: &[u8], field: &str) -> Result<Value, String> {
     if bytes.is_empty() {
         return Err(format!("protobuf ClientFrame {field} must be present"));
@@ -433,6 +451,19 @@ fn decode_optional_json(bytes: &[u8], field: &str) -> Result<Option<Value>, Stri
         Ok(None)
     } else {
         decode_json(bytes, field).map(Some)
+    }
+}
+
+fn decode_optional_serializable<T: serde::de::DeserializeOwned>(
+    bytes: &[u8],
+    field: &str,
+) -> Result<Option<T>, String> {
+    if bytes.is_empty() {
+        Ok(None)
+    } else {
+        serde_json::from_slice(bytes)
+            .map(Some)
+            .map_err(|error| format!("decode typed protobuf ClientFrame {field}: {error}"))
     }
 }
 

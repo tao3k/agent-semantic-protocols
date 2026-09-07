@@ -1,8 +1,13 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 //! MRR identity and compilation-receipt refinement for Project Topology programs.
 
 use std::collections::BTreeMap;
 use std::fmt;
 
+use agent_semantic_content_identity::ProjectWorkspaceBinding;
 use meta_relational_reasoning::ReasoningBundleId;
 use serde_json::{Map, Value};
 
@@ -39,6 +44,7 @@ impl std::error::Error for ProjectTopologyProgramBindingError {}
 /// equality and MRR domain checks which a generic digest regex cannot prove.
 pub fn admit_project_topology_program_bundle(
     packet: &Value,
+    manifest_project_workspace: &ProjectWorkspaceBinding,
     admitted_receipts: &BTreeMap<String, Value>,
 ) -> Result<ReasoningBundleId, ProjectTopologyProgramBindingError> {
     let packet = object(packet, "packet")?;
@@ -79,6 +85,24 @@ pub fn admit_project_topology_program_bundle(
                 format!("compilation receipt does not bind {field}"),
             ));
         }
+    }
+
+    let project_workspace = object_field(binding, "projectWorkspace")?;
+    let decoded_project_workspace: ProjectWorkspaceBinding =
+        serde_json::from_value(Value::Object(project_workspace.clone())).map_err(|error| {
+            invalid(
+                "topology-project-workspace-invalid",
+                format!("projectWorkspace cannot be decoded: {error}"),
+            )
+        })?;
+    decoded_project_workspace
+        .validate()
+        .map_err(|error| invalid("topology-project-workspace-invalid", error.to_string()))?;
+    if &decoded_project_workspace != manifest_project_workspace {
+        return Err(invalid(
+            "topology-project-workspace-mismatch",
+            "program binding does not equal the parser-owned manifest binding",
+        ));
     }
 
     let terminal = object_field(packet, "terminal")?;

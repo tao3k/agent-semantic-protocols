@@ -1,3 +1,7 @@
+-- SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+--
+-- SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 import ASPProof.SearchEvidenceDerivation
 
 open ASPProof.SearchEvidenceReflection ASPProof.SearchEvidenceDerivation
@@ -93,22 +97,34 @@ def main : IO UInt32 := do
     ("accepted prose without an admission receipt is not factual", !admittedAnnotationCanProveBehavior 1 ⟨7, acceptedPublicationSummary, none⟩),
     ("accepted prose with exact binding and receipt is factual", admittedAnnotationCanProveBehavior 1 ⟨7, acceptedPublicationSummary, some ⟨1, 7, 51⟩⟩),
     ("foreign semantic admission receipt is rejected", !admittedAnnotationCanProveBehavior 1 ⟨7, acceptedPublicationSummary, some ⟨2, 8, 51⟩⟩),
-    ("self-declared digest equality is not rebuild proof", !fromScratchEquivalenceAdmitted 14 13 none),
-    ("external rebuild receipt binds generation and library", fromScratchEquivalenceAdmitted 14 13 (some ⟨14, 13, 61⟩)),
-    ("stale rebuild receipt is rejected", !fromScratchEquivalenceAdmitted 14 13 (some ⟨12, 13, 61⟩)),
+    ("self-declared digest equality is not rebuild proof", !fromScratchEquivalenceAdmitted 11 17 14 13 [] none),
+    ("external rebuild receipt binds generation and library", fromScratchEquivalenceAdmitted 11 17 14 13 [⟨11, 17, 14, 13, 61⟩] (some ⟨11, 17, 14, 13, 61⟩)),
+    ("stale rebuild receipt is rejected", !fromScratchEquivalenceAdmitted 11 17 14 13 [⟨11, 17, 12, 13, 61⟩] (some ⟨11, 17, 12, 13, 61⟩)),
     ("settled direct relation retains binding and witnesses", decide (⟨(.refreshRegistry, .publishArtifact), .parserDirect, 1, [40, 42], none, none⟩ ∈ boundPublicationGraph)),
     ("settled derived relation retains inference proof authority", decide (⟨(.refreshRegistry, .commitReceipt), .derived, 1, [40, 42], some 27, some 43⟩ ∈ boundPublicationGraph)),
     ("base deletion invalidates every derived descendant", invalidationClosure 2 transitiveDerivedFacts [2] == [2, 3, 4]),
     ("invalidated derived descendants cannot remain materialized", retainedDerivedFacts transitiveDerivedFacts (invalidationClosure 2 transitiveDerivedFacts [2]) == []),
-    ("budget exhaustion is not an inference settlement", !inferenceReceiptAdmitted ⟨reasoningEdges, closureStep reasoningEdges reasoningEdges, .budgetExhausted⟩),
-    ("stable fixed point has an admitted terminal receipt", let closure := closureWithin 2 reasoningEdges; inferenceReceiptAdmitted ⟨closure, closureStep reasoningEdges closure, .fixedPoint⟩),
+    ("budget exhaustion is not an inference settlement", !inferenceReceiptAdmitted 11 17 [⟨11, 17, reasoningEdges, closureStep reasoningEdges reasoningEdges, .budgetExhausted, 71⟩] ⟨11, 17, reasoningEdges, closureStep reasoningEdges reasoningEdges, .budgetExhausted, 71⟩),
+    ("stable fixed point has an admitted terminal receipt", let closure := closureWithin 2 reasoningEdges; inferenceReceiptAdmitted 11 17 [⟨11, 17, closure, closureStep reasoningEdges closure, .fixedPoint, 71⟩] ⟨11, 17, closure, closureStep reasoningEdges closure, .fixedPoint, 71⟩),
     ("materialization set is sorted and selector-available", materializationSetAdmitted [10, 20, 30] [10, 30]),
     ("duplicate materialization is rejected", !materializationSetAdmitted [10, 20, 30] [10, 10]),
     ("unavailable materialization is rejected", !materializationSetAdmitted [10, 20, 30] [10, 40]),
-    ("exact Search to Query handoff is admitted", queryPlaybookHandoffAdmitted exactSearchTopologyIdentity 71 72 [10, 30] [40, 42] [10, 20, 30] exactQueryPlaybookHandoff),
-    ("selector subset cannot claim Search origin", !queryPlaybookHandoffAdmitted exactSearchTopologyIdentity 71 72 [10, 30] [40, 42] [10, 20, 30] ⟨exactSearchTopologyIdentity, 71, 72, [10], [40, 42]⟩),
-    ("cross-generation Query handoff replay is rejected", !queryPlaybookHandoffAdmitted exactSearchTopologyIdentity 71 72 [10, 30] [40, 42] [10, 20, 30] ⟨replayedSearchTopologyIdentity, 71, 72, [10, 30], [40, 42]⟩),
-    ("changed Query proof dependencies are rejected", !queryPlaybookHandoffAdmitted exactSearchTopologyIdentity 71 72 [10, 30] [40, 42] [10, 20, 30] ⟨exactSearchTopologyIdentity, 71, 72, [10, 30], [40]⟩)]
+    ("smallest Runtime-admitted selector set is directly queryable", queryPlaybookRequestAdmitted currentProjectWorkspace currentRuntimeBinding 61 51 [10, 20, 30] ⟨101, 1, 2, currentRuntimeBinding, 61, 51, [10], 7⟩),
+    ("selectors learned across searches can form one Query", queryPlaybookRequestAdmitted currentProjectWorkspace currentRuntimeBinding 61 51 [10, 20, 30] ⟨101, 1, 2, currentRuntimeBinding, 61, 51, [10, 30], 7⟩),
+    ("Runtime binding replay is rejected before Query materialization", !queryPlaybookRequestAdmitted currentProjectWorkspace currentRuntimeBinding 61 51 [10, 20, 30] ⟨101, 1, 2, { currentRuntimeBinding with runtimeArtifact := 99 }, 61, 51, [10], 7⟩),
+    ("unavailable selector is rejected before Query materialization", !queryPlaybookRequestAdmitted currentProjectWorkspace currentRuntimeBinding 61 51 [10, 20, 30] ⟨101, 1, 2, currentRuntimeBinding, 61, 51, [10, 40], 7⟩),
+    ("foreign outer Runtime bundle is rejected before Query materialization", !queryPlaybookRequestAdmitted currentProjectWorkspace currentRuntimeBinding 61 51 [10, 20, 30] ⟨101, 1, 2, currentRuntimeBinding, 62, 51, [10], 7⟩),
+    ("foreign execution publication is rejected before Query materialization", !queryPlaybookRequestAdmitted currentProjectWorkspace currentRuntimeBinding 61 51 [10, 20, 30] ⟨101, 1, 2, currentRuntimeBinding, 61, 52, [10], 7⟩),
+    ("exact bound provider projection is admitted", boundProviderRegisterProjectionAdmitted [1, 2] [1, 2] false),
+    ("persisted provider cannot supplement bound projection", !boundProviderRegisterProjectionAdmitted [1, 2] [1, 2, 3] false),
+    ("live provider mutation cannot preserve bound authority", !boundProviderRegisterProjectionAdmitted [1, 2] [1, 2] true)]
+    ++ [
+    ("equal inner Runtime binding cannot authorize a foreign outer bundle", !runtimeWorkspaceExecutionPublicationAdmitted 1 31 41 ⟨4, none, 31⟩ currentRuntimeBinding 62 51 currentWorkspaceExecutionPublication),
+    ("client timing is enriched with the server publication", settleClientSearchTiming 7 8 currentWorkspaceExecutionPublication ⟨7, 8, [10, 20, 30]⟩ == some ⟨7, 8, currentWorkspaceExecutionPublication⟩),
+    ("foreign client request receives no Runtime telemetry identity", (settleClientSearchTiming 7 8 currentWorkspaceExecutionPublication ⟨7, 9, [10, 20, 30]⟩).isNone),
+    ("client timing values cannot select Runtime identity", (settleClientSearchTiming 7 8 currentWorkspaceExecutionPublication ⟨7, 8, [1]⟩).map SettledSearchTelemetryIdentity.publication == (settleClientSearchTiming 7 8 currentWorkspaceExecutionPublication ⟨7, 8, [999]⟩).map SettledSearchTelemetryIdentity.publication),
+    ("exact Host workspace initialization binding is admitted", hostWorkspaceInitializationBindingAdmitted currentProjectWorkspace currentHostWorkspaceInitialization currentHostWorkspaceInitialization),
+    ("Client workspace identity cannot replace Host worktree identity", !hostWorkspaceInitializationBindingAdmitted currentProjectWorkspace currentHostWorkspaceInitialization { currentHostWorkspaceInitialization with worktreeInstance := 99 })]
   let failed := checks.filter (fun check => !check.2)
   for check in failed do
     IO.eprintln s!"FAIL: {check.1}"

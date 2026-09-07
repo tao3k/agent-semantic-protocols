@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 use agent_semantic_content_identity::content_binding::AuthorityStamp;
 use agent_semantic_content_identity::content_binding::ContentBinding;
@@ -32,14 +32,16 @@ fn authority(identity: &ContentIdentity) -> AuthorityStamp {
 fn exact_admission_accepts_only_the_complete_identity() {
     let content = identity();
     let commit = ContentPublicationCommit::linearize(content.clone(), authority(&content)).unwrap();
-    assert!(commit.expected_digest.is_none());
-    assert!(commit.admit_exact(&content).is_ok());
+    assert!(commit.predecessor_commit_digest.is_none());
+    assert!(commit.admit_exact(&commit.content_binding).is_ok());
 
     let mut changed = identity();
     changed.provider_catalog_digest =
         "blake3-256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_owned();
+    let changed_authority = authority(&changed);
+    let changed_binding = ContentBinding::new(changed, changed_authority).unwrap();
     assert_eq!(
-        commit.admit_exact(&changed),
+        commit.admit_exact(&changed_binding),
         Err(ContentBindingError::ContentMismatch)
     );
 }
@@ -68,4 +70,23 @@ fn schema_version_tampering_is_rejected_before_publication() {
         binding.validate(),
         Err(ContentBindingError::InvalidCommitFence)
     );
+}
+
+#[test]
+fn publication_commit_uses_the_authority_and_fence_schema_shape() {
+    let content = identity();
+    let commit = ContentPublicationCommit::linearize(content.clone(), authority(&content)).unwrap();
+    let json = serde_json::to_value(&commit).unwrap();
+    assert_eq!(
+        json["schemaId"],
+        "agent.semantic-protocols.content-publication-commit"
+    );
+    assert_eq!(json["schemaVersion"], "1");
+    assert_eq!(
+        json["contentBinding"]["authorityStamp"]["keyId"],
+        "test-authority"
+    );
+    assert!(json["predecessorCommitDigest"].is_null());
+    assert!(json.get("durable").is_none());
+    assert!(json.get("identity").is_none());
 }

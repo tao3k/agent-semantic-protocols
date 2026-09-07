@@ -1,8 +1,13 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 [dependency-groups]
 dev = [
   "jsonschema>=4.23,<5",
   "asp-python",
   "pytest>=9,<10",
+  "reuse[charset-normalizer]==6.2.0",
   "tiktoken>=0.9,<1",
 ]
 

@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 #+title: Agent Bootstrap Terminal and Dispatch Disposition
 #+property: RFC_ID 10.05.25.12
 #+property: SCHEMA_ID agent.semantic-protocols.agent-session-dispatch-disposition
@@ -169,4 +173,3 @@ output, or tool availability.
 - Bootstrap admits at most one typed terminal.
 - Concurrent absent-path dispatch admits at most one spawn.
 - Current-tree =register-child= bootstraps Runtime before transport resolution.
-

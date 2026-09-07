@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 //! Schema-backed search projection and rendering boundary.
 
 mod artifact_identity;
@@ -26,7 +30,9 @@ pub use model::SearchProjectionRequestV1;
 pub use packet::SEMANTIC_SEARCH_PACKET_SCHEMA_ID;
 pub use packet::SEMANTIC_SEARCH_PACKET_SCHEMA_VERSION;
 pub use packet::SemanticSearchPacketV1;
+pub use query_playbook_materialization::QueryPlaybookGqlRelationship;
 pub use query_playbook_materialization::QueryPlaybookMaterializationError;
+pub use query_playbook_materialization::QueryPlaybookMaterializationReceipt;
 pub use query_playbook_materialization::QueryPlaybookMaterializationRequest;
 pub use renderer::SearchProjectionRenderer;
 pub use renderer::TopologySearchProjectionRenderer;

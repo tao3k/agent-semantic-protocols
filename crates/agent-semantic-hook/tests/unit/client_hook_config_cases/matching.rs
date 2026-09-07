@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 pub(super) use super::common::ClientHookConfig;
 pub(super) use super::common::DecisionKind;
 pub(super) use super::common::HookClassificationRequest;

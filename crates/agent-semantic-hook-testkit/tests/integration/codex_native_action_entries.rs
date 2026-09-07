@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 use serde_json::Value;
 use std::collections::BTreeSet;
 
@@ -50,7 +54,7 @@ fn codex_plugin_has_one_policy_plane_and_no_permission_request_recheck() {
     assert!(document["hooks"]["PreToolUse"].is_array());
     assert!(
         document["hooks"].get("PermissionRequest").is_none(),
-        "PermissionRequest cannot re-evaluate PreTool policy or block ASP_NO_AGENT publication"
+        "PermissionRequest cannot re-evaluate PreTool policy or block an admitted publication"
     );
 }
 

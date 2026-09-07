@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 //! Runtime execution of the Agent-authored progressive Search Playbook.
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -18,6 +22,12 @@ pub(super) struct ProgressiveSearchEvidence {
     pub(super) clause_receipts: Vec<WorkspaceSearchClauseReceipt>,
     pub(super) syntax_candidates: Vec<WorkspaceSearchSyntaxCandidate>,
     pub(super) graph_query_clauses: Vec<String>,
+    pub(super) search_execution_elapsed_micros: u64,
+}
+
+pub(super) struct ProgressiveSearchProjection {
+    pub(super) result: serde_json::Value,
+    pub(super) elapsed_micros: u64,
 }
 
 pub(super) async fn execute_progressive_search_clauses(
@@ -28,6 +38,22 @@ pub(super) async fn execute_progressive_search_clauses(
     runtime_search_service: &agent_semantic_client_db::runtime_search_service::RuntimeSearchServiceHandle,
 ) -> Result<ProgressiveSearchEvidence, AspClientOperationError> {
     const INTERNAL_LIMIT: usize = 4096;
+    let started = tokio::time::Instant::now();
+    generation
+        .require_search_playbook_topology_attachment()
+        .map_err(|message| {
+            AspClientOperationError::Terminal(
+                agent_semantic_client_server::AspClientDispatchError {
+                    reason_kind: "runtime-project-topology-attachment-missing".to_owned(),
+                    message,
+                    details: Some(serde_json::json!({
+                        "failureStage": "runtime-project-topology-admission",
+                        "runtimeGenerationDigest": generation.generation_digest(),
+                        "terminalCount": 1
+                    })),
+                },
+            )
+        })?;
 
     let mut clause_receipts = Vec::new();
     let mut syntax_candidates = Vec::new();
@@ -165,6 +191,59 @@ pub(super) async fn execute_progressive_search_clauses(
                     evidence.len() == INTERNAL_LIMIT,
                 )
             }
+            SearchPlaybookClauseAxis::NativeSyntax => {
+                let selector =
+                    plan.axes
+                        .native_syntax
+                        .get(clause.block_index)
+                        .ok_or_else(|| {
+                            AspClientOperationError::Message(
+                                "native-syntax clause index is out of bounds".to_owned(),
+                            )
+                        })?;
+                let canonical = agent_semantic_content_identity::CanonicalItemSelector::parse_root_or_exact_descendant(selector)
+                    .map_err(|error| {
+                        AspClientOperationError::Message(format!(
+                            "native-syntax selector is not canonical: {error}"
+                        ))
+                    })?;
+                let owner = canonical
+                    .owner_path()
+                    .map_err(AspClientOperationError::Message)?;
+                let (projections, _, diagnostics) = generation
+                    .native_syntax_playbook_projection(std::slice::from_ref(&owner))
+                    .map_err(AspClientOperationError::Message)?;
+                if let Some(diagnostic) = diagnostics.first() {
+                    return Err(AspClientOperationError::Message(format!(
+                        "native-syntax selector owner is unavailable: reasonKind={} owner={}",
+                        diagnostic.reason_kind, diagnostic.owner_path
+                    )));
+                }
+                let admitted = projections.iter().any(|projection| {
+                    projection
+                        .selectors
+                        .iter()
+                        .any(|candidate| candidate.selector == *selector)
+                });
+                if !admitted {
+                    return Err(AspClientOperationError::Message(format!(
+                        "native-syntax selector is not present in the admitted generation: {selector}"
+                    )));
+                }
+                syntax_candidates.push(WorkspaceSearchSyntaxCandidate {
+                    owner: owner.clone(),
+                    selector: selector.clone(),
+                    relation: "native-syntax-selector".to_owned(),
+                });
+                complete_receipt(
+                    WorkspaceSearchAxisKind::NativeSyntax,
+                    clause.block_index,
+                    priority_rank,
+                    vec![owner],
+                    true,
+                    false,
+                )
+            }
             SearchPlaybookClauseAxis::Graph => unreachable!("Graph is a fan-in barrier"),
         };
         clause_receipts.push(receipt);
@@ -174,7 +253,100 @@ pub(super) async fn execute_progressive_search_clauses(
         clause_receipts,
         syntax_candidates,
         graph_query_clauses,
+        search_execution_elapsed_micros: elapsed_micros(started),
     })
+}
+
+pub(super) async fn synthesize_progressive_search_projection(
+    request_id: &str,
+    language_id: &str,
+    evidence: ProgressiveSearchEvidence,
+    generation: &RuntimeQueryGeneration,
+    runtime_search_service: &agent_semantic_client_db::runtime_search_service::RuntimeSearchServiceHandle,
+) -> Result<ProgressiveSearchProjection, AspClientOperationError> {
+    const GRAPH_CANDIDATE_FRONTIER_LIMIT: usize = 4096;
+    let started = tokio::time::Instant::now();
+    let graph_fan_in = if evidence.graph_query_clauses.is_empty() {
+        None
+    } else {
+        let mut seen = BTreeSet::new();
+        let mut candidate_owners = Vec::new();
+        let mut candidate_frontier_truncated = false;
+        'clauses: for receipt in &evidence.clause_receipts {
+            for owner in &receipt.candidate_owners {
+                if seen.insert(owner.as_str()) {
+                    if candidate_owners.len() == GRAPH_CANDIDATE_FRONTIER_LIMIT {
+                        candidate_frontier_truncated = true;
+                        break 'clauses;
+                    }
+                    candidate_owners.push(owner.clone());
+                }
+            }
+        }
+        let graph = crate::runtime_search_graph::evaluate_python_workspace_playbook_graph(
+            request_id,
+            language_id,
+            &evidence.graph_query_clauses,
+            &candidate_owners,
+            30,
+            generation.resident(),
+            runtime_search_service,
+        )
+        .await
+        .map_err(|error| {
+            AspClientOperationError::Terminal(
+                agent_semantic_client_server::AspClientDispatchError {
+                    reason_kind: error.reason_kind.to_owned(),
+                    message: error.message,
+                    details: error.details,
+                },
+            )
+        })?;
+        let truncated = candidate_frontier_truncated || graph.candidate_owner_ids.len() == 30;
+        Some(agent_semantic_search::WorkspaceSearchGraphFanIn {
+            ranked_candidate_owners: graph.candidate_owner_ids,
+            applied_clause_count: evidence.graph_query_clauses.len(),
+            complete: true,
+            truncated,
+        })
+    };
+    let workspace_result = agent_semantic_search::synthesize_workspace_search_playbook_result(
+        evidence.clause_receipts,
+        evidence.syntax_candidates,
+        graph_fan_in,
+    )?;
+    let workspace_result = serde_json::to_value(workspace_result)
+        .map_err(|error| AspClientOperationError::Message(error.to_string()))?;
+    let attachment = generation
+        .require_search_playbook_topology_attachment()
+        .map_err(AspClientOperationError::Message)?;
+    let settlement =
+        agent_semantic_search_projection::SearchTopologySettlement::from_workspace_result(
+            request_id,
+            &workspace_result,
+            attachment.library(),
+        )
+        .map_err(|error| {
+            AspClientOperationError::Terminal(
+                agent_semantic_client_server::AspClientDispatchError {
+                    reason_kind: error.reason_kind().to_owned(),
+                    message: error.to_string(),
+                    details: Some(serde_json::json!({
+                        "failureStage": "search-topology-settlement",
+                        "runtimeGenerationDigest": generation.generation_digest(),
+                        "terminalCount": 1
+                    })),
+                },
+            )
+        })?;
+    Ok(ProgressiveSearchProjection {
+        result: settlement.as_json().clone(),
+        elapsed_micros: elapsed_micros(started),
+    })
+}
+
+fn elapsed_micros(started: tokio::time::Instant) -> u64 {
+    started.elapsed().as_micros().min(u128::from(u64::MAX)) as u64
 }
 
 fn syntax_owner_scope(prior_receipts: &[WorkspaceSearchClauseReceipt]) -> Option<BTreeSet<String>> {

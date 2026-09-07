@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 #[cfg(unix)]
 mod unix {
@@ -209,7 +209,7 @@ mod unix {
 
         fn write_dev_root(&self) {
             std::fs::write(
-                self.state_home.join("asp.toml"),
+                self.state_home.join("control/config/asp.toml"),
                 format!("[dev]\nenabled = true\nroot = {:?}\n", self.root),
             )
             .expect("write dev root");

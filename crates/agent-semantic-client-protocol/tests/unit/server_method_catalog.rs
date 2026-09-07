@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 use crate::ClientDispatchClass;
 use crate::ResolvedServerClientMethod;
@@ -29,6 +29,7 @@ fn server_catalog_exposes_northbound_search_query_and_schema_bundle_methods() {
             "asp.session.host-event",
             "asp.session.register-child",
             "asp.workspace.generation.ensure-ready",
+            "asp.workspace.query.playbook",
             "asp.workspace.query.syntax",
             "asp.workspace.search.playbook",
             "rust.query",
@@ -47,6 +48,36 @@ fn server_catalog_exposes_northbound_search_query_and_schema_bundle_methods() {
                     .as_str()
                     .starts_with("agent.semantic-protocols.")
             })
+    );
+}
+
+#[test]
+fn workspace_query_playbook_is_one_server_owned_complete_generation_request() {
+    assert_eq!(
+        resolve_server_client_method_owner(
+            crate::WORKSPACE_QUERY_PLAYBOOK_METHOD,
+            ["rust".to_owned(), "org".to_owned()],
+        ),
+        Ok(ResolvedServerClientMethod::Server(
+            ServerClientRoute::WorkspaceQueryPlaybook,
+        ))
+    );
+    assert_eq!(
+        classify_client_dispatch(crate::WORKSPACE_QUERY_PLAYBOOK_METHOD),
+        ClientDispatchClass::CompleteGenerationRead,
+    );
+    let method = server_client_methods(["rust".to_owned()])
+        .expect("server method catalog")
+        .into_iter()
+        .find(|method| method.method == crate::WORKSPACE_QUERY_PLAYBOOK_METHOD)
+        .expect("Query Playbook method");
+    assert_eq!(
+        method
+            .parameters
+            .iter()
+            .map(|parameter| parameter.name.as_str())
+            .collect::<Vec<_>>(),
+        ["schemaId", "schemaVersion", "selectors", "projection"]
     );
 }
 
@@ -71,7 +102,10 @@ fn workspace_syntax_query_is_server_owned_and_complete_generation_scoped() {
 fn workspace_search_playbook_is_server_owned_and_complete_generation_scoped() {
     let languages = ["rust".to_owned(), "gerbil-scheme".to_owned()];
     assert_eq!(
-        resolve_server_client_method_owner(crate::WORKSPACE_SEARCH_PLAYBOOK_METHOD, languages),
+        resolve_server_client_method_owner(
+            crate::WORKSPACE_SEARCH_PLAYBOOK_METHOD,
+            languages.clone(),
+        ),
         Ok(ResolvedServerClientMethod::Server(
             ServerClientRoute::WorkspaceSearchPlaybook,
         ))
@@ -80,6 +114,23 @@ fn workspace_search_playbook_is_server_owned_and_complete_generation_scoped() {
         classify_client_dispatch(crate::WORKSPACE_SEARCH_PLAYBOOK_METHOD),
         ClientDispatchClass::CompleteGenerationRead,
     );
+    let method = server_client_methods(languages)
+        .expect("method catalog")
+        .into_iter()
+        .find(|method| method.method == crate::WORKSPACE_SEARCH_PLAYBOOK_METHOD)
+        .expect("Workspace Search Playbook method");
+    assert_eq!(
+        method.response_schema_id.as_str(),
+        "agent.semantic-protocols.search-topology-settlement"
+    );
+    let parameters = method
+        .parameters
+        .iter()
+        .map(|parameter| parameter.name.as_str())
+        .collect::<Vec<_>>();
+    assert!(parameters.contains(&"syntax"));
+    assert!(parameters.contains(&"nativeSyntax"));
+    assert!(parameters.contains(&"clauseOrder"));
 }
 
 #[test]

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 use agent_semantic_content_identity::workspace_memory_generation_segment::WORKSPACE_MEMORY_GENERATION_SEGMENT_SCHEMA_ID;
 use agent_semantic_content_identity::workspace_memory_generation_segment::WorkspaceMemoryGenerationDirectoryV1;
 use agent_semantic_content_identity::workspace_memory_generation_segment::WorkspaceMemoryGenerationSectionKindV1;

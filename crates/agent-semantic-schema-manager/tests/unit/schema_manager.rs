@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 use std::fs;
 use std::path::Path;
 
@@ -355,7 +359,9 @@ fn canonical_client_profile_publishes_the_shared_schema_bundle_route() {
 
     assert!(client_roots.contains(&"asp-client-schema-bundle-request.schema.json"));
     assert!(client_roots.contains(&"asp-client-schema-bundle-response.schema.json"));
-    assert!(client_roots.contains(&"semantic-agent-search-playbook-receipt.v1.schema.json"));
+    assert!(client_roots.contains(&"search-topology-settlement.v1.schema.json"));
+    assert!(!client_roots.contains(&"workspace-search-playbook-result.v1.schema.json"));
+    assert!(!client_roots.contains(&"semantic-agent-search-playbook-receipt.v1.schema.json"));
     assert!(client_roots.contains(&"large-search-playbook-performance-receipt.v1.schema.json"));
     assert!(
         registry["profiles"]
@@ -410,6 +416,72 @@ fn every_language_profile_receives_the_resident_graph_contract_declaratively() {
                 .as_array()
                 .is_some_and(|roots| roots.iter().any(|root| root == "agent-reasoning"))),
         "every language must consume the shared resident graph contract"
+    );
+}
+
+#[test]
+fn every_language_profile_receives_the_runtime_bound_query_playbook_contract() {
+    let workspace = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(Path::parent)
+        .expect("workspace root");
+    let registry: serde_json::Value = serde_json::from_slice(
+        &fs::read(workspace.join("schemas/language-schema-profiles.json"))
+            .expect("read canonical schema profile registry"),
+    )
+    .expect("decode canonical schema profile registry");
+    let query_roots = registry["rootSets"]["core-query"]
+        .as_array()
+        .expect("core-query root set");
+    assert!(
+        query_roots
+            .iter()
+            .any(|entry| { entry == "query-playbook-materialization-request.v1.schema.json" })
+    );
+    assert!(
+        query_roots
+            .iter()
+            .any(|entry| { entry == "query-playbook-materialization-receipt.v1.schema.json" })
+    );
+    assert!(
+        query_roots
+            .iter()
+            .any(|entry| { entry == "runtime-execution-binding.v2.schema.json" }),
+        "the Query Playbook root set must publish the complete Runtime V2 identity product"
+    );
+    assert!(
+        query_roots
+            .iter()
+            .any(|entry| { entry == "runtime-artifact-execution-closure-member.v1.schema.json" }),
+        "the Query Playbook root set must publish typed Runtime execution closure members"
+    );
+    assert!(
+        query_roots
+            .iter()
+            .any(|entry| entry == "content-publication-commit.v1.schema.json"),
+        "the Query Playbook root set must publish the authority-bearing content commit"
+    );
+    assert!(
+        query_roots
+            .iter()
+            .any(|entry| { entry == "runtime-workspace-execution-publication.v1.schema.json" }),
+        "the Query Playbook root set must publish the source-generation/Runtime sidecar"
+    );
+    assert!(
+        query_roots
+            .iter()
+            .any(|entry| entry == "runtime-workspace-execution-pointer.v1.schema.json"),
+        "the Query Playbook root set must publish the one atomic source/Runtime pointer"
+    );
+    assert!(
+        registry["profiles"]
+            .as_array()
+            .expect("registered profiles")
+            .iter()
+            .all(|profile| profile["rootSets"]
+                .as_array()
+                .is_some_and(|roots| roots.iter().any(|root| root == "core-query"))),
+        "every language must consume the one shared Query Playbook contract"
     );
 }
 

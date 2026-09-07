@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 //! Active-bundle authority for the optional resident Python Graphs service.
 //!
 //! The Python worker is an optional Runtime capability, not a Search generation

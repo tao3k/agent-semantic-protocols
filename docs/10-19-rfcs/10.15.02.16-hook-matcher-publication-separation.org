@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 #+TITLE: Hook Matcher Publication Separation
 #+PROPERTY: schemaId agent.semantic-protocols.rfc.hook-matcher-publication-separation
 #+PROPERTY: schemaVersion 1
@@ -37,10 +41,10 @@ switches the sole =runtime/artifacts/active= selector. The fixed
 There is no =hooks/current=, no copied evaluator under =hooks/generations=, no
 per-tool publication API, and no second executable retention policy.
 
-The Codex plugin owns only the stable shell entrypoint =bin/asp-hook-exec=.
-It checks inherited =ASP_NO_AGENT=1= and otherwise executes
-=ASP_STATE_HOME/runtime/bin/asp-hook <event> ...=. It does not parse policy,
-resolve Runtime Server active/healthy state, or carry a generation pointer.
+The Codex plugin owns only the stable shell entrypoint =bin/asp-hook-exec= and
+executes the Hook member of the active Runtime artifact bundle. It does not
+parse policy, read global configuration, resolve Runtime Server health, or
+carry a generation pointer.
 
 The embedded policy identity uses BLAKE3-256.  The command-profile section is
 generated from the finite =commandProfiles.categories= prefix space and the
@@ -90,9 +94,9 @@ The Hook action evaluator may only:
 It must not parse or stat policy sources, invoke Runtime Server, acquire a
 publication lock, synchronize config, compile matchers, or repair corruption.
 A missing or non-executable canonical Runtime Hook binary terminates as a
-schema-valid typed unavailable decision. =ASP_NO_AGENT=1= remains a
-higher-priority passthrough before any binary or state access. Recovery is
-=asp install binary=; there is no Hook-specific refresh/publication command.
+schema-valid typed unavailable decision. Hook enablement is read by the Hook
+process from =control/config/asp.toml= before payload or policy evaluation.
+Recovery is =asp install binary=; there is no Hook-specific publication command.
 
 * Recovery override and recursive-dispatch fixed point
 :PROPERTIES:
@@ -108,21 +112,13 @@ The retired dependency chain admits this concrete cycle:
    cannot become executable work;
 4. canonical install requires the replacement binary that step 1 prevented.
 
-The new ordering has two explicit recovery layers. An inherited
-=ASP_NO_AGENT=1= in the Hook process environment is a bootstrap recovery
-override evaluated before payload or matcher state access. The process-level
-form emits an empty Host-success response and terminates. This precedence is
-scoped by the standalone executable grammar: the process must first be an
-actual =asp-hook <event>= dispatch.  The public =asp hook= namespace contains
-administrative commands only and cannot evaluate Host events.
-=ASP_NO_AGENT=1 asp --version= remains an ordinary Client invocation.
-
-For Codex Bash PreTool, the Rust Hook process owns one pre-policy
-command-local guard. Config V1 deliberately owns no rule or witness for this
-escape. The bootstrap predicate consumes only parser-proven direct, =env=, or
-exported process transfer and then terminates before policy construction. It
-carries no argv, language, profile, or Runtime condition. Unbound payload text
-is not authority.
+The new ordering has one explicit configuration boundary. For an actual
+=asp-hook <event>= dispatch, the Hook process resolves State Home, parses one
+typed =control/config/asp.toml= generation, and either returns the empty Host
+success response when =[hook-engine] enabled = false= or proceeds to the
+evaluator when enabled. Public =asp hook= commands remain ordinary Client
+administration. Environment variables, shell assignments, payload text,
+language, profile, and Runtime state cannot change this decision.
 
 Config-independent provider-binary admission uses a constant-time registry
 candidate gate before constructing a shell action graph.  Commands whose
@@ -134,11 +130,11 @@ provider-binary policy.
 Match-policy conformance derives its rule inventory and witnesses from the
 resolved declarative configuration; it MUST NOT hard-code a rule count.  The
 conformance evaluator recompiles a verification-only capability snapshot in
-which every configured =lazy-executable= projector is available.  Host PATH
+which every configured =lazy-executable= projector is available. Host PATH
 availability controls whether an optional projector may execute in production,
-but cannot turn a valid projector rule into policy-schema drift.  The explicit
-no-agent command rule is covered by the same end-to-end witness and branch
-inventory as every other production rule.
+but cannot turn a valid projector rule into policy-schema drift. Host-policy
+passthrough rules use the same end-to-end witness and branch inventory as every
+other production rule; they do not change global Hook enablement.
 
 Typed target dispatch is idempotent and Config-owned.  Configured ASP Agents
 are loaded from the embedded Agent Config registry.  A temporary SubAgent does

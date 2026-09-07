@@ -1,13 +1,9 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 use std::path::Path;
 
-use agent_semantic_provider_protocol::ProviderRegisterOperation;
-use agent_semantic_provider_protocol::ProviderRegisterRequest;
-use agent_semantic_provider_protocol::ProviderRegisterResult;
-use agent_semantic_provider_protocol::ProviderRegistrationDocument;
 use agent_semantic_runtime::project_runtime_state;
 
 // Workspace publication receipts remain private to the provider-install branch.
@@ -24,7 +20,6 @@ pub(in super::super) async fn record_registered_provider_workspace_install(
     registration: &super::super::provider_install_registry::ProviderInstallRegistration,
     built: BuiltProviderWorkspace,
 ) -> Result<(), String> {
-    let live_registration = built.provider_registration.clone();
     let dev_root = configured_dev_root.canonicalize().map_err(|error| {
         format!(
             "failed to canonicalize configured [dev].root {}: {error}",
@@ -110,7 +105,6 @@ pub(in super::super) async fn record_registered_provider_workspace_install(
             launcher_digest: Some(&launcher_digest),
         },
     )?;
-    publish_live_provider_registration(&runtime_state.protocol_home, live_registration).await?;
     println!(
         "[asp-install] provider={} language={} scope={} installMode=develop-workspace-tree sourceKind=develop-workspace-tree devRoot={} target={} binary={} binaryContentDigest={} digestAlgorithm=blake3-256 artifactLeafCount={} artifactEntrypoint={} installedPath={} lock={} switch=atomic activeRuntimeBundleDigest={}",
         provider_id,
@@ -127,75 +121,6 @@ pub(in super::super) async fn record_registered_provider_workspace_install(
         published.runtime_bundle_digest,
     );
     Ok(())
-}
-
-async fn publish_live_provider_registration(
-    state_home: &Path,
-    provider: ProviderRegistrationDocument,
-) -> Result<(), String> {
-    let endpoint =
-        agent_semantic_client_db::runtime_server_control::read_runtime_server_supervisor_endpoint(
-            state_home,
-        )
-        .await?
-        .ok_or_else(|| {
-            "Runtime Server endpoint is unavailable for provider registration".to_owned()
-        })?;
-    for _ in 0..3 {
-        let list = ProviderRegisterRequest {
-            schema_id: "agent.semantic-protocols.provider-register.request".to_owned(),
-            schema_version: "1".to_owned(),
-            expected_generation: None,
-            request: ProviderRegisterOperation::List,
-        };
-        let list =
-            agent_semantic_provider_transport::grpc_session::call_runtime_provider_register_tcp(
-                endpoint.provider_endpoint.socket_addr(),
-                &list,
-            )
-            .await?;
-        list.validate()?;
-        let generation = match list.result {
-            ProviderRegisterResult::Snapshot { snapshot } => snapshot.generation,
-            ProviderRegisterResult::GenerationConflict { actual_generation } => actual_generation,
-            ProviderRegisterResult::Rejected {
-                reason_kind,
-                message,
-            } => {
-                return Err(format!(
-                    "Runtime provider register list rejected: reasonKind={reason_kind} message={message}"
-                ));
-            }
-        };
-        let register = ProviderRegisterRequest {
-            schema_id: "agent.semantic-protocols.provider-register.request".to_owned(),
-            schema_version: "1".to_owned(),
-            expected_generation: Some(generation),
-            request: ProviderRegisterOperation::Register {
-                provider: provider.clone(),
-            },
-        };
-        let response =
-            agent_semantic_provider_transport::grpc_session::call_runtime_provider_register_tcp(
-                endpoint.provider_endpoint.socket_addr(),
-                &register,
-            )
-            .await?;
-        response.validate()?;
-        match response.result {
-            ProviderRegisterResult::Snapshot { .. } => return Ok(()),
-            ProviderRegisterResult::GenerationConflict { .. } => continue,
-            ProviderRegisterResult::Rejected {
-                reason_kind,
-                message,
-            } => {
-                return Err(format!(
-                    "Runtime provider registration rejected: reasonKind={reason_kind} message={message}"
-                ));
-            }
-        }
-    }
-    Err("Runtime provider registration generation remained contended after 3 attempts".to_owned())
 }
 
 fn validate_registration_identity(

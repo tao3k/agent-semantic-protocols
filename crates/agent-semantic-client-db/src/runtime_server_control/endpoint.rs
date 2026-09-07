@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::path::Path;
@@ -510,19 +510,22 @@ async fn prepare_runtime_server_endpoint_in_with_workspace_store_and_identity(
         binary_content_digest,
         runtime_generation_digest: generation_identity.runtime_generation_digest,
         schema_digest: generation_identity.schema_digest,
-        transport_contract_digest,
-        owner_epoch,
-        owner_process_id: agent_semantic_runtime::runtime_process_lifecycle::current_process_id(),
+        transport_binding: super::RuntimeTransportBinding {
+            transport_contract_digest,
+            owner_epoch,
+            owner_process_id: agent_semantic_runtime::runtime_process_lifecycle::current_process_id(
+            ),
+            binding_token: binding_token.to_owned(),
+            control_endpoint,
+            data_endpoint,
+            provider_endpoint,
+        },
         runtime_artifact_path: runtime_artifact_path.to_string_lossy().into_owned(),
         runtime_binary_identity: runtime_binary_identity.clone(),
         monitor_capability: true,
         observed_runtime_binary_identity: runtime_binary_identity.clone(),
         artifact_mode: artifact_mode.to_owned(),
         artifact_catalog_digest: artifact_catalog_digest.to_owned(),
-        binding_token: binding_token.to_owned(),
-        control_endpoint,
-        data_endpoint,
-        provider_endpoint,
         workspace_store_path: workspace_store_path.to_string_lossy().into_owned(),
         status_memory_path: status_memory_path.to_string_lossy().into_owned(),
     })

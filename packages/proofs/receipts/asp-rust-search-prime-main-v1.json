@@ -10,7 +10,7 @@
     "message": "Registered-source reasoning search is denied only in the current Agent; delegate to the registered ASP Explorer."
   },
   "diagnosticRoute": {
-    "mode": "ASP_NO_AGENT_same_oracle_only",
+    "mode": "retired-environment-escape-diagnostic",
     "acceptanceEligible": false,
     "state": "failed",
     "testProcessLaunched": true,

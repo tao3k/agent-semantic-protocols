@@ -1,11 +1,12 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 //! Typed Runtime client frames, identities, catalogs, routes, and conformance contracts.
 
 mod agent_session;
 mod catalog;
+mod client_timing;
 mod conformance;
 mod frame;
 mod identity;
@@ -27,6 +28,12 @@ pub use catalog::ClientParameterSource;
 pub use catalog::ClientParameterType;
 pub use catalog::ClientProtocolCatalog;
 pub use catalog::ClientTransport;
+pub use client_timing::RUNTIME_SEARCH_CLIENT_TIMING_PHASES;
+pub use client_timing::RUNTIME_SEARCH_CLIENT_TIMING_WITNESS_SCHEMA_ID;
+pub use client_timing::RUNTIME_SEARCH_CLIENT_TIMING_WITNESS_SCHEMA_VERSION;
+pub use client_timing::RuntimeSearchClientTimingError;
+pub use client_timing::RuntimeSearchClientTimingPhase;
+pub use client_timing::RuntimeSearchClientTimingWitness;
 pub use conformance::ClientAdmissionError;
 pub use conformance::ClientConformanceCase;
 pub use conformance::ClientConformanceReceipt;
@@ -65,6 +72,7 @@ pub use routes::AspClientSearchPlaybookGraphBlock;
 pub use routes::AspClientSearchPlaybookSyntaxBlock;
 pub use routes::AspClientSearchRequest;
 pub use routes::AspClientSourceIndexLookupRequest;
+pub use routes::AspClientWorkspaceQueryPlaybookRequest;
 pub use routes::AspClientWorkspaceSearchPlaybookRequest;
 pub use routes::AspClientWorkspaceSyntaxQueryEvidence;
 pub use routes::AspClientWorkspaceSyntaxQueryRequest;
@@ -102,6 +110,7 @@ pub use server_method_catalog::ServerClientRoute;
 pub use server_method_catalog::WORKSPACE_GENERATION_ENSURE_READY_METHOD;
 pub use server_method_catalog::WORKSPACE_GENERATION_ENSURE_READY_REQUEST_SCHEMA_ID;
 pub use server_method_catalog::WORKSPACE_GENERATION_ENSURE_READY_RESPONSE_SCHEMA_ID;
+pub use server_method_catalog::WORKSPACE_QUERY_PLAYBOOK_METHOD;
 pub use server_method_catalog::WORKSPACE_SEARCH_PLAYBOOK_METHOD;
 pub use server_method_catalog::WORKSPACE_SYNTAX_QUERY_METHOD;
 pub use server_method_catalog::classify_client_dispatch;

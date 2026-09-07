@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 #[path = "integration/agent_session_delegation_admission.rs"]
 mod agent_session_delegation_admission;
 #[path = "integration/agent_session_delegation_intent.rs"]

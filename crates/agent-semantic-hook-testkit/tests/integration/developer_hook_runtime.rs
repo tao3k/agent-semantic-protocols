@@ -1,4 +1,7 @@
 #![cfg(unix)]
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 use std::collections::BTreeSet;
 use std::os::unix::fs::PermissionsExt;
@@ -178,7 +181,7 @@ async fn inherited_escape_precedes_missing_or_corrupt_runtime_hook_binary() {
             escaped.timeout = std::time::Duration::from_secs(1);
             escaped
                 .env
-                .push(("ASP_NO_AGENT".to_owned(), "1".to_owned()));
+                .push(("UNRELATED_HOOK_ENV".to_owned(), "1".to_owned()));
             escaped.env.push((
                 "ASP_STATE_HOME".to_owned(),
                 state_home.display().to_string(),

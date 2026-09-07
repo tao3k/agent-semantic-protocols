@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 pub(crate) const CREATE_PARTITION_TABLES_SQL: &str = r#"
 CREATE TABLE IF NOT EXISTS asp_mvcc_partition_head (

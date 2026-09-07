@@ -1,3 +1,7 @@
+-- SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+--
+-- SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 import ASPProof.SearchEvidenceReflection
 
 /-! Abstract design checks for R11–R20. Identities and certificates are model
@@ -789,6 +793,42 @@ theorem gql_settlement_preserves_direct_and_marks_novel_derived :
     ⟨(.refreshRegistry, .commitReceipt), .derived, some 27, some 42⟩ ∈
       settledPublicationGraph := by decide
 
+/- The public Search projection is the closed product of evidence relations,
+   topology boundaries, and currently queryable selectors. There is no
+   Agent-facing planner or action channel in this type. Query grammar remains
+   capability documentation outside the evidence model. -/
+structure AgentFacingSearchProjection where
+  relations : List SettledRelation
+  boundaries : List DerivedOutput
+  queryableSelectors : MaterializationSet
+  deriving DecidableEq, Repr
+
+def publicationAgentProjection : AgentFacingSearchProjection :=
+  ⟨settledPublicationGraph,
+    [.frontier .publishArtifact 7],
+    publicationMaterializationSet publicationPaths⟩
+
+theorem agent_facing_search_projection_is_fully_determined_by_evidence
+    (left right : AgentFacingSearchProjection)
+    (relations : left.relations = right.relations)
+    (boundaries : left.boundaries = right.boundaries)
+    (selectors : left.queryableSelectors = right.queryableSelectors) :
+    left = right := by
+  cases left
+  cases right
+  cases relations
+  cases boundaries
+  cases selectors
+  rfl
+
+theorem public_search_projection_has_no_out_of_band_decision_state
+    (projection : AgentFacingSearchProjection) :
+    projection =
+      ⟨projection.relations, projection.boundaries,
+        projection.queryableSelectors⟩ := by
+  cases projection
+  rfl
+
 def defaultAgentProjectionExposesAscentSource : Bool := false
 
 theorem default_agent_projection_is_one_gql_settlement :
@@ -1184,48 +1224,701 @@ theorem duplicate_or_unavailable_materialization_is_rejected :
     materializationSetAdmitted [10, 20, 30] [10, 10] = false ∧
       materializationSetAdmitted [10, 20, 30] [10, 40] = false := by decide
 
-/- A Query Playbook handoff is an exact replay-safe projection of one admitted
-   Search MaterializationSet. A selector list alone cannot claim this origin. -/
-structure QueryPlaybookHandoff where
-  settlement : SearchTopologySettlementIdentity
-  requestIdentity : Nat
-  materializationDigest : Nat
-  selectors : List Nat
-  proofDependencies : List Nat
+/- Query is selector-native and independent of Search. Runtime injects one exact
+   execution binding and independently admits every canonical selector. -/
+structure ProjectWorkspaceBindingIdentity where
+  identity : Nat
+  workspaceRoot : Nat
+  portability : Nat
+  repositoryAliases : List Nat
   deriving DecidableEq, Repr
 
-def queryPlaybookHandoffAdmitted
-    (expectedSettlement : SearchTopologySettlementIdentity)
-    (expectedRequest expectedDigest : Nat)
-    (expectedSelectors expectedProofDependencies availableSelectors : List Nat)
-    (handoff : QueryPlaybookHandoff) : Bool :=
-  handoff.settlement == expectedSettlement &&
-    handoff.requestIdentity == expectedRequest &&
-    handoff.materializationDigest == expectedDigest &&
-    handoff.selectors == expectedSelectors &&
-    handoff.proofDependencies == expectedProofDependencies &&
-    materializationSetAdmitted availableSelectors handoff.selectors
+structure RuntimeExecutionBindingIdentity where
+  projectWorkspace : ProjectWorkspaceBindingIdentity
+  worktreeInstance : Nat
+  publicationNonce : Nat
+  contentBinding : Nat
+  sourceSnapshot : Nat
+  runtimeArtifact : Nat
+  providerCatalog : Nat
+  evaluatorPolicy : Nat
+  activeArtifactReceipt : Nat
+  evaluatorAbi : Nat
+  deriving DecidableEq, Repr
 
-def exactQueryPlaybookHandoff : QueryPlaybookHandoff :=
-  ⟨exactSearchTopologyIdentity, 71, 72, [10, 30], [40, 42]⟩
+/- Workspace initialization admits Project Workspace and worktree identity as
+   one Host-owned product. Runtime cannot manufacture the worktree component
+   from another ClientFrame or filesystem identity. -/
+structure HostWorkspaceInitializationBindingIdentity where
+  projectWorkspace : ProjectWorkspaceBindingIdentity
+  worktreeInstance : Nat
+  deriving DecidableEq, Repr
 
-theorem exact_search_materialization_handoff_is_admitted :
-    queryPlaybookHandoffAdmitted exactSearchTopologyIdentity 71 72
-      [10, 30] [40, 42] [10, 20, 30] exactQueryPlaybookHandoff = true := by decide
+def hostWorkspaceInitializationBindingAdmitted
+    (manifest : ProjectWorkspaceBindingIdentity)
+    (host candidate : HostWorkspaceInitializationBindingIdentity) : Bool :=
+  host.projectWorkspace == manifest &&
+    host.worktreeInstance != 0 &&
+    candidate == host
 
-theorem selector_subset_cannot_claim_search_materialization_origin :
-    queryPlaybookHandoffAdmitted exactSearchTopologyIdentity 71 72
-      [10, 30] [40, 42] [10, 20, 30]
-      ⟨exactSearchTopologyIdentity, 71, 72, [10], [40, 42]⟩ = false := by decide
+def currentHostWorkspaceInitialization : HostWorkspaceInitializationBindingIdentity :=
+  ⟨⟨1, 3, 4, [21, 22]⟩, 2⟩
 
-theorem cross_generation_query_handoff_replay_is_rejected :
-    queryPlaybookHandoffAdmitted exactSearchTopologyIdentity 71 72
-      [10, 30] [40, 42] [10, 20, 30]
-      ⟨replayedSearchTopologyIdentity, 71, 72, [10, 30], [40, 42]⟩ = false := by decide
+theorem exact_host_workspace_initialization_is_admitted :
+    hostWorkspaceInitializationBindingAdmitted
+      currentHostWorkspaceInitialization.projectWorkspace
+      currentHostWorkspaceInitialization
+      currentHostWorkspaceInitialization = true := by decide
 
-theorem changed_query_proof_dependencies_are_rejected :
-    queryPlaybookHandoffAdmitted exactSearchTopologyIdentity 71 72
-      [10, 30] [40, 42] [10, 20, 30]
-      ⟨exactSearchTopologyIdentity, 71, 72, [10, 30], [40]⟩ = false := by decide
+theorem workspace_or_session_identity_cannot_replace_host_worktree
+    (clientIdentity : Nat)
+    (h : clientIdentity ≠ currentHostWorkspaceInitialization.worktreeInstance) :
+    hostWorkspaceInitializationBindingAdmitted
+      currentHostWorkspaceInitialization.projectWorkspace
+      currentHostWorkspaceInitialization
+      { currentHostWorkspaceInitialization with worktreeInstance := clientIdentity } = false := by
+  have h' : clientIdentity ≠ 2 := by
+    simpa [currentHostWorkspaceInitialization] using h
+  simp [hostWorkspaceInitializationBindingAdmitted, currentHostWorkspaceInitialization, h']
+
+theorem filesystem_path_hash_cannot_replace_host_worktree
+    (pathHash : Nat)
+    (h : pathHash ≠ currentHostWorkspaceInitialization.worktreeInstance) :
+    hostWorkspaceInitializationBindingAdmitted
+      currentHostWorkspaceInitialization.projectWorkspace
+      currentHostWorkspaceInitialization
+      { currentHostWorkspaceInitialization with worktreeInstance := pathHash } = false := by
+  have h' : pathHash ≠ 2 := by
+    simpa [currentHostWorkspaceInitialization] using h
+  simp [hostWorkspaceInitializationBindingAdmitted, currentHostWorkspaceInitialization, h']
+
+structure RuntimeArtifactBundleBindingIdentity where
+  providerRegistration : Nat
+  providerArtifactSet : Nat
+  evaluatorPolicy : Nat
+  evaluatorAbi : Nat
+  schemaBundle : Nat
+  deriving DecidableEq, Repr
+
+inductive RuntimeArtifactExecutionClosureMemberKind
+  | providerRegistration
+  | providerArtifactSet
+  | evaluatorPolicy
+  | evaluatorAbi
+  | schemaBundle
+  deriving DecidableEq, Repr
+
+structure RuntimeArtifactExecutionClosureMemberIdentity where
+  kind : RuntimeArtifactExecutionClosureMemberKind
+  digest : Nat
+  entryKeys : List Nat
+  deriving DecidableEq, Repr
+
+def runtimeArtifactExecutionClosureAdmitted
+    (members : List RuntimeArtifactExecutionClosureMemberIdentity) : Bool :=
+  match members with
+  | [registration, artifacts, policy, abi, schemas] =>
+      registration.kind == .providerRegistration &&
+      artifacts.kind == .providerArtifactSet &&
+      policy.kind == .evaluatorPolicy &&
+      abi.kind == .evaluatorAbi &&
+      schemas.kind == .schemaBundle &&
+      [registration, artifacts, policy, abi, schemas].all
+        (fun member => member.digest != 0) &&
+      !policy.entryKeys.isEmpty && !abi.entryKeys.isEmpty && !schemas.entryKeys.isEmpty &&
+      registration.entryKeys == artifacts.entryKeys
+  | _ => false
+
+def completeRuntimeArtifactExecutionClosure :
+    List RuntimeArtifactExecutionClosureMemberIdentity :=
+  [ ⟨.providerRegistration, 11, [1, 2]⟩
+  , ⟨.providerArtifactSet, 12, [1, 2]⟩
+  , ⟨.evaluatorPolicy, 13, [3]⟩
+  , ⟨.evaluatorAbi, 14, [4]⟩
+  , ⟨.schemaBundle, 15, [5, 6]⟩ ]
+
+theorem exact_five_member_runtime_execution_closure_is_admitted :
+    runtimeArtifactExecutionClosureAdmitted completeRuntimeArtifactExecutionClosure = true := by
+  decide
+
+theorem explicit_empty_provider_pair_is_a_complete_bootstrap_closure :
+    runtimeArtifactExecutionClosureAdmitted
+      [ ⟨.providerRegistration, 11, []⟩
+      , ⟨.providerArtifactSet, 12, []⟩
+      , ⟨.evaluatorPolicy, 13, [3]⟩
+      , ⟨.evaluatorAbi, 14, [4]⟩
+      , ⟨.schemaBundle, 15, [5, 6]⟩ ] = true := by decide
+
+theorem missing_runtime_execution_closure_member_is_rejected :
+    runtimeArtifactExecutionClosureAdmitted
+      completeRuntimeArtifactExecutionClosure.dropLast = false := by decide
+
+theorem provider_registration_and_artifact_coverage_must_match :
+    let drifted :=
+      [ ⟨RuntimeArtifactExecutionClosureMemberKind.providerRegistration, 11, [1, 2]⟩
+      , ⟨RuntimeArtifactExecutionClosureMemberKind.providerArtifactSet, 12, [1]⟩
+      , ⟨RuntimeArtifactExecutionClosureMemberKind.evaluatorPolicy, 13, [3]⟩
+      , ⟨RuntimeArtifactExecutionClosureMemberKind.evaluatorAbi, 14, [4]⟩
+      , ⟨RuntimeArtifactExecutionClosureMemberKind.schemaBundle, 15, [5, 6]⟩ ]
+    runtimeArtifactExecutionClosureAdmitted drifted = false := by decide
+
+theorem activation_generation_cannot_fill_a_missing_closure_member
+    (activationGeneration : Nat) :
+    runtimeArtifactExecutionClosureAdmitted
+      completeRuntimeArtifactExecutionClosure.dropLast = false := by
+  cases activationGeneration <;> decide
+
+structure ProviderRegistrationClosureIdentity where
+  providerKey : Nat
+  canonicalRegistrationDigest : Nat
+  deriving DecidableEq, Repr
+
+def providerRegistrationClosureAdmitted
+    (canonical : ProviderRegistrationClosureIdentity)
+    (candidate : ProviderRegistrationClosureIdentity) : Bool :=
+  canonical.providerKey != 0 && canonical == candidate
+
+theorem self_consistent_digest_cannot_forge_provider_registration_authority :
+    providerRegistrationClosureAdmitted ⟨1, 11⟩ ⟨1, 12⟩ = false := by decide
+
+/- The resident register is a projection of the bound provider keys, not a
+   second mutation authority. A persisted or streamed mutation cannot add,
+   remove, or replace one key while retaining the same Runtime product. -/
+def boundProviderRegisterProjectionAdmitted
+    (closureKeys projectedKeys : List Nat) (mutationEnabled : Bool) : Bool :=
+  closureKeys == projectedKeys && !mutationEnabled
+
+theorem exact_read_only_provider_projection_is_admitted :
+    boundProviderRegisterProjectionAdmitted [1, 2] [1, 2] false = true := by decide
+
+theorem persisted_provider_cannot_supplement_the_bound_projection :
+    boundProviderRegisterProjectionAdmitted [1, 2] [1, 2, 3] false = false := by decide
+
+theorem live_register_mutation_cannot_preserve_bound_bundle_authority :
+    boundProviderRegisterProjectionAdmitted [1, 2] [1, 2] true = false := by decide
+
+structure ProviderArtifactClosureIdentity where
+  providerKey : Nat
+  artifactContentDigest : Nat
+  deriving DecidableEq, Repr
+
+def providerArtifactExecutionIdentity
+    (entry : ProviderArtifactClosureIdentity) : Nat × Nat :=
+  (entry.providerKey, entry.artifactContentDigest)
+
+theorem filesystem_metadata_is_not_a_copy_stable_artifact_identity :
+    let entry : ProviderArtifactClosureIdentity := ⟨1, 21⟩
+    providerArtifactExecutionIdentity entry = (1, 21) ∧
+      ((1, 100) : Nat × Nat) ≠ ((1, 101) : Nat × Nat) := by decide
+
+theorem schema_bundle_cannot_substitute_for_evaluator_abi :
+    let baseline : RuntimeArtifactBundleBindingIdentity := ⟨1, 2, 3, 4, 5⟩
+    let changedAbi : RuntimeArtifactBundleBindingIdentity := ⟨1, 2, 3, 9, 5⟩
+    baseline.schemaBundle = changedAbi.schemaBundle ∧ baseline ≠ changedAbi := by decide
+
+theorem activation_generation_cannot_fill_artifact_bundle_identity
+    (activationGeneration : Nat) :
+    let baseline : RuntimeArtifactBundleBindingIdentity := ⟨1, 2, 3, 4, 5⟩
+    baseline = ⟨1, 2, 3, 4, 5⟩ := by
+  cases activationGeneration <;> decide
+
+/- A publication commit is a linearization record, not a synonym for the
+   content identity.  Its digest binds the full authority-bearing binding and
+   the predecessor fence.  Durability remains an independently admitted writer
+   postcondition and is deliberately absent from this self-describing value. -/
+structure ContentPublicationCommitIdentity where
+  contentBinding : Nat
+  predecessor : Option Nat
+  commitDigest : Nat
+  deriving DecidableEq, Repr
+
+def contentPublicationCommitAdmitted
+    (expectedBinding : Nat)
+    (expectedPredecessor : Option Nat)
+    (expectedCommitDigest : Nat)
+    (candidate : ContentPublicationCommitIdentity) : Bool :=
+  expectedCommitDigest != 0 &&
+    candidate.contentBinding == expectedBinding &&
+    candidate.predecessor == expectedPredecessor &&
+    candidate.commitDigest == expectedCommitDigest
+
+theorem exact_authority_and_fence_commit_is_admitted :
+    contentPublicationCommitAdmitted 11 none 31 ⟨11, none, 31⟩ = true := by decide
+
+theorem equal_content_under_another_authority_is_not_the_same_commit :
+    contentPublicationCommitAdmitted 12 none 32 ⟨11, none, 31⟩ = false := by decide
+
+theorem equal_binding_after_another_predecessor_is_not_the_same_commit :
+    contentPublicationCommitAdmitted 11 (some 31) 32 ⟨11, none, 31⟩ = false := by decide
+
+theorem segment_durability_digest_cannot_substitute_for_content_commit
+    (segmentDurabilityDigest : Nat) :
+    contentPublicationCommitAdmitted 11 none 31 ⟨11, none, segmentDurabilityDigest⟩ =
+      (segmentDurabilityDigest == 31) := by
+  simp [contentPublicationCommitAdmitted]
+
+theorem activation_generation_cannot_authorize_a_different_content_commit
+    (activationGeneration : Nat) :
+    contentPublicationCommitAdmitted 11 none 32 ⟨11, none, 31⟩ = false := by
+  cases activationGeneration <;> decide
+
+structure QueryPlaybookRequest where
+  requestIdentity : Nat
+  projectWorkspace : Nat
+  worktreeInstance : Nat
+  runtimeBinding : RuntimeExecutionBindingIdentity
+  runtimeBundleDigest : Nat
+  executionPublicationDigest : Nat
+  selectors : List Nat
+  projection : Nat
+  deriving DecidableEq, Repr
+
+def queryPlaybookRequestAdmitted
+    (manifestProjectWorkspace : ProjectWorkspaceBindingIdentity)
+    (expectedBinding : RuntimeExecutionBindingIdentity)
+    (expectedRuntimeBundleDigest expectedExecutionPublicationDigest : Nat)
+    (runtimeAdmittedSelectors : List Nat)
+    (request : QueryPlaybookRequest) : Bool :=
+  request.requestIdentity != 0 &&
+    expectedBinding.projectWorkspace == manifestProjectWorkspace &&
+    request.runtimeBinding == expectedBinding &&
+    request.runtimeBundleDigest == expectedRuntimeBundleDigest &&
+    request.executionPublicationDigest == expectedExecutionPublicationDigest &&
+    request.projectWorkspace == expectedBinding.projectWorkspace.identity &&
+    request.worktreeInstance == expectedBinding.worktreeInstance &&
+    materializationSetAdmitted runtimeAdmittedSelectors request.selectors
+
+def currentProjectWorkspace : ProjectWorkspaceBindingIdentity :=
+  ⟨1, 3, 4, [21, 22]⟩
+
+def currentRuntimeBinding : RuntimeExecutionBindingIdentity :=
+  ⟨currentProjectWorkspace, 2, 3, 4, 11, 12, 13, 14, 15, 16⟩
+
+/- The durable source generation and the Runtime execution product are joined by
+   one small immutable publication.  Source/index CAS identity is deliberately
+   separate from Runtime artifact and evaluator identity: refreshing the latter
+   publishes a new sidecar, not a new parser generation.  A canonical pointer
+   may admit the candidate only by exact product equality. -/
+structure RuntimeWorkspaceExecutionPublicationIdentity where
+  workspaceIdentity : Nat
+  generationDigest : Nat
+  sourceRootDigest : Nat
+  contentCommit : ContentPublicationCommitIdentity
+  runtimeBinding : RuntimeExecutionBindingIdentity
+  runtimeBundleDigest : Nat
+  publicationDigest : Nat
+  deriving DecidableEq, Repr
+
+def runtimeWorkspaceExecutionPublicationAdmitted
+    (expectedWorkspace expectedGeneration expectedSourceRoot : Nat)
+    (expectedContentCommit : ContentPublicationCommitIdentity)
+    (expectedRuntime : RuntimeExecutionBindingIdentity)
+    (expectedRuntimeBundleDigest : Nat)
+    (expectedPublicationDigest : Nat)
+    (candidate : RuntimeWorkspaceExecutionPublicationIdentity) : Bool :=
+  expectedRuntimeBundleDigest != 0 && expectedPublicationDigest != 0 &&
+    candidate.workspaceIdentity == expectedWorkspace &&
+    candidate.generationDigest == expectedGeneration &&
+    candidate.sourceRootDigest == expectedSourceRoot &&
+    candidate.contentCommit == expectedContentCommit &&
+    candidate.contentCommit.contentBinding == candidate.runtimeBinding.contentBinding &&
+    candidate.runtimeBinding == expectedRuntime &&
+    candidate.runtimeBundleDigest == expectedRuntimeBundleDigest &&
+    candidate.publicationDigest == expectedPublicationDigest
+
+def currentWorkspaceExecutionPublication : RuntimeWorkspaceExecutionPublicationIdentity :=
+  ⟨1, 31, 41, ⟨4, none, 31⟩, currentRuntimeBinding, 61, 51⟩
+
+theorem exact_source_and_runtime_product_is_admitted :
+    runtimeWorkspaceExecutionPublicationAdmitted 1 31 41 ⟨4, none, 31⟩ currentRuntimeBinding 61 51
+      currentWorkspaceExecutionPublication = true := by decide
+
+theorem runtime_artifact_refresh_does_not_require_a_new_source_generation :
+    let refreshedRuntime := { currentRuntimeBinding with runtimeArtifact := 99 }
+    let refreshedPublication : RuntimeWorkspaceExecutionPublicationIdentity :=
+      ⟨1, 31, 41, ⟨4, none, 31⟩, refreshedRuntime, 62, 52⟩
+    refreshedPublication.generationDigest =
+        currentWorkspaceExecutionPublication.generationDigest ∧
+      refreshedPublication.sourceRootDigest =
+        currentWorkspaceExecutionPublication.sourceRootDigest ∧
+      refreshedPublication.runtimeBinding ≠
+        currentWorkspaceExecutionPublication.runtimeBinding ∧
+      runtimeWorkspaceExecutionPublicationAdmitted 1 31 41 ⟨4, none, 31⟩ refreshedRuntime 62 52
+        refreshedPublication = true := by decide
+
+theorem stale_runtime_sidecar_is_rejected_for_refreshed_runtime :
+    let refreshedRuntime := { currentRuntimeBinding with runtimeArtifact := 99 }
+    runtimeWorkspaceExecutionPublicationAdmitted 1 31 41 ⟨4, none, 31⟩ refreshedRuntime 62 52
+      currentWorkspaceExecutionPublication = false := by decide
+
+theorem stale_source_sidecar_is_rejected_for_a_new_source_generation :
+    runtimeWorkspaceExecutionPublicationAdmitted 1 32 42 ⟨4, none, 31⟩ currentRuntimeBinding 61 53
+      currentWorkspaceExecutionPublication = false := by decide
+
+theorem activation_generation_cannot_substitute_for_publication_identity
+    (activationGeneration : Nat) :
+    runtimeWorkspaceExecutionPublicationAdmitted 1 31 41 ⟨4, none, 31⟩ currentRuntimeBinding 61 52
+      currentWorkspaceExecutionPublication = false := by
+  cases activationGeneration <;> decide
+
+/- Matching inner member digests do not identify the outer Runtime bundle.
+   The applied activation and the verified bundle must name the same outer
+   content-addressed product before a workspace execution sidecar can exist. -/
+theorem equal_inner_runtime_binding_cannot_authorize_a_foreign_outer_bundle :
+    runtimeWorkspaceExecutionPublicationAdmitted 1 31 41 ⟨4, none, 31⟩
+      currentRuntimeBinding 62 51 currentWorkspaceExecutionPublication = false := by decide
+
+/- Client-side timing exists before Runtime admission, so it carries only the
+   Host-bound session/request correlation and measurements.  The Runtime joins
+   it to the independently admitted execution publication.  A client timing
+   witness can neither name nor choose the resulting content identity. -/
+structure ClientSearchTimingWitness where
+  sessionIdentity : Nat
+  requestIdentity : Nat
+  phaseDurations : List Nat
+  deriving DecidableEq, Repr
+
+structure SettledSearchTelemetryIdentity where
+  sessionIdentity : Nat
+  requestIdentity : Nat
+  publication : RuntimeWorkspaceExecutionPublicationIdentity
+  deriving DecidableEq, Repr
+
+def settleClientSearchTiming
+    (expectedSession expectedRequest : Nat)
+    (expectedPublication : RuntimeWorkspaceExecutionPublicationIdentity)
+    (witness : ClientSearchTimingWitness) : Option SettledSearchTelemetryIdentity :=
+  if witness.sessionIdentity == expectedSession &&
+      witness.requestIdentity == expectedRequest &&
+      runtimeWorkspaceExecutionPublicationAdmitted
+        expectedPublication.workspaceIdentity
+        expectedPublication.generationDigest
+        expectedPublication.sourceRootDigest
+        expectedPublication.contentCommit
+        expectedPublication.runtimeBinding
+        expectedPublication.runtimeBundleDigest
+        expectedPublication.publicationDigest
+        expectedPublication
+  then some ⟨expectedSession, expectedRequest, expectedPublication⟩
+  else none
+
+theorem client_timing_is_enriched_only_with_the_server_admitted_publication
+    (durations : List Nat) :
+    settleClientSearchTiming 7 8 currentWorkspaceExecutionPublication ⟨7, 8, durations⟩ =
+      some ⟨7, 8, currentWorkspaceExecutionPublication⟩ := by
+  simp [settleClientSearchTiming, currentWorkspaceExecutionPublication,
+    runtimeWorkspaceExecutionPublicationAdmitted, currentRuntimeBinding,
+    currentProjectWorkspace]
+
+theorem foreign_client_request_cannot_receive_runtime_identity :
+    settleClientSearchTiming 7 8 currentWorkspaceExecutionPublication ⟨7, 9, [1, 2, 3]⟩ =
+      none := by decide
+
+theorem timing_values_cannot_select_a_different_runtime_publication
+    (left right : List Nat) :
+    (settleClientSearchTiming 7 8 currentWorkspaceExecutionPublication ⟨7, 8, left⟩).map
+        SettledSearchTelemetryIdentity.publication =
+      (settleClientSearchTiming 7 8 currentWorkspaceExecutionPublication ⟨7, 8, right⟩).map
+        SettledSearchTelemetryIdentity.publication := by
+  simp [settleClientSearchTiming, currentWorkspaceExecutionPublication,
+    runtimeWorkspaceExecutionPublicationAdmitted, currentRuntimeBinding,
+    currentProjectWorkspace]
+
+/- The ten-phase trace crosses seven execution authorities.  The phase owner is
+   part of the contract: a convenient downstream layer cannot manufacture a
+   measurement that belongs to an upstream or provider-owned boundary. -/
+inductive SearchTelemetryPhaseOwner where
+  | client
+  | admission
+  | runtimeRoute
+  | searchExecution
+  | searchProjection
+  | responseService
+  | transportWriter
+  deriving DecidableEq, Repr
+
+inductive SearchTelemetryPhase where
+  | launcher
+  | clientFrameEncode
+  | ipcConnect
+  | serverAdmissionQueue
+  | snapshotResolve
+  | providerDispatch
+  | parseIndexQuery
+  | projectionRank
+  | schemaValidateSerialize
+  | terminalEgress
+  deriving DecidableEq, Repr
+
+def searchTelemetryPhaseOwner : SearchTelemetryPhase → SearchTelemetryPhaseOwner
+  | .launcher | .clientFrameEncode | .ipcConnect => .client
+  | .serverAdmissionQueue => .admission
+  | .snapshotResolve | .providerDispatch => .runtimeRoute
+  | .parseIndexQuery => .searchExecution
+  | .projectionRank => .searchProjection
+  | .schemaValidateSerialize => .responseService
+  | .terminalEgress => .transportWriter
+
+def searchTelemetryPhaseOrdinal : SearchTelemetryPhase → Nat
+  | .launcher => 0
+  | .clientFrameEncode => 1
+  | .ipcConnect => 2
+  | .serverAdmissionQueue => 3
+  | .snapshotResolve => 4
+  | .providerDispatch => 5
+  | .parseIndexQuery => 6
+  | .projectionRank => 7
+  | .schemaValidateSerialize => 8
+  | .terminalEgress => 9
+
+def phaseMayBeRecordedBy
+    (owner : SearchTelemetryPhaseOwner) (phase : SearchTelemetryPhase) : Bool :=
+  searchTelemetryPhaseOwner phase == owner
+
+theorem runtime_route_cannot_synthesize_search_execution_measurement :
+    phaseMayBeRecordedBy .runtimeRoute .parseIndexQuery = false := by decide
+
+theorem search_execution_cannot_claim_projection_rank :
+    phaseMayBeRecordedBy .searchExecution .projectionRank = false := by decide
+
+theorem search_projection_cannot_claim_response_serialization :
+    phaseMayBeRecordedBy .searchProjection .schemaValidateSerialize = false := by decide
+
+theorem only_transport_writer_can_record_terminal_egress
+    (owner : SearchTelemetryPhaseOwner) :
+    phaseMayBeRecordedBy owner .terminalEgress = true → owner = .transportWriter := by
+  cases owner <;> simp [phaseMayBeRecordedBy, searchTelemetryPhaseOwner]
+
+theorem canonical_search_telemetry_ordinals_are_strict :
+    [SearchTelemetryPhase.launcher, .clientFrameEncode, .ipcConnect,
+      .serverAdmissionQueue, .snapshotResolve, .providerDispatch,
+      .parseIndexQuery, .projectionRank, .schemaValidateSerialize,
+      .terminalEgress].map searchTelemetryPhaseOrdinal =
+      [0, 1, 2, 3, 4, 5, 6, 7, 8, 9] := by decide
+
+/- An owner tag is not measurement authority. The trace admits the complete
+   boundary receipt only when that exact record was independently admitted by
+   the execution boundary. Retaining a receipt identity while changing the
+   request, phase, owner, or elapsed measurement cannot authorize the mutation. -/
+structure SearchTelemetryAuthorityReceipt where
+  requestIdentity : Nat
+  phase : SearchTelemetryPhase
+  owner : SearchTelemetryPhaseOwner
+  elapsedMicros : Nat
+  boundaryIdentity : Nat
+  deriving DecidableEq, Repr
+
+def phaseAuthorityReceiptAdmitted
+    (expectedRequest : Nat)
+    (independentlyAdmitted : List SearchTelemetryAuthorityReceipt)
+    (receipt : SearchTelemetryAuthorityReceipt) : Bool :=
+  independentlyAdmitted.contains receipt &&
+    receipt.requestIdentity == expectedRequest &&
+    phaseMayBeRecordedBy receipt.owner receipt.phase &&
+    receipt.boundaryIdentity != 0
+
+def providerParseReceipt : SearchTelemetryAuthorityReceipt :=
+  ⟨41, .parseIndexQuery, .searchExecution, 19, 73⟩
+
+theorem caller_supplied_provider_tag_is_not_measurement_authority :
+    phaseAuthorityReceiptAdmitted 41 [] providerParseReceipt = false := by decide
+
+theorem independently_admitted_provider_measurement_is_accepted :
+    phaseAuthorityReceiptAdmitted 41 [providerParseReceipt] providerParseReceipt = true := by decide
+
+theorem mutated_elapsed_measurement_cannot_reuse_an_admitted_receipt_identity :
+    phaseAuthorityReceiptAdmitted 41 [providerParseReceipt]
+      { providerParseReceipt with elapsedMicros := 20 } = false := by decide
+
+theorem foreign_request_cannot_replay_an_admitted_provider_measurement :
+    phaseAuthorityReceiptAdmitted 42 [providerParseReceipt] providerParseReceipt = false := by decide
+
+theorem predecessor_fence_changes_workspace_execution_publication :
+    let successorCommit : ContentPublicationCommitIdentity := ⟨4, some 31, 32⟩
+    let successorPublication : RuntimeWorkspaceExecutionPublicationIdentity :=
+      ⟨1, 31, 41, successorCommit, currentRuntimeBinding, 61, 52⟩
+    runtimeWorkspaceExecutionPublicationAdmitted 1 31 41 successorCommit
+      currentRuntimeBinding 61 52 successorPublication = true ∧
+    runtimeWorkspaceExecutionPublicationAdmitted 1 31 41 successorCommit
+      currentRuntimeBinding 61 52 currentWorkspaceExecutionPublication = false := by decide
+
+theorem content_commit_and_runtime_binding_must_share_one_authority :
+    let foreignCommit : ContentPublicationCommitIdentity := ⟨12, none, 32⟩
+    runtimeWorkspaceExecutionPublicationAdmitted 1 31 41 foreignCommit
+      currentRuntimeBinding 61 52
+      ⟨1, 31, 41, foreignCommit, currentRuntimeBinding, 61, 52⟩ = false := by decide
+
+structure RuntimeWorkspaceExecutionPointerIdentity where
+  workspaceIdentity : Nat
+  generationDigest : Nat
+  sourceRootDigest : Nat
+  executionPublicationDigest : Nat
+  deriving DecidableEq, Repr
+
+def runtimeWorkspaceExecutionPointerAdmitted
+    (publication : RuntimeWorkspaceExecutionPublicationIdentity)
+    (pointer : RuntimeWorkspaceExecutionPointerIdentity) : Bool :=
+  runtimeWorkspaceExecutionPublicationAdmitted
+      pointer.workspaceIdentity pointer.generationDigest pointer.sourceRootDigest
+      publication.contentCommit publication.runtimeBinding
+      publication.runtimeBundleDigest
+      pointer.executionPublicationDigest publication &&
+    pointer.workspaceIdentity == publication.workspaceIdentity &&
+    pointer.generationDigest == publication.generationDigest &&
+    pointer.sourceRootDigest == publication.sourceRootDigest &&
+    pointer.executionPublicationDigest == publication.publicationDigest
+
+def currentWorkspaceExecutionPointer : RuntimeWorkspaceExecutionPointerIdentity :=
+  ⟨1, 31, 41, 51⟩
+
+theorem canonical_pointer_binds_both_durable_halves :
+    runtimeWorkspaceExecutionPointerAdmitted currentWorkspaceExecutionPublication
+      currentWorkspaceExecutionPointer = true := by decide
+
+theorem pointer_to_stale_sidecar_is_not_partially_ready :
+    let refreshedRuntime := { currentRuntimeBinding with runtimeArtifact := 99 }
+    let refreshedPublication : RuntimeWorkspaceExecutionPublicationIdentity :=
+      ⟨1, 31, 41, ⟨4, none, 31⟩, refreshedRuntime, 62, 52⟩
+    runtimeWorkspaceExecutionPointerAdmitted refreshedPublication
+      currentWorkspaceExecutionPointer = false := by decide
+
+theorem source_pointer_drift_rejects_an_otherwise_valid_sidecar :
+    runtimeWorkspaceExecutionPointerAdmitted currentWorkspaceExecutionPublication
+      ⟨1, 32, 42, 51⟩ = false := by decide
+
+theorem smallest_runtime_admitted_selector_subset_is_queryable :
+    queryPlaybookRequestAdmitted currentProjectWorkspace currentRuntimeBinding 61 51 [10, 20, 30]
+      ⟨101, 1, 2, currentRuntimeBinding, 61, 51, [10], 7⟩ = true := by decide
+
+theorem selectors_learned_across_searches_may_form_one_query :
+    queryPlaybookRequestAdmitted currentProjectWorkspace currentRuntimeBinding 61 51 [10, 20, 30]
+      ⟨101, 1, 2, currentRuntimeBinding, 61, 51, [10, 30], 7⟩ = true := by decide
+
+theorem runtime_binding_drift_is_rejected_before_materialization :
+    queryPlaybookRequestAdmitted currentProjectWorkspace currentRuntimeBinding 61 51 [10, 20, 30]
+      ⟨101, 1, 2, ⟨currentProjectWorkspace, 2, 3, 4, 11, 99, 13, 14, 15, 16⟩, 61, 51,
+        [10], 7⟩ = false := by decide
+
+theorem publication_nonce_drift_is_rejected_before_materialization :
+    queryPlaybookRequestAdmitted currentProjectWorkspace currentRuntimeBinding 61 51 [10, 20, 30]
+      ⟨101, 1, 2, { currentRuntimeBinding with publicationNonce := 99 }, 61, 51, [10], 7⟩ = false := by
+  decide
+
+theorem content_binding_drift_is_rejected_before_materialization :
+    queryPlaybookRequestAdmitted currentProjectWorkspace currentRuntimeBinding 61 51 [10, 20, 30]
+      ⟨101, 1, 2, { currentRuntimeBinding with contentBinding := 99 }, 61, 51, [10], 7⟩ = false := by
+  decide
+
+theorem evaluator_policy_drift_is_rejected_before_materialization :
+    queryPlaybookRequestAdmitted currentProjectWorkspace currentRuntimeBinding 61 51 [10, 20, 30]
+      ⟨101, 1, 2, { currentRuntimeBinding with evaluatorPolicy := 99 }, 61, 51, [10], 7⟩ = false := by
+  decide
+
+theorem active_artifact_receipt_drift_is_rejected_before_materialization :
+    queryPlaybookRequestAdmitted currentProjectWorkspace currentRuntimeBinding 61 51 [10, 20, 30]
+      ⟨101, 1, 2, { currentRuntimeBinding with activeArtifactReceipt := 99 }, 61, 51, [10], 7⟩ = false := by
+  decide
+
+theorem evaluator_abi_drift_is_rejected_before_materialization :
+    queryPlaybookRequestAdmitted currentProjectWorkspace currentRuntimeBinding 61 51 [10, 20, 30]
+      ⟨101, 1, 2, { currentRuntimeBinding with evaluatorAbi := 99 }, 61, 51, [10], 7⟩ = false := by
+  decide
+
+theorem workspace_root_drift_is_rejected_before_materialization :
+    queryPlaybookRequestAdmitted currentProjectWorkspace currentRuntimeBinding 61 51 [10, 20, 30]
+      ⟨101, 1, 2, ⟨⟨1, 99, 4, [21, 22]⟩, 2, 3, 4, 11, 12, 13, 14, 15, 16⟩,
+        61, 51, [10], 7⟩ = false := by decide
+
+theorem equal_request_and_runtime_cannot_self_authorize_a_foreign_workspace :
+    let foreignWorkspace : ProjectWorkspaceBindingIdentity := ⟨9, 3, 4, [21, 22]⟩
+    let foreignRuntime : RuntimeExecutionBindingIdentity :=
+      ⟨foreignWorkspace, 2, 3, 4, 11, 12, 13, 14, 15, 16⟩
+    queryPlaybookRequestAdmitted currentProjectWorkspace foreignRuntime 61 51 [10, 20, 30]
+      ⟨101, 9, 2, foreignRuntime, 61, 51, [10], 7⟩ = false := by decide
+
+theorem repository_alias_drift_is_rejected_before_materialization :
+    let aliasDrift : ProjectWorkspaceBindingIdentity := ⟨1, 3, 4, [21, 99]⟩
+    let driftedRuntime : RuntimeExecutionBindingIdentity :=
+      ⟨aliasDrift, 2, 3, 4, 11, 12, 13, 14, 15, 16⟩
+    queryPlaybookRequestAdmitted currentProjectWorkspace driftedRuntime 61 51 [10, 20, 30]
+      ⟨101, 1, 2, driftedRuntime, 61, 51, [10], 7⟩ = false := by decide
+
+theorem worktree_context_drift_is_rejected_before_materialization :
+    queryPlaybookRequestAdmitted currentProjectWorkspace currentRuntimeBinding 61 51 [10, 20, 30]
+      ⟨101, 1, 99, currentRuntimeBinding, 61, 51, [10], 7⟩ = false := by decide
+
+theorem outer_runtime_bundle_drift_is_rejected_before_materialization :
+    queryPlaybookRequestAdmitted currentProjectWorkspace currentRuntimeBinding 61 51 [10, 20, 30]
+      ⟨101, 1, 2, currentRuntimeBinding, 62, 51, [10], 7⟩ = false := by decide
+
+theorem execution_publication_drift_is_rejected_before_materialization :
+    queryPlaybookRequestAdmitted currentProjectWorkspace currentRuntimeBinding 61 51 [10, 20, 30]
+      ⟨101, 1, 2, currentRuntimeBinding, 61, 52, [10], 7⟩ = false := by decide
+
+inductive QueryPlaybookTerminalState where
+  | ready | failed
+  deriving DecidableEq, Repr
+
+structure QueryPlaybookReceipt where
+  requestIdentity : Nat
+  projectWorkspace : Nat
+  worktreeInstance : Nat
+  runtimeBinding : RuntimeExecutionBindingIdentity
+  runtimeBundleDigest : Nat
+  executionPublicationDigest : Nat
+  requestedSelectors : List Nat
+  materializedSelectors : List Nat
+  projection : Nat
+  terminal : QueryPlaybookTerminalState
+  terminalCount : Nat
+  deriving DecidableEq, Repr
+
+def queryPlaybookReceiptAdmitted
+    (manifestProjectWorkspace : ProjectWorkspaceBindingIdentity)
+    (expectedBinding : RuntimeExecutionBindingIdentity)
+    (expectedRuntimeBundleDigest expectedExecutionPublicationDigest : Nat)
+    (runtimeAdmittedSelectors : List Nat)
+    (request : QueryPlaybookRequest)
+    (receipt : QueryPlaybookReceipt) : Bool :=
+  queryPlaybookRequestAdmitted manifestProjectWorkspace expectedBinding
+      expectedRuntimeBundleDigest expectedExecutionPublicationDigest runtimeAdmittedSelectors request &&
+    receipt.requestIdentity == request.requestIdentity &&
+    receipt.projectWorkspace == request.projectWorkspace &&
+    receipt.worktreeInstance == request.worktreeInstance &&
+    receipt.runtimeBinding == request.runtimeBinding &&
+    receipt.runtimeBundleDigest == request.runtimeBundleDigest &&
+    receipt.executionPublicationDigest == request.executionPublicationDigest &&
+    receipt.requestedSelectors == request.selectors &&
+    receipt.projection == request.projection &&
+    receipt.terminalCount == 1 &&
+    match receipt.terminal with
+    | .ready => receipt.materializedSelectors == request.selectors
+    | .failed => receipt.materializedSelectors.isEmpty
+
+def twoSelectorQuery : QueryPlaybookRequest :=
+  ⟨101, 1, 2, currentRuntimeBinding, 61, 51, [10, 30], 7⟩
+
+def completeQueryReceipt : QueryPlaybookReceipt :=
+  ⟨101, 1, 2, currentRuntimeBinding, 61, 51, [10, 30], [10, 30], 7, .ready, 1⟩
+
+theorem one_runtime_bound_terminal_materializes_the_complete_selector_set :
+    queryPlaybookReceiptAdmitted currentProjectWorkspace currentRuntimeBinding 61 51 [10, 20, 30]
+      twoSelectorQuery completeQueryReceipt = true := by decide
+
+theorem a_partial_ready_receipt_is_rejected :
+    queryPlaybookReceiptAdmitted currentProjectWorkspace currentRuntimeBinding 61 51 [10, 20, 30]
+      twoSelectorQuery
+      { completeQueryReceipt with materializedSelectors := [10] } = false := by decide
+
+theorem a_failed_receipt_cannot_expose_partial_materialization :
+    queryPlaybookReceiptAdmitted currentProjectWorkspace currentRuntimeBinding 61 51 [10, 20, 30]
+      twoSelectorQuery
+      { { completeQueryReceipt with terminal := .failed } with
+          materializedSelectors := [10] } = false := by decide
+
+theorem more_than_one_query_terminal_is_rejected :
+    queryPlaybookReceiptAdmitted currentProjectWorkspace currentRuntimeBinding 61 51 [10, 20, 30]
+      twoSelectorQuery
+      { completeQueryReceipt with terminalCount := 2 } = false := by decide
 
 end ASPProof.SearchEvidenceDerivation

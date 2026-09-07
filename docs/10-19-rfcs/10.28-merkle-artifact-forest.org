@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 #+TITLE: RFC 10.28: Merkle Artifact Forest for ASP State, DB, and Evidence Artifacts
 #+DATE: 2026-07-02
 #+STATUS: Draft
@@ -747,13 +751,13 @@ the node graph only when the agent asks for provenance/debug detail.
 
 * Filesystem Layout
 
-Merkle payload storage should live under State Core artifact paths:
+Merkle payload storage lives in the V1 State Home content-addressed roots:
 
 #+begin_example
-$ASP_STATE_HOME/projects/by-id/<repo_id>/workspaces/<workspace_id>/artifacts/
-  objects/blake3/<prefix>/<hash>
-  bundles/<root_kind>/<root_hash>/manifest.json
-  exports/<root_kind>/<root_hash>/
+$ASP_STATE_HOME/blobs/blake3-256/<content-digest>
+$ASP_STATE_HOME/workspaces/<workspace-content-digest>/artifacts/
+  bundles/<root-kind>/<root-digest>/manifest.json
+  exports/<root-kind>/<root-digest>/
 #+end_example
 
 The DB is authoritative for roots and reachability. The filesystem stores large

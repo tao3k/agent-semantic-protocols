@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 //! Selects the highest-priority policy candidate without encoding rule identity.
 
 use crate::hook_config::HookPolicyCandidate;

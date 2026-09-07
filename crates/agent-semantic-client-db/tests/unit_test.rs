@@ -1,8 +1,7 @@
 #![deny(dead_code)]
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
-
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 #[path = "unit/projection_capability_fixture.rs"]
 mod fixture;
@@ -89,6 +88,8 @@ mod runtime_server_supervisor_endpoint_v1_migration;
 mod runtime_server_supervisor_reconciliation;
 #[path = "unit/runtime_server_workspace.rs"]
 mod runtime_server_workspace;
+#[path = "unit/runtime_server_workspace_execution_publication.rs"]
+mod runtime_server_workspace_execution_publication;
 #[path = "unit/runtime_server_workspace_recovery.rs"]
 mod runtime_server_workspace_recovery;
 #[path = "unit/runtime_server_workspace_resident.rs"]

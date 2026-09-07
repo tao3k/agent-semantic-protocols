@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 use agent_semantic_hook::ROOT_BLOCK_BEGIN;
 use agent_semantic_hook::claude_hook_block;
 use agent_semantic_hook::codex_hook_block;

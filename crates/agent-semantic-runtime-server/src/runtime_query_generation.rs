@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 //! Immutable Runtime query-generation value opened from resident Search authority.
 
 use std::sync::Arc;
@@ -13,6 +17,13 @@ pub struct RuntimeQueryGeneration {
     pub(super) generation_digest: String,
     pub(super) generation_token: AtomicU64,
     pub(super) resident: Option<Arc<RuntimeResidentReadClient>>,
+    pub(super) execution_publication: Option<
+        Arc<
+            agent_semantic_content_identity::runtime_workspace_execution_publication::RuntimeWorkspaceExecutionPublication,
+        >,
+    >,
+    pub(super) project_topology_attachment:
+        Option<Arc<agent_semantic_topology::RuntimeProjectTopologyAttachment>>,
     pub(super) build_resource_receipt:
         std::sync::OnceLock<RuntimeSearchGenerationBuildResourceReceipt>,
 }
@@ -34,6 +45,8 @@ impl RuntimeQueryGeneration {
             generation_digest,
             generation_token: AtomicU64::new(0),
             resident: Some(Arc::new(resident)),
+            execution_publication: None,
+            project_topology_attachment: None,
             build_resource_receipt: std::sync::OnceLock::new(),
         })
     }
@@ -51,7 +64,53 @@ impl RuntimeQueryGeneration {
             generation_digest,
             generation_token: AtomicU64::new(0),
             resident: Some(Arc::new(resident)),
+            execution_publication: None,
+            project_topology_attachment: None,
             build_resource_receipt: std::sync::OnceLock::new(),
+        })
+    }
+
+    pub fn from_resident_with_execution_publication(
+        resident: agent_semantic_client_db::runtime_resident_read::RuntimeResidentReadClient,
+        execution_publication: agent_semantic_content_identity::runtime_workspace_execution_publication::RuntimeWorkspaceExecutionPublication,
+    ) -> Result<Self, String> {
+        let generation = Self::from_resident(resident)?;
+        execution_publication.validate().map_err(|error| {
+            format!("validate resident Runtime execution publication: {error:?}")
+        })?;
+        if execution_publication.generation_digest.as_str() != generation.generation_digest
+            || execution_publication.source_root_digest.as_str()
+                != generation.resident().source_root_digest()
+        {
+            return Err(
+                "reasonKind=runtime-query-generation-execution-publication-mismatch".to_owned(),
+            );
+        }
+        Ok(Self {
+            execution_publication: Some(Arc::new(execution_publication)),
+            ..generation
+        })
+    }
+
+    /// Atomically joins the already admitted Runtime generation and Project
+    /// Topology product. Lower-level resident reads can exist without this
+    /// attachment; Search Playbook cannot.
+    pub fn with_project_topology_attachment(
+        self,
+        attachment: agent_semantic_topology::RuntimeProjectTopologyAttachment,
+    ) -> Result<Self, String> {
+        let execution_publication = self.execution_publication.as_deref().ok_or_else(|| {
+            "reasonKind=runtime-project-topology-execution-publication-missing".to_owned()
+        })?;
+        if attachment.runtime_generation_digest() != self.generation_digest
+            || attachment.runtime_execution_binding()
+                != &execution_publication.runtime_execution_binding
+        {
+            return Err("reasonKind=runtime-project-topology-attachment-mismatch".to_owned());
+        }
+        Ok(Self {
+            project_topology_attachment: Some(Arc::new(attachment)),
+            ..self
         })
     }
 
@@ -84,6 +143,23 @@ impl RuntimeQueryGeneration {
         self.resident
             .as_deref()
             .expect("ready query generation always owns a resident read client")
+    }
+
+    /// Borrows the immutable source/Runtime product installed with this generation.
+    pub fn execution_publication(
+        &self,
+    ) -> Option<&agent_semantic_content_identity::runtime_workspace_execution_publication::RuntimeWorkspaceExecutionPublication>
+    {
+        self.execution_publication.as_deref()
+    }
+
+    /// Borrows the exact topology authority required by Search Playbook.
+    pub fn require_search_playbook_topology_attachment(
+        &self,
+    ) -> Result<&agent_semantic_topology::RuntimeProjectTopologyAttachment, String> {
+        self.project_topology_attachment
+            .as_deref()
+            .ok_or_else(|| "reasonKind=runtime-project-topology-attachment-missing".to_owned())
     }
 
     pub fn native_syntax_state(&self) -> &'static str {

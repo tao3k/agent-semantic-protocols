@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 //! Atomic publication and exact-identity admission for resident query generations.
 
 use std::collections::HashMap;
@@ -95,6 +99,29 @@ impl RuntimeQueryGenerationAuthority {
         key: RuntimeProjectWorkspaceKey,
         generation: Arc<RuntimeQueryGeneration>,
     ) -> Result<u64, String> {
+        if generation.project_topology_attachment.is_none() {
+            return Err(
+                "state=query-not-ready reasonKind=runtime-project-topology-attachment-missing"
+                    .to_owned(),
+            );
+        }
+        let resident = generation.resident.as_deref().ok_or_else(|| {
+            "state=query-not-ready reasonKind=resident-generation-missing".to_owned()
+        })?;
+        if !resident.graph_generation_is_ready() || !resident.lexical_accelerator_is_ready() {
+            return Err(
+                "state=query-not-ready reasonKind=derived-generation-terminal-incomplete"
+                    .to_owned(),
+            );
+        }
+        self.publish_ready_admitted(key, generation)
+    }
+
+    fn publish_ready_admitted(
+        &self,
+        key: RuntimeProjectWorkspaceKey,
+        generation: Arc<RuntimeQueryGeneration>,
+    ) -> Result<u64, String> {
         let _publication_guard = self
             .publication_lock
             .lock()
@@ -107,19 +134,7 @@ impl RuntimeQueryGenerationAuthority {
                 return Ok(current_token);
             }
         }
-        let generation_token = if generation.generation_token.load(Ordering::Acquire) == 0 {
-            let next = self.next_generation_token.fetch_add(1, Ordering::AcqRel) + 1;
-            match generation.generation_token.compare_exchange(
-                0,
-                next,
-                Ordering::AcqRel,
-                Ordering::Acquire,
-            ) {
-                Ok(_) | Err(_) => generation.generation_token.load(Ordering::Acquire),
-            }
-        } else {
-            generation.generation_token.load(Ordering::Acquire)
-        };
+        let generation_token = self.reserve_generation_token(&generation);
         let mut generations = self.sender.borrow().as_ref().clone();
         if let Some(RuntimeQueryGenerationState::Ready(current)) = generations.get(&key)
             && generation_token <= current.generation_token()
@@ -134,6 +149,28 @@ impl RuntimeQueryGenerationAuthority {
         generations.insert(key, RuntimeQueryGenerationState::Ready(generation));
         self.sender.send_replace(Arc::new(generations));
         Ok(generation_token)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn publish_ready_fixture(
+        &self,
+        key: RuntimeProjectWorkspaceKey,
+        generation: Arc<RuntimeQueryGeneration>,
+    ) -> Result<u64, String> {
+        self.publish_ready_admitted(key, generation)
+    }
+
+    fn reserve_generation_token(&self, generation: &RuntimeQueryGeneration) -> u64 {
+        if generation.generation_token.load(Ordering::Acquire) == 0 {
+            let next = self.next_generation_token.fetch_add(1, Ordering::AcqRel) + 1;
+            let _ = generation.generation_token.compare_exchange(
+                0,
+                next,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            );
+        }
+        generation.generation_token.load(Ordering::Acquire)
     }
 
     pub fn publish_failed(
@@ -286,15 +323,26 @@ impl RuntimeQueryGenerationAuthority {
         match RuntimeQueryGeneration::open(pointer_path, project_root).await {
             Ok(generation) if generation.generation_digest() == expected_generation_digest => {
                 let generation = Arc::new(generation);
-                self.publish_ready(key.clone(), Arc::clone(&generation))?;
-                if let Err(error) = self.builder.schedule(
-                    key,
-                    project_root,
-                    Arc::clone(&generation),
-                    previous_generation.as_deref(),
-                ) {
-                    generation.resident().fail_derived_attachments(&error);
+                let publication_token = self.reserve_generation_token(&generation);
+                if let Err(error) = self
+                    .builder
+                    .build_and_wait(
+                        key,
+                        project_root,
+                        Arc::clone(&generation),
+                        previous_generation.as_deref(),
+                    )
+                    .await
+                {
+                    self.publish_failed(
+                        key.clone(),
+                        publication_token,
+                        expected_generation_digest.to_owned(),
+                        error.clone(),
+                    );
+                    return Err(error);
                 }
+                self.publish_ready(key.clone(), Arc::clone(&generation))?;
                 Ok(generation)
             }
             Ok(generation) => {
@@ -330,8 +378,50 @@ impl RuntimeQueryGenerationAuthority {
         resident: agent_semantic_client_db::runtime_resident_read::RuntimeResidentReadClient,
         expected_generation_digest: &str,
     ) -> Result<Arc<RuntimeQueryGeneration>, String> {
+        self.ensure_ready_resident_inner(
+            key,
+            project_root,
+            resident,
+            expected_generation_digest,
+            None,
+        )
+        .await
+    }
+
+    pub async fn ensure_ready_resident_with_execution_publication(
+        &self,
+        key: &RuntimeProjectWorkspaceKey,
+        project_root: &std::path::Path,
+        resident: agent_semantic_client_db::runtime_resident_read::RuntimeResidentReadClient,
+        expected_generation_digest: &str,
+        execution_publication: agent_semantic_content_identity::runtime_workspace_execution_publication::RuntimeWorkspaceExecutionPublication,
+    ) -> Result<Arc<RuntimeQueryGeneration>, String> {
+        self.ensure_ready_resident_inner(
+            key,
+            project_root,
+            resident,
+            expected_generation_digest,
+            Some(execution_publication),
+        )
+        .await
+    }
+
+    async fn ensure_ready_resident_inner(
+        &self,
+        key: &RuntimeProjectWorkspaceKey,
+        project_root: &std::path::Path,
+        resident: agent_semantic_client_db::runtime_resident_read::RuntimeResidentReadClient,
+        expected_generation_digest: &str,
+        execution_publication: Option<agent_semantic_content_identity::runtime_workspace_execution_publication::RuntimeWorkspaceExecutionPublication>,
+    ) -> Result<Arc<RuntimeQueryGeneration>, String> {
+        let ready_matches = |generation: &RuntimeQueryGeneration| {
+            generation.generation_digest() == expected_generation_digest
+                && execution_publication
+                    .as_ref()
+                    .is_none_or(|expected| generation.execution_publication() == Some(expected))
+        };
         if let Some(RuntimeQueryGenerationState::Ready(generation)) = self.sender.borrow().get(key)
-            && generation.generation_digest() == expected_generation_digest
+            && ready_matches(generation)
         {
             return Ok(Arc::clone(generation));
         }
@@ -345,7 +435,7 @@ impl RuntimeQueryGenerationAuthority {
         };
         let _guard = lane.lock().await;
         if let Some(RuntimeQueryGenerationState::Ready(generation)) = self.sender.borrow().get(key)
-            && generation.generation_digest() == expected_generation_digest
+            && ready_matches(generation)
         {
             return Ok(Arc::clone(generation));
         }
@@ -353,7 +443,15 @@ impl RuntimeQueryGenerationAuthority {
             Some(RuntimeQueryGenerationState::Ready(generation)) => Some(Arc::clone(generation)),
             _ => None,
         };
-        let generation = Arc::new(RuntimeQueryGeneration::from_resident(resident)?);
+        let generation = Arc::new(match execution_publication {
+            Some(execution_publication) => {
+                RuntimeQueryGeneration::from_resident_with_execution_publication(
+                    resident,
+                    execution_publication,
+                )?
+            }
+            None => RuntimeQueryGeneration::from_resident(resident)?,
+        });
         if generation.generation_digest() != expected_generation_digest {
             return Err(format!(
                 "resident generation digest mismatch: expected={} actual={}",
@@ -361,15 +459,26 @@ impl RuntimeQueryGenerationAuthority {
                 generation.generation_digest()
             ));
         }
-        self.publish_ready(key.clone(), Arc::clone(&generation))?;
-        if let Err(error) = self.builder.schedule(
-            key,
-            project_root,
-            Arc::clone(&generation),
-            previous_generation.as_deref(),
-        ) {
-            generation.resident().fail_derived_attachments(&error);
+        let publication_token = self.reserve_generation_token(&generation);
+        if let Err(error) = self
+            .builder
+            .build_and_wait(
+                key,
+                project_root,
+                Arc::clone(&generation),
+                previous_generation.as_deref(),
+            )
+            .await
+        {
+            self.publish_failed(
+                key.clone(),
+                publication_token,
+                expected_generation_digest.to_owned(),
+                error.clone(),
+            );
+            return Err(error);
         }
+        self.publish_ready(key.clone(), Arc::clone(&generation))?;
         Ok(generation)
     }
 }

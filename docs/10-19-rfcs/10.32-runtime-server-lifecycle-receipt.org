@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 #+title: Runtime Server Lifecycle and Drain Receipt
 #+date: 2026-08-05
 
@@ -82,7 +86,7 @@ the Host supervisor may enter the State-Home election, acquire the single
 lifecycle start right, re-check operator-stop intent, and repeat the handshake
 before spawning one detached server.  Losing supervisors join the elected
 generation.  A sandbox client never becomes the supervisor and never falls
-through to pathname, loopback, spawn, restart, retry, or =ASP_NO_AGENT=.
+through to pathname, loopback, spawn, restart, retry, or Hook configuration.
 
 Hook probes use a short, independently bounded latency budget suitable for
 command interception.  An explicit operator =asp server start= or =restart=

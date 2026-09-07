@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 #[tokio::test]
 async fn cli_install_binary_composition_acquires_once_and_consumes_operation_lease() {
@@ -13,7 +13,7 @@ async fn cli_install_binary_composition_acquires_once_and_consumes_operation_lea
     std::fs::create_dir_all(source.parent().expect("source parent"))
         .expect("create source directory");
     std::fs::write(&source, b"asp-cli-composition").expect("write source artifact");
-    let target = protocol_home.join("runtime/bin/asp");
+    let target = protocol_home.join("home/.local/bin/asp");
 
     let receipt = super::ensure_protocol_binary_installed(&super::ProtocolBinaryInstallPlan {
         binary_identity: super::RuntimeBinaryIdentityV1::asp_bootstrap(),
@@ -21,7 +21,6 @@ async fn cli_install_binary_composition_acquires_once_and_consumes_operation_lea
         explicit_candidate_source: None,
         target,
         artifact_root,
-        managed_path_aliases: Vec::new(),
     })
     .await
     .expect("CLI install binary composition");
@@ -79,32 +78,12 @@ async fn runtime_artifact_transaction_switches_client_launcher_without_switching
         .expect("create unrelated dir");
     std::fs::write(&unrelated, b"unrelated").expect("write unrelated binary");
 
-    let path_dirs = vec![
-        first_alias
-            .parent()
-            .expect("first alias parent")
-            .to_path_buf(),
-        second_alias
-            .parent()
-            .expect("second alias parent")
-            .to_path_buf(),
-        unrelated.parent().expect("unrelated parent").to_path_buf(),
-    ];
-    let managed =
-        super::managed_protocol_binary_path_aliases(&artifact_root, &primary_target, &path_dirs)
-            .expect("discover managed aliases");
-    assert!(
-        managed.is_empty(),
-        "superseded member-store links are not managed serving aliases"
-    );
-
     super::ensure_protocol_binary_installed(&super::ProtocolBinaryInstallPlan {
         binary_identity: super::RuntimeBinaryIdentityV1::asp_bootstrap(),
         current_exe: source,
         explicit_candidate_source: None,
-        target: primary_target.clone(),
+        target: root.join("home/.local/bin/asp"),
         artifact_root: artifact_root.clone(),
-        managed_path_aliases: managed,
     })
     .await
     .expect("reconcile managed aliases");
@@ -138,6 +117,17 @@ async fn runtime_artifact_transaction_switches_client_launcher_without_switching
             .expect("canonical pending activation artifact"),
         "normal client bootstrap must execute the pending immutable candidate"
     );
+    assert_eq!(
+        std::fs::read_link(&primary_target).expect("read Runtime compatibility alias"),
+        root.join("home/.local/bin/asp"),
+        "Runtime compatibility alias must point to the PATH-visible install entry"
+    );
+    assert_ne!(
+        std::fs::read_link(root.join("home/.local/bin/asp"))
+            .expect("read PATH-visible install entry"),
+        primary_target,
+        "PATH-visible install entry must never point back to the Runtime alias"
+    );
     assert!(!activation.publication_nonce.is_empty());
     assert_eq!(
         std::fs::read(unrelated).expect("read unrelated binary"),
@@ -148,21 +138,26 @@ async fn runtime_artifact_transaction_switches_client_launcher_without_switching
 }
 
 #[test]
-fn install_target_is_derived_from_the_canonical_runtime_root() {
+fn protocol_binary_entries_put_the_runtime_alias_behind_the_path_visible_install() {
     let root = std::env::temp_dir().join(format!(
         "asp-canonical-runtime-target-{}",
         std::process::id()
     ));
-    let artifact_root = root.join("artifacts");
-    let target = super::resolve_protocol_binary_install_target(None, &artifact_root)
-        .expect("canonical runtime target");
-    assert_eq!(target, root.join("bin/asp"));
+    let state_home = root.join("state-home");
+    let artifact_root = state_home.join("runtime/artifacts");
+    let user_home = root.join("home");
+    let entries = super::resolve_protocol_binary_install_entries(None, &artifact_root, &user_home)
+        .expect("canonical protocol binary entries");
+    assert_eq!(entries.path_visible, user_home.join(".local/bin/asp"));
+    assert_eq!(entries.runtime_alias, state_home.join("runtime/bin/asp"));
+    assert_ne!(entries.path_visible, entries.runtime_alias);
 
     let explicit = root.join("explicit-bin");
-    let explicit_target =
-        super::resolve_protocol_binary_install_target(Some(&explicit), &artifact_root)
-            .expect("explicit runtime target");
-    assert_eq!(explicit_target, explicit.join("asp"));
+    let explicit_entries =
+        super::resolve_protocol_binary_install_entries(Some(&explicit), &artifact_root, &user_home)
+            .expect("explicit protocol binary entries");
+    assert_eq!(explicit_entries.path_visible, explicit.join("asp"));
+    assert_eq!(explicit_entries.runtime_alias, entries.runtime_alias);
 }
 
 #[cfg(unix)]

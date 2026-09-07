@@ -1,6 +1,6 @@
 <!--
 SPDX-FileCopyrightText: 2026 tao3k team and Contributors
-SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 -->
 
 # Agent Semantic Protocols
@@ -66,10 +66,11 @@ in the RFC and schema first, then align providers and sandtable evidence.
 
 ## Common Commands
 
-Enter the project shell first when available:
+Run repository commands through the captured devenv profile. This reuses the
+already-activated workspace without evaluating `direnv` for every command:
 
 ```sh
-direnv exec . <command>
+.devenv/devenv-profile-exec <command>
 ```
 
 Install agent-facing tools and refresh the Codex integration through the

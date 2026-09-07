@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 from pathlib import Path
 
 
@@ -19,7 +23,7 @@ def test_asp_rust_ci_checks_out_provider_catalog_submodules() -> None:
 
     for checkout_step in (rust_checkout_step, schema_checkout_step):
         assert "languages/AspJulia.jl" in checkout_step
-        assert "languages/gerbil-scheme-language-project-harness" in checkout_step
+        assert "languages/asp-gerbil-scheme" in checkout_step
 
 
 def test_root_release_carries_server_managed_graphs_artifact() -> None:

@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 //! State Home layout tests.
 
@@ -183,7 +183,7 @@ fn workspace_materialization_rejects_tampered_binding_metadata() {
 }
 
 #[test]
-fn workspace_retirement_requires_the_full_bound_digest() {
+fn workspace_removal_requires_the_full_bound_digest() {
     let state_home = tempfile::tempdir().unwrap();
     let workspace_root = tempfile::tempdir().unwrap();
     let binding =
@@ -197,17 +197,23 @@ fn workspace_retirement_requires_the_full_bound_digest() {
     assert_eq!(discovered[0].binding, binding);
     assert!(discovered[0].byte_count >= 7);
 
-    assert!(layout.retire_workspace("workspace-short-id").is_err());
+    assert!(
+        layout
+            .stage_workspace_removal("workspace-short-id")
+            .is_err()
+    );
     assert!(paths.root.exists());
     layout
-        .retire_workspace(binding.workspace.digest.as_str())
+        .stage_workspace_removal(binding.workspace.digest.as_str())
+        .unwrap()
+        .commit()
         .unwrap();
     assert!(!paths.root.exists());
     assert!(layout.materialized_workspaces().unwrap().is_empty());
 }
 
 #[test]
-fn workspace_retirement_is_staged_and_can_rollback_before_catalog_commit() {
+fn workspace_removal_is_staged_and_can_rollback_before_catalog_commit() {
     let state_home = tempfile::tempdir().unwrap();
     let workspace_root = tempfile::tempdir().unwrap();
     let binding =
@@ -218,7 +224,7 @@ fn workspace_retirement_is_staged_and_can_rollback_before_catalog_commit() {
     std::fs::write(&payload, b"payload").unwrap();
 
     let staged = layout
-        .stage_workspace_retirement(binding.workspace.digest.as_str())
+        .stage_workspace_removal(binding.workspace.digest.as_str())
         .unwrap();
     assert!(!paths.root.exists());
     assert!(staged.staged_root().is_dir());
@@ -228,7 +234,7 @@ fn workspace_retirement_is_staged_and_can_rollback_before_catalog_commit() {
     assert_eq!(std::fs::read(&payload).unwrap(), b"payload");
 
     let staged = layout
-        .stage_workspace_retirement(binding.workspace.digest.as_str())
+        .stage_workspace_removal(binding.workspace.digest.as_str())
         .unwrap();
     let staged_root = staged.staged_root().to_path_buf();
     staged.commit().unwrap();
@@ -237,43 +243,128 @@ fn workspace_retirement_is_staged_and_can_rollback_before_catalog_commit() {
 }
 
 #[test]
-fn retired_state_root_requires_identity_and_observation_then_stages_atomically() {
+fn state_home_contract_finds_only_entries_outside_the_v1_allowlist() {
     let state_home = tempfile::tempdir().unwrap();
     let layout = StateHomeLayout::new(state_home.path());
-    let root = state_home
-        .path()
-        .join("projects/by-id/repo-0123456789abcdef");
-    std::fs::create_dir_all(root.join("cache")).unwrap();
+    for canonical in [
+        "catalog",
+        "control/config/agents",
+        "control/sessions",
+        "runtime/bin",
+        "runtime/artifacts",
+        "runtime/serving",
+        "workspaces",
+        "cache",
+        "resources",
+        "blobs",
+        "receipts",
+        "trash",
+    ] {
+        std::fs::create_dir_all(state_home.path().join(canonical)).unwrap();
+    }
     std::fs::write(
-        root.join("project.json"),
-        serde_json::to_vec(&serde_json::json!({
-            "repoId": "repo-0123456789abcdef",
-            "checkoutRoot": "/workspace/project"
-        }))
-        .unwrap(),
+        layout.control().asp_config(),
+        "[dev]\nenabled = false\n\n[hook-engine]\nenabled = true\n",
     )
     .unwrap();
-    std::fs::write(root.join(".last-seen-ms"), b"1000\n").unwrap();
-    std::fs::write(root.join("cache/payload"), b"payload").unwrap();
+    std::fs::create_dir_all(state_home.path().join("obsolete-root")).unwrap();
+    std::fs::write(state_home.path().join("obsolete-root/payload"), b"old").unwrap();
+    std::fs::create_dir_all(state_home.path().join("runtime/obsolete-runtime-tree")).unwrap();
+    std::fs::write(
+        state_home
+            .path()
+            .join("control/config/runtime-artifacts.toml"),
+        b"[dev]\nenabled = false\n",
+    )
+    .unwrap();
 
-    let roots = layout.retired_state_roots().unwrap();
-    assert_eq!(roots.len(), 1);
-    assert_eq!(roots[0].object_id, "repo-0123456789abcdef");
-    assert_eq!(roots[0].last_observed_at_ms, 1000);
-    assert!(roots[0].byte_count >= 7);
-
-    let staged = layout.stage_retired_state_root(&roots[0]).unwrap();
-    assert!(!root.exists());
-    staged.rollback().unwrap();
+    let violations = layout.non_contract_entries().unwrap();
     assert_eq!(
-        std::fs::read(root.join("cache/payload")).unwrap(),
-        b"payload"
+        violations
+            .iter()
+            .map(|entry| entry.relative_path.as_path())
+            .collect::<Vec<_>>(),
+        vec![
+            std::path::Path::new("control/config/runtime-artifacts.toml"),
+            std::path::Path::new("obsolete-root"),
+            std::path::Path::new("runtime/obsolete-runtime-tree"),
+        ]
     );
 
-    let root = layout.retired_state_roots().unwrap().remove(0);
-    let staged = layout.stage_retired_state_root(&root).unwrap();
-    let staged_path = staged.staged_root().to_path_buf();
-    staged.commit().unwrap();
-    assert!(!staged_path.exists());
-    assert!(!root.root.exists());
+    let obsolete_root = violations
+        .iter()
+        .find(|entry| entry.relative_path == std::path::Path::new("obsolete-root"))
+        .unwrap();
+    let staged = layout.stage_non_contract_entry(obsolete_root).unwrap();
+    assert!(!state_home.path().join("obsolete-root").exists());
+    staged.rollback().unwrap();
+    assert_eq!(
+        std::fs::read(state_home.path().join("obsolete-root/payload")).unwrap(),
+        b"old"
+    );
+}
+
+#[test]
+fn explicit_trash_purge_leaves_no_persistent_history_namespace() {
+    let state_home = tempfile::tempdir().unwrap();
+    let layout = StateHomeLayout::new(state_home.path());
+    std::fs::create_dir_all(layout.trash().join("old-layout/nested")).unwrap();
+    std::fs::write(
+        layout.trash().join("old-layout/nested/payload"),
+        b"obsolete",
+    )
+    .unwrap();
+    std::fs::write(layout.trash().join("stale-receipt"), b"stale").unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+        std::fs::set_permissions(
+            layout.trash().join("old-layout/nested"),
+            std::fs::Permissions::from_mode(0o555),
+        )
+        .unwrap();
+    }
+
+    let cleanup = layout.purge_trash().unwrap();
+
+    assert_eq!(
+        cleanup.relative_paths,
+        vec![
+            std::path::PathBuf::from("trash/old-layout"),
+            std::path::PathBuf::from("trash/stale-receipt"),
+        ]
+    );
+    assert_eq!(cleanup.byte_count, 13);
+    assert!(layout.trash().read_dir().unwrap().next().is_none());
+}
+
+#[test]
+fn runtime_transport_paths_are_short_and_bound_to_state_home_identity() {
+    let first = StateHomeLayout::new(
+        "/a/very/long/state/home/whose/durable/receipts/must/not/be/moved/to/the/os/runtime/directory/first",
+    )
+    .runtime_state()
+    .transport();
+    let same = StateHomeLayout::new(
+        "/a/very/long/state/home/whose/durable/receipts/must/not/be/moved/to/the/os/runtime/directory/first",
+    )
+    .runtime_state()
+    .transport();
+    let second = StateHomeLayout::new(
+        "/a/very/long/state/home/whose/durable/receipts/must/not/be/moved/to/the/os/runtime/directory/second",
+    )
+    .runtime_state()
+    .transport();
+
+    assert_eq!(first, same);
+    assert_ne!(first, second);
+    assert!(first.opentelemetry_query_socket().as_os_str().len() < 100);
+    assert_eq!(first.root().parent(), Some(std::path::Path::new("/tmp")));
+    assert!(
+        first
+            .root()
+            .file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| name.starts_with("asp-runtime-"))
+    );
 }

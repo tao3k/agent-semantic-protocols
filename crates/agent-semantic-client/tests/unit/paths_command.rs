@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 use std::process::Command;
 use std::time::SystemTime;
@@ -147,7 +147,6 @@ fn paths_json_is_machine_readable() {
         .env("ASP_STATE_HOME", &state_home)
         .env("PATH", "")
         .env("PRJ_CACHE_HOME", root.join(".cache"))
-        .env_remove("ASP_NO_AGENT")
         .env_remove("CODEX_THREAD_ID")
         .env_remove("CODEX_SESSION_ID")
         .args(["paths", "--json"])

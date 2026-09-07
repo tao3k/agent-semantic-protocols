@@ -41,7 +41,7 @@
           "type": "string",
           "pattern": "^blake3-256:[0-9a-f]{64}$"
         },
-        "runtimeBinding": { "$ref": "runtime-execution-binding" }
+        "runtimeBinding": { "$ref": "runtime-execution-binding.v2.schema.json" }
       }
     },
     "selector": {

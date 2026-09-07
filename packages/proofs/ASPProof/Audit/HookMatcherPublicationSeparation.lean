@@ -1,3 +1,7 @@
+-- SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+--
+-- SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 import ASPProof.HookMatcherPublicationSeparation
 
 namespace ASPProof.Audit.HookMatcherPublicationSeparation
@@ -17,22 +21,10 @@ open ASPProof.HookMatcherPublicationSeparation
 #check separated_evaluation_cannot_self_wait
 #check concurrent_readers_preserve_cardinality
 #check only_standalone_hook_accepts_host_events
-#check legacy_deadlock_cycle_is_reachable
-#check process_environment_override_makes_deadlock_unreachable
-#check launcher_environment_override_makes_deadlock_unreachable
-#check direct_assignment_is_recovery_authority
-#check env_utility_assignment_is_recovery_authority
-#check exported_assignment_is_recovery_authority
-#check noncanonical_assignment_is_not_recovery_authority
-#check unbound_payload_text_is_not_recovery_authority
-#check exported_command_escape_survives_missing_evaluator
-#check unbound_text_cannot_escape_missing_evaluator
-#check noncanonical_assignment_cannot_escape_missing_evaluator
-#check command_environment_override_makes_deadlock_unreachable
-#check recovery_override_does_not_capture_ordinary_cli
-#check recovery_override_precedes_policy_for_hook_event
-#check inherited_escape_precedes_evaluator_and_policy
-#check command_escape_precedes_evaluator_and_policy
+#check hook_configuration_does_not_capture_ordinary_cli
+#check disabled_hook_engine_passes_through_before_evaluation
+#check enabled_hook_engine_evaluates
+#check environment_cannot_change_hook_engine_policy
 #check typed_target_dispatch_is_a_fixed_point
 #check registry_projection_preserves_configured_agent_kind
 #check configured_testing_target_does_not_redispatch

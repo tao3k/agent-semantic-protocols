@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 mod canonical_materialization;
 mod canonical_snapshot;
@@ -8,6 +8,8 @@ mod client;
 mod context;
 mod durability;
 mod exact_segment;
+mod execution_publication;
+mod execution_publication_composer;
 mod lease;
 mod memory_backend;
 mod model;
@@ -55,6 +57,10 @@ pub use durability::{
 pub use exact_segment::{
     WorkspaceExactProjectionDataPlaneClient, WorkspaceExactProjectionDataPlaneOpen,
 };
+pub use execution_publication::RuntimeWorkspaceExecutionPublicationStore;
+pub use execution_publication_composer::{
+    compose_runtime_workspace_execution_publication, publish_runtime_workspace_execution_product,
+};
 pub use lease::WorkspaceGenerationLease;
 pub use memory_backend::WorkspaceProjectionLease;
 pub use model::{
@@ -67,7 +73,7 @@ pub use model::{
     WorkspaceRecoveryReceipt, WorkspaceRecoverySource, WorkspaceRuntimeMerkleOwnerRead,
     WorkspaceRuntimeOwnerRead, WorkspaceRuntimeOwnerSearchRead, WorkspaceRuntimeSelectorOverlay,
     WorkspaceRuntimeSelectorOverlayReceipt, WorkspaceRuntimeSelectorRead,
-    WorkspaceRuntimeSelectorRebind, WorkspaceSelectorSnapshot,
+    WorkspaceRuntimeSelectorRebind, WorkspaceSelectorSnapshot, WorkspaceTopologySourceSegment,
 };
 pub use pointer::WorkspaceGenerationPointerReader;
 pub use registry::{PublishedWorkspaceGenerationState, RuntimeServerWorkspaceRegistry};

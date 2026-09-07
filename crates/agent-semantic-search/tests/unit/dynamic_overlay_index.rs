@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 use crate::dynamic_overlay::DynamicOverlayDocument;
 use crate::dynamic_overlay::DynamicOverlayNamespace;
 use crate::dynamic_overlay::DynamicOverlayQuery;

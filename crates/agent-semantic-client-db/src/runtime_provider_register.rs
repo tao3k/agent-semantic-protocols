@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 use agent_semantic_provider_protocol::{
     CompiledProviderRoute, PROVIDER_REGISTER_RESPONSE_SCHEMA_ID, PROVIDER_REGISTER_SCHEMA_VERSION,
@@ -29,6 +29,7 @@ pub struct RuntimeProviderRegister {
     identity_constraints: BTreeMap<String, ProviderRegistrationDocument>,
     admitted_provider_ids: Option<BTreeSet<String>>,
     store_path: Option<PathBuf>,
+    mutations_allowed: bool,
 }
 
 struct RuntimeProviderRegisterState {
@@ -57,6 +58,7 @@ impl RuntimeProviderRegister {
             identity_constraints: BTreeMap::new(),
             admitted_provider_ids: None,
             store_path: None,
+            mutations_allowed: true,
         }
     }
 
@@ -73,6 +75,7 @@ impl RuntimeProviderRegister {
             identity_constraints,
             admitted_provider_ids: None,
             store_path: None,
+            mutations_allowed: true,
         })
     }
 
@@ -85,9 +88,8 @@ impl RuntimeProviderRegister {
 
     /// Build a register whose executable provider set is constrained by the
     /// verified active Runtime bundle captured for this Runtime daemon.
-    pub async fn from_verified_seed_with_store(
+    pub fn from_bound_seed(
         identity_constraints: Vec<ProviderRegistrationDocument>,
-        store_path: PathBuf,
         admitted_targets: &[(String, String)],
     ) -> Result<Self, String> {
         let admitted = admitted_targets
@@ -108,12 +110,10 @@ impl RuntimeProviderRegister {
         if filtered.len() != admitted.len() {
             return Err("active Runtime provider target is absent from capability seed".to_owned());
         }
-        Self::from_seed_with_store_admission(
-            filtered,
-            store_path,
-            Some(admitted.into_keys().collect()),
-        )
-        .await
+        let mut register = Self::from_seed(filtered)?;
+        register.admitted_provider_ids = Some(admitted.into_keys().collect());
+        register.mutations_allowed = false;
+        Ok(register)
     }
 
     async fn from_seed_with_store_admission(
@@ -285,6 +285,13 @@ impl RuntimeProviderRegister {
         request.validate()?;
         if matches!(request.request, ProviderRegisterOperation::List) {
             return Ok(snapshot_response(self.snapshot()));
+        }
+        if !self.mutations_allowed {
+            return Ok(rejected_response(
+                "provider-register-bound-bundle-read-only",
+                "the active bound Runtime bundle is the sole provider registration authority"
+                    .to_owned(),
+            ));
         }
         self.apply_mutation(operation, request).await
     }

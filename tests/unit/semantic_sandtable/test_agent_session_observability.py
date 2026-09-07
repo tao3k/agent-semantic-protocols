@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Build and analyze agent-session observability artifacts."""
 
 from __future__ import annotations
@@ -496,7 +500,7 @@ def _gerbil_path_drift_pipe_output() -> str:
             "risk=package-drift",
             (
                 "ownerCoverage=bestOwner="
-                "languages/gerbil-scheme-language-project-harness/src/cli.ss "
+                "languages/asp-gerbil-scheme/src/cli.ss "
                 "matched=gerbil,cli,ss missing=poo,data"
             ),
             "pathCoverage=matched=- missing=-",
@@ -514,7 +518,7 @@ def _gerbil_path_drift_fd_output() -> str:
             "ownerCandidates=.data/gerbil-poo/cli.ss",
             (
                 "nextCommand=asp gerbil-scheme search owner "
-                "languages/gerbil-scheme-language-project-harness/src/parser/brace.ss "
+                "languages/asp-gerbil-scheme/src/parser/brace.ss "
                 "items --query 'main|command' --workspace . --view seeds"
             ),
         ]

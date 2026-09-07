@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 //! Parser-backed admission for the minimal Hook recovery command set.
 
 /// Return whether a Hook event contains one canonical recovery command.

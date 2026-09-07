@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 #+TITLE: Rust refinement of Multi-agent Life Session
 
 * Required Rust types
@@ -244,9 +248,10 @@ missing required disclosure, invalid cursor, or exhausted non-progress cycle.
 Ordinary registration absence, Runtime unavailability, profile mismatch, and
 provider failure are lifecycle facts, not authorization for pass-through. A
 verified pass-through authorization is single-use and auditable; after
-consumption it cannot be reused. =ASP_NO_AGENT=1= is the implementation's
-operator break-glass spelling for this defect path and MUST NOT appear as an
-Agent-facing normal choice or an automatic fallback.
+consumption it cannot be reused. The typed break-glass capability receipt is
+the only operator authority for this defect path and MUST NOT appear as an
+Agent-facing normal choice or an automatic fallback. Hook enablement is a
+separate global configuration decision.
 
 The Agent-facing lifecycle CLI has exactly one public entry:
 =asp session --agents choice-plane=. Registration, call/resume, archive, and

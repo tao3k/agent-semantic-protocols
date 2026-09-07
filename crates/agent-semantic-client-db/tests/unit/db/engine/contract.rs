@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 #[test]
 fn db_engine_active_backend_contract_tracks_turso_default() {
@@ -9,23 +9,23 @@ fn db_engine_active_backend_contract_tracks_turso_default() {
     init_git_repository(&project_root);
     let state = ResolvedState::resolve_with_state_home(&project_root, &state_home)
         .expect("resolve state with explicit state home");
-    state
-        .ensure_minimal_layout()
+    let workspace_paths = state
+        .ensure_workspace_state_layout()
         .expect("commit State Core identity before DB manifest write");
     let engine = ClientDbEngine::from_resolved_state(&state);
     let report = engine.inspect();
 
     assert_eq!(report.layout_version, STATE_LAYOUT_VERSION);
-    assert_eq!(report.client_dir, state.paths.client_dir);
-    assert_eq!(report.manifest_path, state.paths.client_manifest_json);
-    assert_eq!(report.artifact_path, state.paths.artifacts_dir);
+    assert_eq!(report.client_dir, workspace_paths.root);
+    assert_eq!(report.manifest_path, workspace_paths.db_manifest_path());
+    assert_eq!(report.artifact_path, workspace_paths.artifacts);
     assert_eq!(engine.layout_version(), STATE_LAYOUT_VERSION);
-    assert_eq!(engine.client_dir(), state.paths.client_dir.as_path());
+    assert_eq!(engine.client_dir(), workspace_paths.root.as_path());
     assert_eq!(
         engine.manifest_path(),
-        state.paths.client_manifest_json.as_path()
+        workspace_paths.db_manifest_path().as_path()
     );
-    assert_eq!(engine.artifact_path(), state.paths.artifacts_dir.as_path());
+    assert_eq!(engine.artifact_path(), workspace_paths.artifacts.as_path());
     assert_eq!(engine.repo_id(), state.repo.repo_id.as_str());
     assert_eq!(engine.workspace_id(), state.workspace.workspace_id.as_str());
     assert_eq!(engine.scope_id(), state.scope_id.to_string());
@@ -50,7 +50,7 @@ fn db_engine_active_backend_contract_tracks_turso_default() {
     assert_eq!(manifest["features"]["concurrentWrites"], true);
     assert_eq!(manifest["features"]["fts"], true);
     assert_eq!(manifest["features"]["ftsIndexMethod"], true);
-    for retired_feature in [
+    for removed_feature in [
         "multiProcessWal",
         "serializedWriterSlot",
         "busyTimeoutMs",
@@ -62,7 +62,7 @@ fn db_engine_active_backend_contract_tracks_turso_default() {
         "operationLockRetryAttempts",
         "operationLockRetryMs",
     ] {
-        assert!(manifest["features"].get(retired_feature).is_none());
+        assert!(manifest["features"].get(removed_feature).is_none());
     }
     assert_eq!(manifest["features"]["mvcc"], true);
     assert_eq!(manifest["features"]["beginConcurrent"], false);
@@ -70,11 +70,11 @@ fn db_engine_active_backend_contract_tracks_turso_default() {
     assert_eq!(manifest["dbPath"], report.db_path.to_str().unwrap());
     assert_eq!(
         manifest["artifactPath"],
-        state.paths.artifacts_dir.to_str().unwrap()
+        workspace_paths.artifacts.to_str().unwrap()
     );
     assert_eq!(
         manifest["generationManifestPath"],
-        state.paths.client_cache_manifest_path.to_str().unwrap()
+        workspace_paths.cache_manifest_path().to_str().unwrap()
     );
     assert!(manifest.get("sqliteControlDbPath").is_none());
     assert!(manifest.get("sqliteReport").is_none());
@@ -89,8 +89,8 @@ fn db_engine_active_backend_contract_tracks_turso_default() {
     assert_eq!(report.backend, TURSO_BACKEND);
     assert_eq!(engine.backend().as_str(), TURSO_BACKEND);
     assert_eq!(report.db_file_name, "facts.turso");
-    assert_eq!(engine.db_path(), state.paths.client_dir.join("facts.turso"));
-    assert_eq!(report.db_path, state.paths.client_dir.join("facts.turso"));
+    assert_eq!(engine.db_path(), workspace_paths.facts);
+    assert_eq!(report.db_path, workspace_paths.facts);
     assert!(
         !report.db_path.exists(),
         "DB Engine inspect must not create the active DB file"
@@ -103,7 +103,7 @@ fn db_engine_active_backend_contract_tracks_turso_default() {
     let expected_index_artifact_digest = "b".repeat(64);
     let source_index_lookup = ClientDbEngine::lookup_source_index_from_client_dir(
         agent_semantic_client_db::ClientDbSourceIndexClientDirLookupRequest {
-            client_dir: &state.paths.client_dir,
+            client_dir: &workspace_paths.root,
             indexed_project_root: &project_root,
             language_id: None,
             query_keys: Vec::new(),
@@ -116,7 +116,7 @@ fn db_engine_active_backend_contract_tracks_turso_default() {
     .expect("lookup missing source-index control DB");
     assert_eq!(
         source_index_lookup.db_path,
-        ClientDbEngine::turso_path_for_client_dir(&state.paths.client_dir)
+        ClientDbEngine::turso_path_for_client_dir(&workspace_paths.root)
     );
     assert_eq!(
         source_index_lookup.state,
@@ -151,7 +151,7 @@ fn db_engine_active_backend_contract_tracks_turso_default() {
     assert_eq!(report_json["scopeId"], state.scope_id.to_string());
     assert_eq!(report_json["features"]["concurrentWrites"], true);
     assert_eq!(report_json["features"]["ftsIndexMethod"], true);
-    for retired_feature in [
+    for removed_feature in [
         "multiProcessWal",
         "serializedWriterSlot",
         "busyTimeoutMs",
@@ -163,7 +163,7 @@ fn db_engine_active_backend_contract_tracks_turso_default() {
         "operationLockRetryAttempts",
         "operationLockRetryMs",
     ] {
-        assert!(report_json["features"].get(retired_feature).is_none());
+        assert!(report_json["features"].get(removed_feature).is_none());
     }
     assert_eq!(report_json["features"]["mvcc"], true);
     assert_eq!(report_json["features"]["beginConcurrent"], false);
@@ -261,16 +261,16 @@ fn db_engine_active_backend_contract_tracks_turso_default() {
         false
     );
     assert!(manifest_schema["$defs"].get("tursoFeatures").is_none());
-    for retired_field in ["sqliteControlDbPath", "sqliteReport"] {
+    for removed_field in ["sqliteControlDbPath", "sqliteReport"] {
         assert!(
             !manifest_required
                 .iter()
-                .any(|field| field.as_str() == Some(retired_field)),
-            "manifest schema must not require retired {retired_field}"
+                .any(|field| field.as_str() == Some(removed_field)),
+            "manifest schema must not require removed {removed_field}"
         );
         assert!(
-            manifest_schema["properties"].get(retired_field).is_none(),
-            "manifest schema must not expose retired {retired_field}"
+            manifest_schema["properties"].get(removed_field).is_none(),
+            "manifest schema must not expose removed {removed_field}"
         );
     }
     assert!(

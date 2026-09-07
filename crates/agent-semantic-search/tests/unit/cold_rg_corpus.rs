@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 use super::ColdRgCorpusOwner;
 use super::build_cold_rg_corpus;
 use super::owner_for_corpus_line;

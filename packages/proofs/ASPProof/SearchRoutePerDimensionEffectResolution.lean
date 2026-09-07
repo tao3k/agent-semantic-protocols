@@ -1,3 +1,7 @@
+-- SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+--
+-- SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 import ASPProof.SearchRouteAtomicMultiResourceReservation
 
 namespace ASPProof.SearchRoutePerDimensionEffectResolution
@@ -153,4 +157,3 @@ theorem resolved_dimensions_survive_one_unknown_dimension :
   decide
 
 end ASPProof.SearchRoutePerDimensionEffectResolution
-

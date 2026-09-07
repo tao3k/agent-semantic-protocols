@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 use std::path::Path;
 
@@ -35,6 +35,14 @@ pub struct RuntimeResidentReadWorkCounters {
 }
 
 impl RuntimeResidentReadClient {
+    /// Returns the owner-attributed parser topology inputs from this exact
+    /// immutable generation without filesystem, DB, socket, or provider work.
+    pub fn topology_source_segments(
+        &self,
+    ) -> Result<Vec<crate::runtime_server_workspace::WorkspaceTopologySourceSegment>, String> {
+        self.search_projection.topology_source_segments()
+    }
+
     pub async fn open(pointer_path: &Path, project_root: &Path) -> Result<Self, String> {
         Ok(Self {
             exact_projection: Some(

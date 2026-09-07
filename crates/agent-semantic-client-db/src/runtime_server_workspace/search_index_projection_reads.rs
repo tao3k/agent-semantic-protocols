@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 //! Resident Search/Query read paths over one immutable generation.
 
@@ -12,6 +12,55 @@ use super::{SearchOwnerRecord, WorkspaceSearchGenerationDataPlaneClient};
 const MAX_COLD_LEXICAL_CANDIDATES: u32 = 4096;
 
 impl WorkspaceSearchGenerationDataPlaneClient {
+    /// Returns the immutable parser-owned topology inputs retained by this
+    /// exact resident or mmap generation.
+    pub fn topology_source_segments(
+        &self,
+    ) -> Result<Vec<crate::runtime_server_workspace::WorkspaceTopologySourceSegment>, String> {
+        let mut relations_by_owner = self
+            .owner_directory_records
+            .keys()
+            .map(|owner_path| (owner_path.clone(), Vec::new()))
+            .collect::<std::collections::BTreeMap<_, _>>();
+        for relation in self.owned_relations.iter() {
+            relation.relation.validate()?;
+            relations_by_owner
+                .get_mut(relation.owner_path.as_str())
+                .ok_or_else(|| {
+                    format!(
+                        "topology relation owner is absent from generation: {}",
+                        relation.owner_path.as_str()
+                    )
+                })?
+                .push(relation.clone());
+        }
+        self.owner_directory_records
+            .iter()
+            .map(|(owner_path, owner)| {
+                let mut selectors = owner
+                    .selectors
+                    .iter()
+                    .map(|selector| selector.selector.clone())
+                    .collect::<Vec<_>>();
+                selectors.sort();
+                selectors.dedup();
+                let mut relations = relations_by_owner
+                    .remove(owner_path)
+                    .expect("owner relation bucket was initialized");
+                relations.sort();
+                Ok(
+                    crate::runtime_server_workspace::WorkspaceTopologySourceSegment {
+                        owner_path: owner_path.clone(),
+                        content_digest: owner.content_digest.clone(),
+                        authority: owner.authority.clone(),
+                        selectors,
+                        relations,
+                    },
+                )
+            })
+            .collect()
+    }
+
     pub fn read_source_index(
         &self,
         query: &str,

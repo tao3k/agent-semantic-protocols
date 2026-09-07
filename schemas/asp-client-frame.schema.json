@@ -75,7 +75,8 @@
             "catalogGeneration": { "type": "string", "minLength": 1 },
             "workspaceGeneration": { "type": "string", "minLength": 1 },
             "method": { "type": "string", "minLength": 1 },
-            "params": {}
+            "params": {},
+            "clientTimingWitness": { "$ref": "runtime-search-client-timing-witness.v1.schema.json" }
           }
         }
       ]

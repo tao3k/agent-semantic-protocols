@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 //! Versioned request, response, event, and lifecycle frames exchanged with Runtime.
 
@@ -13,6 +13,7 @@ use crate::ClientProtocolCatalog;
 use crate::ClientRequestId;
 use crate::ClientSessionId;
 use crate::ClientWorkspaceIdentity;
+use crate::RuntimeSearchClientTimingWitness;
 
 /// A typed frame on the Runtime client protocol.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -40,6 +41,8 @@ pub enum ClientFrame {
         workspace_generation: String,
         method: String,
         params: Value,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        client_timing_witness: Option<RuntimeSearchClientTimingWitness>,
     },
     /// Cancels an in-flight request.
     Cancel {

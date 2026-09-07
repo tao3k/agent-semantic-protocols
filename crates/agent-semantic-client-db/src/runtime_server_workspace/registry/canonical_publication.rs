@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 //! Atomic canonical-generation publication owned by the workspace writer lane.
 
@@ -290,13 +290,10 @@ async fn publish_new_generation(
     let durability_attachment = durability.clone();
     let durability_workspace_identity = workspace_identity.clone();
     let durability_generation_digest = generation_digest.clone();
-    let (resident_published, await_resident_publication) = tokio::sync::oneshot::channel();
+    let (durability_committed, await_durability_commit) = tokio::sync::oneshot::channel();
     durability_tasks
         .send(Box::pin(async move {
-            if await_resident_publication.await.is_err() {
-                return;
-            }
-            let _ = super::canonical_durability::commit_canonical_generation(
+            let result = super::canonical_durability::commit_canonical_generation(
                 publisher.as_ref(),
                 generation,
                 active_epoch != 0,
@@ -307,20 +304,14 @@ async fn publish_new_generation(
                 counters.as_ref(),
             )
             .await;
+            let _ = durability_committed.send(result);
         }))
         .map_err(|_| "workspace durability attachment lane is unavailable".to_owned())?;
-    durability.send_replace(Some(
-        crate::runtime_server_workspace::WorkspaceGenerationDurabilityReceipt::new(
-            workspace_identity.clone(),
-            generation_digest.clone(),
-            target_epoch,
-            crate::runtime_server_workspace::WorkspaceGenerationDurabilityState::ResidentReady,
-            None,
-        )?,
-    ));
+    await_durability_commit
+        .await
+        .map_err(|_| "workspace canonical durability task dropped before terminal".to_owned())??;
     current.send_replace(Some(Arc::clone(&backend)));
     overlays.reset(backend.generation());
-    let _ = resident_published.send(());
     Ok(receipt)
 }
 

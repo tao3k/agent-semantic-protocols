@@ -1,6 +1,6 @@
-# SPDX-FileCopyrightText: Contributors to Agent Semantic Protocols
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 #
-# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 """Verify Python distribution license metadata and packaged declarations."""
 
 from __future__ import annotations
@@ -41,14 +41,14 @@ def test_or_expression_is_rejected(tmp_path: Path) -> None:
     (tmp_path / "pyproject.toml").write_text(
         "\n".join(
             (
-                "# SPDX-FileCopyrightText: Contributors to Agent Semantic Protocols",
+                "# SPDX-FileCopyrightText: 2026 tao3k team and Contributors",
                 "#",
-                "# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only",
+                "# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later",
                 "",
                 "[project]",
                 'name = "invalid-license-fixture"',
                 'version = "0.0.0"',
-                'license = "Apache-2.0 OR LGPL-2.1-only"',
+                'license = "Apache-2.0 OR LGPL-2.1-or-later"',
                 'license-files = ["LICENSE"]',
             )
         ),
@@ -58,7 +58,7 @@ def test_or_expression_is_rejected(tmp_path: Path) -> None:
     (tmp_path / "LICENSE").write_text(
         "\n".join(
             (
-                "SPDX-License-Identifier: Apache-2.0 OR LGPL-2.1-only",
+                "SPDX-License-Identifier: Apache-2.0 OR LGPL-2.1-or-later",
                 "The AND operator is intentional",
                 "Apache License",
                 "Version 2.0, January 2004",
@@ -71,7 +71,7 @@ def test_or_expression_is_rejected(tmp_path: Path) -> None:
 
     assert contract.validate_license_contract(tmp_path) == [
         "pyproject.toml: project.license must equal "
-        "'Apache-2.0 AND LGPL-2.1-only'",
+        "'Apache-2.0 AND LGPL-2.1-or-later'",
         "LICENSE: invalid SPDX declaration",
     ]
 # REUSE-IgnoreEnd

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 pub const AGENT_SESSION_DISPATCH_DISPOSITION_SCHEMA_ID: &str =
     "agent.semantic-protocols.agent-session-dispatch-disposition";
 pub const AGENT_SESSION_DISPATCH_DISPOSITION_SCHEMA_VERSION: &str = "1";

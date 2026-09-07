@@ -1,0 +1,297 @@
+#+TITLE: RFC 10.06.20 - Runtime Execution Product Binding
+#+LANGUAGE: en
+#+DATE: 2026-09-07
+#+AUTHOR: ASP Maintainers
+#+FILETAGS: :asp:rfc:runtime:identity:query:topology:
+#+OPTIONS: toc:2 num:nil
+
+:PROPERTIES:
+:CONTRACT_ORG: [[../../../org/contracts/basic.template.v1.org][basic.template.v1]]
+:END:
+
+* SDD Runtime Execution Product Binding
+:PROPERTIES:
+:ID: e338434d-a33a-4fe7-985e-531170bf66ea
+:CUSTOM_ID: asp-runtime-execution-product-binding
+:SDD_KIND: system
+:SDD_STATUS: draft
+:SDD_CONCERN: exact Project Workspace and Runtime content binding for Search and Query
+:SDD_SCOPE: runtime execution identity query admission selector containment and migration
+:SDD_OWNER: ASP shared content identity contract
+:TRACEABILITY_STATUS: formal-model-mapped
+:EVIDENCE_STATUS: RFC schema and Lean candidate
+:REVIEW_STATUS: architecture-candidate
+:END:
+
+** Problem
+
+The predecessor Runtime execution packet names =projectId= and =workspaceId= as
+unconstrained strings. Query Playbook temporarily interpreted those fields as
+=projectWorkspaceIdentity= and =worktreeInstanceId=. That convention is not a
+typed product and cannot carry =workspaceRootPath=. Consequently an equal
+Runtime packet does not prove that native selectors resolve inside the same
+manifest-declared containment boundary.
+
+The predecessor decoder also accepts the identity fields as optional while the
+Rust semantic validator requires them. A schema-valid packet can therefore be
+semantically unusable. Compatibility decoding plus =refresh_required= leaves a
+second, pre-admission state inside the execution type and is removed from the
+current architecture.
+
+** Decision
+
+=runtime-execution-binding.v2= is one immutable product containing:
+
+#+begin_example
+ProjectWorkspaceBinding
+× worktreeInstanceId
+× publicationNonce
+× ContentBinding
+× runtimeArtifactDigest
+× evaluatorPolicyDigest
+× activeArtifactReceiptDigest
+× evaluatorAbiDigest
+#+end_example
+
+=ProjectWorkspaceBinding= is the exact parser-owned product from
+=.agents/asp/topology/manifest.org=, including =projectWorkspaceIdentity=,
+=workspaceRootPath=, portability, and reviewed repository aliases.
+=worktreeInstanceId= is Host-local and cannot replace any Project Workspace
+field. The remaining values bind the immutable Runtime artifact, source,
+provider, schema, policy, receipt, and evaluator ABI observed by one execution.
+
+All fields are required by both JSON Schema and Rust admission. V2 has no
+=projectId=, =workspaceId=, compatibility defaults, or refresh state. A V1
+packet is not partially upgraded inside Search or Query; Runtime publication
+must construct a complete V2 value before request admission.
+
+** Query Admission
+
+Query Playbook keeps its Agent-facing V1 grammar. Runtime injects one V2
+execution binding internally. The internal materialization packet and its
+terminal receipt also retain the canonical workspace execution publication
+digest and verified outer Runtime bundle digest. These are evidence fields,
+not Agent-authored grammar or planner handles. Admission receives the
+parser-owned manifest Project Workspace binding and the complete Runtime-owned
+workspace execution publication independently from the request. Query
+admission verifies:
+
+1. the embedded Project Workspace equals the parser-owned manifest binding;
+2. the request's =projectWorkspaceIdentity= equals the identity inside that
+   product;
+3. the request's =worktreeInstanceId= equals the Runtime binding;
+4. the complete Runtime binding equals the independently admitted binding;
+5. the request and receipt execution-publication and outer-bundle digests equal
+   the independently admitted sidecar;
+6. every selector resolves within =workspaceRootPath= and the bound source
+   snapshot before any bytes are exposed.
+
+The expected Runtime binding cannot attest its own Project Workspace. Before
+comparing it with request data, admission must compare its complete
+=projectWorkspace= object with the independently parsed manifest object,
+including identity, root path, portability, and repository aliases. Supplying
+the same foreign workspace in both the request and expected Runtime value is a
+deterministic pre-provider failure.
+
+The binding is immutable request data. Validation performs no filesystem,
+network, process, database, scheduler, or Runtime-control operation. Tokio
+handlers may share it through immutable ownership; they must not reconstruct it
+per selector or consult a provider-private cache.
+
+The daemon injects the parser-owned Project Topology manifest resolver into the
+ClientFrame service. Workspace initialization invokes that resolver exactly
+once for the admitted project root and retains the complete
+=ProjectWorkspaceBinding= beside that root in the immutable initialized
+workspace context. A missing, invalid, or changed manifest rejects
+initialization. Search and Query handlers consume the retained product; they do
+not reopen the manifest, derive it from =projectId=/=workspaceId=, or accept a
+client-carried replacement.
+
+The resolver returns a
+=host-workspace-initialization-binding.v1= product containing the parser-owned
+=ProjectWorkspaceBinding= and an independently supplied Host-local
+=worktreeInstanceId=. The Host-local identity is the admitted Git worktree
+identity derived by canonical repository discovery from repository identity,
+worktree root, and Git directory. This product is injected by the Host
+workspace initialization boundary; it is not a ClientFrame field, an
+Agent-facing argument, a settlement handle, or a value reconstructed on the
+Query path. In particular, =projectId=, =workspaceId=, =sessionId=, a bare
+filesystem path, and hashes of those client/path values cannot substitute for
+the admitted Git worktree identity. This keeps the Query Playbook grammar selector-native while making
+the missing producer an explicit typed initialization failure rather than a
+placeholder Runtime digest.
+
+The remaining V2 fields must originate at the canonical durable workspace
+generation publication. A shadow =ContentPublicationLedger=, a provider
+execution binding, a Runtime readiness receipt, or an activation sequence is
+not sufficient authority. Until the serving generation exposes its exact
+=ContentPublicationCommit= together with the verified Runtime bundle binding
+and activation receipt, Query Playbook returns one typed
+=query-playbook-runtime-binding-unavailable= terminal and exposes no selector
+bytes. Implementations must not synthesize placeholder digests to cross this
+boundary.
+
+** Producer mapping
+
+Each component has one producer. Equal-looking digests from another authority
+are not substitutes.
+
+| V2 field | Sole producer |
+|----------+---------------|
+| =projectWorkspace= | parser-owned =.agents/asp/topology/manifest.org= projection retained by workspace initialization |
+| =worktreeInstanceId= | Host workspace initialization binding; never a repository or Project Workspace identity |
+| =publicationNonce= | applied Runtime artifact activation receipt |
+| =contentBinding= | durable CompleteGeneration workspace publication commit |
+| =runtimeArtifactDigest= | verified applied Runtime artifact activation receipt |
+| =evaluatorPolicyDigest= | verified Runtime artifact bundle binding member =evaluator-policy.json= |
+| =activeArtifactReceiptDigest= | canonical BLAKE3 digest of the verified applied activation receipt |
+| =evaluatorAbiDigest= | verified Runtime artifact bundle schema binding, not provider output |
+
+The workspace execution publication also retains the verified outer Runtime
+=bundleDigest=. The applied activation receipt and the active bundle loader
+must name that same digest. Equality of the five inner binding-member digests
+does not authorize a different outer bundle: those fields describe the
+execution closure, while the outer digest identifies the exact installed
+content-addressed product that the activation selected.
+
+The CompleteGeneration publication owner composes these already admitted
+values into a small immutable Workspace Execution Publication sidecar. The
+canonical pointer atomically binds the source generation digest and the sidecar
+digest. ClientFrame dispatch borrows the V2 product from that admitted pointer;
+it does not hash mutable files, reopen State Home receipts, or join identities
+after publication. The process-local activation sequence remains absent from
+this table and from the product identity.
+
+The V2 product is deliberately not embedded into the large parser/index
+materialization. Runtime artifact, policy, receipt, or ABI refresh may publish
+a new sidecar over an unchanged source generation. Source, selector, owner, and
+Topology CAS segments remain reusable when their own content identities are
+unchanged. Conversely, changing a source generation requires a new sidecar
+even when every Runtime artifact field is unchanged. Reusing either half with
+an unbound other half is rejected.
+
+The sidecar contract is
+=runtime-workspace-execution-publication.v1.schema.json=. Its
+=publicationDigest= is domain-separated over workspace identity, generation
+digest, source root digest, the complete =ContentPublicationCommit=, and the
+complete V2 binding plus the verified outer =runtimeBundleDigest=. The sidecar
+requires the commit and V2 binding to contain the same exact =ContentBinding=.
+The commit digest carries the predecessor
+fence; changing only that fence therefore mints a different workspace
+execution publication even when source and Runtime identities are unchanged.
+Changing the authority key, canonical commitment, or signature also mints a
+different publication. The generation pointer
+stores this digest and switches only after both the existing durable source
+generation and the sidecar have been committed. This keeps the hot Query path
+to one immutable pointer read and borrowed values; it does not add a cache or a
+second publication authority.
+
+The durable content commit is the language-neutral
+=content-publication-commit.v1.schema.json= product. Its =contentBinding=
+contains the complete authority stamp, while =predecessorCommitDigest= binds
+the linearization fence. =commitDigest= is domain-separated over both values;
+it is not the digest of =ContentIdentity= alone. Consequently, republishing
+identical content under another authority or after another predecessor mints a
+different commit identity. =mutationId= and =leaseId= are derived from that
+commit identity and are not substitute authorities.
+
+The commit document does not prove its own filesystem durability. Only the
+canonical CompleteGeneration writer may expose it as durable, after the source,
+exact-projection, and search segments plus the complete commit document have
+been written, synced, and atomically installed. A boolean =durable= field or a
+digest-only segment receipt cannot manufacture this postcondition.
+
+Durable publication has one order: write and fsync the immutable sidecar,
+verify that its source generation is already durable, atomically replace the
+single canonical pointer containing both digests, then install a resident
+=Arc= containing the verified source generation and V2 product. Recovery
+performs the same verification before installing the resident object. Query
+borrows that object; it never opens the sidecar file on the request path. A
+pointer naming a missing sidecar, a sidecar naming another source generation,
+or a digest mismatch is not partially ready.
+
+** Migration
+
+The old unversioned schema remains historical input documentation only. No
+current Search, Query, or Runtime API accepts it. Producers and fixtures move
+atomically to V2. This is a contract version change, not a Query Playbook
+protocol bump.
+
+Runtime artifact inspection has two deliberately separate boundaries during
+the cutover. Installation reconciliation may read a historical members-only
+bundle only to construct its successor. Serving admission uses the bound
+provider-set loader and rejects that same bundle with
+=runtime-bundle-binding-missing=. The daemon must not switch to the strict
+loader until the installer can materialize the five content-derived closure
+members: provider registration, provider artifact set, evaluator policy,
+evaluator ABI, and schema bundle. None may be synthesized from a filename,
+activation sequence, or the digest of another member.
+
+The optional predecessor =runtimeProviderExecutionBinding= is removed from
+the source-generation identity after the canonical pointer cutover. Keeping it
+would make Runtime artifact refresh invalidate parser, selector, and Topology
+CAS products and would leave a second, weaker execution authority beside the
+V2 sidecar.
+
+** Implementation ordering
+
+The current implementation cannot construct the V2 product merely by joining
+existing strings. Two predecessor contracts are intentionally insufficient:
+
+1. =runtime-artifact-bundle-binding.v1= has evaluator policy and schema bundle
+   digests but no independently named evaluator ABI digest;
+2. canonical workspace durability exposes a =durableCommitDigest=, while the
+   complete =ContentPublicationCommit= and its authority stamp remain in a
+   shadow, non-serving ledger.
+
+The cutover therefore proceeds in one dependency order:
+
+1. publish a new Runtime artifact bundle-binding schema that includes the
+   evaluator ABI as an immutable bundle member;
+2. make CompleteGeneration durability return and persist the complete content
+   publication commit, not a digest-only surrogate;
+3. compose =RuntimeExecutionBinding= and the workspace execution sidecar from
+   the complete commit and Runtime bundle, rejecting any exact
+   =ContentBinding= mismatch and any mismatch between the applied activation's
+   =bundleDigest= and the verified active outer bundle digest;
+4. commit the sidecar and atomically replace the one source/Runtime pointer;
+5. install the verified resident pair and enable Query Playbook dispatch;
+6. remove =runtimeProviderExecutionBinding= from source-generation identity.
+
+Skipping any step is a typed =query-playbook-runtime-binding-unavailable=
+state. In particular, schema-bundle digest cannot be renamed evaluator ABI,
+=durableCommitDigest= cannot be expanded into an authority stamp, and
+activation generation cannot fill either missing product.
+
+No =recommendedNext=, planner decision, automatic restart, or compatibility
+fallback is emitted. A V1 packet receives one typed binding-version failure.
+
+** Proof Obligations
+
+1. Changing only =workspaceRootPath= changes Runtime execution identity.
+2. A valid but foreign Project Workspace is rejected against the manifest.
+3. Equal request and Runtime products cannot self-authorize a foreign Project
+   Workspace or changed repository alias set.
+4. Worktree, source, provider, Runtime artifact, content authority stamp,
+   policy, receipt, or ABI drift rejects the complete binding before provider
+   dispatch.
+5. Equal content with another authority stamp has another publication commit
+   digest and cannot pass exact admission.
+6. Equal content and authority after another predecessor fence has another
+   publication commit digest.
+7. A segment-only durable digest, a self-reported durability boolean, or an
+   activation generation cannot substitute for the complete publication
+   commit retained by the canonical writer.
+8. Equal inner Runtime closure members cannot authorize a foreign outer bundle
+   digest; activation and verified bundle identity must agree exactly.
+9. V1 carrier fields cannot authorize a V2 Query.
+10. Binding validation is deterministic and constant in the number of Query
+   selectors.
+11. Exactly one Query terminal covers the complete selector set.
+
+** Traceability
+
+- [[file:10.06.19-project-topology-manifest-authority.org][RFC 10.06.19]] owns the manifest authority.
+- [[file:10.06.15-search-query-playbook-contract.org][RFC 10.06.15]] owns Query Playbook grammar and materialization.
+- [[file:../../../schemas/runtime-execution-binding.v2.schema.json][runtime-execution-binding.v2]] owns the shared wire product.
+- =ASPProof.SearchEvidenceDerivation= owns Query binding counterexamples.

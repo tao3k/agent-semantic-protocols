@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 //! Immutable, process-local source-index query data plane.
 //!
 //! Construction belongs to generation admission. Query methods perform no

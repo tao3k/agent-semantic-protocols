@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 //! Content identities shared by Search publishers and materializers.
 
 /// Content address for the immutable source-index projection of one snapshot.

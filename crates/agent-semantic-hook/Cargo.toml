@@ -1,8 +1,12 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 [package]
 name = "agent-semantic-hook"
 version = "0.1.0"
 edition = "2024"
-license = "MIT"
+license.workspace = true
 description = "Root semantic agent hook runtime for provider manifests and project activations."
 build = "build-support/main.rs"
 
@@ -22,7 +26,6 @@ compiler = [
     "dep:fs2",
     "dep:globset",
     "dep:memmap2",
-    "dep:orgize",
     "dep:postcard",
     "dep:sha2",
     "dep:toml",
@@ -37,6 +40,7 @@ evaluator = [
     "dep:blake3",
     "dep:fs2",
     "dep:globset",
+    "dep:orgize",
     "dep:libc",
     "dep:which",
 ]

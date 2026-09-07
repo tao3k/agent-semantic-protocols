@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 #+title: Active ASP Artifact Merkle Receipt v1
 
 * Status
@@ -38,9 +42,10 @@ digest-addressed artifact store:
 runtime/artifacts/blake3-256/<binary-digest>/<binary-name>
 #+end_example
 
-The public runtime path is a link or atomic pointer to that immutable target.
-The receipt is published atomically only after the target and activation are
-durable.
+The configured PATH-visible =asp= entry is a link or atomic pointer to that
+immutable target. The =runtime/bin/asp= compatibility alias points to the
+PATH-visible entry, never the reverse. The receipt is published atomically
+only after the target and activation are durable.
 
 A regular provider executable discovered at =runtime/bin/<binary-name>= is a
 pre-store runtime state, not an unmanaged external artifact.  The installer

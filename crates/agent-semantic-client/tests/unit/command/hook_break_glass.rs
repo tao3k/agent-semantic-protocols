@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 use super::break_glass_command;
 
@@ -13,7 +13,7 @@ fn mint_uses_clap_to_require_a_typed_defect_and_exact_command() {
             "--defect-kind",
             "exhausted-non-progress-cycle",
             "--command",
-            "asp rust search playbook ASP_NO_AGENT --workspace .",
+            "asp rust search playbook transport-binding --workspace .",
             "--ttl-seconds",
             "30",
             ".",

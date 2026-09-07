@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """V1 live-corpus telemetry and artifact validation.
 
 This module is deliberately non-serving.  It validates the shared
@@ -39,7 +43,12 @@ IDENTITY_FIELDS = (
     "schemaRef",
     "requestId",
     "sessionId",
+    "workspaceIdentity",
+    "languageIds",
+    "providerIds",
     "runtimeArtifactDigest",
+    "runtimeBundleDigest",
+    "executionPublicationDigest",
     "workspaceSnapshotDigest",
     "sourceGenerationDigest",
     "sourceIndexDigest",
@@ -94,13 +103,30 @@ def validate_plan(plan: Mapping[str, Any]) -> None:
     blocker = plan.get("currentBlocker")
     if isinstance(blocker, Mapping) and "pointer" in blocker:
         _require(_is_repo_relative(blocker["pointer"]), "absolute blocker pointer")
+    planner_fields = {"next", "nextAction", "recommendedNext", "plannerDecision"}
+    _require(not planner_fields.intersection(plan), "plan contains an Agent planner field")
+    if isinstance(blocker, Mapping):
+        _require(
+            not planner_fields.intersection(blocker),
+            "blocker contains an Agent planner field",
+        )
 
 
 def validate_identity(identity: Mapping[str, Any]) -> None:
     """Require the exact content/request identity carried by every event."""
 
     for field in IDENTITY_FIELDS:
-        _require(_is_nonempty_string(identity.get(field)), f"missing identity field: {field}")
+        value = identity.get(field)
+        if field in {"languageIds", "providerIds"}:
+            _require(
+                isinstance(value, list)
+                and bool(value)
+                and all(_is_nonempty_string(item) for item in value)
+                and value == sorted(set(value)),
+                f"non-canonical identity set: {field}",
+            )
+        else:
+            _require(_is_nonempty_string(value), f"missing identity field: {field}")
     _require(identity.get("schemaRef") == TELEMETRY_SCHEMA_ID, "telemetry schema reference mismatch")
 
 

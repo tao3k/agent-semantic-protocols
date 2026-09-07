@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 #+title: RFC 10.05.20/01.19 - SearchRoute Provenance Evidence Execution Conformance
 #+subtitle: Replacing Boolean provenance claims with typed executable decisions and temporal checkpoint continuity
 #+date: 2026-07-31

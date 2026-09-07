@@ -1,8 +1,12 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 [package]
 name = "agent-semantic-provider-protocol"
 version = "0.1.0"
 edition = "2024"
-license = "MIT"
+license.workspace = true
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }

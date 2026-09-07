@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 #+TITLE: RFC 10.19 - Global ASP State Root and Artifact Layout
 #+AUTHOR: agent-semantic-protocols
 #+DATE: 2026-06-28
@@ -64,6 +68,7 @@ $ASP_STATE_HOME/
   control/
     config/
       hook-client.toml
+      asp.toml
       agents/
         config.toml
         <host-agent-profile>
@@ -111,10 +116,12 @@ lifecycle control-plane database. It is not a workspace artifact. The Hook
 must not publish a session-route JSON mirror; every registration, lookup,
 dispatch, and terminal transition goes through the typed Runtime service.
 
-=projects/by-id=, root-level session databases, =hooks/session-routes=,
-=runtime/resident=, and root-level =agents= or =org= directories are retired
-namespaces. Normal V1 code neither reads nor writes them. Retention may retire
-their bytes, but it cannot import them into current authority.
+The V1 contract recognizes only the tree above. A one-time installation
+convergence moves required content into its canonical owner and removes every
+non-contract entry before the V1 installation is accepted. Normal V1 code has
+no legacy namespace model, resolver, decoder, or retention branch. Subsequent
+sync operations validate the canonical contract and remove non-contract output;
+they never import it as authority.
 
 * Manifest contract
 =workspaces/<workspace-content-digest>/observations/db-engine.json= is written by the owning State Core/DB Engine
@@ -184,6 +191,22 @@ Core. They must include:
 - project-local cache detection as a diagnostic-only field.
 
 The CLI must call the State Core service. It must not compose paths itself.
+
+* Global configuration authority
+=control/config/asp.toml= is the only global ASP configuration contract. State
+Home publishes it atomically and every Runtime or Hook process reads
+the same typed V1 policy. Runtime artifact source selection remains under =[dev]=.
+Hook process enablement is owned by =[hook-engine] enabled = true|false=.
+Missing configuration defaults Hook enablement to =true=; malformed sections
+fail closed. No environment variable or command payload may bypass this value.
+
+* State contract sync
+=asp state sync= is the explicit physical convergence operation. The CLI only
+parses and renders. The application service asks Artifacts to enumerate entries
+outside the positive V1 allowlist, stages every exact observation by atomic
+rename, rolls the entire staged set back on pre-commit failure, reaps it, and
+then proves that no contract violation remains. It never contains a historical
+path list or imports removed bytes into Runtime authority.
 
 * Non-goals
 - no agent MCP server as state owner;

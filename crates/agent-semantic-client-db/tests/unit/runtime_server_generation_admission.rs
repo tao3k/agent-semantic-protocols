@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 use agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationBuildFailure;
 use agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationFailureStage;
@@ -236,7 +236,7 @@ fn cold_restore_publishes_committed_generation_without_live_checkout_probe() {
 fn cold_byte_generation_is_published_before_source_index_durability_attachment() {
     let source = include_str!("../../src/runtime_server/core.rs");
     assert!(source.contains("let durable_restore_admitted ="));
-    assert!(source.contains("durable_provider_binding_matches_current("));
+    assert!(source.contains("durable_runtime_bundle_matches_current("));
     let publication = source
         .find("generation_publication.publish(")
         .expect("canonical resident generation publication");

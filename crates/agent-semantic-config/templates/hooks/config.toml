@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 #
-# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 # Optional user hook config.
 # Hook defaults are compiled into the runtime; this file exposes the user-level
@@ -507,7 +507,7 @@ actions = ["read"]
 profilesList = ["markdown"]
 decision = "deny"
 reasonKind = "registered-source-route-required"
-message = "Direct Markdown reads are denied because ASP Markdown retrieval must remain selector-bound. Use `{{searchPlaybookContract}}`."
+message = "Direct Markdown reads are denied because ASP Markdown retrieval must remain selector-bound. Use the registered Markdown Search Playbook route. {{agentDispatchMessage}}"
 
 [rules.dispatch]
 transport = "host-agent"

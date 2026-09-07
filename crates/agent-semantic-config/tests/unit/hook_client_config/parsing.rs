@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 use super::CLIENT_HOOK_CONFIG_SCHEMA_ID;
 use super::canonical_default_template;
@@ -8,7 +8,6 @@ use super::hook_client_contract_fingerprint;
 use super::load_asp_project_config_file;
 use super::load_hook_client_config_file;
 use super::temp_root;
-use super::write_canonical_config_overlay;
 use std::fs;
 
 #[test]
@@ -30,10 +29,6 @@ fn default_template_round_trips_through_config_parser() {
     );
     assert!(config.experimental.is_empty());
     assert!(config.agent_org_artifacts.is_none());
-    assert!(config.recovery_prompt.template.is_none());
-    assert!(config.recovery_prompt.codex_agent_flow.is_none());
-    assert!(config.recovery_prompt.claude_agent_flow.is_none());
-    assert!(config.recovery_prompt.default_agent_flow.is_none());
     assert_eq!(config.provider_routes.len(), 5);
     assert!(
         config
@@ -296,42 +291,6 @@ fn legacy_intent_policy_is_rejected() {
         "unexpected error: {policy_error}"
     );
 
-    let _ = fs::remove_dir_all(root);
-}
-
-#[test]
-fn client_config_loads_recovery_prompt_template() {
-    let root = temp_root("hook-client-recovery-prompt");
-    let config_path = root.join("config.toml");
-    write_canonical_config_overlay(
-        &config_path,
-        r#"
-[recoveryPrompt]
-template = "reason={reason}\nflow={agent_flow}\nroutes={routes}"
-codexAgentFlow = "codex flow from config"
-claudeAgentFlow = "claude flow from config"
-defaultAgentFlow = "default flow from config"
-"#,
-    );
-
-    let config = load_hook_client_config_file(&config_path).expect("load config");
-
-    assert_eq!(
-        config.recovery_prompt.template.as_deref(),
-        Some("reason={reason}\nflow={agent_flow}\nroutes={routes}")
-    );
-    assert_eq!(
-        config.recovery_prompt.codex_agent_flow.as_deref(),
-        Some("codex flow from config")
-    );
-    assert_eq!(
-        config.recovery_prompt.claude_agent_flow.as_deref(),
-        Some("claude flow from config")
-    );
-    assert_eq!(
-        config.recovery_prompt.default_agent_flow.as_deref(),
-        Some("default flow from config")
-    );
     let _ = fs::remove_dir_all(root);
 }
 

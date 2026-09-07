@@ -1,6 +1,6 @@
-# SPDX-FileCopyrightText: Contributors to Agent Semantic Protocols
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 #
-# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 """Provider registry command runtime helpers."""
 
@@ -82,6 +82,4 @@ def provider_registry_with_env(
 
 
 def _automation_env(env: dict[str, str] | None) -> dict[str, str]:
-    result = dict(env or os.environ)
-    result["ASP_NO_AGENT"] = "1"
-    return result
+    return dict(env or os.environ)

@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 mod client;
 pub use client::call_runtime_server_for_state_home;
@@ -39,8 +39,8 @@ pub use endpoint_io::{
 pub(crate) use frame::{read_runtime_server_requests, write_runtime_server_receipts};
 pub use listener::{
     bind_runtime_server_listener, bind_runtime_server_listener_at,
-    runtime_server_connection_pool_capacity, runtime_server_connection_pool_size,
-    runtime_server_listener_backlog,
+    prepare_private_runtime_directory, runtime_server_connection_pool_capacity,
+    runtime_server_connection_pool_size, runtime_server_listener_backlog,
 };
 pub use model::{
     AgentSessionControlPlaneState, AspPythonGraphsState, AspPythonGraphsStatus,
@@ -49,7 +49,8 @@ pub use model::{
     RuntimeServerControlReceipt, RuntimeServerControlRequest, RuntimeServerEndpoint,
     RuntimeServerEndpointOwnerBinding, RuntimeServerLoopbackEndpoint, RuntimeServerOperation,
     RuntimeServerRequestReadError, RuntimeServerState, RuntimeServerTransport,
-    WorkspaceGenerationControlReceipt, runtime_server_transport_contract_digest,
+    RuntimeTransportBinding, WorkspaceGenerationControlReceipt,
+    runtime_server_transport_contract_digest,
 };
 pub use status_memory::{
     RuntimeServerStatusMemoryMetrics, prewarm_runtime_server_status_memory,

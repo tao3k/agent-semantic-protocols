@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 //! PATH-visible `asp` binary installation helpers.
 
@@ -37,7 +37,6 @@ use std::env;
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
-use std::process;
 
 pub(crate) const SEMANTIC_AGENT_PROTOCOL_BIN: &str = "asp";
 
@@ -144,8 +143,13 @@ pub(crate) struct ProtocolBinaryInstallPlan {
     explicit_candidate_source: Option<PathBuf>,
     target: PathBuf,
     artifact_root: PathBuf,
-    managed_path_aliases: Vec<PathBuf>,
     binary_identity: RuntimeBinaryIdentityV1,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct ProtocolBinaryInstallEntries {
+    path_visible: PathBuf,
+    runtime_alias: PathBuf,
 }
 
 impl ProtocolBinaryInstallPlan {
@@ -197,17 +201,32 @@ impl ProtocolBinaryInstallPlan {
                 .map_err(|error| format!("failed to create {}: {error}", bin_dir.display()))?;
         }
         require_configured_protocol_bin_dir_on_path()?;
-        let path_dirs = path_dirs();
-        let target =
-            resolve_protocol_binary_install_target(explicit_bin_dir.as_deref(), &artifact_root)?;
-        let managed_path_aliases =
-            managed_protocol_binary_path_aliases(&artifact_root, &target, &path_dirs)?;
+        let home = match explicit_bin_dir.as_ref() {
+            Some(_) => PathBuf::new(),
+            None => env::var_os("HOME")
+                .filter(|value| !value.is_empty())
+                .map(PathBuf::from)
+                .ok_or_else(|| {
+                    "protocol binary installation requires HOME or SEMANTIC_AGENT_BIN_DIR"
+                        .to_owned()
+                })?,
+        };
+        let entries = resolve_protocol_binary_install_entries(
+            explicit_bin_dir.as_deref(),
+            &artifact_root,
+            &home,
+        )?;
+        if same_protocol_binary_entry(&entries.path_visible, &entries.runtime_alias) {
+            return Err(
+                "reasonKind=runtime-protocol-binary-direction-invalid PATH-visible entry and Runtime compatibility alias must be distinct"
+                    .to_owned(),
+            );
+        }
         Ok(Self {
             current_exe,
             explicit_candidate_source: None,
-            target,
+            target: entries.path_visible,
             artifact_root,
-            managed_path_aliases,
             binary_identity: RuntimeBinaryIdentityV1::asp_bootstrap(),
         })
     }
@@ -217,22 +236,13 @@ impl ProtocolBinaryInstallPlan {
 pub(crate) async fn ensure_protocol_binary_installed(
     plan: &ProtocolBinaryInstallPlan,
 ) -> Result<ProtocolBinaryInstall, String> {
-    for alias in &plan.managed_path_aliases {
-        validate_protocol_entry_for_repair(alias, &plan.artifact_root)?;
-    }
-    let install = install_protocol_binary_target(
+    install_protocol_binary_target(
         plan.candidate_source(),
         &plan.target,
         &plan.artifact_root,
         &plan.binary_identity,
     )
-    .await?;
-    if install.status != "published-active-awaiting-health" {
-        for alias in &plan.managed_path_aliases {
-            install_protocol_binary_alias(alias, &plan.target, &plan.artifact_root)?;
-        }
-    }
-    Ok(install)
+    .await
 }
 
 pub(crate) async fn ensure_protocol_binary_bundle_installed_transaction(
@@ -252,9 +262,30 @@ pub(crate) async fn ensure_protocol_binary_bundle_members_installed_transaction(
     plan: &ProtocolBinaryInstallPlan,
     members: &[agent_semantic_artifacts::runtime_artifact_publication::RuntimeArtifactBundleMemberSource<'_>],
 ) -> Result<ProtocolBinaryInstall, String> {
-    for alias in &plan.managed_path_aliases {
-        validate_protocol_entry_for_repair(alias, &plan.artifact_root)?;
-    }
+    ensure_protocol_binary_bundle_members_installed_transaction_with_binding(plan, members, None)
+        .await
+}
+
+pub(crate) async fn ensure_protocol_binary_bound_bundle_members_installed_transaction(
+    plan: &ProtocolBinaryInstallPlan,
+    members: &[agent_semantic_artifacts::runtime_artifact_publication::RuntimeArtifactBundleMemberSource<'_>],
+    execution_binding: &agent_semantic_artifacts::runtime_artifact_slots::RuntimeArtifactBundleBinding,
+) -> Result<ProtocolBinaryInstall, String> {
+    ensure_protocol_binary_bundle_members_installed_transaction_with_binding(
+        plan,
+        members,
+        Some(execution_binding),
+    )
+    .await
+}
+
+async fn ensure_protocol_binary_bundle_members_installed_transaction_with_binding(
+    plan: &ProtocolBinaryInstallPlan,
+    members: &[agent_semantic_artifacts::runtime_artifact_publication::RuntimeArtifactBundleMemberSource<'_>],
+    execution_binding: Option<
+        &agent_semantic_artifacts::runtime_artifact_slots::RuntimeArtifactBundleBinding,
+    >,
+) -> Result<ProtocolBinaryInstall, String> {
     let runtime_root = plan.artifact_root.parent().ok_or_else(|| {
         format!(
             "runtime artifact root has no Runtime parent: {}",
@@ -277,14 +308,29 @@ pub(crate) async fn ensure_protocol_binary_bundle_members_installed_transaction(
         } else {
             "release"
         };
-    let receipt = agent_semantic_artifacts::runtime_artifact_publication::publish_runtime_artifact_bundle_successor_from_active(
-        state_home,
-        plan.candidate_source(),
-        &plan.target,
-        artifact_mode,
-        members,
-    )
-    .await?;
+    let receipt = match execution_binding {
+        Some(binding) => {
+            agent_semantic_artifacts::runtime_artifact_publication::publish_runtime_artifact_bound_bundle_members(
+                state_home,
+                plan.candidate_source(),
+                &plan.target,
+                artifact_mode,
+                members,
+                binding,
+            )
+            .await?
+        }
+        None => {
+            agent_semantic_artifacts::runtime_artifact_publication::publish_runtime_artifact_bundle_successor_from_active(
+                state_home,
+                plan.candidate_source(),
+                &plan.target,
+                artifact_mode,
+                members,
+            )
+            .await?
+        }
+    };
     let install = ProtocolBinaryInstall {
         path: receipt.path,
         status: receipt.status,
@@ -297,78 +343,7 @@ pub(crate) async fn ensure_protocol_binary_bundle_members_installed_transaction(
         lease_consumer_process_id: Some(receipt.lease_consumer_process_id),
     };
     install.validate_artifact_transaction_receipt_for_operation("publish:asp")?;
-    if install.status != "published-active-awaiting-health" {
-        for alias in &plan.managed_path_aliases {
-            install_protocol_binary_alias(alias, &plan.target, &plan.artifact_root)?;
-        }
-    }
     Ok(install)
-}
-
-fn install_protocol_binary_alias(
-    alias: &Path,
-    canonical_target: &Path,
-    _artifact_root: &Path,
-) -> Result<(), String> {
-    if same_protocol_binary_entry(alias, canonical_target) {
-        return Ok(());
-    }
-    let expected = fs::canonicalize(canonical_target).map_err(|error| {
-        format!(
-            "failed to resolve current artifact profile {}: {error}",
-            canonical_target.display()
-        )
-    })?;
-    if protocol_binary_symlink_chain_loops(alias) {
-        return Err(format!(
-            "refusing to repair looping protocol binary alias {}",
-            alias.display()
-        ));
-    }
-    if fs::read_link(alias)
-        .ok()
-        .is_some_and(|target| target == canonical_target)
-        && fs::canonicalize(alias).is_ok_and(|identity| identity == expected)
-    {
-        return Ok(());
-    }
-    if let Some(parent) = alias.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|error| format!("failed to create {}: {error}", parent.display()))?;
-    }
-    let temp = temporary_protocol_binary_path(alias);
-    if fs::symlink_metadata(&temp).is_ok() {
-        fs::remove_file(&temp)
-            .map_err(|error| format!("failed to remove stale {}: {error}", temp.display()))?;
-    }
-    stage_active_protocol_entry(canonical_target, &temp)?;
-    let staged = fs::canonicalize(&temp)
-        .map_err(|error| format!("failed to resolve staged alias {}: {error}", temp.display()))?;
-    if staged != expected {
-        let _ = fs::remove_file(&temp);
-        return Err(format!(
-            "staged protocol binary alias {} resolves to {}, expected {}",
-            temp.display(),
-            staged.display(),
-            expected.display()
-        ));
-    }
-    atomic_replace_protocol_entry(&temp, alias)?;
-    let installed = fs::canonicalize(alias).map_err(|error| {
-        format!(
-            "failed to resolve installed alias {}: {error}",
-            alias.display()
-        )
-    })?;
-    if installed != expected {
-        return Err(format!(
-            "protocol binary alias {} resolves to {}, expected {}",
-            alias.display(),
-            installed.display(),
-            expected.display()
-        ));
-    }
-    Ok(())
 }
 
 fn protocol_binary_symlink_chain_loops(candidate: &Path) -> bool {
@@ -399,13 +374,22 @@ fn protocol_binary_symlink_chain_loops(candidate: &Path) -> bool {
     true
 }
 
-fn resolve_protocol_binary_install_target(
+fn resolve_protocol_binary_install_entries(
     explicit_bin_dir: Option<&Path>,
     artifact_root: &Path,
-) -> Result<PathBuf, String> {
-    if let Some(bin_dir) = explicit_bin_dir {
-        return Ok(bin_dir.join(SEMANTIC_AGENT_PROTOCOL_BIN));
-    }
+    user_home: &Path,
+) -> Result<ProtocolBinaryInstallEntries, String> {
+    let path_visible = explicit_bin_dir
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| user_home.join(".local/bin"))
+        .join(SEMANTIC_AGENT_PROTOCOL_BIN);
+    Ok(ProtocolBinaryInstallEntries {
+        path_visible,
+        runtime_alias: runtime_protocol_binary_alias(artifact_root)?,
+    })
+}
+
+fn runtime_protocol_binary_alias(artifact_root: &Path) -> Result<PathBuf, String> {
     if artifact_root.file_name().and_then(|name| name.to_str()) != Some("artifacts") {
         return Err(format!(
             "protocol artifact root must end in `artifacts`: {}",
@@ -419,35 +403,6 @@ fn resolve_protocol_binary_install_target(
         )
     })?;
     Ok(runtime_root.join("bin").join(SEMANTIC_AGENT_PROTOCOL_BIN))
-}
-
-fn managed_protocol_binary_path_aliases(
-    artifact_root: &Path,
-    primary_target: &Path,
-    path_dirs: &[PathBuf],
-) -> Result<Vec<PathBuf>, String> {
-    let mut aliases = Vec::new();
-    for candidate in path_dirs
-        .iter()
-        .map(|dir| dir.join(SEMANTIC_AGENT_PROTOCOL_BIN))
-        .filter(|candidate| {
-            !same_protocol_binary_entry(candidate, primary_target) && candidate.is_file()
-        })
-    {
-        let identity = fs::canonicalize(&candidate).map_err(|error| {
-            format!(
-                "failed to resolve PATH protocol binary identity {}: {error}",
-                candidate.display()
-            )
-        })?;
-        if is_digest_addressed_protocol_binary(&identity, artifact_root)?
-            && !aliases.contains(&candidate)
-        {
-            aliases.push(candidate);
-        }
-    }
-
-    Ok(aliases)
 }
 
 pub(crate) async fn install_protocol_binary_target(
@@ -516,7 +471,7 @@ async fn install_release_provider_member_target(
     let member_digest =
         agent_semantic_artifacts::runtime_artifact_slots::runtime_artifact_candidate_digest(source)
             .await?;
-    let publication = agent_semantic_artifacts::runtime_artifact_publication::publish_runtime_artifact_bundle_member_from_active(
+    let publication = agent_semantic_artifacts::runtime_artifact_publication::publish_runtime_artifact_bound_provider_member_from_active(
         state_home,
         member_name,
         source,
@@ -579,7 +534,7 @@ pub(crate) async fn install_qualified_provider_staging_target(
     let member_digest =
         agent_semantic_artifacts::runtime_artifact_slots::runtime_artifact_candidate_digest(source)
             .await?;
-    let publication = agent_semantic_artifacts::runtime_artifact_publication::publish_runtime_artifact_bundle_member_from_active(
+    let publication = agent_semantic_artifacts::runtime_artifact_publication::publish_runtime_artifact_bound_provider_member_from_active(
         state_home,
         &artifact_kind,
         source,
@@ -629,12 +584,11 @@ async fn install_protocol_binary_target_transaction(
             runtime_root.display()
         )
     })?;
-    let expected_target = runtime_root.join("bin").join(binary_name);
-    if !same_protocol_binary_entry(target, &expected_target) {
+    let forbidden_reverse_target = runtime_root.join("bin").join(binary_name);
+    if same_protocol_binary_entry(target, &forbidden_reverse_target) {
         return Err(format!(
-            "runtime binary target must use the Runtime stable launcher: expected={} actual={}",
-            expected_target.display(),
-            target.display()
+            "reasonKind=runtime-protocol-binary-direction-invalid PATH-visible target must not be the Runtime compatibility alias: {}",
+            target.display(),
         ));
     }
     let artifact_kind = binary_name.to_string_lossy().into_owned();
@@ -757,51 +711,6 @@ fn validate_protocol_entry_for_repair(entry: &Path, artifact_root: &Path) -> Res
 #[cfg(all(test, unix))]
 #[path = "../../tests/unit/protocol_binary_latest_publication.rs"]
 mod protocol_binary_latest_publication_tests;
-
-#[cfg(unix)]
-fn stage_active_protocol_entry(artifact: &Path, staged_entry: &Path) -> Result<(), String> {
-    std::os::unix::fs::symlink(artifact, staged_entry).map_err(|error| {
-        format!(
-            "failed to stage protocol binary link {} -> {}: {error}",
-            staged_entry.display(),
-            artifact.display()
-        )
-    })
-}
-
-#[cfg(not(unix))]
-fn stage_active_protocol_entry(artifact: &Path, staged_entry: &Path) -> Result<(), String> {
-    fs::copy(artifact, staged_entry)
-        .map(|_| ())
-        .map_err(|error| {
-            format!(
-                "failed to stage protocol binary entry {}: {error}",
-                staged_entry.display()
-            )
-        })
-}
-
-fn atomic_replace_protocol_entry(staged_entry: &Path, target: &Path) -> Result<(), String> {
-    match fs::rename(staged_entry, target) {
-        Ok(()) => Ok(()),
-        Err(error) => Err(format!(
-            "failed to atomically install {SEMANTIC_AGENT_PROTOCOL_BIN} to {}: {error}",
-            target.display()
-        )),
-    }
-}
-
-fn temporary_protocol_binary_path(target: &Path) -> PathBuf {
-    let file_name = target
-        .file_name()
-        .and_then(|name| name.to_str())
-        .unwrap_or(SEMANTIC_AGENT_PROTOCOL_BIN);
-    target.with_file_name(format!(
-        ".{file_name}.{}.{}.tmp",
-        process::id(),
-        next_protocol_binary_publish_sequence()
-    ))
-}
 
 fn require_path_contains_dir(dir: &Path) -> Result<(), String> {
     if path_dirs().iter().any(|path_dir| same_dir(path_dir, dir)) {

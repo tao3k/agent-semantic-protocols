@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Language provider evidence graph and facade smoke tests."""
 
 from __future__ import annotations
@@ -27,7 +31,7 @@ _LANGUAGE_CASES = [
     ("python", "languages/asp-python"),
     ("typescript", "languages/asp-typescript"),
     ("julia", "languages/AspJulia.jl"),
-    ("gerbil-scheme", "languages/gerbil-scheme-language-project-harness"),
+    ("gerbil-scheme", "languages/asp-gerbil-scheme"),
 ]
 _CORE_FAST_LANGUAGES = ("rust", "python", "typescript")
 _ALL_PROVIDER_LANGUAGES = tuple(language for language, _ in _LANGUAGE_CASES)
@@ -209,7 +213,7 @@ def _run_asp_text(*args: str) -> str:
     completed = subprocess.run(
         ["asp", *args],
         cwd=_REPO_ROOT,
-        env={**os.environ, "ASP_NO_AGENT": "1"},
+        env=dict(os.environ),
         check=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,

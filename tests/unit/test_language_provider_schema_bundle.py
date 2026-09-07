@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 import json
 from dataclasses import dataclass
 from pathlib import Path
@@ -32,7 +36,7 @@ PROVIDERS = (
     ProviderPackage("typescript", REPOSITORY_ROOT / "languages/asp-typescript", Path("provider")),
     ProviderPackage("python", REPOSITORY_ROOT / "languages/asp-python", Path("provider")),
     ProviderPackage("julia", REPOSITORY_ROOT / "languages/AspJulia.jl", Path("juliac")),
-    ProviderPackage("gerbil-scheme", REPOSITORY_ROOT / "languages/gerbil-scheme-language-project-harness", Path("provider")),
+    ProviderPackage("gerbil-scheme", REPOSITORY_ROOT / "languages/asp-gerbil-scheme", Path("provider")),
 )
 
 

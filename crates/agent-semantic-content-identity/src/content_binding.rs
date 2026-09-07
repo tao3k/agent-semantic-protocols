@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 //! Exact content binding primitives for the Server-owned publication model.
 //!
@@ -14,6 +14,11 @@ use serde::Serialize;
 pub const CONTENT_BINDING_SCHEMA_ID: &str = "asp.content-binding";
 /// Schema version for Runtime content bindings.
 pub const CONTENT_BINDING_SCHEMA_VERSION: &str = "1";
+/// Schema identifier for a linearized content publication commit.
+pub const CONTENT_PUBLICATION_COMMIT_SCHEMA_ID: &str =
+    "agent.semantic-protocols.content-publication-commit";
+/// Schema version for content publication commits.
+pub const CONTENT_PUBLICATION_COMMIT_SCHEMA_VERSION: &str = "1";
 const DIGEST_PREFIX: &str = "blake3-256:";
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -89,13 +94,13 @@ pub struct ContentIdentity {
 #[serde(rename_all = "camelCase")]
 /// Linearized publication commit for a canonical content identity.
 pub struct ContentPublicationCommit {
-    pub identity: ContentIdentity,
+    pub schema_id: String,
+    pub schema_version: String,
+    pub content_binding: ContentBinding,
     pub commit_digest: String,
-    pub authority_stamp: AuthorityStamp,
     pub mutation_id: String,
     pub lease_id: String,
-    pub expected_digest: Option<String>,
-    pub durable: bool,
+    pub predecessor_commit_digest: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -110,7 +115,6 @@ pub struct ActivationObservation {
 /// Deterministic failure while validating or admitting a content binding.
 pub enum ContentBindingError {
     InvalidDigest { field: &'static str },
-    NonDurableCommit,
     ContentMismatch,
     CommitDigestMismatch,
     InvalidCommitFence,
@@ -270,60 +274,83 @@ impl ContentPublicationCommit {
         authority_stamp: AuthorityStamp,
         expected_digest: Option<&str>,
     ) -> Result<Self, ContentBindingError> {
-        identity.validate()?;
-        authority_stamp.validate_for(&identity.digest())?;
-        let commit_digest = identity.digest();
+        let content_binding = ContentBinding::new(identity, authority_stamp)?;
         if let Some(expected_digest) = expected_digest {
             validate_digest("expectedDigest", expected_digest)?;
         }
-        let fence_identity = expected_digest.unwrap_or("genesis");
+        let commit_digest = publication_commit_digest(&content_binding, expected_digest);
         Ok(Self {
-            authority_stamp,
-            mutation_id: format!("mutation:{commit_digest}:{fence_identity}"),
-            lease_id: format!("lease:{commit_digest}:{fence_identity}"),
-            expected_digest: expected_digest.map(str::to_owned),
-            identity,
+            schema_id: CONTENT_PUBLICATION_COMMIT_SCHEMA_ID.to_owned(),
+            schema_version: CONTENT_PUBLICATION_COMMIT_SCHEMA_VERSION.to_owned(),
+            content_binding,
+            mutation_id: format!("mutation:{commit_digest}"),
+            lease_id: format!("lease:{commit_digest}"),
+            predecessor_commit_digest: expected_digest.map(str::to_owned),
             commit_digest,
-            durable: true,
         })
     }
 
     pub fn validate(&self) -> Result<(), ContentBindingError> {
-        if !self.durable {
-            return Err(ContentBindingError::NonDurableCommit);
+        if self.schema_id != CONTENT_PUBLICATION_COMMIT_SCHEMA_ID
+            || self.schema_version != CONTENT_PUBLICATION_COMMIT_SCHEMA_VERSION
+        {
+            return Err(ContentBindingError::InvalidCommitFence);
         }
-        self.identity.validate()?;
-        if self.commit_digest != self.identity.digest() {
+        self.content_binding.validate()?;
+        if let Some(predecessor) = self.predecessor_commit_digest.as_deref() {
+            validate_digest("predecessorCommitDigest", predecessor)?;
+        }
+        if self.commit_digest
+            != publication_commit_digest(
+                &self.content_binding,
+                self.predecessor_commit_digest.as_deref(),
+            )
+        {
             return Err(ContentBindingError::CommitDigestMismatch);
         }
-        self.authority_stamp.validate_for(&self.identity.digest())?;
-        if self.mutation_id.is_empty() || self.lease_id.is_empty() {
-            return Err(ContentBindingError::InvalidCommitFence);
-        }
-        let fence_suffix = self.expected_digest.as_deref().unwrap_or("genesis");
-        let expected_mutation_id = format!("mutation:{}:{}", self.commit_digest, fence_suffix);
-        let expected_lease_id = format!("lease:{}:{}", self.commit_digest, fence_suffix);
+        let expected_mutation_id = format!("mutation:{}", self.commit_digest);
+        let expected_lease_id = format!("lease:{}", self.commit_digest);
         if self.mutation_id != expected_mutation_id || self.lease_id != expected_lease_id {
             return Err(ContentBindingError::InvalidCommitFence);
-        }
-        if let Some(expected_digest) = self.expected_digest.as_deref() {
-            validate_digest("expectedDigest", expected_digest)?;
         }
         Ok(())
     }
 
-    pub fn admit_exact(&self, requested: &ContentIdentity) -> Result<(), ContentBindingError> {
+    pub fn admit_exact(&self, requested: &ContentBinding) -> Result<(), ContentBindingError> {
         self.validate()?;
         requested.validate()?;
-        if &self.identity != requested {
+        if &self.content_binding != requested {
             return Err(ContentBindingError::ContentMismatch);
         }
         Ok(())
     }
 
+    pub fn identity(&self) -> &ContentIdentity {
+        &self.content_binding.identity
+    }
+
+    pub fn authority_stamp(&self) -> &AuthorityStamp {
+        &self.content_binding.authority_stamp
+    }
+
     pub fn rollback_without_authority(&self) -> Result<(), ContentBindingError> {
         Err(ContentBindingError::RollbackRequiresAuthority)
     }
+}
+
+fn publication_commit_digest(
+    binding: &ContentBinding,
+    predecessor_commit_digest: Option<&str>,
+) -> String {
+    let mut hasher = blake3::Hasher::new();
+    hasher.update(b"agent.semantic-protocols.content-publication-commit.v1\0");
+    let binding_bytes = serde_json::to_vec(binding).expect("ContentBinding is serializable");
+    hasher.update(&(binding_bytes.len() as u64).to_le_bytes());
+    hasher.update(&binding_bytes);
+    let predecessor = predecessor_commit_digest.unwrap_or("genesis").as_bytes();
+    hasher.update(&(predecessor.len() as u64).to_le_bytes());
+    hasher.update(predecessor);
+    format!("{DIGEST_PREFIX}{}", hasher.finalize().to_hex())
 }
 
 impl ActivationObservation {

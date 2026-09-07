@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+-->
+
 # Semantic Search Schemas
 
 Policy boundary: ASP EvidenceGraph, DynamicTopology, and GraphRoute own least-search target localization and decide where to edit through stable selectors, owners, tests, dependency edges, snapshots, benchmarks, and topology context. Language policy receives that target context and tells the agent how to edit and validate safely; it does not own broad search or primary file selection.
@@ -51,23 +56,16 @@ root, child, and message target; records monotonic dispatch state; marks residen
 execution terminal and non-redispatchable; and requires completed receipts to
 carry a materialized owner selector plus a placeholder-free executable command.
 
-`semantic-agent-search-playbook-receipt.v1.schema.json` owns the single public
-Search Playbook result. It composes indexed lexical candidates, resident Python
-graph reasoning, and bounded ripgrep verification into one route decision.
-Its ordered plan fixes source acquisition, cold ripgrep recall, provider-native
-syntax, Tantivy lexical recall, Rust resident-graph ranking, and optional Python
-Graph reasoning as distinct stages. A cold receipt records exactly one ripgrep
-process over the immutable content-generation corpus; a warm receipt records
-Tantivy and must not fabricate ripgrep execution.
-Its `nativeSyntax.projections` records expose bounded provider-native selectors,
-byte ranges, query keys, derived projection digests, and owner-bound relation
-digests. `nativeSyntax.diagnostics` binds a provider-owned
-`source-syntax-unavailable` result to an exact owner/content identity. The two
-collections are disjoint and their union accounts for every selected owner;
-diagnostics never synthesize selectors or erase independent rg, Tantivy, byte,
-or graph evidence. An owner list or count alone is invalid native-syntax
-evidence.
-Legacy seed products and multi-command route scripts are not admitted.
+`search-topology-settlement.v1.schema.json` owns the single public Search
+Playbook result. Runtime joins the Agent-authored acquisition evidence to the
+exact attached Project Topology generation, admits the binding, proof,
+coverage, fixed-point, and materialization invariants, and returns that typed
+settlement. The Client invokes its canonical renderer, producing exactly one
+Org-owned GQL source block. Flat evidence rows, planner state, Query grammar,
+recommended commands, and parallel renderers are not public Search results.
+`--syntax` carries a registered producer and its provider-native query argv;
+`--native-syntax` is a separate exact-selector axis and cannot carry a
+Tree-sitter query.
 
 `search-owner-missing-topology.v1.schema.json` owns the bounded graph returned
 when owner-items search cannot find a requested path in the active generation.
@@ -780,6 +778,22 @@ source-free locator/frontier evidence. Exact query accepts only
 machine-consumer representation, never an implicit replacement for source
 projection. The removed `code` flag and direct-read recovery surface are not
 valid aliases.
+
+`query-playbook-materialization-request.v1.schema.json` binds one sorted,
+unique selector set to one immutable Runtime execution identity without a
+Search-settlement handle. `query-playbook-materialization-receipt.v1.schema.json`
+is its all-or-nothing terminal: Ready returns every requested selector exactly
+once under the requested projection, while Failed returns no materialized
+bytes. The receipt contains evidence and failure identity only; it has no
+planner or recommended-action field.
+
+`runtime-execution-binding.v2.schema.json` is the current Runtime identity
+product used by Search and Query. It binds the complete parser-admitted
+`projectWorkspace`, the host-local `worktreeInstanceId`, one publication nonce,
+the content binding, Runtime artifact, evaluator policy, active publication
+receipt, and evaluator ABI. The former V1 `projectId`/`workspaceId` pair is not
+a workspace authority and must not be accepted or reconstructed by current
+clients.
 
 When a direct read must distinguish worktree, staged index, and committed
 contents, the same packet carries `sourceVersion=worktree|index|head`.

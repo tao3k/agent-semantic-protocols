@@ -1,3 +1,7 @@
+-- SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+--
+-- SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 import ASPProof.ASPActiveHealthyArtifactRetention
 
 namespace ASPProof.RuntimeArtifactAuthority
@@ -134,6 +138,56 @@ theorem checkout_build_is_provenance_not_execution :
 
 theorem local_path_is_not_runtime_authority :
     executableDomainAdmitted .localPath = false := by
+  rfl
+
+/-! The public install entry and Runtime compatibility alias have one directed
+authority graph. Content remains owned by the immutable store; the direction
+below only prevents the Runtime namespace from becoming a second public
+installation authority. -/
+
+inductive ProtocolBinaryEntry where
+  | immutableArtifact
+  | pathVisibleInstall
+  | runtimeCompatibilityAlias
+  deriving DecidableEq, Repr
+
+def protocolBinaryLinkAdmitted : ProtocolBinaryEntry → ProtocolBinaryEntry → Bool
+  | .pathVisibleInstall, .immutableArtifact => true
+  | .runtimeCompatibilityAlias, .pathVisibleInstall => true
+  | _, _ => false
+
+def canonicalProtocolBinaryChain : List ProtocolBinaryEntry :=
+  [.runtimeCompatibilityAlias, .pathVisibleInstall, .immutableArtifact]
+
+def protocolBinaryChainAdmitted : List ProtocolBinaryEntry → Bool
+  | [runtimeEntry, publicEntry, artifactEntry] =>
+      protocolBinaryLinkAdmitted runtimeEntry publicEntry &&
+        protocolBinaryLinkAdmitted publicEntry artifactEntry
+  | _ => false
+
+theorem runtime_alias_points_to_path_visible_install :
+    protocolBinaryLinkAdmitted .runtimeCompatibilityAlias .pathVisibleInstall = true := by
+  rfl
+
+theorem path_visible_install_points_to_immutable_artifact :
+    protocolBinaryLinkAdmitted .pathVisibleInstall .immutableArtifact = true := by
+  rfl
+
+theorem reverse_path_to_runtime_alias_is_rejected :
+    protocolBinaryLinkAdmitted .pathVisibleInstall .runtimeCompatibilityAlias = false := by
+  rfl
+
+theorem runtime_alias_cannot_point_directly_to_artifact :
+    protocolBinaryLinkAdmitted .runtimeCompatibilityAlias .immutableArtifact = false := by
+  rfl
+
+theorem canonical_protocol_binary_chain_is_admitted :
+    protocolBinaryChainAdmitted canonicalProtocolBinaryChain = true := by
+  rfl
+
+theorem two_node_protocol_binary_cycle_is_rejected :
+    protocolBinaryChainAdmitted
+      [.runtimeCompatibilityAlias, .pathVisibleInstall, .runtimeCompatibilityAlias] = false := by
   rfl
 
 inductive DevelopmentInstallPhase where

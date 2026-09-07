@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 use super::SEARCH_EXECUTION_SCHEMA_ID;
 use super::SEARCH_EXECUTION_SCHEMA_VERSION;
 use super::SearchClientFrame;
@@ -39,19 +43,7 @@ fn commit() -> ContentPublicationCommit {
 #[test]
 fn binding_pins_one_exact_context_for_all_operations() {
     let commit = commit();
-    let execution = SearchExecution::bind(
-        ContentBinding::new(
-            commit.identity.clone(),
-            AuthorityStamp {
-                key_id: "test-key".into(),
-                canonical_digest: commit.commit_digest.clone(),
-                signature: "test-signature".into(),
-            },
-        )
-        .expect("valid binding"),
-        &commit,
-    )
-    .expect("bind");
+    let execution = SearchExecution::bind(commit.content_binding.clone(), &commit).expect("bind");
     let frame = SearchClientFrame {
         frame_schema_id: SEARCH_EXECUTION_SCHEMA_ID.into(),
         frame_schema_version: SEARCH_EXECUTION_SCHEMA_VERSION.into(),
@@ -68,21 +60,30 @@ fn binding_pins_one_exact_context_for_all_operations() {
 }
 
 #[test]
+fn a_foreign_authority_cannot_reuse_an_admitted_content_identity() {
+    let commit = commit();
+    let forged = ContentBinding::new(
+        commit.identity().clone(),
+        AuthorityStamp {
+            key_id: "foreign-authority".into(),
+            canonical_digest: commit.identity().digest(),
+            signature: "foreign-signature".into(),
+        },
+    )
+    .expect("foreign stamp is structurally valid");
+    assert!(matches!(
+        SearchExecution::bind(forged, &commit),
+        Err(SearchExecutionError::Binding(
+            crate::content_binding::ContentBindingError::ContentMismatch
+        ))
+    ));
+}
+
+#[test]
 fn cancellation_is_terminal_and_cannot_be_followed_by_success() {
     let commit = commit();
-    let mut execution = SearchExecution::bind(
-        ContentBinding::new(
-            commit.identity.clone(),
-            AuthorityStamp {
-                key_id: "test-key".into(),
-                canonical_digest: commit.commit_digest.clone(),
-                signature: "test-signature".into(),
-            },
-        )
-        .expect("valid binding"),
-        &commit,
-    )
-    .expect("bind");
+    let mut execution =
+        SearchExecution::bind(commit.content_binding.clone(), &commit).expect("bind");
     execution.cancel("request-1".into()).expect("cancel");
     assert_eq!(
         execution.finish("request-1".into(), TerminalStatus::Succeeded),

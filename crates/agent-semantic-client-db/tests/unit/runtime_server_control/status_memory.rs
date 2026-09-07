@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 use agent_semantic_artifacts::runtime_artifact_catalog::RuntimeBinaryIdentity;
 use std::sync::{Arc, RwLock};
@@ -37,9 +37,15 @@ fn fixture_endpoint(root: &std::path::Path, owner_epoch: u64) -> RuntimeServerEn
             "blake3-256:2222222222222222222222222222222222222222222222222222222222222222".to_owned(),
         schema_id: "agent.semantic-protocols.runtime-server-endpoint".to_owned(),
         schema_version: "1".to_owned(),
-        transport_contract_digest: super::super::runtime_server_transport_contract_digest(),
-        owner_epoch,
-        owner_process_id: 0,
+        transport_binding: super::super::RuntimeTransportBinding {
+            transport_contract_digest: super::super::runtime_server_transport_contract_digest(),
+            owner_epoch,
+            owner_process_id: 1,
+            binding_token: format!("binding-{owner_epoch}"),
+            control_endpoint: loopback(42001 + (owner_epoch % 100) as u16),
+            data_endpoint: loopback(42101 + (owner_epoch % 100) as u16),
+            provider_endpoint: loopback(42201 + (owner_epoch % 100) as u16),
+        },
         runtime_artifact_path: "/runtime/asp".to_owned(),
         runtime_binary_identity: RuntimeBinaryIdentity::from_bytes(
             format!("runtime-{owner_epoch}").as_bytes(),
@@ -50,10 +56,6 @@ fn fixture_endpoint(root: &std::path::Path, owner_epoch: u64) -> RuntimeServerEn
         ),
         artifact_mode: "dev".to_owned(),
         artifact_catalog_digest: format!("blake3-256:{}", "a".repeat(64)),
-        binding_token: format!("binding-{owner_epoch}"),
-        control_endpoint: loopback(42001 + (owner_epoch % 100) as u16),
-        data_endpoint: loopback(42101 + (owner_epoch % 100) as u16),
-        provider_endpoint: loopback(42201 + (owner_epoch % 100) as u16),
         workspace_store_path: root.join("workspaces").to_string_lossy().into_owned(),
         status_memory_path: root.join("status.memory").to_string_lossy().into_owned(),
     }

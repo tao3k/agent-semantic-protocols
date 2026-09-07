@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 //! Production-command coverage for the real Cargo-built ASP executable.
 
@@ -87,12 +87,13 @@ async fn built_asp_install_binary_publishes_runtime_hook_independent_of_runtime_
     let plugin_cache_before = directory_identity(&plugin_cache);
     let plugin_source = workspace_root.join("asp-codex-plugin");
     let plugin_source_before = directory_identity(&plugin_source);
+    let isolated_home = state_home.path().join("home");
     let output = Command::new(&asp)
         .args(["install", "binary"])
         .current_dir(workspace_root)
         .env("ASP_STATE_HOME", state_home.path())
+        .env("HOME", &isolated_home)
         .env("CODEX_HOME", &codex_home)
-        .env_remove("ASP_NO_AGENT")
         .output()
         .expect("execute actual Cargo-built asp install binary");
     assert!(
@@ -162,6 +163,18 @@ async fn built_asp_install_binary_publishes_runtime_hook_independent_of_runtime_
         std::fs::canonicalize(&activation.artifact_path)
             .expect("canonical pending activation artifact"),
         "install must switch only the client launcher to the pending immutable candidate"
+    );
+    let path_visible_asp = isolated_home.join(".local/bin/asp");
+    assert_eq!(
+        std::fs::read_link(state_home.path().join("runtime/bin/asp"))
+            .expect("read Runtime compatibility alias"),
+        path_visible_asp,
+        "Runtime compatibility alias must point to the PATH-visible install"
+    );
+    assert_ne!(
+        std::fs::read_link(&path_visible_asp).expect("read PATH-visible ASP entry"),
+        state_home.path().join("runtime/bin/asp"),
+        "PATH-visible ASP entry must not point back to the Runtime alias"
     );
     assert!(
         state_home.path().join("runtime/artifacts/active").exists(),

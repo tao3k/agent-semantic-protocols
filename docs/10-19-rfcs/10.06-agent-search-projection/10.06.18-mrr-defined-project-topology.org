@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 #+TITLE: RFC 10.06.18 - MRR-Defined Project Topology
 #+LANGUAGE: en
 #+DATE: 2026-09-06
@@ -129,7 +133,10 @@ The reviewable Project Topology lives under =.agents/asp/topology/=:
 #+end_example
 
 =manifest.org= imports the standard MRR topology prelude and identifies the
-project program modules. =programs/= contains project-owned Scheme/POO MRR
+project program modules. It also maps every logical workspace key to one
+normalized repository-relative =workspaceRootPath=. The root path is a
+containment and selector-resolution boundary, not a host path or independent
+identity. =programs/= contains project-owned Scheme/POO MRR
 declarations. It is not an extension registry. =facts/= contains deterministic,
 sharded skeleton materialization. =annotations/= keeps model-assisted semantics
 separate from parser and source-owned facts even when GQL projects them into one
@@ -139,6 +146,42 @@ The standard prelude is referenced by identity from the MRR dependency. It is
 not copied into every repository. Project files contain only project-owned
 composition and specialization.
 
+** Worktree Resolution And Placement
+
+Project identity, worktree selection, and checkout placement are different
+layers. The architecture adopts the useful separation demonstrated by
+worktree-oriented Git tooling without making that tooling or its branch-based
+addressing part of the protocol:
+
+1. =projectWorkspaceIdentity= identifies the durable logical workspace.
+2. A branch, pull-request ref, or task label is an ergonomic
+   =worktreeHandle=. It helps a Host locate or create a checkout but is not
+   content identity and is never Query admission authority.
+3. =workspaceRootPath= is the Git-tracked, repository-relative source boundary
+   for that logical workspace.
+4. =checkoutRootPath= is a Host-local physical path selected by user policy or
+   a deterministic path template. Moving it does not change project or source
+   identity.
+5. =sourceSnapshotDigest= establishes the exact committed tree and admitted
+   overlay observed in that checkout.
+
+User-local placement policy MUST remain outside the repository topology. It may
+choose sibling, nested, centralized, or branch-derived checkout paths. The
+Git-tracked manifest owns only shared semantic configuration: canonical project
+locator and aliases, logical workspace keys, repository-relative roots, MRR
+program composition, and provider requirements.
+
+Runtime MUST resolve Git common and worktree-private paths through Git's
+worktree-aware interfaces. It MUST NOT assume that =.git= is a directory, that
+the main checkout contains the current worktree's private state, or that a
+worktree-private identifier is portable to another host.
+
+Repository-level CAS objects MAY be shared between worktrees when their complete
+content identities match. Mutable active-generation pointers, dirty overlays,
+leases, sessions, and in-flight Search or Query state are worktree-scoped. A
+branch name, checkout path, shared Git ref, or equal activation generation can
+never substitute for an equal source-snapshot binding.
+
 Runtime databases, Tantivy indexes, rank state, locators, temporary
 transactions, and Hook journals remain outside the Git-tracked topology.
 
@@ -147,7 +190,7 @@ transactions, and Hook journals remain outside the Git-tracked topology.
 The manifest binds one product identity:
 
 #+begin_example
-(workspaceIdentity,
+(projectWorkspaceIdentity,
  sourceSnapshotDigest,
  providerCatalogDigest,
  parserCatalogDigest,
@@ -159,6 +202,29 @@ The manifest binds one product identity:
  ascentProgramDigest,
  topologyRootDigest)
 #+end_example
+
+The first component has canonical wire form
+=<canonical-git-locator>#workspace/<logical-key>=, for example
+=git+https://github.com/tao3k/agent-semantic-protocols.git#workspace/root=.
+The manifest owns both the canonical locator and logical key. It may admit
+explicit repository aliases for a reviewed rename or mirror migration, but it
+never derives identity from the current clone path, remote name, Host session,
+or Runtime-generated workspace identifier. Local-only =git+file://= identities
+are valid for local projects but are not cross-machine identities.
+
+The program binding embeds the complete shared =projectWorkspace= object:
+=projectWorkspaceIdentity=, =workspaceRootPath=, =portability=, and reviewed
+=repositoryAliases=. A generic Runtime =workspaceId= or arbitrary nonempty
+=workspaceIdentity= is not a substitute. Changing only =workspaceRootPath=
+preserves the durable project identity but changes the topology program binding
+and its selector-containment boundary.
+
+This project identity does not identify source state. =sourceSnapshotDigest=
+binds the exact committed tree and admitted overlay; Runtime instance identity
+is an orthogonal operational binding and is excluded from the reusable topology
+identity. A physical Git worktree is likewise host-local. Cross-machine
+equivalence of two checkouts is established by equal project-workspace and
+source-snapshot bindings, not by equal worktree paths or private Git dirs.
 
 There is no =extensionCatalogDigest=. Domain customization is already contained
 in =projectProgramDigest=, its compiled ABI, and =mrrBundleIdentity=.
@@ -337,7 +403,7 @@ RFC and Lean countermodels
   -> meta-relational-reasoning facade migration
   -> provider topology adapters
   -> incremental Runtime builder and MRR admission
-  -> Search GQL projection and Query handoff
+  -> Search GQL projection and independently Runtime-bound Query request
   -> deletion of legacy catalog authority
   -> sandtable and representative-project evidence
 #+end_example

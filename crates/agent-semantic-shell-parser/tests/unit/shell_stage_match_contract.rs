@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 use agent_semantic_shell_parser::MAX_COMMAND_CANDIDATES;
 use agent_semantic_shell_parser::PrefixMatch;
 use agent_semantic_shell_parser::bash::parse_bash_command_candidates;

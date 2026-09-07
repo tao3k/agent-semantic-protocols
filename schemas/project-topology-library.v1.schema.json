@@ -5,11 +5,11 @@
   "description": "Content-addressed structural and semantic project topology shared by Search, Query, code understanding, framework calibration, refactoring, and context recovery. Retrieval ranges and request-local ranks are deliberately excluded.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaId", "schemaVersion", "workspaceIdentity", "sourceGenerationDigest", "providerCatalogDigest", "libraryDigest", "generation", "fromScratchRebuildReceipt", "semanticAdmissionReceipts", "identities", "segments", "nodes", "edges", "coverageCertificates", "closure", "consumers", "terminal"],
+  "required": ["schemaId", "schemaVersion", "projectWorkspace", "sourceGenerationDigest", "providerCatalogDigest", "libraryDigest", "generation", "fromScratchRebuildReceipt", "semanticAdmissionReceipts", "identities", "segments", "nodes", "edges", "coverageCertificates", "closure", "consumers", "terminal"],
   "properties": {
     "schemaId": {"const": "agent.semantic-protocols.project-topology-library"},
     "schemaVersion": {"const": "1"},
-    "workspaceIdentity": {"type": "string", "minLength": 1},
+    "projectWorkspace": {"$ref": "project-workspace-binding.v1.schema.json"},
     "sourceGenerationDigest": {"$ref": "#/$defs/digest"},
     "providerCatalogDigest": {"$ref": "#/$defs/digest"},
     "libraryDigest": {"$ref": "#/$defs/digest"},
@@ -38,6 +38,7 @@
     "identifier": {"type": "string", "pattern": "^[a-z][a-z0-9_.:-]*$(?![\\s\\S])"},
     "nodeId": {"type": "string", "pattern": "^[a-z][a-z0-9_-]*$(?![\\s\\S])"},
     "selector": {"type": "string", "pattern": "^[A-Za-z][A-Za-z0-9+.-]*://[^\\s]+#item/[^\\s]+$(?![\\s\\S])"},
+    "ownerLocator": {"type": "string", "pattern": "^[A-Za-z][A-Za-z0-9+.-]*://[^\\s#]+$(?![\\s\\S])"},
     "generation": {
       "type": "object",
       "additionalProperties": false,
@@ -128,17 +129,22 @@
       "required": ["id", "segmentId", "plane", "language", "kind"],
       "properties": {
         "id": {"$ref": "#/$defs/nodeId"},
-        "segmentId": {"$ref": "#/$defs/identifier"},
+        "segmentId": {"oneOf": [{"$ref": "#/$defs/identifier"}, {"type": "null"}]},
         "plane": {"enum": ["structural", "declared-semantic", "synthesized-semantic"]},
         "language": {"type": "string", "minLength": 1},
         "kind": {"type": "string", "minLength": 1},
         "name": {"type": "string", "minLength": 1},
         "selector": {"$ref": "#/$defs/selector"},
+        "ownerLocator": {"$ref": "#/$defs/ownerLocator"},
         "annotation": {"$ref": "#/$defs/annotation"}
       },
       "oneOf": [
-        {"required": ["selector"], "not": {"required": ["annotation"]}},
-        {"required": ["annotation"], "not": {"required": ["selector"]}}
+        {"required": ["selector"], "not": {"anyOf": [{"required": ["ownerLocator"]}, {"required": ["annotation"]}]}},
+        {"required": ["ownerLocator"], "not": {"anyOf": [{"required": ["selector"]}, {"required": ["annotation"]}]}},
+        {"required": ["annotation"], "not": {"anyOf": [{"required": ["selector"]}, {"required": ["ownerLocator"]}]}}
+      ],
+      "allOf": [
+        {"if": {"properties": {"plane": {"const": "synthesized-semantic"}}, "required": ["plane"]}, "then": {"properties": {"segmentId": {"type": "null"}}}, "else": {"properties": {"segmentId": {"$ref": "#/$defs/identifier"}}}}
       ]
     },
     "edge": {
@@ -147,7 +153,7 @@
       "required": ["id", "segmentId", "from", "to", "relation", "modality", "bindingDigest", "witnesses"],
       "properties": {
         "id": {"$ref": "#/$defs/identifier"},
-        "segmentId": {"$ref": "#/$defs/identifier"},
+        "segmentId": {"oneOf": [{"$ref": "#/$defs/identifier"}, {"type": "null"}]},
         "from": {"$ref": "#/$defs/nodeId"},
         "to": {"$ref": "#/$defs/nodeId"},
         "relation": {"type": "string", "pattern": "^[A-Z][A-Z0-9_]*$(?![\\s\\S])"},
@@ -156,7 +162,10 @@
         "witnesses": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/identifier"}},
         "proofRef": {"type": "string", "minLength": 1}
       },
-      "allOf": [{"if": {"properties": {"modality": {"const": "derived"}}, "required": ["modality"]}, "then": {"required": ["proofRef"]}, "else": {"not": {"required": ["proofRef"]}}}]
+      "allOf": [
+        {"if": {"properties": {"modality": {"enum": ["derived", "proposed"]}}, "required": ["modality"]}, "then": {"properties": {"segmentId": {"type": "null"}}}, "else": {"properties": {"segmentId": {"$ref": "#/$defs/identifier"}}}},
+        {"if": {"properties": {"modality": {"const": "derived"}}, "required": ["modality"]}, "then": {"required": ["proofRef"]}, "else": {"not": {"required": ["proofRef"]}}}
+      ]
     },
     "coverage": {
       "type": "object",

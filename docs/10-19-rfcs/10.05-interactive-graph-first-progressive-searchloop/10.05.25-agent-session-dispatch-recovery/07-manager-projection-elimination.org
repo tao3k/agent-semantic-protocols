@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 #+title: Manager Projection Elimination
 #+property: RFC_ID ASP-10.05.25.07
 #+property: STATUS normative

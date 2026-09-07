@@ -51,7 +51,7 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "workspaceIdentity",
+        "projectWorkspace",
         "sourceSnapshotDigest",
         "providerCatalogDigest",
         "parserCatalogDigest",
@@ -64,7 +64,9 @@
         "topologyRootDigest"
       ],
       "properties": {
-        "workspaceIdentity": { "type": "string", "minLength": 1 },
+        "projectWorkspace": {
+          "$ref": "https://schemas.agent-semantic-protocols.dev/project-workspace-binding.v1.schema.json"
+        },
         "sourceSnapshotDigest": { "$ref": "#/$defs/digest" },
         "providerCatalogDigest": { "$ref": "#/$defs/digest" },
         "parserCatalogDigest": { "$ref": "#/$defs/digest" },

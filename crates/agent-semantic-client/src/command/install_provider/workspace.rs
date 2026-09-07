@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 //! Registry-driven development provider workspace build and artifact publication.
 
@@ -26,8 +26,6 @@ pub(super) use receipt::record_registered_provider_workspace_install;
 pub(super) struct BuiltProviderWorkspace {
     source_root: PathBuf,
     entrypoint: PathBuf,
-    pub(super) provider_registration:
-        agent_semantic_provider_protocol::ProviderRegistrationDocument,
     launch: Option<WorkspaceLaunchDescriptor>,
     runtime_dependencies: Vec<BuiltWorkspaceRuntimeDependency>,
     _build_guard: agent_semantic_runtime::provider_workspace_artifact::ProviderWorkspaceBuildGuard,
@@ -200,6 +198,7 @@ pub(super) async fn build_registered_provider_workspace(
     };
     provider_registration.validate()?;
     provider_registration.compiled_routes()?;
+    validate_embedded_provider_registration(&provider_registration)?;
 
     let working_directory = repository_path(
         &dev_root,
@@ -303,11 +302,31 @@ pub(super) async fn build_registered_provider_workspace(
     Ok(BuiltProviderWorkspace {
         source_root,
         entrypoint,
-        provider_registration,
         launch: descriptor.workspace_artifact.launch,
         runtime_dependencies,
         _build_guard: build_guard,
     })
+}
+
+fn validate_embedded_provider_registration(
+    provider_registration: &agent_semantic_provider_protocol::ProviderRegistrationDocument,
+) -> Result<(), String> {
+    let embedded_registration = agent_semantic_provider_protocol::builtin_provider_registrations()?
+        .into_iter()
+        .find(|candidate| candidate.provider_id == provider_registration.provider_id)
+        .ok_or_else(|| {
+            format!(
+                "reasonKind=provider-registration-not-embedded providerId={}",
+                provider_registration.provider_id
+            )
+        })?;
+    if embedded_registration != *provider_registration {
+        return Err(format!(
+            "reasonKind=provider-registration-requires-client-rebuild providerId={}",
+            provider_registration.provider_id
+        ));
+    }
+    Ok(())
 }
 
 fn resolve_runtime_dependencies(

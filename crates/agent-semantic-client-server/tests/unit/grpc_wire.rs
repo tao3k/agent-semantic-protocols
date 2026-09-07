@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 use agent_semantic_client_protocol::ClientCapabilities;
 use agent_semantic_client_protocol::ClientFrame;
@@ -18,6 +18,7 @@ use agent_semantic_client_protocol::ClientRequestId;
 use agent_semantic_client_protocol::ClientSessionId;
 use agent_semantic_client_protocol::ClientTransport;
 use agent_semantic_client_protocol::ClientWorkspaceIdentity;
+use agent_semantic_client_protocol::RuntimeSearchClientTimingWitness;
 use agent_semantic_client_protocol::TraceContext;
 use agent_semantic_client_protocol::protocol_identity::CLIENT_CATALOG_SCHEMA_ID;
 use agent_semantic_client_protocol::protocol_identity::CLIENT_FRAME_SCHEMA_ID;
@@ -132,6 +133,10 @@ fn canonical_protobuf_round_trips_every_client_frame_variant() {
             workspace_generation: "workspace-generation".to_owned(),
             method: "rust.query".to_owned(),
             params: json!({"selector": "rust://crate#item/function/example"}),
+            client_timing_witness: Some(
+                RuntimeSearchClientTimingWitness::new("wire-session", "request", [1, 2, 3])
+                    .expect("canonical client timing witness"),
+            ),
         },
         ClientFrame::Cancel {
             base: base(),
@@ -199,6 +204,7 @@ fn canonical_protobuf_rejects_invalid_dynamic_json_and_unknown_outcome() {
         workspace_generation: "workspace-generation".to_owned(),
         method: "rust.search".to_owned(),
         params: json!({"query": "valid-before-wire-corruption"}),
+        client_timing_witness: None,
     };
     let mut invalid_json = encode_frame(request).expect("encode request");
     let Some(super::wire::client_frame_envelope::Frame::Request(request)) =

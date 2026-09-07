@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 #+title: Host-supervised Runtime Readiness Without Client-bound Sockets
 #+status: accepted
 
@@ -7,7 +11,7 @@ The activation waiter created a per-command Unix datagram under
 =/tmp/asp-ar-UID/.../r.sock=.  A sandboxed ASP client was therefore required to
 bind a Host socket before it could ask the Host supervisor to recover Runtime.
 macOS correctly rejected that bind with =EPERM=.  Hook then required ASP for
-source access, producing a circular dependency that =ASP_NO_AGENT= could not
+source access, producing a circular dependency that Hook disablement could not
 repair.
 
 * Decision
@@ -234,7 +238,7 @@ traded away for a smaller synthetic latency.
 - chmod or a world-accessible =/tmp= activation socket: weakens authority and
   still makes sandbox filesystem policy part of Runtime correctness.
 - silent client retry: duplicates effects and hides lifecycle failure.
-- =ASP_NO_AGENT= as transport: bypasses Hook policy but cannot grant Host socket
+- Hook disablement as transport: changes policy evaluation but cannot grant Host socket
   capability.
 - keeping Host UDS plus a TCP fallback: creates two transport authorities and
   makes failures depend on client execution order.

@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Semantic admission for a Search projection of the reusable Project Topology.
 
 The JSON schema validates transport shape. This module checks cross-record
@@ -19,15 +23,31 @@ from .project_topology_library import validate_topology_library
 _require = require_topology
 
 
-def _validate_shape(packet: dict, schema: dict, topology_schema: dict) -> None:
+def _validate_shape(
+    packet: dict,
+    schema: dict,
+    topology_schema: dict,
+    project_workspace_schema: dict,
+) -> None:
     topology_schema_id = topology_schema.get("$id")
     _require(
         isinstance(topology_schema_id, str) and bool(topology_schema_id),
         "topology-schema-identity-missing",
     )
-    registry = Registry().with_resource(
-        topology_schema_id,
-        Resource.from_contents(topology_schema),
+    project_workspace_schema_id = project_workspace_schema.get("$id")
+    _require(
+        isinstance(project_workspace_schema_id, str)
+        and bool(project_workspace_schema_id),
+        "project-workspace-schema-identity-missing",
+    )
+    registry = Registry().with_resources(
+        [
+            (topology_schema_id, Resource.from_contents(topology_schema)),
+            (
+                project_workspace_schema_id,
+                Resource.from_contents(project_workspace_schema),
+            ),
+        ]
     )
     try:
         Draft202012Validator(schema, registry=registry).validate(packet)
@@ -75,13 +95,8 @@ def _validate_edges(packet: dict, nodes: dict[str, dict]) -> set[str]:
             derived_count += 1
             proof_refs.add(edge["proofRef"])
     _require(
-        derived_count == packet["fixedPoint"]["derivedRelationCount"],
+        derived_count == packet["inference"]["derivedRelationCount"],
         "derived-count-mismatch",
-    )
-    _require(
-        packet["fixedPoint"]["candidateRelationSetDigest"]
-        == packet["fixedPoint"]["nextRelationSetDigest"],
-        "fixed-point-not-reached",
     )
     return proof_refs
 
@@ -127,15 +142,68 @@ def _validate_materialization(
     )
 
 
-def validate_settlement(packet: dict, schema: dict, topology_schema: dict) -> None:
+def _validate_outcome(packet: dict) -> None:
+    inference = packet["inference"]
+    materialization = packet["materializationSet"]
+    terminal = packet["terminal"]
+    termination = inference["terminationKind"]
+    result_state = packet["resultState"]
+
+    if termination == "fixed-point":
+        _require(
+            inference["candidateRelationSetDigest"]
+            == inference["nextRelationSetDigest"],
+            "fixed-point-not-reached",
+        )
+        _require(terminal["state"] == "ready", "inference-terminal-mismatch")
+        if materialization["state"] == "available":
+            _require(result_state == "materializable", "result-state-mismatch")
+        else:
+            _require(result_state == "empty", "result-state-mismatch")
+        return
+
+    _require(materialization["state"] == "empty", "incomplete-materialization")
+    _require(
+        materialization["selectors"] == []
+        and materialization["proofDependencies"] == [],
+        "incomplete-materialization",
+    )
+    if termination == "budget-exhausted":
+        _require(
+            result_state == "incomplete" and terminal["state"] == "incomplete",
+            "inference-terminal-mismatch",
+        )
+        _require(
+            inference["candidateRelationSetDigest"]
+            != inference["nextRelationSetDigest"],
+            "budget-terminal-claims-fixed-point",
+        )
+    else:
+        _require(
+            result_state == "blocked" and terminal["state"] == "failed",
+            "inference-terminal-mismatch",
+        )
+    _require(
+        inference["reasonKind"] == terminal["reasonKind"],
+        "inference-terminal-mismatch",
+    )
+
+
+def validate_settlement(
+    packet: dict,
+    schema: dict,
+    topology_schema: dict,
+    project_workspace_schema: dict,
+) -> None:
     """Validate one immutable settlement against an explicit offline schema set."""
 
-    _validate_shape(packet, schema, topology_schema)
+    _validate_shape(packet, schema, topology_schema, project_workspace_schema)
     nodes, selectors = _index_nodes(packet)
     proof_refs = _validate_edges(packet, nodes)
     coverage = _index_coverage(packet)
     _validate_frontiers(packet, nodes, coverage)
     _validate_materialization(packet, selectors, proof_refs)
+    _validate_outcome(packet)
 
 
 def validate_settlement_for_library(
@@ -143,6 +211,7 @@ def validate_settlement_for_library(
     settlement_schema: dict,
     library: dict,
     library_schema: dict,
+    project_workspace_schema: dict,
     admitted_receipts: Mapping[str, dict],
 ) -> None:
     """Admit a settlement against one independently admitted topology library.
@@ -151,13 +220,19 @@ def validate_settlement_for_library(
     objects embedded in the candidate cannot authorize themselves.
     """
 
-    validate_settlement(packet, settlement_schema, library_schema)
-    validate_topology_library(library, library_schema, admitted_receipts)
+    validate_settlement(
+        packet, settlement_schema, library_schema, project_workspace_schema
+    )
+    validate_topology_library(
+        library, library_schema, project_workspace_schema, admitted_receipts
+    )
 
     generation = library["generation"]
     identities = library["identities"]
     expected_binding = {
-        "workspaceIdentity": library["workspaceIdentity"],
+        "projectWorkspaceIdentity": library["projectWorkspace"][
+            "projectWorkspaceIdentity"
+        ],
         "sourceGenerationDigest": library["sourceGenerationDigest"],
         "providerCatalogDigest": library["providerCatalogDigest"],
         "topologyLibraryDigest": library["libraryDigest"],

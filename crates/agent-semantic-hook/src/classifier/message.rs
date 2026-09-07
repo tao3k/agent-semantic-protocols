@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 //! Refines agent-facing recovery text without changing policy decisions.
 
 use crate::DecisionKind;
@@ -100,15 +104,14 @@ pub(crate) fn with_executable_evidence_subagent_message(
     mut decision: HookDecision,
 ) -> HookDecision {
     if decision
-        .message
-        .contains("Return one compact `[asp-search-subagent]` graph-route receipt")
-        && !decision
-            .message
-            .contains("Return executable `[asp-search-subagent]` evidence")
+        .fields
+        .get("receiptKind")
+        .and_then(serde_json::Value::as_str)
+        == Some("asp-explore-search-v1")
+        && !decision.message.contains("one Org/GQL source block")
     {
-        decision.message = decision.message.replace(
-            "Return one compact `[asp-search-subagent]` graph-route receipt",
-            "Return executable `[asp-search-subagent]` evidence with QueryGrammar, owner, item, selector, matchedBy, and relation. Return one compact `[asp-search-subagent]` graph-route receipt",
+        decision.message.push_str(
+            " Return Search success as exactly one Org/GQL source block with `:profile search-evidence.v1 :eval never`; return no parallel flat receipt or command grammar.",
         );
     }
     decision

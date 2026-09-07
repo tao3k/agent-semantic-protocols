@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 //! State activity write-gate tests.
 
 use agent_semantic_runtime::project_runtime_state_with_state_home;

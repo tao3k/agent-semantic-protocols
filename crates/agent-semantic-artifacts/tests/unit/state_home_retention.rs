@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 //! State Home retention tests.
 
@@ -21,7 +21,7 @@ fn object(id: &str, observed: u64, bytes: u64) -> RetainedObject {
 }
 
 #[test]
-fn active_lease_wins_over_age_and_expired_unleased_state_retires() {
+fn active_lease_wins_over_age_and_expired_unleased_state_is_deleted() {
     let plan = RetentionPlanner::new(200, 50)
         .plan(
             vec![object("active", 0, 10), object("expired", 100, 20)],
@@ -35,16 +35,16 @@ fn active_lease_wins_over_age_and_expired_unleased_state_retires() {
         .unwrap();
 
     assert_eq!(plan.retained_count, 1);
-    assert_eq!(plan.retired_count, 1);
+    assert_eq!(plan.deleted_count, 1);
     assert_eq!(plan.retained_bytes, 10);
-    assert_eq!(plan.retired_bytes, 20);
+    assert_eq!(plan.deleted_bytes, 20);
     assert!(matches!(
         plan.entries[0].disposition,
         CleanupDisposition::Keep { .. }
     ));
     assert!(matches!(
         plan.entries[1].disposition,
-        CleanupDisposition::Retire { .. }
+        CleanupDisposition::Delete { .. }
     ));
 }
 
@@ -79,7 +79,7 @@ fn exact_cleanup_selection_is_receipted_and_missing_targets_fail_closed() {
         )
         .expect("plan one exact retained object");
     assert_eq!(plan.selection, selection);
-    assert_eq!(plan.retired_count, 1);
+    assert_eq!(plan.deleted_count, 1);
 
     let error = planner
         .plan_selected(

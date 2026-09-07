@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 use sha2::{Digest, Sha256};
 
 use crate::rust_harness_activation::support::write_state_home_provider_binary;

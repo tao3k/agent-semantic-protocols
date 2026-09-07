@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 use std::collections::BTreeSet;
 use std::path::Path;
@@ -15,8 +15,7 @@ use agent_semantic_artifacts::ProjectBinding;
 use agent_semantic_artifacts::RetainedObject;
 use agent_semantic_artifacts::RetentionLease;
 use agent_semantic_artifacts::RetentionObjectKind;
-use agent_semantic_artifacts::RetiredStateRoot;
-use agent_semantic_artifacts::StagedWorkspaceRetirement;
+use agent_semantic_artifacts::StagedStateHomeRemoval;
 use agent_semantic_artifacts::StateHomeLayout;
 use agent_semantic_client_db::StateHomeCatalog;
 
@@ -34,7 +33,6 @@ pub(crate) async fn apply_cache_cleanup(
     let state = ResolvedState::resolve_with_state_home(project_root, state_home)?;
     let layout = StateHomeLayout::new(&state.state_home);
     let canonical_workspaces = layout.materialized_workspaces()?;
-    let retired_state_roots = layout.retired_state_roots()?;
     let (catalog_generation, catalog_plan) =
         admit_cleanup_with_catalog(&state, &canonical_workspaces, grace_period_ms, args).await?;
 
@@ -42,7 +40,7 @@ pub(crate) async fn apply_cache_cleanup(
         .entries
         .iter()
         .filter_map(|entry| {
-            matches!(entry.disposition, CleanupDisposition::Retire { .. })
+            matches!(entry.disposition, CleanupDisposition::Delete { .. })
                 .then(|| entry.object.object_id.clone())
         })
         .collect::<BTreeSet<_>>();
@@ -57,7 +55,7 @@ pub(crate) async fn apply_cache_cleanup(
     for workspace in &canonical_workspaces {
         let object_id = canonical_workspace_object_id(&workspace.binding);
         if selected_object_ids.contains(&object_id) {
-            match layout.stage_workspace_retirement(workspace.binding.workspace.digest.as_str()) {
+            match layout.stage_workspace_removal(workspace.binding.workspace.digest.as_str()) {
                 Ok(staged) => staged_workspaces.push(staged),
                 Err(error) => {
                     let rollback = rollback_staged_workspaces(staged_workspaces);
@@ -66,34 +64,12 @@ pub(crate) async fn apply_cache_cleanup(
             }
         }
     }
-    let evaluated_at_ms = now_ms()?;
-    let selected_retired_roots = retired_state_roots
-        .iter()
-        .filter(|object| {
-            evaluated_at_ms.saturating_sub(object.last_observed_at_ms) >= grace_period_ms
-                && retired_state_root_selected(args, object)
-        })
-        .collect::<Vec<_>>();
-    let retired_state_bytes = selected_retired_roots.iter().fold(0_u64, |total, object| {
-        total.saturating_add(object.byte_count)
-    });
-    for object in &selected_retired_roots {
-        match layout.stage_retired_state_root(object) {
-            Ok(staged) => staged_workspaces.push(staged),
-            Err(error) => {
-                let rollback = rollback_staged_workspaces(staged_workspaces);
-                return Err(combine_cleanup_and_rollback_error(error, rollback));
-            }
-        }
-    }
-    let canonical_retired = staged_workspaces.len();
-    let retired_state_root_count = selected_retired_roots.len();
-    let canonical_retired = canonical_retired.saturating_sub(retired_state_root_count);
+    let canonical_deleted = staged_workspaces.len();
     let committed_catalog_generation = if selected_object_ids.is_empty() {
         catalog_generation
     } else {
         match catalog
-            .retire_objects(
+            .delete_objects(
                 agent_semantic_artifacts::CatalogGeneration::new(catalog_generation),
                 &selected_object_ids,
             )
@@ -116,14 +92,8 @@ pub(crate) async fn apply_cache_cleanup(
     }
 
     println!(
-        "[asp-state-home-clean] status=applied retainedForDays={} catalogGeneration={} canonicalWorkspacesRetired={} retiredStateRoots={} retiredBytes={}",
-        args.day,
-        committed_catalog_generation,
-        canonical_retired,
-        retired_state_root_count,
-        catalog_plan
-            .retired_bytes
-            .saturating_add(retired_state_bytes),
+        "[asp-state-home-clean] status=applied retainedForDays={} catalogGeneration={} canonicalWorkspacesDeleted={} deletedBytes={}",
+        args.day, committed_catalog_generation, canonical_deleted, catalog_plan.deleted_bytes,
     );
     if receipt_json {
         let receipt = serde_json::to_string(&serde_json::json!({
@@ -132,30 +102,13 @@ pub(crate) async fn apply_cache_cleanup(
             "state": "applied",
             "retainedForDays": args.day,
             "catalogGeneration": committed_catalog_generation,
-            "canonicalWorkspacesRetired": canonical_retired,
-            "retiredStateRoots": retired_state_root_count,
+            "canonicalWorkspacesDeleted": canonical_deleted,
             "catalogPlan": catalog_plan,
         }))
         .map_err(|error| format!("failed to serialize workspace cleanup receipt: {error}"))?;
         eprintln!("{receipt}");
     }
     Ok(())
-}
-
-fn retired_state_root_selected(args: &CacheCleanArgs, object: &RetiredStateRoot) -> bool {
-    if args.workspace_digest.is_some() {
-        return false;
-    }
-    if let Some(object_id) = &args.object_id {
-        return object_id == &object.object_id;
-    }
-    if let Some(workspace_root) = &args.workspace_root {
-        let canonical = workspace_root
-            .canonicalize()
-            .unwrap_or_else(|_| workspace_root.clone());
-        return canonical == object.checkout_root;
-    }
-    true
 }
 
 fn now_ms() -> Result<u64, String> {
@@ -167,7 +120,7 @@ fn now_ms() -> Result<u64, String> {
         .map_err(|_| "system timestamp exceeds u64".to_string())
 }
 
-fn rollback_staged_workspaces(mut staged: Vec<StagedWorkspaceRetirement>) -> Result<(), String> {
+fn rollback_staged_workspaces(mut staged: Vec<StagedStateHomeRemoval>) -> Result<(), String> {
     let mut failures = Vec::new();
     while let Some(workspace) = staged.pop() {
         if let Err(error) = workspace.rollback() {
@@ -181,7 +134,7 @@ fn rollback_staged_workspaces(mut staged: Vec<StagedWorkspaceRetirement>) -> Res
     }
 }
 
-fn reap_staged_workspaces(staged: Vec<StagedWorkspaceRetirement>) -> Vec<String> {
+fn reap_staged_workspaces(staged: Vec<StagedStateHomeRemoval>) -> Vec<String> {
     staged
         .into_iter()
         .filter_map(|workspace| workspace.commit().err())

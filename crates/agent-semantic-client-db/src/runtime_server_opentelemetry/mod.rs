@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 //! Runtime Server telemetry uses Tokio for socket I/O, task lifecycle,
 //! backpressure, shutdown, filesystem setup, and the Turso writer lane.
@@ -25,7 +25,8 @@ pub use exporter::{ActiveSearchIncident, TursoOpenTelemetrySpanExporter};
 pub use observation::{
     RUNTIME_SEARCH_TELEMETRY_PHASES, RuntimeLifecycleEvent, RuntimePerformanceObservation,
     RuntimeSearchTelemetryArtifact, RuntimeSearchTelemetryCollector, RuntimeSearchTelemetryError,
-    RuntimeSearchTelemetryIdentity,
+    RuntimeSearchTelemetryIdentity, RuntimeSearchTelemetryIdentityInput,
+    RuntimeSearchTelemetryTrace,
 };
 pub use query::{
     RuntimePerformanceQuery, RuntimePerformanceQueryReceipt, query_runtime_performance,

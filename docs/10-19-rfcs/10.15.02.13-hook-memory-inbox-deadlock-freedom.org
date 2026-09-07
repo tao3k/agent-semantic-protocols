@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 #+title: Hook Memory Inbox and Deadlock Freedom
 #+property: schemaVersion 1
 #+property: inboxSchema agent.semantic-protocols.hook.memory-inbox

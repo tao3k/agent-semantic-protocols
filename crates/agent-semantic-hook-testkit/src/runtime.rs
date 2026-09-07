@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 use std::future::Future;
 use std::path::PathBuf;
 use std::process::ExitStatus;
@@ -38,7 +42,7 @@ impl HookProcessSpec {
             current_dir: current_dir.into(),
             args: Vec::new(),
             env: Vec::new(),
-            env_remove: vec!["ASP_NO_AGENT".to_owned()],
+            env_remove: Vec::new(),
             timeout: DEFAULT_HOOK_TIMEOUT,
             unbounded_parallel: false,
         }
@@ -58,13 +62,6 @@ pub struct HookScenario {
 #[derive(Clone, Debug)]
 pub struct HookScenarioReceipt {
     pub scenario_id: String,
-    pub decision: Value,
-    pub stderr: String,
-    pub elapsed: Duration,
-}
-
-#[derive(Clone, Debug)]
-pub struct HookProcessRecoveryReceipt {
     pub decision: Value,
     pub stderr: String,
     pub elapsed: Duration,
@@ -272,26 +269,6 @@ pub async fn run_hook_process(
         decision,
         stderr: String::from_utf8_lossy(&stderr).into_owned(),
         elapsed: started.elapsed(),
-    })
-}
-
-/// Prove that the process-level recovery edge wins before an intentionally
-/// invalid payload can reach parsing, Runtime, configuration, or state locks.
-/// The ordinary TestKit timeout still kills and reaps the complete process
-/// group if that terminal edge regresses.
-pub async fn run_process_entry_no_agent_recovery_probe(
-    spec: &HookProcessSpec,
-) -> Result<HookProcessRecoveryReceipt, HookTestKitError> {
-    let mut recovery_spec = spec.clone();
-    recovery_spec.env.retain(|(key, _)| key != "ASP_NO_AGENT");
-    recovery_spec
-        .env
-        .push(("ASP_NO_AGENT".to_owned(), "1".to_owned()));
-    let receipt = run_hook_process(&recovery_spec, &Value::Null).await?;
-    Ok(HookProcessRecoveryReceipt {
-        decision: receipt.decision,
-        stderr: receipt.stderr,
-        elapsed: receipt.elapsed,
     })
 }
 

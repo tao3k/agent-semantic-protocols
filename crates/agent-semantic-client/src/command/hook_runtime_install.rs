@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 //! Installation owner for hook runtime and Codex plugin surfaces.
 
@@ -208,7 +208,7 @@ async fn run_install_for_client(
         &activation_path,
     )?;
     timings.mark("active-artifact-receipt");
-    timings.mark("retired-artifact-cleanup");
+    timings.mark("removed-artifact-cleanup");
     let project_skill_receipt = installed_skill
         .as_ref()
         .and_then(|installed_skill| installed_skill.skill_path.as_ref())

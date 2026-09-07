@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 use agent_semantic_client_db::runtime_server_workspace::content_binding::ContentPublicationLedger;
 use agent_semantic_content_identity::content_binding::AuthorityStamp;
@@ -36,7 +36,7 @@ fn the_server_has_one_active_content_commit() {
         .publish(None, first_identity.clone(), authority(&first_identity))
         .unwrap()
         .clone();
-    assert!(first.expected_digest.is_none());
+    assert!(first.predecessor_commit_digest.is_none());
     let second_identity = identity('b');
     let second = ledger
         .publish(
@@ -48,7 +48,7 @@ fn the_server_has_one_active_content_commit() {
         .clone();
     assert_ne!(first.commit_digest, second.commit_digest);
     assert_eq!(
-        second.expected_digest.as_deref(),
+        second.predecessor_commit_digest.as_deref(),
         Some(first.commit_digest.as_str())
     );
     assert_eq!(ledger.active().unwrap(), &second);
@@ -94,7 +94,7 @@ fn publication_point_validates_the_schema_shaped_binding() {
     let content = identity('f');
     let binding = ContentBinding::new(content.clone(), authority(&content)).unwrap();
     assert!(ledger.publish_binding(None, binding).is_ok());
-    assert_eq!(ledger.admit_exact(&content).unwrap().identity, content);
+    assert_eq!(ledger.admit_exact(&content).unwrap().identity(), &content);
 }
 
 #[test]
@@ -108,5 +108,28 @@ fn admission_rejects_a_tampered_schema_binding() {
         ledger.admit_binding(&binding),
         Err(ContentBindingError::InvalidCommitFence)
     );
-    assert_eq!(ledger.admit_exact(&content).unwrap().identity, content);
+    assert_eq!(ledger.admit_exact(&content).unwrap().identity(), &content);
+}
+
+#[test]
+fn admission_rejects_a_forged_authority_stamp_for_equal_content() {
+    let mut ledger = ContentPublicationLedger::default();
+    let content = identity('8');
+    let canonical = ContentBinding::new(content.clone(), authority(&content)).unwrap();
+    ledger.publish_binding(None, canonical).unwrap();
+
+    let forged = ContentBinding::new(
+        content.clone(),
+        AuthorityStamp {
+            key_id: "foreign-authority".to_owned(),
+            canonical_digest: content.digest(),
+            signature: "foreign-signature".to_owned(),
+        },
+    )
+    .expect("the forged stamp is structurally valid but not independently admitted");
+
+    assert_eq!(
+        ledger.admit_binding(&forged),
+        Err(ContentBindingError::ContentMismatch)
+    );
 }

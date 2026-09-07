@@ -1,6 +1,6 @@
-# SPDX-FileCopyrightText: Contributors to Agent Semantic Protocols
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 #
-# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 """Tree-sitter JSON ABI corpus case parsing and packet assertions."""
 
@@ -193,9 +193,7 @@ def _run_catalog_query(
 
 
 def _automation_env() -> dict[str, str]:
-    env = dict(os.environ)
-    env["ASP_NO_AGENT"] = "1"
-    return env
+    return dict(os.environ)
 
 
 def _assert_packet_shape(

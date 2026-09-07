@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 //! Shared semantic agent hook protocol models and renderers.
 
 use serde::Deserialize;
@@ -596,7 +600,7 @@ pub fn subagent_deny_message(message: &str) -> String {
         {
             if !inserted_subagent_instruction {
                 lines.push(
-                    "Codex: already running inside a subagent; run the safe route below directly and return compact executable `[asp-search-subagent]` evidence with QueryGrammar, owner, item, selector, matchedBy, and relation. Do not return source bodies, snippets, line-range selectors, or a prescribed next command.",
+                    "Codex: already running inside a subagent; run the safe route below directly and return Search success as exactly one Org/GQL source block with `:profile search-evidence.v1 :eval never`. Do not return prose, source bodies, snippets, a flat receipt, command grammar, or a prescribed next action.",
                 );
                 inserted_subagent_instruction = true;
             }

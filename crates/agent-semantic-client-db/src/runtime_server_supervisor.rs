@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 //! Protocol-neutral Runtime Server supervisor boundary.
 
@@ -52,7 +52,7 @@ pub struct RuntimeServerStopOutcome {
     pub operator_stop_recorded: bool,
 }
 
-pub async fn retire_runtime_server_owner_for_handoff(
+pub async fn drain_runtime_server_owner_for_handoff(
     state_home: &std::path::Path,
     expected_endpoint: &crate::runtime_server_control::RuntimeServerEndpoint,
 ) -> Result<(), String> {
@@ -60,12 +60,12 @@ pub async fn retire_runtime_server_owner_for_handoff(
         crate::runtime_server_control::read_runtime_server_supervisor_endpoint(state_home)
             .await?
             .ok_or_else(|| {
-                "cannot retire Runtime Server owner without the current endpoint".to_owned()
+                "cannot drain Runtime Server owner without the current endpoint".to_owned()
             })?;
     let owner = crate::runtime_server_lifecycle::read_owner_receipt(state_home)
         .await?
         .ok_or_else(|| {
-            "cannot retire Runtime Server owner without the current owner receipt".to_owned()
+            "cannot drain Runtime Server owner without the current owner receipt".to_owned()
         })?;
     validate_runtime_server_owner_binding(expected_endpoint, &current_endpoint, &owner)?;
     crate::runtime_server_lifecycle::remove_owner_receipt(state_home).await
@@ -118,7 +118,7 @@ async fn classify_endpoint_owner(
     let Some(owner) = crate::runtime_server_lifecycle::read_owner_receipt(state_home).await? else {
         // An endpoint without an owner receipt cannot establish liveness or
         // identity.  Treat it as stale so the already-held supervisor
-        // transaction can retire the endpoint and publish exactly one owner;
+        // transaction can remove the endpoint and publish exactly one owner;
         // never admit it as resident and never attempt an unbound kill.
         return Ok(crate::runtime_server_lifecycle_coordinator::OwnerClassification::Stale);
     };
@@ -298,7 +298,7 @@ impl RuntimeServerSupervisor {
         }
         crate::runtime_server_lifecycle::create_run_intent(&request.state_home).await?;
         crate::runtime_server_lifecycle::remove_stale(&request.state_home).await?;
-        // Handoff is one serialized transaction: observe, retire the exact old
+        // Handoff is one serialized transaction: observe, drain the exact old
         // owner, clean its receipt, and publish the next owner receipt. Without
         // this reservation, a concurrent ensure could publish a replacement
         // between invalid-endpoint classification and cleanup.

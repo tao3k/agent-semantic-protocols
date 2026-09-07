@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 use agent_semantic_client_db::runtime_provider_register::RuntimeProviderRegister;
 use agent_semantic_provider_protocol::PROVIDER_REGISTER_REQUEST_SCHEMA_ID;
@@ -374,17 +374,14 @@ async fn warm_compiled_route_lookup_is_sub_millisecond() {
 }
 
 #[tokio::test]
-async fn verified_binding_rejects_provider_outside_admitted_targets() {
-    let root = tempfile::tempdir().expect("provider register root");
-    let register = RuntimeProviderRegister::from_verified_seed_with_store(
+async fn verified_binding_is_an_immutable_projection_of_the_bound_bundle() {
+    let register = RuntimeProviderRegister::from_bound_seed(
         vec![
             identity_provider("rust", "asp-rust"),
             identity_provider("zig", "asp-zig"),
         ],
-        root.path().join("provider-register.v1.json"),
         &[("rust".to_owned(), "asp-rust".to_owned())],
     )
-    .await
     .expect("verified provider register");
     assert_eq!(register.snapshot().providers.len(), 1);
     let response = register
@@ -399,7 +396,22 @@ async fn verified_binding_rejects_provider_outside_admitted_targets() {
     let ProviderRegisterResult::Rejected { reason_kind, .. } = response.result else {
         panic!("expected rejection")
     };
-    assert_eq!(reason_kind, "provider-not-in-installed-binding");
+    assert_eq!(reason_kind, "provider-register-bound-bundle-read-only");
+
+    let response = register
+        .apply(request(
+            Some(register.snapshot().generation),
+            ProviderRegisterOperation::Unregister {
+                provider_id: "asp-rust".to_owned(),
+            },
+        ))
+        .await
+        .expect("typed rejection");
+    let ProviderRegisterResult::Rejected { reason_kind, .. } = response.result else {
+        panic!("expected rejection")
+    };
+    assert_eq!(reason_kind, "provider-register-bound-bundle-read-only");
+    assert_eq!(register.snapshot().providers.len(), 1);
 }
 
 #[tokio::test]

@@ -3,8 +3,9 @@
   "schemaVersion": "1",
   "protocolId": "agent.semantic-protocols.search-playbook",
   "protocolVersion": "1",
+  "resultState": "materializable",
   "binding": {
-    "workspaceIdentity": "workspace-example",
+    "projectWorkspaceIdentity": "git+https://github.com/tao3k/agent-semantic-protocols.git#workspace/root",
     "sourceGenerationDigest": "blake3-256:1111111111111111111111111111111111111111111111111111111111111111",
     "providerCatalogDigest": "blake3-256:2222222222222222222222222222222222222222222222222222222222222222",
     "topologyLibraryDigest": "blake3-256:3333333333333333333333333333333333333333333333333333333333333333",
@@ -16,11 +17,11 @@
     "decisionCoreDigest": "blake3-256:7777777777777777777777777777777777777777777777777777777777777777",
     "topologyDeltaDigest": "blake3-256:8888888888888888888888888888888888888888888888888888888888888888"
   },
-  "fixedPoint": {
+  "inference": {
     "programId": "project-topology-inference.v1",
     "engineProfile": "ascent-seminaive.v1",
     "scope": "bounded",
-    "state": "reached",
+    "state": "complete",
     "terminationKind": "fixed-point",
     "iterationCount": 3,
     "traversalDepth": 2,
@@ -74,6 +75,7 @@
     {"anchor": "refresh", "relation": "ADMITS", "targetKind": "RuntimeAdmission", "depth": 2, "state": "unknown", "reason": "coverage-open"}
   ],
   "materializationSet": {
+    "state": "available",
     "requestId": "query-playbook-1",
     "digest": "blake3-256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
     "selectors": [

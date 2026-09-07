@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
@@ -78,27 +78,67 @@ impl RuntimeServerLoopbackEndpoint {
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct RuntimeTransportBinding {
+    pub transport_contract_digest: String,
+    pub owner_epoch: u64,
+    pub owner_process_id: u32,
+    pub binding_token: String,
+    pub control_endpoint: RuntimeServerLoopbackEndpoint,
+    pub data_endpoint: RuntimeServerLoopbackEndpoint,
+    pub provider_endpoint: RuntimeServerLoopbackEndpoint,
+}
+
+impl RuntimeTransportBinding {
+    pub fn validate(&self) -> Result<(), String> {
+        if self.owner_epoch == 0 || self.owner_process_id == 0 || self.binding_token.is_empty() {
+            return Err("Runtime transport owner binding is incomplete".to_owned());
+        }
+        let expected = runtime_server_transport_contract_digest_ref();
+        if self.transport_contract_digest != expected {
+            return Err(format!(
+                "Runtime Server transport contract mismatch: expected={expected} actual={}",
+                self.transport_contract_digest
+            ));
+        }
+        self.control_endpoint.validate()?;
+        self.data_endpoint.validate()?;
+        self.provider_endpoint.validate()?;
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RuntimeServerEndpoint {
     pub schema_id: String,
     pub schema_version: String,
     pub binary_content_digest: String,
     pub runtime_generation_digest: String,
     pub schema_digest: String,
-    pub transport_contract_digest: String,
-    pub owner_epoch: u64,
-    pub owner_process_id: u32,
+    #[serde(flatten)]
+    pub transport_binding: RuntimeTransportBinding,
     pub runtime_artifact_path: String,
     pub runtime_binary_identity: RuntimeBinaryIdentity,
     pub monitor_capability: bool,
     pub observed_runtime_binary_identity: RuntimeBinaryIdentity,
     pub artifact_mode: String,
     pub artifact_catalog_digest: String,
-    pub binding_token: String,
-    pub control_endpoint: RuntimeServerLoopbackEndpoint,
-    pub data_endpoint: RuntimeServerLoopbackEndpoint,
-    pub provider_endpoint: RuntimeServerLoopbackEndpoint,
     pub workspace_store_path: String,
     pub status_memory_path: String,
+}
+
+impl std::ops::Deref for RuntimeServerEndpoint {
+    type Target = RuntimeTransportBinding;
+
+    fn deref(&self) -> &Self::Target {
+        &self.transport_binding
+    }
+}
+
+impl std::ops::DerefMut for RuntimeServerEndpoint {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.transport_binding
+    }
 }
 
 /// Stable owner envelope used only by lifecycle coordination.
@@ -138,13 +178,7 @@ impl RuntimeServerEndpointOwnerBinding {
 impl RuntimeServerEndpoint {
     pub fn validate(&self) -> Result<(), String> {
         self.validate_supervisor_control()?;
-        let expected = runtime_server_transport_contract_digest_ref();
-        if self.transport_contract_digest != expected {
-            return Err(format!(
-                "Runtime Server transport contract mismatch: expected={expected} actual={}",
-                self.transport_contract_digest
-            ));
-        }
+        self.transport_binding.validate()?;
         Ok(())
     }
 
@@ -183,6 +217,9 @@ impl RuntimeServerEndpoint {
                 "reasonKind=runtime-server-endpoint-identity-incomplete field=schemaDigest value={} Runtime schema digest is invalid",
                 self.schema_digest
             ));
+        }
+        if self.owner_process_id == 0 || self.binding_token.is_empty() {
+            return Err("Runtime Server transport owner binding is incomplete".to_owned());
         }
         self.control_endpoint.validate()?;
         self.data_endpoint.validate()?;

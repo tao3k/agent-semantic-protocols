@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 use std::io::Write as _;
 use std::os::unix::fs::PermissionsExt as _;
 use std::path::Path;
@@ -30,12 +34,7 @@ fn hook_process_test_guard() -> std::sync::MutexGuard<'static, ()> {
 }
 
 fn hook_command() -> Command {
-    let mut command = Command::new(env!("CARGO_BIN_EXE_asp-hook"));
-    // The project test runner may itself use the inherited process-level
-    // escape to reach Cargo. Ordinary Host-contract fixtures must start from
-    // a normal environment; the dedicated escape fixture opts back in.
-    command.env_remove("ASP_NO_AGENT");
-    command
+    Command::new(env!("CARGO_BIN_EXE_asp-hook"))
 }
 
 fn plugin_launcher() -> std::path::PathBuf {
@@ -43,13 +42,19 @@ fn plugin_launcher() -> std::path::PathBuf {
 }
 
 #[test]
-fn inherited_no_agent_returns_valid_json_for_every_host_event() {
+fn disabled_global_hook_engine_returns_valid_json_for_every_host_event() {
     let _test_guard = hook_process_test_guard();
+    let state_home = tempfile::tempdir().expect("isolated State Home");
+    let config = state_home.path().join("control/config/asp.toml");
+    std::fs::create_dir_all(config.parent().expect("global config parent"))
+        .expect("create global config parent");
+    std::fs::write(&config, "[hook-engine]\nenabled = false\n")
+        .expect("disable global Hook engine");
     for event in EVENTS {
         let output = hook_command()
             .arg(event)
             .args(["--client", "codex"])
-            .env("ASP_NO_AGENT", "1")
+            .env("ASP_STATE_HOME", state_home.path())
             .stdin(Stdio::null())
             .output()
             .expect("run Hook binary");
@@ -65,16 +70,16 @@ fn inherited_no_agent_returns_valid_json_for_every_host_event() {
 }
 
 #[test]
-fn only_the_exact_inherited_no_agent_value_bypasses_policy_bootstrap() {
+fn unrelated_environment_never_bypasses_global_policy() {
     let _test_guard = hook_process_test_guard();
-    for value in ["", "0", "true", "2"] {
+    for value in ["", "0", "true", "1", "2"] {
         let mut child = hook_command()
             .args(["pre-tool", "--client", "codex", "--host-match", "Bash"])
-            .env("ASP_NO_AGENT", value)
+            .env("UNRELATED_HOOK_ENV", value)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .spawn()
-            .expect("spawn noncanonical no-agent Hook binary");
+            .expect("spawn Hook binary with ignored legacy environment");
         serde_json::to_writer(
             child.stdin.as_mut().expect("Hook stdin"),
             &serde_json::json!({
@@ -86,13 +91,13 @@ fn only_the_exact_inherited_no_agent_value_bypasses_policy_bootstrap() {
         drop(child.stdin.take());
         let output = child
             .wait_with_output()
-            .expect("wait for noncanonical no-agent Hook binary");
+            .expect("wait for Hook binary with ignored legacy environment");
         let terminal: serde_json::Value =
             serde_json::from_slice(&output.stdout).expect("valid fail-closed Host JSON");
         assert_eq!(output.status.code(), Some(0), "value={value:?}");
         assert_eq!(
             terminal["hookSpecificOutput"]["permissionDecision"], "deny",
-            "value={value:?} must not be a recovery selector"
+            "value={value:?} must not override global Hook enablement"
         );
     }
 }
@@ -155,7 +160,7 @@ fn asp_explorer_stop_requires_executable_source_free_evidence() {
     };
 
     let valid = run(
-        "[asp-search-subagent]\nstate=candidates\nQueryGrammar: asp query --selector <exact-selector> --projection <callable-skeleton|source>\nE1 | owner=crates/runtime | item=struct/Endpoint | selector=rust://crates/runtime#item/struct/Endpoint | matchedBy=rg:0|syntax:0 | relation=publishes",
+        "#+begin_src gql :profile search-evidence.v1 :eval never\n(search:SearchResult {state:\"materializable\"})\n(search)-[:RESULTS]->(endpoint:RustStruct {selector:\"rust://crates/runtime#item/struct/Endpoint\"})\n#+end_src\n",
     );
     assert_eq!(valid.status.code(), Some(0));
     assert_eq!(
@@ -164,16 +169,16 @@ fn asp_explorer_stop_requires_executable_source_free_evidence() {
     );
 
     let source_dump = run(
-        "[asp-search-subagent]\nstate=candidates\nQueryGrammar: asp query --selector <exact-selector> --projection <callable-skeleton|source>\nE1 | owner=crates/runtime | item=struct/Endpoint | selector=rust://crates/runtime#item/struct/Endpoint | matchedBy=rg:0|syntax:0 | relation=publishes\n```rust\nfn endpoint() {}\n```",
+        "#+begin_src gql :profile search-evidence.v1 :eval never\n(search:SearchResult)\n#+end_src\n```rust\nfn endpoint() {}\n```",
     );
     assert_eq!(source_dump.status.code(), Some(0));
     let terminal: serde_json::Value =
         serde_json::from_slice(&source_dump.stdout).expect("blocking Host JSON");
     assert_eq!(terminal["decision"], "block");
     assert!(
-        terminal["reason"].as_str().is_some_and(
-            |reason| reason.starts_with("Example\n") && reason.contains("\n\nGrammar\n")
-        )
+        terminal["reason"]
+            .as_str()
+            .is_some_and(|reason| reason.contains("exactly one Org source block"))
     );
 }
 
@@ -181,12 +186,15 @@ fn asp_explorer_stop_requires_executable_source_free_evidence() {
 fn configured_testing_agent_is_allowed_without_child_registration() {
     let _test_guard = hook_process_test_guard();
     let temp = tempfile::tempdir().expect("isolated State Home");
-    let runtime_bin = temp.path().join("runtime/bin");
-    std::fs::create_dir_all(&runtime_bin).expect("Runtime bin directory");
-    std::fs::copy(env!("CARGO_BIN_EXE_asp-hook"), runtime_bin.join("asp-hook"))
-        .expect("materialize Hook evaluator");
+    let active_runtime = temp.path().join("runtime/artifacts/slots/runtime/active");
+    std::fs::create_dir_all(&active_runtime).expect("active Runtime artifact directory");
+    std::fs::copy(
+        env!("CARGO_BIN_EXE_asp-hook"),
+        active_runtime.join("asp-hook"),
+    )
+    .expect("materialize Hook evaluator");
     std::fs::set_permissions(
-        runtime_bin.join("asp-hook"),
+        active_runtime.join("asp-hook"),
         std::fs::Permissions::from_mode(0o500),
     )
     .expect("Hook evaluator mode");
@@ -201,7 +209,6 @@ fn configured_testing_agent_is_allowed_without_child_registration() {
         command
             .args(["pre-tool", "--client", "codex", "--host-match", "Bash"])
             .env("ASP_STATE_HOME", temp.path())
-            .env_remove("ASP_NO_AGENT")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
@@ -266,7 +273,7 @@ fn configured_testing_agent_is_allowed_without_child_registration() {
 }
 
 #[test]
-fn process_bound_no_agent_allows_permission_request_without_inheriting_hook_environment() {
+fn process_bound_permission_request_does_not_inherit_hook_environment() {
     let _test_guard = hook_process_test_guard();
     let mut child = hook_command()
         .args(["permission-request", "--client", "codex"])
@@ -280,7 +287,7 @@ fn process_bound_no_agent_allows_permission_request_without_inheriting_hook_envi
         .as_mut()
         .expect("Hook stdin")
         .write_all(
-            br#"{"tool_name":"Bash","tool_input":{"command":"ASP_NO_AGENT=1 ./target/debug/asp install binary"}}"#,
+            br#"{"tool_name":"Bash","tool_input":{"command":"./target/debug/asp install binary"}}"#,
         )
         .expect("write PermissionRequest payload");
     drop(child.stdin.take());
@@ -351,7 +358,6 @@ fn binary_projects_its_embedded_policy_content_identity() {
     let started = std::time::Instant::now();
     let output = hook_command()
         .arg("--identity")
-        .env_remove("ASP_NO_AGENT")
         .output()
         .expect("run Hook binary identity");
     let elapsed = started.elapsed();
@@ -385,7 +391,7 @@ fn binary_projects_its_embedded_policy_content_identity() {
 fn default_hook_process_applies_state_home_config_overlay_without_policy_bundle_flag() {
     let _test_guard = hook_process_test_guard();
     let state_home = tempfile::tempdir().expect("create State Home fixture");
-    let config_path = state_home.path().join("hooks/config.toml");
+    let config_path = state_home.path().join("control/config/hook-client.toml");
     std::fs::create_dir_all(
         config_path
             .parent()
@@ -599,7 +605,7 @@ fn default_hook_process_rejects_retired_policy_bundle_flag() {
 fn invalid_state_home_config_fails_closed_on_the_default_hook_path() {
     let _test_guard = hook_process_test_guard();
     let state_home = tempfile::tempdir().expect("create State Home fixture");
-    let config_path = state_home.path().join("hooks/config.toml");
+    let config_path = state_home.path().join("control/config/hook-client.toml");
     std::fs::create_dir_all(
         config_path
             .parent()
@@ -690,78 +696,13 @@ fn malformed_host_payload_returns_valid_fail_closed_json_instead_of_code_101() {
 }
 
 #[test]
-fn process_bound_no_agent_forms_bypass_the_installed_policy_engine() {
-    let _test_guard = hook_process_test_guard();
-    let temp = tempfile::tempdir().expect("temporary Hook fixture");
-    std::fs::write(temp.path().join("fixture.rs"), "fn fixture() {}\n")
-        .expect("write registered source operand");
-    let probe_marker = temp.path().join("reader-probe-must-not-run");
-    let probe_command = temp.path().join("arbitrary-command");
-    std::fs::write(
-        &probe_command,
-        format!("#!/bin/sh\n: > '{}'\n", probe_marker.display()),
-    )
-    .expect("write probe sentinel command");
-    let mut permissions = std::fs::metadata(&probe_command)
-        .expect("probe command metadata")
-        .permissions();
-    permissions.set_mode(0o755);
-    std::fs::set_permissions(&probe_command, permissions).expect("probe command executable");
-
-    for command in [
-        "ASP_NO_AGENT=1 arbitrary-command --unknown-option fixture.rs",
-        "/usr/bin/env ASP_NO_AGENT=1 arbitrary-command --unknown-option fixture.rs",
-        "export ASP_NO_AGENT=1; arbitrary-command --unknown-option fixture.rs",
-        "export ASP_NO_AGENT=1; exec arbitrary-command --unknown-option fixture.rs",
-    ] {
-        let started = Instant::now();
-        let mut child = hook_command()
-            .args(["pre-tool", "--client", "codex", "--host-match", "Bash"])
-            .current_dir(temp.path())
-            .env("PATH", temp.path())
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .expect("spawn Hook binary");
-        serde_json::to_writer(
-            child.stdin.as_mut().expect("Hook stdin"),
-            &serde_json::json!({
-                "tool_name": "Bash",
-                "tool_input": {"command": command}
-            }),
-        )
-        .expect("write Host payload");
-        child.stdin.take().expect("close Hook stdin").flush().ok();
-        let output = child.wait_with_output().expect("wait for Hook binary");
-        assert!(
-            started.elapsed() < Duration::from_secs(1),
-            "first Host Hook terminal exceeded 1s: command={command} elapsed={:?}",
-            started.elapsed()
-        );
-        assert_eq!(output.status.code(), Some(0), "command={command}");
-        assert_eq!(
-            serde_json::from_slice::<serde_json::Value>(&output.stdout)
-                .unwrap_or_else(|error| panic!("command={command} invalid JSON: {error}")),
-            serde_json::json!({}),
-            "command={command}"
-        );
-        assert!(output.stderr.is_empty(), "command={command}");
-        assert!(
-            !probe_marker.exists(),
-            "terminal no-agent allow must precede Reader Probe: command={command}"
-        );
-    }
-}
-
-#[test]
-fn command_local_no_agent_escape_precedes_the_default_policy() {
+fn command_environment_assignment_never_precedes_the_default_policy() {
     let _test_guard = hook_process_test_guard();
     for command in [
-        "ASP_NO_AGENT=1 rg HookDecision fixture.rs",
-        "/usr/bin/env ASP_NO_AGENT=1 rg HookDecision fixture.rs",
-        "export ASP_NO_AGENT=1; rg HookDecision fixture.rs",
-        "export ASP_NO_AGENT=1; exec rg HookDecision fixture.rs",
+        "UNRELATED_HOOK_ENV=1 rg HookDecision fixture.rs",
+        "/usr/bin/env UNRELATED_HOOK_ENV=1 rg HookDecision fixture.rs",
+        "export UNRELATED_HOOK_ENV=1; rg HookDecision fixture.rs",
+        "export UNRELATED_HOOK_ENV=1; exec rg HookDecision fixture.rs",
     ] {
         let mut child = hook_command()
             .args(["pre-tool", "--client", "codex", "--host-match", "Bash"])
@@ -781,10 +722,10 @@ fn command_local_no_agent_escape_precedes_the_default_policy() {
         drop(child.stdin.take());
         let output = child.wait_with_output().expect("wait for Hook binary");
         assert_eq!(output.status.code(), Some(0), "command={command}");
+        let terminal = serde_json::from_slice::<serde_json::Value>(&output.stdout)
+            .unwrap_or_else(|error| panic!("command={command} invalid JSON: {error}"));
         assert_eq!(
-            serde_json::from_slice::<serde_json::Value>(&output.stdout)
-                .unwrap_or_else(|error| panic!("command={command} invalid JSON: {error}")),
-            serde_json::json!({}),
+            terminal["hookSpecificOutput"]["permissionDecision"], "deny",
             "command={command}"
         );
     }
@@ -799,7 +740,7 @@ fn command_local_no_agent_escape_precedes_the_default_policy() {
         child.stdin.as_mut().expect("Hook stdin"),
         &serde_json::json!({
             "tool_name": "Bash",
-            "tool_input": {"command": "printf 'ASP_NO_AGENT=1'; rg HookDecision fixture.rs"}
+            "tool_input": {"command": "printf 'unrelated text'; rg HookDecision fixture.rs"}
         }),
     )
     .expect("write negative Host payload");

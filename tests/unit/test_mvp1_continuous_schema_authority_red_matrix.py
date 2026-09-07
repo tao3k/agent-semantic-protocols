@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """MVP1 schema-authority red matrix.
 
 This is deliberately an acceptance oracle, rather than a compatibility test.
@@ -73,7 +77,7 @@ def _receipt_for(language: str) -> dict[str, object]:
         "typescript": ROOT / "languages/asp-typescript/schemas",
         "python": ROOT / "languages/asp-python/schemas",
         "julia": ROOT / "languages/AspJulia.jl/schemas",
-        "gerbil-scheme": ROOT / "languages/gerbil-scheme-language-project-harness/schemas",
+        "gerbil-scheme": ROOT / "languages/asp-gerbil-scheme/schemas",
         "org": ROOT / "languages/orgize/provider/org/schemas",
         "md": ROOT / "languages/orgize/provider/md/schemas",
     }

@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 #
-# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 name: Large Library Runtime Benchmark
 
@@ -36,7 +36,7 @@ jobs:
             languages/asp-typescript \
             languages/asp-python \
             languages/AspJulia.jl \
-            languages/gerbil-scheme-language-project-harness \
+            languages/asp-gerbil-scheme \
             languages/orgize
 
       - name: Install Nix for the project direnv environment

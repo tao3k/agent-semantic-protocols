@@ -1,6 +1,6 @@
-# SPDX-FileCopyrightText: Contributors to Agent Semantic Protocols
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 #
-# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 """Executable tree-sitter ABI rollout gates owned by the Python tools package."""
 
@@ -156,7 +156,6 @@ class _runtime_env:
             env = os.environ.copy()
             env["PATH"] = f"{shim_dir}{os.pathsep}{env.get('PATH', '')}"
             env["SEMANTIC_AGENT_PROTOCOL_BIN"] = str(self.asp_bin)
-            env["ASP_NO_AGENT"] = "1"
             return env
         except Exception:
             self.__exit__(None, None, None)
@@ -190,9 +189,7 @@ def _write_shim(path: Path, body: str) -> None:
 
 
 def _contract_env(source: Mapping[str, str]) -> dict[str, str]:
-    env = dict(source)
-    env["ASP_NO_AGENT"] = "1"
-    return env
+    return dict(source)
 
 
 _GATES: dict[str, Gate] = {

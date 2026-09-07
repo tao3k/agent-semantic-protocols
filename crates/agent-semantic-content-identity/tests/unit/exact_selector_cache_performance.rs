@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 use super::exact_selector_cache_contract::key;
 use super::exact_selector_cache_contract::record;
 use agent_semantic_content_identity::exact_selector_cache::ExactSelectorWarmSideEffectsV1;

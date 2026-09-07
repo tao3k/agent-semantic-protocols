@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 #+title: RFC 10.06 — Agent Search Playbook Projection
 #+startup: overview
 
@@ -7,30 +11,22 @@ Current.  This file is the only agent-facing Search projection contract.
 Git history owns the retired prime, pipe, lexical, owner-search, seed, and
 =--view= protocols; they are not compatibility surfaces.
 
-* Contract discovery and provider projection
+* Request admission and provider syntax identity
 
 Research on optional structural evidence, redundancy, and replay is recorded in
 [[file:10.06-agent-search-projection/10.06.14-search-evidence-output-reflection.org][10.06.14 Search Evidence Output Reflection]].
 It does not change this contract's current grammar, default, or admission rules.
 
-#+begin_src sh
-asp search playbook
-asp search playbook --languages '<language|...>'
-#+end_src
-
 Search Playbook has no intent flag and no reasoning layer.  Intent remains in
-the Agent's current context.  The empty form returns a schema-owned contract
-index with exactly =Example:= and =Grammar:=.  Once a language/document selector
-is present, an incomplete form resolves only those admitted provider-owned
-=searchPlaybookContract= projections.  Contract discovery performs no retrieval
-and creates no search state.
+the Agent's current context.  The empty form and every incomplete form fail
+request parsing before Runtime dispatch.  They do not return an example,
+grammar, guide, recovery command, or any other second agent-facing projection.
 
-The shared schema owns the projection shape.  Each provider manifest owns its
-native syntax content, =syntaxContractId=, and =syntaxContractDigest=.  Hook AOT
-compilation resolves the contract by its already-known =languageId/providerId=
-and embeds it into the compiled rule.  The Hook evaluator merely substitutes
-={{searchPlaybookContract}}=; it never imports the search package, reads a
-schema at decision time, or synthesizes a command.
+Each provider registers its native syntax-query request and response schemas
+through the provider route descriptor.  Runtime binds the selected provider,
+parser, schemas, and active generation internally.  Those identities admit a
+native Syntax block; they are not rendered as an Agent grammar and the Hook
+does not synthesize or embed a provider command template.
 
 * Single request — direct native-block execution
 
@@ -43,16 +39,16 @@ asp search playbook \
   --rg <native rg argv tokens...> \
   --tantivy <native Tantivy query tokens...> \
   --syntax <registered-producer> <native syntax query tokens...> \
+  [--native-syntax <canonical-exact-selector>] \
   --graph <gql|pgql> <native graph-query tokens...>
 #+end_src
 
 =--graph gql= and =--graph pgql= compile through the V1 relation IR and apply
 to the generation-bound candidate graph.  This does not imply persistent
 storage: durable PGQ storage is a separate registry-owned backend used only
-for admitted low-volatility facts.  Provider-owned
-contract projection and targeted recovery render directly usable
-native examples in this shape; they do not invent =fd-query=, =rg-query=, or
-other surrogate options:
+for admitted low-volatility facts.  The public CLI accepts native arguments in
+this shape; it does not invent =fd-query=, =rg-query=, or other surrogate
+options:
 
 #+begin_src sh
 asp search playbook \
@@ -63,6 +59,7 @@ asp search playbook \
   --tantivy 'surface failure|transport ownership|search readiness' \
   --syntax rust --treesitter-query '((identifier) @symbol (#match? @symbol "RuntimeServingEndpoint|ClientFrame"))' \
   --syntax python --treesitter-query '((identifier) @symbol (#match? @symbol "runtime_client|transport"))' \
+  --native-syntax 'rust://crates/agent-semantic-runtime-server/src/runtime_query_generation.rs#item/struct/RuntimeQueryGeneration' \
   --graph gql 'MATCH (a:Owner)-[:CALLS]->(b:Item) RETURN a, b'
 #+end_src
 
@@ -91,7 +88,7 @@ standalone unquoted shell-token =|= is rejected before request admission.
 The single request satisfies =SP-REQUEST-002= and =SP-GRAMMAR-003=.  Any
 =--intent= option fails before generation admission.
 
-* Request completeness and targeted recovery
+* Request completeness and typed rejection
 
 The acquisition clauses are independent and complementary.  Every complete
 request binds non-empty registered producer sets through
@@ -103,16 +100,11 @@ receipts in Agent-authored order, not completion order.  Graph then consumes
 and filters their candidate union.  It is not an independent vote
 (=SP-AXIS-004=).
 
-An incomplete request or native parser failure resolves the selected
-provider-owned projection.  It has exactly:
-
-#+begin_example
-Example: <contextual, directly usable complete request>
-Grammar: <minimal complete grammar for this provider>
-#+end_example
-
-No state, reasonKind, missing, accepted, purpose, requiredFor, or whole Guide
-is included (=SP-RECOVERY-005=).
+An incomplete request is rejected by the top-level parser with a typed
+=search-playbook-request-incomplete= failure.  A provider-native parse failure
+retains the provider's typed failure and exact argv.  Neither case returns a
+successful projection, GQL block, example, grammar, or prescribed repair
+command (=SP-RECOVERY-005=).
 
 * Fan-in, progressive delta, and freshness
 ** Provider-ranked Top-K projection
@@ -161,18 +153,22 @@ same query-set/predicate and owner-universe digests, covers the full admitted
 owner count, and reports zero matches.  A result enum, an empty top-K projection,
 or a truncated receipt cannot prove absence.
 
-Every public Syntax item is total and functional with respect
-to exact query: it carries one parser-owned structural identity, exactly one
-generation-current selector, and one canonical exact-query request with an
-explicit projection.  Executing that request round-trips to the same parser
-node.  An ungrounded capture is =provider-contract-failure= rather than a
+Every public Syntax item is total and functional with respect to exact Query:
+it carries one parser-owned structural identity and exactly one
+generation-current selector in the GQL graph, but no embedded Query request or
+command grammar. Independently materializing that selector through Query
+Playbook round-trips to the same parser node. An ungrounded capture is
+=provider-contract-failure= rather than a
 display-only candidate (=SP-RESULT-007=).
 The selector identity binds source-root, provider, parser identity/version, and
 selector-grammar version in addition to node and generation identity.
 
 Syntax Search and Query share one native contract (=SP-SYNTAX-007A=).  Each
-=--syntax <registered-producer> <native syntax query tokens...>= block maps
-without semantic rewriting to a canonical =asp query --syntax ...= request.
+=--syntax <registered-producer> <native syntax query tokens...>= forwards a
+Tree-sitter or other registered provider query without semantic rewriting.
+=--native-syntax <canonical-exact-selector>= is a separate repeatable axis that
+admits an already-known current selector; it never accepts a Tree-sitter query
+or provider argv.
 =--treesitter-query '<s-expression>'= is one registered native grammar form,
 not the Syntax axis itself.  Org, Markdown, compiler, and future document
 parsers retain their own registered native grammar.
@@ -181,8 +177,9 @@ The shared envelope uses LSP-compatible document-selector, text-document,
 position, range, selection-range, and location-link shapes.  ASP adds grammar,
 parser, source, capture, native-fact, and structural-selector identities.  LSP
 does not standardize an AST query language; no provider-native expression is
-misrepresented as LSP grammar.  Search result, canonical Query request, Query
-result, and selector materialization must round-trip to the same parser node.
+misrepresented as LSP grammar. Search settlement, Query materialization
+request, and Query source result must round-trip to the same parser node without
+a hidden Search handle.
 
 * Volatility planes, persistent graph query, and logical inference
 
@@ -354,17 +351,18 @@ block and must be bound to the exact Project/Workspace/Generation/root identity.
 alternate command grammar.  Both modes are projections of the same admitted
 generation and ranked result.
 
-The Agent-facing Search projection is minimal executable evidence.  Outside
-its terminal state, each ranked Top-K entry contains evidence id, owner, exact
-item identity, exact selector, ordered supporting clause references, and a
-parser/Graph-owned semantic relation.  Every nonempty result also carries one
-packet-level Query Grammar.  Generation, producer/parser, artifact, context,
-and evidence digests remain Runtime validation data; they are not repeated into
-the Agent context unless a separate diagnostic operation explicitly requests
-them.  The projection MUST NOT contain source bytes, snippets, excerpts,
-display line ranges, fenced source, prose that paraphrases source content, or
-an open extension map.  A full machine receipt may retain integrity and audit
-data without making those fields part of the default Agent projection.
+The Agent-facing Search projection is one Org-bound GQL graph.  Ranked native
+nodes carry their exact selectors and retrieval projection inside that graph;
+direct, declared, derived, and proposed relations remain graph edges with their
+authority and witness identity.  There is no parallel result header, evidence
+row table, Query Grammar line, recommended command, or prose summary.
+Generation, producer/parser, artifact, context, and evidence digests remain
+Runtime validation data; they are not repeated into the Agent context unless a
+separate diagnostic operation explicitly requests them.  Search GQL MUST NOT
+contain source bytes, snippets, excerpts, display line ranges, fenced source,
+prose that paraphrases source content, or an open extension map.  A full
+machine receipt may retain integrity and audit data without making those fields
+part of the default Agent projection.
 
 =rootDigest= in every public Search/Query terminal denotes the source snapshot
 root admitted for that ProjectId/WorkspaceId/generation.  A resident owner
@@ -388,13 +386,15 @@ The projection must never call internal construction inputs “seeds”.  Source
 construction inputs are =source documents=; exact byte inputs are =byte
 coverage inputs=; graph entry nodes are graph-internal mathematical values.
 
-* Exact materialization handoff
+* GQL Search and direct Query materialization
 
-Search locates and ranks evidence.  Every nonempty Search result carries this
-capability grammar exactly once:
+Search locates and relates evidence.  Its only successful Agent-facing shape
+is the single GQL block defined by RFC 10.06.15 and RFC 10.06.17:
 
 #+begin_example
-QueryGrammar: asp query --selector <exact-selector> --projection <callable-skeleton|source>
+#+begin_src gql :profile search-evidence.v1 :eval never
+(refresh:RustMethod {selector:"rust://src/registry.rs#item/method/refresh/scope/implementation-owner/type/Registry"})-[:CALLS]->(publish:RustMethod {selector:"rust://src/registry.rs#item/method/publish/scope/implementation-owner/type/Registry"})
+#+end_src
 #+end_example
 
 The =matchedBy= sequence is itself evidence: acquisition clause references are
@@ -403,39 +403,52 @@ the final fan-in suffix.  A renderer or Explorer Hook MUST reject a Graph
 reference followed by a new acquisition reference because that would claim a
 transition the Playbook planner forbids.
 
-This is not =Next=.  The Agent decides whether to query, which ranked selector
-to use, and which projection fits its reasoning.  Search never emits a selected
-command or preferred projection.  Source materialization remains a distinct,
-exact structural query:
+The Agent decides whether to query and which graph-bound selector to use.
+Search never emits a selected command or preferred projection.  Query is a
+distinct exact structural materialization operation:
 
 #+begin_src sh
-asp query --selector <exact-selector> \
+asp query playbook --selector <exact-selector> \
   --projection <callable-skeleton|source> --workspace <root>
-
-asp query --languages '<language|...>' \
-  [--documents '<document-kind|...>'] \
-  --syntax <registered-producer> <native syntax query tokens...>
 #+end_src
 
-The syntax form performs direct native parser query with no fd, rg, Tantivy, or
-Graph planning.  Search display ranges and owner paths are not executable
-selectors.  Its normal result starts with an explicit Ready state and evidence
-count, followed by the packet-level Query Grammar and at most thirty
-=owner + exact item + exact selector + matchedBy + relation= rows.  A
-zero-match result is therefore explicit rather than an empty output.
+Search display ranges and owner paths are not executable selectors.  A
+successful Query returns direct native code, with the admitted GQL relationship keyword
+immediately before the source block and no detached relation appendix:
 
-When Search has grounded current selectors, ASP Explorer emits the Query
-Grammar plus bounded evidence and stops.  It does not emit a recommended
-command.  The
-parent or another authorized reader reasons over the evidence and independently
+#+begin_example
+#+gql: Registry::refresh --calls--> Registry::publish
+#+begin_src rust :query "rust://src/registry.rs#item/implementation/type/Registry" :filename "src/registry.rs"
+impl Registry {
+    pub fn refresh(&mut self) -> Result<Receipt, Error> {
+        let artifact = self.store.load()?;
+        self.publish(artifact)
+    }
+
+    fn publish(&mut self, artifact: Artifact) -> Result<Receipt, Error> {
+        self.publisher.publish(artifact)
+    }
+}
+#+end_src
+#+end_example
+
+The =#+gql:= relationship keyword is Runtime-produced from the admitted Project
+Topology for the exact selector set; the Client renderer must not infer it from
+source text or synthesize it from selector spelling.  Query preflights the
+complete selector and relationship set before exposing any source bytes.
+
+When Search has grounded current selectors, ASP Explorer emits the single GQL
+evidence graph and stops.  The parent or another authorized reader reasons over
+the evidence and independently
 decides whether to materialize one selector, refine Search, compare evidence,
 or stop.  A SubAgent MUST NOT pre-read or summarize source, because doing so
 duplicates transport and model-context cost without adding evidence.
 
-Contract recovery follows the same projection boundary.  The normal
-=asp search playbook= rendering contains only =Example= and =Grammar=,
-composed in the selected pipe order.  Provider/parser identities and digests
-remain internal admission facts and are not rendered as reasoning evidence.
+Invalid request recovery follows the same projection boundary: it is a typed
+failure, never an alternate successful renderer.  Normal =asp search playbook=
+execution renders only its admitted GQL graph.  Provider/parser identities and
+digests remain internal admission facts and are not rendered as reasoning
+evidence.
 
 * Removed surfaces
 

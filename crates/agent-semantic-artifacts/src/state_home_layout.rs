@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 //! Canonical physical State Home layout owned by Artifacts.
 
@@ -69,39 +69,52 @@ pub struct MaterializedWorkspaceState {
     pub byte_count: u64,
 }
 
-/// One object discovered in a retired physical State Home namespace.
-///
-/// The object id is migration evidence only. It is never admitted as a
-/// workspace, cache, or Runtime selection identity.
+/// One physical entry that is outside the closed V1 State Home contract.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct RetiredStateRoot {
-    pub object_id: String,
+pub struct NonContractStateHomeEntry {
+    pub relative_path: PathBuf,
     pub root: PathBuf,
-    pub checkout_root: PathBuf,
     pub last_observed_at_ms: u64,
+    pub byte_count: u64,
+    is_directory: bool,
+}
+
+/// Physical trash removed by an explicit State Home convergence operation.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StateHomeTrashCleanup {
+    pub relative_paths: Vec<PathBuf>,
     pub byte_count: u64,
 }
 
-/// One canonical workspace moved out of the live namespace before Catalog CAS.
+/// One State Home object moved out of the live namespace before Catalog CAS.
 ///
 /// The staged directory remains on the same State Home filesystem, so staging
 /// and rollback are atomic renames. Catalog is the logical authority; callers
-/// commit only after its generation-checked retirement succeeds.
+/// commit only after its generation-checked removal succeeds.
 #[derive(Debug)]
-#[must_use = "a staged workspace retirement must be committed or rolled back"]
-pub struct StagedWorkspaceRetirement {
+#[must_use = "a staged State Home removal must be committed or rolled back"]
+pub struct StagedStateHomeRemoval {
     original_root: PathBuf,
     staged_root: PathBuf,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct RetiredProjectEnvelope {
-    repo_id: String,
-    checkout_root: PathBuf,
+    is_directory: bool,
 }
 
 impl StateHomeLayout {
+    const V1_ROOT_ENTRIES: &'static [&'static str] = &[
+        "blobs",
+        "cache",
+        "catalog",
+        "control",
+        "receipts",
+        "resources",
+        "runtime",
+        "trash",
+        "workspaces",
+    ];
+    const V1_RUNTIME_ENTRIES: &'static [&'static str] = &["artifacts", "bin", "serving"];
+    const V1_CONTROL_ENTRIES: &'static [&'static str] = &["config", "sessions"];
+    const V1_CONFIG_ENTRIES: &'static [&'static str] = &["agents", "asp.toml", "hook-client.toml"];
+
     pub fn new(root: impl AsRef<Path>) -> Self {
         let root = root.as_ref().to_path_buf();
         Self {
@@ -113,6 +126,24 @@ impl StateHomeLayout {
             trash: root.join("trash"),
             root,
         }
+    }
+
+    /// Resolve the one durable State Home selected at the process boundary.
+    pub fn from_process_environment() -> Result<Self, String> {
+        let root = match std::env::var_os("ASP_STATE_HOME") {
+            Some(value) if value.is_empty() => {
+                return Err("ASP_STATE_HOME is set but empty".to_owned());
+            }
+            Some(value) => PathBuf::from(value),
+            None => {
+                let home = std::env::var_os("HOME").ok_or_else(|| "HOME is not set".to_owned())?;
+                if home.is_empty() {
+                    return Err("HOME is set but empty".to_owned());
+                }
+                PathBuf::from(home).join(".agent-semantic-protocols")
+            }
+        };
+        Ok(Self::new(root))
     }
 
     pub fn root(&self) -> &Path {
@@ -137,6 +168,49 @@ impl StateHomeLayout {
 
     pub fn trash(&self) -> &Path {
         &self.trash
+    }
+
+    /// Remove every previously staged object from the non-authoritative trash root.
+    ///
+    /// Trash never participates in identity, rollback selection, or Runtime
+    /// admission. A successful explicit sync therefore leaves it empty instead
+    /// of preserving a historical namespace indefinitely.
+    pub fn purge_trash(&self) -> Result<StateHomeTrashCleanup, String> {
+        let children = match fs::read_dir(&self.trash) {
+            Ok(children) => children,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                return Ok(StateHomeTrashCleanup {
+                    relative_paths: Vec::new(),
+                    byte_count: 0,
+                });
+            }
+            Err(error) => return Err(format!("read State Home trash: {error}")),
+        };
+        let mut entries = Vec::new();
+        for child in children {
+            let child = child.map_err(io_error("read State Home trash entry"))?;
+            let path = child.path();
+            let metadata =
+                fs::symlink_metadata(&path).map_err(io_error("inspect State Home trash entry"))?;
+            let (byte_count, _) = tree_observation(&path)?;
+            entries.push((child.file_name(), path, metadata, byte_count));
+        }
+        entries.sort_by(|left, right| left.0.cmp(&right.0));
+        let mut relative_paths = Vec::with_capacity(entries.len());
+        let mut byte_count = 0_u64;
+        for (name, path, metadata, bytes) in entries {
+            if metadata.is_dir() && !metadata.file_type().is_symlink() {
+                remove_contract_staging_tree(&path)?;
+            } else {
+                fs::remove_file(&path).map_err(io_error("purge State Home trash entry"))?;
+            }
+            relative_paths.push(Path::new("trash").join(name));
+            byte_count = byte_count.saturating_add(bytes);
+        }
+        Ok(StateHomeTrashCleanup {
+            relative_paths,
+            byte_count,
+        })
     }
 
     pub fn control(&self) -> StateHomeControlLayout {
@@ -319,118 +393,161 @@ impl StateHomeLayout {
         Ok(workspaces)
     }
 
-    /// Enumerate the one retired project-id namespace for transactional cleanup.
+    /// Discover physical entries outside the closed V1 contract.
     ///
-    /// This is deliberately not a compatibility resolver: callers may only
-    /// retire these objects. Missing or malformed observation evidence is kept
-    /// fail-closed and cannot be converted into a canonical workspace binding.
-    pub fn retired_state_roots(&self) -> Result<Vec<RetiredStateRoot>, String> {
-        let retired_root = self.root.join("projects").join("by-id");
-        let entries = match fs::read_dir(&retired_root) {
-            Ok(entries) => entries,
-            Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
-            Err(error) => return Err(format!("read retired State Home roots: {error}")),
-        };
-        let mut roots = Vec::new();
-        for entry in entries {
-            let entry = entry.map_err(io_error("read retired State Home entry"))?;
-            let root = entry.path();
-            let metadata = fs::symlink_metadata(&root)
-                .map_err(io_error("inspect retired State Home entry"))?;
-            if !metadata.is_dir() || metadata.file_type().is_symlink() {
-                return Err(format!(
-                    "retired State Home entry is not a directory: {}",
-                    root.display()
-                ));
-            }
-            let object_id = entry.file_name().to_string_lossy().into_owned();
-            let Some(suffix) = object_id.strip_prefix("repo-") else {
-                return Err(format!(
-                    "retired State Home object id is invalid: {object_id}"
-                ));
-            };
-            if suffix.len() != 16 || !suffix.bytes().all(|byte| byte.is_ascii_hexdigit()) {
-                return Err(format!(
-                    "retired State Home object id is invalid: {object_id}"
-                ));
-            }
-            let envelope_bytes = fs::read(root.join("project.json"))
-                .map_err(io_error("read retired State Home envelope"))?;
-            let envelope = serde_json::from_slice::<RetiredProjectEnvelope>(&envelope_bytes)
-                .map_err(|error| format!("decode retired State Home envelope: {error}"))?;
-            if envelope.repo_id != object_id || !envelope.checkout_root.is_absolute() {
-                return Err(format!(
-                    "retired State Home envelope identity mismatch: objectId={object_id}"
-                ));
-            }
-            let marker = match fs::read_to_string(root.join(".last-seen-ms")) {
-                Ok(marker) => marker,
-                Err(error) if error.kind() == io::ErrorKind::NotFound => continue,
-                Err(error) => return Err(format!("read retired State Home observation: {error}")),
-            };
-            let last_observed_at_ms = marker
-                .trim()
-                .parse::<u64>()
-                .map_err(|error| format!("decode retired State Home observation: {error}"))?;
-            let (byte_count, _) = tree_observation(&root)?;
-            roots.push(RetiredStateRoot {
-                object_id,
-                root,
-                checkout_root: envelope.checkout_root,
-                last_observed_at_ms,
-                byte_count,
-            });
+    /// This is a positive allowlist check, not a migration or legacy decoder.
+    pub fn non_contract_entries(&self) -> Result<Vec<NonContractStateHomeEntry>, String> {
+        let mut entries =
+            self.non_contract_children(&self.root, Path::new(""), Self::V1_ROOT_ENTRIES)?;
+        let runtime = self.root.join("runtime");
+        if runtime.is_dir() {
+            entries.extend(self.non_contract_children(
+                &runtime,
+                Path::new("runtime"),
+                Self::V1_RUNTIME_ENTRIES,
+            )?);
         }
-        roots.sort_by(|left, right| left.object_id.cmp(&right.object_id));
-        Ok(roots)
+        let control = self.root.join("control");
+        if control.is_dir() {
+            entries.extend(self.non_contract_children(
+                &control,
+                Path::new("control"),
+                Self::V1_CONTROL_ENTRIES,
+            )?);
+        }
+        let config = control.join("config");
+        if config.is_dir() {
+            entries.extend(self.non_contract_children(
+                &config,
+                Path::new("control/config"),
+                Self::V1_CONFIG_ENTRIES,
+            )?);
+        }
+        entries.sort_by(|left, right| left.relative_path.cmp(&right.relative_path));
+        Ok(entries)
     }
 
-    /// Atomically remove an exact retired root from the live State Home tree.
-    pub fn stage_retired_state_root(
+    fn non_contract_children(
         &self,
-        object: &RetiredStateRoot,
-    ) -> Result<StagedWorkspaceRetirement, String> {
-        let expected_root = self
-            .root
-            .join("projects")
-            .join("by-id")
-            .join(&object.object_id);
-        if object.root != expected_root {
+        parent: &Path,
+        relative_parent: &Path,
+        allowed: &[&str],
+    ) -> Result<Vec<NonContractStateHomeEntry>, String> {
+        let children = match fs::read_dir(parent) {
+            Ok(children) => children,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
+            Err(error) => return Err(format!("read State Home contract root: {error}")),
+        };
+        let mut entries = Vec::new();
+        for child in children {
+            let child = child.map_err(io_error("read State Home contract entry"))?;
+            let name = child.file_name();
+            let Some(name_str) = name.to_str() else {
+                return Err("State Home contract entry name is not UTF-8".to_owned());
+            };
+            if allowed.contains(&name_str) {
+                continue;
+            }
+            let root = child.path();
+            let metadata = fs::symlink_metadata(&root)
+                .map_err(io_error("inspect non-contract State Home entry"))?;
+            let (byte_count, last_observed_at_ms) = tree_observation(&root)?;
+            entries.push(NonContractStateHomeEntry {
+                relative_path: relative_parent.join(name),
+                root,
+                last_observed_at_ms,
+                byte_count,
+                is_directory: metadata.is_dir() && !metadata.file_type().is_symlink(),
+            });
+        }
+        Ok(entries)
+    }
+
+    /// Atomically stage one observed contract violation for removal.
+    pub fn stage_non_contract_entry(
+        &self,
+        entry: &NonContractStateHomeEntry,
+    ) -> Result<StagedStateHomeRemoval, String> {
+        let expected_root = self.root.join(&entry.relative_path);
+        if expected_root != entry.root || !self.path_is_outside_v1_contract(&entry.relative_path) {
             return Err(format!(
-                "retired State Home cleanup target drift: objectId={}",
-                object.object_id
+                "State Home contract cleanup target drift: {}",
+                entry.relative_path.display()
             ));
         }
-        let observed = fs::read_to_string(object.root.join(".last-seen-ms"))
-            .map_err(io_error("revalidate retired State Home observation"))?;
-        if observed.trim().parse::<u64>().ok() != Some(object.last_observed_at_ms) {
+        let metadata = fs::symlink_metadata(&entry.root)
+            .map_err(io_error("revalidate non-contract State Home entry"))?;
+        let is_directory = metadata.is_dir() && !metadata.file_type().is_symlink();
+        let (byte_count, last_observed_at_ms) = tree_observation(&entry.root)?;
+        if is_directory != entry.is_directory
+            || byte_count != entry.byte_count
+            || last_observed_at_ms != entry.last_observed_at_ms
+        {
             return Err(format!(
-                "retired State Home observation changed: objectId={}",
-                object.object_id
+                "State Home contract entry changed before cleanup: {}",
+                entry.relative_path.display()
             ));
         }
-        let retirement_root = self.trash.join("retired-state-roots");
-        fs::create_dir_all(&retirement_root)
-            .map_err(io_error("create retired State Home retirement root"))?;
-        let staged_root = retirement_root.join(format!(
-            "{}-{}-{}",
-            object.object_id,
+        let staging_root = self.trash.join("contract-convergence");
+        fs::create_dir_all(&staging_root)
+            .map_err(io_error("create State Home convergence staging root"))?;
+        let staged_root = staging_root.join(format!(
+            "entry-{}-{}",
             std::process::id(),
             WORKSPACE_BINDING_TRANSACTION_ID.fetch_add(1, Ordering::Relaxed)
         ));
-        fs::rename(&object.root, &staged_root)
-            .map_err(io_error("stage retired State Home retirement"))?;
-        Ok(StagedWorkspaceRetirement {
-            original_root: object.root.clone(),
+        fs::rename(&entry.root, &staged_root)
+            .map_err(io_error("stage non-contract State Home entry"))?;
+        Ok(StagedStateHomeRemoval {
+            original_root: entry.root.clone(),
             staged_root,
+            is_directory,
         })
     }
 
+    fn path_is_outside_v1_contract(&self, relative_path: &Path) -> bool {
+        let mut components = relative_path.components();
+        let Some(first) = components
+            .next()
+            .and_then(|component| component.as_os_str().to_str())
+        else {
+            return false;
+        };
+        if !Self::V1_ROOT_ENTRIES.contains(&first) {
+            return components.next().is_none();
+        }
+        let Some(second) = components
+            .next()
+            .and_then(|component| component.as_os_str().to_str())
+        else {
+            return false;
+        };
+        if first == "runtime" {
+            return components.next().is_none() && !Self::V1_RUNTIME_ENTRIES.contains(&second);
+        }
+        if first != "control" {
+            return false;
+        }
+        if !Self::V1_CONTROL_ENTRIES.contains(&second) {
+            return components.next().is_none();
+        }
+        if second != "config" {
+            return false;
+        }
+        let Some(third) = components
+            .next()
+            .and_then(|component| component.as_os_str().to_str())
+        else {
+            return false;
+        };
+        components.next().is_none() && !Self::V1_CONFIG_ENTRIES.contains(&third)
+    }
+
     /// Atomically move one exact workspace out of the live namespace.
-    pub fn stage_workspace_retirement(
+    pub fn stage_workspace_removal(
         &self,
         workspace_digest: &str,
-    ) -> Result<StagedWorkspaceRetirement, String> {
+    ) -> Result<StagedStateHomeRemoval, String> {
         let digest = crate::blake3_content_digest::Blake3ContentDigest::parse(workspace_digest)?;
         let digest_dir = digest
             .as_str()
@@ -457,26 +574,22 @@ impl StateHomeLayout {
         if binding.workspace.digest.as_str() != workspace_digest {
             return Err("workspace cleanup binding mismatch".to_string());
         }
-        let retirement_root = self.trash.join("workspaces");
-        fs::create_dir_all(&retirement_root)
-            .map_err(io_error("create workspace retirement root"))?;
-        let staged_root = retirement_root.join(format!(
+        let staging_root = self.trash.join("workspaces");
+        fs::create_dir_all(&staging_root)
+            .map_err(io_error("create workspace removal staging root"))?;
+        let staged_root = staging_root.join(format!(
             "{}-{}-{}",
             digest_dir,
             std::process::id(),
             WORKSPACE_BINDING_TRANSACTION_ID.fetch_add(1, Ordering::Relaxed)
         ));
         fs::rename(&paths.root, &staged_root)
-            .map_err(io_error("stage canonical workspace retirement"))?;
-        Ok(StagedWorkspaceRetirement {
+            .map_err(io_error("stage canonical workspace removal"))?;
+        Ok(StagedStateHomeRemoval {
             original_root: paths.root,
             staged_root,
+            is_directory: true,
         })
-    }
-
-    /// Compatibility convenience for callers that need immediate retirement.
-    pub fn retire_workspace(&self, workspace_digest: &str) -> Result<(), String> {
-        self.stage_workspace_retirement(workspace_digest)?.commit()
     }
 }
 
@@ -487,6 +600,10 @@ impl StateHomeControlLayout {
 
     pub fn hook_client_config(&self) -> PathBuf {
         self.state_home.join("control/config/hook-client.toml")
+    }
+
+    pub fn asp_config(&self) -> PathBuf {
+        self.state_home.join("control/config/asp.toml")
     }
 
     pub fn agent_registry_root(&self) -> PathBuf {
@@ -530,27 +647,30 @@ impl StateHomeResourceLayout {
     }
 }
 
-impl StagedWorkspaceRetirement {
+impl StagedStateHomeRemoval {
     pub fn staged_root(&self) -> &Path {
         &self.staged_root
     }
 
-    /// Restore the live workspace when the Catalog CAS did not commit.
+    /// Restore the live object when its authority CAS did not commit.
     pub fn rollback(self) -> Result<(), String> {
         if self.original_root.exists() {
             return Err(format!(
-                "workspace retirement rollback target already exists: {}",
+                "State Home removal rollback target already exists: {}",
                 self.original_root.display()
             ));
         }
         fs::rename(&self.staged_root, &self.original_root)
-            .map_err(io_error("rollback canonical workspace retirement"))
+            .map_err(io_error("rollback staged State Home removal"))
     }
 
-    /// Reap physical bytes after the Catalog retirement committed.
+    /// Reap physical bytes after the authority commit succeeded.
     pub fn commit(self) -> Result<(), String> {
-        fs::remove_dir_all(&self.staged_root)
-            .map_err(io_error("reap staged canonical workspace retirement"))
+        if self.is_directory {
+            remove_contract_staging_tree(&self.staged_root)
+        } else {
+            fs::remove_file(&self.staged_root).map_err(io_error("reap staged State Home removal"))
+        }
     }
 }
 
@@ -574,6 +694,47 @@ impl WorkspaceStatePaths {
 
 fn io_error(operation: &'static str) -> impl FnOnce(io::Error) -> String {
     move |error| format!("{operation}: {error}")
+}
+
+/// Delete one tree only after it has been atomically moved below State Home
+/// trash. Old tool outputs may contain read-only directories; those mode bits
+/// cannot be allowed to preserve an obsolete authority namespace forever.
+/// Symlinks are never followed.
+fn remove_contract_staging_tree(root: &Path) -> Result<(), String> {
+    let metadata =
+        fs::symlink_metadata(root).map_err(io_error("inspect staged State Home removal"))?;
+    if !metadata.is_dir() || metadata.file_type().is_symlink() {
+        return fs::remove_file(root).map_err(io_error("reap staged State Home removal"));
+    }
+    make_contract_staging_directory_removable(root, metadata.permissions())?;
+    for entry in fs::read_dir(root).map_err(io_error("read staged State Home removal"))? {
+        let path = entry
+            .map_err(io_error("read staged State Home removal entry"))?
+            .path();
+        let metadata =
+            fs::symlink_metadata(&path).map_err(io_error("inspect staged State Home entry"))?;
+        if metadata.is_dir() && !metadata.file_type().is_symlink() {
+            remove_contract_staging_tree(&path)?;
+        } else {
+            fs::remove_file(&path).map_err(io_error("reap staged State Home entry"))?;
+        }
+    }
+    fs::remove_dir(root).map_err(io_error("reap staged State Home removal"))
+}
+
+fn make_contract_staging_directory_removable(
+    path: &Path,
+    mut permissions: fs::Permissions,
+) -> Result<(), String> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+        permissions.set_mode(permissions.mode() | 0o700);
+    }
+    #[cfg(not(unix))]
+    permissions.set_readonly(false);
+    fs::set_permissions(path, permissions)
+        .map_err(io_error("make staged State Home directory removable"))
 }
 
 fn tree_observation(root: &Path) -> Result<(u64, u64), String> {

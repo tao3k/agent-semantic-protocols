@@ -1,12 +1,12 @@
-# SPDX-FileCopyrightText: Contributors to Agent Semantic Protocols
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 #
-# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 [project]
 name = "asp-schema-manager"
 version = "0.1.0"
 description = "Read-only JSON Schema and Rust Schema Manager receipt auditor for ASP."
-license = "Apache-2.0 AND LGPL-2.1-only"
+license = "Apache-2.0 AND LGPL-2.1-or-later"
 license-files = ["LICENSE"]
 requires-python = ">=3.12"
 dependencies = [

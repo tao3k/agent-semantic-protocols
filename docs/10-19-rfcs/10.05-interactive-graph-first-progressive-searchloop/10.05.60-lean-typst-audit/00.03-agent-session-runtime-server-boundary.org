@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 #+TITLE: Agent Session Runtime Server Boundary Validation
 #+OPTIONS: toc:nil
 
@@ -60,5 +64,5 @@ The Lean model under =packages/proofs= must:
   not use them to bypass the workspace proxy.
 - Tests must publish a regular endpoint descriptor and bind its referenced Unix-domain socket; a
   single regular-file sentinel or a socket without a descriptor is insufficient evidence.
-- Installed-runtime verification must run =asp agent session bootstrap= without =ASP_NO_AGENT= while
+- Installed-runtime verification must run =asp agent session bootstrap= through the normal Hook and Runtime authority while
   the Runtime Server owns the Turso registry.

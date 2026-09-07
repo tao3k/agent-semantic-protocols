@@ -3,7 +3,7 @@
   "schemaVersion": "1",
   "artifactKind": "asp",
   "artifactMode": "dev",
-  "stablePath": "/state/runtime/bin/asp",
+  "stablePath": "/home/user/.local/bin/asp",
   "sourcePath": "/checkout/target/debug/asp",
   "sourceGeneration": "blake3-256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
   "sourceGenerationAlgorithm": "filesystem-generation-v1",

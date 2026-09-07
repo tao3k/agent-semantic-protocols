@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 #+title: Live Corpus Qualification and OpenTelemetry Contract
 #+author: ASP Architecture
 #+property: header-args :mkdirp yes
@@ -43,24 +47,98 @@ provider, and Host permission failure.
 
 * Required phase telemetry
 
-Each sample records monotonic nanoseconds and the same request/session/content
-identity on all events. Required phases are:
+Each sample records monotonic time and the same request/session/content
+identity on all events. The contract has exactly ten ordered phases with one
+measurement owner per phase:
 
-- launcher and argument normalization;
-- ClientFrame encoding;
-- IPC/connect and server admission/queue;
-- workspace/source snapshot resolution;
-- provider dispatch;
-- parse/index/query;
-- projection/rank;
-- schema validation/serialization;
-- terminal receipt egress.
+1. =launcher= -- client command and environment normalization;
+2. =client-frame-encode= -- client canonical method/parameter encoding;
+3. =ipc-connect= -- client transport acquisition through an initialized,
+   sendable session;
+4. =server-admission-queue= -- WorkspaceGenerationAdmission queue ownership;
+5. =snapshot-resolve= -- Runtime workspace registry and execution-publication
+   resolution;
+6. =provider-dispatch= -- Runtime route handoff to the admitted provider;
+7. =parse-index-query= -- SearchExecution-owned fd, rg, Tantivy, resident-index,
+   and provider-native syntax execution;
+8. =projection-rank= -- SearchProjection-owned graph fan-in, ranking, and
+   bounded result synthesis;
+9. =schema-validate-serialize= -- ClientFrame service response validation and
+   canonical serialization;
+10. =terminal-egress= -- transport writer completion for the one terminal.
+
+The owner name is not caller-supplied metadata. Each phase enters the trace
+only through a typed boundary witness produced by that execution authority and
+admitted against the exact request plus workspace execution publication. The
+trace carrier accepts the complete independently admitted witness; an enum,
+string, or nonzero witness identifier embedded by the caller is not authority.
+
+The owner at a later layer MUST NOT synthesize a missing earlier measurement.
+In particular, the Runtime route cannot invent SearchExecution or
+SearchProjection time, a provider-native sub-operation cannot claim the
+aggregate SearchExecution phase, and the response builder cannot claim
+terminal egress before the transport writer completes. Measurements are
+joined through a bounded request-scoped trace carrier after Runtime identity
+settlement; they are not copied into a process-global cache. An incomplete
+trace remains explicitly incomplete and cannot be normalized into a passing
+ten-phase artifact.
+
+The SearchExecution surface returns the aggregate phase-7 timing witness with
+its immutable request, provider-catalog, source-generation, and
+execution-publication binding. Provider-native work may return typed child
+witnesses, but those witnesses remain nested evidence. SearchProjection
+returns the phase-8 witness after graph fan-in and bounded synthesis. Measuring
+around either call in the Runtime route and assigning a caller-supplied owner
+tag is forbidden. Likewise, phase 9 is admitted only from the response-service
+serialization callback, and phase 10 only from the transport writer's
+delivered-or-closed callback. These callbacks are evidence boundaries, not
+planner actions and not recommendations for a later Agent step.
 
 The event attributes include schema reference, request and session identity,
-workspace/source/runtime digests, operation, profile, sample number, queue
-depth, single-flight key, cancellation identity, terminal status, and error
-reason. Activation sequence values are optional observations only and are not
-identity or a cache key.
+workspace identity, canonical non-empty language and provider identity sets,
+workspace/source/runtime
+digests, the workspace execution-publication digest,
+the verified outer Runtime bundle digest, operation, profile, sample number,
+queue depth, single-flight key, cancellation identity, terminal status, and
+error reason. Activation sequence values are optional observations only and
+are not identity or a cache key. Every phase for one request carries the same
+complete identity product; an artifact or bundle refresh cannot mutate a
+partially recorded request.
+
+The Runtime derives this identity from the already validated workspace
+execution publication. =sourceSnapshotDigest= is the publication's committed
+=sourceRootDigest=; it is equal to the content binding's workspace snapshot by
+publication admission. A route must not reconstruct or override individual
+identity fields from process state, activation generations, or provider-local
+caches.
+
+** Pre-admission client timing settlement
+
+The launcher, ClientFrame encoder, and IPC connector execute before the server
+can admit a workspace execution publication. They therefore emit one typed
+=runtime-search-client-timing-witness= containing only the Host-bound session
+and request identities plus the three ordered duration measurements. The
+witness contains no workspace, source, provider, Runtime artifact, bundle,
+publication, cache, or activation identity.
+
+After admission, the Runtime validates the witness's session and request
+against the accepted ClientFrame and enriches the measurements with the exact
+workspace execution publication. Only this server-owned settlement may produce
+the complete telemetry identity used by observations and artifacts. Client
+timings cannot authorize a generation, select a Runtime product, affect a
+single-flight key, or become metric labels. A missing, foreign, reordered, or
+duplicate witness is a typed telemetry failure; it never changes Search or
+Query admission.
+
+The measurement boundaries are deterministic. =launcher= ends after command
+and environment normalization. =client-frame-encode= measures canonical
+method/parameter payload encoding before the timing witness is attached, so
+the measurement is not self-referential. =ipc-connect= ends when the bounded
+Runtime session is available and initialized and precedes the request write.
+The cold path therefore includes connection and initialization; the warm path
+measures acquisition of the already initialized session. This boundary is the
+first point at which the Playbook request is actually sendable and prevents a
+cached-session lookup from being misreported as a new socket connection.
 
 * Qualification matrix
 
@@ -179,5 +257,5 @@ The qualification plan and validation matrix are recorded in
 The current qualification remains blocked until the declared immutable
 =julia.dataframes= resource is prepublished by its owner. The recovery is to
 publish that exact resource through the approved owner path, then replay the
-same plan. No sync, materialize, restart, plugin refresh, or ASP_NO_AGENT path
+same plan. No sync, materialize, restart, plugin refresh, or Hook-disable path
 is part of this RFC's acceptance.

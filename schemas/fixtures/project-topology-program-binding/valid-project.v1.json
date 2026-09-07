@@ -2,7 +2,14 @@
   "schemaId": "agent.semantic-protocols.project-topology-program-binding",
   "schemaVersion": "1",
   "binding": {
-    "workspaceIdentity": "workspace-example",
+    "projectWorkspace": {
+      "schemaId": "agent.semantic-protocols.project-workspace-binding",
+      "schemaVersion": "1",
+      "projectWorkspaceIdentity": "git+https://github.com/tao3k/agent-semantic-protocols.git#workspace/root",
+      "workspaceRootPath": ".",
+      "portability": "cross-machine",
+      "repositoryAliases": []
+    },
     "sourceSnapshotDigest": "blake3-256:1111111111111111111111111111111111111111111111111111111111111111",
     "providerCatalogDigest": "blake3-256:2222222222222222222222222222222222222222222222222222222222222222",
     "parserCatalogDigest": "blake3-256:3333333333333333333333333333333333333333333333333333333333333333",

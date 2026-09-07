@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 //! Agent-prioritized progressive plan for the public Search Playbook.
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -6,7 +10,6 @@ pub struct WorkspaceSearchProvider {
     pub provider_id: String,
     pub source_extensions: Vec<String>,
     pub search_supported: bool,
-    pub search_playbook_contract: Option<crate::ProviderSearchPlaybookContract>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -30,6 +33,7 @@ pub struct WorkspaceSearchProgressivePlan {
     pub rg: Vec<Vec<String>>,
     pub tantivy: Vec<Vec<String>>,
     pub syntax: Vec<crate::ProducerNativeBlock>,
+    pub native_syntax: Vec<String>,
     pub graph: Vec<crate::GraphNativeBlock>,
     pub clause_order: Vec<crate::SearchPlaybookClauseRef>,
 }
@@ -60,7 +64,7 @@ pub fn build_workspace_search_playbook_plan(
     binding: WorkspaceSearchPlanBinding,
     providers: impl IntoIterator<Item = WorkspaceSearchProvider>,
 ) -> Result<WorkspaceSearchPlaybookPlan, String> {
-    let crate::ProgressiveSearchPlaybookRequest::Execute {
+    let crate::ProgressiveSearchPlaybookRequest {
         languages,
         documents,
         workspace: _,
@@ -68,12 +72,10 @@ pub fn build_workspace_search_playbook_plan(
         rg,
         tantivy,
         syntax,
+        native_syntax,
         graph,
         clause_order,
-    } = request
-    else {
-        return Err("contract query does not create a Search execution plan".to_owned());
-    };
+    } = request;
     if binding.project_id.is_empty()
         || binding.workspace_id.is_empty()
         || binding.content_generation_digest.is_empty()
@@ -125,6 +127,7 @@ pub fn build_workspace_search_playbook_plan(
             rg: rg.clone(),
             tantivy: tantivy.clone(),
             syntax: syntax.clone(),
+            native_syntax: native_syntax.clone(),
             graph: graph.clone(),
             clause_order: clause_order.clone(),
         },

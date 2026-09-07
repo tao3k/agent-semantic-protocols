@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 //! Canonical content identity primitives for semantic artifacts and source snapshots.
 //!
@@ -9,7 +9,6 @@
 //! from the crate root while each implementation branch retains a single owner.
 
 pub mod canonical_item_identity;
-mod content_addressed_path;
 mod derived_artifact_evidence;
 mod domain;
 mod file_artifact;
@@ -17,6 +16,7 @@ mod hashing;
 mod model;
 /// Provider-neutral project-resolution receipts and immutable package-graph facts.
 mod project_resolution;
+mod project_workspace;
 mod schema_contract_identity;
 pub mod semantic_ids;
 mod source_snapshot;
@@ -35,7 +35,6 @@ pub use canonical_item_identity::CanonicalItemScopeRelation;
 pub use canonical_item_identity::CanonicalItemScopeSymbol;
 pub use canonical_item_identity::CanonicalItemSelector;
 pub use canonical_item_identity::CanonicalItemSymbol;
-pub use content_addressed_path::blake3_digest_from_canonical_artifact_path;
 
 pub use derived_artifact_evidence::DERIVED_SOURCE_ARTIFACT_CACHE_DISPOSITION;
 pub use derived_artifact_evidence::DERIVED_SOURCE_ARTIFACT_EVIDENCE_SCHEMA_ID;
@@ -84,6 +83,13 @@ pub use project_resolution::ResolvedSourceScope;
 pub use project_resolution::UnresolvedProjectReference;
 pub use project_resolution::project_resolution_schema_digest;
 pub use project_resolution::workspace_source_scope_generation_digest;
+pub use project_workspace::HOST_WORKSPACE_INITIALIZATION_BINDING_SCHEMA_ID;
+pub use project_workspace::HOST_WORKSPACE_INITIALIZATION_BINDING_SCHEMA_VERSION;
+pub use project_workspace::HostWorkspaceInitializationBinding;
+pub use project_workspace::PROJECT_WORKSPACE_BINDING_SCHEMA_ID;
+pub use project_workspace::PROJECT_WORKSPACE_BINDING_SCHEMA_VERSION;
+pub use project_workspace::ProjectWorkspaceBinding;
+pub use project_workspace::ProjectWorkspaceBindingError;
 pub use schema_contract_identity::SchemaContractIdentity;
 pub use schema_contract_identity::schema_contract_identities;
 pub use semantic_ids::Blake3DigestV1;
@@ -189,3 +195,5 @@ pub mod search_execution;
 pub mod host_session_binding;
 
 pub mod runtime_execution;
+pub mod runtime_workspace_execution_pointer;
+pub mod runtime_workspace_execution_publication;

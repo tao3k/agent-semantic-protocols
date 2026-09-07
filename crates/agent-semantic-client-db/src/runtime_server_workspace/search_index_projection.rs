@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -55,6 +55,7 @@ pub struct WorkspaceSearchGenerationDataPlaneClient {
     callable_selector_by_owner: BTreeMap<String, String>,
     owner_bytes_range: Option<std::ops::Range<usize>>,
     merkle_owner_records: BTreeMap<String, Arc<SearchMerkleOwnerRecord>>,
+    owned_relations: Arc<[crate::ClientDbSourceIndexOwnedRelation]>,
     graph_relation_records: BTreeMap<
         (String, String),
         Vec<agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelation>,
@@ -613,6 +614,8 @@ impl WorkspaceSearchGenerationDataPlaneClient {
                 }),
             );
         }
+        let owned_relations: Arc<[crate::ClientDbSourceIndexOwnedRelation]> =
+            Arc::from(generation.relations.clone());
         let mut graph_relation_records = BTreeMap::<(String, String), Vec<_>>::new();
         for owned in &generation.relations {
             let relation = &owned.relation;
@@ -661,6 +664,7 @@ impl WorkspaceSearchGenerationDataPlaneClient {
             callable_selector_by_owner,
             owner_bytes_range: None,
             merkle_owner_records,
+            owned_relations,
             graph_relation_records,
             graph_generation: Arc::new(tokio::sync::OnceCell::new()),
             lexical_accelerator: Arc::new(tokio::sync::OnceCell::new()),
@@ -757,6 +761,8 @@ impl WorkspaceSearchGenerationDataPlaneClient {
             }
             graph_relations.extend(owned_relations);
         }
+        let owned_relations: Arc<[crate::ClientDbSourceIndexOwnedRelation]> =
+            Arc::from(graph_relations.clone());
         let (source_documents, callable_selector_by_owner) =
             build_owner_search_indexes(&owner_directory_records, &graph_relations, &authority)?;
         let graph_generation = Arc::new(tokio::sync::OnceCell::new());
@@ -777,6 +783,7 @@ impl WorkspaceSearchGenerationDataPlaneClient {
             callable_selector_by_owner,
             owner_bytes_range: Some(owner_bytes_range),
             merkle_owner_records,
+            owned_relations,
             graph_relation_records,
             graph_generation,
             lexical_accelerator,

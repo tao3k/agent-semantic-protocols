@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 use super::{ProgressiveQueryRequest, QueryOutputFormat, parse_progressive_query_args};
 
 fn args(values: &[&str]) -> Vec<String> {
@@ -5,26 +9,21 @@ fn args(values: &[&str]) -> Vec<String> {
 }
 
 #[test]
-fn selector_query_needs_no_language_authority() {
-    assert_eq!(
-        parse_progressive_query_args(&args(&["query", "--selector", "selector-1"])),
-        Ok(ProgressiveQueryRequest::Selector {
-            selector: "selector-1".to_owned(),
-            projection: "source".to_owned(),
-            output_format: QueryOutputFormat::Human,
-            workspace: None,
-        })
-    );
-}
-
-#[test]
-fn query_playbook_marker_selects_the_same_exact_query_contract() {
-    let selector =
+fn query_playbook_collects_one_canonical_polyglot_selector_set() {
+    let rust =
         "rust://src/registry.rs#item/method/refresh/scope/implementation-owner/type/Registry";
+    let org = "org://docs/publication.org#item/heading/Publication";
     assert_eq!(
-        parse_progressive_query_args(&args(&["query", "playbook", "--selector", selector])),
+        parse_progressive_query_args(&args(&[
+            "query",
+            "playbook",
+            "--selector",
+            rust,
+            "--selector",
+            org,
+        ])),
         Ok(ProgressiveQueryRequest::Selector {
-            selector: selector.to_owned(),
+            selectors: vec![org.to_owned(), rust.to_owned()],
             projection: "source".to_owned(),
             output_format: QueryOutputFormat::Human,
             workspace: None,
@@ -33,51 +32,35 @@ fn query_playbook_marker_selects_the_same_exact_query_contract() {
 }
 
 #[test]
-fn syntax_query_preserves_provider_native_grammar() {
-    let request = parse_progressive_query_args(&args(&[
-        "query",
-        "--languages",
-        "rust|python",
-        "--documents",
-        "org|md",
-        "--syntax",
-        "rust",
-        "--treesitter-query",
-        "((identifier) @symbol)",
-    ]))
-    .expect("native syntax query");
-
-    let ProgressiveQueryRequest::Syntax { syntax, .. } = request else {
-        panic!("expected syntax mode");
-    };
-    assert_eq!(syntax[0].producer, "rust");
-    assert_eq!(
-        syntax[0].argv,
-        args(&["--treesitter-query", "((identifier) @symbol)"])
-    );
-}
-
-#[test]
-fn selector_and_syntax_modes_cannot_mix() {
+fn markerless_query_is_rejected_instead_of_creating_a_second_public_grammar() {
     let error = parse_progressive_query_args(&args(&[
         "query",
         "--selector",
-        "selector-1",
+        "rust://src/lib.rs#item/function/run",
+    ]))
+    .expect_err("Query Playbook marker is mandatory");
+    assert!(error.contains("use `asp query playbook`"));
+}
+
+#[test]
+fn language_and_native_syntax_switches_remain_search_only() {
+    let error = parse_progressive_query_args(&args(&[
+        "query",
+        "playbook",
+        "--selector",
+        "rust://src/lib.rs#item/function/run",
         "--languages",
         "rust",
-        "--syntax",
-        "rust",
-        "--treesitter-query",
-        "((identifier) @symbol)",
     ]))
-    .expect_err("two query authorities");
-    assert!(error.contains("exactly one mode"));
+    .expect_err("selector scheme already owns provider routing");
+    assert!(error.contains("query playbook does not support option `--languages`"));
 }
 
 #[test]
 fn query_defaults_to_human_source_and_json_is_explicit() {
     let default = parse_progressive_query_args(&args(&[
         "query",
+        "playbook",
         "--selector",
         "gerbil-scheme://src/build-api/package-spec.ss#item/function/package-spec",
     ]))
@@ -85,14 +68,16 @@ fn query_defaults_to_human_source_and_json_is_explicit() {
     assert!(matches!(
         default,
         ProgressiveQueryRequest::Selector {
+            selectors,
             projection,
             output_format: QueryOutputFormat::Human,
             ..
-        } if projection == "source"
+        } if projection == "source" && selectors.len() == 1
     ));
 
     let json = parse_progressive_query_args(&args(&[
         "query",
+        "playbook",
         "--selector",
         "gerbil-scheme://src/build-api/package-spec.ss#item/function/package-spec",
         "--json",

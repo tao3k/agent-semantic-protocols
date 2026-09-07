@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 use crate::runtime_asp_client::AspClientOperationError;
 use crate::runtime_asp_client::RUNTIME_CLIENT_DISPATCH_BUDGET;
 use crate::runtime_asp_client::elapsed_micros;
@@ -48,12 +52,12 @@ pub(super) async fn dispatch_search_route(
             })?;
     let resident_started = tokio::time::Instant::now();
     let owner_scope = params.scope.strip_prefix("owner:");
-    let mut cold_rg = None;
+    let mut resident_lexical = None;
     let lookup = if execution_plan.use_cold_rg_candidates {
         let remaining = std::time::Duration::from_millis(params.deadline_ms)
             .min(RUNTIME_CLIENT_DISPATCH_BUDGET)
             .saturating_sub(dispatch_started.elapsed());
-        let cold = crate::runtime_cold_rg::execute_runtime_cold_rg(
+        let resident = crate::runtime_cold_rg::execute_runtime_resident_lexical_prefilter(
             generation.resident().cold_rg_corpus(),
             &params.query,
             params.max_owners,
@@ -62,15 +66,15 @@ pub(super) async fn dispatch_search_route(
         .await
         .map_err(|message| {
             AspClientOperationError::Terminal(AspClientDispatchError {
-                reason_kind: "cold-rg-execution-failed".to_owned(),
+                reason_kind: "resident-lexical-execution-failed".to_owned(),
                 message,
                 details: Some(serde_json::json!({
-                    "phase": "immutable-generation-cold-rg",
+                    "phase": "immutable-generation-resident-lexical",
                     "intent": intent.as_str(),
                 })),
             })
         })?;
-        let mut owner_paths = cold.candidate_owner_paths.clone();
+        let mut owner_paths = resident.candidate_owner_paths.clone();
         if let Some(owner_path) = owner_scope {
             owner_paths.retain(|candidate| candidate == owner_path);
         }
@@ -80,13 +84,15 @@ pub(super) async fn dispatch_search_route(
             Some(&authority),
             params.max_owners,
         );
-        cold_rg = Some(agent_semantic_search::SearchPlaybookColdRgExecution {
-            generation_digest: cold.content_generation_digest,
-            coverage_input_digest: cold.coverage_input_digest,
-            candidate_owner_ids: owner_paths,
-            elapsed_micros: cold.elapsed_micros,
-            process_count: cold.process_count,
-        });
+        resident_lexical = Some(
+            agent_semantic_search::SearchPlaybookResidentLexicalExecution {
+                generation_digest: resident.content_generation_digest,
+                coverage_input_digest: resident.coverage_input_digest,
+                candidate_owner_ids: owner_paths,
+                elapsed_micros: resident.elapsed_micros,
+                process_count: resident.process_count,
+            },
+        );
         lookup
     } else {
         match (execution_plan.verify_rg_bytes, owner_scope) {
@@ -283,7 +289,7 @@ pub(super) async fn dispatch_search_route(
             indexed_owner_count: generation.resident().indexed_owner_count(),
             indexed_lexical_executed: execution_plan.use_tantivy_candidates,
             byte_evidence_executed: execution_plan.verify_rg_bytes,
-            cold_rg,
+            resident_lexical,
             resident_graph_executed: execution_plan.project_resident_graph,
             source_acquisition_stage_artifact_digest: fused_generation
                 .acquisition

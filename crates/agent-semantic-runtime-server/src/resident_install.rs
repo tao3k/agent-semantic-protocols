@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -122,7 +126,7 @@ pub async fn install_resident_runtime_bundle_members(
     })
 }
 
-/// Publishes one executable cohort together with its complete V1 execution
+/// Publishes one executable cohort together with its complete V2 execution
 /// closure.  The binding is part of the immutable bundle identity; it is not a
 /// mutable Runtime-side catalog and cannot be refreshed independently from the
 /// executable bytes.

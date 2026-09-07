@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 use libc::getuid;
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
@@ -58,7 +58,7 @@ fn validate_private_runtime_directory(path: &Path) -> Result<(), String> {
     Ok(())
 }
 
-pub(super) async fn prepare_private_runtime_directory(directory: &Path) -> Result<(), String> {
+pub async fn prepare_private_runtime_directory(directory: &Path) -> Result<(), String> {
     match tokio::fs::create_dir(directory).await {
         Ok(()) => {}
         Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}

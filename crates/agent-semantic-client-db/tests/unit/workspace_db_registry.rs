@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 use std::sync::Arc;
 use tokio::sync::oneshot;
@@ -63,7 +63,10 @@ async fn wrong_workspace_identity_fails_before_database_open() {
     let state_home = temp.path().join("state");
     let _state_home = StateHomeGuard::install(&state_home);
     let (project_root, resolved, mut scope) = workspace(temp.path(), "wrong-identity");
-    let client_db_path = resolved.paths.client_db_path;
+    let client_db_path = resolved
+        .workspace_state_paths()
+        .expect("resolve canonical workspace state paths")
+        .facts;
     scope.workspace_identity = "workspace-wrong".to_owned();
     let registry = WorkspaceDbRegistry::default();
 

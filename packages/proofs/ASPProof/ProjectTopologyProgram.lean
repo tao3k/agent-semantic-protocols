@@ -1,3 +1,7 @@
+-- SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+--
+-- SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 import Std
 
 /-!
@@ -86,6 +90,33 @@ def factualPremise : Modality → Bool
   | .parserFact | .declared | .derived | .accepted => true
   | .proposed | .contested => false
 
+inductive TopologyRecordOwnership where
+  | sourceSegment : Nat → TopologyRecordOwnership
+  | topologyGeneration : Nat → TopologyRecordOwnership
+  deriving DecidableEq, Repr
+
+def ownershipValid
+    (modality : Modality)
+    (ownership : TopologyRecordOwnership) : Bool :=
+  match modality, ownership with
+  | .parserFact, .sourceSegment _ => true
+  | .declared, .sourceSegment _ => true
+  | .derived, .topologyGeneration _ => true
+  | .proposed, .topologyGeneration _ => true
+  | .contested, .topologyGeneration _ => true
+  | .accepted, .topologyGeneration _ => true
+  | _, _ => false
+
+theorem parser_fact_requires_source_segment_ownership :
+    ownershipValid .parserFact (.sourceSegment 1) = true ∧
+      ownershipValid .parserFact (.topologyGeneration 2) = false := by
+  decide
+
+theorem derived_fact_cannot_impersonate_source_segment_evidence :
+    ownershipValid .derived (.topologyGeneration 2) = true ∧
+      ownershipValid .derived (.sourceSegment 1) = false := by
+  decide
+
 theorem proposed_model_semantics_are_not_factual :
     factualPremise .proposed = false := by
   decide
@@ -112,20 +143,42 @@ inductive ClosureTerminal where
   | blocked
   deriving DecidableEq, Repr
 
+structure ClosureProofDependency where
+  conclusionKey : Nat
+  premiseKey : Nat
+  deriving DecidableEq, Repr
+
 structure AscentClosureCandidate where
+  sourceIdentity : Nat
+  programIdentity : Nat
   facts : List RelationFact
+  nextFacts : List RelationFact
+  proofDependencies : List ClosureProofDependency
   terminal : ClosureTerminal
-  proofDependenciesComplete : Bool
+  receiptIdentity : Nat
   deriving DecidableEq, Repr
 
 def admittedFacts (candidate : AscentClosureCandidate) : List RelationFact :=
   candidate.facts.filter fun fact => factualPremise fact.modality
 
+def closureProofDependenciesComplete (candidate : AscentClosureCandidate) : Bool :=
+  candidate.facts.all fun fact =>
+    fact.modality != .derived ||
+      candidate.proofDependencies.any fun dependency =>
+        dependency.conclusionKey == fact.key
+
 def admitClosure
+    (expectedSource expectedProgram : Nat)
+    (independentlyAdmitted : List AscentClosureCandidate)
     (core : List RelationFact)
     (candidate : AscentClosureCandidate) : Option (List RelationFact) :=
-  if candidate.terminal == .fixedPoint &&
-      candidate.proofDependenciesComplete &&
+  if independentlyAdmitted.contains candidate &&
+      candidate.sourceIdentity == expectedSource &&
+      candidate.programIdentity == expectedProgram &&
+      candidate.receiptIdentity != 0 &&
+      candidate.terminal == .fixedPoint &&
+      candidate.facts == candidate.nextFacts &&
+      closureProofDependenciesComplete candidate &&
       programModalitiesAllowed candidate.facts &&
       agreesWithCore core candidate.facts then
     some (core ++ admittedFacts candidate)
@@ -138,32 +191,49 @@ def proposedMeaning : RelationFact := ⟨3, 30, .proposed, 300⟩
 def forgedOwner : RelationFact := ⟨1, 99, .derived, 400⟩
 
 def completeCandidate : AscentClosureCandidate :=
-  ⟨[derivedMember, proposedMeaning], .fixedPoint, true⟩
+  ⟨11, 17, [derivedMember, proposedMeaning], [derivedMember, proposedMeaning],
+    [⟨derivedMember.key, parserOwner.key⟩], .fixedPoint, 71⟩
 
 def exhaustedCandidate : AscentClosureCandidate :=
-  ⟨[derivedMember], .budgetExhausted, true⟩
+  ⟨11, 17, [derivedMember], [derivedMember],
+    [⟨derivedMember.key, parserOwner.key⟩], .budgetExhausted, 72⟩
 
 def conflictingCandidate : AscentClosureCandidate :=
-  ⟨[forgedOwner], .fixedPoint, true⟩
+  ⟨11, 17, [forgedOwner], [forgedOwner],
+    [⟨forgedOwner.key, parserOwner.key⟩], .fixedPoint, 73⟩
 
 theorem complete_candidate_settles_derived_but_not_proposed :
-    admitClosure [parserOwner] completeCandidate =
+    admitClosure 11 17 [completeCandidate] [parserOwner] completeCandidate =
       some [parserOwner, derivedMember] := by
   decide
 
 theorem budget_exhaustion_is_not_fixed_point_admission :
-    admitClosure [parserOwner] exhaustedCandidate = none := by
+    admitClosure 11 17 [exhaustedCandidate] [parserOwner] exhaustedCandidate = none := by
   decide
 
 theorem project_program_conflict_with_core_fails_closed :
-    admitClosure [parserOwner] conflictingCandidate = none := by
+    admitClosure 11 17 [conflictingCandidate] [parserOwner] conflictingCandidate = none := by
+  decide
+
+theorem self_reported_fixed_point_without_independent_receipt_is_rejected :
+    admitClosure 11 17 [] [parserOwner] completeCandidate = none := by
+  decide
+
+def incompleteDependencyCandidate : AscentClosureCandidate :=
+  { completeCandidate with proofDependencies := [] }
+
+theorem derived_fact_without_computed_dependency_is_rejected :
+    admitClosure 11 17 [incompleteDependencyCandidate] [parserOwner]
+      incompleteDependencyCandidate = none := by
   decide
 
 theorem successful_admission_preserves_the_complete_core
     (core : List RelationFact)
     (candidate : AscentClosureCandidate)
     (settled : List RelationFact)
-    (admitted : admitClosure core candidate = some settled) :
+    (admittedReceipts : List AscentClosureCandidate)
+    (source program : Nat)
+    (admitted : admitClosure source program admittedReceipts core candidate = some settled) :
     ∃ programFacts, settled = core ++ programFacts := by
   unfold admitClosure at admitted
   split at admitted
@@ -306,23 +376,8 @@ structure RelationDelta where
   added : List RelationFact
   deriving DecidableEq, Repr
 
-def applyDelta
-    (actualIdentity : Nat)
-    (previous : List RelationFact)
-    (delta : RelationDelta) : Option (List RelationFact) :=
-  if actualIdentity == delta.fromIdentity then
-    some (replaceFacts previous delta.removedKeys delta.added)
-  else
-    none
-
 def removalDelta : RelationDelta :=
   ⟨41, 42, [derivedMember.key], []⟩
-
-theorem delta_requires_the_exact_predecessor_identity :
-    applyDelta 40 previousFacts removalDelta = none ∧
-      applyDelta 41 previousFacts removalDelta =
-        some [parserOwner] := by
-  decide
 
 structure ProofDependency where
   conclusionKey : Nat
@@ -350,6 +405,23 @@ def invalidationClosure
   | fuel + 1 => invalidationClosure fuel dependencies
       (invalidationStep dependencies invalid)
 
+def applyDelta
+    (actualIdentity : Nat)
+    (previous : List RelationFact)
+    (dependencies : List ProofDependency)
+    (delta : RelationDelta) : Option (List RelationFact) :=
+  if actualIdentity == delta.fromIdentity then
+    let invalid := invalidationClosure dependencies.length dependencies delta.removedKeys
+    some (replaceFacts previous invalid delta.added)
+  else
+    none
+
+theorem delta_requires_the_exact_predecessor_identity :
+    applyDelta 40 previousFacts [] removalDelta = none ∧
+      applyDelta 41 previousFacts [] removalDelta =
+        some [parserOwner] := by
+  decide
+
 def twoHopDependencies : List ProofDependency :=
   [⟨3, 2⟩, ⟨2, 1⟩]
 
@@ -360,6 +432,17 @@ theorem one_invalidation_pass_does_not_close_two_hops :
 
 theorem transitive_invalidation_retracts_the_derived_descendant :
     3 ∈ invalidationClosure 2 twoHopDependencies [1] := by
+  decide
+
+def transitivePreviousFacts : List RelationFact :=
+  [parserOwner, derivedMember, ⟨3, 30, .derived, 300⟩]
+
+def removeParserPremise : RelationDelta :=
+  ⟨41, 42, [parserOwner.key], []⟩
+
+theorem incremental_delta_retracts_transitive_derived_descendants :
+    applyDelta 41 transitivePreviousFacts twoHopDependencies removeParserPremise =
+      some [] := by
   decide
 
 def closureStep (known : List Nat) : List Nat :=

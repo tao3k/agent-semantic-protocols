@@ -1,4 +1,7 @@
 #![deny(dead_code)]
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 //! Search orchestration services for ASP agent-facing queries.
 
@@ -25,20 +28,19 @@ pub use graph_owner_rank::GraphOwnerRankRequest;
 pub use graph_owner_rank::GraphOwnerRankScore;
 pub use graph_owner_rank::GraphOwnerRankedOwner;
 pub use graph_owner_rank::rank_graph_owner_report;
+mod content_bound_native_rg;
 pub mod exact_selector_generation_fixture;
 mod graph_topology_projection;
 mod lexical_accelerator;
 mod lexical_generation_plan;
 mod lexical_overlay;
-mod local_playbook_acquisition;
 pub mod memory_search;
 #[cfg(feature = "tantivy-accelerator")]
 mod merkle_search_generation;
 mod native_fd_query;
-pub use local_playbook_acquisition::{
-    ContentBoundNativeRgReceipt, LOCAL_SEARCH_PLAYBOOK_ACQUISITION_RECEIPT_SCHEMA_ID, LocalRgMatch,
-    LocalSearchAxisReceipt, LocalSearchPlaybookAcquisitionReceipt,
-    execute_content_bound_native_rg_blocks, execute_local_search_playbook_acquisition,
+pub use content_bound_native_rg::{
+    ContentBoundNativeRgAxisReceipt, ContentBoundNativeRgMatch, ContentBoundNativeRgReceipt,
+    execute_content_bound_native_rg_blocks,
 };
 pub use memory_search::MemorySearchGeneration;
 pub use memory_search::MemorySearchGenerationReceipt;
@@ -54,7 +56,6 @@ mod playbook_receipt;
 mod progressive_playbook;
 mod progressive_query;
 mod provider_candidate_annotations;
-mod provider_playbook_contract;
 pub mod provider_relation_memory;
 #[cfg(feature = "tantivy-accelerator")]
 mod resident_byte_coverage;
@@ -93,9 +94,6 @@ mod lexical_accelerator_tests;
 #[cfg(test)]
 #[path = "../tests/unit/lexical_generation_plan.rs"]
 mod lexical_generation_plan_tests;
-#[cfg(test)]
-#[path = "../tests/unit/local_playbook_acquisition.rs"]
-mod local_playbook_acquisition_tests;
 #[cfg(test)]
 #[path = "../tests/unit/native_fd_query.rs"]
 mod native_fd_query_tests;
@@ -238,10 +236,10 @@ pub use merkle_search_generation::search_owner_graph_fragment_digest;
 #[cfg(feature = "tantivy-accelerator")]
 pub use merkle_search_generation::search_projection_analyzer_digest;
 pub use playbook_receipt::SEARCH_PLAYBOOK_RECEIPT_SCHEMA_ID;
-pub use playbook_receipt::SearchPlaybookColdRgExecution;
 pub use playbook_receipt::SearchPlaybookPythonGraphExecution;
 pub use playbook_receipt::SearchPlaybookReceipt;
 pub use playbook_receipt::SearchPlaybookReceiptInput;
+pub use playbook_receipt::SearchPlaybookResidentLexicalExecution;
 pub use playbook_receipt::build_search_playbook_receipt;
 pub use progressive_playbook::{
     GraphNativeBlock, ProducerNativeBlock, ProgressiveSearchPlaybookError,
@@ -257,11 +255,6 @@ pub use provider_candidate_annotations::compact_provider_fact_value;
 pub use provider_candidate_annotations::provider_candidate_annotation_nodes;
 pub use provider_candidate_annotations::provider_facts_envelope_from_stdout;
 pub use provider_candidate_annotations::provider_facts_envelope_from_value;
-pub use provider_playbook_contract::{
-    ProviderSearchPlaybookContract, ProviderSearchPlaybookProjection,
-    SEARCH_PLAYBOOK_CONTRACT_PROJECTION_SCHEMA_ID, SearchPlaybookContractProjectionReceipt,
-    SearchPlaybookContractResult, resolve_provider_search_playbook_contract,
-};
 #[cfg(feature = "tantivy-accelerator")]
 pub use resident_byte_coverage::RESIDENT_BYTE_GRAM_WIDTH;
 #[cfg(feature = "tantivy-accelerator")]
@@ -356,12 +349,11 @@ pub use workspace_playbook_plan::WorkspaceSearchProvider;
 pub use workspace_playbook_plan::WorkspaceSearchWarmWork;
 pub use workspace_playbook_plan::build_workspace_search_playbook_plan;
 pub use workspace_playbook_result::{
-    WORKSPACE_SEARCH_PLAYBOOK_RESULT_SCHEMA_ID, WORKSPACE_SEARCH_QUERY_GRAMMAR,
-    WorkspaceSearchAxisKind, WorkspaceSearchClauseReceipt, WorkspaceSearchGraphFanIn,
-    WorkspaceSearchPlaybookEvidence, WorkspaceSearchPlaybookResult,
-    WorkspaceSearchPlaybookResultKind, WorkspaceSearchProgressiveExecutionWitness,
-    WorkspaceSearchSyntaxCandidate, build_workspace_search_playbook_result,
-    synthesize_workspace_search_playbook_result,
+    WORKSPACE_SEARCH_PLAYBOOK_RESULT_SCHEMA_ID, WorkspaceSearchAxisKind,
+    WorkspaceSearchClauseReceipt, WorkspaceSearchGraphFanIn, WorkspaceSearchPlaybookEvidence,
+    WorkspaceSearchPlaybookResult, WorkspaceSearchPlaybookResultKind,
+    WorkspaceSearchProgressiveExecutionWitness, WorkspaceSearchSyntaxCandidate,
+    build_workspace_search_playbook_result, synthesize_workspace_search_playbook_result,
 };
 
 #[cfg(test)]

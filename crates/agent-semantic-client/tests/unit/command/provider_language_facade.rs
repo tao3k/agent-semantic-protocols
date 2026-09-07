@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 use std::path::PathBuf;
 use std::process::Command;
@@ -71,7 +71,6 @@ fn structural_item_source_query_does_not_use_cli_breaker() {
         ])
         .current_dir(workspace_root())
         .env("ASP_STATE_HOME", state_home.path())
-        .env_remove("ASP_NO_AGENT")
         .output()
         .expect("run public exact-query facade");
 
@@ -93,7 +92,6 @@ fn gerbil_owner_source_query_enters_runtime_instead_of_the_cli_breaker() {
         ])
         .current_dir(workspace_root())
         .env("ASP_STATE_HOME", state_home.path())
-        .env_remove("ASP_NO_AGENT")
         .output()
         .expect("run public Gerbil owner-source query");
 
@@ -231,7 +229,6 @@ fn language_query_reports_missing_activation_through_client_bootstrap() {
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_asp"))
         .env_remove("ASP_STATE_HOME")
         .env_remove("ASP_RUNTIME_CLIENT_FD")
-        .env("ASP_NO_AGENT", "1")
         .env("HOME", temporary.path())
         .current_dir(&project_root)
         .args([

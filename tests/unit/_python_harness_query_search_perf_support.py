@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Support helpers for ASP Python search performance tests."""
 
 from __future__ import annotations
@@ -216,6 +220,4 @@ def _asp_env(args: list[str]) -> dict[str, str]:
         if not pythonpath
         else f"{PY_HARNESS_SRC}{os.pathsep}{pythonpath}"
     )
-    if "--json" in args:
-        env["ASP_NO_AGENT"] = "1"
     return env

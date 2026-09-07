@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 //! Single-layer public Search Playbook grammar.
 
 use serde::{Deserialize, Serialize};
@@ -10,39 +14,32 @@ const PLAYBOOK_OPTIONS: &[&str] = &[
     "--rg",
     "--tantivy",
     "--syntax",
+    "--native-syntax",
     "--graph",
 ];
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(untagged)]
-pub enum ProgressiveSearchPlaybookRequest {
-    ContractQuery {
-        #[serde(skip_serializing_if = "Option::is_none")]
-        languages: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        documents: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        workspace: Option<String>,
-    },
-    Execute {
-        #[serde(skip_serializing_if = "Option::is_none")]
-        languages: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        documents: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        workspace: Option<String>,
-        #[serde(skip_serializing_if = "Vec::is_empty")]
-        fd: Vec<Vec<String>>,
-        #[serde(skip_serializing_if = "Vec::is_empty")]
-        rg: Vec<Vec<String>>,
-        #[serde(skip_serializing_if = "Vec::is_empty")]
-        tantivy: Vec<Vec<String>>,
-        #[serde(skip_serializing_if = "Vec::is_empty")]
-        syntax: Vec<ProducerNativeBlock>,
-        #[serde(skip_serializing_if = "Vec::is_empty")]
-        graph: Vec<GraphNativeBlock>,
-        clause_order: Vec<SearchPlaybookClauseRef>,
-    },
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ProgressiveSearchPlaybookRequest {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub languages: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub documents: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub workspace: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub fd: Vec<Vec<String>>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub rg: Vec<Vec<String>>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub tantivy: Vec<Vec<String>>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub syntax: Vec<ProducerNativeBlock>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub native_syntax: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub graph: Vec<GraphNativeBlock>,
+    pub clause_order: Vec<SearchPlaybookClauseRef>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -66,6 +63,8 @@ pub enum SearchPlaybookClauseAxis {
     Rg,
     Tantivy,
     Syntax,
+    #[serde(rename = "native-syntax")]
+    NativeSyntax,
     Graph,
 }
 
@@ -79,6 +78,7 @@ pub struct SearchPlaybookClauseRef {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ProgressiveSearchPlaybookError {
     InvalidOperation,
+    IncompleteRequest(String),
     InvalidClauseOrder(String),
     UnsupportedOption(String),
 }
@@ -87,6 +87,9 @@ impl std::fmt::Display for ProgressiveSearchPlaybookError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::InvalidOperation => formatter.write_str("use `asp search playbook`"),
+            Self::IncompleteRequest(reason) => {
+                write!(formatter, "search-playbook-request-incomplete: {reason}")
+            }
             Self::InvalidClauseOrder(reason) => formatter.write_str(reason),
             Self::UnsupportedOption(option) => {
                 write!(
@@ -99,6 +102,17 @@ impl std::fmt::Display for ProgressiveSearchPlaybookError {
 }
 
 impl std::error::Error for ProgressiveSearchPlaybookError {}
+
+impl ProgressiveSearchPlaybookError {
+    pub fn reason_kind(&self) -> &'static str {
+        match self {
+            Self::IncompleteRequest(_) => "search-playbook-request-incomplete",
+            Self::InvalidOperation => "search-playbook-operation-invalid",
+            Self::InvalidClauseOrder(_) => "search-playbook-clause-order-invalid",
+            Self::UnsupportedOption(_) => "search-playbook-option-unsupported",
+        }
+    }
+}
 
 pub fn parse_progressive_search_playbook_args(
     args: &[String],
@@ -121,6 +135,7 @@ fn parse_playbook(
     let mut rg = Vec::new();
     let mut tantivy = Vec::new();
     let mut syntax = Vec::new();
+    let mut native_syntax = Vec::new();
     let mut graph = Vec::new();
     let mut clause_order = Vec::new();
     let mut graph_started = false;
@@ -162,11 +177,9 @@ fn parse_playbook(
                 reject_acquisition_after_graph(graph_started)?;
                 let mut block = native_block(args, &mut index, "--syntax")?;
                 if block.len() < 2 {
-                    return Ok(ProgressiveSearchPlaybookRequest::ContractQuery {
-                        languages,
-                        documents,
-                        workspace,
-                    });
+                    return Err(ProgressiveSearchPlaybookError::IncompleteRequest(
+                        "--syntax requires a registered producer and native query argv".to_owned(),
+                    ));
                 }
                 let producer = block.remove(0);
                 let block_index = syntax.len();
@@ -179,21 +192,27 @@ fn parse_playbook(
                     block_index,
                 });
             }
+            "--native-syntax" => {
+                reject_acquisition_after_graph(graph_started)?;
+                let selector = single_value(args, &mut index, "--native-syntax")?;
+                let block_index = native_syntax.len();
+                native_syntax.push(selector);
+                clause_order.push(SearchPlaybookClauseRef {
+                    axis: SearchPlaybookClauseAxis::NativeSyntax,
+                    block_index,
+                });
+            }
             "--graph" => {
                 if clause_order.is_empty() {
-                    return Ok(ProgressiveSearchPlaybookRequest::ContractQuery {
-                        languages,
-                        documents,
-                        workspace,
-                    });
+                    return Err(ProgressiveSearchPlaybookError::IncompleteRequest(
+                        "--graph requires a preceding acquisition clause".to_owned(),
+                    ));
                 }
                 let mut block = native_block(args, &mut index, "--graph")?;
                 if block.len() < 2 {
-                    return Ok(ProgressiveSearchPlaybookRequest::ContractQuery {
-                        languages,
-                        documents,
-                        workspace,
-                    });
+                    return Err(ProgressiveSearchPlaybookError::IncompleteRequest(
+                        "--graph requires a registered graph language and native argv".to_owned(),
+                    ));
                 }
                 let language = block.remove(0);
                 let block_index = graph.len();
@@ -222,14 +241,13 @@ fn parse_playbook(
         .iter()
         .any(|clause| clause.axis != SearchPlaybookClauseAxis::Graph);
     if (languages.is_none() && documents.is_none()) || !has_acquisition {
-        return Ok(ProgressiveSearchPlaybookRequest::ContractQuery {
-            languages,
-            documents,
-            workspace,
-        });
+        return Err(ProgressiveSearchPlaybookError::IncompleteRequest(
+            "Search Playbook requires --languages or --documents and at least one acquisition clause"
+                .to_owned(),
+        ));
     }
 
-    Ok(ProgressiveSearchPlaybookRequest::Execute {
+    Ok(ProgressiveSearchPlaybookRequest {
         languages,
         documents,
         workspace,
@@ -237,6 +255,7 @@ fn parse_playbook(
         rg,
         tantivy,
         syntax,
+        native_syntax,
         graph,
         clause_order,
     })

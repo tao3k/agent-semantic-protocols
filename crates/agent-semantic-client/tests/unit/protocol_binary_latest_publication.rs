@@ -1,11 +1,10 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 use super::ProtocolBinaryInstallPlan;
 use super::SEMANTIC_AGENT_PROTOCOL_BIN;
 use super::ensure_protocol_binary_installed;
-use super::install_protocol_binary_alias;
 use super::install_protocol_binary_target;
 use super::next_protocol_binary_publish_sequence;
 use super::protocol_binary_artifact_path_digest;
@@ -29,7 +28,7 @@ fn fixture_root(name: &str) -> PathBuf {
 async fn published_runtime_identity_lookup_never_reads_artifact_bytes() {
     let root = fixture_root("published-runtime-identity");
     let artifact_root = root.join("runtime/artifacts");
-    let target = root.join("runtime/bin/asp");
+    let target = root.join("home/.local/bin/asp");
     let source = fixture_source(&root, "source-asp", b"control-digest-fixture");
     let installed = install_protocol_binary_target(
         &source,
@@ -99,15 +98,16 @@ async fn lattice_profile_slots_and_multi_binary_switches_are_isolated() {
     let root = fixture_root("latest-aliases");
     let runtime = root.join("runtime");
     let artifact_root = runtime.join("artifacts");
-    let stable_entry = runtime.join("bin").join(SEMANTIC_AGENT_PROTOCOL_BIN);
-    let alias = root.join("path-bin").join(SEMANTIC_AGENT_PROTOCOL_BIN);
+    let stable_entry = root
+        .join("home/.local/bin")
+        .join(SEMANTIC_AGENT_PROTOCOL_BIN);
+    let alias = runtime.join("bin").join(SEMANTIC_AGENT_PROTOCOL_BIN);
     let source = fixture_source(&root, "source-asp", b"protocol-binary-v1");
     let plan = ProtocolBinaryInstallPlan {
         current_exe: source,
         explicit_candidate_source: None,
         target: stable_entry.clone(),
         artifact_root: artifact_root.clone(),
-        managed_path_aliases: vec![alias.clone()],
         binary_identity: RuntimeBinaryIdentityV1::asp_bootstrap(),
     };
 
@@ -115,8 +115,6 @@ async fn lattice_profile_slots_and_multi_binary_switches_are_isolated() {
         .await
         .expect("install Lattice protocol binary");
     commit_pending_runtime_activation(&root).await;
-    install_protocol_binary_alias(&alias, &stable_entry, &artifact_root)
-        .expect("publish PATH alias after resident activation");
     assert_eq!(installed.path, stable_entry);
     assert!(
         fs::symlink_metadata(&stable_entry)
@@ -176,7 +174,6 @@ async fn lattice_profile_slots_and_multi_binary_switches_are_isolated() {
             explicit_candidate_source: None,
             target: stable_entry.clone(),
             artifact_root: artifact_root.clone(),
-            managed_path_aliases: Vec::new(),
             binary_identity: RuntimeBinaryIdentityV1::asp_bootstrap(),
         },
         &[],
@@ -272,7 +269,9 @@ async fn loop_or_escape_fails_before_lattice_profile_switch() {
     let root = fixture_root("fail-closed");
     let runtime = root.join("runtime");
     let artifact_root = runtime.join("artifacts");
-    let stable_entry = runtime.join("bin").join(SEMANTIC_AGENT_PROTOCOL_BIN);
+    let stable_entry = root
+        .join("home/.local/bin")
+        .join(SEMANTIC_AGENT_PROTOCOL_BIN);
     let identity = RuntimeBinaryIdentityV1::asp_bootstrap();
     let first = fixture_source(&root, "source-asp-v1", b"protocol-binary-v1");
     install_protocol_binary_target(&first, &stable_entry, &artifact_root, &identity)
@@ -314,7 +313,9 @@ async fn lattice_reconciliation_retains_only_reachable_digest_generations() {
     let root = fixture_root("retention");
     let runtime = root.join("runtime");
     let artifact_root = runtime.join("artifacts");
-    let asp_target = runtime.join("bin").join(SEMANTIC_AGENT_PROTOCOL_BIN);
+    let asp_target = root
+        .join("home/.local/bin")
+        .join(SEMANTIC_AGENT_PROTOCOL_BIN);
     let harness_name = "asp-rust";
     let harness_target = runtime.join("bin").join(harness_name);
     let asp_identity = RuntimeBinaryIdentityV1::asp_bootstrap();
@@ -349,7 +350,6 @@ async fn lattice_reconciliation_retains_only_reachable_digest_generations() {
                 explicit_candidate_source: None,
                 target: asp_target.clone(),
                 artifact_root: artifact_root.clone(),
-                managed_path_aliases: Vec::new(),
                 binary_identity: RuntimeBinaryIdentityV1::asp_bootstrap(),
             },
             &[],
@@ -385,14 +385,15 @@ async fn developer_publication_uses_the_immutable_activation_transaction() {
     let state_home = root.join("state");
     let runtime_root = state_home.join("runtime");
     let artifact_root = runtime_root.join("artifacts");
-    let target = runtime_root.join("bin/asp");
+    let target = root.join("home/.local/bin/asp");
     let checkout = root.join("checkout");
     let source = checkout.join("target/debug/asp");
     fs::create_dir_all(source.parent().expect("developer build directory"))
         .expect("create developer build directory");
-    fs::create_dir_all(&state_home).expect("create state home");
+    fs::create_dir_all(state_home.join("control/config"))
+        .expect("create state-home control config directory");
     fs::write(
-        state_home.join("asp.toml"),
+        state_home.join("control/config/asp.toml"),
         format!("[dev]\nenabled = true\nroot = {:?}\n", checkout),
     )
     .expect("write developer authority config");
@@ -494,7 +495,7 @@ async fn release_publication_uses_the_same_immutable_activation_transaction() {
     let state_home = root.join("state");
     let runtime_root = state_home.join("runtime");
     let artifact_root = runtime_root.join("artifacts");
-    let target = runtime_root.join("bin/asp");
+    let target = root.join("home/.local/bin/asp");
     let source = root.join("release/asp");
     fs::create_dir_all(source.parent().expect("release source parent"))
         .expect("create release source parent");
@@ -554,7 +555,9 @@ async fn explicit_candidate_source_bytes_replace_existing_canonical_binary() {
     let root = fixture_root("explicit-candidate-source");
     let runtime = root.join("runtime");
     let artifact_root = runtime.join("artifacts");
-    let target = runtime.join("bin").join(SEMANTIC_AGENT_PROTOCOL_BIN);
+    let target = root
+        .join("home/.local/bin")
+        .join(SEMANTIC_AGENT_PROTOCOL_BIN);
     fs::create_dir_all(target.parent().expect("target parent")).expect("create target parent");
 
     let old_source = fixture_source(&root, "old-source-asp", b"old-asp");
@@ -574,7 +577,6 @@ async fn explicit_candidate_source_bytes_replace_existing_canonical_binary() {
         explicit_candidate_source: Some(candidate),
         target: target.clone(),
         artifact_root: artifact_root.clone(),
-        managed_path_aliases: vec![],
         binary_identity: RuntimeBinaryIdentityV1::asp_bootstrap(),
     };
 

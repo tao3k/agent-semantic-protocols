@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 //! Registers Git-tracked Hook matcher and Host role-dispatch scenarios.
 
 use asp_rust_project_harness_policy::AspRustProjectHarnessScenarioPackage;

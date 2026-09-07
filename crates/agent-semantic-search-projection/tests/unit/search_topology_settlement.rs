@@ -1,5 +1,9 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 use agent_semantic_search_projection::SearchTopologySettlement;
-use agent_semantic_topology::ProjectTopologyLibrary;
+use agent_semantic_topology::{ProjectTopologyLibrary, ProjectTopologyManifest};
 use std::collections::BTreeMap;
 
 fn valid_settlement() -> serde_json::Value {
@@ -18,7 +22,11 @@ fn valid_library() -> ProjectTopologyLibrary {
         "topology-rebuild-1".to_owned(),
         packet["fromScratchRebuildReceipt"].clone(),
     )]);
-    ProjectTopologyLibrary::admit_with_receipts(packet, &receipts)
+    let manifest = ProjectTopologyManifest::parse_org(include_str!(
+        "../../../../org/templates/project.topology-program.v1.org"
+    ))
+    .expect("Project Topology manifest");
+    ProjectTopologyLibrary::admit_with_receipts(packet, manifest.project_workspace(), &receipts)
         .expect("admitted Project Topology fixture")
 }
 
@@ -109,7 +117,7 @@ fn topology_settlement_rejects_unavailable_materialization_selectors() {
 #[test]
 fn topology_settlement_rejects_budget_terminal_without_a_real_fixed_point() {
     let mut packet = valid_settlement();
-    packet["fixedPoint"]["nextRelationSetDigest"] = serde_json::json!(
+    packet["inference"]["nextRelationSetDigest"] = serde_json::json!(
         "blake3-256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
     );
     let error = SearchTopologySettlement::admit(packet)
@@ -138,4 +146,81 @@ fn topology_settlement_renders_one_compact_polyglot_gql_result() {
     assert!(rendered.contains("proof:\"proof-path-42\""));
     assert!(rendered.contains("materialize:MaterializationSet"));
     assert!(rendered.contains("request_id:\"query-playbook-1\""));
+}
+
+#[test]
+fn executed_workspace_result_is_joined_to_topology_before_rendering() {
+    let library = valid_library();
+    let workspace_result = serde_json::json!({
+        "schemaId": "agent.semantic-protocols.workspace-search-playbook-result",
+        "schemaVersion": "1",
+        "result": "relationship-supported",
+        "evidence": [{
+            "owner": "src/registry.rs",
+            "item": "method/refresh_registry/scope/implementation-owner/type/Registry",
+            "selector": "rust://src/registry.rs#item/method/refresh_registry/scope/implementation-owner/type/Registry",
+            "matchedBy": ["rg:0", "syntax:0", "graph:0"],
+            "relation": "syntax-capture:method"
+        }]
+    });
+    let settlement = SearchTopologySettlement::from_workspace_result(
+        "search-request-1",
+        &workspace_result,
+        &library,
+    )
+    .expect("Runtime Search evidence joins the attached topology");
+
+    assert_eq!(settlement.as_json()["resultState"], "materializable");
+    assert_eq!(
+        settlement.as_json()["materializationSet"]["selectors"][0],
+        workspace_result["evidence"][0]["selector"]
+    );
+    assert!(
+        settlement
+            .render_org_gql()
+            .unwrap()
+            .contains("(registry)-[:DECLARES")
+    );
+}
+
+#[test]
+fn empty_workspace_result_still_renders_one_empty_gql_settlement() {
+    let settlement = SearchTopologySettlement::from_workspace_result(
+        "search-request-empty",
+        &serde_json::json!({
+            "schemaId": "agent.semantic-protocols.workspace-search-playbook-result",
+            "schemaVersion": "1",
+            "result": "no-match",
+            "evidence": []
+        }),
+        &valid_library(),
+    )
+    .expect("empty Search is a ready settlement");
+    assert_eq!(settlement.as_json()["resultState"], "empty");
+    assert_eq!(settlement.as_json()["materializationSet"]["state"], "empty");
+    let rendered = settlement.render_org_gql().unwrap();
+    assert_eq!(rendered.matches("#+begin_src gql").count(), 1);
+    assert_eq!(rendered.matches("#+end_src").count(), 1);
+}
+
+#[test]
+fn workspace_result_cannot_mint_a_selector_absent_from_attached_topology() {
+    let error = SearchTopologySettlement::from_workspace_result(
+        "search-request-stale",
+        &serde_json::json!({
+            "schemaId": "agent.semantic-protocols.workspace-search-playbook-result",
+            "schemaVersion": "1",
+            "result": "exact-selector-ready",
+            "evidence": [{
+                "owner": "src/missing.rs",
+                "item": "function/missing",
+                "selector": "rust://src/missing.rs#item/function/missing",
+                "matchedBy": ["native-syntax:0"],
+                "relation": "native-selector"
+            }]
+        }),
+        &valid_library(),
+    )
+    .expect_err("flat evidence cannot bypass topology authority");
+    assert_eq!(error.reason_kind(), "search-selector-absent-from-topology");
 }

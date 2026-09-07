@@ -1,3 +1,7 @@
+-- SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+--
+-- SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 import Lean.Elab.Tactic.Omega
 
 namespace ASPProof.SearchRouteOrthogonalCacheCredits
@@ -271,4 +275,3 @@ theorem model_prefix_receipt_survives_unrelated_graph_change :
     ]
 
 end ASPProof.SearchRouteOrthogonalCacheCredits
-

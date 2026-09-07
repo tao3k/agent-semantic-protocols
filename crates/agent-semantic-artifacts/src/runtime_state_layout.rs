@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
-// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-only
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 //! Canonical typed layout for generated Runtime State Home objects.
 //!
@@ -19,6 +19,16 @@ pub struct RuntimeStateLayout {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RuntimeServingStateLayout {
+    root: PathBuf,
+}
+
+/// Ephemeral Runtime transport paths derived from the authoritative State Home.
+///
+/// Endpoint receipts and all durable identity remain under `RuntimeServingStateLayout`.
+/// Unix socket inodes use a short, digest-bound OS runtime path because Darwin's
+/// `sockaddr_un.sun_path` cannot represent an arbitrary State Home path.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RuntimeTransportStateLayout {
     root: PathBuf,
 }
 
@@ -60,6 +70,45 @@ impl RuntimeStateLayout {
         RuntimeServingStateLayout {
             root: self.root.join("serving"),
         }
+    }
+
+    pub fn transport(&self) -> RuntimeTransportStateLayout {
+        let identity = blake3::hash(
+            format!(
+                "agent.semantic-protocols.runtime-transport.v1:{}",
+                self.state_home.display()
+            )
+            .as_bytes(),
+        )
+        .to_hex();
+        #[cfg(unix)]
+        let base = PathBuf::from("/tmp");
+        #[cfg(not(unix))]
+        let base = std::env::temp_dir();
+        RuntimeTransportStateLayout {
+            root: base.join(format!(
+                "asp-runtime-{}",
+                identity.as_str().get(..16).expect("BLAKE3 hex prefix")
+            )),
+        }
+    }
+}
+
+impl RuntimeTransportStateLayout {
+    pub fn root(&self) -> &Path {
+        &self.root
+    }
+
+    pub fn python_graphs_socket(&self) -> PathBuf {
+        self.root.join("graphs.sock")
+    }
+
+    pub fn opentelemetry_socket(&self) -> PathBuf {
+        self.root.join("otel.sock")
+    }
+
+    pub fn opentelemetry_query_socket(&self) -> PathBuf {
+        self.root.join("otel-query.sock")
     }
 }
 
@@ -138,18 +187,6 @@ impl RuntimeServingStateLayout {
 
     pub fn identity_monitor_receipt(&self) -> PathBuf {
         self.root.join("identity-monitor.v1.json")
-    }
-
-    pub fn python_graphs_socket(&self) -> PathBuf {
-        self.root.join("asp-python-graphs.sock")
-    }
-
-    pub fn opentelemetry_socket(&self) -> PathBuf {
-        self.root.join("opentelemetry.sock")
-    }
-
-    pub fn opentelemetry_query_socket(&self) -> PathBuf {
-        self.root.join("opentelemetry-query.sock")
     }
 
     pub fn lifecycle_receipt(&self, name: RuntimeLifecycleReceiptName) -> PathBuf {

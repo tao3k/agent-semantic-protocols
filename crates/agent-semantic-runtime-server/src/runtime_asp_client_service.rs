@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -57,36 +61,11 @@ pub fn workspace_search_providers_from_provider_register(
                     provider.language_id
                 ));
             }
-            let search_playbook_contract = provider
-                .registration_field("searchPlaybookContract")
-                .ok()
-                .map(|value| {
-                    serde_json::from_value::<agent_semantic_search::ProviderSearchPlaybookContract>(
-                        value.clone(),
-                    )
-                    .map_err(|error| {
-                        format!(
-                            "provider searchPlaybookContract is invalid: languageId={}: {error}",
-                            provider.language_id
-                        )
-                    })
-                })
-                .transpose()?;
-            if search_playbook_contract.as_ref().is_some_and(|contract| {
-                contract.language_id != provider.language_id
-                    || contract.provider_id != provider.provider_id
-            }) {
-                return Err(format!(
-                    "provider searchPlaybookContract identity mismatch: languageId={}",
-                    provider.language_id
-                ));
-            }
             Ok(WorkspaceSearchProvider {
                 language_id: provider.language_id.clone(),
                 provider_id: provider.provider_id.clone(),
                 source_extensions,
                 search_supported,
-                search_playbook_contract,
             })
         })
         .collect::<Result<Vec<_>, String>>()?;
@@ -105,6 +84,32 @@ pub fn workspace_search_providers_from_provider_register(
 #[derive(Clone)]
 pub(super) struct InitializedWorkspace {
     pub(super) project_root: std::path::PathBuf,
+    pub(super) host_workspace: agent_semantic_content_identity::HostWorkspaceInitializationBinding,
+}
+
+pub type HostWorkspaceInitializationBindingResolver = Arc<
+    dyn Fn(
+            &std::path::Path,
+        )
+            -> Result<agent_semantic_content_identity::HostWorkspaceInitializationBinding, String>
+        + Send
+        + Sync,
+>;
+
+impl InitializedWorkspace {
+    fn from_project_root(
+        project_root: std::path::PathBuf,
+        resolver: &HostWorkspaceInitializationBindingResolver,
+    ) -> Result<Self, String> {
+        let host_workspace = resolver(&project_root)?;
+        host_workspace
+            .validate()
+            .map_err(|error| format!("invalid Host workspace initialization binding: {error}"))?;
+        Ok(Self {
+            project_root,
+            host_workspace,
+        })
+    }
 }
 
 #[derive(Clone)]
@@ -127,6 +132,15 @@ pub struct RuntimeAspClientDispatcher {
     pub(super) query_generation_authority: RuntimeQueryGenerationAuthority,
     pub(super) telemetry_sender:
         agent_semantic_client_db::runtime_telemetry_bus::RuntimeTelemetryBusSender,
+    pub(super) telemetry_traces: Arc<
+        Mutex<
+            HashMap<
+                ClientRequestKey,
+                agent_semantic_client_db::runtime_server_opentelemetry::RuntimeSearchTelemetryTrace,
+            >,
+        >,
+    >,
+    pub(super) active_telemetry_trace_count: Arc<std::sync::atomic::AtomicUsize>,
     pub(super) cancellations:
         Arc<Mutex<HashMap<ClientRequestKey, tokio::sync::watch::Sender<bool>>>>,
     pub(super) cancellation_admitted: Arc<tokio::sync::Notify>,
@@ -162,6 +176,8 @@ impl RuntimeAspClientDispatcher {
             workspace_store_root,
             query_generation_authority,
             telemetry_sender,
+            telemetry_traces: Arc::new(Mutex::new(HashMap::new())),
+            active_telemetry_trace_count: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
             cancellations: Arc::new(Mutex::new(HashMap::new())),
             cancellation_admitted: Arc::new(tokio::sync::Notify::new()),
         }
@@ -184,6 +200,7 @@ pub fn build_frame_service(
         agent_semantic_client_db::runtime_provider_register::RuntimeProviderRegister,
     >,
     workspace_store_root: std::path::PathBuf,
+    host_workspace_resolver: HostWorkspaceInitializationBindingResolver,
     query_generation_authority: RuntimeQueryGenerationAuthority,
     telemetry_sender: agent_semantic_client_db::runtime_telemetry_bus::RuntimeTelemetryBusSender,
 ) -> Result<Arc<AspClientFrameService<RuntimeAspClientDispatcher>>, String> {
@@ -210,6 +227,7 @@ pub fn build_frame_service(
             let catalog_generation = catalog_generation.clone();
             let provider_targets = Arc::clone(&catalog_provider_targets);
             let generation_admission = Arc::clone(&generation_admission);
+            let host_workspace_resolver = Arc::clone(&host_workspace_resolver);
             async move {
                 let project_root = generation_admission
                     .resolve_project_workspace_root(&project_id, &workspace_id)?;
@@ -221,16 +239,21 @@ pub fn build_frame_service(
                     blake3::hash(format!("{project_id}\0{workspace_id}").as_bytes()).to_hex()
                 );
                 let key = (project_id, workspace_id, session_id);
-                let initialized = InitializedWorkspace {
-                    project_root: project_root.clone(),
-                };
+                let initialized = InitializedWorkspace::from_project_root(
+                    project_root.clone(),
+                    &host_workspace_resolver,
+                )?;
                 let mut workspaces = initialized_workspaces
                     .lock()
                     .map_err(|_| "ASP client workspace-root registry poisoned".to_owned())?;
                 if let Some(current) = workspaces.get(&key)
-                    && current.project_root != project_root
+                    && (current.project_root != project_root
+                        || current.host_workspace != initialized.host_workspace)
                 {
-                    return Err("client session was rebound to a different projectRoot".to_owned());
+                    return Err(
+                        "client session was rebound to a different projectRoot or Project Topology manifest"
+                            .to_owned(),
+                    );
                 }
                 workspaces.insert(key, initialized);
                 agent_semantic_client_protocol::server_client_catalog(

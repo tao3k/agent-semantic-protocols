@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 #+TITLE: RFC: Agent Hook Interception Protocol
 #+AUTHOR: agent-semantic-protocols
 #+DATE: 2026-05-31
@@ -110,13 +114,15 @@ The runtime is intentionally language-neutral:
 - maintain only shared hook state: prime/search evidence, dirty activation paths,
   changed-check evidence, and subagent receipt evidence.
 
-The root runtime also owns the managed =asp-explore= =subagent-stop= receipt
-gate. For read-only ASP-managed child sessions, the final subagent message is
-valid only when it contains selector-only =[asp-search-subagent]= receipts with
-=owner=, =read=, and =next= fields. Receipts that contain source bodies,
-snippets, line-range selectors, confidence labels, long explanations, or
-"not found" inventories are malformed and must be denied with a recovery action
-that asks the same child session to re-emit compact selector receipts.
+The root runtime also owns the managed =asp-explore= =subagent-stop= output
+gate. For read-only ASP-managed child sessions, a successful Search final
+message is valid only when its entire content is exactly one Org source block
+whose language is =gql= and whose headers are
+=:profile search-evidence.v1 :eval never=. Prose, Markdown fences, flat receipt
+rows, command grammars, source bodies, snippets, line-range selectors, and
+prescribed next actions are malformed. Recovery asks the same child session to
+re-emit the single canonical Org/GQL graph; it does not expose an alternative
+Example/Grammar renderer.
 The runtime must not call compiler parsers or inspect language syntax.  It
 constructs safe next commands from provider manifests and lets the provider
 binary own search/check semantics.
@@ -222,10 +228,9 @@ default, using the official standalone custom-agent TOML shape with =name=, =des
 ASP exploration can run on cheap, read-only workers.  For Claude Code, install
 creates the matching =.claude/agents/asp-explorer.md= profile by default with YAML
 frontmatter, model =haiku=, =permissionMode: plan=, and bounded turn budgets.
-The parent or main agent, not the hook, owns the shared reasoning tree and
-receipt ledger.  It may spawn several instances of the same =asp-explorer=
-profile, one per =actionFrontier= or =targetActions= reasoning branch, then fan
-in selector-only =[asp-search-subagent]= receipts, update the tree, and
+The parent or main agent, not the hook, owns the shared reasoning tree.  It may
+spawn several instances of the same =asp-explorer= profile, one per independent
+search axis, then fan in each child’s single admitted Org/GQL graph and
 optionally issue another round before final main-model verification.  Worker
 instances do not share context windows; their only shared state is the
 parent-owned branch prompt plus receipt ledger.  The installer SHOULD remove stale generated

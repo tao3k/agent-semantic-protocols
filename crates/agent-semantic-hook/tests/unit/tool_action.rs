@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 use agent_semantic_hook::HookRuntime;
 use agent_semantic_hook::bind_plugin_host_matcher;
 use agent_semantic_hook::classify_hook;

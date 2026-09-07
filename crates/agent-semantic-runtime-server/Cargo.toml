@@ -1,5 +1,10 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 [package]
 name = "agent-semantic-runtime-server"
+license.workspace = true
 version.workspace = true
 edition.workspace = true
 
@@ -29,6 +34,7 @@ agent-semantic-client-core = { path = "../agent-semantic-client-core" }
 agent-semantic-client-protocol = { path = "../agent-semantic-client-protocol" }
 agent-semantic-search = { path = "../agent-semantic-search" }
 agent-semantic-search-projection = { path = "../agent-semantic-search-projection" }
+agent-semantic-topology = { path = "../agent-semantic-topology" }
 agent-semantic-client-server = { path = "../agent-semantic-client-server" }
 gql-catalog.workspace = true
 gql-compiler.workspace = true
