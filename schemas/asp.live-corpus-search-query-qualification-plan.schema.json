@@ -91,11 +91,12 @@
     "clientProtocolContract": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["protocolId", "protocolVersion", "transport", "phases", "requiredTelemetryEvents", "appliesToCaseCount", "maximumResidentMicros", "sessionPolicy", "readyEffects", "forbiddenReadyEffects", "nonReadyDispatchCount", "residualTaskCount", "p50MaximumMicros", "p99MaximumMicros", "maxMaximumMicros"],
+      "required": ["protocolId", "protocolVersion", "transport", "workspaceScheduling", "phases", "requiredTelemetryEvents", "appliesToCaseCount", "maximumResidentMicros", "sessionPolicy", "readyEffects", "forbiddenReadyEffects", "nonReadyDispatchCount", "residualTaskCount", "p50MaximumMicros", "p99MaximumMicros", "maxMaximumMicros"],
       "properties": {
         "protocolId": { "const": "agent.semantic-protocols.client" },
         "protocolVersion": { "const": "1" },
         "transport": { "const": "grpc-tokio-streams" },
+        "workspaceScheduling": { "const": "tokio-join-set" },
         "phases": { "const": ["initialize", "catalog", "request", "cancel", "cancelled", "shutdown"] },
         "requiredTelemetryEvents": { "$ref": "#/$defs/requiredClientProtocolTelemetryEvents" },
         "appliesToCaseCount": { "const": 17 },
@@ -121,7 +122,7 @@
         "providerId",
         "search",
         "query",
-        "zeroMatchTerms",
+        "zeroMatchSearch",
         "requiredTelemetryEvents"
       ],
       "properties": {
@@ -133,18 +134,20 @@
         "search": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["method", "terms", "view", "minimumCandidates", "maximumResidentMicros"],
+          "required": ["rg", "tantivy", "minimumCandidates", "maximumSearchMicros"],
           "properties": {
-            "method": { "const": "lexical" },
-            "terms": {
+            "rg": {
               "type": "array",
               "minItems": 1,
-              "uniqueItems": true,
+              "items": { "type": "string" }
+            },
+            "tantivy": {
+              "type": "array",
+              "minItems": 1,
               "items": { "type": "string", "minLength": 1 }
             },
-            "view": { "const": "seeds" },
             "minimumCandidates": { "type": "integer", "minimum": 1 },
-            "maximumResidentMicros": { "type": "integer", "minimum": 1, "maximum": 1000 }
+            "maximumSearchMicros": { "type": "integer", "minimum": 1, "maximum": 500000 }
           }
         },
         "query": {
@@ -158,11 +161,24 @@
             "maximumResidentMicros": { "type": "integer", "minimum": 1, "maximum": 1000 }
           }
         },
-        "zeroMatchTerms": {
-          "type": "array",
-          "minItems": 1,
-          "uniqueItems": true,
-          "items": { "type": "string", "minLength": 1 }
+        "zeroMatchSearch": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["rg", "tantivy", "minimumCandidates", "maximumSearchMicros"],
+          "properties": {
+            "rg": {
+              "type": "array",
+              "minItems": 1,
+              "items": { "type": "string" }
+            },
+            "tantivy": {
+              "type": "array",
+              "minItems": 1,
+              "items": { "type": "string", "minLength": 1 }
+            },
+            "minimumCandidates": { "const": 0 },
+            "maximumSearchMicros": { "type": "integer", "minimum": 1, "maximum": 500000 }
+          }
         },
         "requiredTelemetryEvents": {
           "type": "array",

@@ -387,6 +387,70 @@ async fn provider_hint_cannot_downgrade_the_complete_generation_barrier() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn provider_demand_rebuilds_a_ready_generation_for_its_exact_target() {
+    let fixture = tempfile::tempdir().expect("provider successor fixture");
+    let project_root = fixture.path().to_path_buf();
+    run_git(&project_root, &["init", "--quiet"]);
+    fs::create_dir_all(project_root.join("src")).expect("create source root");
+    fs::write(
+        project_root.join("src/lib.rs"),
+        "pub fn provider_successor_owner() -> u8 { 1 }\n",
+    )
+    .expect("write source owner");
+    run_git(&project_root, &["add", "src/lib.rs"]);
+    let workspace_identity =
+        agent_semantic_client_db::AgentSessionRegistry::workspace_id(&project_root)
+            .expect("derive canonical workspace identity");
+
+    let build_count = Arc::new(AtomicUsize::new(0));
+    let observed_targets = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let admission = WorkspaceGenerationAdmission::new(Arc::new({
+        let build_count = Arc::clone(&build_count);
+        let observed_targets = Arc::clone(&observed_targets);
+        move |workspace_identity,
+              _project_root,
+              candidate,
+              _build_mode,
+              _changed_paths,
+              provider_target,
+              _cancellation| {
+            build_count.fetch_add(1, Ordering::SeqCst);
+            observed_targets
+                .lock()
+                .expect("provider target observations")
+                .push(provider_target.clone());
+            Box::pin(async move { completed_generation(&workspace_identity, candidate) })
+        }
+    }));
+
+    admission
+        .ensure_runtime_generation_ready(workspace_identity.clone(), project_root.clone())
+        .await
+        .expect("publish initial complete generation");
+    let provider_target = WorkspaceGenerationProviderTarget {
+        language_id: "rust".to_owned(),
+        provider_id: Some("asp-rust".to_owned()),
+    };
+    admission
+        .ensure_runtime_generation_ready_for_provider(
+            workspace_identity,
+            project_root,
+            Some(provider_target.clone()),
+        )
+        .await
+        .expect("publish provider-bound complete-generation successor");
+
+    assert_eq!(build_count.load(Ordering::SeqCst), 2);
+    assert_eq!(
+        *observed_targets
+            .lock()
+            .expect("provider target observations"),
+        vec![None, Some(provider_target)]
+    );
+    admission.shutdown().await.expect("drain admission lane");
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn readiness_request_joins_complete_generation_build_without_rebuilding() {
     let fixture = tempfile::tempdir().expect("complete generation join fixture");
     let project_root = fixture.path().to_path_buf();
@@ -451,17 +515,31 @@ async fn readiness_request_joins_complete_generation_build_without_rebuilding() 
         .expect("complete-generation build semaphore")
         .forget();
 
-    assert_eq!(
-        admission
-            .request_runtime_generation_ready(workspace_identity.clone(), project_root.clone(),)
-            .expect("join complete-generation admission"),
-        WorkspaceGenerationReadinessRequestState::Accepted
+    let cold_started = std::time::Instant::now();
+    let cold = admission
+        .request_runtime_generation_ready(workspace_identity.clone(), project_root.clone())
+        .expect("join complete-generation admission");
+    let cold_elapsed = cold_started.elapsed();
+    assert_eq!(cold, WorkspaceGenerationReadinessRequestState::Accepted);
+    assert!(
+        cold_elapsed < Duration::from_micros(1_000),
+        "cold detached-admission acknowledgement must be sub-millisecond: {cold_elapsed:?}"
     );
-    assert_eq!(
-        admission
-            .request_runtime_generation_ready(workspace_identity.clone(), project_root.clone(),)
-            .expect("coalesce duplicate readiness request"),
-        WorkspaceGenerationReadinessRequestState::Coalesced
+
+    let warm_started = std::time::Instant::now();
+    let warm = admission
+        .request_runtime_generation_ready(workspace_identity.clone(), project_root.clone())
+        .expect("coalesce duplicate readiness request");
+    let warm_elapsed = warm_started.elapsed();
+    assert_eq!(warm, WorkspaceGenerationReadinessRequestState::Coalesced);
+    assert!(
+        warm_elapsed < Duration::from_micros(1_000),
+        "warm detached-admission coalescing must be sub-millisecond: {warm_elapsed:?}"
+    );
+    eprintln!(
+        "resident request-plane receipt: coldMicros={} warmMicros={} generationWaitCount=0 generationBuildCount=0 providerProcessCount=0 parserInvocationCount=0",
+        cold_elapsed.as_micros(),
+        warm_elapsed.as_micros(),
     );
 
     first_build_release.add_permits(1);

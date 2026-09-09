@@ -23,11 +23,10 @@ fn case(case_id: &str, language_id: &str, resource_id: &str) -> QualificationCas
         language_id: language_id.to_owned(),
         provider_id: format!("asp-{language_id}"),
         search: QualificationSearch {
-            method: "lexical".to_owned(),
-            terms: vec!["owner".to_owned()],
-            view: "seeds".to_owned(),
+            rg: vec!["-n".to_owned(), "owner".to_owned(), ".".to_owned()],
+            tantivy: vec!["title:\"owner authority\"^2 OR body:owner".to_owned()],
             minimum_candidates: 1,
-            maximum_resident_micros: 1_000,
+            maximum_search_micros: 500_000,
         },
         query: QualificationQuery {
             selector_strategy: "first-ranked-parser-owned".to_owned(),
@@ -35,7 +34,16 @@ fn case(case_id: &str, language_id: &str, resource_id: &str) -> QualificationCas
             projection_scope: "live-corpus".to_owned(),
             maximum_resident_micros: 1_000,
         },
-        zero_match_terms: vec!["definitely-absent".to_owned()],
+        zero_match_search: QualificationSearch {
+            rg: vec![
+                "-n".to_owned(),
+                "definitely-absent".to_owned(),
+                ".".to_owned(),
+            ],
+            tantivy: vec!["title:\"definitely absent\"^2 OR body:definitely-absent".to_owned()],
+            minimum_candidates: 0,
+            maximum_search_micros: 500_000,
+        },
         required_telemetry_events: Vec::new(),
     }
 }
@@ -170,16 +178,19 @@ fn qualification_receipts_are_partitioned_by_language_and_resource() {
     let state_home = Path::new("/state-home");
     assert_eq!(
         qualification_receipt_path(state_home, None, None),
-        state_home.join("runtime/live-corpus/search-query-qualification.json")
+        state_home.join("resources/live-corpus/receipts/search-query-qualification.json")
     );
     assert_eq!(
         qualification_receipt_path(state_home, Some("rust"), None),
-        state_home.join("runtime/live-corpus/search-query-qualification/by-language/rust.json")
+        state_home.join(
+            "resources/live-corpus/receipts/search-query-qualification/by-language/rust.json"
+        )
     );
     assert_eq!(
         qualification_receipt_path(state_home, Some("rust"), Some("rust.tokio")),
-        state_home
-            .join("runtime/live-corpus/search-query-qualification/by-resource/rust.tokio.json")
+        state_home.join(
+            "resources/live-corpus/receipts/search-query-qualification/by-resource/rust.tokio.json"
+        )
     );
 }
 

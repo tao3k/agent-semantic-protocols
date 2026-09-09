@@ -14,6 +14,7 @@ from referencing import Registry, Resource
 ROOT = Path(__file__).resolve().parents[2]
 SCHEMA_ROOT = ROOT / "schemas"
 SCHEMA_NAMES = (
+    "semantic-search-definitions.v1.schema.json",
     "source-snapshot-evidence.v1.schema.json",
     "workspace-generation-root-evidence.v1.schema.json",
     "search-generation-graph-request.v1.schema.json",
@@ -120,3 +121,8 @@ def test_generation_graph_receipt_rejects_legacy_or_empty_frontier() -> None:
     legacy["seedIds"] = legacy.pop("entryNodeIds")
     with pytest.raises(ValidationError):
         validator.validate(legacy)
+
+    partial_identity = copy.deepcopy(payload)
+    partial_identity["identity"].pop("providerDigest")
+    with pytest.raises(ValidationError):
+        validator.validate(partial_identity)

@@ -104,7 +104,12 @@ pub fn compile_serving_hook_policy_bundle() -> Result<Vec<u8>, String> {
     )
 }
 
-fn compile_serving_hook_policy_bundle_at(
+/// Compile the serving Hook policy from an explicit State Home config path.
+///
+/// Control-plane acceptance uses this read-only entry point so it can measure
+/// the same overlay that the dedicated Hook process will serve without
+/// mutating process-global environment variables.
+pub fn compile_serving_hook_policy_bundle_at(
     path: Option<&std::path::Path>,
 ) -> Result<Vec<u8>, String> {
     let Some(path) = path else {

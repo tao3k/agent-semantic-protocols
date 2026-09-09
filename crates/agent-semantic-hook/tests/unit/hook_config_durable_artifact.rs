@@ -60,11 +60,9 @@ fn compiled_registered_asp_search_rule_matches_its_production_action() {
     let runtime = HookRuntime {
         policy_providers: config.provider_projections.clone(),
         project_root: ".".to_owned(),
-        rankers: Vec::new(),
-        providers: Vec::new(),
     };
     let action = ToolAction::normalized_shell_command_action(
-        "asp search playbook --language rust 'HookDecision' --workspace .".to_owned(),
+        "asp search playbook --language rust --rg HookDecision".to_owned(),
         "Bash".to_owned(),
     );
 
@@ -105,8 +103,6 @@ fn durable_hydration_rematerializes_declarative_actions_and_profiles() {
     let runtime = HookRuntime {
         policy_providers: hydrated.provider_projections.clone(),
         project_root: ".".to_owned(),
-        rankers: Vec::new(),
-        providers: Vec::new(),
     };
     let action = ToolAction::normalized_shell_command_action(
         "opaque-source-consumer < src/plan.rs".to_owned(),
@@ -162,8 +158,6 @@ fn command_shard_covers_every_configured_profile_and_rule_pattern_without_litera
         .expect("compile command-profile decision shard");
     let runtime = crate::HookRuntime {
         project_root: ".".to_owned(),
-        rankers: Vec::new(),
-        providers: Vec::new(),
         policy_providers: live.provider_projections.clone(),
     };
     let configured_prefixes = live

@@ -14,7 +14,7 @@ fn operation() -> ProviderRuntimeContractOperation {
             schema_version: "1".to_owned(),
         },
         response_schema: agent_semantic_provider_protocol::ProviderSchemaReference {
-            schema_id: "agent.semantic-protocols.semantic-search-packet".to_owned(),
+            schema_id: "agent.semantic-protocols.provider-native-exact-projection".to_owned(),
             schema_version: "1".to_owned(),
         },
     }

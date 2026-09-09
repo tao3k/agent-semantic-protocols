@@ -329,7 +329,7 @@ The Rust canonical reducer owns:
 - policy, dependency, budget, lease, and event ordering;
 - admission, grant, exactly-once consumption, and closure authority.
 
-No client, provider, wrapper, or language harness may reimplement a weaker
+No client, provider, wrapper, or ASP language provider may reimplement a weaker
 closure rule.
 
 * Conformance model

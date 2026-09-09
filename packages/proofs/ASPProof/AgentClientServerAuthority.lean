@@ -18,45 +18,70 @@ structure AuthorityKey where
   overlayIdentity : Option String
 deriving DecidableEq
 
-inductive LanguageSurfaceKind where
-  | programmingLanguage
-  | embeddedDocument
+inductive SearchProducerAxis where
+  | language
+  | document
 deriving DecidableEq
 
-def languageSurfaceKind (languageId : String) : LanguageSurfaceKind :=
-  if languageId = "org" ∨ languageId = "md" then
-    .embeddedDocument
-  else
-    .programmingLanguage
+structure SearchSchemaProfile where
+  producerId : String
+  searchProducerAxes : List SearchProducerAxis
+deriving DecidableEq
 
-def canonicalProviderId (languageId : String) : Option String :=
-  match languageSurfaceKind languageId with
-  | .programmingLanguage => some ("asp-" ++ languageId)
-  | .embeddedDocument => none
+structure RuntimeSearchProviderRegistration where
+  producerId : String
+  providerId : String
+  searchEnabled : Bool
+deriving DecidableEq
 
-def ProviderIdentityValid (authority : AuthorityKey) : Prop :=
-  canonicalProviderId authority.languageId = some authority.providerId
+def SearchProducerAdmitted
+    (profiles : List SearchSchemaProfile)
+    (registrations : List RuntimeSearchProviderRegistration)
+    (axis : SearchProducerAxis)
+    (authority : AuthorityKey) : Prop :=
+  (∃ profile ∈ profiles,
+      profile.producerId = authority.languageId ∧
+      axis ∈ profile.searchProducerAxes) ∧
+  (∃ registration ∈ registrations,
+      registration.producerId = authority.languageId ∧
+      registration.providerId = authority.providerId ∧
+      registration.searchEnabled = true)
 
-theorem validProviderIdentityIsLanguageDerived
+theorem provider_registration_without_schema_profile_is_not_admitted
+    (registrations : List RuntimeSearchProviderRegistration)
+    (axis : SearchProducerAxis)
+    (authority : AuthorityKey) :
+    ¬ SearchProducerAdmitted [] registrations axis authority := by
+  simp [SearchProducerAdmitted]
+
+theorem schema_profile_on_wrong_axis_is_not_admitted
+    (profile : SearchSchemaProfile)
+    (registrations : List RuntimeSearchProviderRegistration)
+    (axis : SearchProducerAxis)
     (authority : AuthorityKey)
-    (valid : ProviderIdentityValid authority) :
-    authority.providerId = "asp-" ++ authority.languageId := by
-  by_cases document : authority.languageId = "org" ∨ authority.languageId = "md"
-  · simp [ProviderIdentityValid, canonicalProviderId, languageSurfaceKind, document] at valid
-  · simpa [ProviderIdentityValid, canonicalProviderId, languageSurfaceKind, document] using valid.symm
+    (sameProducer : profile.producerId = authority.languageId)
+    (wrongAxis : axis ∉ profile.searchProducerAxes) :
+    ¬ SearchProducerAdmitted [profile] registrations axis authority := by
+  simp [SearchProducerAdmitted, sameProducer, wrongAxis]
 
-example : canonicalProviderId "rust" = some "asp-rust" := by decide
-example : canonicalProviderId "org" = none := by decide
-example : canonicalProviderId "md" = none := by decide
+theorem schema_profile_without_runtime_provider_is_not_admitted
+    (profiles : List SearchSchemaProfile)
+    (axis : SearchProducerAxis)
+    (authority : AuthorityKey) :
+    ¬ SearchProducerAdmitted profiles [] axis authority := by
+  simp [SearchProducerAdmitted]
 
-def providerContractEligible (languageId : String) : Prop :=
-  languageSurfaceKind languageId = .programmingLanguage
-
-theorem embedded_document_cannot_inherit_provider_contract
-    (languageId : String)
-    (document : languageSurfaceKind languageId = .embeddedDocument) :
-    ¬ providerContractEligible languageId := by
-  simp [providerContractEligible, document]
+theorem schema_profile_and_runtime_provider_admit_exact_axis
+    (axis : SearchProducerAxis)
+    (authority : AuthorityKey) :
+    SearchProducerAdmitted
+      [{ producerId := authority.languageId, searchProducerAxes := [axis] }]
+      [{ producerId := authority.languageId,
+         providerId := authority.providerId,
+         searchEnabled := true }]
+      axis
+      authority := by
+  simp [SearchProducerAdmitted]
 
 structure CanonicalSchemaRoot where
   name : String
@@ -154,18 +179,6 @@ theorem provider_runtime_operation_requires_structured_schema_references
     operation.requestSchema.schemaVersion = "1" ∧
     operation.responseSchema.schemaVersion = "1" := by
   exact ⟨valid.2.2.1, valid.2.2.2.2⟩
-
-theorem embedded_document_surface_has_no_provider_authority
-    (languageId : String)
-    (document : languageSurfaceKind languageId = .embeddedDocument) :
-    canonicalProviderId languageId = none := by
-  simp [canonicalProviderId, document]
-
-theorem embedded_document_surface_cannot_enter_provider_generation
-    (authority : AuthorityKey)
-    (document : languageSurfaceKind authority.languageId = .embeddedDocument) :
-    ¬ ProviderIdentityValid authority := by
-  simp [ProviderIdentityValid, canonicalProviderId, document]
 
 inductive TerminalStatus where
   | completed
@@ -328,5 +341,27 @@ theorem clientCatalogAdmissionCannotLaunchProvider
       clientLaunchesProvider (.request method) = false := by
   intro _
   rfl
+
+inductive ProviderHttpOperationClass where
+  | lifecycleProbe
+  | generationFrame
+deriving DecidableEq
+
+def adapterMayOwnWallClockDeadline : ProviderHttpOperationClass → Bool
+  | .lifecycleProbe => true
+  | .generationFrame => false
+
+theorem lifecycleProbeMayUseAdapterDeadline :
+    adapterMayOwnWallClockDeadline .lifecycleProbe = true :=
+  rfl
+
+theorem generationFrameCannotUseAdapterDeadline :
+    adapterMayOwnWallClockDeadline .generationFrame = false :=
+  rfl
+
+theorem adapterDeadlineCannotRejectGenerationFrame
+    (ownsDeadline : adapterMayOwnWallClockDeadline .generationFrame = true) :
+    False := by
+  simp [adapterMayOwnWallClockDeadline] at ownsDeadline
 
 end ASPProof.AgentClientServerAuthority

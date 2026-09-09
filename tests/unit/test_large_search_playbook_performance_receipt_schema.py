@@ -7,6 +7,8 @@ from pathlib import Path
 
 import jsonschema
 
+from unit.schema_validation import schema_validator_for
+
 
 ROOT = Path(__file__).parents[2]
 SCHEMA = json.loads(
@@ -23,6 +25,13 @@ def test_large_search_playbook_performance_receipt_is_machine_validated() -> Non
         "p95Nanos": 400_000,
         "p99Nanos": 1_100_000,
         "maxNanos": 12_000_000,
+    }
+    request_distribution = {
+        "samples": 128,
+        "p50Nanos": 90_000,
+        "p95Nanos": 400_000,
+        "p99Nanos": 700_000,
+        "maxNanos": 900_000,
     }
     receipt = {
         "schemaId": "agent.semantic-protocols.large-search-playbook-performance-receipt",
@@ -41,10 +50,10 @@ def test_large_search_playbook_performance_receipt_is_machine_validated() -> Non
             },
         },
         "coldRgQuery": {
-            **distribution,
+            **request_distribution,
             "samples": 32,
             "fdProcessCount": 0,
-            "rgProcessCount": 32,
+            "rgProcessCount": 0,
             "tantivyBuildCount": 0,
             "contentVerificationP95Nanos": 8_000_000,
             "nativeSyntaxVerificationP95Nanos": 5_000_000,
@@ -76,7 +85,7 @@ def test_large_search_playbook_performance_receipt_is_machine_validated() -> Non
             "rgProcessCount": 0,
             "tantivyBuildCount": 0,
         },
-        "warm": {**distribution, "samples": 512},
+        "warm": {**request_distribution, "samples": 512},
         "concurrent": {
             "queries": 32,
             "p99Nanos": 700_000,
@@ -105,7 +114,11 @@ def test_large_search_playbook_performance_receipt_is_machine_validated() -> Non
             "schedulerTaskCount": 0,
         },
     }
-    jsonschema.Draft202012Validator(SCHEMA).validate(receipt)
+    validator = schema_validator_for(
+        ROOT / "schemas/large-search-playbook-performance-receipt.v1.schema.json"
+    )
+    jsonschema.Draft202012Validator.check_schema(validator.schema)
+    validator.validate(receipt)
 
 
 def test_large_search_playbook_performance_receipt_rejects_single_sample() -> None:

@@ -22,14 +22,11 @@ from tools.semantic_sandtable.large_library_runtime_benchmark import (
 from tools.semantic_sandtable.large_library_runtime_deployment import (
     install_workspace_provider,
 )
-from tools.semantic_sandtable.large_library_runtime_invocation import (
-    benchmark_command_from_descriptor,
-)
 from tools.semantic_sandtable.large_library_runtime_process import (
     descendant_process_groups,
     run_public_command,
 )
-from tools.semantic_sandtable.large_library_runtime_steps import benchmark_fd_step
+from tools.semantic_sandtable.large_library_runtime_steps import benchmark_playbook_step
 from tools.semantic_sandtable.large_library_runtime_types import Corpus
 
 
@@ -74,52 +71,7 @@ def test_runtime_benchmark_rejects_missing_release_binary_and_corpora(
     }
 
 
-def test_runtime_benchmark_uses_provider_template_through_public_language_facade() -> (
-    None
-):
-    invocation = benchmark_command_from_descriptor(
-        {
-            "method": "search/lexical",
-            "view": "lexical",
-            "benchmarkInvocation": {
-                "args": [
-                    "search",
-                    "lexical",
-                    "--query",
-                    "{query}",
-                    "--workspace",
-                    "{workspace}",
-                    "--view",
-                    "seeds",
-                ],
-                "expectsJson": False,
-                "maxElapsedMs": 500,
-            },
-        },
-        "python",
-        {
-            "workspace": "/tmp/python-large",
-            "owner": "pkg/router.py",
-            "query": "router",
-            "dependency": "pydantic",
-        },
-    )
-
-    assert invocation.command == [
-        "asp",
-        "python",
-        "search",
-        "lexical",
-        "--query",
-        "router",
-        "--workspace",
-        "/tmp/python-large",
-        "--view",
-        "seeds",
-    ]
-
-
-def test_runtime_benchmark_executes_fd_as_an_independent_path_stage(
+def test_runtime_benchmark_executes_search_playbook(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -144,30 +96,39 @@ def test_runtime_benchmark_executes_fd_as_an_independent_path_stage(
         fake_run,
     )
     corpus = Corpus(
-        resource_id="rust.runtime-fd-stage",
-        scenario_id="runtime-fd-stage",
+        resource_id="rust.runtime-search-playbook",
+        scenario_id="runtime-search-playbook",
         provider_id="asp-rust",
         language="rust",
-        repository="example/runtime-fd-stage",
-        remote="https://github.com/example/runtime-fd-stage.git",
+        repository="example/runtime-search-playbook",
+        remote="https://github.com/example/runtime-search-playbook.git",
         revision="1111111111111111111111111111111111111111",
-        directory="runtime-fd-stage",
-        environment="ASP_RUNTIME_FD_STAGE",
+        directory="runtime-search-playbook",
+        environment="ASP_RUNTIME_SEARCH_PLAYBOOK",
         inputs={"owner": "src/lib.rs", "query": "worker-count", "dependency": "tokio"},
     )
 
-    step = benchmark_fd_step(tmp_path / "asp", corpus, tmp_path / "workspace")
+    step = benchmark_playbook_step(tmp_path / "asp", corpus, tmp_path / "workspace")
 
     assert step["status"] == "pass"
-    assert step["method"] == "search/fd-path"
+    assert step["method"] == "search/playbook"
     assert calls == [
         [
             str(tmp_path / "asp"),
-            "fd",
-            "-query",
-            "worker-count",
+            "search",
+            "playbook",
+            "--language",
+            "rust",
             "--workspace",
             str(tmp_path / "workspace"),
+            "--rg",
+            "-n",
+            "-e",
+            "worker-count",
+            ".",
+            "--tantivy",
+            "term",
+            "worker-count",
         ]
     ]
 
@@ -182,7 +143,8 @@ def test_runtime_corpus_manifest_has_all_unique_real_library_targets() -> None:
     assert {entry["providerId"] for entry in corpora} == {
         "asp-julia",
         "asp-gerbil-scheme",
-        "orgize",
+        "asp-md",
+        "asp-org",
         "asp-python",
         "asp-rust",
         "asp-typescript",

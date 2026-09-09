@@ -87,7 +87,7 @@ def test_tree_sitter_query_rfc_defines_real_project_evidence_gate() -> None:
         "representative Rust workspace",
         "representative TypeScript workspace",
         "[syntax-real-evidence] language=<id> provider=<id> project=<name>",
-        "commands=search-prime,syntax-frontier,exact-selector-code,hook-recovery",
+        "commands=search-playbook,syntax-frontier,exact-selector-code,hook-recovery",
         "metrics=commandCount=<n>,providerProcessCount=<n>,packetBytes=<n>,coldElapsedMs=<n>,warmElapsedMs=<n>",
         "metrics=syntaxQueryCount=<n>,exactCodeCount=<n>,manualRangeScanCount=<n>,repeatedTriggerReduction=<n>",
         "outputs=frontier-no-code,pure-code-stdout,registry-descriptor,query-corpus",

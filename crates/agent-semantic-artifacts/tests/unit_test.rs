@@ -4,5 +4,7 @@
 
 #[path = "unit/runtime_artifact_catalog.rs"]
 mod runtime_artifact_catalog;
+#[path = "unit/runtime_artifact_state_layout.rs"]
+mod runtime_artifact_state_layout;
 #[path = "unit/state_home_layout.rs"]
 mod state_home_layout;

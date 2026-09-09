@@ -32,8 +32,6 @@ fn plugin_host_action_binding_is_exact_and_materialized_in_action_ir() {
         .expect("bind canonical apply_patch matcher");
     let runtime = HookRuntime {
         project_root: ".".to_owned(),
-        rankers: Vec::new(),
-        providers: Vec::new(),
         policy_providers: Vec::new(),
     };
     let decision = classify_hook(&runtime, "codex", "pre-tool", &payload);
@@ -73,8 +71,6 @@ fn plugin_host_action_binding_preserves_one_exact_mcp_tool_identity() {
         .expect("bind exact MCP matcher");
     let runtime = HookRuntime {
         project_root: ".".to_owned(),
-        rankers: Vec::new(),
-        providers: Vec::new(),
         policy_providers: Vec::new(),
     };
     let decision = classify_hook(&runtime, "codex", "pre-tool", &payload);

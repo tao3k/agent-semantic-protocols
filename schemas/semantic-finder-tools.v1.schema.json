@@ -175,10 +175,7 @@
     },
     "surface": {
       "enum": [
-        "search-lexical",
-        "search-lexical",
-        "search-ingest",
-        "search-pattern",
+        "search-playbook",
         "provider-internal",
         "custom"
       ]

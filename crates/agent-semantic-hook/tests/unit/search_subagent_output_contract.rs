@@ -53,7 +53,7 @@ fn blocks_legacy_and_non_org_search_formats() {
     for message in [
         "[asp-search-subagent]\nstate=empty",
         "[search-result] result=no-match evidence=0",
-        "QueryGrammar: asp query --selector <exact-selector>",
+        "QueryGrammar: asp query playbook --language <producer|...> --selector <exact-selector>",
         "```gql\n(search:SearchResult)\n```",
         "prose before\n#+begin_src gql :profile search-evidence.v1 :eval never\n(search:SearchResult)\n#+end_src\n",
     ] {

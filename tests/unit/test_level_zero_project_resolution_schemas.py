@@ -16,10 +16,10 @@ from referencing import Registry, Resource
 ROOT = Path(__file__).resolve().parents[2]
 SCHEMA_ROOT = ROOT / "schemas"
 SCHEMA_NAMES = (
-    "language-package-graph.v1.schema.json",
+    "language-package-graph.schema.json",
     "repository-candidate-snapshot.v1.schema.json",
     "resolved-source-scope.v1.schema.json",
-    "project-resolution.v1.schema.json",
+    "project-resolution.schema.json",
 )
 SCHEMAS = {
     name: json.loads((SCHEMA_ROOT / name).read_text())
@@ -51,8 +51,9 @@ def git_candidates() -> dict[str, object]:
             "gitDir": "/workspace/.git",
             "headId": "abc",
         },
+        "candidateScope": {"projectRoot": "."},
         "candidateGeneration": {
-            "algorithm": "blake3-path-set-v1",
+            "algorithm": "blake3-worktree-state-v1",
             "digest": "blake3:" + ("0" * 64),
             "authorities": ["git-index"],
         },
@@ -97,23 +98,32 @@ def resolved_scope() -> dict[str, object]:
     }
 
 
-def missing_entry() -> dict[str, object]:
+def resolved_project() -> dict[str, object]:
     return {
         "schemaId": "agent.semantic-protocols.project-resolution",
         "schemaVersion": "1",
-        "state": "project-entry-missing",
-        "completeness": "partial",
-        "projectIdentity": {
-            "projectId": "project-rust-root",
-            "projectInstanceId": "project-rust-root@workspace-1",
-            "projectEntry": "Cargo.toml",
+        "state": "resolved",
+        "completeness": "exact",
+        "languageId": "rust",
+        "providerId": "asp-rust",
+        "parserId": "cargo-project-resolution",
+        "candidateGenerationDigest": "blake3:" + ("0" * 64),
+        "projectEntry": "Cargo.toml",
+        "packageGraph": {
+            "schemaId": "agent.semantic-protocols.language-package-graph",
+            "schemaVersion": "1",
             "languageId": "rust",
             "providerId": "asp-rust",
-            "parserIdentityDigest": "parser-1",
+            "projectEntry": "Cargo.toml",
+            "parserId": "cargo-project-resolution",
+            "manifests": [],
+            "lockfiles": [],
+            "packages": [],
+            "internalDependencyEdges": [],
+            "externalDependencies": [],
+            "unresolved": [],
         },
-        "repositoryCandidates": git_candidates(),
-        "resolutionGeneration": "resolution-1",
-        "resolvedSourceScopes": [],
+        "sourceScopes": [resolved_scope()],
         "conflicts": [],
         "metrics": {
             "parsedManifestCount": 0,
@@ -123,10 +133,6 @@ def missing_entry() -> dict[str, object]:
             "fullManifestReparses": 0,
             "dbOpens": 0,
             "elapsedMicros": 100,
-        },
-        "reasonKind": "provider-project-entry-required",
-        "recommendedNext": {
-            "command": "asp rust search project-entry --workspace .",
         },
     }
 
@@ -157,20 +163,14 @@ def test_source_scope_preserves_package_target_and_manifest_authority() -> None:
         validator("resolved-source-scope.v1.schema.json").validate(invalid)
 
 
-def test_non_git_or_markerless_resolution_fails_closed() -> None:
-    receipt = missing_entry()
-    validator("project-resolution.v1.schema.json").validate(receipt)
-
-    invalid = deepcopy(receipt)
-    invalid["reasonKind"] = "manifest-parse-failed"
-    with pytest.raises(ValidationError):
-        validator("project-resolution.v1.schema.json").validate(invalid)
+def test_project_resolution_binds_package_graph_and_source_scopes() -> None:
+    validator("project-resolution.schema.json").validate(resolved_project())
 
 
 def test_project_resolution_forbids_root_walk_manifest_reparse_and_db_open() -> None:
-    receipt = missing_entry()
+    receipt = resolved_project()
     for metric in ("fullWorkspaceReads", "fullManifestReparses", "dbOpens"):
         invalid = deepcopy(receipt)
         invalid["metrics"][metric] = 1
         with pytest.raises(ValidationError):
-            validator("project-resolution.v1.schema.json").validate(invalid)
+            validator("project-resolution.schema.json").validate(invalid)

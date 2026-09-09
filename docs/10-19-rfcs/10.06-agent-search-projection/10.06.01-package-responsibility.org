@@ -41,5 +41,5 @@ It MUST NOT retain a client-session map, catalog authority, or generation state.
 Scenario and Live Corpus qualification MUST enumerate the registered language
 profiles from the shared Schema Manager registry.  Hard-coded Rust/Python/
 Gerbil subsets are invalid.  Every registered search/query method traverses
-the same ASP Client wire request, ASP Server admission, resident search owner,
+the same ASP Client wire request, ASP Server admission, resident search-data owner,
 and ASP Client presentation contract.

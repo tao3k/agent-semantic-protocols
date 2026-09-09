@@ -77,3 +77,6 @@ def test_activation_generation_is_not_commit_identity() -> None:
     packet["activationGeneration"] = 84
     with pytest.raises(jsonschema.ValidationError):
         validator().validate(packet)
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later

@@ -229,7 +229,6 @@ fn validate_launcher_payload(plugin_root: &Path, launcher: &[u8]) -> Result<(), 
         || launcher_text.contains("hooks/current")
         || launcher_text.contains("ASP_HOOK_GENERATION_ROOT")
         || launcher_text.contains("runtime/bin/")
-        || launcher_text.contains("runtime/artifacts/active")
     {
         return Err(format!(
             "{} must resolve only the canonical Runtime Hook binary",

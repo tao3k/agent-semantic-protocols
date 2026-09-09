@@ -27,15 +27,15 @@ def test_package_cohesion_scales_with_specific_path_token_coverage() -> None:
                     "role": "path",
                     "value": (
                         "languages/asp-typescript/src/cli/"
-                        "semantic-search/workspace-ranking.ts"
+                        "semantic-search/playbook-ranking.ts"
                     ),
                     "path": (
                         "languages/asp-typescript/src/cli/"
-                        "semantic-search/workspace-ranking.ts"
+                        "semantic-search/playbook-ranking.ts"
                     ),
                     "ownerPath": (
                         "languages/asp-typescript/src/cli/"
-                        "semantic-search/workspace-ranking.ts"
+                        "semantic-search/playbook-ranking.ts"
                     ),
                 },
                 {

@@ -85,7 +85,21 @@ pub fn assert_asp_rust_project_harness_member_policy(
     })
 }
 
-/// Assert the Cargo package that owns the calling build script.
+/// Assert the complete source policy for the Cargo package that owns the
+/// calling build script.
+///
+/// This is the ordinary member `build.rs` entrypoint. The default Build
+/// Support feature compiles one shared ASP Rust scanner and evaluates only the
+/// current package root. The lower-level manifest receipt remains available
+/// through [`assert_asp_rust_project_harness_member_policy`].
+#[cfg(feature = "workspace-policy")]
+pub fn assert_asp_rust_project_harness_member_policy_from_env() -> asp_rust::AspRustReport {
+    crate::workspace_policy::assert_asp_rust_project_harness_member_source_policy_from_env()
+}
+
+/// Assert only the manifest identity when the caller deliberately disables
+/// the default source-policy feature.
+#[cfg(not(feature = "workspace-policy"))]
 pub fn assert_asp_rust_project_harness_member_policy_from_env()
 -> AspRustProjectHarnessMemberPolicyReceipt {
     let package_name = std::env::var("CARGO_PKG_NAME")

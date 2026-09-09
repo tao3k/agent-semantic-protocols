@@ -64,11 +64,11 @@ class SemanticAgentClientCacheManifestSchemaTests(unittest.TestCase):
                     "languageId": "rust",
                     "providerId": "asp-rust",
                     "providerVersion": "0.1.0",
-                    "exportMethod": "search/prime",
+                    "exportMethod": "search/playbook",
                     "projectRoot": "/repo",
                     "packageRoot": ".",
                     "schemaIds": [
-                        "agent.semantic-protocols.semantic-search-packet"
+                        "agent.semantic-protocols.workspace-search-playbook-result"
                     ],
                     "cacheStatus": "miss",
                     "rawSourceStored": False,
@@ -79,7 +79,7 @@ class SemanticAgentClientCacheManifestSchemaTests(unittest.TestCase):
                             "sha256": "a" * 64,
                         }
                     ],
-                    "artifactIds": ["search/rust-main-1.json"],
+                    "artifactIds": ["search-playbook/rust-main-1.json"],
                     "artifactRoots": [
                         artifact_root("sourceSnapshot"),
                         artifact_root("sourceIndexBundle"),
@@ -104,7 +104,7 @@ class SemanticAgentClientCacheManifestSchemaTests(unittest.TestCase):
                     "providerId": "asp-rust",
                     "projectRoot": "/repo",
                     "schemaIds": [
-                        "agent.semantic-protocols.semantic-search-packet"
+                        "agent.semantic-protocols.workspace-search-playbook-result"
                     ],
                     "cacheStatus": "miss",
                     "rawSourceStored": True,

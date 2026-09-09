@@ -2,9 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
-use std::time::Duration;
-
-use super::{execute_runtime_native_rg_blocks, execute_runtime_resident_lexical_prefilter};
+use super::execute_runtime_native_rg_blocks;
 
 fn digest(bytes: &[u8]) -> String {
     format!("blake3-256:{}", blake3::hash(bytes).to_hex())
@@ -33,8 +31,8 @@ fn two_owner_corpus() -> agent_semantic_search::ColdRgCorpusArtifact {
     .expect("cold corpus")
 }
 
-#[tokio::test]
-async fn native_rg_preserves_independent_blocks_and_unions_owner_evidence() {
+#[test]
+fn native_rg_executes_one_exact_process_per_independent_block() {
     let corpus = two_owner_corpus();
     let receipt = execute_runtime_native_rg_blocks(
         &corpus,
@@ -53,9 +51,7 @@ async fn native_rg_preserves_independent_blocks_and_unions_owner_evidence() {
             ],
         ],
         4096,
-        Duration::from_millis(500),
     )
-    .await
     .expect("native rg blocks");
     assert_eq!(receipt.process_count, 2);
     assert_eq!(receipt.branch_candidate_owner_paths[0], ["src/runtime.rs"]);
@@ -71,132 +67,115 @@ async fn native_rg_preserves_independent_blocks_and_unions_owner_evidence() {
     assert!(!receipt.truncated);
 }
 
-#[tokio::test]
-async fn native_rg_rejects_path_filters_that_are_false_over_a_stdin_corpus() {
+#[test]
+fn native_rg_preserves_complex_glob_type_and_short_cluster_argv() {
     let corpus = two_owner_corpus();
-    let error = execute_runtime_native_rg_blocks(
+    let receipt = execute_runtime_native_rg_blocks(
         &corpus,
         &[vec![
-            "-g".to_owned(),
-            "*.rs".to_owned(),
+            "-nFi".to_owned(),
+            "-g*.rs".to_owned(),
+            "--type".to_owned(),
+            "rust".to_owned(),
+            "-e".to_owned(),
+            "runtime".to_owned(),
+            "src".to_owned(),
+        ]],
+        8,
+    )
+    .expect("complex native rg argv");
+    assert_eq!(receipt.process_count, 1);
+    assert_eq!(
+        receipt.processes[0].exact_argv,
+        ["-nFi", "-g*.rs", "--type", "rust", "-e", "runtime", "src"]
+    );
+    assert!(receipt.processes[0].argv_digest.starts_with("blake3-256:"));
+    assert_eq!(receipt.candidate_owner_paths, ["src/runtime.rs"]);
+    assert_eq!(receipt.branch_matches[0][0].owner_line, 1);
+}
+
+#[test]
+fn native_rg_json_and_filename_only_outputs_remain_attributable() {
+    let corpus = two_owner_corpus();
+    let json = execute_runtime_native_rg_blocks(
+        &corpus,
+        &[vec![
+            "--json".to_owned(),
             "Runtime".to_owned(),
             ".".to_owned(),
         ]],
         8,
-        Duration::from_millis(500),
     )
-    .await
-    .expect_err("path filter cannot be projected onto concatenated stdin");
-    assert!(error.contains("not admitted"), "{error}");
+    .expect("JSON native rg");
+    assert_eq!(json.candidate_owner_paths, ["src/runtime.rs"]);
+    assert_eq!(json.branch_matches[0][0].owner_line, 1);
+
+    let path_only = execute_runtime_native_rg_blocks(
+        &corpus,
+        &[vec!["-l".to_owned(), "Client".to_owned(), ".".to_owned()]],
+        8,
+    )
+    .expect("filename-only native rg");
+    assert_eq!(path_only.candidate_owner_paths, ["src/client.rs"]);
+    assert!(path_only.branch_matches[0].is_empty());
 }
 
-#[tokio::test]
-async fn resident_lexical_prefilter_reads_one_immutable_corpus_and_maps_hits_to_owners() {
-    let first = b"pub fn cold_owner() {}\n";
-    let second = b"pub fn unrelated() {}\n";
-    let first_digest = digest(first);
-    let second_digest = digest(second);
-    let corpus = agent_semantic_search::build_cold_rg_corpus(
-        &format!("blake3-256:{}", "a".repeat(64)),
-        [
-            agent_semantic_search::ColdRgCorpusOwner {
-                owner_path: "src/cold.rs",
-                content_digest: &first_digest,
-                bytes: first,
-            },
-            agent_semantic_search::ColdRgCorpusOwner {
-                owner_path: "src/other.rs",
-                content_digest: &second_digest,
-                bytes: second,
-            },
+#[test]
+fn native_rg_heading_vimgrep_and_ordinary_output_remain_attributable() {
+    let corpus = two_owner_corpus();
+    for argv in [
+        vec![
+            "--heading".to_owned(),
+            "-n".to_owned(),
+            "Runtime".to_owned(),
+            ".".to_owned(),
         ],
-    )
-    .expect("cold corpus");
-
-    let receipt = execute_runtime_resident_lexical_prefilter(
-        &corpus,
-        "cold_owner",
-        8,
-        Duration::from_millis(500),
-    )
-    .await
-    .expect("bounded resident lexical prefilter");
-    assert_eq!(receipt.process_count, 0);
-    assert_eq!(receipt.candidate_owner_paths, ["src/cold.rs"]);
-    assert!(receipt.elapsed_micros > 0);
-    assert!(receipt.coverage_input_digest.starts_with("blake3-256:"));
-}
-
-#[tokio::test]
-async fn resident_lexical_unrepresentable_deadline_fails_before_scan() {
-    let bytes = b"pub fn cold_owner() {}\n";
-    let content_digest = digest(bytes);
-    let corpus = agent_semantic_search::build_cold_rg_corpus(
-        &format!("blake3-256:{}", "a".repeat(64)),
-        [agent_semantic_search::ColdRgCorpusOwner {
-            owner_path: "src/cold.rs",
-            content_digest: &content_digest,
-            bytes,
-        }],
-    )
-    .expect("cold corpus");
-
-    let error = execute_runtime_resident_lexical_prefilter(
-        &corpus,
-        "cold_owner",
-        8,
-        Duration::from_nanos(1),
-    )
-    .await
-    .expect_err("an unrepresentable deadline must fail closed");
-    assert!(error.contains("bounded Runtime envelope"), "{error}");
-}
-
-#[tokio::test]
-async fn resident_lexical_4096_owner_corpus_stays_below_the_cold_budget() {
-    const OWNER_COUNT: usize = 4096;
-    // Nearest-rank p95 needs at least 20 samples to remain distinct from max.
-    const SAMPLE_COUNT: usize = 20;
-    let owner_bytes = (0..OWNER_COUNT)
-        .map(|index| format!("pub fn owner_{index}() {{}}\n").into_bytes())
-        .collect::<Vec<_>>();
-    let owner_digests = owner_bytes
-        .iter()
-        .map(|bytes| digest(bytes))
-        .collect::<Vec<_>>();
-    let owner_paths = (0..OWNER_COUNT)
-        .map(|index| format!("src/owner_{index}.rs"))
-        .collect::<Vec<_>>();
-    let corpus = agent_semantic_search::build_cold_rg_corpus(
-        &format!("blake3-256:{}", "b".repeat(64)),
-        owner_bytes.iter().enumerate().map(|(index, bytes)| {
-            agent_semantic_search::ColdRgCorpusOwner {
-                owner_path: &owner_paths[index],
-                content_digest: &owner_digests[index],
-                bytes,
-            }
-        }),
-    )
-    .expect("large cold corpus");
-
-    let mut samples = Vec::with_capacity(SAMPLE_COUNT);
-    for _ in 0..SAMPLE_COUNT {
-        let receipt = execute_runtime_resident_lexical_prefilter(
-            &corpus,
-            "owner_4095",
-            8,
-            Duration::from_millis(250),
-        )
-        .await
-        .expect("bounded large resident lexical prefilter");
-        assert_eq!(receipt.candidate_owner_paths, ["src/owner_4095.rs"]);
-        samples.push(receipt.elapsed_micros);
+        vec!["--vimgrep".to_owned(), "Runtime".to_owned(), ".".to_owned()],
+    ] {
+        let receipt = execute_runtime_native_rg_blocks(&corpus, &[argv], 8)
+            .expect("line-attributable native rg output");
+        assert_eq!(receipt.candidate_owner_paths, ["src/runtime.rs"]);
+        assert_eq!(receipt.branch_matches[0][0].owner_line, 1);
     }
-    samples.sort_unstable();
-    let p95 = samples[(SAMPLE_COUNT * 95).div_ceil(100) - 1];
-    let max = samples[SAMPLE_COUNT - 1];
-    eprintln!(
-        "resident-lexical owners={OWNER_COUNT} samples={SAMPLE_COUNT} p95={p95}us max={max}us"
-    );
-    assert!(p95 < 100_000, "resident lexical p95={p95}us");
+
+    let ordinary =
+        execute_runtime_native_rg_blocks(&corpus, &[vec!["Runtime".to_owned(), ".".to_owned()]], 8)
+            .expect("ordinary path-attributable native rg output");
+    assert_eq!(ordinary.candidate_owner_paths, ["src/runtime.rs"]);
+    assert!(ordinary.branch_matches[0].is_empty());
+}
+
+#[test]
+fn native_rg_exit_one_is_a_zero_match_receipt() {
+    let corpus = two_owner_corpus();
+    let receipt = execute_runtime_native_rg_blocks(
+        &corpus,
+        &[vec![
+            "-n".to_owned(),
+            "definitely_absent".to_owned(),
+            ".".to_owned(),
+        ]],
+        8,
+    )
+    .expect("zero-match native rg");
+    assert_eq!(receipt.process_count, 1);
+    assert!(receipt.candidate_owner_paths.is_empty());
+    assert!(receipt.branch_matches[0].is_empty());
+}
+
+#[test]
+fn native_rg_rejects_process_escape_before_execution() {
+    let corpus = two_owner_corpus();
+    let error = execute_runtime_native_rg_blocks(
+        &corpus,
+        &[vec![
+            "--pre".to_owned(),
+            "cat".to_owned(),
+            "Runtime".to_owned(),
+            ".".to_owned(),
+        ]],
+        8,
+    )
+    .expect_err("secondary process must fail admission");
+    assert!(error.contains("not admitted"), "{error}");
 }

@@ -49,13 +49,10 @@
       "const": "graph-turbo-request"
     },
     "surface": {
-      "description": "ASP search surface that produced this graph-turbo request. This is the cache and receipt boundary for ranking semantics, not an agent-facing graph command.",
+      "description": "ASP public surface that produced this graph-turbo request. This is the cache and receipt boundary for ranking semantics, not an agent-facing graph command.",
       "enum": [
-        "search-pipe",
-        "search-rg",
-        "search-fd",
-        "search-lexical",
-        "search-ingest",
+        "search-playbook",
+        "query",
         "evidence-analyze"
       ]
     },
@@ -226,7 +223,7 @@
       "uniqueItems": true
     },
     "actionFrontier": {
-      "description": "Typed action facts projected from the search-pipe frontier. These facts are the materializer input for prompt-visible nextCommand text; they must not carry materialized shell strings or argv.",
+      "description": "Typed action facts projected from the Search Playbook frontier. These facts are the materializer input for prompt-visible next-action text; they must not carry materialized shell strings or argv.",
       "type": "array",
       "items": {
         "$ref": "#/$defs/actionFrontierEntry"
@@ -801,7 +798,7 @@
       "properties": {
         "kind": {
           "enum": [
-            "search-owner-items"
+            "query-owner-items"
           ]
         },
         "languageId": {
@@ -861,7 +858,7 @@
           "treesitter-query",
           "multi-clause-rg-query",
           "scoped-rg-query",
-          "search-deps",
+          "dependency-query",
           "syntax"
         ]
       },
@@ -873,7 +870,7 @@
             "rg",
             "owner-items",
             "treesitter-query",
-            "search-deps"
+            "query"
           ]
         },
         "target": {

@@ -5,16 +5,57 @@
   "generationIdentity": "topology-generation-1",
   "rulePackIdentity": "project-topology-reachability",
   "inputEdges": [
-    {"id": "calls-b-c", "relation": "CALLS", "from": "b", "to": "c"},
-    {"id": "declares-a-b", "relation": "DECLARES", "from": "a", "to": "b"}
+    {
+      "id": "calls-b-c",
+      "relation": "CALLS",
+      "from": "b",
+      "to": "c"
+    },
+    {
+      "id": "declares-a-b",
+      "relation": "DECLARES",
+      "from": "a",
+      "to": "b"
+    }
   ],
   "relationships": [
-    {"from": "a", "to": "b", "premiseEdgeIds": ["declares-a-b"]},
-    {"from": "a", "to": "c", "premiseEdgeIds": ["calls-b-c", "declares-a-b"]},
-    {"from": "b", "to": "c", "premiseEdgeIds": ["calls-b-c"]}
+    {
+      "from": "a",
+      "to": "b",
+      "premiseEdgeIds": [
+        "declares-a-b"
+      ],
+      "relation": "TOPOLOGY_REACHABLE",
+      "ruleId": "mrr.topology.reachability.direct.v1"
+    },
+    {
+      "from": "a",
+      "to": "c",
+      "premiseEdgeIds": [
+        "calls-b-c",
+        "declares-a-b"
+      ],
+      "relation": "TOPOLOGY_REACHABLE",
+      "ruleId": "mrr.topology.reachability.transitive.v1"
+    },
+    {
+      "from": "b",
+      "to": "c",
+      "premiseEdgeIds": [
+        "calls-b-c"
+      ],
+      "relation": "TOPOLOGY_REACHABLE",
+      "ruleId": "mrr.topology.reachability.direct.v1"
+    }
   ],
   "mrrClosureDigest": "blake3-256:1111111111111111111111111111111111111111111111111111111111111111",
   "mrrMaterializationDigest": "blake3-256:2222222222222222222222222222222222222222222222222222222222222222",
   "receiptDigest": "blake3-256:3333333333333333333333333333333333333333333333333333333333333333",
-  "terminal": {"state": "admitted", "terminalCount": 1, "reasonKind": null}
+  "terminal": {
+    "state": "admitted",
+    "terminalCount": 1,
+    "reasonKind": null
+  },
+  "ascentSemanticDigest": "blake3-256:4444444444444444444444444444444444444444444444444444444444444444"
 }
+

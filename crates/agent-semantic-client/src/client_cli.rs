@@ -13,9 +13,9 @@ use crate::cli_args::parse_client_args;
 /// Runs the agent semantic client CLI from process arguments.
 pub async fn run_cli_from_env() -> Result<(), String> {
     let args = env::args().skip(1).collect::<Vec<_>>();
-    if matches!(args.first().map(String::as_str), Some("query" | "check")) {
+    if matches!(args.first().map(String::as_str), Some("query")) {
         return Err(
-            "top-level asp query/check has been removed; use asp <rust|typescript|python|julia> <query|check> ..."
+            "direct Query was removed; use `asp query playbook --language <producer|...> --selector <exact-selector>...`"
                 .to_string(),
         );
     }
@@ -51,25 +51,13 @@ pub async fn run_cli_args(
         }
         Some("cloud") => run_cloud(parsed),
         Some("search") => {
-            if language_id.is_none()
-                && parsed
-                    .forwarded_args
-                    .first()
-                    .is_some_and(|arg| arg == "history")
-            {
-                return crate::search_history::run_search_history(
-                    &parsed.project_root,
-                    &parsed.forwarded_args,
-                )
-                .await;
-            }
             Err(
-                "provider search is Runtime Server-owned; use the ASP language facade ProviderSearch operation"
+                "Search is Playbook-only; use `asp search playbook --language <producer|...> ...`"
                     .to_owned(),
             )
         }
-        Some("query" | "check") => Err(
-            "provider query/check is Runtime Server route-owned; direct client provider execution has been removed"
+        Some("query") => Err(
+            "Query is Playbook-only; use `asp query playbook --language <producer|...> --selector <exact-selector>...`"
                 .to_owned(),
         ),
         Some(command) => Err(format!("unknown client command: {command}")),

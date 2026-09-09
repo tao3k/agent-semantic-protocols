@@ -4,27 +4,26 @@
 
 //! Typed provider route request and response bindings for the ASP Client Protocol.
 
-use std::collections::BTreeSet;
-
 use serde::Deserialize;
 use serde::Serialize;
 use serde_json::Value;
 
-const SEARCH_REQUEST: &str = "agent.semantic-protocols.runtime-provider-search-request";
-const CLIENT_SEARCH_REQUEST: &str = "agent.semantic-protocols.asp-client-search-request";
-const CLIENT_WORKSPACE_SEARCH_PLAYBOOK_REQUEST: &str =
+pub(super) const SEARCH_REQUEST: &str = "agent.semantic-protocols.runtime-provider-search-request";
+pub(super) const CLIENT_WORKSPACE_SEARCH_PLAYBOOK_REQUEST: &str =
     "agent.semantic-protocols.asp-client-workspace-search-playbook-request";
-const CLIENT_WORKSPACE_QUERY_PLAYBOOK_REQUEST: &str =
+pub(super) const CLIENT_WORKSPACE_QUERY_PLAYBOOK_REQUEST: &str =
     "agent.semantic-protocols.asp-client-workspace-query-playbook-request";
-const CLIENT_WORKSPACE_SYNTAX_QUERY_REQUEST: &str =
+pub(super) const CLIENT_WORKSPACE_SYNTAX_QUERY_REQUEST: &str =
     "agent.semantic-protocols.asp-client-workspace-syntax-query-request";
-const CLIENT_SOURCE_INDEX_LOOKUP_REQUEST: &str =
+pub(super) const CLIENT_SOURCE_INDEX_LOOKUP_REQUEST: &str =
     "agent.semantic-protocols.asp-client-source-index-lookup-request";
-const CLIENT_EXACT_QUERY_REQUEST: &str = "agent.semantic-protocols.asp-client-exact-query-request";
-const CLIENT_EXACT_QUERY_RESPONSE: &str =
+pub(super) const CLIENT_EXACT_QUERY_REQUEST: &str =
+    "agent.semantic-protocols.asp-client-exact-query-request";
+pub(super) const CLIENT_EXACT_QUERY_RESPONSE: &str =
     "agent.semantic-protocols.asp-client-exact-query-response";
-const CLIENT_EXACT_QUERY_FAILURE: &str = "agent.semantic-protocols.asp-client-exact-query-failure";
-const CLIENT_GRAPHS_TIMELINE_REQUEST: &str =
+pub(super) const CLIENT_EXACT_QUERY_FAILURE: &str =
+    "agent.semantic-protocols.asp-client-exact-query-failure";
+pub(super) const CLIENT_GRAPHS_TIMELINE_REQUEST: &str =
     "agent.semantic-protocols.asp-client-graphs-timeline-request";
 /// Schema identity for live-corpus cache-state requests.
 pub const LIVE_CORPUS_CACHE_STATE_REQUEST_SCHEMA_ID: &str =
@@ -32,23 +31,8 @@ pub const LIVE_CORPUS_CACHE_STATE_REQUEST_SCHEMA_ID: &str =
 /// Schema identity for live-corpus cache-state receipts.
 pub const LIVE_CORPUS_CACHE_STATE_RECEIPT_SCHEMA_ID: &str =
     "agent.semantic-protocols.live-corpus-cache-state-receipt";
-const EXACT_REQUEST: &str = "agent.semantic-protocols.provider-native-exact-request";
-const EXACT_RESPONSE: &str = "agent.semantic-protocols.provider-native-exact-projection";
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-/// Conceptual search request submitted through the Runtime client protocol.
-pub struct AspClientSearchRequest {
-    pub schema_id: String,
-    pub schema_version: String,
-    pub intent: String,
-    pub query: String,
-    pub scope: String,
-    pub coverage: String,
-    pub max_owners: u32,
-    pub deadline_ms: u64,
-    pub explain: String,
-}
+pub(super) const EXACT_REQUEST: &str = "agent.semantic-protocols.provider-native-exact-request";
+pub(super) const EXACT_RESPONSE: &str = "agent.semantic-protocols.provider-native-exact-projection";
 
 /// One provider-native Syntax block inside Search Playbook.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -69,7 +53,6 @@ pub struct AspClientSearchPlaybookGraphBlock {
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum AspClientSearchPlaybookClauseAxis {
-    Fd,
     Rg,
     Tantivy,
     Syntax,
@@ -89,20 +72,18 @@ pub struct AspClientSearchPlaybookClauseRef {
 ///
 /// One or more acquisition clauses form an executable request; optional Graph
 /// clauses are the final dependent fan-in barrier. Incomplete input fails
-/// before Runtime dispatch. No contract-query mode or intent field exists.
+/// before Runtime dispatch.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AspClientWorkspaceSearchPlaybookRequest {
     pub schema_id: String,
     pub schema_version: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub languages: Option<String>,
+    pub language: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub documents: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub workspace: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub fd: Option<Vec<Vec<String>>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rg: Option<Vec<Vec<String>>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -122,6 +103,10 @@ pub struct AspClientWorkspaceSearchPlaybookRequest {
 pub struct AspClientWorkspaceQueryPlaybookRequest {
     pub schema_id: String,
     pub schema_version: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub language: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub documents: Option<String>,
     pub selectors: Vec<String>,
     pub projection: String,
 }
@@ -350,6 +335,109 @@ pub struct AspClientRuntimeWorkCounters {
     pub socket_operation_count: u64,
 }
 
+pub const RUNTIME_RESIDENT_REQUEST_PLANE_RECEIPT_SCHEMA_ID: &str =
+    "agent.semantic-protocols.runtime-resident-request-plane-receipt";
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum RuntimeResidentRequestOperation {
+    Search,
+    Query,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum RuntimeResidentRequestTemperature {
+    Cold,
+    Warm,
+}
+
+/// Runtime-emitted evidence for one admitted resident Search/Query request.
+/// Fields intentionally mirror the V1 schema and avoid `Default`, so a caller
+/// must construct the complete zero-external-work claim explicitly.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RuntimeResidentRequestPlaneReceipt {
+    pub schema_id: String,
+    pub schema_version: String,
+    pub operation: RuntimeResidentRequestOperation,
+    pub request_temperature: RuntimeResidentRequestTemperature,
+    pub state: String,
+    pub generation_digest: Option<String>,
+    pub elapsed_micros: u64,
+    pub generation_lookup_count: u64,
+    pub generation_wait_count: u64,
+    pub generation_build_count: u64,
+    pub filesystem_read_count: u64,
+    pub database_read_count: u64,
+    pub provider_process_count: u64,
+    pub parser_invocation_count: u64,
+    pub secondary_runtime_rpc_count: u64,
+    pub socket_discovery_count: u64,
+    pub terminal_wait_count: u64,
+}
+
+impl RuntimeResidentRequestPlaneReceipt {
+    #[must_use]
+    pub fn ready(
+        operation: RuntimeResidentRequestOperation,
+        request_temperature: RuntimeResidentRequestTemperature,
+        generation_digest: String,
+        elapsed_micros: u64,
+    ) -> Self {
+        Self::new(
+            operation,
+            request_temperature,
+            "ready",
+            Some(generation_digest),
+            elapsed_micros,
+        )
+    }
+
+    #[must_use]
+    pub fn query_not_ready(
+        operation: RuntimeResidentRequestOperation,
+        request_temperature: RuntimeResidentRequestTemperature,
+        elapsed_micros: u64,
+    ) -> Self {
+        Self::new(
+            operation,
+            request_temperature,
+            "query-not-ready",
+            None,
+            elapsed_micros,
+        )
+    }
+
+    fn new(
+        operation: RuntimeResidentRequestOperation,
+        request_temperature: RuntimeResidentRequestTemperature,
+        state: &str,
+        generation_digest: Option<String>,
+        elapsed_micros: u64,
+    ) -> Self {
+        Self {
+            schema_id: RUNTIME_RESIDENT_REQUEST_PLANE_RECEIPT_SCHEMA_ID.to_owned(),
+            schema_version: "1".to_owned(),
+            operation,
+            request_temperature,
+            state: state.to_owned(),
+            generation_digest,
+            elapsed_micros,
+            generation_lookup_count: 1,
+            generation_wait_count: 0,
+            generation_build_count: 0,
+            filesystem_read_count: 0,
+            database_read_count: 0,
+            provider_process_count: 0,
+            parser_invocation_count: 0,
+            secondary_runtime_rpc_count: 0,
+            socket_discovery_count: 0,
+            terminal_wait_count: 0,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 /// Successful exact-query response with generation identity, result, timing, and work counters.
@@ -475,389 +563,4 @@ pub struct ProviderNativeExactProjection {
     pub source_byte_start: Option<usize>,
     #[serde(default)]
     pub source_byte_end: Option<usize>,
-}
-
-fn check(id: &str, schema_id: &str, schema_version: &str) -> Result<(), String> {
-    check_version(id, schema_id, schema_version, "1")
-}
-
-fn check_version(
-    id: &str,
-    schema_id: &str,
-    schema_version: &str,
-    expected_version: &str,
-) -> Result<(), String> {
-    if id != schema_id {
-        return Err(format!(
-            "route schema identity drift: expected={schema_id} actual={id}"
-        ));
-    }
-    if schema_version != expected_version {
-        return Err(format!(
-            "route schema version unsupported: {schema_version}"
-        ));
-    }
-    Ok(())
-}
-
-macro_rules! validate_schema_identity {
-    ($name:ident, $id:expr) => {
-        impl $name {
-            pub fn validate_schema_identity(&self) -> Result<(), String> {
-                check(&self.schema_id, $id, &self.schema_version)
-            }
-        }
-    };
-}
-validate_schema_identity!(
-    AspClientSourceIndexLookupRequest,
-    CLIENT_SOURCE_INDEX_LOOKUP_REQUEST
-);
-validate_schema_identity!(AspClientExactQueryRequest, CLIENT_EXACT_QUERY_REQUEST);
-validate_schema_identity!(
-    AspClientGraphsTimelineRequest,
-    CLIENT_GRAPHS_TIMELINE_REQUEST
-);
-validate_schema_identity!(ProviderNativeExactRequest, EXACT_REQUEST);
-validate_schema_identity!(ProviderNativeExactProjection, EXACT_RESPONSE);
-impl RuntimeProviderSearchRequest {
-    pub fn validate_schema_identity(&self) -> Result<(), String> {
-        check(&self.schema_id, SEARCH_REQUEST, &self.schema_version)?;
-        if self.operation_id.trim().is_empty()
-            || self.project_id.trim().is_empty()
-            || self.workspace_id.trim().is_empty()
-            || self.language_id.trim().is_empty()
-        {
-            return Err("Runtime provider Search request identity is incomplete".to_owned());
-        }
-        Ok(())
-    }
-}
-
-impl AspClientSearchRequest {
-    pub fn playbook(intent: impl Into<String>, query: impl Into<String>) -> Self {
-        Self {
-            schema_id: CLIENT_SEARCH_REQUEST.to_owned(),
-            schema_version: "1".to_owned(),
-            intent: intent.into(),
-            query: query.into(),
-            scope: "workspace".to_owned(),
-            coverage: "candidates".to_owned(),
-            max_owners: 100,
-            deadline_ms: 1_000,
-            explain: "compact".to_owned(),
-        }
-    }
-
-    pub fn validate_schema_identity(&self) -> Result<(), String> {
-        check(&self.schema_id, CLIENT_SEARCH_REQUEST, &self.schema_version)?;
-        if !matches!(
-            self.intent.as_str(),
-            "conceptual" | "relationship" | "exact-literal" | "absence-proof"
-        ) {
-            return Err("ASP client search intent is unsupported".to_owned());
-        }
-        if self.query.trim().is_empty() {
-            return Err("ASP client search query must not be empty".to_owned());
-        }
-        if self.scope != "workspace"
-            && !self
-                .scope
-                .strip_prefix("owner:")
-                .is_some_and(|owner| !owner.trim().is_empty())
-        {
-            return Err("ASP client search scope is unsupported".to_owned());
-        }
-        if !matches!(self.coverage.as_str(), "candidates" | "complete")
-            || (self.coverage == "complete" && self.intent != "absence-proof")
-        {
-            return Err("ASP client search coverage is unsupported".to_owned());
-        }
-        if self.max_owners == 0 || self.max_owners > 100 {
-            return Err("ASP client search maxOwners is out of bounds".to_owned());
-        }
-        if self.deadline_ms == 0 || self.deadline_ms > 5_000 {
-            return Err("ASP client search deadlineMs is out of bounds".to_owned());
-        }
-        if !matches!(self.explain.as_str(), "compact" | "full") {
-            return Err("ASP client search explain mode is unsupported".to_owned());
-        }
-        Ok(())
-    }
-}
-
-impl AspClientWorkspaceSearchPlaybookRequest {
-    pub fn validate_schema_identity(&self) -> Result<(), String> {
-        check_version(
-            &self.schema_id,
-            CLIENT_WORKSPACE_SEARCH_PLAYBOOK_REQUEST,
-            &self.schema_version,
-            "1",
-        )?;
-        for (name, value) in [
-            ("languages", self.languages.as_deref()),
-            ("documents", self.documents.as_deref()),
-            ("workspace", self.workspace.as_deref()),
-        ] {
-            if value.is_some_and(str::is_empty) {
-                return Err(format!("ASP workspace Search {name} must not be empty"));
-            }
-        }
-
-        let acquisition_count = self.fd.as_ref().map_or(0, Vec::len)
-            + self.rg.as_ref().map_or(0, Vec::len)
-            + self.tantivy.as_ref().map_or(0, Vec::len)
-            + self.syntax.as_ref().map_or(0, Vec::len)
-            + self.native_syntax.as_ref().map_or(0, Vec::len);
-        let graph_count = self.graph.as_ref().map_or(0, Vec::len);
-        if acquisition_count == 0 && graph_count != 0 {
-            return Err("ASP workspace Search Graph requires preceding acquisition".to_owned());
-        }
-        if acquisition_count != 0 && self.languages.is_none() && self.documents.is_none() {
-            return Err(
-                "ASP workspace Search Playbook execution requires languages or documents"
-                    .to_owned(),
-            );
-        }
-        if acquisition_count == 0 {
-            return Err("ASP workspace Search requires an acquisition clause".to_owned());
-        }
-        let clause_order = &self.clause_order;
-        if acquisition_count == 0 || clause_order.len() != acquisition_count + graph_count {
-            return Err("ASP workspace Search clauseOrder coverage is invalid".to_owned());
-        }
-        let mut graph_started = false;
-        let mut covered = BTreeSet::new();
-        for clause in clause_order {
-            let block_count = match clause.axis {
-                AspClientSearchPlaybookClauseAxis::Fd => self.fd.as_ref().map_or(0, Vec::len),
-                AspClientSearchPlaybookClauseAxis::Rg => self.rg.as_ref().map_or(0, Vec::len),
-                AspClientSearchPlaybookClauseAxis::Tantivy => {
-                    self.tantivy.as_ref().map_or(0, Vec::len)
-                }
-                AspClientSearchPlaybookClauseAxis::Syntax => {
-                    self.syntax.as_ref().map_or(0, Vec::len)
-                }
-                AspClientSearchPlaybookClauseAxis::NativeSyntax => {
-                    self.native_syntax.as_ref().map_or(0, Vec::len)
-                }
-                AspClientSearchPlaybookClauseAxis::Graph => {
-                    graph_started = true;
-                    graph_count
-                }
-            };
-            if clause.axis != AspClientSearchPlaybookClauseAxis::Graph && graph_started {
-                return Err(
-                    "ASP workspace Search acquisition clauses must precede Graph".to_owned(),
-                );
-            }
-            if clause.block_index >= block_count
-                || !covered.insert((clause.axis, clause.block_index))
-            {
-                return Err("ASP workspace Search clauseOrder reference is invalid".to_owned());
-            }
-        }
-
-        for argv in self
-            .fd
-            .iter()
-            .chain(self.rg.iter())
-            .chain(self.tantivy.iter())
-            .flatten()
-        {
-            if argv.is_empty() {
-                return Err("ASP workspace Search native argv must not be empty".to_owned());
-            }
-        }
-        if self
-            .syntax
-            .iter()
-            .flatten()
-            .any(|block| block.producer.is_empty() || block.argv.is_empty())
-        {
-            return Err("ASP workspace Search Syntax query block must not be empty".to_owned());
-        }
-        if self.native_syntax.iter().flatten().any(|selector| {
-            selector.is_empty()
-                || selector.contains(char::is_whitespace)
-                || !selector.contains("://")
-                || !selector.contains("#item/")
-        }) {
-            return Err(
-                "ASP workspace Search nativeSyntax must contain exact selectors".to_owned(),
-            );
-        }
-        if self
-            .graph
-            .iter()
-            .flatten()
-            .any(|block| block.language.is_empty() || block.argv.is_empty())
-        {
-            return Err("ASP workspace Search Graph block must not be empty".to_owned());
-        }
-        Ok(())
-    }
-}
-
-impl AspClientWorkspaceQueryPlaybookRequest {
-    pub fn validate_schema_identity(&self) -> Result<(), String> {
-        check(
-            &self.schema_id,
-            CLIENT_WORKSPACE_QUERY_PLAYBOOK_REQUEST,
-            &self.schema_version,
-        )?;
-        if self.selectors.is_empty()
-            || self
-                .selectors
-                .iter()
-                .any(|selector| !selector.contains("://") || !selector.contains("#item/"))
-            || self.selectors.windows(2).any(|pair| pair[0] >= pair[1])
-        {
-            return Err(
-                "workspace Query Playbook selectors must be canonical, unique, and sorted"
-                    .to_owned(),
-            );
-        }
-        if !matches!(self.projection.as_str(), "source" | "callable-skeleton") {
-            return Err("workspace Query Playbook projection is unsupported".to_owned());
-        }
-        Ok(())
-    }
-}
-
-impl AspClientWorkspaceSyntaxQueryRequest {
-    pub fn validate_schema_identity(&self) -> Result<(), String> {
-        check(
-            &self.schema_id,
-            CLIENT_WORKSPACE_SYNTAX_QUERY_REQUEST,
-            &self.schema_version,
-        )?;
-        if self.languages.is_none() && self.documents.is_none() {
-            return Err("workspace syntax Query requires a producer selector".to_owned());
-        }
-        if self.syntax.is_empty()
-            || self.syntax.iter().any(|block| {
-                block.producer.trim().is_empty()
-                    || block.argv.is_empty()
-                    || block.argv.iter().any(|argument| argument.is_empty())
-            })
-        {
-            return Err("workspace syntax Query requires complete native blocks".to_owned());
-        }
-        if self.projection != "matches" {
-            return Err("workspace syntax Query projection must be matches".to_owned());
-        }
-        Ok(())
-    }
-}
-
-impl AspClientExactQueryResponse {
-    pub fn validate(&self) -> Result<(), String> {
-        check(
-            &self.schema_id,
-            CLIENT_EXACT_QUERY_RESPONSE,
-            &self.schema_version,
-        )?;
-        if self.operation_id.trim().is_empty()
-            || self.project_id.trim().is_empty()
-            || self.workspace_id.trim().is_empty()
-            || self.language_id.trim().is_empty()
-            || self.provider_id.trim().is_empty()
-        {
-            return Err("exact-query response identity fields must be non-empty".to_owned());
-        }
-        validate_digest("generationDigest", &self.generation_digest, true)?;
-        validate_digest("rootDigest", &self.root_digest, false)?;
-        if !self.result.is_object() {
-            return Err("exact-query response result must be an object".to_owned());
-        }
-        let state = self
-            .result
-            .get("state")
-            .and_then(Value::as_str)
-            .ok_or_else(|| "exact-query response result state is missing".to_owned())?;
-        match state {
-            "projection" | "provider-projection" => {
-                let bytes = self
-                    .result
-                    .get("bytes")
-                    .and_then(Value::as_array)
-                    .ok_or_else(|| "exact-query Ready result has no byte payload".to_owned())?;
-                if bytes.is_empty() {
-                    return Err("exact-query Ready result has an empty byte payload".to_owned());
-                }
-            }
-            _ => {
-                return Err(format!(
-                    "exact-query response result state {state} is not terminal"
-                ));
-            }
-        }
-        if self.elapsed_micros
-            != self
-                .resident_read_elapsed_micros
-                .saturating_add(self.service_elapsed_micros)
-        {
-            return Err("exact-query response elapsedMicros is inconsistent".to_owned());
-        }
-        Ok(())
-    }
-}
-
-impl AspClientExactQueryFailure {
-    pub fn validate(&self) -> Result<(), String> {
-        check(
-            &self.schema_id,
-            CLIENT_EXACT_QUERY_FAILURE,
-            &self.schema_version,
-        )?;
-        if self.state != "failed" {
-            return Err("exact-query failure state must be failed".to_owned());
-        }
-        if self.operation_id.trim().is_empty()
-            || self.project_id.trim().is_empty()
-            || self.workspace_id.trim().is_empty()
-            || self.language_id.trim().is_empty()
-            || self.provider_id.trim().is_empty()
-            || self.phase.trim().is_empty()
-            || self.reason_kind.trim().is_empty()
-        {
-            return Err("exact-query failure identity fields must be non-empty".to_owned());
-        }
-        if let Some(generation_digest) = &self.generation_digest {
-            validate_digest("generationDigest", generation_digest, true)?;
-        }
-        if let Some(root_digest) = &self.root_digest {
-            validate_digest("rootDigest", root_digest, false)?;
-        }
-        if !self.details.is_object() {
-            return Err("exact-query failure requires object details".to_owned());
-        }
-        if self.elapsed_micros
-            != self
-                .resident_read_elapsed_micros
-                .saturating_add(self.service_elapsed_micros)
-        {
-            return Err("exact-query failure elapsedMicros is inconsistent".to_owned());
-        }
-        Ok(())
-    }
-}
-
-fn validate_digest(field: &str, value: &str, algorithm_prefix: bool) -> Result<(), String> {
-    let hex = if algorithm_prefix {
-        value
-            .strip_prefix("blake3-256:")
-            .ok_or_else(|| format!("exact-query response {field} uses an unsupported digest"))?
-    } else {
-        value
-    };
-    if hex.len() != 64
-        || !hex
-            .bytes()
-            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
-    {
-        return Err(format!("exact-query response {field} is invalid"));
-    }
-    Ok(())
 }

@@ -21,8 +21,7 @@ pub struct DurableHookConfigArtifact {
     pub(super) config: HookClientConfigFile,
     pub(super) rule_matchers: std::collections::BTreeMap<String, DurableRuleMatcherArtifact>,
     pub(super) policy_generation_digest: String,
-    pub(super) provider_projections:
-        Vec<crate::protocol_activation::protocol_activation_manifest::HookProviderProjection>,
+    pub(super) provider_projections: Vec<crate::provider_projection::HookProviderProjection>,
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -48,12 +47,6 @@ struct DurableHookConfigArtifactPayload {
 }
 
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
-struct DurableCommandTemplate {
-    argv: Vec<String>,
-    stdin_mode: Option<crate::protocol::StdinMode>,
-}
-
-#[derive(Clone, serde::Serialize, serde::Deserialize)]
 struct DurableHookProviderProjection {
     language_id: agent_semantic_config::LanguageId,
     provider_id: agent_semantic_config::ProviderId,
@@ -61,33 +54,10 @@ struct DurableHookProviderProjection {
     source_extensions: Vec<String>,
     config_files: Vec<String>,
     policy: crate::protocol::HookPolicy,
-    playbook_route: DurableCommandTemplate,
 }
 
-impl From<&crate::protocol::CommandTemplate> for DurableCommandTemplate {
-    fn from(value: &crate::protocol::CommandTemplate) -> Self {
-        Self {
-            argv: value.argv.clone(),
-            stdin_mode: value.stdin_mode,
-        }
-    }
-}
-
-impl From<DurableCommandTemplate> for crate::protocol::CommandTemplate {
-    fn from(value: DurableCommandTemplate) -> Self {
-        Self {
-            argv: value.argv,
-            stdin_mode: value.stdin_mode,
-        }
-    }
-}
-
-impl From<&crate::protocol_activation::protocol_activation_manifest::HookProviderProjection>
-    for DurableHookProviderProjection
-{
-    fn from(
-        value: &crate::protocol_activation::protocol_activation_manifest::HookProviderProjection,
-    ) -> Self {
+impl From<&crate::provider_projection::HookProviderProjection> for DurableHookProviderProjection {
+    fn from(value: &crate::provider_projection::HookProviderProjection) -> Self {
         Self {
             language_id: value.language_id.clone(),
             provider_id: value.provider_id.clone(),
@@ -95,14 +65,11 @@ impl From<&crate::protocol_activation::protocol_activation_manifest::HookProvide
             source_extensions: value.source_extensions.clone(),
             config_files: value.config_files.clone(),
             policy: value.policy.clone(),
-            playbook_route: (&value.playbook_route).into(),
         }
     }
 }
 
-impl From<DurableHookProviderProjection>
-    for crate::protocol_activation::protocol_activation_manifest::HookProviderProjection
-{
+impl From<DurableHookProviderProjection> for crate::provider_projection::HookProviderProjection {
     fn from(value: DurableHookProviderProjection) -> Self {
         Self {
             language_id: value.language_id,
@@ -111,7 +78,6 @@ impl From<DurableHookProviderProjection>
             source_extensions: value.source_extensions,
             config_files: value.config_files,
             policy: value.policy,
-            playbook_route: value.playbook_route.into(),
         }
     }
 }

@@ -100,7 +100,7 @@ def pure_code(value: str, signature: str, label: str) -> None:
 
 
 def search_frontier(value: str, label: str) -> None:
-    contains(value, "[search-lexical]", label)
+    contains(value, "[search-playbook]", label)
     contains(value, "legend:", label)
     contains(value, "frontier ID.next", label)
     contains(value, "frontier=", label)

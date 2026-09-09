@@ -91,14 +91,14 @@ def test_request_rejects_missing_generation_authority() -> None:
 
 
 @pytest.mark.parametrize(
-    "legacy_provider_id",
-    ["asp-rust", "asp-python", "asp-typescript", "orgize", "asp+rust"],
+    "invalid_provider_id",
+    ["rust", "asp_python", "orgize", "asp+rust"],
 )
-def test_request_rejects_implementation_named_provider_ids(
-    legacy_provider_id: str,
+def test_request_rejects_unregistered_or_noncanonical_provider_ids(
+    invalid_provider_id: str,
 ) -> None:
     payload = request()
-    payload["providerId"] = legacy_provider_id
+    payload["providerId"] = invalid_provider_id
     with pytest.raises(ValidationError):
         validator("asp-client-server-request.v1.schema.json").validate(payload)
 

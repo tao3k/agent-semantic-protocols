@@ -51,6 +51,12 @@
         "digest": {"$ref": "#/$defs/digest"}
       }
     },
+    "namedDigestEntries": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/namedDigestEntry"}
+    },
     "languageSchemaEntry": {
       "type": "object",
       "additionalProperties": false,
@@ -103,7 +109,7 @@
             "schemaId": {"const": "agent.semantic-protocols.runtime-artifact-execution-closure-member"},
             "schemaVersion": {"const": "1"},
             "memberKind": {"const": "evaluator-policy"},
-            "entries": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/namedDigestEntry"}}
+            "entries": {"$ref": "#/$defs/namedDigestEntries"}
           }
         }
       ]
@@ -119,7 +125,7 @@
             "schemaId": {"const": "agent.semantic-protocols.runtime-artifact-execution-closure-member"},
             "schemaVersion": {"const": "1"},
             "memberKind": {"const": "evaluator-abi"},
-            "entries": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/namedDigestEntry"}}
+            "entries": {"$ref": "#/$defs/namedDigestEntries"}
           }
         }
       ]

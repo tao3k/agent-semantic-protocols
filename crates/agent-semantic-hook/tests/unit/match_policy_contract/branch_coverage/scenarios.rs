@@ -25,7 +25,7 @@ struct Scenario {
 
 #[test]
 fn registered_asp_search_intent_is_stable_across_native_wrapped_and_nested_surfaces() {
-    let command = "asp search playbook --language rust 'HookDecision' --workspace .";
+    let command = "asp search playbook --language rust --rg HookDecision";
     run_scenarios(
         "registered ASP search surfaces",
         &[
@@ -40,7 +40,7 @@ fn registered_asp_search_intent_is_stable_across_native_wrapped_and_nested_surfa
                 payload: shell_surface(
                     "Bash",
                     "command",
-                    "asp search playbook --language rust 'HookDecision' --workspace .",
+                    "asp search playbook --language rust --rg HookDecision",
                 ),
                 expected_rule: Some("registered-asp-reasoning-search"),
                 forbidden_rule: None,
@@ -50,7 +50,7 @@ fn registered_asp_search_intent_is_stable_across_native_wrapped_and_nested_surfa
                 payload: shell_surface(
                     "Bash",
                     "command",
-                    "rtk --ultra-compact err asp search playbook --language rust 'HookDecision' --workspace .",
+                    "rtk --ultra-compact err asp search playbook --language rust --rg HookDecision",
                 ),
                 expected_rule: Some("registered-asp-reasoning-search"),
                 forbidden_rule: None,
@@ -60,7 +60,7 @@ fn registered_asp_search_intent_is_stable_across_native_wrapped_and_nested_surfa
                 payload: serde_json::json!({
                     "tool_name": "functions.exec",
                     "tool_input": {
-                        "code": "const r = await tools.exec_command({cmd: \"asp search playbook --language rust 'HookDecision' --workspace .\"});"
+                        "code": "const r = await tools.exec_command({cmd: \"asp search playbook --language rust --rg HookDecision\"});"
                     }
                 }),
                 expected_rule: Some("registered-asp-reasoning-search"),
@@ -72,7 +72,7 @@ fn registered_asp_search_intent_is_stable_across_native_wrapped_and_nested_surfa
 
 #[test]
 fn registered_asp_query_projects_structured_projection_across_codex_surfaces() {
-    let command = "asp rust query --selector rust://crates/example.rs#item/function/example --workspace . --projection source";
+    let command = "asp query playbook --language rust --selector rust://crates/example.rs#item/function/example --projection source";
     run_scenarios(
         "registered ASP structured projection surfaces",
         &[
@@ -87,7 +87,7 @@ fn registered_asp_query_projects_structured_projection_across_codex_surfaces() {
                 payload: shell_surface(
                     "Bash",
                     "command",
-                    "rtk --ultra-compact err asp rust query --selector rust://crates/example.rs#item/function/example --workspace . --projection source",
+                    "rtk --ultra-compact err asp query playbook --language rust --selector rust://crates/example.rs#item/function/example --projection source",
                 ),
                 expected_rule: Some("registered-asp-structured-projection"),
                 forbidden_rule: None,
@@ -97,7 +97,7 @@ fn registered_asp_query_projects_structured_projection_across_codex_surfaces() {
                 payload: serde_json::json!({
                     "tool_name": "functions.exec",
                     "tool_input": {
-                        "code": "const r = await tools.exec_command({cmd: \"asp rust query --selector rust://crates/example.rs#item/function/example --workspace . --projection source\"});"
+                        "code": "const r = await tools.exec_command({cmd: \"asp query playbook --language rust --selector rust://crates/example.rs#item/function/example --projection source\"});"
                     }
                 }),
                 expected_rule: Some("registered-asp-structured-projection"),
@@ -343,7 +343,7 @@ fn priority_overlaps_have_explicit_winners() {
     let scenarios = [
         (
             "reasoning over json",
-            shell("asp search playbook --language rust --json"),
+            shell("asp search playbook --language rust --rg owner --json"),
             "deny-agent-search-json",
         ),
         (

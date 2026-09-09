@@ -238,7 +238,7 @@ def _revealed_signals(texts: list[str]) -> list[str]:
     for signal, terms in {
         "mentions-evidence": ("evidence", "frontier", "selector", "command"),
         "mentions-uncertainty": ("unclear", "unknown", "uncertain", "not sure"),
-        "mentions-asp-flow": ("asp ", "search prime", "search pipe", "query"),
+        "mentions-asp-flow": ("asp ", "search playbook", "query"),
         "mentions-final-claim": ("therefore", "because", "means", "should"),
     }.items():
         if any(term in joined for term in terms):

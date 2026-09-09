@@ -27,7 +27,7 @@ def test_live_agent_scenario_derives_single_repo_claude_step() -> None:
             "timeoutSeconds": 120,
             "expect": {
                 "agentAnswer": {"required": True},
-                "pipeFlow": {"maxAspCommands": 3},
+                "commandFlow": {"maxAspCommands": 3},
             },
         },
         "evidence": {

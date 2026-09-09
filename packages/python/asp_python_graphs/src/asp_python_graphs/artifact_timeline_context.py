@@ -11,7 +11,6 @@ from dataclasses import dataclass
 from .artifact_events import ArtifactEvent
 from .artifact_fanout_planning import fanout_planning_candidates
 from .artifact_owner_collapse import owner_collapse_candidates
-from .artifact_prime_suppression import prime_suppression_candidates
 from .artifact_read_loop import read_loop_risk_summary
 from .artifact_timeline_parameters import TimelineParameters
 from .artifact_timeline_repeats import fanout_hotspots, repeat_groups
@@ -28,7 +27,6 @@ class TimelineContext:
     burst_rows: list[dict[str, object]]
     repeat_groups: list[dict[str, object]]
     fanout_hotspots: list[dict[str, object]]
-    prime_suppression: dict[str, object]
     typed_frontier_promotion: dict[str, object]
     owner_collapse: dict[str, object]
     fanout_planning: dict[str, object]
@@ -46,10 +44,6 @@ def timeline_context(
     ]
     repeated_searches = repeat_groups(events, None)
     hotspots = fanout_hotspots(burst_rows, None)
-    prime_suppression = prime_suppression_candidates(
-        sessions,
-        limit=params.examples,
-    )
     typed_frontier_promotion = typed_frontier_promotion_candidates(
         repeated_searches,
         limit=params.examples,
@@ -71,7 +65,6 @@ def timeline_context(
         burst_rows=burst_rows,
         repeat_groups=repeated_searches,
         fanout_hotspots=hotspots,
-        prime_suppression=prime_suppression,
         typed_frontier_promotion=typed_frontier_promotion,
         owner_collapse=owner_collapse,
         fanout_planning=fanout_planning,

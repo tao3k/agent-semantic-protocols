@@ -60,7 +60,7 @@ pub(super) fn validate_language_harness_json_boundary(
     let rendered_text = root.join(&scenario.expected).join("rendered.txt");
     if rendered_text.exists() {
         invalid.push(format!(
-            "{}: language harness scenario benchmarks must expose JSON schema data only; ASP owns render output",
+            "{}: ASP language provider scenario benchmarks must expose JSON schema data only; ASP owns render output",
             rendered_text.display()
         ));
     }

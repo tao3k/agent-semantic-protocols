@@ -33,33 +33,31 @@ inductive SnapshotGraphLanguage where
 
 structure PlaybookRequest where
   binding : Binding
-  fd : NativeArgs
   rg : NativeArgs
   tantivy : NativeArgs
-  syntaxQuery : String
-  syntaxQueryNonempty : syntaxQuery ≠ ""
-  graphLanguage : SnapshotGraphLanguage
-  graph : NativeArgs
+  languages : Option String
+  documents : Option String
+  syntaxQueries : List NativeArgs
+  nativeSelectors : List String
+  graph : List NativeArgs
 
-theorem admitted_request_has_direct_native_axes
+theorem admitted_request_has_retrieval_scope_inputs
     (request : PlaybookRequest) :
-    request.fd.tokens ≠ [] ∧ request.rg.tokens ≠ [] ∧
-      request.tantivy.tokens ≠ [] ∧ request.graph.tokens ≠ [] := by
-  exact ⟨request.fd.nonempty, request.rg.nonempty,
-    request.tantivy.nonempty, request.graph.nonempty⟩
+    request.rg.tokens ≠ [] ∧ request.tantivy.tokens ≠ [] := by
+  exact ⟨request.rg.nonempty, request.tantivy.nonempty⟩
 
 /-! Available clause kinds; this list is not a required flat execution set. -/
 
 inductive Axis where
-  | fd
   | rg
   | tantivy
+  | syntax
   | nativeSyntax
   | graph
   deriving DecidableEq
 
 def availableClauseKinds : List Axis :=
-  [.fd, .rg, .tantivy, .nativeSyntax, .graph]
+  [.rg, .tantivy, .syntax, .nativeSyntax, .graph]
 
 theorem five_clause_kinds_are_registered : availableClauseKinds.length = 5 := by
   rfl
@@ -96,21 +94,20 @@ theorem standalone_shell_pipe_is_rejected :
   rfl
 
 /-!
-The public Playbook is ordered by construction.  Acquisition clauses carry no
-numeric priority: list position is the Agent-authored priority.  Pipe
-alternatives remain inside one native block and therefore share its priority.
-Graph clauses occupy a distinct suffix and cannot be followed by acquisition.
+The public request preserves repeated-block identity, but the admitted Search
+Layout owns execution dependencies. rg and Tantivy establish one file-context
+scope; syntax and native-syntax consume that scope; Graph consumes syntax facts.
 -/
 
-inductive AcquisitionAxis where
-  | fd
+inductive InputAxis where
   | rg
   | tantivy
+  | syntax
   | nativeSyntax
   deriving DecidableEq
 
-structure AcquisitionClause where
-  axis : AcquisitionAxis
+structure InputClause where
+  axis : InputAxis
   nativeBlock : NativeArgs
 
 inductive GraphQueryLanguage where
@@ -123,57 +120,103 @@ structure GraphClause where
   nativeBlock : NativeArgs
 
 structure ProgressivePlaybook where
-  acquisition : List AcquisitionClause
-  acquisitionNonempty : acquisition ≠ []
+  inputs : List InputClause
+  inputsNonempty : inputs ≠ []
   graphFanIn : List GraphClause
 
-def acquisitionAtPriority (plan : ProgressivePlaybook) (priority : Nat) :
-    Option AcquisitionClause :=
-  plan.acquisition[priority]?
+def inputAtOccurrence (plan : ProgressivePlaybook) (occurrence : Nat) :
+    Option InputClause :=
+  plan.inputs[occurrence]?
 
 inductive ParsedClause where
-  | acquisition (clause : AcquisitionClause)
+  | input (clause : InputClause)
   | graph (clause : GraphClause)
 
-def acquisitionAfterGraph : List ParsedClause → Bool
+def inputAfterGraph : List ParsedClause → Bool
   | [] => false
   | .graph _ :: remaining =>
       remaining.any fun clause =>
         match clause with
-        | .acquisition _ => true
+        | .input _ => true
         | .graph _ => false
-  | .acquisition _ :: remaining => acquisitionAfterGraph remaining
+  | .input _ :: remaining => inputAfterGraph remaining
 
 def admitOrderedClauses (clauses : List ParsedClause) : Bool :=
-  !acquisitionAfterGraph clauses
+  !inputAfterGraph clauses
 
-theorem acquisition_after_graph_is_rejected
-    (graph : GraphClause) (acquisition : AcquisitionClause) :
-    admitOrderedClauses [.graph graph, .acquisition acquisition] = false := by
+theorem input_after_graph_is_rejected
+    (graph : GraphClause) (input : InputClause) :
+    admitOrderedClauses [.graph graph, .input input] = false := by
   rfl
 
-theorem acquisition_before_graph_is_admitted
-    (acquisition : AcquisitionClause) (graph : GraphClause) :
-    admitOrderedClauses [.acquisition acquisition, .graph graph] = true := by
+theorem input_before_graph_is_admitted
+    (input : InputClause) (graph : GraphClause) :
+    admitOrderedClauses [.input input, .graph graph] = true := by
+  rfl
+
+structure RetrievalResult where
+  rgOwners : List String
+  tantivyOwners : List String
+  deriving DecidableEq
+
+def fusedFileContextScope (result : RetrievalResult) : List String :=
+  result.rgOwners.filter fun owner => owner ∈ result.tantivyOwners
+
+theorem fused_file_context_membership
+    (result : RetrievalResult) (owner : String) :
+    owner ∈ fusedFileContextScope result ↔
+      owner ∈ result.rgOwners ∧ owner ∈ result.tantivyOwners := by
+  simp [fusedFileContextScope]
+
+structure OptionalCalibration where
+  languages : Option String
+  documents : Option String
+  deriving DecidableEq
+
+def scopeAfterCalibration
+    (result : RetrievalResult) (_calibration : OptionalCalibration) : List String :=
+  fusedFileContextScope result
+
+theorem calibration_cannot_mint_or_remove_file_context
+    (result : RetrievalResult) (calibration : OptionalCalibration) :
+    scopeAfterCalibration result calibration = fusedFileContextScope result := by
+  rfl
+
+inductive LayoutStage where
+  | rgRetrieval
+  | tantivyRetrieval
+  | fusedFileContext
+  | structuralScopeFacts
+  | graphReasoning
+  deriving DecidableEq
+
+def admittedStageOrder : List LayoutStage :=
+  [.rgRetrieval, .tantivyRetrieval, .fusedFileContext, .structuralScopeFacts, .graphReasoning]
+
+theorem cli_occurrence_order_cannot_change_layout_dependencies
+    (_first _second : List InputClause) :
+    admittedStageOrder =
+      [.rgRetrieval, .tantivyRetrieval, .fusedFileContext, .structuralScopeFacts,
+        .graphReasoning] := by
   rfl
 
 structure GraphFanIn where
-  acquisitionCandidates : List String
-  acquisitionBound : acquisitionCandidates.length ≤ 4096
+  syntaxFactOwners : List String
+  syntaxFactBound : syntaxFactOwners.length ≤ 4096
   rankedCandidates : List String
-  filtersAcquisition :
+  filtersSyntaxFacts :
     ∀ candidate, candidate ∈ rankedCandidates →
-      candidate ∈ acquisitionCandidates
+      candidate ∈ syntaxFactOwners
 
-theorem graph_cannot_mint_acquisition_candidates
+theorem graph_cannot_mint_candidates_outside_syntax_facts
     (fanIn : GraphFanIn) (candidate : String)
     (ranked : candidate ∈ fanIn.rankedCandidates) :
-    candidate ∈ fanIn.acquisitionCandidates :=
-  fanIn.filtersAcquisition candidate ranked
+    candidate ∈ fanIn.syntaxFactOwners :=
+  fanIn.filtersSyntaxFacts candidate ranked
 
 theorem graph_frontier_is_bounded_before_reasoning (fanIn : GraphFanIn) :
-    fanIn.acquisitionCandidates.length ≤ 4096 :=
-  fanIn.acquisitionBound
+    fanIn.syntaxFactOwners.length ≤ 4096 :=
+  fanIn.syntaxFactBound
 
 def topThirty (evidence : List α) : List α := evidence.take 30
 
@@ -209,26 +252,32 @@ structure AxisReceipt where
   checkedOwnerCount : Nat
   matchedEvidenceCount : Nat
   truncated : Bool
-  consumedCandidatesFrom : Option Axis
-  acquisitionIndependent : axis ≠ .graph → consumedCandidatesFrom = none
+  consumedCandidatesFrom : Option LayoutStage
+  followsLayout : consumedCandidatesFrom =
+    match axis with
+    | .rg | .tantivy => none
+    | .syntax | .nativeSyntax => some .fusedFileContext
+    | .graph => some .structuralScopeFacts
   deriving DecidableEq
 
-theorem acquisition_clause_does_not_consume_another_clause
-    (receipt : AxisReceipt) (acquisition : receipt.axis ≠ .graph) :
-    receipt.consumedCandidatesFrom = none :=
-  receipt.acquisitionIndependent acquisition
+theorem syntax_fact_receipt_consumes_fused_file_context
+    (receipt : AxisReceipt) (syntaxAxis : receipt.axis = .syntax ∨ receipt.axis = .nativeSyntax) :
+    receipt.consumedCandidatesFrom = some .fusedFileContext := by
+  rcases syntaxAxis with h | h
+  · simpa [h] using receipt.followsLayout
+  · simpa [h] using receipt.followsLayout
 
 structure CompleteClauseKindReceipts where
   query : QueryIdentity
-  fd : AxisReceipt
-  fdQuery : fd.query = query
-  fdAxis : fd.axis = .fd
   rg : AxisReceipt
   rgQuery : rg.query = query
   rgAxis : rg.axis = .rg
   tantivy : AxisReceipt
   tantivyQuery : tantivy.query = query
   tantivyAxis : tantivy.axis = .tantivy
+  syntaxFacts : AxisReceipt
+  syntaxQuery : syntaxFacts.query = query
+  syntaxAxis : syntaxFacts.axis = .syntax
   nativeSyntax : AxisReceipt
   nativeSyntaxQuery : nativeSyntax.query = query
   nativeSyntaxAxis : nativeSyntax.axis = .nativeSyntax
@@ -237,8 +286,8 @@ structure CompleteClauseKindReceipts where
   graphAxis : graph.axis = .graph
 
 def canonicalAuditDigests (receipts : CompleteClauseKindReceipts) : List String :=
-  [receipts.fd.outputDigest, receipts.rg.outputDigest,
-   receipts.tantivy.outputDigest, receipts.nativeSyntax.outputDigest,
+  [receipts.rg.outputDigest, receipts.tantivy.outputDigest,
+   receipts.syntaxFacts.outputDigest, receipts.nativeSyntax.outputDigest,
    receipts.graph.outputDigest]
 
 theorem fan_in_is_completion_order_independent
@@ -297,9 +346,6 @@ structure CompleteCoverageWitness where
   admittedOwnerUniverseDigest : String
   admittedOwnerUniverseDigestNonempty : admittedOwnerUniverseDigest ≠ ""
   admittedOwnerCount : Nat
-  fdComplete :
-    AxisProvesNoMatch query admittedOwnerUniverseDigest
-      admittedOwnerCount receipts.fd
   rgComplete :
     AxisProvesNoMatch query admittedOwnerUniverseDigest
       admittedOwnerCount receipts.rg
@@ -704,7 +750,7 @@ structure ExecutableSearchEvidence where
   relation : String
 
 def exactQueryGrammar : String :=
-  "asp query --selector <exact-selector> --projection <callable-skeleton|source>"
+  "asp query playbook --language <producer|...> --selector <exact-selector> --projection <callable-skeleton|source>"
 
 structure SearchAgentHandoff where
   evidence : List ExecutableSearchEvidence
@@ -788,7 +834,7 @@ theorem syntax_query_projection_does_not_constrain_continuation
 
 /-!
 A scheduler plan is not a public terminal.  Successful Search projection
-requires every Agent-authored acquisition clause and requested Graph fan-in to
+requires every Agent-authored input block and requested Graph fan-in to
 complete, while its save-token surface contains only a result kind and bounded
 selector evidence.  There is deliberately no constructor or field for a
 prescribed next action.

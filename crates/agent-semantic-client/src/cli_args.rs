@@ -35,7 +35,7 @@ pub(crate) fn parse_client_args(
     while let Some(arg) = iter.next() {
         match arg.as_str() {
             "--language" if language_id.is_none() => {
-                return Err("--language has been removed; use asp <rust|typescript|python> <search|query|check> ...".to_string());
+                return Err("--language is owned by `asp search playbook` and `asp query playbook`; it is not a generic client option".to_string());
             }
             "--workspace" if accepts_workspace_flag(command.as_deref()) => {
                 if explicit_workspace {
@@ -83,7 +83,7 @@ pub(crate) fn parse_client_args(
 }
 
 fn accepts_workspace_flag(command: Option<&str>) -> bool {
-    matches!(command, Some("search" | "query" | "check" | "cache"))
+    matches!(command, Some("search" | "query" | "cache"))
 }
 
 fn resolve_project_root(value: &str, invocation_root: &Path) -> PathBuf {

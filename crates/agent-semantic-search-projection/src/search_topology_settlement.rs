@@ -11,18 +11,24 @@ use std::fmt;
 use orgize::ast::{
     OrgSourceBlock, OrgSourceBlockDocument, OrgSourceBlockHeader, OrgSourceBlockHeaderValue,
 };
-use serde_json::Map;
 use serde_json::Value;
+
+use crate::search_topology_settlement_support::{
+    digest_json, gql_alias, is_blake3_digest, org_render_error, quoted, render_edge, render_node,
+    render_result_node, require_text_eq, required_array, required_object, required_object_field,
+    required_text, required_u64, validate_projection,
+};
 
 pub const SEARCH_TOPOLOGY_SETTLEMENT_SCHEMA_ID: &str =
     "agent.semantic-protocols.search-topology-settlement";
 pub const SEARCH_TOPOLOGY_SETTLEMENT_SCHEMA_VERSION: &str = "1";
+/// Fixed public evidence bound for one Search Playbook result.
+pub const WORKSPACE_SEARCH_PLAYBOOK_V1_EVIDENCE_ITEM_LIMIT: usize = 30;
 
 /// One immutable Search projection over an admitted Project Topology generation.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SearchTopologySettlement {
     packet: Value,
-    materialization_request_id: String,
     derived_relation_count: u64,
 }
 
@@ -41,8 +47,37 @@ impl SearchTopologySettlement {
             "agent.semantic-protocols.workspace-search-playbook-result",
         )?;
         require_text_eq(result, "schemaVersion", "1")?;
+        let acquisition_incomplete = match required_text(result, "result")? {
+            "exact-selector-ready"
+            | "disambiguation-required"
+            | "relationship-supported"
+            | "no-match" => false,
+            "refinement-required" => true,
+            "contradiction" => {
+                return invalid(
+                    "search-contradiction",
+                    "contradictory Search evidence cannot publish a Ready topology settlement",
+                );
+            }
+            "provider-contract-failure" => {
+                return invalid(
+                    "search-provider-contract-failure",
+                    "provider contract failure cannot publish a Ready topology settlement",
+                );
+            }
+            _ => {
+                return invalid(
+                    "schema-invalid",
+                    "workspace Search result has an unsupported result state",
+                );
+            }
+        };
         let evidence = required_array(result, "evidence")?;
-        if evidence.len() > 30 {
+        let evidence_item_limit = usize::try_from(required_u64(result, "evidenceItemLimit")?)
+            .map_err(|_| error("schema-invalid", "evidenceItemLimit exceeds usize"))?;
+        if evidence_item_limit != WORKSPACE_SEARCH_PLAYBOOK_V1_EVIDENCE_ITEM_LIMIT
+            || evidence.len() > evidence_item_limit
+        {
             return invalid(
                 "search-evidence-bound-exceeded",
                 "Search settlement accepts at most thirty ranked evidence nodes",
@@ -53,6 +88,7 @@ impl SearchTopologySettlement {
         let library_nodes = required_array(library_packet, "nodes")?;
         let library_edges = required_array(library_packet, "edges")?;
         let mut rank_by_selector = BTreeMap::<String, u64>::new();
+        let mut hit_by_selector = BTreeMap::<String, Value>::new();
         let mut selected_ids = BTreeSet::<String>::new();
         for (rank, item) in evidence.iter().enumerate() {
             let item = required_object(item, "evidence[]")?;
@@ -66,6 +102,14 @@ impl SearchTopologySettlement {
                     format!("Search evidence repeats selector {selector}"),
                 );
             }
+            let hit = required_object_field(item, "hit")?;
+            if hit.is_empty() {
+                return invalid(
+                    "search-hit-evidence-empty",
+                    format!("Search evidence has no structured hit values: {selector}"),
+                );
+            }
+            hit_by_selector.insert(selector.to_owned(), Value::Object(hit.clone()));
             let node_id = library_nodes
                 .iter()
                 .filter_map(Value::as_object)
@@ -99,9 +143,20 @@ impl SearchTopologySettlement {
                 }
             }
         }
+        let library_frontiers = library_packet
+            .get("frontiers")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+        for frontier in &library_frontiers {
+            let frontier = required_object(frontier, "Project Topology frontiers[]")?;
+            let anchor = required_text(frontier, "anchor")?;
+            if selected_ids.contains(anchor) {
+                selected_ids.insert(required_text(frontier, "target")?.to_owned());
+            }
+        }
 
         let mut nodes = Vec::new();
-        let mut next_context_rank = rank_by_selector.len() as u64 + 1;
         for node in library_nodes {
             let node = required_object(node, "Project Topology nodes[]")?;
             let id = required_text(node, "id")?;
@@ -109,23 +164,29 @@ impl SearchTopologySettlement {
                 continue;
             }
             let mut projected = serde_json::Map::new();
-            for field in ["id", "language", "kind", "name", "selector", "annotation"] {
+            for field in [
+                "id",
+                "language",
+                "kind",
+                "name",
+                "selector",
+                "ownerLocator",
+                "annotation",
+            ] {
                 if let Some(value) = node.get(field) {
                     projected.insert(field.to_owned(), value.clone());
                 }
             }
-            if let Some(selector) = node.get("selector").and_then(Value::as_str) {
-                let (rank, depth) = rank_by_selector.get(selector).copied().map_or_else(
-                    || {
-                        let rank = next_context_rank;
-                        next_context_rank += 1;
-                        (rank, 1)
-                    },
-                    |rank| (rank, 0),
-                );
+            if let Some(selector) = node.get("selector").and_then(Value::as_str)
+                && let Some(rank) = rank_by_selector.get(selector).copied()
+            {
                 projected.insert(
                     "projection".to_owned(),
-                    serde_json::json!({"rank": rank, "depth": depth}),
+                    serde_json::json!({
+                        "rank": rank,
+                        "depth": 0,
+                        "hit": hit_by_selector[selector].clone(),
+                    }),
                 );
             }
             nodes.push(Value::Object(projected));
@@ -172,41 +233,94 @@ impl SearchTopologySettlement {
 
         let mut selectors = rank_by_selector.keys().cloned().collect::<Vec<_>>();
         selectors.sort();
-        let proof_dependencies = edges
+        let derived_relation_count = edges
             .iter()
             .filter(|edge| edge.get("modality").and_then(Value::as_str) == Some("derived"))
-            .filter_map(|edge| {
-                edge.get("proofRef")
-                    .and_then(Value::as_str)
-                    .map(str::to_owned)
-            })
-            .collect::<BTreeSet<_>>()
-            .into_iter()
-            .collect::<Vec<_>>();
-        let derived_relation_count = proof_dependencies.len() as u64;
+            .count() as u64;
         let edge_set_digest = digest_json(&Value::Array(edges.clone()))?;
         let evidence_binding_digest = digest_json(&Value::Array(evidence.to_vec()))?;
         let decision_core_digest = digest_json(&serde_json::json!({
             "requestId": request_id,
             "selectors": selectors,
         }))?;
+        let frontiers = library_frontiers
+            .into_iter()
+            .filter(|frontier| {
+                frontier.as_object().is_some_and(|frontier| {
+                    frontier
+                        .get("anchor")
+                        .and_then(Value::as_str)
+                        .is_some_and(|anchor| selected_ids.contains(anchor))
+                        && frontier
+                            .get("target")
+                            .and_then(Value::as_str)
+                            .is_some_and(|target| selected_ids.contains(target))
+                })
+            })
+            .collect::<Vec<_>>();
+        let frontier_coverage_refs = frontiers
+            .iter()
+            .filter_map(|frontier| frontier.get("coverageRef").and_then(Value::as_str))
+            .collect::<BTreeSet<_>>();
+        let coverage_certificates = library_packet
+            .get("coverageCertificates")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter(|certificate| {
+                certificate
+                    .get("id")
+                    .and_then(Value::as_str)
+                    .is_some_and(|id| frontier_coverage_refs.contains(id))
+            })
+            .cloned()
+            .collect::<Vec<_>>();
         let topology_delta_digest = digest_json(&serde_json::json!({
             "nodes": nodes,
             "edges": edges,
-        }))?;
-        let materialization_digest = digest_json(&serde_json::json!({
-            "requestId": request_id,
-            "selectors": selectors,
-            "proofDependencies": proof_dependencies,
+            "coverageCertificates": coverage_certificates,
+            "frontiers": frontiers,
         }))?;
         let closure = required_object_field(library_packet, "closure")?;
-        let materializable = !selectors.is_empty();
+        require_text_eq(closure, "state", "stable")?;
+        let closure_receipt_digest = required_text(closure, "digest")?;
+        let queryable = !acquisition_incomplete && !selectors.is_empty();
+        let next_relation_set_digest = if acquisition_incomplete {
+            digest_json(&serde_json::json!({
+                "candidateRelationSetDigest": edge_set_digest,
+                "continuation": "search-acquisition-incomplete",
+            }))?
+        } else {
+            edge_set_digest.clone()
+        };
+        let mut inference = serde_json::json!({
+            "programId": "project-topology-inference.v1",
+            "engineProfile": "attached-project-topology.v1",
+            "scope": "bounded",
+            "state": if acquisition_incomplete { "incomplete" } else { "complete" },
+            "terminationKind": if acquisition_incomplete { "budget-exhausted" } else { "fixed-point" },
+            // No request-local inference runs here. The fixed point and proof
+            // DAG are inherited from the admitted library closure.
+            "iterationCount": 0,
+            "traversalDepth": if queryable { 1 } else { 0 },
+            "derivedRelationCount": derived_relation_count,
+            "proofDagDigest": required_text(closure, "proofDagDigest")?,
+            "proofArtifactLocator": format!("project-topology/{}/proof-dag", library.generation_digest()),
+            "rankingReceiptDigest": decision_core_digest,
+            "candidateClosureReceiptDigest": closure_receipt_digest,
+            "candidateRelationSetDigest": edge_set_digest,
+            "nextRelationSetDigest": next_relation_set_digest,
+            "postRankingCertified": !acquisition_incomplete,
+        });
+        if acquisition_incomplete {
+            inference["reasonKind"] = Value::String("search-acquisition-incomplete".to_owned());
+        }
         let settlement = serde_json::json!({
             "schemaId": SEARCH_TOPOLOGY_SETTLEMENT_SCHEMA_ID,
             "schemaVersion": SEARCH_TOPOLOGY_SETTLEMENT_SCHEMA_VERSION,
             "protocolId": "agent.semantic-protocols.search-playbook",
             "protocolVersion": "1",
-            "resultState": if materializable { "materializable" } else { "empty" },
+            "resultState": if acquisition_incomplete { "incomplete" } else if queryable { "queryable" } else { "empty" },
             "binding": {
                 "projectWorkspaceIdentity": library.project_workspace_identity(),
                 "sourceGenerationDigest": library.source_generation_digest(),
@@ -216,44 +330,26 @@ impl SearchTopologySettlement {
                 "structuralTopologyDigest": library.structural_topology_digest(),
                 "semanticTopologyDigest": library.semantic_topology_digest(),
                 "inferenceProgramDigest": library.inference_program_digest(),
+                "topologyClosureDigest": library.closure_digest(),
                 "evidenceBindingDigest": evidence_binding_digest,
                 "decisionCoreDigest": decision_core_digest,
                 "topologyDeltaDigest": topology_delta_digest,
             },
-            "inference": {
-                "programId": "project-topology-inference.v1",
-                "engineProfile": "attached-project-topology.v1",
-                "scope": "bounded",
-                "state": "complete",
-                "terminationKind": "fixed-point",
-                "iterationCount": 0,
-                "traversalDepth": if materializable { 1 } else { 0 },
-                "derivedRelationCount": derived_relation_count,
-                "proofDagDigest": required_text(closure, "proofDagDigest")?,
-                "proofArtifactLocator": format!("project-topology/{}/proof-dag", library.generation_digest()),
-                "rankingReceiptDigest": decision_core_digest,
-                "candidateClosureReceiptDigest": topology_delta_digest,
-                "candidateRelationSetDigest": edge_set_digest,
-                "nextRelationSetDigest": edge_set_digest,
-                "postRankingCertified": true,
-            },
+            "inference": inference,
             "nodes": nodes,
             "edges": edges,
-            "coverageCertificates": library_packet.get("coverageCertificates").cloned().unwrap_or_else(|| Value::Array(vec![])),
-            "frontiers": [],
-            "materializationSet": {
-                "state": if materializable { "available" } else { "empty" },
-                "requestId": request_id,
-                "digest": materialization_digest,
-                "selectors": selectors,
-                "proofDependencies": proof_dependencies,
-            },
+            "coverageCertificates": coverage_certificates,
+            "frontiers": frontiers,
             "rendering": {
                 "format": "org-gql",
                 "gqlBlockCount": 1,
                 "ascentSourceExposed": false,
             },
-            "terminal": {"state": "ready", "terminalCount": 1},
+            "terminal": if acquisition_incomplete {
+                serde_json::json!({"state": "incomplete", "terminalCount": 1, "reasonKind": "search-acquisition-incomplete"})
+            } else {
+                serde_json::json!({"state": "ready", "terminalCount": 1})
+            },
         });
         Self::admit_for_library(settlement, library)
     }
@@ -284,6 +380,7 @@ impl SearchTopologySettlement {
             ),
             ("semanticTopologyDigest", library.semantic_topology_digest()),
             ("inferenceProgramDigest", library.inference_program_digest()),
+            ("topologyClosureDigest", library.closure_digest()),
         ];
         if expected
             .iter()
@@ -312,6 +409,12 @@ impl SearchTopologySettlement {
             "agent.semantic-protocols.search-playbook",
         )?;
         require_text_eq(object, "protocolVersion", "1")?;
+        if object.contains_key("materializationSet") {
+            return invalid(
+                "search-materialization-set-removed",
+                "V1 exposes canonical selectors only on their owning GQL nodes",
+            );
+        }
         let result_state = required_text(object, "resultState")?;
 
         let binding = required_object_field(object, "binding")?;
@@ -324,6 +427,7 @@ impl SearchTopologySettlement {
             "structuralTopologyDigest",
             "semanticTopologyDigest",
             "inferenceProgramDigest",
+            "topologyClosureDigest",
             "evidenceBindingDigest",
             "decisionCoreDigest",
             "topologyDeltaDigest",
@@ -343,6 +447,14 @@ impl SearchTopologySettlement {
         let termination_kind = required_text(inference, "terminationKind")?;
         let candidate_relation_set_digest = required_text(inference, "candidateRelationSetDigest")?;
         let next_relation_set_digest = required_text(inference, "nextRelationSetDigest")?;
+        if required_text(inference, "candidateClosureReceiptDigest")?
+            != required_text(binding, "topologyClosureDigest")?
+        {
+            return invalid(
+                "topology-closure-receipt-mismatch",
+                "Search inference must cite the admitted Project Topology closure receipt",
+            );
+        }
         if !is_blake3_digest(candidate_relation_set_digest)
             || !is_blake3_digest(next_relation_set_digest)
         {
@@ -364,8 +476,16 @@ impl SearchTopologySettlement {
             if !node_ids.insert(node_id.to_owned()) {
                 return invalid("duplicate-node-id", format!("duplicate node id {node_id}"));
             }
-            if let Some(selector) = node.get("selector").and_then(Value::as_str) {
-                selectors.insert(selector.to_owned());
+            if let Some(selector) = node.get("selector").and_then(Value::as_str)
+                && !selectors.insert(selector.to_owned())
+            {
+                return invalid(
+                    "duplicate-selector",
+                    format!("selector {selector} is owned by more than one settled node"),
+                );
+            }
+            if let Some(projection) = node.get("projection") {
+                validate_projection(required_object(projection, "nodes[].projection")?)?;
             }
             if let Some(annotation) = node.get("annotation") {
                 let annotation = required_object(annotation, "nodes[].annotation")?;
@@ -384,7 +504,6 @@ impl SearchTopologySettlement {
             ("derived", ("project-topology-inference.v1", "proof-dag")),
             ("proposed", ("model-proposal", "model-premises")),
         ]);
-        let mut proof_refs = BTreeSet::new();
         let mut derived_relation_count = 0_u64;
         for edge in required_array(object, "edges")? {
             let edge = required_object(edge, "edges[]")?;
@@ -410,7 +529,7 @@ impl SearchTopologySettlement {
             }
             if modality == "derived" {
                 derived_relation_count += 1;
-                proof_refs.insert(required_text(edge, "proofRef")?.to_owned());
+                required_text(edge, "proofRef")?;
             }
         }
         if required_u64(inference, "derivedRelationCount")? != derived_relation_count {
@@ -431,64 +550,61 @@ impl SearchTopologySettlement {
                 );
             }
         }
+        let mut referenced_coverage = BTreeSet::new();
         for frontier in required_array(object, "frontiers")? {
             let frontier = required_object(frontier, "frontiers[]")?;
             let anchor = required_text(frontier, "anchor")?;
-            if !node_ids.contains(anchor) {
+            let target = required_text(frontier, "target")?;
+            if !node_ids.contains(anchor) || !node_ids.contains(target) {
                 return invalid(
                     "dangling-frontier",
-                    format!("frontier anchor {anchor} is absent"),
+                    format!("frontier {anchor}->{target} has an absent endpoint"),
                 );
             }
-            if required_text(frontier, "state")? == "certified-missing" {
-                let coverage_ref = required_text(frontier, "coverageRef")?;
-                let certificate = coverage.get(coverage_ref).ok_or_else(|| {
-                    error(
-                        "frontier-coverage-unresolved",
-                        format!("coverage {coverage_ref} is absent"),
-                    )
-                })?;
-                if required_text(certificate, "scope")? != "complete"
-                    || required_text(certificate, "relation")?
-                        != required_text(frontier, "relation")?
-                    || required_text(certificate, "targetKind")?
-                        != required_text(frontier, "targetKind")?
-                {
+            let state = required_text(frontier, "state")?;
+            let reason = required_text(frontier, "reason")?;
+            let coverage_ref = frontier.get("coverageRef").and_then(Value::as_str);
+            let required_scope = match (state, reason, coverage_ref) {
+                ("unknown", "binding-not-established", None) => continue,
+                ("unknown", "coverage-open", Some(reference)) => {
+                    referenced_coverage.insert(reference.to_owned());
+                    "partial"
+                }
+                ("certified-missing", "complete-coverage-no-witness", Some(reference)) => {
+                    referenced_coverage.insert(reference.to_owned());
+                    "complete"
+                }
+                _ => {
                     return invalid(
-                        "frontier-coverage-incomplete",
-                        format!("coverage {coverage_ref} does not certify this frontier"),
+                        "frontier-classification-mismatch",
+                        format!(
+                            "frontier {anchor}->{target} has an invalid state/reason/coverage tuple"
+                        ),
                     );
                 }
+            };
+            let coverage_ref = coverage_ref.expect("covered frontier has a reference");
+            let certificate = coverage.get(coverage_ref).ok_or_else(|| {
+                error(
+                    "frontier-coverage-unresolved",
+                    format!("coverage {coverage_ref} is absent"),
+                )
+            })?;
+            if required_text(certificate, "scope")? != required_scope
+                || required_text(certificate, "relation")? != required_text(frontier, "relation")?
+                || required_text(certificate, "targetKind")?
+                    != required_text(frontier, "targetKind")?
+            {
+                return invalid(
+                    "frontier-coverage-incomplete",
+                    format!("coverage {coverage_ref} does not classify this frontier"),
+                );
             }
         }
-
-        let materialization = required_object_field(object, "materializationSet")?;
-        let materialization_state = required_text(materialization, "state")?;
-        let materialization_request_id = required_text(materialization, "requestId")?.to_owned();
-        let selected = text_array(materialization, "selectors")?;
-        if selected.windows(2).any(|pair| pair[0] >= pair[1]) {
+        if referenced_coverage != coverage.keys().cloned().collect::<BTreeSet<_>>() {
             return invalid(
-                "materialization-order",
-                "materialization selectors must be strictly sorted and unique",
-            );
-        }
-        if selected
-            .iter()
-            .any(|selector| !selectors.contains(*selector))
-        {
-            return invalid(
-                "materialization-selector-unavailable",
-                "materialization contains a selector absent from settled nodes",
-            );
-        }
-        let selected_proofs = text_array(materialization, "proofDependencies")?;
-        if selected_proofs
-            .iter()
-            .any(|proof| !proof_refs.contains(*proof))
-        {
-            return invalid(
-                "proof-dependency-unresolved",
-                "materialization contains an unresolved proof dependency",
+                "frontier-coverage-extraneous",
+                "coverage certificates must equal exactly the references retained by frontiers",
             );
         }
 
@@ -533,15 +649,15 @@ impl SearchTopologySettlement {
                         "fixed-point inference requires a ready terminal",
                     );
                 }
-                let expected_result = if materialization_state == "available" {
-                    "materializable"
-                } else {
+                let expected_result = if selectors.is_empty() {
                     "empty"
+                } else {
+                    "queryable"
                 };
                 if result_state != expected_result {
                     return invalid(
                         "result-state-mismatch",
-                        "result state does not match the materialization set",
+                        "result state does not match selector-bearing GQL nodes",
                     );
                 }
             }
@@ -550,13 +666,10 @@ impl SearchTopologySettlement {
                     || post_ranking_certified
                     || result_state != "incomplete"
                     || terminal_state != "incomplete"
-                    || materialization_state != "empty"
-                    || !selected.is_empty()
-                    || !selected_proofs.is_empty()
                 {
                     return invalid(
                         "inference-terminal-mismatch",
-                        "budget exhaustion must remain incomplete and non-materializable",
+                        "budget exhaustion must remain an incomplete Search settlement",
                     );
                 }
                 if candidate_relation_set_digest == next_relation_set_digest {
@@ -571,13 +684,10 @@ impl SearchTopologySettlement {
                     || post_ranking_certified
                     || result_state != "blocked"
                     || terminal_state != "failed"
-                    || materialization_state != "empty"
-                    || !selected.is_empty()
-                    || !selected_proofs.is_empty()
                 {
                     return invalid(
                         "inference-terminal-mismatch",
-                        "blocked inference must fail without materialization",
+                        "blocked inference must fail without a ready Search settlement",
                     );
                 }
             }
@@ -594,13 +704,18 @@ impl SearchTopologySettlement {
 
         Ok(Self {
             packet,
-            materialization_request_id,
             derived_relation_count,
         })
     }
 
-    pub fn materialization_request_id(&self) -> &str {
-        &self.materialization_request_id
+    /// Number of canonical selectors exposed directly on the settled GQL nodes.
+    pub fn queryable_selector_count(&self) -> usize {
+        self.packet["nodes"].as_array().map_or(0, |nodes| {
+            nodes
+                .iter()
+                .filter(|node| node.get("selector").is_some())
+                .count()
+        })
     }
 
     pub fn derived_relation_count(&self) -> u64 {
@@ -615,11 +730,26 @@ impl SearchTopologySettlement {
     pub fn render_org_gql(&self) -> Result<String, SearchTopologySettlementError> {
         let packet = required_object(&self.packet, "packet")?;
         let mut lines = Vec::new();
+        let mut result_nodes = BTreeMap::<String, Vec<String>>::new();
+        let mut standalone_nodes = Vec::new();
 
         for node in required_array(packet, "nodes")? {
             let node = required_object(node, "nodes[]")?;
-            lines.push(render_node(node)?);
+            if node.contains_key("annotation") || node.contains_key("excerpt") {
+                standalone_nodes.push(render_node(node)?);
+            } else {
+                let (language, rendered) = render_result_node(node)?;
+                result_nodes.entry(language).or_default().push(rendered);
+            }
         }
+        for (language, nodes) in result_nodes {
+            lines.push(format!(
+                "({}:Language)-[:RESULTS]->[{}]",
+                gql_alias(&language),
+                nodes.join(",")
+            ));
+        }
+        lines.extend(standalone_nodes);
         for edge in required_array(packet, "edges")? {
             lines.push(render_edge(required_object(edge, "edges[]")?)?);
         }
@@ -634,7 +764,7 @@ impl SearchTopologySettlement {
                 quoted(required_text(certificate, "digest")?),
             ));
         }
-        for (index, frontier) in required_array(packet, "frontiers")?.iter().enumerate() {
+        for frontier in required_array(packet, "frontiers")? {
             let frontier = required_object(frontier, "frontiers[]")?;
             let mut properties = vec![
                 format!("relation:{}", quoted(required_text(frontier, "relation")?)),
@@ -650,31 +780,18 @@ impl SearchTopologySettlement {
                 properties.push(format!("coverage:{}", quoted(reference)));
             }
             lines.push(format!(
-                "({})-[:FRONTIER {{{}}}]->(frontier_{index}:Unknown)",
+                "({})-[:FRONTIER {{{}}}]->({})",
                 required_text(frontier, "anchor")?,
-                properties.join(",")
+                properties.join(","),
+                required_text(frontier, "target")?,
             ));
         }
-        let materialization = required_object_field(packet, "materializationSet")?;
-        lines.push(format!(
-            "(materialize:MaterializationSet {{request_id:{},digest:{},selectors:{},proofs:{}}})",
-            quoted(required_text(materialization, "requestId")?),
-            quoted(required_text(materialization, "digest")?),
-            render_text_array(materialization, "selectors")?,
-            render_text_array(materialization, "proofDependencies")?,
-        ));
         let block = OrgSourceBlock::new(
             "gql",
             vec![
                 OrgSourceBlockHeader::new(
-                    "profile",
-                    OrgSourceBlockHeaderValue::token("search-evidence.v1")
-                        .map_err(org_render_error)?,
-                )
-                .map_err(org_render_error)?,
-                OrgSourceBlockHeader::new(
-                    "eval",
-                    OrgSourceBlockHeaderValue::token("never").map_err(org_render_error)?,
+                    "name",
+                    OrgSourceBlockHeaderValue::token("result").map_err(org_render_error)?,
                 )
                 .map_err(org_render_error)?,
             ],
@@ -686,207 +803,6 @@ impl SearchTopologySettlement {
             .and_then(|document| document.render())
             .map_err(org_render_error)
     }
-}
-
-fn digest_json(value: &Value) -> Result<String, SearchTopologySettlementError> {
-    let encoded = serde_json::to_vec(value)
-        .map_err(|failure| error("rendering-failed", failure.to_string()))?;
-    Ok(format!("blake3-256:{}", blake3::hash(&encoded).to_hex()))
-}
-
-fn org_render_error(
-    error: orgize::ast::OrgSourceBlockDocumentError,
-) -> SearchTopologySettlementError {
-    SearchTopologySettlementError {
-        reason_kind: "rendering-failed",
-        message: error.to_string(),
-    }
-}
-
-fn render_node(node: &Map<String, Value>) -> Result<String, SearchTopologySettlementError> {
-    let id = required_text(node, "id")?;
-    let language = required_text(node, "language")?;
-    let kind = required_text(node, "kind")?;
-    if let Some(annotation) = node.get("annotation") {
-        let annotation = required_object(annotation, "nodes[].annotation")?;
-        let mut properties = vec![
-            format!("text:{}", quoted(required_text(annotation, "text")?)),
-            format!("state:{}", quoted(required_text(annotation, "state")?)),
-            format!(
-                "binding:{}",
-                quoted(required_text(annotation, "bindingDigest")?)
-            ),
-            format!(
-                "premises:{}",
-                render_text_array(annotation, "premiseWitnesses")?
-            ),
-            format!(
-                "producer:{}",
-                quoted(required_text(annotation, "producer")?)
-            ),
-        ];
-        if let Some(reference) = annotation
-            .get("admissionReceiptRef")
-            .and_then(Value::as_str)
-        {
-            properties.push(format!("admission:{}", quoted(reference)));
-        }
-        return Ok(format!(
-            "({id}:SemanticAnnotation {{{}}})",
-            properties.join(",")
-        ));
-    }
-    if let Some(excerpt) = node.get("excerpt") {
-        let excerpt = required_object(excerpt, "nodes[].excerpt")?;
-        return Ok(format!(
-            "({id}:SourceHit {{language:{},path:{},match:{},read:{},witness:{}}})",
-            quoted(language),
-            quoted(required_text(excerpt, "path")?),
-            serde_json::to_string(
-                excerpt
-                    .get("match")
-                    .ok_or_else(|| error("schema-invalid", "excerpt match is absent"))?
-            )
-            .map_err(|failure| error("rendering-failed", failure.to_string()))?,
-            serde_json::to_string(
-                excerpt
-                    .get("read")
-                    .ok_or_else(|| error("schema-invalid", "excerpt read is absent"))?
-            )
-            .map_err(|failure| error("rendering-failed", failure.to_string()))?,
-            quoted(required_text(excerpt, "witness")?),
-        ));
-    }
-
-    let label = format!("{}{}", gql_type_prefix(language), gql_type_prefix(kind));
-    let mut properties = Vec::new();
-    if let Some(name) = node.get("name").and_then(Value::as_str) {
-        properties.push(format!("name:{}", quoted(name)));
-    }
-    properties.push(format!(
-        "selector:{}",
-        quoted(required_text(node, "selector")?)
-    ));
-    if let Some(projection) = node.get("projection") {
-        properties.push(format!(
-            "projection:{}",
-            render_projection(required_object(projection, "nodes[].projection")?)?
-        ));
-    }
-    Ok(format!(
-        "(lang_{}:Language {{id:{}}})-[:RESULTS]->[({id}:{label} {{{}}})]",
-        gql_alias(language),
-        quoted(language),
-        properties.join(",")
-    ))
-}
-
-fn render_projection(
-    projection: &Map<String, Value>,
-) -> Result<String, SearchTopologySettlementError> {
-    let mut properties = vec![
-        format!("rank:{}", required_u64(projection, "rank")?),
-        format!("depth:{}", required_u64(projection, "depth")?),
-    ];
-    if let Some(hit) = projection.get("hit") {
-        let hit = required_object(hit, "projection.hit")?;
-        let mut hit_properties = Vec::new();
-        if let Some(value) = hit.get("fd").and_then(Value::as_bool) {
-            hit_properties.push(format!("fd:{value}"));
-        }
-        if let Some(value) = hit.get("rg") {
-            hit_properties.push(format!(
-                "rg:{}",
-                serde_json::to_string(value)
-                    .map_err(|failure| error("rendering-failed", failure.to_string()))?
-            ));
-        }
-        if let Some(value) = hit.get("tantivy") {
-            hit_properties.push(format!(
-                "tantivy:{}",
-                serde_json::to_string(value)
-                    .map_err(|failure| error("rendering-failed", failure.to_string()))?
-            ));
-        }
-        if let Some(value) = hit.get("native").and_then(Value::as_bool) {
-            hit_properties.push(format!("native:{value}"));
-        }
-        properties.push(format!("hit:{{{}}}", hit_properties.join(",")));
-    }
-    if let Some(jq) = projection.get("jq").and_then(Value::as_str) {
-        properties.push(format!("jq:{}", quoted(jq)));
-    }
-    Ok(format!("{{{}}}", properties.join(",")))
-}
-
-fn render_edge(edge: &Map<String, Value>) -> Result<String, SearchTopologySettlementError> {
-    let modality = required_text(edge, "modality")?;
-    let mut properties = vec![format!("modality:{}", quoted(modality))];
-    if let Some(derived_by) = edge.get("derivedBy").and_then(Value::as_str) {
-        properties.push(format!("derived_by:{}", quoted(derived_by)));
-    }
-    if let Some(proof) = edge.get("proofRef").and_then(Value::as_str) {
-        properties.push(format!("proof:{}", quoted(proof)));
-    }
-    properties.push(format!(
-        "witnesses:{}",
-        render_text_array(edge, "witnesses")?
-    ));
-    Ok(format!(
-        "({})-[:{} {{{}}}]->({})",
-        required_text(edge, "from")?,
-        required_text(edge, "relation")?,
-        properties.join(","),
-        required_text(edge, "to")?,
-    ))
-}
-
-fn render_text_array(
-    object: &Map<String, Value>,
-    field: &str,
-) -> Result<String, SearchTopologySettlementError> {
-    serde_json::to_string(&text_array(object, field)?)
-        .map_err(|failure| error("rendering-failed", failure.to_string()))
-}
-
-fn quoted(value: &str) -> String {
-    serde_json::to_string(value).expect("serializing a string cannot fail")
-}
-
-fn gql_alias(value: &str) -> String {
-    value
-        .chars()
-        .map(|character| {
-            if character.is_ascii_alphanumeric() || character == '_' {
-                character
-            } else {
-                '_'
-            }
-        })
-        .collect()
-}
-
-fn gql_type_prefix(value: &str) -> String {
-    value
-        .split(|character: char| !character.is_ascii_alphanumeric())
-        .filter(|part| !part.is_empty())
-        .map(|part| {
-            let mut characters = part.chars();
-            characters
-                .next()
-                .map(|first| first.to_ascii_uppercase().to_string() + characters.as_str())
-                .unwrap_or_default()
-        })
-        .collect()
-}
-
-fn is_blake3_digest(value: &str) -> bool {
-    value.strip_prefix("blake3-256:").is_some_and(|digest| {
-        digest.len() == 64
-            && digest
-                .bytes()
-                .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
-    })
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -909,104 +825,19 @@ impl fmt::Display for SearchTopologySettlementError {
 
 impl std::error::Error for SearchTopologySettlementError {}
 
-fn error(reason_kind: &'static str, message: impl Into<String>) -> SearchTopologySettlementError {
+pub(super) fn error(
+    reason_kind: &'static str,
+    message: impl Into<String>,
+) -> SearchTopologySettlementError {
     SearchTopologySettlementError {
         reason_kind,
         message: message.into(),
     }
 }
 
-fn invalid<T>(
+pub(super) fn invalid<T>(
     reason_kind: &'static str,
     message: impl Into<String>,
 ) -> Result<T, SearchTopologySettlementError> {
     Err(error(reason_kind, message))
-}
-
-fn required_object<'a>(
-    value: &'a Value,
-    field: &str,
-) -> Result<&'a Map<String, Value>, SearchTopologySettlementError> {
-    value
-        .as_object()
-        .ok_or_else(|| error("schema-invalid", format!("{field} must be an object")))
-}
-
-fn required_object_field<'a>(
-    object: &'a Map<String, Value>,
-    field: &str,
-) -> Result<&'a Map<String, Value>, SearchTopologySettlementError> {
-    object
-        .get(field)
-        .and_then(Value::as_object)
-        .ok_or_else(|| error("schema-invalid", format!("{field} must be an object")))
-}
-
-fn required_array<'a>(
-    object: &'a Map<String, Value>,
-    field: &str,
-) -> Result<&'a [Value], SearchTopologySettlementError> {
-    object
-        .get(field)
-        .and_then(Value::as_array)
-        .map(Vec::as_slice)
-        .ok_or_else(|| error("schema-invalid", format!("{field} must be an array")))
-}
-
-fn required_text<'a>(
-    object: &'a Map<String, Value>,
-    field: &str,
-) -> Result<&'a str, SearchTopologySettlementError> {
-    object
-        .get(field)
-        .and_then(Value::as_str)
-        .filter(|value| !value.is_empty())
-        .ok_or_else(|| error("schema-invalid", format!("{field} must be non-empty text")))
-}
-
-fn required_u64(
-    object: &Map<String, Value>,
-    field: &str,
-) -> Result<u64, SearchTopologySettlementError> {
-    object.get(field).and_then(Value::as_u64).ok_or_else(|| {
-        error(
-            "schema-invalid",
-            format!("{field} must be an unsigned integer"),
-        )
-    })
-}
-
-fn require_text_eq(
-    object: &Map<String, Value>,
-    field: &str,
-    expected: &str,
-) -> Result<(), SearchTopologySettlementError> {
-    let observed = required_text(object, field)?;
-    if observed != expected {
-        return invalid(
-            "schema-identity-drift",
-            format!("{field} expected {expected} observed {observed}"),
-        );
-    }
-    Ok(())
-}
-
-fn text_array<'a>(
-    object: &'a Map<String, Value>,
-    field: &str,
-) -> Result<Vec<&'a str>, SearchTopologySettlementError> {
-    required_array(object, field)?
-        .iter()
-        .map(|value| {
-            value
-                .as_str()
-                .filter(|value| !value.is_empty())
-                .ok_or_else(|| {
-                    error(
-                        "schema-invalid",
-                        format!("{field} entries must be non-empty text"),
-                    )
-                })
-        })
-        .collect()
 }

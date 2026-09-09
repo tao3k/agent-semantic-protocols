@@ -44,6 +44,7 @@ def test_provider_method_ids_reject_policy_cli_commands() -> None:
     provider_schema = load_json(ROOT / "schemas" / "provider-manifest.schema.json")
     validator = Draft202012Validator(provider_schema["$defs"]["methodId"])
 
-    assert list(validator.iter_errors("search/owner")) == []
+    assert list(validator.iter_errors("query/owner")) == []
     assert list(validator.iter_errors("check/changed"))
+    assert list(validator.iter_errors("evidence/graph"))
     assert list(validator.iter_errors("verification/run"))

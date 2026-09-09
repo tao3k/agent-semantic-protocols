@@ -8,7 +8,7 @@
   "properties": {
     "schemaId": {"const": "agent.semantic-protocols.search-generation-graph-request"},
     "schemaVersion": {"const": "1"},
-    "identity": {"$ref": "#/$defs/identity"},
+    "identity": {"$ref": "https://schemas.agent-semantic-protocols.dev/semantic-search-definitions.v1.schema.json#/$defs/generationIdentity"},
     "contentGenerationDigest": {"$ref": "#/$defs/digest"},
     "sourceSnapshot": {"$ref": "source-snapshot-evidence.v1.schema.json#/$defs/sourceSnapshot"},
     "workspaceGeneration": {"$ref": "workspace-generation-root-evidence.v1.schema.json"},
@@ -16,19 +16,6 @@
     "relations": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/relation"}}
   },
   "$defs": {
-    "identity": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["projectId", "workspaceId", "sourceRootDigest", "providerDigest", "schemaDigest", "generationCandidateDigest"],
-      "properties": {
-        "projectId": {"type": "string", "minLength": 1},
-        "workspaceId": {"type": "string", "minLength": 1},
-        "sourceRootDigest": {"$ref": "#/$defs/digest"},
-        "providerDigest": {"$ref": "#/$defs/digest"},
-        "schemaDigest": {"$ref": "#/$defs/digest"},
-        "generationCandidateDigest": {"$ref": "#/$defs/digest"}
-      }
-    },
     "digest": {"type": "string", "pattern": "^blake3-256:[0-9a-f]{64}$"},
     "endpoint": {
       "type": "object",

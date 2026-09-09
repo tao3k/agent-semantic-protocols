@@ -8,38 +8,51 @@ use std::future::Future;
 use std::path::PathBuf;
 use std::pin::Pin;
 
+use crate::AspClient;
 use crate::projection_presentation::ProjectionPresentation;
 use crate::projection_presentation::render_exact_projection_response;
-use crate::{AspClient, AspClientRuntimeHandoff};
 use agent_semantic_client_core::LanguageId;
 use agent_semantic_client_protocol::AspClientExactQueryRequest;
-use agent_semantic_client_protocol::AspClientSearchRequest;
+use agent_semantic_client_protocol::AspClientWorkspaceSearchPlaybookRequest;
 use agent_semantic_client_protocol::ClientFrame;
 use agent_semantic_client_protocol::ClientOutcome;
 
 /// Typed language operation admitted by the shared client protocol.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum LanguageCommandOperation {
-    Search(AspClientSearchRequest),
+    WorkspaceSearchPlaybook(AspClientWorkspaceSearchPlaybookRequest),
     ExactQuery(AspClientExactQueryRequest),
 }
 
 impl LanguageCommandOperation {
-    fn into_route_and_params(self) -> Result<(&'static str, serde_json::Value), String> {
+    fn into_route_and_params(self) -> Result<(LanguageCommandRoute, serde_json::Value), String> {
         match self {
-            Self::Search(request) => encode_operation("search", request),
-            Self::ExactQuery(request) => encode_operation("query", request),
+            Self::WorkspaceSearchPlaybook(request) => encode_operation(
+                LanguageCommandRoute::Server(
+                    agent_semantic_client_protocol::WORKSPACE_SEARCH_PLAYBOOK_METHOD,
+                ),
+                request,
+            ),
+            Self::ExactQuery(request) => {
+                encode_operation(LanguageCommandRoute::Language("query"), request)
+            }
         }
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum LanguageCommandRoute {
+    Server(&'static str),
+    Language(&'static str),
+}
+
 fn encode_operation(
-    route: &'static str,
+    route: LanguageCommandRoute,
     request: impl serde::Serialize,
-) -> Result<(&'static str, serde_json::Value), String> {
+) -> Result<(LanguageCommandRoute, serde_json::Value), String> {
     serde_json::to_value(request)
         .map(|params| (route, params))
-        .map_err(|error| format!("encode typed {route} request: {error}"))
+        .map_err(|error| format!("encode typed client request: {error}"))
 }
 
 /// A language command already parsed by the thin protocol CLI.
@@ -94,10 +107,9 @@ impl LanguageCommandClient for RuntimeLanguageCommandClient {
             let state_home = agent_semantic_runtime::state_core::resolve_state_home()?;
             let (route, params) = request.operation.into_route_and_params()?;
             #[cfg(unix)]
-            let mut client =
-                AspClient::new_from_host_capability(&state_home, &request.project_root)?;
+            let client = AspClient::new_from_host_capability(&state_home, &request.project_root)?;
             #[cfg(not(unix))]
-            let mut client = AspClient::new(&state_home, &request.project_root);
+            let client = AspClient::new(&state_home, &request.project_root);
             // A language facade is a client of one content-bound Runtime
             // transaction, never of a re-derived endpoint path. Host-inherited
             // descriptors remain strict; published loopback transport must be
@@ -105,25 +117,21 @@ impl LanguageCommandClient for RuntimeLanguageCommandClient {
             // multiplexed ClientFrame session. When no Host descriptor was
             // inherited, the Runtime service performs the bounded activation
             // transaction; clients never observe or reconstruct an endpoint.
-            if client.uses_published_loopback_transport() {
-                let mut ready = crate::server::runtime_server::ensure_healthy_runtime_server_for_workspace(
-                    &request.project_root,
-                )
-                    .await
-                    .map_err(|error| {
-                        format!(
-                            "reasonKind=runtime-client-bootstrap-failed failureLayer=runtime-resident-transaction Runtime Query could not establish a content-bound handoff: {error}"
-                        )
-                    })?;
-                let transaction = ready.resident_transaction.take().ok_or_else(|| {
-                    "reasonKind=runtime-client-handoff-unavailable failureLayer=runtime-resident-transaction Runtime bootstrap returned Healthy without its resident transaction".to_owned()
-                })?;
-                client =
-                    client.with_runtime_handoff(AspClientRuntimeHandoff::try_from(&transaction)?);
-            }
-            let frame = client
-                .dispatch(request.language_id.as_str(), route, params)
-                .await?;
+            let client = client.admit_runtime_workspace("Search/Query").await?;
+            let (route, frame) = match route {
+                LanguageCommandRoute::Server(route) => {
+                    let frame = client
+                        .dispatch_playbook_method(route.to_owned(), params, 0)
+                        .await?;
+                    (route, frame)
+                }
+                LanguageCommandRoute::Language(route) => {
+                    let frame = client
+                        .dispatch(request.language_id.as_str(), route, params)
+                        .await?;
+                    (route, frame)
+                }
+            };
             Ok(LanguageCommandResponse { route, frame })
         })
     }

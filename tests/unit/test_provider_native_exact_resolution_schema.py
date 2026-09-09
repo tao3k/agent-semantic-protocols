@@ -37,7 +37,7 @@ def _resolution(state: str) -> dict[str, object]:
     }
     if state != "item-missing":
         packet["recommendedNext"] = {
-            "command": "asp rust search lexical --query 'missing' --query 'function missing' --workspace . --view seeds"
+            "command": "asp search playbook --language rust --rg -n -e missing -e 'function missing' . --tantivy term missing"
         }
     return packet
 

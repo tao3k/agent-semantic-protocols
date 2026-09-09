@@ -36,15 +36,9 @@ pub(in super::super) async fn record_registered_provider_workspace_install(
     let install_target =
         super::target::resolve_provider_binary_install_target(language_id, &provider_binary)?;
     let stable_entry = install_target.path.clone();
-    let binary_artifact_root =
-        agent_semantic_artifacts::RuntimeArtifactStateLayout::new(&runtime_state.protocol_home)
-            .provider_staging()
-            .join(provider_id)
-            .join("artifacts");
     let published = super::workspace::publish_provider_workspace(
         &runtime_state.protocol_home,
         &stable_entry,
-        &binary_artifact_root,
         registration,
         built,
     )
@@ -55,10 +49,11 @@ pub(in super::super) async fn record_registered_provider_workspace_install(
         agent_semantic_content_identity::file_artifact_metadata_digest_v1(
             &published.installed_path,
         )?;
-    let execution_command_digest = agent_semantic_hook::provider_execution_command_digest(
-        &[published.installed_path.to_string_lossy().to_string()],
-        &installed_entrypoint_digest,
-    )?;
+    let execution_command_digest =
+        agent_semantic_content_identity::provider_execution_command_digest(
+            &[published.installed_path.to_string_lossy().to_string()],
+            &installed_entrypoint_digest,
+        )?;
     let provenance = super::development::capture_development_artifact_provenance(
         &dev_root,
         registration,

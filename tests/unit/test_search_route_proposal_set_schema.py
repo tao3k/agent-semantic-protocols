@@ -69,11 +69,11 @@ def test_route_proposal_set_rejects_batch_without_capability() -> None:
         )
 
 
-def test_rfc_choice_panel_uses_proposal_before_program_admission() -> None:
+def test_rfc_choice_panel_keeps_bounded_server_owned_terminal_flow() -> None:
     text = RFC.read_text(encoding="utf-8")
-    assert "ASP Server" in text
-    assert "bounded graph action" in text
-    assert "one terminal response" in text
+    assert "ASP Runtime Server owns workspace identity" in text
+    assert "chooses a\nbounded action" in text
+    assert "exactly one typed terminal" in text
 
 
 @pytest.mark.parametrize(

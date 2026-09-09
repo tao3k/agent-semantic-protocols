@@ -7,42 +7,24 @@ from pathlib import Path
 
 import pytest
 from jsonschema import Draft202012Validator, ValidationError
-from referencing import Registry, Resource
+
+from unit.schema_validation import schema_validator_for
 
 
 ROOT = Path(__file__).resolve().parents[2]
 SCHEMA_PATH = ROOT / "schemas" / "search-interactive-loop.v1.schema.json"
 CAPABILITY_SCHEMA_PATH = ROOT / "schemas" / "search-loop-capability.v1.schema.json"
 FIXTURE_ROOT = ROOT / "schemas" / "fixtures" / "search-interactive-loop"
-DEPENDENCY_PATHS = (
-    ROOT / "schemas" / "context-product-state.v1.schema.json",
-    ROOT / "schemas" / "semantic-command.v1.schema.json",
-    ROOT / "schemas" / "canonical-item-selector.v1.schema.json",
-)
-
-
 def load_json(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
 def validator() -> Draft202012Validator:
-    documents = [load_json(SCHEMA_PATH), load_json(CAPABILITY_SCHEMA_PATH)]
-    documents.extend(load_json(path) for path in DEPENDENCY_PATHS)
-    registry = Registry().with_resources(
-        (document["$id"], Resource.from_contents(document))
-        for document in documents
-    )
-    return Draft202012Validator(documents[0], registry=registry)
+    return schema_validator_for(SCHEMA_PATH)
 
 
 def capability_validator() -> Draft202012Validator:
-    documents = [load_json(CAPABILITY_SCHEMA_PATH), load_json(SCHEMA_PATH)]
-    documents.extend(load_json(path) for path in DEPENDENCY_PATHS)
-    registry = Registry().with_resources(
-        (document["$id"], Resource.from_contents(document))
-        for document in documents
-    )
-    return Draft202012Validator(documents[0], registry=registry)
+    return schema_validator_for(CAPABILITY_SCHEMA_PATH)
 
 
 @pytest.mark.parametrize(

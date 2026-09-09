@@ -51,6 +51,8 @@ pub use manager::SchemaBundleReport;
 #[cfg(feature = "runtime")]
 pub use manager::SchemaManager;
 #[cfg(feature = "runtime")]
+pub use manager::SearchProducerAxis;
+#[cfg(feature = "runtime")]
 pub use manager::load_verified_bundle_receipt;
 #[cfg(feature = "runtime")]
 pub use manager::verify_bundle_receipt;

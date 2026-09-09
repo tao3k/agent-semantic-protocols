@@ -52,16 +52,3 @@ def test_invariant_candidate_schema_accepts_p0_catalog() -> None:
             ],
         }
     )
-
-
-def test_search_packet_exposes_invariant_candidates_as_mergeable_surface() -> None:
-    schema = _load_schema("semantic-search-packet.v1.schema.json")
-
-    assert (
-        schema["properties"]["invariantCandidates"]["items"]["$ref"]
-        == "semantic-invariant-candidate.v1.schema.json#/$defs/invariantCandidate"
-    )
-    merge_values = schema["$defs"]["queryComposition"]["properties"]["merge"]["items"][
-        "enum"
-    ]
-    assert "invariantCandidates" in merge_values

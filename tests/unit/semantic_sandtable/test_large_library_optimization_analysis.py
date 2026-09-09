@@ -30,9 +30,9 @@ def test_large_library_optimization_analysis_collects_missing_results() -> None:
     _validate_schema(analysis)
     assert analysis["summary"] == {
         "status": "collecting",
-            "expectedVariantRunCount": 100,
+            "expectedVariantRunCount": 130,
             "observedVariantRunCount": 0,
-            "missingVariantRunCount": 100,
+            "missingVariantRunCount": 130,
         "findingCount": 1,
         "costSummary": {
             "metricSource": "receiptMetrics",
@@ -50,12 +50,12 @@ def test_large_library_optimization_analysis_collects_missing_results() -> None:
     }
     assert analysis["findings"][0]["kind"] == "missing-variant-results"
     assert analysis["improvementPlan"][0]["id"] == "collect-variant-receipts"
-    assert len(analysis["collectionManifest"]["expectedVariantRuns"]) == 100
-    assert len(analysis["collectionManifest"]["collectionRuns"]) == 100
-    assert len(analysis["collectionManifest"]["runsNeedingVariantReceipt"]) == 100
-    assert len(analysis["collectionManifest"]["missingVariantRuns"]) == 100
+    assert len(analysis["collectionManifest"]["expectedVariantRuns"]) == 130
+    assert len(analysis["collectionManifest"]["collectionRuns"]) == 130
+    assert len(analysis["collectionManifest"]["runsNeedingVariantReceipt"]) == 130
+    assert len(analysis["collectionManifest"]["missingVariantRuns"]) == 130
     assert analysis["collectionManifest"]["collectionStatus"] == "collecting"
-    assert analysis["collectionManifest"]["metricSourceCounts"] == {"missing": 100}
+    assert analysis["collectionManifest"]["metricSourceCounts"] == {"missing": 130}
     assert analysis["collectionManifest"]["missingVariantRuns"][0][
         "variantRunId"
     ].endswith(":no-local-evidence")
@@ -73,15 +73,15 @@ def test_large_library_optimization_analysis_aggregates_variant_results() -> Non
 
     _validate_schema(analysis)
     assert analysis["summary"]["status"] == "analyzed"
-    assert analysis["summary"]["expectedVariantRunCount"] == 100
-    assert analysis["summary"]["observedVariantRunCount"] == 100
+    assert analysis["summary"]["expectedVariantRunCount"] == 130
+    assert analysis["summary"]["observedVariantRunCount"] == 130
     assert analysis["summary"]["missingVariantRunCount"] == 0
     assert analysis["summary"]["findingCount"] == 0
-    assert analysis["summary"]["costSummary"]["observedRunCount"] == 100
-    assert analysis["summary"]["costSummary"]["measuredElapsedRunCount"] == 100
-    assert analysis["summary"]["costSummary"]["totalElapsedMs"] == 2700.0
+    assert analysis["summary"]["costSummary"]["observedRunCount"] == 130
+    assert analysis["summary"]["costSummary"]["measuredElapsedRunCount"] == 130
+    assert analysis["summary"]["costSummary"]["totalElapsedMs"] == 3510.0
     assert analysis["summary"]["costSummary"]["averageElapsedMs"] == 27.0
-    assert analysis["summary"]["costSummary"]["totalStdoutBytes"] == 100000.0
+    assert analysis["summary"]["costSummary"]["totalStdoutBytes"] == 130000.0
     assert analysis["summary"]["costSummary"]["averageStdoutBytes"] == 1000.0
     assert analysis["improvementPlan"][0]["id"] == "calibrate-query-first-stage"
     assert analysis["improvementPlan"][0]["overallWinner"] == "no-package-cohesion"
@@ -89,7 +89,7 @@ def test_large_library_optimization_analysis_aggregates_variant_results() -> Non
     assert analysis["improvementPlan"][0]["localEvidenceAblationRank"] == 5
     assert analysis["improvementPlan"][1]["id"] == "profile-query-first-stage-performance"
     assert analysis["improvementPlan"][1]["topBottleneckVariant"] == "no-local-evidence"
-    assert analysis["improvementPlan"][1]["totalElapsedMs"] == 2700.0
+    assert analysis["improvementPlan"][1]["totalElapsedMs"] == 3510.0
     assert analysis["variantRecommendations"]["status"] == "ready"
     assert analysis["variantRecommendations"]["overallWinner"][
         "ablationVariant"
@@ -127,9 +127,9 @@ def test_large_library_optimization_analysis_aggregates_variant_results() -> Non
     assert analysis["collectionManifest"]["runsNeedingVariantReceipt"] == []
     assert analysis["collectionManifest"]["collectionStatus"] == "collected"
     assert analysis["collectionManifest"]["metricSourceCounts"] == {
-        "variant-result-packet": 100
+        "variant-result-packet": 130
     }
-    assert len(analysis["collectionManifest"]["observedVariantRunIds"]) == 100
+    assert len(analysis["collectionManifest"]["observedVariantRunIds"]) == 130
     assert _aggregation_count(analysis, "rust", "deep") >= 3
     assert _aggregation_count(analysis, "typescript", "strict") == 10
 
@@ -147,11 +147,11 @@ def test_large_library_optimization_analysis_collects_derived_receipts() -> None
 
     _validate_schema(analysis)
     assert analysis["summary"]["status"] == "collecting"
-    assert analysis["summary"]["expectedVariantRunCount"] == 100
-    assert analysis["summary"]["observedVariantRunCount"] == 100
+    assert analysis["summary"]["expectedVariantRunCount"] == 130
+    assert analysis["summary"]["observedVariantRunCount"] == 130
     assert analysis["summary"]["missingVariantRunCount"] == 0
     assert analysis["summary"]["findingCount"] == 3
-    assert analysis["summary"]["costSummary"]["totalElapsedMs"] == 2700.0
+    assert analysis["summary"]["costSummary"]["totalElapsedMs"] == 3510.0
     assert analysis["summary"]["costSummary"]["averageElapsedMs"] == 27.0
     assert [item["kind"] for item in analysis["findings"]] == [
         "baseline-derived-variant-results",
@@ -180,7 +180,7 @@ def test_large_library_optimization_analysis_collects_derived_receipts() -> None
         "fallback": 1,
         "source-sandtable-receipt": 1,
         "source-equivalent-variant-receipt": 1,
-        "variant-result-packet": 97,
+            "variant-result-packet": 127,
     }
 
 
@@ -256,7 +256,7 @@ def test_large_library_optimization_analysis_cli_fails_on_missing(
 
     output = capsys.readouterr().out
     assert output.startswith("[large-library-optimization-analysis] ")
-    assert "missing=100" in output
+    assert "missing=130" in output
     assert "|missing variantRunId=" in output
 
 

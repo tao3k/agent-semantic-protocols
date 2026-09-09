@@ -30,11 +30,48 @@ pub struct WorkspaceSearchPlaybookEvidence {
     pub selector: String,
     pub matched_by: Vec<String>,
     pub relation: String,
+    pub hit: WorkspaceSearchHitProjection,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WorkspaceSearchHitProjection {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub rg: Vec<[u64; 2]>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tantivy: Vec<String>,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub native: bool,
+}
+
+impl WorkspaceSearchHitProjection {
+    fn merge(&mut self, other: Self) {
+        self.native |= other.native;
+        self.rg.extend(other.rg);
+        self.rg.sort_unstable();
+        self.rg.dedup();
+        self.tantivy.extend(other.tantivy);
+        self.tantivy.sort();
+        self.tantivy.dedup();
+    }
+
+    fn is_valid(&self) -> bool {
+        (self.native || !self.rg.is_empty() || !self.tantivy.is_empty())
+            && self
+                .rg
+                .iter()
+                .all(|range| range[0] > 0 && range[0] <= range[1])
+            && self.tantivy.iter().all(|query| !query.trim().is_empty())
+            && self.tantivy.iter().collect::<BTreeSet<_>>().len() == self.tantivy.len()
+    }
+}
+
+const fn is_false(value: &bool) -> bool {
+    !*value
 }
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum WorkspaceSearchAxisKind {
-    Fd,
     Rg,
     Syntax,
     NativeSyntax,
@@ -44,7 +81,6 @@ pub enum WorkspaceSearchAxisKind {
 impl WorkspaceSearchAxisKind {
     const fn label(self) -> &'static str {
         match self {
-            Self::Fd => "fd",
             Self::Rg => "rg",
             Self::Syntax => "syntax",
             Self::NativeSyntax => "native-syntax",
@@ -69,6 +105,7 @@ pub struct WorkspaceSearchSyntaxCandidate {
     pub owner: String,
     pub selector: String,
     pub relation: String,
+    pub hit: WorkspaceSearchHitProjection,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -104,12 +141,14 @@ pub struct WorkspaceSearchPlaybookResult {
     pub schema_id: String,
     pub schema_version: String,
     pub result: WorkspaceSearchPlaybookResultKind,
+    pub evidence_item_limit: usize,
     pub evidence: Vec<WorkspaceSearchPlaybookEvidence>,
 }
 
 pub fn build_workspace_search_playbook_result(
     result: WorkspaceSearchPlaybookResultKind,
     evidence: Vec<WorkspaceSearchPlaybookEvidence>,
+    evidence_item_limit: usize,
     witness: WorkspaceSearchProgressiveExecutionWitness,
 ) -> Result<WorkspaceSearchPlaybookResult, String> {
     if result != WorkspaceSearchPlaybookResultKind::ProviderContractFailure
@@ -120,8 +159,13 @@ pub fn build_workspace_search_playbook_result(
                 .to_owned(),
         );
     }
-    if evidence.len() > 30 {
-        return Err("Search Playbook result exceeds its Top-30 evidence bound".to_owned());
+    if evidence_item_limit
+        != agent_semantic_search_projection::WORKSPACE_SEARCH_PLAYBOOK_V1_EVIDENCE_ITEM_LIMIT
+        || evidence.len() > evidence_item_limit
+    {
+        return Err(format!(
+            "Search Playbook result exceeds its Top-{evidence_item_limit} evidence bound"
+        ));
     }
     let mut selectors = BTreeSet::new();
     for item in &evidence {
@@ -129,6 +173,7 @@ pub fn build_workspace_search_playbook_result(
             || item.item.is_empty()
             || item.matched_by.is_empty()
             || item.relation.is_empty()
+            || !item.hit.is_valid()
             || !is_exact_selector(&item.selector)
             || exact_selector_item(&item.selector) != Some(item.item.as_str())
             || item
@@ -151,6 +196,7 @@ pub fn build_workspace_search_playbook_result(
         schema_id: WORKSPACE_SEARCH_PLAYBOOK_RESULT_SCHEMA_ID.to_owned(),
         schema_version: "1".to_owned(),
         result,
+        evidence_item_limit,
         evidence,
     })
 }
@@ -159,7 +205,11 @@ pub fn synthesize_workspace_search_playbook_result(
     mut clause_receipts: Vec<WorkspaceSearchClauseReceipt>,
     syntax_candidates: Vec<WorkspaceSearchSyntaxCandidate>,
     graph_fan_in: Option<WorkspaceSearchGraphFanIn>,
+    evidence_item_limit: usize,
 ) -> Result<WorkspaceSearchPlaybookResult, String> {
+    if evidence_item_limit == 0 {
+        return Err("Search Playbook evidence budget must be non-zero".to_owned());
+    }
     let mut identities = BTreeSet::new();
     let mut priorities = BTreeSet::new();
     for receipt in &mut clause_receipts {
@@ -195,6 +245,23 @@ pub fn synthesize_workspace_search_playbook_result(
     if !witness.is_complete() {
         return Err("Search Playbook fan-in requires every requested stage to complete".to_owned());
     }
+    let mut candidates_by_selector = BTreeMap::<String, WorkspaceSearchSyntaxCandidate>::new();
+    for candidate in syntax_candidates {
+        match candidates_by_selector.entry(candidate.selector.clone()) {
+            std::collections::btree_map::Entry::Vacant(entry) => {
+                entry.insert(candidate);
+            }
+            std::collections::btree_map::Entry::Occupied(mut entry) => {
+                let existing = entry.get_mut();
+                if existing.owner != candidate.owner {
+                    return Err(
+                        "Search Playbook selector candidates disagree on owner identity".to_owned(),
+                    );
+                }
+                existing.hit.merge(candidate.hit);
+            }
+        }
+    }
     let graph_positions = graph_fan_in.as_ref().map(|graph| {
         graph
             .ranked_candidate_owners
@@ -203,7 +270,8 @@ pub fn synthesize_workspace_search_playbook_result(
             .map(|(rank, owner)| (owner.as_str(), rank))
             .collect::<BTreeMap<_, _>>()
     });
-    let mut ranked = syntax_candidates
+    let mut ranked = candidates_by_selector
+        .into_values()
         .into_iter()
         .filter_map(|candidate| {
             let graph_rank = match &graph_positions {
@@ -255,10 +323,9 @@ pub fn synthesize_workspace_search_playbook_result(
             .then_with(|| left.4.owner.cmp(&right.4.owner))
             .then_with(|| left.4.selector.cmp(&right.4.selector))
     });
-    ranked.dedup_by(|left, right| left.4.selector == right.4.selector);
     let evidence = ranked
         .iter()
-        .take(30)
+        .take(evidence_item_limit)
         .map(
             |(_, _, _, _, candidate, matched_by)| WorkspaceSearchPlaybookEvidence {
                 owner: candidate.owner.clone(),
@@ -268,6 +335,7 @@ pub fn synthesize_workspace_search_playbook_result(
                 selector: candidate.selector.clone(),
                 matched_by: matched_by.clone(),
                 relation: candidate.relation.clone(),
+                hit: candidate.hit.clone(),
             },
         )
         .collect::<Vec<_>>();
@@ -290,7 +358,7 @@ pub fn synthesize_workspace_search_playbook_result(
         (1, false, _) => WorkspaceSearchPlaybookResultKind::ExactSelectorReady,
         (_, false, _) => WorkspaceSearchPlaybookResultKind::DisambiguationRequired,
     };
-    build_workspace_search_playbook_result(result, evidence, witness)
+    build_workspace_search_playbook_result(result, evidence, evidence_item_limit, witness)
 }
 
 fn is_exact_selector(selector: &str) -> bool {
@@ -314,8 +382,10 @@ fn is_clause_reference(value: &str) -> bool {
     let Some((axis, index)) = value.split_once(':') else {
         return false;
     };
-    matches!(axis, "fd" | "rg" | "tantivy" | "syntax" | "graph")
-        && !index.is_empty()
+    matches!(
+        axis,
+        "rg" | "tantivy" | "syntax" | "native-syntax" | "graph"
+    ) && !index.is_empty()
         && index.bytes().all(|byte| byte.is_ascii_digit())
 }
 

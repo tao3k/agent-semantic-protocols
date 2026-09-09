@@ -9,7 +9,7 @@ use std::path::PathBuf;
 
 use crate::runtime_artifact_store::publish_runtime_artifact_link;
 
-pub(super) async fn publish_runtime_artifact_slot(
+pub(crate) async fn publish_runtime_artifact_slot(
     target: &Path,
     slot: &Path,
 ) -> Result<(), String> {
@@ -27,7 +27,7 @@ pub(crate) fn publish_runtime_artifact_slot_under_guard(
     publish_runtime_artifact_link(target, slot)
 }
 
-pub(super) async fn restore_runtime_artifact_slot(
+pub(crate) async fn restore_runtime_artifact_slot(
     target: Option<&Path>,
     slot: &Path,
 ) -> Result<(), String> {
@@ -61,7 +61,7 @@ pub(crate) fn restore_runtime_artifact_slot_under_guard(
     }
 }
 
-pub(super) async fn read_runtime_artifact_slot(path: &Path) -> Result<Option<PathBuf>, String> {
+pub(crate) async fn read_runtime_artifact_slot(path: &Path) -> Result<Option<PathBuf>, String> {
     match tokio::fs::read_link(path).await {
         Ok(target) => Ok(Some(target)),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),

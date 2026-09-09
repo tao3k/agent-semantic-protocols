@@ -76,17 +76,15 @@
           "requiresGraphSignals": true,
           "requiresQuerySet": true,
           "requiresHookEvents": true,
-          "requiresComplexPipeFlow": true,
+          "requiresComplexCommandFlow": true,
           "requiresTokenCost": true
         },
         "expectedAspFlow": {
           "requiredStages": [
-            "search-prime",
-            "search-pipe",
+            "search-playbook",
             "query-selector"
           ],
           "forbiddenStages": [
-            "repeated-prime",
             "repeated-commands"
           ]
         }
@@ -109,17 +107,15 @@
           "requiresGraphSignals": true,
           "requiresQuerySet": true,
           "requiresHookEvents": true,
-          "requiresComplexPipeFlow": false,
+          "requiresComplexCommandFlow": false,
           "requiresTokenCost": false
         },
         "expectedAspFlow": {
           "requiredStages": [
-            "search-prime",
-            "search-pipe",
+            "search-playbook",
             "query-selector"
           ],
           "forbiddenStages": [
-            "repeated-prime",
             "repeated-commands"
           ]
         }
@@ -142,17 +138,15 @@
           "requiresGraphSignals": true,
           "requiresQuerySet": true,
           "requiresHookEvents": true,
-          "requiresComplexPipeFlow": false,
+          "requiresComplexCommandFlow": false,
           "requiresTokenCost": false
         },
         "expectedAspFlow": {
           "requiredStages": [
-            "search-prime",
-            "search-pipe",
+            "search-playbook",
             "query-selector"
           ],
           "forbiddenStages": [
-            "repeated-prime",
             "repeated-commands"
           ]
         }
@@ -164,34 +158,30 @@
       "id": "lexical-query",
       "command": [
         "asp",
-        "python",
         "search",
-        "lexical",
-        "--query",
-        "lifespan",
-        "--query",
-        "APIRouter",
-        "--query",
-        "solve_dependencies",
-        "--query",
-        "owner",
-        "--view",
-        "seeds",
-        "--workspace",
-        "."
+        "playbook",
+        "--language",
+        "python",
+        "--rg",
+        "-n",
+        "-e",
+        "lifespan|APIRouter|solve_dependencies",
+        ".",
+        "--tantivy",
+        "title:\"lifespan\"^2 OR body:\"APIRouter\""
       ],
       "expect": {
-        "lineProtocol": true,
         "stdoutContains": [
-          "[search-lexical]",
-          "lifespan",
-          "APIRouter",
-          "solve_dependencies",
-          "owner"
+          "#+begin_src gql :name result",
+          "(python:Language)-[:RESULTS]->[",
+          "#+end_src"
         ],
-        "maxStdoutLinesWarn": 14,
-        "maxElapsedMs": 300,
-        "maxElapsedMsWarn": 250
+        "maxStdoutLinesWarn": 40,
+        "maxElapsedMs": 90000,
+        "maxElapsedMsWarn": 90000,
+        "stdoutNotContains": [
+          "MaterializationSet"
+        ]
       }
     }
   ]

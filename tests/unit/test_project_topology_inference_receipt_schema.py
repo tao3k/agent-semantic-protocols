@@ -32,6 +32,20 @@ def test_complete_topology_inference_receipt_is_valid(receipt) -> None:
     validator().validate(receipt)
 
 
+@pytest.mark.parametrize("field", ["relation", "ruleId"])
+def test_relation_sensitive_receipt_cannot_erase_derived_identity(receipt, field) -> None:
+    changed = deepcopy(receipt)
+    del changed["relationships"][0][field]
+    with pytest.raises(ValidationError):
+        validator().validate(changed)
+
+
+def test_relation_sensitive_receipt_requires_ascent_semantic_digest(receipt) -> None:
+    del receipt["ascentSemanticDigest"]
+    with pytest.raises(ValidationError):
+        validator().validate(receipt)
+
+
 @pytest.mark.parametrize("field", ["nextAction", "recommendedNext", "planner", "activationGeneration"])
 def test_topology_inference_receipt_rejects_planner_and_fence_fields(receipt, field) -> None:
     receipt[field] = "forbidden"

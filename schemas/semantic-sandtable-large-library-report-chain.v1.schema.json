@@ -441,7 +441,7 @@
               "requiresQuerySet",
               "requiresGraphSignals",
               "requiresHookEvents",
-              "requiresComplexPipeFlow",
+              "requiresComplexCommandFlow",
               "requiresTokenCost"
             ]
           }

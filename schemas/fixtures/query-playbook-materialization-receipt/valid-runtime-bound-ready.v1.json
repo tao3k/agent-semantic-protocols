@@ -24,10 +24,10 @@
       "schemaVersion": "1",
       "runtimeArtifactDigest": "blake3-256:1111111111111111111111111111111111111111111111111111111111111111",
       "workspaceSnapshotDigest": "blake3-256:2222222222222222222222222222222222222222222222222222222222222222",
-      "sourceGenerationDigest": "blake3-256:3333333333333333333333333333333333333333333333333333333333333333",
+      "sourceGenerationDigest": "blake3-256:1111111111111111111111111111111111111111111111111111111111111111",
       "sourceIndexDigest": "blake3-256:4444444444444444444444444444444444444444444444444444444444444444",
       "schemaDigest": "blake3-256:5555555555555555555555555555555555555555555555555555555555555555",
-      "providerCatalogDigest": "blake3-256:6666666666666666666666666666666666666666666666666666666666666666",
+      "providerCatalogDigest": "blake3-256:2222222222222222222222222222222222222222222222222222222222222222",
       "authorityStamp": {
         "keyId": "runtime-authority",
         "canonicalDigest": "blake3-256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -53,9 +53,6 @@
       "providerId": "asp-org",
       "ownerPath": "docs/publication.org",
       "projection": "source",
-      "gqlRelationships": [
-        {"fromNode": "Publication", "relation": "documents", "toNode": "Registry::publish"}
-      ],
       "sourceContentDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
       "bytes": [42, 32, 80, 117, 98, 108, 105, 99, 97, 116, 105, 111, 110]
     },
@@ -65,9 +62,6 @@
       "providerId": "asp-rust",
       "ownerPath": "src/registry.rs",
       "projection": "source",
-      "gqlRelationships": [
-        {"fromNode": "Registry::refresh", "relation": "calls", "toNode": "Registry::publish"}
-      ],
       "sourceContentDigest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
       "bytes": [102, 110, 32, 114, 101, 102, 114, 101, 115, 104, 95, 114, 101, 103, 105, 115, 116, 114, 121, 40, 41]
     }

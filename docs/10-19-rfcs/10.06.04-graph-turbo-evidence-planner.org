@@ -95,7 +95,7 @@ contract and must not depend on an implicit developer checkout or home path.
 
 | Component | May do | Must not do |
 |-----------+--------+-------------|
-| Language harness | Emit parser-owned facts and catalog capabilities | Plan cross-provider execution or close obligations |
+| ASP language provider | Emit parser-owned facts and catalog capabilities | Plan cross-provider execution or close obligations |
 | Graph Turbo planner backend | Generate candidates, estimate gain/cost, propose dependencies and execution groups | Admit, grant, execute, mutate state, or close |
 | SearchReasoningRouter | Compare bounded proposals and decide whether a semantic choice is needed | Grant execution or finalize closure |
 | Choice Panel projection | Explain proposal choices and carry an authenticated selection action | Carry provider argv, backend query language, or mutable plan fields |

@@ -186,6 +186,15 @@ Every named failure-injection round emits exactly one typed terminal and is
 counted separately from successful latency samples.  No failed, cancelled, or
 non-Ready sample may be omitted from the machine-readable receipt.
 
+When more than one case is selected, the case workloads themselves execute as
+independent Tokio tasks over distinct benchmark Workspace identities. This is
+the required multi-workspace exercise; running the per-case 32-request burst
+sequentially across the matrix is not equivalent. The runner admits every
+selected case task without a leaf task-count constant, lets the bounded Runtime
+transport own readiness and backpressure, joins all tasks, and restores plan
+order before canonical receipt publication. The client-protocol receipt names
+the scheduler and records the number of concurrently admitted workspaces.
+
 ** Explicit cache-state matrix
 
 Every language/corpus case executes three distinct cache states.  The receipt

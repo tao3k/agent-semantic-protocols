@@ -20,7 +20,7 @@ def owner_collapse_candidates(
     actions = [
         _action_row(group)
         for group in repeat_groups
-        if str(group["method"]) == "search/owner" and int(group["repeatCount"]) > 0
+        if str(group["method"]) == "search/playbook" and int(group["repeatCount"]) > 0
     ]
     actions.sort(
         key=lambda action: (
@@ -64,7 +64,7 @@ def _action_row(group: Mapping[str, Any]) -> dict[str, object]:
         "replacement": "promote-to-owner-query-item-test-frontier",
         "reason": "same owner searched repeatedly before converging on item/test facts",
         "language": language,
-        "method": "search/owner",
+        "method": "search/playbook",
         "owner": owner,
         "projectRootArg": project_root_arg,
         "count": int(group["count"]),
@@ -76,7 +76,7 @@ def _action_row(group: Mapping[str, Any]) -> dict[str, object]:
         "profile": "owner-query",
         "preferredCommand": preferred_command,
         "avoidCommand": (
-            f"asp {language} search owner {owner} <same-scope> --workspace {project_root_arg}"
+            f"asp search playbook --language {language} --rg -n -e <term> {owner} --tantivy term <term>"
         ),
         "nextAction": (
             "return owner-local hot items and covering tests with the first owner frontier"

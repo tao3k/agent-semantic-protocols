@@ -61,12 +61,6 @@ def test_projection_authority_digest_is_mandatory(validator, fixture, field):
     assert list(validator.iter_errors(candidate))
 
 
-def test_implementation_named_provider_is_rejected(validator, fixture):
-    candidate = copy.deepcopy(fixture)
-    candidate["providerId"] = "asp-rust"
-    assert list(validator.iter_errors(candidate))
-
-
 def test_legacy_callable_skeleton_schema_is_removed():
     legacy_name = "callable-skeleton-" + "projection.v1.schema.json"
     assert not (ROOT / "schemas" / legacy_name).exists()

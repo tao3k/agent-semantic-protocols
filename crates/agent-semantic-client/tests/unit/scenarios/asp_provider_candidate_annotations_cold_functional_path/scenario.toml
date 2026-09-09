@@ -5,7 +5,7 @@
 id = "asp-provider-candidate-annotations-cold-functional-path"
 title = "Provider facts parse, project, and compact outside command"
 policy_ids = ["RUST-AGENT-ASP-FUNCTIONAL-SUBCOMMAND-PROVIDER-CANDIDATE-ANNOTATIONS-COLD-001"]
-agent_goal = "Validate that language harness provider facts stdout extraction, candidate attributes such as generated and schema-generated, and provider fact compaction are owned by search crate helpers instead of command-local parsing, path, or render heuristics."
+agent_goal = "Validate that ASP language provider provider facts stdout extraction, candidate attributes such as generated and schema-generated, and provider fact compaction are owned by search crate helpers instead of command-local parsing, path, or render heuristics."
 reference_repositories = ["tao3k/agent-semantic-protocols"]
 reference_patterns = [
   "semantic-provider-facts.v1",

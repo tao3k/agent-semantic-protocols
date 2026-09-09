@@ -106,7 +106,7 @@ fn search_playbook_uses_runtime_admission_for_registered_languages() {
             .args([
                 "search",
                 "playbook",
-                "--languages",
+                "--language",
                 language_id,
                 "--workspace",
                 ".",

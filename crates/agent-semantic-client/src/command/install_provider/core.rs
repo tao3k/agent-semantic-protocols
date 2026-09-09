@@ -33,13 +33,13 @@ enum ProviderArtifactAuthority<'a> {
     LockedRelease,
 }
 
-pub(super) struct PreparedProviderReleaseReconciliation {
+pub(super) struct PreparedActiveProviderReconciliation {
     staging_root: PathBuf,
     members: Vec<(String, PathBuf)>,
     closure_members: Vec<(String, PathBuf)>,
 }
 
-impl PreparedProviderReleaseReconciliation {
+impl PreparedActiveProviderReconciliation {
     pub(super) fn member_sources(
         &self,
     ) -> Vec<
@@ -211,15 +211,15 @@ fn schema_closure_entry(
     )
 }
 
-impl Drop for PreparedProviderReleaseReconciliation {
+impl Drop for PreparedActiveProviderReconciliation {
     fn drop(&mut self) {
         let _ = fs::remove_dir_all(&self.staging_root);
     }
 }
 
-pub(super) fn prepare_active_release_provider_reconciliation(
+pub(super) fn prepare_active_provider_reconciliation(
     state_home: &Path,
-) -> Result<PreparedProviderReleaseReconciliation, String> {
+) -> Result<PreparedActiveProviderReconciliation, String> {
     let staging_root = std::env::temp_dir().join(format!(
         "asp-provider-reconciliation-{}-{}",
         std::process::id(),
@@ -228,7 +228,7 @@ pub(super) fn prepare_active_release_provider_reconciliation(
             .map_err(|error| format!("system time before Unix epoch: {error}"))?
             .as_nanos()
     ));
-    let mut reconciliation = PreparedProviderReleaseReconciliation {
+    let mut reconciliation = PreparedActiveProviderReconciliation {
         staging_root,
         members: Vec::new(),
         closure_members: Vec::new(),
@@ -250,7 +250,7 @@ pub(super) fn prepare_active_release_provider_reconciliation(
             active_slot.display()
         ));
     }
-    let active = agent_semantic_artifacts::load_active_runtime_provider_set(state_home)?;
+    let active = agent_semantic_artifacts::load_active_runtime_bound_provider_set(state_home)?;
     if active.providers.is_empty() {
         return Ok(reconciliation);
     }
@@ -462,10 +462,11 @@ async fn run_install_provider(args: &[String]) -> Result<(), String> {
         agent_semantic_content_identity::file_content_digest_v1(&installed)?;
     let installed_entrypoint_metadata_digest =
         agent_semantic_content_identity::file_artifact_metadata_digest_v1(&installed)?;
-    let execution_command_digest = agent_semantic_hook::provider_execution_command_digest(
-        &[installed.to_string_lossy().to_string()],
-        &installed_entrypoint_digest,
-    )?;
+    let execution_command_digest =
+        agent_semantic_content_identity::provider_execution_command_digest(
+            &[installed.to_string_lossy().to_string()],
+            &installed_entrypoint_digest,
+        )?;
     let lock_path = provider_lock_dir.join(format!("{language_id}.lock.toml"));
     write_provider_lock(
         &lock_path,

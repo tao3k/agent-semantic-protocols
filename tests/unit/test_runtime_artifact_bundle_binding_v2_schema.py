@@ -40,3 +40,6 @@ def test_artifact_bundle_v2_does_not_use_activation_generation_as_abi() -> None:
         sort_keys=True,
     )
     assert "activationGeneration" not in serialized
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later

@@ -23,6 +23,8 @@ mod command;
 mod command_apply_patch;
 #[path = "unit/command_shell.rs"]
 mod command_shell;
+#[path = "unit/search_playbook_pretool.rs"]
+mod search_playbook_pretool;
 
 #[path = "unit/event_state.rs"]
 mod event_state;

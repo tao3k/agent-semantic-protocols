@@ -76,7 +76,7 @@ def assessment() -> dict:
 
 def schema_projection() -> dict:
     return {
-        "sourceSchema": "schemas/semantic-search-packet.v1.schema.json",
+        "sourceSchema": "schemas/semantic-query-packet.v1.schema.json",
         "formalLeanPath": "schema-projection-formal.lean",
         "candidateLeanPath": "schema-projection-candidate.lean",
         "facts": [

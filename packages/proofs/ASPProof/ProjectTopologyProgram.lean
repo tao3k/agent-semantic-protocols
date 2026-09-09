@@ -478,4 +478,156 @@ theorem topology_output_cannot_index_itself :
     eligibleTopologyInput .topologyMaterialization = false := by
   decide
 
+/-!
+Relation-sensitive topology model shared by the project Org program, the
+MRR/Ascent implementation, and the public GQL projection.  Relation identity
+is retained in every premise; an untyped reachability pair cannot authorize a
+semantic edge.
+-/
+
+inductive DomainRelation where
+  | calls
+  | covers
+  | readsConfig
+  | dependsOnConfig
+  | topologyReachable
+  deriving DecidableEq, Repr
+
+structure DomainEdge where
+  fromNode : Nat
+  toNode : Nat
+  relation : DomainRelation
+  modality : Modality
+  witnessId : Nat
+  bindingId : Nat
+  deriving DecidableEq, Repr
+
+def sourceEdgeAdmitted (expectedBinding : Nat) (edge : DomainEdge) : Bool :=
+  edge.bindingId == expectedBinding &&
+    edge.witnessId != 0 &&
+    (edge.modality == .parserFact ||
+      edge.modality == .declared ||
+      edge.modality == .accepted)
+
+def hasAdmittedEdge
+    (expectedBinding : Nat)
+    (edges : List DomainEdge)
+    (relation : DomainRelation)
+    (fromNode toNode : Nat) : Bool :=
+  edges.any fun edge =>
+    sourceEdgeAdmitted expectedBinding edge &&
+      edge.relation == relation &&
+      edge.fromNode == fromNode &&
+      edge.toNode == toNode
+
+def derivesDependsOnConfig
+    (expectedBinding : Nat)
+    (edges : List DomainEdge)
+    (caller config : Nat) : Bool :=
+  edges.any fun callEdge =>
+    sourceEdgeAdmitted expectedBinding callEdge &&
+      callEdge.relation == .calls &&
+      callEdge.fromNode == caller &&
+      edges.any fun configEdge =>
+        sourceEdgeAdmitted expectedBinding configEdge &&
+          configEdge.relation == .readsConfig &&
+          configEdge.fromNode == callEdge.toNode &&
+          configEdge.toNode == config
+
+structure DerivedDomainEdge where
+  fromNode : Nat
+  toNode : Nat
+  relation : DomainRelation
+  ruleId : Nat
+  proofId : Nat
+  premiseWitnesses : List Nat
+  bindingId : Nat
+  deriving DecidableEq, Repr
+
+def derivedDomainEdgeAdmitted
+    (expectedBinding : Nat)
+    (edge : DerivedDomainEdge) : Bool :=
+  edge.bindingId == expectedBinding &&
+    edge.ruleId != 0 &&
+    edge.proofId != 0 &&
+    !edge.premiseWitnesses.isEmpty &&
+    edge.premiseWitnesses.all fun witness => witness != 0
+
+def refreshCallsPublish : DomainEdge :=
+  ⟨10, 20, .calls, .parserFact, 101, 900⟩
+
+def publishReadsConfig : DomainEdge :=
+  ⟨20, 30, .readsConfig, .declared, 102, 900⟩
+
+def testCoversPublish : DomainEdge :=
+  ⟨40, 20, .covers, .declared, 103, 900⟩
+
+def domainPremises : List DomainEdge :=
+  [refreshCallsPublish, publishReadsConfig, testCoversPublish]
+
+def configDependencyConclusion : DerivedDomainEdge :=
+  ⟨10, 30, .dependsOnConfig, 201, 301, [101, 102], 900⟩
+
+theorem relation_sensitive_join_derives_config_dependency :
+    derivesDependsOnConfig 900 domainPremises 10 30 = true ∧
+      derivedDomainEdgeAdmitted 900 configDependencyConclusion = true := by
+  decide
+
+theorem covers_does_not_impersonate_reads_config :
+    derivesDependsOnConfig 900 [refreshCallsPublish, testCoversPublish] 10 20 =
+      false := by
+  decide
+
+theorem missing_or_foreign_binding_premise_blocks_derivation :
+    derivesDependsOnConfig 901 domainPremises 10 30 = false ∧
+      derivesDependsOnConfig 900 [refreshCallsPublish] 10 30 = false := by
+  decide
+
+theorem witness_free_derived_edge_is_not_admitted :
+    derivedDomainEdgeAdmitted 900
+      { configDependencyConclusion with premiseWitnesses := [] } = false := by
+  decide
+
+inductive RelationCoverage where
+  | noCoverage
+  | partialCoverage
+  | completeCoverage
+  deriving DecidableEq, Repr
+
+inductive RelationKnowledge where
+  | known
+  | certifiedMissing
+  | unknown
+  deriving DecidableEq, Repr
+
+def classifyExpectedRelation
+    (hasPositiveWitness : Bool)
+    (coverage : RelationCoverage) : RelationKnowledge :=
+  if hasPositiveWitness then
+    .known
+  else
+    match coverage with
+    | .completeCoverage => .certifiedMissing
+    | .partialCoverage | .noCoverage => .unknown
+
+theorem positive_witness_suppresses_frontier :
+    classifyExpectedRelation true .noCoverage = .known ∧
+      classifyExpectedRelation true .completeCoverage = .known := by
+  decide
+
+theorem certified_missing_requires_complete_coverage :
+    classifyExpectedRelation false .completeCoverage = .certifiedMissing ∧
+      classifyExpectedRelation false .partialCoverage = .unknown ∧
+      classifyExpectedRelation false .noCoverage = .unknown := by
+  decide
+
+def modalityMayCloseExpectedRelation : Modality → Bool
+  | .parserFact | .declared | .derived | .accepted => true
+  | .proposed | .contested => false
+
+theorem proposed_semantics_cannot_close_a_frontier :
+    modalityMayCloseExpectedRelation .proposed = false ∧
+      modalityMayCloseExpectedRelation .contested = false := by
+  decide
+
 end ASPProof.ProjectTopologyProgram

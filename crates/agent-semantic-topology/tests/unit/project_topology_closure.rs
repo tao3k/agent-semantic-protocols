@@ -129,3 +129,63 @@ fn topology_receipt_identity_commits_parser_relation_kinds() {
         "equal reachability cannot erase the parser-owned relation kind",
     );
 }
+
+#[test]
+fn topology_rejects_noncanonical_parser_relation_vocabulary() {
+    let error = ProjectTopologyDirectEdge::new("edge-a-b", "calls", "a", "b")
+        .expect_err("noncanonical relation cannot enter the source-fact boundary");
+    assert_eq!(error.reason_kind(), "topology-direct-edge-relation-invalid");
+}
+
+#[test]
+fn topology_closure_publishes_relation_sensitive_ascent_conclusion() {
+    let closure = builder(limits())
+        .build(
+            "topology-generation-domain-rule",
+            &[
+                edge("w1", "CALLS", "refresh", "publish"),
+                edge("w2", "READS_CONFIG", "publish", "hook"),
+                edge("w3", "COVERS", "test", "publish"),
+            ],
+        )
+        .expect("complete topology closure");
+
+    let dependency = closure
+        .relationships()
+        .iter()
+        .find(|relationship| relationship.relation() == "DEPENDS_ON_CONFIG")
+        .expect("relation-sensitive Ascent join is retained");
+    assert_eq!(dependency.from(), "refresh");
+    assert_eq!(dependency.to(), "hook");
+    assert_eq!(dependency.premise_edge_ids(), ["w1", "w2"]);
+    assert_eq!(
+        dependency.rule_id(),
+        "mrr.topology.domain.depends-on-config.v1"
+    );
+    assert!(closure.relationships().iter().all(|relationship| {
+        relationship.relation() != "DEPENDS_ON_CONFIG"
+            || !relationship.premise_edge_ids().contains(&"w3".to_owned())
+    }));
+}
+
+#[test]
+fn structural_containment_is_receipted_without_quadratic_reachability() {
+    let builder = builder(ProjectTopologyClosureLimits::new(16, 1, 64).expect("bounded limits"));
+    let containment = (0..16)
+        .map(|index| {
+            edge(
+                &format!("contains-{index}"),
+                "CONTAINS",
+                "owner",
+                &format!("item-{index}"),
+            )
+        })
+        .collect::<Vec<_>>();
+    let closure = builder
+        .build("topology-generation-containment", &containment)
+        .expect("structural containment does not enter generic reachability");
+
+    assert!(closure.relationships().is_empty());
+    assert_eq!(closure.receipt().input_edge_count(), 16);
+    assert_eq!(closure.receipt().relationship_count(), 0);
+}

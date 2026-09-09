@@ -60,7 +60,6 @@ def _timeline_report(
     event_source: str,
 ) -> dict[str, object]:
     report_actions = {
-        "primeSuppression": context.prime_suppression,
         "typedFrontierPromotion": context.typed_frontier_promotion,
         "ownerCollapse": context.owner_collapse,
         "fanoutPlanning": context.fanout_planning,
@@ -92,7 +91,6 @@ def _timeline_report(
         "repeatSearches": sum(
             int(row["repeatSearches"]) for row in context.session_rows
         ),
-        "suppressiblePrimeSearches": context.prime_suppression["suppressibleSearches"],
         "promotableTypedFrontierSearches": context.typed_frontier_promotion[
             "promotableSearches"
         ],
@@ -124,7 +122,6 @@ def _timeline_report(
             context.fanout_hotspots,
             limit=params.examples,
         ),
-        "primeSuppression": context.prime_suppression,
         "typedFrontierPromotion": context.typed_frontier_promotion,
         "ownerCollapse": context.owner_collapse,
         "fanoutPlanning": context.fanout_planning,

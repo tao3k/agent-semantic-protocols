@@ -16,7 +16,7 @@ from pathlib import Path
 from asp_python import (
     PythonVerificationTaskKind,
     plan_python_project_verification,
-    read_python_project_harness_config,
+    read_asp_python_config,
 )
 
 
@@ -76,11 +76,11 @@ def test_pytest_collects_passive_harness_item() -> None:
         text=True,
     )
 
-    assert "python-project-harness" in result.stdout
+    assert "asp-python" in result.stdout
 
 
 def test_root_harness_verification_profile_enables_perf_task() -> None:
-    config = read_python_project_harness_config(_REPO_ROOT)
+    config = read_asp_python_config(_REPO_ROOT)
 
     assert config is not None
     hints = config.verification_policy.profile_hints

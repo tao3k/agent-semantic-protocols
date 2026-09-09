@@ -665,7 +665,7 @@ fn authoritative_record_for_program(
                     "predicateId": format!("predicate-{index}"),
                     "claimClass": "identity",
                     "scopeDigest": digest("scope"),
-                    "acceptedSchemaIds": ["semantic-search-packet.v1"],
+                    "acceptedSchemaIds": ["workspace-search-playbook-result.v1"],
                     "requiredFields": ["symbol"],
                     "completeness": "complete-scope",
                     "requiresFreshBinding": true,

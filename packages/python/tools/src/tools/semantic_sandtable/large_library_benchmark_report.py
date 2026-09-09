@@ -50,7 +50,7 @@ def _arg_parser() -> argparse.ArgumentParser:
         help="Repository root to scan for sandtable scenario inputs.",
     )
     parser.add_argument(
-        "--languages",
+        "--language",
         default=None,
         help=(
             "Comma-separated language list to include, e.g. julia,python,rust,typescript."

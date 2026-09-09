@@ -36,11 +36,11 @@ def test_build_receipt_filters_dev_log_directory_by_session(tmp_path: Path) -> N
     assert command["id"] == "event-a"
     assert command["kind"] == "search"
     assert command["argv"] == [
-        "asp-python",
+        "asp",
         "search",
-        "prime",
-        "--view",
-        "seeds",
+        "playbook",
+        "--language",
+        "python",
         "--json",
     ]
     assert command["metrics"] == {
@@ -169,8 +169,8 @@ def _dev_log_event(
         "sessionId": session_id,
         "languageId": "python",
         "providerId": "asp-python",
-        "argv": ["asp-python", "search", "prime", "--view", "seeds", "--json"],
-        "command": {"method": "search/prime"},
+        "argv": ["asp", "search", "playbook", "--language", "python", "--json"],
+        "command": {"method": "search/playbook"},
         "result": {
             "exitCode": 0,
             "elapsedMs": elapsed_ms,

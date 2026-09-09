@@ -435,8 +435,10 @@ pub async fn load_runtime_artifact_catalog(
     };
     let mut catalog = RuntimeArtifactCatalog::new(mode);
     let providers =
-        match crate::runtime_active_provider_set::load_active_runtime_provider_set_async(state_home)
-            .await
+        match crate::runtime_active_provider_set::load_active_runtime_bound_provider_set_async(
+            state_home,
+        )
+        .await
         {
             Ok(providers) => providers,
             Err(error) if error.contains("runtime-active-generation-unavailable") => {

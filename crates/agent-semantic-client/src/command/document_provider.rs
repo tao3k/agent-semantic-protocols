@@ -35,6 +35,11 @@ pub(crate) async fn run_language_command_with_config(
     let Some(command) = args.first().map(String::as_str) else {
         return Err(usage(language_id));
     };
+    if matches!(command, "search" | "query" | "elements-query") {
+        return Err(format!(
+            "language-first {command} was removed; use `asp search playbook --language {language_id} ...` or `asp query playbook --language {language_id} --selector <exact-selector>...`"
+        ));
+    }
     if command == "contract" && language_id == "org" {
         return agent::run_org_contract_command(args[1..].to_vec());
     }
@@ -153,14 +158,14 @@ fn usage(language_id: &str) -> String {
 fn supported_commands(language_id: &str) -> &'static str {
     match language_id {
         "org" => {
-            "guide|search|query|elements-query|contract|capture|recall|archive|eval|export|fmt|lint"
+            "guide|contract|capture|recall|archive|eval|export|fmt|lint"
         }
-        _ => "guide|search|query|elements-query",
+        _ => "guide",
     }
 }
 
 fn is_document_command(command: &str) -> bool {
-    matches!(command, "guide" | "search" | "query" | "elements-query")
+    command == "guide"
 }
 
 fn is_embedded_org_command(command: &str) -> bool {

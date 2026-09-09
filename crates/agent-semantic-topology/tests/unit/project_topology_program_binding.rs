@@ -24,7 +24,7 @@ fn admitted_receipts(program: &Value) -> BTreeMap<String, Value> {
 
 fn manifest() -> ProjectTopologyManifest {
     ProjectTopologyManifest::parse_org(include_str!(
-        "../../../../org/templates/project.topology-program.v1.org"
+        "../../../../org/templates/project.workspace-manifest.v1.org"
     ))
     .expect("Project Topology manifest")
 }

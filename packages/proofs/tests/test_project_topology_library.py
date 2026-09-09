@@ -111,7 +111,7 @@ def test_segment_inventory_must_exactly_cover_active_nodes(library):
 def test_deleted_premise_cannot_leave_a_derived_descendant(library):
     derived = {
         "id": "derived-publication",
-        "segmentId": "segment-org",
+        "segmentId": None,
         "from": "refresh",
         "to": "publication",
         "relation": "DOCUMENTED_PATH",
@@ -121,7 +121,6 @@ def test_deleted_premise_cannot_leave_a_derived_descendant(library):
         "proofRef": "proof-path-42",
     }
     library["edges"].append(derived)
-    library["segments"][1]["edgeIds"].append("derived-publication")
     library["closure"]["derivedEdgeIds"] = ["derived-publication"]
     library["closure"]["proofDependencies"] = [
         {"derivedEdgeId": "derived-publication", "premiseEdgeIds": ["declares-refresh"]}
@@ -139,6 +138,8 @@ def test_deleted_premise_cannot_leave_a_derived_descendant(library):
 def test_derived_closure_requires_a_dependency_record(library):
     changed = deepcopy(library)
     edge = changed["edges"][0]
+    changed["segments"][0]["edgeIds"].remove(edge["id"])
+    edge["segmentId"] = None
     edge["modality"] = "derived"
     edge["bindingDigest"] = changed["identities"]["inferenceProgramDigest"]
     edge["proofRef"] = "proof-declares-refresh"

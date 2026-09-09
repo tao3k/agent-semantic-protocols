@@ -13,26 +13,13 @@
   },
   "$defs": {
     "digest": {"type": "string", "pattern": "^blake3-256:[0-9a-f]{64}$"},
-    "identity": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["projectId", "workspaceId", "sourceRootDigest", "providerDigest", "schemaDigest", "generationCandidateDigest"],
-      "properties": {
-        "projectId": {"type": "string", "minLength": 1},
-        "workspaceId": {"type": "string", "minLength": 1},
-        "sourceRootDigest": {"$ref": "#/$defs/digest"},
-        "providerDigest": {"$ref": "#/$defs/digest"},
-        "schemaDigest": {"$ref": "#/$defs/digest"},
-        "generationCandidateDigest": {"$ref": "#/$defs/digest"}
-      }
-    },
     "stageReceipt": {
       "type": "object",
       "additionalProperties": false,
       "required": ["stage", "identity", "artifactDigest", "workerId", "complete"],
       "properties": {
         "stage": {"const": "source-byte-acquisition"},
-        "identity": {"$ref": "#/$defs/identity"},
+        "identity": {"$ref": "https://schemas.agent-semantic-protocols.dev/semantic-search-definitions.v1.schema.json#/$defs/generationIdentity"},
         "artifactDigest": {"$ref": "#/$defs/digest"},
         "workerId": {"type": "string", "minLength": 1},
         "complete": {"const": true}

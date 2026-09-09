@@ -46,3 +46,6 @@ def test_execution_pointer_rejects_activation_generation_identity() -> None:
     candidate["activationGeneration"] = 84
     with pytest.raises(ValidationError):
         schema_validator_for(SCHEMA).validate(candidate)
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later

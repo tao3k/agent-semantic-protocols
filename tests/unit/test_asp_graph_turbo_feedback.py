@@ -21,8 +21,6 @@ from ._asp_graph_turbo_common import (
     rank_frontier,
     result_to_packet,
     schema_validator_for,
-    subprocess,
-    sys,
 )
 
 
@@ -197,30 +195,13 @@ def test_feedback_policy_accumulates_multiple_receipts() -> None:
     assert "receipt-boost:+0.70:frontier-success" in reasons["item:good"]
 
 
-def test_feedback_evidence_command_and_algorithm_api_consume_it(tmp_path: Path) -> None:
-    report = tmp_path / "sandtable.json"
+def test_feedback_import_only_api_and_algorithm_api_consume_it(tmp_path: Path) -> None:
     feedback = tmp_path / "feedback.json"
     request = tmp_path / "request.json"
     sandtable_report = _sandtable_report()
-    direct_packet = feedback_packet_from_sandtable(sandtable_report)
-    assert direct_packet["metrics"]["successCount"] == 1
-    report.write_text(json.dumps(sandtable_report), encoding="utf-8")
+    feedback_packet = feedback_packet_from_sandtable(sandtable_report)
     request.write_text(json.dumps(_feedback_request()), encoding="utf-8")
-
-    feedback_result = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "asp_python_graphs",
-            "feedback",
-            str(report),
-        ],
-        check=True,
-        text=True,
-        capture_output=True,
-    )
-    feedback.write_text(feedback_result.stdout, encoding="utf-8")
-    feedback_packet = json.loads(feedback_result.stdout)
+    feedback.write_text(json.dumps(feedback_packet), encoding="utf-8")
 
     assert feedback_packet["schemaId"] == (
         "agent.semantic-protocols.semantic-graph-turbo-feedback"
@@ -258,7 +239,7 @@ def _feedback_request() -> dict[str, object]:
         "packetKind": "graph-turbo-request",
         "profile": "owner-query",
         "algorithm": "typed-ppr-diverse",
-        "seedIds": ["q:feature"],
+        "entryNodeIds": ["q:feature"],
         "budget": 4,
         "cache": {"enabled": False},
         "graph": {
@@ -424,11 +405,11 @@ def _sandtable_report() -> dict[str, object]:
                                 "present": True,
                                 "afterLastToolUse": True,
                             },
-                            "pipeFlow": {
+                            "commandFlow": {
                                 "commands": [
-                                    "asp python search pipe feature --workspace . --view seeds",
-                                    "asp python query --selector src/good.py:10:20 --workspace . --code",
-                                    "asp python query --selector src/bad.py:10:20 --workspace . --code",
+                                    "asp search playbook --language python --rg -n -e feature . --tantivy term feature",
+                                    "asp query playbook --language python --selector src/good.py:10:20 --workspace . --code",
+                                    "asp query playbook --language python --selector src/bad.py:10:20 --workspace . --code",
                                 ]
                             },
                         },

@@ -39,10 +39,10 @@ class RealTriggerEvidenceGuideTests(unittest.TestCase):
                             {
                                 "id": "guide",
                                 "kind": "hook-deny",
-                                "argv": ["asp-rust", "search", "ingest", "."],
+                                "argv": ["asp", "search", "playbook"],
                                 "stdinShape": "hook-payload",
                                 "decisionReasonKind": "raw-broad-search",
-                                "routeKind": "ingest",
+                                "routeKind": "playbook",
                                 "metrics": {
                                     "elapsedMs": 1,
                                     "stdoutBytes": 10,
@@ -120,12 +120,12 @@ class RealTriggerEvidenceGuideTests(unittest.TestCase):
                                         "'routes': [{"
                                         "'languageId': 'rust',"
                                         "'providerId': 'asp-rust',"
-                                        "'binary': 'asp-rust',"
-                                        "'kind': 'ingest',"
-                                        "'argv': ['asp-rust', 'search', 'ingest', 'items', 'tests', '.'],"
-                                        "'stdinMode': 'pipe-candidates'"
+                                        "'binary': 'asp',"
+                                        "'kind': 'playbook',"
+                                        "'argv': ['asp', 'search', 'playbook'],"
+                                        "'stdinMode': 'none'"
                                         "}],"
-                                        "'message': 'Pipe candidates into asp-rust search ingest.'"
+                                        "'message': 'Use the ASP search playbook.'"
                                         "}}))"
                                     ),
                                 ],
@@ -138,13 +138,12 @@ class RealTriggerEvidenceGuideTests(unittest.TestCase):
                                     "guideQuality": {
                                         "reasonKind": "raw-broad-search",
                                         "languageId": "rust",
-                                        "routeKind": "ingest",
+                                        "routeKind": "playbook",
                                         "commandContains": [
-                                            "asp-rust",
+                                            "asp",
                                             "search",
-                                            "ingest",
+                                            "playbook",
                                         ],
-                                        "requiresIngestPipe": True,
                                         "sourceLeakNotContains": ["pub mod"],
                                     },
                                 },
@@ -160,7 +159,7 @@ class RealTriggerEvidenceGuideTests(unittest.TestCase):
             with redirect_stdout(stdout):
                 exit_code = main(["--repo-root", str(repo_root), str(scenario_path)])
 
-        self.assertEqual("pass", result.status)
+        self.assertEqual("pass", result.status, result)
         self.assertEqual(0, exit_code)
         self.assertIn("[sandtable-flow] scenario=rust.real-trigger", stdout.getvalue())
         self.assertIn("|merge view=owner queries=3", stdout.getvalue())

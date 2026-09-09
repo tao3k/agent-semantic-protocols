@@ -38,11 +38,12 @@ fn configured_message_binds_language_and_appends_executable_provider_route() {
                 "playbook".to_owned(),
                 "--language".to_owned(),
                 "rust".to_owned(),
-                "source structure".to_owned(),
-                "--scope".to_owned(),
-                "owner:src/a file.rs".to_owned(),
-                "--workspace".to_owned(),
-                ".".to_owned(),
+                "--rg".to_owned(),
+                "--files".to_owned(),
+                "-g".to_owned(),
+                "src/a file.rs".to_owned(),
+                "--tantivy".to_owned(),
+                "title:[* TO *] OR body:[* TO *]".to_owned(),
             ],
             stdin_mode: None,
         }],
@@ -57,13 +58,9 @@ fn configured_message_binds_language_and_appends_executable_provider_route() {
             .message
             .starts_with("Registered rust source reads are denied.")
     );
-    assert!(
-        decision
-            .message
-            .contains(
-                "ASP route: `asp search playbook --language rust 'source structure' --scope 'owner:src/a file.rs' --workspace .`"
-            )
-    );
+    assert!(decision.message.contains(
+        "ASP route: `asp search playbook --language rust --rg --files -g 'src/a file.rs' --tantivy 'title:[* TO *] OR body:[* TO *]'`"
+    ));
 }
 
 #[test]

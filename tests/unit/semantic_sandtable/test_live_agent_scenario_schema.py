@@ -40,7 +40,7 @@ def _live_agent_scenario() -> dict[str, Any]:
                     "required": True,
                     "afterLastToolUse": True,
                 },
-                "pipeFlow": {
+                "commandFlow": {
                     "requiredStages": ["search-prime", "search-pipe"],
                     "forbiddenStages": ["repeated-prime"],
                 },
@@ -83,7 +83,7 @@ class LiveAgentScenarioSchemaTests(unittest.TestCase):
     def test_live_agent_rejects_scripted_prompt_field(self) -> None:
         scenario = _live_agent_scenario()
         scenario["liveAgent"]["prompt"] = (
-            "Run asp typescript search prime --workspace . --view seeds"
+            "Run asp search playbook --language typescript --rg --files . --tantivy term source"
         )
 
         errors = self.validation_errors(scenario)

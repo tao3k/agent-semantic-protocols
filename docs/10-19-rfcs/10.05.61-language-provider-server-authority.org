@@ -4,6 +4,7 @@
 
 #+TITLE: ASP Client Server Authority
 #+STATUS: proposed
+#+PROPERTY: rfc_layer provider-server-authority
 
 Parent architecture: [[file:10.05-interactive-graph-first-progressive-searchloop.org][RFC 10.05 SearchLoop]].
 
@@ -278,34 +279,35 @@ misclassify a healthy Runtime as stopped.  Control-plane preflight and
 data-plane dispatch are therefore one atomic transport selection, not two
 independently selected routes.
 
-** Unified rg, lexical, and graph search plan
+** Unified native rg, Tantivy, syntax, and graph Search Layout
 
-=rg=, lexical search, and graph reasoning are not sequential fallbacks.  The
-shared planner compiles a =SearchPlan= with independent, bounded clauses:
+=rg=, Tantivy, syntax, and graph reasoning are not intent-derived fallbacks.
+The shared planner admits the caller's exact native blocks into a =SearchLayout=
+with explicit ordering and bounded composition:
 
 #+begin_example
-SearchIntent
-  -> ExactClause?             O(1) selector map lookup
-  -> LiteralRegexClauses*     in-process rg-compatible matcher over candidates
-  -> LexicalClauses*          postings intersection / bounded top-k
-  -> StructuralFilters*       provider-published owner/item/test facts
-  -> GraphEscalation?         bounded evidence-graph route
-  -> DeterministicMerge       one ranked typed packet
+SearchLayout
+  -> NativeRgBlocks*          exact admitted rg argv over immutable bytes
+  -> TantivyQueryBlocks*       parsed native Tantivy query grammar
+  -> SyntaxBlocks*             producer-native syntax argv
+  -> NativeSyntaxSelectors*    exact parser-owned selector materialization
+  -> GraphBlocks*              bounded native GQL or PGQL argv
+  -> DeterministicSettlement   one generation-bound typed packet
 #+end_example
 
-The production hot path never spawns the =rg= executable.  Ripgrep is a Live
-Corpus oracle for coverage and ranking comparison.  Production uses
-in-process =regex-automata=, =aho-corasick=, =memchr=-class matching and the
-generation's literal/trigram/postings accelerators, preserving declared
-rg-compatible semantics without process startup or a workspace walk.
+The Runtime invokes the admitted =rg= executable with the exact caller argv
+against a reconstruction of the immutable source generation.  It does not
+translate that argv into an in-process regex subset.  Tantivy parses and
+enforces its native query grammar independently; it does not accept a simple
+unparsed search string in place of that grammar.
 
-Lexical clauses preserve each query seed and relation mode; they are not one
-concatenated string.  Posting lists are immutable, generation-local, and
-ordered by stable owner/selector identity.  Intersection, WAND/top-k pruning,
-and rank features are deterministic for the same plan and generation.
+Each native block preserves its exact argv and occurrence index.  Tantivy
+posting lists are immutable, generation-local, and ordered by stable
+owner/selector identity.  Intersection, WAND/top-k pruning, and rank features
+are deterministic for the same layout and generation.
 
 =asp-python-graphs= owns graph algorithms and offline calibration, not the
-core query lifecycle.  Provider/graph facts required by the sub-millisecond
+core query lifecycle.  Provider/graph facts required by the resident graph
 path are published into the immutable generation and evaluated by the resident
 bounded router.  An explicitly requested Python graph escalation uses its
 already-warm gRPC stream under a separate compute budget and returns facts for
@@ -343,6 +345,15 @@ create a cross-language provider authority and is forbidden.  Providers
 perform parser-native work on the write/provider plane and publish the same
 language-neutral owner, selector, lexical, relation, and diagnostic facts into
 the next immutable generation.
+
+The protocol provider-ID namespace is =asp-<languageId>=.  This identity is
+language-scoped even when multiple languages share one implementation package
+or executable: Org is =asp-org= and Markdown is =asp-md=, while =orgize= may
+remain their package, binary, or parser authority.  A package name, executable
+name, parser authority, or embedded implementation marker MUST NOT be copied
+into =providerId=.  Conversely, assigning =asp-org= or =asp-md= does not imply
+that separate binaries with those names exist; provider identity and execution
+topology are independent contracts.
 
 Consequently the Ready cost for any language =L= is:
 
@@ -628,11 +639,18 @@ requests.  The same hard maximum applies at 32 concurrent calls without
 starving cancellation.  A benchmark reports every segment; no timeout is used
 to manufacture compliance.
 
-The interactive deadline applies only to Ready, read-only dispatch.  Cold
+The strict sub-millisecond interactive deadline applies to bounded exact,
+single lexical and Query reads.  Cold
 =asp.workspace.generation.ensure-ready= is a control-plane admission wait and
-MUST NOT inherit that deadline.  It remains bounded by deterministic input,
-single-flight capacity, cancellation and exactly-one terminal semantics, but a
-five-second read budget cannot convert valid Building progress into failure.
+MUST NOT inherit that deadline.  The composite
+=asp.workspace.search.playbook= is also not an exact-read latency class: its
+resident =rg= and Graph stages may consume the complete generation-derived
+cardinality envelope, so its cancellation and northbound transport deadline
+bound the request while phase telemetry records the actual work.  Both paths
+remain bounded by deterministic input, single-flight capacity where
+applicable, cancellation and exactly-one terminal semantics, but an exact-read
+budget cannot convert valid Building progress or a bounded composite Search
+projection into failure.
 The client keeps the same request open until Ready, Failed or Cancelled; it
 does not abandon a builder and retry with a second request.  Cold elapsed time
 is measured and qualified independently from the sub-millisecond warm-read
@@ -646,6 +664,16 @@ wait for =asp.workspace.generation.ensure-ready= remains open for its typed
 Ready, Failed, or Cancelled terminal; only explicit protocol cancellation may
 end valid Building progress.  Ready read methods retain the bounded interactive
 deadline at every layer.
+
+The optional loopback HTTP/JSON provider adapter has the same separation.
+Health and shutdown are lifecycle probes and retain a bounded lifecycle
+deadline.  A generation-time provider request frame has no adapter-local wall
+clock deadline: its bound is owned by the admitted generation task, resource
+lease, typed cancellation, and provider drain protocol.  Consequently an HTTP
+client-wide timeout MUST NOT turn a valid parser projection still making
+progress into a provider failure.  This does not widen or weaken the
+sub-millisecond northbound Ready-read deadline because provider projection is
+never part of Ready request dispatch.
 
 ** Backpressure, cancellation, and scheduling
 
@@ -802,6 +830,17 @@ generation/session APIs directly.  Provider lifecycle and cancellation remain
 owned by the server's bounded =mpsc=, =oneshot=, and =watch= tasks; no second
 CLI authority or fallback route is permitted.
 
+The language facade MUST NOT advertise =check= or =evidence= as standalone
+commands.  Language-owned policy verification belongs to build and CI APIs,
+not the Runtime request catalog.  A language provider publishes syntax,
+parser-owned facts, and typed projections into the immutable Runtime
+generation; it does not construct or analyze an Evidence Graph.  Ascent and
+GQL consume those generation-bound facts and own Evidence Graph derivation.
+The resulting graph, graph facts, and receipts remain typed Runtime data, but
+their data semantics do not create an =asp <language> evidence= command.
+Help output and removed-command handling MUST be derived from this boundary
+rather than preserving the former one-shot provider command menu.
+
 ** Cross-process Runtime readiness contract
 
 The supervisor pre-binds one per-owner Tokio =UnixDatagram= readiness sink
@@ -854,7 +893,7 @@ rendering.  =agent-semantic-provider-transport= owns provider process transport
 and resident provider actors.  =agent-semantic-runtime-server= owns daemon
 assembly, the Tonic dispatcher, the shared Rust Search compute core, resident
 generation service, and identity handoff; it MUST NOT depend on
-=agent-semantic-client= or on any language harness.
+=agent-semantic-client= or on any ASP language provider.
 
 The =agent-semantic-client= package is only CLI composition, parser, command
 facade, and renderer ownership.  It MUST NOT own the Runtime daemon, transport
@@ -908,7 +947,7 @@ language runtime.
 Every server-capable implementation under =languages/*-harness= implements the
 same =agent.semantic-protocols.asp-client-server= schema family. Descriptor,
 bootstrap, lifecycle, request, response, error, and shutdown packets use the
-=asp-client-server= namespace; a language harness must not mint a private server
+=asp-client-server= namespace; a ASP language provider must not mint a private server
 schema family.
 
 * ASP Client Protocol ecosystem

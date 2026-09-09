@@ -289,8 +289,7 @@ def _commands_to_first_useful_locator(steps: tuple[dict[str, Any], ...]) -> int:
 
 
 def _is_useful_locator_step(step: dict[str, Any]) -> bool:
-    step_id = require_str(step, "id", "")
-    return step_id != "prime" and _is_search(_command(step))
+    return _is_search(_command(step))
 
 
 def _frontier_follow_rate(

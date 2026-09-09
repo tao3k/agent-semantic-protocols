@@ -3,13 +3,15 @@
 // SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 use agent_semantic_content_identity::ProjectWorkspaceBinding;
-use agent_semantic_content_identity::content_binding::AuthorityStamp;
-use agent_semantic_content_identity::content_binding::ContentBinding;
-use agent_semantic_content_identity::content_binding::ContentIdentity;
-use agent_semantic_content_identity::runtime_execution::RuntimeExecutionBinding;
-use agent_semantic_content_identity::runtime_execution::RuntimeExecutionBindingInput;
-use agent_semantic_search_projection::QueryPlaybookMaterializationReceipt;
-use agent_semantic_search_projection::QueryPlaybookMaterializationRequest;
+use agent_semantic_content_identity::content_binding::{
+    AuthorityStamp, ContentBinding, ContentIdentity,
+};
+use agent_semantic_content_identity::runtime_execution::{
+    RuntimeExecutionBinding, RuntimeExecutionBindingInput,
+};
+use agent_semantic_search_projection::{
+    QueryPlaybookMaterializationReceipt, QueryPlaybookMaterializationRequest,
+};
 
 const PROJECT_WORKSPACE: &str =
     "git+https://github.com/tao3k/agent-semantic-protocols.git#workspace/root";
@@ -18,6 +20,9 @@ const EXECUTION_PUBLICATION_DIGEST: &str =
     "blake3-256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
 const RUNTIME_BUNDLE_DIGEST: &str =
     "blake3-256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
+const RUST_SELECTOR: &str =
+    "rust://src/registry.rs#item/method/refresh_registry/scope/implementation-owner/type/Registry";
+const ORG_SELECTOR: &str = "org://docs/publication.org#item/heading/Publication";
 
 fn digest(character: char) -> String {
     format!("blake3-256:{}", character.to_string().repeat(64))
@@ -27,12 +32,12 @@ fn runtime_binding() -> RuntimeExecutionBinding {
     let identity = ContentIdentity {
         runtime_artifact_digest: digest('1'),
         workspace_snapshot_digest: digest('2'),
-        source_generation_digest: digest('3'),
+        source_generation_digest: digest('1'),
         source_index_digest: digest('4'),
         schema_digest: digest('5'),
-        provider_catalog_digest: digest('6'),
+        provider_catalog_digest: digest('2'),
     };
-    let binding = ContentBinding::new(
+    let content_binding = ContentBinding::new(
         identity.clone(),
         AuthorityStamp {
             key_id: "runtime-authority".to_owned(),
@@ -51,17 +56,13 @@ fn runtime_binding() -> RuntimeExecutionBinding {
         .expect("Project Workspace"),
         worktree_instance_id: WORKTREE_INSTANCE.to_owned(),
         publication_nonce: "publication-1".to_owned(),
-        content_binding: binding,
+        content_binding,
         runtime_artifact_digest: digest('1').into(),
         evaluator_policy_digest: digest('7').into(),
         active_artifact_receipt_digest: digest('8').into(),
         evaluator_abi_digest: digest('9').into(),
     })
     .expect("valid Runtime execution binding")
-}
-
-fn manifest_project_workspace(binding: &RuntimeExecutionBinding) -> ProjectWorkspaceBinding {
-    binding.project_workspace.clone()
 }
 
 fn request(binding: &RuntimeExecutionBinding) -> serde_json::Value {
@@ -76,10 +77,7 @@ fn request(binding: &RuntimeExecutionBinding) -> serde_json::Value {
         "runtimeExecutionBinding": binding,
         "runtimeWorkspaceExecutionPublicationDigest": EXECUTION_PUBLICATION_DIGEST,
         "runtimeBundleDigest": RUNTIME_BUNDLE_DIGEST,
-        "selectors": [
-            "org://docs/publication.org#item/heading/Publication",
-            "rust://src/registry.rs#item/method/refresh_registry/scope/implementation-owner/type/Registry"
-        ],
+        "selectors": [RUST_SELECTOR, ORG_SELECTOR],
         "projection": "source"
     })
 }
@@ -97,271 +95,175 @@ fn receipt(binding: &RuntimeExecutionBinding) -> serde_json::Value {
         "runtimeWorkspaceExecutionPublicationDigest": EXECUTION_PUBLICATION_DIGEST,
         "runtimeBundleDigest": RUNTIME_BUNDLE_DIGEST,
         "projection": "source",
-        "requestedSelectors": [
-            "org://docs/publication.org#item/heading/Publication",
-            "rust://src/registry.rs#item/method/refresh_registry/scope/implementation-owner/type/Registry"
-        ],
+        "requestedSelectors": [RUST_SELECTOR, ORG_SELECTOR],
         "materializations": [
             {
-                "selector": "org://docs/publication.org#item/heading/Publication",
-                "languageId": "org",
-                "providerId": "asp-org",
-                "ownerPath": "docs/publication.org",
-                "projection": "source",
-                "gqlRelationships": [{
-                    "fromNode": "Publication",
-                    "relation": "documents",
-                    "toNode": "Registry::publish"
-                }],
-                "sourceContentDigest": "b".repeat(64),
-                "bytes": [42, 32, 80]
-            },
-            {
-                "selector": "rust://src/registry.rs#item/method/refresh_registry/scope/implementation-owner/type/Registry",
+                "selector": RUST_SELECTOR,
                 "languageId": "rust",
                 "providerId": "asp-rust",
                 "ownerPath": "src/registry.rs",
                 "projection": "source",
-                "gqlRelationships": [{
-                    "fromNode": "Registry::refresh",
-                    "relation": "calls",
-                    "toNode": "Registry::publish"
-                }],
                 "sourceContentDigest": "c".repeat(64),
                 "bytes": [102, 110]
+            },
+            {
+                "selector": ORG_SELECTOR,
+                "languageId": "org",
+                "providerId": "asp-org",
+                "ownerPath": "docs/publication.org",
+                "projection": "source",
+                "sourceContentDigest": "b".repeat(64),
+                "bytes": [42, 32, 80]
             }
         ],
         "terminal": {"state": "ready", "terminalCount": 1}
     })
 }
 
-#[test]
-fn query_playbook_is_independent_of_search_and_accepts_the_smallest_selector_subset() {
-    let binding = runtime_binding();
-    let mut packet = request(&binding);
-    packet["selectors"] = serde_json::json!([
-        "rust://src/registry.rs#item/method/refresh_registry/scope/implementation-owner/type/Registry"
-    ]);
-
+fn admit_request(
+    binding: &RuntimeExecutionBinding,
+) -> Result<
+    QueryPlaybookMaterializationRequest,
+    agent_semantic_search_projection::QueryPlaybookMaterializationError,
+> {
     QueryPlaybookMaterializationRequest::admit_for_runtime(
-        packet,
-        &binding,
+        request(binding),
+        binding,
         EXECUTION_PUBLICATION_DIGEST,
         RUNTIME_BUNDLE_DIGEST,
-        &manifest_project_workspace(&binding),
+        &binding.project_workspace,
     )
-    .expect("Query may select one canonical selector without reproducing a Search result");
 }
 
 #[test]
-fn query_playbook_accepts_polyglot_selectors_learned_by_different_searches() {
+fn query_request_preserves_polyglot_caller_order_without_search_topology() {
     let binding = runtime_binding();
-    QueryPlaybookMaterializationRequest::admit_for_runtime(
-        request(&binding),
-        &binding,
-        EXECUTION_PUBLICATION_DIGEST,
-        RUNTIME_BUNDLE_DIGEST,
-        &manifest_project_workspace(&binding),
-    )
-    .expect("Query may combine independently learned canonical selectors");
-}
-
-#[test]
-fn query_playbook_rejects_runtime_execution_binding_drift_before_materialization() {
-    let binding = runtime_binding();
-    let mut packet = request(&binding);
-    packet["runtimeExecutionBinding"]["evaluatorPolicyDigest"] = serde_json::json!(digest('a'));
-
-    let error = QueryPlaybookMaterializationRequest::admit_for_runtime(
-        packet,
-        &binding,
-        EXECUTION_PUBLICATION_DIGEST,
-        RUNTIME_BUNDLE_DIGEST,
-        &manifest_project_workspace(&binding),
-    )
-    .expect_err("a changed Runtime binding must fail before provider materialization");
+    let admitted = admit_request(&binding).expect("ordered selector request");
     assert_eq!(
-        error.reason_kind(),
-        "query-playbook-runtime-binding-mismatch"
+        admitted.as_json()["selectors"],
+        serde_json::json!([RUST_SELECTOR, ORG_SELECTOR])
     );
 }
 
 #[test]
-fn query_playbook_rejects_execution_publication_or_outer_bundle_drift() {
-    let binding = runtime_binding();
-    for field in [
-        "runtimeWorkspaceExecutionPublicationDigest",
-        "runtimeBundleDigest",
-    ] {
-        let mut packet = request(&binding);
-        packet[field] = serde_json::json!(digest('a'));
-        let error = QueryPlaybookMaterializationRequest::admit_for_runtime(
-            packet,
-            &binding,
-            EXECUTION_PUBLICATION_DIGEST,
-            RUNTIME_BUNDLE_DIGEST,
-            &manifest_project_workspace(&binding),
-        )
-        .expect_err("Query cannot replay another execution publication or outer bundle");
-        assert_eq!(
-            error.reason_kind(),
-            "query-playbook-execution-publication-mismatch"
-        );
-    }
-}
-
-#[test]
-fn query_playbook_rejects_a_foreign_runtime_workspace_against_the_manifest() {
-    let manifest_project_workspace = runtime_binding().project_workspace;
-    let mut foreign_binding = runtime_binding();
-    foreign_binding.project_workspace = ProjectWorkspaceBinding::new(
-        "git+https://github.com/tao3k/foreign.git#workspace/root",
-        ".",
-        "cross-machine",
-        Vec::new(),
-    )
-    .expect("valid but foreign Project Workspace");
-
-    let error = QueryPlaybookMaterializationRequest::admit_for_runtime(
-        request(&foreign_binding),
-        &foreign_binding,
-        EXECUTION_PUBLICATION_DIGEST,
-        RUNTIME_BUNDLE_DIGEST,
-        &manifest_project_workspace,
-    )
-    .expect_err("equal request and Runtime values cannot self-authorize a foreign workspace");
-    assert_eq!(
-        error.reason_kind(),
-        "query-playbook-project-workspace-manifest-mismatch"
-    );
-}
-
-#[test]
-fn query_playbook_rejects_project_or_worktree_context_drift() {
-    let binding = runtime_binding();
-    for field in ["projectWorkspaceIdentity", "worktreeInstanceId"] {
-        let mut packet = request(&binding);
-        packet[field] = serde_json::json!("foreign-context");
-        let error = QueryPlaybookMaterializationRequest::admit_for_runtime(
-            packet,
-            &binding,
-            EXECUTION_PUBLICATION_DIGEST,
-            RUNTIME_BUNDLE_DIGEST,
-            &manifest_project_workspace(&binding),
-        )
-        .expect_err("Query context must equal the admitted Runtime binding");
-        assert_eq!(
-            error.reason_kind(),
-            "query-playbook-runtime-context-mismatch"
-        );
-    }
-}
-
-#[test]
-fn query_playbook_rejects_search_only_matches_projection() {
+fn query_request_rejects_duplicate_selector_without_sorting_the_request() {
     let binding = runtime_binding();
     let mut packet = request(&binding);
-    packet["projection"] = serde_json::json!("matches");
-
+    packet["selectors"] = serde_json::json!([RUST_SELECTOR, ORG_SELECTOR, RUST_SELECTOR]);
     let error = QueryPlaybookMaterializationRequest::admit_for_runtime(
         packet,
         &binding,
         EXECUTION_PUBLICATION_DIGEST,
         RUNTIME_BUNDLE_DIGEST,
-        &manifest_project_workspace(&binding),
+        &binding.project_workspace,
     )
-    .expect_err("Query materialization cannot use the Search-only matches projection");
+    .expect_err("duplicate selector");
     assert_eq!(error.reason_kind(), "schema-invalid");
 }
 
 #[test]
-fn query_playbook_receipt_accepts_one_complete_runtime_bound_terminal() {
+fn query_request_rejects_runtime_binding_drift_and_retired_topology_fields() {
     let binding = runtime_binding();
-    let admitted_request = QueryPlaybookMaterializationRequest::admit_for_runtime(
-        request(&binding),
+    let mut drifted = request(&binding);
+    drifted["runtimeExecutionBinding"]["evaluatorPolicyDigest"] = serde_json::json!(digest('a'));
+    let error = QueryPlaybookMaterializationRequest::admit_for_runtime(
+        drifted,
         &binding,
         EXECUTION_PUBLICATION_DIGEST,
         RUNTIME_BUNDLE_DIGEST,
-        &manifest_project_workspace(&binding),
+        &binding.project_workspace,
     )
-    .expect("valid request");
+    .expect_err("Runtime drift");
+    assert_eq!(
+        error.reason_kind(),
+        "query-playbook-runtime-binding-mismatch"
+    );
 
-    QueryPlaybookMaterializationReceipt::admit_for_runtime(
-        receipt(&binding),
-        &admitted_request,
+    let mut topology = request(&binding);
+    topology["topologyLibraryDigest"] = serde_json::json!(digest('3'));
+    let error = QueryPlaybookMaterializationRequest::admit_for_runtime(
+        topology,
         &binding,
         EXECUTION_PUBLICATION_DIGEST,
         RUNTIME_BUNDLE_DIGEST,
-        &manifest_project_workspace(&binding),
+        &binding.project_workspace,
     )
-    .expect("one complete Ready terminal must be admitted");
+    .expect_err("Query must not depend on Search topology");
+    assert_eq!(error.reason_kind(), "schema-invalid");
 }
 
 #[test]
-fn query_playbook_receipt_rejects_parallel_gql_relationships_for_one_source_block() {
+fn query_receipt_accepts_only_the_complete_request_order() {
     let binding = runtime_binding();
-    let admitted_request = QueryPlaybookMaterializationRequest::admit_for_runtime(
-        request(&binding),
+    let admitted = admit_request(&binding).expect("request");
+    QueryPlaybookMaterializationReceipt::admit_for_runtime(
+        receipt(&binding),
+        &admitted,
         &binding,
         EXECUTION_PUBLICATION_DIGEST,
         RUNTIME_BUNDLE_DIGEST,
-        &manifest_project_workspace(&binding),
+        &binding.project_workspace,
     )
-    .expect("valid request");
-    let mut packet = receipt(&binding);
-    packet["materializations"][0]["gqlRelationships"] = serde_json::json!([
-        {
-            "fromNode": "Publication",
-            "relation": "documents",
-            "toNode": "Registry::publish"
-        },
-        {
-            "fromNode": "Query",
-            "relation": "materializes",
-            "toNode": "Publication"
-        }
-    ]);
+    .expect("complete ordered receipt");
+
+    let mut reversed = receipt(&binding);
+    reversed["materializations"]
+        .as_array_mut()
+        .expect("materializations")
+        .reverse();
     let error = QueryPlaybookMaterializationReceipt::admit_for_runtime(
-        packet,
-        &admitted_request,
+        reversed,
+        &admitted,
         &binding,
         EXECUTION_PUBLICATION_DIGEST,
         RUNTIME_BUNDLE_DIGEST,
-        &manifest_project_workspace(&binding),
+        &binding.project_workspace,
     )
-    .expect_err("one source block has exactly one immediately preceding GQL relation");
+    .expect_err("completion order cannot replace request order");
     assert_eq!(
         error.reason_kind(),
-        "query-playbook-gql-relationship-invalid"
+        "query-playbook-materialization-set-mismatch"
     );
 }
 
 #[test]
-fn query_playbook_receipt_rejects_partial_ready_and_partial_failure() {
+fn query_receipt_rejects_search_relationship_residue() {
     let binding = runtime_binding();
-    let admitted_request = QueryPlaybookMaterializationRequest::admit_for_runtime(
-        request(&binding),
+    let admitted = admit_request(&binding).expect("request");
+    let mut packet = receipt(&binding);
+    packet["materializations"][0]["gqlRelationships"] = serde_json::json!([]);
+    let error = QueryPlaybookMaterializationReceipt::admit_for_runtime(
+        packet,
+        &admitted,
         &binding,
         EXECUTION_PUBLICATION_DIGEST,
         RUNTIME_BUNDLE_DIGEST,
-        &manifest_project_workspace(&binding),
+        &binding.project_workspace,
     )
-    .expect("valid request");
+    .expect_err("Query receipt cannot carry Search GQL");
+    assert_eq!(error.reason_kind(), "schema-invalid");
+}
 
+#[test]
+fn query_receipt_rejects_partial_ready_and_partial_failure() {
+    let binding = runtime_binding();
+    let admitted = admit_request(&binding).expect("request");
     let mut partial_ready = receipt(&binding);
-    partial_ready["materializations"] =
-        serde_json::json!([partial_ready["materializations"][0].clone()]);
-    let ready_error = QueryPlaybookMaterializationReceipt::admit_for_runtime(
+    partial_ready["materializations"]
+        .as_array_mut()
+        .expect("materializations")
+        .pop();
+    let error = QueryPlaybookMaterializationReceipt::admit_for_runtime(
         partial_ready,
-        &admitted_request,
+        &admitted,
         &binding,
         EXECUTION_PUBLICATION_DIGEST,
         RUNTIME_BUNDLE_DIGEST,
-        &manifest_project_workspace(&binding),
+        &binding.project_workspace,
     )
-    .expect_err("Ready cannot omit a requested selector");
+    .expect_err("Ready cannot omit a target");
     assert_eq!(
-        ready_error.reason_kind(),
+        error.reason_kind(),
         "query-playbook-materialization-set-mismatch"
     );
 
@@ -371,17 +273,17 @@ fn query_playbook_receipt_rejects_partial_ready_and_partial_failure() {
         "terminalCount": 1,
         "reasonKind": "selector-stale"
     });
-    let failure_error = QueryPlaybookMaterializationReceipt::admit_for_runtime(
+    let error = QueryPlaybookMaterializationReceipt::admit_for_runtime(
         partial_failure,
-        &admitted_request,
+        &admitted,
         &binding,
         EXECUTION_PUBLICATION_DIGEST,
         RUNTIME_BUNDLE_DIGEST,
-        &manifest_project_workspace(&binding),
+        &binding.project_workspace,
     )
-    .expect_err("Failed cannot expose partial materialization");
+    .expect_err("Failed cannot expose materializations");
     assert_eq!(
-        failure_error.reason_kind(),
+        error.reason_kind(),
         "query-playbook-failure-exposed-partial-materialization"
     );
 }

@@ -94,7 +94,7 @@ def test_large_library_variant_batch_derives_metrics_from_sandtable_receipt() ->
     assert first_packet["receiptMetrics"]["searchCommandCount"] == 2
     assert first_packet["receiptMetrics"]["queryCommandCount"] == 2
     assert first_packet["receiptMetrics"]["repeatedCommandCount"] == 1
-    assert first_packet["receiptMetrics"]["commandsToFirstUsefulLocator"] == 2
+    assert first_packet["receiptMetrics"]["commandsToFirstUsefulLocator"] == 1
     assert first_packet["receiptMetrics"]["frontierFollowRate"] == 1.0
     assert first_packet["receiptMetrics"]["elapsedMs"] == 123
     assert first_packet["receiptMetrics"]["stdoutBytes"] == 456
@@ -326,15 +326,15 @@ def _sandtable_receipt(scenario_id: object) -> dict[str, object]:
                 },
                 "steps": [
                     {
-                        "id": "prime",
+                        "id": "search-playbook",
                         "status": "pass",
-                        "command": ["asp-rust", "search", "prime"],
+                        "command": ["asp", "rust", "query", "--dependency", "tokio"],
                         "errors": [],
                     },
                     {
                         "id": "intent-query-set",
                         "status": "pass",
-                        "command": ["asp-rust", "search", "lexical"],
+                        "command": ["asp", "search", "playbook", "--language", "rust"],
                         "errors": [],
                     },
                     {
@@ -371,7 +371,7 @@ def _variant_sandtable_receipt(scenario_id: object) -> dict[str, object]:
         {
             "id": "variant-owner",
             "status": "pass",
-            "command": ["asp-rust", "search", "owner"],
+            "command": ["asp", "search", "playbook", "--language", "rust"],
             "errors": [],
         }
     )

@@ -99,7 +99,7 @@ def minimal_ast_patch_receipt() -> dict[str, Any]:
         },
         "next": (
             "provider-dry-run: asp typescript ast-patch dry-run --packet "
-            "semantic-ast-patch.json .; exact-read: asp typescript query "
+            "semantic-ast-patch.json .; exact-read: asp query playbook --language typescript "
             "--from-hook direct-source-read --selector src/render.ts:10:43 "
             "--code .; fallback: Codex apply_patch only when "
             "mutationSource=codex-text-fallback or receipt.requiresCodexApplyPatch=true; "

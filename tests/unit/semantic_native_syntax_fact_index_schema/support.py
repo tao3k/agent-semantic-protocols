@@ -20,7 +20,6 @@ _REPO_ROOT = Path(__file__).resolve().parents[3]
 class SchemaValidators:
     index: Draft202012Validator
     fact: Draft202012Validator
-    search: Draft202012Validator
 
 
 def schema_validators() -> SchemaValidators:
@@ -28,7 +27,6 @@ def schema_validators() -> SchemaValidators:
     native_schema = _load_schema(
         schema_dir / "semantic-native-syntax-fact-index.v1.schema.json"
     )
-    search_schema = _load_schema(schema_dir / "semantic-search-packet.v1.schema.json")
     source_location_schema = _load_schema(
         schema_dir / "semantic-source-location.v1.schema.json"
     )
@@ -41,7 +39,6 @@ def schema_validators() -> SchemaValidators:
     registry = Registry().with_resources(
         [
             (native_schema["$id"], Resource.from_contents(native_schema)),
-            (search_schema["$id"], Resource.from_contents(search_schema)),
             (
                 source_location_schema["$id"],
                 Resource.from_contents(source_location_schema),
@@ -62,7 +59,6 @@ def schema_validators() -> SchemaValidators:
             {"$ref": f"{native_schema['$id']}#/$defs/nativeSyntaxFact"},
             registry=registry,
         ),
-        search=Draft202012Validator(search_schema, registry=registry),
     )
 
 

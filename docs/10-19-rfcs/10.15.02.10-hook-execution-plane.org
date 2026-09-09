@@ -130,13 +130,13 @@ witness, not a normal-task acceptance witness. It MUST fail the gate and MUST
 NOT be reclassified as matcher success or repaired through direct Hook replay.
 Host acceptance requires positive plugin-load provenance, an observed probe
 call, an ASP Hook event, an observed deny, and absence of protected source
-bytes. The diagnostic-plane command
-=asp hook accept-host --host-rollout PATH --host-probe-path PATH --host-sentinel TOKEN= emits
-=agent.semantic-protocols.hook-host-acceptance= version =1= and returns a
-non-zero status for =plugin-not-loaded=, =probe-call-missing=,
-=source-bytes-leaked=, =hook-event-missing=, or =hook-deny-missing=. It reads
-only the explicitly supplied bounded rollout; the Hook event path itself MUST
-NOT discover or scan Codex sessions or rollouts.
+bytes. The second phase of =asp hook enablement= consumes the explicit Host
+evidence group and embeds an =agent.semantic-protocols.hook-host-acceptance=
+version =1= receipt. It returns a non-zero status for =plugin-not-loaded=,
+=probe-call-missing=, =source-bytes-leaked=, =hook-event-missing=, or
+=hook-deny-missing=. It reads only the explicitly supplied bounded rollout;
+the Hook event path itself MUST NOT discover or scan Codex sessions or
+rollouts.
 
 For a Hook-only plugin, positive plugin-load provenance is the emitted ASP Hook
 event/decision itself. =world_state.plugins_instructions= describes plugin
@@ -220,17 +220,15 @@ configuration at daemon startup, or return a final Hook platform response.
 
 * Plugin bootstrap and composable policy algebra
 
-The plugin-owned =$PLUGIN_ROOT/bin/asp-hook= is a Host-discoverable artifact
-slot resolver, not a Hook Runtime or policy authority. It resolves the stable
-=runtime/bin/asp= alias, then the independently retained
-=runtime/artifacts/active= and =runtime/artifacts/healthy= bundle slots, and
-executes exactly =asp hook EVENT --client codex= by replacing the launcher
-process with the first present executable slot. Missing or non-executable slots
-advance to the next artifact slot; exhaustion becomes one typed local
-unavailable response. It MUST NOT parse the Host payload or
+The plugin-owned =$PLUGIN_ROOT/bin/asp-hook-exec= is a Host-discoverable
+artifact-slot resolver, not a Hook Runtime or policy authority. It resolves
+exactly the =runtime/artifacts/active/asp-hook= member and replaces itself with
+that dedicated executable. The =healthy= bundle is a rollback root; the plugin
+MUST NOT bypass the active selector by serving it directly. A missing or
+non-executable active member becomes one typed local unavailable response. The
+launcher MUST NOT parse the Host payload or
 =hooks/config.toml=, inspect tool names, open a Runtime Server endpoint,
-reconcile a supervisor, classify an action, or cache workspace state. The same
-=asp= binary remains the sole bootstrap and policy implementation.
+reconcile a supervisor, classify an action, or cache workspace state.
 
 The in-process matcher compiles reusable =actionPolicies= over orthogonal
 normalized axes: action, effect, authority, and provider-owned subject kind.
@@ -348,9 +346,21 @@ install targets remain policy-bearing.
 * Hook enablement acceptance
 
 =asp hook enablement [PROJECT_ROOT] [--json]= is the only executable authority
-for declaring that the Codex Hook may be enabled. It is a read-only acceptance
-transaction; it MUST NOT install or refresh a plugin, move Runtime artifact
-slots, promote health, reconcile a Runtime Server, or edit trust.
+for declaring that the Codex Hook may remain enabled. It is one read-only,
+two-phase acceptance transaction; it MUST NOT install or refresh a plugin, move
+Runtime artifact slots, promote health, reconcile a Runtime Server, or edit
+trust. =asp hook doctor= remains a diagnostic snapshot and contributes no
+acceptance evidence. There is no separate Host-acceptance Hook subcommand.
+
+Without Host evidence arguments, the command validates the complete local
+preflight and returns =status: "probe-ready"= with
+=reasonKind: "host-delivery-evidence-required"=. That receipt authorizes only a
+bounded temporary Host-delivery probe; it is not final enablement acceptance.
+After the probe, the operator invokes the same command with the complete group
+=--host-rollout PATH --hook-events PATH --host-probe-path PATH --host-sentinel
+TOKEN=. A partial group fails closed. The command repeats local preflight before
+reading Host evidence, so a stale preflight receipt cannot qualify a later Host
+event.
 
 The command MUST fail closed unless one receipt proves all of the following:
 
@@ -361,23 +371,32 @@ The command MUST fail closed unless one receipt proves all of the following:
 - =runtime/bin/asp= aliases the configured PATH-visible =asp= entry, that
   public entry resolves through =profiles/asp/active=, and =active= plus
   =healthy= resolve to executable, digest-addressed content protected by the
-  retention receipt; the reverse PATH-to-Runtime alias is rejected;
-- isolated active-only and healthy-only launcher scenarios both execute the
-  operator passthrough without a second launcher or policy implementation;
-- the acceptance control plane warms the immutable active matcher generation
-  before authorization, then 16 real =pre-tool= decisions all report
-  =hookDecisionBudgetStatus= as =within-budget= with the existing 1000
-  microsecond thread-CPU budget; the receipt records the maximum measured CPU,
-  not an average or a selected passing sample;
+  retention receipt; the acceptance process itself is that active =asp=
+  artifact, and the reverse PATH-to-Runtime alias is rejected;
+- an isolated active launcher scenario executes the operator passthrough
+  through the dedicated =asp-hook= member without a second launcher or policy
+  implementation; active and healthy bundles must each contain a coherent
+  executable =asp=/=asp-hook= cohort;
+- the active =asp-hook --identity= policy-content digest matches the Hook policy
+  linked into the acceptance authority; the control plane compiles the exact
+  State Home serving policy, warms that immutable generation once, then runs 16
+  read-only =pre-tool= evaluator decisions without Host event-state writes or
+  subprocess timing in the policy budget. Every post-warm sample is below the
+  existing 1000 microsecond thread-CPU budget; the receipt records the maximum
+  measured CPU, not an average or a selected passing sample;
 - every launcher sample is below 100000 microseconds and the observed p99 is
   below 50000 microseconds. Averages or timeout increases cannot qualify a
-  failing sample.
+  failing sample;
+- the supplied normal-task rollout proves that the plugin was loaded, the exact
+  protected probe call occurred, the matching Hook event and generation-bound
+  typed deny share that call identity, and the protected source sentinel was
+  not returned. Hook event state never discovers or scans Host rollouts itself.
 
 The receipt schema is
 =agent.semantic-protocols.hook-enablement-acceptance= with
-=schemaVersion: "1"=. Only =status: "ready"= authorizes the operator to enable
-Hook delivery. Any failed invariant returns a typed =reasonKind= and no Ready
-receipt.
+=schemaVersion: "2"=. Only the second-phase =status: "ready"= receipt authorizes
+the operator to leave Hook delivery enabled. Any failed invariant returns a
+typed =reasonKind= and no Ready receipt.
 
 The canonical binary installer owns a coupled binary/config generation sync.
 Before it returns success it MUST publish the managed Hook config embedded in

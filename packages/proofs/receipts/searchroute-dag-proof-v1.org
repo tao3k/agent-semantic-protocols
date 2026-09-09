@@ -87,7 +87,7 @@ The named Org block
 =searchroute-ranked-dag-global-optimality-model= compiled through stdin:
 
 #+begin_src sh
-asp org query \
+asp query playbook --documents org \
   --workspace . exact \
   --kind block \
   --term searchroute-ranked-dag-global-optimality-model \

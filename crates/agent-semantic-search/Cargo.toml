@@ -33,6 +33,8 @@ tantivy-accelerator = ["dep:tantivy"]
 sha2.workspace = true
 serde = { workspace = true, features = ["derive"] }
 agent-semantic-content-identity.workspace = true
+agent-semantic-mrr.workspace = true
+agent-semantic-shell-parser = { path = "../agent-semantic-shell-parser" }
 blake3.workspace = true
 globset.workspace = true
 agent-semantic-config = { path = "../agent-semantic-config" }
@@ -48,13 +50,13 @@ tokio = { workspace = true }
 tokio-stream.workspace = true
 tantivy = { workspace = true, optional = true }
 which = { workspace = true }
+tempfile = { workspace = true }
 
 [build-dependencies]
 asp-rust-project-harness-policy = { workspace = true }
 
 [dev-dependencies]
 agent-semantic-provider-protocol = { path = "../agent-semantic-provider-protocol" }
-tempfile = { workspace = true }
 [[test]]
 name = "graph_owner_rank_report"
 path = "tests/integration/graph_owner_rank_report/mod.rs"

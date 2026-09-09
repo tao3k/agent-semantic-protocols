@@ -19,7 +19,7 @@ asp_hook_binary_unavailable() {
     esac
 }
 
-hook_bin="$asp_hook_state_home/runtime/artifacts/slots/runtime/active/asp-hook"
+hook_bin="$asp_hook_state_home/runtime/artifacts/active/asp-hook"
 if [ ! -x "$hook_bin" ]; then
     asp_hook_binary_unavailable "${1:-}"
     exit 0

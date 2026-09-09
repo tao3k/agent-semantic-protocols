@@ -28,6 +28,7 @@ def _validate_shape(
     schema: dict,
     topology_schema: dict,
     project_workspace_schema: dict,
+    schema_dependencies: tuple[dict, ...],
 ) -> None:
     topology_schema_id = topology_schema.get("$id")
     _require(
@@ -40,15 +41,21 @@ def _validate_shape(
         and bool(project_workspace_schema_id),
         "project-workspace-schema-identity-missing",
     )
-    registry = Registry().with_resources(
-        [
+    resources = [
             (topology_schema_id, Resource.from_contents(topology_schema)),
             (
                 project_workspace_schema_id,
                 Resource.from_contents(project_workspace_schema),
             ),
         ]
-    )
+    for dependency in schema_dependencies:
+        dependency_id = dependency.get("$id")
+        _require(
+            isinstance(dependency_id, str) and bool(dependency_id),
+            "schema-dependency-identity-missing",
+        )
+        resources.append((dependency_id, Resource.from_contents(dependency)))
+    registry = Registry().with_resources(resources)
     try:
         Draft202012Validator(schema, registry=registry).validate(packet)
     except ValidationError as exc:
@@ -64,6 +71,7 @@ def _index_nodes(packet: dict) -> tuple[dict[str, dict], set[str]]:
         nodes[node_id] = node
         selector = node.get("selector")
         if selector is not None:
+            _require(selector not in selectors, "duplicate-selector")
             selectors.add(selector)
         annotation = node.get("annotation")
         if annotation is not None:
@@ -113,38 +121,48 @@ def _index_coverage(packet: dict) -> dict[str, dict]:
 def _validate_frontiers(
     packet: dict, nodes: dict[str, dict], coverage: dict[str, dict]
 ) -> None:
+    referenced_coverage: set[str] = set()
     for frontier in packet["frontiers"]:
-        _require(frontier["anchor"] in nodes, "dangling-frontier")
-        if frontier["state"] == "certified-missing":
-            certificate = coverage.get(frontier["coverageRef"])
-            _require(certificate is not None, "frontier-coverage-unresolved")
-            _require(
-                certificate["scope"] == "complete"
-                and certificate["relation"] == frontier["relation"]
-                and certificate["targetKind"] == frontier["targetKind"],
-                "frontier-coverage-incomplete",
-            )
-
-
-def _validate_materialization(
-    packet: dict, selectors: set[str], proof_refs: set[str]
-) -> None:
-    materialization = packet["materializationSet"]
-    selected = materialization["selectors"]
-    _require(selected == sorted(selected), "materialization-order")
+        _require(
+            frontier["anchor"] in nodes and frontier["target"] in nodes,
+            "dangling-frontier",
+        )
+        state = frontier["state"]
+        reason = frontier["reason"]
+        coverage_ref = frontier.get("coverageRef")
+        if (state, reason, coverage_ref) == (
+            "unknown",
+            "binding-not-established",
+            None,
+        ):
+            continue
+        if state == "unknown" and reason == "coverage-open" and coverage_ref:
+            required_scope = "partial"
+        elif (
+            state == "certified-missing"
+            and reason == "complete-coverage-no-witness"
+            and coverage_ref
+        ):
+            required_scope = "complete"
+        else:
+            raise SettlementError("frontier-classification-mismatch")
+        referenced_coverage.add(coverage_ref)
+        certificate = coverage.get(coverage_ref)
+        _require(certificate is not None, "frontier-coverage-unresolved")
+        _require(
+            certificate["scope"] == required_scope
+            and certificate["relation"] == frontier["relation"]
+            and certificate["targetKind"] == frontier["targetKind"],
+            "frontier-coverage-incomplete",
+        )
     _require(
-        all(selector in selectors for selector in selected),
-        "materialization-selector-unavailable",
-    )
-    _require(
-        all(proof in proof_refs for proof in materialization["proofDependencies"]),
-        "proof-dependency-unresolved",
+        referenced_coverage == set(coverage),
+        "frontier-coverage-extraneous",
     )
 
 
-def _validate_outcome(packet: dict) -> None:
+def _validate_outcome(packet: dict, selectors: set[str]) -> None:
     inference = packet["inference"]
-    materialization = packet["materializationSet"]
     terminal = packet["terminal"]
     termination = inference["terminationKind"]
     result_state = packet["resultState"]
@@ -156,18 +174,10 @@ def _validate_outcome(packet: dict) -> None:
             "fixed-point-not-reached",
         )
         _require(terminal["state"] == "ready", "inference-terminal-mismatch")
-        if materialization["state"] == "available":
-            _require(result_state == "materializable", "result-state-mismatch")
-        else:
-            _require(result_state == "empty", "result-state-mismatch")
+        expected = "queryable" if selectors else "empty"
+        _require(result_state == expected, "result-state-mismatch")
         return
 
-    _require(materialization["state"] == "empty", "incomplete-materialization")
-    _require(
-        materialization["selectors"] == []
-        and materialization["proofDependencies"] == [],
-        "incomplete-materialization",
-    )
     if termination == "budget-exhausted":
         _require(
             result_state == "incomplete" and terminal["state"] == "incomplete",
@@ -194,16 +204,22 @@ def validate_settlement(
     schema: dict,
     topology_schema: dict,
     project_workspace_schema: dict,
+    schema_dependencies: tuple[dict, ...] = (),
 ) -> None:
     """Validate one immutable settlement against an explicit offline schema set."""
 
-    _validate_shape(packet, schema, topology_schema, project_workspace_schema)
+    _validate_shape(
+        packet,
+        schema,
+        topology_schema,
+        project_workspace_schema,
+        schema_dependencies,
+    )
     nodes, selectors = _index_nodes(packet)
-    proof_refs = _validate_edges(packet, nodes)
+    _validate_edges(packet, nodes)
     coverage = _index_coverage(packet)
     _validate_frontiers(packet, nodes, coverage)
-    _validate_materialization(packet, selectors, proof_refs)
-    _validate_outcome(packet)
+    _validate_outcome(packet, selectors)
 
 
 def validate_settlement_for_library(
@@ -213,6 +229,7 @@ def validate_settlement_for_library(
     library_schema: dict,
     project_workspace_schema: dict,
     admitted_receipts: Mapping[str, dict],
+    schema_dependencies: tuple[dict, ...] = (),
 ) -> None:
     """Admit a settlement against one independently admitted topology library.
 
@@ -221,7 +238,11 @@ def validate_settlement_for_library(
     """
 
     validate_settlement(
-        packet, settlement_schema, library_schema, project_workspace_schema
+        packet,
+        settlement_schema,
+        library_schema,
+        project_workspace_schema,
+        schema_dependencies,
     )
     validate_topology_library(
         library, library_schema, project_workspace_schema, admitted_receipts
@@ -240,6 +261,7 @@ def validate_settlement_for_library(
         "structuralTopologyDigest": identities["structuralTopologyDigest"],
         "semanticTopologyDigest": identities["semanticTopologyDigest"],
         "inferenceProgramDigest": identities["inferenceProgramDigest"],
+        "topologyClosureDigest": library["closure"]["digest"],
     }
     _require(
         all(

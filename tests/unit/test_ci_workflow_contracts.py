@@ -58,45 +58,41 @@ def test_tree_sitter_contract_gate_uses_packaged_cli() -> None:
     ) in workflow
 
 
-def test_language_evidence_ci_hot_path_stays_core_fast() -> None:
+def test_language_facade_ci_gate_is_static() -> None:
     workflow = CI_WORKFLOW.read_text(encoding="utf-8")
 
-    step = workflow.split("- name: Language evidence and facade smoke gate", 1)[1]
+    step = workflow.split("- name: Language facade smoke gate", 1)[1]
     step = step.split("- name: Tree-sitter query contract gates", 1)[0]
 
-    assert "ASP_LANGUAGE_EVIDENCE_SMOKE_SCOPE=core-fast" in step
-    assert "ASP_LANGUAGE_EVIDENCE_LANGUAGES=rust,python,typescript" in step
-    assert "language-evidence-smoke-core-fast.json" in step
     assert (
         "uv run --project packages/python/asp_python_graphs --frozen pytest "
-        "tests/unit/test_language_evidence_smoke.py -q"
+        "tests/unit/test_language_facade_smoke.py -q"
     ) in step
-    assert "packages/python/asp_graph_turbo" not in step
-    assert "npm install --global @openai/codex@0.144.1" in step
-    assert "codex --version" in step
-    assert step.index("codex --version") < step.index("asp install plugin --codex .")
-    assert "asp install plugin --codex ." in step
-    assert "asp.toml.ci-full-provider" in step
-    assert "[providers.gerbil-scheme]" in step
-    assert "[providers.julia]" in step
-    assert "enabled = false" in step
-    assert "asp-julia" in step
-    assert ".bin/asp-gerbil-scheme" not in step
-    assert "agent-tools-install-julia" not in step
+    for obsolete_setup in (
+        "ASP_LANGUAGE_FACADE_SCOPE",
+        "ASP_LANGUAGE_FACADE_LANGUAGES",
+        "npm install --global @openai/codex",
+        "asp install plugin",
+        "asp.toml.ci-full-provider",
+        "cargo build",
+        "install -m 755",
+    ):
+        assert obsolete_setup not in step
 
 
-def test_language_evidence_setup_installs_release_asp_binary() -> None:
+def test_live_corpus_setup_owns_provider_installation() -> None:
     justfile = JUSTFILE.read_text(encoding="utf-8")
 
-    setup = justfile.split("check-language-evidence-smoke-setup:", 1)[1]
-    setup = setup.split("check-language-evidence-smoke-core:", 1)[0]
+    facade = justfile.split("check-language-facade-smoke:", 1)[1]
+    facade = facade.split("check-provider-knowledge-axes:", 1)[0]
+    assert "agent-tools-install" not in facade
+    assert "ASP_LANGUAGE_FACADE" not in facade
 
-    assert "just agent-tools-install-protocol .bin" in setup
-    assert "target/debug/asp" not in setup
-    assert (
-        "cargo build -q --manifest-path Cargo.toml --package agent-semantic-protocol --bin asp"
-        not in setup
-    )
+    setup = justfile.split("check-live-corpus-search-query-all-setup:", 1)[1]
+    setup = setup.split("check-live-corpus-search-query-all:", 1)[0]
+    for provider in ("protocol", "rs", "ts", "py", "julia", "orgize"):
+        assert f"just agent-tools-install-{provider}" in setup
+    assert "agent-tools-install-protocol .bin" not in setup
 
 
 def test_agent_tools_run_asp_rejects_stale_default_binary() -> None:
@@ -133,23 +129,24 @@ def test_gerbil_owner_items_fast_path_gate_uses_rust_inline_and_millisecond_budg
     assert "source=rust-inline" in gate
     assert "no fallback to Gerbil provider is allowed" in gate
     assert "build.ss" in gate
-    assert "{{gerbil_harness_project}}" in gate
+    assert "{{asp_gerbil_scheme_project}}" in gate
 
 
-def test_gerbil_just_build_scans_only_launcher_build_inputs() -> None:
+def test_gerbil_just_build_uses_canonical_provider_entrypoint() -> None:
     justfile = JUSTFILE.read_text(encoding="utf-8")
 
     target = justfile.split('agent-tools-build-gerbil bin_dir="":', 1)[1]
     target = target.split('agent-tools-install-gx bin_dir="":', 1)[0]
 
     assert 'artifact_root="${package_dir}/build/workspace-provider"' in target
-    assert "gxi build.ss" in target
+    assert "gxpkg env gxi ./build-provider.ss compile" in target
+    assert "ASP_PROVIDER_ARTIFACT_ROOT" not in target
     assert 'provider_binary="${artifact_root}/bin/asp-gerbil-scheme"' in target
     assert 'cp "${provider_binary}" "{{bin_dir}}/asp-gerbil-scheme"' in target
     assert 'provider=asp-gerbil-scheme' in target
 
 
-def test_julia_full_provider_gate_uses_fresh_compiled_harness_perf_guard() -> None:
+def test_julia_full_provider_gate_uses_fresh_compiled_provider_perf_guard() -> None:
     justfile = JUSTFILE.read_text(encoding="utf-8")
 
     install_julia = justfile.split('agent-tools-install-jl bin_dir="":', 1)[1]
@@ -158,15 +155,18 @@ def test_julia_full_provider_gate_uses_fresh_compiled_harness_perf_guard() -> No
     assert "just agent-tools-install-language julia" in install_julia
     assert 'provider_bin="$${state_home}/runtime/bin/asp-julia"' in install_julia
 
-    all_smoke = justfile.split("check-language-evidence-smoke-all-setup:", 1)[1]
-    all_smoke = all_smoke.split("provider-gate:", 1)[0]
-    assert "just agent-tools-install-julia .bin" in all_smoke
-    assert ".bin/asp julia guide {{julia_harness_project}} >/dev/null" in all_smoke
-    assert "ASP_LANGUAGE_EVIDENCE_SMOKE_SCOPE=all-providers" in all_smoke
-    assert "ASP_LANGUAGE_EVIDENCE_MAX_COMMAND_SECONDS_JULIA=2" in all_smoke
+    live_corpus_setup = justfile.split(
+        "check-live-corpus-search-query-all-setup:", 1
+    )[1]
+    live_corpus_setup = live_corpus_setup.split(
+        "check-live-corpus-search-query-all:", 1
+    )[0]
+    assert "just agent-tools-install-julia" in live_corpus_setup
+    assert ".bin/asp julia guide" not in live_corpus_setup
 
     provider_gate_julia = justfile.split("provider-gate-julia:", 1)[1]
     provider_gate_julia = provider_gate_julia.split(
         "provider-gate-semantic-facts-setup:", 1
     )[0]
-    assert "just check-language-evidence-smoke-all" in provider_gate_julia
+    assert "just check-language-facade-smoke" in provider_gate_julia
+    assert "check-language-facade-smoke-all" not in provider_gate_julia

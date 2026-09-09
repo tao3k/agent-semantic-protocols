@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import unittest
 from pathlib import Path
-from typing import Any, Final
+from typing import Any
 
 REQUIRED_LANGUAGES = {"julia", "python", "rust", "typescript"}
 REQUIRED_INTENTS = {
@@ -16,19 +16,13 @@ REQUIRED_INTENTS = {
     "api-usage",
     "implementation-principle",
 }
-_PROVIDER_BINARY_BY_LANGUAGE = {
-    "julia": "asp-julia",
-    "python": "asp-python",
-    "rust": "asp-rust",
-    "typescript": "asp-typescript",
-}
 
 
 def _dict_value(value: Any) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
 
 
-def _assert_provider_binary_commands(
+def _assert_search_playbook_commands(
     command_by_step_id: dict[str, list[str]],
     language: str,
     path: Path,
@@ -38,35 +32,33 @@ def _assert_provider_binary_commands(
     for step_id, command in command_by_step_id.items():
         if not command:
             raise AssertionError(f"{path}: {step_id} command must not be empty")
-        if len(command) < 2 or command[0] != "asp" or command[1] != language:
+        if command[:3] != ["asp", "search", "playbook"]:
             raise AssertionError(
-                f"{path}: {step_id} must use asp {language}, got {' '.join(command)}"
+                f"{path}: {step_id} must use asp search playbook, got {' '.join(command)}"
             )
-        command_offset = 2
-        if (
-            len(command) >= command_offset + 3
-            and command[command_offset] == "search"
-            and command[command_offset + 1]
-            in {
-                "api",
-                "text",
-            }
-        ):
+        try:
+            selected_language = command[command.index("--language") + 1]
+        except (ValueError, IndexError) as error:
             raise AssertionError(
-                f"{path}: {step_id} must use search lexical/query-set, got {' '.join(command)}"
+                f"{path}: {step_id} must select --language {language}"
+            ) from error
+        if selected_language != language:
+            raise AssertionError(
+                f"{path}: {step_id} selects {selected_language}, expected {language}"
             )
+        for required_axis in ("--rg", "--tantivy"):
+            if required_axis not in command:
+                raise AssertionError(
+                    f"{path}: {step_id} is missing required {required_axis} input"
+                )
+        for removed_option in ("--view", "--seeds", "--query", "--query-set"):
+            if removed_option in command:
+                raise AssertionError(
+                    f"{path}: {step_id} retains removed option {removed_option}"
+                )
 
 
-_KNOWN_REASONING_PROFILE_NAMES: Final[set[str]] = {
-    "owner-query",
-    "query-deps",
-    "owner-tests",
-    "finding-frontier",
-    "feature-cfg",
-}
-
-
-def _assert_query_set_steps_include_entries(
+def _assert_search_playbook_steps_assert_gql(
     scenario: dict[str, Any], path: Path
 ) -> None:
     for step in _list_value(scenario.get("steps")):
@@ -74,95 +66,37 @@ def _assert_query_set_steps_include_entries(
         if not step_mapping:
             continue
         command = [str(part) for part in _list_value(step_mapping.get("command"))]
-        if not (_is_seed_view_command(command) and _is_query_set_search(command)):
+        if not _is_search_playbook_command(command):
             continue
         expect = _dict_value(step_mapping.get("expect"))
         stdout_contains = [
             str(item) for item in _list_value(expect.get("stdoutContains"))
         ]
         step_id = step_mapping.get("id", "<unknown>")
-        if expect.get("lineProtocol") is not True:
+        if "lineProtocol" in expect:
             raise AssertionError(
-                f"{path}: {step_id} query-set --view seeds step must enable lineProtocol compact graph validation"
+                f"{path}: {step_id} must not validate the removed compact line protocol"
             )
-        if not any(item.startswith("entries=") for item in stdout_contains):
+        required = {
+            "#+begin_src gql :name result",
+            f"({scenario['language']}:Language)-[:RESULTS]->[",
+            "#+end_src",
+        }
+        missing = required - set(stdout_contains)
+        if missing:
             raise AssertionError(
-                f"{path}: {step_id} query-set --view seeds step must assert compact graph entries"
+                f"{path}: {step_id} must assert GQL result framing {sorted(missing)}"
             )
-        for entry_line in stdout_contains:
-            if not entry_line.startswith("entries=") or entry_line == "entries=":
-                continue
-            for segment in entry_line.removeprefix("entries=").split(")"):
-                if "(" not in segment:
-                    continue
-                profile_name = segment.lstrip(",").split("(", 1)[0]
-                if profile_name not in _KNOWN_REASONING_PROFILE_NAMES:
-                    raise AssertionError(
-                        f"{path}: {step_id} entries profile {profile_name!r} is not in the shared reasoning profile catalog"
-                    )
-
-
-def _assert_prime_steps_include_entries_and_status(
-    scenario: dict[str, Any], path: Path
-) -> None:
-    required_status_fields = [
-        "analysis=structure",
-        "nativeSyntaxFacts=skipped",
-        "policyFindings=skipped",
-    ]
-    for step in _list_value(scenario.get("steps")):
-        step_mapping = _dict_value(step)
-        if not step_mapping:
-            continue
-        command = [str(part) for part in _list_value(step_mapping.get("command"))]
-        if not (_is_seed_view_command(command) and _is_prime_command(command)):
-            continue
-        expect = _dict_value(step_mapping.get("expect"))
-        stdout_contains = [
-            str(item) for item in _list_value(expect.get("stdoutContains"))
-        ]
-        step_id = step_mapping.get("id", "<unknown>")
-        if expect.get("lineProtocol") is not True:
+        stdout_not_contains = {
+            str(item) for item in _list_value(expect.get("stdoutNotContains"))
+        }
+        if "MaterializationSet" not in stdout_not_contains:
             raise AssertionError(
-                f"{path}: {step_id} prime --view seeds step must enable lineProtocol compact graph validation"
+                f"{path}: {step_id} must reject removed MaterializationSet output"
             )
-        has_entries = any(item.startswith("entries=") for item in stdout_contains)
-        has_budgeted_prime_frontier = (
-            "alg=budgeted-prime-frontier-v1" in stdout_contains
-            and "|decision purpose=decision-primer" in stdout_contains
-            and "omit=items,blocks,code,full-test-list" in stdout_contains
-            and "avoid=raw-read" in stdout_contains
-        )
-        if not has_entries and not has_budgeted_prime_frontier:
-            raise AssertionError(
-                f"{path}: {step_id} prime --view seeds step must assert compact graph entries or budgeted prime frontier controls"
-            )
-        for entry_line in stdout_contains:
-            if not entry_line.startswith("entries=") or entry_line == "entries=":
-                continue
-            for segment in entry_line.removeprefix("entries=").split(")"):
-                if "(" not in segment:
-                    continue
-                profile_name = segment.lstrip(",").split("(", 1)[0]
-                if profile_name not in _KNOWN_REASONING_PROFILE_NAMES:
-                    raise AssertionError(
-                        f"{path}: {step_id} entries profile {profile_name!r} is not in the shared reasoning profile catalog"
-                    )
-        if "analysis=structure" in stdout_contains:
-            for field in required_status_fields:
-                if field not in stdout_contains:
-                    raise AssertionError(
-                        f"{path}: {step_id} optimized prime step must assert {field}"
-                    )
-
-def _is_seed_view_command(command: list[str]) -> bool:
-    return "--view=seeds" in command or any(
-        arg == "--view" and command[index + 1 : index + 2] == ["seeds"]
-        for index, arg in enumerate(command)
-    )
 
 
-def _assert_intent_uses_query_set(
+def _assert_intent_uses_search_playbook(
     command_by_step_id: dict[str, list[str]],
     case_step_ids: list[str],
     path: Path,
@@ -170,58 +104,19 @@ def _assert_intent_uses_query_set(
     intent_commands = [
         command_by_step_id[step_id]
         for step_id in case_step_ids
-        if not _is_prime_command(command_by_step_id[step_id])
+        if step_id in command_by_step_id
     ]
     if not intent_commands:
-        raise AssertionError(f"{path}: intent must reference a non-prime search step")
-    if not any(
-        _is_query_set_search(command, include_owner_items=True)
-        for command in intent_commands
-    ):
+        raise AssertionError(f"{path}: intent must reference a Search Playbook step")
+    if not any(_is_search_playbook_command(command) for command in intent_commands):
         rendered = [" ".join(command) for command in intent_commands]
         raise AssertionError(
-            f"{path}: intent search must use query-set or owner-items: {rendered}"
+            f"{path}: intent search must use asp search playbook: {rendered}"
         )
 
 
-def _search_offset(command: list[str]) -> int | None:
-    for index, part in enumerate(command):
-        if part == "search":
-            return index
-    return None
-
-
-def _is_prime_command(command: list[str]) -> bool:
-    search_offset = _search_offset(command)
-    return search_offset is not None and command[
-        search_offset + 1 : search_offset + 2
-    ] == ["prime"]
-
-
-def _is_query_set_search(
-    command: list[str], *, include_owner_items: bool = False
-) -> bool:
-    search_offset = _search_offset(command)
-    if search_offset is None or len(command) <= search_offset + 1:
-        return False
-    subcommand = command[search_offset + 1]
-    if subcommand == "lexical" and "--query-set" in command:
-        return True
-    return (
-        include_owner_items
-        and (
-            subcommand == "pipe"
-            or (
-                subcommand == "owner"
-                and "items" in command[search_offset + 2 :]
-                and "--query" in command
-            )
-        )
-    )
-
-
-
-
+def _is_search_playbook_command(command: list[str]) -> bool:
+    return command[:3] == ["asp", "search", "playbook"]
 
 
 def _list_value(value: Any) -> list[Any]:

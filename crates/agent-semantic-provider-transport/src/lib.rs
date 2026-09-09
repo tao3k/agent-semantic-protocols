@@ -94,6 +94,7 @@ pub use runtime_wire::PROVIDER_RUNTIME_RESPONSE_FRAME_SCHEMA_ID;
 pub use runtime_wire::ProviderRuntimeRequestFrame;
 pub use runtime_wire::ProviderRuntimeResponseFrame;
 pub use runtime_wire::ProviderRuntimeResponseOutcome;
+pub use search_tool_process::FdInventoryDeadline;
 pub use search_tool_process::FdInventoryOutput;
 pub use search_tool_process::FdInventoryReceipt;
 pub use search_tool_process::RgColdQueryOutput;

@@ -5,13 +5,13 @@
 set shell := ["bash", "-cu"]
 
 repo := "."
-rust_harness_project := "languages/asp-rust"
-typescript_harness_project := "languages/asp-typescript"
-python_harness_project := "languages/asp-python"
-julia_harness_project := "languages/AspJulia.jl"
-julia_harness := "julia --project=languages/AspJulia.jl languages/AspJulia.jl/bin/asp-julia.jl"
-julia_compiled_harness := "languages/AspJulia.jl/build/juliac-asp-local/asp-julia"
-gerbil_harness_project := "languages/asp-gerbil-scheme"
+asp_rust_project := "languages/asp-rust"
+asp_typescript_project := "languages/asp-typescript"
+asp_python_project := "languages/asp-python"
+asp_julia_project := "languages/AspJulia.jl"
+asp_julia_command := "julia --project=languages/AspJulia.jl languages/AspJulia.jl/bin/asp-julia.jl"
+asp_julia_compiled_command := "languages/AspJulia.jl/build/juliac-asp-local/asp-julia"
+asp_gerbil_scheme_project := "languages/asp-gerbil-scheme"
 asp_state_home := env_var_or_default("ASP_STATE_HOME", home_directory() / ".agent-semantic-protocols")
 asp_runtime_bin := asp_state_home / "runtime" / "bin"
 
@@ -114,7 +114,7 @@ agent-tools-install-global bin_dir="":
     if [ -z "${bin_dir}" ]; then bin_dir="${SEMANTIC_AGENT_BIN_DIR:-{{asp_runtime_bin}}}"; fi; \
       just agent-tools-install-protocol "${bin_dir}"; \
       just agent-tools-install-languages; \
-      echo "[agent-tools-install-global] installed asp and all language provider harnesses; asp-python-graphs remains an ASP Server-owned runtime service"
+      echo "[agent-tools-install-global] installed asp and all ASP language providers; asp-python-graphs remains an ASP Server-owned runtime service"
 
 # Develop mode: build and install the shared asp binary with the embedded Orgize provider.
 agent-tools-install-orgize bin_dir="":
@@ -233,13 +233,10 @@ agent-tools-install-gerbil:
 agent-tools-build-gerbil bin_dir="":
     @set -e; \
       repo_root="$PWD"; \
-      package_dir="${repo_root}/{{gerbil_harness_project}}"; \
+      package_dir="${repo_root}/{{asp_gerbil_scheme_project}}"; \
       artifact_root="${package_dir}/build/workspace-provider"; \
       cd "${package_dir}"; \
-      ASP_PROVIDER_ARTIFACT_ROOT="${artifact_root}" \
-        GERBIL_PATH="${package_dir}/.gerbil" \
-        GERBIL_LOADPATH="${package_dir}/.gerbil/lib" \
-        gxi build.ss; \
+      gxpkg env gxi ./build-provider.ss compile; \
       provider_binary="${artifact_root}/bin/asp-gerbil-scheme"; \
       test -x "${provider_binary}"; \
       if [ -n "{{bin_dir}}" ]; then \
@@ -251,10 +248,8 @@ agent-tools-build-gerbil bin_dir="":
 test-gerbil-provider-http-json: agent-tools-build-gerbil
     @set -e; \
       repo_root="$PWD"; \
-      package_dir="${repo_root}/{{gerbil_harness_project}}"; \
+      package_dir="${repo_root}/{{asp_gerbil_scheme_project}}"; \
       cd "${package_dir}"; \
-      GERBIL_PATH="${package_dir}/.gerbil" \
-        gxc -O src/runtime/provider-operation.ss; \
       GERBIL_PATH="${package_dir}/.gerbil" \
         gxtest t/projection-batch-test.ss; \
       GERBIL_PATH="${package_dir}/.gerbil" \
@@ -275,7 +270,7 @@ agent-hooks-doctor-py:
     asp-python agent doctor {{repo}}
 
 agent-hooks-doctor-julia:
-    asp-julia agent doctor --json {{julia_harness_project}} >/dev/null
+    asp-julia agent doctor --json {{asp_julia_project}} >/dev/null
 
 check-sandtables:
     uv run --project packages/python python -m tools sandtable
@@ -296,56 +291,30 @@ check-graph-turbo-focused:
       tests/unit/test_asp_graph_turbo_read_loop.py \
       tests/unit/test_asp_graph_turbo_timeline.py \
       tests/unit/test_asp_graph_turbo_timeline_text.py \
-      tests/unit/semantic_sandtable/test_agent_observation_pipe.py \
+      tests/unit/semantic_sandtable/test_agent_observation_flow.py \
       tests/unit/semantic_sandtable/test_agent_observation_read_loop.py \
       tests/unit/semantic_sandtable/test_expectations.py
 
-check-language-evidence-smoke-setup:
-    mkdir -p .bin
-    just agent-tools-install-protocol .bin
-    just agent-tools-install-rs
-    just agent-tools-install-ts
-    just agent-tools-install-py
-
-check-language-evidence-smoke-core: check-language-evidence-smoke-setup
-    protocol_home="$(PATH="$PWD/.bin:$PATH" .bin/asp hook paths . | awk -F= '$1=="protocolHome"{print substr($0, 14)}')" && \
-      PATH="$PWD/.bin:$PATH" \
-      ASP_LANGUAGE_EVIDENCE_SMOKE_SCOPE=core-fast \
-      ASP_LANGUAGE_EVIDENCE_LANGUAGES=rust,python,typescript \
-      ASP_LANGUAGE_EVIDENCE_TIMING_JSON="$protocol_home/language-evidence-smoke-core-fast.json" \
-      uv run --project packages/python/asp_python_graphs --frozen pytest tests/unit/test_language_evidence_smoke.py -q
-    protocol_home="$(PATH="$PWD/.bin:$PATH" .bin/asp hook paths . | awk -F= '$1=="protocolHome"{print substr($0, 14)}')" && \
-      cat "$protocol_home/language-evidence-smoke-core-fast.json"
-
-check-language-evidence-smoke: check-language-evidence-smoke-core
-    @true
+check-language-facade-smoke:
+    uv run --project packages/python/asp_python_graphs --frozen pytest tests/unit/test_language_facade_smoke.py -q
 
 check-provider-knowledge-axes:
     node tools/provider-knowledge-axes-close-loop.mjs
 
-check-language-evidence-smoke-all-setup: check-language-evidence-smoke-setup
-    just agent-tools-install-julia .bin
-    PATH="$PWD/.bin:$PATH" .bin/asp julia guide {{julia_harness_project}} >/dev/null
-
-check-language-evidence-smoke-all: check-language-evidence-smoke-all-setup
-    protocol_home="$(PATH="$PWD/.bin:$PATH" .bin/asp hook paths . | awk -F= '$1=="protocolHome"{print substr($0, 14)}')" && \
-      PATH="$PWD/.bin:$PATH" \
-      ASP_LANGUAGE_EVIDENCE_SMOKE_SCOPE=all-providers \
-      ASP_LANGUAGE_EVIDENCE_MAX_COMMAND_SECONDS_JULIA=2 \
-      ASP_LANGUAGE_EVIDENCE_TIMING_JSON="$protocol_home/language-evidence-smoke-all-providers.json" \
-      uv run --project packages/python/asp_python_graphs --frozen pytest tests/unit/test_language_evidence_smoke.py -q
-    protocol_home="$(PATH="$PWD/.bin:$PATH" .bin/asp hook paths . | awk -F= '$1=="protocolHome"{print substr($0, 14)}')" && \
-      cat "$protocol_home/language-evidence-smoke-all-providers.json"
-
 # Qualify every locked large-library corpus through resident search, exact projection, and OTel.
-check-live-corpus-search-query-all-setup: check-language-evidence-smoke-all-setup
+check-live-corpus-search-query-all-setup:
+    just agent-tools-install-protocol
+    just agent-tools-install-rs
+    just agent-tools-install-ts
+    just agent-tools-install-py
+    just agent-tools-install-julia
     just agent-tools-install-orgize
 
-check-live-corpus-search-query-all:
-    PATH="$PWD/.bin:$PATH" .bin/asp server start >/dev/null
-    PATH="$PWD/.bin:$PATH" .bin/asp live-corpus qualify --plan benchmarks/live-corpus-search-query-qualification.json
+check-live-corpus-search-query-all: check-live-corpus-search-query-all-setup
+    "{{asp_runtime_bin}}/asp" server start >/dev/null
+    "{{asp_runtime_bin}}/asp" live-corpus qualify --plan benchmarks/live-corpus-search-query-qualification.json
 
-provider-gate: check-rust-warnings check-schema-profiles check-rfc-docs check-rust-workspace-policy check-schema-manager check-tree-sitter-query-contracts check-language-workspace-search-contracts check-graph-turbo-focused provider-gate-root provider-gate-rust provider-gate-typescript provider-gate-python provider-gate-julia provider-gate-gerbil
+provider-gate: check-rust-warnings check-schema-profiles check-rfc-docs check-rust-workspace-policy check-schema-manager check-tree-sitter-query-contracts check-graph-turbo-focused provider-gate-root provider-gate-rust provider-gate-typescript provider-gate-python provider-gate-julia provider-gate-gerbil
 
 # Run the parser-owned whole-workspace policy exactly once. Ordinary member
 # builds keep the O(1) manifest/policy-identity dependency and never rescan the
@@ -355,7 +324,7 @@ check-rust-workspace-policy:
 
 check-rust-warnings:
     env RUSTFLAGS="-D warnings" cargo check -q -p agent-semantic-client
-    env RUSTFLAGS="-D warnings" cargo check -q --manifest-path {{rust_harness_project}}/Cargo.toml --features cli,search
+    env RUSTFLAGS="-D warnings" cargo check -q --manifest-path {{asp_rust_project}}/Cargo.toml --all-features
 
 check-schema-profiles:
     rtk cargo run --quiet -p agent-semantic-schema-manager -- verify --workspace .
@@ -372,16 +341,13 @@ report-schema-manager:
 check-tree-sitter-query-contracts:
     uv run --project packages/python --frozen --exact python -m tools tree-sitter validate contracts
 
-check-language-workspace-search-contracts:
-    uv run --project packages/python --frozen --exact python -m tools validate language-workspace-search-contract
-
 check-rfc-docs:
     uv run --project packages/python --frozen --exact pytest \
       tests/unit/test_*rfc.py \
       tests/unit/test_docs_rfc_skill_contracts.py \
       -q
 
-provider-gate-root: check-language-evidence-smoke
+provider-gate-root: check-language-facade-smoke
     just check-gerbil-owner-items-fast-path
     cargo test -p agent-semantic-hook
     uv run --project packages/python --frozen --exact python -m pytest \
@@ -430,7 +396,7 @@ check-gerbil-owner-items-fast-path:
         "--query",
         "build-spec release cli-launcher make parallelize build-release build-optimized",
         "--workspace",
-        "{{gerbil_harness_project}}",
+        "{{asp_gerbil_scheme_project}}",
         "--view",
         "seeds",
     ]
@@ -473,196 +439,36 @@ check-gerbil-owner-items-fast-path:
         )
 
 provider-gate-rust:
-    cargo test --manifest-path {{rust_harness_project}}/Cargo.toml --features provider-server parser_native_syntax
-    cargo test --manifest-path {{rust_harness_project}}/Cargo.toml --features provider-server project_resolution
-    cargo test --manifest-path {{rust_harness_project}}/Cargo.toml --features cli,search policy
+    cargo test --manifest-path {{asp_rust_project}}/Cargo.toml --features provider-server parser_native_syntax
+    cargo test --manifest-path {{asp_rust_project}}/Cargo.toml --features provider-server project_resolution
+    cargo test --manifest-path {{asp_rust_project}}/Cargo.toml --features provider-server policy
 
 provider-gate-typescript:
-    npm --prefix {{typescript_harness_project}} run build
-    npm --prefix {{typescript_harness_project}} run check:implementation
+    npm --prefix {{asp_typescript_project}} run build
+    npm --prefix {{asp_typescript_project}} run check:implementation
     node --test \
-      {{typescript_harness_project}}/dist/tests/unit/cli_compact_query_snapshot.test.js \
-      {{typescript_harness_project}}/dist/tests/unit/cli_ast_patch.test.js \
-      {{typescript_harness_project}}/dist/tests/unit/cli_item_query.test.js \
-      {{typescript_harness_project}}/dist/tests/unit/cli_item_query_code.test.js \
-      {{typescript_harness_project}}/dist/tests/unit/cli_item_query_fallback.test.js \
-      {{typescript_harness_project}}/dist/tests/unit/cli_search_ingest.test.js \
-      {{typescript_harness_project}}/dist/tests/unit/cli_search_policy.test.js \
-      {{typescript_harness_project}}/dist/tests/unit/cli_search_query.test.js \
-      {{typescript_harness_project}}/dist/tests/unit/semantic_language_registry_read_packet.test.js \
-      {{typescript_harness_project}}/dist/tests/unit/semantic_search_registry_expectations.js \
-      {{typescript_harness_project}}/dist/tests/unit/semantic_search_schema.test.js
+      {{asp_typescript_project}}/dist/tests/unit/cli_compact_query_snapshot.test.js \
+      {{asp_typescript_project}}/dist/tests/unit/cli_ast_patch.test.js \
+      {{asp_typescript_project}}/dist/tests/unit/cli_item_query.test.js \
+      {{asp_typescript_project}}/dist/tests/unit/cli_item_query_code.test.js \
+      {{asp_typescript_project}}/dist/tests/unit/cli_item_query_fallback.test.js \
+      {{asp_typescript_project}}/dist/tests/unit/semantic_language_registry_read_packet.test.js
 
 provider-gate-python:
-    uv run --project {{python_harness_project}} --frozen asp-python search playbook PY-PROJ-R001 --intent exact-literal --scope workspace --coverage candidates --explain compact --workspace {{python_harness_project}}
-    uv run --project {{python_harness_project}} --frozen asp-python search playbook PY-AGENT-R008 --intent exact-literal --scope workspace --coverage candidates --explain compact --workspace {{python_harness_project}}
-    uv run --project {{python_harness_project}} --frozen asp-python search playbook semantic_language_registry_document --intent conceptual --scope owner:src/asp_python/_semantic_language.py --coverage candidates --explain compact --workspace {{python_harness_project}}
-    uv run --project {{python_harness_project}} --frozen python -m pytest \
-      {{python_harness_project}}/tests/unit/harness/test_semantic_cli_query_set.py \
-      {{python_harness_project}}/tests/unit/harness/test_semantic_cli_owner_items.py \
-      {{python_harness_project}}/tests/unit/harness/test_semantic_search_ingest_cli.py \
-      {{python_harness_project}}/tests/unit/harness/test_semantic_cli_policy.py \
-      {{python_harness_project}}/tests/unit/harness/test_semantic_schema_registry.py
+    uv run --project {{asp_python_project}} --frozen python -m pytest \
+      {{asp_python_project}}/tests/unit/asp_python/test_semantic_cli_query_set.py \
+      {{asp_python_project}}/tests/unit/asp_python/test_semantic_schema_registry.py
 
 provider-gate-julia:
-	julia --project={{julia_harness_project}} -e 'using Pkg; Pkg.test()'
-	{{julia_harness}} guide {{julia_harness_project}} >/dev/null
-	{{julia_harness}} agent doctor --json {{julia_harness_project}} >/dev/null
-	{{julia_compiled_harness}} guide {{julia_harness_project}} >/dev/null
-	{{julia_compiled_harness}} agent doctor --json {{julia_harness_project}} >/dev/null
-	just check-language-evidence-smoke-all
+	julia --project={{asp_julia_project}} -e 'using Pkg; Pkg.test()'
+	{{asp_julia_command}} guide {{asp_julia_project}} >/dev/null
+	{{asp_julia_command}} agent doctor --json {{asp_julia_project}} >/dev/null
+	{{asp_julia_compiled_command}} guide {{asp_julia_project}} >/dev/null
+	{{asp_julia_compiled_command}} agent doctor --json {{asp_julia_project}} >/dev/null
+	just check-language-facade-smoke
 
 provider-gate-gerbil:
     just test-gerbil-provider-http-json
-
-# Refresh the local runtime boundary used by semantic-facts pipe smokes.
-provider-gate-semantic-facts-setup:
-    mkdir -p .bin
-    just agent-tools-install-protocol .bin
-    just agent-tools-install-py
-
-# Verify cross-language parser-owned data-shape facts through both provider ABI and asp pipe projection.
-provider-gate-semantic-facts:
-    #!/usr/bin/env python3
-    import json
-    import os
-    import subprocess
-    import sys
-    from pathlib import Path
-
-    root = Path.cwd()
-
-    def run(argv: list[str], stdin: str | None = None) -> str:
-        env = os.environ.copy()
-        env["PATH"] = f"{root / '.bin'}:{env.get('PATH', '')}"
-        proc = subprocess.run(
-            argv,
-            cwd=root,
-            env=env,
-            text=True,
-            input=stdin,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-        )
-        if proc.returncode != 0:
-            sys.stderr.write(f"[semantic-facts] command failed: {' '.join(argv)}\n")
-            sys.stderr.write(proc.stderr)
-            sys.stderr.write(proc.stdout)
-            raise SystemExit(proc.returncode)
-        return proc.stdout
-
-    def require(condition: bool, message: str) -> None:
-        if not condition:
-            raise SystemExit(f"[semantic-facts] {message}")
-
-    required_bins = [
-        root / ".bin" / "asp",
-        root / ".bin" / "asp-rust",
-        root / ".bin" / "asp-typescript",
-        root / ".bin" / "asp-python",
-        root / "{{julia_compiled_harness}}",
-    ]
-    missing = [str(path) for path in required_bins if not os.access(path, os.X_OK)]
-    require(
-        not missing,
-        "missing local runtime executable(s): "
-        + ", ".join(missing)
-        + "; run `just provider-gate-semantic-facts-setup` from an environment-loaded shell",
-    )
-
-    doctor = run([str(root / ".bin" / "asp"), "hook", "doctor", "--client", "codex", "."])
-    doctor_lines = doctor.splitlines()
-    for language in ("rust", "typescript", "python", "julia"):
-        provider_line = next((line for line in doctor_lines if f"language={language} " in line), "")
-        require(
-            provider_line and "runtimeStatus=available" in provider_line,
-            f"hook doctor did not report available runtime for {language}",
-        )
-
-    direct_cases = [
-        (
-            "rust",
-            [str(root / ".bin" / "asp-rust"), "search", "semantic-facts", "Vec collection fields", "--json", "{{rust_harness_project}}"],
-            "src/cli/dev_command_log/command.rs:9:1:pipes: Vec<String>\n",
-        ),
-        (
-            "typescript",
-            [str(root / ".bin" / "asp-typescript"), "search", "semantic-facts", "array collection fields", "--json", "{{typescript_harness_project}}"],
-            "src/cli/dev-command-log.ts:70:1:pipes: readonly string[]\n",
-        ),
-        (
-            "python",
-            [str(root / ".bin" / "asp-python"), "search", "semantic-facts", "list collection fields", "--json", "{{python_harness_project}}"],
-            "src/python_lang_parser/_ast_collector.py:42:1:_scope_stack: list[str]\n",
-        ),
-        (
-            "julia",
-            [str(root / "{{julia_compiled_harness}}"), "search", "semantic-facts", "Vector collection fields", "--json", "{{julia_harness_project}}"],
-            "src/cli.jl:14:1:tags::Vector{String}\n",
-        ),
-    ]
-
-    def node_kind(node: dict) -> str:
-        value = node.get("kind")
-        if isinstance(value, str) and value:
-            return value
-        node_id = node.get("id")
-        if isinstance(node_id, str) and ":" in node_id:
-            return node_id.split(":", 1)[0]
-        return ""
-
-    def edge_relation(edge: dict) -> str:
-        for key in ("relation", "rel", "label", "kind"):
-            value = edge.get(key)
-            if isinstance(value, str) and value:
-                return value
-        return ""
-
-    for language, argv, stdin in direct_cases:
-        packet = json.loads(run(argv, stdin=stdin))
-        nodes = packet.get("nodes", [])
-        edges = packet.get("edges", [])
-        kinds = {node_kind(node) for node in nodes if isinstance(node, dict)}
-        relations = {edge_relation(edge) for edge in edges if isinstance(edge, dict)}
-        require(nodes, f"{language} semantic-facts returned no nodes")
-        require(edges, f"{language} semantic-facts returned no edges")
-        require("field" in kinds, f"{language} semantic-facts missing field node")
-        require("type" in kinds, f"{language} semantic-facts missing type node")
-        require("collection" in kinds, f"{language} semantic-facts missing collection node")
-        require("collection_of" in relations, f"{language} semantic-facts missing collection_of edge")
-        print(f"[semantic-facts] direct {language} nodes={len(nodes)} edges={len(edges)}")
-
-    pipe_cases = [
-        ("rust", "Vec collection fields", "{{rust_harness_project}}"),
-        ("typescript", "array collection fields", "{{typescript_harness_project}}"),
-        ("python", "list collection fields", "{{python_harness_project}}"),
-        ("julia", "Vector collection fields", "{{julia_harness_project}}"),
-    ]
-
-    for language, query, project in pipe_cases:
-        output = run([str(root / ".bin" / "asp"), language, "search", "pipe", query, "--view", "seeds", project])
-        require("[graph-frontier]" in output, f"{language} pipe missing graph frontier")
-        require("field:" in output, f"{language} pipe missing compact field node")
-        require("collection:family(" in output, f"{language} pipe missing compact collection node")
-        require("recommendedNext=S1.query-selector" in output, f"{language} pipe missing selector-first recommendation")
-        require(f"nextCommand=asp {language} query --selector" in output, f"{language} pipe missing next query command")
-        require(
-            f"--workspace {project} --projection source" in output,
-            f"{language} pipe missing scoped --workspace root {project}",
-        )
-        print(f"[semantic-facts] pipe {language} ok")
-
-perf-calibrate-julia-cache:
-	cargo build -q -p agent-semantic-client --bin asp
-	@tmp="$(mktemp -d)"; \
-	  asp_bin="$PWD/target/debug/asp"; \
-	  "${asp_bin}" cache invalidate --root {{julia_harness_project}} >/dev/null; \
-	  "${asp_bin}" julia search prime --view seeds {{julia_harness_project}} --receipt-json >"${tmp}/miss.out" 2>"${tmp}/miss.receipt.json"; \
-	  "${asp_bin}" julia search prime --view seeds {{julia_harness_project}} --receipt-json >"${tmp}/hit.out" 2>"${tmp}/hit.receipt.json"; \
-	  uv run --project packages/python --frozen --exact python -m tools cache validate julia-performance "${tmp}"
-
-check-python-policy:
-    uv run --project {{python_harness_project}} --frozen python -c 'from asp_python import assert_python_lang_harness_clean; assert_python_lang_harness_clean(["{{repo}}"])'
 
 # Validate repository SPDX/REUSE coverage and package license metadata.
 check-license-contract:
@@ -670,7 +476,7 @@ check-license-contract:
     uv run --frozen reuse --root . lint
 
 report-python-policy:
-    uv run --project {{python_harness_project}} --frozen python -c 'from asp_python import render_python_lang_harness, run_python_project_harness; print(render_python_lang_harness(run_python_project_harness("{{repo}}")), end="")'
+    uv run --project {{asp_python_project}} --frozen python -c 'from asp_python import render_asp_python_report, run_asp_python; print(render_asp_python_report(run_asp_python("{{repo}}")), end="")'
 # Develop mode: build and install the debug asp binary from this checkout.
 agent-tools-install-asp-dev:
     @just agent-tools-install-protocol-debug

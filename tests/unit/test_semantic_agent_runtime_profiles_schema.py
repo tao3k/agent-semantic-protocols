@@ -9,9 +9,6 @@ import unittest
 from pathlib import Path
 from typing import Any
 
-from jsonschema import Draft202012Validator
-
-
 class SemanticAgentRuntimeProfilesSchemaTests(unittest.TestCase):
     def setUp(self) -> None:
         schema_path = (
@@ -19,8 +16,9 @@ class SemanticAgentRuntimeProfilesSchemaTests(unittest.TestCase):
             / "schemas"
             / "semantic-agent-runtime-profiles.v1.schema.json"
         )
-        with open(schema_path, "r", encoding="utf-8") as handle:
-            self.validator = Draft202012Validator(json.load(handle))
+        from unit.schema_validation import schema_validator_for
+
+        self.validator = schema_validator_for(schema_path)
 
     def validation_errors(self, profiles: dict[str, Any]) -> list[str]:
         return [error.message for error in self.validator.iter_errors(profiles)]

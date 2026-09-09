@@ -328,10 +328,8 @@ def _command_signals(
 ) -> list[str]:
     signals = ["command-recorded"]
     kind = _command_kind(command, argv)
-    if kind == "search" and "prime" in argv:
-        signals.append("search-prime")
-    elif kind == "search":
-        signals.append("search-followup")
+    if kind == "search" and "playbook" in argv:
+        signals.append("search-playbook")
     elif kind == "query":
         signals.append("query-selector")
     elif kind == "guide":
@@ -343,8 +341,6 @@ def _command_signals(
         signals.append("repeated-command")
     if _is_direct_read_risk(argv):
         signals.append("direct-read-risk")
-    if "search.missing-prime" in finding_ids and kind == "search":
-        signals.append("search-followup")
     return _dedupe(signals)
 
 
@@ -358,7 +354,6 @@ def _finding_ids_for_signals(
         "hook-denied": "hook.denied",
         "answer-missing": "answer.missing",
         "answer-weak": "answer.weak-grounding",
-        "search-followup": "search.missing-prime",
     }
     return [
         finding_id

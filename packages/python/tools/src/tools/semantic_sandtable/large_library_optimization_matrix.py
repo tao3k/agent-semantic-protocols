@@ -87,7 +87,7 @@ def _optimization_run(
             "requiresQuerySet",
             "requiresGraphSignals",
             "requiresHookEvents",
-            "requiresComplexPipeFlow",
+            "requiresComplexCommandFlow",
             "requiresTokenCost",
         )
         if question.get(name) is True

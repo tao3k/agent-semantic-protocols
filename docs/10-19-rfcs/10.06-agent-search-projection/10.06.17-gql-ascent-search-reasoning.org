@@ -39,8 +39,9 @@ The typed settlement packet binds the exact Project Topology library digest and
 topology generation digest and is the machine authority for that projection. GQL
 is its sole default Agent-facing form and carries admitted native nodes, direct
 Query selectors, direct relations, request-local retrieval projections, settled
-derived relations, semantic annotations, frontier boundaries, and one
-materialization set.
+derived relations, semantic annotations, and frontier boundaries. There is no
+parallel selector list: the Agent reasons over the GQL and selects canonical
+selectors directly from the nodes it decides to inspect.
 
 Ascent is an internal inference engine behind the =meta-relational-reasoning=
 facade and runs the versioned
@@ -55,8 +56,16 @@ selected core against the topology proof DAG before rendering.
 
 Gerbil Scheme and POO declarations are compiled ahead of time into admitted MRR
 extension bundles. Scheme does not execute in the Search or Query hot path.
-The standard and project-owned profile system is specified by
-[[file:10.06.18-mrr-defined-project-topology.org][RFC 10.06.18]].
+The standard native profile is parsed by =orgize= from the Org
+Contract-governed ASP resource; any future project-owned profile requires its
+own versioned contract and admission boundary. The profile system is specified
+by [[file:10.06.18-mrr-defined-project-topology.org][RFC 10.06.18]].
+
+Orgize performs this projection through exact element-index queries over local
+=node-property= records and graph scope. The contract is a read-only admission
+constraint, not an LLM write surface: neither a matched property nor generated
+prose may assert a parser fact. Native providers and independently admitted
+source declarations alone populate the typed MRR extensional database.
 
 ** Internal Logical Contract
 
@@ -64,6 +73,12 @@ The extensional database distinguishes structural facts, declared semantics,
 accepted and proposed model annotations, fd path discovery, rg occurrences,
 Tantivy full-query receipts and matched clauses, native selectors, coverage,
 and binding compatibility. fd alone cannot establish content relevance.
+
+MRR passes only exact relation-bearing EDB tuples to Ascent. Ascent may derive
+proof-bearing recommendation candidates such as
+=DEPENDS_ON_CONFIG(x,z)= from =CALLS(x,y)= and =READS_CONFIG(y,z)=; it does not
+turn those recommendations into source facts, admission, or writes. MRR keeps
+the rule identity and complete premise fact IDs when accepting a candidate.
 
 Recursive rules derive edge-kind-safe reachability and cross-language/document
 paths. Expected relation grammar and coverage yield =known=, =missing=, or
@@ -96,20 +111,25 @@ derived descendant of a deleted premise before issuing that receipt.
 The following is the complete default shape. There is no following Ascent block.
 
 #+begin_example
-#+begin_src gql :profile search-evidence.v1 :eval never
+#+begin_src gql :name result
 (rust:Language)-[:RESULTS]->[(registry:RustImpl {name:"Registry",selector:"rust://src/registry.rs#item/implementation/type/Registry",projection:{rank:1,depth:0,hit:{fd:true,rg:[[42,46]],tantivy:["artifact refresh"]}}})]
 (registry)-[:DECLARES]->[(refresh:RustMethod {name:"refresh_registry",selector:"rust://src/registry.rs#item/method/refresh_registry/scope/implementation-owner/type/Registry"}),(publish:RustMethod {name:"publish_artifact",selector:"rust://src/registry.rs#item/method/publish_artifact/scope/implementation-owner/type/Registry"})]
-(refresh)-[:CALLS {witness:"call-refresh-publish"}]->(publish)
+(refresh)-[:CALLS {modality:"parser-direct",witnesses:["call-refresh-publish"]}]->(publish)
 (org:Language)-[:RESULTS]->[(publication:OrgHeading {title:"Publication",level:2,selector:"org://docs/publication.org#item/heading/Publication",projection:{rank:3,depth:1,hit:{rg:[[18,24]],tantivy:["artifact publication"]}}})]
-(publication)-[:EXPLAINS {witness:"doc-explains-publication"}]->(publish)
+(publication)-[:EXPLAINS {modality:"declared",witnesses:["doc-explains-publication"]}]->(publish)
 (python:Language)-[:RESULTS]->[(ranker:PythonFunction {name:"rank_frontier",selector:"python://languages/asp-python/src/asp_python/ranking.py#item/function/rank_frontier",projection:{rank:5,depth:2,hit:{rg:[[70,73]]}}})]
 (json:Language)-[:RESULTS]->[(packet:JsonObject {selector:"json://schemas/search-evidence.v1.schema.json#item/pointer/properties/rankedPacket",projection:{rank:6,depth:2,jq:"{candidateSetDigest,selected,witnesses}"}})]
-(refresh)-[:DOCUMENTED_PATH {modality:"derived",derived_by:"project-topology-inference.v1",proof:"proof-path-42"}]->(publication)
+(refresh)-[:DOCUMENTED_PATH {modality:"derived",derived_by:"project-topology-inference.v1",proof:"proof-path-42",witnesses:["call-refresh-publish","doc-explains-publication"]}]->(publication)
 (meaning:SemanticAnnotation {text:"Registry refresh reaches publication through the artifact commit path.",state:"proposed",binding:"topology-1",premises:["call-refresh-publish","doc-explains-publication"],producer:"model-reasoner@receipt-7"})-[:SUMMARIZES]->(refresh)
 (publish)-[:FRONTIER {relation:"ADMITS",target_kind:"RuntimeAdmission",depth:2,state:"unknown",reason:"coverage-open"}]->(admission_boundary:Unknown)
-(materialize:MaterializationSet {selectors:["rust://src/registry.rs#item/method/publish_artifact/scope/implementation-owner/type/Registry","org://docs/publication.org#item/heading/Publication"]})-[:FOR_QUERY_PLAYBOOK]->(publish)
 #+end_src
 #+end_example
+
+For the normal text presentation, stdout is exactly this one named Org/GQL
+source block. Runtime activation, resident-transaction, timing, and admission
+receipts are observable through explicit status/telemetry surfaces; they MUST
+NOT be prepended to the Search result. JSON remains an explicit machine/debug
+presentation and is never the implicit Search result format.
 
 Language result groups provide orientation without duplicating a separate rank
 table. Each node's compact =projection= contains only request-local values that
@@ -123,13 +143,14 @@ prove that admission exists. After source-owned Org or human admission, the
 same claim is republished with a new semantic topology identity and
 =state:"accepted"=.
 
-** Materialization And Frontier
+** Selector Reasoning And Frontier
 
-=MaterializationSet= is one deterministic set for one =asp query playbook= call.
-Its selectors are unique, canonically ordered, available in the bound topology
-generation, and accompanied by the transitive proof dependencies needed for
-their selection. The public
-projection never invents =Query 1=, =Query 2=, or =Search 1= identifiers.
+Every queryable node owns its canonical selector. The public projection has no
+=MaterializationSet=, selector shortlist, or auto-fill marker. The Agent uses
+node identity, edge modality, witnesses, proof-connected paths, rank, and
+frontiers to choose a repeated =--selector= Query request. This choice is Agent
+reasoning rather than Search settlement state, and the projection never invents
+=Query 1=, =Query 2=, or =Search 1= identifiers.
 
 A =FRONTIER= edge states the known graph boundary: anchor, expected relation,
 target kind, seed-relative depth, epistemic state, and reason. It schedules
@@ -142,7 +163,7 @@ The typed packet, not repeated GQL properties, binds logic-program id/digest,
 engine/profile identity, topology identity, evidence-binding digest, fixed-point
 scope/status and iteration count, proof-DAG digest and locator, coverage
 certificates, Python ranking receipt, post-ranking certification, decision-core
-digest, FrontierSet and MaterializationSet digests, topology-delta digest,
+digest, FrontierSet digest, topology-delta digest,
 request identity, and exactly one terminal.
 
 A =fixed-point= terminal is admitted only when
@@ -150,11 +171,13 @@ A =fixed-point= terminal is admitted only when
 exhaustion cannot set this equality by assertion and remains a typed
 non-fixed-point terminal.
 
-The topology portion of that packet is accepted only when all eight identity
+The topology portion of that packet is accepted only when all nine identity
 members match the imported Project Topology library: workspace, source
 generation, provider catalog, library, topology generation, structural
-topology, semantic topology, and inference program. No publication-generation
-counter may replace any member. Accepted natural-language semantics additionally
+topology, semantic topology, inference program, and the independently admitted
+topology closure. The request-local proof-DAG cannot replace or float free of
+that reusable closure identity. No publication-generation counter may replace
+any member. Accepted natural-language semantics additionally
 resolve a separate admission receipt under the same semantic binding and the
 same annotation identity. Project Topology generation admission likewise
 resolves an independent from-scratch rebuild receipt bound to both topology
@@ -174,7 +197,7 @@ The request-bound Search projection shape is
 [[file:../../../schemas/search-topology-settlement.v1.schema.json][search-topology-settlement.v1]].
 Its independent semantic validator additionally resolves graph references,
 annotation binding, authority/modality pairs, coverage, proof dependencies,
-derived counts, and the stable MaterializationSet. Schema acceptance alone is
+derived counts, and canonical selector ownership. Schema acceptance alone is
 not topology admission or inference-proof authenticity.
 
 ** Validation

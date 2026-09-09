@@ -26,7 +26,7 @@ def language_evidence_graph_turbo_request(
         "queryTerms": [f"{language_id} evidence quality"],
         "profile": "evidence-quality",
         "algorithm": "typed-ppr-diverse",
-        "seedIds": [f"{prefix}:owner"],
+        "entryNodeIds": [f"{prefix}:owner"],
         "budget": 8,
         "producer": {
             "languageId": language_id,
@@ -103,5 +103,5 @@ def language_evidence_graph_turbo_request(
                 ],
             }
         ],
-        "fields": {"next": "pipe JSON to asp graph render"},
+        "fields": {"next": "review the typed graph result"},
     }

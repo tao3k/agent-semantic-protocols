@@ -8,12 +8,11 @@ use std::collections::BTreeMap;
 use std::fmt;
 
 use agent_semantic_content_identity::ProjectWorkspaceBinding;
-use meta_relational_reasoning::ReasoningBundleId;
+use agent_semantic_mrr::kernel::ReasoningBundleId;
 use serde_json::{Map, Value};
 
 const SCHEMA_ID: &str = "agent.semantic-protocols.project-topology-program-binding";
 const SCHEMA_VERSION: &str = "1";
-const COMPILATION_SCHEMA_ID: &str = "agent.semantic-protocols.mrr-program-compilation-receipt";
 
 /// Fail-closed semantic refinement errors after JSON Schema validation.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -52,40 +51,19 @@ pub fn admit_project_topology_program_bundle(
     require_text(packet, "schemaVersion", SCHEMA_VERSION)?;
 
     let binding = object_field(packet, "binding")?;
-    let encoded_bundle = text(binding, "mrrBundleIdentity")?;
-    let bundle_identity = encoded_bundle
-        .parse::<ReasoningBundleId>()
-        .map_err(|error| {
-            invalid(
-                "topology-mrr-bundle-identity-invalid",
-                format!("mrrBundleIdentity is not a ReasoningBundleId: {error}"),
-            )
-        })?;
-
     let program = object_field(packet, "program")?;
     let receipt = object_field(program, "compilationReceipt")?;
-    require_text(receipt, "schemaId", COMPILATION_SCHEMA_ID)?;
-    require_text(receipt, "schemaVersion", SCHEMA_VERSION)?;
-    require_text(receipt, "state", "admitted")?;
-    let receipt_id = text(receipt, "id")?;
-    if admitted_receipts.get(receipt_id) != Some(&Value::Object(receipt.clone())) {
-        return Err(invalid(
-            "topology-compilation-receipt-unadmitted",
-            "embedded compilation receipt is not independently admitted",
-        ));
-    }
-    for field in [
-        "schemeProgramDigest",
-        "compiledProgramAbiDigest",
-        "mrrBundleIdentity",
-    ] {
-        if receipt.get(field) != binding.get(field) {
-            return Err(invalid(
-                "topology-compilation-receipt-mismatch",
-                format!("compilation receipt does not bind {field}"),
-            ));
-        }
-    }
+    let aot_binding =
+        agent_semantic_mrr::admit_scheme_aot_program_binding(binding, receipt, admitted_receipts)
+            .map_err(|cause| {
+            let reason_kind = match cause.reason_kind() {
+                "mrr-bundle-identity-invalid" => "topology-mrr-bundle-identity-invalid",
+                "mrr-compilation-receipt-unadmitted" => "topology-compilation-receipt-unadmitted",
+                "mrr-compilation-receipt-mismatch" => "topology-compilation-receipt-mismatch",
+                _ => "topology-program-binding-invalid",
+            };
+            invalid(reason_kind, cause.message())
+        })?;
 
     let project_workspace = object_field(binding, "projectWorkspace")?;
     let decoded_project_workspace: ProjectWorkspaceBinding =
@@ -114,7 +92,7 @@ pub fn admit_project_topology_program_bundle(
         ));
     }
 
-    Ok(bundle_identity)
+    Ok(*aot_binding.mrr_bundle_identity())
 }
 
 fn object<'a>(

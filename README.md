@@ -6,10 +6,10 @@ SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 # Agent Semantic Protocols
 
 Shared protocol contracts, hook runtime, and replay sandtables for semantic
-language harnesses.
+ASP language providers.
 
 This repository keeps the agent-facing surface stable across Rust, TypeScript,
-Python, Julia, and future providers. Language harnesses own parser facts and
+Python, Julia, and future providers. ASP language providers own parser facts and
 provider-specific commands; this repository owns the shared schemas, RFCs,
 root hook classifier, and scenario evidence used to keep those providers
 aligned.
@@ -55,9 +55,10 @@ in the RFC and schema first, then align providers and sandtable evidence.
   projection boundary, and pattern-graph roadmap.
 - `docs/10-19-rfcs/10.05-interactive-graph-first-progressive-searchloop.org` owns the server-first agent search architecture; `asp <language> ...` is a typed ASP Server client surface,
   search/query/read-plan stdout contracts, and syntax locate/code flows.
-- `docs/10-19-rfcs/10.15-agent-hook-interception-protocol.org` owns hook decision packets,
-  Markdown recovery prompts, `Detected Binaries`, and ast-patch config
-  branching.
+- `docs/10-19-rfcs/10.15-agent-hook-interception-protocol.org` owns normalized
+  Host invocation, compiled Hook policy/provider projections, typed decisions,
+  and the strict boundary that keeps provider activation and Runtime execution
+  out of Hook classification.
 - `schemas/README.md` owns the schema catalog and explains how query/search/read
   packets share tree-sitter provenance without merging packet envelopes.
 - `docs/30-39-research/31.18-tree-sitter-query-rfc-roadmap.org` records the
@@ -124,7 +125,7 @@ plugin should only come after the manifest, hook behavior, and generated skill
 contract are stable.
 
 Install released provider binaries into the current project's ASP runtime state
-when you want the repo to consume language harness releases instead of binaries
+when you want the repo to consume ASP language provider releases instead of binaries
 from `.bin` or the process `PATH`:
 
 ```sh
@@ -167,13 +168,15 @@ just agent-tools-install-typescript "$HOME/.local/bin"
 just agent-tools-install-python "$HOME/.local/bin"
 ```
 
-Use the ASP Server graph methods when an agent step needs the Graph-Turbo ranking
-engine. The `asp-python-graphs` service is managed by the ASP Server and is not
-invoked as a second executable:
+Use the Runtime-owned Search Playbook when an agent step needs source discovery,
+native syntax, lexical retrieval, or graph reasoning. The `asp-python-graphs`
+service is managed by the ASP Server and is not invoked as a second executable:
 
 ```sh
-asp rust search owner crates/agent-semantic-client/src/runtime_language_client.rs \
-  items --query graphs_timeline --workspace . --view seeds
+asp search playbook --language rust \
+  --rg -n -e graphs_timeline crates/agent-semantic-client/src \
+  --tantivy term graphs_timeline \
+  --graph gql --query 'node(kind = "owner")'
 ```
 
 Graph-turbo request packets use the ranking engine through schema-owned JSON:
@@ -182,13 +185,11 @@ Graph-turbo request packets use the ranking engine through schema-owned JSON:
 The retired compact graph renderer is a prompt/debug projection only; it is not a
 trusted graph, frontier, rank, or action protocol.
 
-Agent-facing fast search uses graph-turbo ranking by default.
-`asp rust search lexical <term> owner tests --workspace .` and the explicit seeds
-form `asp rust search lexical <term> owner tests --workspace . --view seeds` avoid printing the
-request packet, but the trusted structure remains the schema packet and any
-schema-owned JSON projection. Rank, profile, paths, scores, cache, trace,
-explanations, metrics, and frontier actions must be packet-visible before any
-text renderer serializes them.
+Agent-facing search uses the fixed Playbook order: exact ripgrep acquisition,
+provider-native syntax, Tantivy lexical retrieval, then Python Graphs. The
+trusted structure remains the schema packet and its schema-owned GQL projection.
+Rank, profile, paths, scores, cache, trace, explanations, metrics, and frontier
+actions must be packet-visible before any presentation layer serializes them.
 Default fast-search request packets include candidate hot range nodes and
 `item -> hot` typed edges when locators are available, plus owner-scoped
 dependency nodes and `owner -> dependency` import edges for query-deps routing,
@@ -218,24 +219,19 @@ asp guide
 asp doctor
 asp providers
 asp cache status
-asp search --language rust prime --workspace . --view seeds
-asp query --language rust --treesitter-query '<pattern>' .
-asp rust search prime --workspace . --view seeds
+asp search playbook --language rust --rg -n -e '<term>' . --tantivy 'title:<term>^2 OR body:<term>'
+asp query playbook --language '<producer|...>' --selector '<provider-owned-selector>'
+asp query playbook --documents org --selector 'org://docs/spec.org#item/heading/Contract'
 ```
 
-`asp search` and `asp query` are thin routers over the language facades. Use
-`--language <rust|typescript|python|julia|org|md>` for ambiguous roots, or pass
-an owner/selector path or project root that matches one active provider's
-activation coverage so `asp` can route to the same
-`asp <language> search|query` boundary without parsing package layout.
-
-Dependency search is provider-owned and manifest-first. Start with
-`asp <language> search guide --workspace .` to confirm the current dependency
-profile, then use the advertised dependency/manifest surface, such as
-`asp rust search dependency serde --workspace . --view seeds` or
-`search reasoning query-deps`, before falling back to source reads, docs.rs, or
-web search. The first frontier should expose manifest versions, import owners,
-docs-use/public API lines, crate-source/runtime-source hints, and tests.
+`asp search playbook` and `asp query playbook` are the only public Search and Query
+surfaces. Use `--language <rust|typescript|python|julia>` for code producers
+and `--documents <org|md>` for document producers; a cross-domain request may
+use both. Search
+accepts native argument blocks; Query accepts only selectors returned on the
+owning GQL nodes. Dependency discovery therefore starts with manifest terms in
+the Playbook and continues through returned selectors, rather than a separate
+provider mode.
 
 Calibrate the local Julia cache hot path after client/cache changes:
 
@@ -337,7 +333,7 @@ Both replay gates currently prove `10 -> 4` commands, `0.600` command
 reduction, `0.923` stdout-byte reduction, and `4/4` expected hot blocks
 covered.
 
-Run the Python policy gate owned by the Python harness:
+Run the Python policy gate owned by the ASP Python:
 
 ```sh
 just check-python-policy

@@ -23,7 +23,7 @@ use serde_json::json;
 
 const LANGUAGE_ID: &str = "rust";
 const PROVIDER_ID: &str = "asp-rust";
-const EXPORT_METHOD: &str = "search/prime";
+const EXPORT_METHOD: &str = "search/playbook";
 
 #[test]
 #[ignore = "project-scoped schema v2 cutover correctness gate"]
@@ -616,7 +616,7 @@ fn scenario_manifest<'a>(
                 "exportMethod": EXPORT_METHOD,
                 "projectRoot": project_root.display().to_string(),
                 "packageRoot": ".",
-                "schemaIds": ["agent.semantic-protocols.semantic-search-packet"],
+                "schemaIds": ["agent.semantic-protocols.workspace-search-playbook-result"],
                 "cacheStatus": "hit",
                 "rawSourceStored": false,
                 "requestFingerprint": format!("fnv64:{label}"),

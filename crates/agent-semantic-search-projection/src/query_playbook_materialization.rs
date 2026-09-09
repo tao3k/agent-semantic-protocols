@@ -8,7 +8,6 @@ use std::fmt;
 
 use agent_semantic_content_identity::ProjectWorkspaceBinding;
 use agent_semantic_content_identity::runtime_execution::RuntimeExecutionBinding;
-use serde::{Deserialize, Serialize};
 use serde_json::Map;
 use serde_json::Value;
 
@@ -18,69 +17,6 @@ pub const QUERY_PLAYBOOK_MATERIALIZATION_REQUEST_SCHEMA_VERSION: &str = "1";
 pub const QUERY_PLAYBOOK_MATERIALIZATION_RECEIPT_SCHEMA_ID: &str =
     "agent.semantic-protocols.query-playbook-materialization-receipt";
 pub const QUERY_PLAYBOOK_MATERIALIZATION_RECEIPT_SCHEMA_VERSION: &str = "1";
-
-/// One typed GQL relationship rendered immediately before a Query source block.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct QueryPlaybookGqlRelationship {
-    from_node: String,
-    relation: String,
-    to_node: String,
-}
-
-impl QueryPlaybookGqlRelationship {
-    pub fn new(
-        from_node: impl Into<String>,
-        relation: impl Into<String>,
-        to_node: impl Into<String>,
-    ) -> Result<Self, QueryPlaybookMaterializationError> {
-        let relationship = Self {
-            from_node: from_node.into(),
-            relation: relation.into(),
-            to_node: to_node.into(),
-        };
-        relationship.validate()?;
-        Ok(relationship)
-    }
-
-    pub fn from_node(&self) -> &str {
-        &self.from_node
-    }
-
-    pub fn relation(&self) -> &str {
-        &self.relation
-    }
-
-    pub fn to_node(&self) -> &str {
-        &self.to_node
-    }
-
-    pub fn render_gql(&self) -> String {
-        format!("{} --{}--> {}", self.from_node, self.relation, self.to_node)
-    }
-
-    fn validate(&self) -> Result<(), QueryPlaybookMaterializationError> {
-        if [&self.from_node, &self.to_node].iter().any(|node| {
-            node.trim().is_empty() || node.contains(['\r', '\n']) || node.contains("-->")
-        }) || self.relation.is_empty()
-            || !self
-                .relation
-                .bytes()
-                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
-            || !self
-                .relation
-                .bytes()
-                .next()
-                .is_some_and(|byte| byte.is_ascii_alphabetic())
-        {
-            return invalid(
-                "query-playbook-gql-relationship-invalid",
-                "GQL relationship requires single-line nodes and one typed relationship name",
-            );
-        }
-        Ok(())
-    }
-}
 
 /// One immutable Query Playbook request admitted against the current Runtime binding.
 #[derive(Clone, Debug, PartialEq)]
@@ -100,6 +36,15 @@ impl QueryPlaybookMaterializationRequest {
         admit_expected_runtime_binding(expected_runtime_binding, manifest_project_workspace)?;
 
         let packet_object = object(&packet, "packet")?;
+        if ["topologyLibraryDigest", "topologyClosureDigest"]
+            .iter()
+            .any(|field| packet_object.contains_key(*field))
+        {
+            return invalid(
+                "schema-invalid",
+                "Query request must not carry Search topology identity",
+            );
+        }
         text_eq(
             packet_object,
             "schemaId",
@@ -151,7 +96,6 @@ impl QueryPlaybookMaterializationRequest {
                 "Query execution publication or outer Runtime bundle identity drifted",
             );
         }
-
         if text(packet_object, "projectWorkspaceIdentity")?
             != expected_runtime_binding
                 .project_workspace
@@ -172,14 +116,16 @@ impl QueryPlaybookMaterializationRequest {
                     .as_str()
                     .is_none_or(|value| !value.contains("://") || !value.contains("#item/"))
             })
-            || selectors.windows(2).any(|pair| {
-                pair[0].as_str().expect("validated selector text")
-                    >= pair[1].as_str().expect("validated selector text")
-            })
+            || selectors
+                .iter()
+                .filter_map(Value::as_str)
+                .collect::<std::collections::BTreeSet<_>>()
+                .len()
+                != selectors.len()
         {
             return invalid(
                 "schema-invalid",
-                "Query selectors must be unique canonical selectors in stable order",
+                "Query selectors must be unique canonical selectors in request order",
             );
         }
 
@@ -209,6 +155,15 @@ impl QueryPlaybookMaterializationReceipt {
         admit_expected_runtime_binding(expected_runtime_binding, manifest_project_workspace)?;
 
         let receipt = object(&packet, "packet")?;
+        if ["topologyLibraryDigest", "topologyClosureDigest"]
+            .iter()
+            .any(|field| receipt.contains_key(*field))
+        {
+            return invalid(
+                "schema-invalid",
+                "Query receipt must not carry Search topology identity",
+            );
+        }
         text_eq(
             receipt,
             "schemaId",
@@ -255,7 +210,6 @@ impl QueryPlaybookMaterializationReceipt {
                 "Query receipt execution publication or outer Runtime bundle identity drifted",
             );
         }
-
         let admitted_request = object(request.as_json(), "request")?;
         for field in [
             "requestId",
@@ -353,6 +307,12 @@ fn validate_complete_materializations(
     }
     for (materialization, selector) in materializations.iter().zip(requested) {
         let materialization = object(materialization, "materialization")?;
+        if materialization.contains_key("gqlRelationships") {
+            return invalid(
+                "schema-invalid",
+                "Query materialization must not carry Search GQL relationships",
+            );
+        }
         if materialization.get("selector") != Some(selector)
             || text(materialization, "projection")? != projection
         {
@@ -363,28 +323,6 @@ fn validate_complete_materializations(
         }
         for field in ["languageId", "providerId", "ownerPath"] {
             text(materialization, field)?;
-        }
-        let relationships = array(materialization, "gqlRelationships")?;
-        let relationships = relationships
-            .iter()
-            .cloned()
-            .map(serde_json::from_value::<QueryPlaybookGqlRelationship>)
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|error| {
-                QueryPlaybookMaterializationError::new(
-                    "query-playbook-gql-relationship-invalid",
-                    format!("GQL relationship is not typed: {error}"),
-                )
-            })?;
-        if relationships.len() != 1
-            || relationships
-                .iter()
-                .any(|relationship| relationship.validate().is_err())
-        {
-            return invalid(
-                "query-playbook-gql-relationship-invalid",
-                "every Query materialization requires exactly one valid typed GQL relationship",
-            );
         }
         let digest = text(materialization, "sourceContentDigest")?;
         if digest.len() != 64 || !digest.bytes().all(|byte| byte.is_ascii_hexdigit()) {

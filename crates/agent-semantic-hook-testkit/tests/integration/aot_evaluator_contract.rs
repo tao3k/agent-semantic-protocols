@@ -198,12 +198,12 @@ fn canonical_aot_generation_preserves_config_rule_composition_and_dominance() {
     let generation = canonical_generation();
     for (command, expected_rule) in [
         (
-            "asp search playbook --language rust 'owner symbol' --workspace .",
+            "asp search playbook --language rust --rg 'owner symbol'",
             Some("registered-asp-reasoning-search"),
         ),
         (
-            "asp search playbook --language rust 'owner symbol' --workspace . --json",
-            Some("registered-asp-reasoning-search"),
+            "asp search playbook --language rust --rg 'owner symbol' --json",
+            Some("deny-agent-search-json"),
         ),
         (
             "cargo test -p agent-semantic-hook",
@@ -420,7 +420,7 @@ fn exact_rtk_read_shape_persists_a_dynamic_probe_receipt() {
             ),
             "a dynamic probe must publish an explicit Read or Unknown observation: {event:#}"
         );
-        if event["fields"]["readerProbe"]["access"] == "read" {
+        if event["fields"]["policyDecision"]["configRuleId"].is_string() {
             assert_eq!(
                 event["fields"]["policyDecision"]["generationDigest"],
                 "blake3-256:testkit-canonical"
@@ -538,15 +538,15 @@ fn every_canonical_config_rule_has_an_aot_decision_witness() {
             "apply_patch",
             serde_json::json!({"patch":"*** Begin Patch\n*** Update File: README.md\n*** End Patch"}),
         ),
-        decide("Bash", "Bash", serde_json::json!({"command":"asp search playbook --language rust owner"})),
-        decide("Bash", "Bash", serde_json::json!({"command":"asp rust query --selector rust://owner"})),
+        decide("Bash", "Bash", serde_json::json!({"command":"asp search playbook --language rust --rg owner"})),
+        decide("Bash", "Bash", serde_json::json!({"command":"asp query playbook --language rust --selector rust://owner"})),
         decide("Bash", "Bash", serde_json::json!({"command":"cargo test -p agent-semantic-hook"})),
         decide("Bash", "Bash", serde_json::json!({"command":"cargo fmt --all -- --check"})),
         decide("Bash", "Bash", serde_json::json!({"command":"cargo clippy -p agent-semantic-hook"})),
         decide("Bash", "Bash", serde_json::json!({"command":"git show HEAD:README.md"})),
         decide("Bash", "Bash", serde_json::json!({"command":"asp live-corpus qualify"})),
         decide("Bash", "Bash", serde_json::json!({"command":"gxc -O src/runtime.ss"})),
-        decide("Bash", "Bash", serde_json::json!({"command":"asp rust search owner --json"})),
+        decide("Bash", "Bash", serde_json::json!({"command":"asp search playbook --language rust --rg owner --json"})),
         decide("Bash", "Bash", serde_json::json!({"command":"rg Hook crates/agent-semantic-hook/src/lib.rs"})),
         decide("Bash", "Bash", confirmed_read("src/lib.rs")),
         decide("Bash", "Bash", confirmed_read("docs/acceptance.org")),

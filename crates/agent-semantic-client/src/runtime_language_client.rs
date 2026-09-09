@@ -4,8 +4,6 @@
 
 //! Typed `ClientFrame` transport for commands sent to an existing ASP Runtime Server.
 
-use std::collections::HashMap;
-use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::OnceLock;
@@ -37,6 +35,11 @@ use agent_semantic_client_protocol::protocol_identity::SCHEMA_VERSION;
 use agent_semantic_client_server::AspClientGrpcTransport;
 use agent_semantic_client_server::CLIENT_FRAME_SESSION_CAPACITY;
 use agent_semantic_client_server::CLIENT_FRAME_SESSION_CONTROL_RESERVE;
+
+pub(crate) use crate::runtime_language_response_decoders::{
+    decode_graph_evaluation_response, decode_schema_bundle_response,
+};
+pub(crate) use crate::runtime_language_session_registry::SessionRegistry;
 
 /// Monotonic request identity shared by all warm client sessions in a process.
 static REQUEST_SEQUENCE: AtomicU64 = AtomicU64::new(1);
@@ -130,10 +133,10 @@ pub(crate) fn validate_cancelled_terminal(
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub(crate) struct SessionKey {
-    project_id: String,
-    workspace_id: String,
-    publication_nonce: String,
-    binary_content_digest: String,
+    pub(super) project_id: String,
+    pub(super) workspace_id: String,
+    pub(super) publication_nonce: String,
+    pub(super) binary_content_digest: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -142,139 +145,6 @@ pub struct ClientBackpressureProbeReceipt {
     pub held_call_count: usize,
     pub rejected_call_count: usize,
     pub elapsed_micros: u64,
-}
-
-impl SessionKey {
-    fn from_publication(
-        publication: &AspClientRuntimeHandoff,
-        project_id: String,
-        workspace_id: String,
-    ) -> Self {
-        Self {
-            project_id,
-            workspace_id,
-            publication_nonce: publication.publication_nonce.clone(),
-            binary_content_digest: publication.artifact_digest.to_string(),
-        }
-    }
-
-    #[cfg(test)]
-    pub(crate) fn fixture(identity: u64) -> Self {
-        Self {
-            project_id: format!("repo-{identity}"),
-            workspace_id: format!("workspace-{identity}"),
-            publication_nonce: format!("publication-{identity}"),
-            binary_content_digest: format!("blake3-256:{:064x}", identity + 2),
-        }
-    }
-
-    #[cfg(test)]
-    pub(crate) fn fixture_successor(identity: u64) -> Self {
-        let mut key = Self::fixture(identity);
-        key.publication_nonce = format!("publication-successor-{identity}");
-        key
-    }
-}
-
-pub(crate) struct SessionRegistry<T> {
-    capacity: usize,
-    entries: HashMap<SessionKey, Arc<tokio::sync::OnceCell<Arc<T>>>>,
-    lru: VecDeque<SessionKey>,
-}
-
-impl<T> SessionRegistry<T> {
-    pub(crate) fn new(capacity: usize) -> Self {
-        Self {
-            capacity,
-            entries: HashMap::new(),
-            lru: VecDeque::new(),
-        }
-    }
-
-    fn touch(&mut self, key: &SessionKey) {
-        if let Some(index) = self.lru.iter().position(|candidate| candidate == key) {
-            self.lru.remove(index);
-        }
-        self.lru.push_back(key.clone());
-    }
-
-    fn evictable(cell: &tokio::sync::OnceCell<Arc<T>>) -> bool {
-        cell.get()
-            .is_some_and(|value| Arc::strong_count(value) == 1)
-    }
-
-    fn evict_one_idle(&mut self) -> bool {
-        let Some(index) = self.lru.iter().position(|key| {
-            self.entries
-                .get(key)
-                .is_some_and(|cell| Self::evictable(cell))
-        }) else {
-            return false;
-        };
-        let key = self.lru.remove(index).expect("LRU index was present");
-        self.entries.remove(&key);
-        true
-    }
-
-    pub(crate) fn reserve(
-        &mut self,
-        key: SessionKey,
-    ) -> Result<Arc<tokio::sync::OnceCell<Arc<T>>>, String> {
-        if let Some(cell) = self.entries.get(&key).cloned() {
-            self.touch(&key);
-            return Ok(cell);
-        }
-        while self.entries.len() >= self.capacity {
-            if !self.evict_one_idle() {
-                return Err(format!(
-                    "reasonKind=runtime-client-session-capacity-exhausted capacity={} activeOrConnecting={}",
-                    self.capacity,
-                    self.entries.len()
-                ));
-            }
-        }
-        let cell = Arc::new(tokio::sync::OnceCell::new());
-        self.entries.insert(key.clone(), Arc::clone(&cell));
-        self.touch(&key);
-        Ok(cell)
-    }
-
-    fn remove_if_same(&mut self, key: &SessionKey, expected: &Arc<tokio::sync::OnceCell<Arc<T>>>) {
-        if self
-            .entries
-            .get(key)
-            .is_some_and(|current| Arc::ptr_eq(current, expected))
-        {
-            self.entries.remove(key);
-            if let Some(index) = self.lru.iter().position(|candidate| candidate == key) {
-                self.lru.remove(index);
-            }
-        }
-    }
-
-    pub(crate) fn remove_key(&mut self, key: &SessionKey) -> bool {
-        let removed = self.entries.remove(key).is_some();
-        if let Some(index) = self.lru.iter().position(|candidate| candidate == key) {
-            self.lru.remove(index);
-        }
-        removed
-    }
-
-    #[cfg(test)]
-    pub(crate) fn len(&self) -> usize {
-        self.entries.len()
-    }
-
-    #[cfg(test)]
-    pub(crate) fn is_empty(&self) -> bool {
-        self.entries.is_empty()
-    }
-
-    pub(crate) fn drain_idle(&mut self) -> usize {
-        let before = self.entries.len();
-        while self.evict_one_idle() {}
-        before - self.entries.len()
-    }
 }
 
 static SESSION_REGISTRY: OnceLock<tokio::sync::Mutex<SessionRegistry<CachedClientSession>>> =
@@ -399,13 +269,14 @@ enum AspClientTransportCapability {
 /// identifies the executable content served by the endpoint.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AspClientRuntimeHandoff {
-    control_socket_addr: std::net::SocketAddr,
-    data_socket_addr: std::net::SocketAddr,
-    provider_socket_addr: std::net::SocketAddr,
-    publication_nonce: String,
-    artifact_digest: agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest,
-    owner_epoch: u64,
-    runtime_generation_digest: String,
+    pub(super) control_socket_addr: std::net::SocketAddr,
+    pub(super) data_socket_addr: std::net::SocketAddr,
+    pub(super) provider_socket_addr: std::net::SocketAddr,
+    pub(super) publication_nonce: String,
+    pub(super) artifact_digest:
+        agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest,
+    pub(super) owner_epoch: u64,
+    pub(super) runtime_generation_digest: String,
 }
 
 impl AspClientRuntimeHandoff {
@@ -525,11 +396,6 @@ impl AspClient {
         }
     }
 
-    pub(crate) fn with_runtime_handoff(mut self, runtime_handoff: AspClientRuntimeHandoff) -> Self {
-        self.runtime_handoff = Some(runtime_handoff);
-        self
-    }
-
     async fn runtime_handoff(&self) -> Result<AspClientRuntimeHandoff, String> {
         if let Some(handoff) = &self.runtime_handoff {
             return Ok(handoff.clone());
@@ -632,6 +498,31 @@ impl AspClient {
             self.transport_capability,
             AspClientTransportCapability::PublishedLoopbackTcp
         )
+    }
+
+    /// Admit this client's workspace through the sole Runtime lifecycle
+    /// authority before opening a published-loopback data-plane session.
+    /// Host-inherited descriptors remain strict capabilities and therefore do
+    /// not trigger a second bootstrap path.
+    pub(crate) async fn admit_runtime_workspace(mut self, operation: &str) -> Result<Self, String> {
+        if !self.uses_published_loopback_transport() {
+            return Ok(self);
+        }
+        let mut ready =
+            crate::server::runtime_server::ensure_healthy_runtime_server_for_workspace(
+                &self.project_root,
+            )
+            .await
+            .map_err(|error| {
+                format!(
+                    "reasonKind=runtime-client-bootstrap-failed failureLayer=runtime-resident-transaction Runtime {operation} could not establish a content-bound handoff: {error}"
+                )
+            })?;
+        let transaction = ready.resident_transaction.take().ok_or_else(|| {
+            "reasonKind=runtime-client-handoff-unavailable failureLayer=runtime-resident-transaction Runtime bootstrap returned Healthy without its resident transaction".to_owned()
+        })?;
+        self.runtime_handoff = Some(AspClientRuntimeHandoff::try_from(&transaction)?);
+        Ok(self)
     }
 
     /// Drop every idle cached session during an explicit client drain.
@@ -1100,87 +991,6 @@ fn build_playbook_client_timing_witness(
     .map_err(|error| error.reason_kind().to_owned())
 }
 
-pub(crate) fn decode_graph_evaluation_response(
-    frame: ClientFrame,
-) -> Result<agent_semantic_search_projection::ResidentGraphEvaluationResultV1, String> {
-    match frame {
-        ClientFrame::Response {
-            outcome: agent_semantic_client_protocol::ClientOutcome::Ready,
-            result: Some(result),
-            error: None,
-            ..
-        } => agent_semantic_search_projection::ResidentGraphEvaluationResultV1::from_value(result)
-            .map_err(|error| format!("decode resident graph evaluation response: {error}")),
-        ClientFrame::Response { outcome, error, .. } => Err(format!(
-            "graph evaluation dispatch failed: outcome={outcome:?} error={}",
-            error.unwrap_or(serde_json::Value::Null)
-        )),
-        frame => Err(format!(
-            "graph evaluation dispatch returned a non-response frame: {frame:?}"
-        )),
-    }
-}
-
-pub(crate) fn decode_schema_bundle_response(
-    frame: ClientFrame,
-) -> Result<SchemaBundleResponse, String> {
-    match frame {
-        ClientFrame::Response {
-            outcome: agent_semantic_client_protocol::ClientOutcome::Ready,
-            result: Some(result),
-            error: None,
-            ..
-        } => {
-            let response: SchemaBundleResponse = serde_json::from_value(result)
-                .map_err(|error| format!("decode schema bundle response: {error}"))?;
-            response.validate()?;
-            Ok(response)
-        }
-        ClientFrame::Response { outcome, error, .. } => Err(format!(
-            "schema bundle dispatch failed: outcome={outcome:?} error={}",
-            error.unwrap_or(serde_json::Value::Null)
-        )),
-        frame => Err(format!(
-            "schema bundle dispatch returned a non-response frame: {frame:?}"
-        )),
-    }
-}
-
 #[cfg(test)]
-mod playbook_client_timing_tests {
-    use super::build_playbook_client_timing_witness;
-
-    #[test]
-    fn playbook_witness_preserves_real_phase_order_and_request_binding() {
-        let witness = build_playbook_client_timing_witness(
-            "asp-client-session-1",
-            "dispatch-request-1",
-            13,
-            21,
-            34,
-        )
-        .expect("valid Playbook client timing witness");
-
-        assert_eq!(
-            witness
-                .phases
-                .each_ref()
-                .map(|phase| (phase.name.as_str(), phase.elapsed_micros)),
-            [
-                ("launcher", 13),
-                ("client-frame-encode", 21),
-                ("ipc-connect", 34),
-            ]
-        );
-        witness
-            .admit_for_request("asp-client-session-1", "dispatch-request-1")
-            .expect("same request binding");
-        assert_eq!(
-            witness
-                .admit_for_request("asp-client-session-1", "dispatch-request-2")
-                .expect_err("foreign request")
-                .reason_kind(),
-            "runtime-search-client-timing-identity-mismatch"
-        );
-    }
-}
+#[path = "../tests/unit/runtime_language_client_timing.rs"]
+mod playbook_client_timing_tests;

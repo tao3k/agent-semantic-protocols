@@ -108,7 +108,9 @@ source block inside the RFC.  Validation used parser-owned Org block extraction
 and Typst stdin:
 
 #+begin_src sh
-asp org query ... --content | typst compile - /tmp/searchloop-cache-identity-model.pdf
+asp query playbook --documents org \
+  --selector 'org://docs/10-19-rfcs/10.05-interactive-graph-first-progressive-searchloop/10.05.40-receipts-cache-identity/00.15-searchloop-cache-minimal-identity-refinement.org#item/block/searchloop-cache-identity-model' \
+  --projection source | typst compile - /tmp/searchloop-cache-identity-model.pdf
 #+end_src
 
 Result:

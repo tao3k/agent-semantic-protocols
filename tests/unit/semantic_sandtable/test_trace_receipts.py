@@ -25,7 +25,7 @@ def test_build_receipt_from_jsonl_and_text_trace(tmp_path: Path) -> None:
             [
                 json.dumps(_query_event()),
                 (
-                    "$ asp rust query --from-hook direct-source-read "
+                    "$ asp query playbook --language rust --from-hook direct-source-read "
                     f"--selector {REPLAY_BLOCK} --code ."
                 ),
             ]
@@ -70,9 +70,9 @@ def test_sandtable_receipt_accepts_agent_session_link() -> None:
         "agentSessionReceiptPath": "receipts/agent-session-receipt.json",
         "commands": [
             {
-                "id": "search-prime",
+                "id": "search-playbook",
                 "kind": "search",
-                "argv": ["asp", "rust", "search", "prime", "--view", "seeds", "."],
+                "argv": ["asp", "search", "playbook", "--language", "rust", "--rg", "--files", ".", "--tantivy", "term", "source"],
                 "metrics": {"elapsedMs": 0, "stdoutBytes": 20, "stderrBytes": 0},
             }
         ],
@@ -108,7 +108,7 @@ def _query_event() -> dict[str, object]:
         "command": {
             "method": "query",
             "query": (
-                "asp rust query --from-hook direct-source-read "
+                "asp query playbook --language rust --from-hook direct-source-read "
                 f"--selector {WRITEBACK_BLOCK} --code ."
             ),
         },

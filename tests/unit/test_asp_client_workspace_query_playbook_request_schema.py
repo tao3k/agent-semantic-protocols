@@ -21,6 +21,8 @@ def request() -> dict:
     return {
         "schemaId": "agent.semantic-protocols.asp-client-workspace-query-playbook-request",
         "schemaVersion": "1",
+        "language": "rust",
+        "documents": "org",
         "selectors": [
             "org://docs/publication.org#item/heading/Publication",
             "rust://src/registry.rs#item/method/refresh/scope/implementation-owner/type/Registry",
@@ -29,7 +31,7 @@ def request() -> dict:
     }
 
 
-def test_query_playbook_client_request_is_language_neutral_and_minimal() -> None:
+def test_query_playbook_client_request_separates_code_and_document_producers() -> None:
     schema_validator_for(SCHEMA).validate(request())
 
 
@@ -39,7 +41,7 @@ def test_query_playbook_client_request_is_language_neutral_and_minimal() -> None
         "runtimeExecutionBinding",
         "projectWorkspaceIdentity",
         "worktreeInstanceId",
-        "language",
+        "languages",
         "fromSearch",
         "recommendedNext",
     ],

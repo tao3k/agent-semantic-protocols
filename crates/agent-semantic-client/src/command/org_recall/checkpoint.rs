@@ -183,7 +183,10 @@ fn checkpoint_payload(
         project_id: options.project.to_string(),
         plan_id: plan_id.clone(),
         branch_id: branch_id(candidate, options.branch),
-        resume_command: format!("asp org query {plan_id} recovery evidence next-action"),
+        resume_command: format!(
+            "asp search playbook --documents org --rg -n -e {} -e recovery -e evidence -e next-action . --tantivy 'title:recovery^2 OR body:next-action'",
+            shell_single_quote(&plan_id)
+        ),
         source_locator,
         metadata: json!({
             "planTitle": candidate.title.clone(),
@@ -195,6 +198,10 @@ fn checkpoint_payload(
             "taskSourceLine": task.source_line,
         }),
     }
+}
+
+fn shell_single_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\\''"))
 }
 
 fn matches_session(candidate: &OrgPlanCandidate, session: &str) -> bool {

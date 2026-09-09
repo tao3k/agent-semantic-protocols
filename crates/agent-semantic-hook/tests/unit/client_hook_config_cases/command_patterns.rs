@@ -530,7 +530,7 @@ fn configurable_hook_default_rule_classification_stays_fast() {
         }),
         json!({
             "tool_name": "Bash",
-            "tool_input": {"command": "asp search playbook --language rust 'agent hooks' --workspace ."}
+            "tool_input": {"command": "asp search playbook --language rust --rg 'agent hooks'"}
         }),
     ]
     .map(|mut payload| {
@@ -643,7 +643,7 @@ fn break_glass_command_value_is_not_reclassified_as_registered_search() {
     let config = ClientHookConfig::default();
     let registry = registry();
     for protected_command in [
-        "asp rust search --workspace . --treesitter-query '(identifier) @id'",
+        "asp search playbook --language rust --rg -n -e owner . --tantivy 'body:owner AND path:*.rs' --syntax rust '(identifier) @id'",
         "jq . /tmp/runtime-server-owner-spawn.v1.json",
         "git diff -- crates/agent-semantic-hook/src/tool_action.rs",
     ] {

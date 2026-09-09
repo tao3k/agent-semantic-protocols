@@ -20,7 +20,7 @@ def test_timeout_keeps_partial_stdout_observations() -> None:
         "content": [
             {
                 "name": "Bash",
-                "input": {"command": "asp rust search prime --workspace . --view seeds"},
+                "input": {"command": "asp search playbook --language rust --rg --files . --tantivy term source"},
             }
         ],
     }
@@ -44,4 +44,4 @@ def test_timeout_keeps_partial_stdout_observations() -> None:
     assert isinstance(result, StepResult)
     assert result.status == "fail"
     assert result.stdout_lines == 1
-    assert result.observations["pipeFlow"]["aspCommands"] == 1
+    assert result.observations["commandFlow"]["aspCommands"] == 1

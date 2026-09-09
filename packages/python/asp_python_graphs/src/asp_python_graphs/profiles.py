@@ -174,22 +174,6 @@ DEFAULT_PROFILES: dict[str, GraphProfile] = {
         allowed_transitions=_transitions((("owner", "test"), ("test", "owner"))),
         frontier_actions=_DEFAULT_FRONTIER_ACTIONS,
     ),
-    "prime": GraphProfile(
-        name="prime",
-        allowed_relations=frozenset(
-            {"matches", "selects", "uses", "imports", "covers"}
-        ),
-        allowed_transitions=_transitions(
-            (
-                ("query", "owner"),
-                ("owner", "dependency"),
-                ("dependency", "owner"),
-                ("owner", "test"),
-            )
-        ),
-        frontier_actions=_DEFAULT_FRONTIER_ACTIONS,
-        kind_bonus=NODE_KIND_BONUS_BY_PROFILE["prime"],
-    ),
     "read-frontier": GraphProfile(
         name="read-frontier",
         allowed_relations=frozenset({"contains", "split", "selects", "covers"}),

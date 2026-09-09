@@ -387,7 +387,7 @@ extension payloads under the corresponding root.
 ** Layering
 
 #+begin_example
-native language harnesses
+native ASP language providers
   -> provider outputs / parser facts
   -> artifact Merkle roots
   -> Turso artifact/search/index tables
@@ -914,7 +914,7 @@ creates poor concurrency behavior for multi-session agents.
 Use Git tree/commit hashes as artifact identity.
 
 Rejected because ASP must handle dirty overlays, provider outputs, generated
-graphs, non-Git workspaces, and language harness facts that are not Git objects.
+graphs, non-Git workspaces, and ASP language provider facts that are not Git objects.
 Git hashes can be referenced as input facts when available, but they are not
 enough.
 

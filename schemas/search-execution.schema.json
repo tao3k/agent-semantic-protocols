@@ -29,14 +29,14 @@
       "minLength": 1
     },
     "operation": {
-      "enum": ["prime", "query-set", "search", "query", "exact", "pipe"]
+      "enum": ["playbook", "query", "exact"]
     },
     "context": {
       "type": "object",
       "additionalProperties": false,
       "required": ["binding", "commitDigest"],
       "properties": {
-        "binding": { "$ref": "content-binding" },
+        "binding": { "$ref": "https://agent.semantic.protocols/schemas/content-binding" },
         "commitDigest": {
           "type": "string",
           "pattern": "^blake3-256:[0-9a-f]{64}$"
@@ -58,7 +58,7 @@
       "if": {
         "properties": {
           "operation": {
-            "enum": ["query", "exact", "pipe"]
+            "enum": ["query", "exact"]
           }
         }
       },

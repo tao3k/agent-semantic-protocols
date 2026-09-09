@@ -13,10 +13,9 @@ pub(crate) async fn run_workspace_search_playbook(args: &[String]) -> Result<(),
     let request = agent_semantic_search::parse_progressive_search_playbook_args(&parser_args)
         .map_err(|error| error.to_string())?;
     let agent_semantic_search::ProgressiveSearchPlaybookRequest {
-        languages,
+        language,
         documents,
         workspace,
-        fd,
         rg,
         tantivy,
         syntax,
@@ -24,7 +23,6 @@ pub(crate) async fn run_workspace_search_playbook(args: &[String]) -> Result<(),
         graph,
         clause_order,
     } = request;
-    let fd = (!fd.is_empty()).then_some(fd);
     let rg = (!rg.is_empty()).then_some(rg);
     let tantivy = (!tantivy.is_empty()).then_some(tantivy);
     let syntax = (!syntax.is_empty()).then(|| {
@@ -55,9 +53,6 @@ pub(crate) async fn run_workspace_search_playbook(args: &[String]) -> Result<(),
                     .map(|clause| {
                         agent_semantic_client_protocol::AspClientSearchPlaybookClauseRef {
                             axis: match clause.axis {
-                                agent_semantic_search::SearchPlaybookClauseAxis::Fd => {
-                                    agent_semantic_client_protocol::AspClientSearchPlaybookClauseAxis::Fd
-                                }
                                 agent_semantic_search::SearchPlaybookClauseAxis::Rg => {
                                     agent_semantic_client_protocol::AspClientSearchPlaybookClauseAxis::Rg
                                 }
@@ -79,17 +74,18 @@ pub(crate) async fn run_workspace_search_playbook(args: &[String]) -> Result<(),
                     })
                     .collect();
 
-    let project_root = resolve_playbook_workspace(workspace.as_deref())?;
+    let state_home = agent_semantic_runtime::state_core::resolve_state_home()?;
+    let project_root = resolve_registered_workspace(workspace.as_deref(), &state_home).await?;
     let launcher_elapsed_micros = launcher_started
         .elapsed()
         .as_micros()
         .min(u128::from(u64::MAX)) as u64;
 
-    let state_home = agent_semantic_runtime::state_core::resolve_state_home()?;
     #[cfg(unix)]
     let client = crate::AspClient::new_from_host_capability(state_home, &project_root)?;
     #[cfg(not(unix))]
     let client = crate::AspClient::new(state_home, &project_root);
+    let client = client.admit_runtime_workspace("Search Playbook").await?;
     let frame = client
         .dispatch_playbook_method(
             agent_semantic_client_protocol::WORKSPACE_SEARCH_PLAYBOOK_METHOD.to_owned(),
@@ -99,10 +95,9 @@ pub(crate) async fn run_workspace_search_playbook(args: &[String]) -> Result<(),
                         "agent.semantic-protocols.asp-client-workspace-search-playbook-request"
                             .to_owned(),
                     schema_version: "1".to_owned(),
-                    languages,
+                    language,
                     documents,
                     workspace,
-                    fd,
                     rg,
                     tantivy,
                     syntax,
@@ -129,21 +124,25 @@ pub(crate) async fn run_workspace_query(args: &[String]) -> Result<(), String> {
     let request = agent_semantic_search::parse_progressive_query_args(&parser_args)?;
     match request {
         agent_semantic_search::ProgressiveQueryRequest::Selector {
+            language,
+            documents,
             selectors,
             projection,
             output_format,
             workspace,
         } => {
-            let project_root = resolve_query_workspace(workspace.as_deref())?;
+            let state_home = agent_semantic_runtime::state_core::resolve_state_home()?;
+            let project_root =
+                resolve_registered_workspace(workspace.as_deref(), &state_home).await?;
             let launcher_elapsed_micros = launcher_started
                 .elapsed()
                 .as_micros()
                 .min(u128::from(u64::MAX)) as u64;
-            let state_home = agent_semantic_runtime::state_core::resolve_state_home()?;
             #[cfg(unix)]
             let client = crate::AspClient::new_from_host_capability(state_home, &project_root)?;
             #[cfg(not(unix))]
             let client = crate::AspClient::new(state_home, &project_root);
+            let client = client.admit_runtime_workspace("Query Playbook").await?;
             let frame = client
                 .dispatch_playbook_method(
                     agent_semantic_client_protocol::WORKSPACE_QUERY_PLAYBOOK_METHOD.to_owned(),
@@ -151,6 +150,8 @@ pub(crate) async fn run_workspace_query(args: &[String]) -> Result<(), String> {
                         agent_semantic_client_protocol::AspClientWorkspaceQueryPlaybookRequest {
                             schema_id: "agent.semantic-protocols.asp-client-workspace-query-playbook-request".to_owned(),
                             schema_version: "1".to_owned(),
+                            language,
+                            documents,
                             selectors,
                             projection,
                         },
@@ -176,30 +177,40 @@ pub(crate) async fn run_workspace_query(args: &[String]) -> Result<(), String> {
     }
 }
 
-fn resolve_playbook_workspace(workspace: Option<&str>) -> Result<PathBuf, String> {
-    let workspace = match workspace {
-        None | Some(".") => std::env::current_dir()
-            .map_err(|error| format!("failed to resolve current project directory: {error}"))?,
-        Some(workspace) => PathBuf::from(workspace),
+async fn resolve_registered_workspace(
+    workspace_id: Option<&str>,
+    state_home: &std::path::Path,
+) -> Result<PathBuf, String> {
+    let current_directory = std::env::current_dir()
+        .map_err(|error| format!("failed to resolve current project directory: {error}"))?;
+    let current =
+        agent_semantic_client_core::state_core::ResolvedState::resolve(current_directory)?;
+    let Some(workspace_id) = workspace_id else {
+        return Ok(current.workspace.root);
     };
-    if !workspace.is_dir() {
+    let catalog_path = agent_semantic_artifacts::StateHomeLayout::new(state_home)
+        .runtime_state()
+        .serving()
+        .workspace_admission_catalog();
+    let catalog = agent_semantic_client_db::runtime_server_admission_catalog::
+        RuntimeWorkspaceAdmissionCatalog::load(catalog_path)
+        .await?;
+    let entry =
+        catalog.resolve_project_workspace(&current.repo.repo_id.to_string(), workspace_id)?;
+    let resolved =
+        agent_semantic_client_core::state_core::ResolvedState::resolve(&entry.project_root)?;
+    if resolved.repo.repo_id != current.repo.repo_id
+        || resolved.workspace.workspace_id.as_str() != workspace_id
+    {
         return Err(format!(
-            "search playbook workspace must be a directory: {}",
-            workspace.display()
+            "registered workspace binding drift: projectId={} workspaceId={workspace_id} projectRoot={}",
+            current.repo.repo_id,
+            entry.project_root.display()
         ));
     }
-    std::fs::canonicalize(&workspace).map_err(|error| {
-        format!(
-            "failed to canonicalize Search playbook workspace {}: {error}",
-            workspace.display()
-        )
-    })
+    Ok(resolved.workspace.root)
 }
 
-fn resolve_query_workspace(workspace: Option<&str>) -> Result<PathBuf, String> {
-    match workspace {
-        None | Some(".") => resolve_playbook_workspace(workspace),
-        Some(workspace) => std::fs::canonicalize(workspace)
-            .map_err(|error| format!("failed to resolve Query workspace {workspace}: {error}")),
-    }
-}
+#[cfg(test)]
+#[path = "../../tests/unit/root_language_facade.rs"]
+mod tests;

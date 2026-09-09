@@ -103,7 +103,7 @@ The named block =searchroute-partial-route-inspect-scheduler-model= compiled
 through standard input:
 
 #+begin_src sh
-asp org query --workspace . exact \
+asp query playbook --documents org --workspace . exact \
   --kind block \
   --term searchroute-partial-route-inspect-scheduler-model \
   --content |

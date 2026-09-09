@@ -10,8 +10,6 @@ fn decision(label: &str) -> crate::HookDecision {
     let mut decision = crate::classify_hook(
         &crate::HookRuntime {
             project_root: ".".to_owned(),
-            rankers: Vec::new(),
-            providers: Vec::new(),
             policy_providers: Vec::new(),
         },
         "codex",

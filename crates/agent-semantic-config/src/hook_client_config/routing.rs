@@ -226,7 +226,7 @@ pub struct HookClientRuleMatchConfig {
     /// structured projector capabilities, rather than provider language sources.
     #[serde(default)]
     pub argv_structured_document_file: bool,
-    /// Match source paths owned by any activated language harness coverage contract.
+    /// Match source paths owned by any activated ASP language provider coverage contract.
     #[serde(default)]
     pub argv_registered_source_file: bool,
     /// Complete parser-owned structured projection matcher and lazy capability declaration.

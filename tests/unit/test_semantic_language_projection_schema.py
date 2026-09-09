@@ -36,6 +36,7 @@ def projection_packet() -> dict[str, object]:
                 "sourceId": "source:src/main.ss",
                 "path": "src/main.ss",
                 "sourceKind": "source",
+                "sourceContentDigest": "a" * 64,
             }
         ],
         "owners": [
@@ -53,6 +54,16 @@ def projection_packet() -> dict[str, object]:
                 "kind": "function",
                 "name": "run",
                 "selector": "gerbil-scheme://src/main.ss#item/function/run",
+                "projections": [
+                    {
+                        "projectionKind": "callable-skeleton",
+                        "sourceByteStart": 0,
+                        "sourceByteEnd": 12,
+                        "normalizedParserFactsDigest": "b" * 64,
+                        "projectionDigest": "c" * 64,
+                        "projectionText": "(def (run))",
+                    }
+                ],
             }
         ],
         "relations": [

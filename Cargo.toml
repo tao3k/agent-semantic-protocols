@@ -21,6 +21,7 @@ members = [
     "crates/agent-semantic-hook-testkit",
     "crates/agent-semantic-http-json",
     "crates/agent-semantic-loop",
+    "crates/agent-semantic-mrr",
     "crates/agent-semantic-provider-protocol",
     "crates/agent-semantic-provider-transport",
     "crates/agent-semantic-search",
@@ -29,6 +30,7 @@ members = [
     "crates/agent-semantic-schema-manager",
     "crates/agent-semantic-shell-parser",
     "crates/agent-semantic-tree-sitter",
+    "crates/agent-semantic-workspace-scheduler",
 ]
 exclude = ["languages/orgize", "languages/asp-rust"]
 resolver = "2"
@@ -42,6 +44,7 @@ edition = "2024"
 [workspace.lints]
 
 [workspace.dependencies]
+ascent = "0.8.0"
 arc-swap = "1.9.2"
 memmap2 = "0.9.10"
 agent-semantic-provider-protocol = { path = "crates/agent-semantic-provider-protocol" }
@@ -56,6 +59,8 @@ base64 = "0.23.1"
 agent-semantic-content-identity = { path = "crates/agent-semantic-content-identity" }
 agent-semantic-artifacts = { path = "crates/agent-semantic-artifacts" }
 agent-semantic-http-json = { path = "crates/agent-semantic-http-json" }
+agent-semantic-mrr = { path = "crates/agent-semantic-mrr" }
+agent-semantic-workspace-scheduler = { path = "crates/agent-semantic-workspace-scheduler" }
 tokio = { version = "1", features = ["full"] }
 tokio-stream = { version = "0.1", features = ["net", "sync"] }
 tower = { version = "0.5", features = ["util"] }
@@ -165,6 +170,14 @@ opt-level = 2
 [profile.dev.package.agent-semantic-client]
 opt-level = 1
 codegen-units = 16
+
+# Test binaries are executable evidence, not debugger artifacts. Omitting DWARF
+# keeps focused harness links proportional to code under test instead of the
+# transitive workspace dependency graph. Package-specific optimization below
+# remains available for representative latency/SLO tests.
+[profile.test]
+debug = 0
+incremental = true
 
 # Hook microsecond SLO tests must execute representative optimized policy code;
 # an unoptimized test artifact turns allocator/decoder debug overhead into a

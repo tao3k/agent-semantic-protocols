@@ -26,14 +26,12 @@ REQUEST_PATH = SCHEMA_DIR / (
 RECEIPT_PATH = SCHEMA_DIR / (
     "fixtures/query-playbook-materialization-receipt/valid-runtime-bound-ready.v1.json"
 )
+EXECUTION_PUBLICATION_DIGEST = "blake3-256:" + "e" * 64
+RUNTIME_BUNDLE_DIGEST = "blake3-256:" + "f" * 64
 
 
 def load(path: Path) -> dict:
     return json.loads(path.read_text())
-
-
-def manifest_project_workspace(request: dict) -> dict:
-    return deepcopy(request["runtimeExecutionBinding"]["projectWorkspace"])
 
 
 def request_validator() -> Draft202012Validator:
@@ -70,7 +68,8 @@ def test_runtime_bound_fixture_is_schema_valid_and_semantically_admitted() -> No
     validate_query_playbook_request(
         request,
         request["runtimeExecutionBinding"],
-        manifest_project_workspace(request),
+        EXECUTION_PUBLICATION_DIGEST,
+        RUNTIME_BUNDLE_DIGEST,
     )
 
 
@@ -79,9 +78,7 @@ def test_query_v1_rejects_the_legacy_runtime_identity_carrier() -> None:
     binding = request["runtimeExecutionBinding"]
     binding["schemaId"] = "asp.runtime-execution-binding"
     binding["schemaVersion"] = "1"
-    binding["projectId"] = binding.pop("projectWorkspace")[
-        "projectWorkspaceIdentity"
-    ]
+    binding["projectId"] = binding.pop("projectWorkspace")["projectWorkspaceIdentity"]
     binding["workspaceId"] = binding.pop("worktreeInstanceId")
     with pytest.raises(ValidationError):
         request_validator().validate(request)
@@ -94,7 +91,8 @@ def test_query_accepts_the_smallest_selector_subset_without_search_handoff() -> 
     validate_query_playbook_request(
         request,
         request["runtimeExecutionBinding"],
-        manifest_project_workspace(request),
+        EXECUTION_PUBLICATION_DIGEST,
+        RUNTIME_BUNDLE_DIGEST,
     )
 
 
@@ -106,9 +104,20 @@ def test_query_rejects_runtime_binding_drift() -> None:
     )
     with pytest.raises(SettlementError) as caught:
         validate_query_playbook_request(
-            request, admitted, manifest_project_workspace(request)
+            request,
+            admitted,
+            EXECUTION_PUBLICATION_DIGEST,
+            RUNTIME_BUNDLE_DIGEST,
         )
     assert caught.value.reason_kind == "query-playbook-runtime-binding-mismatch"
+
+
+@pytest.mark.parametrize("field", ["topologyLibraryDigest", "topologyClosureDigest"])
+def test_query_schema_rejects_search_owned_topology_identity(field: str) -> None:
+    request = load(REQUEST_PATH)
+    request[field] = "blake3-256:" + "9" * 64
+    with pytest.raises(ValidationError):
+        request_validator().validate(request)
 
 
 @pytest.mark.parametrize("field", ["projectWorkspaceIdentity", "worktreeInstanceId"])
@@ -119,15 +128,16 @@ def test_query_rejects_project_or_worktree_context_drift(field: str) -> None:
         validate_query_playbook_request(
             request,
             request["runtimeExecutionBinding"],
-            manifest_project_workspace(request),
+            EXECUTION_PUBLICATION_DIGEST,
+            RUNTIME_BUNDLE_DIGEST,
         )
     assert caught.value.reason_kind == "query-playbook-runtime-context-mismatch"
 
 
 def test_equal_query_and_runtime_cannot_self_authorize_a_foreign_workspace() -> None:
     request = load(REQUEST_PATH)
-    manifest = manifest_project_workspace(request)
-    foreign = deepcopy(manifest)
+    admitted = deepcopy(request["runtimeExecutionBinding"])
+    foreign = deepcopy(admitted["projectWorkspace"])
     foreign["projectWorkspaceIdentity"] = (
         "git+https://github.com/tao3k/foreign.git#workspace/root"
     )
@@ -136,12 +146,12 @@ def test_equal_query_and_runtime_cannot_self_authorize_a_foreign_workspace() -> 
 
     with pytest.raises(SettlementError) as caught:
         validate_query_playbook_request(
-            request, request["runtimeExecutionBinding"], manifest
+            request,
+            admitted,
+            EXECUTION_PUBLICATION_DIGEST,
+            RUNTIME_BUNDLE_DIGEST,
         )
-    assert (
-        caught.value.reason_kind
-        == "query-playbook-project-workspace-manifest-mismatch"
-    )
+    assert caught.value.reason_kind == "query-playbook-runtime-binding-mismatch"
 
 
 def test_legacy_search_settlement_fields_are_not_part_of_query_v1() -> None:
@@ -166,7 +176,8 @@ def test_ready_receipt_is_one_runtime_bound_all_or_nothing_terminal() -> None:
         receipt,
         request,
         request["runtimeExecutionBinding"],
-        manifest_project_workspace(request),
+        EXECUTION_PUBLICATION_DIGEST,
+        RUNTIME_BUNDLE_DIGEST,
     )
 
 
@@ -179,9 +190,18 @@ def test_ready_receipt_rejects_a_missing_or_reordered_selector() -> None:
             receipt,
             request,
             request["runtimeExecutionBinding"],
-            manifest_project_workspace(request),
+            EXECUTION_PUBLICATION_DIGEST,
+            RUNTIME_BUNDLE_DIGEST,
         )
     assert caught.value.reason_kind == "query-playbook-materialization-set-mismatch"
+
+
+def test_ready_receipt_schema_rejects_a_search_owned_relationship() -> None:
+    request = load(REQUEST_PATH)
+    receipt = load(RECEIPT_PATH)
+    receipt["materializations"][0]["gqlRelationships"] = []
+    with pytest.raises(ValidationError):
+        receipt_validator().validate(receipt)
 
 
 def test_failed_receipt_cannot_expose_partial_materialization() -> None:

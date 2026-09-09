@@ -27,7 +27,7 @@ def sample_graph_turbo_request() -> dict[str, object]:
         "protocolId": "agent.semantic-protocols.semantic-language",
         "protocolVersion": "1",
         "packetKind": "graph-turbo-request",
-        "surface": "search-pipe",
+        "surface": "search-playbook",
         "sourceSnapshot": {
             "schemaId": "asp.source-snapshot.v1",
             "algorithm": "blake3-merkle-v1",
@@ -45,7 +45,7 @@ def sample_graph_turbo_request() -> dict[str, object]:
         "queryTerms": ["cache"],
         "profile": "owner-query",
         "algorithm": "typed-ppr-diverse",
-        "seedIds": ["query:cache"],
+        "entryNodeIds": ["query:cache"],
         "budget": 4,
         "kindBudgets": {"item": 2, "owner": 1, "test": 1},
         "pathBudget": 3,

@@ -266,8 +266,8 @@ def _top_elapsed_finding(result: ScenarioResult) -> RuntimeAuditFinding:
 def _scenario_asp_command_output_bytes(result: ScenarioResult) -> int:
     total = 0
     for step in result.steps:
-        pipe_flow = dict_value(step.observations.get("pipeFlow"))
-        total += optional_int(pipe_flow.get("aspCommandOutputBytes")) or 0
+        command_flow = dict_value(step.observations.get("commandFlow"))
+        total += optional_int(command_flow.get("aspCommandOutputBytes")) or 0
     return total
 
 

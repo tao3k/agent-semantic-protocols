@@ -262,8 +262,7 @@
         },
       "next": {
         "enum": [
-          "query-selector",
-          "search-reasoning"
+          "query-selector"
         ]
       },
       "capabilityId": {

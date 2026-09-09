@@ -80,7 +80,7 @@ fn install_binary_reconciles_provider_artifacts_without_starting_runtime() {
     );
     let stdout = String::from_utf8_lossy(&warm.stdout);
     assert!(
-        stdout.contains("providerReconciliation=embedded-release-catalog"),
+        stdout.contains("providerReconciliation=configured-artifact-authority"),
         "{stdout}"
     );
     assert!(stdout.contains("providerReconciledCount=0"), "{stdout}");

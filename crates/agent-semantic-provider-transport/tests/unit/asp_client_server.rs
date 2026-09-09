@@ -48,7 +48,7 @@ fn serve_request(
 }
 
 #[tokio::test]
-async fn provider_http_request_deadline_fails_closed_when_the_server_never_responds() {
+async fn provider_http_lifecycle_deadline_fails_closed_when_the_server_never_responds() {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
         .await
         .expect("bind stalled provider fixture");
@@ -57,21 +57,53 @@ async fn provider_http_request_deadline_fails_closed_when_the_server_never_respo
         let (_stream, _) = listener.accept().await.expect("accept provider request");
         std::future::pending::<()>().await;
     });
-    let client = AspClientServerHttpClient::new_with_timeout(
+    let client = AspClientServerHttpClient::new(
         reqwest::Url::parse(&format!("http://{address}/")).expect("provider URL"),
-        std::time::Duration::from_millis(25),
     )
     .expect("provider HTTP client");
 
     let error = client
-        .json("GET", "/health", None)
+        .json_with_deadline("GET", "/health", None, std::time::Duration::from_millis(25))
         .await
         .expect_err("stalled provider request must reach a terminal deadline");
     assert!(
-        error == "ASP Client Server request deadline exceeded",
+        error == "ASP Client Server lifecycle deadline exceeded",
         "deadline failure must remain typed: {error}"
     );
     stalled_server.abort();
+}
+
+#[tokio::test]
+async fn provider_http_generation_frame_is_not_cut_by_a_lifecycle_deadline() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind delayed provider fixture");
+    let address = listener.local_addr().expect("delayed provider address");
+    let (_shutdown, shutdown_reader) = watch::channel(false);
+    let server = tokio::spawn(serve_asp_client_server(
+        listener,
+        shutdown_reader,
+        |request| async move {
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            Ok(AspClientServerResponse {
+                status: 200,
+                body: request.body,
+            })
+        },
+    ));
+    let client = AspClientServerHttpClient::new(
+        reqwest::Url::parse(&format!("http://{address}/")).expect("provider URL"),
+    )
+    .expect("provider HTTP client");
+    let payload = br#"{"operation":"generation-projection"}"#;
+
+    let response = client
+        .json("POST", "/v1/provider-runtime", Some(payload))
+        .await
+        .expect("generation frame remains governed by its task cancellation owner");
+    assert_eq!(response, payload);
+
+    server.abort();
 }
 
 #[tokio::test]

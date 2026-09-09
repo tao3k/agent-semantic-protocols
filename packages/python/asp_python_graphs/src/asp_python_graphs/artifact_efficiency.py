@@ -10,13 +10,12 @@ from collections.abc import Mapping
 
 
 def efficiency_estimate(report: Mapping[str, object]) -> dict[str, object]:
-    typed_frontier_searches = (
-        _int_value(report, "suppressiblePrimeSearches")
-        + _int_value(report, "promotableTypedFrontierSearches")
+    avoidable_searches = (
+        _int_value(report, "promotableTypedFrontierSearches")
         + _int_value(report, "collapsibleOwnerSearches")
     )
     avoidable_fanout_branches = _int_value(report, "avoidableFanoutBranches")
-    avoidable_upper_bound = typed_frontier_searches + avoidable_fanout_branches
+    avoidable_upper_bound = avoidable_searches + avoidable_fanout_branches
     observed_actions = _int_value(report, "actionEventCount")
     return {
         "policy": "timeline-action-reduction-estimate",
@@ -25,7 +24,7 @@ def efficiency_estimate(report: Mapping[str, object]) -> dict[str, object]:
         "observedRounds": _int_value(report, "roundCount"),
         "repeatSearches": _int_value(report, "repeatSearches"),
         "routableFanoutBursts": _int_value(report, "routableFanoutBursts"),
-        "typedFrontierAvoidableSearches": typed_frontier_searches,
+        "avoidableSearches": avoidable_searches,
         "avoidableFanoutBranches": avoidable_fanout_branches,
         "estimatedAvoidableActionsUpperBound": avoidable_upper_bound,
         "estimatedActionReductionRatioUpperBound": _ratio(

@@ -55,7 +55,7 @@ def render_compact(result: GraphResult) -> str:
 def _render_header(result: GraphResult, seed_line: str) -> str:
     if result.profile.name == "failure-frontier":
         return (
-            f"[search-failure] kind={_failure_kind(result)} profile={result.profile.name} "
+            f"[graph-failure] kind={_failure_kind(result)} profile={result.profile.name} "
             f"alg={ALGORITHM_ID} seed={seed_line} budget={result.budget}"
         )
     surface = "[graph-frontier]"
@@ -174,9 +174,7 @@ def _render_owner_query_projection_lines(
     if not actions:
         return []
     return [
-        "pipeChoice=bounded-fanout maxBranches=3 repeat=false owner=asp-python-graphs",
-        "pipePolicy=maxSearchPipe=1 rewrite=false branchRepeat=false stopAfterProjectedBranches=true missingTokenSearch=false postProjectionSearch=false",
-        "selectorPolicy=run-first reason=exact-selector-present before=search-reasoning",
+        "selectorPolicy=run-first reason=exact-selector-present",
         _render_query_token_coverage(result),
         f"frontierActions={actions}",
     ]

@@ -73,15 +73,13 @@ def test_provider_registration_requires_route_dsl_and_has_no_method_legacy() -> 
         assert legacy not in serialized
 
 
-def test_all_seven_provider_registrations_have_canonical_inventory_and_root_identity() -> None:
+def test_external_provider_registrations_have_canonical_inventory_and_root_identity() -> None:
     registrations = {
         "rust": ROOT / "languages/asp-rust/provider/asp-provider-registration.json",
         "typescript": ROOT / "languages/asp-typescript/provider/asp-provider-registration.json",
         "python": ROOT / "languages/asp-python/provider/asp-provider-registration.json",
         "julia": ROOT / "languages/AspJulia.jl/juliac/asp-provider-registration.json",
         "gerbil-scheme": ROOT / "languages/asp-gerbil-scheme/provider/asp-provider-registration.json",
-        "org": ROOT / "languages/orgize/provider/asp-provider-registration.json",
-        "md": ROOT / "languages/orgize/provider/asp-md-provider-registration.json",
     }
     root_register = json.loads((ROOT / "schemas/provider-register.json").read_text())
     identities = {(entry["languageId"], entry["providerId"]) for entry in root_register["providers"]}
@@ -116,7 +114,20 @@ def test_all_seven_provider_registrations_have_canonical_inventory_and_root_iden
         assert registration["routes"]
         descriptor_ref = registration["providerDescriptor"]["$ref"]
         assert (path.parent / descriptor_ref).is_file()
-    assert registrations["org"].name != registrations["md"].name
+    canonical_schema = json.loads(
+        (ROOT / "schemas/canonical-provider-identity.v1.schema.json").read_text()
+    )
+    canonical_identities = {
+        (
+            branch["properties"]["languageId"]["const"],
+            branch["properties"]["providerId"]["const"],
+        )
+        for branch in canonical_schema["oneOf"]
+    }
+    assert {entry for entry in canonical_identities if entry[0] in {"org", "md"}} == {
+        ("org", "asp-org"),
+        ("md", "asp-md"),
+    }
 
 
 def test_rust_registration_routes_use_structured_output_schema_references() -> None:
@@ -127,7 +138,11 @@ def test_rust_registration_routes_use_structured_output_schema_references() -> N
         ).read_text()
     )
     routes = registration["routes"]
-    assert len(routes) == 4
+    assert {route["operation"] for route in routes} == {
+        "projection-batch",
+        "search",
+        "query",
+    }
     for route in routes:
         output = route["output"]
         assert set(output) <= {"schema", "mediaType", "projectionKind"}

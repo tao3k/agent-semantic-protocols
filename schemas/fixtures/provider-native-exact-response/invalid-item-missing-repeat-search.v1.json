@@ -16,6 +16,6 @@
   ],
   "actualKinds": [],
   "recommendedNext": {
-    "command": "asp search playbook --language rust 'definitely_missing' --intent exact-literal --scope owner:src/live.rs --coverage candidates --explain compact --workspace ."
+    "command": "asp search playbook --language rust --rg -n -F definitely_missing src/live.rs --tantivy 'body:definitely_missing' --workspace ."
   }
 }

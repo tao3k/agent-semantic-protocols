@@ -166,14 +166,14 @@ def _audit_fixture_repo(root: Path) -> Path:
                                 "'totalTokens':420,"
                                 "'costUsd':0.123"
                                 "},"
-                                "'pipeFlow':{"
+                                "'commandFlow':{"
                                 "'aspCommands':3,"
                                 "'aspCommandOutputBytes':2048"
                                 "}"
                                 "}))"
                             ),
                         ],
-                        "expect": {"pipeFlow": {}},
+                        "expect": {"commandFlow": {}},
                     }
                 ],
             }

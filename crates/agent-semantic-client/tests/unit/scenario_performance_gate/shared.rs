@@ -50,7 +50,7 @@ pub(super) const LANGUAGE_SCENARIO_BENCHMARK_REQUIREMENTS:
     },
     LanguageScenarioBenchmarkRequirement {
         language: "python",
-        root: "languages/asp-python/tests/unit/harness/scenarios/software_criteria",
+        root: "languages/asp-python/tests/unit/asp_python/scenarios/software_criteria",
         syntax: ScenarioBenchmarkSyntax::TomlPair,
     },
     LanguageScenarioBenchmarkRequirement {

@@ -95,23 +95,11 @@ def _repeat_target(group: Mapping[str, Any]) -> dict[str, object]:
 
 
 def _repeat_policy(method: str) -> tuple[str, str, str]:
-    if method == "search/prime":
+    if method == "search/playbook":
         return (
-            "repeat-prime",
-            "agent-guidance-and-cache",
-            "Suppress repeated prime calls after a session already has a fresh prime frontier.",
-        )
-    if method == "search/typed-frontier":
-        return (
-            "repeat-search",
-            "target-recall-and-profile-selection",
-            "Promote recurring fuzzy targets into typed owner/item/test frontier facts.",
-        )
-    if method == "search/owner":
-        return (
-            "repeat-owner",
-            "owner-frontier-expansion",
-            "Return hotter owner-local item/test frontiers so repeated owner searches collapse.",
+            "repeat-search-playbook",
+            "query-set-planning",
+            "Reuse the current Playbook evidence and narrow with an exact query.",
         )
     return (
         "repeat-search",
@@ -185,26 +173,11 @@ def _repeat_route(
     language: str, method: str, subject: str, project_root_arg: str
 ) -> dict[str, object]:
     root = project_root_arg or "."
-    if method == "search/typed-frontier":
+    if method == "search/playbook":
         return {
             "profile": "owner-query",
-            "route": (
-                "path-typed-frontier-to-owner-items"
-                if target_like(subject)
-                else "typed-frontier-owner-test-seeds"
-            ),
+            "route": "playbook-to-exact-query",
             "preferredCommand": _frontier_command(language, method, subject, root),
-        }
-    if method == "search/owner":
-        return {
-            "profile": "owner-query",
-            "route": "owner-to-item-frontier",
-            "preferredCommand": _owner_items_command(language, subject, root),
-        }
-    if method == "search/prime":
-        return {
-            "profile": "prime",
-            "route": "reuse-prime-frontier",
         }
     return {}
 
@@ -231,10 +204,8 @@ def _preferred_fanout_key(value: object) -> Mapping[str, Any] | None:
         return None
     keys = [item for item in value if isinstance(item, Mapping)]
     return (
-        _first_key(keys, "search/owner", require_target=True)
-        or _first_key(keys, "search/typed-frontier", require_target=True)
-        or _first_key(keys, "search/typed-frontier", require_target=False)
-        or _first_key(keys, "search/owner", require_target=False)
+        _first_key(keys, "search/playbook", require_target=True)
+        or _first_key(keys, "search/playbook", require_target=False)
     )
 
 
@@ -255,36 +226,21 @@ def _first_key(
 def _frontier_command(
     language: str, method: str, subject: str, project_root_arg: str
 ) -> str:
-    if method == "search/owner" or target_like(subject):
-        return _owner_items_command(language, subject, project_root_arg)
     return shell_command(
         (
             "asp",
-            language,
             "search",
-            "typed-frontier",
+            "playbook",
+            "--language",
+            language,
+            "--rg",
+            "-n",
+            "-e",
             subject,
-            "owner",
-            "tests",
-            "--view",
-            "seeds",
             project_root_arg,
-        )
-    )
-
-
-def _owner_items_command(language: str, owner: str, project_root_arg: str) -> str:
-    return shell_command(
-        (
-            "asp",
-            language,
-            "search",
-            "owner",
-            owner,
-            "items",
-            "--view",
-            "seeds",
-            project_root_arg,
+            "--tantivy",
+            "term",
+            subject,
         )
     )
 

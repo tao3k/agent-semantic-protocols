@@ -33,20 +33,7 @@
         "selector": {"type": "string", "pattern": "^[A-Za-z][A-Za-z0-9+.-]*://[^\\s]+$(?![\\s\\S])"},
         "path": {"$ref": "#/$defs/path"},
         "jq": {"type": "string", "minLength": 1},
-        "lines": {
-          "type": "array",
-          "minItems": 1,
-          "items": {
-            "type": "array",
-            "minItems": 2,
-            "maxItems": 2,
-            "prefixItems": [
-              {"type": "integer", "minimum": 1},
-              {"type": "integer", "minimum": 1}
-            ],
-            "items": false
-          }
-        }
+        "lines": {"$ref": "https://schemas.agent-semantic-protocols.dev/semantic-search-definitions.v1.schema.json#/$defs/lineRanges"}
       },
       "oneOf": [
         {"required": ["selector"], "not": {"anyOf": [{"required": ["path"]}, {"required": ["jq"]}, {"required": ["lines"]}]}},

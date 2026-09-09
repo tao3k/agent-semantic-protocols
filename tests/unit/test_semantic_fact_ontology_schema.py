@@ -20,9 +20,6 @@ from schema_validation import schema_validator_for  # noqa: E402
 
 _SCHEMA_PATH = _ROOT / "schemas" / "semantic-fact-ontology.v1.schema.json"
 _FIXTURES_PATH = _ROOT / "schemas" / "semantic-fact-ontology.fixtures.v1.json"
-_REGISTRY_PATH = _ROOT / "schemas" / "semantic-language-registry.providers.v1.json"
-
-_SOURCE_LANGUAGES = {"rust", "typescript", "python", "julia"}
 _EXPECTED_IMPLS = {
     ("rust", "sequence"): "Vec",
     ("rust", "map"): "HashMap",
@@ -68,23 +65,3 @@ def test_semantic_fact_ontology_fixture_matrix_is_cross_language() -> None:
         assert any(relation == "has_type" for _, relation in edge_pairs)
         assert any(relation == "collection_of" for _, relation in edge_pairs)
 
-
-def test_source_language_registry_advertises_semantic_fact_ontology() -> None:
-    registry = _load_json(_REGISTRY_PATH)
-    registrations = {
-        language["languageId"]: {
-            (schema["schemaId"], schema["schemaVersion"], schema["path"])
-            for schema in language["schemas"]
-        }
-        for language in registry["languages"]
-        if language["languageId"] in _SOURCE_LANGUAGES
-    }
-
-    assert set(registrations) == _SOURCE_LANGUAGES
-    expected_schema = (
-        "agent.semantic-protocols.semantic-fact-ontology",
-        "1",
-        "schemas/semantic-fact-ontology.v1.schema.json",
-    )
-    for schemas in registrations.values():
-        assert expected_schema in schemas

@@ -20,6 +20,10 @@ path = "tests/integration/readiness_socket_identity.rs"
 name = "agent_session_registration"
 path = "tests/integration/agent_session_registration.rs"
 
+[[test]]
+name = "runtime_dependency_boundary"
+path = "tests/integration/runtime_dependency_boundary.rs"
+
 [[bench]]
 name = "runtime_schema_bundle_catalog"
 harness = false
@@ -35,14 +39,14 @@ agent-semantic-client-protocol = { path = "../agent-semantic-client-protocol" }
 agent-semantic-search = { path = "../agent-semantic-search" }
 agent-semantic-search-projection = { path = "../agent-semantic-search-projection" }
 agent-semantic-topology = { path = "../agent-semantic-topology" }
+agent-semantic-mrr.workspace = true
 agent-semantic-client-server = { path = "../agent-semantic-client-server" }
-gql-catalog.workspace = true
-gql-compiler.workspace = true
-gql-ir.workspace = true
 agent-semantic-schema-manager.workspace = true
 serde_json.workspace = true
 serde.workspace = true
+regex.workspace = true
 tokio.workspace = true
+futures-util.workspace = true
 agent-semantic-provider-protocol.workspace = true
 agent-semantic-provider-transport.workspace = true
 prost.workspace = true

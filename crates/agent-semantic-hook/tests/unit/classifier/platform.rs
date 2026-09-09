@@ -17,7 +17,7 @@ fn permission_request_allow_renders_explicit_allow_for_claude() {
             "hook_event_name": "PermissionRequest",
             "tool_name": "Bash",
             "tool_input": {
-                "command": "asp search playbook --language typescript 'ParserService cacheDir' --workspace ."
+                "command": "asp search playbook --language typescript --rg 'ParserService cacheDir'"
             }
         }),
     );
@@ -48,7 +48,7 @@ fn permission_request_uses_codex_decision_object_contract() {
             "hook_event_name": "PermissionRequest",
             "tool_name": "Bash",
             "tool_input": {
-                "command": "asp search playbook --language typescript 'ParserService cacheDir' --workspace ."
+                "command": "asp search playbook --language typescript --rg 'ParserService cacheDir'"
             }
         }),
     );
@@ -123,14 +123,13 @@ fn user_prompt_submit_allow_adds_search_first_context_for_claude() {
     assert!(response["hookSpecificOutput"]["permissionDecision"].is_null());
     for expected in [
         "ASP Search playbook routing is active for this prompt",
-        "search playbook '<question>'",
-        "Complete coverage is admitted only for absence-proof intent",
-        "one ordered resident generation: rg acquisition, Tantivy lexical retrieval",
-        "admitted asp-python-graphs projection",
-        "root playbook accepts language IDs through `--language`",
-        "query --selector <exact-selector> --workspace . --projection source",
-        "--projection callable-skeleton",
-        "Exact query has no implicit projection",
+        "`asp search playbook --language <producer|...>`",
+        "explicit native acquisition blocks",
+        "Preserve every native block as argv",
+        "one admitted immutable workspace generation",
+        "without prescribing the Agent's next action",
+        "asp query playbook --language <producer|...> --selector <exact-selector>",
+        "Query has no language switch",
     ] {
         assert!(
             context.contains(expected),
@@ -157,13 +156,14 @@ fn user_prompt_submit_locator_questions_do_not_push_code_reads() {
         .expect("user prompt additional context");
     for expected in [
         "ASP Search playbook routing is active for this locator question",
-        "search playbook '<question>' --language <language> --intent conceptual --scope workspace",
-        "--scope owner:<path>",
-        "one ordered resident generation: rg acquisition, Tantivy lexical retrieval",
-        "admitted asp-python-graphs projection",
-        "root playbook accepts language IDs through `--language`",
-        "query --selector <exact-selector> --workspace . --projection source",
-        "Exact query has no implicit projection",
+        "`asp search playbook --language <producer|...>`",
+        "explicit native acquisition blocks",
+        "graph blocks, when needed, follow acquisition",
+        "Preserve every native block as argv",
+        "one admitted immutable workspace generation",
+        "without prescribing the Agent's next action",
+        "asp query playbook --language <producer|...> --selector <exact-selector>",
+        "Query has no language switch",
     ] {
         assert!(
             context.contains(expected),

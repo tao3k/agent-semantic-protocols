@@ -30,11 +30,11 @@ def test_semantic_evidence_graph_accepts_review_evidence_graph() -> None:
         "schemaVersion": "1",
         "protocolId": "agent.semantic-protocols.evidence-graph",
         "protocolVersion": "1",
-        "graphId": "rust.evidence.graph",
+        "graphId": "runtime.evidence.graph",
         "producer": {
-            "languageId": "rust",
-            "providerId": "asp-rust",
-            "namespace": "agent.semantic-protocols.languages.rust.asp-rust",
+            "languageId": "runtime",
+            "providerId": "asp-runtime-server",
+            "namespace": "agent.semantic-protocols.runtime",
         },
         "project": {"root": "."},
         "summary": {
@@ -129,11 +129,11 @@ def test_semantic_evidence_graph_rejects_absolute_owner_paths() -> None:
         "schemaVersion": "1",
         "protocolId": "agent.semantic-protocols.evidence-graph",
         "protocolVersion": "1",
-        "graphId": "rust.evidence.graph",
+        "graphId": "runtime.evidence.graph",
         "producer": {
-            "languageId": "rust",
-            "providerId": "asp-rust",
-            "namespace": "agent.semantic-protocols.languages.rust.asp-rust",
+            "languageId": "runtime",
+            "providerId": "asp-runtime-server",
+            "namespace": "agent.semantic-protocols.runtime",
         },
         "project": {"root": "."},
         "summary": {

@@ -9,9 +9,9 @@
   "transport": "framed-stdin-v1",
   "operations": [
     {
-      "operation": "lexical-search",
-      "requestSchema": {"schemaId": "agent.semantic-protocols.semantic-query-packet", "schemaVersion": "1"},
-      "responseSchema": {"schemaId": "agent.semantic-protocols.semantic-search-packet", "schemaVersion": "1"}
+      "operation": "query",
+      "requestSchema": {"schemaId": "agent.semantic-protocols.provider-native-exact-request", "schemaVersion": "1"},
+      "responseSchema": {"schemaId": "agent.semantic-protocols.provider-native-exact-projection", "schemaVersion": "1"}
     }
   ]
 }

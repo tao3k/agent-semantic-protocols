@@ -8,6 +8,7 @@ use super::ensure_protocol_binary_installed;
 use super::install_protocol_binary_target;
 use super::next_protocol_binary_publish_sequence;
 use super::protocol_binary_artifact_path_digest;
+use super::qualified_provider_state_home;
 use std::env;
 use std::fs;
 use std::path::Path;
@@ -92,108 +93,6 @@ async fn commit_pending_runtime_activation(state_home: &Path) {
 }
 
 use super::RuntimeBinaryIdentityV1;
-
-#[tokio::test]
-async fn lattice_profile_slots_and_multi_binary_switches_are_isolated() {
-    let root = fixture_root("latest-aliases");
-    let runtime = root.join("runtime");
-    let artifact_root = runtime.join("artifacts");
-    let stable_entry = root
-        .join("home/.local/bin")
-        .join(SEMANTIC_AGENT_PROTOCOL_BIN);
-    let alias = runtime.join("bin").join(SEMANTIC_AGENT_PROTOCOL_BIN);
-    let source = fixture_source(&root, "source-asp", b"protocol-binary-v1");
-    let plan = ProtocolBinaryInstallPlan {
-        current_exe: source,
-        explicit_candidate_source: None,
-        target: stable_entry.clone(),
-        artifact_root: artifact_root.clone(),
-        binary_identity: RuntimeBinaryIdentityV1::asp_bootstrap(),
-    };
-
-    let installed = ensure_protocol_binary_installed(&plan)
-        .await
-        .expect("install Lattice protocol binary");
-    commit_pending_runtime_activation(&root).await;
-    assert_eq!(installed.path, stable_entry);
-    assert!(
-        fs::symlink_metadata(&stable_entry)
-            .expect("inspect stable entry")
-            .file_type()
-            .is_symlink()
-    );
-    assert_eq!(
-        fs::read(&stable_entry).expect("read stable entry"),
-        b"protocol-binary-v1"
-    );
-    assert_eq!(
-        fs::canonicalize(&alias).expect("resolve alias"),
-        fs::canonicalize(&stable_entry).expect("resolve stable entry")
-    );
-
-    let asp_digest = installed.artifact_digest.clone();
-    assert!(
-        artifact_root
-            .join("generations")
-            .join(
-                installed
-                    .bundle_digest
-                    .as_deref()
-                    .expect("published bundle digest")
-                    .strip_prefix("blake3-256:")
-                    .expect("canonical bundle digest"),
-            )
-            .join(SEMANTIC_AGENT_PROTOCOL_BIN)
-            .is_file()
-    );
-    let harness_name = "asp-rust";
-    let harness_stable = runtime.join("bin").join(harness_name);
-    let harness_source = fixture_source(&root, "source-asp-rust", b"asp-rust-v1");
-    let harness_identity = RuntimeBinaryIdentityV1::from_registered_provider(harness_name)
-        .expect("registered harness binary identity");
-    let harness_install = install_protocol_binary_target(
-        &harness_source,
-        &harness_stable,
-        &artifact_root,
-        &harness_identity,
-    )
-    .await
-    .expect("install immutable harness binary");
-    commit_pending_runtime_activation(&root).await;
-    assert_eq!(harness_install.path, harness_stable);
-    assert_eq!(
-        fs::read(&harness_stable).expect("read harness stable entry"),
-        b"asp-rust-v1"
-    );
-    assert_eq!(installed.artifact_digest, asp_digest);
-
-    let second_asp = fixture_source(&root, "source-asp-v2", b"protocol-binary-v2");
-    let second_asp_install = super::ensure_protocol_binary_bundle_members_installed_transaction(
-        &ProtocolBinaryInstallPlan {
-            current_exe: second_asp,
-            explicit_candidate_source: None,
-            target: stable_entry.clone(),
-            artifact_root: artifact_root.clone(),
-            binary_identity: RuntimeBinaryIdentityV1::asp_bootstrap(),
-        },
-        &[],
-    )
-    .await
-    .expect("switch ASP through a complete active-bundle successor");
-    commit_pending_runtime_activation(&root).await;
-    assert_ne!(second_asp_install.artifact_digest, asp_digest);
-    assert_eq!(
-        fs::read(&stable_entry).expect("read switched ASP profile"),
-        b"protocol-binary-v2"
-    );
-    assert_eq!(
-        fs::read(&harness_stable).expect("harness profile remains isolated"),
-        b"asp-rust-v1"
-    );
-    assert!(artifact_root.join("generations").exists());
-
-    fs::remove_dir_all(&root).expect("remove protocol binary fixture");
-}
 
 #[tokio::test]
 async fn runtime_publication_rejects_target_name_inference_and_path_shaped_identities() {
@@ -309,77 +208,6 @@ async fn loop_or_escape_fails_before_lattice_profile_switch() {
 }
 
 #[tokio::test]
-async fn lattice_reconciliation_retains_only_reachable_digest_generations() {
-    let root = fixture_root("retention");
-    let runtime = root.join("runtime");
-    let artifact_root = runtime.join("artifacts");
-    let asp_target = root
-        .join("home/.local/bin")
-        .join(SEMANTIC_AGENT_PROTOCOL_BIN);
-    let harness_name = "asp-rust";
-    let harness_target = runtime.join("bin").join(harness_name);
-    let asp_identity = RuntimeBinaryIdentityV1::asp_bootstrap();
-    let harness_identity =
-        RuntimeBinaryIdentityV1::from_registered_provider(harness_name).expect("harness identity");
-
-    let initial_asp = fixture_source(&root, "source-asp-initial", b"protocol-binary-initial");
-    install_protocol_binary_target(&initial_asp, &asp_target, &artifact_root, &asp_identity)
-        .await
-        .expect("publish initial ASP generation");
-    commit_pending_runtime_activation(&root).await;
-
-    for version in 0..4 {
-        let source = fixture_source(
-            &root,
-            &format!("source-harness-{version}"),
-            format!("harness-binary-{version}").as_bytes(),
-        );
-        install_protocol_binary_target(&source, &harness_target, &artifact_root, &harness_identity)
-            .await
-            .expect("publish harness member successor");
-        commit_pending_runtime_activation(&root).await;
-
-        let source = fixture_source(
-            &root,
-            &format!("source-asp-{version}"),
-            format!("protocol-binary-{version}").as_bytes(),
-        );
-        super::ensure_protocol_binary_bundle_members_installed_transaction(
-            &ProtocolBinaryInstallPlan {
-                current_exe: source,
-                explicit_candidate_source: None,
-                target: asp_target.clone(),
-                artifact_root: artifact_root.clone(),
-                binary_identity: RuntimeBinaryIdentityV1::asp_bootstrap(),
-            },
-            &[],
-        )
-        .await
-        .expect("publish complete ASP bundle successor");
-        commit_pending_runtime_activation(&root).await;
-    }
-
-    let receipt =
-        agent_semantic_artifacts::runtime_artifact_retention::prune_unreachable_runtime_artifacts(
-            &artifact_root,
-        )
-        .await
-        .expect("prune artifact history");
-    assert_eq!(receipt.scanned_generation_count, 1);
-    assert_eq!(receipt.retained_generation_count, 1);
-    assert_eq!(receipt.removed_generation_count, 0);
-    assert_eq!(receipt.ignored_entry_count, 0);
-    assert_eq!(receipt.reclaimed_bytes, 0);
-    assert_eq!(receipt.protected_digests.len(), 1);
-    assert!(fs::canonicalize(&asp_target).is_ok());
-    assert!(fs::canonicalize(&harness_target).is_ok());
-    assert!(artifact_root.join("generations").is_dir());
-    assert!(artifact_root.join("retention-receipt.json").is_file());
-
-    fs::remove_dir_all(&root).expect("remove protocol binary fixture");
-}
-
-#[tokio::test]
 async fn developer_publication_uses_the_immutable_activation_transaction() {
     let root = fixture_root("developer-direct-authority");
     let state_home = root.join("state");
@@ -487,6 +315,20 @@ async fn developer_publication_uses_the_immutable_activation_transaction() {
     );
 
     fs::remove_dir_all(root).expect("remove developer publication fixture");
+}
+
+#[test]
+fn qualified_provider_publication_derives_state_home_from_the_stable_launcher() {
+    let root = fixture_root("qualified-provider-stable-launcher");
+    let state_home = root.join("state");
+    let runtime_root = state_home.join("runtime");
+    let provider_target = runtime_root.join("bin/asp-rust");
+    let resolved =
+        qualified_provider_state_home(&provider_target, std::ffi::OsStr::new("asp-rust"))
+            .expect("derive State Home from stable provider launcher");
+
+    assert_eq!(resolved, state_home);
+    fs::remove_dir_all(root).expect("remove provider publication fixture");
 }
 
 #[tokio::test]

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://schemas.agent-semantic-protocols.dev/query-playbook-materialization-request.v1.schema.json",
   "title": "Query Playbook Materialization Request V1",
-  "description": "An internal Runtime-bound packet for selector-native Query Playbook materialization. It is independent of any preceding Search result.",
+  "description": "An internal Runtime-bound packet for selector-native Query Playbook materialization. It preserves caller order and is independent of Search topology or relationships.",
   "type": "object",
   "additionalProperties": false,
   "required": [

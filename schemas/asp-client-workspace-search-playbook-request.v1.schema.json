@@ -2,83 +2,36 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://agent-semantic-protocols.dev/schemas/asp-client-workspace-search-playbook-request.v1.schema.json",
   "title": "ASP Client Workspace Search Playbook Request V1",
+  "description": "The sole public Search request. Code producers are selected through --language and document producers through --documents; producer-first command namespaces are not part of this contract.",
   "type": "object",
   "additionalProperties": false,
   "required": ["schemaId", "schemaVersion", "clauseOrder"],
+  "dependentRequired": {"rg": ["tantivy"], "tantivy": ["rg"]},
   "properties": {
     "schemaId": {"const": "agent.semantic-protocols.asp-client-workspace-search-playbook-request"},
     "schemaVersion": {"const": "1"},
-    "languages": {"$ref": "#/$defs/producerExpression"},
+    "language": {"$ref": "#/$defs/producerExpression"},
     "documents": {"$ref": "#/$defs/producerExpression"},
-    "workspace": {"$ref": "#/$defs/identity"},
-    "fd": {"$ref": "#/$defs/nativeBlocks"},
+    "workspace": {"description": "Explicit registered cross-workspace identity. Filesystem paths are not workspace identities.", "$ref": "#/$defs/registeredName"},
     "rg": {"$ref": "#/$defs/nativeBlocks"},
     "tantivy": {"$ref": "#/$defs/nativeBlocks"},
-    "syntax": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/producerNativeBlock"}},
-    "nativeSyntax": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/exactSelector"}},
+    "syntax": {"description": "Registered structural queries whose admitted matches establish selector scope inside the fused rg/Tantivy file context.", "type": "array", "minItems": 1, "items": {"$ref": "#/$defs/producerNativeBlock"}},
+    "nativeSyntax": {"description": "Exact selector queries whose singleton matches establish structural scope inside the fused rg/Tantivy file context.", "type": "array", "minItems": 1, "items": {"$ref": "#/$defs/exactSelector"}},
     "graph": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/graphNativeBlock"}},
-    "clauseOrder": {
-      "description": "Agent-authored acquisition priority followed by dependent graph barriers, preserved from CLI occurrence order.",
-      "type": "array",
-      "minItems": 1,
-      "items": {"$ref": "#/$defs/clauseRef"}
-    }
+    "clauseOrder": {"description": "Exact CLI occurrence order of registered layout inputs. This preserves repeated-block identity but does not create execution edges; the admitted Search Layout owns shared-scope and serial composition.", "type": "array", "minItems": 1, "items": {"$ref": "#/$defs/clauseRef"}}
   },
   "allOf": [
-    {
-      "anyOf": [
-        {"required": ["languages"]},
-        {"required": ["documents"]}
-      ]
-    },
-    {
-      "anyOf": [
-        {"required": ["fd"]},
-        {"required": ["rg"]},
-        {"required": ["tantivy"]},
-        {"required": ["syntax"]},
-        {"required": ["nativeSyntax"]}
-      ]
-    }
+    {"anyOf": [{"required": ["language"]}, {"required": ["documents"]}]},
+    {"required": ["rg", "tantivy"]}
   ],
   "$defs": {
-    "identity": {"type": "string", "minLength": 1, "maxLength": 512},
-    "exactSelector": {
-      "type": "string",
-      "pattern": "^[A-Za-z][A-Za-z0-9+.-]*://[^\\s]+#item/[^\\s]+$(?![\\s\\S])"
-    },
-    "producerExpression": {
-      "type": "string",
-      "pattern": "^[A-Za-z0-9][A-Za-z0-9._+-]*(\\|[A-Za-z0-9][A-Za-z0-9._+-]*)*$"
-    },
+    "registeredName": {"type": "string", "minLength": 1, "maxLength": 512, "pattern": "^[A-Za-z0-9][A-Za-z0-9._+-]*$"},
+    "exactSelector": {"type": "string", "pattern": "^[A-Za-z][A-Za-z0-9+.-]*://[^\\s]+#item/[^\\s]+$(?![\\s\\S])"},
+    "producerExpression": {"description": "One or more registered producers from the axis named by the enclosing field.", "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._+-]*(\\|[A-Za-z0-9][A-Za-z0-9._+-]*)*$"},
     "nativeArgv": {"type": "array", "minItems": 1, "items": {"type": "string"}},
     "nativeBlocks": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/nativeArgv"}},
-    "producerNativeBlock": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["producer", "argv"],
-      "properties": {
-        "producer": {"$ref": "#/$defs/identity"},
-        "argv": {"$ref": "#/$defs/nativeArgv"}
-      }
-    },
-    "graphNativeBlock": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["language", "argv"],
-      "properties": {
-        "language": {"$ref": "#/$defs/identity"},
-        "argv": {"$ref": "#/$defs/nativeArgv"}
-      }
-    },
-    "clauseRef": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["axis", "blockIndex"],
-      "properties": {
-        "axis": {"enum": ["fd", "rg", "tantivy", "syntax", "native-syntax", "graph"]},
-        "blockIndex": {"type": "integer", "minimum": 0}
-      }
-    }
+    "producerNativeBlock": {"type": "object", "additionalProperties": false, "required": ["producer", "argv"], "properties": {"producer": {"$ref": "#/$defs/registeredName"}, "argv": {"$ref": "#/$defs/nativeArgv"}}},
+    "graphNativeBlock": {"type": "object", "additionalProperties": false, "required": ["language", "argv"], "properties": {"language": {"enum": ["gql", "pgql"]}, "argv": {"$ref": "#/$defs/nativeArgv"}}},
+    "clauseRef": {"type": "object", "additionalProperties": false, "required": ["axis", "blockIndex"], "properties": {"axis": {"enum": ["rg", "tantivy", "syntax", "native-syntax", "graph"]}, "blockIndex": {"type": "integer", "minimum": 0}}}
   }
 }

@@ -37,31 +37,6 @@ fn args(values: &[&str]) -> Vec<String> {
 #[test]
 fn lifecycle_commands_delegate_to_hook_runtime() {
     assert_eq!(
-        hook::forwarded_hook_args(&args(&[
-            "accept-host",
-            "--host-rollout",
-            "task.jsonl",
-            "--hook-events",
-            "events.jsonl",
-            "--host-probe-path",
-            "probe.rs",
-            "--host-sentinel",
-            "TOKEN",
-        ]))
-        .unwrap(),
-        args(&[
-            "accept-host",
-            "--host-rollout",
-            "task.jsonl",
-            "--hook-events",
-            "events.jsonl",
-            "--host-probe-path",
-            "probe.rs",
-            "--host-sentinel",
-            "TOKEN",
-        ])
-    );
-    assert_eq!(
         hook::forwarded_hook_args(&args(&["doctor", "--client", "codex", "."])).unwrap(),
         args(&["doctor", "--client", "codex", "."])
     );
@@ -77,14 +52,7 @@ fn lifecycle_commands_delegate_to_hook_runtime() {
 
 #[test]
 fn hook_control_commands_are_runtime_independent_and_events_are_not() {
-    for command in [
-        "accept-host",
-        "break-glass",
-        "doctor",
-        "enablement",
-        "paths",
-        "refresh",
-    ] {
+    for command in ["break-glass", "doctor", "enablement", "paths", "refresh"] {
         assert!(hook::is_runtime_independent_control_command(&args(&[
             command
         ])));
@@ -102,7 +70,6 @@ fn help_requests_do_not_forward_to_hook_runtime() {
         assert!(hook::is_help_request(&args(values)), "{values:?}");
     }
     for values in [
-        &["accept-host", "--help"][..],
         &["doctor", "-h"][..],
         &["enablement", "--help"][..],
         &["paths", "--help"][..],
@@ -111,7 +78,6 @@ fn help_requests_do_not_forward_to_hook_runtime() {
         assert!(!hook::is_help_request(&args(values)), "{values:?}");
     }
     for values in [
-        &["accept-host", "--help"][..],
         &["doctor", "-h"][..],
         &["enablement", "--help"][..],
         &["paths", "--help"][..],
@@ -130,58 +96,10 @@ fn help_requests_do_not_forward_to_hook_runtime() {
 }
 
 #[test]
-fn accept_host_cli_returns_a_schema_valid_success_receipt() {
-    let root = temp_project_root("accept-host-cli");
-    let rollout_path = root.join("normal-task.jsonl");
-    let hook_events_path = root.join("events.jsonl");
-    std::fs::write(
-        &rollout_path,
-        concat!(
-            "{\"type\":\"world_state\",\"payload\":{\"state\":{\"plugins_instructions\":true}}}\n",
-            "{\"type\":\"response_item\",\"payload\":{\"type\":\"function_call\",\"name\":\"exec_command\",\"call_id\":\"probe-call\",\"arguments\":\"probe.rs\"}}\n",
-        "{\"type\":\"response_item\",\"payload\":{\"type\":\"message\",\"content\":\"<hook_prompt>[asp-hook] {\\\"schemaId\\\":\\\"agent.semantic-protocols.hook.decision\\\",\\\"schemaVersion\\\":\\\"1\\\",\\\"event\\\":\\\"pre-tool\\\",\\\"decision\\\":\\\"deny\\\",\\\"fields\\\":{\\\"configRuleId\\\":\\\"route-read-to-asp-languages\\\",\\\"hookMatcherGeneration\\\":\\\"blake3-256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\\\",\\\"hookPolicySnapshotDigest\\\":\\\"blake3-256:policy\\\",\\\"hookRuntimeArtifactFingerprint\\\":\\\"blake3-256:artifact\\\"}}</hook_prompt>\"}}\n",
-            "{\"type\":\"response_item\",\"payload\":{\"type\":\"function_call_output\",\"output\":\"\"}}\n"
-        ),
-    )
-    .expect("write normal-task rollout");
-    std::fs::write(
-        &hook_events_path,
-        concat!(
-            "{\"schemaId\":\"agent.semantic-protocols.hook.event\",\"schemaVersion\":\"1\",\"event\":\"pre-tool\",\"decision\":\"deny\",\"fields\":{\"hostMatcher\":\"Bash\",\"toolUseId\":\"probe-call\",\"policyDecision\":{\"schemaId\":\"agent.semantic-protocols.hook.decision\",\"schemaVersion\":1,\"decision\":\"deny\",\"configRuleId\":\"route-read-to-asp-languages\",\"generationDigest\":\"blake3-256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}}}\n"
-        ),
-    )
-    .expect("write Hook events");
-
-    let output = Command::new(env!("CARGO_BIN_EXE_asp"))
-        .current_dir(&root)
-        .args([
-            "hook",
-            "accept-host",
-            "--host-rollout",
-            rollout_path.to_str().expect("utf8 rollout path"),
-            "--hook-events",
-            hook_events_path.to_str().expect("utf8 Hook events path"),
-            "--host-probe-path",
-            "probe.rs",
-            "--host-sentinel",
-            "ASP_HOST_SENTINEL",
-        ])
-        .output()
-        .expect("run accept-host");
-
-    assert!(
-        output.status.success(),
-        "stderr: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let receipt: serde_json::Value =
-        serde_json::from_slice(&output.stdout).expect("parse Host acceptance receipt");
-    assert_eq!(receipt["state"], "accepted");
-    assert_eq!(
-        receipt["reasonKind"],
-        "normal-task-hook-policy-bundle-bound-deny-observed"
-    );
-    let _ = std::fs::remove_dir_all(root);
+fn accept_host_is_not_a_public_hook_subcommand() {
+    let error = hook::forwarded_hook_args(&args(&["accept-host"]))
+        .expect_err("accept-host must not be a public Hook subcommand");
+    assert!(!error.contains("asp hook accept-host"));
 }
 
 #[test]

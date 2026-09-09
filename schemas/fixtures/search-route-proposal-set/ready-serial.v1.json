@@ -42,7 +42,7 @@
             "claimClass": "existential",
             "scopeDigest": "blake3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
             "acceptedSchemaIds": [
-              "semantic-search-packet.v1"
+              "workspace-search-playbook-result.v1"
             ],
             "requiredFields": [
               "canonicalItemSelector"

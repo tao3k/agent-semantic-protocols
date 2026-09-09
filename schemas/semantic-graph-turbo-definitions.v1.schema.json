@@ -9,7 +9,6 @@
         "owner-query",
         "query-deps",
         "owner-tests",
-        "prime",
         "read-frontier",
         "failure-frontier",
         "field-impact",

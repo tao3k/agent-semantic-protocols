@@ -54,7 +54,7 @@ def test_ontology_catalog_projects_to_valid_graph_turbo_request() -> None:
     result = rank_frontier(
         graph,
         profile=request["profile"],
-        seeds=request["seedIds"],
+        seeds=request["entryNodeIds"],
         limit=request["budget"],
         kind_budgets=request["kindBudgets"],
         cache_enabled=False,
@@ -85,7 +85,7 @@ def test_ontology_fixture_matrix_is_queryable_as_homologous_graph_facts() -> Non
         result = rank_frontier(
             graph,
             profile=request["profile"],
-            seeds=request["seedIds"],
+            seeds=request["entryNodeIds"],
             limit=request["budget"],
             kind_budgets=request["kindBudgets"],
             cache_enabled=False,

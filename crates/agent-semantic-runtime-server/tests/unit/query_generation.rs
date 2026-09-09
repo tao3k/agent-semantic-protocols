@@ -326,7 +326,7 @@ fn test_generation(digest: &str) -> std::sync::Arc<super::RuntimeQueryGeneration
         generation_token: std::sync::atomic::AtomicU64::new(0),
         resident: None,
         execution_publication: None,
-        project_topology_attachment: None,
+        project_topology_attachment: std::sync::OnceLock::new(),
         build_resource_receipt: std::sync::OnceLock::new(),
     })
 }
@@ -373,16 +373,16 @@ async fn republishing_old_arc_cannot_mint_or_rollback() {
 }
 
 #[tokio::test]
-async fn ready_publication_rejects_a_generation_without_project_topology_attachment() {
+async fn ready_publication_rejects_a_generation_without_a_resident_base() {
     let authority = authority();
     let workspace_key = key("project-test", "workspace-test");
-    let incomplete = test_generation("blake3-256:missing-topology");
+    let incomplete = test_generation("blake3-256:missing-resident");
     let error = authority
         .publish_ready(workspace_key.clone(), incomplete)
-        .expect_err("Ready is not visible before Project Topology is attached");
+        .expect_err("Ready is not visible before the resident base is attached");
     assert_eq!(
         error,
-        "state=query-not-ready reasonKind=runtime-project-topology-attachment-missing"
+        "state=query-not-ready reasonKind=resident-generation-missing"
     );
     assert!(authority.subscribe().borrow().get(&workspace_key).is_none());
 }
@@ -558,6 +558,10 @@ async fn runtime_builder_owns_independent_non_blocking_derived_jobs() {
     let receipt = task_scope.finish(0).expect("owned task scope drained");
     assert_eq!(receipt.active, 0);
     assert_eq!(receipt.leaked, 0);
+    assert_eq!(
+        receipt.started, 2,
+        "the caller-owned joint terminal admits only graph and Tantivy blocking tasks"
+    );
     assert_eq!(receipt.started, receipt.completed);
 }
 

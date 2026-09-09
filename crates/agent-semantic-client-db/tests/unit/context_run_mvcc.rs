@@ -417,7 +417,7 @@ fn serial_route(state: &UncheckedContextProductStateV1) -> (RouteProposal, Route
         "predicateId": "predicate-1",
         "claimClass": "identity",
         "scopeDigest": digest("scope-1"),
-        "acceptedSchemaIds": ["semantic-search-packet.v1"],
+        "acceptedSchemaIds": ["workspace-search-playbook-result.v1"],
         "requiredFields": ["canonicalItemSelector"],
         "completeness": "complete-scope",
         "requiresFreshBinding": true,

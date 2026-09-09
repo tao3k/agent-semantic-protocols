@@ -66,7 +66,7 @@ def test_record_syntax_real_evidence_renders_review_record() -> None:
 
     assert result.stdout.splitlines() == [
         "[syntax-real-evidence] language=rust provider=asp-rust project=tokio",
-        "commands=search-prime,syntax-frontier,exact-selector-code,hook-recovery",
+        "commands=search-playbook,syntax-frontier,exact-selector-code,hook-recovery",
         "metrics=commandCount=4,providerProcessCount=4,packetBytes=4096,coldElapsedMs=1200,warmElapsedMs=800",
         "metrics=syntaxQueryCount=2,exactCodeCount=1,manualRangeScanCount=0,repeatedTriggerReduction=3",
         "outputs=frontier-no-code,pure-code-stdout,registry-descriptor,query-corpus",

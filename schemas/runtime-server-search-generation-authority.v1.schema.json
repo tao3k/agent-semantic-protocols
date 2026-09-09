@@ -45,23 +45,7 @@
       "$ref": "source-snapshot-evidence.v1.schema.json#/$defs/sourceSnapshot"
     },
     "projectResolutions": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": ["candidateBase", "scopeDigest", "scope"],
-        "properties": {
-          "candidateBase": {
-            "type": "string",
-            "minLength": 1,
-            "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
-          },
-          "scopeDigest": { "$ref": "#/$defs/wireDigest" },
-          "scope": {
-            "$ref": "https://schemas.agent-semantic-protocols.dev/project-resolution.schema.json"
-          }
-        }
-      }
+      "$ref": "https://agent-semantic-protocols.local/schemas/runtime-server-definitions.v1.schema.json#/$defs/projectResolutions"
     },
     "workspaceGeneration": {
       "$ref": "workspace-generation-root-evidence.v1.schema.json"

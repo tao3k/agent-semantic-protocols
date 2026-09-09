@@ -82,3 +82,6 @@ def test_an_explicit_empty_provider_set_is_a_valid_bootstrap_member(kind: str) -
     packet = member(kind)
     packet["entries"] = []
     validator().validate(packet)
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later

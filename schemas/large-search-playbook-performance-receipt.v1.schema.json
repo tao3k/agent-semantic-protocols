@@ -16,7 +16,7 @@
     "contentGeneration": {
       "unevaluatedProperties": false,
       "allOf": [
-        {"$ref": "#/$defs/distribution"},
+        {"$ref": "https://schemas.agent-semantic-protocols.dev/semantic-search-definitions.v1.schema.json#/$defs/performanceDistribution"},
         {
           "type": "object",
           "required": ["stageP95Nanos"],
@@ -45,7 +45,7 @@
     "coldRgQuery": {
       "unevaluatedProperties": false,
       "allOf": [
-        {"$ref": "#/$defs/distribution"},
+        {"$ref": "https://schemas.agent-semantic-protocols.dev/semantic-search-definitions.v1.schema.json#/$defs/performanceDistribution"},
         {
           "type": "object",
           "required": [
@@ -55,8 +55,10 @@
           "properties": {
             "samples": {"type": "integer", "minimum": 32},
             "fdProcessCount": {"const": 0},
-            "rgProcessCount": {"type": "integer", "minimum": 32},
+            "rgProcessCount": {"const": 0},
             "tantivyBuildCount": {"const": 0},
+            "p99Nanos": {"type": "integer", "minimum": 0, "exclusiveMaximum": 1000000},
+            "maxNanos": {"type": "integer", "minimum": 0, "exclusiveMaximum": 1000000},
             "contentVerificationP95Nanos": {"$ref": "#/$defs/nanos"},
             "nativeSyntaxVerificationP95Nanos": {"$ref": "#/$defs/nanos"}
           }
@@ -66,7 +68,7 @@
     "bootstrapAccelerator": {
       "unevaluatedProperties": false,
       "allOf": [
-        {"$ref": "#/$defs/distribution"},
+        {"$ref": "https://schemas.agent-semantic-protocols.dev/semantic-search-definitions.v1.schema.json#/$defs/performanceDistribution"},
         {
           "type": "object",
           "required": [
@@ -89,7 +91,7 @@
     "deltaAccelerator": {
       "unevaluatedProperties": false,
       "allOf": [
-        {"$ref": "#/$defs/distribution"},
+        {"$ref": "https://schemas.agent-semantic-protocols.dev/semantic-search-definitions.v1.schema.json#/$defs/performanceDistribution"},
         {
           "type": "object",
           "required": [
@@ -110,7 +112,7 @@
     "firstTantivyOpen": {
       "unevaluatedProperties": false,
       "allOf": [
-        {"$ref": "#/$defs/distribution"},
+        {"$ref": "https://schemas.agent-semantic-protocols.dev/semantic-search-definitions.v1.schema.json#/$defs/performanceDistribution"},
         {
           "type": "object",
           "required": ["filesystemReadCount", "fdProcessCount", "rgProcessCount", "tantivyBuildCount"],
@@ -127,8 +129,12 @@
     "warm": {
       "unevaluatedProperties": false,
       "allOf": [
-        {"$ref": "#/$defs/distribution"},
-        {"properties": {"samples": {"type": "integer", "minimum": 512}}}
+        {"$ref": "https://schemas.agent-semantic-protocols.dev/semantic-search-definitions.v1.schema.json#/$defs/performanceDistribution"},
+        {"properties": {
+          "samples": {"type": "integer", "minimum": 512},
+          "p99Nanos": {"type": "integer", "minimum": 0, "exclusiveMaximum": 1000000},
+          "maxNanos": {"type": "integer", "minimum": 0, "exclusiveMaximum": 1000000}
+        }}
       ]
     },
     "concurrent": {
@@ -186,17 +192,6 @@
     }
   },
   "$defs": {
-    "nanos": {"type": "integer", "minimum": 0},
-    "distribution": {
-      "type": "object",
-      "required": ["samples", "p50Nanos", "p95Nanos", "p99Nanos", "maxNanos"],
-      "properties": {
-        "samples": {"type": "integer", "minimum": 1},
-        "p50Nanos": {"$ref": "#/$defs/nanos"},
-        "p95Nanos": {"$ref": "#/$defs/nanos"},
-        "p99Nanos": {"$ref": "#/$defs/nanos"},
-        "maxNanos": {"$ref": "#/$defs/nanos"}
-      }
-    }
+    "nanos": {"type": "integer", "minimum": 0}
   }
 }

@@ -154,13 +154,7 @@ fn plan_row(
 ) -> serde_json::Value {
     let candidate = &ranked.candidate;
     let path = display_path(&candidate.path);
-    let resume_terms = [
-        candidate.plan_id(),
-        "recovery".to_string(),
-        "evidence".to_string(),
-        "next-action".to_string(),
-    ];
-    let resume_command = format!("asp org query {}", resume_terms.join(" "));
+    let resume_command = search_resume_command(&candidate.plan_id());
     let archive_command = format!(
         "asp org archive done --artifacts-root {} --archive-dir {}",
         root.display(),
@@ -214,6 +208,17 @@ fn plan_row(
         "taskCandidates": task_candidates,
         "artifactsRoot": root.display().to_string(),
     })
+}
+
+fn search_resume_command(plan_id: &str) -> String {
+    format!(
+        "asp search playbook --documents org --rg -n -e {} -e recovery -e evidence -e next-action . --tantivy 'title:recovery^2 OR body:next-action'",
+        shell_single_quote(plan_id)
+    )
+}
+
+fn shell_single_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\\''"))
 }
 
 fn selection_receipt(

@@ -8,6 +8,7 @@ use agent_semantic_client_protocol::AspClientExactQueryRequest;
 use super::QueryNotReadyContext;
 use super::classify_exact_query_failure;
 use super::dispatch_budget_for_method;
+use super::enforce_completed_dispatch_budget;
 use super::query_generation_not_ready_error;
 
 #[test]
@@ -109,13 +110,58 @@ fn readiness_submission_failure_remains_one_typed_query_not_ready_terminal() {
 }
 
 #[test]
-fn cold_generation_admission_has_no_interactive_dispatch_deadline() {
+fn detached_generation_has_no_request_deadline_but_resident_reads_do() {
     assert_eq!(
         dispatch_budget_for_method(
             agent_semantic_client_protocol::WORKSPACE_GENERATION_ENSURE_READY_METHOD
         ),
         None
     );
-    assert_eq!(dispatch_budget_for_method("rust.query"), None);
-    assert_eq!(dispatch_budget_for_method("rust.search"), None);
+    assert_eq!(
+        dispatch_budget_for_method("rust.query"),
+        Some(std::time::Duration::from_micros(1_000))
+    );
+    assert_eq!(
+        dispatch_budget_for_method(
+            agent_semantic_client_protocol::WORKSPACE_SEARCH_PLAYBOOK_METHOD
+        ),
+        None,
+        "composite Search is cardinality-bounded and must not inherit Query's exact-read deadline"
+    );
+}
+
+#[test]
+fn synchronous_overrun_cannot_escape_the_resident_dispatch_deadline() {
+    let error = enforce_completed_dispatch_budget(
+        Ok(serde_json::json!({"state": "ready"})),
+        Some(std::time::Duration::from_micros(1_000)),
+        std::time::Duration::from_micros(1_001),
+    )
+    .expect_err("a completed synchronous operation must still be checked against the deadline");
+
+    assert_eq!(error.reason_kind, "client-request-deadline-exceeded");
+    assert_eq!(
+        error.details.expect("typed deadline terminal")["phase"],
+        "runtime-client-dispatch-completion"
+    );
+}
+
+#[test]
+fn strict_dispatch_deadline_accepts_only_elapsed_time_below_the_budget() {
+    assert!(
+        enforce_completed_dispatch_budget(
+            Ok(serde_json::json!({"state": "ready"})),
+            Some(std::time::Duration::from_micros(1_000)),
+            std::time::Duration::from_micros(999),
+        )
+        .is_ok()
+    );
+    assert!(
+        enforce_completed_dispatch_budget(
+            Ok(serde_json::json!({"state": "ready"})),
+            Some(std::time::Duration::from_micros(1_000)),
+            std::time::Duration::from_micros(1_000),
+        )
+        .is_err()
+    );
 }

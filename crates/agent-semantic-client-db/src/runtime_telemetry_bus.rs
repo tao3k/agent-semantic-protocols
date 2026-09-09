@@ -42,6 +42,12 @@ pub struct RuntimeTelemetryBusSender {
     pending_transitions: std::sync::Arc<dashmap::DashMap<String, usize>>,
     incidents: std::sync::Arc<dashmap::DashMap<(String, String), IncidentRecord>>,
     resident_reads: std::sync::Arc<dashmap::DashMap<(String, String), ResidentReadTerminalOutcome>>,
+    resident_request_receipts: std::sync::Arc<
+        dashmap::DashMap<
+            String,
+            agent_semantic_client_protocol::RuntimeResidentRequestPlaneReceipt,
+        >,
+    >,
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -82,6 +88,7 @@ impl RuntimeTelemetryBus {
         let (ordered, ordered_receiver) = mpsc::channel(CAPACITY * 2);
         let pending_transitions = std::sync::Arc::new(dashmap::DashMap::new());
         let resident_reads = std::sync::Arc::new(dashmap::DashMap::new());
+        let resident_request_receipts = std::sync::Arc::new(dashmap::DashMap::new());
         Self {
             sender: RuntimeTelemetryBusSender {
                 terminal,
@@ -90,6 +97,7 @@ impl RuntimeTelemetryBus {
                 pending_transitions: std::sync::Arc::clone(&pending_transitions),
                 incidents: std::sync::Arc::new(dashmap::DashMap::new()),
                 resident_reads: std::sync::Arc::clone(&resident_reads),
+                resident_request_receipts,
             },
             receiver: RuntimeTelemetryBusReceiver {
                 terminal: terminal_receiver,
@@ -101,6 +109,46 @@ impl RuntimeTelemetryBus {
 }
 
 impl RuntimeTelemetryBusSender {
+    pub fn try_record_resident_request_plane(
+        &self,
+        operation_id: &str,
+        receipt: agent_semantic_client_protocol::RuntimeResidentRequestPlaneReceipt,
+    ) -> Result<(), String> {
+        if operation_id.trim().is_empty() {
+            return Err("resident request-plane receipt requires operationId".to_owned());
+        }
+        receipt.validate()?;
+        self.resident_request_receipts
+            .insert(operation_id.to_owned(), receipt.clone());
+        let surface = match receipt.operation {
+            agent_semantic_client_protocol::RuntimeResidentRequestOperation::Search => "search",
+            agent_semantic_client_protocol::RuntimeResidentRequestOperation::Query => "query",
+        };
+        let mut observation = RuntimePerformanceObservation::new(
+            surface,
+            "runtime-resident-request-plane",
+            receipt.elapsed_micros,
+            1_000,
+            "within-budget",
+        );
+        observation.generation_digest = receipt.generation_digest;
+        observation.operation_id = Some(operation_id.to_owned());
+        observation.memory_search_turso_opens = Some(receipt.database_read_count);
+        observation.memory_search_source_bytes_read = Some(receipt.filesystem_read_count);
+        observation.memory_search_provider_spawns = Some(receipt.provider_process_count);
+        observation.memory_search_socket_connects = Some(receipt.socket_discovery_count);
+        self.try_record_performance(observation)
+    }
+
+    pub fn resident_request_plane_receipt(
+        &self,
+        operation_id: &str,
+    ) -> Option<agent_semantic_client_protocol::RuntimeResidentRequestPlaneReceipt> {
+        self.resident_request_receipts
+            .get(operation_id)
+            .map(|receipt| receipt.clone())
+    }
+
     pub fn try_record_resident_read_terminal(
         &self,
         context: ResidentReadTerminalContext,

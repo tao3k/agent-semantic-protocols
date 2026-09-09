@@ -22,7 +22,7 @@ fn complete_request() -> serde_json::Value {
         "protocolVersion": "1",
         "packetKind": "resident-graph-evaluation-request",
         "languageId": "rust",
-        "surface": "search-pipe",
+        "surface": "search-playbook",
         "queryTerms": ["owner"],
         "profile": "structural",
         "entryNodeIds": ["owner:src/lib.rs"],

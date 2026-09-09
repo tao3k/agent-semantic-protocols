@@ -244,7 +244,7 @@ theorem parsed_policy_does_not_establish_executable_admission :
 The block is checked without materializing a temporary Lean source file:
 
 #+begin_src sh
-asp org query --workspace . \
+asp query playbook --documents org --workspace . \
   --term '<named-lean-block>' --content | \
   uv run --project packages/proofs --frozen \
     axle check --environment lean-4.32.0 --strict -

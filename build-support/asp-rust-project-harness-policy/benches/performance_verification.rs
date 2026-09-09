@@ -10,7 +10,7 @@ use criterion::criterion_main;
 
 fn policy_lookup_smoke_benchmark(criterion: &mut Criterion) {
     criterion.bench_function("asp_workspace_member_policies", |bencher| {
-        bencher.iter(|| asp_workspace_member_policies())
+        bencher.iter(asp_workspace_member_policies)
     });
 }
 

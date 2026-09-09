@@ -108,7 +108,7 @@ The mathematical source is embedded in the RFC as the named block
 independent =.typ= source:
 
 #+begin_src sh
-asp org query \
+asp query playbook --documents org \
   --workspace docs/10-19-rfcs/10.05-interactive-graph-first-progressive-searchloop/10.05.20-evidence-graph-routing/00.16-searchroute-bounded-shortest-path.org \
   --kind block \
   --term 'counts SearchLoop transitions' \

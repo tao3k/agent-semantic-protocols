@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://agent-semantic-protocols.local/schemas/semantic-sandtable-scenario.v1.schema.json",
   "title": "Semantic Sandtable Scenario",
-  "description": "Language-neutral scenario descriptor for replaying bounded agent search flows against semantic language harness CLIs.",
+  "description": "Language-neutral scenario descriptor for replaying bounded agent search flows against ASP language provider CLIs.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -343,12 +343,6 @@
           "items": {
             "$ref": "#/$defs/agentSessionQualityFinding"
           }
-        },
-        "scenarioQuality": {
-          "$ref": "#/$defs/scenarioQuality"
-        },
-        "routeVerification": {
-          "$ref": "#/$defs/routeVerificationExpectation"
         }
       }
     },
@@ -452,138 +446,6 @@
         },
         "expectedAspFlow": {
           "$ref": "#/$defs/expectedAspFlow"
-        },
-        "routeVerification": {
-          "$ref": "#/$defs/routeVerificationExpectation"
-        },
-        "scenarioQuality": {
-          "$ref": "#/$defs/scenarioQuality"
-        }
-      }
-    },
-    "scenarioQuality": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "intentClear",
-        "intentRouteAligned",
-        "evidenceStateComplete",
-        "forbiddenRoutesJustified",
-        "oracleRoute",
-        "ambiguousIntent"
-      ],
-      "properties": {
-        "intentClear": {
-          "type": "boolean"
-        },
-        "intentRouteAligned": {
-          "type": "boolean"
-        },
-        "evidenceStateComplete": {
-          "type": "boolean"
-        },
-        "forbiddenRoutesJustified": {
-          "type": "boolean"
-        },
-        "oracleRoute": {
-          "type": "array",
-          "minItems": 1,
-          "items": {
-            "$ref": "semantic-route-verification-trace.v1.schema.json#/$defs/routeId"
-          }
-        },
-        "ambiguousIntent": {
-          "type": "boolean"
-        },
-        "reviewer": {
-          "type": "string",
-          "minLength": 1
-        },
-        "notes": {
-          "$ref": "#/$defs/stringList"
-        }
-      }
-    },
-    "routeVerificationExpectation": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "expectedEvidenceAnchors": {
-          "type": "array",
-          "items": {
-            "$ref": "semantic-route-verification-trace.v1.schema.json#/$defs/evidenceAnchor"
-          },
-          "uniqueItems": true
-        },
-        "allowedFirstRoutes": {
-          "type": "array",
-          "items": {
-            "$ref": "semantic-route-verification-trace.v1.schema.json#/$defs/routeId"
-          },
-          "uniqueItems": true
-        },
-        "forbiddenRoutes": {
-          "type": "array",
-          "items": {
-            "$ref": "semantic-route-verification-trace.v1.schema.json#/$defs/routeId"
-          },
-          "uniqueItems": true
-        },
-        "requiredRejectedRoutes": {
-          "type": "array",
-          "items": {
-            "$ref": "semantic-route-verification-trace.v1.schema.json#/$defs/routeId"
-          },
-          "uniqueItems": true
-        },
-        "forbiddenRiskFlags": {
-          "type": "array",
-          "items": {
-            "$ref": "semantic-route-verification-trace.v1.schema.json#/$defs/riskKind"
-          },
-          "uniqueItems": true
-        },
-        "minScores": {
-          "$ref": "#/$defs/routeVerificationMinScores"
-        },
-        "requireRouteJustification": {
-          "type": "boolean"
-        },
-        "requireExactCodeIdentity": {
-          "type": "boolean"
-        },
-        "requireNoExecutableLineRange": {
-          "type": "boolean"
-        },
-        "requireVerificationEvidence": {
-          "type": "boolean"
-        },
-        "notes": {
-          "$ref": "#/$defs/stringList"
-        }
-      }
-    },
-    "routeVerificationMinScores": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "routeFaithfulness": {
-          "$ref": "semantic-route-verification-trace.v1.schema.json#/$defs/score"
-        },
-        "routeEfficiency": {
-          "$ref": "semantic-route-verification-trace.v1.schema.json#/$defs/score"
-        },
-        "semanticPrecision": {
-          "$ref": "semantic-route-verification-trace.v1.schema.json#/$defs/score"
-        },
-        "fallbackDiscipline": {
-          "$ref": "semantic-route-verification-trace.v1.schema.json#/$defs/score"
-        },
-        "verificationHonesty": {
-          "$ref": "semantic-route-verification-trace.v1.schema.json#/$defs/score"
-        },
-        "finalAnswerGrounding": {
-          "$ref": "semantic-route-verification-trace.v1.schema.json#/$defs/score"
         }
       }
     },
@@ -599,10 +461,10 @@
           "$ref": "#/$defs/stringList"
         },
         "requiredStages": {
-          "$ref": "#/$defs/pipeFlowStageList"
+          "$ref": "#/$defs/commandFlowStageList"
         },
         "forbiddenStages": {
-          "$ref": "#/$defs/pipeFlowStageList"
+          "$ref": "#/$defs/commandFlowStageList"
         },
         "notes": {
           "$ref": "#/$defs/stringList"
@@ -644,7 +506,7 @@
         "requiresHookEvents": {
           "type": "boolean"
         },
-        "requiresComplexPipeFlow": {
+        "requiresComplexCommandFlow": {
           "type": "boolean"
         },
         "requiresTokenCost": {
@@ -1393,8 +1255,8 @@
         "guideQuality": {
           "$ref": "#/$defs/guideQuality"
         },
-        "pipeFlow": {
-          "$ref": "#/$defs/pipeFlowExpectation"
+        "commandFlow": {
+          "$ref": "#/$defs/commandFlowExpectation"
         },
         "agentAnswer": {
           "$ref": "#/$defs/agentAnswerExpectation"
@@ -1523,7 +1385,7 @@
         }
       }
     },
-    "pipeFlowExpectation": {
+    "commandFlowExpectation": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
@@ -1551,15 +1413,7 @@
           "type": "integer",
           "minimum": 0
         },
-        "maxSearchPipeCommands": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "maxSearchPrimeCommands": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "maxSearchFailureCommands": {
+        "maxSearchPlaybookCommands": {
           "type": "integer",
           "minimum": 0
         },
@@ -1606,54 +1460,32 @@
           "minimum": 0,
           "maximum": 1
         },
-        "requireComplexPipeFlow": {
-          "type": "boolean"
-        },
         "requireTokenCost": {
-          "type": "boolean"
-        },
-        "requireSearchPipePrecision": {
           "type": "boolean"
         },
         "requireReadLoopMemory": {
           "type": "boolean"
         },
-        "requireFailureFrontierPrecision": {
-          "type": "boolean"
-        },
-        "requireFailureLoopMemory": {
-          "type": "boolean"
-        },
         "requiredStages": {
-          "$ref": "#/$defs/pipeFlowStageList"
+          "$ref": "#/$defs/commandFlowStageList"
         },
         "forbiddenStages": {
-          "$ref": "#/$defs/pipeFlowStageList"
+          "$ref": "#/$defs/commandFlowStageList"
         }
       }
     },
-    "pipeFlowStageList": {
+    "commandFlowStageList": {
       "type": "array",
       "uniqueItems": true,
       "items": {
         "enum": [
-          "search-pipe",
-          "search-prime",
-          "search-lexical",
-          "search-reasoning",
-          "search-failure",
-          "fd-preview",
-          "fd-query",
-          "rg-query",
-          "search-lexical-or-reasoning",
+          "search-playbook",
           "query-selector",
           "treesitter-query",
           "direct-read",
           "repeated-commands",
-          "repeated-prime",
           "read-loop-risk",
-          "read-loop-memory-risk",
-          "failure-loop-memory"
+          "read-loop-memory-risk"
         ]
       }
     },
@@ -1682,34 +1514,11 @@
         "outputNotContains": {
           "$ref": "#/$defs/stringList"
         },
-        "primeOutput": {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "requiresStructureStatus": {
-              "type": "boolean"
-            },
-            "requiresTypedEntryAliases": {
-              "type": "boolean"
-            },
-            "entries": {
-              "type": "array",
-              "minItems": 1,
-              "items": {
-                "type": "string",
-                "pattern": "^entries=(?:owner-query|query-deps|owner-tests|finding-frontier|feature-cfg)\\([^)]*\\)(?:,(?:owner-query|query-deps|owner-tests|finding-frontier|feature-cfg)\\([^)]*\\))*$"
-              }
-            }
-          }
-        },
         "routeCommandContains": {
           "$ref": "#/$defs/stringList"
         },
         "routeCommandNotContains": {
           "$ref": "#/$defs/stringList"
-        },
-        "requiresIngestPipe": {
-          "type": "boolean"
         },
         "sourceLeakNotContains": {
           "$ref": "#/$defs/stringList"

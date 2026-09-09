@@ -12,6 +12,7 @@ from pathlib import Path
 
 from jsonschema import Draft202012Validator
 
+from tests.unit.semantic_search_action_fixture import complete_search_playbook_argv
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -55,7 +56,7 @@ def hard_fs_deny() -> dict[str, object]:
                 ],
             }
         ],
-        "message": "direct-source-read denied; route: asp rust query --from-hook direct-source-read --selector src/lib.rs --code .",
+        "message": "direct-source-read denied; route: asp query playbook --language rust --from-hook direct-source-read --selector src/lib.rs --code .",
     }
 
 
@@ -90,22 +91,19 @@ class SemanticSourceAccessDecisionSchemaTests(unittest.TestCase):
                         "languageId": "rust",
                         "providerId": "asp-rust",
                         "binary": "asp",
-                        "kind": "ingest",
+                        "kind": "playbook",
                         "argv": [
                             "asp",
-                            "rust",
-                            "search",
-                            "ingest",
-                            "items",
-                            "tests",
-                            "--workspace",
-                            ".",
-                            "--view",
-                            "seeds",
+                            *complete_search_playbook_argv(
+                                language="rust",
+                                term="agent-semantic-hook",
+                                path_hint="crates/agent-semantic-hook/src",
+                                globs=("*.rs",),
+                            ),
                         ],
                     }
                 ],
-                "message": "source-directory-enumeration denied; route: asp rust search ingest items tests --workspace . --view seeds",
+                "message": "source-directory-enumeration denied; use the complete search playbook route",
             }
         )
 
@@ -128,7 +126,7 @@ class SemanticSourceAccessDecisionSchemaTests(unittest.TestCase):
                     "paths": ["src/lib.rs"],
                     "outputDigest": "sha256:source-like-output",
                 },
-                "message": "bulk-source-dump suppressed; use asp rust query --from-hook direct-source-read --selector src/lib.rs --code .",
+                "message": "bulk-source-dump suppressed; use asp query playbook --language rust --from-hook direct-source-read --selector src/lib.rs --code .",
             }
         )
 
@@ -149,7 +147,7 @@ class SemanticSourceAccessDecisionSchemaTests(unittest.TestCase):
                 "providerId": "asp-rust",
                 "subject": {
                     "toolName": "asp",
-                    "command": "asp rust query --from-hook direct-source-read --selector src/lib.rs --code .",
+                    "command": "asp query playbook --language rust --from-hook direct-source-read --selector src/lib.rs --code .",
                     "paths": ["src/lib.rs"],
                 },
                 "message": "provider-capability allowed compact source access.",
@@ -209,7 +207,7 @@ class SemanticSourceAccessDecisionSchemaTests(unittest.TestCase):
                 "authorization": "provider-capability",
                 "subject": {
                     "toolName": "asp",
-                    "command": "asp rust query --from-hook direct-source-read --selector src/lib.rs --code .",
+                    "command": "asp query playbook --language rust --from-hook direct-source-read --selector src/lib.rs --code .",
                     "paths": ["src/lib.rs"],
                 },
             }

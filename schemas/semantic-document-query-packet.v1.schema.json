@@ -49,13 +49,15 @@
       "$ref": "#/$defs/nonEmptyString"
     },
     "languageId": {
-      "$ref": "#/$defs/nonEmptyString"
+      "enum": ["md", "org"]
     },
     "providerId": {
-      "$ref": "#/$defs/nonEmptyString"
+      "type": "string",
+      "pattern": "^asp-[a-z0-9][a-z0-9-]*$"
     },
     "namespace": {
-      "$ref": "#/$defs/nonEmptyString"
+      "type": "string",
+      "pattern": "^agent\\.semantic-protocols\\.languages\\.(org\\.asp-org|md\\.asp-md)$"
     },
     "binary": {
       "$ref": "#/$defs/nonEmptyString"
@@ -123,6 +125,22 @@
       "$ref": "#/$defs/sha256Digest"
     }
   },
+  "oneOf": [
+    {
+      "properties": {
+        "languageId": {"const": "md"},
+        "providerId": {"const": "asp-md"},
+        "namespace": {"const": "agent.semantic-protocols.languages.md.asp-md"}
+      }
+    },
+    {
+      "properties": {
+        "languageId": {"const": "org"},
+        "providerId": {"const": "asp-org"},
+        "namespace": {"const": "agent.semantic-protocols.languages.org.asp-org"}
+      }
+    }
+  ],
   "$defs": {
     "nonEmptyString": {
       "type": "string",

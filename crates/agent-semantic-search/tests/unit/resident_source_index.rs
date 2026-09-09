@@ -68,6 +68,7 @@ fn one_source_document() -> BTreeMap<String, ResidentSourceDocument> {
             owner_content_digest: hash_blob(b"runtime").value,
             line_count: 42,
             query_keys: vec!["runtime".to_owned(), "runtime-server".to_owned()],
+            lexical_body: None,
             authority: Some(authority("rust", "asp-rust")),
         },
     )])
@@ -136,6 +137,7 @@ fn exact_and_ranked_queries_use_only_the_resident_generation() {
                 owner_content_digest: hash_blob(b"runtime").value,
                 line_count: 42,
                 query_keys: vec!["runtime".to_owned(), "runtime-server".to_owned()],
+                lexical_body: None,
                 authority: Some(authority("rust", "asp-rust")),
             },
         )]),
@@ -161,6 +163,66 @@ fn exact_and_ranked_queries_use_only_the_resident_generation() {
 }
 
 #[test]
+fn native_tantivy_expression_preserves_fields_phrases_boosts_and_boolean_logic() {
+    let rust = authority("rust", "asp-rust");
+    let index = ResidentSourceIndex::new(
+        BTreeMap::from([
+            (
+                "crates/runtime.rs".to_owned(),
+                ResidentSourceDocument {
+                    owner_path: "crates/runtime.rs".to_owned(),
+                    owner_content_digest: hash_blob(b"runtime").value,
+                    line_count: 1,
+                    query_keys: vec![
+                        "artifact".to_owned(),
+                        "refresh".to_owned(),
+                        "registry".to_owned(),
+                        "runtime".to_owned(),
+                    ],
+                    lexical_body: Some("artifact refresh runtime registry".to_owned()),
+                    authority: Some(rust.clone()),
+                },
+            ),
+            (
+                "crates/archive.rs".to_owned(),
+                ResidentSourceDocument {
+                    owner_path: "crates/archive.rs".to_owned(),
+                    owner_content_digest: hash_blob(b"archive").value,
+                    line_count: 1,
+                    query_keys: vec!["archive".to_owned(), "artifact".to_owned()],
+                    lexical_body: Some("artifact publication archive".to_owned()),
+                    authority: Some(rust.clone()),
+                },
+            ),
+        ]),
+        source_snapshot(),
+        "blake3-256:1111111111111111111111111111111111111111111111111111111111111111".to_owned(),
+        build_resources(),
+    )
+    .unwrap();
+
+    let result = index
+        .query_tantivy_language(
+            "(title:runtime^2 OR body:\"artifact refresh\"^2) AND (runtime OR registry)",
+            &agent_semantic_config::LanguageId::new("rust"),
+            10,
+        )
+        .expect("native Tantivy expression");
+    assert_eq!(result.hits.len(), 1);
+    assert_eq!(result.hits[0].owner_path, "crates/runtime.rs");
+    assert!(
+        index
+            .query_tantivy_language(
+                "body:\"unterminated",
+                &agent_semantic_config::LanguageId::new("rust"),
+                10,
+            )
+            .expect_err("invalid native expression must fail")
+            .contains("parse native Tantivy expression")
+    );
+}
+
+#[test]
 fn provider_authority_filters_before_limit_and_never_relabels_hits() {
     let rust = authority("rust", "asp-rust");
     let gerbil = authority("gerbil-scheme", "asp-gerbil-scheme");
@@ -173,6 +235,7 @@ fn provider_authority_filters_before_limit_and_never_relabels_hits() {
                     owner_content_digest: hash_blob(b"rust").value,
                     line_count: 1,
                     query_keys: vec!["runtime".to_owned()],
+                    lexical_body: None,
                     authority: Some(rust.clone()),
                 },
             ),
@@ -183,6 +246,7 @@ fn provider_authority_filters_before_limit_and_never_relabels_hits() {
                     owner_content_digest: hash_blob(b"gerbil").value,
                     line_count: 1,
                     query_keys: vec!["runtime".to_owned()],
+                    lexical_body: None,
                     authority: Some(gerbil.clone()),
                 },
             ),
@@ -234,13 +298,10 @@ fn query_limit_separates_progressive_acquisition_from_top_k_projection() {
 
     assert_eq!(
         index.query("runtime", None, 0).unwrap_err(),
-        "resident source-index query limit must be in 1..=4096: limit=0"
+        "resident source-index query limit must be non-zero"
     );
     assert!(index.query("runtime", None, 4096).is_ok());
-    assert_eq!(
-        index.query("runtime", None, 4097).unwrap_err(),
-        "resident source-index query limit must be in 1..=4096: limit=4097"
-    );
+    assert!(index.query("runtime", None, 4097).is_ok());
 }
 
 #[test]
@@ -254,6 +315,7 @@ fn warm_query_cache_reuses_the_generation_bound_result_without_payload_clone() {
                 owner_content_digest: hash_blob(b"runtime").value,
                 line_count: 42,
                 query_keys: vec!["runtime".to_owned()],
+                lexical_body: None,
                 authority: Some(rust.clone()),
             },
         )]),
@@ -291,6 +353,7 @@ fn novel_dense_posting_queries_preserve_bounded_top_k_without_full_vocabulary_cl
                     .chain((0..QUERY_COUNT).map(|query| format!("term{query}")))
                     .chain((0..128).map(|key| format!("owner-key-{key}")))
                     .collect(),
+                lexical_body: None,
                 authority: Some(rust.clone()),
             },
         );

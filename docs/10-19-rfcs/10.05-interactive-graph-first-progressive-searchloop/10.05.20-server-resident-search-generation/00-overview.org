@@ -145,7 +145,7 @@ The same local run produced four hook/router counterexamples:
 
 - a live registered =asp_explorer= resident was replaced by a legacy
   =asp-explore bootstrap= instruction instead of receiving a native follow-up;
-- =asp org query= emitted a lexical =recommendedNext= that the Org facade
+- =asp query playbook --documents org= emitted a lexical =recommendedNext= that the Org facade
   rejected as =unsupported view lexical=;
 - a Rust owner route was recommended for an Org owner and then failed with
   =owner-language-mismatch=; and

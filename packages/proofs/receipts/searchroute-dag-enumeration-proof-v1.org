@@ -148,7 +148,7 @@ reported only its upstream CLI deprecation warning.
 Command:
 
 #+begin_src sh
-asp org query --workspace . exact \
+asp query playbook --documents org --workspace . exact \
   --kind block \
   --term searchroute-constructive-enumeration-model \
   --content |

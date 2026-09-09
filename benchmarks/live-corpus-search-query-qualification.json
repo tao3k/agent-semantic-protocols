@@ -23,6 +23,7 @@
     "protocolId": "agent.semantic-protocols.client",
     "protocolVersion": "1",
     "transport": "grpc-tokio-streams",
+    "workspaceScheduling": "tokio-join-set",
     "phases": ["initialize", "catalog", "request", "cancel", "cancelled", "shutdown"],
     "sessionPolicy": "one-initialize-per-session",
     "readyEffects": ["mpsc", "oneshot", "cancel", "response"],
@@ -69,9 +70,9 @@
       "scenarioId": "gerbil-scheme.gerbil-intent-matrix",
       "languageId": "gerbil-scheme",
       "providerId": "asp-gerbil-scheme",
-      "search": { "method": "lexical", "terms": ["def", "import"], "view": "seeds", "minimumCandidates": 1, "maximumResidentMicros": 1000 },
+      "search": { "rg": ["-n", "-F", "-e", "def", "-e", "import", "."], "tantivy": ["title:\"def import\"^2 OR body:\"def import\""] , "minimumCandidates": 1, "maximumSearchMicros": 500000 },
       "query": { "selectorStrategy": "first-ranked-parser-owned", "ownerView": "items", "projectionScope": "live-corpus", "maximumResidentMicros": 1000 },
-      "zeroMatchTerms": ["asp_live_corpus_zero_match_gerbil_7c02"],
+      "zeroMatchSearch": { "rg": ["-n", "-F", "asp_live_corpus_zero_match_gerbil_7c02", "."], "tantivy": ["title:\"asp_live_corpus_zero_match_gerbil_7c02\"^2 OR body:asp_live_corpus_zero_match_gerbil_7c02"], "minimumCandidates": 0, "maximumSearchMicros": 500000 },
       "requiredTelemetryEvents": ["runtime_resident_search_terminal", "runtime_exact_projection_terminal"]
     },
     {
@@ -80,9 +81,9 @@
       "scenarioId": "julia.dataframes-intent-matrix",
       "languageId": "julia",
       "providerId": "asp-julia",
-      "search": { "method": "lexical", "terms": ["DataFrame", "function"], "view": "seeds", "minimumCandidates": 1, "maximumResidentMicros": 1000 },
+      "search": { "rg": ["-n", "-F", "-e", "DataFrame", "-e", "function", "."], "tantivy": ["title:\"DataFrame function\"^2 OR body:\"DataFrame function\""] , "minimumCandidates": 1, "maximumSearchMicros": 500000 },
       "query": { "selectorStrategy": "first-ranked-parser-owned", "ownerView": "items", "projectionScope": "live-corpus", "maximumResidentMicros": 1000 },
-      "zeroMatchTerms": ["asp_live_corpus_zero_match_dataframes_92a1"],
+      "zeroMatchSearch": { "rg": ["-n", "-F", "asp_live_corpus_zero_match_dataframes_92a1", "."], "tantivy": ["title:\"asp_live_corpus_zero_match_dataframes_92a1\"^2 OR body:asp_live_corpus_zero_match_dataframes_92a1"], "minimumCandidates": 0, "maximumSearchMicros": 500000 },
       "requiredTelemetryEvents": ["runtime_resident_search_terminal", "runtime_exact_projection_terminal"]
     },
     {
@@ -91,9 +92,9 @@
       "scenarioId": "julia.flux-intent-matrix",
       "languageId": "julia",
       "providerId": "asp-julia",
-      "search": { "method": "lexical", "terms": ["Flux", "Chain"], "view": "seeds", "minimumCandidates": 1, "maximumResidentMicros": 1000 },
+      "search": { "rg": ["-n", "-F", "-e", "Flux", "-e", "Chain", "."], "tantivy": ["title:\"Flux Chain\"^2 OR body:\"Flux Chain\""] , "minimumCandidates": 1, "maximumSearchMicros": 500000 },
       "query": { "selectorStrategy": "first-ranked-parser-owned", "ownerView": "items", "projectionScope": "live-corpus", "maximumResidentMicros": 1000 },
-      "zeroMatchTerms": ["asp_live_corpus_zero_match_flux_ee31"],
+      "zeroMatchSearch": { "rg": ["-n", "-F", "asp_live_corpus_zero_match_flux_ee31", "."], "tantivy": ["title:\"asp_live_corpus_zero_match_flux_ee31\"^2 OR body:asp_live_corpus_zero_match_flux_ee31"], "minimumCandidates": 0, "maximumSearchMicros": 500000 },
       "requiredTelemetryEvents": ["runtime_resident_search_terminal", "runtime_exact_projection_terminal"]
     },
     {
@@ -102,9 +103,9 @@
       "scenarioId": "julia.makie-intent-matrix",
       "languageId": "julia",
       "providerId": "asp-julia",
-      "search": { "method": "lexical", "terms": ["Figure", "plot"], "view": "seeds", "minimumCandidates": 1, "maximumResidentMicros": 1000 },
+      "search": { "rg": ["-n", "-F", "-e", "Figure", "-e", "plot", "."], "tantivy": ["title:\"Figure plot\"^2 OR body:\"Figure plot\""] , "minimumCandidates": 1, "maximumSearchMicros": 500000 },
       "query": { "selectorStrategy": "first-ranked-parser-owned", "ownerView": "items", "projectionScope": "live-corpus", "maximumResidentMicros": 1000 },
-      "zeroMatchTerms": ["asp_live_corpus_zero_match_makie_3ba9"],
+      "zeroMatchSearch": { "rg": ["-n", "-F", "asp_live_corpus_zero_match_makie_3ba9", "."], "tantivy": ["title:\"asp_live_corpus_zero_match_makie_3ba9\"^2 OR body:asp_live_corpus_zero_match_makie_3ba9"], "minimumCandidates": 0, "maximumSearchMicros": 500000 },
       "requiredTelemetryEvents": ["runtime_resident_search_terminal", "runtime_exact_projection_terminal"]
     },
     {
@@ -112,10 +113,10 @@
       "resourceId": "md.mdn-content",
       "scenarioId": "md.mdn-content-intent-matrix",
       "languageId": "md",
-      "providerId": "orgize",
-      "search": { "method": "lexical", "terms": ["JavaScript", "CSS"], "view": "seeds", "minimumCandidates": 1, "maximumResidentMicros": 1000 },
+      "providerId": "asp-md",
+      "search": { "rg": ["-n", "-F", "-e", "JavaScript", "-e", "CSS", "."], "tantivy": ["title:\"JavaScript CSS\"^2 OR body:\"JavaScript CSS\""] , "minimumCandidates": 1, "maximumSearchMicros": 500000 },
       "query": { "selectorStrategy": "first-ranked-parser-owned", "ownerView": "items", "projectionScope": "live-corpus", "maximumResidentMicros": 1000 },
-      "zeroMatchTerms": ["asp_live_corpus_zero_match_mdn_77dc"],
+      "zeroMatchSearch": { "rg": ["-n", "-F", "asp_live_corpus_zero_match_mdn_77dc", "."], "tantivy": ["title:\"asp_live_corpus_zero_match_mdn_77dc\"^2 OR body:asp_live_corpus_zero_match_mdn_77dc"], "minimumCandidates": 0, "maximumSearchMicros": 500000 },
       "requiredTelemetryEvents": ["runtime_resident_search_terminal", "runtime_exact_projection_terminal"]
     },
     {
@@ -123,10 +124,10 @@
       "resourceId": "org.worg",
       "scenarioId": "org.worg-intent-matrix",
       "languageId": "org",
-      "providerId": "orgize",
-      "search": { "method": "lexical", "terms": ["Org", "Emacs"], "view": "seeds", "minimumCandidates": 1, "maximumResidentMicros": 1000 },
+      "providerId": "asp-org",
+      "search": { "rg": ["-n", "-F", "-e", "Org", "-e", "Emacs", "."], "tantivy": ["title:\"Org Emacs\"^2 OR body:\"Org Emacs\""] , "minimumCandidates": 1, "maximumSearchMicros": 500000 },
       "query": { "selectorStrategy": "first-ranked-parser-owned", "ownerView": "items", "projectionScope": "live-corpus", "maximumResidentMicros": 1000 },
-      "zeroMatchTerms": ["asp_live_corpus_zero_match_worg_5f11"],
+      "zeroMatchSearch": { "rg": ["-n", "-F", "asp_live_corpus_zero_match_worg_5f11", "."], "tantivy": ["title:\"asp_live_corpus_zero_match_worg_5f11\"^2 OR body:asp_live_corpus_zero_match_worg_5f11"], "minimumCandidates": 0, "maximumSearchMicros": 500000 },
       "requiredTelemetryEvents": ["runtime_resident_search_terminal", "runtime_exact_projection_terminal"]
     },
     {
@@ -135,9 +136,9 @@
       "scenarioId": "python.fastapi-intent-matrix",
       "languageId": "python",
       "providerId": "asp-python",
-      "search": { "method": "lexical", "terms": ["FastAPI", "APIRouter"], "view": "seeds", "minimumCandidates": 1, "maximumResidentMicros": 1000 },
+      "search": { "rg": ["-n", "-F", "-e", "FastAPI", "-e", "APIRouter", "."], "tantivy": ["title:\"FastAPI APIRouter\"^2 OR body:\"FastAPI APIRouter\""] , "minimumCandidates": 1, "maximumSearchMicros": 500000 },
       "query": { "selectorStrategy": "first-ranked-parser-owned", "ownerView": "items", "projectionScope": "live-corpus", "maximumResidentMicros": 1000 },
-      "zeroMatchTerms": ["asp_live_corpus_zero_match_fastapi_d197"],
+      "zeroMatchSearch": { "rg": ["-n", "-F", "asp_live_corpus_zero_match_fastapi_d197", "."], "tantivy": ["title:\"asp_live_corpus_zero_match_fastapi_d197\"^2 OR body:asp_live_corpus_zero_match_fastapi_d197"], "minimumCandidates": 0, "maximumSearchMicros": 500000 },
       "requiredTelemetryEvents": ["runtime_resident_search_terminal", "runtime_exact_projection_terminal"]
     },
     {
@@ -146,9 +147,9 @@
       "scenarioId": "python.pandas-intent-matrix",
       "languageId": "python",
       "providerId": "asp-python",
-      "search": { "method": "lexical", "terms": ["DataFrame", "Series"], "view": "seeds", "minimumCandidates": 1, "maximumResidentMicros": 1000 },
+      "search": { "rg": ["-n", "-F", "-e", "DataFrame", "-e", "Series", "."], "tantivy": ["title:\"DataFrame Series\"^2 OR body:\"DataFrame Series\""] , "minimumCandidates": 1, "maximumSearchMicros": 500000 },
       "query": { "selectorStrategy": "first-ranked-parser-owned", "ownerView": "items", "projectionScope": "live-corpus", "maximumResidentMicros": 1000 },
-      "zeroMatchTerms": ["asp_live_corpus_zero_match_pandas_a603"],
+      "zeroMatchSearch": { "rg": ["-n", "-F", "asp_live_corpus_zero_match_pandas_a603", "."], "tantivy": ["title:\"asp_live_corpus_zero_match_pandas_a603\"^2 OR body:asp_live_corpus_zero_match_pandas_a603"], "minimumCandidates": 0, "maximumSearchMicros": 500000 },
       "requiredTelemetryEvents": ["runtime_resident_search_terminal", "runtime_exact_projection_terminal"]
     },
     {
@@ -157,9 +158,9 @@
       "scenarioId": "python.rich-intent-matrix",
       "languageId": "python",
       "providerId": "asp-python",
-      "search": { "method": "lexical", "terms": ["Console", "RenderableType"], "view": "seeds", "minimumCandidates": 1, "maximumResidentMicros": 1000 },
+      "search": { "rg": ["-n", "-F", "-e", "Console", "-e", "RenderableType", "."], "tantivy": ["title:\"Console RenderableType\"^2 OR body:\"Console RenderableType\""] , "minimumCandidates": 1, "maximumSearchMicros": 500000 },
       "query": { "selectorStrategy": "first-ranked-parser-owned", "ownerView": "items", "projectionScope": "live-corpus", "maximumResidentMicros": 1000 },
-      "zeroMatchTerms": ["asp_live_corpus_zero_match_rich_4e8d"],
+      "zeroMatchSearch": { "rg": ["-n", "-F", "asp_live_corpus_zero_match_rich_4e8d", "."], "tantivy": ["title:\"asp_live_corpus_zero_match_rich_4e8d\"^2 OR body:asp_live_corpus_zero_match_rich_4e8d"], "minimumCandidates": 0, "maximumSearchMicros": 500000 },
       "requiredTelemetryEvents": ["runtime_resident_search_terminal", "runtime_exact_projection_terminal"]
     },
     {
@@ -168,9 +169,9 @@
       "scenarioId": "rust.tokio-intent-matrix",
       "languageId": "rust",
       "providerId": "asp-rust",
-      "search": { "method": "lexical", "terms": ["spawn", "Runtime"], "view": "seeds", "minimumCandidates": 1, "maximumResidentMicros": 1000 },
+      "search": { "rg": ["-n", "-F", "-e", "spawn", "-e", "Runtime", "."], "tantivy": ["title:\"spawn Runtime\"^2 OR body:\"spawn Runtime\""] , "minimumCandidates": 1, "maximumSearchMicros": 500000 },
       "query": { "selectorStrategy": "first-ranked-parser-owned", "ownerView": "items", "projectionScope": "live-corpus", "maximumResidentMicros": 1000 },
-      "zeroMatchTerms": ["asp_live_corpus_zero_match_tokio_b2ca"],
+      "zeroMatchSearch": { "rg": ["-n", "-F", "asp_live_corpus_zero_match_tokio_b2ca", "."], "tantivy": ["title:\"asp_live_corpus_zero_match_tokio_b2ca\"^2 OR body:asp_live_corpus_zero_match_tokio_b2ca"], "minimumCandidates": 0, "maximumSearchMicros": 500000 },
       "requiredTelemetryEvents": ["runtime_resident_search_terminal", "runtime_exact_projection_terminal"]
     },
     {
@@ -179,9 +180,9 @@
       "scenarioId": "rust.bytes-intent-matrix",
       "languageId": "rust",
       "providerId": "asp-rust",
-      "search": { "method": "lexical", "terms": ["Bytes", "Buf"], "view": "seeds", "minimumCandidates": 1, "maximumResidentMicros": 1000 },
+      "search": { "rg": ["-n", "-F", "-e", "Bytes", "-e", "Buf", "."], "tantivy": ["title:\"Bytes Buf\"^2 OR body:\"Bytes Buf\""] , "minimumCandidates": 1, "maximumSearchMicros": 500000 },
       "query": { "selectorStrategy": "first-ranked-parser-owned", "ownerView": "items", "projectionScope": "live-corpus", "maximumResidentMicros": 1000 },
-      "zeroMatchTerms": ["asp_live_corpus_zero_match_bytes_1ad4"],
+      "zeroMatchSearch": { "rg": ["-n", "-F", "asp_live_corpus_zero_match_bytes_1ad4", "."], "tantivy": ["title:\"asp_live_corpus_zero_match_bytes_1ad4\"^2 OR body:asp_live_corpus_zero_match_bytes_1ad4"], "minimumCandidates": 0, "maximumSearchMicros": 500000 },
       "requiredTelemetryEvents": ["runtime_resident_search_terminal", "runtime_exact_projection_terminal"]
     },
     {
@@ -190,9 +191,9 @@
       "scenarioId": "rust.ignore-intent-matrix",
       "languageId": "rust",
       "providerId": "asp-rust",
-      "search": { "method": "lexical", "terms": ["RegexMatcher", "search"], "view": "seeds", "minimumCandidates": 1, "maximumResidentMicros": 1000 },
+      "search": { "rg": ["-n", "-F", "-e", "RegexMatcher", "-e", "search", "."], "tantivy": ["title:\"RegexMatcher search\"^2 OR body:\"RegexMatcher search\""] , "minimumCandidates": 1, "maximumSearchMicros": 500000 },
       "query": { "selectorStrategy": "first-ranked-parser-owned", "ownerView": "items", "projectionScope": "live-corpus", "maximumResidentMicros": 1000 },
-      "zeroMatchTerms": ["asp_live_corpus_zero_match_ripgrep_995b"],
+      "zeroMatchSearch": { "rg": ["-n", "-F", "asp_live_corpus_zero_match_ripgrep_995b", "."], "tantivy": ["title:\"asp_live_corpus_zero_match_ripgrep_995b\"^2 OR body:asp_live_corpus_zero_match_ripgrep_995b"], "minimumCandidates": 0, "maximumSearchMicros": 500000 },
       "requiredTelemetryEvents": ["runtime_resident_search_terminal", "runtime_exact_projection_terminal"]
     },
     {
@@ -201,9 +202,9 @@
       "scenarioId": "typescript.typescript-intent-matrix",
       "languageId": "typescript",
       "providerId": "asp-typescript",
-      "search": { "method": "lexical", "terms": ["createProgram", "SourceFile"], "view": "seeds", "minimumCandidates": 1, "maximumResidentMicros": 1000 },
+      "search": { "rg": ["-n", "-F", "-e", "createProgram", "-e", "SourceFile", "."], "tantivy": ["title:\"createProgram SourceFile\"^2 OR body:\"createProgram SourceFile\""] , "minimumCandidates": 1, "maximumSearchMicros": 500000 },
       "query": { "selectorStrategy": "first-ranked-parser-owned", "ownerView": "items", "projectionScope": "live-corpus", "maximumResidentMicros": 1000 },
-      "zeroMatchTerms": ["asp_live_corpus_zero_match_typescript_a77e"],
+      "zeroMatchSearch": { "rg": ["-n", "-F", "asp_live_corpus_zero_match_typescript_a77e", "."], "tantivy": ["title:\"asp_live_corpus_zero_match_typescript_a77e\"^2 OR body:asp_live_corpus_zero_match_typescript_a77e"], "minimumCandidates": 0, "maximumSearchMicros": 500000 },
       "requiredTelemetryEvents": ["runtime_resident_search_terminal", "runtime_exact_projection_terminal"]
     },
     {
@@ -212,9 +213,9 @@
       "scenarioId": "typescript.effect-claude-concurrency-flow",
       "languageId": "typescript",
       "providerId": "asp-typescript",
-      "search": { "method": "lexical", "terms": ["Effect", "Layer"], "view": "seeds", "minimumCandidates": 1, "maximumResidentMicros": 1000 },
+      "search": { "rg": ["-n", "-F", "-e", "Effect", "-e", "Layer", "."], "tantivy": ["title:\"Effect Layer\"^2 OR body:\"Effect Layer\""] , "minimumCandidates": 1, "maximumSearchMicros": 500000 },
       "query": { "selectorStrategy": "first-ranked-parser-owned", "ownerView": "items", "projectionScope": "live-corpus", "maximumResidentMicros": 1000 },
-      "zeroMatchTerms": ["asp_live_corpus_zero_match_effect_124f"],
+      "zeroMatchSearch": { "rg": ["-n", "-F", "asp_live_corpus_zero_match_effect_124f", "."], "tantivy": ["title:\"asp_live_corpus_zero_match_effect_124f\"^2 OR body:asp_live_corpus_zero_match_effect_124f"], "minimumCandidates": 0, "maximumSearchMicros": 500000 },
       "requiredTelemetryEvents": ["runtime_resident_search_terminal", "runtime_exact_projection_terminal"]
     },
     {
@@ -223,9 +224,9 @@
       "scenarioId": "typescript.playwright-intent-matrix",
       "languageId": "typescript",
       "providerId": "asp-typescript",
-      "search": { "method": "lexical", "terms": ["Browser", "Page"], "view": "seeds", "minimumCandidates": 1, "maximumResidentMicros": 1000 },
+      "search": { "rg": ["-n", "-F", "-e", "Browser", "-e", "Page", "."], "tantivy": ["title:\"Browser Page\"^2 OR body:\"Browser Page\""] , "minimumCandidates": 1, "maximumSearchMicros": 500000 },
       "query": { "selectorStrategy": "first-ranked-parser-owned", "ownerView": "items", "projectionScope": "live-corpus", "maximumResidentMicros": 1000 },
-      "zeroMatchTerms": ["asp_live_corpus_zero_match_playwright_c341"],
+      "zeroMatchSearch": { "rg": ["-n", "-F", "asp_live_corpus_zero_match_playwright_c341", "."], "tantivy": ["title:\"asp_live_corpus_zero_match_playwright_c341\"^2 OR body:asp_live_corpus_zero_match_playwright_c341"], "minimumCandidates": 0, "maximumSearchMicros": 500000 },
       "requiredTelemetryEvents": ["runtime_resident_search_terminal", "runtime_exact_projection_terminal"]
     },
     {
@@ -234,9 +235,9 @@
       "scenarioId": "typescript.vite-intent-matrix",
       "languageId": "typescript",
       "providerId": "asp-typescript",
-      "search": { "method": "lexical", "terms": ["defineConfig", "Plugin"], "view": "seeds", "minimumCandidates": 1, "maximumResidentMicros": 1000 },
+      "search": { "rg": ["-n", "-F", "-e", "defineConfig", "-e", "Plugin", "."], "tantivy": ["title:\"defineConfig Plugin\"^2 OR body:\"defineConfig Plugin\""] , "minimumCandidates": 1, "maximumSearchMicros": 500000 },
       "query": { "selectorStrategy": "first-ranked-parser-owned", "ownerView": "items", "projectionScope": "live-corpus", "maximumResidentMicros": 1000 },
-      "zeroMatchTerms": ["asp_live_corpus_zero_match_vite_02f8"],
+      "zeroMatchSearch": { "rg": ["-n", "-F", "asp_live_corpus_zero_match_vite_02f8", "."], "tantivy": ["title:\"asp_live_corpus_zero_match_vite_02f8\"^2 OR body:asp_live_corpus_zero_match_vite_02f8"], "minimumCandidates": 0, "maximumSearchMicros": 500000 },
       "requiredTelemetryEvents": ["runtime_resident_search_terminal", "runtime_exact_projection_terminal"]
     },
     {
@@ -245,9 +246,9 @@
       "scenarioId": "typescript.vue-runtime-scheduler-real-trigger-flow",
       "languageId": "typescript",
       "providerId": "asp-typescript",
-      "search": { "method": "lexical", "terms": ["createApp", "Component"], "view": "seeds", "minimumCandidates": 1, "maximumResidentMicros": 1000 },
+      "search": { "rg": ["-n", "-F", "-e", "createApp", "-e", "Component", "."], "tantivy": ["title:\"createApp Component\"^2 OR body:\"createApp Component\""] , "minimumCandidates": 1, "maximumSearchMicros": 500000 },
       "query": { "selectorStrategy": "first-ranked-parser-owned", "ownerView": "items", "projectionScope": "live-corpus", "maximumResidentMicros": 1000 },
-      "zeroMatchTerms": ["asp_live_corpus_zero_match_vue_889a"],
+      "zeroMatchSearch": { "rg": ["-n", "-F", "asp_live_corpus_zero_match_vue_889a", "."], "tantivy": ["title:\"asp_live_corpus_zero_match_vue_889a\"^2 OR body:asp_live_corpus_zero_match_vue_889a"], "minimumCandidates": 0, "maximumSearchMicros": 500000 },
       "requiredTelemetryEvents": ["runtime_resident_search_terminal", "runtime_exact_projection_terminal"]
     }
   ]

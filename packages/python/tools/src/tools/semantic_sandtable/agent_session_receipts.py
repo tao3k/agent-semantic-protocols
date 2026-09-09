@@ -158,43 +158,42 @@ def _receipt_summary(
     observation: dict[str, Any],
     commands: list[dict[str, Any]],
 ) -> dict[str, Any]:
-    pipe_flow = dict_value(observation.get("pipeFlow"))
+    command_flow = dict_value(observation.get("commandFlow"))
     summary = {
         "turns": len(events),
         "assistantVisibleMessages": _event_count(events, "assistant.visible-message"),
         "toolRequests": _event_count(events, "tool.request"),
         "toolResults": _event_count(events, "tool.result"),
         "commandCount": len(commands),
-        "aspCommands": optional_int(pipe_flow.get("aspCommands")) or _asp_command_count(commands),
-        "searchCommands": optional_int(pipe_flow.get("searchCommands"))
+        "aspCommands": optional_int(command_flow.get("aspCommands")) or _asp_command_count(commands),
+        "searchCommands": optional_int(command_flow.get("searchCommands"))
         or _surface_count(commands, "search"),
-        "queryCommands": optional_int(pipe_flow.get("queryCommands"))
+        "queryCommands": optional_int(command_flow.get("queryCommands"))
         or _surface_count(commands, "query"),
-        "guideCommands": optional_int(pipe_flow.get("guideCommands"))
+        "guideCommands": optional_int(command_flow.get("guideCommands"))
         or _surface_count(commands, "guide"),
-        "deniedCommands": optional_int(pipe_flow.get("deniedAspCommands"))
+        "deniedCommands": optional_int(command_flow.get("deniedAspCommands"))
         or _denied_count(commands),
-        "repeatedCommands": optional_int(pipe_flow.get("repeatedCommands"))
+        "repeatedCommands": optional_int(command_flow.get("repeatedCommands"))
         or _repeated_count(commands),
-        "directReadRiskCommands": optional_int(pipe_flow.get("directReadRiskCommands"))
+        "directReadRiskCommands": optional_int(command_flow.get("directReadRiskCommands"))
         or _direct_read_risk_count(commands),
         "stdoutBytes": sum(_metric(command, "stdoutBytes") for command in commands),
         "stderrBytes": sum(_metric(command, "stderrBytes") for command in commands),
         "elapsedMs": sum(_metric(command, "elapsedMs") for command in commands),
     }
     _attach_token_cost(summary, observation)
-    _attach_pipe_flow_counts(summary, pipe_flow)
+    _attach_command_flow_counts(summary, command_flow)
     return summary
 
 
-def _attach_pipe_flow_counts(summary: dict[str, Any], pipe_flow: dict[str, Any]) -> None:
+def _attach_command_flow_counts(summary: dict[str, Any], command_flow: dict[str, Any]) -> None:
     for key in (
-        "searchPrimeCommands",
-        "searchPipeCommands",
+        "searchPlaybookCommands",
         "querySelectorCommands",
         "directReadCommands",
     ):
-        value = optional_int(pipe_flow.get(key))
+        value = optional_int(command_flow.get(key))
         if value is not None:
             summary[key] = value
 

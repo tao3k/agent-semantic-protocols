@@ -114,8 +114,8 @@ def test_timeline_cli_accepts_schema_owned_events_json(tmp_path) -> None:
         [
             sys.executable,
             "-S",
-            "-m",
-            "asp_python_graphs",
+            "-c",
+            "from asp_python_graphs.graph_turbo_cli import main; raise SystemExit(main())",
             "timeline",
             str(tmp_path),
             "--events-json",

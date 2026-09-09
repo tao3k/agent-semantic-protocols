@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from collections import Counter, defaultdict
 from pathlib import Path
+import re
 from typing import Any
 
 from .large_library_optimization_matrix import (
@@ -228,6 +229,16 @@ def _search_command_entry(
 
 
 def _search_command_language(command: list[str], fallback_language: str) -> str:
+    if command[:3] == ["asp", "search", "playbook"]:
+        try:
+            language_index = command.index("--language") + 1
+        except ValueError:
+            return fallback_language
+        return (
+            command[language_index]
+            if language_index < len(command)
+            else fallback_language
+        )
     if len(command) >= 3 and command[0] == "asp":
         return command[1]
     return fallback_language
@@ -242,10 +253,24 @@ def _search_command_view(command: list[str], search_index: int) -> str | None:
 
 
 def _search_command_queries(command: list[str], search_index: int) -> list[str]:
+    if command[search_index + 1 : search_index + 2] == ["playbook"]:
+        return _playbook_rg_queries(command)
     option_queries = _query_option_values(command)
     if option_queries:
         return option_queries
     return _positional_query_values(command[search_index + 2 :])
+
+
+def _playbook_rg_queries(command: list[str]) -> list[str]:
+    queries: list[str] = []
+    for index, token in enumerate(command[:-1]):
+        if token not in {"-e", "--regexp"}:
+            continue
+        for query in re.split(r"(?<!\\)\|", command[index + 1]):
+            unescaped = re.sub(r"\\(.)", r"\1", query)
+            if unescaped and unescaped not in queries:
+                queries.append(unescaped)
+    return queries
 
 
 def _query_option_values(command: list[str]) -> list[str]:
@@ -292,7 +317,7 @@ def _deep_question_entry(question: dict[str, Any]) -> dict[str, Any]:
         "requiresQuerySet": audit.get("requiresQuerySet") is True,
         "requiresGraphSignals": audit.get("requiresGraphSignals") is True,
         "requiresHookEvents": audit.get("requiresHookEvents") is True,
-        "requiresComplexPipeFlow": audit.get("requiresComplexPipeFlow") is True,
+        "requiresComplexCommandFlow": audit.get("requiresComplexCommandFlow") is True,
         "requiresTokenCost": audit.get("requiresTokenCost") is True,
         "requiredStages": string_list(expected_flow.get("requiredStages")),
         "forbiddenStages": string_list(expected_flow.get("forbiddenStages")),
@@ -312,7 +337,7 @@ def _language_entry(language: str, scenarios: list[dict[str, Any]]) -> dict[str,
             "requiresQuerySet",
             "requiresGraphSignals",
             "requiresHookEvents",
-            "requiresComplexPipeFlow",
+            "requiresComplexCommandFlow",
             "requiresTokenCost",
         ):
             if question.get(signal) is True:
@@ -356,7 +381,7 @@ def _report_chain_ready(
     return (
         all(depth_counts.get(bucket, 0) > 0 for bucket in REQUIRED_DEPTH_BUCKETS)
         and any(question["requiresTokenCost"] for question in deep_questions)
-        and any(question["requiresComplexPipeFlow"] for question in deep_questions)
+        and any(question["requiresComplexCommandFlow"] for question in deep_questions)
     )
 
 
@@ -572,9 +597,7 @@ def _rollup(
             1 for entry in language_entries if entry["reportChainReady"] is True
         ),
         "optimizationRunCount": len(optimization_matrix),
-        "optimizationVariantRunCount": int(
-            optimization_batch["variantRunCount"]
-        ),
+        "optimizationVariantRunCount": int(optimization_batch["variantRunCount"]),
         "findingCount": len(findings),
         "aspBinaryFreshnessRiskCommandCount": binary_risk_commands,
         "aspBinaryFreshnessRiskScenarioCount": binary_risk_scenarios,

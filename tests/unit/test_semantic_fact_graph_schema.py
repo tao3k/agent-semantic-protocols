@@ -13,7 +13,6 @@ from jsonschema import Draft202012Validator
 _ROOT = Path(__file__).resolve().parents[2]
 _SCHEMA_PATH = _ROOT / "schemas" / "semantic-fact-graph.v1.schema.json"
 _FIXTURES_PATH = _ROOT / "schemas" / "semantic-fact-ontology.fixtures.v1.json"
-_REGISTRY_PATH = _ROOT / "schemas" / "semantic-language-registry.providers.v1.json"
 
 
 def _load_json(path: Path) -> dict[str, Any]:
@@ -25,7 +24,9 @@ def test_semantic_fact_graph_schema_validates_fixture_derived_provider_packets()
 ):
     schema = _load_json(_SCHEMA_PATH)
     fixtures = _load_json(_FIXTURES_PATH)["fixtures"]
-    validator = Draft202012Validator(schema)
+    from unit.schema_validation import schema_validator_for
+
+    validator = schema_validator_for(_SCHEMA_PATH)
 
     for fixture in fixtures:
         packet = _runtime_packet(fixture)
@@ -36,19 +37,6 @@ def test_semantic_fact_graph_schema_validates_fixture_derived_provider_packets()
             f"{fixture['fixtureId']} {list(error.path)}: {error.message}"
             for error in errors
         ]
-
-
-def test_provider_registry_advertises_fact_graph_and_ontology_schemas() -> None:
-    registry = _load_json(_REGISTRY_PATH)
-    expected = {
-        "agent.semantic-protocols.semantic-fact-graph",
-        "agent.semantic-protocols.semantic-fact-ontology",
-    }
-    for language in registry["languages"]:
-        if language["languageId"] not in {"rust", "python", "typescript", "julia"}:
-            continue
-        schema_ids = {schema["schemaId"] for schema in language["schemas"]}
-        assert expected <= schema_ids, language["languageId"]
 
 
 def test_semantic_fact_graph_schema_accepts_build_test_package_graph() -> None:

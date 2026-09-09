@@ -38,16 +38,17 @@ def test_tree_sitter_query_rfc_defines_frontier_code_render_contract() -> None:
 
 
 def test_schema_readme_names_query_render_profiles_without_new_packet_surface() -> None:
-    text = SCHEMA_README_PATH.read_text(encoding="utf-8")
+    text = " ".join(SCHEMA_README_PATH.read_text(encoding="utf-8").split())
 
     required_terms = [
-        "non-`--code` output is locator/frontier evidence only",
-        "`--code`",
-        "prints pure source code",
+        "For tree-sitter-backed exact query rendering",
+        "`--projection source` returns parser-authoritative source",
+        "`--projection callable-skeleton` returns the bounded callable structure",
         "`compact-graph-frontier` profile",
         "`corpus-locator` profile",
         "ASP-compiled tree-sitter query plan",
         "provider-native projection",
+        "they do not introduce a new packet surface",
     ]
 
     assert missing_terms(text, required_terms) == []

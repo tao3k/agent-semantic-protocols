@@ -150,7 +150,7 @@ agent-semantic-runtime::state_core -> state root, repo/workspace/scope identity
 agent-semantic-client-core -> client-facing State Core services and reports
 agent-semantic-client-db -> DB Engine schema, Turso path, sessions, manifests
 agent-semantic-search -> search routing, overlays, source-index lookup
-language harnesses -> native parser facts and shared packets
+ASP language providers -> native parser facts and shared packets
 #+end_src
 
 When a command needs new behavior, first define the typed service in the owning

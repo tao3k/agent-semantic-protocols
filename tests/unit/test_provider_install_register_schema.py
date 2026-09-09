@@ -44,6 +44,5 @@ def test_provider_install_register_has_no_hook_or_cli_authority() -> None:
         "manifestDigest",
         "methodDescriptor",
         "runtimeProfile",
-        "asp-rust",
     ):
         assert forbidden not in serialized

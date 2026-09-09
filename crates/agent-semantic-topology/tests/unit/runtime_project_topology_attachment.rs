@@ -9,6 +9,7 @@ use agent_semantic_content_identity::Blake3DigestV1;
 use agent_semantic_content_identity::runtime_execution::RuntimeExecutionBinding;
 use agent_semantic_topology::{
     ProjectTopologyLibrary, ProjectTopologyManifest, RuntimeProjectTopologyAttachment,
+    RuntimeProjectTopologyAttachmentCandidate,
 };
 
 fn attachment_packet() -> serde_json::Value {
@@ -27,7 +28,7 @@ fn library_packet() -> serde_json::Value {
 
 fn manifest() -> ProjectTopologyManifest {
     ProjectTopologyManifest::parse_org(include_str!(
-        "../../../../org/templates/project.topology-program.v1.org"
+        "../../../../org/templates/project.workspace-manifest.v1.org"
     ))
     .expect("Project Topology manifest")
 }
@@ -100,6 +101,47 @@ fn runtime_attachment_admits_the_exact_complete_identity_product() {
             .as_str()
             .unwrap()
     );
+}
+
+#[test]
+fn runtime_attachment_candidate_requires_external_receipt_admission() {
+    let fixture = attachment_packet();
+    let mut runtime_binding: RuntimeExecutionBinding =
+        serde_json::from_value(fixture["runtimeExecutionBinding"].clone())
+            .expect("Runtime execution binding");
+    runtime_binding
+        .content_binding
+        .authority_stamp
+        .canonical_digest = runtime_binding.content_binding.identity.digest();
+    let candidate = RuntimeProjectTopologyAttachmentCandidate::build(
+        Blake3DigestV1::from(
+            fixture["runtimeGenerationDigest"]
+                .as_str()
+                .expect("Runtime generation digest"),
+        ),
+        runtime_binding,
+        Arc::new(admitted_library()),
+        fixture["topologyLibraryBinding"]["parserCatalogDigest"]
+            .as_str()
+            .expect("parser catalog digest"),
+    )
+    .expect("Runtime attachment candidate");
+    assert_eq!(candidate.packet()["terminal"]["terminalCount"], 1);
+    assert_eq!(
+        candidate
+            .clone()
+            .admit(&BTreeMap::new())
+            .expect_err("embedded receipt must not self-admit")
+            .reason_kind(),
+        "runtime-topology-inference-receipt-unadmitted"
+    );
+    let admitted = BTreeMap::from([(
+        candidate.receipt_digest().to_owned(),
+        candidate.inference_receipt().clone(),
+    )]);
+    candidate
+        .admit(&admitted)
+        .expect("independently supplied receipt admits candidate");
 }
 
 #[test]

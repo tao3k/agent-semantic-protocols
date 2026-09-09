@@ -58,6 +58,7 @@ def test_live_corpus_search_query_plan_covers_the_complete_locked_matrix() -> No
     }
     assert plan["clientProtocol"]["appliesToCaseCount"] == len(plan["cases"]) == 17
     assert plan["clientProtocol"]["maximumResidentMicros"] <= 1000
+    assert plan["clientProtocol"]["workspaceScheduling"] == "tokio-join-set"
     assert plan["clientProtocol"]["sessionPolicy"] == "one-initialize-per-session"
     assert plan["clientProtocol"]["readyEffects"] == ["mpsc", "oneshot", "cancel", "response"]
     assert plan["clientProtocol"]["forbiddenReadyEffects"] == [
@@ -76,7 +77,8 @@ def test_live_corpus_search_query_plan_covers_the_complete_locked_matrix() -> No
     assert {provider_id for _, _, provider_id in planned.values()} == {
         "asp-gerbil-scheme",
         "asp-julia",
-        "orgize",
+        "asp-md",
+        "asp-org",
         "asp-python",
         "asp-rust",
         "asp-typescript",
@@ -88,4 +90,5 @@ def test_live_corpus_search_query_plan_covers_the_complete_locked_matrix() -> No
     assert all(by_language.values())
     for entries in by_language.values():
         assert all(entry["search"]["minimumCandidates"] >= 1 for entry in entries)
-        assert all(entry["zeroMatchTerms"] for entry in entries)
+        assert all(entry["zeroMatchSearch"]["rg"] for entry in entries)
+        assert all(entry["zeroMatchSearch"]["tantivy"] for entry in entries)

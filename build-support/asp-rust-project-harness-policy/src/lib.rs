@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
-//! ASP downstream policy crate for Rust project harness evidence graphs.
+//! ASP downstream policy crate for Rust project harness build ownership.
 
 #[cfg(feature = "workspace-policy")]
 pub use asp_rust;
@@ -11,12 +11,9 @@ pub mod build_gate;
 pub use build_gate::AspRustProjectHarnessMemberPolicyReceipt;
 pub use build_gate::assert_asp_rust_project_harness_member_policy;
 pub use build_gate::assert_asp_rust_project_harness_member_policy_from_env;
-pub mod evidence;
 /// Reusable hook scenarios for Rust project harness policy checks.
 pub mod member_policy;
-pub mod package_evidence_graph;
 pub mod search_scenarios;
-pub mod workspace_evidence_graph;
 #[cfg(feature = "workspace-policy")]
 pub mod workspace_policy;
 
@@ -45,25 +42,14 @@ pub use search_scenarios::SEARCH_SOURCE_INDEX_OWNER_ITEM_GRAPH_CHAIN_SCENARIO_ID
 pub use search_scenarios::SEARCH_SUBAGENT_COMPACT_RECEIPT_SCENARIO_ID;
 pub use search_scenarios::asp_search_scenario_package;
 
-pub use workspace_evidence_graph::AspRustProjectHarnessWorkspaceEvidenceGraphEdgeKind;
-pub use workspace_evidence_graph::AspRustProjectHarnessWorkspaceEvidenceGraphEdgeReceipt;
-pub use workspace_evidence_graph::AspRustProjectHarnessWorkspaceEvidenceGraphNodeKind;
-pub use workspace_evidence_graph::AspRustProjectHarnessWorkspaceEvidenceGraphNodeReceipt;
-pub use workspace_evidence_graph::AspRustProjectHarnessWorkspaceEvidenceGraphReceipt;
-pub use workspace_evidence_graph::AspRustProjectHarnessWorkspaceEvidenceGraphRequest;
-pub use workspace_evidence_graph::AspRustProjectHarnessWorkspaceEvidenceGraphSummaryReceipt;
-pub use workspace_evidence_graph::build_asp_workspace_evidence_graph_receipt;
-pub use workspace_evidence_graph::build_workspace_evidence_graph_receipt;
 #[cfg(feature = "workspace-policy")]
 pub use workspace_policy::assert_asp_workspace_build_identity_from_env;
 #[cfg(feature = "workspace-policy")]
 pub use workspace_policy::assert_asp_workspace_policy;
 #[cfg(feature = "workspace-policy")]
 pub use workspace_policy::assert_asp_workspace_policy_from_env;
-
-pub use evidence::AspRustProjectHarnessEvidenceGraphInput;
-pub use evidence::AspRustProjectHarnessEvidenceGraphSummary;
-pub use evidence::summarize_client_db_evidence_graph;
-pub use package_evidence_graph::AspRustProjectHarnessPackageEvidenceGraphReceipt;
-pub use package_evidence_graph::AspRustProjectHarnessPackageEvidenceGraphRequest;
-pub use package_evidence_graph::build_package_evidence_graph_receipt;
+#[cfg(feature = "workspace-policy")]
+pub use workspace_policy::{
+    assert_asp_rust_project_harness_member_source_policy_from_env,
+    evaluate_asp_rust_project_harness_member_source_policy,
+};

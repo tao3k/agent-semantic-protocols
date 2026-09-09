@@ -367,7 +367,7 @@ impl AspClientPendingCall {
 fn response_budget_for_frame(frame: &ClientFrame) -> Option<std::time::Duration> {
     match frame {
         ClientFrame::Request { method, .. }
-            if classify_client_dispatch(method) != ClientDispatchClass::InteractiveRead =>
+            if classify_client_dispatch(method) == ClientDispatchClass::ColdGenerationAdmission =>
         {
             None
         }

@@ -126,6 +126,18 @@
         },
         {
           "properties": {
+            "languageId": {"const": "md"},
+            "providerId": {"const": "asp-md"}
+          }
+        },
+        {
+          "properties": {
+            "languageId": {"const": "org"},
+            "providerId": {"const": "asp-org"}
+          }
+        },
+        {
+          "properties": {
             "languageId": {"const": "python"},
             "providerId": {"const": "asp-python"}
           }
@@ -396,7 +408,7 @@
     },
     "methodId": {
       "type": "string",
-      "pattern": "^(?:guide|query|(query|proof|review|evidence|ast-patch|agent)/[a-z][a-z0-9_-]*)$"
+      "pattern": "^(?:guide|query|(query|proof|review|ast-patch|agent)/[a-z][a-z0-9_-]*)$"
     },
     "hookRouteBindings": {
       "type": "object",

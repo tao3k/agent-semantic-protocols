@@ -153,7 +153,7 @@ async fn mutable_config_source_edit_does_not_change_runtime_hook_binary() {
 }
 
 #[tokio::test]
-async fn inherited_escape_precedes_missing_or_corrupt_runtime_hook_binary() {
+async fn unrelated_environment_does_not_escape_missing_or_corrupt_runtime_hook_binary() {
     let _serial = DEVELOPER_LAUNCHER_TEST_SERIAL.lock().await;
     let temp = tempfile::tempdir().expect("temp state");
     let missing_state = temp.path().join("missing");
@@ -186,12 +186,25 @@ async fn inherited_escape_precedes_missing_or_corrupt_runtime_hook_binary() {
                 "ASP_STATE_HOME".to_owned(),
                 state_home.display().to_string(),
             ));
-            let escaped = run_hook_process(&escaped, &json!({"invalid": true}))
+            let receipt = run_hook_process(&escaped, &json!({"invalid": true}))
                 .await
-                .unwrap_or_else(|error| panic!("layer-zero event={event}: {error}"));
-            assert_eq!(escaped.decision, json!({}), "event={event}");
-            assert!(escaped.stderr.is_empty(), "event={event}");
-            assert!(escaped.elapsed < std::time::Duration::from_secs(1));
+                .unwrap_or_else(|error| panic!("unavailable event={event}: {error}"));
+            let reason = "ASP Hook evaluator is unavailable because the canonical Runtime Hook binary is missing or non-executable. Publish it with: asp install binary";
+            let expected = if event == "pre-tool" {
+                json!({
+                    "hookSpecificOutput": {
+                        "hookEventName": "PreToolUse",
+                        "permissionDecision": "deny",
+                        "permissionDecisionReason": reason,
+                    },
+                    "systemMessage": reason,
+                })
+            } else {
+                json!({"systemMessage": reason})
+            };
+            assert_eq!(receipt.decision, expected, "event={event}");
+            assert!(receipt.stderr.is_empty(), "event={event}");
+            assert!(receipt.elapsed < std::time::Duration::from_secs(1));
         }
     }
 }
@@ -205,7 +218,7 @@ async fn publication_failure_preserves_previous_runtime_hook_binary() {
     std::fs::create_dir_all(&sources).expect("sources");
     publish(&state_home, &sources, "previous").await;
 
-    let lock_path = state_home.join("runtime/locks/artifact-mutation.lock");
+    let lock_path = state_home.join("runtime/artifacts/leases/artifact-mutation.lock");
     let lock = std::fs::OpenOptions::new()
         .create(true)
         .read(true)

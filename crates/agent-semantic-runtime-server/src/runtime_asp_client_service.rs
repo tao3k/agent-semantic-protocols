@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::sync::Arc;
 use std::sync::Mutex;
 
@@ -31,6 +32,7 @@ pub(super) type ClientWorkspaceKey = (String, String, String);
 /// or Hook configuration on the client path.
 pub fn workspace_search_providers_from_provider_register(
     register: &agent_semantic_client_db::runtime_provider_register::RuntimeProviderRegister,
+    schema_bundles: &crate::schema_bundle::RuntimeSchemaBundleCatalog,
 ) -> Result<Arc<[WorkspaceSearchProvider]>, String> {
     let snapshot = register.snapshot();
     let mut providers = snapshot
@@ -61,11 +63,30 @@ pub fn workspace_search_providers_from_provider_register(
                     provider.language_id
                 ));
             }
+            let producer_axes = schema_bundles
+                .search_producer_axes(&provider.language_id)
+                .ok_or_else(|| {
+                    format!(
+                        "provider has no admitted schema profile: languageId={}",
+                        provider.language_id
+                    )
+                })?
+                .iter()
+                .map(|axis| match axis {
+                    agent_semantic_schema_manager::SearchProducerAxis::Language => {
+                        agent_semantic_search::WorkspaceSearchProducerAxis::Language
+                    }
+                    agent_semantic_schema_manager::SearchProducerAxis::Document => {
+                        agent_semantic_search::WorkspaceSearchProducerAxis::Document
+                    }
+                })
+                .collect();
             Ok(WorkspaceSearchProvider {
                 language_id: provider.language_id.clone(),
                 provider_id: provider.provider_id.clone(),
                 source_extensions,
                 search_supported,
+                producer_axes,
             })
         })
         .collect::<Result<Vec<_>, String>>()?;
@@ -144,6 +165,8 @@ pub struct RuntimeAspClientDispatcher {
     pub(super) cancellations:
         Arc<Mutex<HashMap<ClientRequestKey, tokio::sync::watch::Sender<bool>>>>,
     pub(super) cancellation_admitted: Arc<tokio::sync::Notify>,
+    pub(super) resident_request_seen:
+        Arc<Mutex<HashSet<(ClientProjectId, ClientWorkspaceIdentity)>>>,
 }
 
 impl RuntimeAspClientDispatcher {
@@ -180,6 +203,7 @@ impl RuntimeAspClientDispatcher {
             active_telemetry_trace_count: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
             cancellations: Arc::new(Mutex::new(HashMap::new())),
             cancellation_admitted: Arc::new(tokio::sync::Notify::new()),
+            resident_request_seen: Arc::new(Mutex::new(HashSet::new())),
         }
     }
 }

@@ -32,7 +32,7 @@ class LineProtocolWindowSetPathTests(unittest.TestCase):
                                     "python",
                                     "-c",
                                     (
-                                        "print('[search-lexical]')\n"
+                                        "print('[search-playbook]')\n"
                                         "print('|synthesis algorithm=query-set "
                                         "scope=text windowSet=owner:src/a.ts,"
                                         "tests:tests/a.test.ts,"
@@ -69,7 +69,7 @@ class LineProtocolWindowSetPathTests(unittest.TestCase):
                                     "python",
                                     "-c",
                                     (
-                                        "print('[search-lexical]')\n"
+                                        "print('[search-playbook]')\n"
                                         "print('|synthesis algorithm=query-set "
                                         "scope=text windowSet=owner:0:src/a.ts')"
                                     ),
@@ -104,7 +104,7 @@ class LineProtocolWindowSetPathTests(unittest.TestCase):
                                     "python",
                                     "-c",
                                     (
-                                        "print('[search-lexical]')\n"
+                                        "print('[search-playbook]')\n"
                                         "print('|synthesis algorithm=query-set "
                                         "scope=text windowSet=owner:tests/a.test.ts')"
                                     ),
@@ -139,7 +139,7 @@ class LineProtocolWindowSetPathTests(unittest.TestCase):
                                     "python",
                                     "-c",
                                     (
-                                        "print('[search-lexical]')\n"
+                                        "print('[search-playbook]')\n"
                                         "print('|synthesis algorithm=query-set "
                                         "scope=text windowSet=tests:src/a.ts')"
                                     ),

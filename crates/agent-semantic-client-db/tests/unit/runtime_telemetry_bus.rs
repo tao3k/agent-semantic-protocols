@@ -176,3 +176,33 @@ async fn independent_runtime_buses_do_not_cross_deliver() {
         "second"
     );
 }
+
+#[tokio::test]
+async fn resident_request_plane_receipt_is_emitted_and_retained_by_operation() {
+    let mut bus = RuntimeTelemetryBus::new();
+    let receipt = agent_semantic_client_protocol::RuntimeResidentRequestPlaneReceipt::ready(
+        agent_semantic_client_protocol::RuntimeResidentRequestOperation::Search,
+        agent_semantic_client_protocol::RuntimeResidentRequestTemperature::Cold,
+        format!("blake3-256:{}", "a".repeat(64)),
+        17,
+    );
+    bus.sender
+        .try_record_resident_request_plane("search-17", receipt.clone())
+        .expect("emit request-plane receipt");
+
+    assert_eq!(
+        bus.sender.resident_request_plane_receipt("search-17"),
+        Some(receipt)
+    );
+    let RuntimeTelemetryEvent::Performance(observation) = bus
+        .receiver
+        .recv()
+        .await
+        .expect("request-plane observation")
+    else {
+        panic!("request-plane receipt must emit performance evidence");
+    };
+    assert_eq!(observation.stage, "runtime-resident-request-plane");
+    assert_eq!(observation.memory_search_provider_spawns, Some(0));
+    assert_eq!(observation.memory_search_socket_connects, Some(0));
+}

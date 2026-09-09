@@ -48,16 +48,3 @@ def test_language_registration_accepts_provider_command_prefix() -> None:
 
     assert language_registry_errors(registry) == []
 
-
-def test_agent_json_method_requires_output_schema_ids() -> None:
-    errors = language_descriptor_errors(
-        {
-            "method": "agent/hook",
-            "command": "agent",
-            "supportsJson": True,
-            "supportsCompact": False,
-            "clients": ["codex"],
-        }
-    )
-
-    assert "'outputSchemaIds' is a required property" in errors

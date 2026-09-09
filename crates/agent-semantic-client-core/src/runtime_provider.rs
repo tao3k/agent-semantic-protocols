@@ -30,9 +30,10 @@ pub struct RuntimeProvider {
     pub config_files: Vec<String>,
     pub source_extensions: Vec<String>,
     pub source_inventory_capabilities: ProviderSourceInventoryCapabilities,
-    pub search_capabilities: agent_semantic_hook::ProviderSearchCapabilities,
-    pub query_pack_descriptor: agent_semantic_hook::ProviderQueryPackDescriptor,
-    pub semantic_facts_descriptor: Option<agent_semantic_hook::ProviderSemanticFactsDescriptor>,
+    pub search_capabilities: agent_semantic_provider_protocol::ProviderSearchCapabilities,
+    pub query_pack_descriptor: agent_semantic_provider_protocol::ProviderQueryPackDescriptor,
+    pub semantic_facts_descriptor:
+        Option<agent_semantic_provider_protocol::ProviderSemanticFactsDescriptor>,
     pub runtime_operations: Vec<RuntimeProviderOperation>,
 }
 

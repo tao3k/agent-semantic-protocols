@@ -63,12 +63,6 @@ NODE_KIND_BONUS_BY_PROFILE: Mapping[str, Mapping[str, float]] = {
         "test": 0.15,
         "owner": 0.1,
     },
-    "prime": {
-        "owner": 0.3,
-        "query": 0.2,
-        "dependency": 0.15,
-        "test": 0.15,
-    },
     "read-frontier": {
         "window": 0.4,
         "symbol": 0.3,

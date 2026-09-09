@@ -314,7 +314,7 @@ fn route_stage(index: usize) -> serde_json::Value {
             "predicateId": format!("predicate-{index}"),
             "claimClass": "identity",
             "scopeDigest": digest("scope"),
-            "acceptedSchemaIds": ["semantic-search-packet.v1"],
+            "acceptedSchemaIds": ["workspace-search-playbook-result.v1"],
             "requiredFields": ["symbol"],
             "completeness": "complete-scope",
             "requiresFreshBinding": true,

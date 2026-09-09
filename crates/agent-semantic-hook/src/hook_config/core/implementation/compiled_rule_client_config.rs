@@ -19,7 +19,7 @@ use super::HookRuntime;
 use super::ToolAction;
 use super::compile_agent_org_artifacts_config;
 use crate::hook_config::core::implementation::profile_provider_projection::extend_profile_provider_projections;
-use crate::hook_config::core::implementation::profile_provider_projection::extend_registered_provider_route_projections;
+use crate::hook_config::core::implementation::profile_provider_projection::extend_registered_provider_identity_projections;
 
 impl Default for ClientHookConfig {
     fn default() -> Self {
@@ -78,7 +78,7 @@ impl ClientHookConfig {
         &self,
         runtime: &HookRuntime,
     ) -> Result<(), String> {
-        for provider in &runtime.providers {
+        for provider in &runtime.policy_providers {
             let projected = self
                 .profiles
                 .values()
@@ -110,21 +110,6 @@ impl ClientHookConfig {
             &runtime.policy_providers,
         );
         runtime.policy_providers = provider_projections;
-        for provider in &mut runtime.providers {
-            let projected = self
-                .profiles
-                .values()
-                .find(|candidate| {
-                    candidate.language_id == provider.language_id.as_str()
-                        && candidate.provider_id == provider.provider_id.as_str()
-                })
-                .expect("validated language provider projection");
-            provider.source_extensions = projected
-                .extension_any
-                .iter()
-                .map(|extension| format!(".{extension}"))
-                .collect();
-        }
         Ok(())
     }
 
@@ -136,21 +121,6 @@ impl ClientHookConfig {
     ) -> Result<(), String> {
         self.publish_policy_snapshot(runtime)?;
         runtime.policy_providers = std::mem::take(&mut self.provider_projections);
-        for provider in &mut runtime.providers {
-            let projected = self
-                .profiles
-                .values()
-                .find(|candidate| {
-                    candidate.language_id == provider.language_id.as_str()
-                        && candidate.provider_id == provider.provider_id.as_str()
-                })
-                .expect("validated language provider projection");
-            provider.source_extensions = projected
-                .extension_any
-                .iter()
-                .map(|extension| format!(".{extension}"))
-                .collect();
-        }
         Ok(())
     }
 
@@ -394,7 +364,7 @@ fn compile_resolved_config(
     >,
     durable_policy: Option<(
         String,
-        Vec<crate::protocol_activation::protocol_activation_manifest::HookProviderProjection>,
+        Vec<crate::provider_projection::HookProviderProjection>,
     )>,
     executable_capabilities: Option<&std::collections::BTreeSet<String>>,
 ) -> Result<ClientHookConfig, String> {
@@ -444,7 +414,7 @@ fn compile_resolved_config(
     let (mut policy_generation_digest, mut provider_projections) =
         durable_policy.unwrap_or_else(|| ("profile-native-v1".to_owned(), Vec::new()));
     extend_profile_provider_projections(&config.profiles, &mut provider_projections);
-    extend_registered_provider_route_projections(
+    extend_registered_provider_identity_projections(
         &config.provider_routes,
         &mut provider_projections,
     );
@@ -605,8 +575,6 @@ impl ClientHookConfig {
             .collect::<std::collections::BTreeMap<_, _>>();
         let runtime = HookRuntime {
             project_root: ".".to_owned(),
-            rankers: Vec::new(),
-            providers: Vec::new(),
             policy_providers: self.provider_projections.clone(),
         };
         target_paths
@@ -651,8 +619,6 @@ impl ClientHookConfig {
     pub fn durable_structured_projection_decision_shard(&self) -> Result<Vec<u8>, String> {
         let runtime = HookRuntime {
             project_root: ".".to_owned(),
-            rankers: Vec::new(),
-            providers: Vec::new(),
             policy_providers: self.provider_projections.clone(),
         };
         let mut entries = Vec::new();
@@ -710,8 +676,6 @@ impl ClientHookConfig {
         let prefixes = self.durable_command_decision_prefixes()?;
         let runtime = HookRuntime {
             project_root: ".".to_owned(),
-            rankers: Vec::new(),
-            providers: Vec::new(),
             policy_providers: self.provider_projections.clone(),
         };
         let entries = prefixes

@@ -103,8 +103,13 @@ def test_language_release_workflows_are_project_owned_and_publish_assets() -> No
         assert f"- os: {contract['darwin_os']}\n            target: aarch64-apple-darwin" in workflow
 
         if language_path == "languages/asp-gerbil-scheme":
-            assert "- name: Build canonical asp-gerbil-scheme binary" in workflow
+            assert "- name: Build canonical provider binary" in workflow
             assert "gxpkg deps --install" in workflow
+            assert "gxpkg env gxi ./build-provider.ss compile" in workflow
+            assert "src/build-api/project-cli.ss" not in workflow
+            assert "build/workspace-provider/bin/asp-gerbil-scheme" in workflow
+            assert "ASP_PROVIDER_ARTIFACT_ROOT" not in workflow
+            assert "python" not in workflow
             registration = (
                 REPO_ROOT / language_path / "provider" / "asp-provider-registration.json"
             ).read_text(encoding="utf-8")

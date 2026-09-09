@@ -201,7 +201,7 @@ def _how_frame() -> dict[str, Any]:
         ],
         "evidence": [
             {
-                "id": "benchmark:source-index-search-pipe.warm-path",
+                "id": "benchmark:source-index-search-playbook.warm-path",
                 "kind": "benchmark",
             }
         ],

@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
-//! Atomic publication and exact-identity admission for resident query generations.
+//! Atomic publication and exact-identity admission for resident Query generations.
 
 use std::collections::HashMap;
 use std::pin::Pin;
@@ -99,21 +99,17 @@ impl RuntimeQueryGenerationAuthority {
         key: RuntimeProjectWorkspaceKey,
         generation: Arc<RuntimeQueryGeneration>,
     ) -> Result<u64, String> {
-        if generation.project_topology_attachment.is_none() {
-            return Err(
-                "state=query-not-ready reasonKind=runtime-project-topology-attachment-missing"
-                    .to_owned(),
-            );
-        }
         let resident = generation.resident.as_deref().ok_or_else(|| {
             "state=query-not-ready reasonKind=resident-generation-missing".to_owned()
         })?;
-        if !resident.graph_generation_is_ready() || !resident.lexical_accelerator_is_ready() {
-            return Err(
-                "state=query-not-ready reasonKind=derived-generation-terminal-incomplete"
-                    .to_owned(),
-            );
-        }
+        resident
+            .search_generation_authority()
+            .validate_binding(key.project_id().as_str(), key.workspace_id().as_str())
+            .map_err(|error| {
+                format!(
+                    "state=query-not-ready reasonKind=resident-generation-binding-invalid {error}"
+                )
+            })?;
         self.publish_ready_admitted(key, generation)
     }
 
@@ -323,24 +319,37 @@ impl RuntimeQueryGenerationAuthority {
         match RuntimeQueryGeneration::open(pointer_path, project_root).await {
             Ok(generation) if generation.generation_digest() == expected_generation_digest => {
                 let generation = Arc::new(generation);
-                let publication_token = self.reserve_generation_token(&generation);
-                if let Err(error) = self
-                    .builder
-                    .build_and_wait(
+                self.reserve_generation_token(&generation);
+                let (derived, topology) = tokio::join!(
+                    self.builder.build_and_wait(
                         key,
                         project_root,
                         Arc::clone(&generation),
                         previous_generation.as_deref(),
-                    )
-                    .await
-                {
-                    self.publish_failed(
-                        key.clone(),
-                        publication_token,
-                        expected_generation_digest.to_owned(),
-                        error.clone(),
+                    ),
+                    generation.build_and_attach_project_topology(project_root),
+                );
+                if let Err(error) = derived {
+                    eprintln!(
+                        "[runtime-search-derived-build] {}",
+                        serde_json::json!({
+                            "state": "failed",
+                            "reasonKind": "runtime-search-derived-build-failed",
+                            "generationDigest": expected_generation_digest,
+                            "error": error,
+                        })
                     );
-                    return Err(error);
+                }
+                if let Err(error) = topology {
+                    eprintln!(
+                        "[runtime-project-topology-build] {}",
+                        serde_json::json!({
+                            "state": "failed",
+                            "reasonKind": "runtime-project-topology-build-failed",
+                            "generationDigest": expected_generation_digest,
+                            "error": error,
+                        })
+                    );
                 }
                 self.publish_ready(key.clone(), Arc::clone(&generation))?;
                 Ok(generation)
@@ -459,24 +468,37 @@ impl RuntimeQueryGenerationAuthority {
                 generation.generation_digest()
             ));
         }
-        let publication_token = self.reserve_generation_token(&generation);
-        if let Err(error) = self
-            .builder
-            .build_and_wait(
+        self.reserve_generation_token(&generation);
+        let (derived, topology) = tokio::join!(
+            self.builder.build_and_wait(
                 key,
                 project_root,
                 Arc::clone(&generation),
                 previous_generation.as_deref(),
-            )
-            .await
-        {
-            self.publish_failed(
-                key.clone(),
-                publication_token,
-                expected_generation_digest.to_owned(),
-                error.clone(),
+            ),
+            generation.build_and_attach_project_topology(project_root),
+        );
+        if let Err(error) = derived {
+            eprintln!(
+                "[runtime-search-derived-build] {}",
+                serde_json::json!({
+                    "state": "failed",
+                    "reasonKind": "runtime-search-derived-build-failed",
+                    "generationDigest": expected_generation_digest,
+                    "error": error,
+                })
             );
-            return Err(error);
+        }
+        if let Err(error) = topology {
+            eprintln!(
+                "[runtime-project-topology-build] {}",
+                serde_json::json!({
+                    "state": "failed",
+                    "reasonKind": "runtime-project-topology-build-failed",
+                    "generationDigest": expected_generation_digest,
+                    "error": error,
+                })
+            );
         }
         self.publish_ready(key.clone(), Arc::clone(&generation))?;
         Ok(generation)

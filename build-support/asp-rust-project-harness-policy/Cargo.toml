@@ -10,7 +10,7 @@ edition.workspace = true
 publish = false
 
 [features]
-default = []
+default = ["workspace-policy"]
 workspace-policy = ["dep:asp-rust"]
 
 [dependencies]

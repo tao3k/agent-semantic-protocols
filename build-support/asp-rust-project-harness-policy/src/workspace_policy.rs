@@ -9,6 +9,79 @@ use std::path::Path;
 use crate::build_gate::assert_asp_rust_project_harness_member_policy;
 use crate::member_policy::asp_workspace_member_policy_for;
 
+/// Evaluate the complete parser-owned source policy for one registered member.
+///
+/// Unlike the constant-time manifest receipt, this is the package-local source
+/// scan that produces modularity, agent-policy, and project-policy findings.
+pub fn evaluate_asp_rust_project_harness_member_source_policy(
+    package_name: &str,
+    project_root: &Path,
+) -> Result<asp_rust::AspRustReport, String> {
+    let config = asp_workspace_member_policy_for(package_name)
+        .map_or_else(asp_rust::default_asp_rust_config, |policy| {
+            policy.apply_to_asp_rust_config(asp_rust::default_asp_rust_config())
+        });
+    asp_rust::run_asp_rust_with_config_for_scope(
+        project_root,
+        &config,
+        asp_rust::AspRustRunScope::Package,
+    )
+}
+
+/// Assert the complete parser-owned source policy for the Cargo package whose
+/// `build.rs` is currently executing.
+///
+/// The ASP Rust downstream gate owns content-addressed caching and emits
+/// `cargo:rerun-if-changed` for every scanned input, so ordinary package builds
+/// cannot retain a manifest-only policy receipt after source changes.
+#[track_caller]
+pub fn assert_asp_rust_project_harness_member_source_policy_from_env() -> asp_rust::AspRustReport {
+    let package_name = std::env::var("CARGO_PKG_NAME")
+        .expect("CARGO_PKG_NAME is required for the ASP Rust member source policy");
+    let config = asp_workspace_member_policy_for(&package_name)
+        .map_or_else(asp_rust::default_asp_rust_config, |policy| {
+            policy.apply_to_asp_rust_config(asp_rust::default_asp_rust_config())
+        });
+    let policy = asp_rust::AspRustDownstreamPolicy::new(
+        format!("agent-semantic-protocols::{package_name}"),
+        config,
+    );
+    let project_root = std::env::var_os("CARGO_MANIFEST_DIR")
+        .map(std::path::PathBuf::from)
+        .expect("CARGO_MANIFEST_DIR is required for the ASP Rust member source policy");
+    let report = asp_rust::evaluate_asp_rust_downstream_policy(&project_root, &policy);
+    emit_member_policy_warnings(&report);
+    let errors = report
+        .findings
+        .iter()
+        .filter(|finding| finding.severity == asp_rust::RustDiagnosticSeverity::Error)
+        .map(|finding| format!("[{}] {}", finding.rule_id, finding.summary))
+        .collect::<Vec<_>>();
+    assert!(
+        errors.is_empty(),
+        "ASP Rust member source policy errors:\n{}",
+        errors.join("\n")
+    );
+    report
+}
+
+fn emit_member_policy_warnings(report: &asp_rust::AspRustReport) {
+    for finding in report
+        .findings
+        .iter()
+        .filter(|finding| finding.severity == asp_rust::RustDiagnosticSeverity::Warning)
+    {
+        let location = finding.location.path.as_ref().map_or_else(
+            || "<no-location>".to_owned(),
+            |path| path.display().to_string(),
+        );
+        println!(
+            "cargo:warning=[{}] {} @ {}: {}",
+            finding.rule_id, finding.title, location, finding.summary
+        );
+    }
+}
+
 /// Validate the Cargo-derived identity of the workspace owning this build script.
 ///
 /// This is the thin entrypoint for an external workspace. It parses no Cargo

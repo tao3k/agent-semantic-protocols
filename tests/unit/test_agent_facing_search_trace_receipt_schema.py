@@ -17,9 +17,9 @@ def load(path: Path) -> object:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def test_merged_tree_sitter_incremental_trace_is_valid() -> None:
+def test_tree_sitter_single_surface_trace_is_valid() -> None:
     jsonschema.Draft202012Validator(load(SCHEMA)).validate(
-        load(FIXTURES / "valid-merged-tree-sitter-incremental.v1.json")
+        load(FIXTURES / "valid-tree-sitter-single-surface.v1.json")
     )
 
 

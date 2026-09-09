@@ -89,6 +89,7 @@ pub(super) fn validate_plan(plan: &QualificationPlan) -> Result<(), String> {
     if client_protocol.protocol_id != "agent.semantic-protocols.client"
         || client_protocol.protocol_version != "1"
         || client_protocol.transport != "grpc-tokio-streams"
+        || client_protocol.workspace_scheduling != "tokio-join-set"
         || client_protocol.phases
             != [
                 "initialize",
@@ -166,8 +167,10 @@ pub(super) fn validate_plan(plan: &QualificationPlan) -> Result<(), String> {
         if case.query.selector_strategy != "first-ranked-parser-owned"
             || case.query.owner_view != "items"
             || case.query.projection_scope != "live-corpus"
-            || case.search.method != "lexical"
-            || case.search.view != "seeds"
+            || case.search.rg.is_empty()
+            || case.search.tantivy.is_empty()
+            || case.zero_match_search.rg.is_empty()
+            || case.zero_match_search.tantivy.is_empty()
         {
             return Err(format!(
                 "Live Corpus case is not an ordinary public search/query route: case={}",

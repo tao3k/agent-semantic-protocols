@@ -90,37 +90,8 @@ fn report_codex_multi_agent_v2() -> Result<(), String> {
 }
 
 #[cfg(test)]
-mod multi_agent_v2_tests {
-    use super::{CodexMultiAgentV2Status, codex_multi_agent_v2_status};
-
-    #[test]
-    fn doctor_requires_codex_multi_agent_v2_true() {
-        assert_eq!(
-            codex_multi_agent_v2_status(Some("[features]\nmulti_agent_v2 = true\n")),
-            CodexMultiAgentV2Status::Enabled
-        );
-        assert_eq!(
-            codex_multi_agent_v2_status(Some("[features]\nmulti_agent_v2 = false\n")),
-            CodexMultiAgentV2Status::FeatureDisabled
-        );
-        assert_eq!(
-            codex_multi_agent_v2_status(Some("[features]\nother = true\n")),
-            CodexMultiAgentV2Status::FeatureMissing
-        );
-        assert_eq!(
-            codex_multi_agent_v2_status(Some("multi_agent_v2 = true\n")),
-            CodexMultiAgentV2Status::FeatureMissing
-        );
-        assert_eq!(
-            codex_multi_agent_v2_status(Some("[features\n")),
-            CodexMultiAgentV2Status::ConfigInvalid
-        );
-        assert_eq!(
-            codex_multi_agent_v2_status(None),
-            CodexMultiAgentV2Status::ConfigMissing
-        );
-    }
-}
+#[path = "../../tests/unit/command/hook_runtime_doctor.rs"]
+mod multi_agent_v2_tests;
 
 pub(super) async fn run_doctor(args: &[String]) -> Result<(), String> {
     if !args.is_empty() {

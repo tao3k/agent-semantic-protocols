@@ -18,43 +18,31 @@ SCHEMA = json.loads(
 )
 
 
-@pytest.mark.parametrize(
-    "value",
-    [
+def test_workspace_reference_accepts_project_and_workspace_identity_pair() -> None:
+    jsonschema.validate(
         {
-            "kind": "checkout-root",
-            "workspaceRoot": "/checkout/project",
-        },
-        {
-            "kind": "workspace-id",
+            "projectId": "repo-5b62c3d2cf8c7296",
             "workspaceId": "workspace-5b62c3d2cf8c7296",
         },
-    ],
-)
-def test_workspace_reference_accepts_exactly_one_typed_variant(value):
-    jsonschema.validate(value, SCHEMA)
+        SCHEMA,
+    )
 
 
 @pytest.mark.parametrize(
     "value",
     [
         {},
-        {"kind": "checkout-root", "workspaceRoot": ""},
-        {"kind": "checkout-root", "workspaceRoot": "relative/project"},
-        {"kind": "workspace-id", "workspaceId": ""},
-        {"kind": "workspace-id", "workspaceId": "/checkout/project"},
+        {"projectId": "repo-5b62c3d2cf8c7296"},
+        {"workspaceId": "workspace-5b62c3d2cf8c7296"},
+        {"projectId": "", "workspaceId": "workspace-5b62c3d2cf8c7296"},
+        {"projectId": "repo-5b62c3d2cf8c7296", "workspaceId": ""},
         {
-            "kind": "checkout-root",
-            "workspaceRoot": "/checkout/project",
-            "workspaceId": "workspace-5b62c3d2cf8c7296",
-        },
-        {
-            "kind": "workspace-id",
+            "projectId": "repo-5b62c3d2cf8c7296",
             "workspaceId": "workspace-5b62c3d2cf8c7296",
             "workspaceRoot": "/checkout/project",
         },
     ],
 )
-def test_workspace_reference_rejects_empty_ambiguous_or_reinterpreted_text(value):
+def test_workspace_reference_rejects_partial_empty_or_path_bearing_values(value) -> None:
     with pytest.raises(jsonschema.ValidationError):
         jsonschema.validate(value, SCHEMA)

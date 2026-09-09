@@ -47,43 +47,6 @@ impl HostAcceptanceReceipt {
     }
 }
 
-pub(super) fn run_accept_host(args: &[String]) -> Result<(), String> {
-    let rollout_path = argument_value(args, "--host-rollout")
-        .ok_or_else(|| "missing required --host-rollout PATH".to_owned())?;
-    let hook_events_path = argument_value(args, "--hook-events")
-        .ok_or_else(|| "missing required --hook-events PATH".to_owned())?;
-    let probe_path = argument_value(args, "--host-probe-path")
-        .ok_or_else(|| "missing required --host-probe-path PATH".to_owned())?;
-    let source_sentinel = argument_value(args, "--host-sentinel")
-        .ok_or_else(|| "missing required --host-sentinel TOKEN".to_owned())?;
-    let receipt = inspect_host_rollout(
-        Path::new(rollout_path),
-        Path::new(hook_events_path),
-        probe_path,
-        source_sentinel,
-    )?;
-    println!(
-        "{}",
-        serde_json::to_string(&receipt)
-            .map_err(|error| format!("failed to serialize Host acceptance receipt: {error}"))?
-    );
-    if receipt.accepted() {
-        Ok(())
-    } else {
-        Err(format!(
-            "normal-task Hook Host acceptance failed: reasonKind={}",
-            receipt.reason_kind()
-        ))
-    }
-}
-
-fn argument_value<'a>(args: &'a [String], flag: &str) -> Option<&'a str> {
-    args.iter()
-        .position(|argument| argument == flag)
-        .and_then(|index| args.get(index + 1))
-        .map(String::as_str)
-}
-
 #[derive(Default)]
 struct HostAcceptanceEvidence {
     plugin_loaded: bool,
@@ -258,15 +221,6 @@ fn observe_rollout_item(
     source_sentinel: &str,
     evidence: &mut HostAcceptanceEvidence,
 ) {
-    if value.pointer("/payload/type").and_then(Value::as_str) == Some("world_state")
-        || value.get("type").and_then(Value::as_str) == Some("world_state")
-    {
-        let plugins = value
-            .pointer("/payload/state/plugins_instructions")
-            .or_else(|| value.pointer("/payload/plugins_instructions"));
-        evidence.plugin_loaded |=
-            plugins.is_some_and(|value| value != &Value::Null && value != &Value::Bool(false));
-    }
     let payload_type = value.pointer("/payload/type").and_then(Value::as_str);
     let probe_call = match payload_type {
         Some("function_call") => value.pointer("/payload/arguments"),
@@ -315,6 +269,9 @@ fn inspect_hook_events(path: &Path, evidence: &mut HostAcceptanceEvidence) -> Re
                 line_index + 1
             )
         })?;
+        evidence.plugin_loaded |= value.get("schemaId").and_then(Value::as_str)
+            == Some("agent.semantic-protocols.hook.event")
+            && value.get("schemaVersion").and_then(Value::as_str) == Some("1");
         let matching_call_id = value
             .pointer("/fields/toolUseId")
             .and_then(Value::as_str)

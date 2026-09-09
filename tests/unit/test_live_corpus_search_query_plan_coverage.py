@@ -28,6 +28,7 @@ def test_every_locked_live_corpus_has_one_fixed_search_query_case() -> None:
     assert len(cases) == 17
     assert plan["clientProtocol"]["appliesToCaseCount"] == 17
     assert plan["clientProtocol"]["transport"] == "grpc-tokio-streams"
+    assert plan["clientProtocol"]["workspaceScheduling"] == "tokio-join-set"
     assert plan["clientProtocol"]["phases"] == [
         "initialize", "catalog", "request", "cancel", "cancelled", "shutdown"
     ]

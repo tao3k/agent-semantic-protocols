@@ -127,7 +127,7 @@ def test_result_packet_is_schema_owned_ranking_evidence() -> None:
     assert errors == []
     assert packet["schemaId"] == "agent.semantic-protocols.semantic-graph-turbo-result"
     assert packet["algorithm"] == "typed-ppr-diverse"
-    assert packet["seedIds"] == ["q:parser", "owner:cli"]
+    assert packet["entryNodeIds"] == ["q:parser", "owner:cli"]
     assert packet["budget"] == 8
     assert packet["kindBudgets"] == {}
     assert packet["profiles"] == [

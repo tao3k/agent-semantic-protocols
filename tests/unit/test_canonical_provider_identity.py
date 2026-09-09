@@ -98,8 +98,8 @@ def test_live_corpus_lock_and_plan_derive_provider_id_from_language() -> None:
     }
 
     assert planned == locked
-    assert locked["org.worg"] == "orgize"
-    assert locked["md.mdn-content"] == "orgize"
+    assert locked["org.worg"] == "asp-org"
+    assert locked["md.mdn-content"] == "asp-md"
 
 
 def test_canonical_provider_ids_are_used_by_the_public_corpus() -> None:
@@ -109,7 +109,8 @@ def test_canonical_provider_ids_are_used_by_the_public_corpus() -> None:
         "asp-typescript",
         "asp-julia",
         "asp-gerbil-scheme",
-        "orgize",
+        "asp-md",
+        "asp-org",
     }
     lock = load("benchmarks/large-library-runtime-corpora.json")
     assert all(entry["providerId"] in canonical for entry in lock["corpora"])

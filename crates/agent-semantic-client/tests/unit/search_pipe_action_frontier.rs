@@ -21,7 +21,7 @@ fn workspace_tree_sitter_discovery_materializes_as_search() {
     let command = action
         .materialized_command()
         .expect("materialize workspace Tree-sitter discovery");
-    assert!(command.starts_with("asp rust search --treesitter-query "));
+    assert!(command.starts_with("asp search playbook --language rust --treesitter-query "));
     assert!(command.ends_with(" --workspace ."));
     assert!(!command.contains(" query --treesitter-query "));
 }
@@ -47,7 +47,7 @@ fn source_query_projection_is_explicit_on_the_exact_surface() {
     assert_eq!(
         action.materialized_command().as_deref(),
         Some(
-            "asp rust query --selector 'rust://src/lib.rs#item/function/load' --workspace . --projection source"
+            "asp query playbook --language rust --selector 'rust://src/lib.rs#item/function/load' --workspace . --projection source"
         )
     );
     let entry = action.frontier_entry();

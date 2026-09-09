@@ -23,37 +23,24 @@ fn empty_invocation_is_an_incomplete_request() {
 }
 
 #[test]
-fn intent_is_not_a_playbook_parameter() {
-    let error = parse_progressive_search_playbook_args(&args(&[
-        "search", "playbook", "--intent", "diagnose",
-    ]))
-    .expect_err("reasoning intent belongs to the Agent context");
-    assert_eq!(
-        error,
-        ProgressiveSearchPlaybookError::UnsupportedOption("--intent".to_owned())
-    );
-}
-
-#[test]
 fn playbook_preserves_native_argv_and_pipe_expressions() {
     let request = parse_progressive_search_playbook_args(&args(&[
         "search",
         "playbook",
-        "--languages",
+        "--language",
         "rust|python",
         "--documents",
         "org|md",
-        "--fd",
-        "-t",
-        "f",
-        "runtime|client",
-        ".",
         "--rg",
         "-n",
+        "-g",
+        "*.rs",
+        "--type",
+        "rust",
         "transport|ClientFrame",
-        ".",
+        "crates",
         "--tantivy",
-        "surface failure|transport ownership",
+        "title:\"surface failure\"^2 OR body:transport",
         "--syntax",
         "rust",
         "--treesitter-query",
@@ -67,20 +54,32 @@ fn playbook_preserves_native_argv_and_pipe_expressions() {
     .expect("complete playbook request");
 
     let ProgressiveSearchPlaybookRequest {
-        languages,
-        fd,
+        language,
+        documents,
+        rg,
         clause_order,
         ..
     } = request;
-    assert_eq!(languages.as_deref(), Some("rust|python"));
-    assert_eq!(fd[0], args(&["-t", "f", "runtime|client", "."]));
+    assert_eq!(language.as_deref(), Some("rust|python"));
+    assert_eq!(documents.as_deref(), Some("org|md"));
+    assert_eq!(
+        rg[0],
+        args(&[
+            "-n",
+            "-g",
+            "*.rs",
+            "--type",
+            "rust",
+            "transport|ClientFrame",
+            "crates",
+        ])
+    );
     assert_eq!(
         clause_order
             .iter()
             .map(|clause| (clause.axis, clause.block_index))
             .collect::<Vec<_>>(),
         vec![
-            (SearchPlaybookClauseAxis::Fd, 0),
             (SearchPlaybookClauseAxis::Rg, 0),
             (SearchPlaybookClauseAxis::Tantivy, 0),
             (SearchPlaybookClauseAxis::Syntax, 0),
@@ -91,26 +90,48 @@ fn playbook_preserves_native_argv_and_pipe_expressions() {
 }
 
 #[test]
-fn one_acquisition_clause_executes_without_graph() {
-    let request = parse_progressive_search_playbook_args(&args(&[
+fn rg_requires_the_paired_tantivy_layout_input() {
+    let error = parse_progressive_search_playbook_args(&args(&[
         "search",
         "playbook",
-        "--languages",
+        "--language",
         "rust",
         "--rg",
         "-n",
         "RuntimeServingEndpoint|ClientFrame",
         ".",
     ]))
-    .expect("first broad search does not require graph reasoning");
+    .expect_err("default retrieval layout requires both native inputs");
+    assert!(matches!(
+        error,
+        ProgressiveSearchPlaybookError::IncompleteRequest(_)
+    ));
+}
 
-    let ProgressiveSearchPlaybookRequest {
-        rg, clause_order, ..
-    } = request;
-    assert_eq!(rg.len(), 1);
-    assert_eq!(clause_order.len(), 1);
-    assert_eq!(clause_order[0].axis, SearchPlaybookClauseAxis::Rg);
-    assert_eq!(clause_order[0].block_index, 0);
+#[test]
+fn target_bound_next_action_shape_is_complete() {
+    let request = parse_progressive_search_playbook_args(&args(&[
+        "search",
+        "playbook",
+        "--language",
+        "typescript",
+        "--rg",
+        "-n",
+        "-g",
+        "*.ts",
+        "-g",
+        "*.tsx",
+        "-F",
+        "WorkflowExecution",
+        ".",
+        "--tantivy",
+        "title:\"src/data/workflows.ts\" OR body:\"WorkflowExecution\"",
+    ]))
+    .expect("target-bound action carries both required native retrieval inputs");
+
+    assert_eq!(request.language.as_deref(), Some("typescript"));
+    assert_eq!(request.rg.len(), 1);
+    assert_eq!(request.tantivy.len(), 1);
 }
 
 #[test]
@@ -118,7 +139,7 @@ fn repeated_clauses_preserve_agent_authored_priority() {
     let request = parse_progressive_search_playbook_args(&args(&[
         "search",
         "playbook",
-        "--languages",
+        "--language",
         "rust",
         "--rg",
         "exact-owner",
@@ -129,6 +150,8 @@ fn repeated_clauses_preserve_agent_authored_priority() {
         "--rg",
         "broad|fallback",
         ".",
+        "--tantivy",
+        "title:\"owner authority\"^2 OR body:fallback",
         "--graph",
         "gql",
         "MATCH (a)-[r]->(b) RETURN a, r, b",
@@ -145,6 +168,7 @@ fn repeated_clauses_preserve_agent_authored_priority() {
             (SearchPlaybookClauseAxis::Rg, 0),
             (SearchPlaybookClauseAxis::Syntax, 0),
             (SearchPlaybookClauseAxis::Rg, 1),
+            (SearchPlaybookClauseAxis::Tantivy, 0),
             (SearchPlaybookClauseAxis::Graph, 0),
         ]
     );
@@ -155,8 +179,14 @@ fn native_syntax_is_a_distinct_exact_selector_axis() {
     let request = parse_progressive_search_playbook_args(&args(&[
         "search",
         "playbook",
-        "--languages",
+        "--language",
         "rust",
+        "--rg",
+        "-n",
+        "Registry",
+        "src",
+        "--tantivy",
+        "title:\"Registry\"^2 OR body:implementation",
         "--native-syntax",
         "rust://src/registry.rs#item/implementation/type/Registry",
     ]))
@@ -168,8 +198,16 @@ fn native_syntax_is_a_distinct_exact_selector_axis() {
         ["rust://src/registry.rs#item/implementation/type/Registry"]
     );
     assert_eq!(
-        request.clause_order[0].axis,
-        SearchPlaybookClauseAxis::NativeSyntax
+        request
+            .clause_order
+            .iter()
+            .map(|clause| clause.axis)
+            .collect::<Vec<_>>(),
+        [
+            SearchPlaybookClauseAxis::Rg,
+            SearchPlaybookClauseAxis::Tantivy,
+            SearchPlaybookClauseAxis::NativeSyntax,
+        ]
     );
 }
 
@@ -178,7 +216,7 @@ fn acquisition_after_graph_is_rejected() {
     let error = parse_progressive_search_playbook_args(&args(&[
         "search",
         "playbook",
-        "--languages",
+        "--language",
         "rust",
         "--rg",
         "owner",
@@ -186,15 +224,15 @@ fn acquisition_after_graph_is_rejected() {
         "--graph",
         "gql",
         "MATCH (a) RETURN a",
-        "--fd",
+        "--syntax",
+        "rust",
         "later",
-        ".",
     ]))
     .expect_err("graph is the final progressive filter");
     assert_eq!(
         error,
         ProgressiveSearchPlaybookError::InvalidClauseOrder(
-            "Search Playbook acquisition clauses must precede --graph".to_owned()
+            "retrieval and syntax inputs must precede the Graph barrier".to_owned()
         )
     );
 }
@@ -204,13 +242,34 @@ fn incomplete_request_is_rejected_without_a_contract_projection() {
     let error = parse_progressive_search_playbook_args(&args(&[
         "search",
         "playbook",
-        "--languages",
+        "--language",
         "rust|python",
     ]))
     .expect_err("partial invocation must not return Example/Grammar");
     assert!(matches!(
         error,
         ProgressiveSearchPlaybookError::IncompleteRequest(_)
+    ));
+}
+
+#[test]
+fn invalid_typed_parameter_preserves_its_reason_kind() {
+    let error = parse_progressive_search_playbook_args(&args(&[
+        "search",
+        "playbook",
+        "--language",
+        "rust",
+        "--native-syntax",
+        "src/lib.rs:10",
+    ]))
+    .expect_err("display locations are not exact selectors");
+    assert_eq!(
+        error.reason_kind(),
+        "search-playbook-native-selector-invalid"
+    );
+    assert!(matches!(
+        error,
+        ProgressiveSearchPlaybookError::InvalidParameter { .. }
     ));
 }
 

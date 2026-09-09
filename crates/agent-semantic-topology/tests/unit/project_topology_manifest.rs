@@ -7,12 +7,12 @@ use std::fs;
 
 fn manifest(properties: &str) -> String {
     format!(
-        r#"#+TITLE: Project Topology Program Manifest v1
+        r#"#+TITLE: Project Workspace Manifest v1
 :PROPERTIES:
-:CONTRACT_ORG: [[../../../org/contracts/project.topology-program.v1.org][project.topology-program.v1]]
+:CONTRACT_ORG: [[../../../org/contracts/project.workspace-manifest.v1.org][project.workspace-manifest.v1]]
 :END:
 
-* Project Topology Program
+* Project Workspace
 :PROPERTIES:
 {properties}
 :END:
@@ -21,17 +21,11 @@ fn manifest(properties: &str) -> String {
 }
 
 fn valid_properties() -> &'static str {
-    r#":TOPOLOGY_PROGRAM_ID: project-topology-program-example
+    r#":PROJECT_WORKSPACE_ID: agent-semantic-protocols-root
 :PROJECT_WORKSPACE_IDENTITY: git+https://github.com/tao3k/agent-semantic-protocols.git#workspace/root
 :WORKSPACE_ROOT_PATH: .
 :PORTABILITY: cross-machine
-:REPOSITORY_ALIASES: []
-:SOURCE_SNAPSHOT_DIGEST: blake3-256:1111111111111111111111111111111111111111111111111111111111111111
-:MRR_PRELUDE_DIGEST: blake3-256:4444444444444444444444444444444444444444444444444444444444444444
-:PROJECT_PROGRAM_DIGEST: blake3-256:5555555555555555555555555555555555555555555555555555555555555555
-:COMPILED_PROGRAM_ABI_DIGEST: blake3-256:7777777777777777777777777777777777777777777777777777777777777777
-:MRR_BUNDLE_DIGEST: blake3-256:8888888888888888888888888888888888888888888888888888888888888888
-:TOPOLOGY_ROOT_DIGEST: blake3-256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"#
+:REPOSITORY_ALIASES: []"#
 }
 
 #[test]
@@ -53,7 +47,7 @@ fn manifest_projects_one_parser_owned_project_workspace_binding() {
 }
 
 #[test]
-fn manifest_rejects_duplicate_level_one_program_declarations() {
+fn manifest_rejects_duplicate_level_one_workspace_declarations() {
     let source = format!(
         "{}\n* Duplicate\n:PROPERTIES:\n{}\n:END:\n",
         manifest(valid_properties()),
@@ -112,7 +106,7 @@ fn manifest_rejects_noncanonical_repository_alias_order() {
 #[test]
 fn manifest_requires_the_org_contract_binding() {
     let source = manifest(valid_properties()).replace(
-        "[[../../../org/contracts/project.topology-program.v1.org][project.topology-program.v1]]",
+        "[[../../../org/contracts/project.workspace-manifest.v1.org][project.workspace-manifest.v1]]",
         "[[../../../org/contracts/other.v1.org][other.v1]]",
     );
     let error = ProjectTopologyManifest::parse_org(&source)

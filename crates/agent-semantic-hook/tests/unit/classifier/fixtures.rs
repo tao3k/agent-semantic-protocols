@@ -7,8 +7,6 @@ use agent_semantic_hook::HookRuntime;
 pub(crate) fn registry() -> HookRuntime {
     HookRuntime {
         project_root: ".".to_owned(),
-        rankers: Vec::new(),
-        providers: Vec::new(),
         policy_providers: Vec::new(),
     }
 }

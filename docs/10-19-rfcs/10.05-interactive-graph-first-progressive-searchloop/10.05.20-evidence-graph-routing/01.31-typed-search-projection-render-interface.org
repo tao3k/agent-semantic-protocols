@@ -395,9 +395,9 @@ Projection and canonical encoding are terminal non-authoritative transitions.
 
 * Rust refinement boundary
 
-- =search_pipe_graph_turbo.rs= returns candidate work to exact verification;
-- =search_pipe_projection.rs= becomes the typed S-expression projector;
-- =search_pipe_render.rs= is replaced by canonical S-expression encoding plus
+- the Search Playbook planner returns candidate work to exact verification;
+- the shared projection layer becomes the typed S-expression projector;
+- provider-local rendering is replaced by canonical S-expression encoding plus
   optional terminal adapters;
 - GQL compilation produces canonical Graph Pattern IR rather than rendered
   commands;

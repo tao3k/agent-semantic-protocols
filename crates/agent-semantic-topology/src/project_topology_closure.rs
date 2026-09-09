@@ -9,12 +9,15 @@ use std::fmt;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 
-use meta_relational_reasoning::{
+use agent_semantic_mrr::kernel::{
     Atom, CandidateIdentities, ClosureStatus, DeductionLimits, DeductionPlan, DerivationId,
     EntityId, EvidenceCompleteness, Fact, FactId, FactProvenance, FactValidity, GenerationId,
     MrrEngine, ReasoningBundle, ReasoningBundleDeclaration, RelationAuthority, RelationCardinality,
     RelationContext, RelationField, RelationId, RelationSchema, Rule, RuleId, RulePack, RulePackId,
     Term, Value, ValueType, Variable,
+};
+use agent_semantic_mrr::{
+    ProjectTopologyReasoningInputV1, ProjectTopologyReasoningLimitsV1, evaluate_project_topology_v1,
 };
 
 const ID_DOMAIN: &str = "agent-semantic-topology:project-topology-closure";
@@ -139,14 +142,16 @@ impl ProjectTopologyDirectEdge {
             from: from.into(),
             to: to.into(),
         };
-        if edge.id.is_empty()
-            || edge.relation.is_empty()
-            || edge.from.is_empty()
-            || edge.to.is_empty()
-        {
+        if edge.id.is_empty() || edge.from.is_empty() || edge.to.is_empty() {
             return Err(error(
                 "topology-direct-edge-invalid",
-                "edge identity, relation, and endpoints must be non-empty",
+                "edge identity and endpoints must be non-empty",
+            ));
+        }
+        if !canonical_relation_name(&edge.relation) {
+            return Err(error(
+                "topology-direct-edge-relation-invalid",
+                "edge relation must use canonical uppercase vocabulary",
             ));
         }
         Ok(edge)
@@ -167,6 +172,13 @@ impl ProjectTopologyDirectEdge {
     pub fn to(&self) -> &str {
         &self.to
     }
+}
+
+fn canonical_relation_name(relation: &str) -> bool {
+    !relation.is_empty()
+        && relation
+            .bytes()
+            .all(|byte| byte.is_ascii_uppercase() || byte.is_ascii_digit() || byte == b'_')
 }
 
 /// Hard bounds applied before or during MRR evaluation.
@@ -195,18 +207,28 @@ impl ProjectTopologyClosureLimits {
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProjectTopologyRelationship {
+    relation: String,
     from: String,
     to: String,
+    rule_id: String,
     premise_edge_ids: Vec<String>,
 }
 
 impl ProjectTopologyRelationship {
+    pub fn relation(&self) -> &str {
+        &self.relation
+    }
+
     pub fn from(&self) -> &str {
         &self.from
     }
 
     pub fn to(&self) -> &str {
         &self.to
+    }
+
+    pub fn rule_id(&self) -> &str {
+        &self.rule_id
     }
 
     pub fn premise_edge_ids(&self) -> &[String] {
@@ -226,6 +248,7 @@ pub struct ProjectTopologyInferenceReceipt {
     input_edges: Vec<ProjectTopologyDirectEdge>,
     relationships: Vec<ProjectTopologyRelationship>,
     mrr_closure_digest: String,
+    ascent_semantic_digest: String,
     mrr_materialization_digest: String,
     receipt_digest: String,
     terminal: ProjectTopologyInferenceTerminal,
@@ -315,8 +338,15 @@ impl ProjectTopologyClosureBuilder {
         }
 
         let generation_id = canonical_id::<GenerationId>(&format!("generation:{generation}"))?;
+        // Structural containment remains a direct, queryable hierarchy fact.
+        // Feeding an Owner hub into generic transitive reachability would
+        // incorrectly derive pairwise Item reachability and grow quadratically.
+        let closure_edges = direct_edges
+            .iter()
+            .filter(|edge| !edge.relation.eq_ignore_ascii_case("CONTAINS"))
+            .collect::<Vec<_>>();
         let mut support_names = BTreeMap::new();
-        let facts = direct_edges
+        let facts = closure_edges
             .iter()
             .map(|edge| {
                 let fact_id =
@@ -410,22 +440,62 @@ impl ProjectTopologyClosureBuilder {
                     .collect::<Result<Vec<_>, _>>()?;
                 premise_edge_ids.sort();
                 Ok(ProjectTopologyRelationship {
+                    relation: "TOPOLOGY_REACHABLE".to_owned(),
                     from: string_value(from)?.to_owned(),
                     to: string_value(to)?.to_owned(),
+                    rule_id: if premise_edge_ids.len() == 1 {
+                        "mrr.topology.reachability.direct.v1".to_owned()
+                    } else {
+                        "mrr.topology.reachability.transitive.v1".to_owned()
+                    },
                     premise_edge_ids,
                 })
             })
             .collect::<Result<Vec<_>, ProjectTopologyClosureError>>()?;
+        let semantic = evaluate_project_topology_v1(
+            &direct_edges
+                .iter()
+                .map(|edge| ProjectTopologyReasoningInputV1 {
+                    fact_id: edge.id.clone(),
+                    relation: edge.relation.clone(),
+                    from: edge.from.clone(),
+                    to: edge.to.clone(),
+                })
+                .collect::<Vec<_>>(),
+            ProjectTopologyReasoningLimitsV1 {
+                max_input_facts: self.limits.max_input_edges.get(),
+                max_candidates: self.limits.max_results.get(),
+            },
+        )
+        .map_err(|cause| error("topology-semantic-evaluation-failed", cause.to_string()))?;
+        relationships.extend(semantic.candidates().iter().map(|candidate| {
+            ProjectTopologyRelationship {
+                relation: candidate.relation().to_owned(),
+                from: candidate.from().to_owned(),
+                to: candidate.to().to_owned(),
+                rule_id: candidate.rule_id().to_owned(),
+                premise_edge_ids: candidate.premise_fact_ids().to_vec(),
+            }
+        }));
+        if relationships.len() > self.limits.max_results.get() {
+            return Err(error(
+                "topology-closure-incomplete",
+                "combined reachability and relation-sensitive output exceeded its result bound",
+            ));
+        }
         relationships.sort_by(|left, right| {
-            (&left.from, &left.to, &left.premise_edge_ids).cmp(&(
+            (&left.relation, &left.from, &left.to, &left.premise_edge_ids).cmp(&(
+                &right.relation,
                 &right.from,
                 &right.to,
                 &right.premise_edge_ids,
             ))
         });
+        let ascent_semantic_digest = semantic.digest().to_owned();
         let mrr_closure_digest = format!(
             "blake3-256:{}",
-            blake3::hash(closure.digest().as_bytes()).to_hex()
+            blake3::hash(format!("{}\0{ascent_semantic_digest}", closure.digest()).as_bytes())
+                .to_hex()
         );
         let mrr_materialization_digest = format!(
             "blake3-256:{}",
@@ -438,6 +508,7 @@ impl ProjectTopologyClosureBuilder {
             &input_edges,
             &relationships,
             &mrr_closure_digest,
+            &ascent_semantic_digest,
             &mrr_materialization_digest,
         );
         Ok(ProjectTopologyClosure {
@@ -450,6 +521,7 @@ impl ProjectTopologyClosureBuilder {
                 input_edges,
                 relationships: relationships.clone(),
                 mrr_closure_digest,
+                ascent_semantic_digest,
                 mrr_materialization_digest,
                 receipt_digest,
                 terminal: ProjectTopologyInferenceTerminal {
@@ -468,6 +540,7 @@ fn topology_receipt_digest(
     input_edges: &[ProjectTopologyDirectEdge],
     relationships: &[ProjectTopologyRelationship],
     mrr_closure_digest: &str,
+    ascent_semantic_digest: &str,
     mrr_materialization_digest: &str,
 ) -> String {
     let mut hasher = blake3::Hasher::new();
@@ -482,13 +555,16 @@ fn topology_receipt_digest(
         hash_text(&mut hasher, &edge.to);
     }
     for relationship in relationships {
+        hash_text(&mut hasher, &relationship.relation);
         hash_text(&mut hasher, &relationship.from);
         hash_text(&mut hasher, &relationship.to);
+        hash_text(&mut hasher, &relationship.rule_id);
         for premise in &relationship.premise_edge_ids {
             hash_text(&mut hasher, premise);
         }
     }
     hash_text(&mut hasher, mrr_closure_digest);
+    hash_text(&mut hasher, ascent_semantic_digest);
     hash_text(&mut hasher, mrr_materialization_digest);
     format!("blake3-256:{}", hasher.finalize().to_hex())
 }

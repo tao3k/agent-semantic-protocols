@@ -241,8 +241,8 @@
           "cacheStatus": "hit",
           "graphTurboBackend": "scipy-csr",
           "graphTurboCacheKey": "sha256:20fb015516e5",
-          "searchCommand": "asp search playbook --language python 'semantic-fact-frontier-receipt relationChannels PPR' --intent relationship --scope workspace --coverage candidates --explain compact --workspace .",
-          "readCommand": "asp python query --selector python://tests/unit/test_semantic_fact_frontier_receipt_schema.py#item/function/test_frontier_receipt_schema_accepts_followed_exact_selector --workspace . --projection source"
+          "searchCommand": "asp search playbook --language python --rg -n -F -e semantic-fact-frontier-receipt -e relationChannels -e PPR . --tantivy 'body:semantic-fact-frontier-receipt OR body:relationChannels OR body:PPR' --workspace .",
+          "readCommand": "asp query playbook --language python --selector python://tests/unit/test_semantic_fact_frontier_receipt_schema.py#item/function/test_frontier_receipt_schema_accepts_followed_exact_selector --workspace . --projection source"
         }
       }
     },
@@ -380,7 +380,7 @@
     },
     {
       "fixtureId": "agent-semantic-protocols.asp-search-frontier-receipt-runtime",
-      "description": "Source-built asp python search --frontier-receipt-out output captured through the public ASP language facade.",
+      "description": "Source-built asp search playbook --language python --frontier-receipt-out output captured through the public ASP language facade.",
       "receipt": {
         "schemaId": "agent.semantic-protocols.semantic-fact-frontier-receipt",
         "schemaVersion": "1",
@@ -535,8 +535,8 @@
         },
         "fields": {
           "project": "agent-semantic-protocols",
-          "entrypoint": "asp python search --frontier-receipt-out",
-          "captureSource": "asp graph render",
+          "entrypoint": "asp search playbook",
+          "captureSource": "runtime search topology settlement",
           "stdoutBytes": 5326,
           "stdoutHeader": "[graph-frontier] profile=owner-query alg=typed-ppr-diverse seed=Q budget=10"
         }

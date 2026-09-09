@@ -115,6 +115,35 @@
           "minLength": 1
         }
       }
+    },
+    "agentStatus": {
+      "oneOf": [
+        {
+          "enum": [
+            "pending_init",
+            "running",
+            "interrupted",
+            "shutdown",
+            "not_found"
+          ]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["completed"],
+          "properties": {
+            "completed": {"type": ["string", "null"]}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["errored"],
+          "properties": {
+            "errored": {"type": "string"}
+          }
+        }
+      ]
     }
   }
 }

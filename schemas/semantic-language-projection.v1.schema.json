@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://agent-semantic-protocols.local/schemas/semantic-language-projection.v1.schema.json",
   "title": "Semantic Language Projection",
-  "description": "Query-free, parser-owned projection artifact published by a language harness for ASP lifecycle import.",
+  "description": "Query-free, parser-owned projection artifact published by an ASP language provider for ASP lifecycle import.",
   "type": "object",
   "additionalProperties": false,
   "required": [

@@ -84,13 +84,14 @@ def test_json_selector_may_carry_a_compact_jq_projection(validator, packet):
             "fixed point without next relation digest",
         ),
         (
-            lambda p: p["materializationSet"]["selectors"].append(
-                p["materializationSet"]["selectors"][0]
-            ),
-            "duplicate Query selector",
+            lambda p: p["binding"].pop("topologyClosureDigest"),
+            "settlement without admitted topology closure identity",
         ),
         (
-            lambda p: p["frontiers"][0].update({"state": "certified-missing"}),
+            lambda p: (
+                p["frontiers"][0].update({"state": "certified-missing"}),
+                p["frontiers"][0].pop("coverageRef"),
+            ),
             "missing without coverage certificate",
         ),
         (
@@ -113,6 +114,22 @@ def test_accepted_annotation_requires_admission_receipt(validator, packet):
     with pytest.raises(ValidationError):
         validator.validate(packet)
     annotation["admissionReceiptRef"] = "org-contract-admission-1"
+    validator.validate(packet)
+
+
+def test_v1_rejects_the_removed_materialization_set(validator, packet):
+    packet["materializationSet"] = {"selectors": []}
+    with pytest.raises(ValidationError):
+        validator.validate(packet)
+
+
+def test_v1_allows_empty_search_without_placeholder_selector(validator, packet):
+    packet["resultState"] = "empty"
+    packet["nodes"] = []
+    packet["edges"] = []
+    packet["coverageCertificates"] = []
+    packet["frontiers"] = []
+    packet["inference"]["derivedRelationCount"] = 0
     validator.validate(packet)
 
 

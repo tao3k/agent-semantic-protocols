@@ -44,6 +44,18 @@ def test_polyglot_project_topology_is_shared_across_non_search_consumers():
     } == set(VALID["consumers"])
 
 
+def test_v1_requires_expected_relations_and_frontiers() -> None:
+    assert "expectedRelations" in VALIDATOR.schema["required"]
+    assert "frontiers" in VALIDATOR.schema["required"]
+
+
+@pytest.mark.parametrize("field", ["target", "relation", "coverage"])
+def test_expected_relation_shape_is_closed(field) -> None:
+    expected_schema = VALIDATOR.schema["$defs"]["expectedRelation"]
+    assert expected_schema["additionalProperties"] is False
+    assert field in expected_schema["required"]
+
+
 def test_topology_uses_the_shared_project_workspace_binding():
     packet = deepcopy(VALID)
     packet["projectWorkspace"] = project_workspace_binding()

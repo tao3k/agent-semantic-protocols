@@ -13,7 +13,7 @@ from pathlib import Path
 
 
 COMMANDS = (
-    "search-prime",
+    "search-playbook",
     "syntax-frontier",
     "exact-selector-code",
     "hook-recovery",

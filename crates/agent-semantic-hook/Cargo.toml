@@ -7,7 +7,7 @@ name = "agent-semantic-hook"
 version = "0.1.0"
 edition = "2024"
 license.workspace = true
-description = "Root semantic agent hook runtime for provider manifests and project activations."
+description = "Compiled semantic Hook policy evaluator for normalized Host invocations."
 build = "build-support/main.rs"
 
 [features]

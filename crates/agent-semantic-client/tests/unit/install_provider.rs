@@ -11,10 +11,10 @@ use super::validate_target;
 use super::write_provider_lock;
 
 #[test]
-fn release_reconciliation_without_an_active_bundle_is_empty_and_offline() {
+fn active_provider_reconciliation_without_an_active_bundle_is_empty_and_offline() {
     let state_home = tempfile::tempdir().expect("state home");
-    let plan = super::prepare_active_release_provider_reconciliation(state_home.path())
-        .expect("empty release reconciliation");
+    let plan = super::prepare_active_provider_reconciliation(state_home.path())
+        .expect("empty active-provider reconciliation");
     assert_eq!(plan.provider_count(), 0);
     assert!(plan.member_sources().is_empty());
     assert!(!plan.staging_root.exists());
@@ -28,8 +28,8 @@ async fn binary_refresh_builds_a_complete_bound_closure_for_an_empty_provider_se
     let hook = sources.path().join("asp-hook");
     std::fs::write(&asp, b"asp").expect("asp candidate");
     std::fs::write(&hook, b"hook").expect("hook candidate");
-    let mut plan = super::prepare_active_release_provider_reconciliation(state_home.path())
-        .expect("empty release reconciliation");
+    let mut plan = super::prepare_active_provider_reconciliation(state_home.path())
+        .expect("empty active-provider reconciliation");
 
     let binding = plan
         .bind_runtime_execution_closure(&asp, &hook)

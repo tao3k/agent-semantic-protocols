@@ -140,66 +140,78 @@ fn ast_patch_command() -> Command {
     .arg(project_root_arg())
 }
 
-fn graph_command() -> Command {
-    Command::new("graph")
-        .bin_name("asp graph")
-        .about("Render ASP evidence graphs")
-        .subcommand(
-            Command::new("render").about("Render a graph packet").arg(
-                Arg::new("packet")
-                    .long("packet")
-                    .value_name("PATH_OR_STDIN")
-                    .required(true),
-            ),
-        )
-        .subcommand(
-            Command::new("artifact")
-                .about("Manage the ASP Server-owned Python Graphs artifact")
-                .subcommand(
-                    Command::new("publish")
-                        .about("Atomically publish a verified Python Graphs executable descriptor")
-                        .arg(
-                            Arg::new("executable")
-                                .long("executable")
-                                .value_name("PATH")
-                                .required(true),
-                        )
-                        .arg(
-                            Arg::new("argument")
-                                .long("argument")
-                                .value_name("ARG")
-                                .action(clap::ArgAction::Append)
-                                .required(true),
-                        )
-                        .arg(
-                            Arg::new("expected-generation")
-                                .long("expected-generation")
-                                .value_name("N"),
-                        ),
-                ),
-        )
-}
-
 fn workspace_search_playbook_command() -> Command {
     Command::new("playbook")
         .bin_name("asp search playbook")
         .about("Run the Runtime-owned Search Playbook")
         .override_usage(
-            "asp search playbook [--languages <LANGUAGE(|LANGUAGE)*>] [--documents <DOCUMENT(|DOCUMENT)*>] [--workspace <WORKSPACE>] [--fd <NATIVE_ARG>...] [--rg <NATIVE_ARG>...] [--tantivy <QUERY(|QUERY)*>] [--native-syntax <SELECTOR>...] [--graph <LANGUAGE> <NATIVE_ARG>...]",
+            "asp search playbook [--language <CODE_PRODUCER(|CODE_PRODUCER)*>] [--documents <DOCUMENT_PRODUCER(|DOCUMENT_PRODUCER)*>] [--workspace <REGISTERED_WORKSPACE_ID>] --rg <NATIVE_RG_ARG>... --tantivy <NATIVE_TANTIVY_ARG>... [--syntax <PRODUCER> <NATIVE_ARG>...]... [--native-syntax <SELECTOR>]... [--graph <gql|pgql> <NATIVE_ARG>...]...",
         )
         .arg(
-            Arg::new("languages")
-                .long("languages")
-                .value_name("LANGUAGE(|LANGUAGE)*"),
+            Arg::new("language")
+                .long("language")
+                .value_name("CODE_PRODUCER(|CODE_PRODUCER)*")
+                .required_unless_present("documents")
+                .help("Select registry-bound programming-language producers"),
         )
         .arg(
             Arg::new("documents")
                 .long("documents")
-                .value_name("DOCUMENT(|DOCUMENT)*"),
+                .value_name("DOCUMENT_PRODUCER(|DOCUMENT_PRODUCER)*")
+                .required_unless_present("language")
+                .help("Select registry-bound document producers such as org or md"),
         )
-        .arg(Arg::new("workspace").long("workspace").value_name("ROOT"))
+        .arg(
+            Arg::new("workspace")
+                .long("workspace")
+                .value_name("REGISTERED_WORKSPACE_ID")
+                .help("Select an explicit registered cross-workspace target"),
+        )
+        .arg(
+            Arg::new("rg")
+                .long("rg")
+                .value_name("NATIVE_RG_ARG")
+                .num_args(1..)
+                .allow_hyphen_values(true)
+                .action(ArgAction::Append)
+                .help("Append one exact native ripgrep argv block, including patterns and roots"),
+        )
+        .arg(
+            Arg::new("tantivy")
+                .long("tantivy")
+                .value_name("NATIVE_TANTIVY_ARG")
+                .num_args(1..)
+                .allow_hyphen_values(true)
+                .action(ArgAction::Append)
+                .help("Append one structured native Tantivy query block"),
+        )
+        .arg(
+            Arg::new("syntax")
+                .long("syntax")
+                .value_names(["PRODUCER", "NATIVE_ARG"])
+                .num_args(2..)
+                .allow_hyphen_values(true)
+                .action(ArgAction::Append)
+                .help("Append one registered structural query; Tree-sitter S-expressions are the current native form"),
+        )
+        .arg(
+            Arg::new("native-syntax")
+                .long("native-syntax")
+                .value_name("SELECTOR")
+                .action(ArgAction::Append)
+                .help("Append one canonical parser-owned exact structural-scope query"),
+        )
+        .arg(
+            Arg::new("graph")
+                .long("graph")
+                .value_names(["gql|pgql", "NATIVE_ARG"])
+                .num_args(2..)
+                .allow_hyphen_values(true)
+                .action(ArgAction::Append)
+                .help("Append a final V1 Graph fan-in block; Graph blocks must remain last"),
+        )
         .after_help(
-            "One Runtime-bound playbook combines native fd and rg acquisition, Tantivy retrieval, parser-owned exact selectors, and graph projection. Missing evidence remains explicit; no provider-local contract or planner recommendation is substituted.",
+            "Native rg argv is preserved exactly; use ./--option for a literal search root whose name collides with a PlayBook option. The default layout intersects rg and Tantivy owner sets to establish file context. Explicit syntax or native-syntax matches then establish the structural selector scope; a future registered ast-grep adapter fits --syntax rather than adding a retrieval axis. Tantivy requires a multi-leaf, fielded, explicit Boolean expression with a phrase, boost, range, set, exists, or regex predicate. Graph blocks are the final fan-in barrier.",
         )
 }
 
@@ -332,31 +344,17 @@ fn install_language_command() -> Command {
         .arg(Arg::new("target").long("target").value_name("TARGET"))
 }
 
-fn graph_render_command() -> Command {
-    Command::new("render")
-        .bin_name("asp graph render")
-        .about("Render a graph packet")
-        .arg(
-            Arg::new("packet")
-                .long("packet")
-                .value_name("PATH_OR_STDIN")
-                .required(true),
-        )
-}
-
 fn facade_leaf_name(leaf: &str) -> Option<&'static str> {
     match leaf {
         "guide" => Some("guide"),
         "search" => Some("search"),
         "query" => Some("query"),
-        "check" => Some("check"),
         "cache" => Some("cache"),
         "info" => Some("info"),
         "bench" => Some("bench"),
         "projection" => Some("projection"),
         "agent" => Some("agent"),
         "ast-patch" => Some("ast-patch"),
-        "evidence" => Some("evidence"),
         _ => None,
     }
 }
@@ -367,14 +365,12 @@ macro_rules! facade_leaf_bin_for {
             "guide" => Some(concat!("asp ", $language, " guide")),
             "search" => Some(concat!("asp ", $language, " search")),
             "query" => Some(concat!("asp ", $language, " query")),
-            "check" => Some(concat!("asp ", $language, " check")),
             "cache" => Some(concat!("asp ", $language, " cache")),
             "info" => Some(concat!("asp ", $language, " info")),
             "bench" => Some(concat!("asp ", $language, " bench")),
             "projection" => Some(concat!("asp ", $language, " projection")),
             "agent" => Some(concat!("asp ", $language, " agent")),
             "ast-patch" => Some(concat!("asp ", $language, " ast-patch")),
-            "evidence" => Some(concat!("asp ", $language, " evidence")),
             _ => None,
         }
     };
@@ -431,16 +427,6 @@ pub(crate) fn selected_command(args: &[String]) -> Command {
         [install, plugin, ..] if install == "install" && plugin == "plugin" => {
             install_plugin_command()
         }
-        [graph, render, ..] if graph == "graph" && render == "render" => graph_render_command(),
-        [graph, artifact, publish, ..]
-            if graph == "graph" && artifact == "artifact" && publish == "publish" =>
-        {
-            graph_command()
-                .find_subcommand("artifact")
-                .and_then(|command| command.find_subcommand("publish"))
-                .cloned()
-                .expect("known graph artifact publish command")
-        }
         [document, leaf, ..] if is_document_facade(document) => DOCUMENT_COMMANDS
             .iter()
             .find_map(|(candidate, _)| (*candidate == leaf).then_some(*candidate))
@@ -468,7 +454,6 @@ fn selected_command_default(args: &[String]) -> Command {
     match (first, second) {
         (Some("install"), Some("plugin")) => install_plugin_command(),
         (Some("install"), _) => install_command(),
-        (Some("hook"), Some("accept-host")) => hook_accept_host_command(),
         (Some("hook"), Some("doctor")) => hook_doctor_command(),
         (Some("hook"), Some("enablement")) => hook_enablement_command(),
         (Some("hook"), Some("break-glass")) => super::hook_break_glass::break_glass_command(),
@@ -493,7 +478,6 @@ fn selected_command_default(args: &[String]) -> Command {
         (Some("schema"), _) => schema_command(),
         (Some("live-corpus"), _) => live_corpus_command(),
         (Some("ast-patch"), _) => ast_patch_command(),
-        (Some("graph"), _) => graph_command(),
         (Some("search"), Some("playbook")) => workspace_search_playbook_command(),
         (Some("search"), _) => Command::new("search")
             .bin_name("asp search")
@@ -503,7 +487,7 @@ fn selected_command_default(args: &[String]) -> Command {
             .bin_name("asp query playbook")
             .about("Materialize one canonical set of exact parser-owned selectors")
             .override_usage(
-                "asp query playbook --selector <SELECTOR>... [--projection <source|callable-skeleton>] [--json] [--workspace <WORKSPACE>]",
+                "asp query playbook [--language <CODE_PRODUCER(|CODE_PRODUCER)*>] [--documents <DOCUMENT_PRODUCER(|DOCUMENT_PRODUCER)*>] --selector <SELECTOR>... [--projection <source|callable-skeleton>] [--json] [--workspace <REGISTERED_WORKSPACE_ID>]",
             ),
         (Some(document), Some(command))
             if is_document_facade(document)

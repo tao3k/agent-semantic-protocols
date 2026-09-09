@@ -118,7 +118,7 @@ separate measurements and must not be charged to this matcher gate.
 
 =matcherPolicies = ["wrapped_command"]` scans only Bash AST command stages and their argv tokens.
 Quoted data carried by an argv token MUST NOT be recursively promoted into a
-new executable command stage. Therefore =echo 'asp rust search ...'= and
+new executable command stage. Therefore =echo 'asp search playbook --language rust ...'= and
 =bash -lc 'cargo test ...'= do not match the protected inner prefix merely
 because that prefix appears inside a string. A future shell-string execution
 contract, if needed, must be represented by an explicit typed parser fact

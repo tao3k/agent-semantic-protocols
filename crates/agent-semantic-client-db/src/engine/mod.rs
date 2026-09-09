@@ -6,6 +6,7 @@
 
 mod contract;
 pub(crate) mod facade;
+mod facade_support;
 mod facade_turso_report;
 mod search_facade;
 mod session_control_plane;

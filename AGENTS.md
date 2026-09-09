@@ -3,9 +3,16 @@ SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 -->
 
-@/Users/guangtao/.agent-semantic-protocols/org/templates/ASP_ORG_SKILL.org
+@/Users/guangtao/.agent-semantic-protocols/resources/org/templates/ASP_ORG_SKILL.org
 
 # Project Workflow
+
+## Project Environment Entry Point
+
+Run project-scoped commands only through `.devenv/devenv-profile-exec`.
+Do not use `direnv exec .` in this repository. Keep RTK inside the explicit
+devenv entry point when a filtered RTK wrapper exists; use the raw command
+through the same entry point when exact protocol or failure output is evidence.
 
 ## ASP Org Agent Flow
 
@@ -49,7 +56,7 @@ search packets, or agent-facing search guidance, follow this order:
    needed so Rust, TypeScript, Python, Julia, and future providers can converge
    on the same search packet shape.
 4. Implement the Rust provider after the RFC and schema are clear. Add or update
-   Rust harness tests for CLI parsing, compact output, JSON packet validation,
+   ASP Rust tests for CLI parsing, compact output, JSON packet validation,
    registry descriptors, and any new query-composition behavior.
 5. Return to this repository's sandbox or sandtable tests and align them with
    the updated protocol. Prefer scenario coverage that validates the real
@@ -93,13 +100,13 @@ sandtable alignment -> real-project evidence -> optimization loop
 
 ## Python Policy Checks
 
-Use the Python harness dependency API as the owner for Python policy checks in
+Use the ASP Python dependency API as the owner for Python policy checks in
 this repository. Do not copy Python policy logic into the sandtable runner and
 do not add a second provider policy command surface. Invoke the public API
 from build/test ownership when you need the actual policy gate:
 
 ```sh
-uv run --project languages/asp-python --frozen python -c 'from asp_python import assert_python_lang_harness_clean; assert_python_lang_harness_clean(["."])'
+uv run --project languages/asp-python --frozen python -c 'from asp_python import assert_asp_python_clean; assert_asp_python_clean(".")'
 ```
 
 If `just` is available in the active shell, `just check-python-policy` is the

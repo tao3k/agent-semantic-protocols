@@ -134,27 +134,6 @@ def test_wrong_generation_fails_closed_without_retransmitting_graph() -> None:
     assert error.value.code == "resident-generation-unavailable"
 
 
-@pytest.mark.parametrize(
-    "surface", ["search-pipe", "search-rg", "search-lexical", "search-owner"]
-)
-def test_retired_search_surfaces_are_rejected(surface: str) -> None:
-    session = _hello_session()
-    payload = resident_evaluation_payload()
-    payload["surface"] = surface
-    with pytest.raises(ServiceProtocolError) as error:
-        session.handle(
-            message(
-                "evaluate-resident",
-                "evaluate-retired-surface",
-                sequence=2,
-                workspaceIdentity="workspace-test",
-                generationDigest=DIGEST_B,
-                payload=payload,
-            )
-        )
-    assert error.value.code == "invalid-resident-evaluation"
-
-
 def test_release_removes_only_the_exact_generation() -> None:
     session = _hello_session()
     _retain_generation(session)

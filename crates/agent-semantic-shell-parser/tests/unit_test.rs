@@ -6,6 +6,8 @@
 mod argv_patterns;
 #[path = "unit/bash_command_stages.rs"]
 mod bash_command_stages;
+#[path = "unit/search_playbook.rs"]
+mod search_playbook;
 #[path = "unit/shell_stage_match_contract.rs"]
 mod shell_stage_match_contract;
 #[path = "unit/source_paths.rs"]

@@ -13,7 +13,7 @@
 
 * One-sentence summary
 
-Each language harness should be a /long-running code-intelligence server/
+Each ASP language provider should be a /long-running code-intelligence server/
 exposed through Arrow Flight typed routes — not a one-shot CLI tool.
 Diagnostics is just one route among many.
 
@@ -22,7 +22,7 @@ Diagnostics is just one route among many.
 ** Before: tool → CLI
 
 #+begin_example
-LLM calls run_typescript_harness
+LLM calls run_asp_typescript
   → spawns tsc / node / harness CLI
   → reads stdout
   → parses compact text
@@ -50,7 +50,7 @@ LLM calls plan_code_edit
 * The core insight
 
 This is not about copying generic agent-tool code search.  The advantage is that
-each language harness already owns:
+each ASP language provider already owns:
 
 - Compiler-native parser facts (TypeScript Compiler API, =syn=, Python =ast=,
   JuliaSyntax.jl)
@@ -290,7 +290,7 @@ Instead of:
 
 #+begin_example
 agent-extension-typescript-harness
-  └── run_typescript_harness tool + renderer
+  └── run_asp_typescript tool + renderer
 #+end_example
 
 It becomes:
@@ -453,7 +453,7 @@ Rust Agent Server
 The TypeScript harness already exports =TypeScriptReasoningTree=,
 =TypeScriptReasoningOwnerBranchFact=, =TypeScriptReasoningOwnerDependencyFact=,
 =TypeScriptReasoningDiagnosticFact=, =renderTypeScriptReasoningTree=,
-=renderTypeScriptProjectHarnessAgentCompactText=, and other agent-facing APIs
+=renderAspTypeScriptAgentCompactText=, and other agent-facing APIs
 [asp-typescript].  The extension path is inheriting these
 into a service, not starting from scratch.
 

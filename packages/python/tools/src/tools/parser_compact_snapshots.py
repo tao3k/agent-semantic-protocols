@@ -16,7 +16,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     del argv
     sys.stderr.write(
         "root parser compact snapshots are retired; run compact checks in the "
-        "language harness that owns the provider output\n"
+        "ASP language provider that owns the provider output\n"
     )
     return 1
 

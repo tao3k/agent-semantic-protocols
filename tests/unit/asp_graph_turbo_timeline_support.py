@@ -51,7 +51,7 @@ def write_microburst_repeat_artifacts(root: Path) -> None:
             search_dir / f"rust-search-owner-{name}.json",
             _search_packet(
                 "rust",
-                "search/owner",
+                "search/playbook",
                 owner="crates/agent-semantic-protocol/src/command/provider.rs",
             ),
             mtime=mtime,
@@ -161,7 +161,7 @@ def _search_packet(
     language: str, method: str, *, query: str = "", owner: str = ""
 ) -> dict[str, object]:
     packet = {
-        "schemaId": "agent.semantic-protocols.semantic-search-packet",
+        "schemaId": "agent.semantic-protocols.workspace-search-playbook-result",
         "languageId": language,
         "method": method,
     }
@@ -181,9 +181,9 @@ def write_timeline_prime(path: Path, *, mtime: int) -> None:
     write_timeline_json(
         path,
         {
-            "schemaId": "agent.semantic-protocols.semantic-search-packet",
+            "schemaId": "agent.semantic-protocols.workspace-search-playbook-result",
             "languageId": "rust",
-            "method": "search/prime",
+            "method": "search/playbook",
             "owners": [{"path": "src/lib.rs"}],
         },
         mtime=mtime,

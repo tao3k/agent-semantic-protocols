@@ -150,6 +150,25 @@ fn normal_task_deny_without_source_bytes_is_accepted() {
 }
 
 #[test]
+fn hook_event_is_plugin_load_provenance_when_world_state_has_no_plugin_instructions() {
+    let events = write_rollout("hook-load-events", &[hook_event("probe-call", true)]);
+    let path = write_rollout(
+        "hook-load",
+        &[
+            world_state(false),
+            probe_call(),
+            hook_deny(),
+            probe_output(""),
+        ],
+    );
+    let receipt =
+        inspect_host_rollout(&path, &events, PROBE_PATH, SENTINEL).expect("inspect rollout");
+    assert!(receipt.accepted(), "{receipt:?}");
+    std::fs::remove_file(path).expect("remove rollout");
+    std::fs::remove_file(events).expect("remove Hook events");
+}
+
+#[test]
 fn arbitrary_deny_without_publication_identity_is_rejected() {
     let events = write_rollout("unbound-events", &[hook_event("probe-call", false)]);
     let unbound_deny = json!({

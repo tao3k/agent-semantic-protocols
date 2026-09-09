@@ -134,3 +134,6 @@ def test_execution_publication_rejects_a_digest_only_content_commit_surrogate() 
     packet["contentPublicationCommit"] = {"commitDigest": digest("e")}
     with pytest.raises(jsonschema.ValidationError):
         validator().validate(packet)
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later

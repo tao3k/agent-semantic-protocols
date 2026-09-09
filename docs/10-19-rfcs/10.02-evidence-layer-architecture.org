@@ -386,12 +386,13 @@ Proposed additional advisory rules (=Info= or config-enabled =Warning=):
 These should stay =Info= by default — API quality matters for agents, but
 should not default to harder blocking than syntax/project/modularity policy.
 
-** P6 Persistent Evidence Graph and Assurance Cases
+** P6 Runtime-Derived Evidence Graph
 
-P6 introduces a portable =EvidenceGraph= artifact over the evidence packets
-created by P0 through P5. The first slice is intentionally not a database,
-cache, or long-term storage engine. It is a graph-shaped packet that makes the
-relationships between reviewer evidence explicit:
+P6 introduces a portable =EvidenceGraph= artifact over immutable language
+facts and Runtime receipts. Language providers publish only parser-owned syntax
+and language facts. The Runtime composes those inputs through the shared
+Ascent/GQL reasoning program; providers do not construct, analyze, or render a
+parallel graph.
 
 #+begin_example
 ReviewPacket
@@ -409,7 +410,7 @@ The shared =EvidenceGraph= contract owns:
 #+begin_example
 schemaId/protocolId      shared graph identity
 graphId                  stable graph artifact id
-producer/project         language provider and project metadata
+producer/project         Runtime generation and project metadata
 summary                  node/edge/owner/claim/stale/gap counters
 nodes                    evidence vertices with typed ids and locations
 edges                    derived-from, requires-evidence, verified-by,
@@ -418,11 +419,17 @@ edges                    derived-from, requires-evidence, verified-by,
 gaps                     compact review-visible missing evidence summaries
 #+end_example
 
-P6.1 builds this graph from one or more review packets. The graph should show
-which owner declared or exposed an invariant candidate, which receipts or
-behavior snapshots support it, which waivers still apply or are stale, and which
-review actions remain. Providers should derive the graph from structured packet
-fields, not from rendered findings or summary prose.
+P6.1 derives this graph centrally from immutable generation inputs. The graph
+shows which owner declared or exposed a fact, which receipts or behavior
+snapshots support it, which waivers still apply or are stale, and which review
+actions remain. Every derived edge must be attributable to an Ascent/GQL rule
+and its input facts rather than provider-private graph code or rendered prose.
+The executable authority is
+[[file:../../crates/agent-semantic-mrr/src/evidence_graph/mod.rs][agent-semantic-mrr/evidence_graph]],
+published only through
+[[file:../../crates/agent-semantic-runtime-server/src/runtime_evidence_graph.rs][Runtime EvidenceGraph]].
+Rust domain types remain unversioned; wire compatibility is owned by
+=schemaId= / =schemaVersion= and the versioned schema filenames.
 
 Later P6 slices can render assurance cases from the same graph, for example:
 
@@ -434,14 +441,14 @@ Claim: AGENT-R009 dependency graph acyclicity judgment is reliable
   gaps: none
 #+end_example
 
-The evidence graph is the common input for assurance-case rendering, review
-packets that span several providers, and stale-waiver audits. It should stay
-portable and artifact-first; storage, visualization, and indexing are separate
+The evidence graph is the common Runtime read model for assurance-case
+rendering, cross-language review, and stale-waiver audits. It stays portable
+and artifact-first; storage, visualization, and indexing remain separate
 concerns.
 
-P6.2 introduces a shared =AssuranceCase= packet derived from an evidence graph.
-It does not duplicate the graph. Instead, it groups graph nodes into reviewer
-claims:
+P6.2 introduces a shared =AssuranceCase= projection derived by the same central
+reasoning authority. It does not duplicate the graph. Instead, it groups graph
+nodes into reviewer claims:
 
 #+begin_example
 caseId/claim          stable assurance claim identity
@@ -454,22 +461,16 @@ actions               review-action graph node references
 gaps                  missing evidence or stale waiver summaries
 #+end_example
 
-The first renderer is:
-
-#+begin_example
-asp-rust evidence assurance --evidence-graph-json PATH [--json]
-#+end_example
-
-The compact output is reviewer-first:
+The Runtime-owned compact output is reviewer-first:
 
 #+begin_example
 assurance-case cases=12 claims=12 supported=3 gaps=8 stale-items=2
 #+end_example
 
-Providers should create cases from graph structure, not from rendered review
-packet prose. A case with missing receipts, stale waivers, or pending review
-actions is =needs-review=. A case with failed or blocked proof evidence is
-=blocked=. A case with support and no gaps is =supported=.
+The central Ascent/GQL program creates cases from graph structure, not from
+rendered review packet prose. A case with missing receipts, stale waivers, or
+pending review actions is =needs-review=. A case with failed or blocked proof
+evidence is =blocked=. A case with support and no gaps is =supported=.
 
 * Layer 4: Performance Optimization (owner-gated, evidence-required)
 

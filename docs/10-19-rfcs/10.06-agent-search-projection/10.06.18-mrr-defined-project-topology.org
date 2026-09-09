@@ -48,11 +48,35 @@ compose, refine, or replace project-owned domain modules. Deployment, security,
 data-flow, runtime authority, and organization-specific concepts are ordinary
 MRR programs rather than extension records in another catalog.
 
-The stable public Rust facade is =meta-relational-reasoning=. MRR owns typed
-identity, relations, query, deduction, explanation, impact analysis, lineage,
-transition, admission, and atomic closure materialization. =gql-core= and =gql=
-are frontend and projection adapters. GQL is not the identity or authority of
-Project Topology.
+The upstream stable Rust facade is =meta-relational-reasoning=. Inside the ASP
+workspace, the independent =agent-semantic-mrr= package is the sole maintenance
+window for that facade, its Ascent-backed closure engine, =gql-catalog=,
+=gql-compiler=, =gql-ir=, and the Scheme/POO ahead-of-time compilation tuple.
+Other ASP packages MUST NOT acquire those implementation dependencies directly.
+Cargo versions and source revisions remain centrally pinned in
+=[workspace.dependencies]=; the package consumes those entries with
+=workspace = true= rather than moving dependency resolution into a member.
+MRR owns typed identity, relations, query, deduction, explanation, impact
+analysis, lineage, transition, admission, and atomic closure materialization.
+=gql-core= and =gql= are frontend and projection adapters. GQL is not the
+identity or authority of Project Topology.
+
+The dependency direction is one way:
+
+#+begin_example
+upstream MRR / Ascent / GQL
+  -> agent-semantic-mrr
+  -> agent-semantic-topology and agent-semantic-search
+  -> agent-semantic-runtime-server and agent-semantic-search-projection
+#+end_example
+
+=agent-semantic-mrr= owns generic compiler-derived relation patterns and exact
+Scheme source / compiled ABI / MRR bundle receipt admission.
+=agent-semantic-topology= still owns project-workspace equality, topology
+vocabulary, source-fact attachment, generation transition, and topology
+terminal semantics. Runtime owns neither compiler IR nor MRR kernel types; it
+submits native query argv to the maintenance facade and consumes the admitted
+relation pattern through Search.
 
 ** One Authority Pipeline
 
@@ -66,7 +90,7 @@ native parser facts and source-owned declarations
   -> MRR lineage, transition, and completeness admission
   -> immutable Project Topology generation
   -> GQL Search Playbook projection
-  -> exact Query Playbook MaterializationSet
+  -> Agent-selected exact Query Playbook selectors
 #+end_example
 
 There is no extension catalog between the project program and MRR. There is no
@@ -111,40 +135,95 @@ resource ordering, retry budgets, and termination policy. =build.ss= compiles
 the declaration ahead of time into a typed native boundary. Scheme does not run
 inside the Rust/Ascent Search or Query hot path.
 
-** Git-Tracked Structured Mapping
+*** Relation, Proof, And Frontier Algebra
 
-The reviewable Project Topology lives under =.agents/asp/topology/=:
+The synchronized model has three disjoint outputs:
+
+1. extensional edges supplied by a parser or admitted source contract;
+2. intensional edges derived by the admitted MRR/Ascent program;
+3. frontier obligations classified from expected relations and coverage.
+
+Every extensional edge is a tuple
+=direct(relation, from, to, modality, witness, binding)=. The relation name is
+part of the fact and MUST NOT be erased into an untyped =direct(from,to)=
+relation before inference. A generic path rule may derive
+=TOPOLOGY_REACHABLE=, but it never relabels that conclusion as =CALLS=,
+=COVERS=, =READS_CONFIG=, or another source-owned relation.
+
+Every intensional edge is a tuple
+=derived(relation, from, to, rule, proof, premises, binding)=. Its complete
+premise edge set is preserved in the proof DAG. Project rules may compose
+different extensional relations, but the head relation must be a separately
+declared derived relation. For example, =CALLS(x,y)= and =READS_CONFIG(y,c)=
+may derive =DEPENDS_ON_CONFIG(x,c)=; they may not fabricate
+=READS_CONFIG(x,c)= unless that transitivity is explicitly part of the
+source-owned relation contract.
+
+An expected relation is an obligation, not a positive edge. For one bound
+=expected(anchor, relation, targetKind, scope)=:
 
 #+begin_example
-.agents/asp/topology/
-  manifest.org
-  programs/
-    project.org
-    domains/
-  facts/
-    workspaces/
-    projects/
-    domains/
-    files/
-    references/
-  annotations/
-    admitted/
-    proposed/
+positive witness exists                 -> no FRONTIER
+no positive witness + complete coverage -> certified-missing FRONTIER
+no positive witness + partial/no coverage -> unknown FRONTIER
 #+end_example
 
-=manifest.org= imports the standard MRR topology prelude and identifies the
-project program modules. It also maps every logical workspace key to one
-normalized repository-relative =workspaceRootPath=. The root path is a
-containment and selector-resolution boundary, not a host path or independent
-identity. =programs/= contains project-owned Scheme/POO MRR
-declarations. It is not an extension registry. =facts/= contains deterministic,
-sharded skeleton materialization. =annotations/= keeps model-assisted semantics
-separate from parser and source-owned facts even when GQL projects them into one
-connected graph.
+Absence from an Ascent candidate set is never complete coverage. A proposed
+model annotation may open an expected obligation but cannot close it, certify
+absence, or become a factual premise. Frontier classification is recomputed
+after every source or program transition and is admitted under the same
+topology-generation binding as its positive and coverage inputs.
 
-The standard prelude is referenced by identity from the MRR dependency. It is
-not copied into every repository. Project files contain only project-owned
-composition and specialization.
+The public GQL is an information-preserving view of these outputs. Direct and
+derived edges retain modality and witness/proof fields; =FRONTIER= retains the
+expected relation, target kind, depth, state, reason, and optional coverage
+reference. Ascent relation declarations and intermediate tuples remain
+internal, but no admitted conclusion used for Agent reasoning may disappear
+from the GQL projection.
+
+** Git-Tracked Structured Mapping
+
+The standard native topology program is a distributable ASP Org resource. Its
+contract and audited template live in the =org= resource tree:
+
+#+begin_example
+org/
+  contracts/asp/topology/program.v1.org
+  templates/asp/topology/program.v1.org
+
+.agents/asp/topology/
+  manifest.org
+#+end_example
+
+=orgize= parses the audited template into typed program and rule fields through
+its element graph and exact indexed =node-property= queries. The loader accepts
+only the document-level contract property, the unique top-level program
+headline, and rule or expectation drawers in that program subtree. Similar
+property names elsewhere, nested program lookalikes, and inherited values are
+not declarations. Org Contract trace validates the governing
+=asp.topology.program.v1= contract. Runtime binds the exact Org source digest
+into the topology resolver identity before constructing the MRR/Ascent program,
+so editing or replacing the native resource creates a different generation
+boundary.
+
+This query and contract path is read-only. It constrains which reviewed values
+may become typed MRR program metadata; it does not grant an Agent or LLM write
+authority over the resource, parser-owned EDB facts, or candidate promotion.
+Source relations change only with their native source/provider evidence and a
+new admitted generation. Ascent consumes those relation-bearing facts to offer
+bounded, witness-preserving recommendation candidates; MRR remains the
+acceptance boundary.
+
+=.agents/asp/topology/manifest.org= remains only the stable project/workspace
+identity surface. It maps every logical workspace key to one normalized
+repository-relative =workspaceRootPath=. The root path is a containment and
+selector-resolution boundary, not a host path or independent identity. It does
+not own, copy, or override the standard inference program. Native rules needed
+by every ASP user MUST NOT live under =.agents=.
+
+Project-specific semantic input, when a later version admits it, must have its
+own versioned Org contract and typed admission path. It cannot be smuggled into
+the workspace manifest or interpreted as an untyped extension registry.
 
 ** Worktree Resolution And Placement
 
@@ -187,7 +266,9 @@ transactions, and Hook journals remain outside the Git-tracked topology.
 
 ** Identity And Admission
 
-The manifest binds one product identity:
+The stable Project Workspace manifest binds only the first component below.
+The Runtime-owned Project Topology publication joins that exact parser-owned
+workspace binding with the mutable generation identities:
 
 #+begin_example
 (projectWorkspaceIdentity,
@@ -206,7 +287,7 @@ The manifest binds one product identity:
 The first component has canonical wire form
 =<canonical-git-locator>#workspace/<logical-key>=, for example
 =git+https://github.com/tao3k/agent-semantic-protocols.git#workspace/root=.
-The manifest owns both the canonical locator and logical key. It may admit
+The Project Workspace manifest owns both the canonical locator and logical key. It may admit
 explicit repository aliases for a reviewed rename or mirror migration, but it
 never derives identity from the current clone path, remote name, Host session,
 or Runtime-generated workspace identifier. Local-only =git+file://= identities
@@ -218,6 +299,12 @@ The program binding embeds the complete shared =projectWorkspace= object:
 =workspaceIdentity= is not a substitute. Changing only =workspaceRootPath=
 preserves the durable project identity but changes the topology program binding
 and its selector-containment boundary.
+
+The Git-tracked Project Workspace manifest MUST NOT copy
+=sourceSnapshotDigest=, provider/parser catalog digests, MRR/ABI identities, or
+=topologyRootDigest=. Runtime receipts own those mutable values. Keeping them
+out of the stable declaration avoids a self-referential source digest and
+prevents an old manifest projection from authorizing a current generation.
 
 This project identity does not identify source state. =sourceSnapshotDigest=
 binds the exact committed tree and admitted overlay; Runtime instance identity
@@ -254,12 +341,15 @@ Validators MUST receive an explicit offline schema registry containing the
 exact topology-library schema identity; remote schema retrieval and silent
 single-file fallback are forbidden admission paths.
 
-The Rust ownership boundary is the independent =agent-semantic-topology=
-package. It owns topology admission, MRR program binding, and incremental
-generation contracts. Search projection depends on that package and owns only
-Search settlement, GQL rendering, and Query handoff. Rust domain type names do
-not carry wire versions; schema identifiers and schema-version constants own
-protocol evolution.
+The Rust maintenance boundary is the independent =agent-semantic-mrr= package.
+It owns external MRR/Ascent/GQL dependency acquisition, compiler adapters, and
+generic Scheme AOT tuple admission. The independent
+=agent-semantic-topology= package owns project-specific topology admission,
+attaches the admitted MRR program binding to the parser-owned Project Workspace,
+and owns incremental generation contracts. Search projection depends on the
+topology package and owns only Search settlement, GQL rendering, and Query
+handoff. Rust domain type names do not carry wire versions; schema identifiers
+and schema-version constants own protocol evolution.
 
 An admitted terminal is success-only evidence: its =reasonKind= MUST be null.
 A failed or blocked attempt is a distinct typed terminal and MUST NOT be
@@ -303,6 +393,9 @@ The following paths are excluded from topology input:
 - Runtime transaction journals and staging directories.
 
 This prevents self-indexing and generation feedback loops.
+The manifest authority reads =.agents/asp/topology/manifest.org= only for the
+workspace identity binding described above; that does not make the directory a
+source-fact or inference-program input.
 
 ** Model-Assisted Semantics
 
@@ -327,8 +420,20 @@ response is one compact Org container with one GQL settlement graph containing:
 - request-local fd, rg, Tantivy, native-syntax, and jq projections;
 - topology depth and proof-connected paths;
 - admitted or proposed natural-language annotations;
-- coverage-aware known, missing, and unknown boundaries;
-- one deterministic MaterializationSet for Query Playbook.
+- coverage-aware known, missing, and unknown boundaries.
+
+Canonical selectors remain on their GQL nodes. The Agent reads the graph and
+passes only the selectors it chooses to Query Playbook; Search does not flatten
+them into a second materialization or handoff set.
+
+Project-owned relations and rules MUST have one synchronized semantic model
+across the Org declaration, compiled MRR/Ascent bundle, Rust topology
+projection, and Lean model. Lean formalization begins from the intended
+relation and frontier semantics, constructs finite counterexamples for missing
+witness, unsound closure, incomplete retraction, and false absence, and feeds
+every discovered missing premise back into this RFC before implementation is
+accepted. A compiling Ascent program or Lean file alone is not cross-layer
+semantic closure.
 
 The typed receipt carries complete MRR program, bundle, closure, proof-DAG,
 ranking, topology, and terminal identity. GQL is a compact Agent reasoning
@@ -379,11 +484,22 @@ The formal model MUST prove:
 - successful admission requires an independently admitted AOT receipt;
 - an admitted terminal cannot carry a failure reason;
 - equal serialized digest shapes cannot substitute across identity domains.
+- relation erasure cannot turn heterogeneous direct edges into an invented
+  semantic relation;
+- every derived edge has a complete, nonempty premise set under the same
+  source/program binding;
+- removing any premise retracts every dependent derived edge;
+- a positive witness suppresses the corresponding frontier;
+- certified missing requires complete relation coverage;
+- partial or absent coverage yields unknown rather than false absence;
+- proposed semantics cannot close either a positive relation or a frontier.
 
 The model MUST retain executable counterexamples for closed profile enums,
 parallel extension admission, core-signature shadowing, GQL authority erasure,
 append-only deletion, activation-generation freshness, uncompiled hot-path
-programs, proposed prose as facts, and fuel exhaustion as fixed point.
+programs, proposed prose as facts, fuel exhaustion as fixed point, relation-kind
+erasure, witness-free derivation, stale derived descendants, false absence from
+partial coverage, and simultaneous positive-edge/frontier publication.
 
 The formal model is
 [[file:../../../packages/proofs/ASPProof/ProjectTopologyProgram.lean][ProjectTopologyProgram]].
@@ -400,7 +516,8 @@ with adversarial checks in
 RFC and Lean countermodels
   -> shared MRR topology manifest and bundle schemas
   -> Org contract and deterministic fixtures
-  -> meta-relational-reasoning facade migration
+  -> agent-semantic-mrr maintenance facade
+  -> direct MRR / Ascent / GQL dependency deletion from consumers
   -> provider topology adapters
   -> incremental Runtime builder and MRR admission
   -> Search GQL projection and independently Runtime-bound Query request

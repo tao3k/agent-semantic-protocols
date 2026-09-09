@@ -157,7 +157,7 @@ The Hook may not:
 * Document surfaces are not language providers
 
 Org and Markdown are document surfaces.  They do not participate in the
-programming-language registry, language harness activation, provider process
+programming-language registry, ASP language provider activation, provider process
 catalog, or per-language workspace generation.
 
 Their admission pipeline is:
@@ -182,7 +182,7 @@ selector is a contract failure.
 This boundary is deliberately separate from programming-language providers:
 
 - Rust, Python, TypeScript, Julia, Gerbil Scheme, and future programming
-  languages use registry -> schema -> language harness/provider lazy loading;
+  languages use registry -> schema -> ASP language provider/provider lazy loading;
 - Org and Markdown use Git scope -> ignore filtering -> document matcher ->
   document parser;
 - both surfaces may share the Global daemon transport, request correlation,

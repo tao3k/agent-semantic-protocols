@@ -22,7 +22,7 @@ def test_timeline_hydrates_first_stage_topology_from_search_packet(tmp_path):
         json.dumps(
             {
                 "languageId": "rust",
-                "method": "search/pipe",
+                "method": "search/playbook",
                 "query": "graph turbo seed topology",
                 "queryQuality": "low",
                 "scopeQuality": "low",
@@ -40,7 +40,7 @@ def test_timeline_hydrates_first_stage_topology_from_search_packet(tmp_path):
         timestamp=1.0,
         kind="search",
         language="rust",
-        method="search/pipe",
+        method="search/playbook",
         target="",
         query="graph turbo seed topology",
         project_root=str(tmp_path),

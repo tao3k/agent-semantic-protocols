@@ -40,7 +40,7 @@ class SemanticAgentClientReceiptSchemaTests(unittest.TestCase):
                 {
                     "languageId": "rust",
                     "providerId": "asp-rust",
-                    "argv": ["direnv", "exec", ".", "asp-rust", "search", "prime", "."],
+                    "argv": ["asp", "search", "playbook", "--language", "rust", "--rg", "--files", ".", "--tantivy", "term", "source"],
                     "exitCode": 0,
                     "stdoutBytes": 300,
                     "stderrBytes": 0,
@@ -64,7 +64,7 @@ class SemanticAgentClientReceiptSchemaTests(unittest.TestCase):
                     "providerId": "asp-rust",
                     "providerBinary": "asp-rust",
                     "schemaIds": [
-                        "agent.semantic-protocols.semantic-search-packet"
+                        "agent.semantic-protocols.workspace-search-playbook-result"
                     ],
                 }
             ],

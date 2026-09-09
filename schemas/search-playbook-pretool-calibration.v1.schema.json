@@ -1,0 +1,238 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/search-playbook-pretool-calibration.v1.schema.json",
+  "title": "ASP Search Playbook PreTool Calibration V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "state",
+    "reasonKind",
+    "tokenIndexBasis",
+    "layout",
+    "producers",
+    "inputOccurrences",
+    "rgArgvBoundaries",
+    "rgAnalyses",
+    "tantivyAnalyses",
+    "missingFields",
+    "conflictingFields",
+    "issues"
+  ],
+  "properties": {
+    "schemaId": {"const": "agent.semantic-protocols.search-playbook-pretool-calibration"},
+    "schemaVersion": {"const": "1"},
+    "state": {"const": "rejected"},
+    "reasonKind": {"const": "search-playbook-pretool-calibration"},
+    "tokenIndexBasis": {"const": "search-playbook-argv"},
+    "layout": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["layoutId", "shape", "requiredInputSets", "graphBarrierAfter"],
+      "properties": {
+        "layoutId": {"const": "rg-tantivy-structural-scope"},
+        "shape": {"const": "intersect(rg,tantivy)->structural-scope-facts->graph?"},
+        "requiredInputSets": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "array",
+            "minItems": 1,
+            "items": {"enum": ["rg", "tantivy"]}
+          }
+        },
+        "graphBarrierAfter": {"const": "structural-scope-facts"}
+      }
+    },
+    "producers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["field", "value", "optionTokenIndex", "valueTokenIndex"],
+        "properties": {
+          "field": {"enum": ["languages", "documents"]},
+          "value": {"type": "string", "minLength": 1},
+          "optionTokenIndex": {"type": "integer", "minimum": 0},
+          "valueTokenIndex": {"type": "integer", "minimum": 0}
+        }
+      }
+    },
+    "inputOccurrences": {
+      "$ref": "#/$defs/inputOccurrences"
+    },
+    "rgArgvBoundaries": {
+      "$ref": "#/$defs/inputOccurrences"
+    },
+    "rgAnalyses": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/rgAnalysis"}
+    },
+    "tantivyAnalyses": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "blockIndex",
+          "expression",
+          "admitted",
+          "fields",
+          "metrics",
+          "syntaxDiagnostics",
+          "unsupportedFields",
+          "missingFeatures"
+        ],
+        "properties": {
+          "blockIndex": {"type": "integer", "minimum": 0},
+          "expression": {"type": "string", "minLength": 1},
+          "admitted": {"type": "boolean"},
+          "fields": {"type": "array", "uniqueItems": true, "items": {"type": "string"}},
+          "metrics": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "leafCount",
+              "fieldedLeafCount",
+              "explicitBooleanCount",
+              "phraseCount",
+              "boostCount",
+              "rangeCount",
+              "setCount",
+              "existsCount",
+              "regexCount",
+              "maxDepth"
+            ],
+            "properties": {
+              "leafCount": {"type": "integer", "minimum": 0},
+              "fieldedLeafCount": {"type": "integer", "minimum": 0},
+              "explicitBooleanCount": {"type": "integer", "minimum": 0},
+              "phraseCount": {"type": "integer", "minimum": 0},
+              "boostCount": {"type": "integer", "minimum": 0},
+              "rangeCount": {"type": "integer", "minimum": 0},
+              "setCount": {"type": "integer", "minimum": 0},
+              "existsCount": {"type": "integer", "minimum": 0},
+              "regexCount": {"type": "integer", "minimum": 0},
+              "maxDepth": {"type": "integer", "minimum": 0}
+            }
+          },
+          "syntaxDiagnostics": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["message"],
+              "properties": {
+                "charOffset": {"type": "integer", "minimum": 0},
+                "message": {"type": "string", "minLength": 1}
+              }
+            }
+          },
+          "unsupportedFields": {"type": "array", "uniqueItems": true, "items": {"type": "string"}},
+          "missingFeatures": {"type": "array", "uniqueItems": true, "items": {"type": "string"}}
+        }
+      }
+    },
+    "missingFields": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "conflictingFields": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "issues": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["reasonKind", "field", "message"],
+        "properties": {
+          "reasonKind": {"type": "string", "pattern": "^[a-z][a-z0-9-]*$"},
+          "field": {"type": "string", "minLength": 1},
+          "tokenIndex": {"type": "integer", "minimum": 0},
+          "message": {"type": "string", "minLength": 1}
+        }
+      }
+    }
+  },
+  "$defs": {
+    "inputOccurrences": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/inputOccurrence"}
+    },
+    "rgAnalysis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["blockIndex", "admitted", "exactArgv", "outputAttribution", "options", "patterns", "searchRoots", "diagnostics"],
+      "properties": {
+        "blockIndex": {"type": "integer", "minimum": 0},
+        "admitted": {"type": "boolean"},
+        "exactArgv": {"type": "array", "items": {"type": "string"}},
+        "outputAttribution": {"enum": ["json-path-line", "vimgrep-path-line", "path-line", "path-only", "path-optional", "unattributable"]},
+        "options": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["option", "optionTokenIndex"],
+            "properties": {
+              "option": {"type": "string", "pattern": "^-"},
+              "optionTokenIndex": {"type": "integer", "minimum": 0},
+              "valueTokenIndex": {"type": "integer", "minimum": 0},
+              "value": {"type": "string"}
+            }
+          }
+        },
+        "patterns": {"type": "array", "items": {"$ref": "#/$defs/rgValue"}},
+        "searchRoots": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/rgValue"}},
+        "diagnostics": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["reasonKind", "message"],
+            "properties": {
+              "reasonKind": {"type": "string", "pattern": "^[a-z][a-z0-9-]*$"},
+              "argvTokenIndex": {"type": "integer", "minimum": 0},
+              "message": {"type": "string", "minLength": 1}
+            }
+          }
+        }
+      }
+    },
+    "rgValue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["value"],
+      "properties": {
+        "value": {"type": "string"},
+        "tokenIndex": {"type": "integer", "minimum": 0}
+      }
+    },
+    "inputOccurrence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "field",
+        "blockIndex",
+        "optionTokenIndex",
+        "argvStartTokenIndex",
+        "argvEndTokenIndexExclusive",
+        "argv"
+      ],
+      "properties": {
+        "field": {"enum": ["rg", "tantivy", "syntax", "nativeSyntax", "graph"]},
+        "blockIndex": {"type": "integer", "minimum": 0},
+        "optionTokenIndex": {"type": "integer", "minimum": 0},
+        "argvStartTokenIndex": {"type": "integer", "minimum": 0},
+        "argvEndTokenIndexExclusive": {"type": "integer", "minimum": 0},
+        "argv": {"type": "array", "items": {"type": "string"}}
+      }
+    }
+  }
+}

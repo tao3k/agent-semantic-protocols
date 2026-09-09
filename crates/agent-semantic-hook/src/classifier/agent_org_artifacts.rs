@@ -153,9 +153,9 @@ fn recall_plans_command(warning: &AgentOrgArtifactsArchiveWarning) -> String {
 
 fn archive_query_command(warning: &AgentOrgArtifactsArchiveWarning) -> String {
     format!(
-        "asp org query --kind task --field todo=DONE --exclude-dir {} --workspace {} --content",
-        shell_arg(&warning.archives_dir),
-        shell_arg(&warning.artifacts_path)
+        "asp org archive done --artifacts-root {} --archive-dir {} --dry-run",
+        shell_arg(&warning.artifacts_path),
+        shell_arg(&warning.archives_dir)
     )
 }
 

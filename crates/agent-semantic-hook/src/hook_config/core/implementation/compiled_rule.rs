@@ -56,8 +56,7 @@ pub struct ClientHookConfig {
     policy_receipt: std::sync::OnceLock<HookPolicyReceipt>,
     profiles: std::collections::BTreeMap<String, agent_semantic_config::HookClientProfileConfig>,
     policy_generation_digest: String,
-    provider_projections:
-        Vec<crate::protocol_activation::protocol_activation_manifest::HookProviderProjection>,
+    provider_projections: Vec<crate::provider_projection::HookProviderProjection>,
     contract_fingerprint: Option<String>,
     agent_org_artifacts: CompiledAgentOrgArtifactsConfig,
     command_action_patterns: Vec<agent_semantic_config::HookClientCommandActionPatternConfig>,
@@ -98,7 +97,6 @@ pub(in crate::hook_config) struct CompiledRuleDispatch {
     pub(in crate::hook_config) target_agent: String,
     pub(super) receipt_kind: String,
     pub(super) calling: agent_semantic_config::HookClientAgentCallingConfig,
-    lazy_provider: Option<agent_semantic_config::HookClientLazyProviderPolicy>,
 }
 
 #[derive(Debug)]
@@ -187,7 +185,7 @@ impl CompiledHookRule {
         let mut routes = self
             .routes
             .iter()
-            .map(|route| route.decision_route(runtime))
+            .map(RuleRoute::decision_route)
             .collect::<Vec<_>>();
         if routes.is_empty() {
             routes = self.materialize_profile_routes(runtime, paths);
@@ -230,12 +228,9 @@ impl CompiledHookRule {
                 }
             });
         if let Some(matched) = registered_asp.as_ref() {
-            crate::hook_config::core::registered_asp::append_materialization_fields(
+            crate::hook_config::core::registered_asp::append_registered_provider_fields(
                 &mut decision_fields,
                 matched,
-                self.dispatch
-                    .as_ref()
-                    .and_then(|dispatch| dispatch.lazy_provider),
             );
         }
         decision_fields.insert(
@@ -593,7 +588,6 @@ impl CompiledHookRule {
                     target_agent: dispatch.agent.as_str().to_owned(),
                     receipt_kind: dispatch.receipt_kind.as_str().to_owned(),
                     calling: agent_calling.clone(),
-                    lazy_provider: dispatch.lazy_provider,
                 })
             })
             .transpose()?;

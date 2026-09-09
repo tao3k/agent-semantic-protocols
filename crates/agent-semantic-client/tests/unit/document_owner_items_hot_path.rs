@@ -45,10 +45,10 @@ fn org_owner_items_stays_on_document_fast_path() {
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
-        stdout.starts_with("[search-owner] lang=org")
+        stdout.starts_with("[search-playbook] lang=org")
             && stdout.contains(&format!("q={owner_path}"))
             && stdout.contains(" item="),
-        "org owner-items should render a search-owner packet; stdout={stdout}"
+        "org owner-items should render a query packet; stdout={stdout}"
     );
     assert!(
         stdout.lines().any(|line| line.starts_with("|heading ")),

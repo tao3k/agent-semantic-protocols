@@ -133,7 +133,7 @@ item-fact bytes or exact-selector packet allocation.
 ** GEN-MEM-009: resident evaluation owns complete generation decode
 
 The Runtime Server is the only process allowed to decode the complete search
-generation into a =WorkspaceMemoryBackend=.  A short-lived =asp search=
+generation into a =WorkspaceMemoryBackend=. A short-lived Search Playbook
 adapter reads the compact generation authority, submits typed source-index and
 relation fact requests to the admitted workspace session, and receives only
 the bounded facts required by that request.
@@ -141,7 +141,7 @@ the bounded facts required by that request.
 The following path is forbidden even when backed by =mmap=:
 
 #+begin_example
-asp search process -> mmap complete generation JSON -> deserialize all owners and relations
+short-lived client -> mmap complete generation JSON -> deserialize all owners and relations
 #+end_example
 
 Memory mapping avoids a file copy but does not avoid JSON allocation or a

@@ -2,17 +2,21 @@
 //
 // SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
-//! Immutable Runtime query-generation value opened from resident Search authority.
+//! Immutable Runtime Query generation with independently settled Search attachments.
 
-use std::sync::Arc;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
+use std::sync::{Arc, OnceLock};
 
 use agent_semantic_client_db::runtime_resident_read::RuntimeResidentReadClient;
 
 use super::query_generation_calibration::RuntimeSearchGenerationBuildResourceReceipt;
 
-/// Immutable Runtime handle for one fully admitted Search generation.
+/// Immutable Runtime handle for one admitted resident Query generation.
+///
+/// Graph, Tantivy, and Project Topology are Search-owned derived attachments;
+/// their failure cannot revoke exact native Query reads from the resident base.
 pub struct RuntimeQueryGeneration {
     pub(super) generation_digest: String,
     pub(super) generation_token: AtomicU64,
@@ -23,7 +27,12 @@ pub struct RuntimeQueryGeneration {
         >,
     >,
     pub(super) project_topology_attachment:
-        Option<Arc<agent_semantic_topology::RuntimeProjectTopologyAttachment>>,
+        OnceLock<
+            Result<
+                Arc<agent_semantic_topology::RuntimeProjectTopologyAttachment>,
+                Arc<str>,
+            >,
+        >,
     pub(super) build_resource_receipt:
         std::sync::OnceLock<RuntimeSearchGenerationBuildResourceReceipt>,
 }
@@ -36,17 +45,16 @@ impl RuntimeQueryGeneration {
     ) -> Result<Self, String> {
         let resident = RuntimeResidentReadClient::open(pointer_path, project_root).await?;
         let generation_digest = resident.generation_digest();
-        agent_semantic_search::ResidentSearchFusionCapabilities::from_open_generation(
-            &resident
-                .search_generation_authority()
-                .content_search_generation,
-        )?;
+        resident
+            .search_generation_authority()
+            .content_search_generation
+            .validate()?;
         Ok(Self {
             generation_digest,
             generation_token: AtomicU64::new(0),
             resident: Some(Arc::new(resident)),
             execution_publication: None,
-            project_topology_attachment: None,
+            project_topology_attachment: OnceLock::new(),
             build_resource_receipt: std::sync::OnceLock::new(),
         })
     }
@@ -55,17 +63,16 @@ impl RuntimeQueryGeneration {
         resident: agent_semantic_client_db::runtime_resident_read::RuntimeResidentReadClient,
     ) -> Result<Self, String> {
         let generation_digest = resident.generation_digest();
-        agent_semantic_search::ResidentSearchFusionCapabilities::from_open_generation(
-            &resident
-                .search_generation_authority()
-                .content_search_generation,
-        )?;
+        resident
+            .search_generation_authority()
+            .content_search_generation
+            .validate()?;
         Ok(Self {
             generation_digest,
             generation_token: AtomicU64::new(0),
             resident: Some(Arc::new(resident)),
             execution_publication: None,
-            project_topology_attachment: None,
+            project_topology_attachment: OnceLock::new(),
             build_resource_receipt: std::sync::OnceLock::new(),
         })
     }
@@ -79,8 +86,10 @@ impl RuntimeQueryGeneration {
             format!("validate resident Runtime execution publication: {error:?}")
         })?;
         if execution_publication.generation_digest.as_str() != generation.generation_digest
-            || execution_publication.source_root_digest.as_str()
-                != generation.resident().source_root_digest()
+            || !execution_source_root_matches_resident(
+                execution_publication.source_root_digest.as_str(),
+                &generation.resident().source_root_digest(),
+            )
         {
             return Err(
                 "reasonKind=runtime-query-generation-execution-publication-mismatch".to_owned(),
@@ -108,10 +117,270 @@ impl RuntimeQueryGeneration {
         {
             return Err("reasonKind=runtime-project-topology-attachment-mismatch".to_owned());
         }
-        Ok(Self {
-            project_topology_attachment: Some(Arc::new(attachment)),
-            ..self
-        })
+        self.project_topology_attachment
+            .set(Ok(Arc::new(attachment)))
+            .map_err(|_| "reasonKind=runtime-project-topology-attachment-already-set".to_owned())?;
+        Ok(self)
+    }
+
+    /// Builds and admits the Project Topology attachment from the exact
+    /// resident parser generation. The CPU-heavy closure builder runs on its
+    /// bounded blocking lane; this future can execute concurrently with the
+    /// graph and Tantivy attachment build.
+    pub async fn build_and_attach_project_topology(
+        &self,
+        project_root: &std::path::Path,
+    ) -> Result<(), String> {
+        let result = self.build_project_topology(project_root).await;
+        let stored = result.map(Arc::new).map_err(Arc::<str>::from);
+        let returned = stored
+            .as_ref()
+            .map(|_| ())
+            .map_err(|error| error.to_string());
+        self.project_topology_attachment
+            .set(stored)
+            .map_err(|_| "reasonKind=runtime-project-topology-attachment-already-set".to_owned())?;
+        returned
+    }
+
+    async fn build_project_topology(
+        &self,
+        project_root: &std::path::Path,
+    ) -> Result<agent_semantic_topology::RuntimeProjectTopologyAttachment, String> {
+        let execution_publication = self.execution_publication.as_deref().ok_or_else(|| {
+            "reasonKind=runtime-project-topology-execution-publication-missing".to_owned()
+        })?;
+        let runtime_binding = &execution_publication.runtime_execution_binding;
+        let manifest =
+            agent_semantic_topology::ProjectTopologyManifest::load_from_project_root(project_root)
+                .map_err(|error| error.to_string())?;
+        if manifest.project_workspace() != &runtime_binding.project_workspace {
+            return Err("reasonKind=runtime-project-topology-manifest-binding-mismatch".to_owned());
+        }
+
+        let source = self.resident().topology_source_segments()?;
+        if source.is_empty() {
+            return Err("reasonKind=runtime-project-topology-source-empty".to_owned());
+        }
+        let mut admitted_nodes = BTreeSet::<(
+            agent_semantic_content_identity::ProviderRelationEndpointKindV1,
+            String,
+        )>::new();
+        for segment in &source {
+            admitted_nodes.insert((
+                agent_semantic_content_identity::ProviderRelationEndpointKindV1::Owner,
+                segment.owner_path.clone(),
+            ));
+            admitted_nodes.extend(segment.selectors.iter().cloned().map(|selector| {
+                (
+                    agent_semantic_content_identity::ProviderRelationEndpointKindV1::Item,
+                    selector,
+                )
+            }));
+        }
+
+        let mut topology_segments = Vec::with_capacity(source.len());
+        let mut input_edge_count = 0usize;
+        let mut node_count = 0usize;
+        for segment in source {
+            let language_id = segment
+                .authority
+                .as_ref()
+                .map(|authority| authority.language_id.as_str())
+                .or_else(|| {
+                    segment
+                        .selectors
+                        .first()
+                        .and_then(|selector| selector.split_once("://").map(|(lang, _)| lang))
+                })
+                .unwrap_or("unknown");
+            let mut nodes = Vec::new();
+            nodes.push(
+                agent_semantic_topology::ProjectTopologySourceNode::new_owner(
+                    topology_node_id("owner", &segment.owner_path),
+                    language_id,
+                    segment.owner_path.clone(),
+                )
+                .map_err(|error| error.to_string())?,
+            );
+            for selector in &segment.selectors {
+                nodes.push(
+                    agent_semantic_topology::ProjectTopologySourceNode::new(
+                        topology_node_id("item", selector),
+                        selector.clone(),
+                    )
+                    .map_err(|error| error.to_string())?,
+                );
+            }
+            let mut edges = Vec::with_capacity(
+                segment
+                    .relations
+                    .len()
+                    .saturating_add(segment.selectors.len()),
+            );
+            for selector in &segment.selectors {
+                let edge_identity = format!(
+                    "{}\0owner\0{}\0CONTAINS\0item\0{}",
+                    segment.owner_path, segment.owner_path, selector,
+                );
+                edges.push(
+                    agent_semantic_topology::ProjectTopologyDirectEdge::new(
+                        topology_edge_id(&edge_identity),
+                        "CONTAINS",
+                        topology_node_id("owner", &segment.owner_path),
+                        topology_node_id("item", selector),
+                    )
+                    .map_err(|error| error.to_string())?,
+                );
+            }
+            for owned in &segment.relations {
+                let relation = &owned.relation;
+                if relation.from.kind
+                    == agent_semantic_content_identity::ProviderRelationEndpointKindV1::Owner
+                    && relation.from.id == segment.owner_path
+                    && relation.kind.as_str().eq_ignore_ascii_case("CONTAINS")
+                    && relation.to.kind
+                        == agent_semantic_content_identity::ProviderRelationEndpointKindV1::Item
+                    && segment.selectors.contains(&relation.to.id)
+                {
+                    continue;
+                }
+                for endpoint in [&relation.from, &relation.to] {
+                    if !admitted_nodes.contains(&(endpoint.kind, endpoint.id.clone())) {
+                        return Err(format!(
+                            "reasonKind=runtime-project-topology-endpoint-unresolved endpointKind={} endpointId={}",
+                            endpoint.kind.as_str(),
+                            endpoint.id
+                        ));
+                    }
+                }
+                let from_kind = relation.from.kind.as_str();
+                let to_kind = relation.to.kind.as_str();
+                let edge_identity = format!(
+                    "{}\0{}\0{}\0{}\0{}\0{}",
+                    segment.owner_path,
+                    from_kind,
+                    relation.from.id,
+                    relation.kind.as_str(),
+                    to_kind,
+                    relation.to.id,
+                );
+                edges.push(
+                    agent_semantic_topology::ProjectTopologyDirectEdge::new(
+                        topology_edge_id(&edge_identity),
+                        relation.kind.as_str(),
+                        topology_node_id(from_kind, &relation.from.id),
+                        topology_node_id(to_kind, &relation.to.id),
+                    )
+                    .map_err(|error| error.to_string())?,
+                );
+            }
+            node_count = node_count.saturating_add(nodes.len());
+            input_edge_count = input_edge_count.saturating_add(edges.len());
+            topology_segments.push(
+                agent_semantic_topology::ProjectTopologySourceSegment::new(
+                    segment.owner_path,
+                    segment.content_digest,
+                    nodes,
+                    edges,
+                )
+                .map_err(|error| error.to_string())?,
+            );
+        }
+
+        let search_authority = self.resident().search_generation_authority();
+        let parser_catalog_digest = bound_topology_digest(
+            "parser-catalog",
+            [
+                search_authority.provider_schema_digest.as_str(),
+                runtime_binding
+                    .content_binding
+                    .identity
+                    .provider_catalog_digest
+                    .as_str(),
+            ],
+        );
+        let topology_source_program =
+            agent_semantic_topology::ProjectTopologySourceProgram::standard()
+                .map_err(|error| error.to_string())?;
+        let resolver_digest = bound_topology_digest(
+            "topology-resolver",
+            [
+                search_authority.search_projection_manifest_digest.as_str(),
+                search_authority.search_projection_analyzer_digest.as_str(),
+                topology_source_program.source_digest(),
+            ],
+        );
+        let inference_program = Arc::new(
+            topology_source_program
+                .inference_program()
+                .map_err(|error| error.to_string())?,
+        );
+        let identity = agent_semantic_topology::ProjectTopologyGenerationIdentity::new(
+            manifest.project_workspace().clone(),
+            runtime_binding
+                .content_binding
+                .identity
+                .source_generation_digest
+                .as_str()
+                .to_owned(),
+            runtime_binding
+                .content_binding
+                .identity
+                .provider_catalog_digest
+                .as_str()
+                .to_owned(),
+            inference_program,
+            parser_catalog_digest.clone(),
+            resolver_digest,
+            runtime_binding
+                .content_binding
+                .identity
+                .schema_digest
+                .as_str()
+                .to_owned(),
+        )
+        .map_err(|error| error.to_string())?;
+        let closure_limit = node_count
+            .saturating_mul(node_count)
+            .max(input_edge_count)
+            .max(1)
+            .min(1_000_000);
+        let limits = agent_semantic_topology::ProjectTopologyClosureLimits::new(
+            input_edge_count.max(1),
+            closure_limit,
+            closure_limit,
+        )
+        .map_err(|error| error.to_string())?;
+        let candidate =
+            agent_semantic_topology::ProjectTopologyGenerationBuilder::new(identity, limits)
+                .build_from_scratch(topology_segments)
+                .await
+                .map_err(|error| error.to_string())?;
+        let topology_receipts = BTreeMap::from([(
+            candidate.rebuild_receipt_id().to_owned(),
+            candidate.rebuild_receipt().clone(),
+        )]);
+        let library = Arc::new(
+            candidate
+                .admit(&topology_receipts)
+                .map_err(|error| error.to_string())?,
+        );
+        let attachment_candidate =
+            agent_semantic_topology::RuntimeProjectTopologyAttachmentCandidate::build(
+                self.generation_digest.clone().into(),
+                runtime_binding.clone(),
+                library,
+                parser_catalog_digest,
+            )
+            .map_err(|error| error.to_string())?;
+        let attachment_receipts = BTreeMap::from([(
+            attachment_candidate.receipt_digest().to_owned(),
+            attachment_candidate.inference_receipt().clone(),
+        )]);
+        attachment_candidate
+            .admit(&attachment_receipts)
+            .map_err(|error| error.to_string())
     }
 
     /// Returns the exact resident-generation digest.
@@ -157,9 +426,11 @@ impl RuntimeQueryGeneration {
     pub fn require_search_playbook_topology_attachment(
         &self,
     ) -> Result<&agent_semantic_topology::RuntimeProjectTopologyAttachment, String> {
-        self.project_topology_attachment
-            .as_deref()
-            .ok_or_else(|| "reasonKind=runtime-project-topology-attachment-missing".to_owned())
+        match self.project_topology_attachment.get() {
+            Some(Ok(attachment)) => Ok(attachment),
+            Some(Err(error)) => Err(error.to_string()),
+            None => Err("reasonKind=runtime-project-topology-attachment-missing".to_owned()),
+        }
     }
 
     pub fn native_syntax_state(&self) -> &'static str {
@@ -204,15 +475,39 @@ impl RuntimeQueryGeneration {
         self.resident()
             .native_syntax_playbook_projection(owner_paths)
     }
-
-    /// Returns the capabilities admitted from this exact generation.
-    pub fn fusion_capabilities(&self) -> agent_semantic_search::ResidentSearchFusionCapabilities {
-        agent_semantic_search::ResidentSearchFusionCapabilities {
-            lexical: self.resident().lexical_accelerator_is_ready(),
-            resident_graph: self.resident().graph_generation_is_ready(),
-            python_graph: false,
-            byte_evidence: true,
-            complete_byte_coverage: true,
-        }
-    }
 }
+
+fn execution_source_root_matches_resident(
+    execution_source_root: &str,
+    resident_source_root: &str,
+) -> bool {
+    execution_source_root == resident_source_root
+        || execution_source_root
+            .strip_prefix("blake3-256:")
+            .is_some_and(|content| content == resident_source_root)
+}
+
+fn topology_node_id(kind: &str, value: &str) -> String {
+    let digest = bound_topology_digest("topology-node", [kind, value]);
+    format!("{kind}-{}", &digest["blake3-256:".len()..][..20])
+}
+
+fn topology_edge_id(value: &str) -> String {
+    let digest = bound_topology_digest("topology-edge", [value]);
+    format!("edge-{}", &digest["blake3-256:".len()..][..20])
+}
+
+fn bound_topology_digest<'a>(domain: &str, parts: impl IntoIterator<Item = &'a str>) -> String {
+    let mut hasher = blake3::Hasher::new();
+    hasher.update(&(domain.len() as u64).to_be_bytes());
+    hasher.update(domain.as_bytes());
+    for part in parts {
+        hasher.update(&(part.len() as u64).to_be_bytes());
+        hasher.update(part.as_bytes());
+    }
+    format!("blake3-256:{}", hasher.finalize().to_hex())
+}
+
+#[cfg(test)]
+#[path = "../tests/unit/runtime_query_generation.rs"]
+mod tests;

@@ -93,35 +93,35 @@ ruleComposition = [
   { pointer = "/dispatch/agent", equals = "asp_explorer" },
 ]
 positiveCommands = [
-  "asp search playbook capability --language rust --scope owner:crates/agent-semantic-hook/src/lib.rs --workspace .",
-  "env TRACE=1 asp search playbook HookDecision --language rust --workspace .",
-  "asp search playbook Effect --language typescript --workspace .",
-  "asp search playbook policy --language python --scope owner:packages/python/project.py --workspace .",
-  "asp search playbook runtime --language julia --workspace .",
-  "asp search playbook profile --language gerbil-scheme --scope owner:src/main.ss --workspace .",
+  "asp search playbook --language rust --rg --files -g crates/agent-semantic-hook/src/lib.rs --tantivy 'title:[* TO *] OR body:[* TO *]'",
+  "env TRACE=1 asp search playbook --language rust --rg HookDecision",
+  "asp search playbook --language typescript --rg Effect",
+  "asp search playbook --language python --rg --files -g packages/python/project.py --tantivy 'title:[* TO *] OR body:[* TO *]'",
+  "asp search playbook --language julia --rg runtime",
+  "asp search playbook --language gerbil-scheme --rg --files -g src/main.ss --tantivy 'title:[* TO *] OR body:[* TO *]'",
 ]
 negativeCommands = [
   "asp healthcheck",
-  "asp rust query --selector 'rust://src/lib.rs#item/function/run' --workspace . --projection source",
-  "asp python query --selector 'python://src/project.py#item/function/run' --workspace . --projection source",
+  "asp query playbook --language rust --selector 'rust://src/lib.rs#item/function/run' --projection source",
+  "asp query playbook --language python --selector 'python://src/project.py#item/function/run' --projection source",
 ]
 
 [[rules]]
 id = "registered-asp-structured-projection"
 ruleComposition = [
   { pointer = "/matcherPolicies", contains = "wrapped_command" },
-  { pointer = "/match/argvPatternAny", contains = ["asp", "<registered-language>", "query"] },
+  { pointer = "/match/argvPatternAny", contains = ["asp", "query", "playbook"] },
   { pointer = "/dispatch/agent", equals = "asp_explorer" },
 ]
 positiveCommands = [
-  "asp rust query --selector 'rust://src/lib.rs#item/function/run' --workspace . --projection source",
-  "rtk --ultra-compact err asp typescript query --selector 'typescript://src/app.ts#item/function/run' --workspace . --projection source",
-  "asp python query --selector 'python://src/project.py#item/function/run' --workspace . --projection callable-skeleton",
+  "asp query playbook --language rust --selector 'rust://src/lib.rs#item/function/run' --projection source",
+  "rtk --ultra-compact err asp query playbook --language typescript --selector 'typescript://src/app.ts#item/function/run' --projection source",
+  "asp query playbook --language python --selector 'python://src/project.py#item/function/run' --projection callable-skeleton",
 ]
 negativeCommands = [
   "asp healthcheck",
-  "asp search playbook HookDecision --language rust --workspace .",
-  "asp search playbook policy --language python --scope owner:packages/python/project.py --workspace .",
+  "asp search playbook --language rust --rg HookDecision",
+  "asp search playbook --language python --rg policy",
 ]
 
 [[rules]]
@@ -265,7 +265,7 @@ ruleComposition = [
   { pointer = "/matcherPolicies", contains = "wrapped_command" },
   { pointer = "/match/commandContainsAny", contains = "--json" },
 ]
-positiveCommands = ["asp search playbook --language rust Effect --workspace . --json", "asp search playbook --language typescript Effect --workspace . --json"]
+positiveCommands = ["asp search playbook --language rust --rg Effect --json", "asp search playbook --language typescript --rg Effect --json"]
 negativeCommands = ["asp healthcheck --json", "asp paths --json"]
 
 [[rules]]

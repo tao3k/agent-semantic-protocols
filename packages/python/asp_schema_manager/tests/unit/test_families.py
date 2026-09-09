@@ -36,8 +36,8 @@ def test_more_specific_filename_namespace_wins_by_contract_priority(
     tmp_path: Path,
 ) -> None:
     _write_schema(
-        tmp_path / "schemas/semantic-search-packet.v1.schema.json",
-        "https://example/semantic-search-packet",
+        tmp_path / "schemas/semantic-query-packet.v1.schema.json",
+        "https://example/semantic-query-packet",
         {"type": "object"},
     )
     documents, _diagnostics = load_catalog(tmp_path)

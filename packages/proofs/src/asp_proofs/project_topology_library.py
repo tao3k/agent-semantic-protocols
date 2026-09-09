@@ -13,6 +13,7 @@ from jsonschema.exceptions import ValidationError
 from referencing import Registry, Resource
 
 from ._topology_admission import SettlementError, require_topology
+from .project_topology_frontier import validate_relation_frontiers
 
 
 def _validate_shape_and_rebuild(
@@ -73,11 +74,15 @@ def _index_nodes(library: dict, segments: dict[str, dict]) -> dict[str, dict]:
     by_segment: dict[str, set[str]] = {key: set() for key in segments}
     for node in library["nodes"]:
         require_topology(node["id"] not in nodes, "topology-duplicate-node-id")
-        require_topology(
-            node["segmentId"] in segments, "topology-node-segment-unresolved"
-        )
+        segment_id = node["segmentId"]
+        if node["plane"] == "synthesized-semantic":
+            require_topology(segment_id is None, "topology-node-segment-forbidden")
+        else:
+            require_topology(
+                segment_id in segments, "topology-node-segment-unresolved"
+            )
+            by_segment[segment_id].add(node["id"])
         nodes[node["id"]] = node
-        by_segment[node["segmentId"]].add(node["id"])
     require_topology(
         all(item not in nodes for item in library["generation"]["removedNodeIds"]),
         "topology-removed-node-still-active",
@@ -133,17 +138,25 @@ def _index_edges(
     for edge in library["edges"]:
         edge_id = edge["id"]
         require_topology(edge_id not in edges, "topology-duplicate-edge-id")
-        require_topology(
-            edge["segmentId"] in segments, "topology-edge-segment-unresolved"
-        )
+        segment_id = edge["segmentId"]
+        if edge["modality"] in {"derived", "proposed"}:
+            require_topology(segment_id is None, "topology-edge-segment-forbidden")
+        else:
+            require_topology(
+                segment_id in segments, "topology-edge-segment-unresolved"
+            )
+            by_segment[segment_id].add(edge_id)
         require_topology(
             edge["from"] in nodes and edge["to"] in nodes, "topology-dangling-edge"
         )
         edges[edge_id] = edge
-        by_segment[edge["segmentId"]].add(edge_id)
         bindings = {
-            "parser-direct": segments[edge["segmentId"]]["skeletonDigest"],
-            "declared": segments[edge["segmentId"]]["skeletonDigest"],
+            "parser-direct": segments[segment_id]["skeletonDigest"]
+            if segment_id in segments
+            else None,
+            "declared": segments[segment_id]["skeletonDigest"]
+            if segment_id in segments
+            else None,
             "derived": identities["inferenceProgramDigest"],
             "proposed": identities["semanticTopologyDigest"],
         }
@@ -205,4 +218,5 @@ def validate_topology_library(
     nodes = _index_nodes(library, segments)
     _validate_annotations(library, nodes, admitted_receipts)
     edges, derived = _index_edges(library, segments, nodes)
+    validate_relation_frontiers(library, nodes, edges)
     _validate_closure(library, edges, derived)

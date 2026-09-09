@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://agent-semantic-protocols.local/schemas/semantic-policy-fact.v1.schema.json",
   "title": "Semantic Policy Fact v1",
-  "description": "Runtime policy fact emitted by a language harness or ASP policy layer when parser, compiler, project, profile, or receipt evidence proves guidance that an agent can use before or during code generation.",
+  "description": "Runtime policy fact emitted by an ASP language provider or ASP policy layer when parser, compiler, project, profile, or receipt evidence proves guidance that an agent can use before or during code generation.",
   "type": "object",
   "additionalProperties": false,
   "required": [

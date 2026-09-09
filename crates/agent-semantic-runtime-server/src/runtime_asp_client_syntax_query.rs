@@ -10,9 +10,8 @@ use agent_semantic_client_protocol::{
     AspClientWorkspaceSyntaxQueryResponse,
 };
 use agent_semantic_provider_protocol::{
-    PROVIDER_SYNTAX_QUERY_OPERATION, PROVIDER_SYNTAX_QUERY_REQUEST_SCHEMA_ID,
-    PROVIDER_SYNTAX_QUERY_RESPONSE_SCHEMA_ID, ProviderSyntaxQueryRequest,
-    ProviderSyntaxQueryResponse,
+    SyntaxQueryPattern, SyntaxQueryPlan, SyntaxQueryPredicate, SyntaxQueryPredicateOp,
+    SyntaxQueryPredicateValue,
 };
 
 use crate::RuntimeQueryGeneration;
@@ -20,21 +19,11 @@ use crate::runtime_asp_client::AspClientOperationError;
 
 pub(super) async fn dispatch_workspace_syntax_query(
     params: AspClientWorkspaceSyntaxQueryRequest,
-    project_root: &Path,
     generation: &RuntimeQueryGeneration,
     providers: &[agent_semantic_search::WorkspaceSearchProvider],
-    runtime_search_service: &agent_semantic_client_db::runtime_search_service::RuntimeSearchServiceHandle,
 ) -> Result<serde_json::Value, AspClientOperationError> {
-    let evidence = execute_workspace_syntax_query_evidence(
-        &params,
-        project_root,
-        generation,
-        providers,
-        runtime_search_service,
-        3,
-        None,
-    )
-    .await?;
+    let evidence =
+        execute_workspace_syntax_query_evidence(&params, generation, providers, 3, None).await?;
     serde_json::to_value(AspClientWorkspaceSyntaxQueryResponse {
         schema_id: "agent.semantic-protocols.asp-client-workspace-syntax-query-response".to_owned(),
         schema_version: "1".to_owned(),
@@ -46,16 +35,14 @@ pub(super) async fn dispatch_workspace_syntax_query(
 
 pub(super) async fn execute_workspace_syntax_query_evidence(
     params: &AspClientWorkspaceSyntaxQueryRequest,
-    project_root: &Path,
     generation: &RuntimeQueryGeneration,
     providers: &[agent_semantic_search::WorkspaceSearchProvider],
-    runtime_search_service: &agent_semantic_client_db::runtime_search_service::RuntimeSearchServiceHandle,
     limit: usize,
     admitted_owner_paths: Option<&BTreeSet<String>>,
 ) -> Result<Vec<AspClientWorkspaceSyntaxQueryEvidence>, AspClientOperationError> {
-    if limit == 0 || limit > 4096 {
+    if limit == 0 {
         return Err(AspClientOperationError::Message(
-            "workspace syntax Query evidence limit must be in 1..=4096".to_owned(),
+            "workspace syntax Query evidence limit must be non-zero".to_owned(),
         ));
     }
     let selected = params
@@ -72,9 +59,9 @@ pub(super) async fn execute_workspace_syntax_query_evidence(
     let mut seen_selectors = BTreeSet::new();
 
     for block in &params.syntax {
-        if !selected.contains(block.producer.as_str()) {
+        if !producer_matches_optional_calibration(&selected, &block.producer) {
             return Err(AspClientOperationError::Message(format!(
-                "syntax producer is not selected by --languages/--documents: {}",
+                "syntax producer is not selected by --language: {}",
                 block.producer
             )));
         }
@@ -84,28 +71,27 @@ pub(super) async fn execute_workspace_syntax_query_evidence(
                 block.producer
             ))
         })?;
-        query_provider_block(
+        query_resident_block(
             &block.argv,
-            project_root,
             generation,
             provider,
-            runtime_search_service,
             &mut evidence,
             &mut seen_selectors,
             limit,
             admitted_owner_paths,
-        )
-        .await?;
+        )?;
     }
     Ok(evidence)
 }
 
-async fn query_provider_block(
+fn producer_matches_optional_calibration(selected: &BTreeSet<&str>, producer: &str) -> bool {
+    selected.is_empty() || selected.contains(producer)
+}
+
+fn query_resident_block(
     argv: &[String],
-    project_root: &Path,
     generation: &RuntimeQueryGeneration,
     provider: &agent_semantic_search::WorkspaceSearchProvider,
-    runtime_search_service: &agent_semantic_client_db::runtime_search_service::RuntimeSearchServiceHandle,
     evidence: &mut Vec<AspClientWorkspaceSyntaxQueryEvidence>,
     seen_selectors: &mut BTreeSet<String>,
     limit: usize,
@@ -119,12 +105,7 @@ async fn query_provider_block(
                 provider.language_id, error.message
             ))
         })?;
-    let query_digest = blake3::hash(
-        &serde_json::to_vec(argv)
-            .map_err(|error| AspClientOperationError::Message(error.to_string()))?,
-    )
-    .to_hex()
-    .to_string();
+    validate_resident_query_plan(&plan)?;
     let source_extensions = provider
         .source_extensions
         .iter()
@@ -134,20 +115,6 @@ async fn query_provider_block(
     if admitted_owner_paths.is_some_and(BTreeSet::is_empty) {
         return Ok(());
     }
-
-    runtime_search_service
-        .provider_runtime(project_root.to_path_buf(), provider.language_id.clone())
-        .await
-        .map_err(AspClientOperationError::Message)?;
-    runtime_search_service
-        .provider_runtime_await_ready(
-            project_root.to_path_buf(),
-            provider.language_id.clone(),
-            agent_semantic_client_db::runtime_generation_cancellation::GenerationCancellation::new(
-            ),
-        )
-        .await
-        .map_err(AspClientOperationError::Message)?;
 
     for owner_path in generation.resident().indexed_owner_paths() {
         if evidence.len() == limit {
@@ -162,131 +129,131 @@ async fn query_provider_block(
         if admitted_owner_paths.is_some_and(|owners| !owners.contains(&owner_path)) {
             continue;
         }
-        let provider_request = provider_request_for_owner(
-            generation,
-            provider,
-            &owner_path,
-            &query_digest,
-            plan.clone(),
-        )?;
-        let response = execute_provider_query(
-            project_root,
-            provider,
-            runtime_search_service,
-            &provider_request,
-        )
-        .await?;
-        append_captures(
-            provider,
-            &owner_path,
-            response,
-            evidence,
-            seen_selectors,
-            limit,
-        )?;
+        let (projections, _, diagnostics) = generation
+            .native_syntax_playbook_projection(std::slice::from_ref(&owner_path))
+            .map_err(AspClientOperationError::Message)?;
+        if !diagnostics.is_empty() {
+            continue;
+        }
+        for projection in projections {
+            for selector in projection.selectors {
+                let mut capture = None;
+                for pattern in &plan.patterns {
+                    if let Some(matched) = resident_pattern_capture(pattern, &plan, &selector)? {
+                        capture = Some(matched);
+                        break;
+                    }
+                }
+                let Some(capture) = capture else {
+                    continue;
+                };
+                if seen_selectors.insert(selector.selector.clone()) {
+                    evidence.push(AspClientWorkspaceSyntaxQueryEvidence {
+                        owner: owner_path.clone(),
+                        selector: selector.selector,
+                        relation: format!("syntax-capture:{capture}"),
+                    });
+                    if evidence.len() == limit {
+                        return Ok(());
+                    }
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+fn validate_resident_query_plan(plan: &SyntaxQueryPlan) -> Result<(), AspClientOperationError> {
+    if plan.patterns.is_empty() || plan.captures.is_empty() {
+        return Err(AspClientOperationError::Message(
+            "resident syntax Query requires a captured pattern".to_owned(),
+        ));
+    }
+    if plan.patterns.iter().any(|pattern| {
+        !pattern.fields.is_empty()
+            || pattern.node_types.is_empty()
+            || pattern.node_types.iter().any(|node| node != "identifier")
+    }) {
+        return Err(AspClientOperationError::Message(
+            "resident syntax Query V1 supports identifier capture patterns without field traversal"
+                .to_owned(),
+        ));
+    }
+    if plan.predicates.iter().any(|predicate| {
+        predicate
+            .values
+            .iter()
+            .any(|value| matches!(value, SyntaxQueryPredicateValue::Capture(_)))
+    }) {
+        return Err(AspClientOperationError::Message(
+            "resident syntax Query V1 does not support capture-to-capture predicates".to_owned(),
+        ));
     }
     Ok(())
 }
 
-fn provider_request_for_owner(
-    generation: &RuntimeQueryGeneration,
-    provider: &agent_semantic_search::WorkspaceSearchProvider,
-    owner_path: &str,
-    query_digest: &str,
-    plan: agent_semantic_provider_protocol::SyntaxQueryPlan,
-) -> Result<ProviderSyntaxQueryRequest, AspClientOperationError> {
-    let owner = generation
-        .resident()
-        .owner_snapshot(owner_path)
-        .map_err(AspClientOperationError::Message)?
-        .ok_or_else(|| {
-            AspClientOperationError::Message(format!(
-                "resident syntax Query owner disappeared: {owner_path}"
-            ))
-        })?;
-    let source = String::from_utf8(owner.bytes).map_err(|error| {
-        AspClientOperationError::Message(format!(
-            "resident syntax Query owner is not UTF-8: owner={owner_path} error={error}"
-        ))
-    })?;
-    let source_content_digest = blake3::hash(source.as_bytes()).to_hex().to_string();
-    if !owner.content_digest.ends_with(&source_content_digest) {
-        return Err(AspClientOperationError::Message(format!(
-            "resident syntax Query owner digest drift: {owner_path}"
-        )));
-    }
-    Ok(ProviderSyntaxQueryRequest {
-        schema_id: PROVIDER_SYNTAX_QUERY_REQUEST_SCHEMA_ID.to_owned(),
-        schema_version: "1".to_owned(),
-        language_id: provider.language_id.clone(),
-        provider_id: provider.provider_id.clone(),
-        owner_path: owner_path.to_owned(),
-        source_content_digest,
-        query_digest: query_digest.to_owned(),
-        source,
-        plan,
-    })
-}
-
-async fn execute_provider_query(
-    project_root: &Path,
-    provider: &agent_semantic_search::WorkspaceSearchProvider,
-    runtime_search_service: &agent_semantic_client_db::runtime_search_service::RuntimeSearchServiceHandle,
-    provider_request: &ProviderSyntaxQueryRequest,
-) -> Result<ProviderSyntaxQueryResponse, AspClientOperationError> {
-    let payload = serde_json::to_vec(provider_request)
-        .map_err(|error| AspClientOperationError::Message(error.to_string()))?;
-    let cancellation =
-        agent_semantic_client_db::runtime_generation_cancellation::GenerationCancellation::new();
-    let response = runtime_search_service
-        .provider_operation(
-            project_root.to_path_buf(),
-            provider.language_id.clone(),
-            PROVIDER_SYNTAX_QUERY_OPERATION.to_owned(),
-            payload,
-            cancellation,
-        )
-        .await
-        .map_err(AspClientOperationError::Message)?;
-    let response: ProviderSyntaxQueryResponse =
-        serde_json::from_slice(&response).map_err(|error| {
-            AspClientOperationError::Message(format!(
-                "decode provider syntax Query response: {error}"
-            ))
-        })?;
-    validate_provider_response(provider_request, &response)
-        .map_err(AspClientOperationError::Message)?;
-    Ok(response)
-}
-
-fn append_captures(
-    provider: &agent_semantic_search::WorkspaceSearchProvider,
-    owner_path: &str,
-    response: ProviderSyntaxQueryResponse,
-    evidence: &mut Vec<AspClientWorkspaceSyntaxQueryEvidence>,
-    seen_selectors: &mut BTreeSet<String>,
-    limit: usize,
-) -> Result<(), AspClientOperationError> {
-    let selector_prefix = format!("{}://{}#item/", provider.language_id, owner_path);
-    for capture in response.captures {
-        if evidence.len() == limit {
-            break;
-        }
-        if !capture.structural_selector.starts_with(&selector_prefix) {
-            return Err(AspClientOperationError::Message(format!(
-                "provider syntax Query returned a non-canonical selector: {}",
-                capture.structural_selector
-            )));
-        }
-        if seen_selectors.insert(capture.structural_selector.clone()) {
-            evidence.push(AspClientWorkspaceSyntaxQueryEvidence {
-                owner: owner_path.to_owned(),
-                selector: capture.structural_selector,
-                relation: format!("syntax-capture:{}", capture.capture_name),
-            });
+fn resident_pattern_capture(
+    pattern: &SyntaxQueryPattern,
+    plan: &SyntaxQueryPlan,
+    selector: &agent_semantic_search::NativeSyntaxSelector,
+) -> Result<Option<String>, AspClientOperationError> {
+    let Some(capture) = pattern.captures.first() else {
+        return Ok(None);
+    };
+    for predicate in plan
+        .predicates
+        .iter()
+        .filter(|predicate| pattern.captures.contains(&predicate.capture))
+    {
+        if !resident_predicate_matches(predicate, &selector.query_keys)? {
+            return Ok(None);
         }
     }
-    Ok(())
+    Ok(Some(capture.clone()))
+}
+
+fn resident_predicate_matches(
+    predicate: &SyntaxQueryPredicate,
+    query_keys: &[String],
+) -> Result<bool, AspClientOperationError> {
+    let literals = predicate
+        .values
+        .iter()
+        .map(|value| match value {
+            SyntaxQueryPredicateValue::String(value) => Ok(value.as_str()),
+            SyntaxQueryPredicateValue::Capture(_) => Err(AspClientOperationError::Message(
+                "resident syntax Query capture predicate escaped validation".to_owned(),
+            )),
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let any_equal = || {
+        query_keys
+            .iter()
+            .any(|key| literals.iter().any(|literal| key == literal))
+    };
+    let any_regex = || -> Result<bool, AspClientOperationError> {
+        let patterns = literals
+            .iter()
+            .map(|literal| {
+                regex::Regex::new(literal).map_err(|error| {
+                    AspClientOperationError::Message(format!(
+                        "resident syntax Query regex is invalid: {error}"
+                    ))
+                })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(query_keys
+            .iter()
+            .any(|key| patterns.iter().any(|pattern| pattern.is_match(key))))
+    };
+    match predicate.op {
+        SyntaxQueryPredicateOp::Eq
+        | SyntaxQueryPredicateOp::AnyEq
+        | SyntaxQueryPredicateOp::AnyOf => Ok(any_equal()),
+        SyntaxQueryPredicateOp::NotEq => Ok(!any_equal()),
+        SyntaxQueryPredicateOp::Match | SyntaxQueryPredicateOp::AnyMatch => any_regex(),
+        SyntaxQueryPredicateOp::NotMatch => Ok(!any_regex()?),
+    }
 }
 
 fn native_tree_sitter_query(argv: &[String]) -> Result<&str, AspClientOperationError> {
@@ -307,29 +274,6 @@ fn native_tree_sitter_query(argv: &[String]) -> Result<&str, AspClientOperationE
     ))
 }
 
-fn validate_provider_response(
-    request: &ProviderSyntaxQueryRequest,
-    response: &ProviderSyntaxQueryResponse,
-) -> Result<(), String> {
-    if response.schema_id != PROVIDER_SYNTAX_QUERY_RESPONSE_SCHEMA_ID
-        || response.schema_version != "1"
-        || response.language_id != request.language_id
-        || response.provider_id != request.provider_id
-        || response.owner_path != request.owner_path
-        || response.source_content_digest != request.source_content_digest
-        || response.query_digest != request.query_digest
-        || !response.parsed
-    {
-        return Err("provider syntax Query response identity drift".to_owned());
-    }
-    if response.captures.iter().any(|capture| {
-        capture.capture_name.trim().is_empty()
-            || capture.native_fact_ref.trim().is_empty()
-            || capture.structural_selector.trim().is_empty()
-            || capture.source_byte_start >= capture.source_byte_end
-            || capture.source_byte_end > request.source.len() as u64
-    }) {
-        return Err("provider syntax Query response contains an invalid capture".to_owned());
-    }
-    Ok(())
-}
+#[cfg(test)]
+#[path = "../tests/unit/runtime_asp_client_syntax_query.rs"]
+mod tests;

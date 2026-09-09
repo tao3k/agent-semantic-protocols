@@ -262,6 +262,9 @@ pub struct ResidentSourceDocument {
     pub owner_content_digest: String,
     pub line_count: u32,
     pub query_keys: Vec<String>,
+    /// Admitted source text used only while building the immutable Tantivy
+    /// attachment. Reopened attachments already contain their token positions.
+    pub lexical_body: Option<String>,
     pub authority: Option<ResidentSearchAuthority>,
 }
 
@@ -298,8 +301,9 @@ impl ResidentSourceIndex {
         resources: ResidentIndexBuildResources,
     ) -> Result<Self, String> {
         let owner_terms = owner_terms(&source_documents);
+        let lexical_documents = lexical_documents(&source_documents, &owner_terms);
         let lexical_index = crate::tantivy_lexical::TantivyLexicalIndex::build_with_resources(
-            &owner_terms,
+            &lexical_documents,
             resources,
         )?;
         let index_artifact_digest =
@@ -326,10 +330,11 @@ impl ResidentSourceIndex {
         resources: ResidentIndexBuildResources,
     ) -> Result<(Self, String), String> {
         let owner_terms = owner_terms(&source_documents);
+        let lexical_documents = lexical_documents(&source_documents, &owner_terms);
         let (lexical_index, artifact_digest) =
             crate::tantivy_lexical::TantivyLexicalIndex::build_in_directory(
                 directory,
-                &owner_terms,
+                &lexical_documents,
                 resources,
             )?;
         let index = Self::from_parts(
@@ -396,10 +401,8 @@ impl ResidentSourceIndex {
         authority: Option<&ResidentSearchAuthority>,
         limit: u32,
     ) -> Result<Arc<agent_semantic_search_projection::ResidentSearchReadyResult>, String> {
-        if !(1..=4096).contains(&limit) {
-            return Err(format!(
-                "resident source-index query limit must be in 1..=4096: limit={limit}"
-            ));
+        if limit == 0 {
+            return Err("resident source-index query limit must be non-zero".to_owned());
         }
         let cache_key = QueryCacheKey {
             query: query.trim().to_ascii_lowercase(),
@@ -457,6 +460,70 @@ impl ResidentSourceIndex {
             ));
         }
         self.query(query, Some(&authority), limit)
+    }
+
+    /// Execute the public `--tantivy` grammar through Tantivy's native query
+    /// parser. This is distinct from the compact term-intersection lookup used
+    /// by internal navigation APIs.
+    pub fn query_tantivy_language(
+        &self,
+        expression: &str,
+        language_id: &agent_semantic_config::LanguageId,
+        limit: u32,
+    ) -> Result<Arc<agent_semantic_search_projection::ResidentSearchReadyResult>, String> {
+        if expression.trim().is_empty() {
+            return Err("native Tantivy expression must be non-empty".to_owned());
+        }
+        if limit == 0 {
+            return Err("resident Tantivy query limit must be non-zero".to_owned());
+        }
+        let mut authorities = self
+            .source_documents
+            .iter()
+            .filter_map(|document| document.authority.as_ref())
+            .filter(|authority| &authority.language_id == language_id);
+        let authority = authorities.next().cloned().ok_or_else(|| {
+            format!(
+                "resident source-index language authority is missing: languageId={}",
+                language_id.as_str()
+            )
+        })?;
+        if authorities.any(|candidate| candidate.provider_id != authority.provider_id) {
+            return Err(format!(
+                "resident source-index language authority is ambiguous: languageId={}",
+                language_id.as_str()
+            ));
+        }
+        let required_terms = [
+            authority_language_term(&authority),
+            authority_provider_term(&authority),
+        ];
+        let query_terms = source_index_lookup_terms(expression)
+            .into_iter()
+            .filter(|term| !term.chars().any(char::is_whitespace))
+            .collect::<BTreeSet<_>>();
+        let hits = self
+            .lexical_index
+            .search_expression(expression, &required_terms, limit as usize)?
+            .into_iter()
+            .filter(|owner_id| self.matches_authority(*owner_id, Some(&authority)))
+            .map(|owner_id| {
+                let matched_terms = query_terms
+                    .iter()
+                    .filter(|term| self.owner_terms[owner_id].binary_search(term).is_ok())
+                    .cloned()
+                    .collect();
+                self.candidate(owner_id, matched_terms)
+            })
+            .collect::<Result<Vec<_>, String>>()?;
+        Ok(Arc::new(
+            agent_semantic_search_projection::ResidentSearchReadyResult::new(
+                self.generation_digest.clone(),
+                &self.source_snapshot,
+                self.index_artifact_digest.clone(),
+                hits,
+            )?,
+        ))
     }
 
     pub fn result_for_owner_paths(
@@ -625,6 +692,26 @@ fn owner_terms(source_documents: &BTreeMap<String, ResidentSourceDocument>) -> V
             terms.dedup();
             terms
         })
+        .collect()
+}
+
+fn lexical_documents(
+    source_documents: &BTreeMap<String, ResidentSourceDocument>,
+    owner_terms: &[Vec<String>],
+) -> Vec<crate::tantivy_lexical::TantivyLexicalDocument> {
+    source_documents
+        .values()
+        .zip(owner_terms)
+        .map(
+            |(document, exact_terms)| crate::tantivy_lexical::TantivyLexicalDocument {
+                exact_terms: exact_terms.clone(),
+                title: document.owner_path.clone(),
+                body: document
+                    .lexical_body
+                    .clone()
+                    .unwrap_or_else(|| document.query_keys.join(" ")),
+            },
+        )
         .collect()
 }
 

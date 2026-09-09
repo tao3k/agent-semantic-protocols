@@ -47,6 +47,58 @@ pub struct FdInventoryReceipt {
     pub owner_count: usize,
 }
 
+struct FdInventoryPathShard {
+    local: Vec<String>,
+    merged: Arc<Mutex<Vec<String>>>,
+}
+
+impl FdInventoryPathShard {
+    fn new(merged: Arc<Mutex<Vec<String>>>) -> Self {
+        Self {
+            local: Vec::new(),
+            merged,
+        }
+    }
+
+    fn push(&mut self, path: String) {
+        self.local.push(path);
+    }
+}
+
+impl Drop for FdInventoryPathShard {
+    fn drop(&mut self) {
+        self.merged
+            .lock()
+            .expect("fd inventory path mutex poisoned")
+            .append(&mut self.local);
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum FdInventoryDeadline {
+    /// Complete-generation construction is detached from the foreground request
+    /// and is bounded by its output envelope, not by the request timeout.
+    CompleteGeneration,
+    /// Focused callers may impose an explicit leaf-operation deadline.
+    Bounded(Duration),
+}
+
+impl FdInventoryDeadline {
+    fn exceeded(self, elapsed: Duration) -> bool {
+        match self {
+            Self::CompleteGeneration => false,
+            Self::Bounded(timeout) => elapsed >= timeout,
+        }
+    }
+
+    fn timeout_millis(self) -> Option<u128> {
+        match self {
+            Self::CompleteGeneration => None,
+            Self::Bounded(timeout) => Some(timeout.as_millis()),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct RgColdQueryOutput {
     pub output: bytes::Bytes,
@@ -96,19 +148,19 @@ impl ValidatedColdRgCorpus {
 
 pub async fn run_fd_inventory(
     workspace_root: &Path,
-    timeout: Duration,
+    deadline: FdInventoryDeadline,
 ) -> Result<FdInventoryOutput, String> {
     let started = Instant::now();
     let workspace_root = workspace_root.to_path_buf();
     let owner_paths =
-        tokio::task::spawn_blocking(move || build_resident_fd_inventory(&workspace_root, timeout))
+        tokio::task::spawn_blocking(move || build_resident_fd_inventory(&workspace_root, deadline))
             .await
             .map_err(|error| format!("join resident fd inventory: {error}"))??;
     let owner_count = owner_paths.len();
     Ok(FdInventoryOutput {
         owner_paths,
         receipt: FdInventoryReceipt {
-            backend: "resident-fd-ignore-parallel",
+            backend: "resident-fd-ignore-sharded-parallel",
             elapsed: started.elapsed(),
             owner_count,
         },
@@ -117,7 +169,7 @@ pub async fn run_fd_inventory(
 
 fn build_resident_fd_inventory(
     workspace_root: &Path,
-    timeout: Duration,
+    deadline: FdInventoryDeadline,
 ) -> Result<Vec<String>, String> {
     let started = Instant::now();
     let paths = Arc::new(Mutex::new(Vec::new()));
@@ -140,15 +192,19 @@ fn build_resident_fd_inventory(
         let cancelled = Arc::clone(&cancelled);
         let failure = Arc::clone(&failure);
         let workspace_root = workspace_root.to_path_buf();
+        let mut path_shard = FdInventoryPathShard::new(paths);
         Box::new(move |entry| {
-            if cancelled.load(Ordering::Acquire) || started.elapsed() >= timeout {
+            if cancelled.load(Ordering::Acquire) {
+                return ignore::WalkState::Quit;
+            }
+            if deadline.exceeded(started.elapsed()) {
                 cancelled.store(true, Ordering::Release);
                 let mut failure = failure.lock().expect("fd inventory failure mutex poisoned");
+                let timeout_millis = deadline
+                    .timeout_millis()
+                    .expect("only bounded inventory deadlines can expire");
                 failure.get_or_insert_with(|| {
-                    format!(
-                        "resident fd inventory timed out after {}ms",
-                        timeout.as_millis()
-                    )
+                    format!("resident fd inventory timed out after {timeout_millis}ms")
                 });
                 return ignore::WalkState::Quit;
             }
@@ -209,10 +265,7 @@ fn build_resident_fd_inventory(
                 });
                 return ignore::WalkState::Quit;
             }
-            paths
-                .lock()
-                .expect("fd inventory path mutex poisoned")
-                .push(relative.to_owned());
+            path_shard.push(relative.to_owned());
             ignore::WalkState::Continue
         })
     });

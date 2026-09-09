@@ -84,6 +84,7 @@ fn write_registry(path: &Path, roots: &[&str]) {
             "rootSets": {"contract": roots},
             "profiles": [{
                 "languageId": "fixture",
+                "searchProducerAxes": ["language"],
                 "packageRoot": "languages/fixture",
                 "bundleRoot": "languages/fixture/schemas",
                 "rootSets": ["contract"],
@@ -92,6 +93,30 @@ fn write_registry(path: &Path, roots: &[&str]) {
             }]
         }),
     );
+}
+
+#[test]
+fn registered_profiles_own_search_producer_axes() {
+    let (root, manager) = fixture();
+    let profiles = manager
+        .registered_language_profiles()
+        .expect("fixture profile registry");
+    assert_eq!(profiles.len(), 1);
+    assert_eq!(
+        profiles[0].search_producer_axes,
+        [crate::SearchProducerAxis::Language]
+    );
+
+    let registry_path = root.path().join("profiles.json");
+    let mut registry: serde_json::Value =
+        serde_json::from_slice(&fs::read(&registry_path).expect("read registry"))
+            .expect("decode registry");
+    registry["profiles"][0]["searchProducerAxes"] = json!([]);
+    write_json(&registry_path, &registry);
+    let error = manager
+        .registered_language_profiles()
+        .expect_err("an unclassified Search producer must fail closed");
+    assert!(error.contains("no Search producer axis"), "{error}");
 }
 
 #[tokio::test]
@@ -360,9 +385,18 @@ fn canonical_client_profile_publishes_the_shared_schema_bundle_route() {
     assert!(client_roots.contains(&"asp-client-schema-bundle-request.schema.json"));
     assert!(client_roots.contains(&"asp-client-schema-bundle-response.schema.json"));
     assert!(client_roots.contains(&"search-topology-settlement.v1.schema.json"));
+    assert!(client_roots.contains(&"runtime-search-execution-budget.v1.schema.json"));
+    assert!(client_roots.contains(&"runtime-resident-request-plane-receipt.v1.schema.json"));
     assert!(!client_roots.contains(&"workspace-search-playbook-result.v1.schema.json"));
     assert!(!client_roots.contains(&"semantic-agent-search-playbook-receipt.v1.schema.json"));
     assert!(client_roots.contains(&"large-search-playbook-performance-receipt.v1.schema.json"));
+    let reasoning_roots = registry["rootSets"]["agent-reasoning"]
+        .as_array()
+        .expect("agent-reasoning root set")
+        .iter()
+        .map(|value| value.as_str().expect("schema root name"))
+        .collect::<Vec<_>>();
+    assert!(reasoning_roots.contains(&"project-topology-inference-receipt.v1.schema.json"));
     assert!(
         registry["profiles"]
             .as_array()

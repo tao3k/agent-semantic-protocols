@@ -195,6 +195,17 @@ impl RuntimeResidentReadClient {
             .read_source_index_for_language(query, language_id, limit)
     }
 
+    pub fn read_tantivy_for_language(
+        &self,
+        expression: &str,
+        language_id: &agent_semantic_client_core::LanguageId,
+        limit: u32,
+    ) -> Result<std::sync::Arc<agent_semantic_search_projection::ResidentSearchReadyResult>, String>
+    {
+        self.search_projection
+            .read_tantivy_for_language(expression, language_id, limit)
+    }
+
     pub fn read_cold_rg_candidates(
         &self,
         query: &str,

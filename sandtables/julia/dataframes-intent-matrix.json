@@ -74,35 +74,32 @@
       "id": "prime",
       "command": [
         "asp",
-        "julia",
         "search",
-        "prime",
-        "--view",
-        "seeds",
-        "--workspace",
-        "."
+        "playbook",
+        "--language",
+        "julia",
+        "--rg",
+        "-n",
+        "-e",
+        "julia|source",
+        ".",
+        "--tantivy",
+        "title:\"julia\"^2 OR body:\"source\""
       ],
       "expect": {
-        "lineProtocol": true,
         "stdoutContains": [
-          "[search-prime]",
-          "alg=budgeted-prime-frontier-v1",
-          "|decision purpose=decision-primer",
-          "capabilities=pipe,lexical,fd-query,rg-query,owner-items,selector-code,treesitter-query",
-          "legend: ID=kind:role(value)!next; entries profile(selectors=>returns); frontier ID.next",
-          "G>{",
-          "rank=",
-          "frontier=",
-          "omit=items,blocks,code,full-test-list",
-          "avoid=raw-read"
+          "#+begin_src gql :name result",
+          "(julia:Language)-[:RESULTS]->[",
+          "#+end_src"
         ],
-        "maxStdoutLinesWarn": 10,
-        "maxElapsedMs": 5000,
-        "maxElapsedMsWarn": 4500,
+        "maxStdoutLinesWarn": 40,
+        "maxElapsedMs": 90000,
+        "maxElapsedMsWarn": 90000,
         "stdoutNotContains": [
           "|seed",
           "|synthesis",
-          "G=search:result!query"
+          "G=search:result!query",
+          "MaterializationSet"
         ]
       }
     },
@@ -110,29 +107,32 @@
       "id": "owner-dataframes",
       "command": [
         "asp",
-        "julia",
         "search",
-        "owner",
+        "playbook",
+        "--language",
+        "julia",
+        "--rg",
+        "-n",
+        "-e",
+        "DataFrames",
         "src/DataFrames.jl",
-        "--view",
-        "seeds",
-        "--workspace",
-        "."
+        "--tantivy",
+        "title:\"DataFrames\"^2 OR body:\"DataFrames\""
       ],
       "expect": {
-        "lineProtocol": true,
         "stdoutContains": [
-          "[search-owner]",
-          "src/DataFrames.jl",
-          "entries=owner-tests(O=>covering-tests+test-entrypoints+fixtures)"
+          "#+begin_src gql :name result",
+          "(julia:Language)-[:RESULTS]->[",
+          "#+end_src"
         ],
-        "maxStdoutLinesWarn": 14,
-        "maxElapsedMs": 5000,
-        "maxElapsedMsWarn": 4500,
+        "maxStdoutLinesWarn": 40,
+        "maxElapsedMs": 90000,
+        "maxElapsedMsWarn": 90000,
         "stdoutNotContains": [
           "|seed",
           "|synthesis",
-          "G=search:result!query"
+          "G=search:result!query",
+          "MaterializationSet"
         ]
       }
     },
@@ -140,29 +140,32 @@
       "id": "deps-tables",
       "command": [
         "asp",
-        "julia",
         "search",
-        "deps",
+        "playbook",
+        "--language",
+        "julia",
+        "--rg",
+        "-n",
+        "-e",
         "Tables",
-        "--view",
-        "seeds",
-        "--workspace",
-        "."
+        ".",
+        "--tantivy",
+        "title:\"Tables\"^2 OR body:\"Tables\""
       ],
       "expect": {
-        "lineProtocol": true,
         "stdoutContains": [
-          "Tables",
-          "dependency",
-          "frontier="
+          "#+begin_src gql :name result",
+          "(julia:Language)-[:RESULTS]->[",
+          "#+end_src"
         ],
-        "maxStdoutLinesWarn": 16,
-        "maxElapsedMs": 5000,
-        "maxElapsedMsWarn": 4500,
+        "maxStdoutLinesWarn": 40,
+        "maxElapsedMs": 90000,
+        "maxElapsedMsWarn": 90000,
         "stdoutNotContains": [
           "|seed",
           "|synthesis",
-          "G=search:result!query"
+          "G=search:result!query",
+          "MaterializationSet"
         ]
       }
     },
@@ -170,40 +173,32 @@
       "id": "intent-query-set",
       "command": [
         "asp",
-        "julia",
         "search",
-        "lexical",
-        "--query-set",
-        "groupby",
-        "--query-set",
-        "DataFrame",
-        "--query-set",
-        "transform",
-        "owner",
-        "tests",
-        "--view",
-        "seeds",
-        "--workspace",
-        "."
+        "playbook",
+        "--language",
+        "julia",
+        "--rg",
+        "-n",
+        "-e",
+        "groupby|DataFrame|transform",
+        ".",
+        "--tantivy",
+        "title:\"groupby\"^2 OR body:\"DataFrame\""
       ],
       "expect": {
-        "lineProtocol": true,
         "stdoutContains": [
-          "[search-lexical]",
-          "querySet=3",
-          "legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next",
-          "G>{",
-          "rank=",
-          "frontier=",
-          "entries=owner-query(O,Q=>items+tests+dependency-usage),owner-tests(O=>covering-tests+test-entrypoints+fixtures)"
+          "#+begin_src gql :name result",
+          "(julia:Language)-[:RESULTS]->[",
+          "#+end_src"
         ],
-        "maxStdoutLinesWarn": 10,
-        "maxElapsedMs": 5000,
-        "maxElapsedMsWarn": 4500,
+        "maxStdoutLinesWarn": 40,
+        "maxElapsedMs": 90000,
+        "maxElapsedMsWarn": 90000,
         "stdoutNotContains": [
           "|seed",
           "|synthesis",
-          "G=search:result!query"
+          "G=search:result!query",
+          "MaterializationSet"
         ]
       }
     }

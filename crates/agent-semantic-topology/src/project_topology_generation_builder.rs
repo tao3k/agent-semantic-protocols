@@ -5,15 +5,18 @@
 //! Deterministic from-scratch construction of one Project Topology generation.
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::fmt;
 use std::sync::Arc;
 
 use agent_semantic_content_identity::{CanonicalItemSelector, ProjectWorkspaceBinding};
 use serde_json::{Value, json};
 
+use crate::project_topology_generation_error::{
+    ProjectTopologyGenerationBuildError, error, require_digest, validate_identifier,
+};
 use crate::{
     ProjectTopologyClosureBuilder, ProjectTopologyClosureLimits, ProjectTopologyDirectEdge,
-    ProjectTopologyInferenceProgram, ProjectTopologyLibrary, ProjectTopologyLibraryError,
+    ProjectTopologyExpectedRelation, ProjectTopologyInferenceProgram, ProjectTopologyLibrary,
+    ProjectTopologyLibraryError, project_topology_frontier::project_topology_frontier_projection,
 };
 
 const CONSUMERS: [&str; 6] = [
@@ -209,6 +212,7 @@ impl ProjectTopologyGenerationCandidate {
 pub struct ProjectTopologyGenerationBuilder {
     identity: ProjectTopologyGenerationIdentity,
     limits: ProjectTopologyClosureLimits,
+    expected_relations: Vec<ProjectTopologyExpectedRelation>,
     blocking_permits: Arc<tokio::sync::Semaphore>,
 }
 
@@ -224,8 +228,26 @@ impl ProjectTopologyGenerationBuilder {
         Self {
             identity,
             limits,
+            expected_relations: Vec::new(),
             blocking_permits: Arc::new(tokio::sync::Semaphore::new(blocking_parallelism)),
         }
+    }
+
+    /// Attach source-owned obligations evaluated in the same generation as
+    /// direct and derived relations.
+    pub fn with_expected_relations(
+        mut self,
+        mut expected_relations: Vec<ProjectTopologyExpectedRelation>,
+    ) -> Result<Self, ProjectTopologyGenerationBuildError> {
+        expected_relations.sort_by(|left, right| left.id.cmp(&right.id));
+        ensure_unique(
+            expected_relations
+                .iter()
+                .map(|expected| expected.id.as_str()),
+            "expected relation",
+        )?;
+        self.expected_relations = expected_relations;
+        Ok(self)
     }
 
     /// Returns the bounded CPU-build concurrency configured for this builder.
@@ -338,9 +360,10 @@ impl ProjectTopologyGenerationBuilder {
             })?;
         let identity = self.identity.clone();
         let limits = self.limits;
+        let expected_relations = self.expected_relations.clone();
         tokio::task::spawn_blocking(move || {
             let _permit = permit;
-            build_from_scratch_blocking(identity, limits, segments, transition)
+            build_from_scratch_blocking(identity, limits, segments, expected_relations, transition)
         })
         .await
         .map_err(|cause| {
@@ -365,6 +388,7 @@ fn build_from_scratch_blocking(
     identity: ProjectTopologyGenerationIdentity,
     limits: ProjectTopologyClosureLimits,
     mut segments: Vec<ProjectTopologySourceSegment>,
+    expected_relations: Vec<ProjectTopologyExpectedRelation>,
     transition: ProjectTopologyGenerationTransition,
 ) -> Result<ProjectTopologyGenerationCandidate, ProjectTopologyGenerationBuildError> {
     if segments.is_empty() {
@@ -384,6 +408,16 @@ fn build_from_scratch_blocking(
         .collect::<Vec<_>>();
     ensure_unique(all_node_ids.iter().copied(), "global node")?;
     let all_nodes = all_node_ids.into_iter().collect::<BTreeSet<_>>();
+    for expected in &expected_relations {
+        if !all_nodes.contains(expected.anchor.as_str())
+            || !all_nodes.contains(expected.target.as_str())
+        {
+            return Err(error(
+                "topology-expected-relation-endpoint-unresolved",
+                format!("expected relation {} has an unknown endpoint", expected.id),
+            ));
+        }
+    }
     let all_edges = segments
         .iter()
         .flat_map(|segment| segment.edges.iter())
@@ -406,7 +440,17 @@ fn build_from_scratch_blocking(
     let structural_digest = digest_json(&json!({
         "segments": segments.iter().map(source_segment_digest_shape).collect::<Vec<_>>()
     }));
-    let semantic_digest = digest_parts(["empty-semantic-topology", &structural_digest]);
+    let frontier_projection = project_topology_frontier_projection(
+        &expected_relations,
+        &[],
+        &identity.source_generation_digest,
+    );
+    let expectation_digest = frontier_projection.expectation_digest;
+    let semantic_digest = digest_parts([
+        "source-owned-topology-expectations",
+        &structural_digest,
+        &expectation_digest,
+    ]);
     let mut derived_edges = Vec::new();
     let mut proof_dependencies = Vec::new();
     for relationship in closure
@@ -415,7 +459,9 @@ fn build_from_scratch_blocking(
         .filter(|relationship| relationship.premise_edge_ids().len() > 1)
     {
         let relationship_identity = digest_parts(
-            std::iter::once(relationship.from())
+            std::iter::once(relationship.relation())
+                .chain(std::iter::once(relationship.rule_id()))
+                .chain(std::iter::once(relationship.from()))
                 .chain(std::iter::once(relationship.to()))
                 .chain(relationship.premise_edge_ids().iter().map(String::as_str)),
         );
@@ -427,7 +473,7 @@ fn build_from_scratch_blocking(
             "segmentId": null,
             "from": relationship.from(),
             "to": relationship.to(),
-            "relation": "TOPOLOGY_REACHABLE",
+            "relation": relationship.relation(),
             "modality": "derived",
             "bindingDigest": identity.inference_program.digest(),
             "witnesses": relationship.premise_edge_ids(),
@@ -538,6 +584,11 @@ fn build_from_scratch_blocking(
     let mut edge_records = direct_edge_records;
     edge_records.extend(derived_edges);
     edge_records.sort_by(|left, right| left["id"].as_str().cmp(&right["id"].as_str()));
+    let frontier_projection = project_topology_frontier_projection(
+        &expected_relations,
+        &edge_records,
+        &identity.source_generation_digest,
+    );
     let successor_node_ids = node_records
         .iter()
         .filter_map(|node| node["id"].as_str().map(str::to_owned))
@@ -608,7 +659,9 @@ fn build_from_scratch_blocking(
         "segments": segment_records,
         "nodes": node_records,
         "edges": edge_records,
-        "coverageCertificates": [],
+        "expectedRelations": frontier_projection.expectation_records,
+        "coverageCertificates": frontier_projection.coverage_certificates,
+        "frontiers": frontier_projection.frontiers,
         "closure": {
             "state": "stable",
             "digest": closure_digest,
@@ -918,71 +971,4 @@ fn ensure_unique<'a>(
         }
     }
     Ok(())
-}
-
-fn validate_identifier(value: &str, name: &str) -> Result<(), ProjectTopologyGenerationBuildError> {
-    if value.is_empty()
-        || !value.bytes().all(|byte| {
-            byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-' || byte == b'_'
-        })
-        || !value.as_bytes()[0].is_ascii_lowercase()
-    {
-        return Err(error(
-            "topology-generation-identity-invalid",
-            format!("{name} is not canonical"),
-        ));
-    }
-    Ok(())
-}
-
-fn require_digest(digest: &str, name: &str) -> Result<(), ProjectTopologyGenerationBuildError> {
-    if digest.strip_prefix("blake3-256:").is_some_and(|suffix| {
-        suffix.len() == 64
-            && suffix
-                .bytes()
-                .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
-    }) {
-        Ok(())
-    } else {
-        Err(error(
-            "topology-generation-digest-invalid",
-            format!("{name} must be a canonical blake3-256 digest"),
-        ))
-    }
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct ProjectTopologyGenerationBuildError {
-    reason_kind: &'static str,
-    message: String,
-}
-
-impl ProjectTopologyGenerationBuildError {
-    pub const fn reason_kind(&self) -> &'static str {
-        self.reason_kind
-    }
-}
-
-impl fmt::Display for ProjectTopologyGenerationBuildError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(formatter, "{}: {}", self.reason_kind, self.message)
-    }
-}
-
-impl std::error::Error for ProjectTopologyGenerationBuildError {}
-
-impl From<crate::ProjectTopologyClosureError> for ProjectTopologyGenerationBuildError {
-    fn from(cause: crate::ProjectTopologyClosureError) -> Self {
-        error(cause.reason_kind(), cause.to_string())
-    }
-}
-
-fn error(
-    reason_kind: &'static str,
-    message: impl Into<String>,
-) -> ProjectTopologyGenerationBuildError {
-    ProjectTopologyGenerationBuildError {
-        reason_kind,
-        message: message.into(),
-    }
 }

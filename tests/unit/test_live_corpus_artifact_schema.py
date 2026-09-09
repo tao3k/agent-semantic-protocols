@@ -6,10 +6,11 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 from jsonschema import Draft202012Validator
+
+from unit.schema_validation import schema_validator_for
 
 
 _ROOT = Path(__file__).resolve().parents[2]
@@ -19,9 +20,7 @@ _TREE = "c" * 40
 
 
 def validator(name: str) -> Draft202012Validator:
-    schema = json.loads((_ROOT / "schemas" / name).read_text(encoding="utf-8"))
-    Draft202012Validator.check_schema(schema)
-    return Draft202012Validator(schema)
+    return schema_validator_for(_ROOT / "schemas" / name)
 
 
 def test_live_corpus_artifact_identity_is_path_independent() -> None:
@@ -109,7 +108,7 @@ def test_document_corpus_lock_requires_language_extension_admission() -> None:
             {
                 "resourceId": "md.invalid",
                 "scenarioId": "md.invalid",
-                "providerId": "orgize",
+                "providerId": "asp-org",
                 "language": "md",
                 "repository": "example/javascript-processor",
                 "git": {
@@ -141,7 +140,7 @@ def test_live_corpus_materialize_receipt_binds_extension_counts() -> None:
         "schemaId": "agent.semantic-protocols.live-corpus-materialize-receipt",
         "schemaVersion": "1",
         "resourceId": "org.worg",
-        "providerId": "orgize",
+        "providerId": "asp-org",
         "languageId": "org",
         "artifactDigest": _DIGEST,
         "artifactPath": "/state/artifacts/live-corpus/v1/blake3-256/digest",

@@ -67,6 +67,11 @@ pub struct ResidentGraphEvaluationBudget {
     pub max_results: usize,
 }
 
+pub use agent_semantic_mrr::{
+    GraphRelationDirection as ResidentGraphRelationDirection,
+    GraphRelationPattern as ResidentGraphRelationPattern,
+};
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ResidentGraphRankedNode {
     pub id: String,
@@ -125,6 +130,9 @@ pub struct ResidentGraphGeneration {
     pub(super) owner_paths_by_node_id: Arc<BTreeMap<String, String>>,
     pub(super) nodes_by_id: Arc<BTreeMap<String, ResidentGraphNode>>,
     pub(super) adjacency: Arc<BTreeMap<String, Vec<ResidentGraphEvaluatedEdge>>>,
+    pub(super) relation_adjacency: Arc<BTreeMap<(String, String), Vec<ResidentGraphEvaluatedEdge>>>,
+    pub(super) reverse_relation_adjacency:
+        Arc<BTreeMap<(String, String), Vec<ResidentGraphEvaluatedEdge>>>,
     pub(super) rank_cache: Arc<Vec<Mutex<Vec<(String, Arc<ResidentGraphSearchStage>)>>>>,
     pub(super) build_metrics: ResidentGraphBuildMetrics,
 }

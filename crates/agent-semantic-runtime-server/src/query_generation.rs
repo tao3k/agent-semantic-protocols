@@ -34,14 +34,7 @@ pub use agent_semantic_search::RuntimeSearchDerivedAttachmentSnapshot;
 pub use agent_semantic_search::RuntimeSearchDerivedAttachmentState;
 
 pub(super) struct RuntimeSearchGenerationBuilder {
-    sender: tokio::sync::mpsc::Sender<RuntimeSearchGenerationBuilderCommand>,
-    task: tokio::sync::Mutex<
-        Option<
-            agent_semantic_client_db::runtime_server_runtime::RuntimeServerOwnedTask<
-                Result<(), String>,
-            >,
-        >,
-    >,
+    task_scope: agent_semantic_client_db::runtime_server_runtime::RuntimeServerTaskScope,
     accepting: std::sync::atomic::AtomicBool,
     resource_supervisor:
         agent_semantic_client_db::runtime_server_runtime::RuntimeServerResourceSupervisor,
@@ -81,14 +74,6 @@ struct RuntimeSearchGenerationBuildOperation {
     resources: agent_semantic_client_db::runtime_server_runtime::RuntimeServerResourceRequest,
     build: RuntimeSearchGenerationBuild,
     fail: Box<dyn FnOnce(String) + Send + 'static>,
-}
-
-enum RuntimeSearchGenerationBuilderCommand {
-    BuildAndWait(
-        RuntimeSearchGenerationBuildJob,
-        tokio::sync::oneshot::Sender<Result<(), String>>,
-    ),
-    Shutdown(tokio::sync::oneshot::Sender<()>),
 }
 
 fn emit_runtime_search_build_failure(
@@ -217,33 +202,27 @@ async fn run_runtime_search_generation_build(
     Ok(())
 }
 
-fn spawn_runtime_search_generation_build_and_wait(
-    builds: &mut tokio::task::JoinSet<Result<(), String>>,
+async fn run_runtime_search_generation_build_and_wait(
     task_scope: agent_semantic_client_db::runtime_server_runtime::RuntimeServerTaskScope,
     resource_supervisor: agent_semantic_client_db::runtime_server_runtime::RuntimeServerResourceSupervisor,
     attachment_hub: RuntimeSearchDerivedAttachmentHub,
     job: RuntimeSearchGenerationBuildJob,
-    terminal: tokio::sync::oneshot::Sender<Result<(), String>>,
-) {
-    builds.spawn(async move {
-        let (graph, lexical) = tokio::join!(
-            run_runtime_search_generation_build(
-                task_scope.clone(),
-                resource_supervisor.clone(),
-                attachment_hub.clone(),
-                job.graph,
-            ),
-            run_runtime_search_generation_build(
-                task_scope,
-                resource_supervisor,
-                attachment_hub,
-                job.lexical,
-            ),
-        );
-        let result = graph.and(lexical);
-        let _ = terminal.send(result.clone());
-        result
-    });
+) -> Result<(), String> {
+    let (graph, lexical) = tokio::join!(
+        run_runtime_search_generation_build(
+            task_scope.clone(),
+            resource_supervisor.clone(),
+            attachment_hub.clone(),
+            job.graph,
+        ),
+        run_runtime_search_generation_build(
+            task_scope,
+            resource_supervisor,
+            attachment_hub,
+            job.lexical,
+        ),
+    );
+    graph.and(lexical)
 }
 
 impl RuntimeSearchGenerationBuilder {
@@ -268,66 +247,9 @@ impl RuntimeSearchGenerationBuilder {
         ));
         let minimum_memory_per_worker_bytes =
             resident_index_minimum_memory_per_worker(process_memory_budget_bytes)?;
-        let (sender, mut receiver) =
-            tokio::sync::mpsc::channel::<RuntimeSearchGenerationBuilderCommand>(32);
         let attachment_hub = RuntimeSearchDerivedAttachmentHub::new();
-        let build_attachment_hub = attachment_hub.clone();
-        let build_task_scope = task_scope.clone();
-        let build_resources = resource_supervisor.clone();
-        let task = task_scope.spawn("search-generation-builder", async move {
-            let mut builds = tokio::task::JoinSet::new();
-            let mut shutdown_receipt = None;
-            loop {
-                tokio::select! {
-                    command = receiver.recv() => {
-                        match command {
-                            Some(RuntimeSearchGenerationBuilderCommand::BuildAndWait(job, terminal)) => {
-                                spawn_runtime_search_generation_build_and_wait(
-                                    &mut builds,
-                                    build_task_scope.clone(),
-                                    build_resources.clone(),
-                                    build_attachment_hub.clone(),
-                                    job,
-                                    terminal,
-                                );
-                            }
-                            Some(RuntimeSearchGenerationBuilderCommand::Shutdown(receipt)) => {
-                                receiver.close();
-                                shutdown_receipt = Some(receipt);
-                                break;
-                            }
-                            None => break,
-                        }
-                    }
-                    completed = builds.join_next(), if !builds.is_empty() => {
-                        let _ = completed;
-                    }
-                }
-            }
-            while let Ok(command) = receiver.try_recv() {
-                match command {
-                    RuntimeSearchGenerationBuilderCommand::BuildAndWait(job, terminal) => {
-                        spawn_runtime_search_generation_build_and_wait(
-                            &mut builds,
-                            build_task_scope.clone(),
-                            build_resources.clone(),
-                            build_attachment_hub.clone(),
-                            job,
-                            terminal,
-                        );
-                    }
-                    RuntimeSearchGenerationBuilderCommand::Shutdown(_) => {}
-                }
-            }
-            while builds.join_next().await.is_some() {}
-            if let Some(receipt) = shutdown_receipt {
-                let _ = receipt.send(());
-            }
-            Ok::<(), String>(())
-        })?;
         Ok(Self {
-            sender,
-            task: tokio::sync::Mutex::new(Some(task)),
+            task_scope,
             accepting: std::sync::atomic::AtomicBool::new(true),
             resource_supervisor,
             throughput_by_workload: Arc::new(std::sync::Mutex::new(
@@ -585,11 +507,6 @@ impl RuntimeSearchGenerationBuilder {
             return Err("search generation builder is draining".to_owned());
         }
         let queued = [job.graph.identity.clone(), job.lexical.identity.clone()];
-        let permit = self
-            .sender
-            .reserve()
-            .await
-            .map_err(|_| "search generation builder is closed".to_owned())?;
         for identity in queued {
             self.attachment_hub.publish(
                 &identity,
@@ -598,14 +515,13 @@ impl RuntimeSearchGenerationBuilder {
                 None,
             );
         }
-        let (terminal_sender, terminal_receiver) = tokio::sync::oneshot::channel();
-        permit.send(RuntimeSearchGenerationBuilderCommand::BuildAndWait(
+        run_runtime_search_generation_build_and_wait(
+            self.task_scope.clone(),
+            self.resource_supervisor.clone(),
+            self.attachment_hub.clone(),
             job,
-            terminal_sender,
-        ));
-        terminal_receiver.await.map_err(|_| {
-            "search generation builder stopped before the joint attachment terminal".to_owned()
-        })?
+        )
+        .await
     }
 
     pub(super) fn subscribe_attachment_events(
@@ -622,23 +538,7 @@ impl RuntimeSearchGenerationBuilder {
     }
 
     pub(super) async fn shutdown(&self) -> Result<(), String> {
-        if !self.accepting.swap(false, Ordering::AcqRel) {
-            return Ok(());
-        }
-        let (receipt_sender, receipt_receiver) = tokio::sync::oneshot::channel();
-        self.sender
-            .send(RuntimeSearchGenerationBuilderCommand::Shutdown(
-                receipt_sender,
-            ))
-            .await
-            .map_err(|_| "search generation builder shutdown channel is closed".to_owned())?;
-        receipt_receiver
-            .await
-            .map_err(|_| "search generation builder stopped before drain receipt".to_owned())?;
-        let Some(task) = self.task.lock().await.take() else {
-            return Ok(());
-        };
-        task.join().await??;
+        self.accepting.store(false, Ordering::Release);
         Ok(())
     }
 }

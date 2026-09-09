@@ -14,21 +14,21 @@
     "owners": {"type": "integer", "minimum": 4096},
     "cold": {
       "allOf": [
-        {"$ref": "#/$defs/distribution"},
+        {"$ref": "https://schemas.agent-semantic-protocols.dev/semantic-search-definitions.v1.schema.json#/$defs/performanceDistribution"},
         {"properties": {"samples": {"type": "integer", "minimum": 8}}}
       ],
       "unevaluatedProperties": false
     },
     "warm": {
       "allOf": [
-        {"$ref": "#/$defs/distribution"},
+        {"$ref": "https://schemas.agent-semantic-protocols.dev/semantic-search-definitions.v1.schema.json#/$defs/performanceDistribution"},
         {"properties": {"samples": {"type": "integer", "minimum": 128}}}
       ],
       "unevaluatedProperties": false
     },
     "concurrent": {
       "allOf": [
-        {"$ref": "#/$defs/distribution"},
+        {"$ref": "https://schemas.agent-semantic-protocols.dev/semantic-search-definitions.v1.schema.json#/$defs/performanceDistribution"},
         {
           "required": ["queries", "wallNanos"],
           "properties": {
@@ -42,17 +42,6 @@
     "artifactDigest": {"type": "string", "pattern": "^blake3-256:[0-9a-f]{64}$"}
   },
   "$defs": {
-    "nanos": {"type": "integer", "minimum": 0},
-    "distribution": {
-      "type": "object",
-      "required": ["samples", "p50Nanos", "p95Nanos", "p99Nanos", "maxNanos"],
-      "properties": {
-        "samples": {"type": "integer", "minimum": 1},
-        "p50Nanos": {"$ref": "#/$defs/nanos"},
-        "p95Nanos": {"$ref": "#/$defs/nanos"},
-        "p99Nanos": {"$ref": "#/$defs/nanos"},
-        "maxNanos": {"$ref": "#/$defs/nanos"}
-      }
-    }
+    "nanos": {"type": "integer", "minimum": 0}
   }
 }

@@ -6,6 +6,7 @@
 
 use super::daemon_identity;
 use super::runtime_server_identity_handoff;
+use super::runtime_server_query_generation_observer::publish_observer_terminal;
 use super::runtime_server_search_service;
 use super::runtime_server_telemetry_query_socket_path;
 use super::runtime_server_telemetry_socket_path;
@@ -271,7 +272,7 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
                     let changed_path_count = changed_paths.len();
                     let inventory = agent_semantic_provider_transport::run_fd_inventory(
                         &project_root,
-                        std::time::Duration::from_millis(800),
+                        agent_semantic_provider_transport::FdInventoryDeadline::CompleteGeneration,
                     )
                     .await?;
                     let runtime_active_provider_projection = crate::command::active_provider_projection::
@@ -576,7 +577,7 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
                                     continue;
                                 }
                             };
-                            let _ = generation_authority
+                            let result = generation_authority
                                 .ensure_ready_resident_with_execution_publication(
                                     &project_workspace_key,
                                     &publication.project_root,
@@ -585,6 +586,12 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
                                     execution_product,
                                 )
                                 .await;
+                            publish_observer_terminal(
+                                &generation_authority,
+                                project_workspace_key,
+                                &publication,
+                                result,
+                            );
                         }
                         Err(error) => generation_authority.publish_failed(
                             project_workspace_key,

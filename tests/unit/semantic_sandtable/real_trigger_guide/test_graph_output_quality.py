@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
-"""Guide-quality compact graph output tests."""
+"""Guide-quality validation for the current Search Playbook route."""
 
 from __future__ import annotations
 
@@ -15,292 +15,60 @@ from tools.semantic_sandtable.scenario_runner import run_scenario
 
 
 class RealTriggerGraphOutputGuideTests(unittest.TestCase):
-    def test_guide_quality_accepts_graph_entries_and_rejects_retired_output(
-        self,
-    ) -> None:
-        entries = (
-            "entries=owner-query(O,Q=>items+tests+dependency-usage),"
-            "query-deps(Q,D=>owners+imports+usage-tests),"
-            "owner-tests(O=>covering-tests+test-entrypoints+fixtures),"
-            "finding-frontier(F,O=>affected-owners+tests+verification-actions),"
-            "feature-cfg(F2=>cfg-gates+owners+verification-surfaces)"
+    def test_guide_quality_accepts_search_playbook_route(self) -> None:
+        output = "[search-playbook] language=typescript evidence=bounded"
+        decision = {
+            "reasonKind": "raw-broad-search",
+            "languageIds": ["typescript"],
+            "routes": [
+                {
+                    "kind": "playbook",
+                    "argv": [
+                        "asp",
+                        "search",
+                        "playbook",
+                        "--language",
+                        "typescript",
+                    ],
+                }
+            ],
+            "message": "Use the Search Playbook.",
+        }
+        result = self._run(
+            {
+                "agentHookDecision": decision,
+                "searchOutput": output,
+            },
+            {
+                "reasonKind": "raw-broad-search",
+                "languageId": "typescript",
+                "routeKind": "playbook",
+                "routeCommandContains": ["asp search playbook"],
+                "outputContains": [output],
+            },
         )
-        retired_profiles = "profiles" + "="
-        retired_handles = "".join(["compatible", "Handles"])
-        with tempfile.TemporaryDirectory() as tmp:
-            repo_root = Path(tmp)
-            scenario_path = repo_root / "scenario.json"
-            scenario_path.write_text(
-                json.dumps(
-                    {
-                        "id": "typescript.graph-guide",
-                        "language": "typescript",
-                        "workdir": ".",
-                        "steps": [
-                            {
-                                "id": "guide",
-                                "command": [
-                                    "python",
-                                    "-c",
-                                    (
-                        "import json; "
-                        f"entries = {entries!r}; "
-                        "prime_output = 'analysis=structure nativeSyntaxFacts=skipped policyFindings=skipped\\n"
-                        "aliases=G:search,O:owner,Q:query,D:dependency,T:test,F:finding,F2:feature\\n' + entries; "
-                                        "decision = {"
-                                        "'reasonKind': 'raw-broad-search',"
-                                        "'languageIds': ['typescript'],"
-                                        "'routes': [{"
-                                        "'kind': 'query',"
-                                        "'argv': ['asp-typescript', 'query', '--from-hook', 'direct-source-read', '--surface', 'owners,tests']"
-                                        "}],"
-                                        "'message': 'Use asp-typescript query --from-hook direct-source-read.'"
-                                        "}; "
-                                        "print(json.dumps({'agentHookDecision': decision, 'searchOutput': prime_output}))"
-                                    ),
-                                ],
-                                "expect": {
-                                    "guideQuality": {
-                                        "reasonKind": "raw-broad-search",
-                                        "languageId": "typescript",
-                                        "routeKind": "query",
-                                        "outputContains": [entries],
-                                        "outputNotContains": [
-                                            retired_profiles,
-                                            retired_handles,
-                                        ],
-                                        "primeOutput": {
-                                            "requiresStructureStatus": True,
-                                            "requiresTypedEntryAliases": True,
-                                            "entries": [entries],
-                                        },
-                                    }
-                                },
-                            }
-                        ],
-                    }
-                ),
-                encoding="utf-8",
-            )
-
-            result = run_scenario(repo_root, scenario_path)
 
         self.assertEqual("pass", result.status)
-
-    def test_guide_quality_rejects_prime_output_missing_entry(self) -> None:
-        entries = (
-            "entries=owner-query(O,Q=>items+tests+dependency-usage),"
-            "owner-tests(O=>covering-tests+test-entrypoints+fixtures)"
-        )
-        prime_output = (
-            "analysis=structure nativeSyntaxFacts=skipped policyFindings=skipped"
-        )
-        with tempfile.TemporaryDirectory() as tmp:
-            repo_root = Path(tmp)
-            scenario_path = repo_root / "scenario.json"
-            scenario_path.write_text(
-                json.dumps(
-                    {
-                        "id": "typescript.missing-prime-entry",
-                        "language": "typescript",
-                        "workdir": ".",
-                        "steps": [
-                            {
-                                "id": "guide",
-                                "command": [
-                                    "python",
-                                    "-c",
-                                    (
-                                        "import json; "
-                                        f"prime_output = {prime_output!r}; "
-                                        "decision = {"
-                                        "'reasonKind': 'raw-broad-search',"
-                                        "'languageIds': ['typescript'],"
-                                        "'routes': [{'kind': 'query', 'argv': ['asp-typescript', 'query']}],"
-                                        "'message': 'Use asp-typescript query.'"
-                                        "}; "
-                                        "print(json.dumps({'agentHookDecision': decision, 'searchOutput': prime_output}))"
-                                    ),
-                                ],
-                                "expect": {
-                                    "guideQuality": {
-                                        "reasonKind": "raw-broad-search",
-                                        "languageId": "typescript",
-                                        "routeKind": "query",
-                                        "primeOutput": {
-                                            "requiresStructureStatus": True,
-                                            "entries": [entries],
-                                        },
-                                    }
-                                },
-                            }
-                        ],
-                    }
-                ),
-                encoding="utf-8",
-            )
-
-            result = run_scenario(repo_root, scenario_path)
-
-        self.assertEqual("fail", result.status)
-        self.assertIn(
-            f"guide prime output missing entry {entries!r}",
-            result.steps[0].errors,
-        )
-
-    def test_guide_quality_rejects_unknown_prime_output_profile(self) -> None:
-        entries = "entries=ad-hoc-owner-map(O=>items)"
-        with tempfile.TemporaryDirectory() as tmp:
-            repo_root = Path(tmp)
-            scenario_path = repo_root / "scenario.json"
-            scenario_path.write_text(
-                json.dumps(
-                    {
-                        "id": "typescript.unknown-prime-profile",
-                        "language": "typescript",
-                        "workdir": ".",
-                        "steps": [
-                            {
-                                "id": "guide",
-                                "command": [
-                                    "python",
-                                    "-c",
-                                    (
-                                        "import json; "
-                                        f"entries = {entries!r}; "
-                                        "decision = {"
-                                        "'reasonKind': 'raw-broad-search',"
-                                        "'languageIds': ['typescript'],"
-                                        "'routes': [{'kind': 'query', 'argv': ['asp-typescript', 'query']}],"
-                                        "'message': 'Use asp-typescript query.'"
-                                        "}; "
-                                        "print(json.dumps({'agentHookDecision': decision, 'searchOutput': entries}))"
-                                    ),
-                                ],
-                                "expect": {
-                                    "guideQuality": {
-                                        "reasonKind": "raw-broad-search",
-                                        "languageId": "typescript",
-                                        "routeKind": "query",
-                                        "primeOutput": {
-                                            "entries": [entries],
-                                        },
-                                    }
-                                },
-                            }
-                        ],
-                    }
-                ),
-                encoding="utf-8",
-            )
-
-            result = run_scenario(repo_root, scenario_path)
-
-        self.assertEqual("fail", result.status)
-        self.assertIn(
-            "guide prime output entry profile 'ad-hoc-owner-map' is not in the shared reasoning profile catalog",
-            result.steps[0].errors,
-        )
-
-    def test_guide_quality_rejects_retired_graph_profile_output(self) -> None:
-        retired_profiles = "profiles" + "="
-        with tempfile.TemporaryDirectory() as tmp:
-            repo_root = Path(tmp)
-            scenario_path = repo_root / "scenario.json"
-            scenario_path.write_text(
-                json.dumps(
-                    {
-                        "id": "typescript.bad-graph-guide",
-                        "language": "typescript",
-                        "workdir": ".",
-                        "steps": [
-                            {
-                                "id": "guide",
-                                "command": [
-                                    "python",
-                                    "-c",
-                                    (
-                                        "import json; "
-                                        f"bad_output = {retired_profiles!r}; "
-                                        "decision = {"
-                                        "'reasonKind': 'raw-broad-search',"
-                                        "'languageIds': ['typescript'],"
-                                        "'routes': [{'kind': 'query', 'argv': ['asp-typescript', 'query']}],"
-                                        "'message': 'Use asp-typescript query.'"
-                                        "}; "
-                                        "print(json.dumps({'agentHookDecision': decision, 'searchOutput': bad_output}))"
-                                    ),
-                                ],
-                                "expect": {
-                                    "guideQuality": {
-                                        "reasonKind": "raw-broad-search",
-                                        "languageId": "typescript",
-                                        "routeKind": "query",
-                                        "outputNotContains": [retired_profiles],
-                                    }
-                                },
-                            }
-                        ],
-                    }
-                ),
-                encoding="utf-8",
-            )
-
-            result = run_scenario(repo_root, scenario_path)
-
-        self.assertEqual("fail", result.status)
-        self.assertIn(
-            f"guide output contains stale text {retired_profiles!r}",
-            result.steps[0].errors,
-        )
 
     def test_guide_quality_rejects_graph_selector_drift(self) -> None:
         bad_output = (
             "aliases=G:search,F:reasoning-selector\n"
             "F2=finding:finding(finding(serde))!finding"
         )
-        with tempfile.TemporaryDirectory() as tmp:
-            repo_root = Path(tmp)
-            scenario_path = repo_root / "scenario.json"
-            scenario_path.write_text(
-                json.dumps(
-                    {
-                        "id": "typescript.graph-selector-drift",
-                        "language": "typescript",
-                        "workdir": ".",
-                        "steps": [
-                            {
-                                "id": "guide",
-                                "command": [
-                                    "python",
-                                    "-c",
-                                    (
-                                        "import json; "
-                                        f"bad_output = {bad_output!r}; "
-                                        "decision = {"
-                                        "'reasonKind': 'raw-broad-search',"
-                                        "'languageIds': ['typescript'],"
-                                        "'routes': [{'kind': 'query', 'argv': ['asp-typescript', 'query']}],"
-                                        "'message': 'Use asp-typescript query.'"
-                                        "}; "
-                                        "print(json.dumps({'agentHookDecision': decision, 'searchOutput': bad_output}))"
-                                    ),
-                                ],
-                                "expect": {
-                                    "guideQuality": {
-                                        "reasonKind": "raw-broad-search",
-                                        "languageId": "typescript",
-                                        "routeKind": "query",
-                                    }
-                                },
-                            }
-                        ],
-                    }
-                ),
-                encoding="utf-8",
-            )
-
-            result = run_scenario(repo_root, scenario_path)
+        result = self._run(
+            {
+                "agentHookDecision": {
+                    "reasonKind": "raw-broad-search",
+                    "languageIds": ["typescript"],
+                    "routes": [],
+                },
+                "searchOutput": bad_output,
+            },
+            {
+                "reasonKind": "raw-broad-search",
+                "languageId": "typescript",
+            },
+        )
 
         self.assertEqual("fail", result.status)
         self.assertIn(
@@ -312,20 +80,15 @@ class RealTriggerGraphOutputGuideTests(unittest.TestCase):
             result.steps[0].errors,
         )
 
-    def test_guide_quality_rejects_entry_alias_kind_mismatch(self) -> None:
-        entries = "entries=feature-cfg(F=>cfg-gates+owners+verification-surfaces)"
-        prime_output = (
-            "analysis=structure nativeSyntaxFacts=skipped policyFindings=skipped\n"
-            "aliases=G:search,F:finding\n"
-            f"{entries}"
-        )
+    @staticmethod
+    def _run(payload: dict[str, object], guide_quality: dict[str, object]):
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp)
             scenario_path = repo_root / "scenario.json"
             scenario_path.write_text(
                 json.dumps(
                     {
-                        "id": "typescript.graph-entry-alias-mismatch",
+                        "id": "typescript.search-playbook-guide",
                         "language": "typescript",
                         "workdir": ".",
                         "steps": [
@@ -334,41 +97,13 @@ class RealTriggerGraphOutputGuideTests(unittest.TestCase):
                                 "command": [
                                     "python",
                                     "-c",
-                                    (
-                                        "import json; "
-                                        f"prime_output = {prime_output!r}; "
-                                        "decision = {"
-                                        "'reasonKind': 'raw-broad-search',"
-                                        "'languageIds': ['typescript'],"
-                                        "'routes': [{'kind': 'query', 'argv': ['asp-typescript', 'query']}],"
-                                        "'message': 'Use asp-typescript query.'"
-                                        "}; "
-                                        "print(json.dumps({'agentHookDecision': decision, 'searchOutput': prime_output}))"
-                                    ),
+                                    f"import json; print(json.dumps({payload!r}))",
                                 ],
-                                "expect": {
-                                    "guideQuality": {
-                                        "reasonKind": "raw-broad-search",
-                                        "languageId": "typescript",
-                                        "routeKind": "query",
-                                        "primeOutput": {
-                                            "requiresStructureStatus": True,
-                                            "requiresTypedEntryAliases": True,
-                                            "entries": [entries],
-                                        },
-                                    }
-                                },
+                                "expect": {"guideQuality": guide_quality},
                             }
                         ],
                     }
                 ),
                 encoding="utf-8",
             )
-
-            result = run_scenario(repo_root, scenario_path)
-
-        self.assertEqual("fail", result.status)
-        self.assertIn(
-            "guide prime output entry alias 'F' for profile 'feature-cfg' resolves to 'finding', expected 'feature'",
-            result.steps[0].errors,
-        )
+            return run_scenario(repo_root, scenario_path)

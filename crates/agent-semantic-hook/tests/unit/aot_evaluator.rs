@@ -20,10 +20,10 @@ const GENERATION: &str = r#"{
     "registeredExtensions":["rs","org","md"],
     "decision":"deny",
     "reasonKind":"registered-source-route-required",
-    "message":"Use the parser-owned ASP route.",
+    "message":"Use the registered {{languageId}} Search Playbook route. {{agentDispatchMessage}}",
     "profile":"rust",
     "language":"rust",
-    "route":"asp languages search playbook"
+    "route":"asp_explorer"
   }]
 }"#;
 
@@ -234,7 +234,7 @@ fn search_recovery_forwards_only_the_registered_language_contract_query() {
 fn markdown_read_recovery_uses_runtime_owned_root_playbook() {
     let generation = GENERATION
         .replace("\"profile\":\"rust\"", "\"profile\":\"markdown\"")
-        .replace("\"language\":\"rust\"", "\"language\":\"md\"");
+        .replace("\"language\":\"rust\"", "\"language\":\"markdown\"");
     let payload = serde_json::json!({
         "tool_name": "Bash",
         "tool_input": {
@@ -266,7 +266,7 @@ fn markdown_read_recovery_uses_runtime_owned_root_playbook() {
     assert!(
         decision
             .message
-            .contains("registered Markdown Search Playbook route"),
+            .contains("registered markdown Search Playbook route"),
         "{}",
         decision.message
     );

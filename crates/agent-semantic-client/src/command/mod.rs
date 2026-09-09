@@ -14,7 +14,6 @@ mod cli_help;
 mod dispatch;
 mod dispatch_agent_session_policy;
 mod document_provider;
-mod graph;
 mod healthcheck;
 mod hook;
 mod hook_break_glass;

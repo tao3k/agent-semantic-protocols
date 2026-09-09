@@ -41,6 +41,20 @@ fn commit() -> ContentPublicationCommit {
 }
 
 #[test]
+fn operation_wire_names_match_the_search_execution_schema() {
+    for (operation, expected) in [
+        (SearchOperation::Playbook, "playbook"),
+        (SearchOperation::Query, "query"),
+        (SearchOperation::Exact, "exact"),
+    ] {
+        assert_eq!(
+            serde_json::to_value(operation).expect("serialize Search operation"),
+            expected
+        );
+    }
+}
+
+#[test]
 fn binding_pins_one_exact_context_for_all_operations() {
     let commit = commit();
     let execution = SearchExecution::bind(commit.content_binding.clone(), &commit).expect("bind");

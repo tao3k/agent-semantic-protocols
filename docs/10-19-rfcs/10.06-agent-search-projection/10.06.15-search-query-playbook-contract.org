@@ -29,41 +29,175 @@
 
 ** Search Input
 
-Search accepts retrieval operations, not a duplicated intent or question:
+Search accepts only the retrieval and projection inputs in this contract:
 
 #+begin_example
 asp search playbook \
-  --fd "fd --type f 'registry|publication|runtime|provider' crates languages docs schemas config | sort -u" \
-  --rg "rg -n 'refresh|publish|artifactDigest|rank' crates languages docs schemas config devenv.nix | sort -u" \
-  --tantivy '(title:"artifact refresh"^2 OR body:"artifact publication"^2) AND (runtime OR registry)' \
-  --native-syntax 'rust://src/registry.rs#item/implementation/type/Registry'
+  --language 'rust|python|typescript|org|md' \
+  --rg -n -g '*.rs' -g '*.py' -g '*.org' -g '*.md' \
+       -e 'refresh|publish|artifactDigest|rank' crates languages docs schemas devenv.nix \
+  --tantivy '(title:"artifact refresh"^2 OR body:"artifact publication"^2) AND (runtime OR registry)'
 #+end_example
 
-=--fd= and =--rg= preserve native arguments and the admitted shell pipeline.
+=--language= is the required registry-bound producer expression. Its atoms MUST
+resolve through the admitted semantic-language
+schema profiles and the current Runtime provider registry. The CLI parser
+validates only expression syntax; it MUST NOT hard-code a list of programming
+or document language identifiers, infer capability from identifier spelling,
+or admit an identifier that the current registry does not expose.
+
+The V1 schema-profile registry therefore owns a non-empty
+=searchProducerAxes= set for every searchable profile. The axes remain
+registry metadata; they do not create distinct CLI options. Runtime admission
+intersects the profile declaration
+with one installed provider record and that provider's Search capability.
+Missing profile, missing provider, ambiguous provider, or disabled
+Search capability is one typed pre-execution failure. None is repaired by a
+Client fallback or a built-in identifier table.
+
+=--rg= preserves one complete native rg argv block byte-for-byte after Host
+shell tokenization. It owns filename/path scope, globs, type filters, and exact
+content matching in the same native grammar. =--rg= does not accept an
+embedded executable name, shell pipeline, post-processing command, or quoted
+command string. A following standalone path is part of that native block; the
+ASP workspace identity is Host-injected or selected separately by an explicit
+registered =--workspace= identity. Native blocks may contain tool-native search
+roots because those roots remain argv owned by the selected backend parser.
+ASP MUST invoke the admitted native rg executable with that exact argv; no ASP
+layer may accept a hand-picked rg-compatible subset, reinterpret flags, rewrite
+paths or globs, or silently drop an option. A future ASP-enhanced rg operator is
+a distinct versioned capability with its own operator id, request schema, and
+native-equivalence matrix. It cannot be advertised as =rg= merely because its
+in-process matcher recognizes several rg flags.
+
+Runtime reconstructs the admitted owner files under an ephemeral root from the
+immutable generation and runs one admitted rg process for each =--rg= block
+with the exact recorded argv and that root as its working directory. No flag is
+appended for instrumentation and no second shadow search is run. The outer
+generation boundary still rejects an absolute or parent-traversing search root
+and rg preprocessors that could execute another program; those are containment
+violations, not an alternative rg dialect.
+
+The exact process output is admitted back into the layout only when it is
+attributable to canonical owner paths. Native JSON, vimgrep, ordinary
+path-and-line, heading, and filename-only output are decoded without changing
+the command. Path-and-line output grounds exact parser spans. Filename-only
+output grounds an owner scope and the next native-parser stage may return
+selector-bearing refinement evidence from that owner. Non-empty output that
+removes both path and owner attribution fails with typed
+=rg-output-not-attributable= evidence; Runtime never guesses an owner or line.
+Exit code =1= is the native complete no-match terminal, exit code =0= is
+success, and every other exit code is a typed native-rg failure with bounded
+stdout/stderr digests and byte counts.
 =--tantivy= preserves fields, phrases, Boolean operators, boosts, and analyzer
-identity. Search adds no intent, language, documents, or implicit extension
-filter. Optional repeatable =--native-syntax= accepts an admitted item selector,
-never a bare file URI.
+identity. Unlike the opaque rg argv boundary, every Tantivy block is parsed by
+the native Tantivy query grammar in PreTool and again at execution admission.
+The V1 structured-query profile rejects a bare word or unstructured sentence.
+It requires at least two query leaves, at least one explicit =AND=/=OR=/=NOT=
+composition, at least one indexed =title:= or =body:= field, and at least one
+phrase, boost, range, set, exists, or regex predicate. Unknown index fields and
+leniently recovered grammar errors are failures. Search adds no planner
+directive or implicit extension filter.
+=--language= selects the registered parsers considered for owners in the fused
+retrieval result. Explicit =syntax= and =native-syntax=
+inputs establish a structural-selector scope and extract its syntax/content
+facts inside that fused file-context scope. When present, the union of their
+admitted matches replaces the broader automatic structural frontier; they never replace the required
+rg/Tantivy file-scope construction. Exact materialization
+of a selected canonical selector remains a Query operation.
 
-** Acquisition And Native Projection
+** PreTool Search Playbook Calibration
 
-Supplied fd, rg, and Tantivy routes all participate, but candidates need not hit
-all three. Runtime forms a content-bound union before provider routing. A
-provider enriches hits with native nodes and selectors. Unsupported textual
-formats remain bounded =SourceExcerpt= values; path-only hits remain
-=CandidatePath= values.
+The PreTool Hook recognizes an =asp search playbook= command before any Runtime,
+rg, Tantivy, parser, or Graph work begins. Its ahead-of-time parser owns the
+Playbook executable boundary, global fields, native-block boundaries, required
+layout inputs, and the Graph barrier. It also parses every rg block against the
+admitted native rg grammar profile: long and short option arity, clustered short
+flags, explicit patterns, pattern files, positional pattern and search roots,
+output attribution mode, immutable-root containment, and forbidden preprocessor
+execution. Parsing records exact token spans and values but never normalizes,
+reorders, inserts, or deletes an rg token.
+
+Global calibration fields are order-independent because they do not create layout
+edges. For rg, the boundary parser consumes the value required by a registered long or clustered
+short option even when that value has a top-level-looking spelling. After native
+=--=, it retains the first positional pattern; a literal root colliding with a
+PlayBook boundary uses an explicit relative spelling such as =./--graph=.
+
+A structurally and natively complete command passes through on its first attempt
+with its rg argv unchanged. A malformed or conflicting command returns one
+typed =search-playbook-pretool-calibration= terminal containing the observed
+producer fields, selected layout id and shape, native input occurrences, exact
+rg argv boundaries, missing fields, conflicting fields, and token locations.
+For every Tantivy block it also contains native-AST metrics, indexed fields,
+grammar diagnostics with character offsets, and missing structured-query
+features.
+This terminal is the complete fill-form correction for the attempted command;
+it does not route the Agent to a Guide and does not prescribe a fail, read,
+rewrite, retry loop. Native rg grammar remains owned by rg. Tantivy is the
+deliberate exception: its grammar and structured-query profile are part of
+PreTool admission so a simple string never reaches execution.
+
+** Configurable Search Layout And Native Projection
+
+Search execution order is owned by an admitted Search Layout, not inferred from
+the spelling order of unrelated CLI options and not hard-coded as a flat union
+of acquisition axes. The Search package owns the versioned layout model and
+Runtime admits its exact layout digest and layout id. Rust Runtime remains the
+only V1 execution owner. A Scheme-authored layout compiler is deferred work,
+not a second V1 source of layout or request-path behavior.
+
+The required default layout is:
+
+#+begin_example
+intersect(rg-owner-set, tantivy-owner-set) -> structural-scope-facts -> graph?
+#+end_example
+
+rg and Tantivy both read the same immutable generation owner universe. rg
+applies its native paths, globs, and predicates and produces an owner set plus
+exact match positions. Tantivy produces its lexical owner set and rank. Their
+owner-set intersection is the only file-context scope. The
+=structural-scope-facts= stage then chooses exactly one frontier: the union of
+admitted explicit =syntax= and =native-syntax= matches when either form is
+present, or automatic parser grounding when both are absent. Graph, when
+configured and requested, consumes only those structurally grounded facts.
+
+A Tree-sitter S-expression and an exact native selector are two query forms for
+this structural stage: the first describes a pattern, while the second is an
+exact singleton lookup without an S-expression. A registered ast-grep adapter
+may later produce the same bounded selector/fact contract through =--syntax=;
+it is not a new file-retrieval axis and is not admitted until its native grammar
+and resident execution receipt are registered.
+
+Other registered layouts may use serial =scope-transform= edges, where one
+stage's output becomes the next stage's complete input, or a shared-scope group
+with an explicitly declared fusion policy. The compiled layout must make that
+difference visible. Runtime MUST NOT treat a serial edge as an independent vote
+or treat shared-scope siblings as a hidden serial pipeline.
+
+The active V1 request pairs rg and Tantivy inputs for the file-context scope;
+=syntax= and =nativeSyntax= extract facts from that scope, and automatic native
+parser execution derives its provider from retained owner bindings, optionally
+narrowed by calibration fields.
+The implementation transition is complete only when the CLI, Runtime request,
+Search-package layout, result receipt, and representative real-project trace
+all bind the same V1 layout identity. There is no parallel legacy request
+version or compatibility execution path.
 
 Every parsed Rust, Python, TypeScript, Gerbil Scheme, Julia, Org, Markdown,
-JSON, or Nix node has a canonical selector. jq is a typed projection attached
-to a selected JSON node, never selector authority.
+JSON, or Nix node has a canonical selector. A native selector Query and a jq
+Query are distinct native operations: a selector resolves one parser-owned
+structural node, while jq evaluates an unchanged jq program against an explicit
+input file. ASP MUST NOT pre-slice a JSON selector and silently substitute that
+node as jq's input.
 
 ** Default Search Output
 
 A successful Search returns one Org response with a compact receipt header and
 one GQL evidence/topology slice. Runtime projects the admitted reusable Project
 Topology, executes its internal logical-inference program, and settles novel
-conclusions, frontier boundaries, and the materialization set into that same
-GQL graph. It never exposes Ascent source,
+conclusions and frontier boundaries into that same GQL graph. Queryable
+selectors remain on their owning nodes. It never exposes Ascent source,
 fired-rule tuples, or a second reasoning block in the default Agent projection.
 Full digests, fixed-point receipts, and proof-DAG identities remain in the typed
 packet. There is no =--evidence-skeleton= output switch.
@@ -81,12 +215,18 @@ non-native excerpt carries 1-based inclusive =match= and =read= ranges. The
 proposed shared source-context budget is 80 lines after overlap merging; it does
 not imply structural completeness.
 
-Every queryable native node carries its canonical selector. Request-local rank,
-retrieval support, and optional jq projection are compressed into that node's
-single =projection= property. A =MaterializationSet= records the exact selectors
-that are currently materializable under the Search binding. It is evidence,
-not a prescribed selection, command, or execution order; the renderer does not
-invent numbered Query or Search pseudo-steps.
+Every queryable native node carries its canonical selector. Request-local rank
+and retrieval support are compressed into that node's single =projection=
+property. The Runtime settlement join MUST preserve structured hit evidence
+from the executed stages: exact 1-based rg line ranges, the unchanged native
+Tantivy expression, and =native=true= for
+the parser-owned selector. Clause-reference strings are provenance indexes;
+they MUST NOT replace these Agent-facing hit values or be discarded before
+the settlement is rendered. Canonical selectors remain properties of the GQL
+nodes whose identities they address; Search MUST NOT copy them into a parallel
+selector list, materialization set, command plan, or hidden handoff object. The
+Agent reads the graph and explicitly chooses the smallest useful selector set
+for a later Query request.
 
 Public Search output has no =queryGrammar=, =next=, =nextAction=,
 =recommendedNext=, command plan, or equivalent planner field. Query capability
@@ -106,17 +246,20 @@ for those three evidence components are observationally identical.
 
 #+begin_example
 asp query playbook \
+  --language 'rust|org|json' \
   --selector 'rust://src/registry.rs#item/method/publish_artifact/scope/implementation-owner/type/Registry' \
   --selector 'org://docs/publication.org#item/heading/Publication' \
   --selector 'json://config/runtime.json#item/pointer/runtime'
 #+end_example
 
-Repeated =--selector= arguments form one immutable Query request. Stable
-ordering makes its request digest deterministic; it does not encode execution
-order or create =Query 1=, =Query 2=, or =Query 3=. Each selector is governed by
-its provider's canonical native-syntax grammar. Query has no Search handle,
-settlement parameter, implicit latest-Search state, or requirement to reproduce
-one Search MaterializationSet.
+Repeated =--selector= arguments form one immutable Query request. Their exact
+request order is digest-bound public semantics; Runtime may execute independent
+reads concurrently, but it restores that order before receipt construction and
+human rendering. The order does not create =Query 1=, =Query 2=, or =Query 3=.
+Each selector is governed by its provider's canonical native-syntax grammar.
+Query has no Search handle, settlement parameter, implicit latest-Search state,
+selector auto-fill mode, or requirement to reproduce all selector-bearing
+nodes from one Search result.
 
 Search evidence guides Agent reasoning but does not authorize Query. The Agent
 may choose the smallest useful subset, combine canonical selectors learned in
@@ -136,6 +279,14 @@ provider-failed selector makes the request fail as a whole and exposes zero
 materializations. Query emits exactly one typed terminal for the whole request;
 per-selector legacy exact-query terminals cannot be concatenated into a Query
 Playbook result.
+
+Query does not admit, reconstruct, or render Search topology. Project Topology,
+GQL relationships, ranking, recommendations, and explanatory affiliations are
+Search evidence. Requiring a topology node or incident edge before an exact
+read would make Query availability depend on unrelated Search evidence and is
+therefore forbidden. The internal Query request and machine receipt instead
+bind the Runtime execution publication, source generation, provider catalog,
+request order, exact native operations, and returned content digests.
 
 The northbound Client request is language-neutral and contains only the
 canonical selector set and projection. It does not carry a Runtime binding,
@@ -191,19 +342,19 @@ CLI argument.
 
 A valid Search may settle with no queryable native selector: zero matches,
 path-only discovery, and non-native evidence are ordinary outcomes. Such a
-settlement contains an empty =MaterializationSet= in state =empty=. It MUST NOT
-mint a placeholder selector. A nonempty set is in state =available= and records
-only current queryability, not what the Agent should inspect next.
+settlement simply has no selector-bearing result node. It MUST NOT mint a
+placeholder selector or a separate empty handoff object. The presence of one or
+more canonical selectors records queryability only; it does not prescribe what
+the Agent should inspect next.
 
-Selector schemes identify providers, so Query has no language or documents
-switch. Each result renders its admitted Project Topology relationship as one
-=#+gql:= keyword immediately before its native Org block. The block
-includes the exact selector and repository-relative filename, returns
-the complete selector-owned scope, preserves native bytes, inserts no ellipsis,
-and has no detached relation appendix after =#+end_src=.
+Selector schemes identify providers, so selector Query has no language or
+documents switch. Default Query output is only the ordered sequence of native
+result blocks. It has no =#+gql:= keyword, relation appendix, recommendation,
+or explanation. Each selector result block includes the exact operation and
+repository-relative filename, returns the complete selector-owned scope,
+preserves native bytes, and inserts no ellipsis.
 
 #+begin_example
-#+gql: Registry::refresh --calls--> Registry::publish
 #+begin_src rust :query "rust://src/registry.rs#item/method/refresh_registry/scope/implementation-owner/type/Registry" :filename "src/registry.rs"
 pub fn refresh_registry(store: &ArtifactStore) -> Result<Receipt, Error> {
     let artifact = store.load()?;
@@ -212,8 +363,141 @@ pub fn refresh_registry(store: &ArtifactStore) -> Result<Receipt, Error> {
 #+end_src
 #+end_example
 
+A jq result uses the same result-block envelope but preserves the actual native
+query in =:query=. For example, the following header truthfully states both the
+unchanged jq program and its input file:
+
+#+begin_example
+#+begin_src json :query "jq '.properties.hook | {required,properties:(.properties|keys)}' schemas/project-config.schema.json" :filename "schemas/project-config.schema.json"
+{"required":["enabled"],"properties":["enabled","rules"]}
+#+end_src
+#+end_example
+
+ASP does not add a separate =:jq= property, rewrite the jq expression, or mint
+a JSON selector to explain this operation. The public Playbook grammar for
+submitting native jq operations is intentionally not defined by this revision;
+until that grammar has a versioned shared request contract, =--jq= is not part
+of =asp query playbook=.
+
 An Agent needing one member chooses that member selector instead of Querying an
 implementation owner and asking the renderer to truncate it.
+
+** Tokio Concurrency And Workspace Isolation
+
+Search and Query are Tokio-native Runtime data-plane operations. One
+northbound request is bound to exactly one Project Workspace, worktree
+instance, and immutable Runtime generation. Cross-workspace concurrency is a
+bounded fan-out of independent requests, never one request that merges relative
+selectors or generations from several workspaces. The gRPC session multiplexes
+up to 32 active request futures with a separately reserved control slot;
+different sessions and workspaces may progress concurrently on the one
+daemon-owned Tokio runtime.
+
+Within Search, Runtime follows the admitted layout graph. Shared-scope siblings
+may run as a bounded Tokio fan-out because they consume one identical immutable
+input scope; a serial =scope-transform= stage begins only after its predecessor
+has produced a complete bounded scope. The fusion node joins every required
+shared-scope receipt before structural-scope selection. Explicit syntax and
+native-syntax matches are unioned and replace the automatic parser frontier;
+when both are absent, native parser projection is the fallback. A trailing
+Graph stage begins only after that structural frontier is complete. Cancellation closes the request scope and
+no detached task may publish after its parent terminal.
+
+Runtime readiness has a Query base and Search-owned derived attachments. The
+immutable resident bytes, selectors, execution publication, and provider
+binding make the Query base ready. Graph, Tantivy, and Project Topology are
+derived Search attachments over that base; their build failure MUST NOT revoke
+or delay an otherwise admitted exact Query read. Search fails with the first
+typed attachment terminal it requires, while Query continues to use the same
+immutable resident generation.
+
+Graph, Tantivy, and Project Topology construction run as one bounded concurrent
+fan-out and join before a Search-ready observation. Project Topology consumes
+the parser-owned topology source segments already retained by that exact
+resident generation, including explicit edge ownership. It MUST NOT rescan the
+workspace, reopen a provider, or reconstruct ownership from relation endpoints.
+The MRR closure kernel crosses a bounded =spawn_blocking= boundary; it does not
+occupy a Tokio worker or create an unowned detached publication task.
+
+A published Graph attachment with zero nodes or zero edges is Ready-empty, not
+invalid. Runtime MUST NOT call the relation evaluator with a zero execution
+budget; it emits a complete empty Graph fan-in bound to the attachment's real
+generation digest. This keeps an unmatched relation such as =PUBLISHES=
+distinct from Graph-not-ready or evaluator failure.
+
+Search request execution is a pure projection over those published attachments.
+The structural-scope stage maps the fused rg/Tantivy file context through either
+explicit syntax/native-syntax queries or the admitted resident selector/query-key
+fallback plan; Graph stages map the admitted candidate frontier to resident node identities
+and run the bounded Rust evaluator.  Neither clause may invoke a provider,
+parser, Python Graphs session, generation service, or secondary Runtime RPC.
+Unsupported native-query semantics fail typed instead of escaping to a
+request-time provider operation.
+
+The composite Search Playbook is not an exact-read latency class.  An admitted
+=rg= block may inspect the complete immutable corpus, and the Graph fan-in may
+visit the complete generation-derived candidate envelope.  Runtime therefore
+MUST NOT apply the strict 1,000 microsecond exact/lexical dispatch deadline to
+=asp.workspace.search.playbook=.  The operation remains a cancellable resident
+read, is bounded by its generation-owned cardinality receipt and the northbound
+transport deadline, and records its acquisition and projection latency.  This
+separation does not widen Query: =asp.workspace.query.playbook= and bounded
+exact/native Query reads retain the strict sub-millisecond completion gate.
+
+Within Query, admission and resident native reads form
+one immutable identity, but admission completes before the request exists and
+is not a member of the request batch. Pure in-memory reads remain synchronous kernels inside the
+async request owner; creating one Tokio task per selector would add scheduling
+overhead without adding I/O concurrency. Concurrency is instead across
+independent workspace/request owners. Provider calls, parser work, filesystem
+or database reads, generation construction, and asynchronous resident-open work
+are forbidden in the Query request scope.  If the immutable handle is absent or
+stale, the request returns its typed terminal in under 1,000 microseconds while
+the lifecycle authority owns any detached repair.
+
+Physical completion order cannot affect public semantics. Fan-in keys every
+terminal by project, workspace, worktree, generation, session, and request;
+then restores canonical request order. A result from one workspace cannot
+satisfy, cancel, replace, or contribute evidence to another workspace's
+request. Release evidence includes 10 sequential requests, a 32-request
+concurrent burst, at least two simultaneously active workspaces, exact terminal
+counts, isolation assertions, and p50/p95/p99/max observations for Search and
+Query separately.
+
+The Live Corpus matrix is the executable cross-workspace gate. Every selected
+case owns one isolated workspace and one Tokio task because a case performs
+asynchronous Runtime preparation, transport, Search, Query, and release work.
+All selected case tasks are admitted together; the Runtime transport and its
+mailboxes remain the scheduling/backpressure authority. The qualification
+runner does not add a provider-local semaphore or a leaf concurrency constant.
+It joins every task, verifies that each plan case produced exactly one terminal
+receipt, and restores plan order before canonical receipt serialization.
+
+Scheduling concurrency and result cardinality are separate authorities. Tokio
+readiness, transport backpressure, cancellation, and request-scoped joins decide
+which admitted future can make progress; they MUST NOT silently choose how much
+semantic evidence exists. Conversely, a result budget MUST NOT act as a leaf
+semaphore or prescribe a task count.
+
+Runtime derives one typed =runtime-search-execution-budget.v1= receipt from the
+exact immutable generation before layout execution begins. The receipt binds
+the Runtime generation digest and the admitted owner, corpus-byte, corpus-line,
+graph-node, and graph-edge cardinalities. Its rg-match, lexical-owner,
+syntax-selector, and Graph-candidate limits are derived from those cardinalities,
+not from provider-local =INTERNAL_LIMIT= or =MAX_*= constants. The V1 resident
+Graph evaluator's protocol-visible depth/node/edge/result envelope remains a
+semantic safety contract; Runtime intersects that envelope with the actual
+generation cardinalities once and passes the resulting typed values to every
+Graph implementation. The compact Agent projection retains the protocol-visible
+thirty-item evidence ceiling, but the value is carried by the Runtime budget and
+is never repeated as a hidden leaf =top_k= literal.
+
+The northbound Search request cannot supply, widen, or replace this receipt.
+Every acquisition future and the Graph fan-in borrow the same value. A budget
+identity mismatch, zero acquisition limit, or attempted leaf widening fails the
+request before projection. Budget truncation remains explicit coverage evidence;
+it is not reclassified as Tokio scheduling, successful completeness, or a reason
+to retry with a private larger constant.
 
 ** Typed Binding And Failure
 
@@ -222,28 +506,59 @@ interpretation, topology identity, retrieval receipts, selector admission,
 coverage, ranking, request, and terminal identity. Local aliases are scoped to
 that packet.
 
-The packet also binds the topology-inference program id and digest, bounded fixed-point
+The packet also binds the topology-inference program id and digest, the
+independently admitted reusable topology-closure digest, bounded fixed-point
 scope, proof-DAG digest and retrievable proof locator, coverage certificates,
-post-ranking certification, DecisionCore digest, FrontierSet digest,
-MaterializationSet digest, and topology-delta digest.
+post-ranking certification, DecisionCore digest, FrontierSet digest, and
+topology-delta digest. A duplicate selector-set digest is deliberately absent:
+the selector-bearing GQL nodes are the public Search-to-Query reasoning surface.
+
+The request-local settlement does not rerun topology inference. Its
+=iterationCount= is therefore zero, while
+=candidateClosureReceiptDigest= MUST equal the attached library's admitted
+=topologyClosureDigest=. The proof DAG and derived relations are projected from
+that closure receipt; a digest synthesized only from the request-local node or
+edge slice is not a fixed-point witness.
 
 Inference termination is an explicit union. A =complete= inference has
 =terminationKind=fixed-point=, an independently admitted fixed-point receipt,
-equal candidate and next relation-set identities, and may expose an available
-Query handoff. An =incomplete= inference has =terminationKind=budget-exhausted=
-or =blocked=, carries a typed =reasonKind=, and MUST have an empty
-MaterializationSet. Budget exhaustion is not failure and is never relabeled as
-fixed point. The exactly-one Search terminal is respectively =ready=,
-=incomplete=, or =failed=; only =ready= may expose a nonempty
-=MaterializationSet=. Search never authorizes Query materialization and never
-prescribes the Agent's next action.
+equal candidate and next relation-set identities, and may expose selector-bearing
+result nodes. An =incomplete= inference has =terminationKind=budget-exhausted=
+or =blocked= and carries a typed =reasonKind=. Budget exhaustion is not failure
+and is never relabeled as fixed point. The exactly-one Search terminal is
+respectively =ready=, =incomplete=, or =failed=. Search never authorizes Query
+materialization, auto-fills Query, or prescribes the Agent's next action.
+
+A =refinement-required= acquisition terminal is one form of incomplete Search,
+not a renderer error. The public text presentation MUST still be the single
+=#+begin_src gql :name result= Org block, with an =incomplete= terminal carrying
+=search-acquisition-incomplete=. This allows
+the Agent to inspect the bounded result/frontier without confusing incomplete
+coverage with a proven =no-match=. Runtime lifecycle receipts are not part of
+that block and MUST NOT precede it on normal Search stdout.
+
+Every derived edge retained by the settlement MUST name its proof identity and
+complete source-witness set on that edge. Proof dependencies belong to the
+topology closure receipt and remain independently retrievable through its proof
+DAG; they MUST NOT be relocated into a selector handoff object. A renderer that
+exposes a derived edge while dropping its proof reference or witnesses fails
+closed.
 
 Missing or ambiguous providers, noncanonical or stale selectors, invalid
 projections, incomplete required witnesses, duplicate aliases, and incompatible
 bindings fail closed. Selector failure never downgrades to a line range.
 
+The exact-content execution frame admits only =playbook=, =query=, and =exact=
+operations. =playbook= carries the admitted Search Layout request, while =query=
+and =exact= require a nonempty canonical selector. Its content binding is the
+published =asp.content-binding= authority, referenced by canonical schema ID.
+
 The initial shared packet contract is
 [[file:../../../schemas/search-topology-settlement.v1.schema.json][search-topology-settlement.v1]].
+The Runtime-owned execution budget contract is
+[[file:../../../schemas/runtime-search-execution-budget.v1.schema.json][runtime-search-execution-budget.v1]].
+The exact-content execution frame contract is
+[[file:../../../schemas/search-execution.schema.json][search-execution]].
 The Runtime-bound Query request contract is
 [[file:../../../schemas/query-playbook-materialization-request.v1.schema.json][query-playbook-materialization-request.v1]].
 The northbound Client request contract is

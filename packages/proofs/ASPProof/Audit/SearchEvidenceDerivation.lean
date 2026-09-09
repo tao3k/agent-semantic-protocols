@@ -40,19 +40,27 @@ example : fullQuery true true = true := by decide
 
 /--
 error: Tactic `decide` proved that the proposition
-  selectorFrom candidate unregisteredProjection = some Node.refresh
+  selectorFrom fusedScope candidate unregisteredProjection = some Node.refresh
 is false
 -/
 #guard_msgs in
-example : selectorFrom candidate unregisteredProjection = some .refresh := by decide
+example : selectorFrom fusedScope candidate unregisteredProjection = some .refresh := by decide
 
 /--
 error: Tactic `decide` proved that the proposition
-  ¬4 ∈ acquisitionCandidateUnion heterogeneousRouteCandidates
+  1 ∈ fusedScope
 is false
 -/
 #guard_msgs in
-example : 4 ∉ acquisitionCandidateUnion heterogeneousRouteCandidates := by decide
+example : 1 ∈ fusedScope := by decide
+
+/--
+error: Tactic `decide` proved that the proposition
+  nativeSyntaxAnchorAdmitted fusedScope 1 outsideItemAnchor = true
+is false
+-/
+#guard_msgs in
+example : nativeSyntaxAnchorAdmitted fusedScope 1 outsideItemAnchor = true := by decide
 
 /--
 error: Tactic `decide` proved that the proposition
@@ -349,6 +357,12 @@ example : materializationSetAdmitted [10, 20, 30] [10, 10] = true := by decide
 #print axioms partial_directory_does_not_rule_out_omitted_member
 #print axioms certified_absence_requires_truth_absence
 #print axioms directory_budget_250_32_is_partial
+#print axioms derived_runtime_search_execution_budget_is_admitted
+#print axioms leaf_rg_limit_cannot_widen_runtime_budget
+#print axioms derived_graph_budget_respects_v1_envelope
+#print axioms workspace_identity_partitions_runtime_requests
+#print axioms search_attachment_state_cannot_revoke_query_base
+#print axioms topology_failure_blocks_search_without_revoking_query
 #print axioms support_ignores_duplicate_rows
 #print axioms support_ignores_reordering
 #print axioms support_ignores_aliases
@@ -363,14 +377,21 @@ example : materializationSetAdmitted [10, 20, 30] [10, 10] = true := by decide
 #print axioms eligible_call_cycle_returns_to_start
 #print axioms eligibility_alone_allows_two_way_cycle
 #print axioms spent_budget_cannot_take_another_step
+#print axioms owner_in_fused_scope_iff_in_rg_and_tantivy
+#print axioms retrieval_only_owner_is_not_in_fused_scope
+#print axioms jointly_retrieved_owner_is_in_fused_scope
+#print axioms optional_calibration_cannot_mint_file_context
+#print axioms structural_frontier_owner_is_in_file_context
+#print axioms explicit_structural_query_replaces_automatic_frontier
+#print axioms structural_query_cannot_reintroduce_owner_outside_file_context
 #print axioms admitted_native_projection_mints_selector
-#print axioms acquisition_union_preserves_unknown_extension
-#print axioms provider_extension_prefilter_changes_acquisition_semantics
 #print axioms candidate_path_alone_does_not_mint_selector
 #print axioms stale_native_projection_does_not_mint_selector
+#print axioms syntax_projection_cannot_escape_fused_scope
 #print axioms bare_file_uri_is_not_a_native_syntax_anchor
 #print axioms canonical_item_selector_can_anchor_native_syntax
 #print axioms stale_item_selector_cannot_anchor_native_syntax
+#print axioms native_syntax_anchor_cannot_escape_fused_scope
 #print axioms top_k_keeps_bounded_core_and_reports_omission
 #print axioms omitted_candidate_is_not_in_rendered_top_k
 #print axioms witness_closure_retains_required_connector
@@ -431,7 +452,8 @@ example : materializationSetAdmitted [10, 20, 30] [10, 10] = true := by decide
 #print axioms runtime_binding_drift_is_rejected_before_materialization
 #print axioms workspace_root_drift_is_rejected_before_materialization
 #print axioms worktree_context_drift_is_rejected_before_materialization
-#print axioms one_runtime_bound_terminal_materializes_the_complete_selector_set
+#print axioms one_runtime_bound_terminal_preserves_the_complete_request_order
 #print axioms a_partial_ready_receipt_is_rejected
 #print axioms a_failed_receipt_cannot_expose_partial_materialization
+#print axioms completion_order_cannot_replace_request_order
 #print axioms more_than_one_query_terminal_is_rejected

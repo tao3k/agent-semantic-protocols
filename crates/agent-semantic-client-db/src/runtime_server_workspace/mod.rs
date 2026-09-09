@@ -36,6 +36,7 @@ mod restore;
 mod scope_path;
 mod search_generation_authority;
 mod search_index_projection;
+mod search_index_projection_client;
 mod segment;
 mod selector_overlay;
 mod store;

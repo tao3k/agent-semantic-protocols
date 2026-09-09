@@ -38,9 +38,12 @@ def test_runtime_bound_query_materialization_packet_is_valid(kind: str) -> None:
 @pytest.mark.parametrize("kind", ["request", "receipt"])
 @pytest.mark.parametrize(
     "field",
-    ["runtimeWorkspaceExecutionPublicationDigest", "runtimeBundleDigest"],
+    [
+        "runtimeWorkspaceExecutionPublicationDigest",
+        "runtimeBundleDigest",
+    ],
 )
-def test_query_materialization_requires_both_execution_product_identities(
+def test_query_materialization_requires_execution_identities(
     kind: str, field: str
 ) -> None:
     packet = fixture(kind)
@@ -75,35 +78,20 @@ def test_query_materialization_receipt_rejects_planner_fields(field: str) -> Non
 
 
 @pytest.mark.parametrize(
-    "relationship",
+    "field",
     [
-        "Registry::refresh --calls--> Registry::publish",
-        {"fromNode": "Registry::refresh", "relation": "calls"},
-        {"fromNode": "Registry::refresh", "relation": "--calls--", "toNode": "Registry::publish"},
+        "topologyLibraryDigest",
+        "topologyClosureDigest",
+        "gqlRelationships",
+        "recommendedNext",
+        "explanation",
     ],
 )
-def test_query_materialization_rejects_untyped_or_incomplete_gql_relationship(
-    relationship: object,
-) -> None:
+def test_query_materialization_rejects_search_owned_fields(field: str) -> None:
     packet = fixture("receipt")
-    packet["materializations"][0]["gqlRelationships"] = [relationship]
-    with pytest.raises(ValidationError):
-        schema_validator_for(
-            SCHEMAS / "query-playbook-materialization-receipt.v1.schema.json"
-        ).validate(packet)
-
-
-def test_query_materialization_requires_one_adjacent_gql_relationship() -> None:
-    packet = fixture("receipt")
-    relationship = packet["materializations"][0]["gqlRelationships"][0]
-    packet["materializations"][0]["gqlRelationships"] = [
-        relationship,
-        {
-            "fromNode": "Registry::refresh",
-            "relation": "documents",
-            "toNode": "Publication",
-        },
-    ]
+    packet["materializations"][0][field] = (
+        [] if field == "gqlRelationships" else "retired"
+    )
     with pytest.raises(ValidationError):
         schema_validator_for(
             SCHEMAS / "query-playbook-materialization-receipt.v1.schema.json"

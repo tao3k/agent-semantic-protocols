@@ -64,10 +64,6 @@ class SemanticSourceLocationSchemaTests(unittest.TestCase):
                 "location": "location",
                 "sourceLocator": "sourceSpanLocator",
             },
-            "semantic-search-packet.v1.schema.json": {
-                "projectPath": "projectPath",
-                "location": "location",
-            },
             "semantic-read-packet.v1.schema.json": {
                 "projectPath": "projectPath",
                 "lineRange": "lineRange",

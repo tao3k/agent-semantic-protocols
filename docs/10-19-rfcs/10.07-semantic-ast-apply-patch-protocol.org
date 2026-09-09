@@ -183,14 +183,13 @@ asp-hook stop ...
 This keeps the current Codex adapter stable while letting the public binary grow
 into the broader semantic protocol surface.
 
-The new crate must self-apply the Rust language-project policy.  Do not copy
-Rust policy logic into =agent-semantic-client=.  Depend on the existing
-=rust-lang-project-harness= policy/check surface the same way this repository
-already treats language providers as policy owners.  The acceptance gate for
-this crate is therefore:
+The new crate must self-apply the Rust language-project policy. Do not copy
+Rust policy logic into =agent-semantic-client=. Build ownership invokes the
+ASP Rust dependency API directly; it is not exposed as a provider command. The
+acceptance gate for this crate is therefore:
 
 #+begin_src shell
-asp-rust check --changed crates/agent-semantic-client
+.devenv/devenv-profile-exec rtk cargo test -p agent-semantic-client
 #+end_src
 
 If the crate touches hook integration, also run the existing
@@ -496,7 +495,7 @@ The dry-run and apply result should share one receipt shape:
     "file-reparsed",
     "symbol-resolved"
   ],
-  "next": "asp-typescript check --changed ."
+  "next": "asp query playbook --language typescript --selector src/cli/semantic-search/render.ts#fn:renderSemanticSearchSeedPacket --workspace . --projection source"
 }
 #+end_src
 
@@ -619,8 +618,8 @@ patch dry-run and trusted AST patch apply.
 
 1. =asp install plugin --codex .= delegates to the
    existing =agent-semantic-hook= implementation.
-2. =asp-rust check --changed crates/agent-semantic-client= passes after the
-   new crate is introduced.
+2. The =agent-semantic-client= crate tests pass after the new crate is
+   introduced, including its build-owned ASP Rust policy gate.
 3. TypeScript dry-run can append one statement inside
    =renderSemanticSearchSeedPacket= from a compact query target without reading
    the full source file into the prompt.

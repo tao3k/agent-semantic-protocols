@@ -19,9 +19,8 @@ from .large_library_runtime_manifest import (
     corpus_from_manifest,
     validate_corpus_scenario,
 )
-from .large_library_runtime_registry import search_descriptors
 from .large_library_runtime_receipt import coverage, empty_coverage, runtime_receipt
-from .large_library_runtime_steps import benchmark_fd_step, benchmark_step, warmup
+from .large_library_runtime_steps import benchmark_playbook_step, warmup
 from .large_library_runtime_types import Corpus
 from .scenario_io import discover_scenarios, load_scenario
 from .utils import string_list
@@ -111,20 +110,10 @@ def execute_corpora(
     }
     for corpus in corpora:
         workspace = workspaces[corpus.scenario_id]
-        descriptors, registry_error = search_descriptors(binary, corpus, workspace)
-        if registry_error is not None:
-            steps.append(registry_error)
-            continue
-        methods = {str(descriptor["method"]) for descriptor in descriptors}
-        registered_methods.update(methods)
-        registered_methods.add("search/fd-path")
-        command_count += len(descriptors) + 1
-        warmups.append(warmup(binary, corpus, workspace, descriptors))
-        steps.append(benchmark_fd_step(binary, corpus, workspace))
-        steps.extend(
-            benchmark_step(binary, corpus, workspace, descriptor)
-            for descriptor in descriptors
-        )
+        registered_methods.add("search/playbook")
+        command_count += 1
+        warmups.append(warmup(binary, corpus, workspace))
+        steps.append(benchmark_playbook_step(binary, corpus, workspace))
     return steps, warmups, registered_methods, command_count
 
 

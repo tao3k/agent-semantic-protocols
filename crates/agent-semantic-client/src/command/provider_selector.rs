@@ -71,7 +71,7 @@ pub(crate) fn unsupported_language_facade_message(
 
 fn active_language_facades(runtime: &HookRuntime) -> String {
     runtime
-        .providers
+        .policy_providers
         .iter()
         .map(|provider| provider.language_id.as_str())
         .collect::<std::collections::BTreeSet<_>>()

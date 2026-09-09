@@ -126,7 +126,7 @@ The named block =searchroute-certified-lazy-frontier-model= compiled through
 standard input:
 
 #+begin_src sh
-asp org query --workspace . exact \
+asp query playbook --documents org --workspace . exact \
   --kind block \
   --term searchroute-certified-lazy-frontier-model \
   --content |

@@ -118,7 +118,7 @@ Ownership is:
   projection; =agent-semantic-client-db= owns ASP Server source-index
   materialization, Turso/Merkle persistence, and source-index lookup
   orchestration;
-- language harnesses own native parse facts and shared schema packets.
+- ASP language providers own native parse facts and shared schema packets.
 
 * Validation gates
 The Turso cutover is accepted only when these gates pass:

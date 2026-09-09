@@ -13,6 +13,8 @@ from referencing import Registry, Resource
 ROOT = Path(__file__).resolve().parents[2]
 SCHEMA_ROOT = ROOT / "schemas"
 SCHEMA_NAMES = (
+    "semantic-search-definitions.v1.schema.json",
+    "runtime-server-definitions.v1.schema.json",
     "source-snapshot-evidence.v1.schema.json",
     "workspace-generation-root-evidence.v1.schema.json",
     "runtime-provider-execution-binding.v1.schema.json",
@@ -148,7 +150,7 @@ def test_authority_rejects_project_root_as_identity() -> None:
 
 def test_content_generation_rejects_workspace_without_project_identity() -> None:
     packet = authority()
-    del packet["contentSearchGeneration"]["syntax"]["identity"]["projectId"]
+    del packet["contentSearchGeneration"]["acquisition"]["identity"]["projectId"]
     validator = Draft202012Validator(
         load_schema("runtime-server-search-generation-authority.v1.schema.json"),
         registry=schema_registry(),

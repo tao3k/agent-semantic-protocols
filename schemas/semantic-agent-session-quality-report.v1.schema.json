@@ -97,11 +97,7 @@
           "type": "integer",
           "minimum": 0
         },
-        "searchPrimeCommands": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "searchPipeCommands": {
+        "searchPlaybookCommands": {
           "type": "integer",
           "minimum": 0
         },
@@ -468,8 +464,7 @@
           "tool-result-observed",
           "command-started",
           "command-recorded",
-          "search-prime",
-          "search-followup",
+          "search-playbook",
           "query-selector",
           "check-command",
           "guide-command",

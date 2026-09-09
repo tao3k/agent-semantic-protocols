@@ -157,7 +157,7 @@ def test_topology_membership_prefers_local_anchor_over_workspace_root() -> None:
                     "role": "path",
                     "value": (
                         "languages/asp-typescript/src/cli/"
-                        "semantic-search/workspace-ranking.ts"
+                        "semantic-search/playbook-ranking.ts"
                     ),
                 },
                 {

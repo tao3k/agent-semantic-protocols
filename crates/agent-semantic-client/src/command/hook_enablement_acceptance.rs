@@ -40,36 +40,53 @@ struct HookEnablementAcceptanceReceipt {
     launcher_samples: usize,
     launcher_p99_micros: u64,
     launcher_max_micros: u64,
+    host_acceptance: Option<crate::command::hook_host_acceptance::HostAcceptanceReceipt>,
+}
+
+#[derive(Debug)]
+struct HostEvidenceArgs {
+    rollout: PathBuf,
+    hook_events: PathBuf,
+    probe_path: String,
+    sentinel: String,
+}
+
+#[derive(Debug)]
+struct EnablementArgs {
+    json: bool,
+    project_root: PathBuf,
+    host_evidence: Option<HostEvidenceArgs>,
 }
 
 pub(super) async fn run(args: &[String]) -> Result<(), String> {
-    let mut json = false;
-    let mut project_root = None;
-    for arg in args {
-        match arg.as_str() {
-            "--json" => json = true,
-            "--help" | "-h" => return Err(usage()),
-            value if value.starts_with('-') => {
-                return Err(format!(
-                    "unknown Hook enablement option {value}\n{}",
-                    usage()
-                ));
-            }
-            value if project_root.is_none() => project_root = Some(PathBuf::from(value)),
-            _ => return Err(usage()),
-        }
-    }
-    let project_root = project_root.unwrap_or_else(|| PathBuf::from("."));
-    let project_root = tokio::fs::canonicalize(&project_root)
+    let parsed = parse_args(args)?;
+    let project_root = tokio::fs::canonicalize(&parsed.project_root)
         .await
         .map_err(|error| {
             format!(
                 "resolve Hook enablement project root {}: {error}",
-                project_root.display()
+                parsed.project_root.display()
             )
         })?;
-    let receipt = accept(&project_root).await?;
-    if json {
+    let mut receipt = accept(&project_root).await?;
+    if let Some(host) = parsed.host_evidence {
+        let host_receipt = crate::command::hook_host_acceptance::inspect_host_rollout(
+            &host.rollout,
+            &host.hook_events,
+            &host.probe_path,
+            &host.sentinel,
+        )?;
+        if !host_receipt.accepted() {
+            return Err(format!(
+                "normal-task Hook Host acceptance failed: reasonKind={}",
+                host_receipt.reason_kind()
+            ));
+        }
+        receipt.status = "ready";
+        receipt.reason_kind = "none";
+        receipt.host_acceptance = Some(host_receipt);
+    }
+    if parsed.json {
         println!(
             "{}",
             serde_json::to_string(&receipt)
@@ -77,7 +94,9 @@ pub(super) async fn run(args: &[String]) -> Result<(), String> {
         );
     } else {
         println!(
-            "[hook-enablement] status=ready reasonKind=none activeDigest={} healthyDigest={} policyDecisionSamples={} policyDecisionMaxCpuMicros={} policyDecisionBudgetMicros={} launcherSamples={} launcherP99Micros={} launcherMaxMicros={} pluginLauncher={}",
+            "[hook-enablement] status={} reasonKind={} activeDigest={} healthyDigest={} policyDecisionSamples={} policyDecisionMaxCpuMicros={} policyDecisionBudgetMicros={} launcherSamples={} launcherP99Micros={} launcherMaxMicros={} hostDeliveryAccepted={} pluginLauncher={}",
+            receipt.status,
+            receipt.reason_kind,
             receipt.active_digest,
             receipt.healthy_digest,
             receipt.policy_decision_samples,
@@ -86,6 +105,7 @@ pub(super) async fn run(args: &[String]) -> Result<(), String> {
             receipt.launcher_samples,
             receipt.launcher_p99_micros,
             receipt.launcher_max_micros,
+            receipt.host_acceptance.is_some(),
             receipt.plugin_launcher.display(),
         );
     }
@@ -103,22 +123,71 @@ async fn accept(project_root: &Path) -> Result<HookEnablementAcceptanceReceipt, 
     let runtime_layout =
         agent_semantic_artifacts::StateHomeLayout::new(&runtime_state.protocol_home)
             .runtime_state();
-    let public = runtime_layout.bin().join("asp");
+    let public = which::which("asp").map_err(|error| {
+        format!(
+            "resolve PATH-visible ASP entry: reasonKind=path-visible-asp-unavailable error={error}"
+        )
+    })?;
+    let public_hook = public
+        .parent()
+        .ok_or_else(|| {
+            format!(
+                "PATH-visible ASP entry has no parent: reasonKind=path-visible-asp-invalid path={}",
+                public.display()
+            )
+        })?
+        .join("asp-hook");
+    let runtime_alias = runtime_layout.bin().join("asp");
+    let runtime_hook_alias = runtime_layout.bin().join("asp-hook");
     let active_slot = runtime_layout.artifacts().active_slot().join("asp");
     let healthy_slot = runtime_layout.artifacts().healthy_slot().join("asp");
+    let active_hook_slot = runtime_layout.artifacts().active_slot().join("asp-hook");
+    let healthy_hook_slot = runtime_layout.artifacts().healthy_slot().join("asp-hook");
     require_symlink_target(&public, &active_slot, "public ASP alias").await?;
+    require_symlink_target(&public_hook, &active_hook_slot, "public ASP Hook alias").await?;
+    require_symlink_target(&runtime_alias, &public, "Runtime ASP compatibility alias").await?;
+    require_symlink_target(
+        &runtime_hook_alias,
+        &public_hook,
+        "Runtime ASP Hook compatibility alias",
+    )
+    .await?;
     let active = canonical_executable(&active_slot, "active ASP artifact").await?;
     let healthy = canonical_executable(&healthy_slot, "healthy ASP artifact").await?;
-    let active_digest = artifact_digest(&active)?;
-    let healthy_digest = artifact_digest(&healthy)?;
+    let active_hook = canonical_executable(&active_hook_slot, "active ASP Hook artifact").await?;
+    let healthy_hook =
+        canonical_executable(&healthy_hook_slot, "healthy ASP Hook artifact").await?;
+    let acceptance_binary = std::env::current_exe()
+        .map_err(|error| format!("resolve running ASP executable: {error}"))?;
+    let acceptance_binary =
+        canonical_executable(&acceptance_binary, "running Hook acceptance ASP artifact").await?;
+    if acceptance_binary != active {
+        return Err(format!(
+            "Hook enablement is not running from the active ASP artifact: reasonKind=acceptance-artifact-not-active active={} acceptance={}",
+            active.display(),
+            acceptance_binary.display()
+        ));
+    }
+    let active_digest = bundle_digest(&active)?;
+    let healthy_digest = bundle_digest(&healthy)?;
+    if bundle_digest(&active_hook)? != active_digest
+        || bundle_digest(&healthy_hook)? != healthy_digest
+    {
+        return Err(
+            "ASP and ASP Hook artifacts do not share their active/healthy bundle identities: reasonKind=runtime-bundle-cohort-drift"
+                .to_owned(),
+        );
+    }
     let mut protected = vec![active_digest.clone(), healthy_digest.clone()];
     protected.sort();
     protected.dedup();
     admit_retention_receipt(runtime_layout.root(), &protected).await?;
 
     let policy_decision_max_cpu_micros =
-        policy_decision_acceptance(&active, project_root, &runtime_state.protocol_home).await?;
-    let mut samples = launcher_scenario_samples(&launcher, &active, LAUNCHER_SAMPLE_COUNT).await?;
+        policy_decision_acceptance(&active_hook, project_root, &runtime_state.protocol_home)
+            .await?;
+    let mut samples =
+        launcher_scenario_samples(&launcher, &active_hook, LAUNCHER_SAMPLE_COUNT).await?;
     samples.sort_unstable();
     let launcher_max_micros = *samples
         .last()
@@ -139,9 +208,9 @@ async fn accept(project_root: &Path) -> Result<HookEnablementAcceptanceReceipt, 
 
     Ok(HookEnablementAcceptanceReceipt {
         schema_id: "agent.semantic-protocols.hook-enablement-acceptance",
-        schema_version: "1",
-        status: "ready",
-        reason_kind: "none",
+        schema_version: "2",
+        status: "probe-ready",
+        reason_kind: "host-delivery-evidence-required",
         project_root: project_root.to_path_buf(),
         plugin_launcher: launcher,
         active_digest,
@@ -153,6 +222,79 @@ async fn accept(project_root: &Path) -> Result<HookEnablementAcceptanceReceipt, 
         launcher_samples: samples.len(),
         launcher_p99_micros,
         launcher_max_micros,
+        host_acceptance: None,
+    })
+}
+
+fn parse_args(args: &[String]) -> Result<EnablementArgs, String> {
+    let mut json = false;
+    let mut project_root = None;
+    let mut rollout = None;
+    let mut hook_events = None;
+    let mut probe_path = None;
+    let mut sentinel = None;
+    let mut index = 0;
+    while index < args.len() {
+        let argument = args[index].as_str();
+        match argument {
+            "--json" => json = true,
+            "--help" | "-h" => return Err(usage()),
+            "--host-rollout" | "--hook-events" | "--host-probe-path" | "--host-sentinel" => {
+                let value = args.get(index + 1).ok_or_else(usage)?.clone();
+                let target = match argument {
+                    "--host-rollout" => &mut rollout,
+                    "--hook-events" => &mut hook_events,
+                    "--host-probe-path" => &mut probe_path,
+                    "--host-sentinel" => &mut sentinel,
+                    _ => unreachable!(),
+                };
+                if target.replace(value).is_some() {
+                    return Err(format!(
+                        "duplicate Hook enablement option {argument}: reasonKind=host-delivery-evidence-invalid\n{}",
+                        usage()
+                    ));
+                }
+                index += 1;
+            }
+            value if value.starts_with('-') => {
+                return Err(format!(
+                    "unknown Hook enablement option {value}\n{}",
+                    usage()
+                ));
+            }
+            value if project_root.is_none() => project_root = Some(PathBuf::from(value)),
+            _ => return Err(usage()),
+        }
+        index += 1;
+    }
+    let host_argument_count = [
+        rollout.is_some(),
+        hook_events.is_some(),
+        probe_path.is_some(),
+        sentinel.is_some(),
+    ]
+    .into_iter()
+    .filter(|present| *present)
+    .count();
+    let host_evidence = match host_argument_count {
+        0 => None,
+        4 => Some(HostEvidenceArgs {
+            rollout: PathBuf::from(rollout.expect("complete Host evidence")),
+            hook_events: PathBuf::from(hook_events.expect("complete Host evidence")),
+            probe_path: probe_path.expect("complete Host evidence"),
+            sentinel: sentinel.expect("complete Host evidence"),
+        }),
+        _ => {
+            return Err(format!(
+                "Hook enablement Host evidence must provide all four arguments: reasonKind=host-delivery-evidence-incomplete\n{}",
+                usage()
+            ));
+        }
+    };
+    Ok(EnablementArgs {
+        json,
+        project_root: project_root.unwrap_or_else(|| PathBuf::from(".")),
+        host_evidence,
     })
 }
 
@@ -245,79 +387,121 @@ async fn admit_retention_receipt(
 }
 
 async fn policy_decision_acceptance(
-    active: &Path,
+    active_hook: &Path,
     project_root: &Path,
     state_home: &Path,
 ) -> Result<u64, String> {
-    // Readiness warms the immutable matcher generation before enabling the
-    // Host. Every decision after this control-plane admission is measured;
-    // Ready therefore never hides a failed post-warm sample.
-    let _ = policy_decision_sample(active, project_root, state_home, false).await?;
+    admit_linked_hook_identity(active_hook, project_root, state_home).await?;
+    let config_path = agent_semantic_artifacts::StateHomeLayout::new(state_home)
+        .control()
+        .hook_client_config();
+    let generation = agent_semantic_hook::aot_compiler::compile_serving_hook_policy_bundle_at(
+        Some(&config_path),
+    )?;
+    let generation = std::str::from_utf8(&generation)
+        .map_err(|error| format!("decode compiled Hook policy generation: {error}"))?;
+    let payload = serde_json::json!({
+        "session_id": "hook-enablement-policy-budget",
+        "cwd": project_root.to_string_lossy(),
+        "hook_event_name": "PreToolUse",
+        "tool_name": "Bash",
+        "tool_input": {"command": "cargo test -p agent-semantic-hook"}
+    })
+    .to_string();
+
+    // Warm the exact immutable serving generation once. The following 16
+    // samples measure only the borrowed matcher/evaluator kernel, with no Host
+    // event-state writes or subprocess timing mixed into the policy budget.
+    require_policy_decision(generation, &payload)?;
     let mut max_cpu_micros = 0;
     for sample in 0..POLICY_DECISION_SAMPLE_COUNT {
-        let cpu = policy_decision_sample(active, project_root, state_home, true)
-            .await
+        let started = current_thread_cpu_nanos()?;
+        require_policy_decision(generation, &payload)
             .map_err(|error| format!("policy decision sample {sample} failed: {error}"))?;
+        let cpu = current_thread_cpu_nanos()?
+            .saturating_sub(started)
+            .div_ceil(1_000)
+            .min(u128::from(u64::MAX)) as u64;
+        if cpu >= POLICY_DECISION_BUDGET_MICROS {
+            return Err(format!(
+                "Hook policy decision exceeds enablement budget: reasonKind=policy-decision-budget-exceeded sample={sample} cpuMicros={cpu} budgetMicros={POLICY_DECISION_BUDGET_MICROS}"
+            ));
+        }
         max_cpu_micros = max_cpu_micros.max(cpu);
     }
     Ok(max_cpu_micros)
 }
 
-async fn policy_decision_sample(
-    active: &Path,
+async fn admit_linked_hook_identity(
+    active_hook: &Path,
     project_root: &Path,
     state_home: &Path,
-    enforce_budget: bool,
-) -> Result<u64, String> {
-    let payload = serde_json::json!({
-        "tool_name": "Bash",
-        "tool_input": {"command": "cat Cargo.toml"}
-    });
+) -> Result<(), String> {
     let output = run_process(
-        active,
-        &[
-            "hook", "pre-tool", "--client", "codex", "--emit", "decision",
-        ],
+        active_hook,
+        &["--identity"],
         project_root,
         state_home,
-        serde_json::to_vec(&payload)
-            .map_err(|error| format!("encode Hook acceptance payload: {error}"))?,
+        Vec::new(),
     )
     .await
-    .map_err(|error| format!("policy decision acceptance failed: {error}"))?;
-    let decision: serde_json::Value = serde_json::from_slice(&output).map_err(|error| {
+    .map_err(|error| format!("Hook Runtime identity acceptance failed: {error}"))?;
+    let active_identity: agent_semantic_hook::HookRuntimeIdentityReceipt =
+        serde_json::from_slice(&output).map_err(|error| {
         format!(
-            "parse Hook acceptance decision: reasonKind=policy-decision-invalid error={error} output={}",
+            "parse active Hook Runtime identity: reasonKind=hook-runtime-identity-invalid error={error} output={}",
             String::from_utf8_lossy(&output)
         )
     })?;
-    let fields = decision
-        .get("fields")
-        .and_then(serde_json::Value::as_object)
-        .ok_or_else(|| {
-            "Hook acceptance decision has no fields: reasonKind=policy-decision-invalid".to_owned()
-        })?;
-    let status = fields
-        .get("hookDecisionBudgetStatus")
-        .and_then(serde_json::Value::as_str);
-    let budget = fields
-        .get("hookDecisionBudgetMicros")
-        .and_then(serde_json::Value::as_u64);
-    let cpu = fields
-        .get("hookDecisionCpuMicros")
-        .and_then(serde_json::Value::as_u64)
-        .ok_or_else(|| {
-            "Hook acceptance decision has no CPU receipt: reasonKind=policy-decision-cpu-missing"
-                .to_owned()
-        })?;
-    if budget != Some(POLICY_DECISION_BUDGET_MICROS)
-        || (enforce_budget && status != Some("within-budget"))
-    {
+    active_identity.validate().map_err(|error| {
+        format!("invalid active Hook Runtime identity: reasonKind=hook-runtime-identity-invalid error={error}")
+    })?;
+    let linked_identity = agent_semantic_hook::hook_runtime_identity_receipt()?;
+    if active_identity.policy_content_digest != linked_identity.policy_content_digest {
         return Err(format!(
-            "Hook policy decision exceeds enablement budget: reasonKind=policy-decision-budget-exceeded cpuMicros={cpu} budgetMicros={budget:?} status={status:?}"
+            "active and acceptance Hook policy identities differ: reasonKind=hook-runtime-identity-drift active={} acceptance={}",
+            active_identity.policy_content_digest, linked_identity.policy_content_digest
         ));
     }
-    Ok(cpu)
+    Ok(())
+}
+
+fn require_policy_decision(generation: &str, payload: &str) -> Result<(), String> {
+    let decision =
+        agent_semantic_hook::aot_evaluator::evaluate_pre_tool(generation, payload, "Bash")?
+            .ok_or_else(|| {
+                "canonical Hook policy produced no decision: reasonKind=policy-decision-missing"
+                    .to_owned()
+            })?;
+    if decision.probe_process_launched {
+        return Err(
+            "canonical Hook policy launched a probe: reasonKind=policy-decision-probe-launched"
+                .to_owned(),
+        );
+    }
+    Ok(())
+}
+
+#[cfg(unix)]
+fn current_thread_cpu_nanos() -> Result<u128, String> {
+    let mut time = libc::timespec {
+        tv_sec: 0,
+        tv_nsec: 0,
+    };
+    let status = unsafe { libc::clock_gettime(libc::CLOCK_THREAD_CPUTIME_ID, &mut time) };
+    if status != 0 {
+        return Err(format!(
+            "read Hook enablement thread CPU clock: reasonKind=policy-decision-clock-unavailable error={}",
+            std::io::Error::last_os_error()
+        ));
+    }
+    Ok((time.tv_sec as u128) * 1_000_000_000 + time.tv_nsec as u128)
+}
+
+#[cfg(not(unix))]
+fn current_thread_cpu_nanos() -> Result<u128, String> {
+    static STARTED: std::sync::OnceLock<Instant> = std::sync::OnceLock::new();
+    Ok(STARTED.get_or_init(Instant::now).elapsed().as_nanos())
 }
 
 async fn launcher_scenario_samples(
@@ -332,7 +516,7 @@ async fn launcher_scenario_samples(
     ));
     let public_path = agent_semantic_artifacts::RuntimeArtifactStateLayout::new(&root)
         .active_slot()
-        .join("asp");
+        .join("asp-hook");
     tokio::fs::create_dir_all(public_path.parent().expect("public binary parent"))
         .await
         .map_err(|error| format!("create Hook acceptance scenario: {error}"))?;
@@ -481,15 +665,14 @@ async fn require_regular_file(path: &Path, label: &str) -> Result<std::fs::Metad
     Ok(metadata)
 }
 
-fn artifact_digest(path: &Path) -> Result<String, String> {
-    crate::command::protocol_binary::protocol_binary_digest_from_canonical_artifact_path(path).ok_or_else(
-        || {
+fn bundle_digest(path: &Path) -> Result<String, String> {
+    agent_semantic_artifacts::runtime_artifact_bundle_digest_from_member_path(path)
+        .ok_or_else(|| {
             format!(
-                "Runtime artifact is not digest-addressed: reasonKind=artifact-content-path-invalid path={}",
+                "Runtime artifact is not bundle-digest-addressed: reasonKind=artifact-bundle-path-invalid path={}",
                 path.display()
             )
-        },
-    )
+        })
 }
 
 #[cfg(unix)]
@@ -507,5 +690,9 @@ async fn create_file_symlink(source: &Path, target: &Path) -> Result<(), String>
 }
 
 fn usage() -> String {
-    "usage: asp hook enablement [PROJECT_ROOT] [--json]".to_owned()
+    "usage: asp hook enablement [PROJECT_ROOT] [--json] [--host-rollout PATH --hook-events PATH --host-probe-path PATH --host-sentinel TOKEN]".to_owned()
 }
+
+#[cfg(test)]
+#[path = "../../tests/unit/command/hook_enablement_acceptance.rs"]
+mod tests;

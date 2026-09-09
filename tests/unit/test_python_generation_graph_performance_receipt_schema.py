@@ -7,6 +7,8 @@ from pathlib import Path
 
 import jsonschema
 
+from unit.schema_validation import schema_validator_for
+
 
 ROOT = Path(__file__).parents[2]
 SCHEMA = json.loads(
@@ -38,7 +40,11 @@ def test_python_generation_graph_performance_receipt_is_machine_validated() -> N
         },
         "artifactDigest": f"blake3-256:{'a' * 64}",
     }
-    jsonschema.Draft202012Validator(SCHEMA).validate(receipt)
+    validator = schema_validator_for(
+        ROOT / "schemas/python-generation-graph-performance-receipt.v1.schema.json"
+    )
+    jsonschema.Draft202012Validator.check_schema(validator.schema)
+    validator.validate(receipt)
 
 
 def test_python_generation_graph_performance_receipt_requires_real_sample_sets() -> (

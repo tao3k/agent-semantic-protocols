@@ -37,10 +37,9 @@ mod lexical_overlay;
 pub mod memory_search;
 #[cfg(feature = "tantivy-accelerator")]
 mod merkle_search_generation;
-mod native_fd_query;
 pub use content_bound_native_rg::{
-    ContentBoundNativeRgAxisReceipt, ContentBoundNativeRgMatch, ContentBoundNativeRgReceipt,
-    execute_content_bound_native_rg_blocks,
+    ContentBoundNativeRgAxisReceipt, ContentBoundNativeRgMatch, ContentBoundNativeRgProcessReceipt,
+    ContentBoundNativeRgReceipt, execute_content_bound_native_rg_blocks,
 };
 pub use memory_search::MemorySearchGeneration;
 pub use memory_search::MemorySearchGenerationReceipt;
@@ -50,9 +49,7 @@ pub use memory_search::MemorySearchRequest;
 pub use memory_search::MemorySearchResolution;
 pub use memory_search::MemorySearchResolutionState;
 pub use memory_search::MemorySearchSourceLeaf;
-pub use native_fd_query::{NativeFdAxisResult, execute_native_fd_blocks};
 
-mod playbook_receipt;
 mod progressive_playbook;
 mod progressive_query;
 mod provider_candidate_annotations;
@@ -60,7 +57,6 @@ pub mod provider_relation_memory;
 #[cfg(feature = "tantivy-accelerator")]
 mod resident_byte_coverage;
 mod resident_graph_search;
-mod resident_search_execution;
 #[cfg(feature = "tantivy-accelerator")]
 mod resident_source_index;
 mod runtime_search_receipt;
@@ -75,6 +71,10 @@ mod workspace_playbook_result;
 
 mod source_index_rank;
 pub use agent_semantic_search_projection::source_index_artifact_digest;
+pub use agent_semantic_shell_parser::TantivyQueryAnalysis;
+pub use agent_semantic_shell_parser::TantivyQueryDiagnostic;
+pub use agent_semantic_shell_parser::TantivyQueryMetrics;
+pub use agent_semantic_shell_parser::analyze_tantivy_query;
 pub use source_index_rank::SourceIndexRankReport;
 pub use source_index_rank::SourceIndexRankRequest;
 pub use source_index_rank::SourceIndexRankScore;
@@ -95,22 +95,12 @@ mod lexical_accelerator_tests;
 #[path = "../tests/unit/lexical_generation_plan.rs"]
 mod lexical_generation_plan_tests;
 #[cfg(test)]
-#[path = "../tests/unit/native_fd_query.rs"]
-mod native_fd_query_tests;
-#[cfg(test)]
 #[path = "../tests/unit/playbook_pipeline_performance.rs"]
 #[cfg(feature = "tantivy-accelerator")]
 mod playbook_pipeline_performance_tests;
 #[cfg(test)]
-#[path = "../tests/unit/playbook_receipt.rs"]
-mod playbook_receipt_tests;
-#[cfg(test)]
 #[path = "../tests/unit/resident_graph_search.rs"]
 mod resident_graph_search_tests;
-#[cfg(test)]
-#[path = "../tests/unit/resident_search_execution.rs"]
-#[cfg(feature = "tantivy-accelerator")]
-mod resident_search_execution_tests;
 #[cfg(test)]
 #[path = "../tests/unit/resident_source_index.rs"]
 #[cfg(feature = "tantivy-accelerator")]
@@ -125,6 +115,7 @@ mod workspace_playbook_plan_tests;
 #[path = "../tests/unit/workspace_playbook_result.rs"]
 mod workspace_playbook_result_tests;
 
+pub use agent_semantic_search_projection::WORKSPACE_SEARCH_PLAYBOOK_V1_EVIDENCE_ITEM_LIMIT;
 pub use cold_rg_corpus::COLD_RG_CORPUS_RECEIPT_SCHEMA_ID;
 pub use cold_rg_corpus::ColdRgCorpusArtifact;
 pub use cold_rg_corpus::ColdRgCorpusOwner;
@@ -202,8 +193,6 @@ pub use graph_topology_projection::graph_project_submodule_paths;
 pub use graph_topology_projection::graph_project_submodule_paths_from_content;
 pub use graph_topology_projection::graph_project_topology_projection;
 pub use graph_topology_projection::graph_submodule_owner_edges;
-pub use lexical_accelerator::COLD_RG_QUERY_RECEIPT_SCHEMA_ID;
-pub use lexical_accelerator::ColdRgQueryReceipt;
 pub use lexical_accelerator::LEXICAL_ACCELERATOR_RECEIPT_SCHEMA_ID;
 pub use lexical_accelerator::LexicalAcceleratorReceipt;
 pub use lexical_accelerator::LexicalRecallRoute;
@@ -235,12 +224,6 @@ pub use merkle_search_generation::SearchProjectionIdentity;
 pub use merkle_search_generation::search_owner_graph_fragment_digest;
 #[cfg(feature = "tantivy-accelerator")]
 pub use merkle_search_generation::search_projection_analyzer_digest;
-pub use playbook_receipt::SEARCH_PLAYBOOK_RECEIPT_SCHEMA_ID;
-pub use playbook_receipt::SearchPlaybookPythonGraphExecution;
-pub use playbook_receipt::SearchPlaybookReceipt;
-pub use playbook_receipt::SearchPlaybookReceiptInput;
-pub use playbook_receipt::SearchPlaybookResidentLexicalExecution;
-pub use playbook_receipt::build_search_playbook_receipt;
 pub use progressive_playbook::{
     GraphNativeBlock, ProducerNativeBlock, ProgressiveSearchPlaybookError,
     ProgressiveSearchPlaybookRequest, SearchPlaybookClauseAxis, SearchPlaybookClauseRef,
@@ -268,6 +251,8 @@ pub use resident_graph_search::ResidentGraphEvaluationBudget;
 pub use resident_graph_search::ResidentGraphEvaluationRequest;
 pub use resident_graph_search::ResidentGraphGeneration;
 pub use resident_graph_search::ResidentGraphRankedNode;
+pub use resident_graph_search::ResidentGraphRelationDirection;
+pub use resident_graph_search::ResidentGraphRelationPattern;
 pub use resident_graph_search::ResidentGraphSearchBudget;
 pub use resident_graph_search::ResidentGraphSearchRequest;
 pub use resident_graph_search::ResidentGraphSearchStage;
@@ -275,12 +260,9 @@ pub use resident_graph_search::ResidentGraphSearchWork;
 pub use resident_graph_search::build_resident_graph_generation;
 pub use resident_graph_search::canonical_resident_graph_generation_digest;
 pub use resident_graph_search::evaluate_resident_graph_generation;
+pub use resident_graph_search::evaluate_resident_graph_relation_patterns;
 pub use resident_graph_search::open_resident_graph_generation;
 pub use resident_graph_search::rank_resident_graph_generation;
-pub use resident_search_execution::ResidentSearchExecutionPlan;
-pub use resident_search_execution::ResidentSearchFusionCapabilities;
-pub use resident_search_execution::ResidentSearchIntent;
-pub use resident_search_execution::plan_resident_search_execution;
 #[cfg(feature = "tantivy-accelerator")]
 pub use resident_source_index::ResidentIndexBuildResources;
 #[cfg(feature = "tantivy-accelerator")]
@@ -346,14 +328,15 @@ pub use workspace_playbook_plan::WorkspaceSearchPlaybookPlan;
 pub use workspace_playbook_plan::WorkspaceSearchPlaybookRoute;
 pub use workspace_playbook_plan::WorkspaceSearchProgressivePlan;
 pub use workspace_playbook_plan::WorkspaceSearchProvider;
-pub use workspace_playbook_plan::WorkspaceSearchWarmWork;
+pub use workspace_playbook_plan::WorkspaceSearchProducerAxis;
 pub use workspace_playbook_plan::build_workspace_search_playbook_plan;
 pub use workspace_playbook_result::{
     WORKSPACE_SEARCH_PLAYBOOK_RESULT_SCHEMA_ID, WorkspaceSearchAxisKind,
-    WorkspaceSearchClauseReceipt, WorkspaceSearchGraphFanIn, WorkspaceSearchPlaybookEvidence,
-    WorkspaceSearchPlaybookResult, WorkspaceSearchPlaybookResultKind,
-    WorkspaceSearchProgressiveExecutionWitness, WorkspaceSearchSyntaxCandidate,
-    build_workspace_search_playbook_result, synthesize_workspace_search_playbook_result,
+    WorkspaceSearchClauseReceipt, WorkspaceSearchGraphFanIn, WorkspaceSearchHitProjection,
+    WorkspaceSearchPlaybookEvidence, WorkspaceSearchPlaybookResult,
+    WorkspaceSearchPlaybookResultKind, WorkspaceSearchProgressiveExecutionWitness,
+    WorkspaceSearchSyntaxCandidate, build_workspace_search_playbook_result,
+    synthesize_workspace_search_playbook_result,
 };
 
 #[cfg(test)]

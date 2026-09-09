@@ -15,7 +15,7 @@ route_source = "turso-overlay"
 max_provider_process_count = 0
 max_stdout_bytes = 4096
 fallback_reason = "none"
-target_rationale = "Cold functional Turso overlay search adapter gate validates the new agent-semantic-search owner boundary over a freshly bootstrapped Turso local-file fixture. The gate measures the search adapter query duration directly and does not count debug binary startup; CI observes Linux cold local-file bootstrap variance while keeping the bound in the low millisecond range."
+target_rationale = "Cold functional Turso overlay search adapter gate validates the search-data ownership boundary over a freshly bootstrapped Turso local-file fixture. The gate measures the search adapter query duration directly and does not count debug binary startup; CI observes Linux cold local-file bootstrap variance while keeping the bound in the low millisecond range."
 
 [observed_timings]
 turso_overlay_search = "34ms"

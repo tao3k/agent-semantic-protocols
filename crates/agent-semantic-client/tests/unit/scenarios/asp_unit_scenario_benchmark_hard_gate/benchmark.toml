@@ -3,8 +3,8 @@
 # SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 harness = "libtest"
-test = "asp_unit_scenarios_have_rust_harness_benchmark_toml_gates"
-snapshot = "asp_unit_scenarios_have_rust_harness_benchmark_toml_gates"
+test = "asp_unit_scenarios_have_asp_rust_benchmark_toml_gates"
+snapshot = "asp_unit_scenarios_have_asp_rust_benchmark_toml_gates"
 target_total = "50ms"
 max_total = "250ms"
 observed_total = "10ms"

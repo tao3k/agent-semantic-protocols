@@ -69,7 +69,7 @@ def test_client_catalog_exposes_codegen_parameter_contract() -> None:
         "protocolVersion": "1",
         "catalogGeneration": f"sha256:{'a' * 64}",
         "workspaceGeneration": f"blake3-256:{'b' * 64}",
-        "transports": ["http-json", "runtime-ipc"],
+        "transports": ["runtime-ipc"],
         "capabilities": {
             "requestCancellation": True,
             "events": True,

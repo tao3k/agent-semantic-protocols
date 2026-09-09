@@ -46,7 +46,7 @@ The harness already builds parser facts for: Cargo manifest dependencies,
 source/test/bench/example targets, Rust module tree, owner namespace,
 import summary, local owner dependencies, child edges, shadow/orphan state.
 
-=RustHarnessConfig= already exposes structured fields: ignored dirs,
+=AspRustConfig= already exposes structured fields: ignored dirs,
 blocking severities, disabled rules, rule severity overrides, source/test
 scope, scope explanation, advice allow explanation, verification policy.
 
@@ -102,7 +102,7 @@ These are already partially enforced by existing rules:
 
 ** Current state (strong foundation)
 
-=RustHarnessConfig= already:
+=AspRustConfig= already:
 - Discovers Cargo-backed source/test/target coverage automatically — agent
   cannot shrink the scan surface by passing a smaller config
 - Requires =with_source_path(path, explanation)= for custom paths
@@ -254,7 +254,7 @@ Profiles are /engineering intent/, not toggle collections:
 API sketch:
 
 #+begin_src rust
-pub enum RustHarnessProjectProfile {
+pub enum AspRustProjectProfile {
     Library,
     Cli,
     Service,
@@ -265,18 +265,18 @@ pub enum RustHarnessProjectProfile {
     PerformanceCritical,
 }
 
-pub fn rust_harness_profile(profile: RustHarnessProjectProfile) -> RustHarnessConfig {
+pub fn asp_rust_profile(profile: AspRustProjectProfile) -> AspRustConfig {
     match profile {
-        RustHarnessProjectProfile::Library =>
-            default_rust_harness_config()
+        AspRustProjectProfile::Library =>
+            default_asp_rust_config()
                 .with_rule_pack_severity(RustRulePack::AgentPolicy, RustDiagnosticSeverity::Info)
                 .with_required_public_api_docs(),
-        RustHarnessProjectProfile::Cli =>
-            default_rust_harness_config()
+        AspRustProjectProfile::Cli =>
+            default_asp_rust_config()
                 .with_entrypoint_adapter_policy()
                 .with_cli_arg_boundary_policy(),
-        RustHarnessProjectProfile::Service =>
-            default_rust_harness_config()
+        AspRustProjectProfile::Service =>
+            default_asp_rust_config()
                 .with_network_boundary_policy()
                 .with_verification_responsibility_task_kinds(
                     RustOwnerResponsibility::LatencySensitive,
@@ -292,12 +292,12 @@ pub fn rust_harness_profile(profile: RustHarnessProjectProfile) -> RustHarnessCo
 Every config choice should be a typed decision, not a string:
 
 #+begin_src rust
-pub struct RustHarnessConfigDecision {
+pub struct AspRustConfigDecision {
     pub id: String,
-    pub kind: RustHarnessConfigDecisionKind,
+    pub kind: AspRustConfigDecisionKind,
     pub owner_path: Option<PathBuf>,
     pub rule_ids: Vec<String>,
-    pub evidence: Vec<RustHarnessConfigEvidence>,
+    pub evidence: Vec<AspRustConfigEvidence>,
     pub rationale: String,
     pub expires: Option<String>,
 }
@@ -307,7 +307,7 @@ Agent uses:
 
 #+begin_src rust
 .with_config_decision(
-    RustHarnessConfigDecision::lower_rule_severity(
+    AspRustConfigDecision::lower_rule_severity(
         "generated-code-docs",
         ["AGENT-R001", "AGENT-R002"],
         RustDiagnosticSeverity::Info,
@@ -397,7 +397,7 @@ disable noisy rule → pass
 A new renderer, sidecar only, not default diagnostic:
 
 #+begin_src rust
-render_rust_harness_config_advice(&report, &profile_index)
+render_asp_rust_config_advice(&report, &profile_index)
 #+end_src
 
 Output shape:
@@ -540,7 +540,7 @@ engineering structure."
 - [[file:../../languages/asp-rust/docs/03_features/201_rule_catalog.md][Rule Catalog]] — existing structural rules
 - [[file:../../languages/asp-rust/docs/03_features/202_runner_modes.md][Runner Modes]] — config model, cargo-test embedding, scope policy
 - [[file:../../languages/asp-rust/docs/03_features/204_verification_policy.md][Verification Policy]] — configurable verification surface
-- [[file:../../languages/asp-rust/src/model.rs][model.rs]] — =RustHarnessConfig=, =RustRulePack=, builder API
+- [[file:../../languages/asp-rust/src/model.rs][model.rs]] — =AspRustConfig=, =RustRulePack=, builder API
 - [[file:../../languages/asp-rust/src/rules/project_policy/source_scope.rs][source_scope.rs]] — =RUST-PROJ-R013=, =RUST-PROJ-R014=
 - [[file:../../languages/asp-rust/src/rules/project_policy/verification_integration.rs][verification_integration.rs]] — =RUST-PROJ-R015=
 - [[file:../../languages/asp-rust/src/rules/project_policy/build_gate.rs][build_gate.rs]] — =RUST-PROJ-R012=

@@ -73,7 +73,7 @@ pub(super) fn language_harnesses_have_shared_scenario_benchmark_schema_coverage(
 
     assert!(
         missing.is_empty(),
-        "language harnesses must each expose shared scenario benchmark coverage through benchmark.toml or benchmark.ss; missing={missing:?}"
+        "ASP language providers must each expose shared scenario benchmark coverage through benchmark.toml or benchmark.ss; missing={missing:?}"
     );
     assert!(
         invalid.is_empty(),
@@ -86,7 +86,7 @@ pub(super) fn language_harnesses_have_shared_scenario_benchmark_schema_coverage(
         .collect::<Vec<_>>();
     assert!(
         missing_hot_path.is_empty(),
-        "language harnesses must each expose at least one scenario benchmark with route_source/max_provider_process_count/max_stdout_bytes/fallback_reason hot-path metadata; missing={missing_hot_path:?}; observed={hot_path_coverage:?}"
+        "ASP language providers must each expose at least one scenario benchmark with route_source/max_provider_process_count/max_stdout_bytes/fallback_reason hot-path metadata; missing={missing_hot_path:?}; observed={hot_path_coverage:?}"
     );
 }
 
@@ -230,7 +230,7 @@ pub(super) fn julia_dataframes_sandtable_batch_execution_stays_inside_hard_gates
     }
 }
 
-pub(super) fn python_sandtable_runner_does_not_resolve_language_harness_binaries() {
+pub(super) fn python_sandtable_runner_does_not_resolve_provider_binaries() {
     let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let runner_path =
         repo_root.join("packages/python/tools/src/tools/semantic_sandtable/step_process.py");
@@ -249,7 +249,7 @@ pub(super) fn python_sandtable_runner_does_not_resolve_language_harness_binaries
     ] {
         assert!(
             !runner.contains(forbidden),
-            "Python sandtable runner must not resolve language harness binaries; found {forbidden} in {}",
+            "Python sandtable runner must not resolve ASP language provider binaries; found {forbidden} in {}",
             runner_path.display()
         );
     }

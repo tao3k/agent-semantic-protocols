@@ -163,7 +163,7 @@ nodes.  A separate static class list is contract drift because it can advertise
 Workspace admission is provider-owned.  Every language provider that claims
 source candidates in its activation coverage MUST implement
 =project-resolution-stdin= against the shared =project-resolution.v1=
-schema and derive package membership from its language harness package-manager
+schema and derive package membership from its ASP language provider package-manager
 parser over the Git candidate snapshot.  ASP MUST NOT replace a missing provider packet with hard-coded Cargo,
 package.json, Python, Gerbil, Julia, Org, or filename heuristics.  A provider
 manifest may advertise project resolution only when that command is covered

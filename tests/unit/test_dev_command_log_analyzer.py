@@ -21,7 +21,7 @@ def test_dev_command_log_analyzer_sorts_by_session_ordinal(tmp_path: Path) -> No
     command_dir = tmp_path / "rust" / "asp-rust" / "commands"
     command_dir.mkdir(parents=True)
     (command_dir / "2026-06-02T10-20-31Z-000002-b.jsonl").write_text(
-        json.dumps(_event(2, "search/lexical", "metadata")) + "\n",
+        json.dumps(_event(2, "search/playbook", "metadata")) + "\n",
         encoding="utf-8",
     )
     (command_dir / "2026-06-02T10-20-30Z-000001-a.jsonl").write_text(
@@ -31,7 +31,7 @@ def test_dev_command_log_analyzer_sorts_by_session_ordinal(tmp_path: Path) -> No
     fallback_dir = tmp_path / "python" / "asp-python" / "commands"
     fallback_dir.mkdir(parents=True)
     (fallback_dir / "2026-06-02T10-20-32Z-000001-c.jsonl").write_text(
-        json.dumps(_event(1, "search/lexical", "fallback", session_id="project-x", context="project-fallback"))
+        json.dumps(_event(1, "search/playbook", "fallback", session_id="project-x", context="project-fallback"))
         + "\n",
         encoding="utf-8",
     )
@@ -41,7 +41,7 @@ def test_dev_command_log_analyzer_sorts_by_session_ordinal(tmp_path: Path) -> No
     assert "[dev-log-summary] sessions=2 commands=3 activeContext=2 projectFallback=1" in summary
     session_summary = summary.split('|session id="session-1"', 1)[1]
     assert session_summary.index("method=agent/guide") < session_summary.index(
-        "method=search/lexical"
+        "method=search/playbook"
     )
     assert 'id="session-1" commands=2' in summary
     assert "rootHash=0123456789abcdef" in session_summary

@@ -33,7 +33,7 @@ def valid_receipt() -> dict:
         "schemaId": "asp.resident-query-performance-receipt",
         "schemaVersion": "1",
         "workspace": {
-            "kind": "workspace-id",
+            "projectId": "repo-project1",
             "workspaceId": "workspace-23cc5ba784c605ae",
         },
         "generationRoot": "blake3-256:" + ("a" * 64),

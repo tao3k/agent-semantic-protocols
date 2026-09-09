@@ -368,7 +368,7 @@ def _live_agent_steps_from_deep_question(
         agent_sdk["allowedTools"] = allowed_tools
     if isinstance(live_agent.get("model"), str):
         agent_sdk["model"] = live_agent["model"]
-    pipe_expect = dict_value(expect.get("pipeFlow"))
+    pipe_expect = dict_value(expect.get("commandFlow"))
     max_asp_commands = optional_int(pipe_expect.get("maxAspCommands"))
     if max_asp_commands is not None:
         agent_sdk["maxAspBashCommands"] = max_asp_commands

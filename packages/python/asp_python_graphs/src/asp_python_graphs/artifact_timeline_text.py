@@ -30,7 +30,6 @@ def _timeline_line_sections(report: dict[str, object]) -> tuple[tuple[str, ...],
         _read_loop_lines(report.get("readLoopRisk")),
         _topology_lines(report.get("topology")),
         _action_summary_lines(report.get("actionSummary")),
-        _suppression_lines(report.get("primeSuppression")),
         _promotion_lines(report.get("typedFrontierPromotion")),
         _collapse_lines(report.get("ownerCollapse")),
         _fanout_lines(report.get("fanoutPlanning")),
@@ -49,7 +48,6 @@ def _summary_lines(report: dict[str, object]) -> tuple[str, ...]:
         f"softOverrunMicrobursts={report['softOverrunMicrobursts']} "
         f"inferredSubagentStarts={report['inferredSubagentStarts']} "
         f"repeatSearches={report['repeatSearches']} "
-        f"suppressiblePrimeSearches={report['suppressiblePrimeSearches']} "
         f"promotableTypedFrontierSearches={report['promotableTypedFrontierSearches']} "
         f"collapsibleOwnerSearches={report['collapsibleOwnerSearches']} "
         f"routableFanoutBursts={report['routableFanoutBursts']} "
@@ -129,8 +127,7 @@ def _efficiency_lines(value: object) -> tuple[str, ...]:
         f"observedRounds={value['observedRounds']} "
         f"repeatSearches={value['repeatSearches']} "
         f"routableFanoutBursts={value['routableFanoutBursts']} "
-        f"typedFrontierAvoidableSearches="
-        f"{value['typedFrontierAvoidableSearches']} "
+        f"avoidableSearches={value['avoidableSearches']} "
         f"avoidableFanoutBranches={value['avoidableFanoutBranches']} "
         f"estimatedAvoidableActionsUpperBound="
         f"{value['estimatedAvoidableActionsUpperBound']} "
@@ -225,40 +222,6 @@ def _next_action_line(action: dict[str, object]) -> str:
         f"score={action['impactScore']} decision={action['decision']} "
         f"subject={subject}{root} replacement={action['replacement']}"
         f"{_route_suffix(action)}"
-    )
-
-
-def _suppression_lines(value: object) -> tuple[str, ...]:
-    if not isinstance(value, dict):
-        return ()
-    lines = [
-        "[graph-turbo-prime-suppression] "
-        f"policy={value['policy']} "
-        f"suppressible={value['suppressibleSearches']} "
-        f"groups={value['candidateGroupCount']} "
-        f"actions={value['actionCount']} "
-        f"replacement={value['replacement']}"
-    ]
-    lines.extend(_prime_group_line(group) for group in value.get("candidateGroups", []))
-    lines.extend(_prime_action_line(action) for action in value.get("actions", []))
-    return tuple(lines)
-
-
-def _prime_group_line(group: dict[str, object]) -> str:
-    return (
-        "[graph-turbo-prime-group] "
-        f"language={group['language']} subject={group['subject']} "
-        f"count={group['count']} suppressible={group['suppressibleSearches']} "
-        f"span={group['spanSeconds']}"
-    )
-
-
-def _prime_action_line(action: dict[str, object]) -> str:
-    return (
-        "[graph-turbo-prime-action] "
-        f"decision={action['decision']} "
-        f"language={action['language']} subject={action['subject']} "
-        f"age={action['ageSeconds']} replacement={action['replacement']}"
     )
 
 

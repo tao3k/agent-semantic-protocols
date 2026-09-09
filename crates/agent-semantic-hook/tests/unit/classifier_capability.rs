@@ -14,8 +14,6 @@ use crate::protocol::ReasonKind;
 fn runtime() -> HookRuntime {
     HookRuntime {
         project_root: ".".to_owned(),
-        rankers: Vec::new(),
-        providers: Vec::new(),
         policy_providers: Vec::new(),
     }
 }
@@ -37,7 +35,7 @@ fn codex_bash_payload_preserves_registered_asp_search_action_for_policy_matching
     let payload = serde_json::json!({
         "tool_name": "Bash",
         "tool_input": {
-            "command": "asp search playbook --language rust 'HookDecision' --workspace ."
+            "command": "asp search playbook --language rust --rg HookDecision"
         }
     });
     let actions = collect_payload_tool_actions(&payload);
@@ -90,12 +88,12 @@ fn config_selected_explorer_role_admits_search_across_codex_surfaces() {
         serde_json::json!({
             "agent_role": "asp_explorer",
             "tool_name": "exec_command",
-            "tool_input": {"cmd": "asp search playbook --language rust 'HookDecision' --workspace ."}
+            "tool_input": {"cmd": "asp search playbook --language rust --rg HookDecision"}
         }),
         serde_json::json!({
             "agentRole": "asp-explorer",
             "tool_name": "Bash",
-            "tool_input": {"command": "asp search playbook --language rust 'HookDecision' --workspace ."}
+            "tool_input": {"command": "asp search playbook --language rust --rg HookDecision"}
         }),
     ];
 
@@ -120,7 +118,7 @@ fn config_selected_explorer_role_admits_exact_structured_projection() {
         "agent_role": "asp_explorer",
         "tool_name": "Bash",
         "tool_input": {
-            "command": "asp rust query --selector rust://crates/example.rs#item/function/example --workspace . --projection source"
+            "command": "asp query playbook --language rust --selector rust://crates/example.rs#item/function/example --projection source"
         }
     });
     let decision = classify(&payload);
@@ -141,7 +139,7 @@ fn temporary_subagent_topology_cannot_satisfy_configured_agent_dispatch() {
         "agent_id": "temporary-child",
         "agent_type": "explorer",
         "tool_name": "Bash",
-        "tool_input": {"command": "asp search playbook --language rust owner --workspace ."}
+        "tool_input": {"command": "asp search playbook --language rust --rg owner"}
     });
     let decision = classify(&payload);
     assert_eq!(decision.decision, DecisionKind::Deny, "{decision:#?}");
@@ -156,7 +154,7 @@ fn legacy_self_reported_registration_fields_have_no_authority() {
         "registered_agent_name": "asp_explorer",
         "registered_allowed_rule_intents": ["reasoning-search"],
         "tool_name": "Bash",
-        "tool_input": {"command": "asp search playbook --language rust owner --workspace ."}
+        "tool_input": {"command": "asp search playbook --language rust --rg owner"}
     });
     let decision = classify(&payload);
     assert_eq!(decision.decision, DecisionKind::Deny, "{decision:#?}");
@@ -169,7 +167,7 @@ fn wrong_config_agent_role_fails_closed_without_cross_route_admission() {
     let payload = serde_json::json!({
         "agent_role": "asp_testing",
         "tool_name": "Bash",
-        "tool_input": {"command": "asp search playbook --language rust owner --workspace ."}
+        "tool_input": {"command": "asp search playbook --language rust --rg owner"}
     });
     let decision = classify(&payload);
     assert_eq!(decision.decision, DecisionKind::Deny, "{decision:#?}");

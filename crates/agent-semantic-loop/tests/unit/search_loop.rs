@@ -39,7 +39,7 @@ fn stage(value: &str) -> RouteStage {
             predicate_id: id(&format!("predicate-{value}")),
             claim_class: ClaimClass::Existential,
             scope_digest: Digest::from_bytes(b"scope"),
-            accepted_schema_ids: vec![id("semantic-search-packet.v1")],
+            accepted_schema_ids: vec![id("workspace-search-playbook-result.v1")],
             required_fields: vec![id("canonicalItemSelector")],
             completeness: EvidenceCompleteness::IdentityOnly,
             requires_fresh_binding: true,

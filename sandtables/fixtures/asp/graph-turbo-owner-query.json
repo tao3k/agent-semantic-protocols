@@ -4,7 +4,7 @@
   "protocolId": "agent.semantic-protocols.semantic-language",
   "protocolVersion": "1",
   "packetKind": "graph-turbo-request",
-  "surface": "search-pipe",
+  "surface": "search-playbook",
   "sourceSnapshot": {
     "schemaId": "asp.source-snapshot.v1",
     "algorithm": "blake3-merkle-v1",

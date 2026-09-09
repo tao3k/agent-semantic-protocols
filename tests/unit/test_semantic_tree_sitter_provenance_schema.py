@@ -62,7 +62,6 @@ class SemanticTreeSitterProvenanceSchemaTests(unittest.TestCase):
 
     def test_packet_fields_reference_tree_sitter_provenance_base(self) -> None:
         for schema_name in (
-            "semantic-search-packet.v1.schema.json",
             "semantic-query-packet.v1.schema.json",
             "semantic-read-packet.v1.schema.json",
         ):

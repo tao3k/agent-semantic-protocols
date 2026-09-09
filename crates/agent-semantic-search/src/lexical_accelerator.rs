@@ -4,9 +4,10 @@
 
 //! Generation-bound cold-rg and Tantivy accelerator admission.
 //!
-//! This module owns only identity/equivalence validation. Process execution is
-//! Runtime-owned; file discovery, repository admission, and native syntax are
-//! already complete before either route is admitted.
+//! This module owns identity/equivalence validation. Both the cold
+//! rg-compatible matcher and Tantivy read immutable resident products; file
+//! discovery, child-process execution, repository admission, and native syntax
+//! are already complete before either route is admitted.
 
 use serde::Deserialize;
 use serde::Serialize;
@@ -15,7 +16,6 @@ use crate::LexicalGenerationPlan;
 use crate::SearchGenerationIdentity;
 use crate::canonical_blake3_digest;
 
-pub const COLD_RG_QUERY_RECEIPT_SCHEMA_ID: &str = "agent.semantic-protocols.cold-rg-query-receipt";
 pub const LEXICAL_ACCELERATOR_RECEIPT_SCHEMA_ID: &str =
     "agent.semantic-protocols.lexical-accelerator-receipt";
 
@@ -46,39 +46,6 @@ pub fn plan_lexical_recall_route(
         return Err("lexical accelerator content-generation identity drift".to_owned());
     }
     Ok(LexicalRecallRoute::Tantivy)
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct ColdRgQueryReceipt {
-    pub schema_id: String,
-    pub schema_version: String,
-    pub identity: SearchGenerationIdentity,
-    pub inventory_digest: String,
-    pub normalized_query_digest: String,
-    pub candidate_set_digest: String,
-    pub fd_process_count: u32,
-    pub rg_process_count: u32,
-    pub tantivy_build_count: u32,
-    pub complete: bool,
-}
-
-impl ColdRgQueryReceipt {
-    pub fn validate(&self) -> Result<(), String> {
-        if self.schema_id != COLD_RG_QUERY_RECEIPT_SCHEMA_ID
-            || self.schema_version != "1"
-            || !self.complete
-            || self.fd_process_count != 0
-            || self.rg_process_count != 0
-            || self.tantivy_build_count != 0
-        {
-            return Err("cold rg query receipt contract mismatch".to_owned());
-        }
-        self.identity.validate()?;
-        validate_digest("inventoryDigest", &self.inventory_digest)?;
-        validate_digest("normalizedQueryDigest", &self.normalized_query_digest)?;
-        validate_digest("candidateSetDigest", &self.candidate_set_digest)
-    }
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]

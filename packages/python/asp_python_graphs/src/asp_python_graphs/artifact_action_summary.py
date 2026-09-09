@@ -17,7 +17,6 @@ def action_summary(
         *_fanout_actions(report_actions.get("fanoutPlanning")),
         *_owner_actions(report_actions.get("ownerCollapse")),
         *_typed_frontier_actions(report_actions.get("typedFrontierPromotion")),
-        *_prime_actions(report_actions.get("primeSuppression")),
     ]
     actions.sort(
         key=lambda action: (
@@ -73,21 +72,6 @@ def _typed_frontier_actions(value: object) -> list[dict[str, object]]:
             source="typedFrontierPromotion",
             category="repeat-search",
             impact_score=(int(action["repeatCount"]) * 8) + int(action["count"]),
-        )
-        for action in value.get("actions", [])
-        if isinstance(action, Mapping)
-    ]
-
-
-def _prime_actions(value: object) -> list[dict[str, object]]:
-    if not isinstance(value, Mapping):
-        return []
-    return [
-        _summary_row(
-            action,
-            source="primeSuppression",
-            category="repeat-prime",
-            impact_score=max(1, int(float(action["ageSeconds"]) // 60)),
         )
         for action in value.get("actions", [])
         if isinstance(action, Mapping)

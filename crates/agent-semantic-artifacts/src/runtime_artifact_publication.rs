@@ -25,6 +25,10 @@ use crate::runtime_artifact_activation::restore_runtime_artifact_symlink;
 use crate::runtime_artifact_activation::runtime_artifact_activation_event_path;
 use crate::runtime_artifact_activation::stage_pending_runtime_artifact_activation;
 use crate::runtime_artifact_activation::validate_current_activation_receipts_content;
+use crate::runtime_artifact_publication_support::{
+    discard_prepared_runtime_artifact_bundle_members, publish_runtime_bundle_member_launcher,
+    repair_empty_artifact_selector_under_guard, validate_runtime_bundle_launcher,
+};
 use crate::runtime_artifact_quiescence::prepare_runtime_artifact_quiescence_lease;
 use crate::runtime_artifact_retention::RuntimeArtifactCandidatePreparationLease;
 use crate::runtime_artifact_retention::RuntimeArtifactMutationGuard;
@@ -45,9 +49,18 @@ pub struct RuntimeArtifactBundleMemberSource<'a> {
     pub source: &'a Path,
 }
 
+fn client_bundle_stable_launchers<'a>(
+    members: &'a [RuntimeArtifactBundleMemberSource<'a>],
+) -> Vec<&'a str> {
+    members
+        .iter()
+        .filter_map(|member| (member.name == "asp-hook").then_some(member.name))
+        .collect()
+}
+
 #[derive(Debug)]
-struct PreparedRuntimeArtifactBundleMember {
-    artifact: PreparedRuntimeArtifact,
+pub(super) struct PreparedRuntimeArtifactBundleMember {
+    pub(super) artifact: PreparedRuntimeArtifact,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -125,6 +138,7 @@ pub async fn publish_runtime_artifact_bundle_members(
     artifact_mode: &str,
     member_sources: &[RuntimeArtifactBundleMemberSource<'_>],
 ) -> Result<RuntimeArtifactPublicationReceipt, String> {
+    let stable_launchers = client_bundle_stable_launchers(member_sources);
     publish_runtime_artifact_with_before_guard(
         state_home,
         source,
@@ -133,7 +147,7 @@ pub async fn publish_runtime_artifact_bundle_members(
         member_sources,
         None,
         None,
-        &[],
+        &stable_launchers,
         || async {},
     )
     .await
@@ -214,6 +228,7 @@ pub async fn publish_runtime_artifact_bundle_successor_from_active(
             source: member_source,
         })
         .collect::<Vec<_>>();
+    let stable_launchers = client_bundle_stable_launchers(replacement_members);
     publish_runtime_artifact_with_before_guard(
         state_home,
         source,
@@ -222,7 +237,7 @@ pub async fn publish_runtime_artifact_bundle_successor_from_active(
         &successor_members,
         None,
         Some(&active_bundle),
-        &[],
+        &stable_launchers,
         || async {},
     )
     .await
@@ -239,6 +254,7 @@ pub async fn publish_runtime_artifact_bound_bundle_members(
     member_sources: &[RuntimeArtifactBundleMemberSource<'_>],
     execution_binding: &RuntimeArtifactBundleBinding,
 ) -> Result<RuntimeArtifactPublicationReceipt, String> {
+    let stable_launchers = client_bundle_stable_launchers(member_sources);
     publish_runtime_artifact_with_before_guard(
         state_home,
         source,
@@ -247,7 +263,7 @@ pub async fn publish_runtime_artifact_bound_bundle_members(
         member_sources,
         Some(execution_binding),
         None,
-        &[],
+        &stable_launchers,
         || async {},
     )
     .await
@@ -971,130 +987,6 @@ where
         lease_producer_process_id: quiescence.lease.producer_process_id,
         lease_consumer_process_id: std::process::id(),
     })
-}
-
-async fn discard_prepared_runtime_artifact_bundle_members(
-    members: &[PreparedRuntimeArtifactBundleMember],
-) -> Result<(), String> {
-    for member in members {
-        discard_prepared_runtime_artifact(&member.artifact).await?;
-    }
-    Ok(())
-}
-
-fn repair_empty_artifact_selector_under_guard(slot: &Path) -> Result<(), String> {
-    let metadata = match std::fs::symlink_metadata(slot) {
-        Ok(metadata) => metadata,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
-        Err(error) => {
-            return Err(format!(
-                "state=runtime-artifact-publication-failed reasonKind=artifact-selector-unreadable path={} error={error}",
-                slot.display()
-            ));
-        }
-    };
-    if metadata.file_type().is_symlink() {
-        return Ok(());
-    }
-    if !metadata.is_dir() {
-        return Err(format!(
-            "state=runtime-artifact-publication-failed reasonKind=artifact-selector-type-conflict path={}",
-            slot.display()
-        ));
-    }
-    let mut entries = std::fs::read_dir(slot).map_err(|error| {
-        format!(
-            "state=runtime-artifact-publication-failed reasonKind=artifact-selector-unreadable path={} error={error}",
-            slot.display()
-        )
-    })?;
-    if entries.next().is_some() {
-        return Err(format!(
-            "state=runtime-artifact-publication-failed reasonKind=artifact-selector-directory-conflict path={}",
-            slot.display()
-        ));
-    }
-    std::fs::remove_dir(slot).map_err(|error| {
-        format!(
-            "state=runtime-artifact-publication-failed reasonKind=artifact-selector-repair-failed path={} error={error}",
-            slot.display()
-        )
-    })
-}
-
-fn publish_runtime_bundle_member_launcher(
-    target: &Path,
-    candidate: &Path,
-    publication_nonce: &str,
-    artifact_kind: &str,
-) -> Result<(), String> {
-    let parent = target.parent().ok_or_else(|| {
-        format!(
-            "Runtime bundle launcher has no parent: {}",
-            target.display()
-        )
-    })?;
-    std::fs::create_dir_all(parent)
-        .map_err(|error| format!("create Runtime bundle launcher directory: {error}"))?;
-    match std::fs::read_link(target) {
-        Ok(current) if current == candidate => return Ok(()),
-        Ok(_) => {}
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-        Err(error) => {
-            return Err(format!(
-                "read Runtime bundle launcher {}: {error}",
-                target.display()
-            ));
-        }
-    }
-    let staged = parent.join(format!(".{artifact_kind}.{publication_nonce}.tmp"));
-    match std::fs::remove_file(&staged) {
-        Ok(()) => {}
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-        Err(error) => return Err(format!("remove stale Runtime bundle launcher: {error}")),
-    }
-    stage_runtime_bundle_launcher(candidate, &staged)?;
-    let observed = std::fs::read_link(&staged)
-        .map_err(|error| format!("read staged Runtime bundle launcher: {error}"))?;
-    if observed != candidate {
-        let _ = std::fs::remove_file(&staged);
-        return Err("reasonKind=runtime-bundle-launcher-candidate-mismatch".to_owned());
-    }
-    std::fs::rename(&staged, target).map_err(|error| {
-        let _ = std::fs::remove_file(&staged);
-        format!(
-            "reasonKind=runtime-bundle-launcher-publication-failed target={} error={error}",
-            target.display()
-        )
-    })
-}
-
-fn validate_runtime_bundle_launcher(target: &Path, candidate: &Path) -> Result<(), String> {
-    let expected = std::fs::canonicalize(candidate)
-        .map_err(|error| format!("resolve active Runtime bundle member: {error}"))?;
-    let observed = std::fs::canonicalize(target)
-        .map_err(|error| format!("resolve Runtime bundle launcher: {error}"))?;
-    if observed != expected {
-        return Err(format!(
-            "reasonKind=runtime-bundle-launcher-active-mismatch target={} candidate={}",
-            target.display(),
-            candidate.display()
-        ));
-    }
-    Ok(())
-}
-
-#[cfg(unix)]
-fn stage_runtime_bundle_launcher(candidate: &Path, staged: &Path) -> Result<(), String> {
-    std::os::unix::fs::symlink(candidate, staged)
-        .map_err(|error| format!("stage Runtime client launcher: {error}"))
-}
-
-#[cfg(not(unix))]
-fn stage_runtime_bundle_launcher(candidate: &Path, staged: &Path) -> Result<(), String> {
-    std::fs::copy(candidate, staged)
-        .map(|_| ())
-        .map_err(|error| format!("stage Runtime client launcher: {error}"))
 }
 
 #[cfg(test)]

@@ -323,7 +323,7 @@ focused check of the three new Python files exited 0 without configuration or
 severity overrides; it is not a whole-project policy result.
 
 #+begin_src sh
-./.devenv/devenv-profile-exec uv run --project languages/asp-python --frozen python -c 'from asp_python import assert_python_lang_harness_clean; assert_python_lang_harness_clean(["packages/proofs/src/asp_proofs/search_evidence_read_surface.py", "packages/proofs/tests/test_search_evidence_read_surface.py", "tests/unit/test_search_evidence_read_surface_schema.py"])'
+./.devenv/devenv-profile-exec uv run --project languages/asp-python --frozen python -c 'from asp_python import assert_asp_python_paths_clean; assert_asp_python_paths_clean(["packages/proofs/src/asp_proofs/search_evidence_read_surface.py", "packages/proofs/tests/test_search_evidence_read_surface.py", "tests/unit/test_search_evidence_read_surface_schema.py"])'
 #+end_src
 
 No token savings or live CLI integration are claimed. Native expression

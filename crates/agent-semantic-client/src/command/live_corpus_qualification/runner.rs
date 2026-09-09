@@ -262,9 +262,12 @@ pub(crate) async fn run(
         cold_load_sample_count,
         cases,
     } = prepared;
-    let mut receipts = Vec::with_capacity(cases.len());
-    let mut cancellation_samples = Vec::with_capacity(cases.len());
-    for prepared_case in cases {
+    let selected_case_count = cases.len();
+    let mut case_tasks = tokio::task::JoinSet::new();
+    for (case_index, prepared_case) in cases.into_iter().enumerate() {
+        let state_home = state_home.clone();
+        let runtime_handoff = runtime_handoff.clone();
+        case_tasks.spawn(async move {
         let source_path = prepared_case.checkout_path.clone();
         let state_home_for_materialization = state_home.clone();
         let resource_id = prepared_case.case.resource_id.clone();
@@ -486,6 +489,17 @@ pub(crate) async fn run(
             .map_err(|error| format!("cleanup isolated Live Corpus workspace task: {error}"))??;
         qualified.benchmark_workspace_cleanup_elapsed_micros = cleanup_elapsed_micros;
         qualified.benchmark_workspace_retained = false;
+            Ok::<_, String>((case_index, (qualified, cancellation_elapsed)))
+        });
+    }
+    let completed_cases = agent_semantic_workspace_scheduler::join_tasks_in_plan_order(
+        case_tasks,
+        selected_case_count,
+    )
+    .await?;
+    let mut receipts = Vec::with_capacity(selected_case_count);
+    let mut cancellation_samples = Vec::with_capacity(selected_case_count);
+    for (_, (qualified, cancellation_elapsed)) in completed_cases {
         cancellation_samples.push(cancellation_elapsed);
         receipts.push(qualified);
     }
@@ -503,6 +517,8 @@ pub(crate) async fn run(
             protocol_id: "agent.semantic-protocols.client",
             protocol_version: "1",
             transport: "grpc-tokio-streams",
+            workspace_scheduling: "tokio-join-set",
+            concurrent_workspace_count: selected_case_count,
             phases: [
                 "initialize",
                 "catalog",
@@ -738,35 +754,31 @@ where
         artifact_digest,
     )
     .await?;
-    let selector = evidence
-        .search
-        .decision
-        .selectors
-        .first()
-        .cloned()
-        .ok_or_else(|| {
-            format!(
-                "Live Corpus public search selector missing: case={}",
-                case.case_id
-            )
-        })?;
+    let selector = evidence.search.selectors.first().cloned().ok_or_else(|| {
+        format!(
+            "Live Corpus public search selector missing: case={}",
+            case.case_id
+        )
+    })?;
     for query in [&evidence.source, &evidence.callable_skeleton] {
-        if query.generation_digest != evidence.search.generation_digest
-            || query.root_digest != evidence.search.source_root_digest
+        if query.generation_digest != evidence.source.generation_digest
+            || query.root_digest != evidence.source.root_digest
             || query.provider_id != case.provider_id
         {
             return Err(format!(
-                "Live Corpus public route authority drift: case={} searchGeneration={} queryGeneration={} searchRoot={} queryRoot={}",
+                "Live Corpus public Query authority drift: case={} expectedGeneration={} queryGeneration={} expectedRoot={} queryRoot={}",
                 case.case_id,
-                evidence.search.generation_digest,
+                evidence.source.generation_digest,
                 query.generation_digest,
-                evidence.search.source_root_digest,
+                evidence.source.root_digest,
                 query.root_digest
             ));
         }
     }
-    if evidence.zero_match.generation_digest != evidence.search.generation_digest
-        || evidence.zero_match.source_root_digest != evidence.search.source_root_digest
+    if evidence.zero_match.source_generation_digest != evidence.search.source_generation_digest
+        || evidence.zero_match.provider_catalog_digest != evidence.search.provider_catalog_digest
+        || evidence.zero_match.topology_generation_digest
+            != evidence.search.topology_generation_digest
     {
         return Err(format!(
             "Live Corpus public zero-match route crossed generation authority: case={}",
@@ -801,8 +813,11 @@ where
     let semantic_projection_schema_id = qualification_result_string(callable_result, "schemaId")?;
     let payload_schema_id = qualification_result_string(callable_result, "payloadSchemaId")?;
     let payload_digest = qualification_result_string(callable_result, "payloadDigest")?;
-    let search_read_work_counters = serde_json::to_value(&evidence.search.work_counters)
-        .map_err(|error| format!("encode Live Corpus search work counters: {error}"))?;
+    let search_binding = serde_json::json!({
+        "sourceGenerationDigest": evidence.search.source_generation_digest,
+        "providerCatalogDigest": evidence.search.provider_catalog_digest,
+        "topologyGenerationDigest": evidence.search.topology_generation_digest,
+    });
     let exact_read_work_counters = serde_json::to_value(&evidence.source.work_counters)
         .map_err(|error| format!("encode Live Corpus exact work counters: {error}"))?;
     Ok(QualificationCaseReceipt {
@@ -827,15 +842,13 @@ where
         backpressure_probe_elapsed_micros: backpressure.elapsed_micros,
         stale_content_binding_rejected: false,
         stale_content_binding_probe_elapsed_micros: 0,
-        generation_digest: evidence.search.generation_digest,
-        root_digest: evidence.search.source_root_digest,
+        generation_digest: evidence.source.generation_digest.clone(),
+        root_digest: evidence.source.root_digest.clone(),
         search_operation_id: evidence.search.operation_id,
         search_elapsed_micros: evidence.search.elapsed_micros,
         resident_sample_count,
-        search_resident_read_latency_micros: evidence.search_resident_read_latency_micros,
-        search_service_latency_micros: evidence.search_service_latency_micros,
         search_total_latency_micros: evidence.search_total_latency_micros,
-        candidate_count: evidence.search.candidate_count,
+        candidate_count: evidence.search.selectors.len(),
         selector,
         query_operation_id: evidence.source.operation_id,
         query_elapsed_micros: evidence.source.elapsed_micros,
@@ -860,8 +873,8 @@ where
         merkle_proof_step_count,
         zero_match_operation_id: evidence.zero_match.operation_id,
         runtime_ecosystem: "tokio",
-        search_read_mode: "synchronous-mmap",
-        search_read_work_counters,
+        search_execution_mode: "workspace-search-playbook",
+        search_binding,
         exact_read_mode: "synchronous-mmap",
         exact_read_work_counters,
         route: "public-typed-asp-client",

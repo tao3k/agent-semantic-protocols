@@ -10,6 +10,7 @@ import unittest
 from pathlib import Path
 
 from tests.unit.schema_validation import schema_validator_for
+from tests.unit.semantic_search_action_fixture import complete_search_playbook_argv
 
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -54,18 +55,13 @@ class SemanticAgentHookClientConfigSchemaTests(unittest.TestCase):
                             "providerId": "asp-rust",
                             "languageId": "rust",
                             "binary": "asp-rust",
-                            "kind": "ingest",
-                            "argv": [
-                                "asp-rust",
-                                "search",
-                                "ingest",
-                                "items",
-                                "tests",
-                                "--workspace",
-                                ".",
-                                "--view",
-                                "seeds",
-                            ],
+                            "kind": "playbook",
+                            "argv": complete_search_playbook_argv(
+                                language="rust",
+                                term="raw source search",
+                                path_hint="*.rs",
+                                globs=("*.rs",),
+                            ),
                             "stdinMode": "pipe-candidates",
                         }
                     ],

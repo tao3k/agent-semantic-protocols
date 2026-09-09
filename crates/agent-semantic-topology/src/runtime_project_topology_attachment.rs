@@ -27,6 +27,137 @@ pub struct RuntimeProjectTopologyAttachment {
     library: Arc<ProjectTopologyLibrary>,
 }
 
+/// Runtime-built attachment packet awaiting admission by the Runtime receipt
+/// authority. Construction and admission remain separate so an embedded
+/// inference receipt cannot admit itself.
+#[derive(Clone, Debug)]
+pub struct RuntimeProjectTopologyAttachmentCandidate {
+    packet: Value,
+    receipt_digest: String,
+    runtime_generation_digest: Blake3DigestV1,
+    runtime_execution_binding: RuntimeExecutionBinding,
+    library: Arc<ProjectTopologyLibrary>,
+}
+
+impl RuntimeProjectTopologyAttachmentCandidate {
+    pub fn build(
+        runtime_generation_digest: Blake3DigestV1,
+        runtime_execution_binding: RuntimeExecutionBinding,
+        library: Arc<ProjectTopologyLibrary>,
+        parser_catalog_digest: impl Into<String>,
+    ) -> Result<Self, RuntimeProjectTopologyAttachmentError> {
+        runtime_execution_binding.validate().map_err(|error| {
+            invalid(
+                "runtime-project-topology-runtime-binding-invalid",
+                format!("Runtime execution binding is invalid: {error:?}"),
+            )
+        })?;
+        require_digest(
+            "runtimeGenerationDigest",
+            runtime_generation_digest.as_str(),
+        )?;
+        let parser_catalog_digest = parser_catalog_digest.into();
+        require_digest("parserCatalogDigest", &parser_catalog_digest)?;
+        if runtime_execution_binding.project_workspace != *library.project_workspace()
+            || runtime_execution_binding
+                .content_binding
+                .identity
+                .source_generation_digest
+                .as_str()
+                != library.source_generation_digest()
+            || runtime_execution_binding
+                .content_binding
+                .identity
+                .provider_catalog_digest
+                .as_str()
+                != library.provider_catalog_digest()
+        {
+            return Err(binding_mismatch(
+                "Runtime execution binding differs from the generated topology library",
+            ));
+        }
+
+        let topology_library_binding = serde_json::json!({
+            "projectWorkspace": library.project_workspace(),
+            "sourceGenerationDigest": library.source_generation_digest(),
+            "providerCatalogDigest": library.provider_catalog_digest(),
+            "parserCatalogDigest": parser_catalog_digest,
+            "libraryDigest": library.library_digest(),
+            "topologyGenerationDigest": library.generation_digest(),
+            "structuralTopologyDigest": library.structural_topology_digest(),
+            "semanticTopologyDigest": library.semantic_topology_digest(),
+            "inferenceProgramDigest": library.inference_program_digest(),
+            "closureDigest": library.closure_digest(),
+        });
+        let mut inference_receipt = serde_json::json!({
+            "state": "admitted",
+            "projectWorkspace": library.project_workspace(),
+            "runtimeGenerationDigest": runtime_generation_digest.as_str(),
+            "runtimeArtifactDigest": runtime_execution_binding.runtime_artifact_digest.as_str(),
+            "sourceGenerationDigest": library.source_generation_digest(),
+            "providerCatalogDigest": library.provider_catalog_digest(),
+            "parserCatalogDigest": parser_catalog_digest,
+            "libraryDigest": library.library_digest(),
+            "topologyGenerationDigest": library.generation_digest(),
+            "inferenceProgramDigest": library.inference_program_digest(),
+            "closureDigest": library.closure_digest(),
+        });
+        let receipt_bytes = serde_json::to_vec(&inference_receipt).map_err(|error| {
+            schema(format!("cannot encode topology inference receipt: {error}"))
+        })?;
+        let receipt_digest = format!("blake3-256:{}", blake3::hash(&receipt_bytes).to_hex());
+        inference_receipt["receiptDigest"] = Value::String(receipt_digest.clone());
+        let packet = serde_json::json!({
+            "schemaId": RUNTIME_PROJECT_TOPOLOGY_ATTACHMENT_SCHEMA_ID,
+            "schemaVersion": RUNTIME_PROJECT_TOPOLOGY_ATTACHMENT_SCHEMA_VERSION,
+            "runtimeExecutionBinding": runtime_execution_binding,
+            "runtimeGenerationDigest": runtime_generation_digest.as_str(),
+            "topologyLibraryBinding": topology_library_binding,
+            "inferenceReceipt": inference_receipt,
+            "terminal": {
+                "state": "admitted",
+                "terminalCount": 1,
+                "reasonKind": null,
+            },
+        });
+        Ok(Self {
+            packet,
+            receipt_digest,
+            runtime_generation_digest,
+            runtime_execution_binding,
+            library,
+        })
+    }
+
+    #[must_use]
+    pub fn packet(&self) -> &Value {
+        &self.packet
+    }
+
+    #[must_use]
+    pub fn inference_receipt(&self) -> &Value {
+        &self.packet["inferenceReceipt"]
+    }
+
+    #[must_use]
+    pub fn receipt_digest(&self) -> &str {
+        &self.receipt_digest
+    }
+
+    pub fn admit(
+        self,
+        independently_admitted_receipts: &BTreeMap<String, Value>,
+    ) -> Result<RuntimeProjectTopologyAttachment, RuntimeProjectTopologyAttachmentError> {
+        RuntimeProjectTopologyAttachment::admit(
+            self.packet,
+            self.runtime_generation_digest,
+            self.runtime_execution_binding,
+            self.library,
+            independently_admitted_receipts,
+        )
+    }
+}
+
 impl RuntimeProjectTopologyAttachment {
     /// Admits the complete attachment product against independent Runtime and
     /// inference-receipt authorities.

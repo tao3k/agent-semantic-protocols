@@ -38,7 +38,11 @@ LIBRARY = ROOT / "schemas/fixtures/project-topology-library/valid-polyglot.v1.js
 
 def validate_settlement(packet, schema, library_schema):
     _validate_settlement(
-        packet, schema, library_schema, PROJECT_WORKSPACE_SCHEMA
+        packet,
+        schema,
+        library_schema,
+        PROJECT_WORKSPACE_SCHEMA,
+        (),
     )
 
 
@@ -52,6 +56,7 @@ def validate_settlement_for_library(
         library_schema,
         PROJECT_WORKSPACE_SCHEMA,
         admitted_receipts,
+        (),
     )
 
 
@@ -100,14 +105,10 @@ def test_settlement_requires_an_explicit_offline_topology_schema(packet):
         (lambda p: p["edges"][0].update({"to": "absent"}), "dangling-edge"),
         (lambda p: p["frontiers"][0].update({"anchor": "absent"}), "dangling-frontier"),
         (
-            lambda p: p["materializationSet"]["selectors"].append(
-                "rust://zzz/other.rs#item/function/other"
+            lambda p: p["nodes"].append(
+                {**deepcopy(p["nodes"][0]), "id": "refresh-duplicate"}
             ),
-            "materialization-selector-unavailable",
-        ),
-        (
-            lambda p: p["materializationSet"]["selectors"].reverse(),
-            "materialization-order",
+            "duplicate-selector",
         ),
         (
             lambda p: p["inference"].update({"derivedRelationCount": 2}),
@@ -118,12 +119,6 @@ def test_settlement_requires_an_explicit_offline_topology_schema(packet):
                 {"bindingDigest": "blake3-256:" + "f" * 64}
             ),
             "annotation-binding-mismatch",
-        ),
-        (
-            lambda p: p["materializationSet"].update(
-                {"proofDependencies": ["absent-proof"]}
-            ),
-            "proof-dependency-unresolved",
         ),
     ],
 )
@@ -136,7 +131,10 @@ def test_rejects_semantic_graph_drift(packet, mutate, reason):
 
 def test_certified_missing_requires_matching_complete_coverage(packet):
     packet["frontiers"][0].update(
-        {"state": "certified-missing", "coverageRef": "coverage-admits"}
+        {
+            "state": "certified-missing",
+            "reason": "complete-coverage-no-witness",
+        }
     )
     with pytest.raises(SettlementError) as caught:
         validate_settlement(packet, SCHEMA, LIBRARY_SCHEMA)
@@ -163,11 +161,27 @@ def test_fixed_point_requires_identical_candidate_and_next_relation_sets(packet)
     assert caught.value.reason_kind == "fixed-point-not-reached"
 
 
+def test_every_derived_edge_requires_its_own_proof_reference(packet):
+    del packet["edges"][0]["proofRef"]
+    with pytest.raises(SettlementError) as caught:
+        validate_settlement(packet, SCHEMA, LIBRARY_SCHEMA)
+    assert caught.value.reason_kind == "schema-invalid"
+
+
 def test_settlement_is_jointly_bound_to_the_imported_topology_library(packet, library):
     validate_settlement_for_library(
         packet, SCHEMA, library, LIBRARY_SCHEMA, admitted_receipts(library)
     )
     packet["binding"]["providerCatalogDigest"] = "blake3-256:" + "f" * 64
+    with pytest.raises(SettlementError) as caught:
+        validate_settlement_for_library(
+            packet, SCHEMA, library, LIBRARY_SCHEMA, admitted_receipts(library)
+        )
+    assert caught.value.reason_kind == "topology-library-binding-mismatch"
+
+
+def test_settlement_cannot_replay_across_topology_closures(packet, library):
+    packet["binding"]["topologyClosureDigest"] = "blake3-256:" + "f" * 64
     with pytest.raises(SettlementError) as caught:
         validate_settlement_for_library(
             packet, SCHEMA, library, LIBRARY_SCHEMA, admitted_receipts(library)
@@ -216,15 +230,13 @@ def test_self_declared_rebuild_digest_without_receipt_is_rejected(packet, librar
     assert caught.value.reason_kind == "topology-rebuild-receipt-missing"
 
 
-def test_zero_match_settlement_is_valid_without_query_handoff(packet):
+def test_zero_match_settlement_is_valid_without_selector_handoff(packet):
     packet["nodes"] = []
     packet["edges"] = []
     packet["frontiers"] = []
+    packet["coverageCertificates"] = []
     packet["resultState"] = "empty"
     packet["inference"]["derivedRelationCount"] = 0
-    packet["materializationSet"].update(
-        {"state": "empty", "selectors": [], "proofDependencies": []}
-    )
     validate_settlement(packet, SCHEMA, LIBRARY_SCHEMA)
 
 
@@ -238,9 +250,6 @@ def test_budget_exhaustion_is_an_honest_incomplete_terminal(packet):
             "reasonKind": "search-inference-budget-exhausted",
             "nextRelationSetDigest": "blake3-256:" + "f" * 64,
         }
-    )
-    packet["materializationSet"].update(
-        {"state": "empty", "selectors": [], "proofDependencies": []}
     )
     packet["terminal"].update(
         {"state": "incomplete", "reasonKind": "search-inference-budget-exhausted"}

@@ -47,12 +47,17 @@ def test_every_locked_corpus_has_fixed_search_query_and_telemetry_budgets() -> N
     assert len(case_ids) == len(set(case_ids))
 
     for entry in plan["cases"]:
-        assert entry["search"]["maximumResidentMicros"] == 1_000
+        assert entry["search"]["maximumSearchMicros"] == 500_000
+        assert entry["search"]["rg"]
+        assert entry["search"]["tantivy"]
         assert entry["search"]["minimumCandidates"] >= 1
         assert entry["query"]["maximumResidentMicros"] == 1_000
         assert entry["query"]["selectorStrategy"] == "first-ranked-parser-owned"
         assert entry["query"]["projectionScope"] == "live-corpus"
-        assert entry["zeroMatchTerms"]
+        assert entry["zeroMatchSearch"]["rg"]
+        assert entry["zeroMatchSearch"]["tantivy"]
+        assert entry["zeroMatchSearch"]["minimumCandidates"] == 0
+        assert entry["zeroMatchSearch"]["maximumSearchMicros"] == 500_000
         assert set(entry["requiredTelemetryEvents"]) == {
             "runtime_resident_search_terminal",
             "runtime_exact_projection_terminal",

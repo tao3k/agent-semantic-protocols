@@ -30,9 +30,7 @@ use crate::protocol_identity::CLIENT_PROTOCOL_VERSION;
 use crate::protocol_identity::SCHEMA_VERSION;
 
 const ROUTE_FAILURE_SCHEMA_ID: &str = "agent.semantic-protocols.route-failure";
-const SEARCH_PACKET_SCHEMA_ID: &str = "agent.semantic-protocols.search-packet";
 const QUERY_RESULT_SCHEMA_ID: &str = "agent.semantic-protocols.query-result";
-const SEARCH_REQUEST_SCHEMA_ID: &str = "agent.semantic-protocols.asp-client-search-request";
 const SOURCE_INDEX_LOOKUP_REQUEST_SCHEMA_ID: &str =
     "agent.semantic-protocols.asp-client-source-index-lookup-request";
 const SOURCE_INDEX_LOOKUP_RESPONSE_SCHEMA_ID: &str =
@@ -83,7 +81,7 @@ pub const WORKSPACE_GENERATION_ENSURE_READY_RESPONSE_SCHEMA_ID: &str =
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ClientDispatchClass {
     InteractiveRead,
-    CompleteGenerationRead,
+    ResidentGenerationRead,
     ColdGenerationAdmission,
 }
 
@@ -94,14 +92,13 @@ pub fn classify_client_dispatch(method: &str) -> ClientDispatchClass {
     } else if method == WORKSPACE_SEARCH_PLAYBOOK_METHOD
         || method == WORKSPACE_QUERY_PLAYBOOK_METHOD
         || method == WORKSPACE_SYNTAX_QUERY_METHOD
-        || method.ends_with(".search")
+        || method == GRAPH_EVALUATE_METHOD
         || method.ends_with(".query")
     {
-        // Language Search and exact Query first establish the immutable
-        // CompleteGeneration barrier. Transports must not reinterpret that
-        // barrier as an interactive response deadline; the bounded resident
-        // read begins only after the generation becomes readable.
-        ClientDispatchClass::CompleteGenerationRead
+        // Search and Query may only read an already resident generation.  A
+        // missing generation returns typed not-ready evidence immediately;
+        // detached CompleteGeneration admission is a different method class.
+        ClientDispatchClass::ResidentGenerationRead
     } else {
         ClientDispatchClass::InteractiveRead
     }
@@ -123,7 +120,6 @@ pub enum ServerClientRoute {
     WorkspaceSyntaxQuery,
     GraphEvaluate,
     GraphsTimeline,
-    Search,
     SourceIndexLookup,
     ExactQuery,
 }
@@ -151,7 +147,6 @@ impl ServerClientRoute {
             Self::WorkspaceSyntaxQuery => "workspace.query.syntax",
             Self::GraphEvaluate => "graph.evaluate",
             Self::GraphsTimeline => "graphs.timeline",
-            Self::Search => "search",
             Self::SourceIndexLookup => "source-index.lookup",
             Self::ExactQuery => "query",
         }
@@ -170,7 +165,6 @@ pub fn server_client_methods(
             ));
         }
         methods.extend([
-            search_method(&language_id),
             source_index_lookup_method(&language_id),
             exact_query_method(&language_id),
         ]);
@@ -455,7 +449,6 @@ pub fn resolve_server_client_method_owner(
 
 fn route_from_suffix(suffix: &str) -> Option<ServerClientRoute> {
     match suffix {
-        "search" => Some(ServerClientRoute::Search),
         "source-index.lookup" => Some(ServerClientRoute::SourceIndexLookup),
         "query" => Some(ServerClientRoute::ExactQuery),
         _ => None,
@@ -566,21 +559,6 @@ fn workspace_syntax_query_method() -> ClientMethod {
         cancellable: true,
         streaming: false,
     }
-}
-
-fn search_method(language_id: &str) -> ClientMethod {
-    method(
-        language_id,
-        ServerClientRoute::Search,
-        SEARCH_REQUEST_SCHEMA_ID,
-        SEARCH_PACKET_SCHEMA_ID,
-        vec![
-            required_string("schemaId"),
-            required_string("schemaVersion"),
-            required_string("intent"),
-            required_string("query"),
-        ],
-    )
 }
 
 fn source_index_lookup_method(language_id: &str) -> ClientMethod {

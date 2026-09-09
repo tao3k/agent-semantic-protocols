@@ -38,6 +38,7 @@ agent-semantic-search = { path = "../agent-semantic-search" }
 agent-semantic-schema-manager = { path = "../agent-semantic-schema-manager" }
 agent-semantic-loop = { path = "../agent-semantic-loop" }
 agent-semantic-tree-sitter = { path = "../agent-semantic-tree-sitter" }
+agent-semantic-workspace-scheduler.workspace = true
 aho-corasick.workspace = true
 orgize = { workspace = true }
 proc-macro2 = { workspace = true, features = ["span-locations"] }
@@ -74,6 +75,10 @@ tempfile.workspace = true
 [[test]]
 name = "source_index_generation"
 path = "tests/integration/source_index_generation.rs"
+
+[[test]]
+name = "query_playbook"
+path = "tests/unit/query_playbook_harness.rs"
 
 [[bench]]
 name = "client_microbench"

@@ -12,7 +12,7 @@
 #+DEPENDS: docs/10-19-rfcs/10.06-agent-compact-graph-feature.org (006)
 #+DEPENDS: docs/10-19-rfcs/10.11-semantic-tree-sitter-query-protocol.org (011)
 #+SEE_ALSO: schemas/software-criterion-catalog.v1.schema.json
-#+SEE_ALSO: schemas/semantic-search-packet.v1.schema.json
+#+SEE_ALSO: schemas/search-topology-settlement.v1.schema.json
 #+SEE_ALSO: schemas/semantic-type-surface.v1.schema.json
 
 * One-sentence summary
@@ -369,57 +369,6 @@ After fixtures pass, exercise the criterions against representative real project
 Capture command count, packet size, latency, repeated-trigger patterns, false
 positives, missed facts, and repair usefulness.
 
-The first ready-provider evidence pass is recorded in
-=docs/30-39-research/31.23-software-criterion-real-project-evidence.org=.  It covers
-TypeScript, Python, and Rust harness repositories through their public policy
-check commands.  The record proves stable localization for ready providers, but
-it intentionally does not promote any criterion to blocking severity: TypeScript
-needed a false-positive refinement before the final run, Python emitted a
-28.58 MB JSON packet for one criterion finding, and Rust policy findings make the
-check command exit non-zero while still producing parseable JSON evidence.
-
-Compact-output parity is recorded in
-=docs/30-39-research/31.24-software-criterion-compact-parity-evidence.org=.  Ready
-providers now expose the same shared criterion ids in default compact text that
-they expose in JSON =softwareCriteria= labels.  The remaining promotion gap is
-repair usefulness: a real-project pass must show that starting from a compact
-signal line improves localization and edit choice before any criterion can become a
-blocking candidate.
-
-The first repair-oriented pass is recorded in
-=docs/30-39-research/31.25-software-criterion-repair-evidence.org=.  It starts from a
-TypeScript compact =native-idiom.manual-transform-loop= line, removes the
-parser-owned condition in =ownersForHits= and =uniqueOwners=, and reduces the
-TypeScript real-project criterion findings from 15 to 13.  This is positive repair
-evidence for one provider and one criterion; follow-up Python and Rust repair
-passes extend this evidence before any severity promotion.
-
-The Python and Rust follow-up repair passes are recorded in
-=docs/30-39-research/31.26-software-criterion-python-rust-repair-evidence.org=.  The
-Python pass starts from a compact =control-flow.broad-linear-phase= line and
-reduces Python real-project criterion findings from 1 to 0 by splitting
-=run_protocol_cli= into named routing steps.  The Rust pass starts from a
-compact =native-idiom.manual-transform-loop= line and reduces Rust real-project
-criterion findings from 4 to 0 by replacing the =semantic_fact_owners= push loop
-with an iterator pipeline, moving the inline semantic-facts test into
-=tests/unit=, and splitting the remaining traversal and collection-loop helpers.
-These passes establish cross-provider repair usefulness, but broader repair
-history is still required before any advisory criterion becomes a blocking
-candidate.
-
-The final v1 implementation closure is recorded in
-=docs/30-39-research/31.27-software-criterion-final-implementation-evidence.org=.
-It closes the strict compact vocabulary requirement by rendering
-=software-criterion/<criterion-id>= in compact text while keeping raw
-=criterionId= values in JSON =softwareCriteria= metadata, and it records the
-Python root policy repair that removed the remaining module ownership blockers.
-
-The final closure audit is recorded in
-=docs/30-39-research/31.29-software-criterion-final-closure-evidence.org=.  It
-records the schema-profile cleanup, the Rust full-test compile drift repair,
-the Python full-policy clean run, and the final cross-provider gates for the v1
-ready-provider rollout.
-
 A signal may become a blocking candidate only when:
 
 - an official/manual source supports the rule intent
@@ -525,7 +474,7 @@ creating broad allowlist pressure.
 * Open questions
 
 1. Should future provider finding packets embed =softwareCriteria[]= inside
-   =semantic-search-packet= / =semantic-query-packet=, or should policy checks
+   =search-topology-settlement= / =semantic-query-packet=, or should policy checks
    keep a separate packet family?
 
 2. Should severity promotion be controlled by provider config, root ASP

@@ -2,10 +2,11 @@
 #
 # SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
-import json
 from pathlib import Path
 
-from jsonschema import Draft202012Validator, RefResolver
+from jsonschema import Draft202012Validator
+
+from unit.schema_validation import schema_validator_for
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -14,11 +15,7 @@ SCHEMA_PATH = SCHEMAS / "runtime-server-read-query-route.v1.schema.json"
 
 
 def validator() -> Draft202012Validator:
-    schema = json.loads(SCHEMA_PATH.read_text())
-    return Draft202012Validator(
-        schema,
-        resolver=RefResolver(base_uri=SCHEMA_PATH.as_uri(), referrer=schema),
-    )
+    return schema_validator_for(SCHEMA_PATH)
 
 
 def valid_request() -> dict:
@@ -28,9 +25,9 @@ def valid_request() -> dict:
         "requestId": "request-1",
         "operation": "exact-query",
         "accessMode": "read-only",
-        "transportAuthority": "global-runtime-server",
+        "transportAuthority": "runtime-server",
         "projectId": "repo-1",
-        "workspaceIdentity": "workspace-1",
+        "workspaceId": "workspace-1",
         "languageId": "rust",
         "providerId": "asp-rust",
         "selector": "rust://src/lib.rs#item/function/run",
@@ -45,8 +42,8 @@ def valid_unavailable_receipt() -> dict:
         "schemaVersion": "1",
         "requestId": "request-1",
         "projectId": "repo-1",
-        "workspaceIdentity": "workspace-1",
-        "route": "global-runtime-internal-workspace",
+        "workspaceId": "workspace-1",
+        "route": "project-workspace-generation",
         "state": "unavailable",
         "source": "none",
         "selector": "rust://src/lib.rs#item/function/run",

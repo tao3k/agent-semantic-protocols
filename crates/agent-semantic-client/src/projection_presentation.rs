@@ -7,7 +7,6 @@
 use agent_semantic_client_protocol::ClientFrame;
 use orgize::ast::{
     OrgSourceBlock, OrgSourceBlockDocument, OrgSourceBlockHeader, OrgSourceBlockHeaderValue,
-    OrgSourceBlockKeyword,
 };
 use serde_json::Value;
 
@@ -93,7 +92,7 @@ pub fn render_workspace_query_playbook_response(
         .ok_or_else(|| "Query Playbook response is empty".to_owned())?;
     if receipt.get("schemaId").and_then(Value::as_str)
         != Some("agent.semantic-protocols.query-playbook-materialization-receipt")
-        || receipt.pointer("/terminal/state").and_then(Value::as_str) != Some("ready")
+        || receipt.get("schemaVersion").and_then(Value::as_str) != Some("1")
         || receipt
             .pointer("/terminal/terminalCount")
             .and_then(Value::as_u64)
@@ -101,10 +100,32 @@ pub fn render_workspace_query_playbook_response(
     {
         return Err("Query Playbook did not return one Ready terminal".to_owned());
     }
-    let blocks = receipt
+    if receipt.pointer("/terminal/state").and_then(Value::as_str) != Some("ready") {
+        let reason_kind = receipt
+            .pointer("/terminal/reasonKind")
+            .and_then(Value::as_str)
+            .unwrap_or("query-playbook-failed");
+        return Err(format!("Query Playbook failed: reasonKind={reason_kind}"));
+    }
+    let requested_selectors = receipt
+        .get("requestedSelectors")
+        .and_then(Value::as_array)
+        .ok_or_else(|| "Query Playbook receipt has no requestedSelectors".to_owned())?;
+    let materializations = receipt
         .get("materializations")
         .and_then(Value::as_array)
-        .ok_or_else(|| "Query Playbook receipt has no materializations".to_owned())?
+        .ok_or_else(|| "Query Playbook receipt has no materializations".to_owned())?;
+    if materializations.len() != requested_selectors.len()
+        || materializations
+            .iter()
+            .zip(requested_selectors)
+            .any(|(materialization, selector)| materialization.get("selector") != Some(selector))
+    {
+        return Err(
+            "Query Playbook materializations do not preserve the complete request order".to_owned(),
+        );
+    }
+    let blocks = materializations
         .iter()
         .map(render_query_materialization)
         .collect::<Result<Vec<_>, _>>()?;
@@ -126,21 +147,6 @@ fn render_query_materialization(materialization: &Value) -> Result<OrgSourceBloc
         .get("ownerPath")
         .and_then(Value::as_str)
         .ok_or_else(|| "Query materialization has no ownerPath".to_owned())?;
-    let relationships = materialization
-        .get("gqlRelationships")
-        .and_then(Value::as_array)
-        .filter(|values| values.len() == 1)
-        .ok_or_else(|| "Query materialization must have exactly one GQL relationship".to_owned())?
-        .iter()
-        .map(|value| {
-            serde_json::from_value::<
-                    agent_semantic_search_projection::QueryPlaybookGqlRelationship,
-                >(value.clone())
-                .map_err(|error| {
-                    format!("Query materialization has an invalid GQL relationship: {error}")
-                })
-        })
-        .collect::<Result<Vec<_>, _>>()?;
     let bytes = materialization
         .get("bytes")
         .and_then(Value::as_array)
@@ -155,20 +161,13 @@ fn render_query_materialization(materialization: &Value) -> Result<OrgSourceBloc
         .collect::<Result<Vec<_>, _>>()?;
     let source = String::from_utf8(bytes)
         .map_err(|_| "Query materialization source is not UTF-8".to_owned())?;
-    let preamble_keywords = relationships
-        .iter()
-        .map(|relationship| {
-            OrgSourceBlockKeyword::new("GQL", relationship.render_gql())
-                .map_err(|error| format!("construct Query GQL preamble keyword: {error}"))
-        })
-        .collect::<Result<Vec<_>, _>>()?;
     OrgSourceBlock::new(
         language,
         vec![
             org_text_header("query", selector)?,
             org_text_header("filename", owner_path)?,
         ],
-        preamble_keywords,
+        Vec::new(),
         source,
     )
     .map_err(|error| format!("construct Query Org source block: {error}"))

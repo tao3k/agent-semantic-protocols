@@ -115,7 +115,7 @@ def test_graph_turbo_dispatcher_routes_metrics_command(capsys) -> None:
                 "--profile",
                 "owner-query",
                 "--command",
-                "asp rust search lexical graph_turbo owner tests .",
+                "asp search playbook --language rust --rg -n -e graph_turbo . --tantivy term graph_turbo",
                 "--command-count",
                 "1",
                 "--packet-bytes",

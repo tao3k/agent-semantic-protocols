@@ -33,15 +33,60 @@ resident locator Ready
 
 resident locator Missing | RecoveryRequired
   -> enter workspace-local single-writer admission
-  -> wait for one terminal committed generation
-  -> acquire and validate the published generation
-  -> return readiness receipt with reconciled=true
+  -> submit or coalesce detached generation intent
+  -> return typed query-not-ready terminal immediately
+
+daemon execution-publication observer
+  -> validate and publish the immutable Query base generation
+  -> record graph, Tantivy, and Project Topology attachment terminals separately
 #+end_example
 
 The Ready transition MUST NOT canonicalize the checkout, inspect Git, open a
 provider process, open Turso, rewrite a manifest, or enqueue a generation
 build.  It is an in-memory resident operation and is subject to the
-sub-millisecond p99 gate under concurrent multi-session load.
+strictly-less-than-1,000-microsecond cold and warm gates under concurrent
+multi-session load.  A missing, failed, or stale lookup may enqueue or coalesce
+one detached intent, but the request MUST NOT await its admission receipt,
+provider work, publication, or resident-open callback.  Both Ready and typed
+not-ready paths report zero filesystem reads, database reads, provider process
+operations, parser invocations, generation builds, and terminal waits.
+
+The strict gate ends at the fully constructed semantic dispatch terminal.
+ClientFrame serialization, transport queueing, kernel delivery, and peer
+backpressure have separate telemetry and SLOs; they are not request-plane work
+and cannot be folded into, subtracted from, or used to rewrite the semantic
+receipt.  This boundary is required because a server cannot impose a hard
+delivery deadline on a backpressured peer.
+
+The detached readiness terminal publishes source-generation lifecycle evidence
+only.  It is not allowed to open or install the resident Query generation.  A
+single daemon-owned publication observer joins the committed source generation
+with the current Runtime activation, provider execution binding, and workspace
+execution publication, and only that observer may invoke atomic resident
+publication.  The explicit ensure-ready route reports generation admission; it
+does not become a second resident publisher.
+
+That same observer directly supervises the Query base generation and the graph,
+Tantivy, and Project Topology attachment futures.  Query readiness and Search
+attachment readiness are distinct layers: a valid base generation may publish
+=QueryReady= even when a derived attachment records =Failed=.  A Search surface
+that requires that attachment returns its preserved typed root cause; it MUST
+NOT reinterpret failure as an empty result, silently omit the clause, or revoke
+the independently valid Query base.
+
+The observer MUST NOT hand attachment completion to a nested mailbox, detached
+JoinSet, or oneshot completion lane.  It consumes every attachment =Result=
+exactly once and records =Ready= or =Failed= for the same generation.  Dropping
+an attachment result is forbidden because it turns a terminal failure into an
+unbounded =Building= observation.  Only failure of the base-generation
+transaction publishes Query =Failed=; attachment failure remains a Search-layer
+terminal.  Resource permits and the single =spawn_blocking= boundary remain
+independently owned by each attachment transaction.
+
+The execution sidecar carries source-root identity as canonical
+=blake3-256:<hex>= while the validated resident snapshot may expose its content
+component as =<hex>=.  Admission compares those typed digest components; raw
+string inequality is not an identity mismatch.
 
 * Publication generation
 
@@ -51,10 +96,18 @@ server MUST NOT publish =Healthy= when a registered provider cannot decode the
 current projection-batch v1 header.  Contract validation precedes daemon
 readiness and workspace restoration.
 
+Provider decode, parse, proof projection, and response encoding belong only to
+the detached generation writer.  They may have independent throughput and
+resource gates, but neither a provider transport timeout nor an optimized
+provider profile is a Search/Query request-latency contract.  A provider process
+or parser observed in the request plane is an architectural failure regardless
+of its duration.
+
 * Query safety
 
-An exact query is read-only.  It may enter the data plane only after a valid
-readiness receipt exists for its workspace.  A selector absent from the active
+An exact query is read-only.  It may read only a resident handle already
+published for its workspace; it never waits for a readiness receipt to become
+valid.  A selector absent from the active
 generation may resolve only through an explicit relocation identity contained
 in that generation; retrying, weakening the selector, or reading live source is
 not a valid recovery transition.

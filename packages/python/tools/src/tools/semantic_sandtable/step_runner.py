@@ -159,10 +159,10 @@ def _validate_and_capture_step(
 
 def _observe_agent_step(step: dict[str, Any], result: StepResult, stdout: str) -> None:
     expect = step.get("expect", {})
-    expects_pipe_flow = isinstance(expect, dict) and isinstance(
-        expect.get("pipeFlow"), dict
+    expects_command_flow = isinstance(expect, dict) and isinstance(
+        expect.get("commandFlow"), dict
     )
-    if "agentCli" not in step and "agentSdk" not in step and not expects_pipe_flow:
+    if "agentCli" not in step and "agentSdk" not in step and not expects_command_flow:
         return
     observations = summarize_agent_stdout(stdout)
     if observations:

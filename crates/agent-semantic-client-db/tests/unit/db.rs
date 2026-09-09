@@ -517,7 +517,7 @@ async fn agent_session_registry_storage_is_turso_owned() {
             .record_tool_event(AgentSessionToolEventRequest {
                 session_id: "child-session".into(),
                 tool_event: "search".into(),
-                command: Some("asp rust search playbook source-structure".into()),
+                command: Some("asp search playbook --language rust --rg -n -e source-structure . --tantivy term source-structure".into()),
                 evidence_ref: Some("receipt:1".into()),
                 now: 1_800_000_010,
             })
@@ -531,7 +531,7 @@ async fn agent_session_registry_storage_is_turso_owned() {
     assert_eq!(updated.last_tool_event.as_deref(), Some("search"));
     assert_eq!(
         updated.last_command.as_deref(),
-        Some("asp rust search playbook source-structure")
+        Some("asp search playbook --language rust --rg -n -e source-structure . --tantivy term source-structure")
     );
     assert_eq!(updated.last_evidence_ref.as_deref(), Some("receipt:1"));
 

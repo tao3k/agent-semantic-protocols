@@ -19,7 +19,7 @@ def rust_evidence_graph_turbo_request() -> dict[str, object]:
         "queryTerms": ["rust evidence quality"],
         "profile": "rust-evidence-quality",
         "algorithm": "typed-ppr-diverse",
-        "seedIds": ["owner:src/model.rs"],
+        "entryNodeIds": ["owner:src/model.rs"],
         "budget": 8,
         "producer": {
             "languageId": "rust",
@@ -140,5 +140,5 @@ def rust_evidence_graph_turbo_request() -> dict[str, object]:
                 ],
             }
         ],
-        "fields": {"next": "pipe JSON to asp graph render"},
+        "fields": {"next": "review the typed graph result"},
     }

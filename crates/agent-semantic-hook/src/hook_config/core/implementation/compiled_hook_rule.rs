@@ -112,25 +112,28 @@ impl CompiledHookRule {
         })
         .into_iter()
         .map(|matched| {
-            let argv = matched
-                .provider
-                .playbook_route
-                .argv
-                .iter()
-                .map(|argument| match argument.as_str() {
-                    "{owner}" => matched.route_selector.clone(),
-                    "{query}" => "source structure".to_owned(),
-                    "{workspace}" => runtime.project_root.clone(),
-                    _ => argument.clone(),
-                })
-                .collect::<Vec<_>>();
+            let argv = [
+                "asp".to_owned(),
+                "search".to_owned(),
+                "playbook".to_owned(),
+                "--language".to_owned(),
+                matched.provider.language_id.as_str().to_owned(),
+                "--rg".to_owned(),
+                "--files".to_owned(),
+                "-g".to_owned(),
+                matched.route_selector,
+                "--tantivy".to_owned(),
+                "title:[* TO *] OR body:[* TO *]".to_owned(),
+            ]
+            .into_iter()
+            .collect::<Vec<_>>();
             DecisionRoute {
                 language_id: matched.provider.language_id,
                 provider_id: matched.provider.provider_id,
                 binary: argv.first().cloned().unwrap_or_default(),
                 kind: crate::protocol::DecisionRouteKind::Playbook,
                 argv,
-                stdin_mode: matched.provider.playbook_route.stdin_mode,
+                stdin_mode: None,
             }
         })
         .collect()
@@ -138,18 +141,14 @@ impl CompiledHookRule {
 }
 
 impl RuleRoute {
-    pub(super) fn decision_route(&self, runtime: &HookRuntime) -> DecisionRoute {
-        let provider = runtime
-            .providers
-            .iter()
-            .find(|provider| provider.provider_id == self.provider_id);
+    pub(super) fn decision_route(&self) -> DecisionRoute {
         DecisionRoute {
             language_id: self.language_id.clone(),
             provider_id: self.provider_id.clone(),
             binary: self
                 .binary
                 .clone()
-                .or_else(|| provider.map(|_| "asp".to_owned()))
+                .or_else(|| self.argv.first().cloned())
                 .unwrap_or_default(),
             kind: self.kind,
             argv: self.argv.clone(),

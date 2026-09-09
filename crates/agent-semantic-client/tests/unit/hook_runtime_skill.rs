@@ -6,100 +6,12 @@
 #[path = "../../src/command/hook_runtime_skill.rs"]
 mod hook_runtime_skill;
 
-use agent_semantic_hook::{
-    ActivatedProviderConfig, ActivationCoverage, ActivationGeneratedBy, HookActivation,
-    RuntimeProfiles, RuntimeProfilesGeneratedBy,
-};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use hook_runtime_skill::hook_runtime_skill_render::validate_agent_semantic_protocols_skill;
 use hook_runtime_skill::{
     install_agent_semantic_protocols_agent_config, install_agent_semantic_protocols_skill,
 };
-
-fn activation_provider(
-    language_id: &str,
-    provider_id: &str,
-    binary: &str,
-) -> ActivatedProviderConfig {
-    let manifest = agent_semantic_hook::builtin_provider_manifests()
-        .into_iter()
-        .find(|manifest| {
-            manifest.language_id().as_str() == language_id
-                && manifest.provider_id().as_str() == provider_id
-        })
-        .expect("canonical builtin provider manifest");
-    let provider_executable = std::env::current_exe().expect("resolve test executable");
-    let provider_command_prefix = vec![provider_executable.display().to_string()];
-    let provider_artifact_digest =
-        agent_semantic_content_identity::file_content_digest_v1(&provider_executable)
-            .expect("digest provider executable artifact");
-    let execution_command_digest = agent_semantic_hook::provider_execution_command_digest(
-        &provider_command_prefix,
-        &provider_artifact_digest,
-    )
-    .expect("digest provider execution command");
-    ActivatedProviderConfig {
-        manifest_id: manifest.manifest_id().to_string(),
-        manifest_digest: agent_semantic_hook::provider_manifest_digest(&manifest)
-            .expect("digest canonical builtin provider manifest"),
-        language_id: manifest.language_id().clone(),
-        provider_id: manifest.provider_id().clone(),
-        binary: binary.to_string(),
-        execution: manifest.execution(),
-        execution_command_digest,
-        provider_command_prefix,
-        search_capabilities: manifest.search_capabilities().clone(),
-        semantic_facts_descriptor: manifest.semantic_facts_descriptor().cloned(),
-        query_pack_descriptor: manifest.query_pack_descriptor().clone(),
-        semantic_registry_digest: agent_semantic_hook::semantic_registry_digest(),
-        routes: agent_semantic_hook::materialize_provider_routes(&manifest)
-            .expect("materialize canonical builtin provider routes"),
-        coverage: ActivationCoverage {
-            package_roots: vec![".".to_string()],
-            config_files: Vec::new(),
-            source_extensions: Vec::new(),
-        },
-    }
-}
-
-fn test_activation() -> HookActivation {
-    HookActivation {
-        rankers: Vec::new(),
-        schema_id: "agent.semantic-protocols.hook.activation".to_string(),
-        schema_version: "1".to_string(),
-        schema_authority: "https://tao3k.github.io/agent-semantic-protocols/schemas/".to_string(),
-        protocol_id: "agent.semantic-protocols.hook".to_string(),
-        protocol_version: "1".to_string(),
-        project_root: "/tmp/asp-test".to_string(),
-        generated_by: ActivationGeneratedBy {
-            runtime: "asp".to_string(),
-            version: "0.1.0".to_string(),
-        },
-        generated_at: None,
-        providers: vec![
-            activation_provider("rust", "asp-rust", "asp-rust"),
-            activation_provider("org", "orgize", "asp"),
-        ],
-    }
-}
-
-fn test_runtime_profiles() -> RuntimeProfiles {
-    RuntimeProfiles {
-        schema_id: "agent.semantic-protocols.runtime.profiles".to_string(),
-        schema_version: "1".to_string(),
-        protocol_id: "agent.semantic-protocols.runtime".to_string(),
-        protocol_version: "1".to_string(),
-        project_root: "/tmp/asp-test".to_string(),
-        runtime_home: "/tmp/asp-test/.cache/agent-semantic-protocol/runtime".to_string(),
-        generated_by: RuntimeProfilesGeneratedBy {
-            runtime: "asp".to_string(),
-            version: "0.1.0".to_string(),
-        },
-        generated_at: None,
-        providers: Vec::new(),
-    }
-}
 
 #[test]
 fn renders_org_skill_from_languages_org_contract() {
@@ -156,9 +68,7 @@ fn org_contract_rejects_missing_state_workflow_section() {
 
 fn installed_skill_text(name: &str) -> String {
     let root = temp_project_root(name);
-    let installed =
-        install_agent_semantic_protocols_skill(&root, &test_activation(), &test_runtime_profiles())
-            .unwrap();
+    let installed = install_agent_semantic_protocols_skill(&root).unwrap();
     let skill_path = installed.skill_path.expect("skill path");
     let rendered = std::fs::read_to_string(&skill_path).expect("read installed skill");
     let _ = std::fs::remove_dir_all(root);
@@ -182,9 +92,7 @@ fn install_project_skill_does_not_write_codex_plugin_skill() {
     write_stale_contract(&project_contract_path);
     write_stale_contract(&plugin_contract_path);
 
-    let installed =
-        install_agent_semantic_protocols_skill(&root, &test_activation(), &test_runtime_profiles())
-            .unwrap();
+    let installed = install_agent_semantic_protocols_skill(&root).unwrap();
     let project_skill_path = installed.skill_path.expect("project skill path");
     assert!(
         installed.plugin_skill_path.is_none(),

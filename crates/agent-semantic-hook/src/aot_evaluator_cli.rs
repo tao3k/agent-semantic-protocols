@@ -259,6 +259,14 @@ pub fn evaluate_payload_with_policy_bundle_and_state_home_with_receipt(
     state_home: Option<&std::path::Path>,
 ) -> Result<AotHookEvaluationReceipt, String> {
     let mut payload_json = payload_json.to_owned();
+    if let Some(host_output) =
+        crate::search_playbook_pretool::evaluate(&payload_json, host_matcher)?
+    {
+        return Ok(AotHookEvaluationReceipt {
+            host_output: Some(host_output),
+            reader_probe_event_path: None,
+        });
+    }
     if let Some(decision) =
         aot_evaluator::evaluate_pre_tool(policy_bundle, &payload_json, host_matcher)?
     {

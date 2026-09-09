@@ -32,7 +32,7 @@ def test_identity_incomplete_is_a_typed_exact_resolution_state() -> None:
         ],
         "actualKinds": [],
         "recommendedNext": {
-            "command": "asp rust search owner src/cli.rs items --query 'parse' --workspace . --view seeds"
+            "command": "asp search playbook --language rust --rg -n -e 'parse' src/cli.rs --tantivy term 'parse'"
         },
     }
 

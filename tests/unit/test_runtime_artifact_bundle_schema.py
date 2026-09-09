@@ -23,7 +23,21 @@ def bundle_fixture() -> dict[str, object]:
         "schemaId": "agent.semantic-protocols.runtime-binary-bundle",
         "schemaVersion": 1,
         "bundleDigest": DIGEST_A,
-        "members": {"asp": DIGEST_A, "asp-hook": DIGEST_B},
+        "members": {
+            "asp": DIGEST_A,
+            "provider-registration.json": DIGEST_A,
+            "provider-artifact-set": DIGEST_B,
+            "evaluator-policy.json": DIGEST_A,
+            "schema-bundle.json": DIGEST_B,
+        },
+        "executionBinding": {
+            "schemaId": "agent.semantic-protocols.runtime-artifact-bundle-binding",
+            "schemaVersion": "1",
+            "providerRegistrationDigest": DIGEST_A,
+            "providerArtifactSetDigest": DIGEST_B,
+            "evaluatorPolicyDigest": DIGEST_A,
+            "schemaBundleDigest": DIGEST_B,
+        },
     }
 
 
@@ -33,6 +47,7 @@ def activation_fixture() -> dict[str, object]:
         "schemaVersion": 1,
         "bundleDigest": DIGEST_A,
         "artifactDigest": DIGEST_B,
+        "activationGeneration": 1,
         "artifactPath": "/state/runtime/artifacts/asp",
         "candidateSlotPath": "/state/runtime/resident/candidates/bundle",
         "previousArtifactDigest": None,
@@ -82,6 +97,6 @@ def test_legacy_generation_partial_and_unknown_fields_fail_closed() -> None:
     del missing_bundle["bundleDigest"]
     assert list(activation_validator.iter_errors(missing_bundle))
 
-    legacy_generation = activation_fixture()
-    legacy_generation["activationGeneration"] = 54
-    assert list(activation_validator.iter_errors(legacy_generation))
+    unknown_generation = activation_fixture()
+    unknown_generation["generation"] = 54
+    assert list(activation_validator.iter_errors(unknown_generation))

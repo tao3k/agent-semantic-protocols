@@ -41,6 +41,7 @@ example : terminalAdmitted ⟨.admitted, some 7⟩ = true := by decide
 #print axioms self_index_exclusion_is_required
 #print axioms source_identity_drift_rejects_the_complete_contract
 #print axioms workspace_root_boundary_drift_rejects_the_complete_contract
+#print axioms topology_closure_drift_rejects_the_complete_contract
 #print axioms compiled_abi_drift_rejects_the_compilation_receipt
 #print axioms compilation_receipt_id_collision_does_not_authorize_changed_content
 #print axioms distinct_host_local_worktrees_can_bind_the_same_admitted_source

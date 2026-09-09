@@ -27,8 +27,8 @@
 
 =.agents/asp/topology/manifest.org= is the only repository-owned declaration
 of the Project Workspace binding consumed by Project Topology. The manifest is
-an Org document governed by =project.topology-program.v1=. A native Org parser
-MUST decode exactly one level-one topology-program headline and its property
+an Org document governed by =project.workspace-manifest.v1=. A native Org parser
+MUST decode exactly one level-one Project Workspace headline and its property
 drawer. Regex, line scanning, shell evaluation, and implicit environment
 resolution are not admission paths.
 
@@ -43,6 +43,12 @@ The parser projects these properties into the shared
 =REPOSITORY_ALIASES= is a compact JSON array of unique canonical repository
 locators in lexicographic order. An empty alias set is written as =[]=. This is
 data inside an Org property, not a second manifest grammar.
+
+The stable declaration contains no source, provider, parser, MRR, compiled ABI,
+or topology-root digest. Those mutable identities belong to Runtime-owned
+program, generation, closure, and attachment receipts that independently bind
+this exact Project Workspace value. Copying them into the Git-tracked manifest
+would create stale authority and a self-referential source identity.
 
 ** Authority And Failure Semantics
 
@@ -116,6 +122,11 @@ query grammar.
 ** Traceability
 
 - [[file:10.06.18-mrr-defined-project-topology.org][RFC 10.06.18]] owns the complete Project Topology architecture.
-- [[file:../../../org/contracts/project.topology-program.v1.org][project.topology-program.v1]] owns the Org manifest assertions.
+- [[file:../../../org/contracts/project.workspace-manifest.v1.org][project.workspace-manifest.v1]] owns the stable Org manifest assertions.
+- [[file:../../../org/contracts/asp/topology/program.v1.org][asp.topology.program.v1]] governs the distributable native topology rule source parsed by =orgize=.
+- [[file:../../../org/contracts/project.topology-program.v1.org][project.topology-program.v1]] owns the separately admitted MRR program projection.
 - [[file:../../../schemas/project-workspace-binding.v1.schema.json][project-workspace-binding.v1]] owns the projected shared product.
 - =ASPProof.ProjectTopologyIdentityRefinement= owns the executable authority counterexamples.
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later

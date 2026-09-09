@@ -37,6 +37,8 @@ pub use model::ResidentGraphEvaluationRequest;
 pub use model::ResidentGraphGeneration;
 use model::ResidentGraphNode;
 pub use model::ResidentGraphRankedNode;
+pub use model::ResidentGraphRelationDirection;
+pub use model::ResidentGraphRelationPattern;
 pub use model::ResidentGraphSearchBudget;
 pub use model::ResidentGraphSearchRequest;
 pub use model::ResidentGraphSearchStage;
@@ -121,19 +123,41 @@ fn materialize_canonical_resident_graph_generation(
         edges.push((from_id, to_id, relation.kind.to_string()));
     }
     let mut adjacency = BTreeMap::<String, Vec<ResidentGraphEvaluatedEdge>>::new();
+    let mut relation_adjacency =
+        BTreeMap::<(String, String), Vec<ResidentGraphEvaluatedEdge>>::new();
+    let mut reverse_relation_adjacency =
+        BTreeMap::<(String, String), Vec<ResidentGraphEvaluatedEdge>>::new();
     for (source, target, relation) in &edges {
+        let edge = ResidentGraphEvaluatedEdge {
+            source: source.clone(),
+            target: target.clone(),
+            relation: relation.clone(),
+        };
         adjacency
             .entry(source.clone())
             .or_default()
-            .push(ResidentGraphEvaluatedEdge {
-                source: source.clone(),
-                target: target.clone(),
-                relation: relation.clone(),
-            });
+            .push(edge.clone());
+        let relation_key = relation.to_ascii_uppercase();
+        relation_adjacency
+            .entry((source.clone(), relation_key.clone()))
+            .or_default()
+            .push(edge.clone());
+        reverse_relation_adjacency
+            .entry((target.clone(), relation_key))
+            .or_default()
+            .push(edge);
     }
     for outgoing in adjacency.values_mut() {
         outgoing.sort();
         outgoing.dedup();
+    }
+    for outgoing in relation_adjacency.values_mut() {
+        outgoing.sort();
+        outgoing.dedup();
+    }
+    for incoming in reverse_relation_adjacency.values_mut() {
+        incoming.sort();
+        incoming.dedup();
     }
     let relation_projection_nanos = elapsed_nanos(relation_projection_started);
     let identity_hash_started = std::time::Instant::now();
@@ -149,6 +173,8 @@ fn materialize_canonical_resident_graph_generation(
         owner_paths_by_node_id: Arc::new(owner_paths_by_node_id),
         nodes_by_id: Arc::new(nodes_by_id),
         adjacency: Arc::new(adjacency),
+        relation_adjacency: Arc::new(relation_adjacency),
+        reverse_relation_adjacency: Arc::new(reverse_relation_adjacency),
         rank_cache: Arc::new((0..64).map(|_| Mutex::new(Vec::new())).collect()),
         build_metrics: ResidentGraphBuildMetrics {
             owner_projection_nanos,
@@ -556,6 +582,178 @@ pub fn evaluate_resident_graph_generation(
     Ok(ResidentGraphEvaluation {
         ranked_nodes,
         edges: traversed_edges.into_iter().collect(),
+        work,
+    })
+}
+
+/// Apply compiler-derived relation patterns, in source order, to an admitted
+/// owner frontier. Each pattern is an actual semantic filter; query text is
+/// never used as a digest-only substitute for execution.
+pub fn evaluate_resident_graph_relation_patterns(
+    request: ResidentGraphEvaluationRequest<'_>,
+    candidate_owner_paths: &[String],
+    patterns: &[ResidentGraphRelationPattern],
+    budget: ResidentGraphEvaluationBudget,
+) -> Result<ResidentGraphEvaluation, String> {
+    if request.operation_id.is_empty()
+        || !request.generation_digest.starts_with("blake3-256:")
+        || !request
+            .generation_graph
+            .matches_generation_binding(request.source_snapshot, request.workspace_generation)
+    {
+        return Err("resident graph relation evaluation generation binding mismatch".to_owned());
+    }
+    if patterns.is_empty() {
+        return Err("resident graph relation evaluation requires a compiled pattern".to_owned());
+    }
+    if budget.max_nodes == 0 || budget.max_edges == 0 || budget.max_results == 0 {
+        return Err(
+            "resident graph relation evaluation requires non-zero node, edge, and result budgets"
+                .to_owned(),
+        );
+    }
+
+    let mut seen_candidates = BTreeSet::new();
+    let mut candidates = candidate_owner_paths
+        .iter()
+        .filter(|owner| seen_candidates.insert((*owner).clone()))
+        .map(|owner| (owner.clone(), stable_graph_node_id("owner", owner)))
+        .collect::<Vec<_>>();
+    if candidates
+        .iter()
+        .any(|(_, node_id)| !request.generation_graph.owner_node_ids.contains(node_id))
+    {
+        return Err("resident graph relation candidate is absent from the generation".to_owned());
+    }
+
+    let mut work = ResidentGraphSearchWork::default();
+    let mut visited_node_ids = BTreeSet::new();
+    let mut inspected_edges = BTreeSet::new();
+    let mut matched_edges = BTreeSet::new();
+    for pattern in patterns {
+        let mut matching_candidate_nodes = BTreeSet::new();
+        let relation_key = pattern.relation.to_ascii_uppercase();
+        for (_, candidate_node_id) in &candidates {
+            let left_is_candidate = pattern.left_kind.eq_ignore_ascii_case("owner")
+                && pattern.projected_bindings.contains(&pattern.left_binding);
+            let right_is_candidate = pattern.right_kind.eq_ignore_ascii_case("owner")
+                && pattern.projected_bindings.contains(&pattern.right_binding);
+            let mut candidate_edges = Vec::new();
+            if (left_is_candidate
+                && matches!(
+                    pattern.direction,
+                    ResidentGraphRelationDirection::Out
+                        | ResidentGraphRelationDirection::Undirected
+                ))
+                || (right_is_candidate
+                    && matches!(
+                        pattern.direction,
+                        ResidentGraphRelationDirection::In
+                            | ResidentGraphRelationDirection::Undirected
+                    ))
+            {
+                candidate_edges.extend(
+                    request
+                        .generation_graph
+                        .relation_adjacency
+                        .get(&(candidate_node_id.clone(), relation_key.clone()))
+                        .into_iter()
+                        .flatten(),
+                );
+            }
+            if (left_is_candidate
+                && matches!(
+                    pattern.direction,
+                    ResidentGraphRelationDirection::In | ResidentGraphRelationDirection::Undirected
+                ))
+                || (right_is_candidate
+                    && matches!(
+                        pattern.direction,
+                        ResidentGraphRelationDirection::Out
+                            | ResidentGraphRelationDirection::Undirected
+                    ))
+            {
+                candidate_edges.extend(
+                    request
+                        .generation_graph
+                        .reverse_relation_adjacency
+                        .get(&(candidate_node_id.clone(), relation_key.clone()))
+                        .into_iter()
+                        .flatten(),
+                );
+            }
+            'candidate_edges: for edge in candidate_edges {
+                if inspected_edges.insert(edge.clone()) {
+                    work.visited_edges = work.visited_edges.saturating_add(1);
+                    if work.visited_edges > budget.max_edges {
+                        return Err("graph-edge-budget-exhausted".to_owned());
+                    }
+                    for node_id in [&edge.source, &edge.target] {
+                        if visited_node_ids.insert(node_id.clone()) {
+                            work.visited_nodes = work.visited_nodes.saturating_add(1);
+                            if work.visited_nodes > budget.max_nodes {
+                                return Err("graph-node-budget-exhausted".to_owned());
+                            }
+                        }
+                    }
+                }
+                if !edge.relation.eq_ignore_ascii_case(&pattern.relation) {
+                    continue;
+                }
+                let orientations: &[(&str, &str)] = match pattern.direction {
+                    ResidentGraphRelationDirection::Out => {
+                        &[(edge.source.as_str(), edge.target.as_str())]
+                    }
+                    ResidentGraphRelationDirection::In => {
+                        &[(edge.target.as_str(), edge.source.as_str())]
+                    }
+                    ResidentGraphRelationDirection::Undirected => &[
+                        (edge.source.as_str(), edge.target.as_str()),
+                        (edge.target.as_str(), edge.source.as_str()),
+                    ],
+                };
+                for (left_id, right_id) in orientations {
+                    let left = &request.generation_graph.nodes_by_id[*left_id];
+                    let right = &request.generation_graph.nodes_by_id[*right_id];
+                    if left.kind.eq_ignore_ascii_case(&pattern.left_kind)
+                        && right.kind.eq_ignore_ascii_case(&pattern.right_kind)
+                        && ((left_is_candidate && left_id == candidate_node_id)
+                            || (right_is_candidate && right_id == candidate_node_id))
+                    {
+                        matching_candidate_nodes.insert(candidate_node_id.clone());
+                        matched_edges.insert(edge.clone());
+                        // This stage filters projected Owner candidates. One
+                        // exact relation witness proves membership; scanning
+                        // every Item below a matching Owner would make request
+                        // work proportional to the whole owner subtree.
+                        break 'candidate_edges;
+                    }
+                }
+            }
+        }
+        candidates.retain(|(_, node_id)| matching_candidate_nodes.contains(node_id));
+    }
+
+    let truncated = candidates.len() > budget.max_results;
+    candidates.truncate(budget.max_results);
+    let ranked_nodes = candidates
+        .into_iter()
+        .enumerate()
+        .map(|(rank, (owner_path, id))| ResidentGraphRankedNode {
+            id,
+            kind: "owner".to_owned(),
+            owner_path: Some(owner_path),
+            score: budget.max_results.saturating_sub(rank),
+            distance: 0,
+        })
+        .collect::<Vec<_>>();
+    work.frontier_peak = ranked_nodes.len();
+    if truncated {
+        work.frontier_peak = work.frontier_peak.saturating_add(1);
+    }
+    Ok(ResidentGraphEvaluation {
+        ranked_nodes,
+        edges: matched_edges.into_iter().collect(),
         work,
     })
 }

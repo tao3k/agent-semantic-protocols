@@ -75,17 +75,31 @@ class RuntimeServerArtifactCatalogSchemaTests(unittest.TestCase):
     @staticmethod
     def endpoint() -> dict[str, object]:
         return {
-            "schemaId": "agent.semantic-protocols.runtime-server-endpoint.v1",
+            "schemaId": "agent.semantic-protocols.runtime-server-endpoint",
             "schemaVersion": "1",
             "transportContractDigest": f"blake3-256:{'a' * 64}",
             "ownerEpoch": 1,
             "runtimeArtifactPath": "/runtime/bin/asp",
-            "runtimeArtifactDigest": "runtime-digest",
+            "runtimeBinaryIdentity": "runtime-digest",
             "artifactMode": "dev",
             "artifactCatalogDigest": f"blake3-256:{'b' * 64}",
             "bindingToken": "binding",
-            "socketPath": "/tmp/control.sock",
-            "dataPlaneSocketPath": "/tmp/data.sock",
+            "controlEndpoint": {
+                "transport": "loopback-tcp",
+                "address": "127.0.0.1",
+                "port": 41001,
+            },
+            "dataEndpoint": {
+                "transport": "loopback-tcp",
+                "address": "127.0.0.1",
+                "port": 41002,
+            },
+            "providerEndpoint": {
+                "transport": "loopback-tcp",
+                "address": "127.0.0.1",
+                "port": 41003,
+            },
+            "workspaceStorePath": "/state/runtime/workspaces",
             "statusMemoryPath": "/tmp/status.memory",
         }
 

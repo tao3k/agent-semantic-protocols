@@ -13,7 +13,7 @@ use crate::ResidentSourceDocument;
 use crate::ResidentSourceIndex;
 
 const SEARCH_PROJECTION_ANALYZER_ID: &str =
-    "agent.semantic-protocols.search-projection-analyzer.rg-lexical-graph.v1";
+    "agent.semantic-protocols.search-projection-analyzer.rg-lexical-graph.v2-tantivy-native";
 
 /// Digest of the parser-owned derivation algorithm shared by lexical and graph projections.
 ///
@@ -43,7 +43,7 @@ pub fn search_owner_graph_fragment_digest(
     let mut hasher = blake3::Hasher::new();
     hash_field(
         &mut hasher,
-        "agent.semantic-protocols.search-owner-graph-fragment.v1",
+        "agent.semantic-protocols.workspace-search-graph-fragment.v1",
     );
     hasher.update(&(bytes.len() as u64).to_le_bytes());
     hasher.update(&bytes);
@@ -295,6 +295,7 @@ impl MerkleSearchGeneration {
                         owner_content_digest: fragment.content_digest.clone(),
                         line_count: fragment.line_count,
                         query_keys: fragment.lexical_query_keys.clone(),
+                        lexical_body: None,
                         authority: Some(authority.clone()),
                     },
                 )

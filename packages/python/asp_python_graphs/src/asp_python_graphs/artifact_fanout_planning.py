@@ -81,10 +81,10 @@ def _preferred_fanout_key(value: object) -> Mapping[str, Any] | None:
         return None
     keys = [item for item in value if isinstance(item, Mapping)]
     return (
-        _first_key(keys, "search/owner", require_target=True)
+        _first_key(keys, "search/playbook", require_target=True)
         or _first_key(keys, "search/typed-frontier", require_target=True)
         or _first_key(keys, "search/typed-frontier", require_target=False)
-        or _first_key(keys, "search/owner", require_target=False)
+        or _first_key(keys, "search/playbook", require_target=False)
     )
 
 
@@ -105,7 +105,7 @@ def _first_key(
 def _preferred_command(
     language: str, method: str, subject: str, project_root_arg: str
 ) -> str:
-    if method == "search/owner" or target_like(subject):
+    if method == "search/playbook" or target_like(subject):
         return shell_command(
             (
                 "asp",

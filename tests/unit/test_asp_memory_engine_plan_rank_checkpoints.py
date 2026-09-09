@@ -57,7 +57,7 @@ def _checkpoint() -> Checkpoint:
         plan_id="checkpoint-sync-for-codex-session-recall",
         source_locator="flow/plans/checkpoint-sync.org:42-42",
         resume_command=(
-            "asp org query --selector flow/plans/checkpoint-sync.org:42-42 --content"
+            "asp query playbook --documents org --selector flow/plans/checkpoint-sync.org:42-42 --content"
         ),
         metadata={
             "planPath": "flow/plans/checkpoint-sync.org",

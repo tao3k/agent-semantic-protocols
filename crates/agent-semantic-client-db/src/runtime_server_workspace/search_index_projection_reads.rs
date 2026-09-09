@@ -9,8 +9,6 @@ use std::sync::Arc;
 
 use super::{SearchOwnerRecord, WorkspaceSearchGenerationDataPlaneClient};
 
-const MAX_COLD_LEXICAL_CANDIDATES: u32 = 4096;
-
 impl WorkspaceSearchGenerationDataPlaneClient {
     /// Returns the immutable parser-owned topology inputs retained by this
     /// exact resident or mmap generation.
@@ -163,6 +161,25 @@ impl WorkspaceSearchGenerationDataPlaneClient {
             ));
         }
         self.cold_lexical_result(query, None, Some(&authority), limit)
+    }
+
+    pub fn read_tantivy_for_language(
+        &self,
+        expression: &str,
+        language_id: &agent_semantic_client_core::LanguageId,
+        limit: u32,
+    ) -> Result<Arc<agent_semantic_search_projection::ResidentSearchReadyResult>, String> {
+        let accelerator = self
+            .lexical_accelerator
+            .get()
+            .ok_or_else(|| "resident Tantivy attachment is not ready".to_owned())?
+            .as_ref()
+            .map_err(Clone::clone)?;
+        accelerator.query_tantivy_language(
+            expression,
+            &agent_semantic_config::LanguageId::new(language_id.as_str()),
+            limit,
+        )
     }
 
     fn cold_lexical_result(
@@ -371,7 +388,10 @@ impl WorkspaceSearchGenerationDataPlaneClient {
         Ok(self.owner_directory_records.get(owner_path).map(Arc::clone))
     }
 
-    fn resident_owner_bytes<'a>(&'a self, record: &SearchOwnerRecord) -> Result<&'a [u8], String> {
+    pub(super) fn resident_owner_bytes<'a>(
+        &'a self,
+        record: &SearchOwnerRecord,
+    ) -> Result<&'a [u8], String> {
         if let Some(generation) = &self.resident_generation {
             let position = self
                 .resident_owner_positions
@@ -390,18 +410,18 @@ impl WorkspaceSearchGenerationDataPlaneClient {
         let start = owner_bytes_range
             .start
             .checked_add(record.byte_offset as usize)
-            .ok_or_else(|| "workspace search owner byte offset overflows".to_owned())?;
+            .ok_or_else(|| "workspace owner byte offset overflows".to_owned())?;
         let end = start
             .checked_add(record.byte_length as usize)
-            .ok_or_else(|| "workspace search owner byte range overflows".to_owned())?;
+            .ok_or_else(|| "workspace owner byte range overflows".to_owned())?;
         if end > owner_bytes_range.end {
-            return Err("workspace search owner bytes exceed section bounds".to_owned());
+            return Err("workspace owner bytes exceed section bounds".to_owned());
         }
         self.mapping
             .as_ref()
             .ok_or_else(|| "mapped workspace search generation is missing".to_owned())?
             .get(start..end)
-            .ok_or_else(|| "workspace search owner bytes exceed section bounds".to_owned())
+            .ok_or_else(|| "workspace owner bytes exceed section bounds".to_owned())
     }
 
     pub fn read_merkle_owner(
@@ -536,22 +556,12 @@ impl WorkspaceSearchGenerationDataPlaneClient {
 }
 
 fn validate_cold_lexical_request(query: &str, limit: u32) -> Result<(), String> {
-    if query.trim().is_empty() || !(1..=MAX_COLD_LEXICAL_CANDIDATES).contains(&limit) {
-        return Err(
-            "cold resident search requires a non-empty query and limit in 1..=4096".to_owned(),
-        );
+    if query.trim().is_empty() || limit == 0 {
+        return Err("cold resident search requires a non-empty query and limit".to_owned());
     }
     Ok(())
 }
 
 #[cfg(test)]
-mod tests {
-    use super::validate_cold_lexical_request;
-
-    #[test]
-    fn progressive_acquisition_accepts_4096_candidates_but_rejects_larger_requests() {
-        assert!(validate_cold_lexical_request("runtime|query", 4096).is_ok());
-        assert!(validate_cold_lexical_request("runtime|query", 4097).is_err());
-        assert!(validate_cold_lexical_request(" ", 30).is_err());
-    }
-}
+#[path = "../../tests/unit/runtime_server_workspace_search_index_projection_reads.rs"]
+mod tests;

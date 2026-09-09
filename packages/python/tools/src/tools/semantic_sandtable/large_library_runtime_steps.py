@@ -12,7 +12,6 @@ import time
 from pathlib import Path
 from typing import Any
 
-from .large_library_runtime_invocation import benchmark_command_from_descriptor
 from .large_library_runtime_process import facade_environment, run_public_command
 from .large_library_runtime_types import CommandResult, Corpus, Invocation
 
@@ -24,13 +23,8 @@ def warmup(
     binary: Path,
     corpus: Corpus,
     workspace: Path,
-    descriptors: list[dict[str, Any]],
 ) -> dict[str, Any]:
-    descriptor = next(
-        (item for item in descriptors if item.get("method") == "search/prime"),
-        descriptors[0],
-    )
-    step = benchmark_step(binary, corpus, workspace, descriptor)
+    step = benchmark_playbook_step(binary, corpus, workspace)
     return {
         "scenarioId": corpus.scenario_id,
         "language": corpus.language,
@@ -41,36 +35,37 @@ def warmup(
     }
 
 
-def benchmark_step(
-    binary: Path,
-    corpus: Corpus,
-    workspace: Path,
-    descriptor: dict[str, Any],
+def benchmark_playbook_step(
+    binary: Path, corpus: Corpus, workspace: Path
 ) -> dict[str, Any]:
-    method = str(descriptor.get("method", "search/unknown"))
-    try:
-        invocation = benchmark_command_from_descriptor(
-            descriptor,
-            corpus.language,
-            {"workspace": str(workspace), **corpus.inputs},
-        )
-    except ValueError as error:
-        return template_failure(corpus, method, str(error))
-    return benchmark_invocation_step(binary, corpus, invocation, method)
-
-
-def benchmark_fd_step(binary: Path, corpus: Corpus, workspace: Path) -> dict[str, Any]:
-    """Exercise the public path/module stage once for every real corpus."""
+    """Exercise the sole public Search Playbook once for every real corpus."""
+    query = corpus.inputs["query"]
     return benchmark_invocation_step(
         binary,
         corpus,
         Invocation(
-            command=["asp", "fd", "-query", corpus.inputs["query"], "--workspace", str(workspace)],
+            command=[
+                "asp",
+                "search",
+                "playbook",
+                "--language",
+                corpus.language,
+                "--workspace",
+                str(workspace),
+                "--rg",
+                "-n",
+                "-e",
+                query,
+                ".",
+                "--tantivy",
+                "term",
+                query,
+            ],
             stdin=None,
             expects_json=False,
-            max_elapsed_ms=1_000,
+            max_elapsed_ms=2_500,
         ),
-        "search/fd-path",
+        "search/playbook",
     )
 
 
@@ -107,25 +102,6 @@ def benchmark_invocation_step(
         "stderrBytes": len(completed.stderr.encode()),
         "warnings": [],
         "errors": errors,
-    }
-
-
-def template_failure(corpus: Corpus, method: str, error: str) -> dict[str, Any]:
-    return {
-        "scenarioId": corpus.scenario_id,
-        "language": corpus.language,
-        "method": method,
-        "stepId": method.removeprefix("search/"),
-        "command": ["asp", corpus.language, "search"],
-        "status": "fail",
-        "executed": False,
-        "elapsedMs": 0,
-        "maxElapsedMs": 0,
-        "stdoutBytes": 0,
-        "stderrBytes": 0,
-        "processTreeTerminated": False,
-        "warnings": [],
-        "errors": [error],
     }
 
 

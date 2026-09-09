@@ -104,6 +104,122 @@ theorem directory_budget_250_32_is_partial :
     ((List.range 250).take 32).length = 32 ∧
     249 ∈ List.range 250 ∧ 249 ∉ (List.range 250).take 32 := by decide
 
+/- Search execution cardinality belongs to one admitted Runtime generation.
+   Tokio scheduling concurrency is intentionally absent from both structures:
+   readiness scheduling cannot widen or truncate semantic evidence. -/
+structure RuntimeSearchGenerationCardinality where
+  generation : Nat
+  indexedOwners : Nat
+  corpusBytes : Nat
+  corpusLines : Nat
+  graphNodes : Nat
+  graphEdges : Nat
+  deriving DecidableEq, Repr
+
+structure RuntimeSearchExecutionBudgetReceipt where
+  generation : Nat
+  rgMatches : Nat
+  lexicalOwners : Nat
+  syntaxSelectors : Nat
+  graphCandidateOwners : Nat
+  graphDepth : Nat
+  graphNodes : Nat
+  graphEdges : Nat
+  graphResults : Nat
+  evidenceItems : Nat
+  deriving DecidableEq, Repr
+
+def deriveRuntimeSearchExecutionBudget
+    (cardinality : RuntimeSearchGenerationCardinality) :
+    RuntimeSearchExecutionBudgetReceipt :=
+  { generation := cardinality.generation
+    rgMatches := cardinality.corpusLines
+    lexicalOwners := cardinality.indexedOwners
+    syntaxSelectors := max cardinality.corpusBytes cardinality.indexedOwners
+    graphCandidateOwners := cardinality.indexedOwners
+    graphDepth := min cardinality.graphNodes 16
+    graphNodes := min cardinality.graphNodes 256
+    graphEdges := min cardinality.graphEdges 1024
+    graphResults := min cardinality.indexedOwners 30
+    evidenceItems := 30 }
+
+def runtimeSearchExecutionBudgetAdmitted
+    (cardinality : RuntimeSearchGenerationCardinality)
+    (candidate : RuntimeSearchExecutionBudgetReceipt) : Bool :=
+  candidate == deriveRuntimeSearchExecutionBudget cardinality
+
+theorem derived_runtime_search_execution_budget_is_admitted
+    (cardinality : RuntimeSearchGenerationCardinality) :
+    runtimeSearchExecutionBudgetAdmitted cardinality
+      (deriveRuntimeSearchExecutionBudget cardinality) = true := by
+  simp [runtimeSearchExecutionBudgetAdmitted]
+
+theorem leaf_rg_limit_cannot_widen_runtime_budget
+    (cardinality : RuntimeSearchGenerationCardinality)
+    (candidate : RuntimeSearchExecutionBudgetReceipt)
+    (widened : candidate.rgMatches ≠ cardinality.corpusLines) :
+    runtimeSearchExecutionBudgetAdmitted cardinality candidate = false := by
+  simp [runtimeSearchExecutionBudgetAdmitted, deriveRuntimeSearchExecutionBudget]
+  intro admitted
+  exact widened (congrArg RuntimeSearchExecutionBudgetReceipt.rgMatches admitted)
+
+theorem derived_graph_budget_respects_v1_envelope
+    (cardinality : RuntimeSearchGenerationCardinality) :
+    (deriveRuntimeSearchExecutionBudget cardinality).graphDepth ≤ 16 ∧
+      (deriveRuntimeSearchExecutionBudget cardinality).graphNodes ≤ 256 ∧
+      (deriveRuntimeSearchExecutionBudget cardinality).graphEdges ≤ 1024 ∧
+      (deriveRuntimeSearchExecutionBudget cardinality).graphResults ≤ 30 := by
+  exact ⟨Nat.min_le_right _ _, Nat.min_le_right _ _, Nat.min_le_right _ _,
+    Nat.min_le_right _ _⟩
+
+/- Tokio may schedule independent workspace requests in any physical order,
+   while semantic identity remains the full request key. Scheduling state and
+   task counts are deliberately absent from this key. -/
+structure RuntimeWorkspaceRequestKey where
+  project : Nat
+  workspace : Nat
+  worktree : Nat
+  generation : Nat
+  session : Nat
+  request : Nat
+  deriving DecidableEq, Repr
+
+theorem workspace_identity_partitions_runtime_requests
+    (left right : RuntimeWorkspaceRequestKey)
+    (differentWorkspace : left.workspace ≠ right.workspace) : left ≠ right := by
+  intro equalKeys
+  exact differentWorkspace (congrArg RuntimeWorkspaceRequestKey.workspace equalKeys)
+
+/- Query readiness is the immutable resident base. Search attachments refine
+   that base but cannot revoke it; this prevents topology, graph, or lexical
+   construction failure from becoming an exact-Query failure. -/
+structure RuntimeGenerationReadiness where
+  residentBase : Bool
+  executionPublication : Bool
+  providerBinding : Bool
+  graphAttachment : Bool
+  tantivyAttachment : Bool
+  topologyAttachment : Bool
+  deriving DecidableEq, Repr
+
+def runtimeQueryBaseReady (readiness : RuntimeGenerationReadiness) : Bool :=
+  readiness.residentBase && readiness.executionPublication && readiness.providerBinding
+
+def runtimeSearchReady (readiness : RuntimeGenerationReadiness) : Bool :=
+  runtimeQueryBaseReady readiness && readiness.graphAttachment &&
+    readiness.tantivyAttachment && readiness.topologyAttachment
+
+theorem search_attachment_state_cannot_revoke_query_base
+    (graph tantivy topology : Bool) :
+    runtimeQueryBaseReady ⟨true, true, true, graph, tantivy, topology⟩ = true := by
+  cases graph <;> cases tantivy <;> cases topology <;> decide
+
+theorem topology_failure_blocks_search_without_revoking_query :
+    let readiness : RuntimeGenerationReadiness :=
+      ⟨true, true, true, true, true, false⟩
+    runtimeQueryBaseReady readiness = true ∧ runtimeSearchReady readiness = false := by
+  decide
+
 abbrev EvidenceAtom := Witness
 
 structure DisplayRow where
@@ -214,93 +330,162 @@ theorem spent_budget_cannot_take_another_step {binding count remaining : Nat}
   have h := run_has_finite_step_bound run
   omega
 
-/- Acquisition returns candidates. Only a registered provider projection under
-   the same binding can mint a structural selector for one. The explicit syntax
-   axis uses a provider predicate; its type is intentionally not a path or URI. -/
+/- rg and Tantivy jointly determine the file-context scope. Syntax layers may
+   extract facts from that scope, but cannot add an owner to it. -/
 structure AcquisitionCandidate where
   pathId : Nat
   binding : Nat
   deriving DecidableEq, Repr
 
-inductive AcquisitionRoute where
-  | fd | rg | tantivy
+structure RetrievalScopes where
+  rgOwners : List Nat
+  tantivyOwners : List Nat
   deriving DecidableEq, Repr
 
-structure RouteCandidate where
-  pathId : Nat
-  suffixId : Nat
-  route : AcquisitionRoute
-  providerAvailable : Bool
+def fusedFileContextScope (scopes : RetrievalScopes) : List Nat :=
+  scopes.rgOwners.filter fun owner => owner ∈ scopes.tantivyOwners
+
+theorem owner_in_fused_scope_iff_in_rg_and_tantivy
+    (scopes : RetrievalScopes) (owner : Nat) :
+    owner ∈ fusedFileContextScope scopes ↔
+      owner ∈ scopes.rgOwners ∧ owner ∈ scopes.tantivyOwners := by
+  simp [fusedFileContextScope]
+
+def exampleRetrievalScopes : RetrievalScopes :=
+  ⟨[1, 2, 4], [2, 3, 4]⟩
+
+def fusedScope : List Nat := fusedFileContextScope exampleRetrievalScopes
+
+theorem retrieval_only_owner_is_not_in_fused_scope :
+    1 ∉ fusedFileContextScope exampleRetrievalScopes ∧
+    3 ∉ fusedFileContextScope exampleRetrievalScopes := by decide
+
+theorem jointly_retrieved_owner_is_in_fused_scope :
+    2 ∈ fusedFileContextScope exampleRetrievalScopes ∧
+    4 ∈ fusedFileContextScope exampleRetrievalScopes := by decide
+
+structure ScopeCalibration where
+  languages : Option (List Nat)
+  documents : Option (List Nat)
   deriving DecidableEq, Repr
 
-def heterogeneousRouteCandidates : List RouteCandidate :=
-  [⟨1, 1, .fd, true⟩, ⟨2, 2, .rg, true⟩,
-   ⟨3, 3, .tantivy, true⟩, ⟨4, 99, .rg, false⟩]
+def fileContextScopeWithCalibration
+    (scopes : RetrievalScopes) (_calibration : ScopeCalibration) : List Nat :=
+  fusedFileContextScope scopes
 
-def acquisitionCandidateUnion (candidates : List RouteCandidate) : List Nat :=
-  (candidates.map (·.pathId)).eraseDups
+theorem optional_calibration_cannot_mint_file_context
+    (scopes : RetrievalScopes) (calibration : ScopeCalibration) :
+    fileContextScopeWithCalibration scopes calibration = fusedFileContextScope scopes := by
+  rfl
 
-def illegalProviderExtensionPrefilter
-    (candidates : List RouteCandidate) : List Nat :=
-  ((candidates.filter (·.providerAvailable)).map (·.pathId)).eraseDups
+inductive StructuralQueryForm where
+  | treeSitterSExpression
+  | astGrepPattern
+  | exactNativeSelector
+  deriving DecidableEq, Repr
 
-theorem acquisition_union_preserves_unknown_extension :
-    4 ∈ acquisitionCandidateUnion heterogeneousRouteCandidates := by decide
+structure StructuralMatch where
+  ownerPathId : Nat
+  selectorId : Nat
+  queryForm : StructuralQueryForm
+  deriving DecidableEq, Repr
 
-theorem provider_extension_prefilter_changes_acquisition_semantics :
-    illegalProviderExtensionPrefilter heterogeneousRouteCandidates ≠
-      acquisitionCandidateUnion heterogeneousRouteCandidates := by decide
+def matchesInsideFileContext (fileContextScope : List Nat)
+    (found : List StructuralMatch) : List StructuralMatch :=
+  found.filter fun matched => matched.ownerPathId ∈ fileContextScope
+
+def structuralFrontier (fileContextScope : List Nat) (explicitRequested : Bool)
+    (automatic explicit : List StructuralMatch) : List StructuralMatch :=
+  matchesInsideFileContext fileContextScope
+    (if explicitRequested then explicit else automatic)
+
+theorem structural_frontier_owner_is_in_file_context
+    (fileContextScope : List Nat) (explicitRequested : Bool)
+    (automatic explicit : List StructuralMatch) (matched : StructuralMatch)
+    (member : matched ∈ structuralFrontier fileContextScope explicitRequested automatic explicit) :
+    matched.ownerPathId ∈ fileContextScope := by
+  simp only [structuralFrontier, matchesInsideFileContext, List.mem_filter] at member
+  exact of_decide_eq_true member.2
+
+def automaticStructuralMatches : List StructuralMatch :=
+  [⟨2, 20, .treeSitterSExpression⟩, ⟨4, 40, .treeSitterSExpression⟩]
+
+def exactStructuralMatches : List StructuralMatch :=
+  [⟨2, 21, .exactNativeSelector⟩]
+
+theorem explicit_structural_query_replaces_automatic_frontier :
+    structuralFrontier fusedScope true automaticStructuralMatches exactStructuralMatches =
+      exactStructuralMatches := by decide
+
+theorem structural_query_cannot_reintroduce_owner_outside_file_context :
+    structuralFrontier fusedScope true automaticStructuralMatches
+      [⟨1, 11, .astGrepPattern⟩] = [] := by decide
 
 structure NativeProjection where
+  ownerPathId : Nat
   binding : Nat
   registered : Bool
   parsed : Bool
   selector : Node
   deriving DecidableEq, Repr
 
-def selectorFrom (candidate : AcquisitionCandidate)
+def selectorFrom (fileContextScope : List Nat) (candidate : AcquisitionCandidate)
     (projection : NativeProjection) : Option Node :=
-  if candidate.binding == projection.binding && projection.registered && projection.parsed
+  if candidate.pathId ∈ fileContextScope &&
+    candidate.pathId == projection.ownerPathId &&
+    candidate.binding == projection.binding && projection.registered && projection.parsed
   then some projection.selector
   else none
 
-def candidate : AcquisitionCandidate := ⟨7, 1⟩
-def validProjection : NativeProjection := ⟨1, true, true, .refresh⟩
-def unregisteredProjection : NativeProjection := ⟨1, false, true, .refresh⟩
-def staleProjection : NativeProjection := ⟨2, true, true, .refresh⟩
+def candidate : AcquisitionCandidate := ⟨2, 1⟩
+def outsideCandidate : AcquisitionCandidate := ⟨1, 1⟩
+def validProjection : NativeProjection := ⟨2, 1, true, true, .refresh⟩
+def unregisteredProjection : NativeProjection := ⟨2, 1, false, true, .refresh⟩
+def staleProjection : NativeProjection := ⟨2, 2, true, true, .refresh⟩
 
 theorem admitted_native_projection_mints_selector :
-    selectorFrom candidate validProjection = some .refresh := by decide
+    selectorFrom fusedScope candidate validProjection = some .refresh := by decide
 
 theorem candidate_path_alone_does_not_mint_selector :
-    selectorFrom candidate unregisteredProjection = none := by decide
+    selectorFrom fusedScope candidate unregisteredProjection = none := by decide
 
 theorem stale_native_projection_does_not_mint_selector :
-    selectorFrom candidate staleProjection = none := by decide
+    selectorFrom fusedScope candidate staleProjection = none := by decide
+
+theorem syntax_projection_cannot_escape_fused_scope :
+    selectorFrom fusedScope outsideCandidate
+      { validProjection with ownerPathId := outsideCandidate.pathId } = none := by decide
 
 structure NativeSyntaxAnchor where
+  ownerPathId : Nat
   providerId : Nat
   hasItemFragment : Bool
   canonical : Bool
   binding : Nat
   deriving DecidableEq, Repr
 
-def nativeSyntaxAnchorAdmitted (expectedBinding : Nat) (anchor : NativeSyntaxAnchor) : Bool :=
-  anchor.providerId != 0 && anchor.hasItemFragment && anchor.canonical &&
+def nativeSyntaxAnchorAdmitted (fileContextScope : List Nat)
+    (expectedBinding : Nat) (anchor : NativeSyntaxAnchor) : Bool :=
+  anchor.ownerPathId ∈ fileContextScope && anchor.providerId != 0 &&
+    anchor.hasItemFragment && anchor.canonical &&
     anchor.binding == expectedBinding
 
-def bareFileUri : NativeSyntaxAnchor := ⟨1, false, true, 1⟩
-def canonicalItemAnchor : NativeSyntaxAnchor := ⟨1, true, true, 1⟩
-def staleItemAnchor : NativeSyntaxAnchor := ⟨1, true, true, 2⟩
+def bareFileUri : NativeSyntaxAnchor := ⟨2, 1, false, true, 1⟩
+def canonicalItemAnchor : NativeSyntaxAnchor := ⟨2, 1, true, true, 1⟩
+def staleItemAnchor : NativeSyntaxAnchor := ⟨2, 1, true, true, 2⟩
+def outsideItemAnchor : NativeSyntaxAnchor := ⟨1, 1, true, true, 1⟩
 
 theorem bare_file_uri_is_not_a_native_syntax_anchor :
-    nativeSyntaxAnchorAdmitted 1 bareFileUri = false := by decide
+    nativeSyntaxAnchorAdmitted fusedScope 1 bareFileUri = false := by decide
 
 theorem canonical_item_selector_can_anchor_native_syntax :
-    nativeSyntaxAnchorAdmitted 1 canonicalItemAnchor = true := by decide
+    nativeSyntaxAnchorAdmitted fusedScope 1 canonicalItemAnchor = true := by decide
 
 theorem stale_item_selector_cannot_anchor_native_syntax :
-    nativeSyntaxAnchorAdmitted 1 staleItemAnchor = false := by decide
+    nativeSyntaxAnchorAdmitted fusedScope 1 staleItemAnchor = false := by decide
+
+theorem native_syntax_anchor_cannot_escape_fused_scope :
+    nativeSyntaxAnchorAdmitted fusedScope 1 outsideItemAnchor = false := by decide
 
 /- A reasoning frontier ranks core candidates separately from the witness
    connectors required to explain them. Display omission is not absence. -/
@@ -1212,13 +1397,13 @@ theorem admitted_identity_collision_cannot_authorize_forged_inference_fields :
       ⟨11, 17, closure, closureStep reasoningEdges closure,
         .fixedPoint, 71⟩ = false := by decide
 
-/- A MaterializationSet is one deterministic set, not an execution sequence.
-   Stable ordering and selector availability are separate admission facts. -/
+/- A MaterializationSet is one caller-ordered execution sequence. Duplicate
+   selectors are rejected without sorting or otherwise rewriting that order. -/
 def materializationSetAdmitted (available selected : List Nat) : Bool :=
-  selected.Pairwise (· < ·) && selected.all available.contains
+  selected.eraseDups == selected && selected.all available.contains
 
-theorem sorted_available_materialization_set_is_admitted :
-    materializationSetAdmitted [10, 20, 30] [10, 30] = true := by decide
+theorem caller_ordered_available_materialization_set_is_admitted :
+    materializationSetAdmitted [10, 20, 30] [30, 10] = true := by decide
 
 theorem duplicate_or_unavailable_materialization_is_rejected :
     materializationSetAdmitted [10, 20, 30] [10, 10] = false ∧
@@ -1474,13 +1659,11 @@ structure QueryPlaybookRequest where
   deriving DecidableEq, Repr
 
 def queryPlaybookRequestAdmitted
-    (manifestProjectWorkspace : ProjectWorkspaceBindingIdentity)
     (expectedBinding : RuntimeExecutionBindingIdentity)
     (expectedRuntimeBundleDigest expectedExecutionPublicationDigest : Nat)
     (runtimeAdmittedSelectors : List Nat)
     (request : QueryPlaybookRequest) : Bool :=
   request.requestIdentity != 0 &&
-    expectedBinding.projectWorkspace == manifestProjectWorkspace &&
     request.runtimeBinding == expectedBinding &&
     request.runtimeBundleDigest == expectedRuntimeBundleDigest &&
     request.executionPublicationDigest == expectedExecutionPublicationDigest &&
@@ -1787,45 +1970,45 @@ theorem source_pointer_drift_rejects_an_otherwise_valid_sidecar :
       ⟨1, 32, 42, 51⟩ = false := by decide
 
 theorem smallest_runtime_admitted_selector_subset_is_queryable :
-    queryPlaybookRequestAdmitted currentProjectWorkspace currentRuntimeBinding 61 51 [10, 20, 30]
+    queryPlaybookRequestAdmitted currentRuntimeBinding 61 51 [10, 20, 30]
       ⟨101, 1, 2, currentRuntimeBinding, 61, 51, [10], 7⟩ = true := by decide
 
 theorem selectors_learned_across_searches_may_form_one_query :
-    queryPlaybookRequestAdmitted currentProjectWorkspace currentRuntimeBinding 61 51 [10, 20, 30]
-      ⟨101, 1, 2, currentRuntimeBinding, 61, 51, [10, 30], 7⟩ = true := by decide
+    queryPlaybookRequestAdmitted currentRuntimeBinding 61 51 [10, 20, 30]
+      ⟨101, 1, 2, currentRuntimeBinding, 61, 51, [30, 10], 7⟩ = true := by decide
 
 theorem runtime_binding_drift_is_rejected_before_materialization :
-    queryPlaybookRequestAdmitted currentProjectWorkspace currentRuntimeBinding 61 51 [10, 20, 30]
+    queryPlaybookRequestAdmitted currentRuntimeBinding 61 51 [10, 20, 30]
       ⟨101, 1, 2, ⟨currentProjectWorkspace, 2, 3, 4, 11, 99, 13, 14, 15, 16⟩, 61, 51,
         [10], 7⟩ = false := by decide
 
 theorem publication_nonce_drift_is_rejected_before_materialization :
-    queryPlaybookRequestAdmitted currentProjectWorkspace currentRuntimeBinding 61 51 [10, 20, 30]
+    queryPlaybookRequestAdmitted currentRuntimeBinding 61 51 [10, 20, 30]
       ⟨101, 1, 2, { currentRuntimeBinding with publicationNonce := 99 }, 61, 51, [10], 7⟩ = false := by
   decide
 
 theorem content_binding_drift_is_rejected_before_materialization :
-    queryPlaybookRequestAdmitted currentProjectWorkspace currentRuntimeBinding 61 51 [10, 20, 30]
+    queryPlaybookRequestAdmitted currentRuntimeBinding 61 51 [10, 20, 30]
       ⟨101, 1, 2, { currentRuntimeBinding with contentBinding := 99 }, 61, 51, [10], 7⟩ = false := by
   decide
 
 theorem evaluator_policy_drift_is_rejected_before_materialization :
-    queryPlaybookRequestAdmitted currentProjectWorkspace currentRuntimeBinding 61 51 [10, 20, 30]
+    queryPlaybookRequestAdmitted currentRuntimeBinding 61 51 [10, 20, 30]
       ⟨101, 1, 2, { currentRuntimeBinding with evaluatorPolicy := 99 }, 61, 51, [10], 7⟩ = false := by
   decide
 
 theorem active_artifact_receipt_drift_is_rejected_before_materialization :
-    queryPlaybookRequestAdmitted currentProjectWorkspace currentRuntimeBinding 61 51 [10, 20, 30]
+    queryPlaybookRequestAdmitted currentRuntimeBinding 61 51 [10, 20, 30]
       ⟨101, 1, 2, { currentRuntimeBinding with activeArtifactReceipt := 99 }, 61, 51, [10], 7⟩ = false := by
   decide
 
 theorem evaluator_abi_drift_is_rejected_before_materialization :
-    queryPlaybookRequestAdmitted currentProjectWorkspace currentRuntimeBinding 61 51 [10, 20, 30]
+    queryPlaybookRequestAdmitted currentRuntimeBinding 61 51 [10, 20, 30]
       ⟨101, 1, 2, { currentRuntimeBinding with evaluatorAbi := 99 }, 61, 51, [10], 7⟩ = false := by
   decide
 
 theorem workspace_root_drift_is_rejected_before_materialization :
-    queryPlaybookRequestAdmitted currentProjectWorkspace currentRuntimeBinding 61 51 [10, 20, 30]
+    queryPlaybookRequestAdmitted currentRuntimeBinding 61 51 [10, 20, 30]
       ⟨101, 1, 2, ⟨⟨1, 99, 4, [21, 22]⟩, 2, 3, 4, 11, 12, 13, 14, 15, 16⟩,
         61, 51, [10], 7⟩ = false := by decide
 
@@ -1833,26 +2016,26 @@ theorem equal_request_and_runtime_cannot_self_authorize_a_foreign_workspace :
     let foreignWorkspace : ProjectWorkspaceBindingIdentity := ⟨9, 3, 4, [21, 22]⟩
     let foreignRuntime : RuntimeExecutionBindingIdentity :=
       ⟨foreignWorkspace, 2, 3, 4, 11, 12, 13, 14, 15, 16⟩
-    queryPlaybookRequestAdmitted currentProjectWorkspace foreignRuntime 61 51 [10, 20, 30]
+    queryPlaybookRequestAdmitted currentRuntimeBinding 61 51 [10, 20, 30]
       ⟨101, 9, 2, foreignRuntime, 61, 51, [10], 7⟩ = false := by decide
 
 theorem repository_alias_drift_is_rejected_before_materialization :
     let aliasDrift : ProjectWorkspaceBindingIdentity := ⟨1, 3, 4, [21, 99]⟩
     let driftedRuntime : RuntimeExecutionBindingIdentity :=
       ⟨aliasDrift, 2, 3, 4, 11, 12, 13, 14, 15, 16⟩
-    queryPlaybookRequestAdmitted currentProjectWorkspace driftedRuntime 61 51 [10, 20, 30]
+    queryPlaybookRequestAdmitted currentRuntimeBinding 61 51 [10, 20, 30]
       ⟨101, 1, 2, driftedRuntime, 61, 51, [10], 7⟩ = false := by decide
 
 theorem worktree_context_drift_is_rejected_before_materialization :
-    queryPlaybookRequestAdmitted currentProjectWorkspace currentRuntimeBinding 61 51 [10, 20, 30]
+    queryPlaybookRequestAdmitted currentRuntimeBinding 61 51 [10, 20, 30]
       ⟨101, 1, 99, currentRuntimeBinding, 61, 51, [10], 7⟩ = false := by decide
 
 theorem outer_runtime_bundle_drift_is_rejected_before_materialization :
-    queryPlaybookRequestAdmitted currentProjectWorkspace currentRuntimeBinding 61 51 [10, 20, 30]
+    queryPlaybookRequestAdmitted currentRuntimeBinding 61 51 [10, 20, 30]
       ⟨101, 1, 2, currentRuntimeBinding, 62, 51, [10], 7⟩ = false := by decide
 
 theorem execution_publication_drift_is_rejected_before_materialization :
-    queryPlaybookRequestAdmitted currentProjectWorkspace currentRuntimeBinding 61 51 [10, 20, 30]
+    queryPlaybookRequestAdmitted currentRuntimeBinding 61 51 [10, 20, 30]
       ⟨101, 1, 2, currentRuntimeBinding, 61, 52, [10], 7⟩ = false := by decide
 
 inductive QueryPlaybookTerminalState where
@@ -1874,14 +2057,14 @@ structure QueryPlaybookReceipt where
   deriving DecidableEq, Repr
 
 def queryPlaybookReceiptAdmitted
-    (manifestProjectWorkspace : ProjectWorkspaceBindingIdentity)
     (expectedBinding : RuntimeExecutionBindingIdentity)
     (expectedRuntimeBundleDigest expectedExecutionPublicationDigest : Nat)
     (runtimeAdmittedSelectors : List Nat)
     (request : QueryPlaybookRequest)
     (receipt : QueryPlaybookReceipt) : Bool :=
-  queryPlaybookRequestAdmitted manifestProjectWorkspace expectedBinding
-      expectedRuntimeBundleDigest expectedExecutionPublicationDigest runtimeAdmittedSelectors request &&
+  queryPlaybookRequestAdmitted expectedBinding
+      expectedRuntimeBundleDigest expectedExecutionPublicationDigest
+      runtimeAdmittedSelectors request &&
     receipt.requestIdentity == request.requestIdentity &&
     receipt.projectWorkspace == request.projectWorkspace &&
     receipt.worktreeInstance == request.worktreeInstance &&
@@ -1896,28 +2079,33 @@ def queryPlaybookReceiptAdmitted
     | .failed => receipt.materializedSelectors.isEmpty
 
 def twoSelectorQuery : QueryPlaybookRequest :=
-  ⟨101, 1, 2, currentRuntimeBinding, 61, 51, [10, 30], 7⟩
+  ⟨101, 1, 2, currentRuntimeBinding, 61, 51, [30, 10], 7⟩
 
 def completeQueryReceipt : QueryPlaybookReceipt :=
-  ⟨101, 1, 2, currentRuntimeBinding, 61, 51, [10, 30], [10, 30], 7, .ready, 1⟩
+  ⟨101, 1, 2, currentRuntimeBinding, 61, 51, [30, 10], [30, 10], 7, .ready, 1⟩
 
-theorem one_runtime_bound_terminal_materializes_the_complete_selector_set :
-    queryPlaybookReceiptAdmitted currentProjectWorkspace currentRuntimeBinding 61 51 [10, 20, 30]
+theorem one_runtime_bound_terminal_preserves_the_complete_request_order :
+    queryPlaybookReceiptAdmitted currentRuntimeBinding 61 51 [10, 20, 30]
       twoSelectorQuery completeQueryReceipt = true := by decide
 
 theorem a_partial_ready_receipt_is_rejected :
-    queryPlaybookReceiptAdmitted currentProjectWorkspace currentRuntimeBinding 61 51 [10, 20, 30]
+    queryPlaybookReceiptAdmitted currentRuntimeBinding 61 51 [10, 20, 30]
       twoSelectorQuery
       { completeQueryReceipt with materializedSelectors := [10] } = false := by decide
 
 theorem a_failed_receipt_cannot_expose_partial_materialization :
-    queryPlaybookReceiptAdmitted currentProjectWorkspace currentRuntimeBinding 61 51 [10, 20, 30]
+    queryPlaybookReceiptAdmitted currentRuntimeBinding 61 51 [10, 20, 30]
       twoSelectorQuery
       { { completeQueryReceipt with terminal := .failed } with
           materializedSelectors := [10] } = false := by decide
 
+theorem completion_order_cannot_replace_request_order :
+    queryPlaybookReceiptAdmitted currentRuntimeBinding 61 51 [10, 20, 30]
+      twoSelectorQuery
+      { completeQueryReceipt with materializedSelectors := [10, 30] } = false := by decide
+
 theorem more_than_one_query_terminal_is_rejected :
-    queryPlaybookReceiptAdmitted currentProjectWorkspace currentRuntimeBinding 61 51 [10, 20, 30]
+    queryPlaybookReceiptAdmitted currentRuntimeBinding 61 51 [10, 20, 30]
       twoSelectorQuery
       { completeQueryReceipt with terminalCount := 2 } = false := by decide
 

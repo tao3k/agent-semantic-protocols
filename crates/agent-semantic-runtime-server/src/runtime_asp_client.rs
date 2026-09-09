@@ -7,7 +7,6 @@
 use std::collections::hash_map::Entry;
 use std::sync::Arc;
 
-#[cfg(test)]
 use crate::RuntimeQueryGenerationState;
 use crate::runtime_query_generation_key::RuntimeProjectWorkspaceKey;
 use agent_semantic_client_protocol::AGENT_SESSION_REGISTER_METHOD;
@@ -19,7 +18,6 @@ use agent_semantic_client_protocol::AgentSessionRegisterState;
 use agent_semantic_client_protocol::AgentSessionRegistryOwner;
 use agent_semantic_client_protocol::AgentSessionTransport;
 use agent_semantic_client_protocol::AspClientExactQueryRequest;
-use agent_semantic_client_protocol::AspClientSearchRequest;
 use agent_semantic_client_protocol::AspClientWorkspaceQueryPlaybookRequest;
 use agent_semantic_client_protocol::AspClientWorkspaceSearchPlaybookRequest;
 use agent_semantic_client_protocol::AspClientWorkspaceSyntaxQueryRequest;
@@ -44,9 +42,6 @@ use agent_semantic_search_projection::ResidentGraphEvaluationRequestV1;
 #[path = "runtime_asp_client_query_generation.rs"]
 mod query_generation_support;
 
-#[path = "runtime_asp_client_search.rs"]
-mod search_route;
-
 #[path = "runtime_asp_client_syntax_query.rs"]
 mod syntax_query_route;
 
@@ -59,6 +54,9 @@ mod projection_routes;
 #[path = "runtime_asp_client_telemetry.rs"]
 mod telemetry;
 
+#[path = "runtime_asp_client_query_playbook.rs"]
+mod query_playbook;
+
 #[path = "runtime_asp_client_resolved_route.rs"]
 mod resolved_route;
 
@@ -68,22 +66,13 @@ use query_generation_support::AspClientOperationError;
 use query_generation_support::QueryNotReadyContext;
 use query_generation_support::RUNTIME_CLIENT_DISPATCH_BUDGET;
 use query_generation_support::classify_exact_query_failure;
-use query_generation_support::dispatch_budget_for_method;
-use query_generation_support::install_runtime_query_generation_terminal;
 use query_generation_support::query_generation_not_ready_error;
 use query_generation_support::request_runtime_query_generation_ready;
-use query_generation_support::revalidate_runtime_query_generation;
-use query_generation_support::wait_for_runtime_query_generation;
-use query_generation_support::wait_for_runtime_query_generation_change;
+use query_generation_support::{dispatch_budget_for_method, enforce_completed_dispatch_budget};
 use resolved_route::{ResolvedRouteContext, dispatch_resolved_route};
-use search_route::dispatch_search_route;
 use syntax_query_route::dispatch_workspace_syntax_query;
 use telemetry::elapsed_micros;
 use telemetry::record_runtime_route_performance;
-
-#[cfg(test)]
-#[path = "../tests/unit/runtime_asp_client_recovery.rs"]
-mod runtime_asp_client_recovery_tests;
 
 #[path = "runtime_asp_client_service.rs"]
 mod service;
@@ -172,6 +161,48 @@ fn record_runtime_terminal_egressed(
     }
 }
 
+fn resident_request_operation(
+    method: &str,
+) -> Option<agent_semantic_client_protocol::RuntimeResidentRequestOperation> {
+    if agent_semantic_client_protocol::classify_client_dispatch(method)
+        != agent_semantic_client_protocol::ClientDispatchClass::ResidentGenerationRead
+    {
+        return None;
+    }
+    Some(
+        if method == agent_semantic_client_protocol::WORKSPACE_SEARCH_PLAYBOOK_METHOD
+            || method == agent_semantic_client_protocol::GRAPH_EVALUATE_METHOD
+            || method.ends_with(".search")
+        {
+            agent_semantic_client_protocol::RuntimeResidentRequestOperation::Search
+        } else {
+            agent_semantic_client_protocol::RuntimeResidentRequestOperation::Query
+        },
+    )
+}
+
+fn resident_generation_digest(
+    value: &serde_json::Value,
+    generations: &tokio::sync::watch::Receiver<
+        Arc<std::collections::HashMap<RuntimeProjectWorkspaceKey, RuntimeQueryGenerationState>>,
+    >,
+    key: &RuntimeProjectWorkspaceKey,
+) -> Option<String> {
+    if let Some(RuntimeQueryGenerationState::Ready(generation)) = generations.borrow().get(key) {
+        return Some(generation.generation_digest().to_owned());
+    }
+    value
+        .get("generationDigest")
+        .and_then(serde_json::Value::as_str)
+        .or_else(|| {
+            value
+                .get("binding")
+                .and_then(|binding| binding.get("sourceGenerationDigest"))
+                .and_then(serde_json::Value::as_str)
+        })
+        .map(str::to_owned)
+}
+
 impl AspClientDispatcher for RuntimeAspClientDispatcher {
     fn dispatch(&self, request: AspClientDispatchRequest) -> AspClientDispatchFuture {
         let key = (
@@ -216,16 +247,24 @@ impl AspClientDispatcher for RuntimeAspClientDispatcher {
         let workspace_store_root = self.workspace_store_root.clone();
         let query_generation_authority = self.query_generation_authority.clone();
         let query_generation = query_generation_authority.subscribe();
+        let query_generation_for_receipt = query_generation.clone();
         let telemetry_sender = self.telemetry_sender.clone();
         let telemetry_traces = Arc::clone(&self.telemetry_traces);
         let active_telemetry_trace_count = Arc::clone(&self.active_telemetry_trace_count);
         let cancellations = Arc::clone(&self.cancellations);
+        let resident_request_seen = Arc::clone(&self.resident_request_seen);
         let dispatch_budget = dispatch_budget_for_method(&request.method);
+        let request_plane_operation = resident_request_operation(&request.method);
+        let request_plane_operation_id = request.request_id.as_str().to_owned();
+        let request_plane_key = (request.project_id.clone(), request.workspace_id.clone());
+        let request_plane_telemetry_sender = telemetry_sender.clone();
         Box::pin(async move {
+            let dispatch_started = tokio::time::Instant::now();
             let project_workspace_key = RuntimeProjectWorkspaceKey::new(
                 request.project_id.clone(),
                 request.workspace_id.clone(),
             );
+            let request_plane_generation_key = project_workspace_key.clone();
             let operation = async {
                 if request.method == agent_semantic_client_protocol::CANCELLATION_PROBE_METHOD {
                     return std::future::pending::<
@@ -555,30 +594,19 @@ impl AspClientDispatcher for RuntimeAspClientDispatcher {
                             provider_target,
                         )
                         .await?;
-                    install_runtime_query_generation_terminal(
-                        &terminal,
-                        &query_generation_authority,
-                        workspace_registry.as_ref(),
-                        &project_workspace_key,
-                        request.workspace_id.as_str(),
-                        &initialized.project_root,
-                    )
-                    .await
-                    .map_err(|error| error.message)?;
                     return serde_json::to_value(terminal)
                         .map_err(|error| error.to_string())
                         .map_err(AspClientOperationError::Message);
                 }
                 dispatch_resolved_route(ResolvedRouteContext {
                     request,
+                    schema_bundles,
                     project_workspace_key,
                     initialized_workspaces,
-                    runtime_search_service,
                     generation_admission,
                     workspace_registry,
                     active_provider_targets,
                     provider_register,
-                    query_generation_authority,
                     query_generation,
                     telemetry_sender,
                     telemetry_traces,
@@ -627,6 +655,52 @@ impl AspClientDispatcher for RuntimeAspClientDispatcher {
             })
                             }
                         };
+            let request_elapsed = dispatch_started.elapsed();
+            let result =
+                enforce_completed_dispatch_budget(result, dispatch_budget, request_elapsed);
+            if let Some(operation) = request_plane_operation {
+                let elapsed_micros = u64::try_from(request_elapsed.as_micros()).unwrap_or(u64::MAX);
+                let receipt_state = match &result {
+                    Ok(value) => resident_generation_digest(
+                        value,
+                        &query_generation_for_receipt,
+                        &request_plane_generation_key,
+                    )
+                    .map(Some),
+                    Err(error) if error.reason_kind == "query-not-ready" => Some(None),
+                    Err(_) => None,
+                };
+                if let Some(generation_digest) = receipt_state {
+                    let temperature = if resident_request_seen
+                        .lock()
+                        .expect("resident request temperature registry poisoned")
+                        .insert(request_plane_key)
+                    {
+                        agent_semantic_client_protocol::RuntimeResidentRequestTemperature::Cold
+                    } else {
+                        agent_semantic_client_protocol::RuntimeResidentRequestTemperature::Warm
+                    };
+                    let receipt = generation_digest.map_or_else(
+                        || {
+                            agent_semantic_client_protocol::RuntimeResidentRequestPlaneReceipt::query_not_ready(
+                                operation,
+                                temperature,
+                                elapsed_micros,
+                            )
+                        },
+                        |generation_digest| {
+                            agent_semantic_client_protocol::RuntimeResidentRequestPlaneReceipt::ready(
+                                operation,
+                                temperature,
+                                generation_digest,
+                                elapsed_micros,
+                            )
+                        },
+                    );
+                    let _ = request_plane_telemetry_sender
+                        .try_record_resident_request_plane(&request_plane_operation_id, receipt);
+                }
+            }
             cancellations
                 .lock()
                 .expect("ASP Client Protocol cancellation registry poisoned")

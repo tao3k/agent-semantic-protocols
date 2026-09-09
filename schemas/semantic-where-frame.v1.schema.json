@@ -49,8 +49,8 @@
           "enum": [
             "query-selector",
             "owner-items",
-            "search-lexical",
-            "search-deps",
+            "search-playbook",
+            "query-dependency",
             "source-index",
             "test-resolution",
             "schema-query",
@@ -132,8 +132,8 @@
             "enum": [
               "query-selector",
               "owner-items",
-              "search-lexical",
-              "search-deps",
+              "search-playbook",
+              "query-dependency",
               "source-index",
               "test-resolution",
               "schema-query",

@@ -2,210 +2,931 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://schemas.agent-semantic-protocols.dev/project-topology-library.v1.schema.json",
   "title": "Reusable Project Topology Library V1",
-  "description": "Content-addressed structural and semantic project topology shared by Search, Query, code understanding, framework calibration, refactoring, and context recovery. Retrieval ranges and request-local ranks are deliberately excluded.",
+  "description": "Content-addressed structural and semantic project topology with source-owned expected relations, coverage, and frontiers, shared by Search, Query, code understanding, framework calibration, refactoring, and context recovery. Retrieval ranges and request-local ranks are deliberately excluded.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaId", "schemaVersion", "projectWorkspace", "sourceGenerationDigest", "providerCatalogDigest", "libraryDigest", "generation", "fromScratchRebuildReceipt", "semanticAdmissionReceipts", "identities", "segments", "nodes", "edges", "coverageCertificates", "closure", "consumers", "terminal"],
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "projectWorkspace",
+    "sourceGenerationDigest",
+    "providerCatalogDigest",
+    "libraryDigest",
+    "generation",
+    "fromScratchRebuildReceipt",
+    "semanticAdmissionReceipts",
+    "identities",
+    "segments",
+    "nodes",
+    "edges",
+    "expectedRelations",
+    "coverageCertificates",
+    "frontiers",
+    "closure",
+    "consumers",
+    "terminal"
+  ],
   "properties": {
-    "schemaId": {"const": "agent.semantic-protocols.project-topology-library"},
-    "schemaVersion": {"const": "1"},
-    "projectWorkspace": {"$ref": "project-workspace-binding.v1.schema.json"},
-    "sourceGenerationDigest": {"$ref": "#/$defs/digest"},
-    "providerCatalogDigest": {"$ref": "#/$defs/digest"},
-    "libraryDigest": {"$ref": "#/$defs/digest"},
-    "generation": {"$ref": "#/$defs/generation"},
-    "fromScratchRebuildReceipt": {"$ref": "#/$defs/fromScratchRebuildReceipt"},
+    "schemaId": {
+      "const": "agent.semantic-protocols.project-topology-library"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "projectWorkspace": {
+      "$ref": "project-workspace-binding.v1.schema.json"
+    },
+    "sourceGenerationDigest": {
+      "$ref": "#/$defs/digest"
+    },
+    "providerCatalogDigest": {
+      "$ref": "#/$defs/digest"
+    },
+    "libraryDigest": {
+      "$ref": "#/$defs/digest"
+    },
+    "generation": {
+      "$ref": "#/$defs/generation"
+    },
+    "fromScratchRebuildReceipt": {
+      "$ref": "#/$defs/fromScratchRebuildReceipt"
+    },
     "semanticAdmissionReceipts": {
       "type": "array",
-      "items": {"$ref": "#/$defs/semanticAdmissionReceipt"}
+      "items": {
+        "$ref": "#/$defs/semanticAdmissionReceipt"
+      }
     },
-    "identities": {"$ref": "#/$defs/identities"},
-    "segments": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/segment"}},
-    "nodes": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/node"}},
-    "edges": {"type": "array", "items": {"$ref": "#/$defs/edge"}},
-    "coverageCertificates": {"type": "array", "items": {"$ref": "#/$defs/coverage"}},
-    "closure": {"$ref": "#/$defs/closure"},
+    "identities": {
+      "$ref": "#/$defs/identities"
+    },
+    "segments": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/segment"
+      }
+    },
+    "nodes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/node"
+      }
+    },
+    "edges": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/edge"
+      }
+    },
+    "coverageCertificates": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/coverage"
+      }
+    },
+    "closure": {
+      "$ref": "#/$defs/closure"
+    },
     "consumers": {
       "type": "array",
       "minItems": 1,
       "uniqueItems": true,
-      "items": {"enum": ["search", "query", "code-understanding", "framework-calibration", "refactoring", "context-recovery"]}
+      "items": {
+        "enum": [
+          "search",
+          "query",
+          "code-understanding",
+          "framework-calibration",
+          "refactoring",
+          "context-recovery"
+        ]
+      }
     },
-    "terminal": {"$ref": "#/$defs/terminal"}
+    "terminal": {
+      "$ref": "#/$defs/terminal"
+    },
+    "expectedRelations": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/expectedRelation"
+      }
+    },
+    "frontiers": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/frontier"
+      }
+    }
   },
   "$defs": {
-    "digest": {"type": "string", "pattern": "^blake3-256:[0-9a-f]{64}$(?![\\s\\S])"},
-    "identifier": {"type": "string", "pattern": "^[a-z][a-z0-9_.:-]*$(?![\\s\\S])"},
-    "nodeId": {"type": "string", "pattern": "^[a-z][a-z0-9_-]*$(?![\\s\\S])"},
-    "selector": {"type": "string", "pattern": "^[A-Za-z][A-Za-z0-9+.-]*://[^\\s]+#item/[^\\s]+$(?![\\s\\S])"},
-    "ownerLocator": {"type": "string", "pattern": "^[A-Za-z][A-Za-z0-9+.-]*://[^\\s#]+$(?![\\s\\S])"},
+    "digest": {
+      "type": "string",
+      "pattern": "^blake3-256:[0-9a-f]{64}$(?![\\s\\S])"
+    },
+    "identifier": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_.:-]*$(?![\\s\\S])"
+    },
+    "nodeId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*$(?![\\s\\S])"
+    },
+    "selector": {
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z0-9+.-]*://[^\\s]+#item/[^\\s]+$(?![\\s\\S])"
+    },
+    "ownerLocator": {
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z0-9+.-]*://[^\\s#]+$(?![\\s\\S])"
+    },
     "generation": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["generationDigest", "parentGenerationDigest", "state", "changeSetDigest", "rebuiltSegmentIds", "removedNodeIds", "removedEdgeIds", "fromScratchEquivalentDigest"],
+      "required": [
+        "generationDigest",
+        "parentGenerationDigest",
+        "state",
+        "changeSetDigest",
+        "rebuiltSegmentIds",
+        "removedNodeIds",
+        "removedEdgeIds",
+        "fromScratchEquivalentDigest"
+      ],
       "properties": {
-        "generationDigest": {"$ref": "#/$defs/digest"},
-        "parentGenerationDigest": {"oneOf": [{"$ref": "#/$defs/digest"}, {"type": "null"}]},
-        "state": {"const": "complete"},
-        "changeSetDigest": {"$ref": "#/$defs/digest"},
-        "rebuiltSegmentIds": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/identifier"}},
-        "removedNodeIds": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/nodeId"}},
-        "removedEdgeIds": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/identifier"}},
-        "fromScratchEquivalentDigest": {"$ref": "#/$defs/digest"}
+        "generationDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "parentGenerationDigest": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/digest"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "state": {
+          "const": "complete"
+        },
+        "changeSetDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "rebuiltSegmentIds": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        },
+        "removedNodeIds": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/nodeId"
+          }
+        },
+        "removedEdgeIds": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        },
+        "fromScratchEquivalentDigest": {
+          "$ref": "#/$defs/digest"
+        }
       }
     },
     "fromScratchRebuildReceipt": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "sourceGenerationDigest", "inferenceProgramDigest", "topologyGenerationDigest", "recomputedLibraryDigest", "authority", "state"],
+      "required": [
+        "id",
+        "sourceGenerationDigest",
+        "inferenceProgramDigest",
+        "topologyGenerationDigest",
+        "recomputedLibraryDigest",
+        "authority",
+        "state"
+      ],
       "properties": {
-        "id": {"$ref": "#/$defs/identifier"},
-        "sourceGenerationDigest": {"$ref": "#/$defs/digest"},
-        "inferenceProgramDigest": {"$ref": "#/$defs/digest"},
-        "topologyGenerationDigest": {"$ref": "#/$defs/digest"},
-        "recomputedLibraryDigest": {"$ref": "#/$defs/digest"},
-        "authority": {"const": "project-topology-rebuild.v1"},
-        "state": {"const": "admitted"}
+        "id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "sourceGenerationDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "inferenceProgramDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "topologyGenerationDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "recomputedLibraryDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "authority": {
+          "const": "project-topology-rebuild.v1"
+        },
+        "state": {
+          "const": "admitted"
+        }
       }
     },
     "semanticAdmissionReceipt": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "annotationNodeId", "semanticTopologyDigest", "authority", "state"],
+      "required": [
+        "id",
+        "annotationNodeId",
+        "semanticTopologyDigest",
+        "authority",
+        "state"
+      ],
       "properties": {
-        "id": {"$ref": "#/$defs/identifier"},
-        "annotationNodeId": {"$ref": "#/$defs/nodeId"},
-        "semanticTopologyDigest": {"$ref": "#/$defs/digest"},
-        "authority": {"enum": ["source-contract", "human-admission"]},
-        "state": {"const": "admitted"}
+        "id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "annotationNodeId": {
+          "$ref": "#/$defs/nodeId"
+        },
+        "semanticTopologyDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "authority": {
+          "enum": [
+            "source-contract",
+            "human-admission"
+          ]
+        },
+        "state": {
+          "const": "admitted"
+        }
       }
     },
     "identities": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["structuralTopologyDigest", "semanticTopologyDigest", "inferenceProgramDigest", "providerGrammarDigest", "resolverDigest", "topologySchemaDigest"],
+      "required": [
+        "structuralTopologyDigest",
+        "semanticTopologyDigest",
+        "inferenceProgramDigest",
+        "providerGrammarDigest",
+        "resolverDigest",
+        "topologySchemaDigest"
+      ],
       "properties": {
-        "structuralTopologyDigest": {"$ref": "#/$defs/digest"},
-        "semanticTopologyDigest": {"$ref": "#/$defs/digest"},
-        "inferenceProgramDigest": {"$ref": "#/$defs/digest"},
-        "providerGrammarDigest": {"$ref": "#/$defs/digest"},
-        "resolverDigest": {"$ref": "#/$defs/digest"},
-        "topologySchemaDigest": {"$ref": "#/$defs/digest"}
+        "structuralTopologyDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "semanticTopologyDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "inferenceProgramDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "providerGrammarDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "resolverDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "topologySchemaDigest": {
+          "$ref": "#/$defs/digest"
+        }
       }
     },
     "segment": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "ownerPath", "contentDigest", "skeletonDigest", "locatorDigest", "sccDigest", "stratum", "nodeIds", "edgeIds"],
+      "required": [
+        "id",
+        "ownerPath",
+        "contentDigest",
+        "skeletonDigest",
+        "locatorDigest",
+        "sccDigest",
+        "stratum",
+        "nodeIds",
+        "edgeIds"
+      ],
       "properties": {
-        "id": {"$ref": "#/$defs/identifier"},
-        "ownerPath": {"type": "string", "pattern": "^(?!/)(?!.*\\\\)[^\\s]+$(?![\\s\\S])"},
-        "contentDigest": {"$ref": "#/$defs/digest"},
-        "skeletonDigest": {"$ref": "#/$defs/digest"},
-        "locatorDigest": {"$ref": "#/$defs/digest"},
-        "sccDigest": {"$ref": "#/$defs/digest"},
-        "stratum": {"type": "integer", "minimum": 0},
-        "nodeIds": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/nodeId"}},
-        "edgeIds": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/identifier"}}
+        "id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "ownerPath": {
+          "type": "string",
+          "pattern": "^(?!/)(?!.*\\\\)[^\\s]+$(?![\\s\\S])"
+        },
+        "contentDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "skeletonDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "locatorDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "sccDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "stratum": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "nodeIds": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/nodeId"
+          }
+        },
+        "edgeIds": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        }
       }
     },
     "annotation": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["text", "state", "premiseWitnesses", "producer", "bindingDigest"],
+      "required": [
+        "text",
+        "state",
+        "premiseWitnesses",
+        "producer",
+        "bindingDigest"
+      ],
       "properties": {
-        "text": {"type": "string", "minLength": 1, "maxLength": 600},
-        "state": {"enum": ["proposed", "contested", "accepted"]},
-        "premiseWitnesses": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/identifier"}},
-        "producer": {"type": "string", "minLength": 1},
-        "bindingDigest": {"$ref": "#/$defs/digest"},
-        "admissionReceiptRef": {"type": "string", "minLength": 1}
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 600
+        },
+        "state": {
+          "enum": [
+            "proposed",
+            "contested",
+            "accepted"
+          ]
+        },
+        "premiseWitnesses": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        },
+        "producer": {
+          "type": "string",
+          "minLength": 1
+        },
+        "bindingDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "admissionReceiptRef": {
+          "type": "string",
+          "minLength": 1
+        }
       },
-      "allOf": [{"if": {"properties": {"state": {"const": "accepted"}}, "required": ["state"]}, "then": {"required": ["admissionReceiptRef"]}, "else": {"not": {"required": ["admissionReceiptRef"]}}}]
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "accepted"
+              }
+            },
+            "required": [
+              "state"
+            ]
+          },
+          "then": {
+            "required": [
+              "admissionReceiptRef"
+            ]
+          },
+          "else": {
+            "not": {
+              "required": [
+                "admissionReceiptRef"
+              ]
+            }
+          }
+        }
+      ]
     },
     "node": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "segmentId", "plane", "language", "kind"],
+      "required": [
+        "id",
+        "segmentId",
+        "plane",
+        "language",
+        "kind"
+      ],
       "properties": {
-        "id": {"$ref": "#/$defs/nodeId"},
-        "segmentId": {"oneOf": [{"$ref": "#/$defs/identifier"}, {"type": "null"}]},
-        "plane": {"enum": ["structural", "declared-semantic", "synthesized-semantic"]},
-        "language": {"type": "string", "minLength": 1},
-        "kind": {"type": "string", "minLength": 1},
-        "name": {"type": "string", "minLength": 1},
-        "selector": {"$ref": "#/$defs/selector"},
-        "ownerLocator": {"$ref": "#/$defs/ownerLocator"},
-        "annotation": {"$ref": "#/$defs/annotation"}
+        "id": {
+          "$ref": "#/$defs/nodeId"
+        },
+        "segmentId": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/identifier"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "plane": {
+          "enum": [
+            "structural",
+            "declared-semantic",
+            "synthesized-semantic"
+          ]
+        },
+        "language": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "selector": {
+          "$ref": "#/$defs/selector"
+        },
+        "ownerLocator": {
+          "$ref": "#/$defs/ownerLocator"
+        },
+        "annotation": {
+          "$ref": "#/$defs/annotation"
+        }
       },
       "oneOf": [
-        {"required": ["selector"], "not": {"anyOf": [{"required": ["ownerLocator"]}, {"required": ["annotation"]}]}},
-        {"required": ["ownerLocator"], "not": {"anyOf": [{"required": ["selector"]}, {"required": ["annotation"]}]}},
-        {"required": ["annotation"], "not": {"anyOf": [{"required": ["selector"]}, {"required": ["ownerLocator"]}]}}
+        {
+          "required": [
+            "selector"
+          ],
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "ownerLocator"
+                ]
+              },
+              {
+                "required": [
+                  "annotation"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "required": [
+            "ownerLocator"
+          ],
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "selector"
+                ]
+              },
+              {
+                "required": [
+                  "annotation"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "required": [
+            "annotation"
+          ],
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "selector"
+                ]
+              },
+              {
+                "required": [
+                  "ownerLocator"
+                ]
+              }
+            ]
+          }
+        }
       ],
       "allOf": [
-        {"if": {"properties": {"plane": {"const": "synthesized-semantic"}}, "required": ["plane"]}, "then": {"properties": {"segmentId": {"type": "null"}}}, "else": {"properties": {"segmentId": {"$ref": "#/$defs/identifier"}}}}
+        {
+          "if": {
+            "properties": {
+              "plane": {
+                "const": "synthesized-semantic"
+              }
+            },
+            "required": [
+              "plane"
+            ]
+          },
+          "then": {
+            "properties": {
+              "segmentId": {
+                "type": "null"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "segmentId": {
+                "$ref": "#/$defs/identifier"
+              }
+            }
+          }
+        }
       ]
     },
     "edge": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "segmentId", "from", "to", "relation", "modality", "bindingDigest", "witnesses"],
+      "required": [
+        "id",
+        "segmentId",
+        "from",
+        "to",
+        "relation",
+        "modality",
+        "bindingDigest",
+        "witnesses"
+      ],
       "properties": {
-        "id": {"$ref": "#/$defs/identifier"},
-        "segmentId": {"oneOf": [{"$ref": "#/$defs/identifier"}, {"type": "null"}]},
-        "from": {"$ref": "#/$defs/nodeId"},
-        "to": {"$ref": "#/$defs/nodeId"},
-        "relation": {"type": "string", "pattern": "^[A-Z][A-Z0-9_]*$(?![\\s\\S])"},
-        "modality": {"enum": ["parser-direct", "declared", "derived", "proposed"]},
-        "bindingDigest": {"$ref": "#/$defs/digest"},
-        "witnesses": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/identifier"}},
-        "proofRef": {"type": "string", "minLength": 1}
+        "id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "segmentId": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/identifier"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "from": {
+          "$ref": "#/$defs/nodeId"
+        },
+        "to": {
+          "$ref": "#/$defs/nodeId"
+        },
+        "relation": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9_]*$(?![\\s\\S])"
+        },
+        "modality": {
+          "enum": [
+            "parser-direct",
+            "declared",
+            "derived",
+            "proposed"
+          ]
+        },
+        "bindingDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "witnesses": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        },
+        "proofRef": {
+          "type": "string",
+          "minLength": 1
+        }
       },
       "allOf": [
-        {"if": {"properties": {"modality": {"enum": ["derived", "proposed"]}}, "required": ["modality"]}, "then": {"properties": {"segmentId": {"type": "null"}}}, "else": {"properties": {"segmentId": {"$ref": "#/$defs/identifier"}}}},
-        {"if": {"properties": {"modality": {"const": "derived"}}, "required": ["modality"]}, "then": {"required": ["proofRef"]}, "else": {"not": {"required": ["proofRef"]}}}
+        {
+          "if": {
+            "properties": {
+              "modality": {
+                "enum": [
+                  "derived",
+                  "proposed"
+                ]
+              }
+            },
+            "required": [
+              "modality"
+            ]
+          },
+          "then": {
+            "properties": {
+              "segmentId": {
+                "type": "null"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "segmentId": {
+                "$ref": "#/$defs/identifier"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "modality": {
+                "const": "derived"
+              }
+            },
+            "required": [
+              "modality"
+            ]
+          },
+          "then": {
+            "required": [
+              "proofRef"
+            ]
+          },
+          "else": {
+            "not": {
+              "required": [
+                "proofRef"
+              ]
+            }
+          }
+        }
       ]
     },
     "coverage": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "relation", "targetKind", "scope", "digest"],
+      "required": [
+        "id",
+        "relation",
+        "targetKind",
+        "scope",
+        "digest"
+      ],
       "properties": {
-        "id": {"$ref": "#/$defs/identifier"},
-        "relation": {"type": "string", "pattern": "^[A-Z][A-Z0-9_]*$(?![\\s\\S])"},
-        "targetKind": {"type": "string", "minLength": 1},
-        "scope": {"enum": ["complete", "partial"]},
-        "digest": {"$ref": "#/$defs/digest"}
+        "id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "relation": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9_]*$(?![\\s\\S])"
+        },
+        "targetKind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "scope": {
+          "enum": [
+            "complete",
+            "partial"
+          ]
+        },
+        "digest": {
+          "$ref": "#/$defs/digest"
+        }
       }
     },
     "closure": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["state", "digest", "proofDagDigest", "derivedEdgeIds", "proofDependencies"],
+      "required": [
+        "state",
+        "digest",
+        "proofDagDigest",
+        "derivedEdgeIds",
+        "proofDependencies"
+      ],
       "properties": {
-        "state": {"const": "stable"},
-        "digest": {"$ref": "#/$defs/digest"},
-        "proofDagDigest": {"$ref": "#/$defs/digest"},
-        "derivedEdgeIds": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/identifier"}},
-        "proofDependencies": {"type": "array", "items": {"$ref": "#/$defs/proofDependency"}}
+        "state": {
+          "const": "stable"
+        },
+        "digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "proofDagDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "derivedEdgeIds": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        },
+        "proofDependencies": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/proofDependency"
+          }
+        }
       }
     },
     "proofDependency": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["derivedEdgeId", "premiseEdgeIds"],
+      "required": [
+        "derivedEdgeId",
+        "premiseEdgeIds"
+      ],
       "properties": {
-        "derivedEdgeId": {"$ref": "#/$defs/identifier"},
-        "premiseEdgeIds": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/identifier"}}
+        "derivedEdgeId": {
+          "$ref": "#/$defs/identifier"
+        },
+        "premiseEdgeIds": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        }
       }
     },
     "terminal": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["state", "terminalCount"],
-      "properties": {"state": {"enum": ["ready", "failed"]}, "terminalCount": {"const": 1}, "reasonKind": {"type": "string", "minLength": 1}},
-      "allOf": [{"if": {"properties": {"state": {"const": "failed"}}, "required": ["state"]}, "then": {"required": ["reasonKind"]}, "else": {"not": {"required": ["reasonKind"]}}}]
+      "required": [
+        "state",
+        "terminalCount"
+      ],
+      "properties": {
+        "state": {
+          "enum": [
+            "ready",
+            "failed"
+          ]
+        },
+        "terminalCount": {
+          "const": 1
+        },
+        "reasonKind": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "failed"
+              }
+            },
+            "required": [
+              "state"
+            ]
+          },
+          "then": {
+            "required": [
+              "reasonKind"
+            ]
+          },
+          "else": {
+            "not": {
+              "required": [
+                "reasonKind"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "expectedRelation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "anchor",
+        "target",
+        "relation",
+        "targetKind",
+        "depth",
+        "coverage"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "project-topology-library.v1.schema.json#/$defs/identifier"
+        },
+        "anchor": {
+          "$ref": "project-topology-library.v1.schema.json#/$defs/nodeId"
+        },
+        "target": {
+          "$ref": "project-topology-library.v1.schema.json#/$defs/nodeId"
+        },
+        "relation": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9_]*$(?![\\s\\S])"
+        },
+        "targetKind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "depth": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "coverage": {
+          "enum": [
+            "none",
+            "partial",
+            "complete"
+          ]
+        }
+      }
+    },
+    "frontier": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "anchor",
+        "target",
+        "relation",
+        "targetKind",
+        "depth",
+        "state",
+        "reason"
+      ],
+      "properties": {
+        "anchor": {
+          "$ref": "project-topology-library.v1.schema.json#/$defs/nodeId"
+        },
+        "target": {
+          "$ref": "project-topology-library.v1.schema.json#/$defs/nodeId"
+        },
+        "relation": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9_]*$(?![\\s\\S])"
+        },
+        "targetKind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "depth": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "state": {
+          "enum": [
+            "unknown",
+            "certified-missing"
+          ]
+        },
+        "reason": {
+          "$ref": "project-topology-library.v1.schema.json#/$defs/identifier"
+        },
+        "coverageRef": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "certified-missing"
+              }
+            },
+            "required": [
+              "state"
+            ]
+          },
+          "then": {
+            "required": [
+              "coverageRef"
+            ]
+          }
+        }
+      ]
     }
-  }
+  },
+  "$comment": "Semantic admission requires frontier set equality with unresolved expectations, positive-witness suppression, and complete coverage for certified-missing."
 }

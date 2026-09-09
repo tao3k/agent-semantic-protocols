@@ -22,7 +22,7 @@ fn canonical_binary_publication_materializes_its_matching_hook_contract() {
         publish_embedded_hook_config(&root).expect("publish embedded Hook config"),
         "created"
     );
-    let config = std::fs::read_to_string(root.join("hooks/config.toml"))
+    let config = std::fs::read_to_string(root.join("control/config/hook-client.toml"))
         .expect("read published Hook config");
     assert!(config.contains(&format!(
         "contractFingerprint = \"{}\"",

@@ -42,9 +42,9 @@ implements stateless =DescribeProject= from =cargo_metadata= and must accept a
 valid virtual Cargo workspace with no root package. It does not commit
 identity, own a lifecycle, or own a cache.
 
-=prime= opens or resolves an exact signed V1 execution binding. Subsequent
-=query-set=, =search=, =query=, =exact=, and =pipe= requests pin and echo the
-same content identity. Missing, stale, cross-source, torn, rollback, or
+=search playbook= opens or resolves an exact signed V1 execution binding.
+Subsequent exact =query= requests pin and echo the same content identity.
+Missing, stale, cross-source, torn, rollback, or
 signature-invalid bindings fail closed. A database transaction carries
 =mutationId=, =leaseId=, and CAS =expectedDigest=; those are concurrency
 controls, not external product identity. There is no external activation

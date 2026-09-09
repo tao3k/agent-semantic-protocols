@@ -157,7 +157,7 @@ def _handle_direct_commands(repo_root: Path, args: argparse.Namespace) -> int | 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="semantic-sandtable",
-        description="Run semantic language harness sandtable scenarios.",
+        description="Run semantic ASP language provider sandtable scenarios.",
     )
     _add_general_arguments(parser)
     _add_receipt_arguments(parser)

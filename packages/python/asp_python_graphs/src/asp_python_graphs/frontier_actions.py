@@ -79,25 +79,6 @@ def _owner_query_frontier_action_items(result: GraphResult) -> list[FrontierActi
                 },
             )
         )
-        actions.append(
-            FrontierAction(
-                rank=index,
-                action_id=f"R{index}",
-                action_kind="reasoning",
-                selector=None,
-                owner=owner,
-                symbol=None,
-                source_node_id=node.id,
-                next="search-reasoning",
-                capability_id="search-reasoning",
-                target=owner,
-                target_role="owner",
-                fields={
-                    "ownerPath": owner,
-                    "sourceNodeId": node.id,
-                },
-            )
-        )
     return actions
 
 

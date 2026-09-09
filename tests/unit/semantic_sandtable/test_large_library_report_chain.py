@@ -47,7 +47,7 @@ def test_large_library_report_chain_can_pass_with_multi_depth_ts_rust_fixture(
         "optimizationRunCount": 6,
         "optimizationVariantRunCount": 30,
         "ablationVariantCount": 5,
-        "coveredSearchMethods": ["search/lexical"],
+        "coveredSearchMethods": ["search/playbook"],
         "coveredSearchQueries": ["feature", "owner"],
         "byLanguage": [
             _expected_language_benchmark("rust"),
@@ -55,8 +55,8 @@ def test_large_library_report_chain_can_pass_with_multi_depth_ts_rust_fixture(
         ],
     }
     assert report["searchCommandSet"] == [
-        _expected_lexical_command_entry("rust"),
-        _expected_lexical_command_entry("typescript"),
+        _expected_playbook_command_entry("rust"),
+        _expected_playbook_command_entry("typescript"),
     ]
     assert report["findings"] == []
     assert all(entry["findings"] == [] for entry in report["languages"])
@@ -71,7 +71,7 @@ def test_large_library_report_chain_blocks_ambient_asp_binary_fixture(
         scenario = _scenario(language)
         if language == "rust":
             scenario["observation"] = {
-                "pipeFlow": {
+                "commandFlow": {
                     "aspBinaryProvenance": {
                         "commandCount": 1,
                         "workspaceBinaryCommands": 0,
@@ -102,7 +102,9 @@ def test_large_library_report_chain_blocks_ambient_asp_binary_fixture(
 
 
 def test_large_library_report_chain_cli_emits_json(capsys) -> None:
-    assert main(["--repo-root", str(_ROOT), "--large-library-report-chain", "--json"]) == 0
+    assert (
+        main(["--repo-root", str(_ROOT), "--large-library-report-chain", "--json"]) == 0
+    )
 
     payload = json.loads(capsys.readouterr().out)
     _validate_schema(payload)
@@ -173,17 +175,17 @@ def _scenario(language: str) -> dict[str, object]:
 def _scenario_command(language: str) -> list[str]:
     return [
         "asp",
-        language,
         "search",
-        "lexical",
-        "--query",
-        "feature",
-        "--query",
-        "owner",
-        "--workspace",
+        "playbook",
+        "--language",
+        language,
+        "--rg",
+        "-n",
+        "-e",
+        "feature|owner",
         ".",
-        "--view",
-        "seeds",
+        "--tantivy",
+        'title:"feature"^2 OR body:"owner"',
     ]
 
 
@@ -201,7 +203,7 @@ def _question(question_id: str, max_asp_commands: int) -> dict[str, object]:
             "requiresGraphSignals": True,
             "requiresQuerySet": True,
             "requiresHookEvents": True,
-            "requiresComplexPipeFlow": question_id == "strict",
+            "requiresComplexCommandFlow": question_id == "strict",
             "requiresTokenCost": question_id == "strict",
         },
         "expectedAspFlow": {
@@ -212,12 +214,10 @@ def _question(question_id: str, max_asp_commands: int) -> dict[str, object]:
 
 
 def _validate_schema(report: dict[str, object]) -> None:
-    schema = json.loads(
-        (_ROOT / "schemas" / "semantic-sandtable-large-library-report-chain.v1.schema.json")
-        .read_text(encoding="utf-8")
-    )
     schema_validator_for(
-        _ROOT / "schemas" / "semantic-sandtable-large-library-report-chain.v1.schema.json"
+        _ROOT
+        / "schemas"
+        / "semantic-sandtable-large-library-report-chain.v1.schema.json"
     ).validate(report)
 
 
@@ -246,11 +246,15 @@ def _language_benchmark_counts(report: dict[str, object]) -> dict[str, tuple[int
 def _assert_no_legacy_search_commands(report: dict[str, object]) -> None:
     for entry in report["searchCommandSet"]:
         assert isinstance(entry, dict)
-        assert entry["method"] != "search/lexical"
+        assert entry["method"] == "search/playbook"
         command = entry["command"]
         assert isinstance(command, list)
-        assert command[:2] == ["asp", entry["language"]]
+        assert command[:3] == ["asp", "search", "playbook"]
+        assert command[command.index("--language") + 1] == entry["language"]
+        assert "--rg" in command
+        assert "--tantivy" in command
         assert "--query-set" not in command
+        assert "--view" not in command
 
 
 def _expected_language_benchmark(language: str) -> dict[str, object]:
@@ -261,18 +265,18 @@ def _expected_language_benchmark(language: str) -> dict[str, object]:
         "uniqueSearchCommandCount": 1,
         "optimizationRunCount": 3,
         "optimizationVariantRunCount": 15,
-        "coveredSearchMethods": ["search/lexical"],
+        "coveredSearchMethods": ["search/playbook"],
         "coveredSearchQueries": ["feature", "owner"],
     }
 
 
-def _expected_lexical_command_entry(language: str) -> dict[str, object]:
+def _expected_playbook_command_entry(language: str) -> dict[str, object]:
     command = _scenario_command(language)
     return {
         "commandId": " ".join(command),
         "language": language,
-        "method": "search/lexical",
-        "view": "lexical",
+        "method": "search/playbook",
+        "view": "playbook",
         "queries": ["feature", "owner"],
         "command": command,
         "scenarioIds": [f"{language}.multi-depth"],

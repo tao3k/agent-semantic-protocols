@@ -172,13 +172,6 @@ COMMANDS: tuple[CommandSpec, ...] = (
         "Refresh TypeScript tree-sitter query corpus metadata.",
     ),
     CommandSpec(
-        ("validate", "language-workspace-search-contract"),
-        "tools.language_workspace_search_contract",
-        "main",
-        "argv",
-        "Validate cross-language workspace/search ingest provider contracts.",
-    ),
-    CommandSpec(
         ("validate", "provider-registry-contracts"),
         "tools.provider_registry_contracts",
         "main",

@@ -6,7 +6,6 @@
 
 from __future__ import annotations
 
-
 def native_syntax_fact() -> dict[str, object]:
     return {
         "id": "rust:src/lib.rs:4:reexport:rules",
@@ -138,35 +137,3 @@ def julia_native_syntax_index() -> dict[str, object]:
         ],
     }
 
-
-def search_packet_with_native_syntax_fact() -> dict[str, object]:
-    return {
-        "schemaId": "agent.semantic-protocols.semantic-search-packet",
-        "schemaVersion": "1",
-        "protocolId": "agent.semantic-protocols.semantic-language",
-        "protocolVersion": "1",
-        "languageId": "rust",
-        "providerId": "asp-rust",
-        "binary": "asp-rust",
-        "namespace": "agent.semantic-protocols.languages.rust.asp-rust",
-        "method": "search/query",
-        "projectRoot": ".",
-        "view": "query",
-        "renderMode": "seeds",
-        "query": "pub use rules",
-        "header": {"kind": "search-query", "fields": {"intent": "syntax.import"}},
-        "nodes": [],
-        "edges": [],
-        "owners": [],
-        "items": [],
-        "nativeSyntaxFacts": [native_syntax_fact()],
-        "hits": [],
-        "findings": [],
-        "nextActions": [{"kind": "owner", "target": "src/lib.rs"}],
-        "notes": [],
-        "searchSynthesis": {
-            "algorithm": "native-syntax-query",
-            "scope": "query",
-            "summary": "parser-owned code-shaped query",
-        },
-    }

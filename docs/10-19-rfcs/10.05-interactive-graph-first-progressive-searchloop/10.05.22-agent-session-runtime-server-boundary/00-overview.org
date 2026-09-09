@@ -122,7 +122,7 @@ In particular:
 
 - an Agent Session requesting search does not gain query-lease issuance or
   index-write authority;
-- a Resident Subagent executing =asp org query= does not become the index
+- a Resident Subagent executing =asp query playbook --documents org= does not become the index
   writer;
 - the Runtime Server validating a session-supplied lease does not gain
   subagent-binding authority;

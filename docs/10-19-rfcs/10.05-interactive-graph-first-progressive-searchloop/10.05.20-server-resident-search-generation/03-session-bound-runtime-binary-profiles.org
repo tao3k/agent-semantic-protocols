@@ -16,7 +16,7 @@ exactly one server-side dispatch is claimed and consumed.
 * Problem
 
 When an ASP root session is known, an agent can still attempt to execute a
-provider binary such as a language harness directly. That bypasses the ASP
+provider binary such as a ASP language provider directly. That bypasses the ASP
 facade, resident dispatch accounting, generation admission, and graph-route
 receipt even if the provider itself remains parser-owned.
 

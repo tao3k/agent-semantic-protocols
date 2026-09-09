@@ -13,12 +13,13 @@ use agent_semantic_client::LanguageCommandRequest;
 use agent_semantic_client_protocol::AspClientExactQueryFailure;
 use agent_semantic_client_protocol::AspClientExactQueryRequest;
 use agent_semantic_client_protocol::AspClientExactQueryResponse;
-use agent_semantic_client_protocol::AspClientSearchRequest;
+use agent_semantic_client_protocol::AspClientSearchPlaybookClauseAxis;
+use agent_semantic_client_protocol::AspClientSearchPlaybookClauseRef;
+use agent_semantic_client_protocol::AspClientWorkspaceSearchPlaybookRequest;
 use agent_semantic_client_protocol::ClientFrame;
 use agent_semantic_client_protocol::ClientOutcome;
 use agent_semantic_client_protocol::LIVE_CORPUS_CACHE_STATE_REQUEST_SCHEMA_ID;
 use agent_semantic_client_protocol::LiveCorpusCacheStateRequest;
-use agent_semantic_search::SearchPlaybookReceipt;
 
 use super::contract::LatencyDistribution;
 use super::contract::QualificationCase;
@@ -123,13 +124,11 @@ async fn dispatch_ready<C: LanguageCommandClient>(
 
 #[derive(Debug)]
 pub(super) struct PublicQualificationEvidence {
-    pub(super) search: SearchPlaybookReceipt,
+    pub(super) search: WorkspaceSearchQualificationReceipt,
     pub(super) source: AspClientExactQueryResponse,
     pub(super) callable_skeleton: AspClientExactQueryResponse,
-    pub(super) zero_match: SearchPlaybookReceipt,
+    pub(super) zero_match: WorkspaceSearchQualificationReceipt,
     pub(super) merkle_proof: agent_semantic_client_db::runtime_merkle_owner_proof_qualification::RuntimeMerkleOwnerProofQualificationReceipt,
-    pub(super) search_resident_read_latency_micros: LatencyDistribution,
-    pub(super) search_service_latency_micros: LatencyDistribution,
     pub(super) search_total_latency_micros: LatencyDistribution,
     pub(super) exact_source_latency_micros: LatencyDistribution,
     pub(super) callable_skeleton_latency_micros: LatencyDistribution,
@@ -139,6 +138,17 @@ pub(super) struct PublicQualificationEvidence {
     pub(super) warm_read_prepare_elapsed_micros: u64,
     pub(super) sequential_search_query_latency_micros: LatencyDistribution,
     pub(super) concurrent_search_query_latency_micros: LatencyDistribution,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct WorkspaceSearchQualificationReceipt {
+    pub(crate) operation_id: String,
+    pub(crate) source_generation_digest: String,
+    pub(crate) provider_catalog_digest: String,
+    pub(crate) topology_generation_digest: String,
+    pub(crate) selectors: Vec<String>,
+    pub(crate) owner_paths: Vec<String>,
+    pub(crate) elapsed_micros: u64,
 }
 
 pub(super) async fn qualify_public_client_case<C>(
@@ -160,27 +170,24 @@ where
         client,
         project_root,
         case.language_id.as_str(),
-        &case.search.method,
-        &case.search.terms,
+        &case.search,
     )
     .await?;
-    if search.decision.owner_paths.len() < case.search.minimum_candidates {
+    if search.owner_paths.len() < case.search.minimum_candidates {
         return Err(format!(
             "Live Corpus public search returned too few candidates: case={} candidates={} minimum={}",
             case.case_id,
-            search.decision.owner_paths.len(),
+            search.owner_paths.len(),
             case.search.minimum_candidates
         ));
     }
-    if search.metrics.stage_elapsed_micros.indexed_lexical > case.search.maximum_resident_micros {
+    if search.elapsed_micros > case.search.maximum_search_micros {
         return Err(format!(
-            "Live Corpus public search exceeded resident budget: case={} elapsedMicros={} maximumMicros={}",
-            case.case_id,
-            search.metrics.stage_elapsed_micros.indexed_lexical,
-            case.search.maximum_resident_micros
+            "Live Corpus public Search exceeded composite budget: case={} elapsedMicros={} maximumMicros={}",
+            case.case_id, search.elapsed_micros, case.search.maximum_search_micros
         ));
     }
-    let selector = search.decision.selectors.first().ok_or_else(|| {
+    let selector = search.selectors.first().ok_or_else(|| {
         format!(
             "Live Corpus public search returned no parser-owned selector: case={}",
             case.case_id
@@ -264,15 +271,14 @@ where
         client,
         project_root,
         case.language_id.as_str(),
-        "lexical",
-        &case.zero_match_terms,
+        &case.zero_match_search,
     )
     .await?;
-    if !zero_match.decision.owner_paths.is_empty() {
+    if !zero_match.owner_paths.is_empty() {
         return Err(format!(
             "Live Corpus public zero-match search returned candidates: case={} candidates={}",
             case.case_id,
-            zero_match.decision.owner_paths.len()
+            zero_match.owner_paths.len()
         ));
     }
     let warm_read_prepare = cache_client
@@ -282,23 +288,21 @@ where
             "warm-read",
             "reuse-exact-resident-generation",
             "none",
-            Some(search.generation_digest.clone()),
-            Some(search.source_root_digest.clone()),
+            Some(source.generation_digest.clone()),
+            Some(source.root_digest.clone()),
             0,
         ))
         .await?;
     if warm_read_prepare.resident_generation_evicted
         || warm_read_prepare.client_session_evicted
-        || warm_read_prepare.generation_digest.as_deref() != Some(search.generation_digest.as_str())
-        || warm_read_prepare.root_digest.as_deref() != Some(search.source_root_digest.as_str())
+        || warm_read_prepare.generation_digest.as_deref() != Some(source.generation_digest.as_str())
+        || warm_read_prepare.root_digest.as_deref() != Some(source.root_digest.as_str())
     {
         return Err(format!(
             "Live Corpus warm-read preparation drifted or mutated cache state: case={}",
             case.case_id
         ));
     }
-    let mut search_resident_read_samples = Vec::with_capacity(resident_sample_count);
-    let mut search_service_samples = Vec::with_capacity(resident_sample_count);
     let mut search_total_samples = Vec::with_capacity(resident_sample_count);
     let mut exact_source_samples = Vec::with_capacity(resident_sample_count);
     let mut callable_skeleton_samples = Vec::with_capacity(resident_sample_count);
@@ -307,8 +311,7 @@ where
             client,
             project_root,
             case.language_id.as_str(),
-            &case.search.method,
-            &case.search.terms,
+            &case.search,
         )
         .await?;
         validate_sampled_search(case, &search, &sampled_search, sample_index)?;
@@ -336,9 +339,6 @@ where
             "callable-skeleton",
             sample_index,
         )?;
-        search_resident_read_samples
-            .push(sampled_search.metrics.stage_elapsed_micros.indexed_lexical);
-        search_service_samples.push(sampled_search.service_elapsed_micros);
         search_total_samples.push(sampled_search.elapsed_micros);
         exact_source_samples.push(sampled_source.elapsed_micros);
         callable_skeleton_samples.push(sampled_skeleton.elapsed_micros);
@@ -405,15 +405,15 @@ where
                 "cold-load",
                 "evict-resident-generation-only",
                 "benchmark-workspace-generation",
-                Some(search.generation_digest.clone()),
-                Some(search.source_root_digest.clone()),
+                Some(source.generation_digest.clone()),
+                Some(source.root_digest.clone()),
                 sample_index,
             ))
             .await?;
         if !cache_receipt.resident_generation_evicted
             || !cache_receipt.client_session_evicted
-            || cache_receipt.generation_digest.as_deref() != Some(search.generation_digest.as_str())
-            || cache_receipt.root_digest.as_deref() != Some(search.source_root_digest.as_str())
+            || cache_receipt.generation_digest.as_deref() != Some(source.generation_digest.as_str())
+            || cache_receipt.root_digest.as_deref() != Some(source.root_digest.as_str())
         {
             return Err(format!(
                 "Live Corpus cold-load preparation did not preserve exact content identity: case={} sample={sample_index}",
@@ -441,23 +441,11 @@ where
         callable_skeleton,
         zero_match,
         merkle_proof,
-        search_resident_read_latency_micros: distribution_with_budget(
-            "search-resident-read",
-            case,
-            search_resident_read_samples,
-            case.search.maximum_resident_micros,
-        )?,
-        search_service_latency_micros: distribution_with_budget(
-            "search-service",
-            case,
-            search_service_samples,
-            case.search.maximum_resident_micros,
-        )?,
         search_total_latency_micros: distribution_with_budget(
             "search-total",
             case,
             search_total_samples,
-            case.search.maximum_resident_micros,
+            case.search.maximum_search_micros,
         )?,
         exact_source_latency_micros: distribution_with_budget(
             "exact-source",
@@ -522,7 +510,7 @@ async fn run_positive_search_query_sample<C: LanguageCommandClient>(
     client: &C,
     project_root: &Path,
     case: &QualificationCase,
-    baseline_search: &SearchPlaybookReceipt,
+    baseline_search: &WorkspaceSearchQualificationReceipt,
     baseline_source: &AspClientExactQueryResponse,
     baseline_skeleton: &AspClientExactQueryResponse,
     selector: &str,
@@ -533,8 +521,7 @@ async fn run_positive_search_query_sample<C: LanguageCommandClient>(
         client,
         project_root,
         case.language_id.as_str(),
-        &case.search.method,
-        &case.search.terms,
+        &case.search,
     )
     .await?;
     let sampled_source = public_query(
@@ -573,16 +560,15 @@ async fn run_positive_search_query_sample<C: LanguageCommandClient>(
 
 fn validate_sampled_search(
     case: &QualificationCase,
-    baseline: &SearchPlaybookReceipt,
-    sample: &SearchPlaybookReceipt,
+    baseline: &WorkspaceSearchQualificationReceipt,
+    sample: &WorkspaceSearchQualificationReceipt,
     sample_index: usize,
 ) -> Result<(), String> {
-    if sample.generation_digest != baseline.generation_digest
-        || sample.source_root_digest != baseline.source_root_digest
-        || sample.provider_digest != baseline.provider_digest
-        || sample.index_artifact_digest != baseline.index_artifact_digest
-        || sample.decision.selectors != baseline.decision.selectors
-        || sample.decision.owner_paths != baseline.decision.owner_paths
+    if sample.source_generation_digest != baseline.source_generation_digest
+        || sample.provider_catalog_digest != baseline.provider_catalog_digest
+        || sample.topology_generation_digest != baseline.topology_generation_digest
+        || sample.selectors != baseline.selectors
+        || sample.owner_paths != baseline.owner_paths
     {
         return Err(format!(
             "Live Corpus resident search sample identity drift: case={} sample={sample_index}",
@@ -633,30 +619,186 @@ async fn search_receipt<C: LanguageCommandClient>(
     client: &C,
     project_root: &Path,
     language_id: &str,
-    operation: &str,
-    terms: &[String],
-) -> Result<SearchPlaybookReceipt, String> {
-    let payload = dispatch_ready(
-        client,
-        project_root,
-        language_id,
-        "search",
-        LanguageCommandOperation::Search(AspClientSearchRequest::playbook(
-            operation,
-            terms.join(" "),
-        )),
+    search: &super::contract::QualificationSearch,
+) -> Result<WorkspaceSearchQualificationReceipt, String> {
+    let request = workspace_search_qualification_request(language_id, search)?;
+    let started = Instant::now();
+    let response = client
+        .dispatch(LanguageCommandRequest {
+            language_id: agent_semantic_client::LanguageId::new(language_id),
+            operation: LanguageCommandOperation::WorkspaceSearchPlaybook(request),
+            project_root: project_root.to_path_buf(),
+            machine_readable: true,
+        })
+        .await?;
+    let operation_id = match &response.frame {
+        ClientFrame::Response { request_id, .. } => request_id.as_str().to_owned(),
+        frame => {
+            return Err(format!(
+                "Live Corpus Search Playbook returned a non-response frame: {frame:?}"
+            ));
+        }
+    };
+    let payload = typed_terminal(response.frame)?.require_ready("workspace.search.playbook")?;
+    let settlement = agent_semantic_search_projection::SearchTopologySettlement::admit(payload)
+        .map_err(|error| format!("decode Live Corpus Search settlement: {error}"))?;
+    workspace_search_qualification_receipt(
+        settlement.as_json(),
+        operation_id,
+        started.elapsed().as_micros().min(u128::from(u64::MAX)) as u64,
     )
-    .await?;
-    let receipt = serde_json::from_value::<SearchPlaybookReceipt>(payload)
-        .map_err(|error| format!("decode Live Corpus public search payload: {error}"))?;
-    receipt.validate()?;
-    if receipt.language_id != language_id {
+}
+
+pub(crate) async fn search_receipt_for_literal<C: LanguageCommandClient>(
+    client: &C,
+    project_root: &Path,
+    language_id: &str,
+    literal: &str,
+) -> Result<WorkspaceSearchQualificationReceipt, String> {
+    if literal.is_empty() {
+        return Err("Live Corpus Search literal must not be empty".to_owned());
+    }
+    let tantivy_literal = literal.replace('\\', "\\\\").replace('"', "\\\"");
+    let search = super::contract::QualificationSearch {
+        rg: vec![
+            "-n".to_owned(),
+            "-F".to_owned(),
+            literal.to_owned(),
+            ".".to_owned(),
+        ],
+        tantivy: vec![format!(
+            "title:\"{tantivy_literal}\"^2 OR body:\"{tantivy_literal}\""
+        )],
+        minimum_candidates: 1,
+        maximum_search_micros: 500_000,
+    };
+    search_receipt(client, project_root, language_id, &search).await
+}
+
+fn workspace_search_qualification_request(
+    producer_id: &str,
+    search: &super::contract::QualificationSearch,
+) -> Result<AspClientWorkspaceSearchPlaybookRequest, String> {
+    if search.rg.is_empty()
+        || search.tantivy.is_empty()
+        || search
+            .rg
+            .iter()
+            .chain(search.tantivy.iter())
+            .any(|argument| argument.is_empty())
+    {
+        return Err("Live Corpus Search requires non-empty exact rg and Tantivy argv".to_owned());
+    }
+    let profile = include_str!("../../../../../schemas/language-schema-profiles.json");
+    let profile: serde_json::Value = serde_json::from_str(profile)
+        .map_err(|error| format!("decode embedded Search producer profile registry: {error}"))?;
+    let profiles = profile
+        .get("profiles")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| "Search producer profile registry has no profiles".to_owned())?;
+    let producer = profiles
+        .iter()
+        .find(|profile| {
+            profile
+                .get("languageId")
+                .and_then(serde_json::Value::as_str)
+                == Some(producer_id)
+        })
+        .ok_or_else(|| format!("Search producer profile is not registered: {producer_id}"))?;
+    let axes = producer
+        .get("searchProducerAxes")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| format!("Search producer profile has no registered axis: {producer_id}"))?;
+    if axes.is_empty() {
         return Err(format!(
-            "Live Corpus public search language drift: expected={language_id} actual={}",
-            receipt.language_id
+            "Live Corpus Search producer must expose a Search producer classification: {producer_id}"
         ));
     }
-    Ok(receipt)
+    let language = axes
+        .iter()
+        .any(|axis| axis.as_str() == Some("language"))
+        .then(|| producer_id.to_owned());
+    let documents = axes
+        .iter()
+        .any(|axis| axis.as_str() == Some("document"))
+        .then(|| producer_id.to_owned());
+    if language.is_none() && documents.is_none() {
+        return Err(format!(
+            "Live Corpus Search producer has no language/document axis: {producer_id}"
+        ));
+    }
+
+    Ok(AspClientWorkspaceSearchPlaybookRequest {
+        schema_id: "agent.semantic-protocols.asp-client-workspace-search-playbook-request"
+            .to_owned(),
+        schema_version: "1".to_owned(),
+        language,
+        documents,
+        workspace: None,
+        rg: Some(vec![search.rg.clone()]),
+        tantivy: Some(vec![search.tantivy.clone()]),
+        syntax: None,
+        native_syntax: None,
+        graph: None,
+        clause_order: vec![
+            AspClientSearchPlaybookClauseRef {
+                axis: AspClientSearchPlaybookClauseAxis::Rg,
+                block_index: 0,
+            },
+            AspClientSearchPlaybookClauseRef {
+                axis: AspClientSearchPlaybookClauseAxis::Tantivy,
+                block_index: 0,
+            },
+        ],
+    })
+}
+
+fn workspace_search_qualification_receipt(
+    settlement: &serde_json::Value,
+    operation_id: String,
+    elapsed_micros: u64,
+) -> Result<WorkspaceSearchQualificationReceipt, String> {
+    let binding = settlement
+        .get("binding")
+        .and_then(serde_json::Value::as_object)
+        .ok_or_else(|| "Search settlement has no binding".to_owned())?;
+    let binding_digest = |field: &str| {
+        binding
+            .get(field)
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_owned)
+            .ok_or_else(|| format!("Search settlement binding has no {field}"))
+    };
+    let mut selectors = settlement
+        .get("nodes")
+        .and_then(serde_json::Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|node| node.get("selector").and_then(serde_json::Value::as_str))
+        .map(str::to_owned)
+        .collect::<Vec<_>>();
+    selectors.sort();
+    selectors.dedup();
+    let mut owner_paths = selectors
+        .iter()
+        .map(|selector| {
+            agent_semantic_content_identity::CanonicalItemSelector::parse_root_or_exact_descendant(
+                selector,
+            )
+            .and_then(|selector| selector.owner_path())
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    owner_paths.sort();
+    owner_paths.dedup();
+    Ok(WorkspaceSearchQualificationReceipt {
+        operation_id,
+        source_generation_digest: binding_digest("sourceGenerationDigest")?,
+        provider_catalog_digest: binding_digest("providerCatalogDigest")?,
+        topology_generation_digest: binding_digest("topologyGenerationDigest")?,
+        selectors,
+        owner_paths,
+        elapsed_micros,
+    })
 }
 
 async fn public_query<C: LanguageCommandClient>(

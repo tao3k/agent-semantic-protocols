@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
-//! Provider install target resolution for language harness binaries.
+//! Provider install target resolution for ASP language provider binaries.
 
 use std::path::Path;
 use std::path::PathBuf;

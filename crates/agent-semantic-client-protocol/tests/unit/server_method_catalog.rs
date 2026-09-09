@@ -11,7 +11,7 @@ use crate::resolve_server_client_method_owner;
 use crate::server_client_methods;
 
 #[test]
-fn server_catalog_exposes_northbound_search_query_and_schema_bundle_methods() {
+fn server_catalog_exposes_workspace_search_exact_query_and_schema_bundle_methods() {
     let methods = server_client_methods(["rust".to_owned()]).expect("Rust method catalog");
     let names = methods
         .iter()
@@ -33,7 +33,6 @@ fn server_catalog_exposes_northbound_search_query_and_schema_bundle_methods() {
             "asp.workspace.query.syntax",
             "asp.workspace.search.playbook",
             "rust.query",
-            "rust.search",
             "rust.source-index.lookup"
         ]
     );
@@ -64,7 +63,7 @@ fn workspace_query_playbook_is_one_server_owned_complete_generation_request() {
     );
     assert_eq!(
         classify_client_dispatch(crate::WORKSPACE_QUERY_PLAYBOOK_METHOD),
-        ClientDispatchClass::CompleteGenerationRead,
+        ClientDispatchClass::ResidentGenerationRead,
     );
     let method = server_client_methods(["rust".to_owned()])
         .expect("server method catalog")
@@ -94,7 +93,7 @@ fn workspace_syntax_query_is_server_owned_and_complete_generation_scoped() {
     );
     assert_eq!(
         classify_client_dispatch(crate::WORKSPACE_SYNTAX_QUERY_METHOD),
-        ClientDispatchClass::CompleteGenerationRead,
+        ClientDispatchClass::ResidentGenerationRead,
     );
 }
 
@@ -112,7 +111,7 @@ fn workspace_search_playbook_is_server_owned_and_complete_generation_scoped() {
     );
     assert_eq!(
         classify_client_dispatch(crate::WORKSPACE_SEARCH_PLAYBOOK_METHOD),
-        ClientDispatchClass::CompleteGenerationRead,
+        ClientDispatchClass::ResidentGenerationRead,
     );
     let method = server_client_methods(languages)
         .expect("method catalog")
@@ -134,24 +133,9 @@ fn workspace_search_playbook_is_server_owned_and_complete_generation_scoped() {
 }
 
 #[test]
-fn search_catalog_matches_the_intent_request_contract() {
-    let method = server_client_methods(["rust".to_owned()])
-        .expect("Rust method catalog")
-        .into_iter()
-        .find(|method| method.method == "rust.search")
-        .expect("Rust search method");
-    assert_eq!(
-        method
-            .parameters
-            .iter()
-            .map(|parameter| parameter.name.as_str())
-            .collect::<Vec<_>>(),
-        ["schemaId", "schemaVersion", "intent", "query"]
-    );
-    assert!(method.parameters.iter().all(|parameter| matches!(
-        parameter.cardinality,
-        crate::ClientParameterCardinality::Required
-    )));
+fn language_catalog_does_not_expose_a_legacy_search_route() {
+    let methods = server_client_methods(["rust".to_owned()]).expect("Rust method catalog");
+    assert!(methods.iter().all(|method| method.method != "rust.search"));
 }
 
 #[test]
@@ -188,15 +172,15 @@ fn dispatch_class_is_catalog_owned_and_preserved_by_transports() {
     );
     assert_eq!(
         classify_client_dispatch("rust.query"),
-        ClientDispatchClass::CompleteGenerationRead,
+        ClientDispatchClass::ResidentGenerationRead,
     );
     assert_eq!(
         classify_client_dispatch("python.search"),
-        ClientDispatchClass::CompleteGenerationRead,
+        ClientDispatchClass::InteractiveRead,
     );
     assert_eq!(
         classify_client_dispatch("asp.graph.evaluate"),
-        ClientDispatchClass::InteractiveRead,
+        ClientDispatchClass::ResidentGenerationRead,
     );
 }
 

@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 #+TITLE: RFC 10.06.20 - Runtime Project Topology Attachment
 #+LANGUAGE: en
 #+DATE: 2026-09-06
@@ -74,7 +78,8 @@ The only admitted construction path is:
 
 #+begin_example
 complete source and provider generation
-  -> parser-owned topology fact delta
+  -> daemon-owned Runtime workspace execution publication
+  -> parser-owned topology fact delta, including canonical Owner CONTAINS Item
   -> admitted MRR fixed-point evaluation
   -> immutable ProjectTopologyLibrary
   -> RuntimeProjectTopologyAttachment admission
@@ -85,6 +90,11 @@ The Runtime generation and attachment become visible atomically. A generation
 without an attachment may still support lower-level exact resident reads, but
 it is not Search Playbook ready. There is no optional Search fallback that
 converts flat evidence into GQL.
+
+An admission-terminal callback is not a publication path.  Project Topology
+construction requires the daemon-observed workspace execution publication, so
+a source-only callback cannot install a partial Runtime generation or compete
+with the daemon publication observer.
 
 A missing or mismatched attachment produces exactly one typed Search failure.
 The failure MUST distinguish at least missing attachment, Runtime binding
@@ -102,6 +112,12 @@ request-local acquisition evidence is joined with the immutable library and
 evaluated by the admitted MRR program. The admitted result is rendered as one
 Org response containing one GQL block.
 
+The resident Graph evaluator and the attached Project Topology MUST consume the
+same parser-owned =Owner -[:CONTAINS]-> Item= facts from the exact generation.
+It is invalid for Graph fan-in to accept a containment query while the
+settlement library lacks those edges, or for the settlement to display
+containment that the executable Graph filter could not observe.
+
 The public settlement contains evidence, topology relations, modalities,
 proof-connected derivations, coverage boundaries, natural-language annotations
 with their admission state, and the exact queryable selectors. It contains no
@@ -112,8 +128,9 @@ The Client is a renderer only. It MUST accept an admitted settlement and invoke
 the canonical settlement renderer. It MUST NOT derive topology, invent edges,
 repair selectors, or fall back to the historical flat =E1 | owner=...= format.
 
-An empty Search result is valid. It has an empty materialization set and creates
-no Query handoff. It MUST NOT fabricate a selector merely to satisfy a schema.
+An empty Search result is valid. It has no selector-bearing result node and
+creates no Query handoff. It MUST NOT fabricate a selector or empty handoff
+object merely to satisfy a schema.
 
 ** Query Independence
 

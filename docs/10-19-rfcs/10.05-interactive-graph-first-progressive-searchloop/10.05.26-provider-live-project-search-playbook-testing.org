@@ -23,7 +23,7 @@ MUST publish:
 
 - a stable provider and language identity;
 - one hermetic, owner-backed live-project fixture or a fixture generator;
-- the supported prime, pipe, owner, search, and exact-query capabilities;
+- the supported Search Playbook and exact-query capabilities;
 - typed success, empty-result, unavailable, and recovery expectations;
 - a bounded cold and warm latency budget.
 

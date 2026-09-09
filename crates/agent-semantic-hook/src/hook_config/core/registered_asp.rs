@@ -4,43 +4,43 @@
 
 use std::collections::BTreeMap;
 
-use crate::protocol_activation::protocol_activation_manifest::ActivatedProvider;
-use crate::protocol_activation::protocol_activation_manifest::HookRuntime;
+use crate::provider_projection::HookRuntime;
 use crate::tool_action::ToolAction;
 
-pub(super) struct RegisteredAspMatch<'a> {
+pub(super) struct RegisteredAspMatch {
     pub(super) language_id: agent_semantic_config::LanguageId,
-    pub(super) provider: Option<&'a ActivatedProvider>,
+    pub(super) provider_id: agent_semantic_config::ProviderId,
 }
 
-/// Match one parsed command stage against activated ASP language capabilities.
-pub(super) fn match_registered_asp_command<'a>(
+/// Match one parsed command stage against registered ASP language identities.
+pub(super) fn match_registered_asp_command(
     patterns: &[Vec<String>],
-    runtime: &'a HookRuntime,
+    runtime: &HookRuntime,
     action: &ToolAction,
-) -> Option<RegisteredAspMatch<'a>> {
+) -> Option<RegisteredAspMatch> {
     if patterns.is_empty() {
         return None;
     }
     let stages =
         crate::shell_parser::bash::parse_bash_command_candidates(action.command.as_deref()?)
             .ok()?;
-    let mut language_ids = Vec::new();
-    for projection in &runtime.policy_providers {
-        if !language_ids.contains(&projection.language_id) {
-            language_ids.push(projection.language_id.clone());
-        }
-    }
-    for language_id in language_ids {
+    for provider in &runtime.policy_providers {
+        let language_id = &provider.language_id;
         for pattern in patterns {
             if registered_root_search_playbook_pattern(pattern) {
                 if registered_root_search_playbook_matches(&stages, language_id.as_str()) {
                     return Some(RegisteredAspMatch {
-                        provider: runtime
-                            .providers
-                            .iter()
-                            .find(|provider| provider.language_id == language_id),
-                        language_id,
+                        provider_id: provider.provider_id.clone(),
+                        language_id: language_id.clone(),
+                    });
+                }
+                continue;
+            }
+            if registered_root_query_playbook_pattern(pattern) {
+                if registered_root_query_playbook_matches(&stages, language_id.as_str()) {
+                    return Some(RegisteredAspMatch {
+                        provider_id: provider.provider_id.clone(),
+                        language_id: language_id.clone(),
                     });
                 }
                 continue;
@@ -62,11 +62,8 @@ pub(super) fn match_registered_asp_command<'a>(
             .routes_protected()
             {
                 return Some(RegisteredAspMatch {
-                    provider: runtime
-                        .providers
-                        .iter()
-                        .find(|provider| provider.language_id == language_id),
-                    language_id,
+                    provider_id: provider.provider_id.clone(),
+                    language_id: language_id.clone(),
                 });
             }
         }
@@ -76,18 +73,15 @@ pub(super) fn match_registered_asp_command<'a>(
 
 fn registered_root_search_playbook_pattern(pattern: &[String]) -> bool {
     pattern == ["asp".to_owned(), "search".to_owned(), "playbook".to_owned()]
-        || pattern
-            == [
-                "asp".to_owned(),
-                "<registered-language>".to_owned(),
-                "search".to_owned(),
-            ]
+}
+
+fn registered_root_query_playbook_pattern(pattern: &[String]) -> bool {
+    pattern == ["asp".to_owned(), "query".to_owned(), "playbook".to_owned()]
 }
 
 /// Match the canonical root playbook spelling against the same declarative
-/// registered-language search pattern. The root command carries the language
-/// in `--language`, rather than in the second argv position used by the
-/// language-specific command spelling.
+/// registered-provider search pattern. Producer-set union is data carried by
+/// `--language` or `--documents`; producer-first command namespaces are not aliases.
 fn registered_root_search_playbook_matches(
     stages: &[agent_semantic_shell_parser::CommandStage],
     language_id: &str,
@@ -96,49 +90,51 @@ fn registered_root_search_playbook_matches(
         let words = stage.words();
         words.windows(3).any(|prefix| {
             prefix == ["asp", "search", "playbook"]
-                && words
-                    .windows(2)
-                    .any(|argument| argument == ["--language", language_id])
+                && words.windows(2).any(|argument| {
+                    matches!(argument[0].as_str(), "--language" | "--documents")
+                        && argument[1]
+                            .split('|')
+                            .any(|producer| producer == language_id)
+                })
         })
     })
 }
 
-pub(super) fn append_materialization_fields(
+/// Query uses the same root Playbook producer boundaries as Search. The
+/// canonical selector scheme must agree with that producer set.
+fn registered_root_query_playbook_matches(
+    stages: &[agent_semantic_shell_parser::CommandStage],
+    language_id: &str,
+) -> bool {
+    let selector_prefix = format!("{language_id}://");
+    stages.iter().any(|stage| {
+        let words = stage.words();
+        words
+            .windows(3)
+            .any(|prefix| prefix == ["asp", "query", "playbook"])
+            && words.windows(2).any(|argument| {
+                matches!(argument[0].as_str(), "--language" | "--documents")
+                    && argument[1]
+                        .split('|')
+                        .any(|producer| producer == language_id)
+            })
+            && words.windows(2).any(|argument| {
+                argument[0] == "--selector" && argument[1].starts_with(&selector_prefix)
+            })
+    })
+}
+
+pub(super) fn append_registered_provider_fields(
     fields: &mut BTreeMap<String, serde_json::Value>,
-    matched: &RegisteredAspMatch<'_>,
-    lazy_provider: Option<agent_semantic_config::HookClientLazyProviderPolicy>,
+    matched: &RegisteredAspMatch,
 ) {
     fields.insert(
         "registeredLanguageId".to_string(),
         serde_json::Value::String(matched.language_id.as_str().to_owned()),
     );
-    let Some(provider) = matched.provider else {
-        fields.insert(
-            "providerMaterialization".to_string(),
-            serde_json::Value::String("activation-required".to_string()),
-        );
-        fields.insert(
-            "providerActivationRefresh".to_string(),
-            serde_json::Value::String("hook-auto".to_string()),
-        );
-        if matches!(
-            lazy_provider,
-            Some(agent_semantic_config::HookClientLazyProviderPolicy::MatchedLanguage)
-        ) {
-            fields.insert(
-                "providerLazyLoadCommand".to_string(),
-                serde_json::Value::String(format!("asp install language {}", matched.language_id)),
-            );
-        }
-        return;
-    };
     fields.insert(
         "providerId".to_string(),
-        serde_json::Value::String(provider.provider_id.as_str().to_owned()),
-    );
-    fields.insert(
-        "providerMaterialization".to_string(),
-        serde_json::Value::String("static-route".to_string()),
+        serde_json::Value::String(matched.provider_id.as_str().to_owned()),
     );
 }
 

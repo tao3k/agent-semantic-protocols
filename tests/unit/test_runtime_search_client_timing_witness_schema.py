@@ -53,3 +53,6 @@ def test_client_timing_witness_rejects_agent_planner_fields(field):
     candidate[field] = "query"
     with pytest.raises(jsonschema.ValidationError):
         jsonschema.Draft202012Validator(SCHEMA).validate(candidate)
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later

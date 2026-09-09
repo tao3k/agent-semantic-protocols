@@ -10,7 +10,11 @@
     "schemaVersion": {"const": "1"},
     "languages": {"type": "string", "pattern": "^[^|\\s]+(\\|[^|\\s]+)*$"},
     "documents": {"type": "string", "pattern": "^[^|\\s]+(\\|[^|\\s]+)*$"},
-    "workspace": {"type": "string", "minLength": 1},
+    "workspace": {
+      "description": "Explicit registered cross-workspace identity. Filesystem paths are not workspace identities.",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._+-]*$"
+    },
     "syntax": {
       "type": "array",
       "minItems": 1,
@@ -25,6 +29,5 @@
       }
     },
     "projection": {"const": "matches"}
-  },
-  "anyOf": [{"required": ["languages"]}, {"required": ["documents"]}]
+  }
 }

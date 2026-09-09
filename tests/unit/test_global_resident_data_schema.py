@@ -40,8 +40,8 @@ def request(surface: dict) -> dict:
         "ownerEpoch": 1,
         "bindingToken": "binding-1",
         "workspaceIdentity": {
-            "kind": "checkout-root",
-            "workspaceRoot": "/tmp/project",
+            "projectId": "repo-project1",
+            "workspaceId": "workspace-project1",
         },
         "operation": "query",
         "surface": surface,

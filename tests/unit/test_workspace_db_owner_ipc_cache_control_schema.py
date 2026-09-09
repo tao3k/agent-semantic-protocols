@@ -6,21 +6,32 @@ import json
 from pathlib import Path
 from typing import Iterator
 
-from jsonschema import Draft202012Validator
 from jsonschema.exceptions import ValidationError
 
 
 ROOT = Path(__file__).resolve().parents[2]
-SCHEMA = json.loads(
-    (ROOT / "schemas" / "workspace-db-owner-ipc.v1.schema.json").read_text()
-)
-VALIDATOR = Draft202012Validator(SCHEMA)
-REQUEST_VALIDATOR = Draft202012Validator(SCHEMA["$defs"]["cacheControlRequest"])
+SCHEMA_PATH = ROOT / "schemas" / "workspace-db-owner-ipc.v1.schema.json"
+from unit.schema_validation import schema_validator_for
+
+VALIDATOR = schema_validator_for(SCHEMA_PATH)
 FIXTURES = ROOT / "schemas" / "fixtures" / "workspace-db-owner-ipc"
 
 
 def fixture(name: str) -> object:
     return json.loads((FIXTURES / name).read_text())
+
+
+def owner_request(cache_control_request: dict[str, object]) -> dict[str, object]:
+    return {
+        "schemaId": "agent.semantic-protocols.workspace-db-owner-request.v1",
+        "schemaVersion": "1",
+        "workspaceIdentity": "workspace-test",
+        "transportContractDigest": "blake3-256:test-contract",
+        "ownerEpoch": 9,
+        "bindingToken": "binding-test",
+        "requestId": "request-test",
+        "operation": {"kind": "cache-control", "request": cache_control_request},
+    }
 
 
 def error_tree(error: ValidationError) -> Iterator[ValidationError]:
@@ -61,7 +72,7 @@ def test_cache_control_owner_delta_request_is_valid() -> None:
         "fallbackPolicy": "full-generation",
     }
 
-    assert list(REQUEST_VALIDATOR.iter_errors(request)) == []
+    assert list(VALIDATOR.iter_errors(owner_request(request))) == []
 
 
 def test_cache_control_owner_delta_rejects_empty_delta() -> None:
@@ -74,4 +85,4 @@ def test_cache_control_owner_delta_rejects_empty_delta() -> None:
         "fallbackPolicy": "fail-closed",
     }
 
-    assert list(REQUEST_VALIDATOR.iter_errors(request))
+    assert list(VALIDATOR.iter_errors(owner_request(request)))

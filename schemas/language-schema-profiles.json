@@ -25,12 +25,13 @@
       "asp-client-protocol-catalog.schema.json",
       "asp-client-frame.schema.json",
       "asp-client-conformance.schema.json",
-      "asp-client-search-request.schema.json",
       "asp-client-workspace-search-playbook-request.v1.schema.json",
       "asp-client-workspace-query-playbook-request.v1.schema.json",
       "asp-client-workspace-syntax-query-request.v1.schema.json",
       "asp-client-workspace-syntax-query-response.v1.schema.json",
       "search-topology-settlement.v1.schema.json",
+      "runtime-search-execution-budget.v1.schema.json",
+      "runtime-resident-request-plane-receipt.v1.schema.json",
       "large-search-playbook-performance-receipt.v1.schema.json",
       "asp-client-source-index-lookup-request.schema.json",
       "resident-search-result.v1.schema.json",
@@ -62,7 +63,6 @@
       "exact-structural-selector.v1.schema.json",
       "provider-native-exact-request.v1.schema.json",
       "provider-native-exact-response.v1.schema.json",
-      "semantic-search-packet.v1.schema.json",
       "semantic-search-storage-route.v1.schema.json",
       "semantic-query-packet.v1.schema.json",
       "runtime-execution-binding.v2.schema.json",
@@ -106,12 +106,11 @@
       "semantic-dev-command-log.v1.schema.json",
       "semantic-formal-proof-pilot.v1.schema.json",
       "semantic-review-packet.v1.schema.json",
-      "semantic-evidence-graph.v1.schema.json",
       "semantic-graph-resident-evaluation-request.v1.schema.json",
       "semantic-graph-resident-evaluation-result.v1.schema.json",
+      "project-topology-inference-receipt.v1.schema.json",
       "python-generation-graph-performance-receipt.v1.schema.json",
       "semantic-graph-turbo-request.v1.schema.json",
-      "semantic-assurance-case.v1.schema.json",
       "semantic-ast-patch.v1.schema.json",
       "semantic-ast-patch-receipt.v1.schema.json"
     ]
@@ -119,6 +118,7 @@
   "profiles": [
     {
       "languageId": "rust",
+      "searchProducerAxes": ["language"],
       "packageRoot": "languages/asp-rust",
       "bundleRoot": "languages/asp-rust/schemas",
       "rootSets": [
@@ -141,6 +141,7 @@
     },
     {
       "languageId": "typescript",
+      "searchProducerAxes": ["language"],
       "packageRoot": "languages/asp-typescript",
       "bundleRoot": "languages/asp-typescript/schemas",
       "rootSets": [
@@ -157,6 +158,7 @@
     },
     {
       "languageId": "python",
+      "searchProducerAxes": ["language"],
       "packageRoot": "languages/asp-python",
       "bundleRoot": "languages/asp-python/schemas",
       "rootSets": [
@@ -173,6 +175,7 @@
     },
     {
       "languageId": "julia",
+      "searchProducerAxes": ["language"],
       "packageRoot": "languages/AspJulia.jl",
       "bundleRoot": "languages/AspJulia.jl/schemas",
       "rootSets": [
@@ -187,6 +190,7 @@
     },
     {
       "languageId": "gerbil-scheme",
+      "searchProducerAxes": ["language"],
       "packageRoot": "languages/asp-gerbil-scheme",
       "bundleRoot": "languages/asp-gerbil-scheme/schemas",
       "rootSets": [
@@ -201,7 +205,6 @@
         "exact-structural-selector.v1.schema.json",
         "provider-native-exact-request.v1.schema.json",
         "provider-native-exact-response.v1.schema.json",
-        "semantic-search-packet.v1.schema.json",
         "semantic-query-packet.v1.schema.json",
         "semantic-owner-item-evidence.v1.schema.json",
         "semantic-extension-pattern-mapping.v1.schema.json",
@@ -215,6 +218,7 @@
     },
     {
       "languageId": "org",
+      "searchProducerAxes": ["document"],
       "packageRoot": "languages/orgize",
       "bundleRoot": "languages/orgize/provider/org/schemas",
       "rootSets": [
@@ -228,6 +232,7 @@
     },
     {
       "languageId": "md",
+      "searchProducerAxes": ["document"],
       "packageRoot": "languages/orgize",
       "bundleRoot": "languages/orgize/provider/md/schemas",
       "rootSets": [
@@ -523,6 +528,8 @@
     },
     {
       "familyId": "asp.schema-family.semantic-search",
+      "definitionSchemaPath": "schemas/semantic-search-definitions.v1.schema.json",
+      "definitionVisibility": "family",
       "owner": "schemas",
       "rationale": "Search packet, projection, trace, and evidence contracts under the semantic-search namespace.",
       "priority": 210,
@@ -542,6 +549,7 @@
           "lexical-",
           "python-generation-graph-",
           "rendered-search-",
+          "runtime-search-",
           "repository-candidate-",
           "search-",
           "fused-search-",
@@ -560,7 +568,9 @@
           "schemas/asp-client-workspace-search-playbook-request.v1.schema.json",
           "schemas/asp-client-workspace-syntax-query-request.v1.schema.json",
           "schemas/asp-client-workspace-syntax-query-response.v1.schema.json",
-          "schemas/search-topology-settlement.v1.schema.json"
+          "schemas/search-topology-settlement.v1.schema.json",
+          "schemas/runtime-search-execution-budget.v1.schema.json",
+          "schemas/runtime-resident-request-plane-receipt.v1.schema.json"
         ]
       }
     },
@@ -835,7 +845,7 @@
     },
     {
       "fingerprint": "sha256:7245937b80aac15d7d70b80e82eaa5fe6c5c4136d7d641250b268b09aa37f96a",
-      "occurrenceSetDigest": "sha256:08a3ccf3bc65fa35febb4210c9acde40feb8dcd19f0fc5e437dea04a620170b5",
+      "occurrenceSetDigest": "sha256:88a8a16d846b95bd592402af211fd1b215715af1419c5ec9f8e191db6a932edd",
       "familyIds": [
         "asp.schema-family.rust-project-harness",
         "asp.schema-family.semantic",
@@ -1128,6 +1138,80 @@
       "reviewState": "accepted",
       "owner": "asp.schema-family.schema-manager",
       "rationale": "Structured SchemaReference is a shared manager-owned declaration used by client and provider contracts."
+    },
+    {
+      "fingerprint": "sha256:7cddffaaa3e6c750974f530c6c44e995bdd2c3f0440f3788139cc8ddd9f06fc4",
+      "occurrenceSetDigest": "sha256:05a6a6cdc47960a12d5c9abd9881f02052f537444531e988739df8e8fd8aa493",
+      "familyIds": [
+        "asp.schema-family.provider",
+        "asp.schema-family.runtime-server",
+        "asp.schema-family.semantic-search"
+      ],
+      "decision": "defer",
+      "reviewState": "accepted",
+      "owner": "asp.schema-family.provider",
+      "rationale": "Canonical source relations should reference one public provider-owned relation definition after the provider and resident-generation contracts are versioned together."
+    },
+    {
+      "fingerprint": "sha256:e3694767637bb90692a735a3d4290ceb288576cdf05a50f573c8cc037c2eb9a1",
+      "occurrenceSetDigest": "sha256:4025b62f39f4481419697bddc0f9f0bc720d4f14d238a2cecca81a97dfaa3f63",
+      "familyIds": [
+        "asp.schema-family.runtime-server",
+        "asp.schema-family.workspace"
+      ],
+      "decision": "defer",
+      "reviewState": "accepted",
+      "owner": "asp.schema-family.runtime-server",
+      "rationale": "Loopback endpoint ownership stays with Runtime Server until workspace IPC can consume a versioned public endpoint definition."
+    },
+    {
+      "fingerprint": "sha256:94f386dce5e61b23906b0a60f083e1e66f13ff7f620f08cac0178f9312103209",
+      "occurrenceSetDigest": "sha256:760ea69385829ca4e8dca5cd3cc8ed25add60484ecfe0f718a0de6b222b3443f",
+      "familyIds": [
+        "asp.schema-family.runtime",
+        "asp.schema-family.semantic-search"
+      ],
+      "decision": "extract-family-definition",
+      "reviewState": "accepted",
+      "owner": "asp.schema-family.runtime",
+      "rationale": "Zero request-time external-work counters are one Runtime request-plane invariant and should move to a public Runtime definition with the next receipt version."
+    },
+    {
+      "fingerprint": "sha256:df4f7ab146f2a0585d3b4e14a53879791b36ce06500ed5e9514f9af187757c27",
+      "occurrenceSetDigest": "sha256:12fd0dd1102a48e05073329b58dedaaa81ec716fd6130de30146656397badbc6",
+      "familyIds": [
+        "asp.schema-family.provider",
+        "asp.schema-family.runtime-server",
+        "asp.schema-family.semantic-search"
+      ],
+      "decision": "defer",
+      "reviewState": "accepted",
+      "owner": "asp.schema-family.provider",
+      "rationale": "Relation endpoints should reference the provider-owned public relation definition when source generation schemas advance together."
+    },
+    {
+      "fingerprint": "sha256:b57e9c4f8c8fbf8e3f8b8ca8f085a82ac367bb90307200f95c296f0e9536e994",
+      "occurrenceSetDigest": "sha256:f8bac4f1a1272d665907d420f236b98d4a3379ea4d784c3c731903bcfa8710a6",
+      "familyIds": [
+        "asp.schema-family.asp-client",
+        "asp.schema-family.semantic-search"
+      ],
+      "decision": "extract-family-definition",
+      "reviewState": "accepted",
+      "owner": "asp.schema-family.semantic-search",
+      "rationale": "Query Playbook selector arrays are one semantic-search contract and should be exposed as a public definition for the client request schema."
+    },
+    {
+      "fingerprint": "sha256:4f9575ffffabe70bfd760d5c5a65efce909549da8cb1a275edbf62f0eba282c3",
+      "occurrenceSetDigest": "sha256:affcc7c4f9fc78927876f71a52b471fe330110402232c3de47d6e0c29fa9fa72",
+      "familyIds": [
+        "asp.schema-family.runtime",
+        "asp.schema-family.semantic-topology"
+      ],
+      "decision": "defer",
+      "reviewState": "accepted",
+      "owner": "asp.schema-family.semantic-topology",
+      "rationale": "Runtime topology attachment should consume a public semantic-topology terminal when both receipt versions advance together."
     }
   ]
 }

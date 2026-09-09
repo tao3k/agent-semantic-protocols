@@ -411,7 +411,7 @@ fn decision(run_id: &str, index: usize) -> HookDecision {
             argv: vec!["asp".to_string(), "rust".to_string()],
             stdin_mode: Some(StdinMode::None),
         }],
-        message: "read Rust source through asp query".to_string(),
+        message: "read Rust source through Query Playbook".to_string(),
         fields: BTreeMap::new(),
     }
 }
@@ -614,7 +614,7 @@ fn source_access_replay_preserves_exact_parser_route_message() {
     let project_root = unique_project_root();
     let mut first = decision("parser-route-replay", 0);
     first.message =
-        "Use parser evidence. ASP route: asp search playbook --language rust source --scope owner:src/lib.rs"
+        "Use parser evidence. ASP route: asp search playbook --language rust --rg --files -g src/lib.rs --tantivy 'title:[* TO *] OR body:[* TO *]'"
             .to_string();
     let original_message = first.message.clone();
 

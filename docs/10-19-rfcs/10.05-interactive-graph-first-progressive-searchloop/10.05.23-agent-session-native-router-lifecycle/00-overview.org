@@ -403,8 +403,8 @@ individually reasonable.
 * Router precedence
 
 =ASP-RFC-10.05-ASNR-CLASSIFY=: The hook classifier first recognizes the
-parser-owned ASP command envelope.  It MUST NOT classify an =asp org query=,
-=asp rust search=, =asp query=, or another registered provider facade as raw
+parser-owned ASP command envelope.  It MUST NOT classify an =asp query playbook --documents org=,
+Search/Query Playbook or another registered control-plane facade as raw
 broad source access merely because the outer host tool is a shell executor.
 
 The precedence is:
@@ -565,7 +565,7 @@ The implementation test plan must include:
 - a live registered binding performs one native dispatch without bootstrap;
 - replay of the same turn does not dispatch;
 - a child terminal receipt cannot redispatch to the same child;
-- =asp org query= is recognized as parser-owned when executed through a shell
+- =asp query playbook --documents org= is recognized as parser-owned when executed through a shell
   host tool;
 - Session binding repair succeeds when Runtime Server admission is absent;
 - Runtime Server admission succeeds when no Resident Subagent exists;

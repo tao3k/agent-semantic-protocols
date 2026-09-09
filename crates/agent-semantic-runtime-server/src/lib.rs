@@ -20,7 +20,9 @@ pub(crate) use runtime_query_generation::RuntimeQueryGeneration;
 pub use runtime_query_generation_authority::RuntimeQueryGenerationAuthority;
 pub use runtime_query_generation_authority::RuntimeQueryGenerationState;
 mod runtime_cold_rg;
+pub mod runtime_evidence_graph;
 mod runtime_query_generation_key;
+mod runtime_search_execution_budget;
 mod runtime_search_graph;
 
 pub use agent_semantic_client_server::AspClientGrpcTransport;

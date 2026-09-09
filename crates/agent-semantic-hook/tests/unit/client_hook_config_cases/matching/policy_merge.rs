@@ -51,7 +51,7 @@ argvPatternAny = [["asp", "<registered-language>", "search"]]
         event: "pre-tool",
         payload: &json!({
             "tool_name": "Bash",
-            "tool_input": {"command": "asp search playbook --language rust ownership --workspace ."}
+            "tool_input": {"command": "asp search playbook --language rust --rg ownership"}
         }),
     });
 
@@ -277,7 +277,7 @@ fn registered_reasoning_search_dispatches_before_raw_search_rules_and_lazy_loads
             .any(|provider| provider.language_id.as_str() == "rust"),
         "canonical projection must register Rust"
     );
-    let search_command = "asp search playbook --language rust 'HookDecision' --workspace .";
+    let search_command = "asp search playbook --language rust --rg HookDecision";
     let stages = agent_semantic_shell_parser::parse_bash_command_candidates(search_command)
         .expect("parse direct ASP search command");
     assert!(
@@ -358,9 +358,19 @@ fn registered_reasoning_search_dispatches_before_raw_search_rules_and_lazy_loads
     assert_eq!(
         asp_search_decision
             .fields
-            .get("providerActivationRefresh")
+            .get("providerId")
             .and_then(|value| value.as_str()),
-        Some("hook-auto")
+        Some("asp-rust")
+    );
+    assert!(
+        !asp_search_decision
+            .fields
+            .contains_key("providerActivationRefresh")
+    );
+    assert!(
+        !asp_search_decision
+            .fields
+            .contains_key("providerMaterialization")
     );
     assert!(
         !asp_search_decision
@@ -377,11 +387,11 @@ fn registered_reasoning_search_dispatches_before_raw_search_rules_and_lazy_loads
     for (language_id, command) in [
         (
             "org",
-            "asp search playbook --language org capability --scope owner:docs/spec.org --workspace .",
+            "asp search playbook --documents org --rg --files -g docs/spec.org --tantivy 'title:[* TO *] OR body:[* TO *]'",
         ),
         (
             "md",
-            "asp search playbook --language md runtime --scope owner:README.md --workspace .",
+            "asp search playbook --documents md --rg --files -g README.md --tantivy 'title:[* TO *] OR body:[* TO *]'",
         ),
     ] {
         let provider_route_decision = classify_hook_with_config(HookClassificationRequest {
@@ -420,7 +430,7 @@ fn registered_reasoning_search_dispatches_before_raw_search_rules_and_lazy_loads
             "session_id": "session-ABC_123",
             "tool_name": "Bash",
             "tool_input": {
-                "command": "asp rust query --selector rust://src/lib.rs#item/function/run --workspace . --projection source"
+                "command": "asp query playbook --language rust --selector rust://src/lib.rs#item/function/run --projection source"
             }
         }),
     });

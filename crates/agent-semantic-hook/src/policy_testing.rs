@@ -57,8 +57,6 @@ pub fn combinatorial_policy_witnesses(
         crate::ClientHookConfig::compile_policy_coverage_reference(config.clone())?;
     let mut reference_runtime = crate::HookRuntime {
         project_root: ".".to_owned(),
-        rankers: Vec::new(),
-        providers: Vec::new(),
         policy_providers: Vec::new(),
     };
     reference_config.apply_language_provider_projection(&mut reference_runtime)?;

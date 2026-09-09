@@ -68,13 +68,13 @@ pub(crate) async fn run_language_command(
     match command_args.first().map(String::as_str) {
         Some("search") => {
             return Err(
-                "language-first Search was removed; use `asp search playbook --languages <language|...> ...`"
+                "language-first Search was removed; use `asp search playbook --language <producer|...> ...`"
                     .to_owned(),
             );
         }
         Some("query") => {
             return Err(
-                "language-first Query was removed; use `asp query playbook --selector <exact-selector>...`; provider-native syntax discovery belongs to `asp search playbook`"
+                "language-first Query was removed; use `asp query playbook --language <producer|...> --selector <exact-selector>...`; provider-native syntax discovery belongs to `asp search playbook`"
                     .to_owned(),
             );
         }

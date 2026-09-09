@@ -46,20 +46,16 @@ const ROOT_COMMANDS: &[(&str, &str)] = &[
 
 const LANGUAGE_COMMANDS: &[(&str, &str)] = &[
     ("guide", "Show the language provider guide"),
-    ("check", "Run language-owned policy checks"),
     ("cache", "Inspect language-owned cache state"),
     ("info", "Show provider information"),
     ("bench", "Run provider benchmarks"),
     ("projection", "Import or inspect language projections"),
     ("agent", "Run provider agent diagnostics"),
     ("ast-patch", "Work with language-owned AST patches"),
-    ("evidence", "Inspect provider evidence"),
 ];
 
 const DOCUMENT_COMMANDS: &[(&str, &str)] = &[
     ("guide", "Show the document query guide"),
-    ("search", "Discover document-owned structural evidence"),
-    ("query", "Query an exact document structural selector"),
 ];
 
 fn command_with_subcommands(
@@ -180,7 +176,6 @@ fn hook_command() -> Command {
         "asp hook",
         "Run and inspect host hook integration",
         &[
-            ("accept-host", "Validate normal-task Host-to-Hook delivery"),
             ("doctor", "Diagnose host hook integration"),
             ("enablement", "Prove that the Codex Hook may be enabled"),
             ("paths", "Resolve hook-owned paths"),
@@ -199,36 +194,6 @@ fn hook_command() -> Command {
             .value_parser(["codex", "claude"])
             .help("Select the host client"),
     )
-}
-
-fn hook_accept_host_command() -> Command {
-    Command::new("accept-host")
-        .bin_name("asp hook accept-host")
-        .about("Validate normal-task Host-to-Hook delivery")
-        .arg(
-            Arg::new("host-rollout")
-                .long("host-rollout")
-                .value_name("PATH")
-                .required(true),
-        )
-        .arg(
-            Arg::new("hook-events")
-                .long("hook-events")
-                .value_name("PATH")
-                .required(true),
-        )
-        .arg(
-            Arg::new("host-probe-path")
-                .long("host-probe-path")
-                .value_name("PATH")
-                .required(true),
-        )
-        .arg(
-            Arg::new("host-sentinel")
-                .long("host-sentinel")
-                .value_name("TOKEN")
-                .required(true),
-        )
 }
 
 fn hook_doctor_command() -> Command {
@@ -259,6 +224,26 @@ fn hook_enablement_command() -> Command {
             Arg::new("json")
                 .long("json")
                 .action(clap::ArgAction::SetTrue),
+        )
+        .arg(
+            Arg::new("host-rollout")
+                .long("host-rollout")
+                .value_name("PATH"),
+        )
+        .arg(
+            Arg::new("hook-events")
+                .long("hook-events")
+                .value_name("PATH"),
+        )
+        .arg(
+            Arg::new("host-probe-path")
+                .long("host-probe-path")
+                .value_name("PATH"),
+        )
+        .arg(
+            Arg::new("host-sentinel")
+                .long("host-sentinel")
+                .value_name("TOKEN"),
         )
 }
 

@@ -44,7 +44,7 @@
     },
     "method": {
       "type": "string",
-      "pattern": "^(?:guide|query|(query|proof|review|evidence|ast-patch|agent)/[a-z][a-z0-9_-]*)$"
+      "pattern": "^(?:guide|query|(query|proof|review|ast-patch|agent)/[a-z][a-z0-9_-]*)$"
     },
     "command": {
       "enum": [
@@ -52,7 +52,6 @@
         "query",
         "proof",
         "review",
-        "evidence",
         "ast-patch",
         "agent"
       ]

@@ -37,6 +37,7 @@ struct EmbeddedSchemaCatalog {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct EmbeddedLanguageBundle {
     language_id: String,
+    search_producer_axes: Vec<agent_semantic_schema_manager::SearchProducerAxis>,
     root_set_ids: Vec<String>,
     bundle_digest: String,
     entries: Vec<EmbeddedSchemaEntry>,
@@ -55,6 +56,7 @@ struct EmbeddedSchemaEntry {
 
 #[derive(Clone)]
 struct VerifiedLanguageBundle {
+    search_producer_axes: Arc<[agent_semantic_schema_manager::SearchProducerAxis]>,
     root_set_ids: Arc<[String]>,
     bundle_digest: String,
     ready: Arc<SchemaBundleResponse>,
@@ -69,6 +71,15 @@ pub struct RuntimeSchemaBundleCatalog {
 }
 
 impl RuntimeSchemaBundleCatalog {
+    pub(crate) fn search_producer_axes(
+        &self,
+        language_id: &str,
+    ) -> Option<&[agent_semantic_schema_manager::SearchProducerAxis]> {
+        self.bundles
+            .get(language_id)
+            .map(|bundle| bundle.search_producer_axes.as_ref())
+    }
+
     /// Decode the build-verified catalog embedded in the Runtime artifact.
     /// Runtime startup never scans, materializes, or verifies the mutable
     /// source checkout; changing any schema changes the enclosing binary
@@ -131,6 +142,7 @@ impl RuntimeSchemaBundleCatalog {
                 .insert(
                     bundle.language_id.clone(),
                     VerifiedLanguageBundle {
+                        search_producer_axes: Arc::from(bundle.search_producer_axes),
                         root_set_ids: Arc::from(receipt.root_set_ids),
                         bundle_digest: receipt.bundle_digest,
                         ready,
@@ -260,6 +272,7 @@ impl RuntimeSchemaBundleCatalog {
             unchanged.validate()?;
             profile_mismatch.validate()?;
             let projected = VerifiedLanguageBundle {
+                search_producer_axes: Arc::from(profile.search_producer_axes.clone()),
                 root_set_ids: Arc::from(profile.root_sets.clone()),
                 bundle_digest: projected_receipt.bundle_digest,
                 ready,

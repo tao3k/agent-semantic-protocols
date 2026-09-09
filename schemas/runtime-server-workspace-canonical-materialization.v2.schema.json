@@ -184,26 +184,7 @@
       "pattern": "^blake3-256:[0-9a-f]{64}$"
     },
     "projectResolutions": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": ["candidateBase", "scopeDigest", "scope"],
-        "properties": {
-          "candidateBase": {
-            "type": "string",
-            "minLength": 1,
-            "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
-          },
-          "scopeDigest": {
-            "type": "string",
-            "pattern": "^blake3-256:[0-9a-f]{64}$"
-          },
-          "scope": {
-            "$ref": "https://schemas.agent-semantic-protocols.dev/project-resolution.schema.json"
-          }
-        }
-      }
+      "$ref": "https://agent-semantic-protocols.local/schemas/runtime-server-definitions.v1.schema.json#/$defs/projectResolutions"
     },
     "relations": {
       "type": "array",

@@ -4,11 +4,7 @@
 
 //! PATH-visible `asp` binary installation helpers.
 
-#[path = "protocol_binary_identity.rs"]
-mod protocol_binary_identity;
-
-use protocol_binary_identity::is_digest_addressed_protocol_binary;
-pub(crate) use protocol_binary_identity::protocol_binary_digest_from_canonical_artifact_path;
+use agent_semantic_artifacts::runtime_artifact_member_is_digest_addressed;
 
 #[cfg(test)]
 fn protocol_binary_artifact_path_digest(path: &Path) -> Option<String> {
@@ -71,9 +67,11 @@ impl RuntimeBinaryIdentityV1 {
         &self.name
     }
 }
+#[cfg(test)]
 static PROTOCOL_BINARY_PUBLISH_SEQUENCE: std::sync::atomic::AtomicU64 =
     std::sync::atomic::AtomicU64::new(0);
 
+#[cfg(test)]
 fn next_protocol_binary_publish_sequence() -> u64 {
     PROTOCOL_BINARY_PUBLISH_SEQUENCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
 }
@@ -496,7 +494,6 @@ async fn install_release_provider_member_target(
 pub(crate) async fn install_qualified_provider_staging_target(
     source: &Path,
     target: &Path,
-    artifact_root: &Path,
     binary_identity: &RuntimeBinaryIdentityV1,
     checkout_root: PathBuf,
 ) -> Result<ProtocolBinaryInstall, String> {
@@ -509,33 +506,14 @@ pub(crate) async fn install_qualified_provider_staging_target(
             binary_name.to_string_lossy()
         ));
     }
-    let runtime_root = artifact_root.parent().ok_or_else(|| {
-        format!(
-            "runtime artifact root has no Runtime parent: {}",
-            artifact_root.display()
-        )
-    })?;
-    let state_home = runtime_root.parent().ok_or_else(|| {
-        format!(
-            "Runtime root has no state-home parent: {}",
-            runtime_root.display()
-        )
-    })?;
-    let expected_target = runtime_root.join("bin").join(binary_name);
-    if !same_protocol_binary_entry(target, &expected_target) {
-        return Err(format!(
-            "provider binary target must use the Runtime stable launcher: expected={} actual={}",
-            expected_target.display(),
-            target.display()
-        ));
-    }
+    let state_home = qualified_provider_state_home(target, binary_name)?;
     let artifact_kind = binary_name.to_string_lossy().into_owned();
-    authority.validate_source(state_home, source, &artifact_kind)?;
+    authority.validate_source(&state_home, source, &artifact_kind)?;
     let member_digest =
         agent_semantic_artifacts::runtime_artifact_slots::runtime_artifact_candidate_digest(source)
             .await?;
     let publication = agent_semantic_artifacts::runtime_artifact_publication::publish_runtime_artifact_bound_provider_member_from_active(
-        state_home,
+        &state_home,
         &artifact_kind,
         source,
         "dev",
@@ -552,6 +530,42 @@ pub(crate) async fn install_qualified_provider_staging_target(
         lease_producer_process_id: Some(publication.lease_producer_process_id),
         lease_consumer_process_id: Some(publication.lease_consumer_process_id),
     })
+}
+
+fn qualified_provider_state_home(
+    target: &Path,
+    binary_name: &std::ffi::OsStr,
+) -> Result<PathBuf, String> {
+    let runtime_bin = target.parent().ok_or_else(|| {
+        format!(
+            "provider binary target has no Runtime bin parent: {}",
+            target.display()
+        )
+    })?;
+    let runtime_root = runtime_bin.parent().ok_or_else(|| {
+        format!(
+            "Runtime bin has no Runtime parent: {}",
+            runtime_bin.display()
+        )
+    })?;
+    let state_home = runtime_root.parent().ok_or_else(|| {
+        format!(
+            "Runtime root has no state-home parent: {}",
+            runtime_root.display()
+        )
+    })?;
+    let expected_target = agent_semantic_artifacts::StateHomeLayout::new(state_home)
+        .runtime_state()
+        .bin()
+        .join(binary_name);
+    if !same_protocol_binary_entry(target, &expected_target) {
+        return Err(format!(
+            "provider binary target must use the Runtime stable launcher: expected={} actual={}",
+            expected_target.display(),
+            target.display()
+        ));
+    }
+    Ok(state_home.to_path_buf())
 }
 
 async fn install_protocol_binary_target_transaction(
@@ -665,7 +679,7 @@ fn resolve_protocol_binary_artifact_entry(
             entry.display()
         )
     })?;
-    if !is_digest_addressed_protocol_binary(&identity, artifact_root)? {
+    if !runtime_artifact_member_is_digest_addressed(&identity, artifact_root)? {
         return Err(format!(
             "protocol binary entry {} escapes immutable artifact root {}",
             entry.display(),

@@ -873,18 +873,18 @@ To beat =codebase-memory-mcp= on search, ASP needs to close the productization
 gap without giving up native provider authority.
 
 ** R1: One default search playbook
-Add a first-class search flow:
+Use the sole first-class Search entry:
 
 #+begin_src text
-asp search intent <text>
-  -> query set
+asp search playbook --language <producer|...> --rg <native argv...> --tantivy <native query...>
+  -> admitted Search Layout
   -> graph/entity/dependency/doc candidates
   -> Python rank/diversity
   -> evidence bundle
   -> snippet/action selectors
 #+end_src
 
-The CLI name can change, but the product behavior should not be optional.
+The public CLI shape is fixed by the current Search RFC.
 
 ** R2: Entity FTS/BM25 read-model
 Build an indexed text read-model over provider entities, not raw files. It

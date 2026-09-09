@@ -90,7 +90,7 @@ def _valid_catalog() -> dict:
         "pipelines": [
             {
                 "pipelineId": "lexical-rg-lines",
-                "surface": "search-lexical",
+                "surface": "provider-internal",
                 "purpose": "fuzzy-lexical-candidates",
                 "defaultFor": ["lexical"],
                 "stages": [

@@ -81,7 +81,7 @@ enum AspClientServerChildControl {
 }
 
 const MAX_BOOTSTRAP_STDERR_BYTES: usize = 16 * 1024;
-const DEFAULT_PROVIDER_HTTP_REQUEST_DEADLINE: std::time::Duration =
+const DEFAULT_PROVIDER_HTTP_LIFECYCLE_DEADLINE: std::time::Duration =
     std::time::Duration::from_secs(2);
 /// Provider HTTP servers must admit this wire-frame size without changing
 /// language-local server limits.  Corpus-sized operations are expressed as a
@@ -100,22 +100,9 @@ impl AspClientServerHttpClient {
             .no_proxy()
             .http1_only()
             .pool_max_idle_per_host(1)
-            .timeout(DEFAULT_PROVIDER_HTTP_REQUEST_DEADLINE)
-            .build()
-            .map_err(|error| format!("construct ASP Client Server HTTP client: {error}"))?;
-        Ok(Self { client, base_url })
-    }
-
-    #[cfg(test)]
-    fn new_with_timeout(
-        base_url: reqwest::Url,
-        request_timeout: std::time::Duration,
-    ) -> Result<Self, String> {
-        let client = reqwest::Client::builder()
-            .no_proxy()
-            .http1_only()
-            .pool_max_idle_per_host(1)
-            .timeout(request_timeout)
+            // Do not install a whole-request timeout here: projection batches
+            // inherit cancellation from the generation owner. Health and
+            // shutdown remain bounded explicitly below.
             .build()
             .map_err(|error| format!("construct ASP Client Server HTTP client: {error}"))?;
         Ok(Self { client, base_url })
@@ -157,6 +144,18 @@ impl AspClientServerHttpClient {
             ));
         }
         Ok(response_body.to_vec())
+    }
+
+    async fn json_with_deadline(
+        &self,
+        method: &str,
+        path: &str,
+        body: Option<&[u8]>,
+        deadline: std::time::Duration,
+    ) -> Result<Vec<u8>, String> {
+        tokio::time::timeout(deadline, self.json(method, path, body))
+            .await
+            .map_err(|_| "ASP Client Server lifecycle deadline exceeded".to_owned())?
     }
 }
 
@@ -330,6 +329,22 @@ impl AspClientServerPeer {
         http.json(method, path, body).await
     }
 
+    async fn http_json_with_lifecycle_deadline(
+        &self,
+        method: &str,
+        path: &str,
+        body: Option<&[u8]>,
+    ) -> Result<Vec<u8>, String> {
+        let http = self
+            .http
+            .read()
+            .await
+            .clone()
+            .ok_or_else(|| "ASP Client Server HTTP client is not ready".to_owned())?;
+        http.json_with_deadline(method, path, body, DEFAULT_PROVIDER_HTTP_LIFECYCLE_DEADLINE)
+            .await
+    }
+
     async fn contract_receipt(&self) -> Result<ProviderRuntimeContractReceipt, String> {
         let mut stdout = self
             .bootstrap_stdout
@@ -398,7 +413,9 @@ impl AspClientServerPeer {
             .await
             .replace(AspClientServerHttpClient::new(endpoint_url)?);
         let health_path = self.health_path.clone();
-        let response = self.http_json("GET", &health_path, None).await?;
+        let response = self
+            .http_json_with_lifecycle_deadline("GET", &health_path, None)
+            .await?;
         let receipt = serde_json::from_slice::<ProviderRuntimeContractReceipt>(&response)
             .map_err(|error| format!("decode provider HTTP server health: {error}"))?;
         receipt.validate()?;
@@ -529,7 +546,7 @@ impl AspClientServerPeer {
         }
         let shutdown_path = self.shutdown_path.clone();
         let force = self
-            .http_json("POST", &shutdown_path, Some(b"{}"))
+            .http_json_with_lifecycle_deadline("POST", &shutdown_path, Some(b"{}"))
             .await
             .is_err();
         let (response, stopped) = oneshot::channel();

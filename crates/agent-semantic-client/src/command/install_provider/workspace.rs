@@ -466,7 +466,6 @@ async fn run_workspace_command(
 pub(super) async fn publish_provider_workspace(
     protocol_home: &Path,
     stable_entry: &Path,
-    binary_artifact_root: &Path,
     registration: &super::super::provider_install_registry::ProviderInstallRegistration,
     built: BuiltProviderWorkspace,
 ) -> Result<PublishedProviderWorkspace, String> {
@@ -560,7 +559,6 @@ pub(super) async fn publish_provider_workspace(
     let installed = super::super::protocol_binary::install_qualified_provider_staging_target(
         &launcher,
         stable_entry,
-        binary_artifact_root,
         &binary_identity,
         checkout_root,
     )

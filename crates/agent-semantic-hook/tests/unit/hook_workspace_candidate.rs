@@ -25,7 +25,7 @@ fn explicit_asp_workspace_overrides_command_root() {
     let payload = json!({
         "cwd": "/workspace/repo",
         "tool_input": {
-            "command": "direnv exec . asp rust query owner --workspace ../target"
+            "command": "direnv exec . asp query playbook --language rust --selector rust://owner --workspace ../target"
         }
     });
     assert_eq!(

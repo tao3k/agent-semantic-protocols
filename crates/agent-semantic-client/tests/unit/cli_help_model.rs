@@ -99,15 +99,18 @@ fn hook_break_glass_help_is_a_public_typed_command() {
 }
 
 #[test]
-fn hook_accept_host_help_requires_rollout_and_exact_hook_events() {
-    let mut command = help_model::selected_command(&owned_args(&["hook", "accept-host", "--help"]));
+fn hook_enablement_help_owns_preflight_and_host_evidence() {
+    let mut command = help_model::selected_command(&owned_args(&["hook", "enablement", "--help"]));
     let help = command.render_long_help().to_string();
     assert!(help.contains("--host-rollout"), "help={help}");
     assert!(help.contains("--hook-events"), "help={help}");
     assert!(help.contains("--host-probe-path"), "help={help}");
+    assert!(help.contains("--host-sentinel"), "help={help}");
 
     let mut hook = help_model::selected_command(&owned_args(&["hook", "--help"]));
-    assert!(hook.render_long_help().to_string().contains("refresh"));
+    let hook_help = hook.render_long_help().to_string();
+    assert!(hook_help.contains("refresh"));
+    assert!(!hook_help.contains("accept-host"));
 }
 
 #[test]
@@ -136,15 +139,24 @@ fn search_playbook_help_owns_the_composed_root_contract() {
     let mut command = help_model::selected_command(&owned_args(&["search", "playbook", "--help"]));
     let help = command.render_help().to_string();
     for token in [
-        "--languages",
-        "--documents",
-        "--fd",
+        "--language",
+        "--workspace",
         "--rg",
         "--tantivy",
         "--syntax",
+        "--native-syntax",
         "--graph",
     ] {
         assert!(help.contains(token), "missing {token}: {help}");
+    }
+    for contract in [
+        "Select a registry-bound union",
+        "native ripgrep argv block",
+        "structured native Tantivy query block",
+        "canonical parser-owned exact structural-scope query",
+        "final V1 Graph fan-in block",
+    ] {
+        assert!(help.contains(contract), "missing {contract}: {help}");
     }
 
     let mut language = help_model::selected_command(&owned_args(&["rust", "--help"]));
@@ -156,6 +168,14 @@ fn search_playbook_help_owns_the_composed_root_contract() {
     assert!(
         !language_help.contains("query"),
         "language-first Query leaked: {language_help}"
+    );
+    assert!(
+        !language_help.contains("check"),
+        "removed language Check leaked: {language_help}"
+    );
+    assert!(
+        !language_help.contains("evidence"),
+        "removed language Evidence leaked: {language_help}"
     );
 }
 
@@ -169,23 +189,16 @@ fn install_language_path_selects_language_command() {
 }
 
 #[test]
-fn graph_render_path_selects_render_command() {
-    assert_selected(&["graph", "render", "--help"], "render", "asp graph render");
-}
-
-#[test]
 fn language_leaf_path_selects_leaf_command() {
     for language in ["gerbil-scheme", "julia", "python", "rust", "typescript"] {
         for leaf in [
             "guide",
-            "check",
             "cache",
             "info",
             "bench",
             "projection",
             "agent",
             "ast-patch",
-            "evidence",
         ] {
             assert_selected(
                 &[language, leaf, "--help"],
@@ -197,10 +210,23 @@ fn language_leaf_path_selects_leaf_command() {
 }
 
 #[test]
+fn removed_language_leaves_do_not_select_command_help() {
+    for language in ["gerbil-scheme", "julia", "python", "rust", "typescript"] {
+        for leaf in ["check", "evidence"] {
+            assert_selected(
+                &[language, leaf, "--help"],
+                language,
+                &format!("asp {language}"),
+            );
+        }
+    }
+}
+
+#[test]
 fn non_help_invocations_are_not_intercepted() {
     for parts in [
         &["install", "plugin", "--codex"][..],
-        &["search", "playbook", "--languages", "rust"][..],
+        &["search", "playbook", "--language", "rust"][..],
         &["graph", "render", "--packet", "-"][..],
         &["rust", "search", "--", "--help"][..],
     ] {

@@ -8,21 +8,11 @@ from pathlib import Path
 import pytest
 from jsonschema import Draft202012Validator, ValidationError
 
+from unit.schema_validation import schema_validator_for
+
 
 ROOT = Path(__file__).resolve().parents[2]
 SCHEMA_PATH = ROOT / "schemas" / "provider-manifest.schema.json"
-MANIFESTS = (
-    ROOT / "languages/asp-rust/schemas/asp-provider.json",
-    ROOT / "languages/asp-typescript/schemas/asp-provider.json",
-    ROOT / "languages/asp-python/schemas/asp-provider.json",
-    ROOT
-    / "languages/asp-gerbil-scheme/schemas/asp-provider.json",
-    ROOT / "languages/AspJulia.jl/schemas/asp-provider.json",
-    ROOT / "languages/orgize/schemas/asp-org-provider.json",
-    ROOT / "languages/orgize/schemas/asp-md-provider.json",
-)
-
-
 def load_json(path: Path) -> dict[str, object]:
     return json.loads(path.read_text(encoding="utf-8"))
 
@@ -32,11 +22,22 @@ def development_validator() -> Draft202012Validator:
     return Draft202012Validator(schema["$defs"]["providerDevelopmentDescriptor"])
 
 
-def test_all_registered_manifests_have_valid_v1_development_authority() -> None:
-    validator = development_validator()
-    for manifest_path in MANIFESTS:
-        manifest = load_json(manifest_path)
-        validator.validate(manifest["development"])
+def test_all_install_registered_providers_have_valid_workspace_install_authority() -> None:
+    register = load_json(ROOT / "schemas/provider-install-register.json")
+    schema_validator_for(
+        ROOT / "schemas/provider-install-register.schema.json"
+    ).validate(register)
+    install_validator = schema_validator_for(
+        ROOT / "schemas/provider-workspace-install.schema.json"
+    )
+    for provider in register["providers"]:
+        install_path = (
+            ROOT / provider["sourceRoot"] / provider["workspaceInstall"]
+        )
+        install = load_json(install_path)
+        install_validator.validate(install)
+        assert install["languageId"] == provider["languageId"]
+        assert install["providerId"] == provider["providerId"]
 
 
 @pytest.mark.parametrize(

@@ -7,57 +7,29 @@
 use agent_semantic_client_db::runtime_resident_read::RuntimeResidentReadClient;
 use agent_semantic_search::ResidentGraphEvaluationBudget;
 use agent_semantic_search::ResidentGraphEvaluationRequest;
-use agent_semantic_search::ResidentGraphSearchBudget;
-use agent_semantic_search::ResidentGraphSearchRequest;
-use agent_semantic_search::ResidentGraphSearchStage;
-use agent_semantic_search::ResidentSearchIntent;
 use agent_semantic_search::evaluate_resident_graph_generation;
+use agent_semantic_search::evaluate_resident_graph_relation_patterns;
 use agent_semantic_search::stable_graph_node_id;
-use agent_semantic_search_projection::ResidentSearchHit;
 use serde_json::Value;
 use serde_json::json;
 
-/// Lazily retain and evaluate the optional Python graph for relationship
-/// intent under the exact immutable generation request already held by Rust.
-/// No source/provider/durable read is performed here.
-pub(crate) async fn evaluate_python_relationship_graph(
-    request_id: &str,
-    language_id: &str,
-    query: &str,
-    resident: &RuntimeResidentReadClient,
-    lexical_hits: &[ResidentSearchHit],
-    runtime_search_service: &agent_semantic_client_db::runtime_search_service::RuntimeSearchServiceHandle,
-) -> Result<agent_semantic_search::SearchPlaybookPythonGraphExecution, RuntimeSearchGraphFailure> {
-    let query_clauses = vec![query.to_owned()];
-    let candidate_owners = lexical_hits
-        .iter()
-        .map(|hit| hit.owner_path.clone())
-        .collect::<Vec<_>>();
-    evaluate_python_workspace_playbook_graph(
-        request_id,
-        language_id,
-        &query_clauses,
-        &candidate_owners,
-        100,
-        resident,
-        runtime_search_service,
-    )
-    .await
+pub(crate) struct WorkspaceSearchGraphExecution {
+    pub(crate) candidate_owner_ids: Vec<String>,
 }
 
 /// Apply ordered Graph clauses to the candidate frontier produced by earlier
-/// Search Playbook clauses. Python owns the graph algorithm; Rust owns the
-/// exact generation, candidate whitelist, limit, and public result contract.
+/// Search Playbook clauses. Rust evaluates only the exact published resident
+/// generation and owns the candidate whitelist, limit, and public result.
 #[allow(clippy::too_many_arguments)]
-pub(crate) async fn evaluate_python_workspace_playbook_graph(
+pub(crate) fn evaluate_resident_workspace_playbook_graph(
     request_id: &str,
     language_id: &str,
-    query_clauses: &[String],
+    query_clauses: &[agent_semantic_search::GraphNativeBlock],
+    relation_patterns: &[agent_semantic_search::ResidentGraphRelationPattern],
     candidate_owners: &[String],
-    max_results: usize,
+    budget: Option<ResidentGraphEvaluationBudget>,
     resident: &RuntimeResidentReadClient,
-    runtime_search_service: &agent_semantic_client_db::runtime_search_service::RuntimeSearchServiceHandle,
-) -> Result<agent_semantic_search::SearchPlaybookPythonGraphExecution, RuntimeSearchGraphFailure> {
+) -> Result<WorkspaceSearchGraphExecution, RuntimeSearchGraphFailure> {
     let graph_generation = resident
         .graph_generation()
         .map_err(RuntimeSearchGraphFailure::invalid)?
@@ -69,106 +41,72 @@ pub(crate) async fn evaluate_python_workspace_playbook_graph(
         .identity
         .generation_candidate_digest
         .clone();
-    let workspace_identity = generation_request.identity.workspace_id.clone();
-    let generation_payload = serde_json::to_value(generation_request)
-        .map_err(|error| RuntimeSearchGraphFailure::invalid(error.to_string()))?;
-    let cancellation =
-        agent_semantic_client_db::runtime_generation_cancellation::GenerationCancellation::new();
-    let graph_receipt_value = runtime_search_service
-        .generation_graph(
-            format!("{request_id}-python-generation"),
-            generation_payload,
-            cancellation,
-        )
-        .await
-        .map_err(RuntimeSearchGraphFailure::python)?;
-    let graph_receipt: agent_semantic_search::SearchGenerationGraphReceipt =
-        serde_json::from_value(graph_receipt_value)
-            .map_err(|error| RuntimeSearchGraphFailure::python(error.to_string()))?;
-    graph_receipt
-        .validate_for(generation_request)
-        .map_err(RuntimeSearchGraphFailure::python)?;
-
     let mut seen_nodes = std::collections::BTreeSet::new();
     let entry_node_ids = candidate_owners
         .iter()
         .map(|owner| stable_graph_node_id("owner", owner))
         .filter(|node_id| seen_nodes.insert(node_id.clone()))
         .collect::<Vec<_>>();
-    let mut query_terms = query_clauses
-        .iter()
-        .flat_map(|query| query.split_whitespace())
-        .filter(|term| !term.is_empty())
-        .map(|term| term.chars().take(256).collect::<String>())
-        .collect::<Vec<_>>();
-    query_terms.sort();
-    query_terms.dedup();
-    query_terms.truncate(32);
-    let evaluation_payload = json!({
-        "schemaId": "agent.semantic-protocols.semantic-graph-resident-evaluation-request",
-        "schemaVersion": "1",
-        "protocolId": "agent.semantic-protocols.search",
-        "protocolVersion": "1",
-        "packetKind": "resident-graph-evaluation-request",
-        "languageId": language_id,
-        "surface": "search-playbook",
-        "queryTerms": query_terms,
-        "queryClauses": query_clauses,
-        "profile": "dependency",
-        "entryNodeIds": entry_node_ids,
-        "candidateNodeIds": entry_node_ids,
-        "budget": {
-            "maxDepth": 16,
-            "maxNodes": 256,
-            "maxEdges": 1024,
-            "maxResults": max_results,
-        },
-    });
     let started = tokio::time::Instant::now();
-    let evaluation = runtime_search_service
-        .evaluate_resident_graph(
-            workspace_identity,
-            generation_digest.clone(),
-            format!("{request_id}-python-evaluate"),
-            evaluation_payload,
-            agent_semantic_client_db::runtime_generation_cancellation::GenerationCancellation::new(
-            ),
-        )
-        .await
-        .map_err(RuntimeSearchGraphFailure::python)?;
-    if evaluation.get("projectId").and_then(Value::as_str)
-        != Some(generation_request.identity.project_id.as_str())
-        || evaluation.get("rootDigest").and_then(Value::as_str)
-            != Some(generation_request.source_snapshot.root_digest.as_str())
-        || evaluation
-            .get("graphArtifactDigest")
-            .and_then(Value::as_str)
-            != Some(graph_receipt.artifact_digest.as_str())
-    {
-        return Err(RuntimeSearchGraphFailure::python(
-            "asp-python-graphs resident evaluation identity drift",
-        ));
-    }
-    let result = evaluation
-        .get("result")
-        .ok_or_else(|| RuntimeSearchGraphFailure::python("Python graph result is absent"))?;
-    let mut seen_owners = std::collections::BTreeSet::new();
-    let candidate_owner_ids = result
-        .get("rankedNodes")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-        .filter_map(|node| node.get("ownerPath").and_then(Value::as_str))
-        .filter(|owner| seen_owners.insert((*owner).to_owned()))
-        .map(str::to_owned)
-        .collect::<Vec<_>>();
-    let result_bytes = serde_json::to_vec(result)
-        .map_err(|error| RuntimeSearchGraphFailure::python(error.to_string()))?;
-    Ok(agent_semantic_search::SearchPlaybookPythonGraphExecution {
+    let authority = resident.search_generation_authority();
+    let evaluation = match (entry_node_ids.is_empty(), budget) {
+        (false, Some(budget)) => Some(
+            evaluate_resident_graph_relation_patterns(
+                ResidentGraphEvaluationRequest {
+                    operation_id: request_id,
+                    generation_digest: &generation_digest,
+                    source_snapshot: &authority.source_snapshot,
+                    workspace_generation: &authority.workspace_generation,
+                    entry_node_ids: &entry_node_ids,
+                    generation_graph: &graph_generation,
+                },
+                candidate_owners,
+                relation_patterns,
+                budget,
+            )
+            .map_err(RuntimeSearchGraphFailure::invalid)?,
+        ),
+        // A generation with no Graph nodes or edges has an intentionally zero
+        // cardinality-derived budget. It is a complete empty relation result,
+        // not an invalid evaluator invocation.
+        (_, None) | (true, Some(_)) => None,
+    };
+    graph_execution_receipt(
+        language_id,
+        query_clauses,
         generation_digest,
-        projection_digest: format!("blake3-256:{}", blake3::hash(&result_bytes).to_hex()),
+        evaluation,
+        started,
+    )
+}
+
+fn graph_execution_receipt(
+    language_id: &str,
+    query_clauses: &[agent_semantic_search::GraphNativeBlock],
+    generation_digest: String,
+    evaluation: Option<agent_semantic_search::ResidentGraphEvaluation>,
+    started: tokio::time::Instant,
+) -> Result<WorkspaceSearchGraphExecution, RuntimeSearchGraphFailure> {
+    let mut seen_owners = std::collections::BTreeSet::new();
+    let candidate_owner_ids = evaluation
+        .as_ref()
+        .into_iter()
+        .flat_map(|evaluation| &evaluation.ranked_nodes)
+        .filter_map(|node| node.owner_path.as_deref())
+        .filter(|owner| seen_owners.insert((*owner).to_owned()))
+        .map(ToOwned::to_owned)
+        .collect::<Vec<_>>();
+    let result_bytes = serde_json::to_vec(&json!({
+        "generationDigest": generation_digest,
+        "languageId": language_id,
+        "queryClauses": query_clauses,
+        "candidateOwnerIds": candidate_owner_ids,
+    }))
+    .map_err(|error| RuntimeSearchGraphFailure::invalid(error.to_string()))?;
+    let _projection_digest = format!("blake3-256:{}", blake3::hash(&result_bytes).to_hex());
+    let _elapsed_micros = u64::try_from(started.elapsed().as_micros()).unwrap_or(u64::MAX);
+    Ok(WorkspaceSearchGraphExecution {
         candidate_owner_ids,
-        elapsed_micros: u64::try_from(started.elapsed().as_micros()).unwrap_or(u64::MAX),
     })
 }
 
@@ -333,14 +271,6 @@ impl RuntimeSearchGraphFailure {
         }
     }
 
-    fn python(message: impl Into<String>) -> Self {
-        Self {
-            reason_kind: "python-graph-unavailable",
-            message: message.into(),
-            details: Some(json!({"phase": "exact-generation-python-graph"})),
-        }
-    }
-
     fn not_ready() -> Self {
         Self {
             reason_kind: "graph-not-ready",
@@ -348,92 +278,4 @@ impl RuntimeSearchGraphFailure {
             details: Some(json!({"phase": "background-generation-graph"})),
         }
     }
-}
-
-fn unavailable_resident_graph_stage(
-    generation_digest: &str,
-    query: &str,
-) -> Result<ResidentGraphSearchStage, RuntimeSearchGraphFailure> {
-    let bytes = serde_json::to_vec(&json!({
-        "generationDigest": generation_digest,
-        "query": query,
-        "state": "background-graph-not-ready",
-    }))
-    .map_err(|error| RuntimeSearchGraphFailure::invalid(error.to_string()))?;
-    Ok(ResidentGraphSearchStage {
-        generation_digest: generation_digest.to_owned(),
-        result_digest: format!("blake3-256:{}", blake3::hash(&bytes).to_hex()),
-        ranked_owner_paths: Vec::new(),
-        elapsed_micros: 0,
-        work: agent_semantic_search::ResidentGraphSearchWork::default(),
-    })
-}
-
-/// Rank the resident lexical frontier directly over the immutable generation
-/// graph. Warm queries execute bounded Rust work and never enter a provider or
-/// secondary Runtime service session.
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn rank_resident_search_frontier(
-    request_id: &str,
-    intent: ResidentSearchIntent,
-    query: &str,
-    language_id: &str,
-    provider_id: &str,
-    generation_digest: &str,
-    resident: &RuntimeResidentReadClient,
-    lexical_hits: &[ResidentSearchHit],
-) -> Result<ResidentGraphSearchStage, RuntimeSearchGraphFailure> {
-    let graph_generation = match resident
-        .graph_generation()
-        .map_err(RuntimeSearchGraphFailure::invalid)?
-    {
-        Some(generation) => generation,
-        None if intent == ResidentSearchIntent::Relationship => {
-            return Err(RuntimeSearchGraphFailure::not_ready());
-        }
-        None => return unavailable_resident_graph_stage(generation_digest, query),
-    };
-    if lexical_hits.is_empty() {
-        let graph_digest = graph_generation.digest();
-        let bytes = serde_json::to_vec(&json!({
-            "generationDigest": generation_digest,
-            "graphDigest": graph_digest,
-            "query": query,
-            "state": "complete-empty-frontier",
-        }))
-        .map_err(|error| RuntimeSearchGraphFailure::invalid(error.to_string()))?;
-        return Ok(ResidentGraphSearchStage {
-            generation_digest: generation_digest.to_owned(),
-            result_digest: format!("blake3-256:{}", blake3::hash(&bytes).to_hex()),
-            ranked_owner_paths: Vec::new(),
-            elapsed_micros: 0,
-            work: agent_semantic_search::ResidentGraphSearchWork::default(),
-        });
-    }
-
-    let authority = resident.search_generation_authority();
-    let source_snapshot = &authority.source_snapshot;
-    let workspace_generation = &authority.workspace_generation;
-    let request = ResidentGraphSearchRequest {
-        operation_id: request_id,
-        operation: intent.as_str(),
-        query,
-        language_id,
-        provider_id,
-        generation_digest,
-        source_snapshot,
-        workspace_generation,
-        lexical_hits,
-        generation_graph: graph_generation,
-    };
-    agent_semantic_search::rank_resident_graph_generation(
-        request,
-        ResidentGraphSearchBudget {
-            max_nodes: 256,
-            max_edges: 1024,
-            max_frontier: 128,
-            max_results: agent_semantic_search::RUNTIME_SEARCH_SELECTOR_OWNER_LIMIT,
-        },
-    )
-    .map_err(RuntimeSearchGraphFailure::invalid)
 }

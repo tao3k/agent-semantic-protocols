@@ -47,6 +47,7 @@ pub fn asp_workspace_member_forbidden_normal_dependencies(
 ) -> &'static [&'static str] {
     match package_name {
         "agent-semantic-artifacts" => &["turso"],
+        "agent-semantic-client-core" | "agent-semantic-runtime-server" => &["agent-semantic-hook"],
         _ => &[],
     }
 }

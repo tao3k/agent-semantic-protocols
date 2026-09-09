@@ -11,7 +11,6 @@ use super::agent_control_plane::run_config_command;
 use super::ast_patch::run_ast_patch_command;
 use super::dispatch_agent_session_policy::is_agent_session_control_json_command;
 use super::document_provider;
-use super::graph::run_graph_command;
 use super::healthcheck::run_healthcheck_command;
 use super::hook::run_hook_command;
 use super::install_provider::run_install_command;
@@ -49,27 +48,24 @@ pub(crate) async fn run_protocol_command_started(
         }
         Some("version" | "--version" | "-V") => run_protocol_version_command(&args[1..]),
         Some("--contract-fingerprint") => {
-            println!("{}", agent_semantic_config::hook_client_contract_fingerprint());
+            println!(
+                "{}",
+                agent_semantic_config::hook_client_contract_fingerprint()
+            );
             Ok(())
         }
         Some("--hook-artifact-fingerprint") => {
-            println!("{}", agent_semantic_hook::hook_runtime_artifact_fingerprint());
+            println!(
+                "{}",
+                agent_semantic_hook::hook_runtime_artifact_fingerprint()
+            );
             Ok(())
         }
-        Some(
-            "providers" | "doctor" | "cache" | "clean" | "cloud" | "tools" | "wrap",
-        ) => {
-            run_client_command(args).await
-        }
-        Some("search") if args.get(1).is_some_and(|arg| arg == "history") => {
+        Some("providers" | "doctor" | "cache" | "clean" | "cloud" | "tools" | "wrap") => {
             run_client_command(args).await
         }
         Some("search") => run_workspace_search_playbook(&args[1..]).await,
         Some("query") => run_workspace_query(&args[1..]).await,
-        Some("check") => Err(
-            "asp check is not a public command surface; use asp <rust|typescript|python|julia> check ..."
-                .to_string(),
-        ),
         Some("hook") => run_hook_command(&args[1..]).await,
         Some("config") => run_config_command(&args[1..]),
         Some("install") => run_install_command(&args[1..]).await,
@@ -80,7 +76,6 @@ pub(crate) async fn run_protocol_command_started(
         Some("session") => run_session_command(&args[1..]).await,
         Some("live-corpus") => run_live_corpus_command(&args[1..]).await,
         Some("ast-patch") => run_ast_patch_command(&args[1..]),
-        Some("graph") => run_graph_command(&args[1..]).await,
         Some(document_id) if document_provider::is_document_language(document_id) => {
             document_provider::run_language_command(document_id, &args[1..]).await
         }
@@ -124,6 +119,12 @@ fn env_var_nonempty(name: &str) -> bool {
 }
 
 fn reject_file_workspace_for_search(args: &[String]) -> Result<(), String> {
+    // Root Search accepts only a registered WorkspaceId. Its parser and the
+    // Runtime-owned admission catalog validate that identity; interpreting it
+    // as a path here would make a coincidentally named file change semantics.
+    if matches!(args.first().map(String::as_str), Some("search")) {
+        return Ok(());
+    }
     if !is_search_command_args(args) {
         return Ok(());
     }
@@ -143,7 +144,7 @@ fn reject_file_workspace_for_search(args: &[String]) -> Result<(), String> {
     };
     if workspace_path.is_file() {
         return Err(format!(
-            "--workspace requires a directory project root, got file `{}`. Keep the file path as the search scope and use a directory workspace, for example `asp gerbil-scheme search '<terms>' --scope owner:<file> --workspace .`.",
+            "--workspace requires a directory project root, got file `{}`. Keep the file path as the search scope and use a directory workspace, for example `asp search playbook --language gerbil-scheme '<terms>' --scope owner:<file> --workspace .`.",
             workspace_path.display()
         ));
     }
@@ -166,7 +167,7 @@ fn arg_option_value<'a>(args: &'a [String], flag: &str) -> Option<&'a str> {
 }
 
 fn usage() -> String {
-    "usage: asp [--help|--version] <guide|providers|tools|wrap|cache|clean|cloud|hook|config|session|install|paths|healthcheck|server|schema|workspace-db|live-corpus|ast-patch|graph|search|query|rust|typescript|python|julia|org|md> ...".to_string()
+    "usage: asp [--help|--version] <guide|providers|tools|wrap|cache|clean|cloud|hook|config|session|install|paths|healthcheck|server|schema|workspace-db|live-corpus|ast-patch|search|query|rust|typescript|python|julia|org|md> ...".to_string()
 }
 
 async fn run_client_command(args: Vec<String>) -> Result<(), String> {

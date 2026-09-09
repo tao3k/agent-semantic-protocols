@@ -3,8 +3,6 @@
 // SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 use agent_semantic_search::AdmittedLexicalOwner;
-use agent_semantic_search::COLD_RG_QUERY_RECEIPT_SCHEMA_ID;
-use agent_semantic_search::ColdRgQueryReceipt;
 use agent_semantic_search::ContentSearchGenerationReceipt;
 use agent_semantic_search::LexicalAcceleratorReceipt;
 use agent_semantic_search::LexicalOwnerFact;
@@ -69,24 +67,6 @@ fn content_generation_with_bytes(label: &str) -> ContentSearchGenerationReceipt 
 
 fn content_generation() -> ContentSearchGenerationReceipt {
     content_generation_with_bytes("bytes")
-}
-
-#[test]
-fn cold_rg_receipt_has_zero_processes_and_no_tantivy_build() {
-    ColdRgQueryReceipt {
-        schema_id: COLD_RG_QUERY_RECEIPT_SCHEMA_ID.to_owned(),
-        schema_version: "1".to_owned(),
-        identity: identity(),
-        inventory_digest: digest("inventory"),
-        normalized_query_digest: digest("query"),
-        candidate_set_digest: digest("candidates"),
-        fd_process_count: 0,
-        rg_process_count: 0,
-        tantivy_build_count: 0,
-        complete: true,
-    }
-    .validate()
-    .expect("cold rg route");
 }
 
 #[test]

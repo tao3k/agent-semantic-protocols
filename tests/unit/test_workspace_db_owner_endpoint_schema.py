@@ -27,7 +27,11 @@ def endpoint() -> dict[str, object]:
         "runtimeBinaryPath": "/runtime/bin/asp",
         "runtimeBinaryDigest": "blake3-256:test-runtime",
         "bindingToken": "binding-test",
-        "socketPath": "/tmp/workspace-test.sock",
+        "dataEndpoint": {
+            "transport": "loopback-tcp",
+            "address": "127.0.0.1",
+            "port": 4317,
+        },
     }
 
 

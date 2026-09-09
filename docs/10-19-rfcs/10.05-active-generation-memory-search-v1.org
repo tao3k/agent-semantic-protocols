@@ -394,7 +394,7 @@ manifest writes, and zero lock waits.
 * Language Boundary
 
 The receipt and Memory Search consumption contract are language-neutral.
-Language harnesses produce parser-owned canonical item identities and
+ASP language providers produce parser-owned canonical item identities and
 generation materialization proofs.  They do not depend on ASP crates and do not
 own active receipt layout, runtime caching, or query routing.
 * Resident Search Authority V1

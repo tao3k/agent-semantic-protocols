@@ -6,21 +6,16 @@ import json
 from pathlib import Path
 
 import pytest
-from jsonschema import Draft202012Validator
-
-
 ROOT = Path(__file__).resolve().parents[2]
 SCHEMA_ROOT = ROOT / "schemas"
+from unit.schema_validation import schema_validator_for
 
-
-def load_schema(name: str) -> dict:
-    return json.loads((SCHEMA_ROOT / name).read_text())
-
-
-CONTROL = load_schema("workspace-project-resolution-control.v1.schema.json")
-RECEIPT = load_schema("workspace-project-resolution-receipt.v1.schema.json")
-CONTROL_VALIDATOR = Draft202012Validator(CONTROL)
-RECEIPT_VALIDATOR = Draft202012Validator(RECEIPT)
+CONTROL_VALIDATOR = schema_validator_for(
+    SCHEMA_ROOT / "workspace-project-resolution-control.v1.schema.json"
+)
+RECEIPT_VALIDATOR = schema_validator_for(
+    SCHEMA_ROOT / "workspace-project-resolution-receipt.v1.schema.json"
+)
 
 
 def workspace_identity() -> dict:

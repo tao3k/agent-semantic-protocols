@@ -5,7 +5,6 @@
 use agent_semantic_config::LanguageId;
 use agent_semantic_config::ProviderId;
 use agent_semantic_hook::ClientHookConfig;
-use agent_semantic_hook::CommandTemplate;
 use agent_semantic_hook::HookPolicy;
 use agent_semantic_hook::HookProviderProjection;
 use agent_semantic_hook::HookRuntime;
@@ -24,10 +23,6 @@ fn runtime(project_root: &str) -> HookRuntime {
 }
 
 fn runtime_with_rust_policy_projection(project_root: &str) -> HookRuntime {
-    let route = || CommandTemplate {
-        argv: Vec::new(),
-        stdin_mode: None,
-    };
     HookRuntime {
         project_root: project_root.to_owned(),
         rankers: Vec::new(),
@@ -39,7 +34,6 @@ fn runtime_with_rust_policy_projection(project_root: &str) -> HookRuntime {
             source_extensions: vec![".rs".to_owned()],
             config_files: Vec::new(),
             policy: HookPolicy::default(),
-            playbook_route: route(),
         }],
     }
 }
@@ -190,7 +184,7 @@ fn emitted_action_ir_conforms_to_the_v1_schema() {
 fn registered_search_denial_emits_role_receipt_without_legacy_target_identity() {
     let decision = classify(
         &runtime("."),
-        "asp search playbook --language typescript projectRoot --workspace .",
+        "asp search playbook --language typescript --rg projectRoot",
     );
     assert_eq!(decision["decision"], "deny");
     assert_eq!(
@@ -225,23 +219,9 @@ fn registered_search_denial_emits_role_receipt_without_legacy_target_identity() 
 
 #[test]
 fn only_playbook_is_routed_as_the_public_search_operation() {
-    for retired in [
-        "asp rust search prime --workspace .",
-        "asp rust search ingest --workspace .",
-        "asp rust search lexical owner --workspace .",
-        "asp rust search owner src/lib.rs --workspace .",
-        "asp rust search pipe owner --workspace .",
-    ] {
-        let decision = classify(&runtime("."), retired);
-        assert_ne!(
-            decision["fields"]["configRuleId"], "registered-asp-reasoning-search",
-            "retired provider-local command must not enter Search routing: {retired} {decision}"
-        );
-    }
-
     let playbook = classify(
         &runtime("."),
-        "asp search playbook --language rust 'source structure' --scope owner:src/lib.rs --workspace .",
+        "asp search playbook --language rust --rg --files -g src/lib.rs --tantivy 'title:[* TO *] OR body:[* TO *]'",
     );
     assert_eq!(
         playbook["fields"]["configRuleId"],
@@ -253,7 +233,7 @@ fn only_playbook_is_routed_as_the_public_search_operation() {
 fn agent_search_json_denial_is_owned_by_the_declared_rule() {
     let decision = classify(
         &runtime("."),
-        "asp search playbook --language typescript projectRoot --workspace . --json",
+        "asp search playbook --language typescript --rg projectRoot --json",
     );
     assert_eq!(decision["decision"], "deny");
     assert_eq!(decision["fields"]["configRuleId"], "deny-agent-search-json");
@@ -337,7 +317,7 @@ fn verified_explorer_search_is_authorized_once_and_post_tool_remains_observation
         "agent_role": "asp_explorer",
         "tool_name": "Bash",
         "tool_input": {
-            "command": "rtk --ultra-compact err asp search playbook --language rust 'HookDecision' --workspace ."
+            "command": "rtk --ultra-compact err asp search playbook --language rust --rg HookDecision"
         }
     })];
 
@@ -367,13 +347,13 @@ fn config_agent_roles_satisfy_only_their_declared_dispatch_routes() {
     let cases = [
         (
             "asp_explorer",
-            "asp search playbook --language typescript projectRoot --workspace .",
+            "asp search playbook --language typescript --rg projectRoot",
             "allow",
             "reasoning-search",
         ),
         (
             "asp_explorer",
-            "asp rust query --selector rust://crates/example.rs#item/function/example --workspace . --projection source",
+            "asp query playbook --language rust --selector rust://crates/example.rs#item/function/example --projection source",
             "allow",
             "structured-projection",
         ),
@@ -391,7 +371,7 @@ fn config_agent_roles_satisfy_only_their_declared_dispatch_routes() {
         ),
         (
             "asp_testing",
-            "asp search playbook --language typescript projectRoot --workspace .",
+            "asp search playbook --language typescript --rg projectRoot",
             "deny",
             "reasoning-search",
         ),

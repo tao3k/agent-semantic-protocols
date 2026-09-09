@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://schemas.agent-semantic-protocols.dev/search-topology-settlement.v1.schema.json",
   "title": "Search topology single-GQL settlement V1",
-  "description": "A request-bound Search projection of the reusable Project Topology and its single Agent-facing GQL settlement. Logical inference is an internal topology-maintenance mechanism, not the architecture authority. Shape validation does not replace selector, witness, proof, coverage, or binding admission.",
+  "description": "A request-bound Search projection whose selector-bearing GQL nodes, direct and derived relations, and frontiers are the complete Agent-facing reasoning surface. Query selectors remain on their owning GQL nodes; there is no duplicate MaterializationSet handoff.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -17,36 +17,63 @@
     "edges",
     "coverageCertificates",
     "frontiers",
-    "materializationSet",
     "rendering",
     "terminal"
   ],
   "properties": {
-    "schemaId": {"const": "agent.semantic-protocols.search-topology-settlement"},
-    "schemaVersion": {"const": "1"},
-    "protocolId": {"const": "agent.semantic-protocols.search-playbook"},
-    "protocolVersion": {"const": "1"},
-    "resultState": {"enum": ["materializable", "empty", "incomplete", "blocked"]},
-    "binding": {"$ref": "#/$defs/binding"},
-    "inference": {"$ref": "#/$defs/inference"},
+    "schemaId": {
+      "const": "agent.semantic-protocols.search-topology-settlement"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "protocolId": {
+      "const": "agent.semantic-protocols.search-playbook"
+    },
+    "protocolVersion": {
+      "const": "1"
+    },
+    "resultState": {
+      "enum": [
+        "queryable",
+        "empty",
+        "incomplete",
+        "blocked"
+      ]
+    },
+    "binding": {
+      "$ref": "#/$defs/binding"
+    },
+    "inference": {
+      "$ref": "#/$defs/inference"
+    },
     "nodes": {
       "type": "array",
-      "items": {"$ref": "#/$defs/node"}
+      "items": {
+        "$ref": "#/$defs/node"
+      }
     },
     "edges": {
       "type": "array",
-      "items": {"$ref": "#/$defs/edge"}
+      "items": {
+        "$ref": "#/$defs/edge"
+      }
     },
     "coverageCertificates": {
       "$ref": "project-topology-library.v1.schema.json#/properties/coverageCertificates"
     },
     "frontiers": {
       "type": "array",
-      "items": {"$ref": "#/$defs/frontier"}
+      "items": {
+        "$ref": "#/$defs/frontier"
+      }
     },
-    "materializationSet": {"$ref": "#/$defs/materializationSet"},
-    "rendering": {"$ref": "#/$defs/rendering"},
-    "terminal": {"$ref": "#/$defs/terminal"}
+    "rendering": {
+      "$ref": "#/$defs/rendering"
+    },
+    "terminal": {
+      "$ref": "#/$defs/terminal"
+    }
   },
   "$defs": {
     "digest": {
@@ -77,6 +104,7 @@
         "structuralTopologyDigest",
         "semanticTopologyDigest",
         "inferenceProgramDigest",
+        "topologyClosureDigest",
         "evidenceBindingDigest",
         "decisionCoreDigest",
         "topologyDeltaDigest"
@@ -85,16 +113,39 @@
         "projectWorkspaceIdentity": {
           "$ref": "project-workspace-binding.v1.schema.json#/$defs/projectWorkspaceIdentity"
         },
-        "sourceGenerationDigest": {"$ref": "#/$defs/digest"},
-        "providerCatalogDigest": {"$ref": "#/$defs/digest"},
-        "topologyLibraryDigest": {"$ref": "#/$defs/digest"},
-        "topologyGenerationDigest": {"$ref": "#/$defs/digest"},
-        "structuralTopologyDigest": {"$ref": "#/$defs/digest"},
-        "semanticTopologyDigest": {"$ref": "#/$defs/digest"},
-        "inferenceProgramDigest": {"$ref": "#/$defs/digest"},
-        "evidenceBindingDigest": {"$ref": "#/$defs/digest"},
-        "decisionCoreDigest": {"$ref": "#/$defs/digest"},
-        "topologyDeltaDigest": {"$ref": "#/$defs/digest"}
+        "sourceGenerationDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "providerCatalogDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "topologyLibraryDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "topologyGenerationDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "structuralTopologyDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "semanticTopologyDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "inferenceProgramDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "topologyClosureDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "evidenceBindingDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "decisionCoreDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "topologyDeltaDigest": {
+          "$ref": "#/$defs/digest"
+        }
       }
     },
     "inference": {
@@ -118,47 +169,121 @@
         "postRankingCertified"
       ],
       "properties": {
-        "programId": {"const": "project-topology-inference.v1"},
-        "engineProfile": {"type": "string", "minLength": 1},
-        "scope": {"enum": ["bounded", "complete"]},
-        "state": {"enum": ["complete", "incomplete", "blocked"]},
-        "terminationKind": {"enum": ["fixed-point", "budget-exhausted", "blocked"]},
-        "iterationCount": {"type": "integer", "minimum": 0},
-        "traversalDepth": {"type": "integer", "minimum": 0},
-        "derivedRelationCount": {"type": "integer", "minimum": 0},
-        "proofDagDigest": {"$ref": "#/$defs/digest"},
-        "proofArtifactLocator": {"type": "string", "minLength": 1},
-        "rankingReceiptDigest": {"$ref": "#/$defs/digest"},
-        "candidateClosureReceiptDigest": {"$ref": "#/$defs/digest"},
-        "candidateRelationSetDigest": {"$ref": "#/$defs/digest"},
-        "nextRelationSetDigest": {"$ref": "#/$defs/digest"},
-        "postRankingCertified": {"type": "boolean"},
-        "reasonKind": {"$ref": "#/$defs/identifier"}
+        "programId": {
+          "const": "project-topology-inference.v1"
+        },
+        "engineProfile": {
+          "type": "string",
+          "minLength": 1
+        },
+        "scope": {
+          "enum": [
+            "bounded",
+            "complete"
+          ]
+        },
+        "state": {
+          "enum": [
+            "complete",
+            "incomplete",
+            "blocked"
+          ]
+        },
+        "terminationKind": {
+          "enum": [
+            "fixed-point",
+            "budget-exhausted",
+            "blocked"
+          ]
+        },
+        "iterationCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "traversalDepth": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "derivedRelationCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "proofDagDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "proofArtifactLocator": {
+          "type": "string",
+          "minLength": 1
+        },
+        "rankingReceiptDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "candidateClosureReceiptDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "candidateRelationSetDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "nextRelationSetDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "postRankingCertified": {
+          "type": "boolean"
+        },
+        "reasonKind": {
+          "$ref": "#/$defs/identifier"
+        }
       },
       "oneOf": [
         {
           "properties": {
-            "state": {"const": "complete"},
-            "terminationKind": {"const": "fixed-point"},
-            "postRankingCertified": {"const": true}
+            "state": {
+              "const": "complete"
+            },
+            "terminationKind": {
+              "const": "fixed-point"
+            },
+            "postRankingCertified": {
+              "const": true
+            }
           },
-          "not": {"required": ["reasonKind"]}
+          "not": {
+            "required": [
+              "reasonKind"
+            ]
+          }
         },
         {
           "properties": {
-            "state": {"const": "incomplete"},
-            "terminationKind": {"const": "budget-exhausted"},
-            "postRankingCertified": {"const": false}
+            "state": {
+              "const": "incomplete"
+            },
+            "terminationKind": {
+              "const": "budget-exhausted"
+            },
+            "postRankingCertified": {
+              "const": false
+            }
           },
-          "required": ["reasonKind"]
+          "required": [
+            "reasonKind"
+          ]
         },
         {
           "properties": {
-            "state": {"const": "blocked"},
-            "terminationKind": {"const": "blocked"},
-            "postRankingCertified": {"const": false}
+            "state": {
+              "const": "blocked"
+            },
+            "terminationKind": {
+              "const": "blocked"
+            },
+            "postRankingCertified": {
+              "const": false
+            }
           },
-          "required": ["reasonKind"]
+          "required": [
+            "reasonKind"
+          ]
         }
       ]
     },
@@ -166,43 +291,59 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "fd": {"type": "boolean"},
-        "rg": {"$ref": "#/$defs/lineRanges"},
+        "rg": {
+          "$ref": "https://schemas.agent-semantic-protocols.dev/semantic-search-definitions.v1.schema.json#/$defs/lineRanges"
+        },
         "tantivy": {
           "type": "array",
           "uniqueItems": true,
-          "items": {"type": "string", "minLength": 1}
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
         },
-        "native": {"type": "boolean"}
+        "native": {
+          "type": "boolean"
+        }
       },
       "minProperties": 1
-    },
-    "lineRange": {
-      "type": "array",
-      "minItems": 2,
-      "maxItems": 2,
-      "prefixItems": [
-        {"type": "integer", "minimum": 1},
-        {"type": "integer", "minimum": 1}
-      ],
-      "items": false
-    },
-    "lineRanges": {
-      "type": "array",
-      "minItems": 1,
-      "items": {"$ref": "#/$defs/lineRange"}
     },
     "projection": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["rank", "depth"],
+      "required": [
+        "rank",
+        "depth"
+      ],
       "properties": {
-        "rank": {"type": "integer", "minimum": 1},
-        "depth": {"type": "integer", "minimum": 0},
-        "hit": {"$ref": "#/$defs/hitProjection"},
-        "jq": {"type": "string", "minLength": 1}
+        "rank": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "depth": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "hit": {
+          "$ref": "#/$defs/hitProjection"
+        },
+        "jq": {
+          "type": "string",
+          "minLength": 1
+        }
       },
-      "anyOf": [{"required": ["hit"]}, {"required": ["jq"]}]
+      "anyOf": [
+        {
+          "required": [
+            "hit"
+          ]
+        },
+        {
+          "required": [
+            "jq"
+          ]
+        }
+      ]
     },
     "semanticAnnotation": {
       "$ref": "project-topology-library.v1.schema.json#/$defs/annotation"
@@ -210,59 +351,279 @@
     "sourceExcerpt": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["path", "match", "read", "witness"],
+      "required": [
+        "path",
+        "match",
+        "read",
+        "witness"
+      ],
       "properties": {
-        "path": {"type": "string", "pattern": "^(?!/)(?!.*\\\\)[^\\s]+$(?![\\s\\S])"},
-        "match": {"$ref": "#/$defs/lineRanges"},
-        "read": {"$ref": "#/$defs/lineRanges"},
-        "witness": {"$ref": "#/$defs/identifier"}
+        "path": {
+          "type": "string",
+          "pattern": "^(?!/)(?!.*\\\\)[^\\s]+$(?![\\s\\S])"
+        },
+        "match": {
+          "$ref": "https://schemas.agent-semantic-protocols.dev/semantic-search-definitions.v1.schema.json#/$defs/lineRanges"
+        },
+        "read": {
+          "$ref": "https://schemas.agent-semantic-protocols.dev/semantic-search-definitions.v1.schema.json#/$defs/lineRanges"
+        },
+        "witness": {
+          "$ref": "#/$defs/identifier"
+        }
       }
     },
     "node": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "language", "kind"],
+      "required": [
+        "id",
+        "language",
+        "kind"
+      ],
       "properties": {
-        "id": {"$ref": "#/$defs/nodeId"},
-        "language": {"type": "string", "minLength": 1},
-        "kind": {"type": "string", "minLength": 1},
-        "name": {"type": "string", "minLength": 1},
-        "selector": {"$ref": "#/$defs/selector"},
-        "projection": {"$ref": "#/$defs/projection"},
-        "annotation": {"$ref": "#/$defs/semanticAnnotation"},
-        "excerpt": {"$ref": "#/$defs/sourceExcerpt"}
+        "id": {
+          "$ref": "#/$defs/nodeId"
+        },
+        "language": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "selector": {
+          "$ref": "#/$defs/selector"
+        },
+        "ownerLocator": {
+          "$ref": "project-topology-library.v1.schema.json#/$defs/ownerLocator"
+        },
+        "projection": {
+          "$ref": "#/$defs/projection"
+        },
+        "annotation": {
+          "$ref": "#/$defs/semanticAnnotation"
+        },
+        "excerpt": {
+          "$ref": "#/$defs/sourceExcerpt"
+        }
       },
       "oneOf": [
-        {"required": ["selector"], "not": {"anyOf": [{"required": ["annotation"]}, {"required": ["excerpt"]}]}},
-        {"required": ["annotation"], "not": {"anyOf": [{"required": ["selector"]}, {"required": ["excerpt"]}, {"required": ["projection"]}]}},
-        {"required": ["excerpt"], "not": {"anyOf": [{"required": ["selector"]}, {"required": ["annotation"]}, {"required": ["projection"]}]}}
+        {
+          "required": [
+            "selector"
+          ],
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "ownerLocator"
+                ]
+              },
+              {
+                "required": [
+                  "annotation"
+                ]
+              },
+              {
+                "required": [
+                  "excerpt"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "required": [
+            "ownerLocator"
+          ],
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "selector"
+                ]
+              },
+              {
+                "required": [
+                  "annotation"
+                ]
+              },
+              {
+                "required": [
+                  "excerpt"
+                ]
+              },
+              {
+                "required": [
+                  "projection"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "required": [
+            "annotation"
+          ],
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "selector"
+                ]
+              },
+              {
+                "required": [
+                  "ownerLocator"
+                ]
+              },
+              {
+                "required": [
+                  "excerpt"
+                ]
+              },
+              {
+                "required": [
+                  "projection"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "required": [
+            "excerpt"
+          ],
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "selector"
+                ]
+              },
+              {
+                "required": [
+                  "ownerLocator"
+                ]
+              },
+              {
+                "required": [
+                  "annotation"
+                ]
+              },
+              {
+                "required": [
+                  "projection"
+                ]
+              }
+            ]
+          }
+        }
       ]
     },
     "edge": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["from", "to", "relation", "modality", "producerAuthority", "evidenceAuthority", "witnesses"],
+      "required": [
+        "from",
+        "to",
+        "relation",
+        "modality",
+        "producerAuthority",
+        "evidenceAuthority",
+        "witnesses"
+      ],
       "properties": {
-        "from": {"$ref": "#/$defs/nodeId"},
-        "to": {"$ref": "#/$defs/nodeId"},
-        "relation": {"type": "string", "pattern": "^[A-Z][A-Z0-9_]*$(?![\\s\\S])"},
-        "modality": {"enum": ["parser-direct", "declared", "derived", "proposed"]},
-        "producerAuthority": {"enum": ["provider-parser", "source-contract", "project-topology-inference.v1", "model-proposal"]},
-        "evidenceAuthority": {"enum": ["provider-witness", "contract-witness", "proof-dag", "model-premises"]},
+        "from": {
+          "$ref": "#/$defs/nodeId"
+        },
+        "to": {
+          "$ref": "#/$defs/nodeId"
+        },
+        "relation": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9_]*$(?![\\s\\S])"
+        },
+        "modality": {
+          "enum": [
+            "parser-direct",
+            "declared",
+            "derived",
+            "proposed"
+          ]
+        },
+        "producerAuthority": {
+          "enum": [
+            "provider-parser",
+            "source-contract",
+            "project-topology-inference.v1",
+            "model-proposal"
+          ]
+        },
+        "evidenceAuthority": {
+          "enum": [
+            "provider-witness",
+            "contract-witness",
+            "proof-dag",
+            "model-premises"
+          ]
+        },
         "witnesses": {
           "type": "array",
           "minItems": 1,
           "uniqueItems": true,
-          "items": {"$ref": "#/$defs/identifier"}
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
         },
-        "derivedBy": {"const": "project-topology-inference.v1"},
-        "proofRef": {"type": "string", "minLength": 1}
+        "derivedBy": {
+          "const": "project-topology-inference.v1"
+        },
+        "proofRef": {
+          "type": "string",
+          "minLength": 1
+        }
       },
       "allOf": [
         {
-          "if": {"properties": {"modality": {"const": "derived"}}, "required": ["modality"]},
-          "then": {"required": ["derivedBy", "proofRef"]},
-          "else": {"not": {"anyOf": [{"required": ["derivedBy"]}, {"required": ["proofRef"]}]}}
+          "if": {
+            "properties": {
+              "modality": {
+                "const": "derived"
+              }
+            },
+            "required": [
+              "modality"
+            ]
+          },
+          "then": {
+            "required": [
+              "derivedBy",
+              "proofRef"
+            ]
+          },
+          "else": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "derivedBy"
+                  ]
+                },
+                {
+                  "required": [
+                    "proofRef"
+                  ]
+                }
+              ]
+            }
+          }
         }
       ]
     },
@@ -272,54 +633,64 @@
     "frontier": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["anchor", "relation", "targetKind", "depth", "state", "reason"],
+      "required": [
+        "anchor",
+        "target",
+        "relation",
+        "targetKind",
+        "depth",
+        "state",
+        "reason"
+      ],
       "properties": {
-        "anchor": {"$ref": "#/$defs/nodeId"},
-        "relation": {"type": "string", "pattern": "^[A-Z][A-Z0-9_]*$(?![\\s\\S])"},
-        "targetKind": {"type": "string", "minLength": 1},
-        "depth": {"type": "integer", "minimum": 0},
-        "state": {"enum": ["unknown", "certified-missing"]},
-        "reason": {"$ref": "#/$defs/identifier"},
-        "coverageRef": {"type": "string", "minLength": 1}
+        "anchor": {
+          "$ref": "search-topology-settlement.v1.schema.json#/$defs/nodeId"
+        },
+        "target": {
+          "$ref": "search-topology-settlement.v1.schema.json#/$defs/nodeId"
+        },
+        "relation": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9_]*$(?![\\s\\S])"
+        },
+        "targetKind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "depth": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "state": {
+          "enum": [
+            "unknown",
+            "certified-missing"
+          ]
+        },
+        "reason": {
+          "$ref": "search-topology-settlement.v1.schema.json#/$defs/identifier"
+        },
+        "coverageRef": {
+          "type": "string",
+          "minLength": 1
+        }
       },
       "allOf": [
         {
-          "if": {"properties": {"state": {"const": "certified-missing"}}, "required": ["state"]},
-          "then": {"required": ["coverageRef"]}
-        }
-      ]
-    },
-    "materializationSet": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["state", "requestId", "digest", "selectors", "proofDependencies"],
-      "properties": {
-        "state": {"enum": ["available", "empty"]},
-        "requestId": {"type": "string", "minLength": 1},
-        "digest": {"$ref": "#/$defs/digest"},
-        "selectors": {
-          "type": "array",
-          "uniqueItems": true,
-          "items": {"$ref": "#/$defs/selector"}
-        },
-        "proofDependencies": {
-          "type": "array",
-          "uniqueItems": true,
-          "items": {"type": "string", "minLength": 1}
-        }
-      },
-      "oneOf": [
-        {
-          "properties": {
-            "state": {"const": "available"},
-            "selectors": {"minItems": 1}
-          }
-        },
-        {
-          "properties": {
-            "state": {"const": "empty"},
-            "selectors": {"maxItems": 0},
-            "proofDependencies": {"maxItems": 0}
+          "if": {
+            "properties": {
+              "state": {
+                "const": "certified-missing"
+              }
+            },
+            "required": [
+              "state"
+            ]
+          },
+          "then": {
+            "required": [
+              "coverageRef"
+            ]
           }
         }
       ]
@@ -327,30 +698,70 @@
     "rendering": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["format", "gqlBlockCount", "ascentSourceExposed"],
+      "required": [
+        "format",
+        "gqlBlockCount",
+        "ascentSourceExposed"
+      ],
       "properties": {
-        "format": {"const": "org-gql"},
-        "gqlBlockCount": {"const": 1},
-        "ascentSourceExposed": {"const": false}
+        "format": {
+          "const": "org-gql"
+        },
+        "gqlBlockCount": {
+          "const": 1
+        },
+        "ascentSourceExposed": {
+          "const": false
+        }
       }
     },
     "terminal": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["state", "terminalCount"],
+      "required": [
+        "state",
+        "terminalCount"
+      ],
       "properties": {
-        "state": {"enum": ["ready", "incomplete", "failed"]},
-        "terminalCount": {"const": 1},
-        "reasonKind": {"$ref": "#/$defs/identifier"}
+        "state": {
+          "enum": [
+            "ready",
+            "incomplete",
+            "failed"
+          ]
+        },
+        "terminalCount": {
+          "const": 1
+        },
+        "reasonKind": {
+          "$ref": "#/$defs/identifier"
+        }
       },
       "oneOf": [
         {
-          "properties": {"state": {"const": "ready"}},
-          "not": {"required": ["reasonKind"]}
+          "properties": {
+            "state": {
+              "const": "ready"
+            }
+          },
+          "not": {
+            "required": [
+              "reasonKind"
+            ]
+          }
         },
         {
-          "properties": {"state": {"enum": ["incomplete", "failed"]}},
-          "required": ["reasonKind"]
+          "properties": {
+            "state": {
+              "enum": [
+                "incomplete",
+                "failed"
+              ]
+            }
+          },
+          "required": [
+            "reasonKind"
+          ]
         }
       ]
     }

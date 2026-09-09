@@ -6,1447 +6,269 @@
 #+AUTHOR: agent-semantic-protocols
 #+DATE: 2026-05-31
 #+RFC: 015
-#+STATUS: implemented-single-bin-configurable-client-hook
+#+STATUS: implemented-compiled-policy-projection
 #+DEPENDS: docs/10-19-rfcs/10.05-interactive-graph-first-progressive-searchloop.org (005)
 
 * One-sentence summary
 
-Agent hooks should be a thin, platform-adapted enforcement layer over the
-semantic language CLI registry.  The root protocol owns the normalized hook
-decision shape, activation algorithm, and classification algorithm; language
-harnesses own provider manifests and semantic commands.
+The ASP Hook is a local, compiled, platform-adapted policy evaluator: it
+normalizes a Host invocation, classifies it against one immutable policy and
+provider-projection bundle, and emits one typed decision without resolving or
+executing providers and without contacting the Runtime Server.
 
-Status note: the single =agent-semantic-client= binary and configurable
-client-hook lane is implemented and closed by the gates in [[*RFC Closure Gates]].
-The downstream provider-convergence plan remains tracked separately below.
+* Normative ownership
 
-* Problem
-
-The current hook implementations are drifting:
-
-- Rust has the strongest stateful gate: direct source-read blocks, raw broad
-  search blocks, edit-before-prime checks, subagent receipt checks, and stop
-  checks.
-- TypeScript has a standalone Codex hook implementation, but it reimplements
-  platform parsing and language routing in TypeScript-specific code.
-- Python now has a provider hook for direct-source-read denial; Julia does not
-  yet have the same enforcement surface.
-- Root =.codex/config.toml= can install multiple language hook commands, but
-  the algorithm is not standardized.
-
-This drift is risky because hook correctness depends on platform runtime
-details, not only on language facts.  A hook sees a structured tool payload for
-=Read=, a shell command string for =Bash=/=exec_command=, patch text for
-=apply_patch=, and event-specific stop/subagent fields.  A language-specific
-regex gate cannot be trusted to classify those consistently across platforms.
-
-* Source Model
-
-The hook protocol has three layers:
+The Hook boundary is split into four source-owned layers:
 
 #+begin_example
-agent platform event
-  -> root Rust agent-semantic-hook platform adapter
-  -> normalized hook invocation
-  -> root Rust classification algorithm
-  -> language provider routes
-  -> platform-specific response
+Host event
+  -> installed Host adapter and fixed Plugin payload
+  -> Hook Action IR normalization
+  -> compiled policy + provider projection
+  -> one typed Hook decision
 #+end_example
 
-The root repository owns the platform adapter and classifier as a single Rust
-runtime named =agent-semantic-hook=.  Provider repositories still own the
-language-native pieces:
+- The Host owns whether and how an invocation is delivered.
+- The installed Plugin owns its fixed =hooks.json= and executable adapter.
+- =agent-semantic-hook= owns normalization, matching, and decision rendering.
+- =config.toml= owns declarative rules and language/document projections.
+- the ASP Runtime owns provider activation, execution, Search/Query data, and
+  generation publication.
 
-- source extensions and config files;
-- source root detector defaults and ignored directories;
-- provider binary and route descriptors;
-- check command;
-- search guide commands.
+Hook policy compilation and provider execution are deliberately disjoint.
+Provider manifests, per-workspace Hook activation documents, provider route
+tables, static provider command templates, and Runtime executables MUST NOT be
+loaded by Hook classification. A Hook decision may name a registered
+=languageId= and =providerId=, but those values are policy identities rather
+than proof that a provider process is installed or active.
 
-Provider-level =agent hook= commands must not keep independent Codex/Claude
-payload parsing, shell classification, stop/subagent state machines, or
-deny-guide rendering.  Those belong to the root runtime.  Providers expose
-static manifests; the project installer activates those manifests for one
-workspace.
+The prior =HookRoutes=, =HookRouteBindings=, =HookActivation=,
+=ActivatedProvider=, and =materialize_provider_routes= Rust surfaces are
+removed. The versioned JSON schemas that described historical wire artifacts
+remain immutable archive contracts; they are not current Hook runtime inputs
+and MUST NOT be used to reconstruct a compatibility path.
 
-* Root Rust Runtime
+* Executable surfaces
 
-Configured-resident denies project to exactly one executable v1
-interactive-loop command.  The Agent enters the selected resident session
-directly and must not interpret routing fields, recovery prose, or receipt
-metadata first.  The complete typed decision remains durable in hook event
-state and is available through =--emit decision= for machine validation; the
-normal Codex/Claude deny envelope omits that serialized decision from
-=additionalContext=.  This is a breaking refinement of the existing v1
-contract, not a new schema version.
-
-The v1 implementation has two explicit executable surfaces. The public =asp=
-Client owns administration. The standalone =asp-hook= executable owns Host
-events and embeds the compiled policy bundle:
+Production Host events enter the standalone executable:
 
 #+begin_src text
 asp-hook pre-tool --client codex
 asp-hook pre-tool --client claude
-asp hook doctor --client codex --activation .cache/agent-semantic-protocol/hooks/activation.json .
-asp install plugin --codex .
 #+end_src
 
-The fixed Plugin script =asp-hook-exec= is only an =exec= boundary. It resolves
-=ASP_STATE_HOME/runtime/bin/asp-hook= and forwards the event directly; it MUST
-NOT add another =hook= subcommand. Consequently =asp-hook hook pre-tool= and
-=asp hook pre-tool= are invalid Host event shapes.
+The public =asp= Client owns control-plane administration. The installed
+=asp-hook-exec= adapter resolves the active Runtime artifact slot for
+=runtime/bin/asp-hook= and performs one =exec=. It MUST NOT insert an =asp hook=
+subcommand, infer a socket, start a Runtime Server, or repair project policy.
 
-The runtime is intentionally language-neutral:
+The production Codex transport is exactly one enabled Plugin Hook bundle.
+Native inline =~/.codex/config.toml= Hook injection is an explicit debug/test
+mode and MUST NOT coexist with the production Plugin mode. Rebuilding the ASP
+binary, provider binaries, or Runtime Server does not authorize rewriting
+Plugin trust or reinstalling an unchanged Plugin payload.
 
-- parse platform hook JSON from stdin;
-- normalize Codex/Claude event names and tool payloads;
-- tokenize shell commands into command stages rather than substring matching;
-- route paths and root-scoped broad searches through the project activation
-  and provider manifests;
-- emit =schemas/semantic-agent-hook-decision.v1.schema.json= before rendering
-  the platform-specific response;
-- default to platform hook payload output for =hook=, with =--emit decision=
-  reserved for schema tests, receipts, and machine validation;
-- own =.codex/config.toml= hook blocks that invoke
-  =asp hook= directly;
-- generate one project activation file that records enabled providers and
-  workspace coverage, without copying provider route templates;
-- maintain only shared hook state: prime/search evidence, dirty activation paths,
-  changed-check evidence, and subagent receipt evidence.
+* Compiled policy projection
 
-The root runtime also owns the managed =asp-explore= =subagent-stop= output
-gate. For read-only ASP-managed child sessions, a successful Search final
-message is valid only when its entire content is exactly one Org source block
-whose language is =gql= and whose headers are
-=:profile search-evidence.v1 :eval never=. Prose, Markdown fences, flat receipt
-rows, command grammars, source bodies, snippets, line-range selectors, and
-prescribed next actions are malformed. Recovery asks the same child session to
-re-emit the single canonical Org/GQL graph; it does not expose an alternative
-Example/Grammar renderer.
-The runtime must not call compiler parsers or inspect language syntax.  It
-constructs safe next commands from provider manifests and lets the provider
-binary own search/check semantics.
-
-Provider crates may be linked only in build/dev contexts to generate manifest
-fixtures and black-box runtime tests.  They must not become normal
-=agent-semantic-hook= runtime dependencies; production classification consumes
-the project activation plus static manifests, not provider APIs.
-
-* Platform Facts
-
-** Serialized lazy-loader capability
-
-Format-aware document access is a root hook policy projection, not a hidden
-file-extension branch in the CLI.  The managed hook configuration serializes
-bounded structured-projection rules with
-=capabilityActivation = "lazy-executable"=.  Capability lookup is delayed
-until normalized action and document-format predicates match; lookup failure is
-local to that data-plane request and cannot globally block hook recovery or
-unrelated actions.
-
-For JSON the registered executable is =jq=, the filter grammar is
-=bounded-path-v1=, and raw =Read *.json= remains fail-closed.  An available jq
-capability authorizes only the serialized bounded route; it does not cause the
-pre-tool hook to read the document or spawn jq.  Missing jq cannot fabricate a
-route.  The TOML/yq rule is an instance of the same contract rather than a
-separate matcher heuristic.
-
-This denial uses =reasonKind = "structured-source-read"=.  The existing
-=direct-source-read= reason remains scoped to provider-owned language source
-and is not an alias for structured document projection.
-
-The normative serialized contract, delivery order, and Lean correspondence are
-defined by
-[[file:10.15.02.08-hook-lazy-loader-capability.org][10.15.02.08 Hook Lazy Loader Capability]].
-Its formal audit clause is
-=ASP-RFC-10.15-HOOK-LAZY-LOADER-CAPABILITY=.
-
-** Configuration-independent bootstrap and server warm path
-Tool authorization is a =PreToolUse= transition. =PostToolUse= is an
-observational effect transition for a tool that has already completed: it MUST
-NOT retroactively emit deny/block. A mutating PostTool event MUST project
-exactly one typed workspace-generation mutation through the Runtime IPC lane;
-the policy decision plane MUST NOT submit a second copy of that mutation.
-Mutation identity, normalized changed-owner membership, and the Runtime receipt
-form one idempotency key. Reuse with different membership is a protocol error,
-not a recovery or compatibility path.
-
-
-The plugin command enters through the configuration-independent =asp hook=
-early-dispatch module before the complete matcher document is parsed.  A
-recognized binary/config freshness drift is repaired from the configured
-artifact authority under one stable writer and the original event is replayed
-at most once.  Enforcement failures remain fail-closed, while bounded failure
-of an observational lifecycle event cannot deadlock the agent session.
-
-On the warm path the bootstrap executes the hook runtime in-process rather
-than starting a second =asp= process.  Workspace generation admission and
-graph-backed state reuse ASP Server across workspaces and sessions.  The
-normative state machine, Typst model, Lean correspondence, and implementation
-owners are defined by
-[[file:10.15.02.09-hook-bootstrap-repair-and-server-warm-path.org][10.15.02.09 Hook Bootstrap Repair and Server Warm Path]].
-Its formal audit clause is =ASP-RFC-10.15-HOOK-BOOTSTRAP-REPAIR=.
-
-The next warm-path generation moves the complete hook evaluator into ASP
-Server.  The server owns generation-keyed compiled matcher reuse; the
-bootstrap transfers only the bounded event envelope and final platform
-response.  Workspace and activation identities participate in the generation
-key, and a server miss falls back to the local evaluator without weakening
-hook policy.  The normative contract is
-[[file:10.15.02.10-hook-execution-plane.org][10.15.02.10 Hook Execution Plane and Stateful Runtime Boundary]]. Its formal audit
-clause is =ASP-RFC-10.15-HOOK-EXECUTION-PLANE=.
-
-Claude Code hook documentation describes command hooks as JSON on stdin plus
-stdout/stderr/exit-code or structured JSON decisions.  =PreToolUse= receives
-=tool_name= and =tool_input=; a deny decision can be returned in
-=hookSpecificOutput.permissionDecision=.  Bash permission matching is applied
-to subcommands, and complex commands should be treated conservatively.
-
-Codex has a Claude-style hook configuration surface, but its current coverage
-is not yet equivalent across every built-in tool.  A local audit of
-=openai/codex= found that =PreToolUse= serializes a canonical =tool_name= and
-keeps matcher aliases as client-side compatibility inputs.  For example,
-=apply_patch= may match retired =Write=/=Edit= aliases, and =spawn_agent= may
-match retired =Agent= aliases, while dynamic/deferred tools can be introduced
-through =tool_search=.  The durable boundary is therefore not a long
-tool-name regex in =config.toml=; the config should dispatch broadly and let
-=agent-semantic-hook= classify the normalized payload against project activation
-and provider manifests.
-
-The installed Codex hook command should also invoke =agent-semantic-client=
-through =PATH=.  Copying a per-repository binary into
-=.codex/agent-semantic-hook/bin= makes the runtime stale and easy to bypass:
-the activation file and config block are repository-owned, but the classifier
-binary is a global toolchain component.
-
-=asp install hook= also owns the project-scoped custom subagent bootstrap for
-clients that support native subagents.  For Codex, install creates a small
-read-only =asp-explorer= custom-agent profile under =.codex/agents/= by
-default, using the official standalone custom-agent TOML shape with =name=, =description=,
-=developer_instructions=, =model=, =model_reasoning_effort=, and
-=sandbox_mode=.  The default Codex model is =gpt-5.3-codex-spark= so routine
-ASP exploration can run on cheap, read-only workers.  For Claude Code, install
-creates the matching =.claude/agents/asp-explorer.md= profile by default with YAML
-frontmatter, model =haiku=, =permissionMode: plan=, and bounded turn budgets.
-The parent or main agent, not the hook, owns the shared reasoning tree.  It may
-spawn several instances of the same =asp-explorer= profile, one per independent
-search axis, then fan in each child’s single admitted Org/GQL graph and
-optionally issue another round before final main-model verification.  Worker
-instances do not share context windows; their only shared state is the
-parent-owned branch prompt plus receipt ledger.  The installer SHOULD remove stale generated
-role-specific profiles from earlier revisions, such as =asp-explorer-owner=,
-=asp-explorer-rg=, and =asp-explorer-selector=.  The optional
-=--subagent-model <model>= install flag pins the generated model field for the
-selected client's one generated profile; it is not an opt-in switch for the
-feature.  Hooks still do not spawn subagents or rewrite prompts.  They install
-the native agent configuration and continue to enforce tool/runtime policy when
-the client later chooses to spawn those agents.
-
-=.codex/agent-semantic-protocol/hooks= is durable project hook policy.  The
-versioned client policy lives at =config.toml= there.  Generated activation,
-provider profile registries, and hook event logs must live under
-=${PRJ_CACHE_HOME}/agent-semantic-protocol/hooks= when =PRJ_CACHE_HOME= is set,
-otherwise under the git toplevel =.cache/agent-semantic-protocol/hooks=
-directory.
-
-Provider execution profiles are a separate runtime cache contract.  The root
-runtime writes =profiles.json= under
-=${PRJ_CACHE_HOME}/agent-semantic-protocol/runtime=, or otherwise under the git
-toplevel =.cache/agent-semantic-protocol/runtime= directory.  Activation
-continues to record which provider manifests and coverage roots are active;
-runtime profiles record the resolved provider argv and health for the current
-project.  Agent-facing provider execution must prefer a healthy profile argv
-over shell =PATH= lookup.  This prevents an agent from accidentally selecting a
-different provider binary when it forgets =direnv exec= or inherits the wrong
-=PATH=, and it makes stale/missing runtime tools visible through doctor output
-instead of hiding them behind generated bin symlinks.
-
-Public Codex issue threads also document that =updatedInput= rewrite should
-not be treated as portable and that tool coverage has changed over recent
-releases.
-
-Therefore v1 must be conservative:
-
-- do not rely on input rewriting;
-- do not rely on =PreToolUse= context injection;
-- keep Codex hook matchers broad and perform language/policy classification in
-  the =agent-semantic-hook= library behind =asp hook=
-  instead of encoding tool-name allowlists in TOML;
-- use deny-with-guide for unsafe actions;
-- use =SessionStart=, =UserPromptSubmit=, =SubagentStart=, =PostToolUse=, and
-  =Stop= for context/state when the platform supports them;
-- use =stop_hook_active= / equivalent loop guards when present.
-
-** Codex source audit: tool surface is not filesystem enforcement
-
-A local source audit of =.data/codex/codex-rs= found that Codex =PreToolUse=
-is a tool-registry hook, not a universal file-system interception layer:
-
-- =core/src/tools/registry.rs= only calls =run_pre_tool_use_hooks= when a tool
-  handler returns =pre_tool_use_payload=.
-- =core/src/hook_runtime.rs= blocks only when the hook result has
-  =should_block=true= and a non-empty block reason.  A malformed deny, missing
-  reason, invalid JSON output, or unsupported decision shape degrades to
-  continue/fail-open behavior at the Codex boundary.
-- =core/src/tools/handlers/unified_exec/exec_command.rs= maps shell execution to
-  the canonical =Bash= hook payload with a raw command string.
-- =core/src/tools/handlers/unified_exec/write_stdin.rs= intentionally returns
-  no =PreToolUse= payload.  A long-lived shell therefore has a second input
-  surface that the hook cannot reclassify unless the original session launch was
-  already constrained.
-- =app-server-protocol= and =exec-server= expose =fs/readFile=,
-  =fs/readDirectory=, =fuzzyFileSearch/*=, =command/exec=, and
-  =process/spawn= RPC surfaces outside the ordinary model tool registry.  These
-  are app/exec-server APIs, not guaranteed =PreToolUse= events.
-
-The root classifier must therefore describe hook coverage explicitly instead of
-pretending every source read is enforceable through the same event.
+The managed Hook configuration is compiled into immutable decision shards.
+Each provider projection contains only policy-classification facts:
 
 #+begin_src text
-surface                        hook coverage     normalized operation
-Bash / exec_command             pre-tool          shell-command
-apply_patch                     pre-tool          apply-patch
-mcp__*__read*                   pre-tool          direct-read
-Read / read_file                pre-tool if tool  direct-read
-multi_tool_use.parallel         pre-tool wrapper  nested-tools
-write_stdin                     no pre-tool       stdin-continuation
-fs/readFile                     app RPC           direct-read
-fs/readDirectory                app RPC           directory-read
-fuzzyFileSearch/*               app RPC           file-search
-command/exec                    app RPC           shell-command
-process/spawn                   app RPC           shell-command
-#+end_src
-
-** Codex Source Access Layer without a daemon
-
-The Codex-internal route should be specified as a source-access layer, not as a
-larger hook matcher.  In the no-daemon lane, the goal is to prevent
-unbrokered source bytes from entering the model-visible transcript and to route
-the agent back to provider-owned compact search/query commands.  It is not a
-kernel monitor and it does not claim to intercept arbitrary subprocess
-=open=/=read= calls.
-
-MCP surfaces are out of scope for this v1 source-access layer.  MCP tools,
-resources, and server-owned reads may still be classified opportunistically by
-the hook runtime when their payloads are visible, but they are not part of the
-Codex-internal enforcement guarantee.  This keeps the first contract focused on
-Codex-owned APIs and avoids treating external MCP servers as if they were
-controlled by the Codex process.
-
-The enforcement contract is:
-
-#+begin_src text
-boundary                  operation              enforcement        transcript guarantee
-codex-fs-api              read-file              hard               no source bytes returned
-codex-fs-api              read-directory         hard               no source listing returned
-codex-tool-action         read-file              hard               no source bytes returned
-codex-shell-preflight     spawn-process          preflight          deny obvious raw reads before spawn
-codex-shell-preflight     process-stdin          advisory           guide when stdin is visible
-codex-shell-egress        tool-output            egress             suppress source dumps before model
-subprocess open/read      arbitrary              not-enforced       no no-daemon guarantee
-#+end_src
-
-The source-access decision packet is separate from the hook decision packet:
-
-#+begin_src text
-schemas/semantic-source-access-decision.v1.schema.json
-#+end_src
-
-The packet records the Codex boundary, normalized operation, enforcement mode,
-whether source bytes were returned by the local action, whether any bytes became
-model-visible, and the provider route that should be used instead.  For shell
-commands, =sourceBytesReturned=true= with =modelVisibleBytesReturned=false= is
-a valid egress suppression result: the subprocess may have produced a source
-dump, but Codex did not place it into the agent transcript.  For hard FS API
-denials, both values must be false.
-
-The root CLI exposes an internal no-daemon probe so Codex integration tests can
-exercise this packet without installing app-server patches first:
-
-#+begin_src text
-asp source-access read-file --activation <activation.json> --rpc-method fs/readFile <path>
-asp source-access shell-egress --activation <activation.json> --command <command> --output-digest <digest> <path>
-#+end_src
-
-This command is a black-box policy probe for Codex-owned integration points.  It
-is not an agent exploration surface and it does not replace provider
-=asp <language> query/search= commands.
-
-Provider reads are authorized only through an explicit provider/broker
-capability, normally surfaced as =asp <language> query/search=.  Raw Codex reads
-and provider-owned compact reads therefore have different policy identities:
-
-#+begin_src text
-Codex Read src/lib.rs                  => deny, direct-source-read guide
-shell sed -n 1,120p src/lib.rs         => deny preflight or suppress egress
-asp rust query --from-hook ...         => allow provider-capability
-#+end_src
-
-The public status/doctor surface should report enforcement honestly:
-
-Doctor reports two different checks.  =classifierProbe= is the fast in-process
-hook classifier self-test: it feeds a representative =functions.exec_command=
-source-dump payload through the same decision code and should return
-=deny/bulk-source-dump= when client config is present.  =enforcementProbe= is
-the live Codex runtime probe: it only proves the real tool channel when the
-Codex exec probe is explicitly run.  If that runtime probe is disabled, doctor
-must say =enforcement=unproven= and =enforcementProbe=codex-exec-disabled=,
-not imply live filesystem/tool interception.
-
-#+begin_src text
-fsApi=enforced
-toolAction=enforced
-shellPreflight=best-effort
-shellOutput=egress-enforced
-subprocessOpen=not-enforced
-mcp=out-of-scope
-daemon=not-used
-#+end_src
-
-The shared decision packet should carry normalized =fields.toolSurface= and
-=fields.operationIntent= for action-derived decisions.  These fields make
-receipts explain the client/tool surface that triggered the route, and they let
-black-box tests distinguish "blocked by hook" from "known app RPC surface that
-needs a lower enforcement layer".
-
-The classifier must operate primarily at the action layer:
-
-- structured tool payloads are normalized by extracting action fields such as
-  =path=, =file=, =files=, =uri=, =resource=, =document=, and nested tool calls;
-- a payload containing several normalized actions is one policy unit.  Any
-  blocking decision wins over an allow decision, independent of action order;
-  an allow for an earlier action must not authorize a later denied action;
-- every classifier receipt exposes the sorted top-level =hookPayloadKeys= and
-  compact =normalizedActions= (tool name, surface, operation, and paths).  This
-  distinguishes a payload normalization miss from a host call that never
-  entered the ASP hook event stream;
-- =fields.normalizedActions= is a typed array of action objects in the v1
-  decision packet, never stringified JSON and never a scalar compatibility
-  field.  Each entry carries =toolName=, =toolSurface=, =operationIntent=, and
-  =paths=; =fields.hookPayloadKeys= remains a typed string array.  The action
-  =paths= preserve parser-produced candidates for normalization diagnostics,
-  while top-level =subject.paths= contains only the path-like subjects selected
-  for the decision.  Command flags and non-file operands therefore remain
-  available to matcher facts without leaking into the decision subject;
-- a typed Read tool with a source selector path is treated as source access and
-  routed through the same direct-source-read policy as Codex's built-in =Read=;
-- known tool names are hints for platform surface reporting, not the policy
-  authority;
-- shell commands are parsed with the Bash grammar through =tree-sitter-bash=
-  before direct-read, content-dump, raw-search, and provider-output-pipe
-  decisions are made; the classifier should preserve parser-owned command
-  stages and argument roles instead of flattening first and recovering meaning
-  through wrapper-name heuristics;
-- raw-search source selector matching remains provider-owned through activated
-  =sourceExtensions= and =globset=: =tree-sitter-bash= owns selector roles,
-  the shared matcher extracts the selector's extension pattern, and the
-  pattern must match the provider-declared language extensions before the raw
-  search is treated as source-content access.
-
-Client-side hook customization is a typed global config file, not a server
-process:
-
-- default path: =$ASP_STATE_HOME/control/config/hook-client.toml=, with
-  =$HOME/.agent-semantic-protocols= used only to resolve State Home when the
-  explicit override is absent;
-- install behavior: =asp install plugin --codex=
-  creates this file when missing, with schema metadata plus configured examples,
-  and preserves an existing valid global config;
-- schema: =schemas/semantic-agent-hook-client-config.v1.schema.json=;
-- load timing: every =asp hook= invocation;
-- loader: the Rust runtime uses typed =serde= extraction through =figment=
-  =Toml::file=; no live-reload, watcher, daemon, or server affordance is
-  enabled in this client lane;
-- language filtering: rule =languageIds= match action paths through activated
-  provider coverage for the project;
-- rule ordering: higher =priority= wins, and equal priorities keep config file
-  order so the tie-break is deterministic and reviewable;
-- rule conjunction: non-empty match axes on one rule are conjunctive, while
-  values inside one =*Any= axis are alternatives.  Action, effect, subject,
-  authority, invocation, command, and path facts must all come from the same
-  normalized tool action; a fact from one nested action cannot complete the
-  match for another action;
-- policy reachability: every enabled default deny rule in the installed
-  =config.toml= must have a table-driven classifier witness that asserts its
-  exact =decision= and =fields.configRuleId=.  Capability-gated allow rules
-  additionally require available-capability and missing-capability
-  fail-closed tests.  The witness matrix must cover native tool payloads, shell
-  command payloads, nested actions, provider-owned source paths, structured
-  projection precedence, and configured resident dispatch.  Parsing the TOML
-  or asserting that a rule id exists is not policy enforcement evidence;
-- rule id contract: rule ids are unique across the loaded config because they
-  become machine receipts;
-- rule receipts: config-derived decisions set =fields.configRuleId= to the
-  matching rule id;
-- experimental switches: generated global client configs include
-  =[experimental.semanticAstPatch] enabled = false=.  The built-in source
-  =apply_patch= to semantic AST patch route is experimental; hook runtimes may
-  preserve retired behavior when the switch is absent, but generated global
-  hook config must keep it disabled
-  until the provider-native AST patch path is stable;
-- runtime schema mirror: the loader rejects schema-shape errors before
-  classification, including invalid identifiers, empty min-length strings,
-  unsupported events/platforms, duplicate =languageIds=, empty route =argv=,
-  and invalid route binary names;
-- doctor: =asp hook doctor --client codex= reports the
-  client config path and =clientConfigStatus= (=missing= or =ok=), and fails
-  when the config is invalid.  It also reports Codex project-local activation
-  as separate =projectTrust= and =hookStateTrust= facts so a loaded-but-stale
-  user config is not confused with an in-process classifier failure;
-- failure mode: invalid config emits a block decision so policy cannot silently
-  degrade;
-- no watcher, daemon, or background server behavior belongs to the client hook
-  runtime.
-
-** Codex runtime constraints
-
-The root installer must treat Codex hook activation as a runtime contract, not
-as a repository-local TOML snippet:
-
-- =features.hooks=true= is required, or Codex will not run hook handlers.
-- Project config is not a self-trust root.  Codex only runs project hooks after
-  the project config layer is loaded and the hook's current hash is trusted from
-  user/session/managed hook state.  Writing =hooks.state= only inside the same
-  project =.codex/config.toml= has no enforcement value.  The installer must
-  write both user-level =[projects."<project-root>"].trust_level = "trusted"=
-  and current =[hooks.state."<project-config>:<event>:0:0"].trusted_hash=
-  entries, and doctor must distinguish missing hook state from stale hash state.
-- Untrusted unmanaged hooks can appear in =hooks/list=, but they are discovery
-  metadata; they do not become runnable handlers.
-- =PreToolUse= matcher selection uses the canonical tool name plus compatibility
-  aliases, but the hook stdin payload contains the canonical =tool_name= and
-  =tool_input=.  Therefore match broadly in TOML and classify the normalized
-  payload in the =agent-semantic-hook= library behind
-  =asp hook=.
-- Codex Desktop API entries such as =functions.exec_command= and nested
-  =multi_tool_use.parallel= calls must be replayed as first-class hook payloads,
-  then smoke-tested through the real runtime.  Wrapper paths such as
-  =path.rs:10:20= and =path.rs:10:4= must be normalized before both policy
-  matching and provider route construction.
-- Codex Desktop and deferred-tool read payloads are not stable enough to trust
-  only one field spelling.  The platform adapter must extract paths from the
-  language-neutral field family =path=, =file=, =file_name=, =fileName=,
-  =file_path=, =filePath=, =absolute_path=, =absolutePath=,
-  =relative_path=, =relativePath=, =uri=, =paths=, =files=, =resource=,
-  =resources=, =uris=, =document=, =documents=, =text_document=, and
-  =textDocument=, including arrays and nested objects.  =file://= URIs are
-  normalized to project paths before source selector matching.
-- Codex hook output is schema-strict.  Unknown top-level fields can make the
-  output fail to parse and convert an intended denial into no blocking action.
-  The shared decision packet must either be emitted with =--emit decision= for
-  tests/receipts, or embedded inside an accepted platform field such as
-  =hookSpecificOutput.additionalContext=.
-- The installed command must resolve =asp= through =PATH= so upgrades affect
-  every repository.  The repository owns activation config and provider
-  manifests; the classifier binary is a toolchain component.
-
-This is the concrete root-cause model for the low escape cost observed during
-the Codex CLI audit: a narrow matcher, a stale repo-local binary, missing hook
-feature enablement, project-local self-trust, schema-invalid output, or a
-payload path field outside the adapter's field family can each make the hook
-non-enforcing before language policy is even evaluated.
-
-#+begin_src mermaid
-flowchart TD
-  A["Codex tool event"] --> B{"hooks feature enabled?"}
-  B -- "no" --> Z["not enforced"]
-  B -- "yes" --> C{"project config loaded and hook hash trusted from user/session/managed state?"}
-  C -- "no" --> Z
-  C -- "yes" --> D{"matcher matches canonical tool name or alias?"}
-  D -- "no" --> Z
-  D -- "yes" --> E["agent-semantic-hook receives canonical tool_name + tool_input"]
-  E --> F{"payload path fields normalize to source selectors?"}
-  F -- "no unsafe selector" --> I
-  F -- "yes" --> M{"payload classifies to unsafe semantic action?"}
-  M -- "direct source read or source dump" --> G["deny: route to asp <language> query/search"]
-  M -- "broad rg/fd/find/git source search" --> H{"piped to provider search ingest?"}
-  H -- "yes" --> I["allow"]
-  H -- "no" --> J["deny: route to provider ingest"]
-  M -- "non-source rg/fd/find or docs search" --> I
-  G --> K{"Codex output schema valid?"}
-  J --> K
-  K -- "yes" --> L["blocked by PreToolUse"]
-  K -- "no" --> Z
-#+end_src
-
-* Normalized Invocation
-
-Every platform adapter should produce the same internal record:
-
-#+begin_src text
-platform: codex | claude | unknown
-event: session-start | user-prompt | pre-tool | permission-request |
-       post-tool | subagent-start | subagent-stop | stop | unknown
-cwd
-projectRoot
-sessionId?
-turnId?
-toolName?
-toolInput
-command?
-prompt?
-lastAssistantMessage?
-stopHookActive?
-rawStrings[]
-touchedPaths[]
-candidatePaths[]
-#+end_src
-
-The adapter is intentionally dumb.  It extracts strings and paths, but it does
-not decide whether a path is Rust, TypeScript, Python, or Julia.  It also does
-not try to infer agent intent.
-
-* Provider Manifest And Project Activation
-
-The hook runtime does not use a generated command registry as its source of
-truth.  Provider truth and project activation are separate contracts.
-
-Provider manifests are static descriptors owned by the provider package or by
-the root runtime's built-in provider registry.  The shared JSON shape is:
-
-#+begin_src text
-schemas/semantic-agent-hook-provider-manifest.v1.schema.json
-#+end_src
-
-A provider manifest records only stable provider facts:
-
-#+begin_src text
-manifestId
-manifestVersion
 languageId
 providerId
-namespace
-binary
-source.defaultExtensions[]
-source.defaultConfigFiles[]
-source.defaultSourceRoots[]
-source.defaultIgnoredPathPrefixes[]
-policy.directSourceRead = block | allow | advisory
-policy.bulkSourceDump = block | allow | advisory
-policy.rawSourceSearch = block | allow | advisory
-policy.agentSearchJson = block | allow | advisory
-routes.prime(argv)
-routes.owner(argv)
-routes.query(argv)?
-routes.ingest(argv, stdinMode)
-routes.checkChanged(argv)
-routes.guide(argv)?
+packageRoots[]
+sourceExtensions[]
+configFiles[]
+policy.directSourceRead
+policy.bulkSourceDump
+policy.rawSourceSearch
+policy.agentSearchJson
 #+end_src
 
-The manifest is not a workspace cache.  It must not be regenerated under
-=.codex=.  Command display text is derived from =argv= at render time and is
-not stored as an independent field.
+There is one in-memory collection: =HookRuntime.policy_providers=. There is no
+secondary activated-provider collection and no fallback from policy projection
+to static routes. Config compilation validates every projection identity
+against the registered language/provider catalog before publication.
 
-Project activation is the repository-local generated file.  The shared JSON
-shape is:
+The catalog establishes identity only. It does not expose a provider method
+invocation, provider kind fallback, or a materialized route. Runtime provider
+capability DTOs belong to =agent-semantic-provider-protocol=, not to Hook.
+
+* Normalized invocation
+
+Hook adapters normalize platform payloads into one Action IR before policy
+matching. The IR keeps independent axes for:
+
+- =HostInvocation=: the Host tool identity and envelope category;
+- =SemanticCapability=: read, edit, search, enumerate, execute, or lifecycle;
+- subjects: exact paths, path patterns, selectors, structured documents, and
+  workspace mutation targets;
+- parsed shell stages and wrapper depth;
+- platform event and agent/session facts.
+
+Semantic capability MUST NOT be copied from the Host tool name. A shell, MCP,
+nested-tool, or native-read envelope may express the same semantic read. An
+unobserved Host event produces no Action IR and no decision receipt; it is not
+a synthetic allow or deny.
+
+Shell input is parsed into stages. Quoting, wrappers, assignments, pipelines,
+and nested command envelopes are parser-owned facts. Substring matching MUST
+NOT authorize a protected route. Structured-document tools are classified by
+their argv grammar before generic path projection.
+
+The normative Action IR and Host-boundary refinement are specified by
+[[file:10.15.02.10-hook-execution-plane.org][RFC 10.15.02.10]]. Wrapper snapshot
+ownership is specified by
+[[file:10.15-agent-hook-interception-protocol/10.15.40-parser-owned-wrapper-match-snapshots.org][RFC 10.15.40]].
+
+* Source enforcement
+
+Direct reads, bulk dumps, raw source searches, and agent-facing JSON search
+are classified from the normalized action and provider projection. Obvious
+source access remains fail-closed when optional state or diagnostic projection
+is unavailable.
+
+The Hook denies or allows the attempted action. It does not perform the
+replacement Search/Query itself. Canonical source-search guidance names only
+the public root operations:
 
 #+begin_src text
-schemas/hook-activation.v2.schema.json
+asp search playbook --language <language-set> --rg <native-rg-argv...> --tantivy <native-query...>
+asp query playbook --language <producer|...> --selector <exact-selector> --projection <source|callable-skeleton>
 #+end_src
 
-Activation records only which provider manifests are enabled in this workspace
-and what coverage the installer resolved:
+Language-first =asp <language> search|query= aliases and provider-owned
+playbook routes are not Hook protocol operations. Provider installation is not
+a normal repair suggested by classification. Runtime admission preserves its
+typed failure when the provider or transport is unavailable.
+
+Raw-source enforcement is refined by
+[[file:10.15.01-hook-raw-source-enforcement.org][RFC 10.15.01]]. Structured lazy
+projection is refined by
+[[file:10.15.02.08-hook-lazy-loader-capability.org][RFC 10.15.02.08]]. Exact
+selector projection is refined by
+[[file:10.15.03-merkle-exact-selector-warm-path.org][RFC 10.15.03]] and
+[[file:10.15.04-exact-selector-projection-packet-v1.org][RFC 10.15.04]].
+
+* Search and Query handoff
+
+When a registered root Search/Query command is observed, Hook matching derives
+the language/provider identity from =policy_providers=. The decision receipt
+may contain:
 
 #+begin_src text
-projectRoot
-generatedBy.runtime = asp
-generatedBy.version
-generatedAt
-providers[].manifestId
-providers[].providerId
-providers[].languageId
-providers[].binary
-providers[].providerCommandPrefix[]
-providers[].coverage.packageRoots[]
-providers[].coverage.sourceRoots[]
-providers[].coverage.configFiles[]
-providers[].coverage.sourceExtensions[]
-providers[].coverage.ignoredPathPrefixes[]
-providers[].manifestDigest
+registeredLanguageId
+providerId
 #+end_src
 
-Activation does not repeat command templates, policies, or guide text.  The
-hook hot path loads activation, resolves each =manifestId= against static
-manifests, then builds an in-memory dispatch index:
+It MUST NOT emit =providerMaterialization=, =providerActivationRefresh=,
+=providerLazyLoadCommand=, a static route, or an alternate provider command.
+Provider readiness is evaluated later by the public Client/Runtime transaction.
 
-#+begin_example
-extension/config/glob/source-root -> activated provider manifest
-hook intent -> provider route kind -> argv rendered from manifest + activation
-#+end_example
+Search/Query execution, Tokio concurrency, graph evidence, and performance
+budgets are owned by RFC 10.05 and RFC 10.06.15. Hook only proves that the Host
+action was normalized and classified against the published policy bundle.
 
-If activation is missing, malformed, or references an unknown manifest, the
-hook event must still fail closed for source-like direct reads and source
-dumps that can be classified from the raw platform payload.  The denial route
-may degrade to a repair-oriented guide when no provider route can be trusted,
-but activation errors must not turn obvious source reads into allow decisions.
-=doctor= and =install= are strict: they rebuild activation, verify manifest
-digests, and fail if no provider can be activated.  They must not run provider
-=guide= or any other provider command during discovery; PATH executable checks
-and static workspace detector facts are enough.
+* Decision transaction
 
-* Shared Hook State
-
-Generated hook state is diagnostic and routing evidence, not a source of
-provider truth.  It lives under
-=${PRJ_CACHE_HOME}/agent-semantic-protocol/hooks= when =PRJ_CACHE_HOME= is set,
-otherwise under the git toplevel =.cache/agent-semantic-protocol/hooks=.
-
-The append-only event log is =events.jsonl=.  Each non-empty line must be one
-complete JSON object with:
+Every observed Hook event produces exactly one authoritative decision. The
+decision contains:
 
 #+begin_src text
-schemaId = agent.semantic-protocols.hook.event
-schemaVersion = 2
-protocolId = agent.semantic-protocols.hook
-protocolVersion = 1
+schemaId
+schemaVersion
+protocolId
+protocolVersion
 platform
 event
 decision
 reasonKind
 languageIds[]
 subject
-routeKinds[]
-recordedAtUnixMs
+routes[]
+message
+fields
 #+end_src
 
-Hook invocations may overlap because agent clients can execute tools in
-parallel.  Event writes therefore must be serialized with an operating-system
-file lock or an equivalent process-safe append protocol.  A JSONL write is not
-valid unless the reader can parse every line independently; interleaved partial
-writes are a protocol violation, not only a logging defect.
-
-=asp install hook= and =asp hook doctor= must treat incompatible or corrupted
-event logs as migratable cache, not durable policy.  If an existing
-=events.jsonl= contains a non-empty line with a retired =schemaId=, retired
-=protocolId=, or invalid JSON, install may remove that generated file and
-  start a new current-protocol log.  The versioned hook policy remains global
-under =$ASP_STATE_HOME/control/config/hook-client.toml= (or the same path
-below the HOME-derived State Home).
-
-* Classifier
-
-One shared ASP command-intent matcher MUST exclusively own the public language-command grammar, classification precedence, policy-membership checks, and canonical typed route identifiers. Its result is a typed =AspCommandIntentMatch= containing the language id, intent, =AspCommandRouteId=, optional parsed selector, and any rejection reason. Hook code may locate and normalize an ASP invocation, but it MUST consume this match and MUST NOT independently match =guide=, =search=, or =query= subcommands, re-evaluate flag precedence, synthesize route strings, or reparse selector text. The protocol session router consumes the same typed result.
-
-The classifier is deterministic and evidence-first.  It evaluates one
-normalized invocation against the activated provider dispatch index and current
-hook state.
-
-** Tool intent
-
-The hook must classify public =asp <language>= commands with a parser-owned
-taxonomy before applying generic shell read/search rules.  This is a semantic
-command boundary, not a substring allowlist.  The classifier recognizes the
-=asp= executable only in a shell command position, parses the language facade
-and immediate subcommand, and validates the facade against the activated
-provider registry before attaching language policy.
-
-| ASP command intent | Public command shapes | Meaning | Hook treatment |
-| =reasoning= | =asp <language> guide=, =search prime|pipe|owner|lexical|deps|dependency|failure|reasoning|ingest|guide=, non-projecting =query=, or =query --term= | discovers, refines, ranks, or explains evidence | route from a main session to the managed resident child; apply repeated-prime/pipe feedback and prompt reasoning budget inside the permitted reasoning context |
-| =exact-evidence= | =asp <language> query --selector <structural-selector> --projection source|--content= or =--view metadata= | projects precise evidence after parser-owned identity exists | allow independently of the reasoning-command budget |
-| =direct-read-fallback= | =query --from-hook direct-source-read --selector <bounded-range>= | audited low-priority fallback after an evidence frontier | enforce frontier and bounded-range policy; never treat as exact structural evidence |
-| =invalid-evidence= | projecting =query= with a missing, file-level, line-range, malformed, or cross-language selector | attempts precise projection without parser-owned identity | deny and route back to owner/items reasoning |
-
-The source-owned hook configuration MUST expose this taxonomy under
-=aspCommandIntentPolicy= in
-=crates/agent-semantic-config/templates/hooks/config.toml=.  The typed config
-has five explicit sections: =controlPlane=, =reasoning=, =exactEvidence=,
-=directReadFallback=, and =invalidEvidence=.  It owns the operational root
-commands, recognized reasoning root commands and search
-routes, query reasoning flags, evidence projection flags/views, structural
-selector kinds, same-language requirement, accepted =--from-hook= provenance,
-and invalid-evidence rejection switches.  The hook classifier and the protocol
-session router MUST consume the same loaded policy.  Rust defaults may preserve
-behavior when the config file is absent, but they must not form a second,
-independently maintained taxonomy.
-
-Command matching precedence is deterministic:
-
-1. parse one shell command stage and prove that =asp= is the invoked binary;
-2. parse either =asp <language> <command>= or the root
-   =asp <command> --language <language>= spelling;
-3. validate the language id against activated provider facades;
-4. classify an explicit =--from-hook direct-source-read= before ordinary query
-   projection;
-5. classify a projecting query as =exact-evidence= only when its selector is a
-   valid structural item selector for the same language;
-6. classify the enumerated guide/search/non-projecting query shapes as
-   =reasoning=;
-7. only then apply generic shell read, content-dump, raw-search, or invalid
-   facade rules.
-
-A structural selector has the canonical shape
-=<language>://<non-empty-owner>#item/<kind>/<name>[...]=.  The URI scheme must
-be a lower-case selector scheme, must match the language facade (with only
-contracted aliases such as =gerbil-scheme= -> =scheme=), the owner and item
-segments must be non-empty, and whitespace, duplicate schemes, extra fragments,
-file paths, and display line ranges are not accepted.  =sourceLocatorHint= and
-=displayLineRange= remain display metadata; they are never executable exact
-selectors.
-
-Hook decisions that classify a language command expose
-=fields.aspCommandIntent= and =fields.aspCommandRoute=.  These fields are the
-reviewable shared contract for rule matching and tests.  Hook code must not
-reconstruct this taxonomy through overlapping booleans or search for route
-words at arbitrary positions in the token stream.
-
-Prompt search-flow state rejects only an exact replay of the same tokenized
-=search pipe= command.  A different pipe query produced by refinement or a
-provider =nextCommand= remains eligible; a prior blocked or low-quality attempt
-must not consume a boolean once-per-prompt frontier for every later pipe.
-
-When main-session policy routes a =reasoning= command to the managed resident
-child, the decision uses =reasonKind=asp-reasoning-routed=.  It must not reuse
-=raw-broad-search=, because the ASP command is a valid semantic reasoning route,
-not an unsafe raw shell search.  The resident-child requirement remains an
-execution-policy decision and preserves =aspCommandIntent= and
-=aspCommandRoute= in its receipt.
-
-Only =reasoning= enters the resident-child route.  =exact-evidence=,
-=direct-read-fallback=, and =invalid-evidence= must pass the session gate so
-their own allow, bounded-read, or precise denial policy remains authoritative.
-The configured command inventory must describe accepted CLI spellings: aliases
-or search routes that the public parser does not accept must not be listed as
-reasoning commands.
-Unclassified ASP control and maintenance commands, including install, hook,
-cache, provider, and lifecycle surfaces, do not enter the resident route merely
-because their executable is named =asp=.  Resident routing is a positive
-=reasoning= match, never the negative remainder of a command allowlist.
-
-Native tool intent remains separate from ASP command intent.  A precise native
-single-file =Read= action is direct evidence access and MUST pass through the
-hook without entering reasoning, testing, or resident-session routing.  This
-includes source files such as =*.ts=, =*.tsx=, and =*.rs=; the file extension
-alone never changes a precise =Read= into a reasoning action.  Directory reads,
-multi-file content dumps, and raw shell search remain subject to their explicit
-source-access policies.
-
-Main-session identity MUST be resolved from the hook event before the session
-router decides that execution is outside an agent session.  A non-empty
-=session_id= or =sessionId= in the hook payload is a positive session signal and
-is the root-session fallback when no registered child/root attribution exists.
-Process environment such as =CODEX_THREAD_ID= remains a compatible fallback,
-but the router must not require the hook subprocess and the later tool
-subprocess to inherit the same environment.  This keeps Codex Normal tasks,
-background tasks, and other native hook hosts on the same routing contract.
-Decisions created from this fallback preserve the resolved identity as
-=fields.rootSessionId=; the ordinary payload annotation still exposes
-=fields.sessionId= and =fields.transcriptPath=.
-
-** Deterministic execution lanes
-
-Testing and build commands are deterministic execution work, not semantic
-reasoning actors.  The hook MUST NOT require a managed conversational agent in
-order to run a configured testing command.  Source-owned configuration exposes
-an =executionLanes.testing= policy with an enabled switch, an explicit
-transport, and parser-owned command prefixes.
-
-The default =current-session= transport allows only a command whose tokenized
-prefix matches that lane.  Its allow decision MUST carry a compact execution
-receipt containing the lane, transport, root session id when available, cwd,
-and a SHA-256 digest of the exact command.  This is a scoped deterministic
-execution capability; it is not a blanket shell allowlist and it does not
-change ASP reasoning, evidence, or source-read policy.
-
-This separates the two lifecycle classes:
-
-| Lane | Actor kind | Default transport | Capability rule |
-| =asp-explore= | semantic reasoning actor | managed resident agent | requires a profile-valid native child |
-| =executionLanes.testing= | deterministic command execution | current root session | exact configured prefix plus execution receipt; no resident testing actor |
-
-The retired =asp-testing= resident route is not a compatibility fallback.  A
-testing/build command either matches =executionLanes.testing= and runs in the
-current session with its receipt, or it falls through to ordinary hook policy.
-
-** Non-self-locking control-plane upgrade boundary
-:PROPERTIES:
-:CUSTOM_ID: ASP-RFC-10.15-HOOK-GENERATION-NONBLOCKING
-:END:
-
-Hook installation and recovery commands form a stable bootstrap surface.  The
-parser MUST classify configured =controlPlane.rootCommands= before resident
-reasoning policy and before generic ASP fallback handling.  In particular,
-=install=, =sync=, =hook=, =paths=, and =healthcheck= must never require an
-=asp-explore= lifecycle merely because the invoked executable
-is named =asp=.
-
-Runtime generation admission is an observed data-plane readiness receipt, not
-a prerequisite for running the root hook classifier.  A failed or non-ready
-generation MAY be attached to the hook decision as diagnostic evidence, but it
-MUST NOT abort =SessionStart=, =UserPromptSubmit=, or =PreToolUse= before policy
-matching.  Otherwise one broken provider can deny unrelated commands and also
-deny the =healthcheck=, restart, install, test, and repair operations needed to
-recover it.  Commands that actually consume generation-owned search or query
-state remain fail-closed at the Runtime Server data-plane boundary; obvious
-direct source reads remain fail-closed through the language-extension matcher.
-This separation guarantees that data-plane failure cannot deadlock the hook
-control plane.
-
-Post-tool mutation observation MUST consume the canonical normalized tool
-actions directly from the event payload.  It MUST NOT infer mutation identity
-or changed paths from the selected allow/deny decision, =configRuleId=, or
-=fields.normalizedActions=.  Policy rules are permitted to be event-specific;
-therefore an unmatched =PostToolUse= policy decision is not evidence that the
-tool did not mutate the workspace.  The same tool-action normalizer owns both
-policy facts and the mutation projection, while policy arbitration and
-generation durability remain independent consumers.  A normalized
-=apply-patch= action with typed =session_id=, =tool_use_id=, and non-empty paths
-must submit generation admission even when no post-tool policy rule matches.
-
-The submission wire carries only =mutationId=, =projectRoot=, and normalized
-=changedPaths=.  Candidate discovery, Merkle identity calculation, provider
-projection, and generation publication are Runtime Server work; none may run
-in the short-lived Hook process before submission RPC.  The Runtime Server
-acknowledges =queued= or =coalesced= after taking ownership, then performs the
-heavy work on its Tokio background lane.  Session-local single-flight may
-coalesce duplicate callers before IPC, but it cannot own the background task.
-Likewise, generation ensure and terminal-ready wires do not accept a
-client-computed candidate: a hot ensure reads resident admission memory and a
-cold ensure or terminal gate asks the Runtime Server to discover/build.  This
-keeps Hook mutation submission independent of workspace size and prevents a
-large Merkle scan from starving the immutable Hook evaluator.
-
-An installer updates the runtime through a versioned artifact followed by an
-atomic active-binary switch.  The running hook process may finish on its pinned
-binary; the next hook event resolves the new active binary.  Installation
-receipts record every updated active path and the artifact digest.  Unless an
-explicit =SEMANTIC_AGENT_BIN_DIR= selects one authoritative destination, the
-installer MUST enumerate and atomically update every existing =asp= entry on
-the invoking PATH.  Updating only the first match is invalid because a project
-direnv, login shell, and hook host may resolve different entries from the same
-PATH set.  This bootstrap boundary exists so an older hook cannot permanently
-prevent installation of the parser or routing fix that replaces it.
-
-** Resident runtime rebind control intent
-:PROPERTIES:
-:CUSTOM_ID: resident-runtime-rebind-control-intent
-:END:
-
-The canonical Collaboration V2 lifecycle is owned by
-[[file:10.15.02.06-codex-multi-agent-v2-state-lifecycle.org][RFC 10.15.02.06]].
-
-An Agent runtime mismatch is repaired on the existing canonical path with
-=collaboration.followup_task=; it is never evidence that another Agent should
-be spawned. The repair owner is the main Agent because a child cannot
-synchronously continue itself without locking its current turn. The bootstrap
-pane therefore emits a structured Host-control directive together with a
-concise natural-language instruction addressed to the main Agent.
-
-The directive is declarative.  It identifies the canonical target, existing
-child session, managed profile, desired model and reasoning effort, and these
-invariants:
-
-#+begin_src text
-identityPolicy = same-child-only
-createPolicy = forbid
-instructionMode = main-agent-natural-language-control
-runtimeControlChannel = main-agent-followup-control-intent
-taskMessageCarriesControlIntent = true
-taskMessageIsRuntimeEvidence = false
-verification = fresh-host-runtime-observation
-#+end_src
-
-Natural language is the orchestration surface that lets the main agent select
-the existing managed target and native continuation action.  It is not itself
-runtime evidence.  The main agent MUST compile the directive into a same-child
-follow-up against the canonical managed target.  For a host surface that
-exposes =target= and =message=, the directive MUST include the exact imperative
-message that the main agent sends without paraphrasing:
-
-#+begin_src text
-Switch this existing SubAgent in place to model <expected-model> with reasoning
-effort <expected-reasoning> for the new continuation. Preserve the same
-child/thread identity. Execute the runtime switch now; do not merely explain
-capabilities, do not self-resume, and do not create a replacement.
-#+end_src
-
-This message carries the main agent's control intent to the existing child and
-host continuation surface.  It is not a success receipt.  When the host
-re-resolves the managed profile or interprets the command, the configured
-runtime may be rebound even if the public follow-up schema exposes no explicit
-=model= or =reasoningEffort= argument.  Only the later native lifecycle
-observation proves which runtime dimensions actually changed.
-
-For Codex multi-agent v2, the canonical resident target is root-scoped (for
-example =/root/asp_explorer=).  A completed, idle, or interrupted child remains
-the same resumable identity.  Codex v2 may resume that child without emitting a
-second =SubagentStart=, so event pairing is required: the first Stop after Start
-closes that start turn, while each later same-child Stop without an intervening
-Start is a fresh continuation observation.  Its model and reasoning fields
-supersede the older Start evidence.
-
-Runtime repair is dimension-aware.  Re-selecting the canonical managed target
-may successfully rebind the model while reasoning effort still inherits the
-main agent.  The pane MUST report that partial result instead of calling the
-whole continuation a model-switch failure.  When all observed dimensions still
-drift, the generic blocker is:
-
-#+begin_src text
-bootstrapBlocked=host-runtime-agent-resume-model-override-unavailable
-#+end_src
-
-When model matches but reasoning still drifts, the precise blocker is:
-
-#+begin_src text
-bootstrapBlocked=host-runtime-agent-resume-reasoning-override-unavailable
-repairAttemptStatus=same-child-model-rebind-applied-reasoning-drift-remains
-#+end_src
-
-A top-level app-server thread continuation is not a fallback for a multi-agent
-v2 child.  Explicit =model= or reasoning control arguments are used when the
-native follow-up surface exposes them; their absence is diagnosed only after
-the same-child follow-up and fresh Stop observation show which managed-profile
-dimensions the host did or did not apply.
-
-The blocker preserves the child and leaves it unrouted.  It must not loop by
-reissuing the same unsupported action, ask the child to self-resume, introduce
-a controller sibling, encode runtime control in task text, or create a
-replacement.  Readiness requires a fresh host observation where identity,
-profile, model, and reasoning effort all match the configured resident profile.
-The first drift observation enters =Repair=.  A later same-child Start, or a
-later unpaired Stop from a continuation turn, that still reports any drift
-proves that the in-place continuation did not fully apply the requested
-runtime; bootstrap then enters =Blocked= and exposes the consecutive observation
-count plus the remaining drift dimensions.  The Stop paired with the initial
-Start does not increment this count.  A fresh fully matching observation or
-explicit archive clears it.
-
-Classify the tool call into one or more intents:
-
-#+begin_src text
-direct-read       structured Read/read_file/namespaced read_file/MCP read of a source path
-directory-read    structured listFiles/list_files directory enumeration action
-content-dump      Shell content reader: cat, bat/batcat, less, more, head, tail,
-                  awk data-file, nl file, sed read-only, PowerShell Get-Content
-                  (including gc/type aliases only inside a proven PowerShell command)
-raw-search        rg, grep, ag, fd, find, git grep, git ls-files, ast-grep
-semantic-search   <provider-binary> search ...
-search-json       <provider-binary> search ... --json during agent exploration
-changed-check     <provider-binary> check --changed
-edit              apply_patch, Edit, Write, or shell patch/write command
-ast-patch-gate    source-file apply_patch requires semantic AST patch validation
-subagent-receipt  SubagentStop final message
-stop              Stop event
-#+end_src
-
-Shell commands must be tokenized as commands, not matched as arbitrary
-substrings.  The tokenizer does not need to evaluate shell expansion, but it
-must detect pipelines, command separators, and content-reader stages.  If a
-compound command cannot be parsed safely, treat it as broad when it touches a
-known source root, source glob, or project root.
-
-Codex renders shell invocations from its parser-owned
-=ParsedCommand::Read= projection, while the PreToolUse payload still carries
-the canonical =Bash= tool name.  Therefore every command family that Codex can
-project as =Read= MUST be a subset of the Hook's pre-execution Reader route.
-PowerShell reader aliases MUST be normalized only after the wrapper has proved
-the PowerShell shell family; global =type= matching would incorrectly classify
-the POSIX shell builtin.  TestKit owns the executable parity matrix so upstream
-UI additions cannot silently become Hook bypasses.
-
-Structured direct-read tool names must be normalized before classification.
-Bare names such as =Read= and =read_file=, namespaced deferred tools such as
-=functions.read_file=, and MCP read aliases are the same hook intent when they
-carry a source path.
-
-Codex app-server =CommandAction::{Read,ListFiles,Search}= and core
-=ParsedCommand::{Read,ListFiles,Search}= are parser-owned Explore evidence, not
-raw shell text.  The hook must classify structured =Read/read= as
-=direct-read=, structured =ListFiles/list_files= as =directory-read=, and
-structured =Search/search= as =raw-search= before considering the rendered
-command string.  A =ListFiles/list_files= action over an activated source root
-or source-owned path is denied with
-=reasonKind=source-directory-enumeration= and the owning provider's existing
-=ingest= route.  Directory listings outside activated source scope remain
-allowed.
-
-Source-file =apply_patch= is a special edit intent.  If a Codex direct
-=apply_patch= payload or shell heredoc contains patch hunks for activated
-provider source paths, the classifier should deny with
-=reasonKind=semantic-ast-patch-required= and return the same exact-read route
-used by direct source reads.  This does not validate or rewrite patch hunks.
-It only prevents compact AST projection output from being used as text patch
-context.  Non-source patches remain ordinary edit tool calls.
-
-** Activation routing
-
-Paths route to activated providers through manifest and activation facts:
-
-- source extension or config file -> matching activated provider;
-- source root plus source glob -> matching activated provider through a
-  compiled glob selector, not ad hoc suffix string matching;
-- ignored path prefixes such as =target/=, =node_modules/=, =dist/=,
-  =coverage/=, and generated cache roots -> no provider;
-- root-scoped search such as =rg ... .= or =fd ... .= -> every activated
-  provider unless narrowed by globs.
-
-The classifier should maintain one shared source-selector matcher.  Structured
-read tools, wrappers such as =rtk read=, content dumps, and raw search scopes
-all consult the same activated =sourceExtensions=, =sourceRoots=, and
-=configFiles=.  Adding another language should normally require adding a
-provider manifest and workspace detector only; the classifier algorithm should
-not gain a language-specific branch.
-
-For performance, a selector is normalized and parsed once per classifier pass:
-the matcher owns glob detection, extension-pattern extraction, config filename
-matching for exact direct reads, and compiled globsets.  Classifier actions
-consume that parsed selector rather than compiling glob patterns inside every
-provider-extension pair.
-
-Glob-like selectors such as =*.rs=, =src/**/*.tsx=,
-=packages/*/src/**/*.py=, =crates/**/lib.rs=, =*.{ts,py}=, and =*.[jt]s=
-must be matched with a glob engine such as Rust =globset=.  Command parsing
-still owns argument roles: =rg -e runner.py docs= treats =runner.py= as the
-search pattern, not as a Python source selector, while =rg -g '*.py' docs= or
-=git ls-files '*.py'= are source selectors.
-
-Selectors without a source suffix remain valid scope limiters, but for
-=rg=/=fd=-style raw search they are not sufficient source evidence by
-themselves.  The necessary raw-search source signal is a parser-owned
-language selector that matches the activated provider's required
-=sourceExtensions= through the shared globset matcher, such as =*.rs=,
-=**/*.{ts,tsx}=, or =src/model.py=.
-Roots such as =src=, =crates=, or =.= can narrow the
-search after that signal exists, but they do not turn =env | rg PATH=,
-=rg Foo src=, or =fd Foo crates= into source search.
-
-Raw shell search is allowed only when one of these is true:
-
-- it is piped into the matching provider's =search ingest= command;
-- it is outside activated language providers;
-- the policy explicitly marks it advisory.
-
-This is the key token-saving rule: root-scoped =rg= may collect candidates, but
-it must not dump them into the model.  It should normalize through
-=search ingest= so the provider can group by owner, tests, dependency, and
-next actions.
-Exact source-file raw search such as =rg -n Foo src/model.ts= is still raw
-source exploration.  It should be denied with the same provider-owned guide
-instead of being treated as a safe exception; use =search owner= or a scoped
-=search lexical= packet when the owner is already known.
-
-Semantic search JSON is not the agent-facing exploration surface.  A
-provider-binary =search ... --json= command is allowed only when the caller is a
-schema-contract test, sandtable receipt/replay, IDE/Flowhub consumer, or local
-validator that consumes the JSON as a machine artifact.  During interactive
-agent exploration, hooks should deny it with =reasonKind=agent-search-json= and
-return the equivalent compact command, usually preserving the search route and
-adding =--view seeds= when the provider supports it.
-
-** Decisions
-
-=fields.aspCommandRoute= MUST be serialized from the canonical =AspCommandRouteId= produced by the shared matcher. Existing wire values such as =guide=, =search-prime=, =search-pipe=, =query-selector=, =query-reasoning=, and =query-direct-read-fallback= remain compatibility values of that typed identifier; hook materializers MUST NOT recreate them with local string formatting.
-
-The decision order is:
-
-1. block direct source reads unless the provider route is already a semantic
-   search command;
-2. block prompt-facing =search ... --json= exploration unless the invocation is
-   a registered machine-consumer context;
-3. block broad content dumps and broad raw searches unless they pipe to ingest
-   or route to a provider-declared hook query command;
-4. block broad edits to activated provider files before prime/search evidence;
-5. allow exact-file edits before prime only when policy enables the exception;
-6. record semantic-search evidence in post-tool state;
-7. record changed checks in post-tool state;
-8. require compact subagent receipt shape at subagent stop;
-9. require changed checks at stop when dirty activated provider files exist.
-
-The raw command classifier is action-aware first and selector-aware second.
-Directory names such as =docs/**= or =crates/**= are not language evidence on
-their own; only selectors whose basename or glob extension pattern matches
-provider-declared =sourceExtensions= are raw-search source evidence.
-
-| Action family | Source evidence | Term evidence | Decision |
-| Direct read/edit wrapper | exact source file | exact selector | deny with provider =search owner <path> items --workspace <root> --view seeds= route |
-| Direct read/edit wrapper | broad source suffix selector | none | deny with provider prime route |
-| Content dump (=sed=, =less=, =head=, =tail=, =nl=, =bat=) | exact source file | exact selector | deny bulk-source-dump with provider =search owner <path> items --workspace <root> --view seeds= route |
-| Content dump (=sed=, =less=, =head=, =tail=, =nl=, =bat=) | source glob | not required | deny bulk-source-dump with provider prime route |
-| Content diff (=git diff=, =git diff --no-index /dev/null <path>=) | exact source file | exact selector | deny bulk-source-dump with provider =search owner <path> items --workspace <root> --view seeds= route |
-| Metadata diff (=git diff --stat=, =git diff --name-only=, =git diff --name-status=) | source or non-source scope | metadata only | allow |
-| Raw search (=rg=, =grep=, =fd=, =find=, =git grep=) | parser-owned selector extension matches activated =sourceExtensions= | concrete query term | deny with provider query route when declared |
-| Raw search (=rg=, =grep=, =fd=, =find=, =git grep=) | parser-owned selector extension matches activated =sourceExtensions= | no concrete term | deny with provider ingest route |
-| Structured directory/listFiles action | activated source root/path | none | deny source-directory-enumeration with provider ingest route |
-| Raw search | non-source scope only, such as markdown/docs | any term | allow |
-| Raw search piped to provider ingest | source scope | candidates on stdin | allow |
-| Prompt-facing provider =--json= search | registered interactive shell | any | deny with compact text/owner route |
-
-Untracked source files do not justify raw full-file or no-index diff reads.
-If an agent needs context for a new source file that is absent from the index,
-the hook should route the exact path to the owning provider query/owner command.
-The provider must treat parser-visible untracked files inside declared source
-roots as normal query candidates; the only Git command that remains safe at
-this stage is metadata discovery such as =git status --short= or
-=git diff --name-only=.
-
-Blocking decisions must include the next safe route, not only a denial.  The
-=routes= array is the machine-readable next-action source of truth.  For one
-project-relative source path, the hook should surface the owning provider's
-owner-item frontier route, =search owner <path> items --workspace ... --view
-seeds=, instead of asking the agent to run a file-level code query or explicit
-direct-source-read command.  For TypeScript, source-read recovery therefore
-routes through the public =asp= language facade while preserving
-=providerId=asp-typescript=:
+Normal Host rendering emits the platform response. =--emit decision= exposes
+the typed packet for conformance and receipts. Rendered prose is not an
+orchestration protocol and MUST NOT be parsed to infer recovery.
+
+The local decode, projection, policy, and response-decision path has the strict
+exclusive budget =elapsedMicros < 1000=. It performs no Runtime RPC, provider
+execution, socket discovery, or blocking state repair. Diagnostic event logging
+is best-effort after the decision and cannot alter it. The single-writer rules
+are refined by
+[[file:10.15.02.11-hook-decision-single-writer-transaction.org][RFC 10.15.02.11]].
+
+* Stateful agent workflow
+
+Agent/session lifecycle, subagent receipts, edit-before-search evidence, and
+stop checks remain Hook policy facts where configured. They do not authorize
+Hook to become the owner of provider lifecycle or Runtime execution.
+
+The managed search child output contract is one Org =gql= source block with
+=:profile search-evidence.v1 :eval never=. It contains graph evidence and no
+source dump or prescribed next action. Lifecycle ownership is refined by
+[[file:10.15-agent-hook-interception-protocol/10.15.30-asp-managed-subagent-management.org][RFC 10.15.30]]
+and [[file:10.15.02.06-codex-multi-agent-v2-state-lifecycle.org][RFC 10.15.02.06]].
+
+* Bootstrap and publication
+
+Hook matcher publication is a control-plane transaction. Classification only
+consumes a previously validated immutable artifact. A missing or stale artifact
+selects the typed bootstrap/repair lane; it does not authorize a source-tree
+fallback, in-memory config rebuild, Runtime restart, socket guess, or Plugin
+reinstall.
+
+Bootstrap, artifact identity, and publication are refined by:
+
+- [[file:10.15.02.09-hook-bootstrap-repair-and-server-warm-path.org][RFC 10.15.02.09]];
+- [[file:10.15.02.16-hook-matcher-publication-separation.org][RFC 10.15.02.16]];
+- [[file:10.15.05-active-asp-artifact-merkle-receipt.org][RFC 10.15.05]].
+
+Runtime Server readiness is a distinct transaction. A ready Hook artifact does
+not prove a reachable Runtime endpoint, active provider generation, or usable
+Search/Query data plane.
+
+* Conformance
+
+Acceptance requires all of the following:
+
+1. schema-validated black/white matrices derive cases from the installed Host
+   matcher and canonical policy/profile catalog;
+2. a freshly linked =asp-hook= replay proves the real entry point classifies
+   Host envelopes without contacting Runtime;
+3. generated language/document cases cover every configured projection and
+   both positive and negative subject mutations;
+4. dependency gates prove Runtime Server and Client Core do not depend on
+   =agent-semantic-hook=;
+5. source gates reject reintroduction of route-bearing Hook activation DTOs or
+   provider-route materializers;
+6. latency evidence proves every covered decision is strictly below 1 ms;
+7. a fresh Host task proves the installed Plugin actually intercepts the
+   target action.
+
+Zero tests, an unregistered test file, stale binary evidence, a source-only
+inspection, or a partial matrix is not acceptance.
+
+* Formal correspondence
+
+The executable-plane proof is =ASPProof.HookExecutionPlane=. Its central
+refinement is:
 
 #+begin_example
-direct-source-read denied; route: asp typescript search owner src/components/WorkflowExecution.tsx items --workspace . --view seeds
+classify(hostInvocation, compiledPolicy, providerProjection)
+  = decision
 #+end_example
 
-The hook only materializes the exact selector route; the language provider
-owns parser matching, owner ranking, exact item selection, and compact owner
-context rendering.
+Provider execution state and Runtime readiness are absent from the classifier
+input. Any theorem or Rust path that introduces them below this boundary is an
+architecture violation, not an optimization.
 
-For broad or pattern-based denials that do not carry one exact source path, the
-=message= field remains an agent-facing guide pointer.  If the matched provider
-manifest declares a query route and the raw search contains concrete terms, the
-route should use that route with ={selector}= and ={termArgs}= expanded from
-activated suffixes and shell-tokenized search terms.  Otherwise, it should wrap
-the provider-owned guide command in a compact form such as:
+* Closure state
 
-#+begin_example
-direct-source-read denied; provider guide: rust => asp rust guide --workspace .; python => asp python guide --workspace .
-raw-broad-search denied; provider guide: typescript => asp typescript guide --workspace .
-#+end_example
-
-For Codex and Claude prompt surfaces, the rendered reason text is Markdown, not
-a pipe-delimited template and not a replacement for the JSON decision packet.
-The packet remains the machine-readable contract; the prompt string teaches the
-next safe agent move.  A deny message should contain these sections in order:
-
-#+begin_example
-# ASP Hook Recovery
-
-## Stop
-Do not retry raw source reads, shell source dumps, or broad raw search on the
-matched source path.
-
-## Run Next
-asp <language> search owner <path> items --workspace . --view seeds
-
-## Detected Binaries
-- language=<language> provider=<providerId> command=<runtime-profile argv> facade=asp <language>
-
-## Agent Flow
-1. Start from asp <language> guide --workspace . when the tool map is needed.
-2. Use search prime for project mapping.
-3. Use query guide treesitter only for syntax pattern work.
-4. Use query --projection source only after a parser-owned exact item selector or unique match.
-5. Patch with apply_patch unless the loaded hook config enables semantic ast-patch.
-#+end_example
-
-The =Detected Binaries= section is diagnostic, not the executable public route.
-It must use the generated runtime profile's resolved =argv= when available so
-PATH, direnv, symlink, and stale binary drift are visible.  The public route in
-=routes[].argv= still uses the =asp <language>= facade and keeps =providerId=
-as identity.  If =experimental.semanticAstPatch.enabled = false= in the loaded
-client hook config, the rendered flow must explicitly tell agents to use
-=apply_patch= and not route ordinary edits through provider =ast-patch=.
-
-The root hook must not maintain a parser/query engine.  Selected source paths
-route back to the owning provider's =search owner <path> items --workspace
-<workspace-root> --view seeds= surface through =asp <language>=, while
-=providerId= records the native provider identity such as =asp-rust=,
-=asp-typescript=, or =asp-python=.  Hook routes must not expose provider
-implementation binaries as the executable command surface.  =--from-hook
-direct-source-read= is reserved for audited low-priority exact windows after
-parser-owned search/frontier evidence has failed, and must not be advertised as
-the normal direct-read recovery route for broad or unbounded source access.
-
-If a provider wants to return bounded source windows after that route, it may
-emit =semantic-read-packet.v1= from its =query/*= method with
-=protocolId=agent.semantic-protocols.semantic-language=.  The root hook still
-emits only a hook decision packet and a =kind=query= route; it must not expose
-or emulate a root read command.
-
-* Decision Packet
-
-The common JSON contract is:
-
-#+begin_src text
-schemas/semantic-agent-hook-decision.v1.schema.json
-#+end_src
-
-The packet is not the raw platform response.  Each platform adapter maps it to
-the platform's expected output:
-
-- Claude =PreToolUse=: structured =hookSpecificOutput.permissionDecision= or
-  exit-code 2 with stderr.
-- Codex =PreToolUse=: structured deny payload when supported.
-- =SessionStart= / =UserPromptSubmit= / =SubagentStart=: context output when
-  supported.
-- =Stop= / =SubagentStop=: block decision with loop guard.
-
-* Example Deny
-
-#+begin_src json
-{
-  "schemaId": "agent.semantic-protocols.hook.decision",
-  "schemaVersion": "1",
-  "protocolId": "agent.semantic-protocols.hook",
-  "protocolVersion": "1",
-  "platform": "codex",
-  "event": "pre-tool",
-  "decision": "deny",
-  "reasonKind": "direct-source-read",
-  "languageIds": ["typescript"],
-  "subject": {
-    "toolName": "Read",
-    "paths": ["src/cli/agent-hooks.ts"]
-  },
-  "routes": [
-    {
-      "languageId": "typescript",
-      "providerId": "asp-typescript",
-      "binary": "asp",
-      "kind": "owner",
-      "argv": ["asp", "typescript", "search", "owner", "src/cli/agent-hooks.ts", "items", "--workspace", ".", "--view", "seeds"]
-    }
-  ],
-  "message": "direct-source-read denied; route: asp typescript search owner src/cli/agent-hooks.ts items --workspace . --view seeds"
-}
-#+end_src
-
-Output-mode denial example:
-
-#+begin_src json
-{
-  "schemaId": "agent.semantic-protocols.hook.decision",
-  "schemaVersion": "1",
-  "protocolId": "agent.semantic-protocols.hook",
-  "protocolVersion": "1",
-  "platform": "codex",
-  "event": "pre-tool",
-  "decision": "deny",
-  "reasonKind": "agent-search-json",
-  "languageIds": ["typescript"],
-  "subject": {
-    "toolName": "Bash",
-    "command": "asp typescript search lexical location.path owner tests --json ."
-  },
-  "routes": [
-    {
-      "languageId": "typescript",
-      "providerId": "asp-typescript",
-      "binary": "asp",
-      "kind": "lexical",
-      "argv": ["asp", "typescript", "search", "lexical", "location.path", "owner", "tests", "--view", "seeds", "."]
-    }
-  ],
-  "message": "agent-search-json denied; route: asp typescript search lexical location.path owner tests --workspace . --view seeds"
-}
-#+end_src
-
-When the rejected JSON-output command already includes an owner path, the
-route should use the provider's owner query command instead of a generic guide.
-The route shape is =search owner <path> items --query <derived-query> .=.
-
-* RFC Closure Gates
-
-This RFC is closed for the single-protocol-bin configurable client-hook lane
-when the following implementation gates pass:
-
-1. =agent-semantic-hook= is no longer an install-facing binary target.  Cargo
-   metadata must show only =lib=, =test=, and =custom-build= targets for that
-   crate, while =agent-semantic-client= owns the only hook-facing bin target.
-2. Generated Codex config uses
-   =exec asp hook <event> --client codex= for every
-   installed event: =session-start=, =user-prompt=, =pre-tool=,
-   =permission-request=, =post-tool=, =subagent-start=, =subagent-stop=, and
-   =stop=.
-3. Generated config, skill text, docs, schemas, and fixtures do not instruct
-   users to run retired =agent-semantic-hook= command forms.  Automated scans
-   should keep exact retired executable strings out of human-facing artifacts.
-4. Missing client config preserves the built-in classifier behavior; invalid
-   config fails closed with a structured block decision; doctor reports
-   =clientConfig= and =clientConfigStatus= and rejects invalid config.
-5. Config-derived decisions emit =fields.configRuleId=, duplicate rule ids are
-   rejected before classification, higher priority wins, and equal-priority
-   rules keep config order.
-6. Runtime config validation mirrors the shared schema shape for identifiers,
-   min-length strings, event/platform enums, language id uniqueness, route
-   =argv=, and route binary names.
-7. Mutable Config changes do not affect serving evaluation until the Developer
-   installer validates a new =asp-hook= binary containing the next policy
-   bundle. No watcher, daemon, or server loop compiles policy on the hot path.
-8. Validation gates pass:
-   - =cargo test -p agent-semantic-hook=
-   - =cargo test -p agent-semantic-client=
-   - schema tests for =agent-semantic-hook-decision= and
-     =agent-semantic-hook-client-config=
-   - =asp-rust check --changed crates/agent-semantic-hook=
-   - =asp-rust check --changed crates/agent-semantic-client=
-9. Direct-read payload field-family coverage is tested through the classifier
-    and through the real =asp-hook pre-tool= runtime for at least these Codex
-    shapes: =path=, =file=, =absolutePath=, nested =resource.path=,
-    =resources[].filePath=, and =file://= URI lists.  Each source match denies
-    with =reasonKind=direct-source-read= and a route shaped as
-    =asp <language> search owner <path> items --workspace <workspace-root>
-    --view seeds=.
-10. Concurrent hook invocations cannot corrupt =events.jsonl=.  Unit tests must
-    exercise overlapping appends, and a real-runtime smoke must prove that
-    every event log line parses as JSON with
-    =schemaId=agent.semantic-protocols.hook.event= and
-    =protocolId=agent.semantic-protocols.hook=.
-11. Prompt-facing deny output is a Markdown recovery prompt, not a pipe-template
-    or raw JSON replacement.  It must include =# ASP Hook Recovery=, =## Stop=,
-    =## Run Next=, =## Detected Binaries=, =## Agent Flow=, and =## Rules=.
-12. =Detected Binaries= must render the current runtime profile command argv
-    when available, while =routes[].argv= remains the public =asp <language>=
-    facade route.  A real hook smoke must prove the displayed command path can
-    expose stale PATH/direnv drift without teaching agents to bypass the facade.
-13. Hook recovery output must branch on the loaded client config: when
-    =experimental.semanticAstPatch.enabled = false=, the prompt says to use
-    =apply_patch= and not provider =ast-patch= for ordinary edits; when enabled,
-    it may mention provider =ast-patch= only after dry-run receipt validation.
-14. Generated skills and hook prompts must not reintroduce retired
-    agent-prefixed guide spelling or the old search-wrapper hook query
-    spelling.  The accepted guide entrypoint is =asp <language> guide --workspace .=, its
-    help surface is =asp <language> guide --help .=, and the accepted hook
-    recovery route is top-level =search owner <path> items --workspace
-    <workspace-root> --view seeds=.
-
-* Downstream Plan
-
-1. Root protocol:
-   - keep the shared decision schema, provider manifest schema, and activation
-     schema;
-   - ship the Rust =agent-semantic-hook= library runtime behind the
-     =agent-semantic-client= binary as the only classifier;
-   - keep sandtable drills for hook payload fixtures and shell-tokenizer
-     conformance.
-
-2. Rust provider:
-   - export a Rust provider manifest;
-   - move current state-machine behavior into root-runtime tests;
-   - remove provider-private Codex payload parsing once the root runtime covers
-     direct reads, raw search, edit-before-prime, stop, and subagent receipts.
-
-3. TypeScript provider:
-   - export a TypeScript provider manifest;
-   - delete the standalone Codex classifier or replace it with a thin wrapper
-     that invokes =asp hook=;
-   - keep TypeScript-specific source/config ownership local.
-
-4. Python provider:
-    - export a Python provider manifest;
-    - replace any transitional provider-owned hook wrapper with =asp hook=, or
-      keep only a thin compatibility wrapper that invokes =asp hook=;
-    - deny direct Python source reads with =reasonKind=direct-source-read= and a
-      concrete =asp python search owner <path> items --workspace
-      <workspace-root> --view seeds= route when the root runtime is installed;
-   - continue moving shared classification into the root hook runtime behind
-     =asp hook= for raw-search-to-ingest, edit-before-prime,
-     changed-check, subagent, and stop gates.
-
-5. Julia provider:
-   - export a Julia provider manifest before adding provider-owned hook code;
-   - rely on =asp hook= for direct-read,
-     raw-search-to-ingest, edit-before-prime, changed-check, subagent, and stop
-     gates.
-
-* Open Questions
-
-- Whether Codex will add portable =updatedInput= support.  Until then,
-  provider hooks should not depend on rewriting tool inputs.
-- Which Rust shell-tokenizer crate is acceptable for the production runtime.
-  The conformance requirement is fixed now: parse command boundaries
-  conservatively and route broad output through ingest.
+The compiled-policy Hook boundary is implemented. The remaining closure work
+is evidence work: keep the full Hook matrix green, preserve the strict latency
+budget, verify the installed Host transport in a fresh task, and reject any
+future dependency or DTO change that recreates manifest/activation routing.

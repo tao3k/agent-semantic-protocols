@@ -69,7 +69,7 @@ def _provenance_stage(
 def _rg_lexical_path_pipeline() -> dict:
     return {
         "pipelineId": "lexical-rg-paths",
-        "surface": "search-lexical",
+        "surface": "provider-internal",
         "purpose": "path-candidates",
         "defaultFor": ["path"],
         "stages": [
@@ -88,7 +88,7 @@ def _rg_lexical_path_pipeline() -> dict:
 def _rg_lexical_owner_label_pipeline() -> dict:
     return {
         "pipelineId": "lexical-rg-owner-labels",
-        "surface": "search-lexical",
+        "surface": "provider-internal",
         "purpose": "hybrid-evidence",
         "stages": [
             _pipeline_stage(
@@ -220,7 +220,7 @@ class SemanticFinderToolsRgLexicalSchemaTests(unittest.TestCase):
             {
                 pipeline["output"]["candidateBasis"]
                 for pipeline in document["pipelines"]
-                if pipeline["surface"] == "search-lexical"
+                if pipeline["surface"] == "provider-internal"
             },
         )
 

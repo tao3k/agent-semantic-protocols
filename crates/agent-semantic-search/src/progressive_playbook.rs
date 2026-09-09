@@ -6,29 +6,15 @@
 
 use serde::{Deserialize, Serialize};
 
-const PLAYBOOK_OPTIONS: &[&str] = &[
-    "--languages",
-    "--documents",
-    "--workspace",
-    "--fd",
-    "--rg",
-    "--tantivy",
-    "--syntax",
-    "--native-syntax",
-    "--graph",
-];
-
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProgressiveSearchPlaybookRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub languages: Option<String>,
+    pub language: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub documents: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub workspace: Option<String>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub fd: Vec<Vec<String>>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub rg: Vec<Vec<String>>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -59,7 +45,6 @@ pub struct GraphNativeBlock {
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum SearchPlaybookClauseAxis {
-    Fd,
     Rg,
     Tantivy,
     Syntax,
@@ -81,6 +66,18 @@ pub enum ProgressiveSearchPlaybookError {
     IncompleteRequest(String),
     InvalidClauseOrder(String),
     UnsupportedOption(String),
+    InvalidParameter {
+        reason_kind: &'static str,
+        message: String,
+    },
+    InvalidRg {
+        reason_kind: &'static str,
+        message: String,
+    },
+    InvalidTantivy {
+        reason_kind: &'static str,
+        message: String,
+    },
 }
 
 impl std::fmt::Display for ProgressiveSearchPlaybookError {
@@ -97,6 +94,9 @@ impl std::fmt::Display for ProgressiveSearchPlaybookError {
                     "search playbook does not support option `{option}`"
                 )
             }
+            Self::InvalidParameter { message, .. }
+            | Self::InvalidRg { message, .. }
+            | Self::InvalidTantivy { message, .. } => formatter.write_str(message),
         }
     }
 }
@@ -110,6 +110,9 @@ impl ProgressiveSearchPlaybookError {
             Self::InvalidOperation => "search-playbook-operation-invalid",
             Self::InvalidClauseOrder(_) => "search-playbook-clause-order-invalid",
             Self::UnsupportedOption(_) => "search-playbook-option-unsupported",
+            Self::InvalidParameter { reason_kind, .. } => reason_kind,
+            Self::InvalidRg { reason_kind, .. } => reason_kind,
+            Self::InvalidTantivy { reason_kind, .. } => reason_kind,
         }
     }
 }
@@ -128,130 +131,136 @@ pub fn parse_progressive_search_playbook_args(
 fn parse_playbook(
     args: &[String],
 ) -> Result<ProgressiveSearchPlaybookRequest, ProgressiveSearchPlaybookError> {
-    let mut languages = None;
-    let mut documents = None;
-    let mut workspace = None;
-    let mut fd = Vec::new();
+    use agent_semantic_shell_parser::{SearchPlaybookBlockKind, SearchPlaybookGlobalKind};
+
+    let parsed = agent_semantic_shell_parser::parse_search_playbook_boundaries(args);
+    if let Some(issue) = parsed.issues.first() {
+        use agent_semantic_shell_parser::SearchPlaybookIssueKind;
+        return Err(match issue.kind {
+            SearchPlaybookIssueKind::InvalidOperation => {
+                ProgressiveSearchPlaybookError::InvalidOperation
+            }
+            SearchPlaybookIssueKind::GraphBeforeInput
+            | SearchPlaybookIssueKind::InputAfterGraph => {
+                ProgressiveSearchPlaybookError::InvalidClauseOrder(issue.message.clone())
+            }
+            SearchPlaybookIssueKind::MissingValue
+            | SearchPlaybookIssueKind::PairedInputRequired
+            | SearchPlaybookIssueKind::IncompleteSyntax
+            | SearchPlaybookIssueKind::IncompleteGraph
+            | SearchPlaybookIssueKind::NativeSyntaxArity => {
+                ProgressiveSearchPlaybookError::IncompleteRequest(issue.message.clone())
+            }
+            SearchPlaybookIssueKind::DuplicateGlobal
+            | SearchPlaybookIssueKind::InvalidProducerExpression
+            | SearchPlaybookIssueKind::InvalidWorkspaceIdentity
+            | SearchPlaybookIssueKind::InvalidSyntaxProducer
+            | SearchPlaybookIssueKind::InvalidNativeSelector
+            | SearchPlaybookIssueKind::InvalidGraphLanguage => {
+                ProgressiveSearchPlaybookError::InvalidParameter {
+                    reason_kind: issue.kind.reason_kind(),
+                    message: issue.message.clone(),
+                }
+            }
+            SearchPlaybookIssueKind::UnknownOption => {
+                ProgressiveSearchPlaybookError::UnsupportedOption(
+                    issue
+                        .token_index
+                        .and_then(|index| args.get(index))
+                        .cloned()
+                        .unwrap_or_else(|| issue.field.to_owned()),
+                )
+            }
+            SearchPlaybookIssueKind::RgSyntaxInvalid
+            | SearchPlaybookIssueKind::RgRootOutsideGeneration
+            | SearchPlaybookIssueKind::RgSecondaryProcessForbidden
+            | SearchPlaybookIssueKind::RgOperationNotSearch
+            | SearchPlaybookIssueKind::RgOutputNotAttributable => {
+                ProgressiveSearchPlaybookError::InvalidRg {
+                    reason_kind: issue.kind.reason_kind(),
+                    message: issue.message.clone(),
+                }
+            }
+            SearchPlaybookIssueKind::TantivySyntaxInvalid
+            | SearchPlaybookIssueKind::TantivyFieldUnsupported
+            | SearchPlaybookIssueKind::TantivyExpressionTooSimple => {
+                ProgressiveSearchPlaybookError::InvalidTantivy {
+                    reason_kind: issue.kind.reason_kind(),
+                    message: issue.message.clone(),
+                }
+            }
+        });
+    }
+
+    let language = parsed
+        .global_value(SearchPlaybookGlobalKind::Language)
+        .map(str::to_owned);
+    let documents = parsed
+        .global_value(SearchPlaybookGlobalKind::Documents)
+        .map(str::to_owned);
+    let workspace = parsed
+        .global_value(SearchPlaybookGlobalKind::Workspace)
+        .map(str::to_owned);
     let mut rg = Vec::new();
     let mut tantivy = Vec::new();
     let mut syntax = Vec::new();
     let mut native_syntax = Vec::new();
     let mut graph = Vec::new();
     let mut clause_order = Vec::new();
-    let mut graph_started = false;
-    let mut index = 2;
 
-    while index < args.len() {
-        match args[index].as_str() {
-            "--languages" => languages = Some(single_value(args, &mut index, "--languages")?),
-            "--documents" => documents = Some(single_value(args, &mut index, "--documents")?),
-            "--workspace" => workspace = Some(single_value(args, &mut index, "--workspace")?),
-            "--fd" => {
-                reject_acquisition_after_graph(graph_started)?;
-                let block_index = fd.len();
-                fd.push(native_block(args, &mut index, "--fd")?);
-                clause_order.push(SearchPlaybookClauseRef {
-                    axis: SearchPlaybookClauseAxis::Fd,
-                    block_index,
-                });
-            }
-            "--rg" => {
-                reject_acquisition_after_graph(graph_started)?;
+    for block in parsed.blocks {
+        match block.kind {
+            SearchPlaybookBlockKind::Rg => {
                 let block_index = rg.len();
-                rg.push(native_block(args, &mut index, "--rg")?);
+                rg.push(block.argv);
                 clause_order.push(SearchPlaybookClauseRef {
                     axis: SearchPlaybookClauseAxis::Rg,
                     block_index,
                 });
             }
-            "--tantivy" => {
-                reject_acquisition_after_graph(graph_started)?;
+            SearchPlaybookBlockKind::Tantivy => {
                 let block_index = tantivy.len();
-                tantivy.push(native_block(args, &mut index, "--tantivy")?);
+                tantivy.push(block.argv);
                 clause_order.push(SearchPlaybookClauseRef {
                     axis: SearchPlaybookClauseAxis::Tantivy,
                     block_index,
                 });
             }
-            "--syntax" => {
-                reject_acquisition_after_graph(graph_started)?;
-                let mut block = native_block(args, &mut index, "--syntax")?;
-                if block.len() < 2 {
-                    return Err(ProgressiveSearchPlaybookError::IncompleteRequest(
-                        "--syntax requires a registered producer and native query argv".to_owned(),
-                    ));
-                }
-                let producer = block.remove(0);
+            SearchPlaybookBlockKind::Syntax => {
+                let mut argv = block.argv;
+                let producer = argv.remove(0);
                 let block_index = syntax.len();
-                syntax.push(ProducerNativeBlock {
-                    producer,
-                    argv: block,
-                });
+                syntax.push(ProducerNativeBlock { producer, argv });
                 clause_order.push(SearchPlaybookClauseRef {
                     axis: SearchPlaybookClauseAxis::Syntax,
                     block_index,
                 });
             }
-            "--native-syntax" => {
-                reject_acquisition_after_graph(graph_started)?;
-                let selector = single_value(args, &mut index, "--native-syntax")?;
+            SearchPlaybookBlockKind::NativeSyntax => {
                 let block_index = native_syntax.len();
-                native_syntax.push(selector);
+                native_syntax.push(block.argv.into_iter().next().expect("validated selector"));
                 clause_order.push(SearchPlaybookClauseRef {
                     axis: SearchPlaybookClauseAxis::NativeSyntax,
                     block_index,
                 });
             }
-            "--graph" => {
-                if clause_order.is_empty() {
-                    return Err(ProgressiveSearchPlaybookError::IncompleteRequest(
-                        "--graph requires a preceding acquisition clause".to_owned(),
-                    ));
-                }
-                let mut block = native_block(args, &mut index, "--graph")?;
-                if block.len() < 2 {
-                    return Err(ProgressiveSearchPlaybookError::IncompleteRequest(
-                        "--graph requires a registered graph language and native argv".to_owned(),
-                    ));
-                }
-                let language = block.remove(0);
+            SearchPlaybookBlockKind::Graph => {
+                let mut argv = block.argv;
+                let language = argv.remove(0);
                 let block_index = graph.len();
-                graph.push(GraphNativeBlock {
-                    language,
-                    argv: block,
-                });
+                graph.push(GraphNativeBlock { language, argv });
                 clause_order.push(SearchPlaybookClauseRef {
                     axis: SearchPlaybookClauseAxis::Graph,
                     block_index,
                 });
-                graph_started = true;
-            }
-            option => {
-                return Err(ProgressiveSearchPlaybookError::UnsupportedOption(
-                    option.to_owned(),
-                ));
             }
         }
     }
 
-    validate_producer_expression(languages.as_deref())?;
-    validate_producer_expression(documents.as_deref())?;
-
-    let has_acquisition = clause_order
-        .iter()
-        .any(|clause| clause.axis != SearchPlaybookClauseAxis::Graph);
-    if (languages.is_none() && documents.is_none()) || !has_acquisition {
-        return Err(ProgressiveSearchPlaybookError::IncompleteRequest(
-            "Search Playbook requires --languages or --documents and at least one acquisition clause"
-                .to_owned(),
-        ));
-    }
-
     Ok(ProgressiveSearchPlaybookRequest {
-        languages,
+        language,
         documents,
         workspace,
-        fd,
         rg,
         tantivy,
         syntax,
@@ -259,72 +268,6 @@ fn parse_playbook(
         graph,
         clause_order,
     })
-}
-
-fn reject_acquisition_after_graph(
-    graph_started: bool,
-) -> Result<(), ProgressiveSearchPlaybookError> {
-    if graph_started {
-        return Err(ProgressiveSearchPlaybookError::InvalidClauseOrder(
-            "Search Playbook acquisition clauses must precede --graph".to_owned(),
-        ));
-    }
-    Ok(())
-}
-
-fn single_value(
-    args: &[String],
-    index: &mut usize,
-    option: &str,
-) -> Result<String, ProgressiveSearchPlaybookError> {
-    let value = args.get(*index + 1).filter(|value| !is_boundary(value));
-    let Some(value) = value else {
-        return Err(ProgressiveSearchPlaybookError::UnsupportedOption(
-            option.to_owned(),
-        ));
-    };
-    *index += 2;
-    Ok(value.clone())
-}
-
-fn native_block(
-    args: &[String],
-    index: &mut usize,
-    option: &str,
-) -> Result<Vec<String>, ProgressiveSearchPlaybookError> {
-    let start = *index + 1;
-    let mut end = start;
-    while end < args.len() && !is_boundary(&args[end]) {
-        end += 1;
-    }
-    if start == end {
-        return Err(ProgressiveSearchPlaybookError::UnsupportedOption(
-            option.to_owned(),
-        ));
-    }
-    *index = end;
-    Ok(args[start..end].to_vec())
-}
-
-fn is_boundary(value: &str) -> bool {
-    PLAYBOOK_OPTIONS.contains(&value)
-}
-
-fn validate_producer_expression(
-    expression: Option<&str>,
-) -> Result<(), ProgressiveSearchPlaybookError> {
-    let Some(expression) = expression else {
-        return Ok(());
-    };
-    if expression
-        .split('|')
-        .any(|producer| producer.trim().is_empty() || producer.trim() != producer)
-    {
-        return Err(ProgressiveSearchPlaybookError::UnsupportedOption(
-            "invalid producer expression".to_owned(),
-        ));
-    }
-    Ok(())
 }
 
 #[cfg(test)]

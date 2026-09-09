@@ -24,7 +24,7 @@ pub(crate) async fn run_hook_command(args: &[String]) -> Result<(), String> {
 pub(crate) fn is_runtime_independent_control_command(args: &[String]) -> bool {
     matches!(
         args.first().map(String::as_str),
-        Some("accept-host" | "break-glass" | "doctor" | "enablement" | "paths" | "refresh")
+        Some("break-glass" | "doctor" | "enablement" | "paths" | "refresh")
     )
 }
 
@@ -35,13 +35,13 @@ pub(super) fn is_help_request(args: &[String]) -> bool {
 pub(super) fn is_lifecycle_help_request(args: &[String]) -> bool {
     matches!(
         args.first().map(String::as_str),
-        Some("accept-host" | "doctor" | "enablement" | "paths" | "refresh")
+        Some("doctor" | "enablement" | "paths" | "refresh")
     ) && is_help_request(&args[1..])
 }
 
 fn forwarded_hook_lifecycle_args(command: &str, args: &[String]) -> Result<Vec<String>, String> {
     match command {
-        "accept-host" | "doctor" | "enablement" | "paths" | "refresh" => {
+        "doctor" | "enablement" | "paths" | "refresh" => {
             let mut forwarded = vec![command.to_string()];
             forwarded.extend(args.iter().cloned());
             Ok(forwarded)
@@ -57,7 +57,7 @@ pub(super) fn forwarded_hook_args(args: &[String]) -> Result<Vec<String>, String
 
     match command {
         "help" | "--help" | "-h" => Err(usage()),
-        lifecycle @ ("accept-host" | "doctor" | "enablement" | "paths" | "refresh") => {
+        lifecycle @ ("doctor" | "enablement" | "paths" | "refresh") => {
             forwarded_hook_lifecycle_args(lifecycle, &args[1..])
         }
         _ => Err(usage()),
@@ -65,5 +65,5 @@ pub(super) fn forwarded_hook_args(args: &[String]) -> Result<Vec<String>, String
 }
 
 fn usage() -> String {
-    "usage: asp install hook --client claude [PROJECT_ROOT] [--subagent-model MODEL]\n       asp hook accept-host --host-rollout PATH --hook-events PATH --host-probe-path PATH --host-sentinel TOKEN\n       asp hook doctor --client <codex|claude>\n       asp hook enablement [PROJECT_ROOT] [--json]\n       asp hook paths [PROJECT_ROOT]\n       asp hook break-glass mint --defect-kind <KIND> --command <COMMAND> [PROJECT_ROOT]\n       asp install plugin <status|publish> --codex [PROJECT_ROOT]\n\nHost events are accepted only by the standalone `asp-hook <event> ...` executable.".to_string()
+    "usage: asp install hook --client claude [PROJECT_ROOT] [--subagent-model MODEL]\n       asp hook doctor --client <codex|claude>\n       asp hook enablement [PROJECT_ROOT] [--json] [--host-rollout PATH --hook-events PATH --host-probe-path PATH --host-sentinel TOKEN]\n       asp hook paths [PROJECT_ROOT]\n       asp hook break-glass mint --defect-kind <KIND> --command <COMMAND> [PROJECT_ROOT]\n       asp install plugin <status|publish> --codex [PROJECT_ROOT]\n\nHost events are accepted only by the standalone `asp-hook <event> ...` executable.".to_string()
 }

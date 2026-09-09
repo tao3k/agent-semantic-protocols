@@ -130,12 +130,10 @@ fn assert_exact_query_not_ready_terminal(response_frame: &ClientFrame, params: &
     assert_eq!(terminal["generationDigest"], serde_json::Value::Null);
     assert_eq!(terminal["rootDigest"], serde_json::Value::Null);
     assert_eq!(terminal["requestedSelector"], params["selector"]);
-    assert_eq!(terminal["details"]["generationState"], "failed");
-    assert!(
-        terminal["details"]["publicationError"]
-            .as_str()
-            .is_some_and(|error| error.contains("intentionally unavailable")),
-        "fixture must preserve the deterministic generation-builder failure: {terminal}"
+    assert_eq!(terminal["details"]["generationState"], "building");
+    assert_eq!(
+        terminal["details"]["publicationError"],
+        serde_json::Value::Null
     );
     assert!(terminal.get("recommendedNext").is_none());
     assert_eq!(
@@ -146,9 +144,13 @@ fn assert_exact_query_not_ready_terminal(response_frame: &ClientFrame, params: &
     assert_eq!(terminal["workCounters"]["filesystemReadCount"], 0);
     assert_eq!(terminal["workCounters"]["databaseReadCount"], 0);
     assert_eq!(terminal["workCounters"]["providerProcessCount"], 0);
+    assert!(
+        terminal["elapsedMicros"].as_u64().expect("elapsed micros") < 1_000,
+        "cold not-ready dispatch must be sub-millisecond: {terminal}"
+    );
 }
 
-async fn warm_dispatch_without_resident_generation_returns_query_not_ready(
+async fn dispatch_without_resident_generation_returns_query_not_ready(
     request_id: &str,
     method: &str,
     params: serde_json::Value,
@@ -164,6 +166,7 @@ async fn warm_dispatch_without_resident_generation_returns_query_not_ready(
     let (runtime_search_service, _runtime_search_requests) =
         agent_semantic_client_db::runtime_search_service::runtime_search_service_channel();
     let telemetry = agent_semantic_client_db::runtime_telemetry_bus::RuntimeTelemetryBus::new();
+    let telemetry_sender = telemetry.sender.clone();
     let schema_bundles = agent_semantic_runtime_server::RuntimeSchemaBundleCatalog::load(
         std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../.."),
     )
@@ -258,15 +261,18 @@ async fn warm_dispatch_without_resident_generation_returns_query_not_ready(
         && params.get("fd").is_none()
     {
         let ClientFrame::Response {
-            result: Some(result),
-            error: None,
+            result: None,
+            error: Some(error),
             ..
         } = response_frame
         else {
-            panic!("contract query must bypass generation admission")
+            panic!("invalid Search Playbook contract must fail before generation admission")
         };
-        assert_eq!(result["result"], "provider-contract-failure");
-        assert_eq!(result["reason"], "provider-not-registered");
+        assert_eq!(error["reasonKind"], "client-method-dispatch-failed");
+        assert_eq!(
+            error["message"],
+            "ASP workspace Search requires an acquisition clause"
+        );
         return;
     }
 
@@ -309,37 +315,41 @@ async fn warm_dispatch_without_resident_generation_returns_query_not_ready(
     assert_eq!(error["terminal"]["phase"], "runtime-generation-authority");
     assert_eq!(error["terminal"]["workCounters"]["filesystemReadCount"], 0);
     assert_eq!(error["terminal"]["workCounters"]["providerProcessCount"], 0);
+    let request_plane_receipt = telemetry_sender
+        .resident_request_plane_receipt(request_id)
+        .expect("Runtime must emit the typed request-plane receipt");
+    request_plane_receipt
+        .validate()
+        .expect("Runtime-emitted request-plane receipt must be admissible");
+    assert_eq!(request_plane_receipt.state, "query-not-ready");
+    assert_eq!(request_plane_receipt.generation_lookup_count, 1);
+    assert_eq!(request_plane_receipt.secondary_runtime_rpc_count, 0);
+    assert_eq!(request_plane_receipt.socket_discovery_count, 0);
+    assert_eq!(request_plane_receipt.terminal_wait_count, 0);
+    eprintln!(
+        "runtime resident request-plane receipt: {}",
+        serde_json::to_string(&request_plane_receipt).expect("encode request-plane receipt")
+    );
+    assert!(
+        error["terminal"]["elapsedMicros"]
+            .as_u64()
+            .expect("elapsed micros")
+            < 1_000,
+        "cold request-plane terminal must be sub-millisecond: {}",
+        error["terminal"]
+    );
 }
 
 #[tokio::test]
-async fn workspace_search_playbook_without_acquisition_still_requires_generation_admission() {
-    warm_dispatch_without_resident_generation_returns_query_not_ready(
+async fn workspace_search_playbook_without_acquisition_is_rejected_before_generation_admission() {
+    dispatch_without_resident_generation_returns_query_not_ready(
         "request-workspace-search-playbook-contract",
         agent_semantic_client_protocol::WORKSPACE_SEARCH_PLAYBOOK_METHOD,
         serde_json::json!({
             "schemaId": "agent.semantic-protocols.asp-client-workspace-search-playbook-request",
             "schemaVersion": "1",
-            "languages": "rust"
-        }),
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn search_dispatch_requires_a_committed_generation_admission() {
-    warm_dispatch_without_resident_generation_returns_query_not_ready(
-        "request-search",
-        "rust.search",
-        serde_json::json!({
-            "schemaId": "agent.semantic-protocols.asp-client-search-request",
-            "schemaVersion": "1",
-            "intent": "conceptual",
-            "query": "ready",
-            "scope": "workspace",
-            "coverage": "candidates",
-            "maxOwners": 16,
-            "deadlineMs": 250,
-            "explain": "compact"
+            "language": "rust",
+            "clauseOrder": []
         }),
     )
     .await;
@@ -347,16 +357,15 @@ async fn search_dispatch_requires_a_committed_generation_admission() {
 
 #[tokio::test]
 async fn workspace_search_playbook_requires_a_committed_complete_generation() {
-    warm_dispatch_without_resident_generation_returns_query_not_ready(
+    dispatch_without_resident_generation_returns_query_not_ready(
         "request-workspace-search-playbook",
         agent_semantic_client_protocol::WORKSPACE_SEARCH_PLAYBOOK_METHOD,
         serde_json::json!({
             "schemaId": "agent.semantic-protocols.asp-client-workspace-search-playbook-request",
             "schemaVersion": "1",
-            "languages": "rust",
-            "fd": [["-t", "f", "-e", "rs", "ready", "."]],
+            "language": "rust",
             "rg": [["-n", "ready", "."]],
-            "tantivy": [["ready"]],
+            "tantivy": [["title:\"ready route\"^2 OR body:runtime"]],
             "syntax": [{
                 "producer": "rust",
                 "argv": ["--treesitter-query", "((identifier) @symbol)"]
@@ -366,7 +375,6 @@ async fn workspace_search_playbook_requires_a_committed_complete_generation() {
                 "argv": ["MATCH (a:Owner)-[:DEPENDS_ON]->(b:Owner) RETURN a, b"]
             }],
             "clauseOrder": [
-                {"axis": "fd", "blockIndex": 0},
                 {"axis": "rg", "blockIndex": 0},
                 {"axis": "tantivy", "blockIndex": 0},
                 {"axis": "syntax", "blockIndex": 0},
@@ -379,12 +387,14 @@ async fn workspace_search_playbook_requires_a_committed_complete_generation() {
 
 #[tokio::test]
 async fn query_playbook_never_falls_back_to_per_selector_exact_query() {
-    warm_dispatch_without_resident_generation_returns_query_not_ready(
+    dispatch_without_resident_generation_returns_query_not_ready(
         "request-workspace-query-playbook",
         agent_semantic_client_protocol::WORKSPACE_QUERY_PLAYBOOK_METHOD,
         serde_json::json!({
             "schemaId": "agent.semantic-protocols.asp-client-workspace-query-playbook-request",
             "schemaVersion": "1",
+            "language": "rust",
+            "documents": "org",
             "selectors": [
                 "org://docs/publication.org#item/heading/Publication",
                 "rust://src/registry.rs#item/function/refresh_registry"
@@ -397,7 +407,7 @@ async fn query_playbook_never_falls_back_to_per_selector_exact_query() {
 
 #[tokio::test]
 async fn workspace_syntax_query_requires_a_committed_complete_generation() {
-    warm_dispatch_without_resident_generation_returns_query_not_ready(
+    dispatch_without_resident_generation_returns_query_not_ready(
         "request-workspace-syntax-query",
         agent_semantic_client_protocol::WORKSPACE_SYNTAX_QUERY_METHOD,
         serde_json::json!({
@@ -416,7 +426,7 @@ async fn workspace_syntax_query_requires_a_committed_complete_generation() {
 
 #[tokio::test]
 async fn exact_query_dispatch_requires_a_committed_generation_admission() {
-    warm_dispatch_without_resident_generation_returns_query_not_ready(
+    dispatch_without_resident_generation_returns_query_not_ready(
         "request-query",
         "rust.query",
         serde_json::json!({
@@ -431,7 +441,7 @@ async fn exact_query_dispatch_requires_a_committed_generation_admission() {
 
 #[tokio::test]
 async fn resident_graph_evaluation_requires_a_committed_generation_without_provider_work() {
-    warm_dispatch_without_resident_generation_returns_query_not_ready(
+    dispatch_without_resident_generation_returns_query_not_ready(
         "request-resident-graph",
         "asp.graph.evaluate",
         serde_json::json!({
@@ -441,7 +451,7 @@ async fn resident_graph_evaluation_requires_a_committed_generation_without_provi
             "protocolVersion": "1",
             "packetKind": "resident-graph-evaluation-request",
             "languageId": "rust",
-            "surface": "search-pipe",
+            "surface": "search-playbook",
             "queryTerms": ["ready"],
             "profile": "structural",
             "entryNodeIds": [],
@@ -452,31 +462,9 @@ async fn resident_graph_evaluation_requires_a_committed_generation_without_provi
 }
 
 #[tokio::test]
-async fn registered_language_search_routes_share_query_readiness_gate() {
-    for (language_id, _) in registered_language_provider_pairs() {
-        warm_dispatch_without_resident_generation_returns_query_not_ready(
-            &format!("request-{language_id}-search"),
-            &format!("{language_id}.search"),
-            serde_json::json!({
-                "schemaId": "agent.semantic-protocols.asp-client-search-request",
-                "schemaVersion": "1",
-                "intent": "conceptual",
-                "query": "ready",
-                "scope": "workspace",
-                "coverage": "candidates",
-                "maxOwners": 16,
-                "deadlineMs": 250,
-                "explain": "compact"
-            }),
-        )
-        .await;
-    }
-}
-
-#[tokio::test]
 async fn registered_language_exact_query_routes_share_typed_query_readiness_terminal() {
     for (language_id, _) in registered_language_provider_pairs() {
-        warm_dispatch_without_resident_generation_returns_query_not_ready(
+        dispatch_without_resident_generation_returns_query_not_ready(
             &format!("request-{language_id}-query"),
             &format!("{language_id}.query"),
             serde_json::json!({

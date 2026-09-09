@@ -6,6 +6,7 @@
 //! Language-neutral Provider Registration Protocol shared by ASP Server and providers.
 
 mod install_register;
+mod provider_capabilities;
 mod provider_stream;
 mod register;
 mod release_catalog;
@@ -16,6 +17,16 @@ pub use install_register::ProviderInstallArtifactDomain;
 pub use install_register::ProviderInstallRegister;
 pub use install_register::ProviderInstallRegistration;
 pub use install_register::parse_provider_install_register;
+pub use provider_capabilities::ProviderQueryPackClause;
+pub use provider_capabilities::ProviderQueryPackDescriptor;
+pub use provider_capabilities::ProviderQueryPackRecipe;
+pub use provider_capabilities::ProviderQueryPackTermRole;
+pub use provider_capabilities::ProviderQueryPackTermRoleOverride;
+pub use provider_capabilities::ProviderQueryPackTrigger;
+pub use provider_capabilities::ProviderSearchCapabilities;
+pub use provider_capabilities::ProviderSemanticFactsDescriptor;
+pub use provider_capabilities::ProviderSemanticFactsIntentAxis;
+pub use provider_capabilities::ProviderSourceSnapshotDescriptor;
 pub use provider_stream::PROVIDER_STREAM_SCHEMA_ID;
 pub use provider_stream::PROVIDER_STREAM_SCHEMA_VERSION;
 pub use provider_stream::validate_provider_stream_envelope;
@@ -84,6 +95,9 @@ pub use workspace_install::WorkspaceCommandDescriptor;
 pub use workspace_install::WorkspaceLaunchDescriptor;
 pub use workspace_install::WorkspaceRuntimeDependencyDescriptor;
 
+#[cfg(test)]
+#[path = "../tests/unit/provider_capabilities.rs"]
+mod provider_capabilities_tests;
 #[cfg(test)]
 #[path = "../tests/unit/release_catalog.rs"]
 mod release_catalog_tests;

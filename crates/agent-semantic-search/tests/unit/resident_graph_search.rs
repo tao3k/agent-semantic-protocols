@@ -13,6 +13,8 @@ use agent_semantic_search_projection::ResidentSearchProjectionTier;
 use crate::ContentSearchGenerationReceipt;
 use crate::ResidentGraphEvaluationBudget;
 use crate::ResidentGraphEvaluationRequest;
+use crate::ResidentGraphRelationDirection;
+use crate::ResidentGraphRelationPattern;
 use crate::ResidentGraphSearchBudget;
 use crate::ResidentGraphSearchRequest;
 use crate::SearchGenerationConstructionStage;
@@ -21,6 +23,7 @@ use crate::SearchGenerationIdentity;
 use crate::SearchGenerationStageReceipt;
 use crate::build_resident_graph_generation;
 use crate::evaluate_resident_graph_generation;
+use crate::evaluate_resident_graph_relation_patterns;
 use crate::rank_resident_graph_generation;
 use crate::resident_graph_search::materialize_resident_graph_generation;
 use crate::stable_graph_node_id;
@@ -54,6 +57,10 @@ fn hit(path: &str) -> ResidentSearchHit {
 }
 
 fn relation(owner: &str) -> ProviderProjectedRelation {
+    relation_to_item(owner, "WorkspaceGenerationAdmission::compare")
+}
+
+fn relation_to_item(owner: &str, item: &str) -> ProviderProjectedRelation {
     ProviderProjectedRelation {
         from: ProviderProjectedRelationEndpoint {
             kind: agent_semantic_content_identity::ProviderRelationEndpointKindV1::Owner,
@@ -62,22 +69,45 @@ fn relation(owner: &str) -> ProviderProjectedRelation {
         kind: "contains".into(),
         to: ProviderProjectedRelationEndpoint {
             kind: agent_semantic_content_identity::ProviderRelationEndpointKindV1::Item,
-            id: "WorkspaceGenerationAdmission::compare".to_owned(),
+            id: item.to_owned(),
         },
     }
 }
 
 fn owner_relation(from: &str, to: &str) -> ProviderProjectedRelation {
+    owner_relation_kind(from, "imports", to)
+}
+
+fn owner_relation_kind(from: &str, kind: &str, to: &str) -> ProviderProjectedRelation {
     ProviderProjectedRelation {
         from: ProviderProjectedRelationEndpoint {
             kind: agent_semantic_content_identity::ProviderRelationEndpointKindV1::Owner,
             id: from.to_owned(),
         },
-        kind: "imports".into(),
+        kind: kind.into(),
         to: ProviderProjectedRelationEndpoint {
             kind: agent_semantic_content_identity::ProviderRelationEndpointKindV1::Owner,
             id: to.to_owned(),
         },
+    }
+}
+
+fn relation_pattern(
+    relation: &str,
+    direction: ResidentGraphRelationDirection,
+    projected_bindings: &[&str],
+) -> ResidentGraphRelationPattern {
+    ResidentGraphRelationPattern {
+        left_binding: "left".to_owned(),
+        left_kind: "Owner".to_owned(),
+        relation: relation.to_owned(),
+        direction,
+        right_binding: "right".to_owned(),
+        right_kind: "Owner".to_owned(),
+        projected_bindings: projected_bindings
+            .iter()
+            .map(|binding| (*binding).to_owned())
+            .collect(),
     }
 }
 
@@ -514,4 +544,228 @@ fn intent_only_evaluation_uses_the_resident_generation_and_zero_provider_rpc() {
     );
     assert_eq!(result.work.provider_rpc_count, 0);
     assert_eq!(result.edges.len(), 1);
+}
+
+#[test]
+fn compiled_relation_label_and_direction_change_the_candidate_set() {
+    let root = "a".repeat(64);
+    let snapshot =
+        SourceSnapshotEvidence::new(root.clone(), SourceSnapshotKind::Filesystem, 3, "provider");
+    let generation = WorkspaceGenerationEvidenceV1 {
+        root_digest: root,
+        root_depth: 1,
+        leaf_count: 3,
+        owner_count: 3,
+    };
+    let graph = materialize_resident_graph_generation(
+        &snapshot,
+        &generation,
+        [
+            "src/a.rs".to_owned(),
+            "src/b.rs".to_owned(),
+            "src/c.rs".to_owned(),
+        ],
+        [
+            owner_relation_kind("src/a.rs", "imports", "src/b.rs"),
+            owner_relation_kind("src/b.rs", "calls", "src/c.rs"),
+        ],
+    )
+    .expect("generation graph");
+    let generation_digest = format!("blake3-256:{}", "c".repeat(64));
+    let entry_node_ids = [
+        stable_graph_node_id("owner", "src/a.rs"),
+        stable_graph_node_id("owner", "src/b.rs"),
+        stable_graph_node_id("owner", "src/c.rs"),
+    ];
+    let evaluate = |pattern| {
+        evaluate_resident_graph_relation_patterns(
+            ResidentGraphEvaluationRequest {
+                operation_id: "dispatch-relation",
+                generation_digest: &generation_digest,
+                source_snapshot: &snapshot,
+                workspace_generation: &generation,
+                entry_node_ids: &entry_node_ids,
+                generation_graph: &graph,
+            },
+            &[
+                "src/a.rs".to_owned(),
+                "src/b.rs".to_owned(),
+                "src/c.rs".to_owned(),
+            ],
+            &[pattern],
+            ResidentGraphEvaluationBudget {
+                max_depth: 1,
+                max_nodes: 8,
+                max_edges: 8,
+                max_results: 8,
+            },
+        )
+        .expect("compiled relation evaluation")
+        .ranked_nodes
+        .into_iter()
+        .filter_map(|node| node.owner_path)
+        .collect::<Vec<_>>()
+    };
+
+    assert_eq!(
+        evaluate(relation_pattern(
+            "IMPORTS",
+            ResidentGraphRelationDirection::Out,
+            &["left"]
+        )),
+        ["src/a.rs"]
+    );
+    assert_eq!(
+        evaluate(relation_pattern(
+            "CALLS",
+            ResidentGraphRelationDirection::Out,
+            &["left"]
+        )),
+        ["src/b.rs"]
+    );
+    assert_eq!(
+        evaluate(relation_pattern(
+            "IMPORTS",
+            ResidentGraphRelationDirection::In,
+            &["left"]
+        )),
+        ["src/b.rs"]
+    );
+    assert!(
+        evaluate(relation_pattern(
+            "PUBLISHES",
+            ResidentGraphRelationDirection::Out,
+            &["left"]
+        ))
+        .is_empty()
+    );
+}
+
+#[test]
+fn ordered_relation_patterns_progressively_narrow_candidates() {
+    let root = "a".repeat(64);
+    let snapshot =
+        SourceSnapshotEvidence::new(root.clone(), SourceSnapshotKind::Filesystem, 3, "provider");
+    let generation = WorkspaceGenerationEvidenceV1 {
+        root_digest: root,
+        root_depth: 1,
+        leaf_count: 3,
+        owner_count: 3,
+    };
+    let graph = materialize_resident_graph_generation(
+        &snapshot,
+        &generation,
+        [
+            "src/a.rs".to_owned(),
+            "src/b.rs".to_owned(),
+            "src/c.rs".to_owned(),
+        ],
+        [
+            owner_relation_kind("src/a.rs", "imports", "src/b.rs"),
+            owner_relation_kind("src/b.rs", "calls", "src/c.rs"),
+        ],
+    )
+    .expect("generation graph");
+    let generation_digest = format!("blake3-256:{}", "c".repeat(64));
+    let entry_node_ids = [
+        stable_graph_node_id("owner", "src/a.rs"),
+        stable_graph_node_id("owner", "src/b.rs"),
+        stable_graph_node_id("owner", "src/c.rs"),
+    ];
+    let result = evaluate_resident_graph_relation_patterns(
+        ResidentGraphEvaluationRequest {
+            operation_id: "dispatch-progressive-relations",
+            generation_digest: &generation_digest,
+            source_snapshot: &snapshot,
+            workspace_generation: &generation,
+            entry_node_ids: &entry_node_ids,
+            generation_graph: &graph,
+        },
+        &[
+            "src/a.rs".to_owned(),
+            "src/b.rs".to_owned(),
+            "src/c.rs".to_owned(),
+        ],
+        &[
+            relation_pattern(
+                "IMPORTS",
+                ResidentGraphRelationDirection::Out,
+                &["left", "right"],
+            ),
+            relation_pattern("CALLS", ResidentGraphRelationDirection::Out, &["left"]),
+        ],
+        ResidentGraphEvaluationBudget {
+            max_depth: 1,
+            max_nodes: 8,
+            max_edges: 8,
+            max_results: 8,
+        },
+    )
+    .expect("ordered relation evaluation");
+
+    assert_eq!(
+        result
+            .ranked_nodes
+            .iter()
+            .filter_map(|node| node.owner_path.as_deref())
+            .collect::<Vec<_>>(),
+        ["src/b.rs"]
+    );
+    assert_eq!(
+        result.work.visited_edges, 2,
+        "relation index visits only the two candidate-relevant edges",
+    );
+}
+
+#[test]
+fn owner_item_relation_filter_stops_after_one_indexed_witness() {
+    let root = "a".repeat(64);
+    let snapshot =
+        SourceSnapshotEvidence::new(root.clone(), SourceSnapshotKind::Filesystem, 1, "provider");
+    let generation = WorkspaceGenerationEvidenceV1 {
+        root_digest: root,
+        root_depth: 1,
+        leaf_count: 1,
+        owner_count: 1,
+    };
+    let graph = materialize_resident_graph_generation(
+        &snapshot,
+        &generation,
+        ["src/lib.rs".to_owned()],
+        (0..1_000).map(|index| relation_to_item("src/lib.rs", &format!("item-{index}"))),
+    )
+    .expect("generation graph");
+    let generation_digest = format!("blake3-256:{}", "c".repeat(64));
+    let entry_node_ids = [stable_graph_node_id("owner", "src/lib.rs")];
+    let result = evaluate_resident_graph_relation_patterns(
+        ResidentGraphEvaluationRequest {
+            operation_id: "dispatch-indexed-containment",
+            generation_digest: &generation_digest,
+            source_snapshot: &snapshot,
+            workspace_generation: &generation,
+            entry_node_ids: &entry_node_ids,
+            generation_graph: &graph,
+        },
+        &["src/lib.rs".to_owned()],
+        &[ResidentGraphRelationPattern {
+            left_binding: "owner".to_owned(),
+            left_kind: "Owner".to_owned(),
+            relation: "CONTAINS".to_owned(),
+            direction: ResidentGraphRelationDirection::Out,
+            right_binding: "item".to_owned(),
+            right_kind: "Item".to_owned(),
+            projected_bindings: vec!["owner".to_owned(), "item".to_owned()],
+        }],
+        ResidentGraphEvaluationBudget {
+            max_depth: 1,
+            max_nodes: 2,
+            max_edges: 1,
+            max_results: 1,
+        },
+    )
+    .expect("one indexed witness stays inside request budget");
+
+    assert_eq!(result.ranked_nodes.len(), 1);
+    assert_eq!(result.work.visited_edges, 1);
+    assert_eq!(result.work.visited_nodes, 2);
 }

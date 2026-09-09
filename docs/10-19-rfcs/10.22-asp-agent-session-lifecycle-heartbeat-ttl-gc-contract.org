@@ -328,8 +328,8 @@ flowchart TD
 
 Restricted command classes include:
 
-- =asp rg=, =asp fd=, =asp pipe=, =asp query=, and =asp search=
-- =asp org query= and =asp org search=
+- every retired direct retrieval or language-first Search/Query root
+- =asp query playbook --documents org= and =asp search playbook --documents org=
 - =asp <language> query= and =asp <language> search=
 
 Allowed command classes in the main/root session include session management,
@@ -710,7 +710,7 @@ Post-tool records compact evidence:
 - success/failure classification
 
 Post-tool should refresh heartbeat for the executing session and attach compact
-checkpoint evidence. It should not turn the main session into the search owner.
+checkpoint evidence. It should not turn the main session into the discovery owner.
 
 * Routing Rules
 Main/root session:
@@ -722,8 +722,8 @@ Main/root session:
 | =asp install ...= | allow |
 | =asp org capture/lint/guide/archive/recall= | allow unless configured otherwise |
 | =asp rg= | deny and route to =asp-explore= |
-| =asp query/search/pipe= | deny and route to =asp-explore= |
-| =asp org query/search= | deny and route to =asp-explore= |
+| Search/Query Playbook command | deny and route to =asp-explore= |
+| =asp query playbook --documents org/search= | deny and route to =asp-explore= |
 | =asp <language> query/search= | deny and route to =asp-explore= |
 
 Child =asp-explore= session:

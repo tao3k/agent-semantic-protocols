@@ -16,6 +16,10 @@ pub async fn compile_runtime_schema_catalog(
 ) -> Result<(), String> {
     let manager = SchemaManager::new(workspace_root);
     let profiles = manager.registered_language_profiles()?;
+    let profile_axes = profiles
+        .iter()
+        .map(|profile| (profile.language_id.as_str(), &profile.search_producer_axes))
+        .collect::<BTreeMap<_, _>>();
     for profile in &profiles {
         println!(
             "cargo:rerun-if-changed={}",
@@ -31,6 +35,15 @@ pub async fn compile_runtime_schema_catalog(
     let resolved = manager.resolve_bundles(&[]).await?;
     let mut bundles = Vec::with_capacity(resolved.len());
     for bundle in resolved {
+        let search_producer_axes =
+            profile_axes
+                .get(bundle.language_id.as_str())
+                .ok_or_else(|| {
+                    format!(
+                        "Runtime schema bundle has no profile: {}",
+                        bundle.language_id
+                    )
+                })?;
         let mut entries = Vec::with_capacity(bundle.schemas.len());
         for owned in bundle.schemas {
             let bytes = owned.bytes;
@@ -58,6 +71,7 @@ pub async fn compile_runtime_schema_catalog(
         }
         bundles.push(serde_json::json!({
             "languageId": bundle.language_id,
+            "searchProducerAxes": search_producer_axes,
             "rootSetIds": bundle.root_set_ids,
             "bundleDigest": bundle.bundle_digest,
             "entries": entries,

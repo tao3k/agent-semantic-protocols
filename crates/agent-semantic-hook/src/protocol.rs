@@ -14,14 +14,6 @@ use serde_json::json;
 use std::borrow::Cow;
 use std::collections::BTreeMap;
 
-/// Schema identifier for semantic hook project activations.
-pub const HOOK_ACTIVATION_SCHEMA_ID: &str = "agent.semantic-protocols.hook.activation";
-/// Schema version for semantic hook project activations.
-pub const HOOK_ACTIVATION_SCHEMA_VERSION: &str = "2";
-/// Schema identifier for static semantic hook provider manifests.
-pub const PROVIDER_MANIFEST_SCHEMA_ID: &str = "agent.semantic-protocols.hook.provider-manifest";
-/// Schema version for static semantic hook provider manifests.
-pub const PROVIDER_MANIFEST_SCHEMA_VERSION: &str = "1";
 pub const CANONICAL_SCHEMA_AUTHORITY: &str =
     "https://tao3k.github.io/agent-semantic-protocols/schemas/";
 /// Schema identifier for shared hook decision packets.
@@ -65,47 +57,9 @@ impl Default for HookPolicy {
 
 impl HookPolicy {}
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct HookRoutes {
-    pub playbook: CommandTemplate,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub query: Option<CommandTemplate>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub exact_selector_native: Option<CommandTemplate>,
-    pub check_changed: CommandTemplate,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub dependency_topology: Option<CommandTemplate>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub dependency_topology_metadata: Option<CommandTemplate>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub export_index: Option<CommandTemplate>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub guide: Option<CommandTemplate>,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct HookRouteBindings {
-    pub playbook: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub query: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub exact_selector_native: Option<String>,
-    pub check_changed: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub dependency_topology: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub dependency_topology_metadata: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub export_index: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub guide: Option<String>,
-}
-
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-/// Argument template for a provider-owned semantic search command.
+/// Argument template for an explicit decision route.
 pub struct CommandTemplate {
     pub argv: Vec<String>,
     #[serde(
@@ -618,9 +572,9 @@ pub fn subagent_deny_message(message: &str) -> String {
 
 fn user_prompt_search_first_context(locator_only: bool) -> &'static str {
     if locator_only {
-        return "ASP Search playbook routing is active for this locator question. Invoke `asp search playbook '<question>' --language <language> --intent conceptual --scope workspace --coverage candidates --explain compact --workspace <workspace-root>`. When an owner path is already known, use `--scope owner:<path>`. The server executes one ordered resident generation: rg acquisition, Tantivy lexical retrieval, then the admitted asp-python-graphs projection. Materialize source only from an exact structural selector with `asp <language> query --selector <exact-selector> --workspace . --projection source`; use `--projection callable-skeleton` for a callable skeleton. Exact query has no implicit projection. The root playbook accepts language IDs through `--language`; for Effect use `--language typescript`.";
+        return "ASP Search playbook routing is active for this locator question. Compose one public `asp search playbook` request, selecting code producers with `--language <producer|...>` and document producers with `--documents <producer|...>`, plus paired `--rg` and `--tantivy` inputs and optional `--syntax` or `--native-syntax`; graph blocks, when needed, follow all acquisition and syntax blocks. Preserve every native block as argv rather than embedding a command or shell pipeline. The Runtime executes the request against one admitted immutable workspace generation and returns bounded evidence without prescribing the Agent's next action. Materialize only Agent-chosen canonical selectors through one `asp query playbook` request using the same producer-axis flags and `--selector <exact-selector>`; Query has no implicit Search state or implicit projection.";
     }
-    "ASP Search playbook routing is active for this prompt. Before direct source reads, invoke `asp search playbook '<question>' --language <language> --intent <conceptual|relationship|exact-literal|absence-proof> --scope <workspace|owner:path> --coverage <candidates|complete> --explain compact --workspace <workspace-root>`. Complete coverage is admitted only for absence-proof intent. The server uses one ordered resident generation: rg acquisition, Tantivy lexical retrieval, then admitted asp-python-graphs projection. Follow the returned structural evidence and materialize source with `asp <language> query --selector <exact-selector> --workspace . --projection source`, or `--projection callable-skeleton`. Exact query has no implicit projection. The root playbook accepts language IDs through `--language`; for Effect use `--language typescript`."
+    "ASP Search playbook routing is active for this prompt. Compose one public `asp search playbook` request, selecting code producers with `--language <producer|...>` and document producers with `--documents <producer|...>`, plus paired `--rg` and `--tantivy` inputs and optional `--syntax` or `--native-syntax`; graph blocks, when needed, follow all acquisition and syntax blocks. Preserve every native block as argv rather than embedding a command or shell pipeline. The Runtime executes the request against one admitted immutable workspace generation and returns bounded evidence without prescribing the Agent's next action. Materialize only Agent-chosen canonical selectors through one `asp query playbook` request using the same producer-axis flags and `--selector <exact-selector>`; Query has no implicit Search state or implicit projection."
 }
 
 pub(crate) fn normalize_source_selector(selector: &str) -> &str {

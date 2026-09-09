@@ -52,11 +52,11 @@ def _profile_for_packet(
     method = str(packet.get("method") or "")
     if items:
         return "owner-query"
-    if method == "search/owner" and owners:
+    if method == "search/playbook" and owners:
         return "owner-tests"
-    if method in {"search/prime", "search/workspace"}:
-        return "prime"
-    return "query-deps" if packet.get("query") else "prime"
+    if method == "search/playbook":
+        return "owner-query"
+    return "query-deps" if packet.get("query") else "owner-query"
 
 
 def _owner_targets(packet: Mapping[str, Any]) -> tuple[str, ...]:

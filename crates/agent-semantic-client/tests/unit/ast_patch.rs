@@ -139,7 +139,7 @@ fn verifies_valid_packet_without_enabling_mutation() {
             .contains("asp typescript ast-patch dry-run --packet semantic-ast-patch.json .")
     );
     assert!(receipt.next.contains(
-        "asp typescript query --selector src/render.ts:10:20 --workspace . --projection source"
+        "asp query playbook --language typescript --selector src/render.ts:10:20 --workspace . --projection source"
     ));
     assert!(
         receipt

@@ -47,7 +47,7 @@ class StepRunnerProtocolCommandTests(unittest.TestCase):
 
         command = _workspace_dev_command(
             repo_root,
-            ["asp", "graph", "render", "--packet", "-"],
+            ["asp", "search", "playbook", "--language", "rust"],
         )
 
         self.assertEqual(
@@ -58,10 +58,10 @@ class StepRunnerProtocolCommandTests(unittest.TestCase):
                 "--manifest-path",
                 "/workspace/crates/agent-semantic-client/Cargo.toml",
                 "--",
-                "graph",
-                "render",
-                "--packet",
-                "-",
+                "search",
+                "playbook",
+                "--language",
+                "rust",
             ],
             [str(part) for part in command],
         )
@@ -75,16 +75,16 @@ class StepRunnerProtocolCommandTests(unittest.TestCase):
 
             command = _workspace_dev_command(
                 repo_root,
-                ["asp", "rust", "search", "lexical", "codeql"],
+                ["asp", "search", "playbook", "--language", "rust"],
             )
 
         self.assertEqual(
             [
                 str(binary.resolve()),
-                "rust",
                 "search",
-                "lexical",
-                "codeql",
+                "playbook",
+                "--language",
+                "rust",
             ],
             [str(part) for part in command],
         )
@@ -114,22 +114,7 @@ class StepRunnerProtocolCommandTests(unittest.TestCase):
             [str(part) for part in command],
         )
 
-    def test_direct_language_harness_commands_are_not_python_rewritten(self) -> None:
-        commands = [
-            ["asp-rust", "search", "prime", "--workspace", "."],
-            ["asp-typescript", "search", "prime", "--workspace", "."],
-            ["asp-julia", "search", "prime", "--workspace", "."],
-            ["asp-python", "search", "prime", "--workspace", "."],
-        ]
-
-        for command in commands:
-            with self.subTest(command=command[0]):
-                self.assertEqual(
-                    command,
-                    _workspace_dev_command(Path("/workspace"), command),
-                )
-
-    def test_python_protocol_command_uses_workspace_protocol_binary(self) -> None:
+    def test_search_playbook_uses_workspace_protocol_binary(self) -> None:
         with TemporaryDirectory() as directory:
             repo_root = Path(directory)
             binary = repo_root / ".bin" / "asp"
@@ -138,17 +123,16 @@ class StepRunnerProtocolCommandTests(unittest.TestCase):
 
             command = _workspace_dev_command(
                 repo_root,
-                ["asp", "python", "search", "prime", "--workspace", "."],
+                ["asp", "search", "playbook", "--language", "python"],
             )
 
         self.assertEqual(
             [
                 str(binary.resolve()),
-                "python",
                 "search",
-                "prime",
-                "--workspace",
-                ".",
+                "playbook",
+                "--language",
+                "python",
             ],
             [str(part) for part in command],
         )

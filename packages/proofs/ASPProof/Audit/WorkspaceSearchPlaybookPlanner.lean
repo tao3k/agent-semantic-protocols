@@ -6,11 +6,14 @@ import ASPProof.WorkspaceSearchPlaybookPlanner
 
 open ASPProof.WorkspaceSearchPlaybookPlanner
 
-#print axioms admitted_request_has_direct_native_axes
+#print axioms admitted_request_has_retrieval_scope_inputs
+#print axioms fused_file_context_membership
+#print axioms calibration_cannot_mint_or_remove_file_context
+#print axioms cli_occurrence_order_cannot_change_layout_dependencies
 #print axioms clause_kinds_are_pairwise_distinct
 #print axioms native_argument_is_forwarded_unchanged
 #print axioms standalone_shell_pipe_is_rejected
-#print axioms acquisition_clause_does_not_consume_another_clause
+#print axioms syntax_fact_receipt_consumes_fused_file_context
 #print axioms targeted_recovery_is_exactly_example_and_grammar
 #print axioms targeted_repair_strictly_decreases_missing_axes
 #print axioms no_match_requires_complete_coverage

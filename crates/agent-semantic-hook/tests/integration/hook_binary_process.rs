@@ -126,7 +126,7 @@ fn temporary_subagent_start_is_observational_and_stop_requires_identity() {
             assert!(
                 terminal["reason"]
                     .as_str()
-                    .is_some_and(|reason| reason.starts_with("Example\n")),
+                    .is_some_and(|reason| reason.contains("exactly one Org source block")),
                 "event={event}"
             );
         }
@@ -186,7 +186,7 @@ fn asp_explorer_stop_requires_executable_source_free_evidence() {
 fn configured_testing_agent_is_allowed_without_child_registration() {
     let _test_guard = hook_process_test_guard();
     let temp = tempfile::tempdir().expect("isolated State Home");
-    let active_runtime = temp.path().join("runtime/artifacts/slots/runtime/active");
+    let active_runtime = temp.path().join("runtime/artifacts/active");
     std::fs::create_dir_all(&active_runtime).expect("active Runtime artifact directory");
     std::fs::copy(
         env!("CARGO_BIN_EXE_asp-hook"),
@@ -416,7 +416,7 @@ fn default_hook_process_applies_state_home_config_overlay_without_policy_bundle_
         child.stdin.as_mut().expect("Hook stdin"),
         &serde_json::json!({
             "tool_name": "Bash",
-            "tool_input": {"command": "asp rust search --json HookDecision"}
+            "tool_input": {"command": "asp search playbook --language rust --rg HookDecision --json"}
         }),
     )
     .expect("write Host payload");

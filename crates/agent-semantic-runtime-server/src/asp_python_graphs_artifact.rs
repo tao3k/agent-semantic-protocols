@@ -14,7 +14,7 @@ use std::path::PathBuf;
 
 use agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest;
 use agent_semantic_artifacts::runtime_artifact_slots::RuntimeArtifactSlotAuthority;
-use agent_semantic_artifacts::runtime_artifact_slots::verify_runtime_artifact_bundle;
+use agent_semantic_artifacts::runtime_artifact_slots::verify_runtime_artifact_bound_bundle;
 
 pub const ASP_PYTHON_GRAPHS_BUNDLE_MEMBER: &str = "asp-python-graphs";
 pub const PROTOCOL_NAMESPACE: &str = "asp.python.graphs";
@@ -40,7 +40,7 @@ impl VerifiedAspPythonGraphsArtifact {
         let active = slots.active_target().await?.ok_or_else(|| {
             "state=unavailable reasonKind=asp-python-graphs-runtime-bundle-not-active".to_owned()
         })?;
-        let bundle = verify_runtime_artifact_bundle(&active).await?;
+        let bundle = verify_runtime_artifact_bound_bundle(&active).await?;
         let executable = bundle
             .member_path(ASP_PYTHON_GRAPHS_BUNDLE_MEMBER)
             .ok_or_else(|| {

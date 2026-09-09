@@ -82,8 +82,11 @@ The six standard profiles and project-owned extension boundary are defined by
 semantic and admission authority. GQL is the Agent-facing query and projection
 adapter; it is not the storage identity or closure authority.
 
-The language-neutral machine shape is
+The current language-neutral machine shape is
 [[file:../../../schemas/project-topology-library.v1.schema.json][project-topology-library.v1]].
+This still-evolving V1 carries source-owned expected relations, coverage
+certificates, and exact frontier classification; no parallel V2 contract is
+introduced during V1 stabilization.
 It explicitly declares Search, Query, code understanding, framework
 calibration, refactoring, and context recovery as consumers. Request-local
 rank, hit ranges, read ranges, and retrieval scores are excluded from the
@@ -158,6 +161,25 @@ instead carry a canonical language-qualified owner locator such as
 =rust://src/lib.rs=. An owner locator is structural topology evidence, not an
 exact item selector, and Query Playbook MUST NOT silently promote it into one.
 
+Every parser-owned selector in a source segment also contributes exactly one
+structural =Owner -[:CONTAINS]-> Item= edge. This is a topology-builder fact
+derived from the owner-attributed generation segment, not a provider-supplied
+semantic relation and not a Search-request heuristic. The same canonical edge
+set MUST be installed in the resident Graph attachment and the Project
+Topology library. A provider edge equal to this structural edge is coalesced;
+it cannot create a second fact or change its authority. Therefore a labelled
+GQL containment pattern can select parser items even when a language provider
+emits no optional relations, while unsupported relations remain empty rather
+than being fabricated.
+
+=CONTAINS= is retained and queried through the structural hierarchy index. It
+MUST NOT be inserted into the generic =TOPOLOGY_REACHABLE= transitive program:
+an Owner with many Items would otherwise manufacture pairwise Item
+reachability through a structural hub and can expand quadratically. Excluding
+it from that program does not discard the direct fact; the inference receipt
+still binds the complete direct edge inventory, while its derived relationship
+set records only relations admitted by the generic reachability profile.
+
 Deletion invalidation follows the proof dependency graph transitively. If a
 base fact is removed, every derived descendant that depends on it is removed
 before the successor generation can be admitted. The successor closure MUST be
@@ -174,14 +196,22 @@ resolved rebuild receipt is an untrusted assertion.
 
 The first executable MRR profile is deliberately narrower than the complete
 Topology relation vocabulary. It retains each parser-owned edge's relation
-kind, projects those edges into a separate bounded adjacency relation, and
-derives only =TOPOLOGY_REACHABLE= with the precompiled MRR/Ascent rule pack.
+kind, projects those edges into a separate bounded adjacency relation, derives
+=TOPOLOGY_REACHABLE= without relabelling its premises, and evaluates the typed
+=CALLS(x,y) + READS_CONFIG(y,z) => DEPENDS_ON_CONFIG(x,z)= rule through the MRR
+facade backed by bounded Ascent semi-naive evaluation.
 It MUST NOT relabel a heterogeneous =DECLARES -> CALLS= path as either
 =DECLARES= or =CALLS=. A complete result carries the sorted
 direct-edge identities, every derived endpoint pair, the complete parser
 premise set for each pair, the MRR closure digest, and the separately
 materialized lineage/transition receipt digest. This receipt is defined by
 [[file:../../../schemas/project-topology-inference-receipt.v1.schema.json][project-topology-inference-receipt.v1]].
+
+The standard program source is the Org Contract-governed resource
+[[file:../../../org/templates/asp/topology/program.v1.org][org/templates/asp/topology/program.v1.org]].
+=orgize= parses its typed rule fields, and Runtime binds its exact source digest
+into the topology resolver identity before building the generation. The native
+program is not project-local =.agents= state.
 
 This profile MUST NOT claim support for arbitrary Topology rules. Relation-kind
 compatibility, expected-edge gaps, lattice selection, and project-defined MRR

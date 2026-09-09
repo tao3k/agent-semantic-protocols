@@ -7,7 +7,67 @@
 //! Every path that can select, stage, activate, or fence Runtime executable content is
 //! derived from this owner.  Callers must not reconstruct sibling `runtime/*` paths.
 
+use std::fs;
 use std::path::{Path, PathBuf};
+
+/// Return whether a canonical Runtime member path belongs to an immutable,
+/// bundle-digest-addressed generation under `artifact_root`.
+pub fn runtime_artifact_member_is_digest_addressed(
+    identity: &Path,
+    artifact_root: &Path,
+) -> Result<bool, String> {
+    let artifact_root = match fs::canonicalize(artifact_root) {
+        Ok(artifact_root) => artifact_root,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(error) => {
+            return Err(format!(
+                "failed to resolve protocol artifact root {}: {error}",
+                artifact_root.display()
+            ));
+        }
+    };
+    let Ok(relative) = identity.strip_prefix(&artifact_root) else {
+        return Ok(false);
+    };
+    let mut components = relative.components();
+    let Some(store) = components
+        .next()
+        .and_then(|value| value.as_os_str().to_str())
+    else {
+        return Ok(false);
+    };
+    let Some(digest) = components
+        .next()
+        .and_then(|value| value.as_os_str().to_str())
+    else {
+        return Ok(false);
+    };
+    let Some(member) = components.next().map(|value| value.as_os_str()) else {
+        return Ok(false);
+    };
+    Ok(store == "generations"
+        && valid_blake3_digest(digest)
+        && !member.is_empty()
+        && components.next().is_none())
+}
+
+/// Project the owning Runtime bundle digest from a canonical generation member.
+pub fn runtime_artifact_bundle_digest_from_member_path(canonical: &Path) -> Option<String> {
+    let generation = canonical.parent()?;
+    let store = generation.parent()?;
+    if store.file_name()?.to_str()? != "generations" {
+        return None;
+    }
+    let digest = generation.file_name()?.to_str()?;
+    valid_blake3_digest(digest).then(|| digest.to_owned())
+}
+
+fn valid_blake3_digest(digest: &str) -> bool {
+    digest.len() == 64
+        && digest
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RuntimeArtifactStateLayout {

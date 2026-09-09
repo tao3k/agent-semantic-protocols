@@ -61,7 +61,7 @@
     {
       "resourceId": "md.mdn-content",
       "scenarioId": "md.mdn-content-intent-matrix",
-      "providerId": "orgize",
+      "providerId": "asp-md",
       "language": "md",
       "repository": "mdn/content",
       "git": {
@@ -80,7 +80,7 @@
     {
       "resourceId": "org.worg",
       "scenarioId": "org.worg-intent-matrix",
-      "providerId": "orgize",
+      "providerId": "asp-org",
       "language": "org",
       "repository": "bzg/worg",
       "git": {

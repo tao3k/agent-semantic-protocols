@@ -137,7 +137,7 @@ def _ablation_request() -> dict[str, object]:
         "packetKind": "graph-turbo-request",
         "profile": "owner-query",
         "algorithm": "typed-ppr-diverse",
-        "seedIds": ["query:vec"],
+        "entryNodeIds": ["query:vec"],
         "budget": 4,
         "readMemory": {"seenSelectors": ["src/lib.rs:10:12"]},
         "graph": {

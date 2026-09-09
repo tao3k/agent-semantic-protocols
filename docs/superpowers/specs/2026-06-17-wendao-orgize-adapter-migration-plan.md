@@ -7,11 +7,11 @@ SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 ## Problem
 
-Wendao client has useful `orgize` subcommands, but copying them directly into ASP would create a second hard-coded Org task language. That weakens `asp org search/query` because agents would learn command names instead of the reusable query axes underneath them.
+Wendao client has useful `orgize` subcommands, but copying them directly into ASP would create a second hard-coded Org task language. That weakens `asp search playbook --documents org/query` because agents would learn command names instead of the reusable query axes underneath them.
 
 The migration target is therefore adapter-first:
 
-- expose Org facts through parser-owned `asp org search/query` fields
+- expose Org facts through parser-owned `asp search playbook --documents org/query` fields
 - publish guide recipes that compose those fields
 - add compatibility subcommands only as thin wrappers over those recipes
 - reserve destructive changes for an AST-patch or edit-plan contract
@@ -71,7 +71,7 @@ Guide recipes become the first migration surface:
 - `task-archive plan`: query-derived edit plan listing candidate source selectors and targets
 - `task-archive apply`: separate AST-patch/edit-plan execution, never a search side effect
 
-Compatibility commands may be added only after each recipe exists and prints the underlying `asp org query/search` replay command. They must not be exposed as top-level `asp org` document-provider commands unless the shared search/query contract explicitly accepts that command class.
+Compatibility commands may be added only after each recipe exists and prints the underlying `asp query playbook --documents org/search` replay command. They must not be exposed as top-level `asp org` document-provider commands unless the shared search/query contract explicitly accepts that command class.
 
 ## Safe Delete Gates
 
@@ -98,14 +98,14 @@ Wendao client `orgize` can be deleted only after these gates pass:
 
 The first correction slice lands only guide-level recipes with semantic names:
 
-- `sdd-kind-properties` uses `asp org query --kind property --field key=SDD_KIND`
-- `org-id-properties` uses `asp org query --kind property --field key=ID --field value=<ID>`
-- `tagged-tasks` uses `asp org query --kind task --term <TEXT> --field tag=<TAG>`
-- `done-tasks` uses `asp org query --kind task --field todo=DONE`
+- `sdd-kind-properties` uses `asp query playbook --documents org --kind property --field key=SDD_KIND`
+- `org-id-properties` uses `asp query playbook --documents org --kind property --field key=ID --field value=<ID>`
+- `tagged-tasks` uses `asp query playbook --documents org --kind task --term <TEXT> --field tag=<TAG>`
+- `done-tasks` uses `asp query playbook --documents org --kind task --field todo=DONE`
 - `capture-task` uses `asp org capture-plan --kind task` plus caller-supplied properties
 
 The Wendao lookup adapter should call these recipes and print the underlying
-`asp org query/search` commands. It should not reintroduce legacy recipe labels
+`asp query playbook --documents org/search` commands. It should not reintroduce legacy recipe labels
 such as `wendao-task-*`, `wendao-orgid-*`, `sdd-property`, `agent-plan-*`, or
 `plan-record` as provider-owned guide output.
 
@@ -118,5 +118,5 @@ generic capture kind such as `task`, not an `agent-plan` capture kind.
 
 ASP document-provider command exposure is intentionally narrower than the
 standalone `orgize` debug CLI. `sdd`, `agent-planning`, `sparse-tree`, and
-`task-list` stay out of `asp org`; agents should use `asp org query` over
+`task-list` stay out of `asp org`; agents should use `asp query playbook --documents org` over
 `kind=property`, `kind=task`, and `kind=checklistItem` instead.

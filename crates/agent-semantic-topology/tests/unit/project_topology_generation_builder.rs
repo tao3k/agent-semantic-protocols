@@ -6,8 +6,9 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use agent_semantic_topology::{
-    ProjectTopologyClosureLimits, ProjectTopologyDirectEdge, ProjectTopologyGenerationBuilder,
-    ProjectTopologyGenerationIdentity, ProjectTopologyInferenceProgram, ProjectTopologyManifest,
+    ProjectTopologyClosureLimits, ProjectTopologyDirectEdge, ProjectTopologyExpectedRelation,
+    ProjectTopologyGenerationBuilder, ProjectTopologyGenerationIdentity,
+    ProjectTopologyInferenceProgram, ProjectTopologyManifest, ProjectTopologyRelationCoverage,
     ProjectTopologySourceNode, ProjectTopologySourceSegment,
 };
 
@@ -17,7 +18,7 @@ fn digest(byte: char) -> String {
 
 fn manifest() -> ProjectTopologyManifest {
     ProjectTopologyManifest::parse_org(include_str!(
-        "../../../../org/templates/project.topology-program.v1.org"
+        "../../../../org/templates/project.workspace-manifest.v1.org"
     ))
     .expect("Project Topology manifest")
 }
@@ -39,7 +40,7 @@ async fn candidate() -> agent_semantic_topology::ProjectTopologyGenerationCandid
             .expect("refresh node"),
         ],
         vec![
-            ProjectTopologyDirectEdge::new("declares-refresh", "DECLARES", "registry", "refresh")
+            ProjectTopologyDirectEdge::new("declares-refresh", "CALLS", "registry", "refresh")
                 .expect("declares edge"),
         ],
     )
@@ -57,7 +58,7 @@ async fn candidate() -> agent_semantic_topology::ProjectTopologyGenerationCandid
         vec![
             ProjectTopologyDirectEdge::new(
                 "explains-refresh",
-                "EXPLAINS",
+                "READS_CONFIG",
                 "refresh",
                 "publication",
             )
@@ -78,6 +79,19 @@ async fn candidate() -> agent_semantic_topology::ProjectTopologyGenerationCandid
         .expect("generation identity"),
         ProjectTopologyClosureLimits::new(64, 256, 256).expect("closure limits"),
     )
+    .with_expected_relations(vec![
+        ProjectTopologyExpectedRelation::new(
+            "expected-config",
+            "registry",
+            "READS_CONFIG",
+            "publication",
+            "heading",
+            2,
+            ProjectTopologyRelationCoverage::None,
+        )
+        .expect("expected relation"),
+    ])
+    .expect("unique expectations")
     .build_from_scratch(vec![rust, org])
     .await
     .expect("from-scratch topology candidate")
@@ -98,6 +112,32 @@ async fn generation_builder_emits_cross_language_closure_and_requires_external_r
                     && edge["from"] == "registry"
                     && edge["to"] == "publication"
                     && edge["segmentId"].is_null()
+            })
+    );
+    assert_eq!(
+        packet["frontiers"],
+        serde_json::json!([{
+            "anchor": "registry",
+            "target": "publication",
+            "relation": "READS_CONFIG",
+            "targetKind": "heading",
+            "depth": 2,
+            "state": "unknown",
+            "reason": "binding-not-established"
+        }])
+    );
+    assert!(
+        packet["edges"]
+            .as_array()
+            .expect("edges")
+            .iter()
+            .any(|edge| {
+                edge["modality"] == "derived"
+                    && edge["relation"] == "DEPENDS_ON_CONFIG"
+                    && edge["from"] == "registry"
+                    && edge["to"] == "publication"
+                    && edge["witnesses"]
+                        == serde_json::json!(["declares-refresh", "explains-refresh"])
             })
     );
 
@@ -208,7 +248,7 @@ async fn incremental_generation_retracts_removed_segment_and_transitive_derivati
     let removed_edges = successor.packet()["generation"]["removedEdgeIds"]
         .as_array()
         .expect("removed edge identities");
-    assert_eq!(removed_edges.len(), 2);
+    assert_eq!(removed_edges.len(), 3);
     assert!(removed_edges.iter().any(|edge| edge == "explains-refresh"));
     assert!(
         removed_edges

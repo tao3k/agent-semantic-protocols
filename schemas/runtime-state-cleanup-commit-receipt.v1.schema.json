@@ -18,8 +18,14 @@
     },
     "schemaVersion": { "const": "1" },
     "state": { "enum": ["committed", "rejected", "cancelled"] },
-    "planDigest": { "$ref": "./common.schema.json#/$defs/blake3Digest" },
+    "planDigest": { "$ref": "#/$defs/blake3Digest" },
     "reasonKind": { "type": "string", "minLength": 1 },
     "deletedCount": { "type": "integer", "minimum": 0 }
+  },
+  "$defs": {
+    "blake3Digest": {
+      "type": "string",
+      "pattern": "^blake3-256:[0-9a-f]{64}$"
+    }
   }
 }

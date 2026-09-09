@@ -36,7 +36,7 @@
         "requestId": "request-1",
         "catalogGeneration": "blake3-256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         "workspaceGeneration": "blake3-256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-        "method": "rust.search",
+        "method": "rust.query",
         "params": { "query": "client protocol" },
         "traceContext": { "traceparent": "00-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-bbbbbbbbbbbbbbbb-01" }
       },
@@ -76,7 +76,7 @@
         "requestId": "request-stale",
         "catalogGeneration": "blake3-256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
         "workspaceGeneration": "blake3-256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
-        "method": "rust.search",
+        "method": "rust.query",
         "params": {}
       },
       "expectedOutcome": "stale-generation",

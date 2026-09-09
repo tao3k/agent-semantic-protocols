@@ -2,16 +2,9 @@
 //
 // SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
-use agent_semantic_content_identity::ArtifactJson;
-use agent_semantic_content_identity::hash_normalized_json;
 use serde_json::Value;
 
 use crate::SearchProjectionError;
-use crate::SemanticSearchPacketV1;
-
-pub const SEMANTIC_GRAPH_TURBO_RESULT_SCHEMA_ID: &str =
-    "agent.semantic-protocols.semantic-graph-turbo-result";
-pub const SEMANTIC_GRAPH_TURBO_RESULT_SCHEMA_VERSION: &str = "1";
 pub const SEMANTIC_GRAPH_RESIDENT_EVALUATION_REQUEST_SCHEMA_ID: &str =
     "agent.semantic-protocols.semantic-graph-resident-evaluation-request";
 pub const SEMANTIC_GRAPH_RESIDENT_EVALUATION_RESULT_SCHEMA_ID: &str =
@@ -49,13 +42,7 @@ impl ResidentGraphEvaluationRequestV1 {
         require_allowed_string(
             object,
             "surface",
-            &[
-                "search-pipe",
-                "search-rg",
-                "search-lexical",
-                "search-owner",
-                "query",
-            ],
+            &["search-playbook", "query"],
         )?;
         require_bounded_unique_string_array(object, "queryTerms", 32, 256)?;
         require_allowed_string(object, "profile", &["balanced", "structural", "dependency"])?;
@@ -84,7 +71,6 @@ impl ResidentGraphEvaluationRequestV1 {
 #[derive(Clone, Debug)]
 pub struct ResidentGraphEvaluationResultV1 {
     value: Value,
-    semantic_digest: String,
 }
 
 impl ResidentGraphEvaluationResultV1 {
@@ -126,16 +112,7 @@ impl ResidentGraphEvaluationResultV1 {
                 )));
             }
         }
-        let artifact = ArtifactJson::from_serializable(&value).map_err(|error| {
-            SearchProjectionError::InvalidPacket(format!(
-                "resident graph result canonicalization failed: {error}"
-            ))
-        })?;
-        let semantic_digest = format!("blake3-256:{}", hash_normalized_json(&artifact).value);
-        Ok(Self {
-            value,
-            semantic_digest,
-        })
+        Ok(Self { value })
     }
 
     #[must_use]
@@ -145,88 +122,6 @@ impl ResidentGraphEvaluationResultV1 {
 
     pub fn into_value(self) -> Value {
         self.value
-    }
-}
-
-impl SearchProjectionSource for ResidentGraphEvaluationResultV1 {
-    fn as_value(&self) -> &Value {
-        &self.value
-    }
-
-    fn semantic_digest(&self) -> &str {
-        &self.semantic_digest
-    }
-}
-
-pub trait SearchProjectionSource {
-    fn as_value(&self) -> &Value;
-    fn semantic_digest(&self) -> &str;
-}
-
-impl SearchProjectionSource for SemanticSearchPacketV1 {
-    fn as_value(&self) -> &Value {
-        SemanticSearchPacketV1::as_value(self)
-    }
-
-    fn semantic_digest(&self) -> &str {
-        SemanticSearchPacketV1::semantic_digest(self)
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct GraphTurboResultPacketV1 {
-    value: Value,
-    semantic_digest: String,
-}
-
-impl GraphTurboResultPacketV1 {
-    pub fn from_value(value: Value) -> Result<Self, SearchProjectionError> {
-        let object = value.as_object().ok_or_else(|| {
-            SearchProjectionError::InvalidPacket("graph-turbo result must be an object".to_string())
-        })?;
-        require_exact_string(object, "schemaId", SEMANTIC_GRAPH_TURBO_RESULT_SCHEMA_ID)?;
-        require_exact_string(
-            object,
-            "schemaVersion",
-            SEMANTIC_GRAPH_TURBO_RESULT_SCHEMA_VERSION,
-        )?;
-        require_exact_string(
-            object,
-            "protocolId",
-            "agent.semantic-protocols.semantic-language",
-        )?;
-        require_exact_string(object, "protocolVersion", "1")?;
-        require_exact_string(object, "packetKind", "graph-turbo-result")?;
-        require_non_empty_string(object, "profile")?;
-        require_non_empty_string(object, "algorithm")?;
-        require_string_array(object, "entryNodeIds")?;
-        require_object_array(object, "rankedNodes")?;
-        require_object_array(object, "edges")?;
-
-        let artifact = ArtifactJson::from_serializable(&value).map_err(|error| {
-            SearchProjectionError::InvalidPacket(format!(
-                "graph-turbo result canonicalization failed: {error}"
-            ))
-        })?;
-        let hash = hash_normalized_json(&artifact);
-        Ok(Self {
-            value,
-            semantic_digest: format!("blake3-256:{}", hash.value),
-        })
-    }
-
-    pub fn into_value(self) -> Value {
-        self.value
-    }
-}
-
-impl SearchProjectionSource for GraphTurboResultPacketV1 {
-    fn as_value(&self) -> &Value {
-        &self.value
-    }
-
-    fn semantic_digest(&self) -> &str {
-        &self.semantic_digest
     }
 }
 
@@ -368,26 +263,6 @@ fn validate_resident_evaluation_budget(
         }
     }
     Ok(())
-}
-
-fn require_string_array(
-    object: &serde_json::Map<String, Value>,
-    field: &str,
-) -> Result<(), SearchProjectionError> {
-    if object
-        .get(field)
-        .and_then(Value::as_array)
-        .is_some_and(|items| {
-            items
-                .iter()
-                .all(|item| item.as_str().is_some_and(|value| !value.is_empty()))
-        })
-    {
-        return Ok(());
-    }
-    Err(SearchProjectionError::InvalidPacket(format!(
-        "{field} must be an array of non-empty strings"
-    )))
 }
 
 fn require_object_array(

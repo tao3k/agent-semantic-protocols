@@ -44,7 +44,7 @@ process-local timestamps for unavailable components.
 
 * Producer ownership
 
-Language harnesses own parser-derived module edges, package-manager scope, and
+ASP language providers own parser-derived module edges, package-manager scope, and
 canonical selectors.  The shared source-index import packet carries these typed
 facts across the language-neutral boundary.  The Rust protocol and Python graph
 layers consume the packet; they MUST NOT infer package anchors, module edges,
@@ -85,7 +85,7 @@ and no query loop that repeatedly asks for another term or selector.
 
 An exact-selector envelope is complete only when source-owner coverage equals
 the provider source generation and every relocated selector resolves to a
-canonical item identity produced by the language harness.  Moved paths and
+canonical item identity produced by the ASP language provider.  Moved paths and
 changed path attributes update the module graph, selector generation,
 tombstones, envelope, and generation digest in the same commit.
 

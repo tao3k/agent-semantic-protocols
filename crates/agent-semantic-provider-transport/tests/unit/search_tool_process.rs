@@ -10,6 +10,7 @@ use std::time::Instant;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
+use super::FdInventoryDeadline;
 use super::MAX_INVENTORY_BYTES;
 use super::MAX_RG_OUTPUT_BYTES;
 use super::ValidatedColdRgCorpus;
@@ -29,6 +30,33 @@ fn fixture_root(name: &str) -> PathBuf {
 }
 
 #[tokio::test]
+async fn complete_generation_inventory_has_no_foreground_deadline() {
+    let root = fixture_root("complete-generation-inventory");
+    fs::write(root.join("src/lib.rs"), "pub fn admitted() {}\n").expect("write inventory fixture");
+
+    let inventory = run_fd_inventory(&root, FdInventoryDeadline::CompleteGeneration)
+        .await
+        .expect("complete-generation inventory");
+
+    assert_eq!(inventory.owner_paths, ["src/lib.rs".to_owned()]);
+    fs::remove_dir_all(root).expect("remove inventory fixture root");
+}
+
+#[tokio::test]
+async fn focused_inventory_preserves_its_explicit_deadline() {
+    let root = fixture_root("bounded-inventory");
+    fs::write(root.join("src/lib.rs"), "pub fn bounded() {}\n")
+        .expect("write bounded inventory fixture");
+
+    let error = run_fd_inventory(&root, FdInventoryDeadline::Bounded(Duration::ZERO))
+        .await
+        .expect_err("zero inventory deadline must fail closed");
+
+    assert!(error.contains("resident fd inventory timed out after 0ms"));
+    fs::remove_dir_all(root).expect("remove bounded inventory fixture root");
+}
+
+#[tokio::test]
 async fn fd_inventory_and_rg_cold_query_remain_separate_bounded_processes() {
     let root = fixture_root("real-tools");
     fs::write(root.join("src/read.rs"), "fn needle_owner() {}\n").expect("write Rust fixture");
@@ -42,14 +70,17 @@ async fn fd_inventory_and_rg_cold_query_remain_separate_bounded_processes() {
         agent_semantic_content_identity::ArtifactHash::blake3(corpus_bytes).value
     );
     let corpus = ValidatedColdRgCorpus::open(&corpus, &corpus_digest).expect("validate corpus");
-    let inventory = run_fd_inventory(&root, Duration::from_secs(1))
+    let inventory = run_fd_inventory(&root, FdInventoryDeadline::Bounded(Duration::from_secs(1)))
         .await
         .expect("real fd inventory");
     assert_eq!(
         inventory.owner_paths,
         ["src/ignored.py".to_owned(), "src/read.rs".to_owned()]
     );
-    assert_eq!(inventory.receipt.backend, "resident-fd-ignore-parallel");
+    assert_eq!(
+        inventory.receipt.backend,
+        "resident-fd-ignore-sharded-parallel"
+    );
     let fd_parity = run_reference_search_tool(
         Path::new("fd"),
         &root,
@@ -204,11 +235,12 @@ async fn large_workspace_fd_and_cold_rg_are_independent_subsecond_lanes() {
     let corpus = ValidatedColdRgCorpus::open(&corpus_path, &corpus_digest)
         .expect("validate large-workspace corpus");
     let inventory_started = Instant::now();
-    let inventory = run_fd_inventory(&root, Duration::from_secs(1))
+    let inventory = run_fd_inventory(&root, FdInventoryDeadline::CompleteGeneration)
         .await
         .expect("large-workspace fd inventory");
     let inventory_elapsed = inventory_started.elapsed();
     assert_eq!(inventory.owner_paths.len(), OWNER_COUNT);
+    let owners_per_second = OWNER_COUNT as f64 / inventory_elapsed.as_secs_f64();
 
     let mut samples = Vec::with_capacity(SAMPLE_COUNT);
     for _ in 0..SAMPLE_COUNT {
@@ -231,15 +263,16 @@ async fn large_workspace_fd_and_cold_rg_are_independent_subsecond_lanes() {
     let p95 = samples[(samples.len() - 1) * 95 / 100];
     let p99 = samples[(samples.len() - 1) * 99 / 100];
     eprintln!(
-        "fd+rg cold receipt: owners={OWNER_COUNT} fdMicros={} fdBackend={} fdProcesses=0 rgP50Micros={} rgP95Micros={} rgP99Micros={} rgEngineQueries={SAMPLE_COUNT} rgProcesses=0 tantivyBuilds=0",
+        "fd+rg cold receipt: owners={OWNER_COUNT} fdMicros={} fdOwnersPerSecond={owners_per_second:.0} fdBackend={} fdProcesses=0 rgP50Micros={} rgP95Micros={} rgP99Micros={} rgEngineQueries={SAMPLE_COUNT} rgProcesses=0 tantivyBuilds=0",
         inventory_elapsed.as_micros(),
         inventory.receipt.backend,
         p50.as_micros(),
         p95.as_micros(),
         p99.as_micros(),
     );
-    assert!(inventory_elapsed < Duration::from_secs(1));
-    assert!(p95 < Duration::from_millis(10));
+    assert!(inventory_elapsed < Duration::from_millis(250));
+    assert!(owners_per_second >= 20_000.0);
+    assert!(p99 < Duration::from_millis(10));
     let mut concurrent = tokio::task::JoinSet::new();
     for _ in 0..SAMPLE_COUNT {
         let corpus = corpus.clone();

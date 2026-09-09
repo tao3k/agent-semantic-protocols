@@ -10,13 +10,15 @@ from tests.unit.live_corpus_search_query_qualification_support import (
 )
 
 
-def test_receipt_requires_complete_sub_millisecond_latency_distributions() -> None:
+def test_receipt_separates_composite_search_from_sub_millisecond_exact_reads() -> None:
     receipt_schema = load_json(RECEIPT_SCHEMA_PATH)
     assert "clientProtocol" in receipt_schema["required"]
     client_receipt = receipt_schema["$defs"]["clientProtocolReceipt"]
     assert client_receipt["properties"]["cancelOutcome"]["const"] == "cancelled"
     assert client_receipt["properties"]["requestOutcome"]["const"] == "cancelled"
     assert client_receipt["properties"]["qualifiedCaseCount"]["const"] == 17
+    assert client_receipt["properties"]["workspaceScheduling"]["const"] == "tokio-join-set"
+    assert client_receipt["properties"]["concurrentWorkspaceCount"]["minimum"] == 1
     assert client_receipt["properties"]["sessionPolicy"]["const"] == "one-initialize-per-session"
     assert client_receipt["properties"]["readyEffects"]["const"] == [
         "mpsc",
@@ -41,8 +43,6 @@ def test_receipt_requires_complete_sub_millisecond_latency_distributions() -> No
     required = set(case_schema["required"])
     assert {
         "residentSampleCount",
-        "searchResidentReadLatencyMicros",
-        "searchServiceLatencyMicros",
         "searchTotalLatencyMicros",
         "exactSourceLatencyMicros",
         "callableSkeletonOperationId",
@@ -71,6 +71,8 @@ def test_receipt_requires_complete_sub_millisecond_latency_distributions() -> No
         "callableSkeletonTerminal",
         "zeroMatchTerminal",
     } <= required
+    assert "searchResidentReadLatencyMicros" not in required
+    assert "searchServiceLatencyMicros" not in required
 
     assert not {
         "sourceIndexTelemetryDigest",
@@ -103,3 +105,9 @@ def test_receipt_requires_complete_sub_millisecond_latency_distributions() -> No
     assert distribution["properties"]["sampleCount"]["minimum"] == 128
     for field in ("minMicros", "p50Micros", "p95Micros", "p99Micros", "maxMicros"):
         assert distribution["properties"][field]["maximum"] == 1_000
+
+    search_distribution = receipt_schema["$defs"]["searchLatencyDistribution"]
+    assert search_distribution["additionalProperties"] is False
+    assert search_distribution["properties"]["sampleCount"]["minimum"] == 128
+    for field in ("minMicros", "p50Micros", "p95Micros", "p99Micros", "maxMicros"):
+        assert search_distribution["properties"][field]["maximum"] == 500_000

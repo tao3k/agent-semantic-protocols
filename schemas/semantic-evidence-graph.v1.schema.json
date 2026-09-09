@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://agent-semantic-protocols.local/schemas/semantic-evidence-graph.v1.schema.json",
   "title": "Semantic Evidence Graph",
-  "description": "Portable graph artifact that links review packets, invariants, receipts, behavior snapshots, determinism readiness, proof pilots, waivers, and reviewer actions.",
+  "description": "Runtime-owned graph artifact derived centrally from immutable source facts by the admitted GQL and Ascent rule program.",
   "type": "object",
   "additionalProperties": false,
   "required": [

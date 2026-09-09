@@ -5,7 +5,7 @@
 use std::path::PathBuf;
 
 fn main() {
-    let _policy_receipt =
+    let _policy_report =
         asp_rust_project_harness_policy::assert_asp_rust_project_harness_member_policy_from_env();
     println!("cargo:rerun-if-changed=proto/asp-provider-stream.proto");
     println!("cargo:rerun-if-changed=proto/asp-python-graphs.proto");

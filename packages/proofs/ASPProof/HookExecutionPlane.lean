@@ -678,7 +678,7 @@ theorem direct_asp_mutation_cannot_satisfy_authority_witness :
   simp [validAuthorityWitness, invalidDirectAspWitness]
 
 theorem desired_postcondition_subsumes_reconcile_step_failure
-    (desiredHealthy : Bool) (reconcileFailed : Bool)
+    (desiredHealthy : Bool) (_reconcileFailed : Bool)
     (authorityComplete : Bool)
     (hHealthy : desiredHealthy = true)
     (hAuthority : authorityComplete = true) :

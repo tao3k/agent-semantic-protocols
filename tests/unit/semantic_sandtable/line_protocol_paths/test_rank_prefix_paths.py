@@ -32,7 +32,7 @@ class LineProtocolRankPrefixPathTests(unittest.TestCase):
                                     "python",
                                     "-c",
                                     (
-                                        "print('[search-owner]')\n"
+                                        "print('[search-playbook]')\n"
                                         "print('|hit path=0:src/a.ts line=1 kind=text')\n"
                                         "print('|edge 0:src/a.ts -import-> 0:src/b.ts')\n"
                                         "print('|find TS-AGENT-R007 x1 at=0:src/a.ts')"
@@ -68,7 +68,7 @@ class LineProtocolRankPrefixPathTests(unittest.TestCase):
                                     "python",
                                     "-c",
                                     (
-                                        "print('[search-prime]')\n"
+                                        "print('[search-playbook]')\n"
                                         "print('|synthesis algorithm=owner-rank-frontier "
                                         "scope=prime highImpactOwners=0:src/a.ts "
                                         "seeds=owner:0:src/b.ts')"

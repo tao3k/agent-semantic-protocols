@@ -8,7 +8,7 @@
   "properties": {
     "schemaId": {"const": "agent.semantic-protocols.search-generation-graph-receipt"},
     "schemaVersion": {"const": "1"},
-    "identity": {"$ref": "search-generation-graph-request.v1.schema.json#/$defs/identity"},
+    "identity": {"$ref": "https://schemas.agent-semantic-protocols.dev/semantic-search-definitions.v1.schema.json#/$defs/generationIdentity"},
     "contentGenerationDigest": {"type": "string", "pattern": "^blake3-256:[0-9a-f]{64}$"},
     "entryOwnerIds": {"$ref": "#/$defs/ids"},
     "entryNodeIds": {"$ref": "#/$defs/ids"},

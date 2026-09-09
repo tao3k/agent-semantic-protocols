@@ -13,9 +13,10 @@ from referencing import Registry, Resource
 ROOT = Path(__file__).resolve().parents[2]
 SCHEMA_NAMES = (
     "repository-candidate-snapshot.v1.schema.json",
-    "language-package-graph.v1.schema.json",
-    "project-resolution.v1.schema.json",
-    "provider-project-resolution-descriptor.v1.schema.json",
+    "resolved-source-scope.v1.schema.json",
+    "language-package-graph.schema.json",
+    "project-resolution.schema.json",
+    "provider-project-resolution-descriptor.schema.json",
 )
 
 
@@ -44,8 +45,9 @@ def git_candidates() -> dict:
             "gitDir": "/workspace/.git",
             "headId": "abc",
         },
+        "candidateScope": {"projectRoot": "."},
         "candidateGeneration": {
-            "algorithm": "blake3-path-set-v1",
+            "algorithm": "blake3-worktree-state-v1",
             "digest": "blake3:" + ("0" * 64),
             "authorities": ["git-index", "git-worktree"],
         },
@@ -130,30 +132,25 @@ def resolved_project() -> dict:
         "schemaVersion": "1",
         "state": "resolved",
         "completeness": "exact",
-        "projectIdentity": {
-            "projectId": "project-rust-root",
-            "projectInstanceId": "project-rust-root@workspace-1",
-            "projectEntry": "Cargo.toml",
-            "languageId": "rust",
-            "providerId": "asp-rust",
-            "parserIdentityDigest": "parser-1",
-        },
-        "repositoryCandidates": git_candidates(),
+        "languageId": "rust",
+        "providerId": "asp-rust",
+        "parserId": "cargo-project-resolution",
+        "candidateGenerationDigest": "blake3:" + ("0" * 64),
+        "projectEntry": "Cargo.toml",
         "packageGraph": rust_package_graph(),
-        "resolutionGeneration": "resolution-1",
-        "resolvedSourceScopes": [
+        "sourceScopes": [
             {
                 "scopeId": "scope-target-lib",
                 "packageId": "package-root",
                 "targetId": "target-lib",
                 "roots": ["src"],
                 "explicitPaths": [],
-                "extensions": ["rs"],
+                "extensions": [".rs"],
                 "includeAuthority": "package-manager",
                 "exclusions": [
                     {
                         "prefix": "target",
-                        "authority": "asp-infrastructure",
+                        "authority": "infrastructure",
                     }
                 ],
             }
@@ -188,54 +185,51 @@ def validator(schema_id: str):
 def test_project_resolution_schema_family_accepts_resolved_project() -> None:
     schemas = load_schemas()
     validator("repository-candidate-snapshot.v1.schema.json").validate(git_candidates())
-    validator("language-package-graph.v1.schema.json").validate(rust_package_graph())
-    validator("project-resolution.v1.schema.json").validate(resolved_project())
+    validator("language-package-graph.schema.json").validate(rust_package_graph())
+    validator("project-resolution.schema.json").validate(resolved_project())
 
     descriptor = {
         "schemaId": "agent.semantic-protocols.provider-project-resolution-descriptor",
         "schemaVersion": "1",
         "capabilityId": "project-resolution",
         "entryMarkers": ["Cargo.toml"],
+        "sourceExtensions": [".rs"],
         "manifestKinds": ["cargo-manifest"],
         "lockfileKinds": ["cargo-lock"],
-        "supportsGitCandidates": True,
-        "supportsProviderOnly": True,
         "parserId": "rust.cargo-toml",
-            "commandBinding": "project-resolution-stdin",
-            "candidateSnapshotSchema": "https://schemas.agent-semantic-protocols.dev/repository-candidate-snapshot.v1.schema.json",
-            "packageGraphSchema": "https://schemas.agent-semantic-protocols.dev/language-package-graph.v1.schema.json",
-            "resolvedSourceScopeSchema": "https://schemas.agent-semantic-protocols.dev/resolved-source-scope.v1.schema.json",
-            "projectResolutionSchema": "https://schemas.agent-semantic-protocols.dev/project-resolution.v1.schema.json",
+        "packageGraphSchema": "https://schemas.agent-semantic-protocols.dev/language-package-graph.schema.json",
+        "projectResolutionSchema": "https://schemas.agent-semantic-protocols.dev/project-resolution.schema.json",
     }
-    validator("provider-project-resolution-descriptor.v1.schema.json").validate(
+    validator("provider-project-resolution-descriptor.schema.json").validate(
         descriptor
     )
-    assert len(schemas) == 4
+    assert len(schemas) == 5
 
 
 def test_project_resolution_schema_family_rejects_root_walk_and_db_open() -> None:
+    snapshot = git_candidates()
+    snapshot["metrics"]["fullWorkspaceReads"] = 1
+    snapshot_errors = list(
+        validator("repository-candidate-snapshot.v1.schema.json").iter_errors(snapshot)
+    )
+
     project = resolved_project()
-    project["repositoryCandidates"]["metrics"]["fullWorkspaceReads"] = 1
     project["metrics"]["dbOpens"] = 1
+    project_errors = list(
+        validator("project-resolution.schema.json").iter_errors(project)
+    )
 
-    errors = list(validator("project-resolution.v1.schema.json").iter_errors(project))
-    assert len(errors) == 2
-    assert {error.validator for error in errors} == {"const"}
+    assert len(snapshot_errors) == 1
+    assert len(project_errors) == 1
+    assert {error.validator for error in snapshot_errors + project_errors} == {"const"}
 
 
-def test_project_resolution_failure_is_typed_and_actionable() -> None:
+def test_project_resolution_rejects_failure_state_from_scope_document() -> None:
     project = resolved_project()
     project.pop("packageGraph")
     project["state"] = "project-entry-missing"
     project["completeness"] = "partial"
-    project["reasonKind"] = "provider-project-entry-required"
-    project["recommendedNext"] = {
-        "command": "asp rust search project-entry --workspace ."
-    }
-    project["resolvedSourceScopes"] = []
+    project["sourceScopes"] = []
 
-    validator("project-resolution.v1.schema.json").validate(project)
-
-    project.pop("recommendedNext")
     with pytest.raises(Exception):
-        validator("project-resolution.v1.schema.json").validate(project)
+        validator("project-resolution.schema.json").validate(project)

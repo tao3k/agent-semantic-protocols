@@ -2,7 +2,87 @@
 //
 // SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
+use asp_rust_project_harness_policy::asp_workspace_member_forbidden_normal_dependencies;
 use asp_rust_project_harness_policy::asp_workspace_member_policies;
+
+#[test]
+fn runtime_provider_consumers_forbid_direct_hook_dependencies() {
+    for package in [
+        "agent-semantic-client-core",
+        "agent-semantic-runtime-server",
+    ] {
+        assert_eq!(
+            asp_workspace_member_forbidden_normal_dependencies(package),
+            ["agent-semantic-hook"],
+            "{package} must consume provider DTOs from Provider Protocol"
+        );
+    }
+}
+
+#[test]
+fn hook_source_rejects_retired_manifest_activation_routing() {
+    let repository_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let hook_source = repository_root.join("crates/agent-semantic-hook/src");
+    assert!(
+        !hook_source.join("protocol_activation").exists(),
+        "Hook source must not recreate the retired protocol_activation module"
+    );
+
+    let forbidden = [
+        "pub struct HookRoutes",
+        "pub struct HookRouteBindings",
+        "pub struct HookActivation",
+        "pub struct ActivatedProvider",
+        "pub struct ProviderManifest",
+        "fn materialize_provider_routes",
+    ];
+    let mut pending = vec![hook_source];
+    while let Some(path) = pending.pop() {
+        for entry in std::fs::read_dir(&path)
+            .unwrap_or_else(|error| panic!("read {}: {error}", path.display()))
+        {
+            let path = entry.expect("Hook source entry").path();
+            if path.is_dir() {
+                pending.push(path);
+                continue;
+            }
+            if path.extension().and_then(std::ffi::OsStr::to_str) != Some("rs") {
+                continue;
+            }
+            let source = std::fs::read_to_string(&path)
+                .unwrap_or_else(|error| panic!("read {}: {error}", path.display()));
+            for retired in forbidden {
+                assert!(
+                    !source.contains(retired),
+                    "{} recreates retired Hook routing surface `{retired}`",
+                    path.display()
+                );
+            }
+        }
+    }
+}
+
+#[test]
+#[cfg(feature = "workspace-policy")]
+fn runtime_server_member_source_policy_accepts_split_route_owners() {
+    let repository_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let crate_root = repository_root.join("crates/agent-semantic-runtime-server");
+
+    let report =
+        asp_rust_project_harness_policy::evaluate_asp_rust_project_harness_member_source_policy(
+            "agent-semantic-runtime-server",
+            &crate_root,
+        )
+        .expect("evaluate Runtime Server member source policy");
+
+    assert!(!report.findings.iter().any(|finding| {
+        finding.rule_id == "RUST-MOD-R002"
+            && finding.location.path.as_ref().is_some_and(|path| {
+                path.ends_with("src/runtime_asp_client_resolved_route.rs")
+                    || path.ends_with("src/runtime_asp_client_query_playbook.rs")
+            })
+    }));
+}
 
 #[test]
 fn central_policy_registry_contains_migrated_member_crates() {
@@ -45,7 +125,7 @@ fn every_member_policy_has_a_content_addressed_declaration() {
 }
 
 #[test]
-fn every_member_build_uses_the_lightweight_shared_policy_crate() {
+fn every_member_build_uses_the_shared_source_policy_crate() {
     let repository_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     for policy in asp_workspace_member_policies()
         .iter()
@@ -108,7 +188,7 @@ fn every_workspace_package_is_one_cargo_owned_policy_atom() {
 }
 
 #[test]
-fn shared_build_policy_never_recursively_compiles_the_full_harness() {
+fn shared_build_policy_compiles_one_default_full_scanner() {
     let policy_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
     assert!(
         !policy_root.join("build.rs").exists(),
@@ -120,11 +200,9 @@ fn shared_build_policy_never_recursively_compiles_the_full_harness() {
         !manifest.contains("[build-dependencies]"),
         "the shared policy library must not compile a second build-script scanner"
     );
-    assert!(
-        manifest.contains("workspace-policy = [\"dep:asp-rust\"]")
-            && manifest.contains("asp-rust = { workspace = true, optional = true }"),
-        "ordinary package atoms must exclude the full scanner; only the explicit workspace-policy feature may compile ASP Rust"
-    );
+    assert!(manifest.contains("default = [\"workspace-policy\"]"));
+    assert!(manifest.contains("workspace-policy = [\"dep:asp-rust\"]"));
+    assert!(manifest.contains("asp-rust = { workspace = true, optional = true }"));
 }
 
 #[test]

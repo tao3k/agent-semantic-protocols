@@ -27,7 +27,7 @@ def minimal_policy_handle() -> dict[str, object]:
         "status": "active",
         "ownerPath": "src/asp_python/_project_policy_catalog.py",
         "implementationOwnerPath": "src/asp_python/_project_policy_layout.py",
-        "testPaths": ["tests/unit/harness/project_policy/test_layout.py"],
+        "testPaths": ["tests/unit/asp_python/project_policy/test_layout.py"],
         "locations": [
             {
                 "path": "src/asp_python/_project_policy_catalog.py",

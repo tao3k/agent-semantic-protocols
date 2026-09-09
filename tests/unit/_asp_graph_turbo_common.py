@@ -123,7 +123,7 @@ def sample_request(
         "protocolId": "agent.semantic-protocols.semantic-language",
         "protocolVersion": "1",
         "packetKind": "graph-turbo-request",
-        "surface": "search-pipe",
+        "surface": "search-playbook",
         "sourceSnapshot": {
             "schemaId": "asp.source-snapshot.v1",
             "algorithm": "blake3-merkle-v1",
@@ -152,7 +152,7 @@ def sample_request(
                 "normalized": 3,
             }
         ],
-        "seedIds": ["q:parser", "owner:cli"],
+        "entryNodeIds": ["q:parser", "owner:cli"],
         "budget": budget,
         "kindBudgets": {"owner": 1, "dependency": 1, "test": 1},
         "windowMerge": {"enabled": True, "maxGapLines": 8},

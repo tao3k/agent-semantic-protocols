@@ -135,32 +135,30 @@ fn live_corpus_cache_receipt_is_bound_to_project_workspace_without_global_author
 
 #[test]
 fn northbound_client_requests_are_distinct_from_provider_runtime_requests() {
-    let search = crate::AspClientSearchRequest::playbook("conceptual", "RuntimeAspClient");
-    search.validate_schema_identity().expect("search identity");
-    let mut legacy_search = search.clone();
-    legacy_search.intent = "pipe".to_owned();
-    assert!(legacy_search.validate_schema_identity().is_err());
-    let mut empty_search = search.clone();
-    empty_search.query.clear();
-    assert!(empty_search.validate_schema_identity().is_err());
-
     let workspace_playbook = crate::AspClientWorkspaceSearchPlaybookRequest {
         schema_id: "agent.semantic-protocols.asp-client-workspace-search-playbook-request"
             .to_owned(),
         schema_version: "1".to_owned(),
-        languages: Some("rust".to_owned()),
+        language: Some("rust".to_owned()),
         documents: None,
         workspace: None,
-        fd: None,
         rg: Some(vec![vec!["RuntimeAspClient".to_owned(), ".".to_owned()]]),
-        tantivy: None,
+        tantivy: Some(vec![vec![
+            "title:\"Runtime ASP client\"^2 OR body:transport".to_owned(),
+        ]]),
         syntax: None,
         native_syntax: None,
         graph: None,
-        clause_order: vec![crate::AspClientSearchPlaybookClauseRef {
-            axis: crate::AspClientSearchPlaybookClauseAxis::Rg,
-            block_index: 0,
-        }],
+        clause_order: vec![
+            crate::AspClientSearchPlaybookClauseRef {
+                axis: crate::AspClientSearchPlaybookClauseAxis::Rg,
+                block_index: 0,
+            },
+            crate::AspClientSearchPlaybookClauseRef {
+                axis: crate::AspClientSearchPlaybookClauseAxis::Tantivy,
+                block_index: 0,
+            },
+        ],
     };
     workspace_playbook
         .validate_schema_identity()
@@ -170,6 +168,8 @@ fn northbound_client_requests_are_distinct_from_provider_runtime_requests() {
         schema_id: "agent.semantic-protocols.asp-client-workspace-query-playbook-request"
             .to_owned(),
         schema_version: "1".to_owned(),
+        language: Some("rust".to_owned()),
+        documents: Some("org".to_owned()),
         selectors: vec![
             "org://docs/publication.org#item/heading/Publication".to_owned(),
             "rust://src/lib.rs#item/function/example".to_owned(),
@@ -183,7 +183,7 @@ fn northbound_client_requests_are_distinct_from_provider_runtime_requests() {
     let syntax_query = crate::AspClientWorkspaceSyntaxQueryRequest {
         schema_id: "agent.semantic-protocols.asp-client-workspace-syntax-query-request".to_owned(),
         schema_version: "1".to_owned(),
-        languages: Some("rust|python".to_owned()),
+        languages: None,
         documents: None,
         workspace: None,
         syntax: vec![crate::AspClientSearchPlaybookSyntaxBlock {
@@ -219,7 +219,7 @@ fn northbound_client_requests_are_distinct_from_provider_runtime_requests() {
     exact.validate_schema_identity().expect("query identity");
 
     assert_ne!(
-        search.schema_id,
+        workspace_playbook.schema_id,
         "agent.semantic-protocols.runtime-provider-search-request"
     );
 }
@@ -235,15 +235,16 @@ fn workspace_playbook_clause_order_is_priority_and_graph_barrier() {
         schema_id: "agent.semantic-protocols.asp-client-workspace-search-playbook-request"
             .to_owned(),
         schema_version: "1".to_owned(),
-        languages: Some("rust".to_owned()),
+        language: Some("rust".to_owned()),
         documents: None,
         workspace: None,
-        fd: Some(vec![vec!["runtime|client".to_owned()]]),
         rg: Some(vec![vec![
             "-e".to_owned(),
             "ClientFrame|Endpoint".to_owned(),
         ]]),
-        tantivy: None,
+        tantivy: Some(vec![vec![
+            "title:\"Client frame\"^2 OR body:Endpoint".to_owned(),
+        ]]),
         syntax: None,
         native_syntax: None,
         graph: Some(vec![AspClientSearchPlaybookGraphBlock {
@@ -256,7 +257,7 @@ fn workspace_playbook_clause_order_is_priority_and_graph_barrier() {
                 block_index: 0,
             },
             Clause {
-                axis: Axis::Fd,
+                axis: Axis::Tantivy,
                 block_index: 0,
             },
             Clause {
@@ -280,7 +281,7 @@ fn workspace_playbook_clause_order_is_priority_and_graph_barrier() {
             block_index: 0,
         },
         Clause {
-            axis: Axis::Fd,
+            axis: Axis::Tantivy,
             block_index: 0,
         },
     ];
@@ -544,8 +545,8 @@ fn catalog() -> ClientProtocolCatalog {
             trace_context: true,
         },
         methods: vec![ClientMethod {
-            method: "rust.search".to_owned(),
-            route_id: crate::ClientRouteId::new("rust.search").expect("route id"),
+            method: "rust.query".to_owned(),
+            route_id: crate::ClientRouteId::new("rust.query").expect("route id"),
             request_schema_id: crate::ClientSchemaId::new("request-schema")
                 .expect("request schema id"),
             response_schema_id: crate::ClientSchemaId::new("response-schema")
@@ -647,7 +648,7 @@ fn request_parameters_are_executable_and_fail_closed() {
         request_id: request_id("request"),
         catalog_generation: catalog.catalog_generation.clone(),
         workspace_generation: catalog.workspace_generation.clone(),
-        method: "rust.search".to_owned(),
+        method: "rust.query".to_owned(),
         params: json!({"query": 42}),
         client_timing_witness: None,
     };
@@ -684,7 +685,7 @@ fn runtime_context_cannot_be_injected_by_a_client() {
         request_id: request_id("request"),
         catalog_generation: catalog.catalog_generation.clone(),
         workspace_generation: catalog.workspace_generation.clone(),
-        method: "rust.search".to_owned(),
+        method: "rust.query".to_owned(),
         params: json!({"query": "owner", "workspace": "../other"}),
         client_timing_witness: None,
     };
@@ -745,7 +746,7 @@ fn session_project_and_workspace_are_bound_at_initialize() {
                 request_id: request_id("request"),
                 catalog_generation: catalog.catalog_generation.clone(),
                 workspace_generation: catalog.workspace_generation.clone(),
-                method: "rust.search".to_owned(),
+                method: "rust.query".to_owned(),
                 params: json!({"query": "owner"}),
                 client_timing_witness: None,
             },
@@ -763,7 +764,7 @@ fn session_project_and_workspace_are_bound_at_initialize() {
                 request_id: request_id("request-project-crossing"),
                 catalog_generation: catalog.catalog_generation.clone(),
                 workspace_generation: catalog.workspace_generation.clone(),
-                method: "rust.search".to_owned(),
+                method: "rust.query".to_owned(),
                 params: json!({"query": "owner"}),
                 client_timing_witness: None,
             },
@@ -771,4 +772,36 @@ fn session_project_and_workspace_are_bound_at_initialize() {
         )
         .expect_err("project crossing must fail");
     assert_eq!(error.reason_kind, "client-session-isolation-mismatch");
+}
+
+#[test]
+fn runtime_resident_request_plane_receipt_is_field_complete_and_strict() {
+    let receipt = crate::RuntimeResidentRequestPlaneReceipt::ready(
+        crate::RuntimeResidentRequestOperation::Query,
+        crate::RuntimeResidentRequestTemperature::Cold,
+        format!("blake3-256:{}", "a".repeat(64)),
+        999,
+    );
+    receipt.validate().expect("strict request-plane receipt");
+    let packet = serde_json::to_value(&receipt).expect("serialize request-plane receipt");
+    assert_eq!(packet["generationLookupCount"], 1);
+    assert_eq!(packet["secondaryRuntimeRpcCount"], 0);
+    assert_eq!(packet["socketDiscoveryCount"], 0);
+    assert_eq!(packet["terminalWaitCount"], 0);
+
+    let mut boundary = receipt;
+    boundary.elapsed_micros = 1_000;
+    assert!(boundary.validate().is_err());
+}
+
+#[test]
+fn query_not_ready_request_plane_receipt_cannot_claim_a_generation() {
+    let mut receipt = crate::RuntimeResidentRequestPlaneReceipt::query_not_ready(
+        crate::RuntimeResidentRequestOperation::Search,
+        crate::RuntimeResidentRequestTemperature::Warm,
+        7,
+    );
+    receipt.validate().expect("typed query-not-ready receipt");
+    receipt.generation_digest = Some(format!("blake3-256:{}", "b".repeat(64)));
+    assert!(receipt.validate().is_err());
 }

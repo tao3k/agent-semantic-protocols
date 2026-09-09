@@ -12,18 +12,20 @@ from ._topology_admission import require_topology
 def validate_query_playbook_request(
     request: dict,
     expected_runtime_binding: dict,
-    manifest_project_workspace: dict,
+    expected_execution_publication_digest: str,
+    expected_runtime_bundle_digest: str,
 ) -> None:
-    """Require exact Runtime identity while keeping Query independent of Search."""
+    """Require exact Runtime identity and preserve the caller's selector order."""
 
-    require_topology(
-        expected_runtime_binding.get("projectWorkspace")
-        == manifest_project_workspace,
-        "query-playbook-project-workspace-manifest-mismatch",
-    )
     require_topology(
         request["runtimeExecutionBinding"] == expected_runtime_binding,
         "query-playbook-runtime-binding-mismatch",
+    )
+    require_topology(
+        request["runtimeWorkspaceExecutionPublicationDigest"]
+        == expected_execution_publication_digest
+        and request["runtimeBundleDigest"] == expected_runtime_bundle_digest,
+        "query-playbook-execution-publication-mismatch",
     )
     require_topology(
         request["projectWorkspaceIdentity"]
@@ -37,7 +39,7 @@ def validate_query_playbook_request(
     selectors = request["selectors"]
     require_topology(
         bool(selectors)
-        and selectors == sorted(set(selectors))
+        and len(selectors) == len(set(selectors))
         and all("://" in selector and "#item/" in selector for selector in selectors),
         "schema-invalid",
     )
@@ -47,26 +49,30 @@ def validate_query_playbook_receipt(
     receipt: dict,
     request: dict,
     expected_runtime_binding: dict,
-    manifest_project_workspace: dict,
+    expected_execution_publication_digest: str,
+    expected_runtime_bundle_digest: str,
 ) -> None:
-    """Require one binding, all requested materializations, and one terminal."""
+    """Require one binding, caller-ordered results, and one terminal."""
 
-    require_topology(
-        expected_runtime_binding.get("projectWorkspace")
-        == manifest_project_workspace,
-        "query-playbook-project-workspace-manifest-mismatch",
-    )
     require_topology(
         receipt["runtimeExecutionBinding"] == expected_runtime_binding,
         "query-playbook-runtime-binding-mismatch",
     )
     require_topology(
+        receipt["runtimeWorkspaceExecutionPublicationDigest"]
+        == expected_execution_publication_digest
+        and receipt["runtimeBundleDigest"] == expected_runtime_bundle_digest,
+        "query-playbook-execution-publication-mismatch",
+    )
+    require_topology(
         receipt["requestId"] == request["requestId"]
-        and receipt["projectWorkspaceIdentity"]
-        == request["projectWorkspaceIdentity"]
+        and receipt["projectWorkspaceIdentity"] == request["projectWorkspaceIdentity"]
         and receipt["worktreeInstanceId"] == request["worktreeInstanceId"]
         and receipt["projection"] == request["projection"]
-        and receipt["requestedSelectors"] == request["selectors"],
+        and receipt["requestedSelectors"] == request["selectors"]
+        and receipt["runtimeWorkspaceExecutionPublicationDigest"]
+        == request["runtimeWorkspaceExecutionPublicationDigest"]
+        and receipt["runtimeBundleDigest"] == request["runtimeBundleDigest"],
         "query-playbook-request-binding-mismatch",
     )
     terminal = receipt["terminal"]
@@ -78,7 +84,9 @@ def validate_query_playbook_receipt(
     if terminal["state"] == "ready":
         require_topology(
             [item["selector"] for item in materializations] == request["selectors"]
-            and all(item["projection"] == request["projection"] for item in materializations),
+            and all(
+                item["projection"] == request["projection"] for item in materializations
+            ),
             "query-playbook-materialization-set-mismatch",
         )
     else:

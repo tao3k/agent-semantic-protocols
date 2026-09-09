@@ -8,10 +8,15 @@ from pathlib import Path
 import pytest
 from jsonschema import Draft202012Validator, ValidationError
 
+from unit.schema_validation import schema_validator_for
+
 
 ROOT = Path(__file__).resolve().parents[2]
 SCHEMA = json.loads(
     (ROOT / "schemas/runtime-merkle-owner-proof-qualification-receipt.schema.json").read_text()
+)
+VALIDATOR = schema_validator_for(
+    ROOT / "schemas/runtime-merkle-owner-proof-qualification-receipt.schema.json"
 )
 
 
@@ -54,21 +59,21 @@ def receipt(
 
 def test_ready_receipt_requires_complete_identity_and_zero_warm_work() -> None:
     Draft202012Validator.check_schema(SCHEMA)
-    Draft202012Validator(SCHEMA).validate(receipt())
+    VALIDATOR.validate(receipt())
 
 
 def test_rejected_scenario_receipt_carries_a_typed_reason() -> None:
-    Draft202012Validator(SCHEMA).validate(receipt(status="rejected"))
+    VALIDATOR.validate(receipt(status="rejected"))
 
 
 def test_live_corpus_uses_the_same_ready_proof_contract() -> None:
     live_corpus = receipt(evidence_layer="live-corpus")
     live_corpus["resourceId"] = "rust.tokio"
-    Draft202012Validator(SCHEMA).validate(live_corpus)
+    VALIDATOR.validate(live_corpus)
 
 
 def test_timeout_or_socket_work_cannot_qualify_a_warm_read() -> None:
     invalid = receipt()
     invalid["workCounters"]["socketOperationCount"] = 1
     with pytest.raises(ValidationError):
-        Draft202012Validator(SCHEMA).validate(invalid)
+        VALIDATOR.validate(invalid)

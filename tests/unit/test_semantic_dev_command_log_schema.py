@@ -39,7 +39,7 @@ def minimal_event() -> dict[str, object]:
         "projectRootHash": "0123456789abcdef",
         "command": {
             "namespace": "search",
-            "method": "search/lexical",
+            "method": "search/playbook",
             "view": "lexical",
             "query": "metadata",
             "querySetCount": 0,

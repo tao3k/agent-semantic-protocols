@@ -33,9 +33,15 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["languageId", "packageRoot", "bundleRoot", "rootSets", "roots", "providerOwned"],
+        "required": ["languageId", "searchProducerAxes", "packageRoot", "bundleRoot", "rootSets", "roots", "providerOwned"],
         "properties": {
           "languageId": { "type": "string", "minLength": 1 },
+          "searchProducerAxes": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": { "enum": ["language", "document"] }
+          },
           "packageRoot": { "type": "string", "minLength": 1 },
           "bundleRoot": { "type": "string", "minLength": 1 },
           "rootSets": { "type": "array", "items": { "type": "string", "minLength": 1 } },

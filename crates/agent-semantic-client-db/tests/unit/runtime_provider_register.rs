@@ -43,13 +43,13 @@ fn installed_capability(language_id: &str, provider_id: &str) -> ProviderRegistr
         "transport": "http-json",
         "clientBinding": "schema-driven",
         "operations": [{
-            "operation": "search",
+            "operation": "query",
             "requestSchema": {
-                "schemaId": "agent.semantic-protocols.search-owner-request",
+                "schemaId": "agent.semantic-protocols.provider-native-exact-request",
                 "schemaVersion": "1"
             },
             "responseSchema": {
-                "schemaId": "agent.semantic-protocols.search-packet",
+                "schemaId": "agent.semantic-protocols.provider-native-exact-projection",
                 "schemaVersion": "1"
             }
         }]
@@ -57,8 +57,8 @@ fn installed_capability(language_id: &str, provider_id: &str) -> ProviderRegistr
     provider.registration["routes"] = json!([{
         "schemaId": "agent.semantic-protocols.provider-route",
         "schemaVersion": "1",
-        "routeId": format!("{language_id}.search"),
-        "operation": "search",
+        "routeId": format!("{language_id}.query"),
+        "operation": "query",
         "authority": "asp-server",
         "target": {"languageId": language_id, "providerId": provider_id},
         "inputs": [],
@@ -72,14 +72,14 @@ fn installed_capability(language_id: &str, provider_id: &str) -> ProviderRegistr
         },
         "output": {
             "schema": {
-                "schemaId": "agent.semantic-protocols.search-packet",
+                "schemaId": "agent.semantic-protocols.provider-native-exact-projection",
                 "schemaVersion": "1"
             },
             "mediaType": "application/json"
         },
         "failureSchemaIds": ["agent.semantic-protocols.route-failure"],
         "cache": {"authority": "asp-server", "scope": "workspace", "keySlots": []},
-        "telemetry": {"spanName": "asp.route.search", "attributeSlots": []}
+        "telemetry": {"spanName": "asp.route.query", "attributeSlots": []}
     }]);
     provider
 }
@@ -419,7 +419,7 @@ async fn operation_resolution_requires_an_installed_compiled_route() {
     let register = RuntimeProviderRegister::from_seed(vec![identity_provider("rust", "asp-rust")])
         .expect("seed register");
     let missing = register
-        .resolve_route("rust", "search")
+        .resolve_route("rust", "query")
         .expect_err("identity seed must not dispatch");
     assert!(
         missing.contains("operation-not-in-installed-capability"),
@@ -436,8 +436,8 @@ async fn operation_resolution_requires_an_installed_compiled_route() {
         .await
         .expect("register installed route");
     let (provider_id, route) = register
-        .resolve_route("rust", "search")
+        .resolve_route("rust", "query")
         .expect("resolve installed route");
     assert_eq!(provider_id, "asp-rust");
-    assert_eq!(route.spec().route_id, "rust.search");
+    assert_eq!(route.spec().route_id, "rust.query");
 }

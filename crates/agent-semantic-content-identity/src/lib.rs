@@ -17,6 +17,7 @@ mod model;
 /// Provider-neutral project-resolution receipts and immutable package-graph facts.
 mod project_resolution;
 mod project_workspace;
+mod provider_execution_digest;
 mod schema_contract_identity;
 pub mod semantic_ids;
 mod source_snapshot;
@@ -90,6 +91,7 @@ pub use project_workspace::PROJECT_WORKSPACE_BINDING_SCHEMA_ID;
 pub use project_workspace::PROJECT_WORKSPACE_BINDING_SCHEMA_VERSION;
 pub use project_workspace::ProjectWorkspaceBinding;
 pub use project_workspace::ProjectWorkspaceBindingError;
+pub use provider_execution_digest::provider_execution_command_digest;
 pub use schema_contract_identity::SchemaContractIdentity;
 pub use schema_contract_identity::schema_contract_identities;
 pub use semantic_ids::Blake3DigestV1;
@@ -134,6 +136,10 @@ mod source_snapshot_tests;
 #[cfg(test)]
 #[path = "../tests/unit/project_resolution.rs"]
 mod project_resolution_tests;
+
+#[cfg(test)]
+#[path = "../tests/unit/provider_execution_digest.rs"]
+mod provider_execution_digest_tests;
 
 #[cfg(test)]
 #[path = "../tests/unit/source_snapshot_contract.rs"]

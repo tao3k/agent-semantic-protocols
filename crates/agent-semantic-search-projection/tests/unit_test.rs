@@ -10,8 +10,6 @@ mod query_playbook_materialization;
 mod resident_search_result;
 #[path = "unit/runtime_graph_request.rs"]
 mod runtime_graph_request;
-#[path = "unit/search_projection.rs"]
-mod search_projection;
 #[path = "unit/search_topology_settlement.rs"]
 mod search_topology_settlement;
 #[path = "unit/source.rs"]

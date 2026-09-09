@@ -38,7 +38,7 @@ pub(crate) async fn run_install_binary(args: &[String]) -> Result<(), String> {
         &runtime_state.protocol_home,
     )?;
     let mut provider_reconciliation =
-        super::core::prepare_active_release_provider_reconciliation(&runtime_state.protocol_home)?;
+        super::core::prepare_active_provider_reconciliation(&runtime_state.protocol_home)?;
     let execution_binding = provider_reconciliation
         .bind_runtime_execution_closure(plan.candidate_source(), &hook_candidate.source)
         .await?;
@@ -79,7 +79,7 @@ pub(crate) async fn run_install_binary(args: &[String]) -> Result<(), String> {
     let runtime_endpoint_path =
         agent_semantic_client_db::runtime_server_endpoint_path(&runtime_state.protocol_home)?;
     println!(
-        "[asp-install-binary] binaryPath={} binaryInstall={} binaryContentDigest={} digestAlgorithm=blake3-256 binaryCurrent={} binarySwitch=atomic providerInstallRegistryDigest={} hookBinaryPath={} hookBinaryDigest={} hookBinarySwitch=active-healthy-bundle bundleLockAcquisitionCount={} hookConfigPublication={} hookConfigCoupling=embedded-in-hook-binary hookAuthority=runtime-active-bundle-content-digest agentConfigPublication=current agentConfigCoupling=embedded-in-hook-binary runtimeServerLifecycle=resident-owner-independent reasonKind=none providerReconciliation=embedded-release-catalog providerReconciledCount={} activeRuntimeBundleDigest={} developerIdentityReceipt={} installSource={} installScope=state-home projectRoot={} executablePath={} stateHome={} stateHomeSource={:?} aspStateHomePresent={} homePresent={} pendingActivationPath={} appliedActivationPath={} runtimeEndpointPath={}",
+        "[asp-install-binary] binaryPath={} binaryInstall={} binaryContentDigest={} digestAlgorithm=blake3-256 binaryCurrent={} binarySwitch=atomic providerInstallRegistryDigest={} hookBinaryPath={} hookBinaryDigest={} hookBinarySwitch=active-healthy-bundle bundleLockAcquisitionCount={} hookConfigPublication={} hookConfigCoupling=embedded-in-hook-binary hookAuthority=runtime-active-bundle-content-digest agentConfigPublication=current agentConfigCoupling=embedded-in-hook-binary runtimeServerLifecycle=resident-owner-independent reasonKind=none providerReconciliation=configured-artifact-authority providerReconciledCount={} activeRuntimeBundleDigest={} developerIdentityReceipt={} installSource={} installScope=state-home projectRoot={} executablePath={} stateHome={} stateHomeSource={:?} aspStateHomePresent={} homePresent={} pendingActivationPath={} appliedActivationPath={} runtimeEndpointPath={}",
         installed.path.display(),
         installed.status,
         installed.artifact_digest,

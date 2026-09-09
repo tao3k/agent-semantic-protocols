@@ -14,7 +14,12 @@ mod aot_evaluator_cli;
 #[cfg(feature = "evaluator")]
 mod hook_binary;
 #[cfg(feature = "evaluator")]
+mod search_playbook_pretool;
+#[cfg(feature = "evaluator")]
 mod search_subagent_output_contract;
+#[cfg(feature = "evaluator")]
+#[doc(hidden)]
+pub use search_playbook_pretool::evaluate as evaluate_search_playbook_pretool;
 
 #[cfg(feature = "compiler")]
 pub use aot_evaluator_cli::AotHookEvaluationReceipt;
@@ -143,19 +148,15 @@ pub mod policy_testing;
 #[cfg(feature = "compiler")]
 mod protocol;
 #[cfg(feature = "compiler")]
-mod protocol_activation;
+mod provider_install_artifact;
+#[cfg(feature = "compiler")]
+mod provider_projection;
+#[cfg(feature = "compiler")]
+mod provider_routing;
 #[cfg(feature = "compiler")]
 mod shell_read_decision_shard;
 #[cfg(feature = "compiler")]
 mod structured_projection_decision_shard;
-#[cfg(feature = "compiler")]
-pub use protocol_activation::digest::provider_execution_command_digest;
-#[cfg(feature = "compiler")]
-pub use protocol_activation::protocol_activation_manifest::ProviderDevelopmentArtifactDomain;
-#[cfg(feature = "compiler")]
-pub use protocol_activation::protocol_activation_manifest::ProviderDevelopmentDescriptor;
-#[cfg(feature = "compiler")]
-mod provider_install_artifact;
 #[cfg(feature = "compiler")]
 pub use provider_install_artifact::installed_provider_artifact_digest;
 #[cfg(feature = "compiler")]
@@ -180,10 +181,6 @@ pub use reader_probe::materialize_reader_probe_fixture;
 #[cfg(all(any(feature = "compiler", feature = "evaluator"), target_os = "macos"))]
 pub use reader_probe::reader_probe_fixture_bytes;
 
-#[cfg(feature = "compiler")]
-pub use provider_registry::ProviderDevelopmentRegistration;
-#[cfg(feature = "compiler")]
-pub use provider_registry::materialize_provider_routes;
 #[cfg(feature = "compiler")]
 pub use provider_registry::registered_language_ids;
 #[cfg(feature = "compiler")]
@@ -358,10 +355,6 @@ pub use protocol::DecisionRouteKind;
 #[cfg(feature = "compiler")]
 pub use protocol::DecisionSubject;
 #[cfg(feature = "compiler")]
-pub use protocol::HOOK_ACTIVATION_SCHEMA_ID;
-#[cfg(feature = "compiler")]
-pub use protocol::HOOK_ACTIVATION_SCHEMA_VERSION;
-#[cfg(feature = "compiler")]
 pub use protocol::HOOK_DECISION_SCHEMA_ID;
 #[cfg(feature = "compiler")]
 pub use protocol::HOOK_DECISION_SCHEMA_VERSION;
@@ -373,12 +366,6 @@ pub use protocol::HOOK_PROTOCOL_VERSION;
 pub use protocol::HookDecision;
 #[cfg(feature = "compiler")]
 pub use protocol::HookPolicy;
-#[cfg(feature = "compiler")]
-pub use protocol::HookRoutes;
-#[cfg(feature = "compiler")]
-pub use protocol::PROVIDER_MANIFEST_SCHEMA_ID;
-#[cfg(feature = "compiler")]
-pub use protocol::PROVIDER_MANIFEST_SCHEMA_VERSION;
 #[cfg(feature = "compiler")]
 pub use protocol::ReasonKind;
 #[cfg(feature = "compiler")]
@@ -394,45 +381,11 @@ pub use protocol::render_platform_response;
 #[cfg(feature = "compiler")]
 pub use protocol::subagent_deny_message;
 #[cfg(feature = "compiler")]
-pub use protocol_activation::digest::provider_manifest_digest;
-#[cfg(feature = "compiler")]
-pub use protocol_activation::protocol_activation_manifest::ActivatedProvider;
-#[cfg(feature = "compiler")]
-pub use protocol_activation::protocol_activation_manifest::ActivatedProviderConfig;
-#[cfg(feature = "compiler")]
-pub use protocol_activation::protocol_activation_manifest::ActivationCoverage;
-#[cfg(feature = "compiler")]
-pub use protocol_activation::protocol_activation_manifest::ActivationGeneratedBy;
-#[cfg(feature = "compiler")]
-pub use protocol_activation::protocol_activation_manifest::HookActivation;
-#[cfg(feature = "compiler")]
-pub use protocol_activation::protocol_activation_manifest::HookProviderProjection;
-#[cfg(feature = "compiler")]
-pub use protocol_activation::protocol_activation_manifest::HookRuntime;
-#[cfg(feature = "compiler")]
-pub use protocol_activation::protocol_activation_manifest::ProviderExecution;
-#[cfg(feature = "compiler")]
-pub use protocol_activation::protocol_activation_manifest::ProviderManifest;
-#[cfg(feature = "compiler")]
-pub use protocol_activation::protocol_activation_manifest::ProviderProjectResolutionDescriptor;
-#[cfg(feature = "compiler")]
-pub use protocol_activation::protocol_activation_manifest::ProviderQueryPackDescriptor;
-#[cfg(feature = "compiler")]
-pub use protocol_activation::protocol_activation_manifest::ProviderQueryPackTermRole;
-#[cfg(feature = "compiler")]
-pub use protocol_activation::protocol_activation_manifest::ProviderRuntimeContractDescriptor;
-#[cfg(feature = "compiler")]
-pub use protocol_activation::protocol_activation_manifest::ProviderRuntimeContractOperationDescriptor;
-#[cfg(feature = "compiler")]
-pub use protocol_activation::protocol_activation_manifest::ProviderRuntimeContractTransport;
-#[cfg(feature = "compiler")]
-pub use protocol_activation::protocol_activation_manifest::ProviderSearchCapabilities;
-#[cfg(feature = "compiler")]
-pub use protocol_activation::protocol_activation_manifest::ProviderSemanticFactsDescriptor;
-#[cfg(feature = "compiler")]
-pub use protocol_activation::protocol_activation_manifest::ProviderSemanticFactsIntentAxis;
-#[cfg(feature = "compiler")]
 pub use provider_manifest::project_agent_config_path;
+#[cfg(feature = "compiler")]
+pub use provider_projection::HookProviderProjection;
+#[cfg(feature = "compiler")]
+pub use provider_projection::HookRuntime;
 #[cfg(feature = "compiler")]
 pub use shell_read_decision_shard::CommandDecisionShard;
 #[cfg(feature = "compiler")]
@@ -464,15 +417,7 @@ mod tool_action_functions_exec;
 #[path = "../tests/unit/tool_action_workspace_mutation.rs"]
 mod tool_action_workspace_mutation;
 #[cfg(feature = "compiler")]
-pub use crate::provider_registry::RegisteredProviderKind;
-#[cfg(feature = "compiler")]
 pub use crate::provider_registry::registered_provider_id;
-#[cfg(feature = "compiler")]
-pub use crate::provider_registry::registered_provider_kind;
-#[cfg(feature = "compiler")]
-pub use crate::provider_registry::registered_provider_method_invocation;
-#[cfg(feature = "compiler")]
-pub use crate::provider_registry::registered_provider_projection_operation;
 #[cfg(feature = "compiler")]
 use agent_semantic_shell_parser as shell_parser;
 #[cfg(feature = "compiler")]

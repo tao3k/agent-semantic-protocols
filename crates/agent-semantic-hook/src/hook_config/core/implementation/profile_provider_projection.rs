@@ -10,9 +10,8 @@ use agent_semantic_config::LanguageId;
 use agent_semantic_config::ProviderId;
 
 use crate::protocol::ActionPolicy;
-use crate::protocol::CommandTemplate;
 use crate::protocol::HookPolicy;
-use crate::protocol_activation::protocol_activation_manifest::HookProviderProjection;
+use crate::provider_projection::HookProviderProjection;
 
 pub(super) fn extend_profile_provider_projections(
     profiles: &BTreeMap<String, HookClientProfileConfig>,
@@ -84,7 +83,7 @@ pub(super) fn merge_provider_projection_facts(
     }
 }
 
-pub(super) fn extend_registered_provider_route_projections(
+pub(super) fn extend_registered_provider_identity_projections(
     routes: &[HookClientProviderRouteIdentity],
     provider_projections: &mut Vec<HookProviderProjection>,
 ) {
@@ -110,7 +109,6 @@ fn provider_projection(
     source_extensions: Vec<String>,
     package_roots: Vec<String>,
 ) -> HookProviderProjection {
-    let command = |argv: Vec<String>, stdin_mode| CommandTemplate { argv, stdin_mode };
     HookProviderProjection {
         language_id: LanguageId::new(language),
         provider_id: ProviderId::new(provider_id),
@@ -123,22 +121,5 @@ fn provider_projection(
             raw_source_search: ActionPolicy::Block,
             agent_search_json: ActionPolicy::Block,
         },
-        playbook_route: command(
-            [
-                "asp",
-                language,
-                "search",
-                "playbook",
-                "{query}",
-                "--scope",
-                "owner:{owner}",
-                "--workspace",
-                "{workspace}",
-            ]
-            .into_iter()
-            .map(str::to_owned)
-            .collect(),
-            None,
-        ),
     }
 }

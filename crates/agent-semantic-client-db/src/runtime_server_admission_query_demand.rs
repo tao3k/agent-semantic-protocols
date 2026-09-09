@@ -61,14 +61,10 @@ impl WorkspaceGenerationAdmission {
         )
     }
 
-    /// Submit the complete-generation barrier and keep its terminal consumer
-    /// inside the same single-flight request.
-    ///
-    /// A durable Ready admission is not, by itself, proof that the Runtime's
-    /// resident read generation is open. The terminal callback therefore runs
-    /// for both a newly built generation and a replayed Ready generation. This
-    /// lets the ASP Server install the exact commit into its resident authority
-    /// without creating another publication authority or request-local retry.
+    /// Submit the complete-generation barrier and deliver its source-generation
+    /// terminal to a lifecycle observer. The callback is not a resident
+    /// publication authority; only the daemon execution-publication observer
+    /// may install an execution-bound resident generation.
     pub fn request_runtime_generation_ready_with_terminal<Terminal, TerminalFuture>(
         &self,
         workspace_identity: String,
@@ -244,6 +240,22 @@ impl WorkspaceGenerationAdmission {
         Ok(WorkspaceGenerationReadinessRequestState::Accepted)
     }
 
+    /// Submit one ordered provider set without creating a second terminal
+    /// publication authority in a Search or Query request callback.
+    pub fn request_runtime_generations_ready_for_providers(
+        &self,
+        workspace_identity: String,
+        project_root: PathBuf,
+        provider_targets: Vec<super::WorkspaceGenerationProviderTarget>,
+    ) -> Result<WorkspaceGenerationReadinessRequestState, String> {
+        self.request_runtime_generations_ready_for_providers_with_terminal(
+            workspace_identity,
+            project_root,
+            provider_targets,
+            |_| async {},
+        )
+    }
+
     /// Establish the single complete-generation read barrier used by all
     /// language Search/Query routes on a client connection.
     ///
@@ -274,6 +286,35 @@ impl WorkspaceGenerationAdmission {
             return Err("workspace generation ensure-ready root must be absolute".to_owned());
         }
 
+        let resolved = crate::runtime_server_admission_catalog::
+            RuntimeWorkspaceAdmissionCatalogEntry::resolve(
+                workspace_identity.clone(),
+                project_root.clone(),
+            )?;
+        if let Some(catalog) = self.catalog.as_ref() {
+            let snapshot = catalog.snapshot();
+            let mut admitted = snapshot.iter().filter(|entry| {
+                entry.workspace_identity == workspace_identity && entry.project_root == project_root
+            });
+            let admission = admitted.next().ok_or_else(|| {
+                format!(
+                    "Runtime generation demand lacks admitted ProjectId: workspaceId={workspace_identity} projectRoot={}",
+                    project_root.display()
+                )
+            })?;
+            if admitted.next().is_some() || admission != &resolved {
+                return Err(format!(
+                    "Runtime generation demand ProjectId binding is ambiguous or drifted: workspaceId={workspace_identity} projectRoot={}",
+                    project_root.display()
+                ));
+            }
+        }
+        let candidate = super::WorkspaceGenerationCandidateIdentity::for_runtime_admission(
+            &resolved.project_id,
+            &workspace_identity,
+            provider_target.as_ref(),
+        )?;
+
         loop {
             if let Some(observed) = self.current(&workspace_identity, &project_root) {
                 if matches!(
@@ -292,6 +333,8 @@ impl WorkspaceGenerationAdmission {
                 if observed.state == WorkspaceGenerationAdmissionState::Ready
                     && observed.admission_mode.is_complete_generation()
                     && observed.commit.is_some()
+                    && observed.candidate_generation == candidate.candidate_generation
+                    && observed.policy_overlay_digest == candidate.policy_overlay_digest
                     && self.ready_validator.as_ref().is_none_or(|validator| {
                         validator(&workspace_identity, &project_root, &observed).is_ok()
                     })
@@ -301,35 +344,6 @@ impl WorkspaceGenerationAdmission {
                 }
             }
 
-            let resolved = crate::runtime_server_admission_catalog::
-                RuntimeWorkspaceAdmissionCatalogEntry::resolve(
-                    workspace_identity.clone(),
-                    project_root.clone(),
-                )?;
-            if let Some(catalog) = self.catalog.as_ref() {
-                let snapshot = catalog.snapshot();
-                let mut admitted = snapshot.iter().filter(|entry| {
-                    entry.workspace_identity == workspace_identity
-                        && entry.project_root == project_root
-                });
-                let admission = admitted.next().ok_or_else(|| {
-                    format!(
-                        "Runtime generation demand lacks admitted ProjectId: workspaceId={workspace_identity} projectRoot={}",
-                        project_root.display()
-                    )
-                })?;
-                if admitted.next().is_some() || admission != &resolved {
-                    return Err(format!(
-                        "Runtime generation demand ProjectId binding is ambiguous or drifted: workspaceId={workspace_identity} projectRoot={}",
-                        project_root.display()
-                    ));
-                }
-            }
-            let candidate = super::WorkspaceGenerationCandidateIdentity::for_runtime_admission(
-                &resolved.project_id,
-                &workspace_identity,
-                provider_target.as_ref(),
-            )?;
             let build_mode = if self
                 .current(&workspace_identity, &project_root)
                 .is_some_and(|receipt| receipt.state == WorkspaceGenerationAdmissionState::Ready)
@@ -342,7 +356,7 @@ impl WorkspaceGenerationAdmission {
                 .admit_with_mode(
                     workspace_identity.clone(),
                     project_root.clone(),
-                    candidate,
+                    candidate.clone(),
                     build_mode,
                     WorkspaceGenerationAdmissionTrigger::QueryDemand,
                     if build_mode == WorkspaceGenerationBuildMode::RestoreOrBuild {

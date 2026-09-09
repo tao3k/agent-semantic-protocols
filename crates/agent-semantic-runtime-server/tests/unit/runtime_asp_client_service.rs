@@ -45,7 +45,9 @@ fn workspace_search_provider_snapshot_uses_admitted_register_facts() {
                 .expect("builtin provider registrations"),
         )
         .expect("validated provider register");
-    let providers = workspace_search_providers_from_provider_register(&register)
+    let schema_bundles = crate::RuntimeSchemaBundleCatalog::load_embedded()
+        .expect("embedded Runtime schema bundle catalog");
+    let providers = workspace_search_providers_from_provider_register(&register, &schema_bundles)
         .expect("immutable workspace Search provider snapshot");
     assert!(!providers.is_empty());
     assert!(providers.iter().all(|provider| {
@@ -60,5 +62,16 @@ fn workspace_search_provider_snapshot_uses_admitted_register_facts() {
         providers
             .windows(2)
             .all(|pair| pair[0].language_id < pair[1].language_id)
+    );
+    assert!(
+        providers
+            .iter()
+            .any(|provider| provider.language_id == "rust")
+    );
+    assert_eq!(
+        schema_bundles
+            .search_producer_axes("org")
+            .expect("registered Org schema profile"),
+        [agent_semantic_schema_manager::SearchProducerAxis::Document]
     );
 }

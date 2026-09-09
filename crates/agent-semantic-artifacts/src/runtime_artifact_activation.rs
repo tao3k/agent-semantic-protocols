@@ -607,14 +607,31 @@ pub async fn rollback_runtime_artifact_activation(
 }
 
 pub(crate) fn read_optional_symlink(path: &Path) -> Result<Option<PathBuf>, String> {
-    match std::fs::read_link(path) {
-        Ok(target) => Ok(Some(target)),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
-        Err(error) => Err(format!(
-            "read Runtime artifact launcher {}: {error}",
-            path.display()
-        )),
+    let metadata = match std::fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => {
+            return Err(format!(
+                "inspect Runtime artifact launcher {}: {error}",
+                path.display()
+            ));
+        }
+    };
+    if metadata.file_type().is_symlink() {
+        return std::fs::read_link(path).map(Some).map_err(|error| {
+            format!("read Runtime artifact launcher {}: {error}", path.display())
+        });
     }
+    if metadata.is_file() {
+        // Pre-slot installations copied launchers directly into runtime/bin.
+        // They are not rollback authority: a failed new publication removes
+        // its staged alias instead of resurrecting this retired second source.
+        return Ok(None);
+    }
+    Err(format!(
+        "state=runtime-artifact-publication-failed reasonKind=runtime-launcher-type-conflict path={}",
+        path.display()
+    ))
 }
 
 pub(crate) fn restore_runtime_artifact_symlink(

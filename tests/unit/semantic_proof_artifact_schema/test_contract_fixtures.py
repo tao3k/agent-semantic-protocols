@@ -38,7 +38,7 @@ class SemanticProofArtifactFixtureTests(unittest.TestCase):
             },
             "topology": {
                 "sliceId": "topology-slice:search-packet-rendering",
-                "ownerSelectors": ["schema:semantic-search-packet.v1"],
+                "ownerSelectors": ["schema:semantic-query-packet.v1"],
             },
             "branchEffects": {
                 "illegalBranches": [

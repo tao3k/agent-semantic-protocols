@@ -23,8 +23,6 @@ use crate::tool_action::ToolAction;
 fn runtime() -> HookRuntime {
     HookRuntime {
         project_root: ".".to_owned(),
-        rankers: Vec::new(),
-        providers: Vec::new(),
         policy_providers: Vec::new(),
     }
 }
@@ -48,30 +46,21 @@ fn action(host: HostInvocationKind, capability: AgentActionKind) -> AgentAction 
 }
 
 fn rust_runtime() -> HookRuntime {
-    let command = crate::protocol::CommandTemplate {
-        argv: vec!["asp".to_owned()],
-        stdin_mode: None,
-    };
     HookRuntime {
         project_root: ".".to_owned(),
-        rankers: Vec::new(),
-        providers: Vec::new(),
-        policy_providers: vec![
-            crate::protocol_activation::protocol_activation_manifest::HookProviderProjection {
-                language_id: LanguageId::new("rust"),
-                provider_id: ProviderId::new("asp-rust"),
-                package_roots: vec![".".to_owned()],
-                source_extensions: vec![".rs".to_owned()],
-                config_files: Vec::new(),
-                policy: crate::protocol::HookPolicy {
-                    direct_source_read: crate::protocol::ActionPolicy::Block,
-                    bulk_source_dump: crate::protocol::ActionPolicy::Block,
-                    raw_source_search: crate::protocol::ActionPolicy::Block,
-                    agent_search_json: crate::protocol::ActionPolicy::Block,
-                },
-                playbook_route: command,
+        policy_providers: vec![crate::provider_projection::HookProviderProjection {
+            language_id: LanguageId::new("rust"),
+            provider_id: ProviderId::new("asp-rust"),
+            package_roots: vec![".".to_owned()],
+            source_extensions: vec![".rs".to_owned()],
+            config_files: Vec::new(),
+            policy: crate::protocol::HookPolicy {
+                direct_source_read: crate::protocol::ActionPolicy::Block,
+                bulk_source_dump: crate::protocol::ActionPolicy::Block,
+                raw_source_search: crate::protocol::ActionPolicy::Block,
+                agent_search_json: crate::protocol::ActionPolicy::Block,
             },
-        ],
+        }],
     }
 }
 

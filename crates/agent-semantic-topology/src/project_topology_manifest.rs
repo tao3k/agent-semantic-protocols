@@ -16,8 +16,8 @@ use orgize::syntax_ast::{Headline, PropertyDrawer};
 
 pub const PROJECT_TOPOLOGY_MANIFEST_PATH: &str = ".agents/asp/topology/manifest.org";
 
-const PROJECT_TOPOLOGY_CONTRACT: &str = "project.topology-program.v1.org";
-const PROGRAM_ID: &str = "TOPOLOGY_PROGRAM_ID";
+const PROJECT_WORKSPACE_CONTRACT: &str = "project.workspace-manifest.v1.org";
+const PROJECT_WORKSPACE_ID: &str = "PROJECT_WORKSPACE_ID";
 const PROJECT_WORKSPACE_IDENTITY: &str = "PROJECT_WORKSPACE_IDENTITY";
 const WORKSPACE_ROOT_PATH: &str = "WORKSPACE_ROOT_PATH";
 const PORTABILITY: &str = "PORTABILITY";
@@ -72,7 +72,7 @@ impl ProjectTopologyManifest {
         if !contract_reference_is_canonical(&contract) {
             return invalid(
                 "topology-manifest-contract-mismatch",
-                "manifest is not governed by project.topology-program.v1",
+                "manifest is not governed by project.workspace-manifest.v1",
             );
         }
 
@@ -97,7 +97,7 @@ impl ProjectTopologyManifest {
             return invalid(
                 reason,
                 format!(
-                    "expected one level-one Project Topology declaration, observed {}",
+                    "expected one level-one Project Workspace declaration, observed {}",
                     declarations.len()
                 ),
             );
@@ -139,7 +139,7 @@ impl ProjectTopologyManifest {
 }
 
 fn manifest_declaration(properties: &PropertyDrawer) -> bool {
-    properties.get(PROGRAM_ID).is_some()
+    properties.get(PROJECT_WORKSPACE_ID).is_some()
 }
 
 fn unique_properties(
@@ -202,9 +202,9 @@ fn contract_reference_is_canonical(value: &str) -> bool {
     let Some((target, label)) = link.split_once("][") else {
         return false;
     };
-    label == "project.topology-program.v1"
-        && (target == PROJECT_TOPOLOGY_CONTRACT
-            || target.ends_with(&format!("/{PROJECT_TOPOLOGY_CONTRACT}")))
+    label == "project.workspace-manifest.v1"
+        && (target == PROJECT_WORKSPACE_CONTRACT
+            || target.ends_with(&format!("/{PROJECT_WORKSPACE_CONTRACT}")))
         && !target.starts_with('/')
         && !target.contains("\\")
 }

@@ -9,7 +9,7 @@ CONSTANTS MaxEvidence, QueryGrammarText
 
 ASSUME MaxEvidence = 30
 ASSUME QueryGrammarText =
-  "asp query --selector <exact-selector> --projection <callable-skeleton|source>"
+  "asp query playbook --language <producer|...> --selector <exact-selector> --projection <callable-skeleton|source>"
 
 VARIABLES
   phase,

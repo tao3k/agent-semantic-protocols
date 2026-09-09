@@ -145,7 +145,7 @@ Redundancy, concision, and cost are separate properties.
 | R22 | No edge in a partial slice means missing | Only certified complete coverage may derive missing; otherwise unknown |
 | R23 | Rank alone defines the decision core | Retain proof-path dependencies and reject disconnected selections |
 | R24 | Semi-naive evaluation handles cross-version deletion | Rebuild affected strata and atomically admit a complete generation |
-| R25 | Numbered Query and Search steps clarify the plan | Emit one selector MaterializationSet and explicit graph frontiers |
+| R25 | Numbered Query and Search steps clarify the plan | Let the Agent select directly from selector-bearing GQL nodes and keep explicit graph frontiers |
 | R26 | A model-written summary is a topology fact | Keep semantic annotations proposed until contract admission |
 | R27 | Natural language should stay outside the graph | Bind summaries, premises, producer, and admission state in GQL |
 

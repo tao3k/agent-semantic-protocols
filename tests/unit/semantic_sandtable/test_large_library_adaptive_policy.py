@@ -42,7 +42,7 @@ def test_large_library_adaptive_policy_uses_analysis_recommendations() -> None:
     assert default_policy["averageAnswerQuality"] == 0.9
     assert default_policy["averageElapsedMs"] == 10.0
     assert default_policy["averageStdoutBytes"] == 1000.0
-    assert default_policy["resultCount"] == 20
+    assert default_policy["resultCount"] == 26
     assert packet["bucketPolicies"]
     first_bucket = packet["bucketPolicies"][0]
     assert first_bucket["evidence"]["granularity"] == "scenario-receipt"
@@ -99,15 +99,8 @@ def _analysis() -> dict[str, object]:
 
 
 def _validate_schema(packet: dict[str, object]) -> None:
-    schema = json.loads(
-        (
-            _ROOT
-            / "schemas"
-            / "semantic-graph-turbo-adaptive-query-policy.v1.schema.json"
-        ).read_text(encoding="utf-8")
-    )
     schema_validator_for(
         _ROOT
         / "schemas"
-        / "semantic-sandtable-large-library-adaptive-policy.v1.schema.json"
+        / "semantic-graph-turbo-adaptive-query-policy.v1.schema.json"
     ).validate(packet)

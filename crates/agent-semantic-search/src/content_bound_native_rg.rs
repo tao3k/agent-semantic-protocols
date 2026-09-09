@@ -2,15 +2,16 @@
 //
 // SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
-//! One native ripgrep process per request block over an immutable Runtime corpus.
+//! Exact native `rg` execution over an ephemeral immutable-generation tree.
 
 use std::collections::BTreeSet;
-use std::process::Stdio;
+use std::io::Read;
+use std::process::{Command, Stdio};
 
+use agent_semantic_shell_parser::{NativeRgArgvAnalysis, NativeRgOutputAttribution};
 use serde::{Deserialize, Serialize};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-const CANDIDATE_LIMIT: usize = 4_096;
+const MAX_NATIVE_RG_OUTPUT_BYTES: usize = 16 * 1024 * 1024;
 
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -28,182 +29,442 @@ pub struct ContentBoundNativeRgMatch {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ContentBoundNativeRgProcessReceipt {
+    pub exact_argv: Vec<String>,
+    pub argv_digest: String,
+    pub exit_code: i32,
+    pub stdout_byte_count: usize,
+    pub stderr_byte_count: usize,
+    pub stdout_digest: String,
+    pub stderr_digest: String,
+    pub output_attribution: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ContentBoundNativeRgReceipt {
     pub axis: ContentBoundNativeRgAxisReceipt,
     pub branch_matches: Vec<Vec<ContentBoundNativeRgMatch>>,
+    pub processes: Vec<ContentBoundNativeRgProcessReceipt>,
     pub process_count: usize,
     pub truncated: bool,
 }
 
-pub async fn execute_content_bound_native_rg_blocks(
+pub fn execute_content_bound_native_rg_blocks(
     corpus: &crate::ColdRgCorpusArtifact,
     blocks: &[Vec<String>],
     limit: usize,
 ) -> Result<ContentBoundNativeRgReceipt, String> {
-    if blocks.is_empty() || limit == 0 || limit > CANDIDATE_LIMIT {
+    if blocks.is_empty() || limit == 0 {
         return Err("content-bound rg request is outside the bounded envelope".to_owned());
     }
+    validate_corpus_receipt(corpus)?;
+    let snapshot = tempfile::Builder::new()
+        .prefix("asp-native-rg-")
+        .tempdir()
+        .map_err(|error| format!("create immutable rg snapshot root: {error}"))?;
+    materialize_generation_tree(corpus, snapshot.path())?;
+
     let mut branch_candidate_owner_paths = Vec::with_capacity(blocks.len());
     let mut branch_matches = Vec::with_capacity(blocks.len());
-    for block in blocks {
-        let argv = native_rg_stdin_argv(block)?;
-        let mut child = tokio::process::Command::new("rg")
-            .args(argv)
-            .args([
-                "--line-number",
-                "--no-heading",
-                "--color=never",
-                "--max-count",
-            ])
-            .arg(limit.to_string())
-            .arg("-")
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .kill_on_drop(true)
-            .spawn()
-            .map_err(|error| format!("spawn content-bound rg: {error}"))?;
-        let mut stdin = child
-            .stdin
-            .take()
-            .ok_or_else(|| "content-bound rg stdin unavailable".to_owned())?;
-        let bytes = corpus.bytes.clone();
-        let writer = tokio::spawn(async move {
-            stdin.write_all(&bytes).await?;
-            stdin.shutdown().await
-        });
-        let mut stdout = child
-            .stdout
-            .take()
-            .ok_or_else(|| "content-bound rg stdout unavailable".to_owned())?;
-        let mut stderr = child
-            .stderr
-            .take()
-            .ok_or_else(|| "content-bound rg stderr unavailable".to_owned())?;
-        let mut output = Vec::new();
-        let mut error = Vec::new();
-        let (_, _, status) = tokio::try_join!(
-            stdout.read_to_end(&mut output),
-            stderr.read_to_end(&mut error),
-            child.wait()
-        )
-        .map_err(|error| format!("execute content-bound rg: {error}"))?;
-        writer
-            .await
-            .map_err(|error| format!("join content-bound rg writer: {error}"))?
-            .map_err(|error| format!("write content-bound rg corpus: {error}"))?;
-        if !status.success() && status.code() != Some(1) {
+    let mut processes = Vec::with_capacity(blocks.len());
+    let mut truncated = false;
+    for (block_index, block) in blocks.iter().enumerate() {
+        let analysis = agent_semantic_shell_parser::analyze_native_rg_argv(block);
+        if !analysis.is_admitted() {
             return Err(format!(
-                "content-bound rg failed: {}",
-                String::from_utf8_lossy(&error)
+                "native rg argv is not admitted: blockIndex={block_index} diagnostics={:?}",
+                analysis.diagnostics
             ));
         }
-        let mut paths = BTreeSet::new();
-        let mut matches = Vec::new();
-        for line in output
-            .split(|byte| *byte == b'\n')
-            .filter(|line| !line.is_empty())
-        {
-            let separator = line
-                .iter()
-                .position(|byte| *byte == b':')
-                .ok_or_else(|| "content-bound rg omitted line-number evidence".to_owned())?;
-            let line = std::str::from_utf8(&line[..separator])
-                .map_err(|_| "content-bound rg line number is not UTF-8".to_owned())?
-                .parse::<u64>()
-                .map_err(|_| "content-bound rg line number is invalid".to_owned())?;
-            let owner = crate::owner_for_corpus_line(&corpus.owner_spans, line)
-                .ok_or_else(|| "content-bound rg result escaped the immutable corpus".to_owned())?;
-            paths.insert(owner.owner_path.clone());
-            matches.push(ContentBoundNativeRgMatch {
-                owner_path: owner.owner_path.clone(),
-                owner_line: line - owner.start_line + 1,
-            });
-            if matches.len() == limit {
-                break;
-            }
+        let mut child = Command::new("rg")
+            .args(block)
+            .current_dir(snapshot.path())
+            .env_remove("RIPGREP_CONFIG_PATH")
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|error| format!("execute admitted native rg: {error}"))?;
+        let stdout = child
+            .stdout
+            .take()
+            .ok_or_else(|| "native rg stdout pipe was not captured".to_owned())?;
+        let stderr = child
+            .stderr
+            .take()
+            .ok_or_else(|| "native rg stderr pipe was not captured".to_owned())?;
+        let stdout_reader = std::thread::spawn(move || bounded_capture(stdout));
+        let stderr_reader = std::thread::spawn(move || bounded_capture(stderr));
+        let status = child
+            .wait()
+            .map_err(|error| format!("wait for admitted native rg: {error}"))?;
+        let stdout = stdout_reader
+            .join()
+            .map_err(|_| "native rg stdout capture panicked".to_owned())??;
+        let stderr = stderr_reader
+            .join()
+            .map_err(|_| "native rg stderr capture panicked".to_owned())??;
+        if stdout.exceeded || stderr.exceeded {
+            return Err(format!(
+                "native rg output exceeded the bounded envelope: blockIndex={block_index} stdoutBytes={} stderrBytes={} maximumBytes={MAX_NATIVE_RG_OUTPUT_BYTES}",
+                stdout.byte_count, stderr.byte_count
+            ));
         }
-        branch_candidate_owner_paths.push(paths.into_iter().collect());
-        branch_matches.push(matches);
+        let exit_code = status.code().ok_or_else(|| {
+            format!("native rg terminated without an exit code: blockIndex={block_index}")
+        })?;
+        let process_receipt = ContentBoundNativeRgProcessReceipt {
+            exact_argv: block.clone(),
+            argv_digest: digest(
+                &serde_json::to_vec(block)
+                    .map_err(|error| format!("encode exact native rg argv: {error}"))?,
+            ),
+            exit_code,
+            stdout_byte_count: stdout.byte_count,
+            stderr_byte_count: stderr.byte_count,
+            stdout_digest: stdout.digest,
+            stderr_digest: stderr.digest,
+            output_attribution: analysis.output_attribution.as_str().to_owned(),
+        };
+        if !matches!(exit_code, 0 | 1) {
+            return Err(format!(
+                "native rg failed: blockIndex={block_index} exitCode={exit_code} stdoutDigest={} stderrDigest={} stderr={}",
+                process_receipt.stdout_digest,
+                process_receipt.stderr_digest,
+                String::from_utf8_lossy(&stderr.bytes).trim()
+            ));
+        }
+        let decoded = if exit_code == 1 {
+            DecodedRgOutput::default()
+        } else {
+            decode_native_rg_output(
+                &stdout.bytes,
+                &analysis,
+                snapshot.path(),
+                &corpus.owner_spans,
+                limit,
+            )?
+        };
+        if exit_code == 0 && !stdout.bytes.is_empty() && decoded.owner_paths.is_empty() {
+            return Err(format!(
+                "reasonKind=rg-output-not-attributable blockIndex={block_index} stdoutDigest={} outputAttribution={}",
+                process_receipt.stdout_digest,
+                analysis.output_attribution.as_str()
+            ));
+        }
+        truncated |= decoded.truncated;
+        branch_candidate_owner_paths.push(decoded.owner_paths);
+        branch_matches.push(decoded.matches);
+        processes.push(process_receipt);
     }
-    let truncated = branch_matches.iter().any(|matches| matches.len() == limit);
     Ok(ContentBoundNativeRgReceipt {
         axis: axis_receipt(branch_candidate_owner_paths),
         branch_matches,
-        process_count: blocks.len(),
+        process_count: processes.len(),
+        processes,
         truncated,
     })
 }
 
-fn native_rg_stdin_argv(argv: &[String]) -> Result<Vec<String>, String> {
-    let mut output = Vec::new();
-    let mut positionals = Vec::new();
-    let mut has_regexp = false;
-    let mut index = 0;
-    while index < argv.len() {
-        let argument = &argv[index];
-        if matches!(argument.as_str(), "-e" | "--regexp") {
-            let value = argv
-                .get(index + 1)
-                .ok_or_else(|| "rg --regexp requires a value".to_owned())?;
-            output.push(argument.clone());
-            output.push(value.clone());
-            has_regexp = true;
-            index += 2;
-        } else if argument.starts_with("--regexp=") {
-            output.push(argument.clone());
-            has_regexp = true;
-            index += 1;
-        } else if matches!(
-            argument.as_str(),
-            "-n" | "--line-number"
-                | "-i"
-                | "--ignore-case"
-                | "-s"
-                | "--case-sensitive"
-                | "-S"
-                | "--smart-case"
-                | "-F"
-                | "--fixed-strings"
-                | "-w"
-                | "--word-regexp"
-                | "-x"
-                | "--line-regexp"
-                | "-U"
-                | "--multiline"
-                | "--multiline-dotall"
-                | "--crlf"
-        ) {
-            output.push(argument.clone());
-            index += 1;
-        } else if argument.starts_with('-') {
-            return Err(format!("rg option is not admitted: {argument}"));
+struct BoundedCapture {
+    bytes: Vec<u8>,
+    byte_count: usize,
+    digest: String,
+    exceeded: bool,
+}
+
+fn bounded_capture(mut reader: impl Read) -> Result<BoundedCapture, String> {
+    let mut retained = Vec::with_capacity(64 * 1024);
+    let mut buffer = [0_u8; 64 * 1024];
+    let mut byte_count = 0_usize;
+    let mut hasher = blake3::Hasher::new();
+    loop {
+        let read = reader
+            .read(&mut buffer)
+            .map_err(|error| format!("capture native rg output: {error}"))?;
+        if read == 0 {
+            break;
+        }
+        byte_count = byte_count.saturating_add(read);
+        hasher.update(&buffer[..read]);
+        let remaining = MAX_NATIVE_RG_OUTPUT_BYTES.saturating_sub(retained.len());
+        retained.extend_from_slice(&buffer[..read.min(remaining)]);
+    }
+    Ok(BoundedCapture {
+        bytes: retained,
+        byte_count,
+        digest: format!("blake3-256:{}", hasher.finalize().to_hex()),
+        exceeded: byte_count > MAX_NATIVE_RG_OUTPUT_BYTES,
+    })
+}
+
+fn validate_corpus_receipt(corpus: &crate::ColdRgCorpusArtifact) -> Result<(), String> {
+    if corpus.receipt.owner_count != corpus.owner_spans.len()
+        || digest(&corpus.bytes) != corpus.receipt.corpus_digest
+        || digest(
+            &serde_json::to_vec(&corpus.owner_spans)
+                .map_err(|error| format!("encode cold rg owner spans: {error}"))?,
+        ) != corpus.receipt.owner_spans_digest
+    {
+        return Err("cold rg corpus receipt does not bind the provided artifact".to_owned());
+    }
+    Ok(())
+}
+
+fn materialize_generation_tree(
+    corpus: &crate::ColdRgCorpusArtifact,
+    root: &std::path::Path,
+) -> Result<(), String> {
+    let mut cursor = 0;
+    let mut expected_start_line = 1_u64;
+    for owner in &corpus.owner_spans {
+        if owner.start_line != expected_start_line || owner.end_line < owner.start_line {
+            return Err("cold rg owner spans are not contiguous and canonical".to_owned());
+        }
+        let start = cursor;
+        for _ in owner.start_line..=owner.end_line {
+            let relative = corpus.bytes[cursor..]
+                .iter()
+                .position(|byte| *byte == b'\n')
+                .ok_or_else(|| "cold rg owner span exceeds corpus bytes".to_owned())?;
+            cursor += relative + 1;
+        }
+        let normalized = &corpus.bytes[start..cursor];
+        let bytes = if digest(normalized) == owner.content_digest {
+            normalized
+        } else if normalized.ends_with(b"\n")
+            && digest(&normalized[..normalized.len() - 1]) == owner.content_digest
+        {
+            &normalized[..normalized.len() - 1]
         } else {
-            positionals.push(argument.clone());
-            index += 1;
-        }
+            return Err(format!(
+                "cold rg owner span does not reconstruct its content digest: {}",
+                owner.owner_path
+            ));
+        };
+        let destination = root.join(&owner.owner_path);
+        let parent = destination
+            .parent()
+            .ok_or_else(|| "cold rg owner has no snapshot parent".to_owned())?;
+        std::fs::create_dir_all(parent).map_err(|error| {
+            format!(
+                "create immutable rg snapshot directory {}: {error}",
+                parent.display()
+            )
+        })?;
+        std::fs::write(&destination, bytes).map_err(|error| {
+            format!(
+                "write immutable rg snapshot owner {}: {error}",
+                destination.display()
+            )
+        })?;
+        let mut permissions = std::fs::metadata(&destination)
+            .map_err(|error| format!("read immutable rg snapshot permissions: {error}"))?
+            .permissions();
+        permissions.set_readonly(true);
+        std::fs::set_permissions(&destination, permissions)
+            .map_err(|error| format!("seal immutable rg snapshot owner: {error}"))?;
+        expected_start_line = owner.end_line + 1;
     }
-    if has_regexp {
-        if positionals.iter().any(|value| value != ".") {
-            return Err("rg paths must remain the canonical workspace".to_owned());
-        }
+    if cursor != corpus.bytes.len() {
+        return Err("cold rg owner spans do not consume the complete corpus".to_owned());
+    }
+    Ok(())
+}
+
+#[derive(Default)]
+struct DecodedRgOutput {
+    owner_paths: Vec<String>,
+    matches: Vec<ContentBoundNativeRgMatch>,
+    truncated: bool,
+}
+
+fn decode_native_rg_output(
+    stdout: &[u8],
+    analysis: &NativeRgArgvAnalysis,
+    snapshot_root: &std::path::Path,
+    owner_spans: &[crate::ColdRgOwnerSpan],
+    limit: usize,
+) -> Result<DecodedRgOutput, String> {
+    let aliases = owner_aliases(snapshot_root, owner_spans);
+    if analysis.output_attribution == NativeRgOutputAttribution::JsonPathLine {
+        decode_json_output(stdout, &aliases, limit)
     } else {
-        let pattern = positionals
-            .first()
-            .ok_or_else(|| "rg block requires a pattern".to_owned())?;
-        output.push(pattern.clone());
-        if positionals.iter().skip(1).any(|value| value != ".") {
-            return Err("rg paths must remain the canonical workspace".to_owned());
+        decode_text_output(stdout, analysis, &aliases, limit)
+    }
+}
+
+fn owner_aliases(
+    snapshot_root: &std::path::Path,
+    owner_spans: &[crate::ColdRgOwnerSpan],
+) -> Vec<(String, String)> {
+    let mut aliases = owner_spans
+        .iter()
+        .flat_map(|owner| {
+            let absolute = snapshot_root.join(&owner.owner_path);
+            [
+                (owner.owner_path.clone(), owner.owner_path.clone()),
+                (format!("./{}", owner.owner_path), owner.owner_path.clone()),
+                (absolute.display().to_string(), owner.owner_path.clone()),
+            ]
+        })
+        .collect::<Vec<_>>();
+    aliases.sort_by(|left, right| {
+        right
+            .0
+            .len()
+            .cmp(&left.0.len())
+            .then_with(|| left.cmp(right))
+    });
+    aliases.dedup();
+    aliases
+}
+
+fn decode_json_output(
+    stdout: &[u8],
+    aliases: &[(String, String)],
+    limit: usize,
+) -> Result<DecodedRgOutput, String> {
+    let mut decoded = DecodedRgOutput::default();
+    let mut owners = BTreeSet::new();
+    for line in stdout
+        .split(|byte| *byte == b'\n')
+        .filter(|line| !line.is_empty())
+    {
+        let value: serde_json::Value = serde_json::from_slice(line)
+            .map_err(|error| format!("decode native rg JSON output: {error}"))?;
+        if value.get("type").and_then(serde_json::Value::as_str) != Some("match") {
+            continue;
+        }
+        let path = value
+            .pointer("/data/path/text")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| "native rg JSON match omitted a UTF-8 path".to_owned())?;
+        let owner = canonical_owner(path, aliases)
+            .ok_or_else(|| format!("native rg JSON path escaped the immutable corpus: {path}"))?;
+        owners.insert(owner.clone());
+        if let Some(owner_line) = value
+            .pointer("/data/line_number")
+            .and_then(serde_json::Value::as_u64)
+        {
+            decoded.matches.push(ContentBoundNativeRgMatch {
+                owner_path: owner,
+                owner_line,
+            });
+        }
+        if owners.len().max(decoded.matches.len()) > limit {
+            decoded.truncated = true;
+            break;
         }
     }
-    Ok(output)
+    decoded.owner_paths = owners.into_iter().take(limit).collect();
+    decoded.matches.truncate(limit);
+    Ok(decoded)
+}
+
+fn decode_text_output(
+    stdout: &[u8],
+    analysis: &NativeRgArgvAnalysis,
+    aliases: &[(String, String)],
+    limit: usize,
+) -> Result<DecodedRgOutput, String> {
+    let mut decoded = DecodedRgOutput::default();
+    let mut owners = BTreeSet::new();
+    let mut current_heading = None::<String>;
+    let path_only = analysis.output_attribution == NativeRgOutputAttribution::PathOnly;
+    let normalized = stdout
+        .iter()
+        .map(|byte| if *byte == 0 { b':' } else { *byte })
+        .collect::<Vec<_>>();
+    for raw_line in normalized
+        .split(|byte| *byte == b'\n')
+        .filter(|line| !line.is_empty())
+    {
+        let line = String::from_utf8_lossy(raw_line);
+        if let Some(owner) = canonical_owner(line.as_ref(), aliases) {
+            owners.insert(owner.clone());
+            current_heading = Some(owner);
+        } else if let Some((owner, remainder)) = owner_prefixed_remainder(line.as_ref(), aliases) {
+            owners.insert(owner.clone());
+            current_heading = Some(owner.clone());
+            if !path_only && let Some(owner_line) = leading_delimited_number(remainder) {
+                decoded.matches.push(ContentBoundNativeRgMatch {
+                    owner_path: owner,
+                    owner_line,
+                });
+            }
+        } else if !path_only
+            && let Some(owner) = current_heading.clone()
+            && let Some(owner_line) = leading_number(line.as_ref())
+        {
+            decoded.matches.push(ContentBoundNativeRgMatch {
+                owner_path: owner,
+                owner_line,
+            });
+        }
+        if owners.len().max(decoded.matches.len()) > limit {
+            decoded.truncated = true;
+            break;
+        }
+    }
+    decoded.owner_paths = owners.into_iter().take(limit).collect();
+    decoded.matches.sort_by(|left, right| {
+        left.owner_path
+            .cmp(&right.owner_path)
+            .then_with(|| left.owner_line.cmp(&right.owner_line))
+    });
+    decoded.matches.dedup();
+    decoded.matches.truncate(limit);
+    Ok(decoded)
+}
+
+fn canonical_owner(value: &str, aliases: &[(String, String)]) -> Option<String> {
+    let value = value.trim_end_matches(['\r', ':']);
+    aliases
+        .iter()
+        .find(|(alias, _)| value == alias)
+        .map(|(_, owner)| owner.clone())
+}
+
+fn owner_prefixed_remainder<'a>(
+    value: &'a str,
+    aliases: &[(String, String)],
+) -> Option<(String, &'a str)> {
+    aliases.iter().find_map(|(alias, owner)| {
+        value
+            .strip_prefix(alias)
+            .filter(|remainder| {
+                remainder
+                    .chars()
+                    .next()
+                    .is_some_and(|character| !character.is_alphanumeric())
+            })
+            .map(|remainder| (owner.clone(), remainder))
+    })
+}
+
+fn leading_delimited_number(value: &str) -> Option<u64> {
+    let value = value.strip_prefix(':')?;
+    leading_number(value)
+}
+
+fn leading_number(value: &str) -> Option<u64> {
+    let digits = value
+        .chars()
+        .take_while(|character| character.is_ascii_digit())
+        .collect::<String>();
+    (!digits.is_empty()).then(|| digits.parse().ok()).flatten()
+}
+
+fn digest(bytes: &[u8]) -> String {
+    format!("blake3-256:{}", blake3::hash(bytes).to_hex())
 }
 
 fn axis_receipt(branches: Vec<Vec<String>>) -> ContentBoundNativeRgAxisReceipt {
     let mut candidate_owner_paths = branches.iter().flatten().cloned().collect::<Vec<_>>();
     candidate_owner_paths.sort();
     candidate_owner_paths.dedup();
-    candidate_owner_paths.truncate(CANDIDATE_LIMIT);
     ContentBoundNativeRgAxisReceipt {
         branch_candidate_owner_paths: branches,
         candidate_owner_paths,

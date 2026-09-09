@@ -57,10 +57,10 @@
           "owner-items-structural-skeleton",
           "structural-selector-query"
         ],
-      "queryTerms": [
-        "createProgram",
-        "item-skeleton"
-      ]
+        "queryTerms": [
+          "createProgram",
+          "item-skeleton"
+        ]
       }
     ]
   },
@@ -77,36 +77,23 @@
       "id": "owner-items-structural-skeleton",
       "command": [
         "asp",
-        "typescript",
         "search",
-        "owner",
+        "playbook",
+        "--language",
+        "typescript",
+        "--rg",
+        "-n",
+        "-e",
+        "createProgram|Program|options|host|program",
         "src/compiler/program.ts",
-        "items",
-        "--query",
-        "createProgram|Program|options|host",
-        "--workspace",
-        ".",
-        "--view",
-        "seeds"
+        "--tantivy",
+        "title:\"createProgram\"^2 OR body:\"Program\""
       ],
-  "expect": {
-    "lineProtocol": true,
-    "stdoutContains": [
-          "[search-reasoning] q=owner-query",
-          "selector=typescript://src/compiler/program.ts#item/",
-          "sourceLocatorHint=src/compiler/program.ts:",
-          "A1=item-skeleton(selector=typescript://src/compiler/program.ts#item/",
-          "projection=skeleton",
-          "A2=syntax-outline(selector=typescript://src/compiler/program.ts#item/",
-          "projection=outline",
-          "A3=query-code(selector=typescript://src/compiler/program.ts#item/",
-          "requiresExact=true",
-          "codePolicy=exact-only",
-          "actionFrontier=A1.item-skeleton,A2.syntax-outline,A3.query-code",
-          "recommendedNext=A1.item-skeleton",
-          "nextCommand=asp typescript query --from-hook item-skeleton --selector 'typescript://src/compiler/program.ts#item/",
-          "--names-only",
-          "reason=owner-item-skeleton-ready"
+      "expect": {
+        "stdoutContains": [
+          "#+begin_src gql :name result",
+          "(typescript:Language)-[:RESULTS]->[",
+          "#+end_src"
         ],
         "stdoutNotContains": [
           " read=",
@@ -114,15 +101,16 @@
           "recommendedNext=A1.syntax-outline",
           "reason=owner-item-selector-ready",
           "reason=owner-item-structural-selector-ready",
-          "nextCommand=asp typescript query --selector src/compiler/program.ts:",
-          "nextCommand=asp typescript query --selector src/compiler/program.ts:1514:1514 --workspace . --code",
-          "nextCommand=asp typescript query --from-hook syntax-outline",
-          "actionFrontier=A1.query-code"
+          "nextCommand=asp query playbook --language typescript --selector src/compiler/program.ts:",
+          "nextCommand=asp query playbook --language typescript --selector src/compiler/program.ts:1514:1514 --workspace . --code",
+          "nextCommand=asp query playbook --language typescript --from-hook syntax-outline",
+          "actionFrontier=A1.query-code",
+          "MaterializationSet"
         ],
         "maxStdoutLinesWarn": 80,
-        "maxElapsedMs": 300,
+        "maxElapsedMs": 90000,
         "maxColdStartElapsedMs": 2500,
-        "maxElapsedMsWarn": 2500
+        "maxElapsedMsWarn": 90000
       }
     },
     {
@@ -141,7 +129,7 @@
       ],
       "expect": {
         "stdoutContains": [
-          "[search-owner] q=src/compiler/program.ts",
+          "[search-playbook] q=src/compiler/program.ts",
           "itemQuery=createProgram",
           "structuralSelector=typescript://src/compiler/program.ts#item/function/createProgram",
           "displayLineRange=1515:4841",

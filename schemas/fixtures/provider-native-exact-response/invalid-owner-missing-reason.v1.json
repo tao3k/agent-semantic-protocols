@@ -14,6 +14,6 @@
   "candidates": [],
   "actualKinds": [],
   "recommendedNext": {
-    "command": "asp search playbook --language rust 'inventory' --intent conceptual --scope workspace --coverage candidates --explain compact --workspace ."
+    "command": "asp search playbook --language rust --rg -n -F inventory . --tantivy 'title:inventory^2 OR body:inventory' --workspace ."
   }
 }

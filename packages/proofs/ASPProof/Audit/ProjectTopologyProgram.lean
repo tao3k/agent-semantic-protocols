@@ -88,4 +88,38 @@ theorem indexing_materialized_topology_would_create_a_feedback_input :
       eligibleTopologyInput .topologyMaterialization = false := by
   decide
 
+def relationErasedTwoHop (edges : List DomainEdge) (fromNode toNode : Nat) : Bool :=
+  edges.any fun first =>
+    first.fromNode == fromNode &&
+      edges.any fun second =>
+        second.fromNode == first.toNode && second.toNode == toNode
+
+def publishCoversConfig : DomainEdge :=
+  ⟨20, 30, .covers, .declared, 104, 900⟩
+
+theorem relation_erasure_would_fabricate_a_config_dependency :
+    relationErasedTwoHop [refreshCallsPublish, publishCoversConfig] 10 30 = true ∧
+      derivesDependsOnConfig 900 [refreshCallsPublish, publishCoversConfig] 10 30 =
+        false := by
+  decide
+
+theorem an_empty_proof_cannot_authorize_a_derived_edge :
+    derivedDomainEdgeAdmitted 900
+      { configDependencyConclusion with premiseWitnesses := [] } = false := by
+  decide
+
+theorem partial_coverage_cannot_be_relabelled_as_absence :
+    classifyExpectedRelation false .partialCoverage = .unknown ∧
+      classifyExpectedRelation false .partialCoverage ≠ .certifiedMissing := by
+  decide
+
+theorem a_positive_witness_and_frontier_are_not_simultaneous_states :
+    classifyExpectedRelation true .partialCoverage = .known ∧
+      classifyExpectedRelation true .partialCoverage ≠ .unknown := by
+  decide
+
+theorem proposed_relation_cannot_discharge_an_expected_edge :
+    modalityMayCloseExpectedRelation .proposed = false := by
+  decide
+
 end ASPProof.Audit.ProjectTopologyProgram

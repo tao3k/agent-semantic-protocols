@@ -54,8 +54,9 @@ lake env lean ASPProof/SearchLoopClauseFirst.lean
 lake env lean /tmp/SearchLoopClauseFirstAxioms.lean
 
 cd ../..
-asp org query --kind block --field kind=source --field lang=typst \
-  --workspace . --content
+asp query playbook --documents org \
+  --selector 'org://docs/10-19-rfcs/10.05-interactive-graph-first-progressive-searchloop/10.05.60-lean-typst-audit/00.11-clause-first-mathematical-model.org#item/block/searchloop-clause-first-model' \
+  --projection source
 typst compile --diagnostic-format short --format pdf - /dev/null
 #+end_src
 

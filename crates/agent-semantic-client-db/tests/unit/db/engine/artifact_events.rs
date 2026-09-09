@@ -12,7 +12,7 @@ fn artifact_event_fixture(
         .artifact_path(artifact_path)
         .event_ordinal(0)
         .timestamp_ms(timestamp_ms)
-        .kind("search/owner")
+        .kind("search/playbook")
         .language(
             agent_semantic_client_core::LanguageId::try_new("rust")
                 .expect("valid fixture language"),

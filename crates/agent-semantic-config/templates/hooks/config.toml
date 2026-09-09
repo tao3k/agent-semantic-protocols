@@ -248,8 +248,8 @@ message = "Allowed a path-bearing native Edit action in the registered coding la
 [rules.match]
 pathGlobAny = ["**"]
 
-# Runtime-owned reasoning search dispatch. The public playbook accepts an
-# optional `--language` filter; provider admission remains inside Runtime. The
+# Runtime-owned reasoning search dispatch. The public playbook carries its
+# producer-set union in `--language`; provider admission remains inside Runtime. The
 # rule owns the complete match, intent, decision, and Host role-dispatch policy. Exact selector-bearing
 # query is the main-thread QueryHandoff materialization boundary and is not
 # dispatched back into the Explorer.
@@ -283,7 +283,7 @@ reasonKind = "agent-choice-required"
 event = "pre-tool"
 
 [rules.match]
-argvPatternAny = [["asp", "<registered-language>", "query"]]
+argvPatternAny = [["asp", "query", "playbook"]]
 
 [rules.dispatch]
 transport = "host-agent"
@@ -454,7 +454,7 @@ message = "Agent-facing search JSON is denied; use the compact ASP search route.
 
 [rules.match]
 argvPatternAny = [
-  ["asp", "<registered-language>", "search"],
+  ["asp", "search", "playbook"],
 ]
 commandContainsAny = ["--json"]
 

@@ -3,61 +3,87 @@
 // SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 use super::{
-    compile_graph_relation_pattern, selector_matches_tantivy_terms,
-    smallest_selector_overlapping_line, source_line_ranges, syntax_owner_scope,
+    compile_graph_relation_pattern, fused_file_context_scope, smallest_selector_overlapping_line,
+    source_line_ranges, structural_candidate_owner_scope,
 };
 
 #[test]
-fn syntax_stage_uses_the_union_of_prior_acquisition_owners() {
-    let receipt =
-        |axis, candidate_owners: &[&str]| agent_semantic_search::WorkspaceSearchClauseReceipt {
-            axis,
-            block_index: 0,
-            priority_rank: 0,
-            candidate_owners: candidate_owners
-                .iter()
-                .map(|owner| (*owner).to_owned())
-                .collect(),
-            complete: true,
-            coverage_complete: true,
-            truncated: false,
-        };
-    assert!(syntax_owner_scope(&[]).is_none());
+fn rg_and_tantivy_intersection_owns_the_file_context_scope() {
+    let rg = ["src/rg-only.rs", "src/shared.rs"]
+        .into_iter()
+        .map(str::to_owned)
+        .collect();
+    let tantivy = ["src/tantivy-only.rs", "src/shared.rs"]
+        .into_iter()
+        .map(str::to_owned)
+        .collect();
     assert_eq!(
-        syntax_owner_scope(&[
-            receipt(
-                agent_semantic_search::WorkspaceSearchAxisKind::Rg,
-                &["src/a.rs", "src/shared.rs"],
-            ),
-            receipt(
-                agent_semantic_search::WorkspaceSearchAxisKind::Tantivy,
-                &["src/b.rs", "src/shared.rs"],
-            ),
-        ])
-        .expect("prior acquisition establishes a bounded syntax scope"),
-        ["src/a.rs", "src/b.rs", "src/shared.rs"]
-            .into_iter()
-            .map(str::to_owned)
-            .collect()
+        fused_file_context_scope(&rg, &tantivy),
+        ["src/shared.rs"].into_iter().map(str::to_owned).collect()
     );
 }
 
 #[test]
+fn graph_scope_comes_from_structural_matches_not_the_broader_file_scope() {
+    let candidate =
+        |owner: &str, selector: &str| agent_semantic_search::WorkspaceSearchSyntaxCandidate {
+            owner: owner.to_owned(),
+            selector: selector.to_owned(),
+            relation: "syntax-capture:symbol".to_owned(),
+            hit: Default::default(),
+        };
+    let (owners, truncated) = structural_candidate_owner_scope(
+        &[
+            candidate("src/matched.rs", "rust://src/matched.rs#item/function/a"),
+            candidate("src/matched.rs", "rust://src/matched.rs#item/function/b"),
+        ],
+        30,
+    );
+    assert_eq!(owners, ["src/matched.rs"]);
+    assert!(!truncated);
+}
+
+fn graph_block(language: &str, source: &str) -> agent_semantic_search::GraphNativeBlock {
+    agent_semantic_search::GraphNativeBlock {
+        language: language.to_owned(),
+        argv: vec![source.to_owned()],
+    }
+}
+
+#[test]
 fn gql_adapter_uses_compiler_ir_for_the_admitted_relation_slice() {
-    let Ok(()) = compile_graph_relation_pattern(
+    let Ok(pattern) = compile_graph_relation_pattern(&graph_block(
         "gql",
-        "MATCH (h:Host)-[:PUBLISHES]->(e:RuntimeEndpoint) RETURN h, e",
-    ) else {
+        "MATCH (h:Owner)-[:PUBLISHES]->(e:RuntimeEndpoint) RETURN h, e",
+    )) else {
         panic!("expected compiled GQL relation pattern");
     };
+    assert!(pattern.left_binding.eq_ignore_ascii_case("h"));
+    assert!(pattern.left_kind.eq_ignore_ascii_case("Owner"));
+    assert!(pattern.relation.eq_ignore_ascii_case("PUBLISHES"));
+    assert!(matches!(
+        pattern.direction,
+        agent_semantic_search::ResidentGraphRelationDirection::Out
+    ));
+    assert!(pattern.right_kind.eq_ignore_ascii_case("RuntimeEndpoint"));
+    assert_eq!(
+        pattern
+            .projected_bindings
+            .iter()
+            .map(|binding| binding.to_ascii_lowercase())
+            .collect::<Vec<_>>(),
+        ["h", "e"]
+    );
 }
 
 #[test]
 fn gql_adapter_rejects_semantics_the_executor_does_not_implement() {
-    let Err(super::AspClientOperationError::Message(error)) = compile_graph_relation_pattern(
-        "gql",
-        "MATCH (h:Host)-[:PUBLISHES]->(e:RuntimeEndpoint) WHERE h = 1 RETURN e",
-    ) else {
+    let Err(super::AspClientOperationError::Message(error)) =
+        compile_graph_relation_pattern(&graph_block(
+            "gql",
+            "MATCH (h:Owner)-[:PUBLISHES]->(e:RuntimeEndpoint) WHERE h = 1 RETURN h",
+        ))
+    else {
         panic!("filtered GQL must fail closed");
     };
     assert!(error.contains("unfiltered MATCH"), "{error}");
@@ -65,12 +91,33 @@ fn gql_adapter_rejects_semantics_the_executor_does_not_implement() {
 
 #[test]
 fn pgql_uses_the_same_v1_relation_ir_boundary() {
-    let Ok(()) = compile_graph_relation_pattern(
+    let Ok(pattern) = compile_graph_relation_pattern(&graph_block(
         "pgql",
-        "MATCH (h:Host)-[:PUBLISHES]->(e:RuntimeEndpoint) RETURN h, e",
-    ) else {
+        "MATCH (h:Owner)-[:PUBLISHES]->(e:RuntimeEndpoint) RETURN h, e",
+    )) else {
         panic!("expected PGQL relation pattern to share the V1 IR boundary");
     };
+    assert_eq!(
+        pattern
+            .projected_bindings
+            .iter()
+            .map(|binding| binding.to_ascii_lowercase())
+            .collect::<Vec<_>>(),
+        ["h", "e"]
+    );
+}
+
+#[test]
+fn gql_adapter_rejects_a_projection_without_an_owner_endpoint() {
+    let Err(super::AspClientOperationError::Message(error)) =
+        compile_graph_relation_pattern(&graph_block(
+            "gql",
+            "MATCH (h:Owner)-[:PUBLISHES]->(e:RuntimeEndpoint) RETURN e",
+        ))
+    else {
+        panic!("non-owner projection must fail closed");
+    };
+    assert!(error.contains("project an Owner endpoint"), "{error}");
 }
 
 #[test]
@@ -103,27 +150,4 @@ fn rg_line_maps_to_the_smallest_parser_owned_enclosing_selector() {
             .selector,
         "rust://src/lib.rs#item/function/exact"
     );
-}
-
-#[test]
-fn tantivy_terms_map_only_to_parser_selectors_with_matching_query_keys() {
-    let selector = agent_semantic_search::NativeSyntaxSelector {
-        selector: "rust://src/lib.rs#item/function/RuntimeServingEndpoint".to_owned(),
-        byte_start: 0,
-        byte_end: 10,
-        query_keys: vec![
-            "runtime".to_owned(),
-            "serving".to_owned(),
-            "endpoint".to_owned(),
-        ],
-        derived_projection_digest: format!("blake3-256:{}", "a".repeat(64)),
-    };
-    assert!(selector_matches_tantivy_terms(
-        &selector,
-        &["runtime".to_owned()].into_iter().collect()
-    ));
-    assert!(!selector_matches_tantivy_terms(
-        &selector,
-        &["transport".to_owned()].into_iter().collect()
-    ));
 }

@@ -8,7 +8,6 @@ use agent_semantic_client::projection_presentation::{
 };
 use agent_semantic_client_protocol::ClientFrame;
 use orgize::Org;
-use orgize::ast::ElementData;
 use serde_json::{Value, json};
 
 fn response(result: Value) -> ClientFrame {
@@ -126,12 +125,14 @@ fn preserves_runtime_exact_query_failure_terminal() {
 }
 
 fn search_result() -> ClientFrame {
-    response(
-        serde_json::from_str(include_str!(
-            "../../../../schemas/fixtures/search-topology-settlement/valid-derived-and-proposed.v1.json"
-        ))
-        .expect("valid Search settlement fixture"),
-    )
+    let mut packet: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../../schemas/fixtures/search-topology-settlement/valid-derived-and-proposed.v1.json"
+    ))
+    .expect("valid Search settlement fixture");
+    packet["schemaVersion"] = serde_json::json!("2");
+    packet["resultState"] = serde_json::json!("queryable");
+    packet.as_object_mut().unwrap().remove("materializationSet");
+    response(packet)
 }
 
 #[test]
@@ -141,8 +142,13 @@ fn search_success_is_exactly_one_org_owned_gql_block() {
     let records = parsed.document().source_block_records();
     assert_eq!(records.len(), 1);
     assert_eq!(records[0].language.as_deref(), Some("gql"));
-    assert!(rendered.starts_with("#+begin_src gql :profile search-evidence.v1 :eval never\n"));
+    assert!(rendered.starts_with("#+begin_src gql :name result\n"));
     assert!(rendered.ends_with("#+end_src\n"));
+    assert!(rendered.contains("(rust:Language)-[:RESULTS]->["));
+    assert!(rendered.contains(
+        "projection:{rank:1,depth:0,hit:{rg:[[42,46]],tantivy:[\"artifact refresh\"],native:true}}"
+    ));
+    assert!(!rendered.contains("MaterializationSet"));
     for forbidden in [
         "[search-result]",
         "QueryGrammar",
@@ -184,23 +190,31 @@ fn search_rejects_internal_plan_and_invalid_settlement() {
 }
 
 #[test]
-fn query_success_is_gql_keyword_immediately_followed_by_native_source() {
+fn query_success_is_only_native_result_blocks_in_request_order() {
+    let rust_selector = "rust://src/registry.rs#item/function/refresh_registry";
+    let json_selector = "json://schemas/project-config.schema.json#item/pointer/properties/hook";
     let frame = response(json!({
         "schemaId": "agent.semantic-protocols.query-playbook-materialization-receipt",
         "schemaVersion": "1",
-        "materializations": [{
-            "selector": "rust://src/registry.rs#item/function/refresh_registry",
+        "requestedSelectors": [rust_selector, json_selector],
+        "materializations": [
+        {
+            "selector": rust_selector,
             "languageId": "rust",
             "providerId": "asp-rust",
             "ownerPath": "src/registry.rs",
             "projection": "source",
             "sourceContentDigest": "b".repeat(64),
-            "gqlRelationships": [{
-                "fromNode": "Registry::refresh",
-                "relation": "calls",
-                "toNode": "Registry::publish"
-            }],
             "bytes": [112, 117, 98, 32, 102, 110, 32, 114, 101, 102, 114, 101, 115, 104, 95, 114, 101, 103, 105, 115, 116, 114, 121, 40, 41, 32, 123, 125]
+        },
+        {
+            "selector": json_selector,
+            "languageId": "json",
+            "providerId": "asp-json",
+            "ownerPath": "schemas/project-config.schema.json",
+            "projection": "source",
+            "sourceContentDigest": "c".repeat(64),
+            "bytes": [123, 34, 101, 110, 97, 98, 108, 101, 100, 34, 58, 116, 114, 117, 101, 125]
         }],
         "terminal": {"state": "ready", "terminalCount": 1}
     }));
@@ -208,39 +222,70 @@ fn query_success_is_gql_keyword_immediately_followed_by_native_source() {
         render_workspace_query_playbook_response(&frame, ProjectionPresentation::Text).unwrap();
     assert_eq!(
         rendered,
-        "#+GQL: Registry::refresh --calls--> Registry::publish\n#+begin_src rust :query \"rust://src/registry.rs#item/function/refresh_registry\" :filename \"src/registry.rs\"\npub fn refresh_registry() {}\n#+end_src\n"
+        "#+begin_src rust :query \"rust://src/registry.rs#item/function/refresh_registry\" :filename \"src/registry.rs\"\npub fn refresh_registry() {}\n#+end_src\n\n#+begin_src json :query \"json://schemas/project-config.schema.json#item/pointer/properties/hook\" :filename \"schemas/project-config.schema.json\"\n{\"enabled\":true}\n#+end_src\n"
     );
     let parsed = Org::parse(&rendered);
     assert_eq!(parsed.document().children.len(), 2);
-    assert!(matches!(
-        &parsed.document().children[0].data,
-        ElementData::Keyword(keyword) if keyword.key.eq_ignore_ascii_case("gql")
-    ));
-    assert_eq!(parsed.document().source_block_records().len(), 1);
-    assert!(!rendered.contains("gqlAffiliation"));
+    assert_eq!(parsed.document().source_block_records().len(), 2);
+    assert!(!rendered.to_ascii_lowercase().contains("gql"));
 }
 
 #[test]
-fn query_rejects_missing_relationship_instead_of_exposing_bare_source() {
+fn query_failure_and_order_drift_cannot_be_rendered_as_successful_concat() {
     let frame = response(json!({
         "schemaId": "agent.semantic-protocols.query-playbook-materialization-receipt",
         "schemaVersion": "1",
-        "materializations": [{
-            "selector": "rust://src/lib.rs#item/function/run",
-            "languageId": "rust",
-            "providerId": "asp-rust",
-            "ownerPath": "src/lib.rs",
-            "projection": "source",
-            "sourceContentDigest": "b".repeat(64),
-            "gqlRelationships": [],
-            "bytes": [102, 110, 32, 114, 117, 110, 40, 41, 32, 123, 125]
-        }],
-        "terminal": {"state": "ready", "terminalCount": 1}
+        "requestedSelectors": ["rust://src/lib.rs#item/function/run"],
+        "materializations": [],
+        "terminal": {
+            "state": "failed",
+            "terminalCount": 1,
+            "reasonKind": "query-playbook-selector-not-materialized"
+        }
     }));
     assert!(
         render_workspace_query_playbook_response(&frame, ProjectionPresentation::Text)
             .unwrap_err()
-            .contains("exactly one GQL relationship")
+            .contains("reasonKind=query-playbook-selector-not-materialized")
+    );
+
+    let mut drifted = response(json!({
+        "schemaId": "agent.semantic-protocols.query-playbook-materialization-receipt",
+        "schemaVersion": "1",
+        "requestedSelectors": [
+            "rust://src/a.rs#item/function/a",
+            "rust://src/b.rs#item/function/b"
+        ],
+        "materializations": [],
+        "terminal": {"state": "ready", "terminalCount": 1}
+    }));
+    if let ClientFrame::Response {
+        result: Some(receipt),
+        ..
+    } = &mut drifted
+    {
+        receipt["materializations"] = json!([{
+            "selector": "rust://src/b.rs#item/function/b",
+            "languageId": "rust",
+            "providerId": "asp-rust",
+            "ownerPath": "src/b.rs",
+            "projection": "source",
+            "sourceContentDigest": "b".repeat(64),
+            "bytes": [98]
+        }, {
+            "selector": "rust://src/a.rs#item/function/a",
+            "languageId": "rust",
+            "providerId": "asp-rust",
+            "ownerPath": "src/a.rs",
+            "projection": "source",
+            "sourceContentDigest": "a".repeat(64),
+            "bytes": [97]
+        }]);
+    }
+    assert!(
+        render_workspace_query_playbook_response(&drifted, ProjectionPresentation::Text)
+            .unwrap_err()
+            .contains("do not preserve the complete request order")
     );
 }
 

@@ -271,7 +271,7 @@ def _query_first_stage_request() -> dict[str, object]:
         "asp_python_graphs queryClauses clause coverage scoring",
         "typed graph request rank objective",
     ]
-    packet["seedIds"] = [
+    packet["entryNodeIds"] = [
         "query:asp_python_graphs",
         "owner:packages/python/asp_python_graphs/src/asp_python_graphs/ranking_score.py",
     ]

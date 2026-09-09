@@ -62,7 +62,7 @@ providerToolRoot
 envelopeRoot
 #+end_example
 
-=providerToolRoot= identifies the installed language harness and is never
+=providerToolRoot= identifies the installed ASP language provider and is never
 compared with a downstream target root.
 
 When the requested path is a package root inside a larger Cargo workspace, the
@@ -80,7 +80,7 @@ requestedDiscoveryRoot == cargoWorkspaceRoot == envelopeRoot
 selectedPackageRoot == null
 #+end_example
 
-Package selection MUST come from the registered language harness package graph.
+Package selection MUST come from the registered ASP language provider package graph.
 It MUST NOT be inferred from path depth or promoted to the outer workspace
 merely because a workspace manifest exists above the requested package.
 
@@ -99,7 +99,7 @@ An exact selector names one parser-owned canonical item, not the nearest
 top-level ancestor that happens to contain the matched symbol.
 
 For languages that permit declarations inside another declaration or block,
-the registered language harness MUST recursively materialize those declarations
+the registered ASP language provider MUST recursively materialize those declarations
 as independent items.  Their identity carries the complete enclosing scope
 chain in addition to the language, owner path, item kind, and symbol.
 
@@ -155,7 +155,7 @@ together pin the bytes.
   canonical key, digest validation, and zero-allocation lookup primitive.
 - =agent-semantic-search= owns fixture loading, memory mapping, generation
   admission, lookup, and performance receipts.
-- every registered language harness owns population of canonical selectors,
+- every registered ASP language provider owns population of canonical selectors,
   normalized parser facts, and exact projection ranges for its language.
 - =agent-semantic-client= resolves the active fixture and delegates exact
   lookup to Search.  It MUST NOT reconstruct a workspace Merkle tree, open

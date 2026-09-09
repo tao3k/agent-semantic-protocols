@@ -6,37 +6,6 @@
   "additionalProperties": false,
   "required": ["previous_status"],
   "properties": {
-    "previous_status": { "$ref": "#/$defs/agentStatus" }
-  },
-  "$defs": {
-    "agentStatus": {
-      "oneOf": [
-        {
-          "enum": [
-            "pending_init",
-            "running",
-            "interrupted",
-            "shutdown",
-            "not_found"
-          ]
-        },
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["completed"],
-          "properties": {
-            "completed": { "type": ["string", "null"] }
-          }
-        },
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["errored"],
-          "properties": {
-            "errored": { "type": "string" }
-          }
-        }
-      ]
-    }
+    "previous_status": { "$ref": "https://schemas.agent-semantic-protocols.dev/semantic-agent-definitions.schema.json#/$defs/agentStatus" }
   }
 }

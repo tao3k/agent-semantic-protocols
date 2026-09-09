@@ -7,18 +7,19 @@
 
 * Problem
 
-An agent-facing exact query owns an 800ms foreground budget.  Cold workspace
-candidate discovery may exceed that budget.  If discovery and admission live
-only inside the request future, timeout cancellation leaves the Runtime Server
+An agent-facing Search or Query request has a hard sub-millisecond resident
+dispatch budget.  Cold workspace candidate discovery necessarily belongs
+outside that budget.  If discovery and admission live only inside the request
+future, request completion leaves the Runtime Server
 with workspace state =missing=.  Repeated queries then repeat the same cold
 work and can never reach a warm generation.
 
 * Contract
 
-The Runtime Server must establish a durable background repair task before the
-foreground repair request can be cancelled.  Foreground timeout may end the
-client wait, but it must not cancel candidate discovery, generation admission,
-materialization, or publication.
+The Runtime Server must establish or coalesce a durable background repair task
+without making the foreground request its owner.  The request immediately
+returns typed not-ready evidence; its completion must not cancel candidate
+discovery, generation admission, materialization, or publication.
 
 The first request may return a typed =generation-building= response.  A later
 request reads either the published generation or a typed terminal failure.
@@ -35,9 +36,19 @@ terminal evidence.  Client disconnect is not a failure transition.
 
 * Performance gate
 
-Cold repair acknowledgement must complete within the agent-facing budget.
+Cold repair acknowledgement and typed not-ready construction must complete in
+strictly less than 1,000 microseconds.
 The expensive discovery/materialization path executes after acknowledgement.
 Warm exact reads retain their existing performance gate.
+
+The detached complete-generation =fd= inventory MUST NOT inherit the 800ms
+foreground deadline.  It remains finite through its workspace boundary,
+validated paths, byte envelope, and the single deduplicated repair task.
+Explicit inventory deadlines belong only to focused leaf/tool calls.
+The focused 4,096-owner gate requires the sharded resident inventory to finish
+below 250ms at no less than 20,000 owners/second with zero child processes.
+Generation-bound resident rg retains sequential p99 below 10ms and 32-way
+concurrent p99 below 100ms, with zero child processes and zero Tantivy builds.
 
 * Safety
 
@@ -54,9 +65,10 @@ identity/project root, an exact read must reuse the published generation handle.
 It must not invoke repair, candidate discovery, provider resolution, admission,
 or terminal-state waiting.
 
-The ready fast path has a 100ms wall budget, performs zero provider invocations
-and zero database opens, and may use only bounded Runtime Server control-plane
-roundtrips. Only =missing= or =recovery-required= may enqueue repair. A ready
+The cold and warm request paths each have a strictly-less-than-1,000-microsecond
+wall budget and perform zero provider invocations, parser calls, filesystem
+reads, database opens, generation builds, and terminal waits. Only =missing= or
+=recovery-required= may enqueue repair. A ready
 observation cannot be upgraded into repair merely to prove readiness again.
 
 * Repair executor lifetime

@@ -349,28 +349,43 @@ async fn materialize(request: MaterializeRequest) -> Result<(), String> {
     emit_live_corpus_timing("extension-evidence", &mut step_started);
 
     let client = agent_semantic_client::RuntimeLanguageCommandClient;
+    let search = qualification::client_protocol::search_receipt_for_literal(
+        &client,
+        &source,
+        corpus.language.as_str(),
+        &corpus.inputs.query,
+    )
+    .await?;
+    let selector = search.selectors.first().ok_or_else(|| {
+        format!(
+            "Live Corpus Search Playbook returned no parser-owned selector: resourceId={}",
+            corpus.resource_id
+        )
+    })?;
     let response = agent_semantic_client::LanguageCommandClient::dispatch(
         &client,
         agent_semantic_client::LanguageCommandRequest {
             language_id: agent_semantic_client::LanguageId::new(corpus.language.as_str()),
-            operation: agent_semantic_client::LanguageCommandOperation::Search(
-                agent_semantic_client_protocol::AspClientSearchRequest::playbook(
-                    "conceptual",
-                    corpus.inputs.query.clone(),
-                ),
+            operation: agent_semantic_client::LanguageCommandOperation::ExactQuery(
+                agent_semantic_client_protocol::AspClientExactQueryRequest {
+                    schema_id: "agent.semantic-protocols.asp-client-exact-query-request".to_owned(),
+                    schema_version: "1".to_owned(),
+                    selector: selector.clone(),
+                    projection: "source".to_owned(),
+                },
             ),
             project_root: source.clone(),
             machine_readable: true,
         },
     )
     .await?;
-    let generation = serde_json::from_value::<agent_semantic_search::SearchPlaybookReceipt>(
-        response.require_ready_payload()?,
-    )
-    .map_err(|error| format!("decode Live Corpus public search payload: {error}"))?;
-    generation.validate()?;
-    let materialized_source =
-        materialized_source_identity(checkout, generation.source_root_digest)?;
+    let query =
+        serde_json::from_value::<agent_semantic_client_protocol::AspClientExactQueryResponse>(
+            response.require_ready_payload()?,
+        )
+        .map_err(|error| format!("decode Live Corpus exact Query payload: {error}"))?;
+    query.validate()?;
+    let materialized_source = materialized_source_identity(checkout, query.root_digest)?;
     emit_live_corpus_timing("runtime-generation", &mut step_started);
 
     let resource_lock =

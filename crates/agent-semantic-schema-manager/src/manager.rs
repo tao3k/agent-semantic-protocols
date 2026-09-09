@@ -59,11 +59,19 @@ pub struct LanguageSchemaProfileRegistry {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct LanguageSchemaProfile {
     pub language_id: String,
+    pub search_producer_axes: Vec<SearchProducerAxis>,
     pub package_root: String,
     pub bundle_root: String,
     pub root_sets: Vec<String>,
     pub roots: Vec<String>,
     pub provider_owned: Vec<String>,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum SearchProducerAxis {
+    Language,
+    Document,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -304,6 +312,25 @@ impl SchemaManager {
         let mut languages = BTreeSet::new();
         for profile in &registry.profiles {
             validate_identity("languageId", &profile.language_id)?;
+            if profile.search_producer_axes.is_empty() {
+                return Err(format!(
+                    "language schema profile has no Search producer axis: {}",
+                    profile.language_id
+                ));
+            }
+            if profile
+                .search_producer_axes
+                .iter()
+                .copied()
+                .collect::<BTreeSet<_>>()
+                .len()
+                != profile.search_producer_axes.len()
+            {
+                return Err(format!(
+                    "language schema profile has duplicate Search producer axes: {}",
+                    profile.language_id
+                ));
+            }
             validate_relative_path("packageRoot", &profile.package_root)?;
             validate_relative_path("bundleRoot", &profile.bundle_root)?;
             if !languages.insert(profile.language_id.as_str()) {

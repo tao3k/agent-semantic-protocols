@@ -2,69 +2,96 @@
 //
 // SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use memmap2::{Mmap, MmapOptions};
+use memmap2::Mmap;
 use serde::{Deserialize, Serialize};
-use tokio::fs;
 
+#[cfg(test)]
+use super::ValidatedSearchGenerationSegment;
 use super::{
     SearchGenerationSection, SearchGenerationSectionKind, SearchGenerationSectionRepresentation,
-    ValidatedSearchGenerationSegment, ValidatedSortedRecordTable, WorkspaceGenerationPointerReader,
-    WorkspaceMemoryGeneration, WorkspaceSearchGenerationAuthority,
+    ValidatedSortedRecordTable, WorkspaceMemoryGeneration, WorkspaceSearchGenerationAuthority,
     encode_search_generation_segment, encode_sorted_record_table,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct SearchOwnerRecord {
-    owner_path: String,
-    authority: Option<agent_semantic_search::ResidentSearchAuthority>,
-    content_digest: String,
-    native_syntax_diagnostic: Option<agent_semantic_search::NativeSyntaxDiagnostic>,
-    byte_offset: u64,
-    byte_length: u64,
-    line_count: u32,
-    query_keys: Vec<String>,
-    selectors: Vec<super::WorkspaceSelectorSnapshot>,
+pub(super) struct SearchOwnerRecord {
+    pub(super) owner_path: String,
+    pub(super) authority: Option<agent_semantic_search::ResidentSearchAuthority>,
+    pub(super) content_digest: String,
+    pub(super) native_syntax_diagnostic: Option<agent_semantic_search::NativeSyntaxDiagnostic>,
+    pub(super) byte_offset: u64,
+    pub(super) byte_length: u64,
+    pub(super) line_count: u32,
+    pub(super) query_keys: Vec<String>,
+    pub(super) selectors: Vec<super::WorkspaceSelectorSnapshot>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct SearchMerkleOwnerRecord {
-    owner_path: String,
-    source_blob_digest: String,
-    owner_subtree_digest: String,
-    inclusion_proof:
+pub(super) struct SearchMerkleOwnerRecord {
+    pub(super) owner_path: String,
+    pub(super) source_blob_digest: String,
+    pub(super) owner_subtree_digest: String,
+    pub(super) inclusion_proof:
         Vec<agent_semantic_content_identity::exact_selector_merkle::MerkleInclusionStepV1>,
 }
 
 #[derive(Debug)]
 pub struct WorkspaceSearchGenerationDataPlaneClient {
-    mapping: Option<Mmap>,
-    resident_generation: Option<Arc<WorkspaceMemoryGeneration>>,
-    resident_owner_positions: BTreeMap<String, usize>,
-    authority: WorkspaceSearchGenerationAuthority,
-    project_root: String,
-    owner_directory_records: BTreeMap<String, Arc<SearchOwnerRecord>>,
-    source_documents: Vec<agent_semantic_search::ResidentSourceDocument>,
-    resident_byte_coverage: agent_semantic_search::ResidentByteCoverageIndex,
-    cold_rg_corpus: agent_semantic_search::ColdRgCorpusArtifact,
-    callable_selector_by_owner: BTreeMap<String, String>,
-    owner_bytes_range: Option<std::ops::Range<usize>>,
-    merkle_owner_records: BTreeMap<String, Arc<SearchMerkleOwnerRecord>>,
-    owned_relations: Arc<[crate::ClientDbSourceIndexOwnedRelation]>,
-    graph_relation_records: BTreeMap<
+    pub(super) mapping: Option<Mmap>,
+    pub(super) resident_generation: Option<Arc<WorkspaceMemoryGeneration>>,
+    pub(super) resident_owner_positions: BTreeMap<String, usize>,
+    pub(super) authority: WorkspaceSearchGenerationAuthority,
+    pub(super) project_root: String,
+    pub(super) owner_directory_records: BTreeMap<String, Arc<SearchOwnerRecord>>,
+    pub(super) source_documents: Vec<agent_semantic_search::ResidentSourceDocument>,
+    pub(super) resident_byte_coverage: agent_semantic_search::ResidentByteCoverageIndex,
+    pub(super) cold_rg_corpus: agent_semantic_search::ColdRgCorpusArtifact,
+    pub(super) callable_selector_by_owner: BTreeMap<String, String>,
+    pub(super) owner_bytes_range: Option<std::ops::Range<usize>>,
+    pub(super) merkle_owner_records: BTreeMap<String, Arc<SearchMerkleOwnerRecord>>,
+    pub(super) owned_relations: Arc<[crate::ClientDbSourceIndexOwnedRelation]>,
+    pub(super) graph_relation_records: BTreeMap<
         (String, String),
         Vec<agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelation>,
     >,
-    graph_generation: Arc<
+    pub(super) graph_generation: Arc<
         tokio::sync::OnceCell<Result<agent_semantic_search::ResidentGraphGeneration, String>>,
     >,
-    lexical_accelerator:
+    pub(super) lexical_accelerator:
         Arc<tokio::sync::OnceCell<Result<agent_semantic_search::ResidentSourceIndex, String>>>,
+}
+
+impl WorkspaceSearchGenerationDataPlaneClient {
+    pub(super) fn lexical_source_documents(
+        &self,
+    ) -> Result<BTreeMap<String, agent_semantic_search::ResidentSourceDocument>, String> {
+        let mut documents = self
+            .source_documents
+            .iter()
+            .cloned()
+            .map(|document| (document.owner_path.clone(), document))
+            .collect::<BTreeMap<_, _>>();
+        for document in documents.values_mut() {
+            let record = self
+                .owner_directory_records
+                .get(&document.owner_path)
+                .ok_or_else(|| {
+                    format!(
+                        "Tantivy attachment owner record is missing: {}",
+                        document.owner_path
+                    )
+                })?;
+            document.lexical_body =
+                Some(String::from_utf8_lossy(self.resident_owner_bytes(record)?).into_owned());
+        }
+        Ok(documents)
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -73,7 +100,7 @@ pub struct RuntimeDerivedAttachmentBuildTiming {
     pub finalize_micros: u64,
 }
 
-fn elapsed_micros(started: std::time::Instant) -> u64 {
+pub(super) fn elapsed_micros(started: std::time::Instant) -> u64 {
     started.elapsed().as_micros().try_into().unwrap_or(u64::MAX)
 }
 
@@ -307,7 +334,7 @@ pub(super) fn encode_workspace_search_generation_segment_with_authority(
         owner_records.push((
             owner.owner_path.as_bytes().to_vec(),
             serde_json::to_vec(&record)
-                .map_err(|error| format!("encode workspace search owner record: {error}"))?,
+                .map_err(|error| format!("encode workspace owner record: {error}"))?,
         ));
     }
     let mut graph = BTreeMap::<Vec<u8>, Vec<_>>::new();
@@ -391,7 +418,7 @@ type OwnerSearchIndexes = (
     BTreeMap<String, String>,
 );
 
-fn build_owner_search_indexes(
+pub(super) fn build_owner_search_indexes(
     owner_directory_records: &BTreeMap<String, Arc<SearchOwnerRecord>>,
     graph_relations: &[crate::ClientDbSourceIndexOwnedRelation],
     authority: &WorkspaceSearchGenerationAuthority,
@@ -417,7 +444,7 @@ fn build_owner_search_indexes(
     let mut changes = Vec::with_capacity(owner_directory_records.len());
     for (key, record) in owner_directory_records {
         if record.owner_path != *key {
-            return Err("workspace search owner record key drift".to_owned());
+            return Err("workspace owner record key drift".to_owned());
         }
         let callable_selector = record.selectors.iter().find_map(|selector| {
             selector
@@ -436,6 +463,7 @@ fn build_owner_search_indexes(
                 owner_content_digest: record.content_digest.clone(),
                 line_count: record.line_count,
                 query_keys: record.query_keys.clone(),
+                lexical_body: None,
             },
         );
         changes.push(agent_semantic_search::SearchOwnerChange::Added {
@@ -473,7 +501,7 @@ fn build_owner_search_indexes(
     Ok((seeds.into_values().collect(), callable_selectors))
 }
 
-fn build_resident_byte_coverage_index(
+pub(super) fn build_resident_byte_coverage_index(
     mapping: &[u8],
     owner_bytes_range: &std::ops::Range<usize>,
     owner_directory_records: &BTreeMap<String, Arc<SearchOwnerRecord>>,
@@ -507,481 +535,7 @@ fn build_resident_byte_coverage_index(
 
 #[path = "search_index_projection_builders.rs"]
 mod builders;
-use builders::{build_cold_rg_corpus, build_resident_graph_generation};
-impl WorkspaceSearchGenerationDataPlaneClient {
-    pub async fn open(pointer_path: &Path, project_root: &Path) -> Result<Self, String> {
-        Self::open_inner(pointer_path, project_root).await
-    }
-
-    async fn open_inner(pointer_path: &Path, project_root: &Path) -> Result<Self, String> {
-        let pointer = WorkspaceGenerationPointerReader::open(pointer_path).await?;
-        let snapshot = pointer.read()?;
-        snapshot.validate()?;
-        let path = workspace_search_generation_segment_path(Path::new(&snapshot.mmap_segment_path));
-        let file = fs::File::open(&path)
-            .await
-            .map_err(|error| format!("open workspace search generation segment: {error}"))?;
-        let file = file.into_std().await;
-        let mapping = tokio::task::spawn_blocking(move || unsafe {
-            MmapOptions::new()
-                .map(&file)
-                .map_err(|error| format!("map workspace search generation segment: {error}"))
-        })
-        .await
-        .map_err(|error| format!("map workspace search generation task failed: {error}"))??;
-        Self::from_mapping(
-            mapping,
-            project_root,
-            snapshot.active_epoch,
-            &snapshot.workspace_identity,
-            &snapshot.generation_digest,
-        )
-    }
-
-    pub(crate) fn from_generation(
-        generation: Arc<WorkspaceMemoryGeneration>,
-    ) -> Result<Self, String> {
-        generation.validate()?;
-        let project_root = generation.project_root.clone();
-        let mut owners = generation.owners.iter().enumerate().collect::<Vec<_>>();
-        owners.sort_by(|(_, left), (_, right)| left.owner_path.cmp(&right.owner_path));
-        let merkle_tree = agent_semantic_content_identity::workspace_merkle_v1::WorkspacePathMerkleTreeV1::from_file_digests(
-            owners.iter().map(|(_, owner)| {
-                (
-                    owner.owner_path.clone(),
-                    agent_semantic_content_identity::exact_selector_merkle::blake3_content_digest_v1(
-                        &owner.bytes,
-                    ),
-                )
-            }),
-        )
-        .map_err(|error| format!("build resident workspace Merkle owner index: {error}"))?;
-        let search_projection_manifest = build_merkle_search_generation(&generation)?;
-        let authority =
-            WorkspaceSearchGenerationAuthority::from_generation_with_projection_digests(
-                &generation,
-                format!("blake3-256:{}", merkle_tree.root_digest().as_str()),
-                search_projection_manifest.manifest_digest().to_owned(),
-            )?;
-        authority.validate_binding(&authority.project_id, &generation.workspace_identity)?;
-
-        let mut owner_directory_records = BTreeMap::new();
-        let mut resident_owner_positions = BTreeMap::new();
-        let mut merkle_owner_records = BTreeMap::new();
-        for (position, owner) in &owners {
-            let text = std::str::from_utf8(&owner.bytes).unwrap_or_default();
-            let query_keys = search_projection_manifest
-                .owner(&owner.owner_path)
-                .ok_or_else(|| {
-                    format!(
-                        "resident search projection omitted owner: {}",
-                        owner.owner_path
-                    )
-                })?
-                .lexical_query_keys
-                .clone();
-            owner_directory_records.insert(
-                owner.owner_path.clone(),
-                Arc::new(SearchOwnerRecord {
-                    owner_path: owner.owner_path.clone(),
-                    authority: owner.authority.clone(),
-                    content_digest: owner.content_digest.clone(),
-                    native_syntax_diagnostic: owner.native_syntax_diagnostic.clone(),
-                    byte_offset: 0,
-                    byte_length: owner.bytes.len() as u64,
-                    line_count: text.lines().count().max(1).min(u32::MAX as usize) as u32,
-                    query_keys,
-                    selectors: owner.selectors.clone(),
-                }),
-            );
-            resident_owner_positions.insert(owner.owner_path.clone(), *position);
-            let source_blob_digest = merkle_tree
-                .source_blob_digest(&owner.owner_path)
-                .ok_or_else(|| "resident Merkle source digest is missing".to_owned())?;
-            let owner_subtree_digest = merkle_tree
-                .owner_subtree_digest(&owner.owner_path)
-                .ok_or_else(|| "resident Merkle owner subtree is missing".to_owned())?;
-            let inclusion_proof = merkle_tree
-                .inclusion_proof(&owner.owner_path)
-                .ok_or_else(|| "resident Merkle inclusion proof is missing".to_owned())?;
-            merkle_owner_records.insert(
-                owner.owner_path.clone(),
-                Arc::new(SearchMerkleOwnerRecord {
-                    owner_path: owner.owner_path.clone(),
-                    source_blob_digest: source_blob_digest.as_str().to_owned(),
-                    owner_subtree_digest: owner_subtree_digest.as_str().to_owned(),
-                    inclusion_proof,
-                }),
-            );
-        }
-        let owned_relations: Arc<[crate::ClientDbSourceIndexOwnedRelation]> =
-            Arc::from(generation.relations.clone());
-        let mut graph_relation_records = BTreeMap::<(String, String), Vec<_>>::new();
-        for owned in &generation.relations {
-            let relation = &owned.relation;
-            relation.validate()?;
-            graph_relation_records
-                .entry((relation.from.kind.to_string(), relation.from.id.clone()))
-                .or_default()
-                .push(relation.clone());
-        }
-        let (source_documents, callable_selector_by_owner) = build_owner_search_indexes(
-            &owner_directory_records,
-            &generation.relations,
-            &authority,
-        )?;
-        let resident_byte_coverage =
-            agent_semantic_search::ResidentByteCoverageIndex::new(owners.iter().map(
-                |(_, owner)| agent_semantic_search::ResidentByteCoverageInput {
-                    owner_path: owner.owner_path.clone(),
-                    authority: owner.authority.clone(),
-                    bytes: owner.bytes.as_slice(),
-                },
-            ));
-        let cold_rg_corpus = agent_semantic_search::build_cold_rg_corpus(
-            &authority
-                .content_search_generation
-                .content_generation_digest,
-            owners
-                .iter()
-                .map(|(_, owner)| agent_semantic_search::ColdRgCorpusOwner {
-                    owner_path: &owner.owner_path,
-                    content_digest: &owner.content_digest,
-                    bytes: &owner.bytes,
-                }),
-        )?;
-        drop(owners);
-        Ok(Self {
-            mapping: None,
-            resident_generation: Some(generation),
-            resident_owner_positions,
-            authority,
-            project_root,
-            owner_directory_records,
-            source_documents,
-            resident_byte_coverage,
-            cold_rg_corpus,
-            callable_selector_by_owner,
-            owner_bytes_range: None,
-            merkle_owner_records,
-            owned_relations,
-            graph_relation_records,
-            graph_generation: Arc::new(tokio::sync::OnceCell::new()),
-            lexical_accelerator: Arc::new(tokio::sync::OnceCell::new()),
-        })
-    }
-
-    fn from_mapping(
-        mapping: Mmap,
-        project_root: &Path,
-        expected_epoch: u64,
-        expected_workspace_identity: &str,
-        expected_generation_digest: &str,
-    ) -> Result<Self, String> {
-        let segment = ValidatedSearchGenerationSegment::parse(&mapping)?;
-        let (evidence, _, _) = segment.section(SearchGenerationSectionKind::GenerationEvidence);
-        let authority: WorkspaceSearchGenerationAuthority = serde_json::from_slice(evidence)
-            .map_err(|error| format!("decode workspace search generation evidence: {error}"))?;
-        authority.validate_binding(&authority.project_id, expected_workspace_identity)?;
-        if segment.epoch() != expected_epoch
-            || authority.generation_digest != expected_generation_digest
-        {
-            return Err("workspace search generation pointer binding mismatch".to_owned());
-        }
-        let (owner_directory_bytes, _, _) =
-            segment.section(SearchGenerationSectionKind::OwnerDirectory);
-        let owner_directory_records = ValidatedSortedRecordTable::parse(owner_directory_bytes)?
-            .owned_records()?
-            .into_iter()
-            .map(|(key, value)| {
-                let key = String::from_utf8(key).map_err(|error| {
-                    format!("workspace search owner-directory key is not UTF-8: {error}")
-                })?;
-                let record: SearchOwnerRecord = serde_json::from_slice(&value)
-                    .map_err(|error| format!("decode workspace search owner record: {error}"))?;
-                if record.owner_path != key {
-                    return Err("workspace search owner record key drift".to_owned());
-                }
-                Ok((key, Arc::new(record)))
-            })
-            .collect::<Result<BTreeMap<_, _>, String>>()?;
-        let owner_bytes_range = segment.section_range(SearchGenerationSectionKind::OwnerBytes);
-        let resident_byte_coverage = build_resident_byte_coverage_index(
-            &mapping,
-            &owner_bytes_range,
-            &owner_directory_records,
-        )?;
-        let cold_rg_corpus = build_cold_rg_corpus(
-            &mapping,
-            &owner_bytes_range,
-            &owner_directory_records,
-            &authority
-                .content_search_generation
-                .content_generation_digest,
-        )?;
-        let (merkle_owner_bytes, _, _) =
-            segment.section(SearchGenerationSectionKind::MerkleOwnerIndex);
-        let merkle_owner_records = ValidatedSortedRecordTable::parse(merkle_owner_bytes)?
-            .owned_records()?
-            .into_iter()
-            .map(|(key, value)| {
-                let key = String::from_utf8(key).map_err(|error| {
-                    format!("workspace search Merkle-owner key is not UTF-8: {error}")
-                })?;
-                let record: SearchMerkleOwnerRecord = serde_json::from_slice(&value)
-                    .map_err(|error| format!("decode workspace search Merkle owner: {error}"))?;
-                if record.owner_path != key {
-                    return Err("workspace search Merkle owner key drift".to_owned());
-                }
-                Ok((key, Arc::new(record)))
-            })
-            .collect::<Result<BTreeMap<_, _>, String>>()?;
-        let (graph_relation_bytes, _, _) =
-            segment.section(SearchGenerationSectionKind::GraphRelations);
-        let graph_records =
-            ValidatedSortedRecordTable::parse(graph_relation_bytes)?.owned_records()?;
-        let mut graph_relations = Vec::<crate::ClientDbSourceIndexOwnedRelation>::new();
-        let mut graph_relation_records = BTreeMap::<
-            (String, String),
-            Vec<agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelation>,
-        >::new();
-        for (key, value) in graph_records {
-            let owned_relations =
-                serde_json::from_slice::<Vec<crate::ClientDbSourceIndexOwnedRelation>>(&value)
-                    .map_err(|error| format!("decode workspace search graph relations: {error}"))?;
-            for owned in &owned_relations {
-                let relation = &owned.relation;
-                if graph_key(relation.from.kind.as_str(), &relation.from.id) != key {
-                    return Err("workspace search graph relation key drift".to_owned());
-                }
-                graph_relation_records
-                    .entry((relation.from.kind.to_string(), relation.from.id.clone()))
-                    .or_default()
-                    .push(relation.clone());
-            }
-            graph_relations.extend(owned_relations);
-        }
-        let owned_relations: Arc<[crate::ClientDbSourceIndexOwnedRelation]> =
-            Arc::from(graph_relations.clone());
-        let (source_documents, callable_selector_by_owner) =
-            build_owner_search_indexes(&owner_directory_records, &graph_relations, &authority)?;
-        let graph_generation = Arc::new(tokio::sync::OnceCell::new());
-        let lexical_accelerator = Arc::new(tokio::sync::OnceCell::new());
-        Ok(Self {
-            mapping: Some(mapping),
-            resident_generation: None,
-            resident_owner_positions: BTreeMap::new(),
-            authority,
-            project_root: project_root
-                .to_str()
-                .ok_or_else(|| "workspace search project root is not UTF-8".to_owned())?
-                .to_owned(),
-            owner_directory_records,
-            source_documents,
-            resident_byte_coverage,
-            cold_rg_corpus,
-            callable_selector_by_owner,
-            owner_bytes_range: Some(owner_bytes_range),
-            merkle_owner_records,
-            owned_relations,
-            graph_relation_records,
-            graph_generation,
-            lexical_accelerator,
-        })
-    }
-
-    pub fn authority(&self) -> &WorkspaceSearchGenerationAuthority {
-        &self.authority
-    }
-
-    pub fn graph_generation(
-        &self,
-    ) -> Result<Option<&agent_semantic_search::ResidentGraphGeneration>, String> {
-        match self.graph_generation.get() {
-            None => Ok(None),
-            Some(Ok(generation)) => Ok(Some(generation)),
-            Some(Err(error)) => Err(error.clone()),
-        }
-    }
-
-    #[must_use]
-    pub fn graph_generation_is_ready(&self) -> bool {
-        matches!(self.graph_generation.get(), Some(Ok(_)))
-    }
-
-    #[must_use]
-    pub fn lexical_accelerator_is_ready(&self) -> bool {
-        matches!(self.lexical_accelerator.get(), Some(Ok(_)))
-    }
-
-    pub fn build_graph_attachment(
-        &self,
-        expected_content_generation_digest: &str,
-    ) -> Result<RuntimeDerivedAttachmentBuildTiming, String> {
-        if let Some(result) = self.graph_generation.get() {
-            return result
-                .as_ref()
-                .map(|_| RuntimeDerivedAttachmentBuildTiming::default())
-                .map_err(Clone::clone);
-        }
-        if self
-            .authority
-            .content_search_generation
-            .content_generation_digest
-            != expected_content_generation_digest
-        {
-            let error = "graph attachment content-generation CAS mismatch".to_owned();
-            let _ = self.graph_generation.set(Err(error.clone()));
-            return Err(error);
-        }
-        let build_started = std::time::Instant::now();
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            build_resident_graph_generation(
-                &self.authority,
-                self.owner_directory_records.keys().cloned().collect(),
-                self.graph_relation_records
-                    .values()
-                    .flatten()
-                    .cloned()
-                    .collect(),
-            )
-        }))
-        .unwrap_or_else(|_| Err("background generation graph builder panicked".to_owned()));
-        let build_micros = elapsed_micros(build_started);
-        let finalize_started = std::time::Instant::now();
-        let timing = RuntimeDerivedAttachmentBuildTiming {
-            build_micros,
-            finalize_micros: elapsed_micros(finalize_started),
-        };
-        match result {
-            Ok(generation) => {
-                let _ = self.graph_generation.set(Ok(generation));
-                Ok(timing)
-            }
-            Err(error) => {
-                let _ = self.graph_generation.set(Err(error.clone()));
-                Err(error)
-            }
-        }
-    }
-
-    pub fn build_lexical_attachment(
-        &self,
-        expected_content_generation_digest: &str,
-        resources: agent_semantic_search::ResidentIndexBuildResources,
-    ) -> Result<RuntimeDerivedAttachmentBuildTiming, String> {
-        if let Some(result) = self.lexical_accelerator.get() {
-            return result
-                .as_ref()
-                .map(|_| RuntimeDerivedAttachmentBuildTiming::default())
-                .map_err(Clone::clone);
-        }
-        if self
-            .authority
-            .content_search_generation
-            .content_generation_digest
-            != expected_content_generation_digest
-        {
-            let error = "Tantivy attachment content-generation CAS mismatch".to_owned();
-            let _ = self.lexical_accelerator.set(Err(error.clone()));
-            return Err(error);
-        }
-        let documents = self
-            .source_documents
-            .iter()
-            .cloned()
-            .map(|document| (document.owner_path.clone(), document))
-            .collect::<BTreeMap<_, _>>();
-        let build_started = std::time::Instant::now();
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            agent_semantic_search::ResidentSourceIndex::new(
-                documents,
-                self.authority.source_snapshot.clone(),
-                self.authority.generation_digest.clone(),
-                resources,
-            )
-        }))
-        .unwrap_or_else(|_| Err("background Tantivy accelerator builder panicked".to_owned()));
-        let build_micros = elapsed_micros(build_started);
-        let finalize_started = std::time::Instant::now();
-        let timing = RuntimeDerivedAttachmentBuildTiming {
-            build_micros,
-            finalize_micros: elapsed_micros(finalize_started),
-        };
-        match result {
-            Ok(index) => {
-                let _ = self.lexical_accelerator.set(Ok(index));
-                Ok(timing)
-            }
-            Err(error) => {
-                let _ = self.lexical_accelerator.set(Err(error.clone()));
-                Err(error)
-            }
-        }
-    }
-
-    pub fn fail_derived_attachments(&self, error: &str) {
-        let _ = self.graph_generation.set(Err(error.to_owned()));
-        let _ = self.lexical_accelerator.set(Err(error.to_owned()));
-    }
-
-    pub fn fail_graph_attachment(&self, error: &str) {
-        let _ = self.graph_generation.set(Err(error.to_owned()));
-    }
-
-    pub fn fail_lexical_attachment(&self, error: &str) {
-        let _ = self.lexical_accelerator.set(Err(error.to_owned()));
-    }
-
-    #[must_use]
-    pub fn derived_build_workload(&self, previous: Option<&Self>) -> (usize, usize, usize) {
-        let owner_count = self.source_documents.len();
-        let lexical_bytes = self
-            .source_documents
-            .iter()
-            .map(|document| {
-                document.owner_path.len()
-                    + document.query_keys.iter().map(String::len).sum::<usize>()
-            })
-            .sum();
-        let previous_digests = previous.map(|previous| {
-            previous
-                .source_documents
-                .iter()
-                .map(|document| {
-                    (
-                        document.owner_path.as_str(),
-                        document.owner_content_digest.as_str(),
-                    )
-                })
-                .collect::<BTreeMap<_, _>>()
-        });
-        let changed_owner_count = match previous_digests {
-            Some(previous) => {
-                let current_owner_paths = self
-                    .source_documents
-                    .iter()
-                    .map(|document| document.owner_path.as_str())
-                    .collect::<BTreeSet<_>>();
-                let changed_or_added = self
-                    .source_documents
-                    .iter()
-                    .filter(|document| {
-                        previous.get(document.owner_path.as_str()).copied()
-                            != Some(document.owner_content_digest.as_str())
-                    })
-                    .count();
-                let removed = previous
-                    .keys()
-                    .filter(|owner_path| !current_owner_paths.contains(**owner_path))
-                    .count();
-                changed_or_added.saturating_add(removed)
-            }
-            None => owner_count,
-        };
-        (owner_count, lexical_bytes, changed_owner_count)
-    }
-}
+pub(super) use builders::{build_cold_rg_corpus, build_resident_graph_generation};
 
 #[path = "search_index_projection_reads.rs"]
 mod reads;
@@ -1000,7 +554,7 @@ fn section(
     }
 }
 
-fn graph_key(kind: &str, id: &str) -> Vec<u8> {
+pub(super) fn graph_key(kind: &str, id: &str) -> Vec<u8> {
     let mut key = Vec::with_capacity(kind.len() + id.len() + 1);
     key.extend_from_slice(kind.as_bytes());
     key.push(0);

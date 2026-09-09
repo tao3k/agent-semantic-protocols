@@ -49,10 +49,10 @@ async fn db_engine_write_session_imports_manifest_without_exposing_removed_db_ha
                 "languageId": "rust",
                 "providerId": "asp-rust",
                 "providerVersion": "0.1.0",
-                "exportMethod": "search/prime",
+                "exportMethod": "search/playbook",
                 "projectRoot": project_root.display().to_string(),
                 "packageRoot": ".",
-                "schemaIds": ["agent.semantic-protocols.semantic-search-packet"],
+                "schemaIds": ["agent.semantic-protocols.workspace-search-playbook-result"],
                 "cacheStatus": "hit",
                 "rawSourceStored": false,
                 "requestFingerprint": "fnv64:write-session",
@@ -88,7 +88,7 @@ async fn db_engine_write_session_imports_manifest_without_exposing_removed_db_ha
             &LanguageId::from("rust"),
             &ProviderId::from("asp-rust"),
             &project_root,
-            &CacheExportMethod::from("search/prime"),
+            &CacheExportMethod::from("search/playbook"),
             Some("fnv64:write-session".to_string()),
         )
         .expect("lookup generation through DB Engine read session")
@@ -115,7 +115,7 @@ async fn db_engine_write_session_imports_manifest_without_exposing_removed_db_ha
             &LanguageId::from("rust"),
             &ProviderId::from("asp-rust"),
             &project_root,
-            &CacheExportMethod::from("search/prime"),
+            &CacheExportMethod::from("search/playbook"),
             Some("fnv64:write-session".to_string()),
         )
         .expect("lookup generation after DB Engine invalidation");
@@ -170,7 +170,7 @@ async fn db_engine_cache_status_survives_concurrent_read_write_smoke() {
                             &LanguageId::from("rust"),
                             &ProviderId::from("asp-rust"),
                             project_root.as_path(),
-                            &CacheExportMethod::from("search/prime"),
+                            &CacheExportMethod::from("search/playbook"),
                             None,
                         )
                         .expect("lookup generation during concurrent cache status smoke");
@@ -213,7 +213,7 @@ async fn db_engine_cache_status_survives_concurrent_read_write_smoke() {
             &LanguageId::from("rust"),
             &ProviderId::from("asp-rust"),
             project_root.as_path(),
-            &CacheExportMethod::from("search/prime"),
+            &CacheExportMethod::from("search/playbook"),
             Some("fnv64:cache-status-7".to_string()),
         )
         .expect("lookup final concurrent cache status generation")
@@ -239,10 +239,10 @@ fn concurrent_cache_status_manifest(
                 "languageId": "rust",
                 "providerId": "asp-rust",
                 "providerVersion": "0.1.0",
-                "exportMethod": "search/prime",
+                "exportMethod": "search/playbook",
                 "projectRoot": project_root.display().to_string(),
                 "packageRoot": ".",
-                "schemaIds": ["agent.semantic-protocols.semantic-search-packet"],
+                "schemaIds": ["agent.semantic-protocols.workspace-search-playbook-result"],
                 "cacheStatus": "hit",
                 "rawSourceStored": false,
                 "requestFingerprint": format!("fnv64:cache-status-{generation_index}"),

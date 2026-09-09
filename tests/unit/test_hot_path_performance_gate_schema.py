@@ -66,8 +66,7 @@ def test_hot_path_performance_gate_accepts_warm_broad_index_hit() -> None:
                     "syntax-outline"
                 ],
                 "forbiddenRoutes": [
-                    "prime",
-                    "broad-rg",
+                    "search-playbook",
                     "direct-read"
                 ],
                 "requireExactCodeIdentity": True,

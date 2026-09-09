@@ -47,7 +47,7 @@
     "scope": {
       "enum": [
         "workspace",
-        "prime",
+        "search-playbook",
         "owner",
         "dependency",
         "api",

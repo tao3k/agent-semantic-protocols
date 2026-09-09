@@ -12,7 +12,7 @@ fn intent() -> serde_json::Value {
         "protocolVersion": "1",
         "packetKind": "resident-graph-evaluation-request",
         "languageId": "rust",
-        "surface": "search-pipe",
+        "surface": "search-playbook",
         "queryTerms": ["parser"],
         "profile": "structural",
         "entryNodeIds": [],

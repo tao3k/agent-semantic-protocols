@@ -13,7 +13,7 @@ fn mint_uses_clap_to_require_a_typed_defect_and_exact_command() {
             "--defect-kind",
             "exhausted-non-progress-cycle",
             "--command",
-            "asp rust search playbook transport-binding --workspace .",
+            "asp search playbook --language rust --rg -n -e transport-binding . --tantivy term transport-binding",
             "--ttl-seconds",
             "30",
             ".",

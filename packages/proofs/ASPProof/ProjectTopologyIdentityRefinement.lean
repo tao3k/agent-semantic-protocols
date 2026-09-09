@@ -33,6 +33,7 @@ inductive IdentityDomain where
   | mrrBundle
   | ascentProgram
   | topologyRoot
+  | topologyClosure
   | compilationReceipt
   deriving DecidableEq, Repr
 
@@ -101,6 +102,7 @@ structure ProductBinding where
   mrrBundleIdentity : Identity .mrrBundle
   ascentProgramDigest : Identity .ascentProgram
   topologyRootDigest : Identity .topologyRoot
+  topologyClosureDigest : Identity .topologyClosure
   deriving DecidableEq, Repr
 
 inductive CompilationState where
@@ -199,7 +201,7 @@ def manifestBoundContractAdmitted
 def bindingA : ProductBinding :=
   ⟨⟨⟨⟨1⟩, ⟨2⟩, .durableGit, .crossMachine⟩, ⟨3⟩⟩,
     ⟨11⟩, ⟨12⟩, ⟨13⟩, ⟨14⟩, ⟨15⟩,
-    ⟨16⟩, ⟨17⟩, ⟨18⟩, ⟨19⟩, ⟨20⟩⟩
+    ⟨16⟩, ⟨17⟩, ⟨18⟩, ⟨19⟩, ⟨20⟩, ⟨21⟩⟩
 
 def manifestA : ProjectWorkspaceManifestCandidate :=
   ⟨1, true, true, .topologyManifest, bindingA.projectWorkspace⟩
@@ -284,6 +286,12 @@ theorem workspace_root_boundary_drift_rejects_the_complete_contract :
           projectWorkspace :=
             { bindingA.projectWorkspace with workspaceRoot := ⟨99⟩ } }
     contractAdmitted movedRoot [compilationA] candidateA = false := by
+  decide
+
+theorem topology_closure_drift_rejects_the_complete_contract :
+    let changed : ProductBinding :=
+      { bindingA with topologyClosureDigest := ⟨99⟩ }
+    contractAdmitted changed [compilationA] candidateA = false := by
   decide
 
 theorem compiled_abi_drift_rejects_the_compilation_receipt :

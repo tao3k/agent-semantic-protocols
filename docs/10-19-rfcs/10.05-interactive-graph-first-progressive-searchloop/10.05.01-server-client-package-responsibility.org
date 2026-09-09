@@ -206,12 +206,12 @@ generated schema artifact <- language package build
 
 =agent-semantic-client-protocol= contains only transport-neutral DTOs, method
 identity, catalog entries, and validation of wire shape.  It MUST NOT depend on
-=agent-semantic-schema-manager=, a language harness, Runtime lifecycle, or
+=agent-semantic-schema-manager=, a ASP language provider, Runtime lifecycle, or
 filesystem receipt logic.  SchemaManager MUST NOT depend on
 =asp-rust-project-harness-policy= through a runtime library edge; the harness
-policy remains build/dev validation only.  Language harnesses may invoke the
+policy remains build/dev validation only.  ASP language providers may invoke the
 CLI adapter to produce a build artifact, but SchemaManager never imports a
-language harness.  This direction prevents the Rust harness policy cycle and
+ASP language provider.  This direction prevents the Rust harness policy cycle and
 prevents generated packages from becoming schema authorities.
 
 ** Performance evidence

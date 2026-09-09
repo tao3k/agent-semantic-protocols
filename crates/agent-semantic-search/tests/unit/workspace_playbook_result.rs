@@ -9,6 +9,8 @@ use crate::{
     build_workspace_search_playbook_result, synthesize_workspace_search_playbook_result,
 };
 
+const EVIDENCE_ITEM_LIMIT: usize = 30;
+
 fn complete_witness() -> WorkspaceSearchProgressiveExecutionWitness {
     WorkspaceSearchProgressiveExecutionWitness {
         requested_clause_count: 2,
@@ -25,6 +27,11 @@ fn evidence(index: usize) -> WorkspaceSearchPlaybookEvidence {
         selector: format!("rust://src/item_{index}.rs#item/function/run"),
         matched_by: vec!["rg:0".to_owned(), "graph:0".to_owned()],
         relation: "syntax-capture:function".to_owned(),
+        hit: crate::WorkspaceSearchHitProjection {
+            rg: vec![[index as u64 + 1, index as u64 + 1]],
+            native: true,
+            ..Default::default()
+        },
     }
 }
 
@@ -36,6 +43,7 @@ fn result_requires_every_clause_and_requested_graph_fan_in() {
         build_workspace_search_playbook_result(
             WorkspaceSearchPlaybookResultKind::RefinementRequired,
             Vec::new(),
+            EVIDENCE_ITEM_LIMIT,
             witness,
         )
         .unwrap_err()
@@ -48,6 +56,7 @@ fn result_is_selector_only_and_top_thirty() {
     let result = build_workspace_search_playbook_result(
         WorkspaceSearchPlaybookResultKind::ExactSelectorReady,
         vec![evidence(2), evidence(1)],
+        EVIDENCE_ITEM_LIMIT,
         complete_witness(),
     )
     .unwrap();
@@ -62,6 +71,7 @@ fn result_is_selector_only_and_top_thirty() {
         build_workspace_search_playbook_result(
             WorkspaceSearchPlaybookResultKind::ExactSelectorReady,
             (0..31).map(evidence).collect(),
+            EVIDENCE_ITEM_LIMIT,
             complete_witness(),
         )
         .unwrap_err()
@@ -77,6 +87,7 @@ fn result_rejects_non_exact_selector() {
         build_workspace_search_playbook_result(
             WorkspaceSearchPlaybookResultKind::ExactSelectorReady,
             vec![invalid],
+            EVIDENCE_ITEM_LIMIT,
             complete_witness(),
         )
         .is_err()
@@ -91,6 +102,7 @@ fn result_rejects_graph_provenance_before_acquisition_provenance() {
         build_workspace_search_playbook_result(
             WorkspaceSearchPlaybookResultKind::ExactSelectorReady,
             vec![invalid],
+            EVIDENCE_ITEM_LIMIT,
             complete_witness(),
         )
         .is_err()
@@ -119,6 +131,10 @@ fn syntax_candidate(owner: &str, item: &str) -> WorkspaceSearchSyntaxCandidate {
         owner: owner.to_owned(),
         selector: format!("rust://{owner}#item/function/{item}"),
         relation: "syntax-capture:function".to_owned(),
+        hit: crate::WorkspaceSearchHitProjection {
+            native: true,
+            ..Default::default()
+        },
     }
 }
 
@@ -127,7 +143,7 @@ fn fan_in_uses_agent_authored_clause_priority_without_graph() {
     let result = synthesize_workspace_search_playbook_result(
         vec![
             receipt(WorkspaceSearchAxisKind::Rg, 0, 0, &["src/a.rs"]),
-            receipt(WorkspaceSearchAxisKind::Fd, 0, 1, &["src/b.rs"]),
+            receipt(WorkspaceSearchAxisKind::Tantivy, 0, 1, &["src/b.rs"]),
             receipt(
                 WorkspaceSearchAxisKind::Syntax,
                 0,
@@ -140,6 +156,7 @@ fn fan_in_uses_agent_authored_clause_priority_without_graph() {
             syntax_candidate("src/a.rs", "a"),
         ],
         None,
+        EVIDENCE_ITEM_LIMIT,
     )
     .unwrap();
     assert_eq!(
@@ -165,6 +182,7 @@ fn fan_in_preserves_native_candidate_rank_before_lexical_tie_breaking() {
             syntax_candidate("src/high_rank.rs", "higher_rank"),
         ],
         None,
+        EVIDENCE_ITEM_LIMIT,
     )
     .unwrap();
 
@@ -177,7 +195,7 @@ fn graph_is_a_filtering_and_ranking_fan_in_not_an_independent_vote() {
     let result = synthesize_workspace_search_playbook_result(
         vec![
             receipt(
-                WorkspaceSearchAxisKind::Fd,
+                WorkspaceSearchAxisKind::Rg,
                 0,
                 0,
                 &["src/a.rs", "src/b.rs", "src/c.rs"],
@@ -200,6 +218,7 @@ fn graph_is_a_filtering_and_ranking_fan_in_not_an_independent_vote() {
             complete: true,
             truncated: false,
         }),
+        EVIDENCE_ITEM_LIMIT,
     )
     .unwrap();
     assert_eq!(
@@ -211,20 +230,44 @@ fn graph_is_a_filtering_and_ranking_fan_in_not_an_independent_vote() {
     assert!(result.evidence.iter().all(|item| item.owner != "src/c.rs"));
     assert_eq!(
         result.evidence[0].matched_by,
-        ["fd:0", "syntax:0", "graph:0"]
+        ["rg:0", "syntax:0", "graph:0"]
     );
     assert_eq!(result.evidence[0].relation, "syntax-capture:function");
+}
+
+#[test]
+fn fan_in_preserves_structured_hit_values_for_the_rendered_selector() {
+    let mut rg_candidate = syntax_candidate("src/a.rs", "a");
+    rg_candidate.hit.rg = vec![[42, 46]];
+    let mut tantivy_candidate = syntax_candidate("src/a.rs", "a");
+    tantivy_candidate.hit.tantivy = vec!["artifact refresh".to_owned()];
+    let result = synthesize_workspace_search_playbook_result(
+        vec![
+            receipt(WorkspaceSearchAxisKind::Rg, 0, 0, &["src/a.rs"]),
+            receipt(WorkspaceSearchAxisKind::Tantivy, 0, 1, &["src/a.rs"]),
+        ],
+        vec![rg_candidate, tantivy_candidate],
+        None,
+        EVIDENCE_ITEM_LIMIT,
+    )
+    .unwrap();
+
+    assert_eq!(result.evidence.len(), 1);
+    assert!(result.evidence[0].hit.native);
+    assert_eq!(result.evidence[0].hit.rg, [[42, 46]]);
+    assert_eq!(result.evidence[0].hit.tantivy, ["artifact refresh"]);
 }
 
 #[test]
 fn fan_in_rejects_non_contiguous_or_duplicate_priorities() {
     let error = synthesize_workspace_search_playbook_result(
         vec![
-            receipt(WorkspaceSearchAxisKind::Fd, 0, 0, &[]),
+            receipt(WorkspaceSearchAxisKind::Tantivy, 0, 0, &[]),
             receipt(WorkspaceSearchAxisKind::Rg, 0, 0, &[]),
         ],
         Vec::new(),
         None,
+        EVIDENCE_ITEM_LIMIT,
     )
     .unwrap_err();
     assert!(error.contains("duplicate clause identity"));
@@ -236,6 +279,7 @@ fn acquisition_candidates_without_exact_syntax_mapping_require_refinement() {
         vec![receipt(WorkspaceSearchAxisKind::Rg, 0, 0, &["src/lib.rs"])],
         Vec::new(),
         None,
+        EVIDENCE_ITEM_LIMIT,
     )
     .unwrap();
 
@@ -252,6 +296,7 @@ fn complete_empty_acquisition_may_prove_no_match() {
         vec![receipt(WorkspaceSearchAxisKind::Rg, 0, 0, &[])],
         Vec::new(),
         None,
+        EVIDENCE_ITEM_LIMIT,
     )
     .unwrap();
 

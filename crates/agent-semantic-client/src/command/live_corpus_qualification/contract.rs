@@ -38,6 +38,7 @@ pub(super) struct ClientProtocolContract {
     pub(super) protocol_id: String,
     pub(super) protocol_version: String,
     pub(super) transport: String,
+    pub(super) workspace_scheduling: String,
     pub(super) phases: Vec<String>,
     pub(super) required_telemetry_events: Vec<String>,
     pub(super) applies_to_case_count: usize,
@@ -62,18 +63,17 @@ pub(super) struct QualificationCase {
     pub(super) provider_id: String,
     pub(super) search: QualificationSearch,
     pub(super) query: QualificationQuery,
-    pub(super) zero_match_terms: Vec<String>,
+    pub(super) zero_match_search: QualificationSearch,
     pub(super) required_telemetry_events: Vec<String>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(super) struct QualificationSearch {
-    pub(super) method: String,
-    pub(super) terms: Vec<String>,
-    pub(super) view: String,
+    pub(super) rg: Vec<String>,
+    pub(super) tantivy: Vec<String>,
     pub(super) minimum_candidates: usize,
-    pub(super) maximum_resident_micros: u64,
+    pub(super) maximum_search_micros: u64,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -104,6 +104,8 @@ pub(super) struct ClientProtocolReceipt {
     pub(super) protocol_id: &'static str,
     pub(super) protocol_version: &'static str,
     pub(super) transport: &'static str,
+    pub(super) workspace_scheduling: &'static str,
+    pub(super) concurrent_workspace_count: usize,
     pub(super) phases: [&'static str; 6],
     pub(super) session_policy: &'static str,
     pub(super) ready_effects: [&'static str; 4],
@@ -181,8 +183,6 @@ pub(super) struct QualificationCaseReceipt {
     pub(super) search_operation_id: String,
     pub(super) search_elapsed_micros: u64,
     pub(super) resident_sample_count: usize,
-    pub(super) search_resident_read_latency_micros: LatencyDistribution,
-    pub(super) search_service_latency_micros: LatencyDistribution,
     pub(super) search_total_latency_micros: LatencyDistribution,
     pub(super) candidate_count: usize,
     pub(super) selector: String,
@@ -209,8 +209,8 @@ pub(super) struct QualificationCaseReceipt {
     pub(super) merkle_proof_step_count: usize,
     pub(super) zero_match_operation_id: String,
     pub(super) runtime_ecosystem: &'static str,
-    pub(super) search_read_mode: &'static str,
-    pub(super) search_read_work_counters: serde_json::Value,
+    pub(super) search_execution_mode: &'static str,
+    pub(super) search_binding: serde_json::Value,
     pub(super) exact_read_mode: &'static str,
     pub(super) exact_read_work_counters: serde_json::Value,
     pub(super) route: &'static str,

@@ -32,25 +32,6 @@ def schema(name: str) -> dict:
     return json.loads((SCHEMA_ROOT / name).read_text())
 
 
-def test_cold_rg_receipt_has_exact_process_effects() -> None:
-    jsonschema.Draft202012Validator(
-        schema("cold-rg-query-receipt.v1.schema.json")
-    ).validate(
-        {
-            "schemaId": "agent.semantic-protocols.cold-rg-query-receipt",
-            "schemaVersion": "1",
-            "identity": identity(),
-            "inventoryDigest": digest("e"),
-            "normalizedQueryDigest": digest("f"),
-            "candidateSetDigest": digest("1"),
-            "fdProcessCount": 0,
-            "rgProcessCount": 0,
-            "tantivyBuildCount": 0,
-            "complete": True,
-        }
-    )
-
-
 def test_cold_rg_pathspec_is_content_generation_bound() -> None:
     jsonschema.Draft202012Validator(
         schema("cold-rg-corpus-receipt.v1.schema.json")
@@ -67,9 +48,11 @@ def test_cold_rg_pathspec_is_content_generation_bound() -> None:
 
 
 def test_accelerator_receipt_requires_equivalence_corpus() -> None:
-    cold = schema("cold-rg-query-receipt.v1.schema.json")
+    definitions = schema("semantic-search-definitions.v1.schema.json")
     accelerator = schema("lexical-accelerator-receipt.v1.schema.json")
-    registry = Registry().with_resource(cold["$id"], Resource.from_contents(cold))
+    registry = Registry().with_resource(
+        definitions["$id"], Resource.from_contents(definitions)
+    )
     jsonschema.Draft202012Validator(accelerator, registry=registry).validate(
         {
             "schemaId": "agent.semantic-protocols.lexical-accelerator-receipt",

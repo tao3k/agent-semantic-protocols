@@ -36,9 +36,9 @@ class ReceiptCountValidationTests(unittest.TestCase):
                         "editBoundary": "before-edit",
                         "commands": [
                             {
-                                "id": "prime",
+                                "id": "search-playbook",
                                 "kind": "search",
-                                "argv": ["asp-rust", "search", "prime", "."],
+                                "argv": ["asp", "search", "playbook", "--language", "rust", "--rg", "--files", ".", "--tantivy", "term", "source"],
                                 "metrics": {
                                     "elapsedMs": 2,
                                     "stdoutBytes": 20,

@@ -37,4 +37,23 @@ fn cli_live_corpus_forwards_only_typed_public_client_requests() {
         include_str!("../../../../agent-semantic-client/src/runtime_language_client.rs");
     assert!(transport_owner.contains("AspClientGrpcTransport"));
     assert!(!transport_owner.contains(concat!("AspClientProtocol", "HttpClient")));
+
+    let qualification_runner =
+        include_str!("../../../src/command/live_corpus_qualification/runner.rs");
+    for required in [
+        "tokio::task::JoinSet::new()",
+        "case_tasks.spawn(async move",
+        "case_tasks.join_next().await",
+        "completed_cases.sort_by_key",
+        "workspace_scheduling: \"tokio-join-set\"",
+    ] {
+        assert!(
+            qualification_runner.contains(required),
+            "Live Corpus multi-workspace Tokio gate is missing: {required}"
+        );
+    }
+    assert!(
+        !qualification_runner.contains("Semaphore"),
+        "Live Corpus runner must not add a leaf workspace concurrency limit"
+    );
 }

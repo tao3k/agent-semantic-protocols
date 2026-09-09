@@ -34,11 +34,13 @@
     "clientProtocolReceipt": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["protocolId", "protocolVersion", "transport", "phases", "sessionPolicy", "readyEffects", "forbiddenReadyEffects", "nonReadyDispatchCount", "residualTaskCount", "cancelOutcome", "requestOutcome", "requiredTelemetryEvents", "qualifiedCaseCount", "maximumResidentMicros", "p50MaximumMicros", "p99MaximumMicros", "maxMaximumMicros"],
+      "required": ["protocolId", "protocolVersion", "transport", "workspaceScheduling", "concurrentWorkspaceCount", "phases", "sessionPolicy", "readyEffects", "forbiddenReadyEffects", "nonReadyDispatchCount", "residualTaskCount", "cancelOutcome", "requestOutcome", "requiredTelemetryEvents", "qualifiedCaseCount", "maximumResidentMicros", "p50MaximumMicros", "p99MaximumMicros", "maxMaximumMicros"],
       "properties": {
         "protocolId": { "const": "agent.semantic-protocols.client" },
         "protocolVersion": { "const": "1" },
         "transport": { "const": "grpc-tokio-streams" },
+        "workspaceScheduling": { "const": "tokio-join-set" },
+        "concurrentWorkspaceCount": { "type": "integer", "minimum": 1 },
         "phases": { "const": ["initialize", "catalog", "request", "cancel", "cancelled", "shutdown"] },
         "sessionPolicy": { "const": "one-initialize-per-session" },
         "readyEffects": { "const": ["mpsc", "oneshot", "cancel", "response"] },
@@ -85,8 +87,6 @@
         "searchOperationId",
         "searchElapsedMicros",
         "residentSampleCount",
-        "searchResidentReadLatencyMicros",
-        "searchServiceLatencyMicros",
         "searchTotalLatencyMicros",
         "candidateCount",
         "selector",
@@ -113,8 +113,8 @@
         "merkleProofStepCount",
         "zeroMatchOperationId",
         "runtimeEcosystem",
-        "searchReadMode",
-        "searchReadWorkCounters",
+        "searchExecutionMode",
+        "searchBinding",
         "exactReadMode",
         "exactReadWorkCounters",
         "route",
@@ -160,11 +160,9 @@
         "generationDigest": { "type": "string", "minLength": 1 },
         "rootDigest": { "type": "string", "minLength": 1 },
         "searchOperationId": { "type": "string", "minLength": 1 },
-        "searchElapsedMicros": { "type": "integer", "minimum": 0, "maximum": 1000 },
+        "searchElapsedMicros": { "type": "integer", "minimum": 0, "maximum": 500000 },
         "residentSampleCount": { "type": "integer", "minimum": 128 },
-        "searchResidentReadLatencyMicros": { "$ref": "#/$defs/latencyDistribution" },
-        "searchServiceLatencyMicros": { "$ref": "#/$defs/latencyDistribution" },
-        "searchTotalLatencyMicros": { "$ref": "#/$defs/latencyDistribution" },
+        "searchTotalLatencyMicros": { "$ref": "#/$defs/searchLatencyDistribution" },
         "candidateCount": { "type": "integer", "minimum": 1 },
         "selector": { "type": "string", "minLength": 1 },
         "queryOperationId": { "type": "string", "minLength": 1 },
@@ -190,8 +188,17 @@
         "merkleProofStepCount": { "type": "integer", "minimum": 0 },
         "zeroMatchOperationId": { "type": "string", "minLength": 1 },
         "runtimeEcosystem": { "const": "tokio" },
-        "searchReadMode": { "const": "synchronous-mmap" },
-        "searchReadWorkCounters": { "$ref": "runtime-provider-search-receipt.v1.schema.json#/$defs/zeroWorkCounters" },
+        "searchExecutionMode": { "const": "workspace-search-playbook" },
+        "searchBinding": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["sourceGenerationDigest", "providerCatalogDigest", "topologyGenerationDigest"],
+          "properties": {
+            "sourceGenerationDigest": { "type": "string", "pattern": "^blake3-256:[0-9a-f]{64}$" },
+            "providerCatalogDigest": { "type": "string", "pattern": "^blake3-256:[0-9a-f]{64}$" },
+            "topologyGenerationDigest": { "type": "string", "pattern": "^blake3-256:[0-9a-f]{64}$" }
+          }
+        },
         "exactReadMode": { "const": "synchronous-mmap" },
         "exactReadWorkCounters": { "$ref": "runtime-provider-search-receipt.v1.schema.json#/$defs/zeroWorkCounters" },
         "route": { "const": "public-typed-asp-client" },
@@ -250,6 +257,26 @@
         "p95Micros": { "type": "integer", "minimum": 0, "maximum": 1000 },
         "p99Micros": { "type": "integer", "minimum": 0, "maximum": 1000 },
         "maxMicros": { "type": "integer", "minimum": 0, "maximum": 1000 }
+      }
+    },
+    "searchLatencyDistribution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sampleCount",
+        "minMicros",
+        "p50Micros",
+        "p95Micros",
+        "p99Micros",
+        "maxMicros"
+      ],
+      "properties": {
+        "sampleCount": { "type": "integer", "minimum": 128 },
+        "minMicros": { "type": "integer", "minimum": 0, "maximum": 500000 },
+        "p50Micros": { "type": "integer", "minimum": 0, "maximum": 500000 },
+        "p95Micros": { "type": "integer", "minimum": 0, "maximum": 500000 },
+        "p99Micros": { "type": "integer", "minimum": 0, "maximum": 500000 },
+        "maxMicros": { "type": "integer", "minimum": 0, "maximum": 500000 }
       }
     }
   }

@@ -106,7 +106,7 @@ semantic_string_type!(
     CacheGenerationId
 );
 semantic_string_type!(
-    /// Provider-advertised export method such as `search/prime`.
+    /// Provider-advertised export method such as `search/playbook`.
     CacheExportMethod
 );
 semantic_string_type!(

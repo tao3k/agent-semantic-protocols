@@ -84,7 +84,6 @@ pub(in crate::command) fn validate_codex_plugin_source_payload() -> Result<Strin
         || !ASP_CODEX_PLUGIN_HOOK_LAUNCHER.contains("runtime/artifacts/active/asp-hook")
         || ASP_CODEX_PLUGIN_HOOK_LAUNCHER.contains("hooks/current")
         || ASP_CODEX_PLUGIN_HOOK_LAUNCHER.contains("ASP_HOOK_GENERATION_ROOT")
-        || ASP_CODEX_PLUGIN_HOOK_LAUNCHER.contains("runtime/artifacts/active")
         || !ASP_CODEX_PLUGIN_HOOK_LAUNCHER
             .contains("$asp_hook_state_home/runtime/artifacts/active/asp-hook")
         || !ASP_CODEX_PLUGIN_HOOK_LAUNCHER.contains("exec \"$hook_bin\" \"$@\"")

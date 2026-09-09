@@ -17,42 +17,13 @@
       "type": "string",
       "pattern": "^/root(?:/[a-z0-9_]+)*$"
     },
-    "agentStatus": {
-      "oneOf": [
-        {
-          "enum": [
-            "pending_init",
-            "running",
-            "interrupted",
-            "shutdown",
-            "not_found"
-          ]
-        },
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["completed"],
-          "properties": {
-            "completed": { "type": ["string", "null"] }
-          }
-        },
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["errored"],
-          "properties": {
-            "errored": { "type": "string" }
-          }
-        }
-      ]
-    },
     "liveAgent": {
       "type": "object",
       "additionalProperties": false,
       "required": ["agent_name", "agent_status"],
       "properties": {
         "agent_name": { "$ref": "#/$defs/canonicalAgentPath" },
-        "agent_status": { "$ref": "#/$defs/agentStatus" }
+        "agent_status": { "$ref": "https://schemas.agent-semantic-protocols.dev/semantic-agent-definitions.schema.json#/$defs/agentStatus" }
       }
     }
   }

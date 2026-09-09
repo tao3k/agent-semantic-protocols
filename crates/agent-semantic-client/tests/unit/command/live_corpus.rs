@@ -59,7 +59,7 @@ fn corpus(admission: Option<LiveCorpusExtensionAdmission>) -> LiveCorpusLockEntr
     LiveCorpusLockEntry {
         resource_id: "org.worg".to_string(),
         scenario_id: "org.worg-intent-matrix".to_string(),
-        provider_id: "orgize".to_string(),
+        provider_id: "asp-org".to_string(),
         language: "org".to_string(),
         repository: "bzg/worg".to_string(),
         git: LiveCorpusGitLock {

@@ -1,0 +1,183 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/search-layout.v1.schema.json",
+  "title": "ASP Search Layout V1",
+  "description": "A versioned Search-package execution graph admitted and executed by Rust Runtime.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "layoutId",
+    "layoutVersion",
+    "authority",
+    "root"
+  ],
+  "properties": {
+    "schemaId": {"const": "agent.semantic-protocols.search-layout"},
+    "schemaVersion": {"const": "1"},
+    "layoutId": {"$ref": "#/$defs/id"},
+    "layoutVersion": {"type": "integer", "minimum": 1},
+    "authority": {"$ref": "#/$defs/authority"},
+    "root": {"$ref": "#/$defs/expression"}
+  },
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_.-]*$(?![\\s\\S])"
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^blake3-256:[0-9a-f]{64}$(?![\\s\\S])"
+    },
+    "authority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "owner",
+        "layoutDigest"
+      ],
+      "properties": {
+        "owner": {"const": "agent-semantic-search"},
+        "layoutDigest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "expression": {
+      "oneOf": [
+        {"$ref": "#/$defs/stage"},
+        {"$ref": "#/$defs/serial"},
+        {"$ref": "#/$defs/sharedScope"},
+        {"$ref": "#/$defs/structuralScope"},
+        {"$ref": "#/$defs/optional"}
+      ]
+    },
+    "stage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "stageId", "operator", "inputBinding", "outputBasis"],
+      "properties": {
+        "kind": {"const": "stage"},
+        "stageId": {"$ref": "#/$defs/id"},
+        "operator": {"enum": ["rg", "tantivy", "syntax", "native-syntax", "native-parser", "graph"]},
+        "inputBinding": {
+          "enum": [
+            "layout-input-scope",
+            "request-rg",
+            "request-tantivy",
+            "request-syntax",
+            "request-native-syntax",
+            "request-producers",
+            "request-graph",
+            "predecessor-scope"
+          ]
+        },
+        "outputBasis": {
+          "enum": ["owners", "matches", "ranked-owners", "selectors", "relations"]
+        }
+      }
+    },
+    "serial": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "nodeId", "steps"],
+      "properties": {
+        "kind": {"const": "serial"},
+        "nodeId": {"$ref": "#/$defs/id"},
+        "steps": {
+          "type": "array",
+          "minItems": 2,
+          "items": {"$ref": "#/$defs/expression"}
+        }
+      }
+    },
+    "sharedScope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "nodeId", "fusionPolicy", "branches"],
+      "properties": {
+        "kind": {"const": "shared-scope"},
+        "nodeId": {"$ref": "#/$defs/id"},
+        "fusionPolicy": {
+          "enum": ["intersection", "union", "intersection-rerank", "union-rerank"]
+        },
+        "branches": {
+          "type": "array",
+          "minItems": 2,
+          "items": {"$ref": "#/$defs/stage"}
+        }
+      }
+    },
+    "structuralScope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "nodeId",
+        "selectionPolicy",
+        "explicitFusionPolicy",
+        "explicitInputs",
+        "fallback"
+      ],
+      "properties": {
+        "kind": {"const": "structural-scope"},
+        "nodeId": {"$ref": "#/$defs/id"},
+        "selectionPolicy": {"const": "explicit-inputs-replace-fallback"},
+        "explicitFusionPolicy": {"const": "union"},
+        "explicitInputs": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "prefixItems": [
+            {
+              "allOf": [
+                {"$ref": "#/$defs/stage"},
+                {
+                  "properties": {
+                    "operator": {"const": "syntax"},
+                    "inputBinding": {"const": "request-syntax"},
+                    "outputBasis": {"const": "selectors"}
+                  }
+                }
+              ]
+            },
+            {
+              "allOf": [
+                {"$ref": "#/$defs/stage"},
+                {
+                  "properties": {
+                    "operator": {"const": "native-syntax"},
+                    "inputBinding": {"const": "request-native-syntax"},
+                    "outputBasis": {"const": "selectors"}
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "fallback": {
+          "allOf": [
+            {"$ref": "#/$defs/stage"},
+            {
+              "properties": {
+                "operator": {"const": "native-parser"},
+                "inputBinding": {"const": "predecessor-scope"},
+                "outputBasis": {"const": "selectors"}
+              }
+            }
+          ]
+        }
+      }
+    },
+    "optional": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "nodeId", "whenInputPresent", "step"],
+      "properties": {
+        "kind": {"const": "optional"},
+        "nodeId": {"$ref": "#/$defs/id"},
+        "whenInputPresent": {"enum": ["request-graph"]},
+        "step": {"$ref": "#/$defs/stage"}
+      }
+    }
+  }
+}

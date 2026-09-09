@@ -7,8 +7,9 @@
   "rootSelector": "rust://crates/example/src/lib.rs#item/function/run",
   "evidenceContextRef": "blake3-256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
   "payloadSchemaId": "agent.semantic-protocols.callable-skeleton",
-  "payloadDigest": "blake3-256:f7c1752a5bcf079001f519ac06ea05f84dad1f34c32eb74eb6bdae35957c106d",
+  "payloadDigest": "blake3-256:fa8fc5678f7755f523bdc7c6727af59814be9c0e6cd852208fe1ef918b5be8bd",
   "payload": {
+    "rootSelector": "rust://crates/example/src/lib.rs#item/function/run",
     "rootNodeId": "callable:root",
     "callable": {
       "kind": "function",

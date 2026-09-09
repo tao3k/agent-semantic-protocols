@@ -10,8 +10,6 @@ use crate::tool_action::ToolAction;
 fn runtime() -> HookRuntime {
     HookRuntime {
         project_root: ".".to_owned(),
-        rankers: Vec::new(),
-        providers: Vec::new(),
         policy_providers: Vec::new(),
     }
 }

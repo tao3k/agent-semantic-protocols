@@ -16,9 +16,9 @@ from asp_python_graphs.artifacts import (
 
 def search_packet() -> dict[str, object]:
     return {
-        "schemaId": "agent.semantic-protocols.semantic-search-packet",
+        "schemaId": "agent.semantic-protocols.workspace-search-playbook-result",
         "languageId": "python",
-        "method": "search/lexical",
+        "method": "search/playbook",
         "view": "lexical",
         "query": "semantic_string_type",
         "searchSynthesis": {
@@ -44,7 +44,7 @@ def test_search_packet_can_be_converted_to_graph_turbo_request() -> None:
     assert request is not None
     assert request["profile"] == "query-deps"
     assert request["budget"] == 6
-    assert request["seedIds"]
+    assert request["entryNodeIds"]
     assert len(request["graph"]["nodes"]) == 3
     assert any(edge["relation"] == "covers" for edge in request["graph"]["edges"])
 

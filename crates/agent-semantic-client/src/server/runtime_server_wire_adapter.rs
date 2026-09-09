@@ -234,11 +234,6 @@ pub(crate) async fn reconcile_runtime_server_activation_event(
             .await?
         }
     };
-    eprintln!(
-        "[runtime-server-resident-transaction] {}",
-        serde_json::to_string(&transaction)
-            .map_err(|error| format!("encode Runtime resident transaction receipt: {error}"))?
-    );
     if !resident_transaction_identity_matches(
         event,
         &transaction.publication_nonce,

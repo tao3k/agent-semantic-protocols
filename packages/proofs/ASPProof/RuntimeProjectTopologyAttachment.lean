@@ -109,6 +109,7 @@ structure SearchSettlementCandidate where
   runtimeGeneration : RuntimeGenerationBinding
   libraryIdentity : Nat
   topologyRootDigest : Identity .topologyRoot
+  topologyClosureDigest : Identity .topologyClosure
   evidenceDigest : Nat
   oneGqlBlock : Bool
   exposesAscentSource : Bool
@@ -127,6 +128,8 @@ def searchSettlementAdmitted
         candidate.runtimeGeneration == expectedRuntime &&
         candidate.libraryIdentity == attached.libraryIdentity &&
         candidate.topologyRootDigest == attached.topologyBinding.topologyRootDigest &&
+        candidate.topologyClosureDigest ==
+          attached.topologyBinding.topologyClosureDigest &&
         candidate.oneGqlBlock && !candidate.exposesAscentSource &&
         !candidate.hasPlannerState
 
@@ -154,7 +157,7 @@ def attachmentA : RuntimeProjectTopologyAttachment :=
 
 def settlementA : SearchSettlementCandidate :=
   ⟨81, runtimeA, attachmentA.libraryIdentity, bindingA.topologyRootDigest,
-    91, true, false, false⟩
+    bindingA.topologyClosureDigest, 91, true, false, false⟩
 
 def settlementB : SearchSettlementCandidate :=
   { settlementA with requestIdentity := 82, evidenceDigest := 92 }
@@ -260,6 +263,11 @@ theorem planner_state_is_not_part_of_a_public_search_settlement :
 theorem ascent_source_is_not_part_of_a_public_search_settlement :
     searchSettlementAdmitted runtimeA [receiptA] (some attachmentA)
       { settlementA with exposesAscentSource := true } = false := by
+  decide
+
+theorem another_topology_closure_cannot_replay_a_search_settlement :
+    searchSettlementAdmitted runtimeA [receiptA] (some attachmentA)
+      { settlementA with topologyClosureDigest := ⟨999⟩ } = false := by
   decide
 
 theorem one_immutable_attachment_supports_independent_searches :

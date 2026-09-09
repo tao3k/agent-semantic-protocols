@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 #+TITLE: RFC 10.06.20 - Runtime Execution Product Binding
 #+LANGUAGE: en
 #+DATE: 2026-09-07

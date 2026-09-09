@@ -106,10 +106,12 @@ def test_budget_exhausted_payload_records_hard_stop_reason() -> None:
 
 def test_is_asp_command_accepts_facade_and_workspace_binary() -> None:
     assert is_asp_command("asp rust guide --workspace .")
-    assert is_asp_command("/workspace/.bin/asp rust search prime .")
-    assert is_asp_command("cd /workspace && asp rust search prime --workspace . --view seeds")
     assert is_asp_command(
-        "direnv exec /workspace asp rust query --selector src/lib.rs:1:4 --workspace . --code"
+        "/workspace/.bin/asp search playbook --language rust --rg --files . --tantivy term source"
+    )
+    assert is_asp_command("cd /workspace && asp search playbook --language rust --rg --files . --tantivy term source")
+    assert is_asp_command(
+        "direnv exec /workspace asp query playbook --language rust --selector src/lib.rs:1:4 --workspace . --code"
     )
     assert not is_asp_command("grep -R Vec .")
 

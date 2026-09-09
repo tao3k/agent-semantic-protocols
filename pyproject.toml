@@ -75,7 +75,7 @@ rationale = "cache performance CLI is benchmark-facing evidence"
 
 [tool.pytest.ini_options]
 addopts = [
-  "--python-project-harness",
+  "--asp-python",
 ]
 pythonpath = [
   "packages/python/asp_python_graphs/src",

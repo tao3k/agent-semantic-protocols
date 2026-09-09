@@ -22,7 +22,7 @@ fn admitted_receipts() -> BTreeMap<String, serde_json::Value> {
 
 fn manifest() -> ProjectTopologyManifest {
     ProjectTopologyManifest::parse_org(include_str!(
-        "../../../../org/templates/project.topology-program.v1.org"
+        "../../../../org/templates/project.workspace-manifest.v1.org"
     ))
     .expect("Project Topology manifest")
 }
@@ -48,6 +48,29 @@ fn project_topology_library_admits_a_complete_cross_consumer_generation() {
         "git+https://github.com/tao3k/agent-semantic-protocols.git#workspace/root"
     );
     assert_eq!(library.workspace_root_path(), ".");
+}
+
+#[test]
+fn query_relationship_is_the_least_incident_admitted_edge_identity() {
+    let library = admit_library(valid_library(), &admitted_receipts()).unwrap();
+    let relationship = library
+        .canonical_relationship_for_selector(
+            "rust://src/registry.rs#item/method/refresh_registry/scope/implementation-owner/type/Registry",
+        )
+        .expect("selector has two incident topology edges");
+    assert_eq!(relationship.edge_id(), "declares-refresh");
+    assert_eq!(relationship.from_node(), "Registry");
+    assert_eq!(relationship.relation(), "DECLARES");
+    assert_eq!(relationship.to_node(), "refresh_registry");
+}
+
+#[test]
+fn query_relationship_rejects_a_selector_absent_from_topology() {
+    let library = admit_library(valid_library(), &admitted_receipts()).unwrap();
+    let error = library
+        .canonical_relationship_for_selector("rust://src/missing.rs#item/function/missing")
+        .expect_err("Query cannot synthesize a placeholder topology relationship");
+    assert_eq!(error.reason_kind(), "topology-query-selector-node-missing");
 }
 
 #[test]

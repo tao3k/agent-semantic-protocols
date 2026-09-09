@@ -17,6 +17,33 @@ pub const PROJECT_TOPOLOGY_LIBRARY_SCHEMA_ID: &str =
     "agent.semantic-protocols.project-topology-library";
 pub const PROJECT_TOPOLOGY_LIBRARY_SCHEMA_VERSION: &str = "1";
 
+/// The deterministic admitted topology edge rendered beside one Query result.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProjectTopologyDisplayRelationship {
+    edge_id: String,
+    from_node: String,
+    relation: String,
+    to_node: String,
+}
+
+impl ProjectTopologyDisplayRelationship {
+    pub fn edge_id(&self) -> &str {
+        &self.edge_id
+    }
+
+    pub fn from_node(&self) -> &str {
+        &self.from_node
+    }
+
+    pub fn relation(&self) -> &str {
+        &self.relation
+    }
+
+    pub fn to_node(&self) -> &str {
+        &self.to_node
+    }
+}
+
 /// A complete Project Topology generation admitted for cross-consumer reuse.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ProjectTopologyLibrary {
@@ -157,10 +184,12 @@ impl ProjectTopologyLibrary {
         }
 
         let mut nodes = BTreeMap::<String, Option<String>>::new();
+        let mut node_kinds = BTreeMap::<String, String>::new();
         let mut source_nodes = BTreeMap::<String, String>::new();
         for node in required_array(object, "nodes")? {
             let node = required_object(node, "nodes[]")?;
             let id = required_text(node, "id")?.to_owned();
+            let kind = required_text(node, "kind")?.to_owned();
             let plane = required_text(node, "plane")?;
             let segment_id = optional_text(node, "segmentId")?.map(str::to_owned);
             match (plane, segment_id.as_deref()) {
@@ -190,6 +219,7 @@ impl ProjectTopologyLibrary {
             if nodes.insert(id.clone(), segment_id).is_some() {
                 return invalid("topology-duplicate-node-id", format!("duplicate node {id}"));
             }
+            node_kinds.insert(id.clone(), kind);
             if let Some(annotation) = node.get("annotation") {
                 let annotation = required_object(annotation, "nodes[].annotation")?;
                 if required_text(annotation, "bindingDigest")? != semantic_digest {
@@ -303,6 +333,8 @@ impl ProjectTopologyLibrary {
         }
         validate_segment_membership(&segments, &source_edges, |segment| &segment.edge_ids)
             .map_err(|message| error("topology-segment-edge-membership-mismatch", message))?;
+
+        validate_relation_frontiers(object, &node_kinds)?;
 
         let closure = required_object_field(object, "closure")?;
         require_text_eq(closure, "state", "stable")?;
@@ -444,6 +476,272 @@ impl ProjectTopologyLibrary {
             .as_str()
             .expect("admitted topology closure digest")
     }
+
+    /// Resolve the canonical incident topology edge for one exact selector.
+    ///
+    /// Edge identity, rather than packet order, owns the deterministic choice.
+    /// This is a presentation projection only; it does not prescribe execution.
+    pub fn canonical_relationship_for_selector(
+        &self,
+        selector: &str,
+    ) -> Result<ProjectTopologyDisplayRelationship, ProjectTopologyLibraryError> {
+        let object = required_object(&self.packet, "packet")?;
+        let nodes = required_array(object, "nodes")?;
+        let matching = nodes
+            .iter()
+            .filter_map(|node| required_object(node, "nodes[]").ok())
+            .filter(|node| node.get("selector").and_then(Value::as_str) == Some(selector))
+            .collect::<Vec<_>>();
+        let [selected_node] = matching.as_slice() else {
+            return invalid(
+                if matching.is_empty() {
+                    "topology-query-selector-node-missing"
+                } else {
+                    "topology-query-selector-node-ambiguous"
+                },
+                "Query selector must resolve to exactly one admitted topology node",
+            );
+        };
+        let selected_id = required_text(selected_node, "id")?;
+        let mut incident = required_array(object, "edges")?
+            .iter()
+            .filter_map(|edge| required_object(edge, "edges[]").ok())
+            .filter(|edge| {
+                edge.get("from").and_then(Value::as_str) == Some(selected_id)
+                    || edge.get("to").and_then(Value::as_str) == Some(selected_id)
+            })
+            .collect::<Vec<_>>();
+        incident.sort_by_key(|edge| edge.get("id").and_then(Value::as_str).unwrap_or_default());
+        let edge = incident.first().ok_or_else(|| {
+            error(
+                "topology-query-selector-relationship-missing",
+                "Query selector topology node has no admitted incident relationship",
+            )
+        })?;
+        let from_id = required_text(edge, "from")?;
+        let to_id = required_text(edge, "to")?;
+        let node_label = |id: &str| -> Result<String, ProjectTopologyLibraryError> {
+            let node = nodes
+                .iter()
+                .filter_map(|node| required_object(node, "nodes[]").ok())
+                .find(|node| node.get("id").and_then(Value::as_str) == Some(id))
+                .ok_or_else(|| {
+                    error("topology-dangling-edge", "topology edge endpoint is absent")
+                })?;
+            Ok(node
+                .get("name")
+                .and_then(Value::as_str)
+                .filter(|name| {
+                    !name.trim().is_empty() && !name.contains(['\r', '\n']) && !name.contains("-->")
+                })
+                .unwrap_or(id)
+                .to_owned())
+        };
+        Ok(ProjectTopologyDisplayRelationship {
+            edge_id: required_text(edge, "id")?.to_owned(),
+            from_node: node_label(from_id)?,
+            relation: required_text(edge, "relation")?.to_owned(),
+            to_node: node_label(to_id)?,
+        })
+    }
+}
+
+fn validate_relation_frontiers(
+    object: &Map<String, Value>,
+    node_kinds: &BTreeMap<String, String>,
+) -> Result<(), ProjectTopologyLibraryError> {
+    type RelationKey = (String, String, String, String, u64);
+
+    let positive_edges = required_array(object, "edges")?
+        .iter()
+        .map(|edge| required_object(edge, "edges[]"))
+        .collect::<Result<Vec<_>, _>>()?
+        .into_iter()
+        .filter(|edge| {
+            matches!(
+                edge.get("modality").and_then(Value::as_str),
+                Some("parser-direct" | "declared" | "derived")
+            )
+        })
+        .map(|edge| {
+            Ok((
+                required_text(edge, "from")?.to_owned(),
+                required_text(edge, "to")?.to_owned(),
+                required_text(edge, "relation")?.to_owned(),
+            ))
+        })
+        .collect::<Result<BTreeSet<_>, ProjectTopologyLibraryError>>()?;
+
+    let mut certificates = BTreeMap::<String, (&str, &str, &str)>::new();
+    for certificate in required_array(object, "coverageCertificates")? {
+        let certificate = required_object(certificate, "coverageCertificates[]")?;
+        let id = required_text(certificate, "id")?.to_owned();
+        let value = (
+            required_text(certificate, "relation")?,
+            required_text(certificate, "targetKind")?,
+            required_text(certificate, "scope")?,
+        );
+        if certificates.insert(id.clone(), value).is_some() {
+            return invalid(
+                "topology-coverage-duplicate",
+                format!("duplicate coverage certificate {id}"),
+            );
+        }
+        require_digest(certificate, "digest")?;
+    }
+
+    let mut frontiers = BTreeMap::<RelationKey, &Map<String, Value>>::new();
+    for frontier in required_array(object, "frontiers")? {
+        let frontier = required_object(frontier, "frontiers[]")?;
+        let key = (
+            required_text(frontier, "anchor")?.to_owned(),
+            required_text(frontier, "target")?.to_owned(),
+            required_text(frontier, "relation")?.to_owned(),
+            required_text(frontier, "targetKind")?.to_owned(),
+            required_u64(frontier, "depth")?,
+        );
+        if frontiers.insert(key, frontier).is_some() {
+            return invalid(
+                "topology-frontier-duplicate",
+                "duplicate frontier for one expected relation",
+            );
+        }
+    }
+
+    let mut expected_keys = BTreeSet::new();
+    let mut expected_ids = BTreeSet::new();
+    let mut referenced_certificates = BTreeSet::new();
+    for expected in required_array(object, "expectedRelations")? {
+        let expected = required_object(expected, "expectedRelations[]")?;
+        let id = required_text(expected, "id")?;
+        if !expected_ids.insert(id) {
+            return invalid(
+                "topology-expected-relation-duplicate",
+                format!("duplicate expected relation {id}"),
+            );
+        }
+        let anchor = required_text(expected, "anchor")?;
+        let target = required_text(expected, "target")?;
+        let relation = required_text(expected, "relation")?;
+        let target_kind = required_text(expected, "targetKind")?;
+        let key = (
+            anchor.to_owned(),
+            target.to_owned(),
+            relation.to_owned(),
+            target_kind.to_owned(),
+            required_u64(expected, "depth")?,
+        );
+        if !expected_keys.insert(key.clone()) {
+            return invalid(
+                "topology-expected-relation-duplicate",
+                "two expectations describe the same relation obligation",
+            );
+        }
+        if !node_kinds.contains_key(anchor)
+            || node_kinds.get(target).map(String::as_str) != Some(target_kind)
+        {
+            return invalid(
+                "topology-expected-relation-endpoint-mismatch",
+                format!("expected relation {id} has an absent or mistyped endpoint"),
+            );
+        }
+        let has_positive =
+            positive_edges.contains(&(anchor.to_owned(), target.to_owned(), relation.to_owned()));
+        let frontier = frontiers.get(&key).copied();
+        if has_positive {
+            if frontier.is_some() {
+                return invalid(
+                    "topology-positive-frontier-conflict",
+                    format!("expected relation {id} has both a positive witness and a frontier"),
+                );
+            }
+            continue;
+        }
+        let frontier = frontier.ok_or_else(|| {
+            error(
+                "topology-frontier-missing",
+                format!("unsettled expected relation {id} has no frontier"),
+            )
+        })?;
+        let coverage = required_text(expected, "coverage")?;
+        let state = required_text(frontier, "state")?;
+        let reason = required_text(frontier, "reason")?;
+        let reference = frontier.get("coverageRef").and_then(Value::as_str);
+        match coverage {
+            "none"
+                if state == "unknown"
+                    && reason == "binding-not-established"
+                    && reference.is_none() => {}
+            "partial" if state == "unknown" && reason == "coverage-open" => {
+                let reference = validate_frontier_coverage(
+                    reference,
+                    relation,
+                    target_kind,
+                    "partial",
+                    &certificates,
+                )?;
+                referenced_certificates.insert(reference.to_owned());
+            }
+            "complete"
+                if state == "certified-missing" && reason == "complete-coverage-no-witness" =>
+            {
+                let reference = validate_frontier_coverage(
+                    reference,
+                    relation,
+                    target_kind,
+                    "complete",
+                    &certificates,
+                )?;
+                referenced_certificates.insert(reference.to_owned());
+            }
+            _ => {
+                return invalid(
+                    "topology-frontier-classification-mismatch",
+                    format!("frontier for {id} is inconsistent with its coverage"),
+                );
+            }
+        }
+    }
+    let unresolved_expected = expected_keys
+        .iter()
+        .filter(|key| !positive_edges.contains(&(key.0.clone(), key.1.clone(), key.2.clone())))
+        .cloned()
+        .collect::<BTreeSet<_>>();
+    if frontiers.keys().cloned().collect::<BTreeSet<_>>() != unresolved_expected {
+        return invalid(
+            "topology-frontier-expectation-mismatch",
+            "frontiers must equal exactly the unresolved expected relations",
+        );
+    }
+    if referenced_certificates != certificates.keys().cloned().collect() {
+        return invalid(
+            "topology-frontier-coverage-extraneous",
+            "coverage certificates must equal exactly the frontier references",
+        );
+    }
+    Ok(())
+}
+
+fn validate_frontier_coverage<'a>(
+    reference: Option<&'a str>,
+    relation: &str,
+    target_kind: &str,
+    scope: &str,
+    certificates: &BTreeMap<String, (&str, &str, &str)>,
+) -> Result<&'a str, ProjectTopologyLibraryError> {
+    let reference = reference.ok_or_else(|| {
+        error(
+            "topology-frontier-coverage-missing",
+            "covered frontier has no coverage certificate reference",
+        )
+    })?;
+    if certificates.get(reference).copied() != Some((relation, target_kind, scope)) {
+        return invalid(
+            "topology-frontier-coverage-mismatch",
+            format!("coverage certificate {reference} does not match the frontier"),
+        );
+    }
+    Ok(reference)
 }
 
 struct SegmentEvidence {
