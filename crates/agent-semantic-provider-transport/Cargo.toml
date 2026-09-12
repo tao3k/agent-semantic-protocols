@@ -49,7 +49,7 @@ tracing = "0.1"
 
 [build-dependencies]
 asp-rust-project-harness-policy.workspace = true
-protoc-bin-vendored = { version = "3", optional = true }
+protoc-bin-vendored = { workspace = true, optional = true }
 tonic-prost-build = { workspace = true, optional = true }
 
 [dev-dependencies]

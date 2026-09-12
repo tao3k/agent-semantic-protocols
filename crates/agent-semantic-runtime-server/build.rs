@@ -30,10 +30,15 @@ fn main() {
         )
         .expect("compile immutable Runtime schema catalog");
 
+    let protoc = protoc_bin_vendored::protoc_bin_path()
+        .expect("resolve the workspace-owned vendored protoc binary");
+    let mut prost_config = tonic_prost_build::Config::new();
+    prost_config.protoc_executable(protoc);
     tonic_prost_build::configure()
         .build_server(true)
         .build_client(true)
-        .compile_protos(
+        .compile_with_config(
+            prost_config,
             &[
                 "proto/asp-provider-stream.proto",
                 "proto/asp-python-graphs.proto",

@@ -34,4 +34,5 @@ tempfile.workspace = true
 [build-dependencies]
 agent-semantic-schema-manager = { path = "../agent-semantic-schema-manager" }
 asp-rust-project-harness-policy.workspace = true
+protoc-bin-vendored.workspace = true
 tonic-prost-build.workspace = true

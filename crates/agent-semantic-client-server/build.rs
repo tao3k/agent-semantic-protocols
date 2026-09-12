@@ -10,9 +10,17 @@ fn main() {
         .canonical_wire_artifact_path("asp-client-protocol-v1")
         .expect("resolve Schema Manager-owned ASP Client Protocol wire artifact");
     println!("cargo:rerun-if-changed={}", canonical_proto.display());
+    let protoc = protoc_bin_vendored::protoc_bin_path()
+        .expect("resolve the workspace-owned vendored protoc binary");
+    let mut prost_config = tonic_prost_build::Config::new();
+    prost_config.protoc_executable(protoc);
     tonic_prost_build::configure()
         .build_server(true)
         .build_client(true)
-        .compile_protos(&[canonical_proto], &[workspace_root.join("schemas")])
+        .compile_with_config(
+            prost_config,
+            &[canonical_proto],
+            &[workspace_root.join("schemas")],
+        )
         .expect("compile Schema Manager-owned ASP Client Protocol gRPC transport");
 }
