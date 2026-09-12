@@ -20,8 +20,10 @@ pub use grpc::AspClientGrpcService;
 pub use grpc::AspClientGrpcTransport;
 pub use grpc::CLIENT_FRAME_SESSION_CAPACITY;
 pub use grpc::CLIENT_FRAME_SESSION_CONTROL_RESERVE;
+#[cfg(unix)]
 pub use grpc::admit_asp_client_grpc_inherited_descriptor;
 pub use grpc::bind_asp_client_grpc_tcp;
+#[cfg(unix)]
 pub use grpc::connect_asp_client_grpc_inherited_descriptor;
 pub use grpc::serve_asp_client_grpc_tcp;
 

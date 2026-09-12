@@ -125,7 +125,7 @@ jobs:
           mkdir -p .bin
           cargo build --bin asp
           install -m 755 target/debug/asp .bin/asp
-          cargo build --manifest-path languages/asp-rust/Cargo.toml --features cli --bin asp-rust
+          cargo build --manifest-path languages/asp-rust/Cargo.toml --features provider-server --bin asp-rust
           install -m 755 languages/asp-rust/target/debug/asp-rust .bin/asp-rust
           npm --prefix languages/asp-typescript ci
           npm --prefix languages/asp-typescript run build
@@ -305,7 +305,7 @@ jobs:
             --workspace . \
             --language rust \
             --output languages/asp-rust/schemas
-          cargo test --manifest-path languages/asp-rust/Cargo.toml schema --features cli --quiet
+          cargo test --manifest-path languages/asp-rust/Cargo.toml schema --features provider-server --quiet
 
       - name: TypeScript provider schema gates
         run: |
