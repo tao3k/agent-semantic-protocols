@@ -46,16 +46,41 @@ pub async fn write(path: impl Into<PathBuf>, bytes: impl Into<Vec<u8>>) -> std::
 }
 
 pub async fn process_id_is_alive(process_id: u32) -> bool {
-    tokio::task::spawn_blocking(move || {
-        let Ok(process_id) = i32::try_from(process_id) else {
-            return false;
-        };
-        // SAFETY: signal 0 only probes process existence/permission.
-        (unsafe { libc::kill(process_id, 0) == 0 })
-            || std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM)
-    })
-    .await
-    .unwrap_or(false)
+    tokio::task::spawn_blocking(move || platform_process_id_is_alive(process_id))
+        .await
+        .unwrap_or(false)
+}
+
+#[cfg(unix)]
+fn platform_process_id_is_alive(process_id: u32) -> bool {
+    let Ok(process_id) = i32::try_from(process_id) else {
+        return false;
+    };
+    // SAFETY: signal 0 only probes process existence/permission.
+    (unsafe { libc::kill(process_id, 0) == 0 })
+        || std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM)
+}
+
+#[cfg(windows)]
+fn platform_process_id_is_alive(process_id: u32) -> bool {
+    use windows_sys::Win32::Foundation::{CloseHandle, ERROR_ACCESS_DENIED, STILL_ACTIVE};
+    use windows_sys::Win32::System::Threading::{
+        GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
+    };
+
+    // SAFETY: the handle is opened read-only for a concrete process id and closed below.
+    let handle = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, process_id) };
+    if handle.is_null() {
+        return std::io::Error::last_os_error().raw_os_error()
+            == i32::try_from(ERROR_ACCESS_DENIED).ok();
+    }
+    let mut exit_code = 0_u32;
+    // SAFETY: handle is valid and exit_code points to writable storage.
+    let alive = unsafe { GetExitCodeProcess(handle, &mut exit_code) != 0 }
+        && exit_code == STILL_ACTIVE as u32;
+    // SAFETY: handle was returned by OpenProcess and is closed exactly once.
+    unsafe { CloseHandle(handle) };
+    alive
 }
 
 pub async fn process_executable_matches(
@@ -105,27 +130,51 @@ fn process_executable_path(_process_id: u32) -> Result<PathBuf, String> {
 }
 
 pub async fn terminate(process_id: u32) -> Result<(), String> {
-    tokio::task::spawn_blocking(move || {
-        let pid = i32::try_from(process_id).map_err(|e| e.to_string())?;
-        // SAFETY: caller has already validated ownership; this is the bounded lifecycle signal.
-        let result = unsafe { libc::kill(pid, libc::SIGTERM) };
-        classify_kill_result(result, std::io::Error::last_os_error())
-    })
-    .await
-    .map_err(|e| e.to_string())?
+    tokio::task::spawn_blocking(move || platform_terminate(process_id, false))
+        .await
+        .map_err(|e| e.to_string())?
 }
 
 pub async fn force_terminate(process_id: u32) -> Result<(), String> {
-    tokio::task::spawn_blocking(move || {
-        let pid = i32::try_from(process_id).map_err(|e| e.to_string())?;
-        // SAFETY: caller has validated the owned process identity.
-        let result = unsafe { libc::kill(pid, libc::SIGKILL) };
-        classify_kill_result(result, std::io::Error::last_os_error())
-    })
-    .await
-    .map_err(|e| e.to_string())?
+    tokio::task::spawn_blocking(move || platform_terminate(process_id, true))
+        .await
+        .map_err(|e| e.to_string())?
 }
 
+#[cfg(unix)]
+fn platform_terminate(process_id: u32, force: bool) -> Result<(), String> {
+    let pid = i32::try_from(process_id).map_err(|e| e.to_string())?;
+    let signal = if force { libc::SIGKILL } else { libc::SIGTERM };
+    // SAFETY: caller has already validated ownership; this is the bounded lifecycle signal.
+    let result = unsafe { libc::kill(pid, signal) };
+    classify_kill_result(result, std::io::Error::last_os_error())
+}
+
+#[cfg(windows)]
+fn platform_terminate(process_id: u32, _force: bool) -> Result<(), String> {
+    use windows_sys::Win32::Foundation::CloseHandle;
+    use windows_sys::Win32::System::Threading::{OpenProcess, PROCESS_TERMINATE, TerminateProcess};
+
+    // Windows has no SIGTERM equivalent for an arbitrary detached process. The Runtime owns
+    // this exact pid and has already checked executable identity before requesting termination.
+    // SAFETY: the termination-only handle is closed below on every successful open.
+    let handle = unsafe { OpenProcess(PROCESS_TERMINATE, 0, process_id) };
+    if handle.is_null() {
+        return Err(std::io::Error::last_os_error().to_string());
+    }
+    // SAFETY: handle grants PROCESS_TERMINATE for the caller-validated owned process.
+    let result = unsafe { TerminateProcess(handle, 1) };
+    let error = std::io::Error::last_os_error();
+    // SAFETY: handle was returned by OpenProcess and is closed exactly once.
+    unsafe { CloseHandle(handle) };
+    if result != 0 {
+        Ok(())
+    } else {
+        Err(error.to_string())
+    }
+}
+
+#[cfg(unix)]
 fn classify_kill_result(result: i32, error: std::io::Error) -> Result<(), String> {
     if result == 0 || error.raw_os_error() == Some(libc::ESRCH) {
         Ok(())
@@ -134,7 +183,7 @@ fn classify_kill_result(result: i32, error: std::io::Error) -> Result<(), String
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 #[path = "../tests/unit/runtime_process_lifecycle_signal.rs"]
 mod tests;
 pub struct RuntimeProcessLaunchHandle {

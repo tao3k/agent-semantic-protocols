@@ -748,20 +748,25 @@ pub(crate) fn restore_runtime_artifact_symlink(
 ) -> Result<(), String> {
     match target {
         Some(target) => {
-            let parent = path.parent().ok_or_else(|| {
-                format!("Runtime artifact alias has no parent: {}", path.display())
-            })?;
-            std::fs::create_dir_all(parent)
-                .map_err(|error| format!("create Runtime artifact alias parent: {error}"))?;
-            let staged = parent.join(format!(".rollback-{publication_nonce}.tmp"));
-            let _ = std::fs::remove_file(&staged);
             #[cfg(unix)]
-            std::os::unix::fs::symlink(target, &staged)
-                .map_err(|error| format!("stage Runtime artifact alias rollback: {error}"))?;
+            {
+                let parent = path.parent().ok_or_else(|| {
+                    format!("Runtime artifact alias has no parent: {}", path.display())
+                })?;
+                std::fs::create_dir_all(parent)
+                    .map_err(|error| format!("create Runtime artifact alias parent: {error}"))?;
+                let staged = parent.join(format!(".rollback-{publication_nonce}.tmp"));
+                let _ = std::fs::remove_file(&staged);
+                std::os::unix::fs::symlink(target, &staged)
+                    .map_err(|error| format!("stage Runtime artifact alias rollback: {error}"))?;
+                std::fs::rename(&staged, path)
+                    .map_err(|error| format!("publish Runtime artifact alias rollback: {error}"))
+            }
             #[cfg(not(unix))]
-            return Err("Runtime artifact alias rollback requires symlink support".to_owned());
-            std::fs::rename(&staged, path)
-                .map_err(|error| format!("publish Runtime artifact alias rollback: {error}"))
+            {
+                let _ = (path, target, publication_nonce);
+                Err("Runtime artifact alias rollback requires symlink support".to_owned())
+            }
         }
         None => match std::fs::remove_file(path) {
             Ok(()) => Ok(()),
