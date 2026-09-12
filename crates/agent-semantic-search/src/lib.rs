@@ -45,7 +45,6 @@ pub use memory_search::MemorySearchResolution;
 pub use memory_search::MemorySearchResolutionState;
 pub use memory_search::MemorySearchSourceLeaf;
 
-mod progressive_playbook;
 mod progressive_query;
 mod provider_candidate_annotations;
 pub mod provider_relation_memory;
@@ -116,6 +115,12 @@ mod workspace_playbook_plan_tests;
 #[path = "../tests/unit/workspace_playbook_result.rs"]
 mod workspace_playbook_result_tests;
 
+pub use agent_semantic_search_playbook::{
+    GraphNativeBlock, ProducerNativeBlock, ProgressiveSearchPlaybookError,
+    ProgressiveSearchPlaybookRequest, SearchPlaybookClauseAxis, SearchPlaybookClauseRef,
+    SearchPlaybookProducerDeclaration, parse_progressive_search_playbook_args,
+    parse_search_playbook_producer_declaration,
+};
 pub use agent_semantic_search_projection::WORKSPACE_SEARCH_PLAYBOOK_V1_EVIDENCE_ITEM_LIMIT;
 pub use content_generation::CONTENT_SEARCH_GENERATION_RECEIPT_SCHEMA_ID;
 pub use content_generation::ContentSearchGenerationReceipt;
@@ -218,12 +223,6 @@ pub use merkle_search_generation::SearchProjectionIdentity;
 pub use merkle_search_generation::search_owner_graph_fragment_digest;
 #[cfg(feature = "tantivy-accelerator")]
 pub use merkle_search_generation::search_projection_analyzer_digest;
-pub use progressive_playbook::{
-    GraphNativeBlock, ProducerNativeBlock, ProgressiveSearchPlaybookError,
-    ProgressiveSearchPlaybookRequest, SearchPlaybookClauseAxis, SearchPlaybookClauseRef,
-    SearchPlaybookProducerDeclaration, parse_progressive_search_playbook_args,
-    parse_search_playbook_producer_declaration,
-};
 pub use progressive_query::{
     ProgressiveQueryRequest, QueryOutputFormat, parse_progressive_query_args, query_output_format,
 };

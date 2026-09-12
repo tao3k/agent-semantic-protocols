@@ -9,6 +9,7 @@ version = "0.1.0"
 edition.workspace = true
 
 [dependencies]
+agent-semantic-scheme-syntax = { path = "../agent-semantic-scheme-syntax" }
 agent-semantic-client-protocol = { path = "../agent-semantic-client-protocol" }
 agent-semantic-provider-protocol.workspace = true
 base64.workspace = true
@@ -17,7 +18,6 @@ regex-automata.workspace = true
 serde_json.workspace = true
 tree-sitter.workspace = true
 tree-sitter-tsquery.workspace = true
-tree-sitter-scheme.workspace = true
 
 [build-dependencies]
 asp-rust-project-harness-policy = { workspace = true }

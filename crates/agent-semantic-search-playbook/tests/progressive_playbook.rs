@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
-use super::{
+use agent_semantic_search_playbook::{
     ProgressiveSearchPlaybookError, SearchPlaybookClauseAxis,
     parse_progressive_search_playbook_args, parse_search_playbook_producer_declaration,
 };

@@ -93,7 +93,8 @@ fn registered_root_search_playbook_matches(
             .position(|prefix| prefix == ["asp", "search", "playbook"])
             .and_then(|index| words.get(index + 3))
             .and_then(|source| {
-                agent_semantic_search::parse_search_playbook_producer_declaration(source).ok()
+                agent_semantic_search_playbook::parse_search_playbook_producer_declaration(source)
+                    .ok()
             })
             .is_some_and(|declaration| {
                 declaration

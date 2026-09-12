@@ -263,7 +263,7 @@ dependencies = [
  "agent-semantic-provider-protocol",
  "agent-semantic-runtime",
  "agent-semantic-schema-manager",
- "agent-semantic-search",
+ "agent-semantic-search-playbook",
  "agent-semantic-shell-parser",
  "aho-corasick",
  "arc-swap",
@@ -472,6 +472,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "agent-semantic-scheme-syntax"
+version = "0.1.0"
+dependencies = [
+ "asp-rust-project-harness-policy",
+ "tree-sitter",
+ "tree-sitter-scheme",
+]
+
+[[package]]
 name = "agent-semantic-search"
 version = "0.1.0"
 dependencies = [
@@ -480,6 +489,7 @@ dependencies = [
  "agent-semantic-content-identity",
  "agent-semantic-mrr",
  "agent-semantic-provider-protocol",
+ "agent-semantic-search-playbook",
  "agent-semantic-search-projection",
  "agent-semantic-shell-parser",
  "agent-semantic-tree-sitter",
@@ -502,6 +512,16 @@ dependencies = [
  "tokio-stream",
  "toml 0.9.12+spec-1.1.0",
  "which 8.0.4",
+]
+
+[[package]]
+name = "agent-semantic-search-playbook"
+version = "0.1.0"
+dependencies = [
+ "agent-semantic-scheme-syntax",
+ "agent-semantic-shell-parser",
+ "asp-rust-project-harness-policy",
+ "serde",
 ]
 
 [[package]]
@@ -552,6 +572,7 @@ version = "0.1.0"
 dependencies = [
  "agent-semantic-client-protocol",
  "agent-semantic-provider-protocol",
+ "agent-semantic-scheme-syntax",
  "asp-rust 0.1.2",
  "asp-rust-project-harness-policy",
  "base64 0.23.1",
@@ -559,7 +580,6 @@ dependencies = [
  "regex-automata",
  "serde_json",
  "tree-sitter",
- "tree-sitter-scheme",
  "tree-sitter-tsquery",
 ]
 

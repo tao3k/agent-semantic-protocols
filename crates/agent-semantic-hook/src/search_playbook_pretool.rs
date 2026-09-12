@@ -30,7 +30,9 @@ pub fn evaluate(payload_json: &str, host_matcher: &str) -> Result<Option<Value>,
         let Some(args) = search_playbook_args(stage) else {
             continue;
         };
-        let Err(error) = agent_semantic_search::parse_progressive_search_playbook_args(args) else {
+        let Err(error) =
+            agent_semantic_search_playbook::parse_progressive_search_playbook_args(args)
+        else {
             continue;
         };
         let source = args.get(2).map(String::as_str);

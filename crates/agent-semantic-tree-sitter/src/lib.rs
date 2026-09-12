@@ -15,7 +15,10 @@ pub mod catalog;
 pub mod enhanced_query;
 pub mod query_syntax;
 mod resident_syntax_plan;
-pub mod scheme_source;
+pub use agent_semantic_scheme_syntax::{
+    SCHEME_GRAMMAR_ID, SCHEME_GRAMMAR_REPOSITORY, SCHEME_GRAMMAR_VERSION, SchemeDatum,
+    SchemeSourceAdmission, SchemeSourceAdmissionError, admit_scheme_source, parse_scheme_datums,
+};
 pub use builtin_catalog::BuiltinCatalogId;
 pub use builtin_catalog::BuiltinCatalogLanguageId;
 pub use builtin_catalog::builtin_catalog_source;
@@ -41,10 +44,6 @@ pub use query_syntax::SyntaxQueryPredicateOp;
 pub use query_syntax::SyntaxQueryPredicateValue;
 pub use query_syntax::compile_query_abi_source;
 pub use resident_syntax_plan::compile_resident_syntax_plan;
-pub use scheme_source::{
-    SCHEME_GRAMMAR_ID, SCHEME_GRAMMAR_REPOSITORY, SCHEME_GRAMMAR_VERSION, SchemeDatum,
-    SchemeSourceAdmission, SchemeSourceAdmissionError, admit_scheme_source, parse_scheme_datums,
-};
 
 #[cfg(test)]
 #[path = "../tests/unit/catalog.rs"]

@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
-//! Tree-sitter-only structural admission for Scheme source.
+//! Lightweight Tree-sitter-only structural admission for Scheme source.
 
 pub const SCHEME_GRAMMAR_ID: &str = "tree-sitter-scheme";
 pub const SCHEME_GRAMMAR_VERSION: &str = "0.24.7";

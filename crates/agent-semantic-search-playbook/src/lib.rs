@@ -2,9 +2,9 @@
 //
 // SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
-//! Public Search Playbook Scheme expression and normalized request lowering.
+//! Lightweight public Search Playbook V1 syntax and normalized request lowering.
 
-use agent_semantic_tree_sitter::SchemeDatum;
+use agent_semantic_scheme_syntax::SchemeDatum;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -141,7 +141,7 @@ pub fn parse_progressive_search_playbook_args(
             "Search Playbook accepts exactly one Scheme expression argument",
         ));
     }
-    let datums = agent_semantic_tree_sitter::parse_scheme_datums(source).map_err(|error| {
+    let datums = agent_semantic_scheme_syntax::parse_scheme_datums(source).map_err(|error| {
         invalid_parameter(
             error.reason_kind,
             format!("invalid Search Playbook Scheme source: {error}"),
@@ -162,7 +162,7 @@ pub fn parse_progressive_search_playbook_args(
 pub fn parse_search_playbook_producer_declaration(
     source: &str,
 ) -> Result<SearchPlaybookProducerDeclaration, ProgressiveSearchPlaybookError> {
-    let datums = agent_semantic_tree_sitter::parse_scheme_datums(source).map_err(|error| {
+    let datums = agent_semantic_scheme_syntax::parse_scheme_datums(source).map_err(|error| {
         invalid_parameter(
             error.reason_kind,
             format!("invalid Search Playbook Scheme source: {error}"),
@@ -681,7 +681,3 @@ fn valid_exact_selector(value: &str) -> bool {
                     .is_some_and(|(owner, item)| !owner.is_empty() && !item.is_empty())
         })
 }
-
-#[cfg(test)]
-#[path = "../tests/unit/progressive_playbook.rs"]
-mod tests;

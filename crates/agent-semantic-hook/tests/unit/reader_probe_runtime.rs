@@ -2,6 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
+#[cfg(target_os = "macos")]
 use super::PROBE_COLD_TIMEOUT;
 use super::observe_one;
 use agent_semantic_hook::ReaderProbeAccess;

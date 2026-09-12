@@ -37,7 +37,7 @@ evaluator = [
     "dep:agent-semantic-artifacts",
     "dep:arc-swap",
     "dep:agent-semantic-shell-parser",
-    "dep:agent-semantic-search",
+    "dep:agent-semantic-search-playbook",
     "dep:blake3",
     "dep:fs2",
     "dep:globset",
@@ -69,7 +69,7 @@ agent-semantic-artifacts = { workspace = true, optional = true }
 agent-semantic-provider-protocol = { workspace = true, optional = true }
 blake3 = { workspace = true, optional = true }
 agent-semantic-shell-parser = { path = "../agent-semantic-shell-parser", optional = true }
-agent-semantic-search = { path = "../agent-semantic-search", optional = true, default-features = false }
+agent-semantic-search-playbook = { path = "../agent-semantic-search-playbook", optional = true }
 agent-semantic-config = { path = "../agent-semantic-config", optional = true }
 agent-semantic-content-identity = { path = "../agent-semantic-content-identity", optional = true }
 agent-semantic-runtime = { path = "../agent-semantic-runtime", optional = true }

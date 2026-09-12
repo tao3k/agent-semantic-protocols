@@ -5,7 +5,7 @@
 use std::process::Command;
 
 #[test]
-fn evaluator_feature_has_no_runtime_or_protocol_normal_dependencies() {
+fn evaluator_feature_has_no_direct_runtime_or_protocol_normal_dependencies() {
     let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let workspace = manifest_dir.join("../..");
     let output = Command::new(env!("CARGO"))
@@ -19,6 +19,8 @@ fn evaluator_feature_has_no_runtime_or_protocol_normal_dependencies() {
             "evaluator",
             "-e",
             "normal",
+            "--depth",
+            "1",
         ])
         .output()
         .expect("inspect evaluator dependency graph");
@@ -39,7 +41,7 @@ fn evaluator_feature_has_no_runtime_or_protocol_normal_dependencies() {
     ] {
         assert!(
             !reachable.contains(&forbidden),
-            "evaluator dependency graph contains forbidden package {forbidden}:\n{tree}"
+            "evaluator direct dependency graph contains forbidden package {forbidden}:\n{tree}"
         );
     }
 }

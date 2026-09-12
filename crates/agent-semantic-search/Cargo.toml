@@ -40,6 +40,7 @@ blake3.workspace = true
 globset.workspace = true
 agent-semantic-config = { path = "../agent-semantic-config" }
 agent-semantic-search-projection = { path = "../agent-semantic-search-projection" }
+agent-semantic-search-playbook = { path = "../agent-semantic-search-playbook" }
 agent-semantic-tree-sitter = { path = "../agent-semantic-tree-sitter" }
 bytes = { workspace = true }
 ignore = { workspace = true }

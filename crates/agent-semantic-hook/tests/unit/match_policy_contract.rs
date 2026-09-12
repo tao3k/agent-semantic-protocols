@@ -123,8 +123,10 @@ fn canonical_config_covers_registered_source_bash_matrix() {
                         4,
                         "Search route must carry one expression"
                     );
-                    agent_semantic_search::parse_progressive_search_playbook_args(&route.argv[1..])
-                        .expect("materialized Search route must satisfy one-expression admission");
+                    agent_semantic_search_playbook::parse_progressive_search_playbook_args(
+                        &route.argv[1..],
+                    )
+                    .expect("materialized Search route must satisfy one-expression admission");
                 }
                 count += 1;
             }
