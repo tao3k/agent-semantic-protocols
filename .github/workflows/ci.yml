@@ -162,10 +162,20 @@ jobs:
         if: ${{ matrix.os == 'ubuntu-latest' }}
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
+      - name: Check portable Rust contracts on Windows
+        if: ${{ matrix.os == 'windows-latest' }}
+        run: >-
+          cargo check
+          -p agent-semantic-client-protocol
+          -p agent-semantic-provider-protocol
+          -p agent-semantic-tree-sitter
+
       - name: Build asp binary
+        if: ${{ matrix.os != 'windows-latest' }}
         run: cargo build --bin asp
 
       - name: Run asp binary smoke
+        if: ${{ matrix.os != 'windows-latest' }}
         run: cargo run --quiet --bin asp -- guide
 
       - name: Save sccache cache (fallback)
@@ -281,7 +291,9 @@ jobs:
             --quiet
 
       - name: Python provider policy gate
-        run: just check-python-policy
+        run: >-
+          uv run --project languages/asp-python --frozen python -c
+          'from asp_python import assert_asp_python_clean; assert_asp_python_clean(".")'
 
       - name: Build asp binary
         run: cargo build --bin asp

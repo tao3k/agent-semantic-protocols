@@ -409,10 +409,7 @@ fn required_field_text(
         .and_then(|value| node_text(value, source))
 }
 
-fn node_text(
-    node: tree_sitter::Node<'_>,
-    source: &str,
-) -> Result<String, EnhancedQueryParseError> {
+fn node_text(node: tree_sitter::Node<'_>, source: &str) -> Result<String, EnhancedQueryParseError> {
     node.utf8_text(source.as_bytes())
         .map(str::to_owned)
         .map_err(|cause| error(format!("read enhanced Query syntax node: {cause}")))
