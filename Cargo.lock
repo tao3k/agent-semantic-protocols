@@ -527,7 +527,7 @@ dependencies = [
  "globset",
  "tantivy-query-grammar",
  "toml 0.9.12+spec-1.1.0",
- "tree-sitter 0.26.11",
+ "tree-sitter",
  "tree-sitter-bash",
 ]
 
@@ -558,10 +558,9 @@ dependencies = [
  "blake3",
  "regex-automata",
  "serde_json",
- "tree-sitter 0.20.10",
- "tree-sitter 0.26.11",
- "tree-sitter-query",
+ "tree-sitter",
  "tree-sitter-scheme",
+ "tree-sitter-tsquery",
 ]
 
 [[package]]
@@ -6598,16 +6597,6 @@ dependencies = [
 
 [[package]]
 name = "tree-sitter"
-version = "0.20.10"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e747b1f9b7b931ed39a548c1fae149101497de3c1fc8d9e18c62c1a66c683d3d"
-dependencies = [
- "cc",
- "regex",
-]
-
-[[package]]
-name = "tree-sitter"
 version = "0.26.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "af1c71c1c4cc0920b20d6b0f6572e7682cd07a6a2faec71067a31fa394c586df"
@@ -6637,20 +6626,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "009994f150cc0cd50ff54917d5bc8bffe8cad10ca10d81c34da2ec421ae61782"
 
 [[package]]
-name = "tree-sitter-query"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9d4374ba146382b2c9a50290e79283b5035544912c0e1387e3ff08e6137f4cb4"
-dependencies = [
- "cc",
- "tree-sitter 0.20.10",
-]
-
-[[package]]
 name = "tree-sitter-scheme"
 version = "0.24.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8a7e7f156bdf38145f26705d1733185698845307d3e9d9c071ecce4375575131"
+dependencies = [
+ "cc",
+ "tree-sitter-language",
+]
+
+[[package]]
+name = "tree-sitter-tsquery"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c1b31e95ea85379972abf3b6857a59b2f6fb7ef3b5e47e9a4fb6c07111dee5e6"
 dependencies = [
  "cc",
  "tree-sitter-language",

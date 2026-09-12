@@ -12,7 +12,9 @@ pub use transport::AspClientGrpcService;
 pub use transport::AspClientGrpcTransport;
 pub use transport::CLIENT_FRAME_SESSION_CAPACITY;
 pub use transport::CLIENT_FRAME_SESSION_CONTROL_RESERVE;
+#[cfg(unix)]
 pub use transport::admit_asp_client_grpc_inherited_descriptor;
 pub use transport::bind_asp_client_grpc_tcp;
+#[cfg(unix)]
 pub use transport::connect_asp_client_grpc_inherited_descriptor;
 pub use transport::serve_asp_client_grpc_tcp;

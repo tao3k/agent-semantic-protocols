@@ -16,8 +16,7 @@ blake3.workspace = true
 regex-automata.workspace = true
 serde_json.workspace = true
 tree-sitter.workspace = true
-tree-sitter-legacy.workspace = true
-tree-sitter-query.workspace = true
+tree-sitter-tsquery.workspace = true
 tree-sitter-scheme.workspace = true
 
 [build-dependencies]

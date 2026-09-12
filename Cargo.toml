@@ -115,8 +115,7 @@ syn = "2"
 tantivy = "0.26.1"
 toml = "0.9"
 tree-sitter = "0.26"
-tree-sitter-legacy = { package = "tree-sitter", version = "0.20.10" }
-tree-sitter-query = "0.1.0"
+tree-sitter-tsquery = "0.8.0"
 tree-sitter-scheme = "=0.24.7"
 turso = { version = "0.7.2", default-features = false, features = ["fts", "sync"] }
 which = "8"

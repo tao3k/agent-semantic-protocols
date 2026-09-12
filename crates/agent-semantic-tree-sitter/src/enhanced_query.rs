@@ -102,9 +102,9 @@ pub fn parse_enhanced_query_source(
     if source.trim().is_empty() {
         return Err(error("enhanced Query source is empty"));
     }
-    let mut parser = tree_sitter_legacy::Parser::new();
+    let mut parser = tree_sitter::Parser::new();
     parser
-        .set_language(tree_sitter_query::language())
+        .set_language(&tree_sitter_tsquery::LANGUAGE.into())
         .map_err(|cause| error(format!("load Tree-sitter Query grammar: {cause}")))?;
     let tree = parser
         .parse(source, None)
@@ -147,7 +147,7 @@ pub fn parse_enhanced_query_source(
 }
 
 fn parse_expression(
-    node: tree_sitter_legacy::Node<'_>,
+    node: tree_sitter::Node<'_>,
     source: &str,
     predicates: &mut Vec<EnhancedQueryPredicate>,
 ) -> Result<EnhancedQueryExpression, EnhancedQueryParseError> {
@@ -248,7 +248,7 @@ fn parse_expression(
 }
 
 fn expression_children(
-    node: tree_sitter_legacy::Node<'_>,
+    node: tree_sitter::Node<'_>,
     source: &str,
     predicates: &mut Vec<EnhancedQueryPredicate>,
 ) -> Result<Vec<EnhancedQueryExpression>, EnhancedQueryParseError> {
@@ -273,7 +273,7 @@ fn expression_children(
 }
 
 fn parse_predicate(
-    node: tree_sitter_legacy::Node<'_>,
+    node: tree_sitter::Node<'_>,
     source: &str,
 ) -> Result<EnhancedQueryPredicate, EnhancedQueryParseError> {
     let raw = node_text(node, source)?;
@@ -344,7 +344,7 @@ fn parse_predicate(
 }
 
 fn query_quantifier(
-    node: tree_sitter_legacy::Node<'_>,
+    node: tree_sitter::Node<'_>,
     source: &str,
 ) -> Result<EnhancedQueryQuantifier, EnhancedQueryParseError> {
     let Some(quantifier) = node.child_by_field_name("quantifier") else {
@@ -370,7 +370,7 @@ fn query_quantifier(
 }
 
 fn query_captures(
-    node: tree_sitter_legacy::Node<'_>,
+    node: tree_sitter::Node<'_>,
     source: &str,
 ) -> Result<Vec<String>, EnhancedQueryParseError> {
     let mut captures = Vec::new();
@@ -384,7 +384,7 @@ fn query_captures(
 }
 
 fn capture_name(
-    node: tree_sitter_legacy::Node<'_>,
+    node: tree_sitter::Node<'_>,
     source: &str,
 ) -> Result<String, EnhancedQueryParseError> {
     node.child_by_field_name("name")
@@ -400,7 +400,7 @@ fn capture_name(
 }
 
 fn required_field_text(
-    node: tree_sitter_legacy::Node<'_>,
+    node: tree_sitter::Node<'_>,
     field: &str,
     source: &str,
 ) -> Result<String, EnhancedQueryParseError> {
@@ -410,7 +410,7 @@ fn required_field_text(
 }
 
 fn node_text(
-    node: tree_sitter_legacy::Node<'_>,
+    node: tree_sitter::Node<'_>,
     source: &str,
 ) -> Result<String, EnhancedQueryParseError> {
     node.utf8_text(source.as_bytes())
