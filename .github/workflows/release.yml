@@ -63,7 +63,7 @@ jobs:
           git submodule update --init --depth 1 \
             languages/asp-rust \
             languages/asp-gerbil-scheme \
-            languages/org \
+            org \
             languages/orgize \
             languages/asp-typescript \
             languages/asp-python \
