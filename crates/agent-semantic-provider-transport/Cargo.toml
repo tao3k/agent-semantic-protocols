@@ -15,6 +15,7 @@ http-client-server = ["dep:agent-semantic-http-json", "dep:reqwest"]
 grpc-session = [
   "dep:hyper-util",
   "dep:prost",
+  "dep:protoc-bin-vendored",
   "dep:tonic",
   "dep:tonic-prost",
   "dep:tonic-prost-build",
@@ -48,6 +49,7 @@ tracing = "0.1"
 
 [build-dependencies]
 asp-rust-project-harness-policy.workspace = true
+protoc-bin-vendored = { version = "3", optional = true }
 tonic-prost-build = { workspace = true, optional = true }
 
 [dev-dependencies]
