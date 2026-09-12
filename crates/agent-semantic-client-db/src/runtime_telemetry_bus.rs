@@ -71,6 +71,10 @@ struct RuntimeTelemetryEnvelope {
     pending_transition_key: Option<String>,
 }
 
+#[expect(
+    clippy::large_enum_variant,
+    reason = "telemetry events retain their typed V1 payloads without per-event heap indirection"
+)]
 pub enum RuntimeTelemetryEvent {
     Lifecycle(RuntimeLifecycleEvent),
     SearchIncident(IncidentTelemetryEvent),
@@ -80,6 +84,12 @@ pub enum RuntimeTelemetryEvent {
 pub struct RuntimeTelemetryBus {
     pub sender: RuntimeTelemetryBusSender,
     pub receiver: RuntimeTelemetryBusReceiver,
+}
+
+impl Default for RuntimeTelemetryBus {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl RuntimeTelemetryBus {
@@ -296,6 +306,10 @@ impl RuntimeTelemetryBusSender {
         sent
     }
 
+    #[expect(
+        clippy::result_large_err,
+        reason = "the rejected V1 incident is returned intact so callers retain complete evidence"
+    )]
     pub fn try_record_incident_terminal(
         &self,
         event: IncidentTelemetryEvent,

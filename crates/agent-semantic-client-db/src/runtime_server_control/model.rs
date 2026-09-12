@@ -448,7 +448,7 @@ impl RuntimeServerStatusSnapshot {
             || self.schema_version != SCHEMA_VERSION
             || self.generation != observed_generation
             || self.generation == 0
-            || self.generation % 2 != 0
+            || !self.generation.is_multiple_of(2)
         {
             return Err("Runtime Server status memory identity mismatch".to_owned());
         }

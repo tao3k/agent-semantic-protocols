@@ -42,6 +42,10 @@ enum ProviderProjectionExecutor<'a> {
 
 pub(super) type ProviderProjectionAuxiliaryOwners = BTreeMap<String, Vec<ProviderProjectionOwner>>;
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "provider projection keeps runtime, workspace, source, and artifact authorities explicit"
+)]
 pub(super) async fn project_generation_with_resident_runtime_and_artifact_store(
     runtime: Option<&ProviderRuntimeActorClient>,
     project_root: &Path,
@@ -67,6 +71,10 @@ pub(super) async fn project_generation_with_resident_runtime_and_artifact_store(
     .await
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "provider projection keeps executor, workspace, source, and artifact authorities explicit"
+)]
 async fn project_generation_with_executor(
     executor: ProviderProjectionExecutor<'_>,
     project_root: &Path,
@@ -83,13 +91,13 @@ async fn project_generation_with_executor(
         .collect::<BTreeMap<_, _>>();
     for owner in auxiliary_owners.values().flatten() {
         let digest = blake3_content_digest_v1(&owner.source_bytes);
-        if let Some(existing) = generation_leaves.insert(owner.owner_path.clone(), digest.clone()) {
-            if existing != digest {
-                return Err(format!(
-                    "projection generation path has conflicting immutable bytes: {}",
-                    owner.owner_path
-                ));
-            }
+        if let Some(existing) = generation_leaves.insert(owner.owner_path.clone(), digest.clone())
+            && existing != digest
+        {
+            return Err(format!(
+                "projection generation path has conflicting immutable bytes: {}",
+                owner.owner_path
+            ));
         }
     }
     let tree = WorkspacePathMerkleTreeV1::from_file_digests(generation_leaves)
@@ -116,6 +124,10 @@ async fn project_generation_with_executor(
     Ok(projected)
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "provider projection keeps provider identity and immutable source evidence explicit"
+)]
 async fn project_provider(
     executor: &ProviderProjectionExecutor<'_>,
     project_root: &Path,

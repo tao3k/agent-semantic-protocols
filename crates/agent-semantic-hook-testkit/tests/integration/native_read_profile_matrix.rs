@@ -11,8 +11,6 @@ use serde_json::json;
 fn empty_runtime() -> HookRuntime {
     HookRuntime {
         project_root: "/workspace".to_string(),
-        rankers: Vec::new(),
-        providers: Vec::new(),
         policy_providers: Vec::new(),
     }
 }
@@ -132,7 +130,8 @@ fn unresolved_registered_source_operands_remain_allow_without_fabricating_read_p
 
 #[test]
 fn metadata_command_without_a_registered_source_operand_remains_execute_only() {
-    for command in ["git status --short"] {
+    {
+        let command = "git status --short";
         let decision = classify_codex_plugin_scenario(
             &empty_runtime(),
             &ClientHookConfig::default(),

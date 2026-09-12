@@ -235,10 +235,10 @@ impl AspPythonGraphsTransport {
                 _ = cancellation.cancelled() => {
                     self.pending.lock().await.remove(&request_id);
                     let mut cancelled = self.cancelled.lock().await;
-                    if cancelled.len() >= 1024 {
-                        if let Some(oldest) = cancelled.iter().next().cloned() {
-                            cancelled.remove(&oldest);
-                        }
+                    if cancelled.len() >= 1024
+                        && let Some(oldest) = cancelled.iter().next().cloned()
+                    {
+                        cancelled.remove(&oldest);
                     }
                     cancelled.insert(request_id.clone());
                     drop(cancelled);
@@ -472,10 +472,6 @@ impl AspPythonGraphsServer {
                 let _ = supervisor.await;
             }
         }
-        let result = match result {
-            Ok(transport) => Ok(transport),
-            Err(error) => Err(error),
-        };
         let mut state = self.state.lock().await;
         state.starting = None;
         match result {
@@ -545,10 +541,10 @@ impl AspPythonGraphsServer {
                 .cloned()
                 .ok_or_else(|| "asp-python-graphs timeline receipt lacks payload.result".to_owned())
         });
-        if let Some(error) = transport_error {
-            if !error.contains("cancelled") {
-                self.mark_terminal(error).await;
-            }
+        if let Some(error) = transport_error
+            && !error.contains("cancelled")
+        {
+            self.mark_terminal(error).await;
         }
         result
     }
@@ -601,10 +597,10 @@ impl AspPythonGraphsServer {
                     "asp-python-graphs generation receipt lacks payload.result".to_owned()
                 })
         });
-        if let Some(error) = transport_error {
-            if !error.contains("cancelled") {
-                self.mark_terminal(error).await;
-            }
+        if let Some(error) = transport_error
+            && !error.contains("cancelled")
+        {
+            self.mark_terminal(error).await;
         }
         result
     }
@@ -657,10 +653,10 @@ impl AspPythonGraphsServer {
                     "asp-python-graphs resident evaluation receipt lacks payload".to_owned()
                 })
         });
-        if let Some(error) = transport_error {
-            if !error.contains("cancelled") {
-                self.mark_terminal(error).await;
-            }
+        if let Some(error) = transport_error
+            && !error.contains("cancelled")
+        {
+            self.mark_terminal(error).await;
         }
         result
     }

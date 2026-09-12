@@ -39,7 +39,7 @@ impl AgentInteractiveChoice {
         source_label: &str,
         expected_stage: &str,
     ) -> Result<Self, String> {
-        let org = Org::parse(&source);
+        let org = Org::parse(source);
         for record in org.document().source_block_records() {
             if record.language.as_deref() != Some("org-contract") {
                 continue;
@@ -271,7 +271,7 @@ impl AgentInteractiveChoice {
 impl AgentInteractiveChoiceEntry {
     fn parse_table_row(line: &str) -> Result<Option<Self>, String> {
         let cells: Vec<&str> = line.trim_matches('|').split('|').map(str::trim).collect();
-        if !matches!(cells.len(), 5 | 6 | 7) {
+        if !matches!(cells.len(), 5..=7) {
             return Err(format!(
                 "agent-interactive choice detail row must have 5 cells `n|id|contract|full|use-if`, 6 cells `n|id|contract|full|when|use-if`, or 7 cells `n|id|contract|full|when|presentation|use-if`: {line}"
             ));

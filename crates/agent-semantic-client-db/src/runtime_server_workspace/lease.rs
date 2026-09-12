@@ -272,6 +272,10 @@ impl WorkspaceGenerationLease {
         self.overlay.topology_source_segments(self.generation())
     }
 
+    #[expect(
+        clippy::type_complexity,
+        reason = "the V1 projection returns its three typed evidence collections"
+    )]
     pub fn native_syntax_playbook_projection(
         &self,
         owner_paths: &[String],

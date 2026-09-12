@@ -13,6 +13,10 @@ use crate::runtime_server_workspace::{
     WorkspaceGenerationPublisher, WorkspaceMemoryGeneration,
 };
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "durability commits generation data and every publication authority atomically"
+)]
 pub(super) async fn commit_canonical_generation(
     publisher: &WorkspaceGenerationPublisher,
     generation: Arc<WorkspaceMemoryGeneration>,

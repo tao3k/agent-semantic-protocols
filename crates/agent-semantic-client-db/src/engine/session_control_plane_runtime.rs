@@ -21,6 +21,10 @@ pub struct SessionControlPlaneRuntime {
 
 #[derive(Clone, Debug, Default)]
 pub struct SessionControlPlaneRuntimeRegistry {
+    #[expect(
+        clippy::type_complexity,
+        reason = "the registry explicitly binds project paths to single-flight runtime cells"
+    )]
     entries: Arc<
         tokio::sync::RwLock<
             BTreeMap<

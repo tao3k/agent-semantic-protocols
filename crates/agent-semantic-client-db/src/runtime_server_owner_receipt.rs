@@ -68,6 +68,10 @@ pub struct StaleRuntimeServerSpawnReceipt {
 }
 
 #[derive(Clone, Debug)]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "preserve the public V1 typed receipt shape"
+)]
 pub enum RuntimeServerSpawnReceiptRead {
     Current(RuntimeServerSpawnReceipt),
     Stale(StaleRuntimeServerSpawnReceipt),

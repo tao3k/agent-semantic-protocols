@@ -98,6 +98,10 @@ fn producer_matches_optional_calibration(selected: &BTreeSet<&str>, producer: &s
     selected.is_empty() || selected.contains(producer)
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "the V1 query block binds route, generation, selector, and telemetry identity explicitly"
+)]
 fn query_resident_block(
     plan: &ResidentSyntaxQueryPlan,
     generation_digest: &str,

@@ -195,13 +195,13 @@ fn validate_families<'a>(
         }
     }
     for family in registered {
-        if let Some(parent) = &family.parent_family_id {
-            if !families.contains_key(parent.as_str()) {
-                return Err(format!(
-                    "unknown parent schema family {parent} for {}",
-                    family.family_id
-                ));
-            }
+        if let Some(parent) = &family.parent_family_id
+            && !families.contains_key(parent.as_str())
+        {
+            return Err(format!(
+                "unknown parent schema family {parent} for {}",
+                family.family_id
+            ));
         }
         validate_family_paths(workspace_root, family)?;
     }

@@ -70,6 +70,7 @@ pub(in crate::command) fn publish_codex_plugin_payload(
     let lock_path = codex_home.join("plugins/asp-plugin-publication.lock");
     let lock = fs::OpenOptions::new()
         .create(true)
+        .truncate(false)
         .read(true)
         .write(true)
         .open(&lock_path)
@@ -158,7 +159,7 @@ fn launcher_is_executable(installed_root: &Path) -> Result<bool, String> {
     {
         use std::os::unix::fs::PermissionsExt as _;
 
-        return Ok(metadata.permissions().mode() & 0o111 != 0);
+        Ok(metadata.permissions().mode() & 0o111 != 0)
     }
     #[cfg(not(unix))]
     {

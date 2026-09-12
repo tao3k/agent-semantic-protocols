@@ -240,6 +240,10 @@ struct ProviderTreeSitterWriteFixture {
 }
 
 impl ProviderTreeSitterWriteFixture {
+    #[expect(
+        clippy::await_holding_lock,
+        reason = "the process-global environment fixture must remain serialized for its lifetime"
+    )]
     async fn new(label: &str) -> Self {
         let environment = environment_lock();
         let temp = TestDir::new(label);

@@ -231,9 +231,8 @@ async fn run_install_for_client(
         user_config_status
     );
     println!(
-        "[{receipt_label}] client={client} activation={} activationRuntime=derived activationSync={}{} hookBinaryDigest={} bundleDigest={} activeArtifactRoot={} activeArtifactByteReads={} activeArtifactBytesRead={} activeArtifactReceiptWrites={} agentConfig={} orgState={} orgStateSync={} orgSourceIndex={} config={}{}{}{}{} binary=asp binaryPath={} binaryInstall={} binaryContentDigest={} digestAlgorithm=blake3-256 binarySwitch=atomic mode=updated",
+        "[{receipt_label}] client={client} activation={} activationRuntime=derived activationSync=server-register{} hookBinaryDigest={} bundleDigest={} activeArtifactRoot={} activeArtifactByteReads={} activeArtifactBytesRead={} activeArtifactReceiptWrites={} agentConfig={} orgState={} orgStateSync={} orgSourceIndex={} config={}{}{}{}{} binary=asp binaryPath={} binaryInstall={} binaryContentDigest={} digestAlgorithm=blake3-256 binarySwitch=atomic mode=updated",
         display_path(&project_root, &activation_path),
-        "server-register",
         user_config_receipt,
         hook_binary_digest,
         bundle_digest,

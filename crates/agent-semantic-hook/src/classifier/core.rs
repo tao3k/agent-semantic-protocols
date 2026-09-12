@@ -224,14 +224,13 @@ pub fn classify_hook_with_config(request: HookClassificationRequest<'_>) -> Hook
     let decision = with_prompt_scope_fields(decision, request.payload);
     let decision =
         with_agent_org_artifact_recovery(decision, request.config, &request.registry.project_root);
-    let decision = with_hook_match_receipt(
+    with_hook_match_receipt(
         decision,
         request.payload,
         &actions,
         request.config,
         request.registry,
-    );
-    decision
+    )
 }
 
 fn with_hook_match_receipt(

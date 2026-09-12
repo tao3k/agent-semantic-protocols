@@ -464,10 +464,10 @@ impl SchemaManager {
             let value: Value = serde_json::from_slice(&bytes)
                 .map_err(|error| format!("decode canonical schema {name}: {error}"))?;
             for reference in schema_references(&value) {
-                if let Some(reference_name) = local_schema_name(reference) {
-                    if !documents.contains_key(reference_name) {
-                        pending.push(reference_name.to_owned());
-                    }
+                if let Some(reference_name) = local_schema_name(reference)
+                    && !documents.contains_key(reference_name)
+                {
+                    pending.push(reference_name.to_owned());
                 }
             }
             documents.insert(name, bytes);
@@ -603,12 +603,9 @@ fn write_bundle(
         )
     })?;
     let receipt_path = schema_root.join(BUNDLE_RECEIPT_FILE);
-    let previous = match read_receipt_if_present(&receipt_path) {
-        Ok(previous) => previous,
-        // A pre-MVP1 receipt is deliberately not accepted as a current
-        // receipt, but materialization must be able to replace it atomically.
-        Err(_) => None,
-    };
+    // A pre-MVP1 receipt is deliberately not accepted as a current receipt,
+    // but materialization must be able to replace it atomically.
+    let previous = read_receipt_if_present(&receipt_path).unwrap_or_default();
     let expected_names = documents.keys().cloned().collect::<BTreeSet<_>>();
     let mut changed_count = 0;
     for (name, bytes) in documents {

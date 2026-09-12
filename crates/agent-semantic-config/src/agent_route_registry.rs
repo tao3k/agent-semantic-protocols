@@ -602,7 +602,7 @@ fn compile_agent_route_from_source(
         focus_mode: agent.focus_mode,
         roles: agent.roles.clone(),
         allowed_rule_intents: agent.allowed_rule_intents.clone(),
-        agent_kind: agent.agent_kind.clone(),
+        agent_kind: agent.agent_kind,
         display_role: agent.display_role.clone(),
         description: agent.description.clone().unwrap_or(description),
         platform: PlatformId(platform.to_string()),

@@ -152,12 +152,9 @@ pub(super) async fn load_turso_source_index_relations(
                                 })?
                                 .as_str(),
                         )?,
-                        id: row
-                            .get::<String>(2)
-                            .map_err(|error| {
-                                format!("failed to decode source-index relation from id: {error}")
-                            })?
-                            .into(),
+                        id: row.get::<String>(2).map_err(|error| {
+                            format!("failed to decode source-index relation from id: {error}")
+                        })?,
                     },
                     kind: row
                         .get::<String>(3)
@@ -175,12 +172,9 @@ pub(super) async fn load_turso_source_index_relations(
                                 })?
                                 .as_str(),
                         )?,
-                        id: row
-                            .get::<String>(5)
-                            .map_err(|error| {
-                                format!("failed to decode source-index relation to id: {error}")
-                            })?
-                            .into(),
+                        id: row.get::<String>(5).map_err(|error| {
+                            format!("failed to decode source-index relation to id: {error}")
+                        })?,
                     },
                 },
             },

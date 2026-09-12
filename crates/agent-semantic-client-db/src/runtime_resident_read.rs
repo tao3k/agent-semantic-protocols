@@ -307,6 +307,10 @@ impl RuntimeResidentReadClient {
             .parser_owned_callable_selector_pairs(owner_paths)
     }
 
+    #[expect(
+        clippy::type_complexity,
+        reason = "the V1 projection returns its three typed evidence collections"
+    )]
     pub fn native_syntax_playbook_projection(
         &self,
         owner_paths: &[String],
@@ -499,6 +503,10 @@ impl RuntimeResidentReadClient {
             .clone()
     }
 
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "the hot-path observation avoids allocating an intermediate record"
+    )]
     pub fn try_record_read_observation(
         &self,
         surface: &str,

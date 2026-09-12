@@ -204,7 +204,7 @@ fn observe_one_with_wrapped(
         });
         if let Some(key) = behavior_key.as_ref()
             && let Ok(cache_root) = resolved_cache_root.as_ref()
-            && dynamic_cache_hit(&cache_root, key)
+            && dynamic_cache_hit(cache_root, key)
         {
             if let Some(process_key) = process_key.as_ref() {
                 publish_process_positive_cache(process_key, key);
@@ -650,7 +650,7 @@ fn dynamic_cache_root_path() -> Result<PathBuf, String> {
 
 #[cfg(target_os = "macos")]
 fn prepare_dynamic_cache_root(root: &Path) -> Result<(), String> {
-    ensure_secure_directory(&root)?;
+    ensure_secure_directory(root)?;
     ensure_secure_directory(&root.join("locks"))?;
     Ok(())
 }

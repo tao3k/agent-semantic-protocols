@@ -289,6 +289,10 @@ pub async fn publish_runtime_artifact_bound_bundle_members(
 /// Publish an atomic protocol/Provider successor from an installation-only
 /// preverified predecessor. Strict serving admission still applies to the
 /// complete successor before the active selector moves.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "the public replacement transaction keeps every CAS identity input explicit"
+)]
 pub async fn publish_runtime_artifact_bound_bundle_members_for_binary_replacement(
     state_home: &Path,
     source: &Path,
@@ -390,6 +394,10 @@ pub async fn publish_runtime_artifact_bundle_member_from_active(
     .await
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "the internal publication seam keeps guard and CAS identity inputs explicit"
+)]
 async fn publish_runtime_artifact_with_before_guard<BeforeGuard, BeforeGuardFuture>(
     state_home: &Path,
     source: &Path,
@@ -449,9 +457,9 @@ where
         |binding| runtime_artifact_bound_bundle_digest(&members, binding),
     );
     let token = bundle_digest.content_digest().as_str();
-    let candidate_dir = layout.generation_store().join(&token);
+    let candidate_dir = layout.generation_store().join(token);
     let _candidate_preparation_lease =
-        RuntimeArtifactCandidatePreparationLease::acquire(state_home, binary_name, &token)?;
+        RuntimeArtifactCandidatePreparationLease::acquire(state_home, binary_name, token)?;
     let slots = RuntimeArtifactSlotAuthority::for_artifact(layout.root(), binary_name);
 
     // Immutable materialization is deliberately outside the artifact mutation lock.
@@ -777,18 +785,18 @@ where
         .collect::<Result<Vec<_>, String>>()?;
     let runtime_launcher_directory = state_home.join("runtime/bin");
     let runtime_primary_alias = runtime_launcher_directory.join(binary_name);
-    let runtime_compatibility_aliases = (runtime_primary_alias != target)
-        .then(|| {
-            std::iter::once((runtime_primary_alias, target.to_path_buf()))
-                .chain(stable_member_launchers.iter().map(|member| {
-                    (
-                        runtime_launcher_directory.join(member),
-                        launcher_directory.join(member),
-                    )
-                }))
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default();
+    let runtime_compatibility_aliases = if runtime_primary_alias != target {
+        std::iter::once((runtime_primary_alias, target.to_path_buf()))
+            .chain(stable_member_launchers.iter().map(|member| {
+                (
+                    runtime_launcher_directory.join(member),
+                    launcher_directory.join(member),
+                )
+            }))
+            .collect::<Vec<_>>()
+    } else {
+        Vec::new()
+    };
     let runtime_compatibility_before = runtime_compatibility_aliases
         .iter()
         .map(|(alias, _)| read_optional_symlink(alias).map(|previous| (alias.clone(), previous)))

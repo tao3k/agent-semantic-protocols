@@ -13,6 +13,8 @@ use agent_semantic_search_projection::ResidentSearchHit;
 
 use crate::SearchGenerationGraphRequest;
 
+type ResidentGraphRankCache = Vec<Mutex<Vec<(String, Arc<ResidentGraphSearchStage>)>>>;
+
 /// Inputs admitted by one immutable Runtime search generation.
 pub struct ResidentGraphSearchRequest<'a> {
     pub operation_id: &'a str,
@@ -133,7 +135,7 @@ pub struct ResidentGraphGeneration {
     pub(super) relation_adjacency: Arc<BTreeMap<(String, String), Vec<ResidentGraphEvaluatedEdge>>>,
     pub(super) reverse_relation_adjacency:
         Arc<BTreeMap<(String, String), Vec<ResidentGraphEvaluatedEdge>>>,
-    pub(super) rank_cache: Arc<Vec<Mutex<Vec<(String, Arc<ResidentGraphSearchStage>)>>>>,
+    pub(super) rank_cache: Arc<ResidentGraphRankCache>,
     pub(super) build_metrics: ResidentGraphBuildMetrics,
 }
 

@@ -152,7 +152,7 @@ fn merkle_import(
 fn merkle_overlay_publishes_an_immutable_generation_for_changed_membership() {
     let project_root = temp_root("db-engine-merkle-overlay-project");
     let fixture = agent_semantic_client_db::fixture::SourceIndexFixture::for_client_dir(
-        &project_root.join("client"),
+        project_root.join("client"),
     );
     let base_snapshot = agent_semantic_content_identity::WorkspaceSnapshot::from_file_hashes([
         ("src/a.rs", "a".repeat(64)),
@@ -248,7 +248,7 @@ fn merkle_overlay_publishes_an_immutable_generation_for_changed_membership() {
 fn merkle_overlay_models_rename_as_one_added_and_one_removed_leaf() {
     let project_root = temp_root("db-engine-merkle-rename-project");
     let fixture = agent_semantic_client_db::fixture::SourceIndexFixture::for_client_dir(
-        &project_root.join("client"),
+        project_root.join("client"),
     );
     let base_snapshot = agent_semantic_content_identity::WorkspaceSnapshot::from_file_hashes([(
         "src/old.rs",

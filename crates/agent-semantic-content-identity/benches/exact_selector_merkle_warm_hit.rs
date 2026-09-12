@@ -98,7 +98,7 @@ fn key<'a>(record: &'a ExactSelectorProjectionRecordV1) -> ExactSelectorMerkleLo
         parser_identity_digest: record.proof.parser_identity_digest(),
         query_pack_digest: record.proof.query_pack_digest(),
         structural_selector: record.proof.structural_selector(),
-        projection_mode: record.proof.projection_mode().clone(),
+        projection_mode: *record.proof.projection_mode(),
     }
 }
 

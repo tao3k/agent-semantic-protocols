@@ -51,6 +51,10 @@ struct RetrievalLayoutExecution {
     tantivy_expressions_by_owner: BTreeMap<String, BTreeSet<String>>,
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "SearchLoop execution keeps V1 identity, route, budget, and telemetry inputs explicit"
+)]
 pub(super) async fn execute_progressive_search_clauses(
     plan: &WorkspaceSearchPlaybookPlan,
     project_root: &std::path::Path,
@@ -930,8 +934,7 @@ fn execute_tantivy_block(
         .unwrap_or(u32::MAX)
         .max(1);
     for route in routes {
-        let language = agent_semantic_client_core::LanguageId::try_from(route.language_id.as_str())
-            .map_err(|error| AspClientOperationError::Message(error.to_string()))?;
+        let language = agent_semantic_client_core::LanguageId::from(route.language_id.as_str());
         let result = generation
             .resident()
             .read_tantivy_for_language(&expression, &language, generation_owner_limit)

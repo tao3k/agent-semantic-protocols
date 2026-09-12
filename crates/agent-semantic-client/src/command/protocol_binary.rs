@@ -115,12 +115,13 @@ impl ProtocolBinaryInstall {
         }
         if self.lock_acquisition_count != 1
             || self.quiescence_operation.as_deref() != Some(expected_operation)
-            || !self
+            || self
                 .quiescence_lease_nonce
                 .as_deref()
-                .is_some_and(|nonce| !nonce.is_empty())
-            || self.lease_producer_process_id == Some(0)
-            || self.lease_producer_process_id.is_none()
+                .is_none_or(|nonce| nonce.is_empty())
+            || self
+                .lease_producer_process_id
+                .is_none_or(|process_id| process_id == 0)
             || self.lease_consumer_process_id != Some(std::process::id())
         {
             return Err(format!(

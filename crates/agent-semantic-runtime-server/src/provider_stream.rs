@@ -2,7 +2,9 @@
 //
 // SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
-use agent_semantic_provider_protocol::validate_provider_stream_envelope;
+use agent_semantic_provider_protocol::{
+    ProviderStreamEnvelopeIdentity, validate_provider_stream_envelope,
+};
 use tokio_stream::Stream;
 use tokio_stream::StreamExt;
 use tonic::Request;
@@ -77,18 +79,18 @@ impl ProviderSession for RuntimeStreamService {
     ) -> Result<Response<Self::SessionStream>, Status> {
         let output = request.into_inner().map(|message| {
             let envelope = message?;
-            validate_provider_stream_envelope(
-                &envelope.schema_id,
-                &envelope.schema_version,
-                &envelope.session_id,
-                &envelope.request_id,
-                &envelope.workspace_identity,
-                &envelope.generation_digest,
-                &envelope.provider_id,
-                &envelope.language_id,
-                &envelope.kind,
-                &envelope.payload_schema_id,
-            )
+            validate_provider_stream_envelope(&ProviderStreamEnvelopeIdentity {
+                schema_id: &envelope.schema_id,
+                schema_version: &envelope.schema_version,
+                session_id: &envelope.session_id,
+                request_id: &envelope.request_id,
+                workspace_identity: &envelope.workspace_identity,
+                generation_digest: &envelope.generation_digest,
+                provider_id: &envelope.provider_id,
+                language_id: &envelope.language_id,
+                kind: &envelope.kind,
+                payload_schema_id: &envelope.payload_schema_id,
+            })
             .map_err(Status::invalid_argument)?;
             Ok(envelope)
         });

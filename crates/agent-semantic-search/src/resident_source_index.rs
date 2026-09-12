@@ -275,6 +275,9 @@ struct QueryCacheKey {
     limit: u32,
 }
 
+type CachedReadyResult = Arc<agent_semantic_search_projection::ResidentSearchReadyResult>;
+type QueryCacheShard = Mutex<Vec<(QueryCacheKey, CachedReadyResult)>>;
+
 #[derive(Debug)]
 pub struct ResidentSourceIndex {
     lexical_index: crate::tantivy_lexical::TantivyLexicalIndex,
@@ -283,14 +286,7 @@ pub struct ResidentSourceIndex {
     source_snapshot: SourceSnapshotEvidence,
     generation_digest: String,
     index_artifact_digest: String,
-    query_cache: Vec<
-        Mutex<
-            Vec<(
-                QueryCacheKey,
-                Arc<agent_semantic_search_projection::ResidentSearchReadyResult>,
-            )>,
-        >,
-    >,
+    query_cache: Vec<QueryCacheShard>,
 }
 
 impl ResidentSourceIndex {

@@ -721,6 +721,10 @@ fn prepare_run(args: &[String]) -> Result<PreparedRun, String> {
     })
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "qualification binds case identity, corpus, budget, client, and evidence sinks explicitly"
+)]
 async fn qualify_case<C>(
     client: &C,
     project_root: &std::path::Path,

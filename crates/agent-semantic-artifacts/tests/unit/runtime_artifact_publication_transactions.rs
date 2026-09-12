@@ -303,7 +303,7 @@ async fn alias_and_malformed_state_failures_preserve_previous_client_and_serving
         .unwrap();
     let client_before = std::fs::canonicalize(&target).unwrap();
     let slots =
-        RuntimeArtifactSlotAuthority::for_artifact(&state_home.join("runtime/artifacts"), "asp");
+        RuntimeArtifactSlotAuthority::for_artifact(state_home.join("runtime/artifacts"), "asp");
     let active_before = slots.active_target().await.unwrap();
     let healthy_before = slots.healthy_target().await.unwrap();
 

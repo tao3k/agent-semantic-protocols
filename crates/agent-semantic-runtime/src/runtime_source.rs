@@ -56,8 +56,7 @@ pub fn runtime_source_checkout_dir(
     runtime_source_checkout_dir_in_runtime_root(
         agent_semantic_artifacts::StateHomeLayout::new(state_home)
             .runtime_state()
-            .root()
-            .to_path_buf(),
+            .root(),
         state_namespace,
         version_key,
     )

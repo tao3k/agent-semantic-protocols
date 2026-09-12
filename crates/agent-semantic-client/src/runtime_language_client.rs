@@ -121,10 +121,10 @@ pub(crate) fn validate_cancelled_terminal(
             "cancelled terminal must carry reasonKind={CLIENT_REQUEST_CANCELLED_REASON_KIND}"
         ));
     }
-    if !diagnostic
+    if diagnostic
         .get("message")
         .and_then(serde_json::Value::as_str)
-        .is_some_and(|message| !message.trim().is_empty())
+        .is_none_or(|message| message.trim().is_empty())
     {
         return Err("cancelled terminal diagnostic message must be non-empty".to_owned());
     }

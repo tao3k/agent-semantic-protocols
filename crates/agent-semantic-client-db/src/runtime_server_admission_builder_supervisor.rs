@@ -12,6 +12,10 @@ use super::runtime_server_admission::{
     WorkspaceGenerationFailureStage,
 };
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "the supervisor boundary keeps generation identity and cancellation authorities explicit"
+)]
 pub(super) async fn run(
     builder: WorkspaceGenerationBuilder,
     workspace_identity: String,

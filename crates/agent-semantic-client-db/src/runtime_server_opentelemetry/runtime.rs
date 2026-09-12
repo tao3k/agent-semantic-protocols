@@ -366,6 +366,10 @@ pub async fn admit_to_runtime(
     Ok(receipt)
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "the resident telemetry lane receives explicit bounded channels and stores"
+)]
 async fn run_resident_telemetry_lane(
     database_path: std::path::PathBuf,
     mut receiver: mpsc::Receiver<RuntimePerformanceObservation>,
@@ -925,6 +929,10 @@ async fn read_ingress_observation(
     Ok((observation, stream))
 }
 
+#[expect(
+    clippy::type_complexity,
+    reason = "the join result preserves both connection lease and decoded observation outcomes"
+)]
 async fn commit_ingress_completion(
     completed: Result<
         (

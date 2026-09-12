@@ -228,23 +228,20 @@ impl AspClientServerPeer {
             let (status, stop_response) = match outcome {
                 ChildOutcome::Exited(status) => (status, None),
                 ChildOutcome::Stop { force, response } => {
-                    if force {
-                        if let Err(error) = child.kill().await {
-                            let reason = format!(
-                                "reasonKind=asp-client-server-child-kill-failed phase=shutdown error={error}"
-                            );
-                            lifecycle_writer.send_replace(AspClientServerChildLifecycle::Failed(
-                                reason.clone(),
-                            ));
-                            tracing::error!(
-                                target: "asp.client_server",
-                                phase = "shutdown",
-                                reason_kind = "asp-client-server-child-kill-failed",
-                                error = %error,
-                            );
-                            let _ = response.send(Err(reason));
-                            return;
-                        }
+                    if force && let Err(error) = child.kill().await {
+                        let reason = format!(
+                            "reasonKind=asp-client-server-child-kill-failed phase=shutdown error={error}"
+                        );
+                        lifecycle_writer
+                            .send_replace(AspClientServerChildLifecycle::Failed(reason.clone()));
+                        tracing::error!(
+                            target: "asp.client_server",
+                            phase = "shutdown",
+                            reason_kind = "asp-client-server-child-kill-failed",
+                            error = %error,
+                        );
+                        let _ = response.send(Err(reason));
+                        return;
                     }
                     (child.wait().await, Some(response))
                 }

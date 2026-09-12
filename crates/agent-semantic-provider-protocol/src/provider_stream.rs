@@ -9,34 +9,39 @@ pub const PROVIDER_STREAM_SCHEMA_ID: &str = "agent.semantic-protocols.provider-s
 /// Stable schema version for Provider stream envelopes.
 pub const PROVIDER_STREAM_SCHEMA_VERSION: &str = "1";
 
-/// Validate the identity fields required on every Provider stream envelope.
-///
-/// This positional primitive boundary is the raw wire DTO adapter; callers
-/// validate it before constructing typed resident state.
+/// Borrowed wire identity fields required on every Provider stream envelope.
+#[derive(Clone, Copy, Debug)]
+pub struct ProviderStreamEnvelopeIdentity<'a> {
+    pub schema_id: &'a str,
+    pub schema_version: &'a str,
+    pub session_id: &'a str,
+    pub request_id: &'a str,
+    pub workspace_identity: &'a str,
+    pub generation_digest: &'a str,
+    pub provider_id: &'a str,
+    pub language_id: &'a str,
+    pub kind: &'a str,
+    pub payload_schema_id: &'a str,
+}
+
+/// Validate the identity fields before constructing typed resident state.
 pub fn validate_provider_stream_envelope(
-    schema_id: &str,
-    schema_version: &str,
-    session_id: &str,
-    request_id: &str,
-    workspace_identity: &str,
-    generation_digest: &str,
-    provider_id: &str,
-    language_id: &str,
-    kind: &str,
-    payload_schema_id: &str,
+    identity: &ProviderStreamEnvelopeIdentity<'_>,
 ) -> Result<(), String> {
-    if schema_id != PROVIDER_STREAM_SCHEMA_ID || schema_version != PROVIDER_STREAM_SCHEMA_VERSION {
+    if identity.schema_id != PROVIDER_STREAM_SCHEMA_ID
+        || identity.schema_version != PROVIDER_STREAM_SCHEMA_VERSION
+    {
         return Err("invalid provider stream schema identity".to_owned());
     }
     for (name, value) in [
-        ("sessionId", session_id),
-        ("requestId", request_id),
-        ("workspaceIdentity", workspace_identity),
-        ("generationDigest", generation_digest),
-        ("providerId", provider_id),
-        ("languageId", language_id),
-        ("kind", kind),
-        ("payloadSchemaId", payload_schema_id),
+        ("sessionId", identity.session_id),
+        ("requestId", identity.request_id),
+        ("workspaceIdentity", identity.workspace_identity),
+        ("generationDigest", identity.generation_digest),
+        ("providerId", identity.provider_id),
+        ("languageId", identity.language_id),
+        ("kind", identity.kind),
+        ("payloadSchemaId", identity.payload_schema_id),
     ] {
         if value.is_empty() {
             return Err(format!("provider stream envelope {name} is empty"));

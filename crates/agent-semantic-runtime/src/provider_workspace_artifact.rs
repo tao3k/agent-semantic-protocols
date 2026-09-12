@@ -48,6 +48,7 @@ pub fn acquire_provider_workspace_build_guard(
         .read(true)
         .write(true)
         .create(true)
+        .truncate(false)
         .open(&lock_path)
         .map_err(|error| {
             format!(

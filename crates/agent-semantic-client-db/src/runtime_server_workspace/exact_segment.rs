@@ -343,6 +343,10 @@ impl MappedWorkspaceExactProjection {
             .selector_indices_by_owner
             .get(owner_index)
             .ok_or_else(|| "workspace exact projection owner index is out of range".to_owned())?;
+        #[expect(
+            clippy::type_complexity,
+            reason = "selector assembly groups range, query keys, and derived projections by identity"
+        )]
         let mut selector_groups: std::collections::BTreeMap<
             String,
             (
@@ -396,8 +400,7 @@ impl MappedWorkspaceExactProjection {
             let Some((byte_start, byte_end)) = source_range else {
                 continue;
             };
-            derived_projections
-                .sort_by(|left, right| left.projection_kind.cmp(&right.projection_kind));
+            derived_projections.sort_by_key(|projection| projection.projection_kind);
             selectors.push(WorkspaceSelectorSnapshot {
                 selector,
                 byte_start,

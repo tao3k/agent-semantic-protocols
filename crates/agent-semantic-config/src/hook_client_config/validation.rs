@@ -644,7 +644,7 @@ fn validate_match_schema_shape(
                     "rules[].match.structuredProjection.optionValueArity `{option}` must start with `-` and have positive arity"
                 ));
             }
-            if value_free_options.get(option.as_str()).is_some() {
+            if value_free_options.contains(option.as_str()) {
                 return Err(format!(
                     "rules[].match.structuredProjection option `{option}` cannot be both value-free and value-owning"
                 ));

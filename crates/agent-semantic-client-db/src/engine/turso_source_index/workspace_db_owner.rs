@@ -18,6 +18,10 @@ use super::{
 
 /// A mutation admitted by the workspace owner's only writer actor.
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "the bounded owner channel moves complete generation values without extra heap indirection"
+)]
 pub enum WorkspaceDbWriteOperation {
     CommitSourceIndexGeneration {
         request: crate::ClientDbSourceIndexRefreshRequest,
@@ -34,6 +38,10 @@ pub enum WorkspaceDbWriteOperation {
 
 /// A committed result returned for one typed mutation.
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "the bounded owner channel returns complete generation values without extra heap indirection"
+)]
 pub enum WorkspaceDbWriteResult {
     SourceIndexGeneration {
         receipt: crate::ClientDbSourceIndexRefreshReport,

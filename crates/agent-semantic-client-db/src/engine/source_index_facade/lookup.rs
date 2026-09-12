@@ -376,6 +376,11 @@ fn lookup_live_source_index_read_model(
     )))
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    clippy::type_complexity,
+    reason = "the internal lookup boundary keeps immutable identity and resident cache inputs explicit"
+)]
 async fn lookup_source_index_read_model_at_path(
     db_path: PathBuf,
     requested_scope: Option<TursoSourceIndexLookupRequestScope>,

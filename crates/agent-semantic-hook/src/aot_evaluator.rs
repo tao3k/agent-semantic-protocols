@@ -377,8 +377,8 @@ pub fn reader_probe_request(
         return Ok(None);
     }
     for rule in &generation.rules {
-        if !rule.matchers.iter().any(|matcher| *matcher == host_matcher)
-            || !rule.actions.iter().any(|action| *action == "read")
+        if !rule.matchers.contains(&host_matcher)
+            || !rule.actions.contains(&"read")
             || rule.registered_extensions.is_empty()
         {
             continue;
@@ -539,7 +539,7 @@ pub fn evaluate_pre_tool<'a>(
         )? {
             continue;
         }
-        let rule_confirmed_read = if rule.actions.iter().any(|action| *action == "read")
+        let rule_confirmed_read = if rule.actions.contains(&"read")
             && !rule.registered_extensions.is_empty()
         {
             match host_matcher {
@@ -551,7 +551,7 @@ pub fn evaluate_pre_tool<'a>(
         } else {
             None
         };
-        if rule.actions.iter().any(|action| *action == "read") && rule_confirmed_read.is_none() {
+        if rule.actions.contains(&"read") && rule_confirmed_read.is_none() {
             continue;
         }
         let confirmed_read = rule_confirmed_read.as_ref().or(invocation_read.as_ref());

@@ -63,6 +63,10 @@ fn query_playbook_generation_provider_targets(
         .collect()
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "settled timing records preserve each V1 phase measurement explicitly"
+)]
 pub(super) fn record_settled_client_timing_observations(
     publication: &agent_semantic_content_identity::runtime_workspace_execution_publication::RuntimeWorkspaceExecutionPublication,
     witness: &agent_semantic_client_protocol::RuntimeSearchClientTimingWitness,
@@ -168,6 +172,10 @@ pub(super) fn runtime_search_trace_budget_micros() -> u64 {
         .min(u128::from(u64::MAX)) as u64
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "the V1 Query receipt binds each identity and measured phase explicitly"
+)]
 fn materialize_query_playbook_receipt(
     request_id: &str,
     params: &AspClientWorkspaceQueryPlaybookRequest,
@@ -484,6 +492,10 @@ fn materialize_generation_bound_query_playbook(
     )
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "Query dispatch keeps route, generation, deadline, and telemetry authorities explicit"
+)]
 pub(super) async fn dispatch_workspace_query_playbook(
     dispatch_budget: &super::query_generation_support::RequestDispatchBudget,
     request: &AspClientDispatchRequest,

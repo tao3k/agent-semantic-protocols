@@ -191,12 +191,14 @@ impl WorkspaceExactProjectionDataPlaneClient {
         };
         let snapshot = pointer.read()?;
         snapshot.validate()?;
-        let current = self.inner.current.read();
-        decode_header(&current.mapping)?;
-        if current.epoch == snapshot.active_epoch {
+        let unchanged = {
+            let current = self.inner.current.read();
+            decode_header(&current.mapping)?;
+            current.epoch == snapshot.active_epoch
+        };
+        if unchanged {
             return Ok(false);
         }
-        drop(current);
         let mapped = MappedWorkspaceExactProjection::open(&snapshot).await?;
         *self.inner.current.write() = std::sync::Arc::new(mapped);
         Ok(true)

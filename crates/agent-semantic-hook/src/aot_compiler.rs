@@ -124,9 +124,9 @@ pub fn compile_serving_hook_policy_bundle_at(
             path.display()
         ));
     }
-    let source = std::fs::read(&path)
+    let source = std::fs::read(path)
         .map_err(|error| format!("read Hook user config {}: {error}", path.display()))?;
-    let config = agent_semantic_config::load_hook_client_config_overlay_file(&path)
+    let config = agent_semantic_config::load_hook_client_config_overlay_file(path)
         .map_err(|error| format!("load Hook user config {}: {error}", path.display()))?;
     let mut identity = blake3::Hasher::new();
     identity.update(b"agent-semantic-hook-serving-policy.v1\0");
@@ -534,9 +534,7 @@ fn compile_rule_match(
     Ok(compiled)
 }
 
-fn compile_command_profile_patterns(
-    projection: &Value,
-) -> Result<BTreeMap<(String, String), Vec<Vec<String>>>, String> {
+fn compile_command_profile_patterns(projection: &Value) -> Result<CommandProfilePatterns, String> {
     let mut catalog = BTreeMap::new();
     for profile in projection
         .get("commandProfiles")
@@ -627,3 +625,4 @@ fn optional_string(value: &Value, field: &str) -> Option<String> {
 #[cfg(test)]
 #[path = "../tests/unit/aot_compiler.rs"]
 mod tests;
+type CommandProfilePatterns = BTreeMap<(String, String), Vec<Vec<String>>>;

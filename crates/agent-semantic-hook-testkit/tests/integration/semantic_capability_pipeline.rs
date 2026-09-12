@@ -16,8 +16,6 @@ use serde_json::json;
 fn runtime(project_root: &str) -> HookRuntime {
     HookRuntime {
         project_root: project_root.to_owned(),
-        rankers: Vec::new(),
-        providers: Vec::new(),
         policy_providers: Vec::new(),
     }
 }
@@ -25,8 +23,6 @@ fn runtime(project_root: &str) -> HookRuntime {
 fn runtime_with_rust_policy_projection(project_root: &str) -> HookRuntime {
     HookRuntime {
         project_root: project_root.to_owned(),
-        rankers: Vec::new(),
-        providers: Vec::new(),
         policy_providers: vec![HookProviderProjection {
             language_id: LanguageId::new("rust"),
             provider_id: ProviderId::new("asp-rust"),

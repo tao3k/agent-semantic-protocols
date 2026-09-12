@@ -258,10 +258,12 @@ pub(super) fn select_qualification_cases(
             resource_id.unwrap_or("*")
         ));
     }
-    if resource_id.is_some() && selected.len() != 1 {
+    if let Some(resource_id) = resource_id
+        && selected.len() != 1
+    {
         return Err(format!(
             "Live Corpus qualification resource is duplicated in plan: resource={} count={}",
-            resource_id.expect("resource selection exists"),
+            resource_id,
             selected.len()
         ));
     }

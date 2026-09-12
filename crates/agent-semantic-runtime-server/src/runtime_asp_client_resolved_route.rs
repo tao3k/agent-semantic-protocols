@@ -882,6 +882,10 @@ pub(super) fn workspace_search_materialization_key(
     Ok(format!("blake3-256:{}", hasher.finalize().to_hex()))
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "Search materialization keeps route, generation, deadline, and telemetry authorities explicit"
+)]
 async fn materialize_workspace_search(
     materialization_key: &str,
     request_id: &str,

@@ -173,7 +173,7 @@ fn structured_host_results_match_codex_v2_without_inventing_message_envelopes() 
     for (schema, value) in &cases {
         let schema: serde_json::Value = serde_json::from_str(schema).expect("result schema");
         let validator = jsonschema::validator_for(&schema).expect("compile result schema");
-        assert!(validator.is_valid(&value), "result={value}");
+        assert!(validator.is_valid(value), "result={value}");
     }
 
     let spawn: CollaborationSpawnResult =

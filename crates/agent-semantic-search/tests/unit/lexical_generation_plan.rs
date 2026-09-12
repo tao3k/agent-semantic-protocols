@@ -119,7 +119,7 @@ fn missing_inventory_or_lexical_fact_fails_closed() {
             &digest("analyzer"),
             [],
             admitted(),
-            facts(&[owner.clone()]),
+            facts(std::slice::from_ref(&owner)),
             []
         )
         .expect_err("missing fd inventory must fail")

@@ -44,7 +44,7 @@ async fn publication_latency_distribution_is_subsecond_with_millisecond_lock_sco
             .await
             .expect("publish cold artifact");
         cold_total.push(started.elapsed().as_micros());
-        cold_lock.push(u128::from(receipt.lock_elapsed_micros));
+        cold_lock.push(receipt.lock_elapsed_micros);
         cold_phase.push(receipt.phase_trace);
     }
 
@@ -63,7 +63,7 @@ async fn publication_latency_distribution_is_subsecond_with_millisecond_lock_sco
             .await
             .expect("publish warm artifact");
         warm_total.push(started.elapsed().as_micros());
-        warm_lock.push(u128::from(receipt.lock_elapsed_micros));
+        warm_lock.push(receipt.lock_elapsed_micros);
         warm_phase.push(receipt.phase_trace);
     }
 

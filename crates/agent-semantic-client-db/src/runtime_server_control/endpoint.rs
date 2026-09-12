@@ -259,6 +259,7 @@ async fn open_runtime_server_election_file(
         RuntimeServingStateLayout::from_root(runtime_base.clone()).owner_election_lock();
     let file = tokio::fs::OpenOptions::new()
         .create(true)
+        .truncate(false)
         .read(true)
         .write(true)
         .open(&lock_path)
@@ -307,6 +308,7 @@ pub async fn acquire_runtime_server_supervisor_transaction(
         RuntimeServingStateLayout::from_root(runtime_base.clone()).supervisor_transaction_lock();
     let file = tokio::fs::OpenOptions::new()
         .create(true)
+        .truncate(false)
         .read(true)
         .write(true)
         .open(&lock_path)
@@ -356,6 +358,10 @@ pub async fn prepare_runtime_server_endpoint(
     .await
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "the V1 endpoint authority fields remain explicit"
+)]
 pub async fn prepare_runtime_server_endpoint_with_workspace_store(
     state_home: &Path,
     workspace_store_path: &Path,
@@ -380,6 +386,10 @@ pub async fn prepare_runtime_server_endpoint_with_workspace_store(
     .await
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "the V1 endpoint authority fields remain explicit"
+)]
 pub async fn prepare_runtime_server_endpoint_with_workspace_store_and_identity(
     state_home: &Path,
     workspace_store_path: &Path,
@@ -432,6 +442,10 @@ pub async fn prepare_runtime_server_endpoint_in(
     .await
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "the V1 endpoint publication transaction keeps authority fields explicit"
+)]
 async fn prepare_runtime_server_endpoint_in_with_workspace_store(
     runtime_base: &Path,
     workspace_store_path: &Path,
@@ -458,6 +472,10 @@ async fn prepare_runtime_server_endpoint_in_with_workspace_store(
     .await
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "the V1 endpoint publication transaction keeps authority fields explicit"
+)]
 async fn prepare_runtime_server_endpoint_in_with_workspace_store_and_identity(
     runtime_base: &Path,
     workspace_store_path: &Path,

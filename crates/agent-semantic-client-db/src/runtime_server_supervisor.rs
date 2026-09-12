@@ -214,6 +214,10 @@ async fn retire_undecodable_endpoint_owner(request: &SupervisorRequest) -> Resul
 }
 
 impl SupervisorRequest {
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "activation constructs a complete immutable supervisor request"
+    )]
     pub fn for_activation(
         state_home: std::path::PathBuf,
         expected_executable: std::path::PathBuf,
@@ -371,13 +375,13 @@ impl RuntimeServerSupervisor {
                     )
                     .await?
                 };
-                if let Some(exit) = exit {
-                    if !exit.clean_drain {
-                        return Err(format!(
-                            "Runtime Server generation drain failed: errors={:?}",
-                            exit.errors
-                        ));
-                    }
+                if let Some(exit) = exit
+                    && !exit.clean_drain
+                {
+                    return Err(format!(
+                        "Runtime Server generation drain failed: errors={:?}",
+                        exit.errors
+                    ));
                 }
                 crate::runtime_server_control::cleanup_runtime_server_endpoint(
                     &request.state_home,

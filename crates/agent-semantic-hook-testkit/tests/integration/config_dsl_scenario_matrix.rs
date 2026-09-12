@@ -27,8 +27,6 @@ fn workspace_root() -> PathBuf {
 fn runtime() -> HookRuntime {
     HookRuntime {
         project_root: workspace_root().to_string_lossy().into_owned(),
-        rankers: Vec::new(),
-        providers: Vec::new(),
         policy_providers: Vec::new(),
     }
 }

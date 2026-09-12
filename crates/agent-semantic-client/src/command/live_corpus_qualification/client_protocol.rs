@@ -151,6 +151,10 @@ pub(crate) struct WorkspaceSearchQualificationReceipt {
     pub(crate) elapsed_micros: u64,
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "qualification binds corpus identity, expected result, budget, and client evidence explicitly"
+)]
 pub(super) async fn qualify_public_client_case<C>(
     client: &C,
     project_root: &Path,

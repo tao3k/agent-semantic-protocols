@@ -165,7 +165,7 @@ impl RuntimeHookAdmissionLocatorDocument {
         {
             return Err("Hook admission locator schema mismatch".to_owned());
         }
-        if self.generation == 0 || self.generation % 2 != 0 {
+        if self.generation == 0 || !self.generation.is_multiple_of(2) {
             return Err("Hook admission locator generation must be positive and even".to_owned());
         }
         self.endpoint.validate()?;
@@ -187,7 +187,7 @@ impl RuntimeHookAdmissionLocatorDocument {
         {
             return Err("Hook admission locator schema mismatch".to_owned());
         }
-        if self.generation == 0 || self.generation % 2 != 0 {
+        if self.generation == 0 || !self.generation.is_multiple_of(2) {
             return Err("Hook admission locator generation must be positive and even".to_owned());
         }
         if !self.content_digest.starts_with("blake3-256:") || self.content_digest.len() != 75 {

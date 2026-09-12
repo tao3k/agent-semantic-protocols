@@ -39,10 +39,8 @@ pub(crate) async fn apply_cache_cleanup(
     let selected_object_ids = catalog_plan
         .entries
         .iter()
-        .filter_map(|entry| {
-            matches!(entry.disposition, CleanupDisposition::Delete { .. })
-                .then(|| entry.object.object_id.clone())
-        })
+        .filter(|entry| matches!(entry.disposition, CleanupDisposition::Delete { .. }))
+        .map(|entry| entry.object.object_id.clone())
         .collect::<BTreeSet<_>>();
     let catalog = StateHomeCatalog::open(layout.catalog()).await?;
     let current_catalog_generation = catalog.generation().await?.get();

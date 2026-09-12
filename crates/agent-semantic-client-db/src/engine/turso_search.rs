@@ -297,7 +297,7 @@ async fn search_admitted_turso_documents(
     let mut hits = Vec::new();
     if let Some(fts_query) = turso_fts_query(query) {
         let fts_result = collect_turso_search_hits(CollectTursoSearchHitsRequest {
-            connection: &connection,
+            connection,
             source: "projection",
             sql: "SELECT document_id, entity_id, selector, document
              FROM asp_search_projection_document
@@ -321,7 +321,7 @@ async fn search_admitted_turso_documents(
     }
     let like_query = format!("%{}%", query.trim());
     collect_turso_search_hits(CollectTursoSearchHitsRequest {
-        connection: &connection,
+        connection,
         source: "projection",
         sql: "SELECT document_id, entity_id, selector, document
          FROM asp_search_projection_document

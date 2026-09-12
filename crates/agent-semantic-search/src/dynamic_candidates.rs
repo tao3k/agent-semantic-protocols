@@ -184,6 +184,10 @@ pub struct RgCoverageResult {
 
 /// Consume explicit `rg --vimgrep --null`-compatible output without spawning a
 /// process or falling back from resident lexical search.
+#[expect(
+    clippy::result_large_err,
+    reason = "the V1 failure receipt is a public typed evidence contract"
+)]
 pub fn collect_rg_coverage_candidates(
     request: RgCoverageRequest<'_>,
 ) -> Result<RgCoverageResult, RgCoverageReceipt> {

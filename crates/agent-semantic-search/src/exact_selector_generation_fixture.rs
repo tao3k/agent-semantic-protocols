@@ -164,6 +164,10 @@ impl ExactSelectorGenerationMemorySearchV1 {
     }
 
     /// Resolves one selector and reports exact lookup costs and side effects.
+    #[expect(
+        clippy::result_large_err,
+        reason = "the V1 typed receipt and error pair is part of the exact-selector contract"
+    )]
     pub fn resolve_with_receipt(
         &self,
         structural_selector: &str,
@@ -180,6 +184,10 @@ impl ExactSelectorGenerationMemorySearchV1 {
         self.resolve_with_receipt_inner(structural_selector)
     }
 
+    #[expect(
+        clippy::result_large_err,
+        reason = "the V1 typed receipt and error pair is part of the exact-selector contract"
+    )]
     fn resolve_with_receipt_inner(
         &self,
         structural_selector: &str,

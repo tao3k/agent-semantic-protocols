@@ -127,7 +127,7 @@ async fn owner_delta_invalidates_lexical_postings_and_graph_edges_in_one_epoch()
             agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelation {
                 from: agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelationEndpoint {
                     kind: agent_semantic_content_identity::ProviderRelationEndpointKindV1::Item,
-                    id: stale_selector.selector.clone().into(),
+                    id: stale_selector.selector.clone(),
                 },
                 kind: "calls".into(),
                 to: agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelationEndpoint {

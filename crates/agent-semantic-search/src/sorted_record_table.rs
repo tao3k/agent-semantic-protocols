@@ -10,6 +10,9 @@ const SORTED_RECORD_TABLE_MAGIC: &[u8; 16] = b"ASPSORTEDTABLE1\0";
 const SORTED_RECORD_TABLE_HEADER_LEN: usize = 64;
 const SORTED_RECORD_TABLE_ENTRY_LEN: usize = 64;
 
+type OwnedRecord = (Vec<u8>, Vec<u8>);
+type OwnedRecords = Vec<OwnedRecord>;
+
 #[derive(Clone, Copy, Debug)]
 struct SortedRecordEntry {
     key_offset: usize,
@@ -26,16 +29,14 @@ pub struct ValidatedSortedRecordTable<'a> {
     payload_offset: usize,
 }
 
-pub fn encode_sorted_record_table(records: Vec<(Vec<u8>, Vec<u8>)>) -> Result<Vec<u8>, String> {
+pub fn encode_sorted_record_table(records: OwnedRecords) -> Result<Vec<u8>, String> {
     let records = canonical_sorted_records(records)?;
     let entry_count = records.len();
     let (directory, payload) = encode_record_table_body(records)?;
     finish_record_table(entry_count, directory, payload)
 }
 
-fn canonical_sorted_records(
-    mut records: Vec<(Vec<u8>, Vec<u8>)>,
-) -> Result<Vec<(Vec<u8>, Vec<u8>)>, String> {
+fn canonical_sorted_records(mut records: OwnedRecords) -> Result<OwnedRecords, String> {
     records.sort_unstable_by(|left, right| left.0.cmp(&right.0));
     if records.windows(2).any(|pair| pair[0].0 == pair[1].0) {
         return Err("sorted record table contains a duplicate key".to_owned());
@@ -43,9 +44,7 @@ fn canonical_sorted_records(
     Ok(records)
 }
 
-fn encode_record_table_body(
-    records: Vec<(Vec<u8>, Vec<u8>)>,
-) -> Result<(Vec<u8>, Vec<u8>), String> {
+fn encode_record_table_body(records: OwnedRecords) -> Result<(Vec<u8>, Vec<u8>), String> {
     let directory_len = records
         .len()
         .checked_mul(SORTED_RECORD_TABLE_ENTRY_LEN)
@@ -139,23 +138,13 @@ impl<'a> ValidatedSortedRecordTable<'a> {
         let mut upper = self.entry_count;
         while lower < upper {
             let middle = lower + (upper - lower) / 2;
-            let entry = match self.entry(middle) {
-                Ok(entry) => entry,
-                Err(error) => return Err(error),
-            };
-            let candidate = match self.payload_slice(entry.key_offset, entry.key_len, "key") {
-                Ok(candidate) => candidate,
-                Err(error) => return Err(error),
-            };
+            let entry = self.entry(middle)?;
+            let candidate = self.payload_slice(entry.key_offset, entry.key_len, "key")?;
             match candidate.cmp(key) {
                 Ordering::Less => lower = middle + 1,
                 Ordering::Greater => upper = middle,
                 Ordering::Equal => {
-                    let value =
-                        match self.payload_slice(entry.value_offset, entry.value_len, "value") {
-                            Ok(value) => value,
-                            Err(error) => return Err(error),
-                        };
+                    let value = self.payload_slice(entry.value_offset, entry.value_len, "value")?;
                     if record_digest(candidate, value).as_bytes() != &entry.record_digest {
                         return Err("sorted record table record digest mismatch".to_owned());
                     }
@@ -166,7 +155,7 @@ impl<'a> ValidatedSortedRecordTable<'a> {
         Ok(None)
     }
 
-    pub fn owned_records(&self) -> Result<Vec<(Vec<u8>, Vec<u8>)>, String> {
+    pub fn owned_records(&self) -> Result<OwnedRecords, String> {
         let mut records = Vec::with_capacity(self.entry_count);
         for index in 0..self.entry_count {
             let entry = self.entry(index)?;

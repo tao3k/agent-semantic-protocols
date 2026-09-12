@@ -121,7 +121,6 @@ impl RuntimeQueryGeneration {
     }
 
     /// Atomically claim one generation-bound Search materialization.
-    #[must_use]
     pub(crate) fn begin_search_materialization(&self, key: String) -> Result<bool, String> {
         let mut materializations = self
             .search_materializations
@@ -554,8 +553,7 @@ impl RuntimeQueryGeneration {
         let closure_limit = node_count
             .saturating_mul(node_count)
             .max(input_edge_count)
-            .max(1)
-            .min(1_000_000);
+            .clamp(1, 1_000_000);
         let limits = agent_semantic_topology::ProjectTopologyClosureLimits::new(
             input_edge_count.max(1),
             closure_limit,
@@ -697,6 +695,10 @@ impl RuntimeQueryGeneration {
             .read_runtime_selector(projection_kind, structural_selector)
     }
 
+    #[expect(
+        clippy::type_complexity,
+        reason = "the V1 projection returns its three typed evidence collections"
+    )]
     pub fn native_syntax_playbook_projection(
         &self,
         owner_paths: &[String],

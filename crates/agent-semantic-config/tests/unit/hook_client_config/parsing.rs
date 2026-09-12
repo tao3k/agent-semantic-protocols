@@ -58,15 +58,14 @@ fn default_template_round_trips_through_config_parser() {
         testing_dispatch.receipt_kind.as_str(),
         "asp-testing-execution-v1"
     );
-    for rule_id in ["registered-asp-reasoning-search"] {
-        let dispatch = config
-            .rules
-            .iter()
-            .find(|rule| rule.id == rule_id)
-            .and_then(|rule| rule.dispatch.as_ref())
-            .unwrap_or_else(|| panic!("{rule_id} must declare an Agent route"));
-        assert_eq!(dispatch.agent.as_str(), "asp_explorer");
-    }
+    let rule_id = "registered-asp-reasoning-search";
+    let dispatch = config
+        .rules
+        .iter()
+        .find(|rule| rule.id == rule_id)
+        .and_then(|rule| rule.dispatch.as_ref())
+        .unwrap_or_else(|| panic!("{rule_id} must declare an Agent route"));
+    assert_eq!(dispatch.agent.as_str(), "asp_explorer");
     assert_eq!(
         config
             .rules

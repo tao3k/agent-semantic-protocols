@@ -11,8 +11,6 @@ use serde_json::json;
 fn empty_runtime() -> HookRuntime {
     HookRuntime {
         project_root: "/workspace".to_string(),
-        rankers: Vec::new(),
-        providers: Vec::new(),
         policy_providers: Vec::new(),
     }
 }

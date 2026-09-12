@@ -172,6 +172,10 @@ async fn process_control_requests(
         })
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "the connection task receives explicit shared runtime authorities"
+)]
 pub(super) async fn serve_connection(
     mut stream: TcpStream,
     endpoint: RuntimeServerEndpoint,

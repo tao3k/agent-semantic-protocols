@@ -67,14 +67,12 @@ fn selector_generation_hash(selectors: Vec<ClientDbSourceIndexSelector>) -> Stri
         ClientDbSourceIndexPath::new("src/lib.rs"),
         bytes,
     )]);
-    let hash =
-        source_index_file_hashes(&root, &files, &source_blobs, "provider-registry-v1", ["."])
-            .unwrap()
-            .into_iter()
-            .find(|entry| entry.path == "@scope/selector-generation/src/lib.rs")
-            .expect("selector generation evidence hash")
-            .sha256;
-    hash
+    source_index_file_hashes(&root, &files, &source_blobs, "provider-registry-v1", ["."])
+        .unwrap()
+        .into_iter()
+        .find(|entry| entry.path == "@scope/selector-generation/src/lib.rs")
+        .expect("selector generation evidence hash")
+        .sha256
 }
 
 #[test]

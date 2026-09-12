@@ -56,7 +56,8 @@ fn bundled_manifest_uses_standard_hook_directory_without_unsupported_fields() {
     );
     assert!(!pre_tool_matchers.contains(&"^mcp__.*$"));
 
-    for event in ["PostToolUse"] {
+    {
+        let event = "PostToolUse";
         let groups = events[event]
             .as_array()
             .unwrap_or_else(|| panic!("plugin Hook event {event} must contain matcher groups"));

@@ -159,7 +159,7 @@ fn legacy_self_reported_registration_fields_have_no_authority() {
     let decision = classify(&payload);
     assert_eq!(decision.decision, DecisionKind::Deny, "{decision:#?}");
     assert_eq!(decision.reason_kind, ReasonKind::AgentChoiceRequired);
-    assert!(decision.fields.get("dispatchAdmission").is_none());
+    assert!(!decision.fields.contains_key("dispatchAdmission"));
 }
 
 #[test]

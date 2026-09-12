@@ -172,8 +172,8 @@ fn workload_history_is_partitioned_by_strategy_size_and_change_ratio() {
 
     let mut history = std::collections::BTreeMap::new();
     history.insert(bulk, std::collections::BTreeMap::from([(1, 10), (2, 20)]));
-    assert!(history.get(&delta).is_none());
-    assert!(history.get(&larger).is_none());
+    assert!(!history.contains_key(&delta));
+    assert!(!history.contains_key(&larger));
 }
 
 #[test]

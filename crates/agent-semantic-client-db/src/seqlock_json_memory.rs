@@ -89,7 +89,7 @@ impl SeqlockJsonMemoryWriter {
             .copy_from_slice(&(payload.len() as u32).to_le_bytes());
         self.mapping[PAYLOAD_DIGEST_OFFSET..PAYLOAD_OFFSET]
             .copy_from_slice(blake3::hash(payload).as_bytes());
-        self.mapping[PAYLOAD_OFFSET..PAYLOAD_OFFSET + payload.len()].copy_from_slice(&payload);
+        self.mapping[PAYLOAD_OFFSET..PAYLOAD_OFFSET + payload.len()].copy_from_slice(payload);
         generation(&self.mapping).store(committed, Ordering::Release);
         self.generation = committed;
         Ok(committed)
@@ -103,7 +103,7 @@ pub struct SeqlockJsonMemoryReader {
 impl SeqlockJsonMemoryReader {
     pub fn stable_generation(&self) -> Option<u64> {
         let before = generation(&self.mapping).load(Ordering::Acquire);
-        if before == 0 || before % 2 != 0 {
+        if before == 0 || !before.is_multiple_of(2) {
             return None;
         }
         let after = generation(&self.mapping).load(Ordering::Acquire);
@@ -144,7 +144,7 @@ impl SeqlockJsonMemoryReader {
         const MAX_CONCURRENT_PUBLICATION_RETRIES: usize = 64;
         for _ in 0..MAX_CONCURRENT_PUBLICATION_RETRIES {
             let before = generation(&self.mapping).load(Ordering::Acquire);
-            if before == 0 || before % 2 != 0 {
+            if before == 0 || !before.is_multiple_of(2) {
                 std::hint::spin_loop();
                 continue;
             }
@@ -155,7 +155,7 @@ impl SeqlockJsonMemoryReader {
             ) as usize;
             if length == 0 || PAYLOAD_OFFSET + length > self.mapping.len() {
                 let after = generation(&self.mapping).load(Ordering::Acquire);
-                if before != after || after % 2 != 0 {
+                if before != after || !after.is_multiple_of(2) {
                     std::hint::spin_loop();
                     continue;
                 }
@@ -168,7 +168,7 @@ impl SeqlockJsonMemoryReader {
             let actual_digest = *blake3::hash(payload).as_bytes();
             let decoded = serde_json::from_slice(payload);
             let after = generation(&self.mapping).load(Ordering::Acquire);
-            if before != after || after % 2 != 0 {
+            if before != after || !after.is_multiple_of(2) {
                 std::hint::spin_loop();
                 continue;
             }
@@ -186,7 +186,7 @@ impl SeqlockJsonMemoryReader {
         const MAX_CONCURRENT_PUBLICATION_RETRIES: usize = 64;
         for _ in 0..MAX_CONCURRENT_PUBLICATION_RETRIES {
             let before = generation(&self.mapping).load(Ordering::Acquire);
-            if before == 0 || before % 2 != 0 {
+            if before == 0 || !before.is_multiple_of(2) {
                 std::hint::spin_loop();
                 continue;
             }
@@ -197,7 +197,7 @@ impl SeqlockJsonMemoryReader {
             ) as usize;
             if length == 0 || PAYLOAD_OFFSET + length > self.mapping.len() {
                 let after = generation(&self.mapping).load(Ordering::Acquire);
-                if before != after || after % 2 != 0 {
+                if before != after || !after.is_multiple_of(2) {
                     std::hint::spin_loop();
                     continue;
                 }
@@ -210,7 +210,7 @@ impl SeqlockJsonMemoryReader {
             let actual_digest = *blake3::hash(payload).as_bytes();
             let decoded = postcard::from_bytes(payload);
             let after = generation(&self.mapping).load(Ordering::Acquire);
-            if before != after || after % 2 != 0 {
+            if before != after || !after.is_multiple_of(2) {
                 std::hint::spin_loop();
                 continue;
             }

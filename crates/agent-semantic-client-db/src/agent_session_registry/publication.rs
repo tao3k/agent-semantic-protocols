@@ -114,6 +114,7 @@ pub(super) async fn ensure_current_registry_published(
     let lock_path = state_root.join(LOCK_FILE);
     let lock = std::fs::OpenOptions::new()
         .create(true)
+        .truncate(false)
         .read(true)
         .write(true)
         .open(&lock_path)

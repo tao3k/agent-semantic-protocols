@@ -359,7 +359,7 @@ fn git_snapshot_discovers_file_added_under_new_untracked_directory() {
         after
             .candidates
             .iter()
-            .any(|candidate| candidate.path == PathBuf::from("extra/new_usage.ss"))
+            .any(|candidate| candidate.path.as_path() == Path::new("extra/new_usage.ss"))
     );
     assert_ne!(
         before.candidate_generation.digest,

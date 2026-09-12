@@ -43,6 +43,10 @@ pub struct WorkspaceCanonicalMaterialization {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "the V1 load result returns the admitted immutable materialization by value"
+)]
 pub enum WorkspaceCanonicalMaterializationLoad {
     Ready(WorkspaceCanonicalMaterialization),
     Missing,

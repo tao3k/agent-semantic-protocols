@@ -269,7 +269,7 @@ pub(super) async fn write_provider_incremental_owner_on_connection(
             transaction.commit().await.map_err(|error| {
                 format!("failed to commit provider incremental transaction: {error}")
             })?;
-            receipt.generation_after = active_provider_generation(&connection, &request.scope)
+            receipt.generation_after = active_provider_generation(connection, &request.scope)
                 .await?
                 .ok_or_else(|| "committed provider generation is not visible".to_string())?;
             Ok(receipt)

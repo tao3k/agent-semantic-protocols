@@ -341,6 +341,10 @@ mod runtime_search_telemetry_red_contract {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+#[expect(
+    clippy::await_holding_lock,
+    reason = "the global performance gate serializes resource-sensitive benchmark tests"
+)]
 async fn repeated_runtime_telemetry_lifecycle_returns_to_task_and_socket_baseline() {
     let _performance = crate::test_support::performance_lock();
     let baseline_alive_tasks = tokio::runtime::Handle::current()
@@ -415,6 +419,10 @@ async fn repeated_runtime_telemetry_lifecycle_returns_to_task_and_socket_baselin
 }
 
 #[tokio::test(flavor = "multi_thread")]
+#[expect(
+    clippy::await_holding_lock,
+    reason = "the global performance gate serializes resource-sensitive benchmark tests"
+)]
 async fn multi_workspace_multi_session_telemetry_remains_nonblocking_and_drains() {
     let _performance = crate::test_support::performance_lock();
     const WORKSPACES: usize = 5;

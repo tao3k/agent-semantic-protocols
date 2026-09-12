@@ -399,6 +399,10 @@ impl WorkspaceGenerationAdmission {
         Ok(receipt)
     }
 
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "admission keeps identity, snapshot, deadline, and cold-target authority explicit"
+    )]
     async fn admit_with_mode(
         &self,
         workspace_identity: impl Into<String>,
@@ -499,6 +503,10 @@ impl WorkspaceGenerationAdmission {
         .await
     }
 
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "single-flight admission keeps identity, snapshot, deadline, and cold-target authority explicit"
+    )]
     async fn admit_existing(
         &self,
         entry: Arc<AdmissionEntry>,
@@ -634,6 +642,10 @@ impl WorkspaceGenerationAdmission {
         Ok(receipt)
     }
 
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "the spawned generation task receives immutable authority values explicitly"
+    )]
     async fn spawn_build(
         &self,
         entry: Arc<AdmissionEntry>,

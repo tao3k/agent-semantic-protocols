@@ -113,8 +113,7 @@ fn infer_agent_action_subject_kind(
             })
         });
 
-    if (registered_source_scope || registered_root_alias)
-        && (is_path_shaped || registered_root_alias)
+    if (registered_root_alias || registered_source_scope && is_path_shaped)
         && (value.ends_with(['/', '\\']) || !leaf.contains('.'))
     {
         return AgentActionSubjectKind::RegisteredLanguageSourcePattern;

@@ -63,7 +63,7 @@ pub(super) async fn upsert_provider_owner_inventory_on_connection(
             return Err(error);
         }
     };
-    verify_inventory_visibility(&connection, request, &receipt).await?;
+    verify_inventory_visibility(connection, request, &receipt).await?;
     Ok(receipt)
 }
 
@@ -94,7 +94,7 @@ pub(super) async fn write_provider_treesitter_owner_result_on_connection(
             return Err(error);
         }
     }
-    verify_query_owner_visibility(&connection, query, result).await?;
+    verify_query_owner_visibility(connection, query, result).await?;
     Ok(ProviderTreeSitterOwnerWriteReceipt {
         query_digest: query.query_digest.clone(),
         owner_path: result.owner_path.clone(),

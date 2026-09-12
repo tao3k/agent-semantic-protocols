@@ -819,7 +819,7 @@ impl ProviderSearchWorkspaceSession {
             return Ok(ProviderOwnerBatchProbeReceipt {
                 results: owners
                     .iter()
-                    .zip(cached.into_iter())
+                    .zip(cached)
                     .map(|(owner, cached)| {
                         let cached = cached.expect("all provider owner cache entries checked");
                         ProviderOwnerBatchProbeResult {

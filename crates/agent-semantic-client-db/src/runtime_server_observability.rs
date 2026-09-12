@@ -66,24 +66,24 @@ pub(crate) fn publish_event(
     events: Option<&RuntimeServerEventPublisher>,
     event: RuntimeServerEvent,
 ) {
-    if let Some(events) = events {
-        if events.sender.try_send(event).is_err() {
-            let dropped = events
-                .dropped
-                .fetch_add(1, std::sync::atomic::Ordering::AcqRel)
-                .saturating_add(1);
-            let mut observation =
-                crate::runtime_server_opentelemetry::RuntimePerformanceObservation::new(
-                    "runtime-server-diagnostics",
-                    "diagnostic-queue-saturated",
-                    0,
-                    1,
-                    "budget-exceeded",
-                );
-            observation.runtime_diagnostic_queue_depth = Some(events.capacity as u64);
-            observation.runtime_diagnostic_queue_capacity = Some(events.capacity as u64);
-            observation.runtime_dropped_diagnostics = Some(dropped);
-            let _ = crate::runtime_server_opentelemetry::try_record_to_active_runtime(observation);
-        }
+    if let Some(events) = events
+        && events.sender.try_send(event).is_err()
+    {
+        let dropped = events
+            .dropped
+            .fetch_add(1, std::sync::atomic::Ordering::AcqRel)
+            .saturating_add(1);
+        let mut observation =
+            crate::runtime_server_opentelemetry::RuntimePerformanceObservation::new(
+                "runtime-server-diagnostics",
+                "diagnostic-queue-saturated",
+                0,
+                1,
+                "budget-exceeded",
+            );
+        observation.runtime_diagnostic_queue_depth = Some(events.capacity as u64);
+        observation.runtime_diagnostic_queue_capacity = Some(events.capacity as u64);
+        observation.runtime_dropped_diagnostics = Some(dropped);
+        let _ = crate::runtime_server_opentelemetry::try_record_to_active_runtime(observation);
     }
 }

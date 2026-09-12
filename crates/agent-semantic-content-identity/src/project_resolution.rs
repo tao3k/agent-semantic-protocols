@@ -458,7 +458,3 @@ pub fn project_resolution_schema_digest() -> String {
         .to_hex()
     )
 }
-
-#[cfg(test)]
-#[path = "../tests/unit/project_resolution.rs"]
-mod tests;

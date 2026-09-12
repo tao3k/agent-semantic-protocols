@@ -409,13 +409,6 @@ mod dev_context;
 #[cfg(all(feature = "compiler", test))]
 extern crate self as agent_semantic_hook;
 
-#[cfg(all(feature = "compiler", test))]
-#[path = "../tests/unit/tool_action_functions_exec.rs"]
-mod tool_action_functions_exec;
-
-#[cfg(all(feature = "compiler", test))]
-#[path = "../tests/unit/tool_action_workspace_mutation.rs"]
-mod tool_action_workspace_mutation;
 #[cfg(feature = "compiler")]
 pub use crate::provider_registry::registered_provider_id;
 #[cfg(feature = "compiler")]

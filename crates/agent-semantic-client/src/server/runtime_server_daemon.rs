@@ -37,7 +37,7 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
     // Elect before reconciling the immutable provider snapshot. Normal binary,
     // registry, Hook-policy, or receipt drift is refreshed through the shared
     // Artifacts CAS transaction; invalid receipts still fail closed.
-    let election = agent_semantic_client_db::wait_for_runtime_server_election(&state_home)
+    let election = agent_semantic_client_db::wait_for_runtime_server_election(state_home)
         .await
         .map_err(|error| format!("failed to acquire Runtime Server election: {error}"))?;
     let (owner_epoch, binding_token) = daemon_identity().await?;
@@ -134,7 +134,7 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
         .validate()?;
     let artifact_catalog =
         agent_semantic_artifacts::runtime_artifact_catalog::load_runtime_artifact_catalog(
-            &state_home,
+            state_home,
         )
         .await?;
     let control_listener =
@@ -151,7 +151,7 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
         provider_stream_listener.local_addr().map_err(|error| format!("inspect Runtime provider listener: {error}"))?,
     )?;
     let endpoint = agent_semantic_client_db::prepare_runtime_server_endpoint_with_workspace_store_and_identity(
-        &state_home,
+        state_home,
         workspace_store.root(),
         &runtime_artifact_path,
         &runtime_binary_identity,
@@ -169,15 +169,15 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
     let provider_register = agent_semantic_client_db::runtime_provider_register::
         RuntimeProviderRegister::from_bound_seed(provider_seed, &provider_targets)?;
     let provider_register = std::sync::Arc::new(provider_register);
-    let transport_layout = agent_semantic_artifacts::StateHomeLayout::new(&state_home)
+    let transport_layout = agent_semantic_artifacts::StateHomeLayout::new(state_home)
         .runtime_state()
         .transport();
     agent_semantic_client_db::runtime_server_control::prepare_private_runtime_directory(
         transport_layout.root(),
     )
     .await?;
-    let telemetry_socket_path = runtime_server_telemetry_socket_path(&state_home)?;
-    let telemetry_query_socket_path = runtime_server_telemetry_query_socket_path(&state_home)?;
+    let telemetry_socket_path = runtime_server_telemetry_socket_path(state_home)?;
+    let telemetry_query_socket_path = runtime_server_telemetry_query_socket_path(state_home)?;
     remove_stale_socket(&telemetry_socket_path).await?;
     remove_stale_socket(&telemetry_query_socket_path).await?;
 
@@ -227,7 +227,7 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
     ));
     let endpoint_path =
         agent_semantic_client_db::runtime_server_control::runtime_server_endpoint_path_async(
-            &state_home,
+            state_home,
         )
         .await?;
     agent_semantic_client_db::AgentSessionRegistry::mark_runtime_server_owner_process();
@@ -646,10 +646,10 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
     );
     let (identity_change_sender, mut identity_change_receiver) = tokio::sync::mpsc::channel(1);
     let monitor = task_scope.spawn("runtime-identity-monitor", async move {
-        if let Some(identity_change) = identity_monitor.next_event().await {
-            if identity_change_sender.send(identity_change).await.is_ok() {
-                monitor_shutdown.shutdown();
-            }
+        if let Some(identity_change) = identity_monitor.next_event().await
+            && identity_change_sender.send(identity_change).await.is_ok()
+        {
+            monitor_shutdown.shutdown();
         }
         identity_monitor.shutdown().await;
     })?;
@@ -777,7 +777,7 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
         })
     );
     let drain_receipt_result = agent_semantic_client_db::runtime_server_lifecycle::publish_drain(
-        &state_home,
+        state_home,
         agent_semantic_client_db::RuntimeServerDrainReceipt {
             owner_epoch,
             services: serde_json::json!({
@@ -812,16 +812,15 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
         )),
     }
     let mut identity_handoff = identity_handoff_requested
-        && !agent_semantic_client_db::runtime_server_lifecycle::operator_stopped(&state_home)
+        && !agent_semantic_client_db::runtime_server_lifecycle::operator_stopped(state_home)
             .await?;
-    if identity_handoff {
-        if let Err(error) = RuntimeIdentityHandoffCoordinator::new(&state_home, &endpoint)
+    if identity_handoff
+        && let Err(error) = RuntimeIdentityHandoffCoordinator::new(state_home, &endpoint)
             .drain()
             .await
-        {
-            shutdown_errors.push(format!("ownerHandoffDrain={error}"));
-            identity_handoff = false;
-        }
+    {
+        shutdown_errors.push(format!("ownerHandoffDrain={error}"));
+        identity_handoff = false;
     }
     if identity_handoff {
         eprintln!(
@@ -839,7 +838,7 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
     // Endpoint cleanup is part of the elected owner's terminal transaction.
     // It must not short-circuit terminal publication: the supervisor needs one
     // typed receipt with the real owner epoch on both success and failure.
-    if let Err(error) = RuntimeIdentityHandoffCoordinator::new(&state_home, &endpoint)
+    if let Err(error) = RuntimeIdentityHandoffCoordinator::new(state_home, &endpoint)
         .cleanup()
         .await
     {
@@ -854,7 +853,7 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
         ))
     };
     agent_semantic_client_db::runtime_server_lifecycle::publish_with_errors(
-        &state_home,
+        state_home,
         owner_epoch,
         result.is_ok(),
         shutdown_errors.clone(),

@@ -77,6 +77,10 @@ fn derive_canonical_materialization(
     })
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "canonical generation assembly binds all independently verified V1 evidence"
+)]
 fn assemble_canonical_materialization(
     workspace_identity: String,
     source_snapshot: agent_semantic_content_identity::SourceSnapshotEvidence,
@@ -455,6 +459,10 @@ impl WorkspaceCanonicalMaterialization {
         )
     }
 
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "canonical generation construction binds all independently verified V1 evidence"
+    )]
     fn new_with_workspace_snapshot(
         workspace_identity: impl Into<String>,
         workspace_snapshot: agent_semantic_content_identity::WorkspaceSnapshot,

@@ -197,6 +197,10 @@ pub struct RuntimeAspClientDispatcher {
 }
 
 impl RuntimeAspClientDispatcher {
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "the Runtime service binds all independently owned authorities at construction"
+    )]
     fn new(
         schema_bundles: crate::schema_bundle::RuntimeSchemaBundleCatalog,
         agent_session_registry: Arc<agent_semantic_client_db::AgentSessionRegistry>,
@@ -236,6 +240,10 @@ impl RuntimeAspClientDispatcher {
 
 /// Build the sole Runtime-owned public ClientFrame service. HTTP and loopback
 /// TCP gRPC bindings both mount this same admission/dispatch owner.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "the frame service binds all independently owned Runtime authorities explicitly"
+)]
 pub fn build_frame_service(
     schema_bundles: crate::schema_bundle::RuntimeSchemaBundleCatalog,
     agent_session_registry: Arc<agent_semantic_client_db::AgentSessionRegistry>,

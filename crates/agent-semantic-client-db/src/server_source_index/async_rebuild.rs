@@ -320,6 +320,10 @@ fn owner_projection_from_projected_file(
     })
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "the rebuild boundary binds all generation identities, budgets, and cancellation authority"
+)]
 pub async fn prepare_runtime_server_workspace_generation_with_runtime_service_async(
     runtime: crate::runtime_search_service::RuntimeSearchServiceHandle,
     project_id: String,

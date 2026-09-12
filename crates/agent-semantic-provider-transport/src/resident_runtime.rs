@@ -489,8 +489,9 @@ where
                     None => break,
                 },
                 completed = requests.join_next(), if !requests.is_empty() => {
-                    if let Some(Ok((request_id, result))) = completed {
-                        if let Some((response, _task)) = admitted.remove(&request_id) {
+                    if let Some(Ok((request_id, result))) = completed
+                        && let Some((response, _task)) = admitted.remove(&request_id)
+                    {
                             let state = if result.is_ok() { "completed" } else { "failed" };
                             let _ = response.send(result);
                             tracing::info!(
@@ -505,13 +506,12 @@ where
                                 request_id,
                                 active_requests = admitted.len() as u64,
                             );
-                            if admitted.is_empty() {
-                                if let Some(response) = drain_response.take() {
-                                    let _ = response.send(());
-                                    break;
-                                }
+                            if admitted.is_empty()
+                                && let Some(response) = drain_response.take()
+                            {
+                                let _ = response.send(());
+                                break;
                             }
-                        }
                     }
                 }
             }
@@ -711,8 +711,9 @@ where
                     None => break,
                 },
                 completed = requests.join_next(), if !requests.is_empty() => {
-                    if let Some(Ok((request_id, operation, started, result))) = completed {
-                        if let Some((response, _task)) = admitted.remove(&request_id) {
+                    if let Some(Ok((request_id, operation, started, result))) = completed
+                        && let Some((response, _task)) = admitted.remove(&request_id)
+                    {
                             tracing::info!(
                                 target: "asp.client_server",
                                 event = "request-terminal",
@@ -734,13 +735,12 @@ where
                                 request_id,
                                 active_requests = admitted.len() as u64,
                             );
-                            if admitted.is_empty() {
-                                if let Some(response) = drain_response.take() {
-                                    let _ = response.send(());
-                                    break;
-                                }
+                            if admitted.is_empty()
+                                && let Some(response) = drain_response.take()
+                            {
+                                let _ = response.send(());
+                                break;
                             }
-                        }
                     }
                 },
                 terminal = peer.wait_terminated() => {

@@ -39,7 +39,7 @@ pub(super) async fn publish_turso_source_index_scope(
         selector_fingerprint,
     } = request;
     let (effective_owner_count, effective_selector_count) = turso_source_index_scope_row_counts(
-        &*transaction,
+        transaction,
         project_root,
         schema_id,
         schema_version,

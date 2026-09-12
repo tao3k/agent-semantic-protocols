@@ -18,6 +18,8 @@ use crate::runtime_server_observability::publish_event;
 
 use crate::WorkspaceDbRegistry;
 
+type RuntimeBundleDigestProbe = Arc<dyn Fn() -> Result<Option<String>, String> + Send + Sync>;
+
 #[path = "durability.rs"]
 mod durability;
 use durability::{
@@ -138,9 +140,7 @@ impl RuntimeServer {
             Option<crate::runtime_server_admission::WorkspaceGenerationCandidateBuilder>,
         >,
         catalog: Option<crate::runtime_server_admission_catalog::RuntimeWorkspaceAdmissionCatalog>,
-        runtime_bundle_digest_probe: Option<
-            std::sync::Arc<dyn Fn() -> Result<Option<String>, String> + Send + Sync + 'static>,
-        >,
+        runtime_bundle_digest_probe: Option<RuntimeBundleDigestProbe>,
     ) -> Self {
         let source_builder = source_builder.into();
         let durable_registry = Arc::clone(&self.registry);

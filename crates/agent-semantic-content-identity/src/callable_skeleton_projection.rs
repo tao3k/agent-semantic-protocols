@@ -104,7 +104,7 @@ pub struct CallableSkeletonNodeV1 {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum CallableSkeletonRootSelectorV1 {
-    Inline(ExactStructuralSelectorV1),
+    Inline(Box<ExactStructuralSelectorV1>),
     Referenced(ExactStructuralSelectorReferenceV1),
 }
 

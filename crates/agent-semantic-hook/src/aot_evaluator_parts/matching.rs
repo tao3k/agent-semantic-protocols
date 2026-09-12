@@ -110,7 +110,7 @@ pub(super) fn rule_conditions_match(
             .filter_map(|stage| stage.executable())
             .any(|executable| {
                 let basename = executable.rsplit('/').next().unwrap_or(executable);
-                rule.command_any.iter().any(|command| basename == *command)
+                rule.command_any.contains(&basename)
             })
     {
         return Ok(false);

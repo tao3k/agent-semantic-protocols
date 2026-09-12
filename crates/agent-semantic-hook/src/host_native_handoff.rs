@@ -51,7 +51,7 @@ pub struct HookHostNativeHandoffCapability {
 }
 
 pub enum HookHostNativeHandoffEvaluation {
-    Authorized(HookHostNativeHandoffCapability),
+    Authorized(Box<HookHostNativeHandoffCapability>),
     Rejected(String),
     NotRequested,
 }
@@ -124,7 +124,7 @@ pub fn publish_from_post_tool_payload(
 pub fn evaluate_hook_phase(input: &[u8], event: &str) -> HookHostNativeHandoffEvaluation {
     match evaluate_hook_phase_inner(input, event) {
         Ok(None) => HookHostNativeHandoffEvaluation::NotRequested,
-        Ok(Some(capability)) => HookHostNativeHandoffEvaluation::Authorized(capability),
+        Ok(Some(capability)) => HookHostNativeHandoffEvaluation::Authorized(Box::new(capability)),
         Err(error) => HookHostNativeHandoffEvaluation::Rejected(error),
     }
 }

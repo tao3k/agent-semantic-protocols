@@ -19,7 +19,7 @@ fn project_hook_rule_replaces_managed_rule_as_one_policy_unit() {
     let config_path = root.join("managed-config.toml");
     fs::write(
         &config_path,
-        &agent_semantic_config::default_hook_client_config_template(),
+        agent_semantic_config::default_hook_client_config_template(),
     )
     .expect("write managed config");
     let project_config = root.join(".agents/asp.toml");
@@ -124,7 +124,8 @@ argvSourceExcludeFlagAny = ["--output"]
         Some("deny-wl-source-argv")
     );
 
-    for command in ["wl --flag2 flag3 README"] {
+    {
+        let command = "wl --flag2 flag3 README";
         let decision = classify_hook_with_config(HookClassificationRequest {
             registry: &registry,
             config: &config,
@@ -139,7 +140,8 @@ argvSourceExcludeFlagAny = ["--output"]
         assert_eq!(decision.decision, DecisionKind::Allow, "{command}");
     }
 
-    for command in ["wl --output *.ts README"] {
+    {
+        let command = "wl --output *.ts README";
         let decision = classify_hook_with_config(HookClassificationRequest {
             registry: &registry,
             config: &config,
@@ -456,7 +458,8 @@ fn registered_reasoning_search_dispatches_before_raw_search_rules_and_lazy_loads
         Some("structured-projection")
     );
 
-    for command in ["asp help"] {
+    {
+        let command = "asp help";
         let non_reasoning_decision = classify_hook_with_config(HookClassificationRequest {
             registry: &registry,
             config: &config,

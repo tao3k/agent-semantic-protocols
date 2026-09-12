@@ -189,7 +189,7 @@ impl RuntimeServerStatusMemoryReader {
         if before == 0 {
             return Err("Runtime Server status memory is not initialized".to_owned());
         }
-        if before % 2 != 0 {
+        if !before.is_multiple_of(2) {
             return cached()
                 .inspect(|_| {
                     self.snapshot_cache_hit_count
@@ -234,7 +234,7 @@ impl RuntimeServerStatusMemoryReader {
         }
         let payload = self.mapping[PAYLOAD_OFFSET..PAYLOAD_OFFSET + length].to_vec();
         let after = generation(&self.mapping).load(Ordering::Acquire);
-        if before != after || after % 2 != 0 {
+        if before != after || !after.is_multiple_of(2) {
             return cached().ok_or_else(|| {
                 "Runtime Server status publication changed during the first snapshot".to_owned()
             });

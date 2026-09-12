@@ -272,7 +272,6 @@ pub fn synthesize_workspace_search_playbook_result(
     });
     let mut ranked = candidates_by_selector
         .into_values()
-        .into_iter()
         .filter_map(|candidate| {
             let graph_rank = match &graph_positions {
                 Some(positions) => *positions.get(candidate.owner.as_str())?,

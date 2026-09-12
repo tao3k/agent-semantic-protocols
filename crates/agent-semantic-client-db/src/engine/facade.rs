@@ -191,6 +191,10 @@ impl ClientDbEngineReport {
 pub struct ClientDbEngineReadSession {
     pub(super) turso_db_path: PathBuf,
     pub(super) turso_connection: std::sync::Arc<turso::Connection>,
+    #[expect(
+        clippy::type_complexity,
+        reason = "the cache key and admitted scope evidence remain colocated and explicit"
+    )]
     pub(super) source_index_scope_cache: std::sync::Arc<
         tokio::sync::RwLock<
             Option<(

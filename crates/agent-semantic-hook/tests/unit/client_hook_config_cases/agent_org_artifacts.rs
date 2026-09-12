@@ -353,17 +353,15 @@ fn deny_decision_warns_when_done_org_artifacts_should_be_archived() {
         decision.message
     );
     assert!(
-        decision
+        !decision
             .fields
-            .get("agentOrgArtifactsArchiveWarning")
-            .is_none(),
+            .contains_key("agentOrgArtifactsArchiveWarning"),
         "pre-tool must not scan ASP Org artifacts: {decision:?}"
     );
     assert!(
-        decision
+        !decision
             .fields
-            .get("agentOrgArtifactsActiveOrgFileCount")
-            .is_none(),
+            .contains_key("agentOrgArtifactsActiveOrgFileCount"),
         "pre-tool deny must not enumerate ASP Org artifacts: {decision:?}"
     );
 

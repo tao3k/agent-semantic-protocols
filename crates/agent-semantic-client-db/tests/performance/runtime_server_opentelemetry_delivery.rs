@@ -12,6 +12,10 @@ use agent_semantic_client_db::runtime_server_opentelemetry::{
 use super::short_unix_socket_path;
 
 #[tokio::test(flavor = "multi_thread")]
+#[expect(
+    clippy::await_holding_lock,
+    reason = "the global performance gate serializes resource-sensitive benchmark tests"
+)]
 async fn duplicate_budget_failure_identity_is_recorded_once() {
     let _performance = crate::test_support::performance_lock();
     let fixture_root = std::env::temp_dir().join(format!(
@@ -71,6 +75,10 @@ async fn duplicate_budget_failure_identity_is_recorded_once() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+#[expect(
+    clippy::await_holding_lock,
+    reason = "the global performance gate serializes resource-sensitive benchmark tests"
+)]
 async fn failure_adapter_requires_resident_typed_ack_and_is_idempotent() {
     let _performance = crate::test_support::performance_lock();
     let fixture_root = std::env::temp_dir().join(format!(

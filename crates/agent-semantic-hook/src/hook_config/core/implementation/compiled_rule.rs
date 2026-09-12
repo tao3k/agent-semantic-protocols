@@ -560,6 +560,10 @@ impl CompiledHookRule {
         )
     }
 
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "the compiler boundary keeps each independently validated policy catalog explicit"
+    )]
     fn try_from_with_policy_and_matcher(
         config: HookClientRuleConfig,
         command_profiles: &[agent_semantic_config::HookClientCommandProfileConfig],

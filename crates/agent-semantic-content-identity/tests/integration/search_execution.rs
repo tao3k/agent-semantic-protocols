@@ -20,7 +20,7 @@ use agent_semantic_content_identity::search_execution::TerminalStatus;
 fn identity(seed: char) -> ContentIdentity {
     let digest = format!(
         "blake3-256:{}",
-        std::iter::repeat(seed).take(64).collect::<String>()
+        std::iter::repeat_n(seed, 64).collect::<String>()
     );
     ContentIdentity {
         runtime_artifact_digest: digest.clone(),

@@ -299,6 +299,10 @@ async fn prepare_turso_source_index_membership(
     .await
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "the generation transaction keeps each verified identity input explicit"
+)]
 async fn prepare_turso_source_index_overlay(
     connection: &turso::Connection,
     project_root: &str,

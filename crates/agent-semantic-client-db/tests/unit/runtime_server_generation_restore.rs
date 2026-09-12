@@ -81,7 +81,7 @@ async fn daemon_startup_does_not_eagerly_restore_registered_workspaces() {
     let server = RuntimeServer::bind_with_catalog(
         endpoint.clone(),
         Arc::new(WorkspaceDbRegistry::with_state_home(
-            &runtime_dir.path().join("state"),
+            runtime_dir.path().join("state"),
         )),
         artifact_catalog,
     )

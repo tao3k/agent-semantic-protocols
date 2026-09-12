@@ -214,7 +214,7 @@ fn command_field(object: &str) -> Option<(&'static str, String)> {
     None
 }
 
-fn read_command_field<'a>(object: &'a str, cursor: &mut usize) -> Option<(&'static str, String)> {
+fn read_command_field(object: &str, cursor: &mut usize) -> Option<(&'static str, String)> {
     let bytes = object.as_bytes();
     let key_start = *cursor;
     *cursor += 1;

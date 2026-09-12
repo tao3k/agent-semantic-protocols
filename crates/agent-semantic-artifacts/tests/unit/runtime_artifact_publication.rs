@@ -81,7 +81,7 @@ async fn production_publication_atomically_switches_active_and_retains_previous_
         .await
         .expect("commit previous serving generation");
     let slots =
-        RuntimeArtifactSlotAuthority::for_artifact(&state_home.join("runtime/artifacts"), "asp");
+        RuntimeArtifactSlotAuthority::for_artifact(state_home.join("runtime/artifacts"), "asp");
     let active_before = slots.active_target().await.unwrap();
     let healthy_before = slots.healthy_target().await.unwrap();
 

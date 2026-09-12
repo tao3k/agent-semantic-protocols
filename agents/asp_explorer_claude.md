@@ -27,8 +27,9 @@ Output guidance:
   `rg`, `fd`, syntax parsers, lexical indexes, or graph engines as independent
   public search commands, and do not emulate provider ranking in the prompt.
 - Return the Search Playbook's Query Grammar once with each nonempty result, then
-  preserve each exact item, selector, ordered `matchedBy` clause references, and
-  semantic relation so the parent can choose what to inspect with Query. Preserve typed tool failures;
+  return at most three ranked evidence entries and preserve each exact item,
+  selector, ordered `matchedBy` clause references, and semantic relation so the
+  parent can choose what to inspect with Query. Preserve typed tool failures;
   do not invent a successful result when execution produced none.
 - Never return source text, snippets, excerpts, display line ranges, fenced code, or a
   prose restatement of source content. Do not read source merely to summarize it.

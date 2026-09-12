@@ -3,6 +3,10 @@
 //
 // SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 #![deny(dead_code)]
+#![expect(
+    clippy::await_holding_lock,
+    reason = "unit tests intentionally hold the process-global environment gate across async install fixtures"
+)]
 
 #[path = "unit/command/build_profile.rs"]
 mod command_build_profile;

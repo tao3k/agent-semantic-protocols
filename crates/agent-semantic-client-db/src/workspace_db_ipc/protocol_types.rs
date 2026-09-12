@@ -545,6 +545,10 @@ pub struct WorkspaceDbIpcRequest {
     rename_all = "kebab-case",
     rename_all_fields = "camelCase"
 )]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "preserve the serialized V1 IPC result shape"
+)]
 pub enum WorkspaceDbIpcResult {
     Healthy,
     ShutdownAccepted,

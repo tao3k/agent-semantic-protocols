@@ -94,7 +94,7 @@ pub fn parse_asp_global_config(input: &str) -> Result<AspGlobalConfig, String> {
         }) => validate_dev_root(root),
     }?;
     let hook_engine = HookEngineConfig {
-        enabled: document.hook_engine.map_or(true, |section| section.enabled),
+        enabled: document.hook_engine.is_none_or(|section| section.enabled),
     };
     Ok(AspGlobalConfig {
         runtime_artifact_mode,

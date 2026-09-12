@@ -39,6 +39,12 @@ pub struct RuntimeQueryGenerationAuthority {
     builder: Arc<RuntimeSearchGenerationBuilder>,
 }
 
+impl Default for RuntimeQueryGenerationAuthority {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl RuntimeQueryGenerationAuthority {
     pub fn new() -> Self {
         Self::new_in_task_scope(

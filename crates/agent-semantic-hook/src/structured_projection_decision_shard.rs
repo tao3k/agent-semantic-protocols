@@ -141,8 +141,8 @@ impl StructuredProjectionDecisionShard {
                 continue;
             };
             let bounded = bounded
-                && document_format_matches(&entry.projection.document_format, &source)
-                && std::path::Path::new(&source).is_file();
+                && document_format_matches(&entry.projection.document_format, source)
+                && std::path::Path::new(source).is_file();
             let template = if bounded {
                 &entry.bounded_decision
             } else {
@@ -155,7 +155,7 @@ impl StructuredProjectionDecisionShard {
             // restored once, after shard selection.
             decision.subject.command = None;
             decision.subject.tool_name = None;
-            if !decision.replace_template_marker(&entry.placeholder, &source) {
+            if !decision.replace_template_marker(&entry.placeholder, source) {
                 return Err(
                     "structured-projection decision shard omitted its source placeholder"
                         .to_owned(),

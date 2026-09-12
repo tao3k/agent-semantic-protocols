@@ -13,7 +13,7 @@ use serde_json::json;
 fn digest(byte: char) -> String {
     format!(
         "blake3:{}",
-        std::iter::repeat(byte).take(64).collect::<String>()
+        std::iter::repeat_n(byte, 64).collect::<String>()
     )
 }
 

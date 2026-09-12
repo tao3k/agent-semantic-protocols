@@ -38,7 +38,7 @@ fn evaluator_feature_has_no_runtime_or_protocol_normal_dependencies() {
         "tokio",
     ] {
         assert!(
-            !reachable.iter().any(|package| *package == forbidden),
+            !reachable.contains(&forbidden),
             "evaluator dependency graph contains forbidden package {forbidden}:\n{tree}"
         );
     }

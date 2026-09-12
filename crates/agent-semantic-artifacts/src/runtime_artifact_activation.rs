@@ -85,10 +85,9 @@ pub async fn read_runtime_artifact_activation_event(
             )?;
             if let Some(applied_event) =
                 read_applied_runtime_artifact_activation_event(state_home).await?
+                && runtime_artifact_activation_is_applied(&event, &applied_event)
             {
-                if runtime_artifact_activation_is_applied(&event, &applied_event) {
-                    return Ok(None);
-                }
+                return Ok(None);
             }
             Ok(Some(event))
         }

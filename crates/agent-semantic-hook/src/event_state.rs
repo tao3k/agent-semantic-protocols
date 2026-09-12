@@ -468,7 +468,7 @@ fn append_hook_event_state_with_lock_timeout(
 fn append_hook_event_value(state_path: &Path, event: &Value) -> Result<(), String> {
     let mut line = event.to_string();
     line.push('\n');
-    let state_len = fs::metadata(&state_path)
+    let state_len = fs::metadata(state_path)
         .map(|metadata| metadata.len())
         .or_else(|error| {
             if error.kind() == std::io::ErrorKind::NotFound {
@@ -484,7 +484,7 @@ fn append_hook_event_value(state_path: &Path, event: &Value) -> Result<(), Strin
             )
         })?;
     if state_len.saturating_add(line.len() as u64) > HOOK_EVENT_STATE_MAX_BYTES {
-        let mut compacted = read_hook_event_state_tail(&state_path)?
+        let mut compacted = read_hook_event_state_tail(state_path)?
             .into_iter()
             .filter(|retained| is_current_hook_event_state_line(retained))
             .collect::<Vec<_>>()
@@ -493,12 +493,12 @@ fn append_hook_event_value(state_path: &Path, event: &Value) -> Result<(), Strin
             compacted.push('\n');
         }
         compacted.push_str(&line);
-        replace_hook_event_state(&state_path, compacted.as_bytes())?;
+        replace_hook_event_state(state_path, compacted.as_bytes())?;
     } else {
         let mut file = OpenOptions::new()
             .create(true)
             .append(true)
-            .open(&state_path)
+            .open(state_path)
             .map_err(|error| {
                 format!(
                     "failed to open hook state {}: {error}",
@@ -525,6 +525,7 @@ fn acquire_event_state_writer(state_dir: &Path, lock_timeout: Duration) -> Resul
     let lock_path = state_dir.join("events.jsonl.lock");
     let lock = OpenOptions::new()
         .create(true)
+        .truncate(false)
         .read(true)
         .write(true)
         .open(&lock_path)

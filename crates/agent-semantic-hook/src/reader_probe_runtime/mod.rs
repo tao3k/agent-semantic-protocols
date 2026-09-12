@@ -6,9 +6,10 @@
 
 #[cfg(target_os = "macos")]
 mod filesystem;
+#[path = "runtime.rs"]
+mod implementation;
 #[cfg(target_os = "macos")]
 mod process;
-mod runtime;
 
-pub(super) use runtime::ReaderProbeRequest;
-pub(super) use runtime::observe;
+pub(super) use implementation::ReaderProbeRequest;
+pub(super) use implementation::observe;

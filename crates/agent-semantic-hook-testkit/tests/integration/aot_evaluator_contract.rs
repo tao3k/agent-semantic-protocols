@@ -179,7 +179,7 @@ fn compiled_generation_requires_and_preserves_wrapped_command_policy() {
     assert!(error.contains("wrappedCommand"), "error={error}");
 }
 
-fn evaluate_canonical_bash<'a>(generation: &'a str, command: &str) -> Option<String> {
+fn evaluate_canonical_bash(generation: &str, command: &str) -> Option<String> {
     let payload = serde_json::json!({
         "session_id": "testkit-canonical-matrix",
         "cwd": ".",

@@ -29,6 +29,7 @@ pub use provider_capabilities::ProviderSemanticFactsIntentAxis;
 pub use provider_capabilities::ProviderSourceSnapshotDescriptor;
 pub use provider_stream::PROVIDER_STREAM_SCHEMA_ID;
 pub use provider_stream::PROVIDER_STREAM_SCHEMA_VERSION;
+pub use provider_stream::ProviderStreamEnvelopeIdentity;
 pub use provider_stream::validate_provider_stream_envelope;
 pub use release_catalog::PROVIDER_RELEASE_CATALOG_SCHEMA_ID;
 pub use release_catalog::PROVIDER_RELEASE_CATALOG_SCHEMA_VERSION;

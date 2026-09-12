@@ -239,6 +239,10 @@ fn publishing_receipt(
     })
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "publication keeps immutable generation, durability, telemetry, and cancellation authorities explicit"
+)]
 async fn publish_new_generation(
     current: &tokio::sync::watch::Sender<Option<Arc<WorkspaceMemoryBackend>>>,
     durability: &tokio::sync::watch::Sender<

@@ -292,7 +292,7 @@ fn canonical_source_snapshot(
             .map(|(path, bytes)| (path.to_owned(), blake3::hash(bytes).to_hex().to_string())),
     )
     .evidence(
-        request.source_snapshot.source_kind.clone(),
+        request.source_snapshot.source_kind,
         request.source_snapshot.provider_digest.clone(),
     )
 }

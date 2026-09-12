@@ -221,6 +221,7 @@ async fn publication_failure_preserves_previous_runtime_hook_binary() {
     let lock_path = state_home.join("runtime/artifacts/leases/artifact-mutation.lock");
     let lock = std::fs::OpenOptions::new()
         .create(true)
+        .truncate(false)
         .read(true)
         .write(true)
         .open(lock_path)

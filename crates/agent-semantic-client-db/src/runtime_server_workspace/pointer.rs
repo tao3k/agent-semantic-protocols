@@ -81,10 +81,9 @@ impl WorkspaceGenerationPointerReader {
 
     pub async fn open_optional(path: &Path) -> Result<Option<Self>, String> {
         Ok(
-            match AtomicSnapshotPointerReader::open_optional(path, POINTER_CONTEXT).await? {
-                Some(inner) => Some(Self { inner }),
-                None => None,
-            },
+            AtomicSnapshotPointerReader::open_optional(path, POINTER_CONTEXT)
+                .await?
+                .map(|inner| Self { inner }),
         )
     }
 

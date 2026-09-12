@@ -58,12 +58,11 @@ fn compiled_policy_axes_generate_balanced_complex_black_and_white_witnesses() {
         max_wrapper_depth + 1
     );
     assert!(
-        witnesses
+        !witnesses
             .iter()
             .filter_map(|witness| witness.command_axis.as_ref())
             .collect::<BTreeSet<_>>()
-            .len()
-            >= 1
+            .is_empty()
     );
     assert_eq!(
         witnesses

@@ -397,6 +397,10 @@ fn resolve_runtime_dependencies(
         .collect()
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "provider build execution keeps workspace, command, receipt, and timing authorities explicit"
+)]
 async fn run_workspace_command(
     stage: &str,
     registration: &super::super::provider_install_registry::ProviderInstallRegistration,

@@ -50,8 +50,7 @@ pub(super) fn dispatch_source_index_lookup(
             })),
         }));
     }
-    let language = agent_semantic_client_core::LanguageId::try_from(language_id)
-        .map_err(|error| format!("decode language id: {error}"))?;
+    let language = agent_semantic_client_core::LanguageId::from(language_id);
     let authority = agent_semantic_search::ResidentSearchAuthority {
         language_id: language,
         provider_id: provider_id.into(),
@@ -61,7 +60,7 @@ pub(super) fn dispatch_source_index_lookup(
             .resident()
             .read_source_index(&params.query, Some(&authority), params.limit)?;
     record_runtime_route_performance(
-        &telemetry_sender,
+        telemetry_sender,
         workspace_id,
         language_id,
         generation.generation_digest(),
@@ -116,7 +115,7 @@ pub(super) fn dispatch_exact_query(
     let elapsed_micros = elapsed_micros(started);
     let service_elapsed_micros = elapsed_micros.saturating_sub(resident_read_elapsed_micros);
     record_runtime_route_performance(
-        &telemetry_sender,
+        telemetry_sender,
         workspace_id,
         language_id,
         generation.generation_digest(),

@@ -46,8 +46,8 @@ impl RuntimeServerGenerationIdentity {
         }
         Err(RuntimeServerGenerationMismatch {
             reason_kind: RUNTIME_SERVER_GENERATION_MISMATCH,
-            expected: self.clone(),
-            observed: observed.clone(),
+            expected: Box::new(self.clone()),
+            observed: Box::new(observed.clone()),
         })
     }
 }
@@ -56,8 +56,8 @@ impl RuntimeServerGenerationIdentity {
 #[serde(rename_all = "camelCase")]
 pub struct RuntimeServerGenerationMismatch {
     pub reason_kind: &'static str,
-    pub expected: RuntimeServerGenerationIdentity,
-    pub observed: RuntimeServerGenerationIdentity,
+    pub expected: Box<RuntimeServerGenerationIdentity>,
+    pub observed: Box<RuntimeServerGenerationIdentity>,
 }
 
 impl std::fmt::Display for RuntimeServerGenerationMismatch {

@@ -22,6 +22,12 @@ pub struct WorkspaceGenerationPublication {
     sender: watch::Sender<Option<WorkspaceGenerationPublished>>,
 }
 
+impl Default for WorkspaceGenerationPublication {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl WorkspaceGenerationPublication {
     pub fn new() -> Self {
         let (sender, _) = watch::channel(None);

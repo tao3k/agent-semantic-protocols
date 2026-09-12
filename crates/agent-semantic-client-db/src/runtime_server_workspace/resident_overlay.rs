@@ -267,10 +267,7 @@ impl ResidentOverlayStore {
         }
         .ok_or_else(|| "runtime selector overlay owner is unavailable".to_owned())?;
         validate_selector_overlay(owner, &base.projection_capability, &overlay)?;
-        let key = (
-            overlay.projection_kind.clone(),
-            overlay.structural_selector.clone(),
-        );
+        let key = (overlay.projection_kind, overlay.structural_selector.clone());
         let inserted = match state.selectors.get(&key) {
             Some(existing) if existing == &overlay => false,
             Some(_) => {
@@ -334,10 +331,7 @@ impl ResidentOverlayStore {
                 .with_overlay([(owner_path, owner_digest)]),
         );
         validate_selector_overlay(&owner, &base.projection_capability, &overlay)?;
-        let key = (
-            overlay.projection_kind.clone(),
-            overlay.structural_selector.clone(),
-        );
+        let key = (overlay.projection_kind, overlay.structural_selector.clone());
         state.selectors.insert(key, overlay.clone());
         state.advance();
         let receipt = WorkspaceRuntimeSelectorOverlayReceipt {
@@ -426,6 +420,10 @@ impl ResidentOverlaySnapshot {
             .collect()
     }
 
+    #[expect(
+        clippy::type_complexity,
+        reason = "the V1 projection returns its three typed evidence collections"
+    )]
     pub(super) fn native_syntax_playbook_projection(
         &self,
         base: &WorkspaceMemoryGeneration,

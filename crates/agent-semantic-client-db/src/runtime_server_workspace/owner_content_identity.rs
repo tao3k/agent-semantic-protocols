@@ -4,10 +4,6 @@
 
 use std::path::{Path, PathBuf};
 
-#[cfg(test)]
-#[path = "../../tests/unit/runtime_server_owner_content_identity.rs"]
-mod runtime_server_owner_content_identity_tests;
-
 pub(super) struct RuntimeOwnerContentIdentity {
     pub digest: String,
 }

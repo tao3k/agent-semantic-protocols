@@ -295,13 +295,17 @@ pub(crate) fn runtime_source_index_provider_projection(
         })
         .map(|language_id| format!("{language_id}:capability"))
         .collect::<Vec<_>>();
-    missing.extend(registrations.iter().filter_map(|registration| {
-        (!artifacts.document.providers.iter().any(|artifact| {
-            artifact.language_id == registration.language_id
-                && artifact.provider_id == registration.provider_id
-        }))
-        .then(|| format!("{}:artifact", registration.language_id))
-    }));
+    missing.extend(
+        registrations
+            .iter()
+            .filter(|registration| {
+                !artifacts.document.providers.iter().any(|artifact| {
+                    artifact.language_id == registration.language_id
+                        && artifact.provider_id == registration.provider_id
+                })
+            })
+            .map(|registration| format!("{}:artifact", registration.language_id)),
+    );
     if !missing.is_empty() {
         missing.sort();
         return Err(format!(

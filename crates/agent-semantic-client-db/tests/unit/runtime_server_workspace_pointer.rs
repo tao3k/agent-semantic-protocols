@@ -83,7 +83,7 @@ async fn concurrent_readers_observe_only_complete_generation_pointer_publication
             }
         });
     }
-    let publishing = {
+    {
         let writer = Arc::clone(&writer);
         tasks.spawn(async move {
             for epoch in 2..=LAST_EPOCH {
@@ -95,7 +95,6 @@ async fn concurrent_readers_observe_only_complete_generation_pointer_publication
             }
         });
     };
-    let _ = publishing;
     while let Some(result) = tasks.join_next().await {
         result.expect("join pointer stress task");
     }

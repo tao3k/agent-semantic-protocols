@@ -46,6 +46,10 @@ fn benchmark_u64(manifest: &str, key: &str) -> u64 {
 }
 
 #[tokio::test(flavor = "current_thread")]
+#[expect(
+    clippy::await_holding_lock,
+    reason = "the global performance gate serializes resource-sensitive benchmark tests"
+)]
 async fn code_search_turso_resident_session_warm_path_is_a_strong_gate() {
     let _performance_gate = PERFORMANCE_GATE
         .lock()
@@ -122,10 +126,7 @@ async fn code_search_turso_resident_session_warm_path_is_a_strong_gate() {
     );
     let source_blobs =
         agent_semantic_client_db::ClientDbSourceIndexSourceBlobs::from_normalized([(
-            agent_semantic_client_db::ClientDbSourceIndexPath::try_from(
-                fixture_owner_path.as_str(),
-            )
-            .expect("normalize fixture owner path"),
+            agent_semantic_client_db::ClientDbSourceIndexPath::from(fixture_owner_path.as_str()),
             fixture_source.clone(),
         )]);
     let rust_language_id = LanguageId::from("rust");

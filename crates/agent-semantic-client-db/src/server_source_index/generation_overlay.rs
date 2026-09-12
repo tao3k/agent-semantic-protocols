@@ -55,11 +55,18 @@ pub(super) async fn complete_generation_from_optional_active_base(
         return Ok(prepared);
     };
     if let Some(replacement_authority) = replacement_authority {
-        changed_owner_paths.extend(active.snapshot.owners.iter().filter_map(|owner| {
-            (owner.language_id.as_deref() == Some(replacement_authority.language_id.as_str())
-                && owner.provider_id.as_deref() == Some(replacement_authority.provider_id.as_str()))
-            .then(|| owner.owner_path.clone())
-        }));
+        changed_owner_paths.extend(
+            active
+                .snapshot
+                .owners
+                .iter()
+                .filter(|owner| {
+                    owner.language_id.as_deref() == Some(replacement_authority.language_id.as_str())
+                        && owner.provider_id.as_deref()
+                            == Some(replacement_authority.provider_id.as_str())
+                })
+                .map(|owner| owner.owner_path.clone()),
+        );
         let active_materialization =
             crate::engine::active_turso_workspace_generation_materialization(
                 db_path,

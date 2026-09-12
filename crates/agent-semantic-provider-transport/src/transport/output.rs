@@ -26,7 +26,9 @@ use super::ProviderIoTasks;
 use super::runtime::ProviderChild;
 use super::runtime::ProviderProcessOutput;
 
+#[cfg(target_os = "macos")]
 const PROVIDER_MEMORY_OBSERVATION_GRACE: Duration = Duration::from_millis(250);
+#[cfg(target_os = "macos")]
 const PROVIDER_MEMORY_OBSERVATION_POLL_INTERVAL: Duration = Duration::from_millis(50);
 
 pub(super) async fn collect_provider_output(

@@ -59,11 +59,11 @@ pub async fn run_hook_process(request: HookProcessRequest<'_>) -> Result<Output,
     })?;
     let stdout = child.stdout.take().map(drain_hook_process_pipe);
     let stderr = child.stderr.take().map(drain_hook_process_pipe);
-    if let Some(mut child_stdin) = child.stdin.take() {
-        if let Err(error) = child_stdin.write_all(request.stdin).await {
-            kill_reap_and_drain_hook_process(&mut child, stdout, stderr).await?;
-            return Err(format!("forward bounded hook process stdin: {error}"));
-        }
+    if let Some(mut child_stdin) = child.stdin.take()
+        && let Err(error) = child_stdin.write_all(request.stdin).await
+    {
+        kill_reap_and_drain_hook_process(&mut child, stdout, stderr).await?;
+        return Err(format!("forward bounded hook process stdin: {error}"));
     }
     let status = match tokio::time::timeout(request.timeout, child.wait()).await {
         Ok(status) => status.map_err(|error| format!("wait for bounded hook process: {error}"))?,

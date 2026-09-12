@@ -144,8 +144,7 @@ async fn failed_ready_endpoint_publication_removes_every_bound_runtime_artifact(
     let error = server
         .publish_endpoint_after_required_planes(&endpoint_path)
         .await
-        .err()
-        .expect("endpoint publication must fail");
+        .expect_err("endpoint publication must fail");
     assert!(
         error.contains("failed to create Runtime Server endpoint directory"),
         "unexpected endpoint publication failure: {error}"

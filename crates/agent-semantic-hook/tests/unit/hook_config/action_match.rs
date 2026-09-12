@@ -91,9 +91,9 @@ fn canonical_apply_patch_and_official_aliases_share_host_semantics() {
     actions[0].host_action = HostInvocationKind::Edit;
     let action = actions.first().expect("canonical apply_patch action");
 
-    assert!(matcher.matches(&runtime(), "codex", &action, None));
+    assert!(matcher.matches(&runtime(), "codex", action, None));
     let receipt = matcher
-        .derive_agent_action_for_rule(&runtime(), "codex", &action, None, None)
+        .derive_agent_action_for_rule(&runtime(), "codex", action, None, None)
         .expect("AgentAction receipt")
         .receipt_value();
     assert_eq!(receipt["hostInvocation"]["action"], "edit");

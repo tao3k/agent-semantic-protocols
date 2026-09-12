@@ -568,12 +568,10 @@ impl TursoOpenTelemetrySpanExporter {
 }
 
 impl SpanExporter for TursoOpenTelemetrySpanExporter {
-    fn export(&self, batch: Vec<SpanData>) -> impl Future<Output = OTelSdkResult> + Send {
-        async move {
-            self.export_batch(&batch)
-                .await
-                .map_err(OTelSdkError::InternalFailure)
-        }
+    async fn export(&self, batch: Vec<SpanData>) -> OTelSdkResult {
+        self.export_batch(&batch)
+            .await
+            .map_err(OTelSdkError::InternalFailure)
     }
 }
 

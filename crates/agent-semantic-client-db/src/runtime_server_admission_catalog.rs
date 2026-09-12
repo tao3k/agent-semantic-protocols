@@ -454,8 +454,8 @@ impl RuntimeWorkspaceAdmissionCatalog {
             }
         })?;
         let invalid = RuntimeWorkspaceAdmissionCatalogResolveError::Invalid;
-        let identity = catalog_file_identity(&file).map_err(&invalid)?;
-        if let Some(entries_by_root) = cached_catalog_entries(path, &identity).map_err(&invalid)? {
+        let identity = catalog_file_identity(&file).map_err(invalid)?;
+        if let Some(entries_by_root) = cached_catalog_entries(path, &identity).map_err(invalid)? {
             return resolve_catalog_entry(entries_by_root.as_ref(), project_root);
         }
         // SAFETY: catalog publication is immutable and atomic. Existing mappings retain
@@ -467,12 +467,12 @@ impl RuntimeWorkspaceAdmissionCatalog {
         })?;
         let entries_by_root = Arc::new(
             decode_catalog(mapping.as_ref())
-                .map_err(&invalid)?
+                .map_err(invalid)?
                 .into_iter()
                 .map(|entry| (entry.project_root.clone(), entry))
                 .collect(),
         );
-        cache_catalog_entries(path, identity, Arc::clone(&entries_by_root)).map_err(&invalid)?;
+        cache_catalog_entries(path, identity, Arc::clone(&entries_by_root)).map_err(invalid)?;
         resolve_catalog_entry(entries_by_root.as_ref(), project_root)
     }
 }

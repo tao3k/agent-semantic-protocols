@@ -102,7 +102,7 @@ fn packet_v1_enrichment_binds_current_workspace_membership() {
         parser_identity_digest: record.proof.parser_identity_digest(),
         query_pack_digest: record.proof.query_pack_digest(),
         structural_selector: record.proof.structural_selector(),
-        projection_mode: record.proof.projection_mode().clone(),
+        projection_mode: *record.proof.projection_mode(),
     };
     record.validate_warm_hit(&key).expect("validated record");
 }

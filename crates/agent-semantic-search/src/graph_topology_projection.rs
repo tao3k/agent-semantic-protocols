@@ -311,16 +311,19 @@ pub fn graph_owner_missing_topology_projection(
         }),
     ]);
 
-    let mut project_count = 0;
     let mut scope_count = 0;
-    for admitted in request.project_resolutions.iter().filter(|admitted| {
-        admitted.resolution.language_id == request.language_id
-            && admitted_project_resolution_contains_owner(admitted, request.owner_path)
-    }) {
-        if project_count == PROJECT_LIMIT || scope_count == SCOPE_LIMIT {
+    for (project_index, admitted) in request
+        .project_resolutions
+        .iter()
+        .filter(|admitted| {
+            admitted.resolution.language_id == request.language_id
+                && admitted_project_resolution_contains_owner(admitted, request.owner_path)
+        })
+        .enumerate()
+    {
+        if project_index == PROJECT_LIMIT || scope_count == SCOPE_LIMIT {
             break;
         }
-        project_count += 1;
         let resolution = &admitted.resolution;
         let project_entry = logical_join(&admitted.candidate_base, &resolution.project_entry);
         let project_value = format!(
@@ -720,9 +723,7 @@ fn deepest_indexed_owner_prefix<'a>(
         if let Some(indexed) = submodule_index.get(prefix) {
             return Some(*indexed);
         }
-        let Some(separator) = prefix.rfind('/') else {
-            return None;
-        };
+        let separator = prefix.rfind('/')?;
         prefix_end = separator;
     }
 }

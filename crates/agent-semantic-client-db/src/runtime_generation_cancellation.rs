@@ -13,6 +13,12 @@ pub struct GenerationCancellation {
     notify: Arc<tokio::sync::Notify>,
 }
 
+impl Default for GenerationCancellation {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl GenerationCancellation {
     pub fn new() -> Self {
         Self {

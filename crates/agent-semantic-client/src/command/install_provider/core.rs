@@ -411,11 +411,9 @@ async fn run_install_provider(args: &[String]) -> Result<(), String> {
             let provider_id = install_registration.provider_id.as_str();
             let registered_binary = install_registration.binary.as_str();
             let registration = &install_registration;
-            let built = install_provider_workspace::build_registered_provider_workspace(
-                root,
-                &registration,
-            )
-            .await?;
+            let built =
+                install_provider_workspace::build_registered_provider_workspace(root, registration)
+                    .await?;
             return install_provider_workspace::record_registered_provider_workspace_install(
                 language_id,
                 provider_id,
@@ -423,7 +421,7 @@ async fn run_install_provider(args: &[String]) -> Result<(), String> {
                 &target,
                 &invocation_root,
                 root,
-                &registration,
+                registration,
                 built,
             )
             .await;

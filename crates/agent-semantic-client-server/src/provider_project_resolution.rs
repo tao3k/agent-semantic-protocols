@@ -16,6 +16,10 @@ const PROVIDER_PROJECT_RESOLUTION_RESPONSE_SCHEMA_ID: &str =
 
 /// Project-scope resolution result for a provider.
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "preserve the established public Rust API while the V1 contract is frozen"
+)]
 pub enum ProviderProjectResolution {
     Supported(ProviderProjectResolutionPacket),
     Unsupported,
@@ -404,18 +408,18 @@ pub fn project_resolution_from_stdout(
                     .any(|extension| exclusion.path.ends_with(extension))
             })
             .collect::<Vec<_>>();
-        if source_scope.include_authority == "manifest-explicit" {
-            if let Some(exclusion) = policy_paths.iter().find(|exclusion| {
+        if source_scope.include_authority == "manifest-explicit"
+            && let Some(exclusion) = policy_paths.iter().find(|exclusion| {
                 source_scope
                     .explicit_paths
                     .iter()
                     .any(|explicit_path| candidate_path_is_within(&exclusion.path, explicit_path))
-            }) {
-                return Err(format!(
-                    "project-resolution-conflict: path={} includeAuthority=manifest-explicit excludeAuthority={} reasonKind=explicit-source-excluded",
-                    exclusion.path, exclusion.authority
-                ));
-            }
+            })
+        {
+            return Err(format!(
+                "project-resolution-conflict: path={} includeAuthority=manifest-explicit excludeAuthority={} reasonKind=explicit-source-excluded",
+                exclusion.path, exclusion.authority
+            ));
         }
         for exclusion in policy_paths {
             scope_paths.remove(&exclusion.path);

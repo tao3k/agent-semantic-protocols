@@ -310,6 +310,10 @@ impl WorkspaceSearchGenerationDataPlaneClient {
     /// Owner paths are identities only. A projected owner must carry the parser-owned
     /// selectors, byte ranges, query keys, and derived projection digests that make it
     /// actionable to the single public Search playbook.
+    #[expect(
+        clippy::type_complexity,
+        reason = "the V1 projection returns its three typed evidence collections"
+    )]
     pub fn native_syntax_playbook_projection(
         &self,
         owner_paths: &[String],

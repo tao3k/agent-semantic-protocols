@@ -39,7 +39,8 @@ fn admits_exact_server_and_doctor_commands() {
 
 #[test]
 fn admits_only_canonical_binary_install_for_matcher_recovery() {
-    for command in ["/tmp/candidate/asp install binary"] {
+    {
+        let command = "/tmp/candidate/asp install binary";
         assert!(canonical_recovery_admission(
             Some("pre-tool"),
             &payload(command)

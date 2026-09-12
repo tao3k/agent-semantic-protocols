@@ -53,8 +53,8 @@ async fn completed_child_wins_over_an_already_ready_deadline() {
     for _ in 0..32 {
         let start = std::time::Instant::now();
         let stdin_mode = process.stdin.clone();
-        let stdout_mode = process.stdout.clone();
-        let stderr_mode = process.stderr.clone();
+        let stdout_mode = process.stdout;
+        let stderr_mode = process.stderr;
         let limits = process.limits;
         let mut child = super::super::spawn_provider_process(&process, &stdin_mode)
             .await

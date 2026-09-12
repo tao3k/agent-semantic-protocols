@@ -1,4 +1,8 @@
 #![deny(dead_code)]
+#![expect(
+    clippy::await_holding_lock,
+    reason = "unit tests intentionally hold the process-global environment or performance gate across async fixtures"
+)]
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
 // SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later

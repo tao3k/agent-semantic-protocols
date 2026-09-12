@@ -288,7 +288,7 @@ impl WorkspaceDbIpcSession {
                 .await;
         }
         let resident_read = crate::runtime_resident_read::RuntimeResidentReadClient::open(
-            &generation_pointer,
+            generation_pointer,
             &project_root,
         )
         .await?;

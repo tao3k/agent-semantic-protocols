@@ -113,7 +113,7 @@ pub fn build_source_byte_acquisition_stage<'a>(
     owners: impl IntoIterator<Item = SourceByteOwner<'a>>,
 ) -> Result<SearchGenerationStageReceipt, String> {
     let mut owners = owners.into_iter().collect::<Vec<_>>();
-    owners.sort_by(|left, right| left.owner_path.cmp(&right.owner_path));
+    owners.sort_by(|left, right| left.owner_path.cmp(right.owner_path));
     if owners
         .windows(2)
         .any(|window| window[0].owner_path == window[1].owner_path)
@@ -124,7 +124,7 @@ pub fn build_source_byte_acquisition_stage<'a>(
         if owner.owner_path.trim().is_empty() {
             return Err("source-byte coverage contains an incomplete owner".to_owned());
         }
-        validate_digest("contentDigest", &owner.content_digest)?;
+        validate_digest("contentDigest", owner.content_digest)?;
     }
     let bytes = serde_json::to_vec(&owners)
         .map_err(|error| format!("encode source-byte coverage membership: {error}"))?;
