@@ -10,7 +10,7 @@ use agent_semantic_hook_testkit::CodexPreToolContext;
 use agent_semantic_hook_testkit::project_codex_exec_command_calls;
 
 const CODEX_PRE_TOOL_INPUT_SCHEMA: &str = include_str!(
-    "../../../../.data/codex/codex-rs/hooks/schema/generated/pre-tool-use.command.input.schema.json"
+    "../fixtures/codex-pre-tool-use-command-input.v1.schema.json"
 );
 const SYNTHETIC_ROLLOUT_RESPONSE: &str =
     include_str!("../fixtures/codex-rollout-exec-command.v1.json");
