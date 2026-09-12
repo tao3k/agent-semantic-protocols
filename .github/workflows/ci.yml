@@ -237,7 +237,8 @@ jobs:
         run: >-
           cargo test -p asp-rust-project-harness-policy
           --features workspace-policy
-          --test workspace_policy
+          --test integration_test
+          workspace_policy::asp_workspace_source_policy_is_clean
           -- --nocapture
 
       - name: Root schema gates
