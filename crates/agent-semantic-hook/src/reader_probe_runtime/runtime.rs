@@ -18,6 +18,7 @@ use std::sync::OnceLock;
 use std::sync::atomic::AtomicU64;
 #[cfg(target_os = "macos")]
 use std::sync::atomic::Ordering;
+#[cfg(target_os = "macos")]
 use std::time::Duration;
 use std::time::Instant;
 
@@ -43,6 +44,7 @@ use super::process::run_permission_candidate;
 // require one extra process boundary before their actual Reader behavior can
 // be observed. Keep a strict bounded cold path while allowing that supported
 // Host shape to complete; warm catalog hits never enter this budget.
+#[cfg(target_os = "macos")]
 const PROBE_COLD_TIMEOUT: Duration = Duration::from_secs(1);
 #[cfg(target_os = "macos")]
 const CACHE_WAIT_PARK: Duration = Duration::from_micros(250);
@@ -135,7 +137,7 @@ fn observe_one_with_wrapped(
 
     #[cfg(not(target_os = "macos"))]
     {
-        let _ = tokens;
+        let _ = (tokens, dynamic_cache_root_override);
         return terminal(
             ReaderProbeAccess::Unknown,
             "unsupported-platform",
