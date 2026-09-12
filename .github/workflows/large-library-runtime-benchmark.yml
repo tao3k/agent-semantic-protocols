@@ -21,11 +21,13 @@ jobs:
     name: V1 Search Runtime Matrix
     runs-on: ubuntu-latest
     timeout-minutes: 90
-    env:
-      ASP_STATE_HOME: ${{ runner.temp }}/asp-state-home
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Configure isolated benchmark state home
+        shell: bash
+        run: echo "ASP_STATE_HOME=$RUNNER_TEMP/asp-state-home" >> "$GITHUB_ENV"
 
       - name: Checkout provider catalog submodules
         shell: bash
@@ -37,7 +39,8 @@ jobs:
             languages/asp-python \
             languages/AspJulia.jl \
             languages/asp-gerbil-scheme \
-            languages/orgize
+            languages/orgize \
+            org
 
       - name: Install Nix for the project direnv environment
         uses: cachix/install-nix-action@v31
