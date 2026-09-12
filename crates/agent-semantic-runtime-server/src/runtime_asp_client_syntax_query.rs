@@ -15,16 +15,23 @@ use agent_semantic_client_protocol::{
 };
 use base64::Engine;
 
-use crate::RuntimeQueryGeneration;
 use crate::runtime_asp_client::AspClientOperationError;
 
 pub(super) async fn dispatch_workspace_syntax_query(
     params: AspClientWorkspaceSyntaxQueryRequest,
-    generation: &RuntimeQueryGeneration,
+    generation_digest: &str,
+    resident: &agent_semantic_client_db::runtime_resident_read::RuntimeResidentReadClient,
     providers: &[agent_semantic_search::WorkspaceSearchProvider],
 ) -> Result<serde_json::Value, AspClientOperationError> {
-    let evidence =
-        execute_workspace_syntax_query_evidence(&params, generation, providers, 3, None).await?;
+    let evidence = execute_workspace_syntax_query_evidence(
+        &params,
+        generation_digest,
+        resident,
+        providers,
+        3,
+        None,
+    )
+    .await?;
     serde_json::to_value(AspClientWorkspaceSyntaxQueryResponse {
         schema_id: "agent.semantic-protocols.asp-client-workspace-syntax-query-response".to_owned(),
         schema_version: "1".to_owned(),
@@ -36,7 +43,8 @@ pub(super) async fn dispatch_workspace_syntax_query(
 
 pub(super) async fn execute_workspace_syntax_query_evidence(
     params: &AspClientWorkspaceSyntaxQueryRequest,
-    generation: &RuntimeQueryGeneration,
+    generation_digest: &str,
+    resident: &agent_semantic_client_db::runtime_resident_read::RuntimeResidentReadClient,
     providers: &[agent_semantic_search::WorkspaceSearchProvider],
     limit: usize,
     admitted_owner_paths: Option<&BTreeSet<String>>,
@@ -74,7 +82,8 @@ pub(super) async fn execute_workspace_syntax_query_evidence(
         })?;
         query_resident_block(
             &block.plan,
-            generation,
+            generation_digest,
+            resident,
             provider,
             &mut evidence,
             &mut seen_selectors,
@@ -91,14 +100,15 @@ fn producer_matches_optional_calibration(selected: &BTreeSet<&str>, producer: &s
 
 fn query_resident_block(
     plan: &ResidentSyntaxQueryPlan,
-    generation: &RuntimeQueryGeneration,
+    generation_digest: &str,
+    resident: &agent_semantic_client_db::runtime_resident_read::RuntimeResidentReadClient,
     provider: &agent_semantic_search::WorkspaceSearchProvider,
     evidence: &mut Vec<AspClientWorkspaceSyntaxQueryEvidence>,
     seen_selectors: &mut BTreeSet<String>,
     limit: usize,
     admitted_owner_paths: Option<&BTreeSet<String>>,
 ) -> Result<(), AspClientOperationError> {
-    validate_resident_query_plan(plan, generation.generation_digest(), provider)?;
+    validate_resident_query_plan(plan, generation_digest, provider)?;
     let regex_programs = resident_regex_programs(plan)?;
     let source_extensions = provider
         .source_extensions
@@ -110,7 +120,7 @@ fn query_resident_block(
         return Ok(());
     }
 
-    for owner_path in generation.resident().indexed_owner_paths() {
+    for owner_path in resident.indexed_owner_paths() {
         if evidence.len() == limit {
             break;
         }
@@ -123,7 +133,7 @@ fn query_resident_block(
         if admitted_owner_paths.is_some_and(|owners| !owners.contains(&owner_path)) {
             continue;
         }
-        let (projections, _, diagnostics) = generation
+        let (projections, _, diagnostics) = resident
             .native_syntax_playbook_projection(std::slice::from_ref(&owner_path))
             .map_err(AspClientOperationError::Message)?;
         if !diagnostics.is_empty() {

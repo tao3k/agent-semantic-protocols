@@ -63,16 +63,17 @@ impl RuntimeQueryGenerationAuthority {
         calibration_store_path: Option<std::path::PathBuf>,
     ) -> Result<Self, String> {
         let (sender, _) = watch::channel(Arc::new(HashMap::new()));
+        let builder = Arc::new(RuntimeSearchGenerationBuilder::new_with_calibration_store(
+            task_scope.clone(),
+            resource_supervisor,
+            calibration_store_path,
+        )?);
         Ok(Self {
             sender,
             open_lanes: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
             next_generation_token: Arc::new(AtomicU64::new(0)),
             publication_lock: Arc::new(std::sync::Mutex::new(())),
-            builder: Arc::new(RuntimeSearchGenerationBuilder::new_with_calibration_store(
-                task_scope,
-                resource_supervisor,
-                calibration_store_path,
-            )?),
+            builder,
         })
     }
 
@@ -286,6 +287,30 @@ impl RuntimeQueryGenerationAuthority {
         self.builder.shutdown().await
     }
 
+    fn schedule_generation_attachments(
+        &self,
+        key: RuntimeProjectWorkspaceKey,
+        _project_root: std::path::PathBuf,
+        generation: Arc<RuntimeQueryGeneration>,
+        previous_generation: Option<Arc<RuntimeQueryGeneration>>,
+    ) {
+        if let Err(error) = self
+            .builder
+            .schedule(key, Arc::clone(&generation), previous_generation)
+        {
+            generation.fail_lexical_attachment(&error);
+            eprintln!(
+                "[runtime-search-lexical-build] {}",
+                serde_json::json!({
+                    "state": "failed",
+                    "reasonKind": "runtime-search-lexical-build-task-not-admitted",
+                    "generationDigest": generation.generation_digest(),
+                    "error": error,
+                })
+            );
+        }
+    }
+
     pub async fn ensure_ready(
         &self,
         key: &RuntimeProjectWorkspaceKey,
@@ -320,38 +345,13 @@ impl RuntimeQueryGenerationAuthority {
             Ok(generation) if generation.generation_digest() == expected_generation_digest => {
                 let generation = Arc::new(generation);
                 self.reserve_generation_token(&generation);
-                let (derived, topology) = tokio::join!(
-                    self.builder.build_and_wait(
-                        key,
-                        project_root,
-                        Arc::clone(&generation),
-                        previous_generation.as_deref(),
-                    ),
-                    generation.build_and_attach_project_topology(project_root),
-                );
-                if let Err(error) = derived {
-                    eprintln!(
-                        "[runtime-search-derived-build] {}",
-                        serde_json::json!({
-                            "state": "failed",
-                            "reasonKind": "runtime-search-derived-build-failed",
-                            "generationDigest": expected_generation_digest,
-                            "error": error,
-                        })
-                    );
-                }
-                if let Err(error) = topology {
-                    eprintln!(
-                        "[runtime-project-topology-build] {}",
-                        serde_json::json!({
-                            "state": "failed",
-                            "reasonKind": "runtime-project-topology-build-failed",
-                            "generationDigest": expected_generation_digest,
-                            "error": error,
-                        })
-                    );
-                }
                 self.publish_ready(key.clone(), Arc::clone(&generation))?;
+                self.schedule_generation_attachments(
+                    key.clone(),
+                    project_root.to_path_buf(),
+                    Arc::clone(&generation),
+                    previous_generation,
+                );
                 Ok(generation)
             }
             Ok(generation) => {
@@ -469,38 +469,13 @@ impl RuntimeQueryGenerationAuthority {
             ));
         }
         self.reserve_generation_token(&generation);
-        let (derived, topology) = tokio::join!(
-            self.builder.build_and_wait(
-                key,
-                project_root,
-                Arc::clone(&generation),
-                previous_generation.as_deref(),
-            ),
-            generation.build_and_attach_project_topology(project_root),
-        );
-        if let Err(error) = derived {
-            eprintln!(
-                "[runtime-search-derived-build] {}",
-                serde_json::json!({
-                    "state": "failed",
-                    "reasonKind": "runtime-search-derived-build-failed",
-                    "generationDigest": expected_generation_digest,
-                    "error": error,
-                })
-            );
-        }
-        if let Err(error) = topology {
-            eprintln!(
-                "[runtime-project-topology-build] {}",
-                serde_json::json!({
-                    "state": "failed",
-                    "reasonKind": "runtime-project-topology-build-failed",
-                    "generationDigest": expected_generation_digest,
-                    "error": error,
-                })
-            );
-        }
         self.publish_ready(key.clone(), Arc::clone(&generation))?;
+        self.schedule_generation_attachments(
+            key.clone(),
+            project_root.to_path_buf(),
+            Arc::clone(&generation),
+            previous_generation,
+        );
         Ok(generation)
     }
 }

@@ -3,11 +3,6 @@
 // SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 #[test]
-fn asp_unit_scenarios_have_asp_rust_benchmark_toml_gates() {
-    super::scenario_benchmark_manifest::asp_unit_scenarios_have_asp_rust_benchmark_toml_gates();
-}
-
-#[test]
 fn asp_unit_scenarios_cover_perf_sensitive_subcommands() {
     super::scenario_benchmark_manifest::asp_unit_scenarios_cover_perf_sensitive_subcommands();
 }

@@ -17,6 +17,8 @@ use fixture::generation_with_selectors;
 
 #[path = "runtime_server_overlay_admission/canonical_materialization.rs"]
 mod canonical_materialization;
+#[path = "runtime_server_overlay_admission/resident_semantic.rs"]
+mod resident_semantic;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn owner_overlay_cannot_manufacture_a_canonical_generation() {

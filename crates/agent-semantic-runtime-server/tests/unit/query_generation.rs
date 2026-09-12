@@ -329,10 +329,122 @@ fn test_generation(digest: &str) -> std::sync::Arc<super::RuntimeQueryGeneration
         resident: None,
         execution_publication: None,
         project_topology_attachment: std::sync::OnceLock::new(),
+        project_topology_completion: tokio::sync::watch::channel(false).0,
+        lexical_attachment_completion: tokio::sync::watch::channel(false).0,
         build_resource_receipt: std::sync::OnceLock::new(),
         search_materializations: std::sync::Mutex::new(std::collections::HashMap::new()),
         query_materializations: std::sync::Mutex::new(std::collections::HashMap::new()),
     })
+}
+
+#[tokio::test]
+async fn lexical_completion_does_not_wait_for_request_graph() {
+    let generation = test_generation("lexical-ready-request-graph-pending");
+    let (finish_graph, graph_pending) = tokio::sync::oneshot::channel::<()>();
+    let graph_task = tokio::spawn(async move {
+        let _ = graph_pending.await;
+    });
+
+    generation.publish_lexical_attachment_terminal();
+    tokio::time::timeout(
+        std::time::Duration::from_millis(50),
+        generation.await_lexical_attachment(),
+    )
+    .await
+    .expect("lexical waiter must not join request Graph")
+    .expect("lexical terminal is retained");
+    assert!(!graph_task.is_finished());
+
+    finish_graph.send(()).expect("finish request Graph fixture");
+    graph_task.await.expect("request Graph fixture joins");
+}
+
+#[tokio::test]
+async fn search_waiters_share_one_completion_and_late_subscribers_observe_it() {
+    use crate::runtime_query_generation::RuntimeSearchMaterializationState;
+    let generation = test_generation("generation-wait");
+    assert!(
+        generation
+            .begin_search_materialization("key".into())
+            .unwrap()
+    );
+    let mut waiters = tokio::task::JoinSet::new();
+    for _ in 0..32 {
+        assert!(
+            !generation
+                .begin_search_materialization("key".into())
+                .unwrap()
+        );
+        let generation = std::sync::Arc::clone(&generation);
+        waiters.spawn(async move { generation.await_search_materialization("key").await });
+    }
+    tokio::task::yield_now().await;
+    generation
+        .publish_search_materialization("key".into(), Ok(serde_json::json!({"hits": 1})))
+        .unwrap();
+    while let Some(joined) = waiters.join_next().await {
+        assert!(
+            matches!(joined.unwrap().unwrap(), RuntimeSearchMaterializationState::Ready(value) if value["hits"] == 1)
+        );
+    }
+    assert!(matches!(
+        generation
+            .await_search_materialization("key")
+            .await
+            .unwrap(),
+        RuntimeSearchMaterializationState::Ready(_)
+    ));
+}
+
+#[tokio::test]
+async fn cancelled_query_waiter_does_not_cancel_shared_completion() {
+    use crate::runtime_query_generation::RuntimeQueryMaterializationState;
+    let generation = test_generation("generation-cancel");
+    assert!(
+        generation
+            .begin_query_materialization("key".into())
+            .unwrap()
+    );
+    let waiting_generation = std::sync::Arc::clone(&generation);
+    let waiter =
+        tokio::spawn(async move { waiting_generation.await_query_materialization("key").await });
+    tokio::task::yield_now().await;
+    waiter.abort();
+    assert!(matches!(waiter.await, Err(error) if error.is_cancelled()));
+    generation
+        .publish_query_materialization("key".into(), Ok(serde_json::json!({"source": "exact"})))
+        .unwrap();
+    assert!(
+        matches!(generation.await_query_materialization("key").await.unwrap(), RuntimeQueryMaterializationState::Ready(value) if value["source"] == "exact")
+    );
+}
+
+#[tokio::test]
+async fn terminal_failure_wakes_waiters_without_claiming_an_empty_result() {
+    use crate::runtime_query_generation::RuntimeSearchMaterializationState;
+    let generation = test_generation("generation-error");
+    assert!(
+        generation
+            .begin_search_materialization("key".into())
+            .unwrap()
+    );
+    let waiting_generation = std::sync::Arc::clone(&generation);
+    let waiter =
+        tokio::spawn(async move { waiting_generation.await_search_materialization("key").await });
+    tokio::task::yield_now().await;
+    generation
+        .publish_search_materialization(
+            "key".into(),
+            Err(agent_semantic_client_server::AspClientDispatchError {
+                reason_kind: "budget-exhausted".into(),
+                message: "fixture".into(),
+                details: None,
+            }),
+        )
+        .unwrap();
+    assert!(
+        matches!(waiter.await.unwrap().unwrap(), RuntimeSearchMaterializationState::Failed(error) if error.reason_kind == "budget-exhausted")
+    );
 }
 
 #[test]
@@ -352,7 +464,7 @@ fn search_materialization_claims_once_and_publishes_one_terminal() {
     );
     assert!(matches!(
         generation.search_materialization(&key).unwrap(),
-        Some(RuntimeSearchMaterializationState::Building)
+        Some(RuntimeSearchMaterializationState::Building(_))
     ));
 
     let value = serde_json::json!({"result": "resident"});
@@ -370,6 +482,42 @@ fn search_materialization_claims_once_and_publishes_one_terminal() {
             .publish_search_materialization(key, Ok(value))
             .is_err()
     );
+}
+
+#[tokio::test]
+async fn result_wait_deadline_preserves_late_completion_and_notification() {
+    use crate::runtime_query_generation::RuntimeSearchMaterializationState;
+    let generation = test_generation("generation-deadline");
+    assert!(
+        generation
+            .begin_search_materialization("key".into())
+            .unwrap()
+    );
+    let Some(RuntimeSearchMaterializationState::Building(completion)) =
+        generation.search_materialization("key").unwrap()
+    else {
+        panic!("expected claimed materialization");
+    };
+    assert!(
+        tokio::time::timeout(
+            std::time::Duration::from_millis(1),
+            generation.await_search_materialization("key")
+        )
+        .await
+        .is_err()
+    );
+    generation
+        .publish_search_materialization("key".into(), Ok(serde_json::json!({"hits": 1})))
+        .unwrap();
+    // Models publication between reading Building and subscribing to its event.
+    assert!(*completion.subscribe().borrow());
+    assert!(matches!(
+        generation
+            .await_search_materialization("key")
+            .await
+            .unwrap(),
+        RuntimeSearchMaterializationState::Ready(_)
+    ));
 }
 
 #[test]
@@ -410,7 +558,7 @@ fn query_materialization_claims_once_and_preserves_a_generation_local_terminal()
     assert!(!generation.begin_query_materialization(key.clone()).unwrap());
     assert!(matches!(
         generation.query_materialization(&key).unwrap(),
-        Some(RuntimeQueryMaterializationState::Building)
+        Some(RuntimeQueryMaterializationState::Building(_))
     ));
     let template = serde_json::json!({"requestId": key, "terminal": {"state": "ready"}});
     generation

@@ -123,6 +123,14 @@ ownership is specified by
 
 * Source enforcement
 
+Search PreTool calibration remains the existing V1 denial contract. Native
+Scheme parsing owns admission; its error is reported as an =expression= issue
+at the outer =search-playbook-argv= token index. Scheme leaves are not separate
+shell arguments: producer/occurrence/analysis arrays remain empty when their
+V1 argv boundaries cannot be represented truthfully. No synthetic inner token
+indices, new receipt version, or alternate public flag grammar is introduced.
+Absent source omits the issue token index and reports missing =expression=.
+
 Direct reads, bulk dumps, raw source searches, and agent-facing JSON search
 are classified from the normalized action and provider projection. Obvious
 source access remains fail-closed when optional state or diagnostic projection

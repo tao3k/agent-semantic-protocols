@@ -9,6 +9,7 @@ pub(crate) struct RuntimeResidentGrepAxisReceipt {
     pub candidate_owner_paths: Vec<String>,
     pub branch_candidate_owner_paths: Vec<Vec<String>>,
     pub branch_matches: Vec<Vec<RuntimeGrepMatch>>,
+    pub grounding_matches: Vec<RuntimeGrepMatch>,
     pub block_receipts: Vec<RuntimeResidentGrepBlockReceipt>,
     pub truncated: bool,
 }
@@ -59,6 +60,7 @@ pub(crate) fn execute_runtime_resident_grep_blocks(
 
     let mut branch_candidate_owner_paths = Vec::with_capacity(blocks.len());
     let mut branch_matches = Vec::with_capacity(blocks.len());
+    let mut grounding_matches = Vec::new();
     let mut block_receipts = Vec::with_capacity(blocks.len());
     let mut all_owners = std::collections::BTreeSet::new();
     let mut any_truncated = false;
@@ -92,7 +94,7 @@ pub(crate) fn execute_runtime_resident_grep_blocks(
         let candidate_owners = candidate_owner_paths
             .into_iter()
             .collect::<std::collections::BTreeSet<_>>();
-        for owner_path in candidate_owners {
+        'owners: for owner_path in candidate_owners {
             if !roots
                 .iter()
                 .any(|root| owner_is_within_root(&owner_path, root))
@@ -104,7 +106,17 @@ pub(crate) fn execute_runtime_resident_grep_blocks(
                 format!("resident GREP candidate owner is absent from the corpus: {owner_path}")
             })?;
             resident_owner_read_count += 1;
-            let mut owner_matches = matcher.expression.find_iter(bytes).peekable();
+            let mut owner_matches = bytes
+                .split_inclusive(|byte| *byte == b'\n')
+                .enumerate()
+                .filter_map(|(line, bytes)| {
+                    let line_bytes = bytes.strip_suffix(b"\n").unwrap_or(bytes);
+                    matcher
+                        .expression
+                        .is_match(line_bytes)
+                        .then_some(line as u64 + 1)
+                })
+                .peekable();
             if owner_matches.peek().is_none() {
                 continue;
             }
@@ -115,19 +127,27 @@ pub(crate) fn execute_runtime_resident_grep_blocks(
             owners.push(owner_path.clone());
             all_owners.insert(owner_path.clone());
             if line_attribution {
-                let mut scanned_until = 0_usize;
-                let mut owner_line = 1_u64;
-                for matched in owner_matches {
-                    owner_line += bytes[scanned_until..matched.start()]
-                        .iter()
-                        .filter(|byte| **byte == b'\n')
-                        .count() as u64;
-                    scanned_until = matched.start();
-                    matches.push(RuntimeGrepMatch {
+                for owner_line in owner_matches {
+                    if matches.len() == limit as usize {
+                        truncated = true;
+                        break 'owners;
+                    }
+                    let matched = RuntimeGrepMatch {
                         owner_path: owner_path.clone(),
                         owner_line,
-                    });
+                    };
+                    grounding_matches.push(matched.clone());
+                    matches.push(matched);
                 }
+            } else if let Some(owner_line) = owner_matches.next() {
+                // Output flags control rg-compatible rendering, not the
+                // Runtime's private parser-grounding evidence. Retain one
+                // exact line per owner so Search never expands a merely
+                // owner-level hit into every selector in that file.
+                grounding_matches.push(RuntimeGrepMatch {
+                    owner_path: owner_path.clone(),
+                    owner_line,
+                });
             }
         }
         any_truncated |= truncated;
@@ -159,6 +179,7 @@ pub(crate) fn execute_runtime_resident_grep_blocks(
         candidate_owner_paths: all_owners.into_iter().collect(),
         branch_candidate_owner_paths,
         branch_matches,
+        grounding_matches,
         block_receipts,
         truncated: any_truncated,
     })
@@ -183,21 +204,26 @@ fn compile_resident_matcher(
     block_index: usize,
 ) -> Result<ResidentGrepMatcher, String> {
     let fixed = has_option(analysis, &["-F", "--fixed-strings"]);
-    let ignore_case = has_option(analysis, &["-i", "--ignore-case"])
-        || (has_option(analysis, &["-S", "--smart-case"])
-            && analysis
-                .patterns
-                .iter()
-                .all(|pattern| !pattern.value.chars().any(char::is_uppercase)));
+    let ignore_case = analysis
+        .options
+        .iter()
+        .rev()
+        .find_map(|option| match option.option.as_str() {
+            "-i" | "--ignore-case" => Some(true),
+            "-s" | "--case-sensitive" => Some(false),
+            "-S" | "--smart-case" => Some(
+                analysis
+                    .patterns
+                    .iter()
+                    .all(|pattern| !pattern.value.chars().any(char::is_uppercase)),
+            ),
+            _ => None,
+        })
+        .unwrap_or(false);
     let mut patterns = analysis
         .patterns
         .iter()
         .map(|pattern| {
-            if pattern.value.starts_with('@') {
-                return Err(format!(
-                    "reasonKind=resident-rg-pattern-not-materialized resident GREP pattern-file input is not materialized: blockIndex={block_index}"
-                ));
-            }
             Ok(if fixed {
                 regex::escape(&pattern.value)
             } else {
@@ -210,10 +236,12 @@ fn compile_resident_matcher(
             "resident GREP block has no executable pattern: blockIndex={block_index}"
         ));
     }
-    if has_option(analysis, &["-w", "--word-regexp"]) {
+    if has_option(analysis, &["-w", "--word-regexp"])
+        && !has_option(analysis, &["-x", "--line-regexp"])
+    {
         patterns = patterns
             .into_iter()
-            .map(|pattern| format!(r"\b(?:{pattern})\b"))
+            .map(|pattern| format!(r"(?:^|\W)(?:{pattern})(?:$|\W)"))
             .collect();
     }
     if has_option(analysis, &["-x", "--line-regexp"]) {
@@ -236,7 +264,6 @@ fn compile_resident_matcher(
     let expression = regex::bytes::RegexBuilder::new(&expression)
         .case_insensitive(ignore_case)
         .multi_line(true)
-        .dot_matches_new_line(has_option(analysis, &["--multiline-dotall"]))
         .unicode(unicode)
         .build()
         .map_err(|error| {
@@ -291,6 +318,15 @@ fn validate_resident_options(
     analysis: &agent_semantic_shell_parser::NativeRgArgvAnalysis,
     block_index: usize,
 ) -> Result<(), String> {
+    if analysis.options.iter().any(|option| {
+        matches!(option.option.as_str(), "-g" | "--glob" | "--iglob")
+            && option
+                .value
+                .as_deref()
+                .is_some_and(|value| value.starts_with('!'))
+    }) {
+        return Err("reasonKind=resident-rg-option-not-materialized exclusion globs require qualified ordered override semantics".to_owned());
+    }
     const SUPPORTED: &[&str] = &[
         "-e",
         "--regexp",

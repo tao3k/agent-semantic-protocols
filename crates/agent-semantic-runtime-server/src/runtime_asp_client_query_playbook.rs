@@ -438,6 +438,15 @@ fn materialize_generation_bound_query_playbook(
             params.selectors.len(),
         ));
     }
+    let resident = workspace_registry
+        .resident_read_client(workspace_id, &initialized.project_root)
+        .map_err(|error| {
+            query_playbook_terminal(
+                "query-playbook-runtime-binding-unavailable",
+                error,
+                params.selectors.len(),
+            )
+        })?;
     let execution_publication = generation.execution_publication().ok_or_else(|| {
         query_playbook_terminal(
             "query-playbook-runtime-binding-unavailable",
@@ -471,17 +480,22 @@ fn materialize_generation_bound_query_playbook(
         initialized.host_workspace.project_workspace(),
         active_provider_targets,
         None,
-        |projection, selector| generation.read_runtime_selector(projection, selector),
+        |projection, selector| resident.read_runtime_selector(projection, selector),
     )
 }
 
 pub(super) async fn dispatch_workspace_query_playbook(
+    dispatch_budget: &super::query_generation_support::RequestDispatchBudget,
     request: &AspClientDispatchRequest,
     params: AspClientWorkspaceQueryPlaybookRequest,
     project_workspace_key: &RuntimeProjectWorkspaceKey,
     initialized_workspaces: &Arc<Mutex<HashMap<ClientWorkspaceKey, InitializedWorkspace>>>,
     generation_admission: &agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmission,
     workspace_registry: &Arc<RuntimeServerWorkspaceRegistry>,
+    runtime_search_service: &agent_semantic_client_db::runtime_search_service::RuntimeSearchServiceHandle,
+    owner_materializer: &super::owner_materialization::RuntimeOwnerMaterializer,
+    parser_artifact_root: &std::path::Path,
+    workspace_search_providers: &[agent_semantic_search::WorkspaceSearchProvider],
     active_provider_targets: &[(String, String)],
     telemetry_sender: &RuntimeTelemetryBusSender,
     _telemetry_traces: &Arc<
@@ -514,78 +528,79 @@ pub(super) async fn dispatch_workspace_query_playbook(
                 params.selectors.len(),
             )
         })?;
-    let generation = match query_generation
+    let generation_state = query_generation
         .borrow()
         .get(project_workspace_key)
-        .cloned()
-    {
+        .cloned();
+    let generation = match generation_state {
         Some(RuntimeQueryGenerationState::Ready(generation)) => generation,
-        state => {
+        Some(RuntimeQueryGenerationState::Failed { reason, .. }) => {
+            return Err(query_playbook_terminal(
+                "query-not-ready",
+                reason.to_string(),
+                params.selectors.len(),
+            ));
+        }
+        None => {
+            dispatch_budget.observe_miss();
+            let wait_started = tokio::time::Instant::now();
             let provider_targets = query_playbook_generation_provider_targets(
                 &params.selectors,
                 active_provider_targets,
             );
-            let submission = request_runtime_query_generation_ready(
+            request_runtime_query_generation_ready(
                 generation_admission,
                 request.workspace_id.as_str().to_owned(),
                 initialized.project_root.clone(),
                 provider_targets,
+            )
+            .map_err(|error| {
+                query_playbook_terminal("query-not-ready", error, params.selectors.len())
+            })?;
+            let generation = super::query_generation_support::await_runtime_query_generation(
+                query_generation,
+                project_workspace_key,
+            )
+            .await
+            .map_err(|error| {
+                query_playbook_terminal("query-not-ready", error, params.selectors.len())
+            })?;
+            eprintln!(
+                "[runtime-generation-wait] requestId={} elapsedMicros={}",
+                request.request_id.as_str(),
+                wait_started.elapsed().as_micros()
             );
-            let state_name = if submission.is_err() {
-                "submission-failed"
-            } else {
-                "building"
-            };
-            let prior_failure = match state {
-                Some(RuntimeQueryGenerationState::Failed { reason, .. }) => {
-                    Some(reason.to_string())
-                }
-                _ => None,
-            };
-            let cause = submission
-                .err()
-                .or(prior_failure)
-                .map_or_else(String::new, |error| format!(" cause={error}"));
-            return Err(query_playbook_terminal(
-                "query-not-ready",
-                format!(
-                    "Query Playbook requires an already resident source/Runtime execution product: state={state_name}{cause}"
-                ),
-                params.selectors.len(),
-            ));
+            generation
         }
     };
     let materialization_key =
         workspace_query_materialization_key(&params, generation.generation_digest())?;
-    let selector_count = params.selectors.len();
-    match generation.query_materialization(&materialization_key)? {
+    let result = match generation.query_materialization(&materialization_key)? {
         Some(crate::runtime_query_generation::RuntimeQueryMaterializationState::Ready(
             template,
         )) => {
+            dispatch_budget.observe_resident_hit();
             let result = bind_query_materialization_to_request(
                 template.as_ref(),
                 request.request_id.as_str(),
             )?;
-            schedule_settled_query_client_timing_observations(
-                request,
-                &params,
-                Arc::clone(&generation),
-                active_provider_targets,
-                telemetry_sender,
-            );
             Ok(result)
         }
         Some(crate::runtime_query_generation::RuntimeQueryMaterializationState::Failed(error)) => {
+            dispatch_budget.observe_resident_hit();
             Err(AspClientOperationError::Terminal(error.as_ref().clone()))
         }
-        Some(crate::runtime_query_generation::RuntimeQueryMaterializationState::Building) => {
-            Err(query_playbook_terminal(
-                "query-not-ready",
-                "the generation-bound Query result is materializing",
-                selector_count,
-            ))
+        Some(crate::runtime_query_generation::RuntimeQueryMaterializationState::Building(_)) => {
+            dispatch_budget.observe_miss();
+            settled_query_materialization(
+                &generation,
+                &materialization_key,
+                request.request_id.as_str(),
+            )
+            .await
         }
         None => {
+            dispatch_budget.observe_miss();
             if generation.begin_query_materialization(materialization_key.clone())? {
                 let materialization_generation = Arc::clone(&generation);
                 let materialization_registry = Arc::clone(workspace_registry);
@@ -593,27 +608,107 @@ pub(super) async fn dispatch_workspace_query_playbook(
                 let materialization_workspace_id = request.workspace_id.as_str().to_owned();
                 let materialization_key_for_task = materialization_key.clone();
                 let materialization_initialized = initialized;
+                let materialization_params = params.clone();
+                let materialization_request_id = request.request_id.as_str().to_owned();
+                let materialization_runtime_search_service = runtime_search_service.clone();
+                let materialization_owner_materializer = owner_materializer.clone();
+                let materialization_parser_artifact_root = parser_artifact_root.to_path_buf();
+                let materialization_providers = workspace_search_providers.to_vec();
                 tokio::spawn(async move {
-                    let result = materialize_generation_bound_query_playbook(
-                        &materialization_key_for_task,
-                        &materialization_workspace_id,
-                        &params,
-                        &materialization_initialized,
-                        materialization_registry.as_ref(),
-                        &materialization_targets,
-                        materialization_generation.as_ref(),
-                    )
+                    let compute_started = std::time::Instant::now();
+                    let owner_paths = materialization_params
+                        .selectors
+                        .iter()
+                        .filter_map(|selector| selector_owner_path(selector).map(str::to_owned))
+                        .collect::<std::collections::BTreeSet<_>>();
+                    let result = match materialization_owner_materializer
+                        .ensure_candidates(
+                            &materialization_request_id,
+                            &materialization_workspace_id,
+                            &materialization_initialized.project_root,
+                            &materialization_parser_artifact_root,
+                            materialization_generation.generation_digest(),
+                            &owner_paths,
+                            &materialization_providers,
+                            &materialization_runtime_search_service,
+                            &materialization_registry,
+                        )
+                        .await
+                    {
+                        Ok(_) => tokio::task::spawn_blocking({
+                            let materialization_generation =
+                                Arc::clone(&materialization_generation);
+                            let materialization_registry = Arc::clone(&materialization_registry);
+                            let materialization_key_for_compute =
+                                materialization_key_for_task.clone();
+                            move || {
+                                materialize_generation_bound_query_playbook(
+                                    &materialization_key_for_compute,
+                                    &materialization_workspace_id,
+                                    &materialization_params,
+                                    &materialization_initialized,
+                                    materialization_registry.as_ref(),
+                                    &materialization_targets,
+                                    materialization_generation.as_ref(),
+                                )
+                            }
+                        })
+                        .await
+                        .map_err(|error| {
+                            AspClientOperationError::Message(format!(
+                                "resident Query materialization lane failed: {error}"
+                            ))
+                        })
+                        .and_then(|result| result),
+                        Err(error) => Err(error),
+                    }
                     .map_err(query_materialization_dispatch_error);
+                    eprintln!(
+                        "[runtime-query-materialization-wall] key={} requestWallMicros={} includesProviderLifecycle=true state={}",
+                        materialization_key_for_task,
+                        compute_started.elapsed().as_micros(),
+                        if result.is_ok() { "ready" } else { "failed" }
+                    );
                     let _ = materialization_generation
                         .publish_query_materialization(materialization_key_for_task, result);
                 });
             }
-            Err(query_playbook_terminal(
-                "query-not-ready",
-                "the generation-bound Query result is materializing",
-                selector_count,
-            ))
+            settled_query_materialization(
+                &generation,
+                &materialization_key,
+                request.request_id.as_str(),
+            )
+            .await
         }
+    };
+    if result.is_ok() {
+        schedule_settled_query_client_timing_observations(
+            request,
+            &params,
+            Arc::clone(&generation),
+            active_provider_targets,
+            telemetry_sender,
+        );
+    }
+    result
+}
+
+async fn settled_query_materialization(
+    generation: &crate::runtime_query_generation::RuntimeQueryGeneration,
+    key: &str,
+    request_id: &str,
+) -> Result<serde_json::Value, AspClientOperationError> {
+    use crate::runtime_query_generation::RuntimeQueryMaterializationState;
+    match generation.await_query_materialization(key).await? {
+        RuntimeQueryMaterializationState::Ready(template) => {
+            bind_query_materialization_to_request(template.as_ref(), request_id)
+        }
+        RuntimeQueryMaterializationState::Failed(error) => {
+            Err(AspClientOperationError::Terminal(error.as_ref().clone()))
+        }
+        RuntimeQueryMaterializationState::Building(_) => Err(AspClientOperationError::Message(
+            "Query completion preceded terminal publication".to_owned(),
+        )),
     }
 }
 

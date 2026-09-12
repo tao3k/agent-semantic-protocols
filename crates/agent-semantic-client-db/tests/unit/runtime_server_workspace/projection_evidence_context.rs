@@ -158,6 +158,7 @@ fn generation(owner: WorkspaceOwnerSnapshot, active_epoch: u64) -> WorkspaceMemo
         module_graph_digest: format!("blake3-256:{}", blake3::hash(b"module-graph").to_hex()),
         runtime_provider_execution_binding: None,
         project_resolutions: Vec::new(),
+        auxiliary_owners: Vec::new(),
         owners: vec![owner],
     })
     .expect("typed runtime workspace generation")

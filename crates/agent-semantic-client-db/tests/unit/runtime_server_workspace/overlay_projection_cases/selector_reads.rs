@@ -421,6 +421,7 @@ async fn process_cold_owner_snapshot_is_independent_of_unrelated_selector_volume
             ),
             runtime_provider_execution_binding: None,
             project_resolutions: Vec::new(),
+            auxiliary_owners: Vec::new(),
             owners,
         },
     )

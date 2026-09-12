@@ -30,6 +30,10 @@ use crate::protocol_identity::CLIENT_PROTOCOL_VERSION;
 use crate::protocol_identity::SCHEMA_VERSION;
 
 const ROUTE_FAILURE_SCHEMA_ID: &str = "agent.semantic-protocols.route-failure";
+/// Temporary absolute first-computation measurement boundary, not a latency SLO.
+/// Kept shared so the transport cannot expire before the server's typed terminal.
+pub const FIRST_COMPUTATION_OBSERVATION_BUDGET: std::time::Duration =
+    std::time::Duration::from_secs(60);
 const QUERY_RESULT_SCHEMA_ID: &str = "agent.semantic-protocols.query-result";
 const SOURCE_INDEX_LOOKUP_REQUEST_SCHEMA_ID: &str =
     "agent.semantic-protocols.asp-client-source-index-lookup-request";
@@ -101,9 +105,9 @@ pub fn classify_client_dispatch(method: &str) -> ClientDispatchClass {
         || method == GRAPH_EVALUATE_METHOD
         || method.ends_with(".query")
     {
-        // Search and Query may only read an already resident generation.  A
-        // missing generation returns typed not-ready evidence immediately;
-        // detached CompleteGeneration admission is a different method class.
+        // Ready reads are strictly bounded. First-computation requests may
+        // join server-owned publication under a separate absolute deadline;
+        // the request never becomes a CompleteGeneration admission authority.
         ClientDispatchClass::ResidentGenerationRead
     } else {
         ClientDispatchClass::InteractiveRead

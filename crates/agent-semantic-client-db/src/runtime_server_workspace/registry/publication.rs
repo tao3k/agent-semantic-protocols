@@ -225,6 +225,36 @@ impl RuntimeServerWorkspaceRegistry {
             .map_err(|_| "runtime workspace writer lane dropped its receipt".to_owned())?
     }
 
+    /// Atomically attach parser-owned selectors and relations to the current
+    /// resident generation without minting or durably rewriting a full source
+    /// generation. The content-addressed parser artifact is the restart
+    /// authority; this overlay is the request-serving read model.
+    pub async fn publish_resident_owner_delta(
+        &self,
+        workspace_identity: impl Into<String>,
+        project_root: &std::path::Path,
+        delta: crate::runtime_server_workspace::WorkspaceGenerationDelta,
+    ) -> Result<String, String> {
+        let workspace_identity = workspace_identity.into();
+        let entry = self.entry(&workspace_identity, project_root).await?;
+        let (reply, receive) = oneshot::channel();
+        entry
+            .writer
+            .send(WorkspaceWriteCommand::PublishResidentOwnerDelta(
+                super::writer_publication::PublishResidentOwnerDeltaCommand {
+                    target: entry.write_target(),
+                    workspace_identity,
+                    delta,
+                    reply,
+                },
+            ))
+            .await
+            .map_err(|_| "runtime workspace writer lane is unavailable".to_owned())?;
+        receive
+            .await
+            .map_err(|_| "runtime workspace writer lane dropped its receipt".to_owned())?
+    }
+
     pub async fn tombstone_owner_overlay(
         &self,
         request_id: impl Into<String>,

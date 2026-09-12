@@ -5,6 +5,9 @@
 //! Owns assembly and coordinated shutdown of the long-lived Runtime Server.
 
 use super::daemon_identity;
+use super::runtime_server_generation_builder::{
+    build_workspace_generation_candidate_builder, resolve_host_workspace_initialization_binding,
+};
 use super::runtime_server_identity_handoff;
 use super::runtime_server_query_generation_observer::publish_observer_terminal;
 use super::runtime_server_search_service;
@@ -28,27 +31,6 @@ pub(super) async fn run_daemon() -> Result<(), String> {
     // failures owned by the supervisor; publishing a PID-derived fallback here
     // would create a second terminal authority and overwrite a valid receipt.
     run_daemon_at(&state_home).await
-}
-
-fn resolve_host_workspace_initialization_binding(
-    project_root: &std::path::Path,
-) -> Result<agent_semantic_content_identity::HostWorkspaceInitializationBinding, String> {
-    let project_workspace =
-        agent_semantic_topology::ProjectTopologyManifest::load_from_project_root(project_root)
-            .map(|manifest| manifest.project_workspace().clone())
-            .map_err(|error| error.to_string())?;
-    let snapshot =
-        agent_semantic_runtime::git::discover_repository_candidate_snapshot(project_root)
-            .map_err(|error| error.to_string())?
-            .ok_or_else(|| {
-                "Host workspace initialization requires an admitted Git worktree identity"
-                    .to_owned()
-            })?;
-    agent_semantic_content_identity::HostWorkspaceInitializationBinding::new(
-        project_workspace,
-        snapshot.worktree_identity.worktree_id,
-    )
-    .map_err(|error| error.to_string())
 }
 
 async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
@@ -228,126 +210,13 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
         Ok(artifact) => agent_semantic_runtime_server::asp_python_graphs_transport::AspPythonGraphsServer::from_artifact(artifact, graph_socket.clone(), 32)?,
         Err(error) => agent_semantic_runtime_server::asp_python_graphs_transport::AspPythonGraphsServer::unavailable(graph_socket.clone(), 32, error)?,
     };
-    let generation_builder_state_home = state_home.to_path_buf();
-    let generation_builder_provider_register = std::sync::Arc::clone(&provider_register);
-    let generation_builder_runtime_search = runtime_search_service.clone();
-    let generation_builder_schema_bundles = schema_bundles.clone();
-    let generation_builder_admission_catalog = admission_catalog.clone();
-    let generation_builder: agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationCandidateBuilder =
-        std::sync::Arc::new(
-        move |workspace_id,
-              project_root,
-              candidate,
-              changed_paths,
-              provider_target,
-              cancellation| {
-                let state_home = generation_builder_state_home.clone();
-                let provider_register =
-                    std::sync::Arc::clone(&generation_builder_provider_register);
-                let runtime_search_service = generation_builder_runtime_search.clone();
-                let schema_bundles = generation_builder_schema_bundles.clone();
-                let admission_catalog = generation_builder_admission_catalog.clone();
-            Box::pin(async move {
-                if cancellation.is_cancelled() {
-                    return Err("generation build cancelled before provider admission".to_owned());
-                }
-                    let snapshot = admission_catalog.snapshot();
-                    let mut admitted = snapshot.iter().filter(|entry| {
-                        entry.workspace_identity == workspace_id
-                            && entry.project_root == project_root
-                    });
-                    let admission = admitted.next().cloned().ok_or_else(|| {
-                        format!(
-                            "Runtime provider execution binding lacks admitted ProjectId: workspaceId={workspace_id} projectRoot={}",
-                            project_root.display()
-                        )
-                    })?;
-                    if admitted.next().is_some() {
-                        return Err(format!(
-                            "Runtime provider execution binding has ambiguous ProjectId: workspaceId={workspace_id} projectRoot={}",
-                            project_root.display()
-                        ));
-                    }
-                    admission.validate()?;
-                    let changed_path_count = changed_paths.len();
-                    let inventory = agent_semantic_provider_transport::run_fd_inventory(
-                        &project_root,
-                        agent_semantic_provider_transport::FdInventoryDeadline::CompleteGeneration,
-                    )
-                    .await?;
-                    let runtime_active_provider_projection = crate::command::active_provider_projection::
-                        load_runtime_active_provider_projection(&state_home)
-                        .await?;
-                    runtime_active_provider_projection
-                        .execution_binding()
-                        .validate()?;
-                    let required_languages = crate::command::active_provider_projection::
-                        provider_languages_for_generation_demand(
-                            &provider_register,
-                            &inventory.owner_paths,
-                            provider_target.as_ref(),
-                        )?;
-                    let (registry, current_catalog_generation) =
-                        crate::command::active_provider_projection::runtime_source_index_provider_projection(
-                            &runtime_active_provider_projection,
-                            &provider_register,
-                            &required_languages,
-                        )?;
-                    let schema_bundle_digest = schema_bundles.binding_digest(
-                        required_languages.iter().map(String::as_str),
-                    )?;
-                    if let Some(provider_target) = provider_target.as_ref() {
-                        let provider_id = provider_target.provider_id.as_deref().ok_or_else(|| {
-                            format!(
-                                "query-demand provider target requires resolved providerId: languageId={}",
-                                provider_target.language_id
-                            )
-                        })?;
-                        let target_is_registered = registry.providers.iter().any(|provider| {
-                            provider.language_id.as_str() == provider_target.language_id
-                                && provider.provider_id.as_str() == provider_id
-                        });
-                        if !target_is_registered {
-                            return Err(format!(
-                                "query-demand provider target is absent from the complete Runtime registry: languageId={} providerId={provider_id}",
-                                provider_target.language_id
-                            ));
-                        }
-                    }
-                    let mut build = agent_semantic_client_db::server_source_index::
-                        prepare_runtime_server_workspace_generation_with_runtime_service_async(
-                    runtime_search_service,
-                    admission.project_id.clone(),
-                    workspace_id.clone(),
-                    project_root,
-                    registry,
-                    agent_semantic_client_db::server_source_index::SourceIndexCollectionScope::CompleteGeneration,
-                    candidate,
-                    inventory.owner_paths,
-                    cancellation,
-                )
-                        .await
-                        .map_err(|error| {
-                            format!(
-                                "canonical source generation failed: changedPathCount={changed_path_count} error={error}"
-                            )
-                        })?;
-                    let execution_binding = agent_semantic_artifacts::runtime_provider_execution_binding::RuntimeProviderExecutionBinding::build(
-                        admission.project_id,
-                        workspace_id,
-                        runtime_active_provider_projection.generation().to_owned(),
-                        schema_bundle_digest,
-                        current_catalog_generation,
-                        build.materialization.source_snapshot.root_integrity_reference()?,
-                        build.materialization.import_digest.clone(),
-                    )?;
-                    build
-                        .materialization
-                        .bind_runtime_provider_execution(execution_binding)?;
-                    Ok(build)
-                })
-            },
-        );
+    let generation_builder = build_workspace_generation_candidate_builder(
+        state_home,
+        std::sync::Arc::clone(&provider_register),
+        runtime_search_service.clone(),
+        schema_bundles.clone(),
+        admission_catalog.clone(),
+    );
     let mut runtime_search_tasks = tokio::task::JoinSet::new();
     runtime_search_tasks.spawn(serve_runtime_search_requests(
         state_home.to_path_buf(),
@@ -553,19 +422,18 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
                                         "Runtime workspace generation pointer has no publication directory"
                                             .to_owned()
                                     })?;
-                                agent_semantic_client_db::runtime_server_workspace::
-                                    publish_runtime_workspace_execution_product(
-                                        &publication.resident_pointer_path,
-                                        execution_root,
+                                let product = agent_semantic_client_db::runtime_server_workspace::
+                                    compose_runtime_workspace_execution_product_from_resident(
+                                        &resident,
                                         host_workspace,
                                         &activation,
                                         &active_bundle_digest,
                                         active_projection.execution_binding(),
-                                    )
-                                    .await
+                                    )?;
+                                Ok::<_, String>((product, execution_root.to_path_buf()))
                             }
                             .await;
-                            let execution_product = match execution_product {
+                            let (execution_product, execution_root) = match execution_product {
                                 Ok(execution_product) => execution_product,
                                 Err(error) => {
                                     generation_authority.publish_failed(
@@ -583,9 +451,34 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
                                     &publication.project_root,
                                     resident,
                                     &publication.generation_digest,
-                                    execution_product,
+                                    execution_product.clone(),
                                 )
                                 .await;
+                            if result.is_ok() {
+                                let durability = async {
+                                    let store = agent_semantic_client_db::runtime_server_workspace::
+                                        RuntimeWorkspaceExecutionPublicationStore::open(
+                                            &execution_root,
+                                        )
+                                        .await?;
+                                    store.publish(&execution_product).await?;
+                                    Ok::<_, String>(())
+                                }
+                                .await;
+                                if let Err(error) = durability {
+                                    eprintln!(
+                                        "[runtime-workspace-execution-durability] {}",
+                                        serde_json::json!({
+                                            "schemaId": "agent.semantic-protocols.runtime-workspace-execution-durability-receipt",
+                                            "schemaVersion": "1",
+                                            "state": "failed",
+                                            "workspaceId": publication.workspace_id,
+                                            "generationDigest": publication.generation_digest,
+                                            "error": error,
+                                        })
+                                    );
+                                }
+                            }
                             publish_observer_terminal(
                                 &generation_authority,
                                 project_workspace_key,

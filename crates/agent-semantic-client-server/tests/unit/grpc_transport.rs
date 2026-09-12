@@ -65,8 +65,24 @@ fn grpc_transport_preserves_catalog_request_class() {
         response_budget_for_frame(&request(WORKSPACE_GENERATION_ENSURE_READY_METHOD)),
         None,
     );
-    assert_eq!(response_budget_for_frame(&request("rust.query")), None,);
-    assert_eq!(response_budget_for_frame(&request("rust.search")), None,);
+    for method in [
+        "rust.query",
+        agent_semantic_client_protocol::WORKSPACE_SEARCH_PLAYBOOK_METHOD,
+        agent_semantic_client_protocol::WORKSPACE_QUERY_PLAYBOOK_METHOD,
+        agent_semantic_client_protocol::WORKSPACE_SYNTAX_PLAN_CONTEXT_METHOD,
+    ] {
+        assert_eq!(
+            response_budget_for_frame(&request(method)),
+            Some(
+                agent_semantic_client_protocol::FIRST_COMPUTATION_OBSERVATION_BUDGET
+                    + std::time::Duration::from_secs(1)
+            )
+        );
+    }
+    assert_eq!(
+        response_budget_for_frame(&request("rust.search")),
+        Some(CLIENT_FRAME_RESPONSE_BUDGET)
+    );
     assert_eq!(
         response_budget_for_frame(&request("asp.graph.evaluate")),
         Some(CLIENT_FRAME_RESPONSE_BUDGET),

@@ -215,6 +215,7 @@ pub struct WorkspaceGenerationBuild {
         Option<agent_semantic_artifacts::runtime_provider_execution_binding::RuntimeProviderExecutionBinding>,
     pub content_search_generation: agent_semantic_search::ContentSearchGenerationReceipt,
     pub project_resolutions: Vec<agent_semantic_content_identity::AdmittedProjectResolution>,
+    pub auxiliary_owners: Vec<super::WorkspaceAuxiliaryOwnerSnapshot>,
     pub owners: Vec<WorkspaceOwnerSnapshot>,
     pub relations: Vec<crate::ClientDbSourceIndexOwnedRelation>,
 }
@@ -242,6 +243,8 @@ pub struct WorkspaceMemoryGeneration {
     pub memory_backend_digest: String,
     pub workspace_source_scope_generation: String,
     pub project_resolutions: Vec<agent_semantic_content_identity::AdmittedProjectResolution>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub auxiliary_owners: Vec<super::WorkspaceAuxiliaryOwnerSnapshot>,
     pub owners: Vec<WorkspaceOwnerSnapshot>,
     pub relations: Vec<crate::ClientDbSourceIndexOwnedRelation>,
 }
@@ -307,6 +310,7 @@ impl WorkspaceMemoryGeneration {
         )?;
         let memory_backend_digest = typed_digest(&(
             &input.owners,
+            &input.auxiliary_owners,
             &input.relations,
             &workspace_source_scope_generation,
             &input.project_resolutions,
@@ -345,6 +349,7 @@ impl WorkspaceMemoryGeneration {
             projection_capability: input.projection_capability,
             workspace_source_scope_generation,
             project_resolutions: input.project_resolutions,
+            auxiliary_owners: input.auxiliary_owners,
             owners: input.owners,
             relations: input.relations,
         };
@@ -379,6 +384,7 @@ impl WorkspaceMemoryGeneration {
     fn validate_memory_backend_digest(&self) -> Result<(), String> {
         let memory_backend_digest = typed_digest(&(
             &self.owners,
+            &self.auxiliary_owners,
             &self.relations,
             &self.workspace_source_scope_generation,
             &self.project_resolutions,

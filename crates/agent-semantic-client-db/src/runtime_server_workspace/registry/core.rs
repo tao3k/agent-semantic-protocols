@@ -103,6 +103,7 @@ pub(super) enum WorkspaceWriteCommand {
         reply: oneshot::Sender<Result<WorkspaceRecoveryReceipt, String>>,
     },
     PublishOwnerDelta(super::writer_publication::PublishOwnerDeltaCommand),
+    PublishResidentOwnerDelta(super::writer_publication::PublishResidentOwnerDeltaCommand),
     PublishSelectorOverlay {
         target: WorkspaceWriteTarget,
         workspace_identity: String,
@@ -754,6 +755,9 @@ async fn workspace_writer_lane(
                 {
                     last_receipts.insert(scope_key, receipt);
                 }
+            }
+            WorkspaceWriteCommand::PublishResidentOwnerDelta(command) => {
+                super::writer_publication::publish_resident_owner_delta_command(command).await;
             }
             WorkspaceWriteCommand::PublishSelectorOverlay {
                 target,

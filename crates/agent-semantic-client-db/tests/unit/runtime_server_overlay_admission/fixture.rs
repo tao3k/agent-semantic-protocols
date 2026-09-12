@@ -79,6 +79,7 @@ pub(super) fn generation_with_selectors(
             module_graph_digest,
             runtime_provider_execution_binding: Some(runtime_provider_execution_binding),
             project_resolutions: Vec::new(),
+            auxiliary_owners: Vec::new(),
             owners: vec![WorkspaceOwnerSnapshot {
                 authority: None,
                 owner_path: "src/lib.rs".to_owned(),

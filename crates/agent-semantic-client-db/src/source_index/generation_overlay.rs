@@ -65,6 +65,45 @@ fn base_owner(
     })
 }
 
+pub(crate) fn recovered_source_index_import(
+    active: &ClientDbSourceIndexGenerationSnapshot,
+    project_root: &std::path::Path,
+    schema_id: agent_semantic_client_core::SemanticSchemaId,
+    schema_version: agent_semantic_client_core::SemanticSchemaVersion,
+    source_blobs: ClientDbSourceIndexSourceBlobs,
+) -> Result<ClientDbSourceIndexImport, String> {
+    let mut selectors = Vec::new();
+    for owner in &active.owners {
+        selectors.extend(base_selectors(owner)?);
+    }
+    Ok(ClientDbSourceIndexImport {
+        // The persisted row id is a project-scoped physical key. Canonical
+        // import identity uses the content snapshot's logical generation id.
+        generation_id: crate::client_db_source_index_generation_id_for_snapshot(
+            &active.source_snapshot,
+        ),
+        project_root: project_root.to_path_buf(),
+        schema_id,
+        schema_version,
+        file_hashes: active.file_hash_records.clone(),
+        source_blobs,
+        owners: active
+            .owners
+            .iter()
+            .map(base_owner)
+            .collect::<Result<_, _>>()?,
+        selectors,
+        relations: active
+            .relations
+            .iter()
+            .map(|row| crate::ClientDbSourceIndexOwnedRelation {
+                owner_path: ClientDbSourceIndexPath::new(row.owner_path.clone()),
+                relation: row.relation.clone(),
+            })
+            .collect(),
+    })
+}
+
 fn base_selectors(
     owner: &crate::ClientDbSourceIndexGenerationOwner,
 ) -> Result<Vec<ClientDbSourceIndexSelector>, String> {

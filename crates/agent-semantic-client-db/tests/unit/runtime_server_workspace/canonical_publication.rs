@@ -6,8 +6,9 @@ use std::sync::Arc;
 
 use super::{DurabilityTask, RuntimeDataPlaneCounterState, publish_new_generation};
 use crate::runtime_server_workspace::{
-    WorkspaceGenerationBuild, WorkspaceGenerationDataPlaneClient, WorkspaceGenerationDataPlaneOpen,
-    WorkspaceMemoryBackend, WorkspaceOwnerSnapshot, WorkspaceSelectorSnapshot,
+    ExactProjectionKind, WorkspaceGenerationBuild, WorkspaceGenerationDataPlaneClient,
+    WorkspaceGenerationDataPlaneOpen, WorkspaceMemoryBackend, WorkspaceOwnerSnapshot,
+    WorkspaceRuntimeSelectorRead, WorkspaceSelectorSnapshot,
 };
 
 fn execution_bundle_binding()
@@ -160,8 +161,8 @@ fn generation_from_owners_and_relations(
         agent_semantic_artifacts::runtime_provider_execution_binding::RuntimeProviderExecutionBinding::build(
             "repo-0000000000000001".to_owned(),
             "workspace-resident-durability".to_owned(),
-            format!("blake3-256:{}", "4".repeat(64)),
-            format!("blake3-256:{}", "5".repeat(64)),
+            format!("blake3-256:{}", "2".repeat(64)),
+            format!("blake3-256:{}", "e".repeat(64)),
             format!("blake3-256:{}", "6".repeat(64)),
             source_snapshot
                 .root_integrity_reference()
@@ -191,6 +192,7 @@ fn generation_from_owners_and_relations(
                 runtime_provider_execution_binding: Some(runtime_provider_execution_binding),
                 content_search_generation,
                 project_resolutions: Vec::new(),
+                auxiliary_owners: Vec::new(),
                 owners,
                 relations,
             },
@@ -276,6 +278,29 @@ async fn topology_source_segments_preserve_owner_attribution_across_resident_and
 
     assert_eq!(restored.resident_grep_corpus().corpus_heap_bytes(), 0);
     assert_eq!(restored.resident_grep_index_stats().artifact_heap_bytes, 0);
+    for client in [&resident, &restored] {
+        assert_eq!(
+            client
+                .read_admitted_selector_slice(first_selector, 3..10)
+                .unwrap(),
+            b"refresh"
+        );
+        assert!(
+            client
+                .read_admitted_selector_slice(first_selector, 14..18)
+                .is_err()
+        );
+        assert!(
+            client
+                .read_admitted_selector_slice(first_selector, 8..8)
+                .is_err()
+        );
+        assert!(
+            client
+                .read_admitted_selector_slice("rust://src/lib.rs#item/function/missing", 3..10)
+                .is_err()
+        );
+    }
     assert_eq!(resident_segments, restored_segments);
     assert_eq!(resident_segments.len(), 1);
     assert_eq!(resident_segments[0].owner_path, "src/lib.rs");
@@ -387,29 +412,26 @@ async fn publish_with_held_durability(
 }
 
 #[tokio::test]
-async fn resident_read_waits_for_durable_commit_then_restart_restore_succeeds() {
+async fn resident_read_publishes_before_durable_commit_then_restart_restore_succeeds() {
     let temporary = tempfile::tempdir().expect("temporary runtime root");
     let project_root = temporary.path().join("project");
     let (current, durability, mut tasks, pointer_path, publication) =
         publish_with_held_durability(temporary.path().join("generation")).await;
 
-    tokio::task::yield_now().await;
-    assert!(!pointer_path.exists(), "durability must still be blocked");
-    assert!(
-        !publication.is_finished(),
-        "Ready must await canonical durability"
-    );
-    assert!(
-        current.borrow().is_none(),
-        "no resident state before durability"
-    );
-
-    tasks.recv().await.expect("durability task").await;
-    publication
+    let publication_receipt = tokio::time::timeout(std::time::Duration::from_secs(2), publication)
         .await
+        .expect("ResidentReady must not await canonical durability")
         .expect("publication task")
-        .expect("durable resident publication");
-    let backend = current.borrow().clone().expect("resident generation");
+        .expect("resident publication");
+    assert_eq!(
+        publication_receipt.state,
+        crate::runtime_server_workspace::WorkspaceGenerationState::Ready
+    );
+    assert!(!pointer_path.exists(), "durability must still be blocked");
+    let backend = current
+        .borrow()
+        .clone()
+        .expect("resident generation before durability");
     let resident = crate::runtime_resident_read::RuntimeResidentReadClient::from_resident_lease(
         crate::runtime_server_workspace::WorkspaceGenerationLease::from_backend(backend),
     )
@@ -420,6 +442,16 @@ async fn resident_read_waits_for_durable_commit_then_restart_restore_succeeds() 
             .expect("resident owner")
             .is_some()
     );
+    assert_eq!(
+        durability
+            .borrow()
+            .as_ref()
+            .expect("resident durability receipt")
+            .state,
+        crate::runtime_server_workspace::WorkspaceGenerationDurabilityState::ResidentReady,
+    );
+
+    tasks.recv().await.expect("durability task").await;
 
     assert_eq!(
         durability
@@ -448,6 +480,16 @@ async fn resident_read_waits_for_durable_commit_then_restart_restore_succeeds() 
         resident.indexed_owner_paths(),
         restored.indexed_owner_paths()
     );
+    for owner in resident.indexed_owner_paths() {
+        assert!(resident.contains_indexed_owner(&owner));
+        assert!(restored.contains_indexed_owner(&owner));
+    }
+    assert!(!resident.contains_indexed_owner("not-admitted.rs"));
+    assert!(!restored.contains_indexed_owner("not-admitted.rs"));
+    assert_eq!(
+        resident.indexed_owner_count(),
+        restored.indexed_owner_count()
+    );
     assert_eq!(
         resident
             .read_runtime_owner_search("src/lib.rs", &["resident".to_owned()], 8)
@@ -473,15 +515,22 @@ async fn resident_read_waits_for_durable_commit_then_restart_restore_succeeds() 
 }
 
 #[tokio::test]
-async fn failed_durability_never_exposes_a_resident_generation() {
+async fn failed_durability_preserves_resident_but_rejects_restart_restore() {
     let temporary = tempfile::tempdir().expect("temporary runtime root");
     let publisher_path = temporary.path().join("not-a-directory");
     std::fs::write(&publisher_path, b"blocks directory creation")
         .expect("durability failure fixture");
     let (current, durability, mut tasks, _, publication) =
         publish_with_held_durability(publisher_path).await;
+    publication
+        .await
+        .expect("publication task")
+        .expect("resident publication succeeds independently");
+    assert!(
+        current.borrow().is_some(),
+        "validated resident generation survives attachment failure"
+    );
     tasks.recv().await.expect("durability task").await;
-    assert!(publication.await.expect("publication task").is_err());
 
     assert_eq!(
         durability
@@ -491,10 +540,7 @@ async fn failed_durability_never_exposes_a_resident_generation() {
             .state,
         crate::runtime_server_workspace::WorkspaceGenerationDurabilityState::Failed,
     );
-    assert!(
-        current.borrow().is_none(),
-        "failed durability must not expose a resident generation"
-    );
+    assert!(current.borrow().is_some());
 }
 
 #[tokio::test]
@@ -539,7 +585,7 @@ async fn unavailable_durability_lane_has_no_visible_resident_side_effect() {
 }
 
 #[tokio::test]
-async fn execution_product_requires_the_committed_source_pointer_and_binds_it_exactly() {
+async fn execution_product_from_durable_pointer_binds_logical_source_index_exactly() {
     let temporary = tempfile::tempdir().expect("temporary runtime root");
     let project_root = temporary.path().join("project");
     std::fs::create_dir_all(&project_root).expect("project root");
@@ -595,7 +641,11 @@ async fn execution_product_requires_the_committed_source_pointer_and_binds_it_ex
             .content_publication_commit
             .identity()
             .source_index_digest,
-        source_snapshot.durable_commit_digest
+        generation
+            .runtime_provider_execution_binding
+            .as_ref()
+            .expect("provider execution binding")
+            .source_index_digest
     );
     assert_eq!(
         crate::runtime_server_workspace::RuntimeWorkspaceExecutionPublicationStore::read_active(
@@ -604,6 +654,151 @@ async fn execution_product_requires_the_committed_source_pointer_and_binds_it_ex
         .await
         .expect("read exact source-bound execution product"),
         execution_publication
+    );
+}
+
+#[test]
+fn resident_execution_product_does_not_require_a_durable_pointer() {
+    let temporary = tempfile::tempdir().expect("temporary runtime root");
+    let project_root = temporary.path().join("project");
+    let generation = generation(&project_root);
+    let logical_source_index_digest = generation
+        .runtime_provider_execution_binding
+        .as_ref()
+        .expect("provider execution binding")
+        .source_index_digest
+        .clone();
+    let resident = crate::runtime_resident_read::RuntimeResidentReadClient::from_resident_lease(
+        crate::runtime_server_workspace::WorkspaceGenerationLease::from_backend(Arc::new(
+            WorkspaceMemoryBackend::from_validated_generation(generation.as_ref().clone())
+                .expect("resident backend"),
+        )),
+    )
+    .expect("resident read client");
+    let activation = execution_activation();
+    let bundle = execution_bundle_binding();
+    let publication =
+        crate::runtime_server_workspace::compose_runtime_workspace_execution_product_from_resident(
+            &resident,
+            execution_host_workspace(),
+            &activation,
+            &activation.bundle_digest,
+            &bundle,
+        )
+        .expect("resident execution publication");
+
+    assert_eq!(
+        publication
+            .content_publication_commit
+            .identity()
+            .source_index_digest,
+        logical_source_index_digest
+    );
+    assert!(
+        !temporary.path().join("generation.pointer").exists(),
+        "logical composition must not manufacture physical durability"
+    );
+}
+
+#[test]
+fn resident_read_handles_share_the_generation_admitted_search_data_plane() {
+    let temporary = tempfile::tempdir().expect("temporary runtime root");
+    let generation = generation(&temporary.path().join("project"));
+    let backend = Arc::new(
+        WorkspaceMemoryBackend::from_validated_generation(generation.as_ref().clone())
+            .expect("resident backend"),
+    );
+    let first = crate::runtime_resident_read::RuntimeResidentReadClient::from_resident_lease(
+        crate::runtime_server_workspace::WorkspaceGenerationLease::from_backend(Arc::clone(
+            &backend,
+        )),
+    )
+    .expect("first resident read client");
+    let second = crate::runtime_resident_read::RuntimeResidentReadClient::from_resident_lease(
+        crate::runtime_server_workspace::WorkspaceGenerationLease::from_backend(backend),
+    )
+    .expect("second resident read client");
+
+    assert!(
+        first.shares_search_data_plane_with(&second),
+        "opening another read handle must clone the admitted Arc, not rebuild the generation"
+    );
+}
+
+#[test]
+fn resident_read_handle_open_for_4096_owners_has_submillisecond_p99() {
+    const SAMPLE_COUNT: usize = 1_024;
+    const P99_BUDGET_NANOS: u128 = 1_000_000;
+    let temporary = tempfile::tempdir().expect("temporary runtime root");
+    let generation = large_generation(&temporary.path().join("project"), 4_096);
+    let backend = Arc::new(
+        WorkspaceMemoryBackend::from_validated_generation(generation.as_ref().clone())
+            .expect("resident backend"),
+    );
+    let mut samples = Vec::with_capacity(SAMPLE_COUNT);
+    for _ in 0..SAMPLE_COUNT {
+        let started = std::time::Instant::now();
+        let resident =
+            crate::runtime_resident_read::RuntimeResidentReadClient::from_resident_lease(
+                crate::runtime_server_workspace::WorkspaceGenerationLease::from_backend(
+                    Arc::clone(&backend),
+                ),
+            )
+            .expect("resident read client");
+        std::hint::black_box(resident.generation_digest());
+        samples.push(started.elapsed().as_nanos());
+    }
+    samples.sort_unstable();
+    let p99 = samples[(SAMPLE_COUNT * 99 / 100).saturating_sub(1)];
+    eprintln!(
+        "resident-read-handle ownerCount=4096 samples={SAMPLE_COUNT} p99Nanos={p99} budgetNanos={P99_BUDGET_NANOS}"
+    );
+    assert!(
+        p99 < P99_BUDGET_NANOS,
+        "resident read-handle open p99 exceeded 1ms: p99Nanos={p99}"
+    );
+}
+
+#[test]
+fn resident_query_uses_the_exact_index_for_the_last_of_4096_owners() {
+    const SAMPLE_COUNT: usize = 1_024;
+    const P99_BUDGET_NANOS: u128 = 1_000_000;
+    let temporary = tempfile::tempdir().expect("temporary runtime root");
+    let generation = large_generation(&temporary.path().join("project"), 4_096);
+    let backend = Arc::new(
+        WorkspaceMemoryBackend::from_validated_generation(generation.as_ref().clone())
+            .expect("resident backend"),
+    );
+    let resident = crate::runtime_resident_read::RuntimeResidentReadClient::from_resident_lease(
+        crate::runtime_server_workspace::WorkspaceGenerationLease::from_backend(backend),
+    )
+    .expect("resident read client");
+    let target = "rust://src/generated/owner_4095.rs#item/function/owner_4095";
+    let expected = b"pub fn owner_4095() {}\n";
+    let mut samples = Vec::with_capacity(SAMPLE_COUNT);
+    for _ in 0..SAMPLE_COUNT {
+        let started = std::time::Instant::now();
+        let read = resident
+            .read_runtime_selector(ExactProjectionKind::Source, target)
+            .expect("indexed resident Query");
+        samples.push(started.elapsed().as_nanos());
+        match read {
+            WorkspaceRuntimeSelectorRead::Projection { bytes, .. } => {
+                assert_eq!(bytes, expected);
+            }
+            other => panic!("expected exact resident projection, got {other:?}"),
+        }
+    }
+    samples.sort_unstable();
+    let p50 = samples[SAMPLE_COUNT * 50 / 100 - 1];
+    let p95 = samples[SAMPLE_COUNT * 95 / 100 - 1];
+    let p99 = samples[SAMPLE_COUNT * 99 / 100 - 1];
+    eprintln!(
+        "resident-query-exact-index ownerCount=4096 targetOwnerOrdinal=4095 samples={SAMPLE_COUNT} p50Nanos={p50} p95Nanos={p95} p99Nanos={p99} budgetNanos={P99_BUDGET_NANOS}"
+    );
+    assert!(
+        p99 < P99_BUDGET_NANOS,
+        "resident Query exact-index p99 exceeded 1ms: p99Nanos={p99}"
     );
 }
 

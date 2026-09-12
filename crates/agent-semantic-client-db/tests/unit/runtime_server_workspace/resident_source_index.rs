@@ -66,6 +66,7 @@ fn generation() -> WorkspaceMemoryGeneration {
         module_graph_digest,
         runtime_provider_execution_binding: Some(runtime_provider_execution_binding),
         project_resolutions: Vec::new(),
+        auxiliary_owners: Vec::new(),
         owners: vec![WorkspaceOwnerSnapshot {
                         authority: None,
             owner_path: owner_path.to_owned(),

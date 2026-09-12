@@ -29,7 +29,7 @@ pub(super) struct EnsureCanonicalGenerationCommand {
     pub(super) reply: oneshot::Sender<Result<WorkspaceRecoveryReceipt, String>>,
 }
 
-/// Publish the immutable generation before exposing resident state or replying `Ready`.
+/// Publish the validated in-memory generation, then attach restart durability.
 pub(super) async fn publish_canonical_generation(
     command: EnsureCanonicalGenerationCommand,
     counters: &Arc<RuntimeDataPlaneCounterState>,
@@ -264,12 +264,16 @@ async fn publish_new_generation(
     let target_epoch = generation.active_epoch;
     let generation_digest = generation.generation_digest.clone();
     let source_root_digest = generation.source_snapshot.root_digest.clone();
-    let backend = Arc::new(
+    let backend_generation = Arc::clone(&generation);
+    let backend = tokio::task::spawn_blocking(move || {
         WorkspaceMemoryBackend::from_validated_generation_with_index(
-            Arc::clone(&generation),
+            backend_generation,
             prepared_index,
-        )?,
-    );
+        )
+        .map(Arc::new)
+    })
+    .await
+    .map_err(|error| format!("workspace Search data-plane admission task failed: {error}"))??;
     let receipt = WorkspaceRecoveryReceipt {
         projection_capability: generation.projection_capability_receipt(target_epoch)?,
         schema_id: WORKSPACE_RECOVERY_RECEIPT_SCHEMA_ID.to_owned(),
@@ -287,13 +291,40 @@ async fn publish_new_generation(
         counters: RuntimeDataPlaneCounters::default(),
     };
     receipt.validate()?;
+    let resident_durability =
+        crate::runtime_server_workspace::WorkspaceGenerationDurabilityReceipt::new(
+            workspace_identity.clone(),
+            generation_digest.clone(),
+            target_epoch,
+            crate::runtime_server_workspace::WorkspaceGenerationDurabilityState::ResidentReady,
+            None,
+        )?;
     let durability_attachment = durability.clone();
     let durability_workspace_identity = workspace_identity.clone();
     let durability_generation_digest = generation_digest.clone();
-    let (durability_committed, await_durability_commit) = tokio::sync::oneshot::channel();
+    // The queued task cannot race the ResidentReady publication.  It waits for
+    // the one-shot barrier until the validated backend and its durability
+    // receipt have been published atomically in this writer lane.
+    let (start_durability, await_resident_publication) = tokio::sync::oneshot::channel();
     durability_tasks
         .send(Box::pin(async move {
-            let result = super::canonical_durability::commit_canonical_generation(
+            if await_resident_publication.await.is_err() {
+                let failure = "workspace resident publication dropped its durability start barrier"
+                    .to_owned();
+                if let Ok(receipt) =
+                    crate::runtime_server_workspace::WorkspaceGenerationDurabilityReceipt::new(
+                        durability_workspace_identity,
+                        durability_generation_digest,
+                        target_epoch,
+                        crate::runtime_server_workspace::WorkspaceGenerationDurabilityState::Failed,
+                        Some(failure),
+                    )
+                {
+                    durability_attachment.send_replace(Some(receipt));
+                }
+                return;
+            }
+            let _ = super::canonical_durability::commit_canonical_generation(
                 publisher.as_ref(),
                 generation,
                 active_epoch != 0,
@@ -304,14 +335,22 @@ async fn publish_new_generation(
                 counters.as_ref(),
             )
             .await;
-            let _ = durability_committed.send(result);
         }))
         .map_err(|_| "workspace durability attachment lane is unavailable".to_owned())?;
-    await_durability_commit
-        .await
-        .map_err(|_| "workspace canonical durability task dropped before terminal".to_owned())??;
     current.send_replace(Some(Arc::clone(&backend)));
     overlays.reset(backend.generation());
+    durability.send_replace(Some(resident_durability));
+    if start_durability.send(()).is_err() {
+        durability.send_replace(Some(
+            crate::runtime_server_workspace::WorkspaceGenerationDurabilityReceipt::new(
+                workspace_identity,
+                generation_digest,
+                target_epoch,
+                crate::runtime_server_workspace::WorkspaceGenerationDurabilityState::Failed,
+                Some("workspace durability task dropped before start".to_owned()),
+            )?,
+        ));
+    }
     Ok(receipt)
 }
 

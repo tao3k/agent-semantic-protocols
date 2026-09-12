@@ -7,6 +7,7 @@
 //! Runtime Server operations.
 
 mod generation_overlay;
+pub(crate) use generation_overlay::recovered_source_index_import;
 mod import;
 mod text;
 mod types;

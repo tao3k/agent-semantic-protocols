@@ -23,7 +23,7 @@ pub use mutation::{
     WorkspaceRuntimeSelectorRead, WorkspaceRuntimeSelectorRebind,
 };
 pub use owner::{
-    WorkspaceDerivedProjectionSnapshot, WorkspaceOwnerProjection, WorkspaceOwnerSearchSeedSnapshot,
-    WorkspaceOwnerSearchSnapshot, WorkspaceOwnerSnapshot, WorkspaceRuntimeOwnerSearchRead,
-    WorkspaceSelectorSnapshot, WorkspaceTopologySourceSegment,
+    WorkspaceAuxiliaryOwnerSnapshot, WorkspaceDerivedProjectionSnapshot, WorkspaceOwnerProjection,
+    WorkspaceOwnerSearchSeedSnapshot, WorkspaceOwnerSearchSnapshot, WorkspaceOwnerSnapshot,
+    WorkspaceRuntimeOwnerSearchRead, WorkspaceSelectorSnapshot, WorkspaceTopologySourceSegment,
 };

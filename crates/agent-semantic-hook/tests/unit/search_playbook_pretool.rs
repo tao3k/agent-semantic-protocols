@@ -28,13 +28,13 @@ fn calibration(command: &str) -> Value {
         .expect("typed additional context");
     let calibration: Value = serde_json::from_str(context).expect("calibration JSON");
     let schema: Value = serde_json::from_str(include_str!(
-        "../../../../schemas/search-playbook-pretool-calibration.v2.schema.json"
+        "../../../../schemas/search-playbook-pretool-calibration.v1.schema.json"
     ))
     .expect("calibration schema JSON");
     jsonschema::validator_for(&schema)
         .expect("calibration schema")
         .validate(&calibration)
-        .expect("calibration satisfies V2 schema");
+        .expect("calibration satisfies unchanged V1 schema");
     calibration
 }
 
@@ -49,19 +49,15 @@ fn missing_tantivy_returns_scheme_source_calibration() {
     let calibration = calibration(
         "asp search playbook '(search (producers (language rust)) (intersect (rg \"-n\" \"Owner\" \"crates\")))'",
     );
-    assert_eq!(calibration["schemaVersion"], "2");
-    assert_eq!(calibration["argumentModel"], "one-scheme-expression");
-    assert_eq!(calibration["grammar"]["grammarId"], "tree-sitter-scheme");
-    assert_eq!(calibration["grammar"]["topLevelFormHeads"][0], "search");
+    assert_eq!(calibration["schemaVersion"], "1");
+    assert_eq!(calibration["tokenIndexBasis"], "search-playbook-argv");
+    assert_eq!(calibration["issues"][0]["tokenIndex"], 2);
+    assert_eq!(calibration["inputOccurrences"], serde_json::json!([]));
     assert_eq!(
         calibration["issues"][0]["reasonKind"],
         "search-playbook-request-incomplete"
     );
-    assert!(
-        calibration["sourceDigest"]
-            .as_str()
-            .is_some_and(|digest| digest.starts_with("blake3-256:"))
-    );
+    assert!(calibration.get("sourceDigest").is_none());
 }
 
 #[test]
@@ -89,7 +85,7 @@ fn bare_tantivy_text_is_rejected_by_native_analysis() {
 #[test]
 fn old_flag_matrix_is_rejected_instead_of_reinterpreted() {
     let calibration = calibration("asp search playbook --language rust --rg Owner .");
-    assert_eq!(calibration["expressionArgCount"], 5);
+    assert_eq!(calibration["issues"][0]["tokenIndex"], 2);
     assert_eq!(
         calibration["issues"][0]["reasonKind"],
         "search-playbook-source-arity-invalid"
@@ -99,8 +95,9 @@ fn old_flag_matrix_is_rejected_instead_of_reinterpreted() {
 #[test]
 fn missing_expression_has_no_synthetic_source_receipt() {
     let calibration = calibration("asp search playbook");
-    assert_eq!(calibration["expressionArgCount"], 0);
-    assert!(calibration["sourceDigest"].is_null());
-    assert!(calibration["grammar"].is_null());
-    assert!(calibration["issues"][0].get("sourceTokenIndex").is_none());
+    assert_eq!(
+        calibration["missingFields"],
+        serde_json::json!(["expression"])
+    );
+    assert!(calibration["issues"][0].get("tokenIndex").is_none());
 }

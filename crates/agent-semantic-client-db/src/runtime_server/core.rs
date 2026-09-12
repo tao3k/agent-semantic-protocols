@@ -258,7 +258,12 @@ impl RuntimeServer {
                             "workspace admission requires a non-empty workspace identity",
                         ));
                     }
-                    let durable_restore_admitted = if !build_mode.attempts_durable_restore() {
+                    // RestoreOrBuild must verify current source identity in the
+                    // source builder. Loading a pointer here only to reject its
+                    // unverified coverage duplicates recovery work and can
+                    // transiently expose stale resident bytes.
+                    let durable_restore_admitted = if !build_mode.attempts_durable_restore()
+                        || build_mode == crate::runtime_server_admission::WorkspaceGenerationBuildMode::RestoreOrBuild {
                         false
                     } else if provider_target.is_none() {
                         true

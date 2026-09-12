@@ -34,41 +34,33 @@ pub fn evaluate(payload_json: &str, host_matcher: &str) -> Result<Option<Value>,
             continue;
         };
         let source = args.get(2).map(String::as_str);
-        let grammar = source
-            .and_then(|source| agent_semantic_search::admit_search_playbook_source(source).ok())
-            .map(|receipt| {
-                json!({
-                    "grammarId": receipt.grammar_id,
-                    "grammarVersion": receipt.grammar_version,
-                    "grammarRepository": receipt.grammar_repository,
-                    "byteLength": receipt.byte_len,
-                    "rootKind": receipt.root_kind,
-                    "topLevelFormCount": receipt.top_level_form_count,
-                    "topLevelFormHeads": receipt.top_level_form_heads,
-                })
-            });
         let mut issue = json!({
             "reasonKind": error.reason_kind(),
             "field": "expression",
             "message": error.to_string(),
         });
         if source.is_some() {
-            issue["sourceTokenIndex"] = json!(2);
+            issue["tokenIndex"] = json!(2);
         }
         let calibration = json!({
             "schemaId": "agent.semantic-protocols.search-playbook-pretool-calibration",
-            "schemaVersion": "2",
+            "schemaVersion": "1",
             "state": "rejected",
             "reasonKind": "search-playbook-pretool-calibration",
-            "argumentModel": "one-scheme-expression",
-            "sourceDigest": source.map(source_digest),
-            "expressionArgCount": args.len().saturating_sub(2),
-            "grammar": grammar,
+            "tokenIndexBasis": "search-playbook-argv",
             "layout": {
                 "layoutId": "rg-tantivy-structural-scope",
-                "shape": "chain(intersect(rg,tantivy),syntax*,native-syntax*,graph*)",
+                "shape": "intersect(rg,tantivy)->structural-scope-facts->graph?",
+                "requiredInputSets": [["rg", "tantivy"]],
                 "graphBarrierAfter": "structural-scope-facts",
             },
+            "producers": [],
+            "inputOccurrences": [],
+            "rgArgvBoundaries": [],
+            "rgAnalyses": [],
+            "tantivyAnalyses": [],
+            "missingFields": if source.is_none() { vec!["expression"] } else { vec![] },
+            "conflictingFields": [],
             "issues": [issue],
         });
         let encoded = serde_json::to_string(&calibration)
@@ -97,8 +89,4 @@ fn search_playbook_args(stage: &CommandStage) -> Option<&[String]> {
             && words.get(asp_index + 2).map(String::as_str) == Some("playbook"))
         .then_some(&words[asp_index + 1..])
     })
-}
-
-fn source_digest(source: &str) -> String {
-    format!("blake3-256:{}", blake3::hash(source.as_bytes()).to_hex())
 }

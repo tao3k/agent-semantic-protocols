@@ -68,7 +68,6 @@ gix.workspace = true
 gix-config.workspace = true
 insta.workspace = true
 agent-semantic-hook-testkit = { path = "../agent-semantic-hook-testkit" }
-asp-rust.workspace = true
 referencing = "0.48.1"
 tempfile.workspace = true
 

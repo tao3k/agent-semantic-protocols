@@ -3,6 +3,10 @@
 // SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 use std::path::Path;
+use std::sync::Arc;
+
+#[path = "runtime_resident_exact_descendant.rs"]
+mod exact_descendant;
 
 use crate::runtime_server_opentelemetry::{
     RuntimePerformanceObservation, try_record_to_active_runtime,
@@ -21,7 +25,7 @@ use crate::runtime_server_workspace::{
 pub struct RuntimeResidentReadClient {
     exact_projection: Option<WorkspaceExactProjectionDataPlaneClient>,
     resident_lease: Option<crate::runtime_server_workspace::WorkspaceGenerationLease>,
-    search_projection: WorkspaceSearchGenerationDataPlaneClient,
+    search_projection: Arc<WorkspaceSearchGenerationDataPlaneClient>,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
@@ -40,7 +44,11 @@ impl RuntimeResidentReadClient {
     pub fn topology_source_segments(
         &self,
     ) -> Result<Vec<crate::runtime_server_workspace::WorkspaceTopologySourceSegment>, String> {
-        self.search_projection.topology_source_segments()
+        match (&self.exact_projection, &self.resident_lease) {
+            (Some(_), None) => self.search_projection.topology_source_segments(),
+            (None, Some(lease)) => Ok(lease.topology_source_segments()),
+            _ => Err("Runtime resident read authority is inconsistent".to_owned()),
+        }
     }
 
     pub async fn open(pointer_path: &Path, project_root: &Path) -> Result<Self, String> {
@@ -49,11 +57,9 @@ impl RuntimeResidentReadClient {
                 WorkspaceExactProjectionDataPlaneClient::open(pointer_path).await?,
             ),
             resident_lease: None,
-            search_projection: WorkspaceSearchGenerationDataPlaneClient::open(
-                pointer_path,
-                project_root,
-            )
-            .await?,
+            search_projection: Arc::new(
+                WorkspaceSearchGenerationDataPlaneClient::open(pointer_path, project_root).await?,
+            ),
         })
     }
 
@@ -63,14 +69,17 @@ impl RuntimeResidentReadClient {
     pub fn from_resident_lease(
         lease: crate::runtime_server_workspace::WorkspaceGenerationLease,
     ) -> Result<Self, String> {
-        lease.generation().validate()?;
+        let search_projection = lease.search_data_plane();
         Ok(Self {
             exact_projection: None,
-            search_projection: WorkspaceSearchGenerationDataPlaneClient::from_generation(
-                lease.generation_arc(),
-            )?,
+            search_projection,
             resident_lease: Some(lease),
         })
+    }
+
+    #[cfg(test)]
+    pub(crate) fn shares_search_data_plane_with(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.search_projection, &other.search_projection)
     }
 
     pub fn read_runtime_selector(
@@ -78,6 +87,13 @@ impl RuntimeResidentReadClient {
         projection_kind: ExactProjectionKind,
         structural_selector: &str,
     ) -> Result<WorkspaceRuntimeSelectorRead, String> {
+        if projection_kind == ExactProjectionKind::Source
+            && structural_selector
+                .rsplit_once('#')
+                .is_some_and(|(_, fragment)| fragment.contains("/segment/"))
+        {
+            return self.read_exact_descendant(structural_selector);
+        }
         match (&self.exact_projection, &self.resident_lease) {
             (Some(exact), None) => {
                 exact.read_runtime_selector(projection_kind, structural_selector)
@@ -98,6 +114,19 @@ impl RuntimeResidentReadClient {
             (None, Some(lease)) => Ok(lease
                 .runtime_owner_snapshot(owner_path)
                 .map(|(_, owner)| owner)),
+            _ => Err("Runtime resident read authority is inconsistent".to_owned()),
+        }
+    }
+
+    /// Returns non-searchable parser inputs from the admitted generation.
+    pub fn auxiliary_owner_snapshots(
+        &self,
+    ) -> Result<Vec<crate::runtime_server_workspace::WorkspaceAuxiliaryOwnerSnapshot>, String> {
+        match (&self.exact_projection, &self.resident_lease) {
+            (None, Some(lease)) => Ok(lease.auxiliary_owner_snapshots()),
+            (Some(_), None) => {
+                Err("Runtime auxiliary inputs require the process-resident generation".to_owned())
+            }
             _ => Err("Runtime resident read authority is inconsistent".to_owned()),
         }
     }
@@ -289,13 +318,34 @@ impl RuntimeResidentReadClient {
         ),
         String,
     > {
-        self.search_projection
-            .native_syntax_playbook_projection(owner_paths)
+        match (&self.exact_projection, &self.resident_lease) {
+            (Some(_), None) => self
+                .search_projection
+                .native_syntax_playbook_projection(owner_paths),
+            (None, Some(lease)) => lease.native_syntax_playbook_projection(owner_paths),
+            _ => Err("Runtime resident read authority is inconsistent".to_owned()),
+        }
+    }
+
+    pub fn semantic_owner_materialized(&self, owner_path: &str) -> Result<bool, String> {
+        match (&self.exact_projection, &self.resident_lease) {
+            (None, Some(lease)) => Ok(lease.semantic_owner_materialized(owner_path)),
+            (Some(_), None) => Err(
+                "semantic owner materialization state requires a resident workspace lease"
+                    .to_owned(),
+            ),
+            _ => Err("Runtime resident read authority is inconsistent".to_owned()),
+        }
     }
 
     #[must_use]
     pub fn indexed_owner_count(&self) -> usize {
         self.search_projection.indexed_owner_count()
+    }
+
+    #[must_use]
+    pub fn contains_indexed_owner(&self, owner_path: &str) -> bool {
+        self.search_projection.contains_indexed_owner(owner_path)
     }
 
     #[must_use]
@@ -313,6 +363,70 @@ impl RuntimeResidentReadClient {
         &self,
     ) -> Result<Option<&agent_semantic_search::ResidentGraphGeneration>, String> {
         self.search_projection.graph_generation()
+    }
+
+    /// Build the exact graph attachment for a bounded, already materialized
+    /// owner frontier. This keeps parser/Relation work proportional to Search
+    /// candidates instead of making graph construction a full-workspace Ready
+    /// barrier.
+    pub fn build_graph_generation_for_owner_scope(
+        &self,
+        owner_paths: &std::collections::BTreeSet<String>,
+    ) -> Result<agent_semantic_search::ResidentGraphGeneration, String> {
+        let segments = self
+            .topology_source_segments()?
+            .into_iter()
+            .filter(|segment| owner_paths.contains(&segment.owner_path))
+            .collect::<Vec<_>>();
+        let mut admitted = std::collections::BTreeSet::new();
+        for segment in &segments {
+            admitted.insert((
+                agent_semantic_content_identity::ProviderRelationEndpointKindV1::Owner,
+                segment.owner_path.clone(),
+            ));
+            admitted.extend(segment.selectors.iter().cloned().map(|selector| {
+                (
+                    agent_semantic_content_identity::ProviderRelationEndpointKindV1::Item,
+                    selector,
+                )
+            }));
+        }
+        let mut relations = Vec::new();
+        for segment in &segments {
+            for selector in &segment.selectors {
+                relations.push(agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelation {
+                    from: agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelationEndpoint {
+                        kind: agent_semantic_content_identity::ProviderRelationEndpointKindV1::Owner,
+                        id: segment.owner_path.clone(),
+                    },
+                    kind: agent_semantic_content_identity::ProviderRelationKindV1::from("CONTAINS"),
+                    to: agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelationEndpoint {
+                        kind: agent_semantic_content_identity::ProviderRelationEndpointKindV1::Item,
+                        id: selector.clone(),
+                    },
+                });
+            }
+            relations.extend(
+                segment
+                    .relations
+                    .iter()
+                    .map(|owned| owned.relation.clone())
+                    .filter(|relation| {
+                        admitted.contains(&(relation.from.kind, relation.from.id.clone()))
+                            && admitted.contains(&(relation.to.kind, relation.to.id.clone()))
+                    }),
+            );
+        }
+        let authority = self.search_generation_authority();
+        let request =
+            std::sync::Arc::new(agent_semantic_search::SearchGenerationGraphRequest::new(
+                &authority.content_search_generation,
+                authority.source_snapshot.clone(),
+                authority.workspace_generation.clone(),
+                segments.iter().map(|segment| segment.owner_path.clone()),
+                relations,
+            )?);
+        agent_semantic_search::build_resident_graph_generation(request)
     }
 
     #[must_use]
@@ -345,7 +459,7 @@ impl RuntimeResidentReadClient {
     #[must_use]
     pub fn derived_build_workload(&self, previous: Option<&Self>) -> (usize, usize, usize) {
         self.search_projection
-            .derived_build_workload(previous.map(|previous| &previous.search_projection))
+            .derived_build_workload(previous.map(|previous| previous.search_projection.as_ref()))
     }
 
     pub fn fail_derived_attachments(&self, error: &str) {

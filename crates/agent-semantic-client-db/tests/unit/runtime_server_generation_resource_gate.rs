@@ -31,13 +31,14 @@ fn candidate_identity(digest_byte: char) -> WorkspaceGenerationCandidateIdentity
 }
 
 fn completed_generation(
+    workspace: &str,
     candidate: WorkspaceGenerationCandidateIdentity,
 ) -> Result<WorkspaceGenerationBuildCompletion, WorkspaceGenerationBuildFailure> {
     WorkspaceGenerationBuildCompletion::new(
         candidate,
         WorkspaceGenerationCommitReceipt {
             projection_capability: crate::fixture::ready_projection_capability_fixture(
-                "workspace-test",
+                workspace,
                 "blake3-256:1111111111111111111111111111111111111111111111111111111111111111",
                 "blake3-256:2222222222222222222222222222222222222222222222222222222222222222",
                 1,
@@ -85,7 +86,7 @@ async fn generation_admission_disk_bytes_and_rss_stay_within_gate() {
     let build_count = Arc::new(AtomicUsize::new(0));
     let admission = Arc::new(WorkspaceGenerationAdmission::new(Arc::new({
         let build_count = Arc::clone(&build_count);
-        move |_workspace,
+        move |workspace,
               _root,
               candidate,
               _mode,
@@ -93,36 +94,50 @@ async fn generation_admission_disk_bytes_and_rss_stay_within_gate() {
               _provider_target,
               _cancellation| {
             build_count.fetch_add(1, Ordering::Relaxed);
-            Box::pin(async move { completed_generation(candidate) })
+            Box::pin(async move { completed_generation(&workspace, candidate) })
         }
     })));
 
     let warm_root = root.path().join("warm");
+    std::fs::create_dir_all(&warm_root).expect("warm project root");
+    let warm_workspace = agent_semantic_client_core::state_core::ResolvedState::resolve(&warm_root)
+        .expect("resolve warm workspace")
+        .workspace
+        .workspace_id
+        .to_string();
     admission
-        .admit(
-            "workspace-resource-warm",
-            warm_root.clone(),
-            candidate_identity('a'),
-        )
+        .admit(&warm_workspace, warm_root.clone(), candidate_identity('a'))
         .await
         .expect("warm resource sampler and generation builder");
-    admission
-        .wait_terminal("workspace-resource-warm", &warm_root)
+    let warm = admission
+        .wait_terminal(&warm_workspace, &warm_root)
         .await
         .expect("warm generation terminal");
+    assert_eq!(
+        warm.state,
+        crate::runtime_server_admission::WorkspaceGenerationAdmissionState::Ready,
+        "{warm:?}"
+    );
     build_count.store(0, Ordering::Relaxed);
 
-    let before = resource_observation();
     let project_root = root.path().join("measured");
+    std::fs::create_dir_all(&project_root).expect("measured project root");
+    let workspace = agent_semantic_client_core::state_core::ResolvedState::resolve(&project_root)
+        .expect("resolve measured workspace")
+        .workspace
+        .workspace_id
+        .to_string();
+    let before = resource_observation();
     let candidate = candidate_identity('b');
     let mut tasks = Vec::with_capacity(CONCURRENT_ADMISSIONS);
     for _ in 0..CONCURRENT_ADMISSIONS {
         let admission = Arc::clone(&admission);
         let project_root = project_root.clone();
         let candidate = candidate.clone();
+        let workspace = workspace.clone();
         tasks.push(tokio::spawn(async move {
             admission
-                .admit("workspace-resource-measured", project_root, candidate)
+                .admit(&workspace, project_root, candidate)
                 .await
                 .expect("concurrent generation admission")
         }));
@@ -130,10 +145,16 @@ async fn generation_admission_disk_bytes_and_rss_stay_within_gate() {
     for task in tasks {
         task.await.expect("generation admission task joins");
     }
-    admission
-        .wait_terminal("workspace-resource-measured", &project_root)
+    let measured = admission
+        .wait_terminal(&workspace, &project_root)
         .await
         .expect("measured generation terminal");
+    assert_eq!(
+        measured.state,
+        crate::runtime_server_admission::WorkspaceGenerationAdmissionState::Ready,
+        "{measured:?}"
+    );
+    assert!(measured.commit.is_some());
     let after = resource_observation();
 
     assert_eq!(

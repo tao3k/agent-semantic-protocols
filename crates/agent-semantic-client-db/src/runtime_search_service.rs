@@ -8,7 +8,9 @@ use serde_json::Value;
 use tokio::sync::{mpsc, oneshot};
 use tokio_stream::wrappers::ReceiverStream;
 
-use crate::runtime_server_workspace::WorkspaceOwnerProjection;
+use crate::runtime_server_workspace::{
+    WorkspaceAuxiliaryOwnerSnapshot, WorkspaceOwnerProjection, WorkspaceOwnerSnapshot,
+};
 
 const DEFAULT_QUEUE_CAPACITY: usize = 64;
 
@@ -77,12 +79,14 @@ pub enum RuntimeSearchServiceRequest {
         request_id: String,
         response: oneshot::Sender<Result<Value, String>>,
     },
-    ProviderOwner {
+    ProviderOwners {
         workspace_identity: String,
         project_root: PathBuf,
+        parser_artifact_root: PathBuf,
         language_id: String,
-        owner_path: String,
-        response: oneshot::Sender<Result<WorkspaceOwnerProjection, String>>,
+        owners: Vec<WorkspaceOwnerSnapshot>,
+        auxiliary_owners: Vec<WorkspaceAuxiliaryOwnerSnapshot>,
+        response: oneshot::Sender<Result<Vec<WorkspaceOwnerProjection>, String>>,
     },
 }
 
@@ -362,28 +366,35 @@ impl RuntimeSearchServiceHandle {
         }
     }
 
-    pub async fn provider_owner(
+    /// Project a provider-homogeneous candidate set through one cache/batch lane.
+    pub async fn provider_owners(
         &self,
         workspace_identity: String,
         project_root: PathBuf,
+        parser_artifact_root: PathBuf,
         language_id: String,
-        owner_path: String,
-    ) -> Result<WorkspaceOwnerProjection, String> {
+        owners: Vec<WorkspaceOwnerSnapshot>,
+        auxiliary_owners: Vec<WorkspaceAuxiliaryOwnerSnapshot>,
+    ) -> Result<Vec<WorkspaceOwnerProjection>, String> {
         let (response, receipt) = oneshot::channel();
         self.sender
-            .send(RuntimeSearchServiceRequest::ProviderOwner {
+            .send(RuntimeSearchServiceRequest::ProviderOwners {
                 workspace_identity,
                 project_root,
+                parser_artifact_root,
                 language_id,
-                owner_path,
+                owners,
+                auxiliary_owners,
                 response,
             })
             .await
-            .map_err(|_| "Runtime search service is not accepting owner requests".to_owned())?;
+            .map_err(|_| {
+                "Runtime search service is not accepting owner batch requests".to_owned()
+            })?;
         self.await_receipt(
             receipt,
-            "provider-owner",
-            "Runtime search service dropped the owner response",
+            "provider-owners",
+            "Runtime search service dropped the owner batch response",
         )
         .await
     }

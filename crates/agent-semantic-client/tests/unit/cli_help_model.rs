@@ -33,7 +33,6 @@ fn root_and_first_level_paths_select_their_own_commands() {
         "paths",
         "healthcheck",
         "ast-patch",
-        "graph",
         "search",
         "query",
         "gerbil-scheme",

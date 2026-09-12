@@ -10,7 +10,10 @@ use observability::{prepare_canonical_index, record_canonical_materialization_ob
 
 use super::{
     WorkspaceMemoryGeneration, WorkspaceOwnerSnapshot, WorkspaceSelectorSnapshot,
-    canonical_snapshot::{validate_canonical_snapshot, validate_owner_snapshot_membership},
+    canonical_snapshot::{
+        validate_auxiliary_snapshot_membership, validate_canonical_snapshot,
+        validate_owner_snapshot_membership,
+    },
     validate_owners,
 };
 
@@ -38,6 +41,8 @@ pub struct WorkspaceCanonicalMaterialization {
     pub projection_capability: crate::active_generation_projection_capability::ActiveGenerationProjectionCapabilityManifest,
     pub workspace_source_scope_generation: String,
     pub project_resolutions: Vec<agent_semantic_content_identity::AdmittedProjectResolution>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub auxiliary_owners: Vec<super::WorkspaceAuxiliaryOwnerSnapshot>,
     pub relations: Vec<crate::ClientDbSourceIndexOwnedRelation>,
     pub file_count: u32,
     pub root_depth: [u8; 2],
@@ -101,6 +106,7 @@ fn assemble_canonical_materialization(
     import: &crate::ClientDbSourceIndexImport,
     root_depth: [u8; 2],
     owners: Vec<WorkspaceOwnerSnapshot>,
+    auxiliary_owners: Vec<super::WorkspaceAuxiliaryOwnerSnapshot>,
     project_resolutions: Vec<agent_semantic_content_identity::AdmittedProjectResolution>,
     derived: CanonicalMaterializationDerived,
 ) -> WorkspaceCanonicalMaterialization {
@@ -120,6 +126,7 @@ fn assemble_canonical_materialization(
         projection_capability: derived.projection_capability,
         workspace_source_scope_generation: derived.workspace_source_scope_generation,
         project_resolutions,
+        auxiliary_owners,
         relations: import.relations.clone(),
         file_count: derived.file_count,
         root_depth,
@@ -253,6 +260,7 @@ impl WorkspaceCanonicalMaterialization {
             && self.selector_set_digest == other.selector_set_digest
             && self.workspace_source_scope_generation == other.workspace_source_scope_generation
             && self.project_resolutions == other.project_resolutions
+            && self.auxiliary_owners == other.auxiliary_owners
             && self.file_count == other.file_count
             && self.root_depth == other.root_depth
             && self.owners == other.owners
@@ -277,6 +285,7 @@ impl WorkspaceCanonicalMaterialization {
             file_count: u32,
             root_depth: [u8; 2],
             owners: &'a [WorkspaceOwnerSnapshot],
+            auxiliary_owners: &'a [super::WorkspaceAuxiliaryOwnerSnapshot],
         }
 
         Self::typed_digest(&GenerationIdentity {
@@ -295,6 +304,7 @@ impl WorkspaceCanonicalMaterialization {
             file_count: self.file_count,
             root_depth: self.root_depth,
             owners: &self.owners,
+            auxiliary_owners: &self.auxiliary_owners,
         })
     }
 
@@ -395,10 +405,11 @@ impl WorkspaceCanonicalMaterialization {
                     proof.structural_selector()
                 )
             })?;
-            if proof.source_blob_digest()
-                != &agent_semantic_content_identity::exact_selector_merkle::blake3_content_digest_v1(
-                    &owner.bytes,
-                )
+            // This digest was computed above from these exact immutable bytes.
+            // Rehashing the owner for each selector multiplies byte work by
+            // selector count; only the selectors are mutated during assembly.
+            if owner.content_digest.strip_prefix("blake3-256:")
+                != Some(proof.source_blob_digest().as_str())
             {
                 return Err(format!(
                     "source-index selector source blob digest drift: ownerPath={} selector={}",
@@ -458,6 +469,21 @@ impl WorkspaceCanonicalMaterialization {
                 .selectors
                 .sort_by(|left, right| left.selector.cmp(&right.selector));
         }
+        let indexed_owner_paths = import
+            .owners
+            .iter()
+            .map(|owner| owner.owner_path.as_str())
+            .collect::<std::collections::BTreeSet<_>>();
+        let mut auxiliary_owners = source_blobs
+            .iter()
+            .filter(|(path, _)| !indexed_owner_paths.contains(*path))
+            .map(|(path, bytes)| super::WorkspaceAuxiliaryOwnerSnapshot {
+                owner_path: path.to_string(),
+                content_digest: format!("blake3-256:{}", blake3::hash(bytes).to_hex()),
+                bytes: bytes.to_vec(),
+            })
+            .collect::<Vec<_>>();
+        auxiliary_owners.sort_by(|left, right| left.owner_path.cmp(&right.owner_path));
         Self::new_with_workspace_snapshot(
             workspace_identity,
             workspace_snapshot.clone(),
@@ -465,6 +491,7 @@ impl WorkspaceCanonicalMaterialization {
             import,
             [1, 0],
             owners,
+            auxiliary_owners,
             project_resolutions,
         )
     }
@@ -490,6 +517,7 @@ impl WorkspaceCanonicalMaterialization {
             import,
             root_depth,
             owners,
+            Vec::new(),
             project_resolutions,
         )
     }
@@ -501,6 +529,7 @@ impl WorkspaceCanonicalMaterialization {
         import: &crate::ClientDbSourceIndexImport,
         root_depth: [u8; 2],
         owners: Vec<WorkspaceOwnerSnapshot>,
+        auxiliary_owners: Vec<super::WorkspaceAuxiliaryOwnerSnapshot>,
         project_resolutions: Vec<agent_semantic_content_identity::AdmittedProjectResolution>,
     ) -> Result<Self, String> {
         let derived = derive_canonical_materialization(
@@ -517,6 +546,7 @@ impl WorkspaceCanonicalMaterialization {
             import,
             root_depth,
             owners,
+            auxiliary_owners,
             project_resolutions,
             derived,
         ))
@@ -632,6 +662,7 @@ impl WorkspaceCanonicalMaterialization {
         }
         Self::validate_materialized_owners(&self.owners)?;
         validate_owners(&self.owners)?;
+        validate_auxiliary_snapshot_membership(&self.workspace_snapshot, &self.auxiliary_owners)?;
         if self.source_snapshot.root_digest.len() != 64
             || !self
                 .source_snapshot
@@ -715,6 +746,7 @@ impl WorkspaceCanonicalMaterialization {
             runtime_provider_execution_binding: self.runtime_provider_execution_binding,
             content_search_generation,
             project_resolutions: self.project_resolutions,
+            auxiliary_owners: self.auxiliary_owners,
             relations: self.relations,
             owners: self.owners,
         })

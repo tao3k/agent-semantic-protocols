@@ -15,8 +15,9 @@ use super::query_generation_calibration::RuntimeSearchGenerationBuildResourceRec
 
 /// Immutable Runtime handle for one admitted resident Query generation.
 ///
-/// Graph, Tantivy, and Project Topology are Search-owned derived attachments;
-/// their failure cannot revoke exact native Query reads from the resident base.
+/// Tantivy is a generation-scoped Search attachment. Graph and Project
+/// Topology are request-scoped projections over lazily materialized owners;
+/// none of their failures can revoke exact native Query reads from the base.
 pub struct RuntimeQueryGeneration {
     pub(super) generation_digest: String,
     pub(super) generation_token: AtomicU64,
@@ -33,6 +34,8 @@ pub struct RuntimeQueryGeneration {
                 Arc<str>,
             >,
         >,
+    pub(super) project_topology_completion: tokio::sync::watch::Sender<bool>,
+    pub(super) lexical_attachment_completion: tokio::sync::watch::Sender<bool>,
     pub(super) build_resource_receipt:
         std::sync::OnceLock<RuntimeSearchGenerationBuildResourceReceipt>,
     pub(super) search_materializations: Mutex<
@@ -45,14 +48,14 @@ pub struct RuntimeQueryGeneration {
 
 #[derive(Clone)]
 pub(crate) enum RuntimeSearchMaterializationState {
-    Building,
+    Building(Arc<tokio::sync::watch::Sender<bool>>),
     Ready(Arc<serde_json::Value>),
     Failed(Arc<agent_semantic_client_server::AspClientDispatchError>),
 }
 
 #[derive(Clone)]
 pub(crate) enum RuntimeQueryMaterializationState {
-    Building,
+    Building(Arc<tokio::sync::watch::Sender<bool>>),
     Ready(Arc<serde_json::Value>),
     Failed(Arc<agent_semantic_client_server::AspClientDispatchError>),
 }
@@ -75,6 +78,8 @@ impl RuntimeQueryGeneration {
             resident: Some(Arc::new(resident)),
             execution_publication: None,
             project_topology_attachment: OnceLock::new(),
+            project_topology_completion: tokio::sync::watch::channel(false).0,
+            lexical_attachment_completion: tokio::sync::watch::channel(false).0,
             build_resource_receipt: std::sync::OnceLock::new(),
             search_materializations: Mutex::new(std::collections::HashMap::new()),
             query_materializations: Mutex::new(std::collections::HashMap::new()),
@@ -95,6 +100,8 @@ impl RuntimeQueryGeneration {
             resident: Some(Arc::new(resident)),
             execution_publication: None,
             project_topology_attachment: OnceLock::new(),
+            project_topology_completion: tokio::sync::watch::channel(false).0,
+            lexical_attachment_completion: tokio::sync::watch::channel(false).0,
             build_resource_receipt: std::sync::OnceLock::new(),
             search_materializations: Mutex::new(std::collections::HashMap::new()),
             query_materializations: Mutex::new(std::collections::HashMap::new()),
@@ -123,7 +130,12 @@ impl RuntimeQueryGeneration {
         if materializations.contains_key(&key) {
             return Ok(false);
         }
-        materializations.insert(key, RuntimeSearchMaterializationState::Building);
+        materializations.insert(
+            key,
+            RuntimeSearchMaterializationState::Building(Arc::new(
+                tokio::sync::watch::channel(false).0,
+            )),
+        );
         Ok(true)
     }
 
@@ -136,18 +148,40 @@ impl RuntimeQueryGeneration {
             .search_materializations
             .lock()
             .map_err(|_| "Runtime Search materialization cache poisoned".to_owned())?;
-        if !matches!(
-            materializations.get(&key),
-            Some(RuntimeSearchMaterializationState::Building)
-        ) {
+        let Some(RuntimeSearchMaterializationState::Building(completion)) =
+            materializations.get(&key)
+        else {
             return Err("Runtime Search materialization lost its Building claim".to_owned());
-        }
+        };
+        let completion = Arc::clone(completion);
         let terminal = match result {
             Ok(value) => RuntimeSearchMaterializationState::Ready(Arc::new(value)),
             Err(error) => RuntimeSearchMaterializationState::Failed(Arc::new(error)),
         };
         materializations.insert(key, terminal);
+        completion.send_replace(true);
         Ok(())
+    }
+
+    pub(crate) async fn await_search_materialization(
+        &self,
+        key: &str,
+    ) -> Result<RuntimeSearchMaterializationState, String> {
+        match self.search_materialization(key)? {
+            Some(RuntimeSearchMaterializationState::Building(completion)) => {
+                let mut receiver = completion.subscribe();
+                if !*receiver.borrow_and_update() {
+                    receiver
+                        .changed()
+                        .await
+                        .map_err(|_| "Search completion channel closed".to_owned())?;
+                }
+                self.search_materialization(key)?
+                    .ok_or_else(|| "Search materialization disappeared".to_owned())
+            }
+            Some(terminal) => Ok(terminal),
+            None => Err("Search materialization has no claim".to_owned()),
+        }
     }
 
     pub(crate) fn query_materialization(
@@ -171,7 +205,12 @@ impl RuntimeQueryGeneration {
         if materializations.contains_key(&key) {
             return Ok(false);
         }
-        materializations.insert(key, RuntimeQueryMaterializationState::Building);
+        materializations.insert(
+            key,
+            RuntimeQueryMaterializationState::Building(Arc::new(
+                tokio::sync::watch::channel(false).0,
+            )),
+        );
         Ok(true)
     }
 
@@ -184,18 +223,40 @@ impl RuntimeQueryGeneration {
             .query_materializations
             .lock()
             .map_err(|_| "Runtime Query materialization cache poisoned".to_owned())?;
-        if !matches!(
-            materializations.get(&key),
-            Some(RuntimeQueryMaterializationState::Building)
-        ) {
+        let Some(RuntimeQueryMaterializationState::Building(completion)) =
+            materializations.get(&key)
+        else {
             return Err("Runtime Query materialization lost its Building claim".to_owned());
-        }
+        };
+        let completion = Arc::clone(completion);
         let terminal = match result {
             Ok(value) => RuntimeQueryMaterializationState::Ready(Arc::new(value)),
             Err(error) => RuntimeQueryMaterializationState::Failed(Arc::new(error)),
         };
         materializations.insert(key, terminal);
+        completion.send_replace(true);
         Ok(())
+    }
+
+    pub(crate) async fn await_query_materialization(
+        &self,
+        key: &str,
+    ) -> Result<RuntimeQueryMaterializationState, String> {
+        match self.query_materialization(key)? {
+            Some(RuntimeQueryMaterializationState::Building(completion)) => {
+                let mut receiver = completion.subscribe();
+                if !*receiver.borrow_and_update() {
+                    receiver
+                        .changed()
+                        .await
+                        .map_err(|_| "Query completion channel closed".to_owned())?;
+                }
+                self.query_materialization(key)?
+                    .ok_or_else(|| "Query materialization disappeared".to_owned())
+            }
+            Some(terminal) => Ok(terminal),
+            None => Err("Query materialization has no claim".to_owned()),
+        }
     }
 
     pub fn from_resident_with_execution_publication(
@@ -241,18 +302,20 @@ impl RuntimeQueryGeneration {
         self.project_topology_attachment
             .set(Ok(Arc::new(attachment)))
             .map_err(|_| "reasonKind=runtime-project-topology-attachment-already-set".to_owned())?;
+        self.project_topology_completion.send_replace(true);
         Ok(self)
     }
 
     /// Builds and admits the Project Topology attachment from the exact
     /// resident parser generation. The CPU-heavy closure builder runs on its
-    /// bounded blocking lane; this future can execute concurrently with the
-    /// graph and Tantivy attachment build.
+    /// bounded blocking lane and never participates in SearchCoreReady.
     pub async fn build_and_attach_project_topology(
         &self,
         project_root: &std::path::Path,
     ) -> Result<(), String> {
-        let result = self.build_project_topology(project_root).await;
+        let result = self
+            .build_project_topology(project_root, self.resident(), None)
+            .await;
         let stored = result.map(Arc::new).map_err(Arc::<str>::from);
         let returned = stored
             .as_ref()
@@ -261,12 +324,34 @@ impl RuntimeQueryGeneration {
         self.project_topology_attachment
             .set(stored)
             .map_err(|_| "reasonKind=runtime-project-topology-attachment-already-set".to_owned())?;
+        self.project_topology_completion.send_replace(true);
         returned
+    }
+
+    pub(crate) fn publish_lexical_attachment_terminal(&self) {
+        self.lexical_attachment_completion.send_replace(true);
+    }
+
+    pub(crate) fn fail_lexical_attachment(&self, error: &str) {
+        self.resident().fail_lexical_attachment(error);
+        self.lexical_attachment_completion.send_replace(true);
+    }
+
+    pub(crate) async fn build_project_topology_for_owner_scope(
+        &self,
+        project_root: &std::path::Path,
+        resident: &RuntimeResidentReadClient,
+        owner_scope: &BTreeSet<String>,
+    ) -> Result<agent_semantic_topology::RuntimeProjectTopologyAttachment, String> {
+        self.build_project_topology(project_root, resident, Some(owner_scope))
+            .await
     }
 
     async fn build_project_topology(
         &self,
         project_root: &std::path::Path,
+        resident: &RuntimeResidentReadClient,
+        owner_scope: Option<&BTreeSet<String>>,
     ) -> Result<agent_semantic_topology::RuntimeProjectTopologyAttachment, String> {
         let execution_publication = self.execution_publication.as_deref().ok_or_else(|| {
             "reasonKind=runtime-project-topology-execution-publication-missing".to_owned()
@@ -279,7 +364,11 @@ impl RuntimeQueryGeneration {
             return Err("reasonKind=runtime-project-topology-manifest-binding-mismatch".to_owned());
         }
 
-        let source = self.resident().topology_source_segments()?;
+        let source = resident
+            .topology_source_segments()?
+            .into_iter()
+            .filter(|segment| owner_scope.is_none_or(|owners| owners.contains(&segment.owner_path)))
+            .collect::<Vec<_>>();
         if source.is_empty() {
             return Err("reasonKind=runtime-project-topology-source-empty".to_owned());
         }
@@ -366,14 +455,14 @@ impl RuntimeQueryGeneration {
                 {
                     continue;
                 }
-                for endpoint in [&relation.from, &relation.to] {
-                    if !admitted_nodes.contains(&(endpoint.kind, endpoint.id.clone())) {
-                        return Err(format!(
-                            "reasonKind=runtime-project-topology-endpoint-unresolved endpointKind={} endpointId={}",
-                            endpoint.kind.as_str(),
-                            endpoint.id
-                        ));
-                    }
+                if [&relation.from, &relation.to]
+                    .into_iter()
+                    .any(|endpoint| !admitted_nodes.contains(&(endpoint.kind, endpoint.id.clone())))
+                {
+                    // This is a request-local topology cut. Cross-frontier
+                    // relations are intentionally excluded rather than making
+                    // an unrelated owner a first-Search parser dependency.
+                    continue;
                 }
                 let from_kind = relation.from.kind.as_str();
                 let to_kind = relation.to.kind.as_str();
@@ -409,7 +498,7 @@ impl RuntimeQueryGeneration {
             );
         }
 
-        let search_authority = self.resident().search_generation_authority();
+        let search_authority = resident.search_generation_authority();
         let parser_catalog_digest = bound_topology_digest(
             "parser-catalog",
             [
@@ -552,6 +641,32 @@ impl RuntimeQueryGeneration {
             Some(Err(error)) => Err(error.to_string()),
             None => Err("reasonKind=runtime-project-topology-attachment-missing".to_owned()),
         }
+    }
+
+    pub async fn await_search_playbook_topology_attachment(
+        &self,
+    ) -> Result<&agent_semantic_topology::RuntimeProjectTopologyAttachment, String> {
+        if self.project_topology_attachment.get().is_none() {
+            let mut completion = self.project_topology_completion.subscribe();
+            if !*completion.borrow_and_update() {
+                completion.changed().await.map_err(|_| {
+                    "reasonKind=runtime-project-topology-completion-closed".to_owned()
+                })?;
+            }
+        }
+        self.require_search_playbook_topology_attachment()
+    }
+
+    pub async fn await_lexical_attachment(&self) -> Result<(), String> {
+        if !*self.lexical_attachment_completion.borrow() {
+            let mut completion = self.lexical_attachment_completion.subscribe();
+            if !*completion.borrow_and_update() {
+                completion.changed().await.map_err(|_| {
+                    "reasonKind=runtime-search-lexical-completion-closed".to_owned()
+                })?;
+            }
+        }
+        Ok(())
     }
 
     pub fn native_syntax_state(&self) -> &'static str {

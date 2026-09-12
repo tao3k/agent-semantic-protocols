@@ -84,6 +84,7 @@ pub(super) fn dispatch_exact_query(
     language_id: &str,
     provider_id: &str,
     generation: &RuntimeQueryGeneration,
+    resident: &agent_semantic_client_db::runtime_resident_read::RuntimeResidentReadClient,
     telemetry_sender: &agent_semantic_client_db::runtime_telemetry_bus::RuntimeTelemetryBusSender,
 ) -> Result<serde_json::Value, AspClientOperationError> {
     let started = tokio::time::Instant::now();
@@ -110,7 +111,7 @@ pub(super) fn dispatch_exact_query(
             })),
         }));
     }
-    let projection = generation.read_runtime_selector(projection_kind, &params.selector)?;
+    let projection = resident.read_runtime_selector(projection_kind, &params.selector)?;
     let resident_read_elapsed_micros = elapsed_micros(resident_started);
     let elapsed_micros = elapsed_micros(started);
     let service_elapsed_micros = elapsed_micros.saturating_sub(resident_read_elapsed_micros);
@@ -147,7 +148,7 @@ pub(super) fn dispatch_exact_query(
             phase: "resident-selector-read".to_owned(),
             reason_kind: failure.reason_kind.to_owned(),
             generation_digest: Some(generation.generation_digest().to_owned()),
-            root_digest: Some(generation.resident().source_root_digest()),
+            root_digest: Some(resident.source_root_digest()),
             resident_read_elapsed_micros,
             service_elapsed_micros,
             elapsed_micros,
@@ -174,7 +175,7 @@ pub(super) fn dispatch_exact_query(
         language_id: language_id.to_owned(),
         provider_id: provider_id.to_owned(),
         generation_digest: generation.generation_digest().to_owned(),
-        root_digest: generation.resident().source_root_digest(),
+        root_digest: resident.source_root_digest(),
         result: serde_json::to_value(projection)
             .map_err(|error| format!("encode query result: {error}"))?,
         resident_read_elapsed_micros,

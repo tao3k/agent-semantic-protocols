@@ -54,6 +54,7 @@ fn search_segment_publishes_a_verified_owner_inclusion_proof() {
         module_graph_digest,
         runtime_provider_execution_binding: Some(runtime_provider_execution_binding.clone()),
         project_resolutions: Vec::new(),
+        auxiliary_owners: Vec::new(),
         owners: vec![
             WorkspaceOwnerSnapshot {
                 authority: None,

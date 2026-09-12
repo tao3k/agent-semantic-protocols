@@ -68,6 +68,32 @@ fn non_selective_grep_plan_uses_only_the_bounded_tantivy_scope() {
 }
 
 #[test]
+fn selective_grep_candidates_are_fused_before_exact_owner_reads() {
+    let scope = ["b.rs".to_owned()].into_iter().collect();
+    let (owners, receipt) = resident_grep_candidate_scope(
+        &agent_semantic_search::ResidentGrepCandidatePlan::Grams(vec![1]),
+        &scope,
+        3,
+        || {
+            Ok((
+                vec!["a.rs".into(), "b.rs".into(), "c.rs".into()],
+                agent_semantic_search::ResidentByteCoverageQueryReceipt {
+                    requested_gram_count: 1,
+                    decoded_posting_count: 3,
+                    smallest_posting_count: 3,
+                    candidate_count: 3,
+                    lookup_nanos: 1,
+                },
+            ))
+        },
+    )
+    .unwrap();
+    assert_eq!(owners, ["b.rs"]);
+    assert_eq!(receipt.candidate_count, 1);
+    assert_eq!(receipt.decoded_posting_count, 3);
+}
+
+#[test]
 fn graph_scope_comes_from_structural_matches_not_the_broader_file_scope() {
     let candidate =
         |owner: &str, selector: &str| agent_semantic_search::WorkspaceSearchSyntaxCandidate {

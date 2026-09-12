@@ -24,8 +24,9 @@ use super::{RuntimeWorkspaceExecutionPublicationStore, WorkspaceGenerationPointe
 
 const COMPLETE_GENERATION_AUTHORITY_KEY: &str = "runtime-server-complete-generation";
 
-/// Verify the already durable source pointer, linearize its complete content
-/// commit, then publish the immutable execution sidecar and joined pointer.
+/// Verify the already durable source pointer, linearize its complete logical
+/// content commit, then publish the immutable execution sidecar and joined
+/// pointer.
 ///
 /// This is deliberately outside the Query path. Callers cannot provide source
 /// digests directly: the canonical source pointer is reopened and validated at
@@ -53,24 +54,34 @@ pub async fn publish_runtime_workspace_execution_product(
         .validate()
         .map_err(|error| error.to_string())?;
 
+    let source_binding = source
+        .runtime_provider_execution_binding
+        .as_ref()
+        .ok_or_else(|| {
+            "Runtime workspace execution publication requires a provider execution binding"
+                .to_owned()
+        })?;
+    validate_logical_source_binding(
+        source_binding,
+        &source.workspace_identity,
+        &source.source_root_digest,
+        &source.module_graph_digest,
+        runtime_bundle_digest,
+        bundle,
+    )?;
     let identity = ContentIdentity {
         runtime_artifact_digest: activation.artifact_digest.as_str().to_owned(),
         workspace_snapshot_digest: source.source_root_digest.clone(),
         source_generation_digest: source.generation_digest.clone(),
-        source_index_digest: source.durable_commit_digest.clone(),
+        source_index_digest: source_binding.source_index_digest.clone(),
         schema_digest: bundle.schema_bundle_digest().as_str().to_owned(),
         provider_catalog_digest: bundle.provider_catalog_digest().as_str().to_owned(),
     };
     identity
         .validate()
         .map_err(|error| format!("validate complete content identity: {error:?}"))?;
-    let authority_stamp = complete_generation_authority_stamp(
-        &identity,
-        &source.durable_commit_digest,
-        activation,
-        runtime_bundle_digest,
-        bundle,
-    );
+    let authority_stamp =
+        complete_generation_authority_stamp(&identity, activation, runtime_bundle_digest, bundle);
     let previous =
         RuntimeWorkspaceExecutionPublicationStore::read_active_optional(execution_root).await?;
     let content_publication_commit = if let Some(previous) = previous.as_ref()
@@ -109,9 +120,126 @@ pub async fn publish_runtime_workspace_execution_product(
     Ok(publication)
 }
 
+/// Compose the Query-admissible execution product directly from an already
+/// validated process-resident generation.  Physical segment durability is a
+/// restart attachment and is intentionally absent from this logical identity.
+pub fn compose_runtime_workspace_execution_product_from_resident(
+    resident: &crate::runtime_resident_read::RuntimeResidentReadClient,
+    host_workspace: HostWorkspaceInitializationBinding,
+    activation: &RuntimeArtifactActivationEvent,
+    runtime_bundle_digest: &Blake3ContentDigest,
+    bundle: &RuntimeArtifactBundleBinding,
+) -> Result<RuntimeWorkspaceExecutionPublication, String> {
+    let source = resident.search_generation_authority();
+    source.validate_binding(&source.project_id, &source.workspace_id)?;
+    let source_binding = source
+        .runtime_provider_execution_binding
+        .as_ref()
+        .ok_or_else(|| {
+            "Runtime resident execution publication requires a provider execution binding"
+                .to_owned()
+        })?;
+    let canonical_source_root =
+        agent_semantic_search::canonical_blake3_digest(&source.source_snapshot.root_digest)?;
+    validate_logical_source_binding(
+        source_binding,
+        &source.workspace_id,
+        &canonical_source_root,
+        &source_binding.source_index_digest,
+        runtime_bundle_digest,
+        bundle,
+    )?;
+    activation.validate_identity()?;
+    if &activation.bundle_digest != runtime_bundle_digest {
+        return Err(format!(
+            "reasonKind=runtime-workspace-execution-binding-mismatch field=runtimeBundleDigest expected={} actual={}",
+            activation.bundle_digest, runtime_bundle_digest,
+        ));
+    }
+    let identity = ContentIdentity {
+        runtime_artifact_digest: activation.artifact_digest.as_str().to_owned(),
+        workspace_snapshot_digest: canonical_source_root.clone(),
+        source_generation_digest: source.generation_digest.clone(),
+        source_index_digest: source_binding.source_index_digest.clone(),
+        schema_digest: bundle.schema_bundle_digest().as_str().to_owned(),
+        provider_catalog_digest: bundle.provider_catalog_digest().as_str().to_owned(),
+    };
+    identity
+        .validate()
+        .map_err(|error| format!("validate resident complete content identity: {error:?}"))?;
+    let authority_stamp =
+        complete_generation_authority_stamp(&identity, activation, runtime_bundle_digest, bundle);
+    let commit = ContentPublicationCommit::linearize(identity, authority_stamp)
+        .map_err(|error| format!("linearize resident content publication: {error:?}"))?;
+    compose_runtime_workspace_execution_publication(
+        source.workspace_id.clone(),
+        source.generation_digest.clone(),
+        canonical_source_root,
+        host_workspace,
+        commit,
+        activation,
+        runtime_bundle_digest,
+        bundle,
+    )
+}
+
+fn validate_logical_source_binding(
+    binding: &agent_semantic_artifacts::runtime_provider_execution_binding::RuntimeProviderExecutionBinding,
+    workspace_identity: &str,
+    source_root_digest: &str,
+    source_index_digest: &str,
+    runtime_bundle_digest: &Blake3ContentDigest,
+    bundle: &RuntimeArtifactBundleBinding,
+) -> Result<(), String> {
+    binding.validate()?;
+    for (field, expected, actual) in [
+        (
+            "workspaceId",
+            workspace_identity,
+            binding.workspace_id.as_str(),
+        ),
+        (
+            "sourceSnapshotDigest",
+            source_root_digest,
+            binding.source_snapshot_digest.as_str(),
+        ),
+        (
+            "sourceIndexDigest",
+            source_index_digest,
+            binding.source_index_digest.as_str(),
+        ),
+        (
+            "runtimeBundleDigest",
+            runtime_bundle_digest.as_str(),
+            binding.runtime_bundle_digest.as_str(),
+        ),
+        (
+            "schemaBundleDigest",
+            bundle.schema_bundle_digest().as_str(),
+            binding.schema_bundle_digest.as_str(),
+        ),
+    ] {
+        if !same_content_digest(expected, actual) {
+            return Err(format!(
+                "reasonKind=runtime-workspace-execution-binding-mismatch field={field} expected={expected} actual={actual}"
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn same_content_digest(left: &str, right: &str) -> bool {
+    left == right
+        || left
+            .strip_prefix("blake3-256:")
+            .is_some_and(|digest| digest == right)
+        || right
+            .strip_prefix("blake3-256:")
+            .is_some_and(|digest| digest == left)
+}
+
 fn complete_generation_authority_stamp(
     identity: &ContentIdentity,
-    durable_source_commit_digest: &str,
     activation: &RuntimeArtifactActivationEvent,
     runtime_bundle_digest: &Blake3ContentDigest,
     bundle: &RuntimeArtifactBundleBinding,
@@ -120,7 +248,6 @@ fn complete_generation_authority_stamp(
     hasher.update(b"agent.semantic-protocols.complete-generation-authority.v1\0");
     for field in [
         identity.digest(),
-        durable_source_commit_digest.to_owned(),
         activation.content_digest().as_str().to_owned(),
         runtime_bundle_digest.as_str().to_owned(),
         bundle.provider_registration_digest().as_str().to_owned(),

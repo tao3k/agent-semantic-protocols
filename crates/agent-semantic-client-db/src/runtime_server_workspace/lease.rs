@@ -10,6 +10,7 @@ use std::sync::Arc;
 use super::{
     WorkspaceMemoryBackend, WorkspaceMemoryGeneration, WorkspaceOwnerSearchSeedSnapshot,
     WorkspaceOwnerSearchSnapshot, WorkspaceOwnerSnapshot, WorkspaceProjectionLease,
+    WorkspaceTopologySourceSegment,
 };
 
 #[derive(Debug)]
@@ -195,10 +196,7 @@ impl Drop for WorkspaceGenerationLease {
 
 impl WorkspaceGenerationLease {
     pub(crate) fn from_backend(backend: Arc<WorkspaceMemoryBackend>) -> Self {
-        let overlays = Arc::new(super::resident_overlay::ResidentOverlayStore::new(Some(
-            backend.generation(),
-        )));
-        let overlay = overlays.snapshot(backend.generation());
+        let overlay = backend.base_overlay();
         Self {
             backend,
             overlay,
@@ -231,8 +229,8 @@ impl WorkspaceGenerationLease {
         self.backend.generation()
     }
 
-    pub(crate) fn generation_arc(&self) -> Arc<WorkspaceMemoryGeneration> {
-        Arc::clone(self.backend.generation())
+    pub(crate) fn search_data_plane(&self) -> Arc<super::WorkspaceSearchGenerationDataPlaneClient> {
+        self.backend.search_data_plane()
     }
 
     pub fn project(&self, selector: &str) -> Option<WorkspaceProjectionLease> {
@@ -249,7 +247,7 @@ impl WorkspaceGenerationLease {
         structural_selector: &str,
     ) -> Result<super::WorkspaceRuntimeSelectorRead, String> {
         self.overlay
-            .read_selector(self.generation(), projection_kind, structural_selector)
+            .read_selector(&self.backend, projection_kind, structural_selector)
     }
 
     pub fn runtime_owner_snapshot(
@@ -257,8 +255,36 @@ impl WorkspaceGenerationLease {
         owner_path: &str,
     ) -> Option<(String, WorkspaceOwnerSnapshot)> {
         self.overlay
-            .owner_snapshot(self.generation(), owner_path)
+            .owner_snapshot_indexed(&self.backend, owner_path)
             .map(|owner| (self.overlay.generation_digest().to_owned(), owner))
+    }
+
+    pub fn auxiliary_owner_snapshots(&self) -> Vec<super::WorkspaceAuxiliaryOwnerSnapshot> {
+        self.generation().auxiliary_owners.clone()
+    }
+
+    pub fn semantic_owner_materialized(&self, owner_path: &str) -> bool {
+        self.overlay
+            .semantic_owner_materialized(&self.backend, owner_path)
+    }
+
+    pub fn topology_source_segments(&self) -> Vec<WorkspaceTopologySourceSegment> {
+        self.overlay.topology_source_segments(self.generation())
+    }
+
+    pub fn native_syntax_playbook_projection(
+        &self,
+        owner_paths: &[String],
+    ) -> Result<
+        (
+            Vec<agent_semantic_search::NativeSyntaxProjection>,
+            Vec<agent_semantic_search::NativeSyntaxRelation>,
+            Vec<agent_semantic_search::NativeSyntaxDiagnostic>,
+        ),
+        String,
+    > {
+        self.overlay
+            .native_syntax_playbook_projection(self.generation(), owner_paths)
     }
 
     pub fn runtime_owner_search_snapshot(

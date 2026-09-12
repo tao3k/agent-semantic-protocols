@@ -21,6 +21,19 @@ Git history is the only historical architecture archive; this working tree descr
 
 * Status
 
+Search and Query result materialization is generation-bound single-flight.
+The first caller and concurrent joiners await a retained completion event under
+the request-phase ClientFrame deadline and cancellation boundary. Cache-ready
+resident reads keep 1ms; first computation uses a separate absolute diagnostic
+deadline pending measured qualification (RFC 10.20). Completion before
+subscription must not be lost.  Cancelling one waiter does not invalidate shared
+work or its terminal cache entry.  There is no client retry loop and no new V1
+request field; a real deadline still returns the existing typed failure.
+Cold generation misses join the daemon's retained publication event after one
+single-flight submission; neither a failed generation nor a timeout is retried.
+The V1 zero-work resident-read receipt applies only to the cache-ready phase.
+First-computation timing is a separate diagnostic, never a forged resident receipt.
+
 Normative architectural root for RFC 10.05.
 
 This file is intentionally a compact index.  Detailed state machines,
@@ -662,23 +675,26 @@ smallest overlapping parser-owned item selector. Tantivy's matched query keys
 remain ranking evidence on that grounded candidate. Neither mapping serializes
 source, line numbers, or excerpts; parser grounding prevents an owner-only hit
 from becoming an unactionable Search result.
-The detached generation lane materializes parser mappings and relations,
-deduplicates equivalent identities, and publishes the immutable resident graph.
-The request lane evaluates only that published graph and Rust owns the final
-graph-aware ranking and emits the first thirty candidates. The compiled Search
-Layout, rather than CLI option spelling or a flat union, determines which
-stages share an input scope and which consume a predecessor's scope.
+After retrieval fixes the candidate owners, Runtime validates or creates only
+their content-addressed parser artifacts and atomically attaches them to the
+resident semantic overlay.  This does not mint a generation, advance its epoch,
+or rewrite its durable Search artifact.  The request then builds a bounded graph
+from that exact semantic owner cut; Rust owns graph-aware ranking and emits the
+first thirty candidates.  The compiled Search Layout, rather than CLI option
+spelling or a flat union, determines which stages share an input scope and which
+consume a predecessor's scope.
 
 =(graph ...)= is this fan-in reasoning stage; it is not a fifth keyword-acquisition
 axis and it does not query an unrelated graph.  The Agent uses
 the candidate evidence returned by an earlier broad round, or relationships it
 already knows in the first round, to express a GQL/PGQL relation query.  The
-request maps the admitted candidate owners to node identities already present
-in the exact immutable generation and runs the bounded resident Rust evaluator.
-It MUST NOT rebuild a graph, call Python Graphs, invoke a provider or parser, or
-open a second Runtime service.  Python Graphs may propose and materialize graph
-facts only inside detached generation construction; publication makes those
-facts request-readable resident data before Search can observe Ready.
+request maps the admitted candidate owners to node identities in their validated
+resident semantic overlay and runs the bounded resident Rust evaluator.  The
+Graph evaluator itself MUST NOT call Python Graphs, invoke a provider or parser,
+or open a second Runtime service.  Candidate parser materialization is the
+preceding typed refinement and may cross the existing provider actor only on a
+validated artifact miss.  Request Graph construction is in-process Rust work;
+it is neither a generation-global attachment nor a durable publication.
 
 The graph language and graph storage lifetime are orthogonal.  GQL/PGQL can be
 evaluated over the generation-scoped resident candidate graph for coding search.  A persistent
@@ -754,14 +770,15 @@ source or projection kind. A query may
 consume a selector produced by search only after the Runtime Server validates
 that selector against the active immutable generation and source snapshot.
 
-Admission is server-owned and precedes provider work, but it is not part of a
-Search or Query request.  A read request performs one constant-time lookup of
-the already published immutable resident generation.  When that lookup is
-missing, failed, or stale, Runtime may submit or coalesce one detached
-single-flight generation intent and MUST immediately return one typed
-=query-not-ready= terminal.  It MUST NOT wait for admission, candidate
-discovery, provider execution, generation publication, or a watch-channel
-transition.  =Queued= and =Building= are lifecycle states, never query results
+Admission is server-owned and precedes provider work. A cache-ready read performs
+one lookup of the published immutable generation under its strict 1ms budget.
+On a missing generation, Search/Query may submit or coalesce one detached
+single-flight intent and await daemon publication under the separate absolute
+first-computation deadline. Failed generation publication is terminal and MUST
+NOT trigger a hidden resubmission. A request owns its wait, not the shared build;
+cancelling a waiter cannot revoke another request's result. This distinction
+also covers syntax-plan context needed by the first Search call.
+=Queued= and =Building= are lifecycle states, never query results
 and never successful no-match evidence. A failed, cancelled, stale, torn, or
 cross-generation admission is a typed terminal error; it cannot fall back to a
 local provider or cached source.
@@ -933,8 +950,12 @@ Before a language Search or Query reads =Ready= state, Runtime discovers the
 current workspace candidate and submits or coalesces that exact candidate at
 the server-owned admission authority.  A previously =Ready= resident whose
 candidate or policy identity differs is never read.  =Queued=, =Building=, or
-publication lag returns typed =query-not-ready= evidence; the transport does
-not wait for construction and does not retry.
+publication lag is observed through the attempt's retained terminal event.
+The first admitted caller may wait once, within its absolute first-computation
+deadline, for that same attempt to become =Ready= or terminal.  It does not
+poll, retry, submit a second attempt, or report =materializing= as a usable
+result.  A ready resident read remains governed by the independent 1ms server
+budget.
 
 Memory ownership and capability-lazy indexes are owned by
 [[file:10.05.11.09-runtime-generation-memory-authority.org][10.05.11.09 Runtime Generation Memory Authority]].
@@ -954,15 +975,16 @@ source bytes or an exact-query success.
 
 The selector chain is owned by:
 
-- [[file:10.05.11-canonical-item-query-authority.org][10.05.11 Canonical Item Query Authority]];
 - [[file:10.05.12-exact-selector-provider-generation-authority.org][10.05.12 Exact Selector Provider Generation Authority]]; and
 - [[file:10.05.17-resident-exact-query-authority.org][10.05.17 Resident Exact Query Authority]].
 
 ** Request-independent generation work
 
 Public requests submit or coalesce generation demand and observe the current
-typed phase.  They do not wait inside the transport future for construction to
-finish.  Dropping a request never detaches or silently cancels admitted work.
+typed phase.  A first-computation request may await the retained terminal event
+for the one admitted attempt; the work itself remains Runtime-owned rather
+than transport-owned.  Dropping or timing out a waiter never detaches or
+silently cancels shared admitted work.
 
 Every accepted attempt owns exactly one terminal publisher.  =Queued=,
 =Building=, =Ready=, =Failed=, and =Cancelled= are Runtime states; client
@@ -977,6 +999,107 @@ Candidate generation, source root, provider/schema identity, projection
 capability, and resident locator advance as one validated publication.  Readers
 observe either the previous complete generation or the successor complete
 generation.
+
+V1 has four internal readiness tiers even though its public wire version does
+not change:
+
+1. =ContentSnapshotReady= owns canonical paths, exact source bytes and
+   content/provider/scope identity.
+2. =SearchCoreReady= owns the immutable owner directory and complete lexical
+   candidate coverage required to run exact byte verification.  Its in-memory
+   atomic publication is the first-Search linearization point.
+3. =SemanticOwnerReady(owner, artifactKey)= owns parser selectors, callable
+   projections and Relations for one content-addressed owner.  Search grounds
+   only candidate owners; exact Query waits for only the selectors it names.
+4. =DurableReady= owns restart media.  It is required for restore admission,
+   not for reads from an already validated process-resident Search Core.
+
+The following work is forbidden before =SearchCoreReady=: full-workspace
+provider projection, full Project Topology closure, optional graph attachment,
+serialization of complete/exact/search copies, mmap reopen, execution-sidecar
+fsync, and Turso attachment.  Those are independently observable attachments.
+A failed durability attachment marks restart recovery unavailable for that
+generation but cannot revoke an already validated resident generation.
+
+Logical and physical identities are distinct.  The Runtime provider execution
+binding's =sourceIndexDigest= binds the logical source-index/import product.
+A segment or database commit digest authenticates recovery media only; it must
+not be substituted into the logical execution identity.  Parser artifact keys
+bind provider, parser, query-pack and owner-content digests.  Generation proof
+then binds that reusable artifact to current owner path, source root, scope and
+execution identity.  While providers emit path-qualified selectors, the key
+also includes canonical owner path and the digest of parser-visible auxiliary
+inputs.  Changing content, path, auxiliary inputs or parser identity rejects
+reuse; changing only the generation proof does not require reparsing the same
+bytes.
+
+Candidate materialization is cache-first.  A content-addressed hit MUST be
+validated and rebound without starting a provider process.  Only the typed
+=provider-parser-runtime-required= miss may cross the provider lifecycle
+boundary, await that single resident actor, and compute the owner once.
+Concurrent Search or Query requests coalesce by workspace generation, owner
+path and owner content digest; client cancellation removes a waiter, not the
+shared materialization.
+
+The generic ASP client and Runtime data plane depend on shared protocol,
+transport, registry and resident-index crates only.  They MUST NOT link a
+language implementation such as =asp-rust= or embed one provider server as an
+optimization.  The prohibition includes normal, build and test dependency
+graphs; provider-specific tests remain provider-owned and generic integration
+tests use protocol fixtures or an external provider binary.  Rust, Python,
+Gerbil Scheme and every later language remain separate provider servers behind
+the same transport boundary.  Provider
+process bootstrap and warm-up are lifecycle observations reported separately;
+they are not Search or Query engine time.  A first-computation receipt still
+accounts for the provider's actual candidate parse/projection work after the
+server is Ready, so excluding bootstrap cannot hide parser cost.
+
+Timing receipts use disjoint names.  =requestWallMicros= is end-to-end waiting
+and may include provider lifecycle.  =providerLifecycleWorkMicros= contains
+provider start plus readiness work only.  =runtimeEngineWorkMicros= contains
+resident/cache lookup, provider projection, validation and publication, but
+never provider start or readiness.  A receipt that exposes only an undivided
+=elapsedMicros= MUST NOT be used as Search or Query engine evidence.
+
+Query does not perform acquisition.  Each canonical selector determines its
+owner path before projection.  Generation admission builds an owner-path hash
+index and an exact-selector hash index once; a resident Query resolves through
+those indexes directly and then copies only the selected byte range or derived
+projection.  It MUST NOT enumerate workspace owners, invoke rg or Tantivy,
+walk the filesystem, or use a language-provider dependency in the client.
+When an owner is present only in the candidate semantic overlay, lookup remains
+bounded by that one owner until its selectors are promoted into the resident
+exact index.  Therefore unrelated workspace owner count is not a Query work
+term.
+
+Semantic owner publication is an in-memory compare-and-set in the workspace
+writer lane.  It retains the canonical base digest and publishes a new resident
+overlay revision; it MUST NOT call the complete-generation publisher, update the
+durable pointer, advance the canonical epoch, or serialize unrelated owners.
+The overlay is a read-through delta over the immutable generation lease: it
+MUST NOT clone canonical owner bytes or canonical Relations into overlay state.
+Only changed owners, tombstones, Relation deltas, selector deltas and semantic
+membership deltas are overlay-owned.  Canonical semantic owners remain visible
+through base read-through after any later delta, and the workspace snapshot is
+shared by reference until a path delta derives its successor.  Naming a second
+full-base in-memory copy an overlay does not satisfy this requirement.
+Restart recovery revalidates the already durable parser artifact and reattaches
+it on demand.  Therefore one candidate miss has work proportional to that
+candidate artifact, never to total workspace bytes.
+
+Graph and Project Topology are request-scoped refinements over the admitted
+candidate owner set.  A graph clause may add a bounded one-hop Relation
+neighbourhood, but it MUST NOT force parser projection for every indexed
+owner.  The request-local graph contains only endpoints admitted by that
+bounded owner cut; cross-cut Relations remain outside the evaluated frontier.
+Each subsequent Search may construct its own candidate cut, so the first
+Search cannot freeze an incomplete generation-global topology.
+
+A Search containing Tantivy waits only for the generation-bound lexical
+attachment terminal.  Graph readiness is not part of that completion signal:
+the request graph is created only after retrieval and semantic owner admission.
+Generation publication MUST NOT start a global graph build that competes with
+the lexical attachment or delays its waiter.
 
 A request's language/provider target narrows construction work, never the
 published authority.  The single-flight builder starts only that provider and
@@ -1055,7 +1178,7 @@ Typed resident dispatch removal is owned by
 | Interactive state transitions and merge | [[file:10.05-interactive-graph-first-progressive-searchloop/10.05.10-interactive-searchloop/00-overview.org][10.05.10]] |
 | Runtime task, cancellation, and terminal lifecycle | [[file:10.05.11.05-runtime-server-tokio-task-lifecycle.org][10.05.11.05]] |
 | Generation memory and lazy capability indexes | [[file:10.05.11.09-runtime-generation-memory-authority.org][10.05.11.09]] |
-| Canonical item and exact selector authority | [[file:10.05.11-canonical-item-query-authority.org][10.05.11]], [[file:10.05.12-exact-selector-provider-generation-authority.org][10.05.12]], [[file:10.05.17-resident-exact-query-authority.org][10.05.17]] |
+| Canonical item and exact selector authority | [[file:10.05.12-exact-selector-provider-generation-authority.org][10.05.12]], [[file:10.05.17-resident-exact-query-authority.org][10.05.17]] |
 | Evidence graph and route algorithms | [[file:10.05-interactive-graph-first-progressive-searchloop/10.05.20-evidence-graph-routing/00-overview.org][10.05.20 Evidence Routing]] |
 | Resident generation and incremental publication | [[file:10.05-interactive-graph-first-progressive-searchloop/10.05.20-server-resident-search-generation/00-overview.org][10.05.20 Resident Generation]] |
 | Receipts, cache keys, replay, and recovery | [[file:10.05-interactive-graph-first-progressive-searchloop/10.05.40-receipts-cache-identity/00-overview.org][10.05.40]] |
@@ -1104,6 +1227,20 @@ clarification with the existing field shape, not a second result schema.
 Correctness and the sub-millisecond Ready budget MUST hold on a cache miss;
 generation-local query memoization may accelerate exact replay but cannot be a
 latency prerequisite or freshness authority.
+
+Generation admission MUST also construct the immutable generation-bound Search
+data plane exactly once and store it with the resident =WorkspaceMemoryBackend=.
+The plane binds the validated generation digest, Merkle owner proofs, owner
+directory, resident GREP corpus, byte-coverage index, lexical source documents,
+and lazy derived-attachment cells.  Opening a resident read handle clones a
+reference to this already admitted plane.  It MUST NOT revalidate the complete
+generation, sort all owners, rebuild the Merkle tree or manifest, reconstruct
+the corpus, or allocate another workspace-sized Search plane.  Durable restore
+performs the same validation and one-time construction before publishing the
+backend.  The CPU-heavy construction runs on the bounded blocking lane, while
+the writer retains the sole publication linearization point.  Repeating any
+workspace-proportional build once per read handle is a V1 architecture defect,
+not first-computation work that may be hidden under a wider deadline.
 
 Cold lexical recall is the bounded rg-equivalent executor over resident bytes,
 not a cache or durable index authority.  File discovery executes once while
@@ -1157,22 +1294,22 @@ resource state, while published generation objects contain only immutable cold
 facts and independently completed attachment results.  Clients, query
 handlers, and provider processes cannot own or start the builder.
 
-The resident builder is a directly supervised transaction, not another generic
-thread pool or control-plane actor.  The daemon observer owns its joint terminal;
-graph and Tantivy may complete independently, but no intermediate channel may
-outlive, drop, or replace that terminal.  A Tantivy indexing transaction owns
-Tantivy's segment workers; a graph transaction owns a separate CPU permit.
-Both acquire typed daemon-wide CPU and memory permits before entering blocking
-work, so accepting many content generations cannot multiply the process worker
-count.  Queue capacity is not a resource limit and an in-flight counter is not
-a permit.
+The resident builder is a directly supervised lexical transaction, not another
+generic thread pool or control-plane actor.  The daemon observer owns its one
+Tantivy terminal; no intermediate channel may outlive, drop, or replace that
+terminal.  Tantivy owns its segment workers and acquires typed daemon-wide CPU
+and memory permits before entering blocking work, so accepting many content
+generations cannot multiply the process worker count.  Request-local Graph work
+uses the bounded Search CPU lane after candidate admission and has no
+generation-builder terminal.  Queue capacity is not a resource limit and an
+in-flight counter is not a permit.
 
-The observer MUST consume that joint =Result= exactly once.  Success publishes
-the matching resident generation; failure publishes a typed Failed state for
-the same =(ProjectId, WorkspaceId, contentGenerationDigest)= and emits its first
-root cause in the observer terminal receipt.  Ignoring the result, retaining the
-previous empty state, or leaving requests permanently at =Building= is a lost
-terminal, not backpressure or eventual consistency.
+The observer MUST consume the lexical =Result= exactly once.  Success attaches
+the matching lexical accelerator; failure publishes a typed Failed lexical
+state for the same =(ProjectId, WorkspaceId, contentGenerationDigest)= and emits
+its first root cause.  The resident Search Core remains readable in either case.
+Ignoring the result or leaving Tantivy requests permanently at =Building= is a
+lost terminal, not backpressure or eventual consistency.
 
 Execution-publication admission compares source-root digest identity, not the
 incidental text view: the canonical =blake3-256:<hex>= boundary value and the
@@ -1181,22 +1318,23 @@ The observer MUST normalize at that typed boundary; it MUST NOT weaken or remove
 the generation/source-root equality check.
 
 The builder exposes one bounded Tokio event stream plus one immutable latest-state
-snapshot of derived attachments.  =broadcast + BroadcastStream= preserves every
+snapshot of lexical attachments.  =broadcast + BroadcastStream= preserves every
 transition for live consumers and reports lag explicitly; =watch= retains the
 latest state for a late subscriber without replaying stderr or polling files.
 For each =(ProjectId, WorkspaceId, contentGenerationDigest, attachment)= key the
 stream advances through =queued -> building -> ready|failed= with a strictly
-positive process-local sequence.  =graph= and =tantivy= are separate keys and
-can become Ready in either order.  Every
+positive process-local sequence.  The generation builder emits =tantivy=;
+request-scoped Graph execution emits its own Search receipt instead of posing as
+a durable attachment.  Every
 transition is emitted by the same Runtime-owned task that owns admission and
 join; query handlers cannot manufacture attachment events, and an event for
 generation N can never make an attachment visible in generation N+1.
 
 Tokio is the lifecycle scheduler, not the indexing engine.  The daemon observer
 and resource supervisor own backpressure, cancellation, and shutdown directly;
-CPU-bound graph and Tantivy transactions cross exactly one =spawn_blocking=
-boundary after receiving permits.  Tantivy continues to own its internal
-segment workers.  ASP MUST NOT wrap the joint terminal in another mailbox task,
+CPU-bound request Graph and Tantivy transactions cross exactly one
+=spawn_blocking= boundary after receiving permits.  Tantivy continues to own
+its internal segment workers.  ASP MUST NOT wrap the lexical terminal in another mailbox task,
 wrap each segment in another Tokio task, start a per-query Runtime, or use async
 syntax to hide synchronous cold admission.
 
@@ -1227,19 +1365,20 @@ build.  A generation can consume an earlier observation, but it cannot use its
 own completion to choose a second build.  This admits non-monotonic machines
 without encoding one machine's worker or memory result as a product constant.
 
-Every derived request, receipt, and pointer carries the exact
+Every lexical request, receipt, and pointer carries the exact
 =contentGenerationDigest=.  An attachment becomes visible only if that digest
 equals the currently selected content generation under the attachment's atomic
 compare-and-set.  A late completion for generation N cannot attach to N+1, and
 opening a cold generation never waits for, reconstructs, or synchronously opens
-Tantivy or graph state.  Schema version 1 remains the contract; this is a
+Tantivy state.  Request Graph has no generation-open state.  Schema version 1 remains the contract; this is a
 hard-cut correction of publication ownership, not a parallel version.
 
-Each derived attachment consumes one shared immutable request and materializes
+The lexical attachment consumes one shared immutable request and materializes
 exactly once.  Digest derivation reads the completed immutable attachment; it
-MUST NOT materialize a graph or Tantivy index once for hashing and a second time
-for publication.  The build result, digest, Ready event, and retained resident
-object are four views of the same transaction.
+MUST NOT materialize a Tantivy index once for hashing and a second time for
+publication.  The build result, digest, Ready event, and retained resident
+object are four views of the same transaction.  Request Graph is built once
+from its bounded owner cut and is consumed directly by that request.
 
 The request declares byte, record, result, and deadline budgets.  Its receipt
 is bound to the same workspace root, provider digest, generation, and index
@@ -1323,17 +1462,19 @@ The executable large-workspace gate uses 4,096 admitted owners: the sharded
 resident inventory MUST finish below 250ms and sustain at least 20,000 owners
 per second with zero child processes.  The request-bound resident rg-compatible
 lane MUST preserve the admitted native rg argv semantics without filesystem
-access, child processes, Tokio task creation, or Tantivy builds.  On the
+access, child processes, per-owner Tokio task creation, or Tantivy builds.
+The synchronous kernel runs inside one Runtime-owned bounded blocking lane;
+that scheduler task is not forbidden by the kernel's no-task contract. On the
 4,096-owner corpus its first lookup and repeated lookup MUST each complete
 below 1ms.  A compiled-pattern or result cache may improve repeated reads, but
 a cache miss may not escape the same request-plane gate or become a second
 publication authority.
-The stable V1 resident adapter admits an rg pattern only when it can derive an
-exact case-sensitive byte-coverage key before evaluation.  Fixed literals and
-alternations of literal symbol terms use the generation's immutable trigram
-postings and verify matches against the same resident owner bytes.  An option,
-pattern file, case-folded pattern, or general regular expression whose complete
-semantics are not represented by that resident plan fails typed as
+The stable V1 resident adapter uses conservative HIR-derived mandatory trigrams
+when available, then verifies matches against the same resident owner bytes.
+Plans without sound mandatory trigrams require the complete fused Tantivy scope
+described below; candidate extraction never claims to be the exact matcher.
+An option, pattern file, or regular expression whose exact semantics are not
+represented by the resident matcher fails typed as
 =resident-rg-*-not-materialized=; it MUST NOT fall back to a temporary tree,
 spawn =rg=, or scan every corpus owner.  Output-shaping argv remains evidence,
 not permission to recreate native process execution on the request plane.
@@ -1349,6 +1490,14 @@ posting counts are bounded by encoded byte length and owner cardinality before
 allocation. The GREP conjunction retains the smallest posting and intersects
 later postings in place while decoding their required prefixes. This does not
 imply constant-time membership or a measured wall-clock speedup.
+The in-process exact matcher preserves ordered case-flag overrides and
+line-oriented matching unless multiline mode is explicitly admitted. Repeated
+matches on one line produce one grounding anchor. The match budget bounds
+grounding anchors as well as owners; overflow remains explicit truncation.
+Positive trigram candidates intersect the complete Tantivy scope before exact
+byte verification. This is a predicate-intersection refinement within the same
+generation, not a truncation or a reinterpretation of the Scheme composition.
+Unsupported exclusion-glob semantics fail explicitly pending qualification.
 Owner-byte acquisition uses a bounded set of blocking shards derived from the
 Host's available parallelism.  Canonically adjacent paths are distributed
 round-robin rather than in contiguous chunks, because directory ordering
@@ -1356,12 +1505,13 @@ otherwise clusters large owners on one worker and turns cold latency into the
 slowest-directory latency.  Results retain their original inventory index and
 are sorted before hashing, so scheduling never changes generation identity.
 
-Once source admission fixes their common immutable identity, each derived CPU
+Once source admission fixes the common immutable identity, the lexical CPU
 stage executes as an independently admitted node in the resident builder DAG,
-outside Tokio worker threads.  Every node joins before publishing its own
-attachment; cold content publication does not join either derived node.  Thus
-cold wall time contains no Tantivy or graph build, without turning the stages
-into request-time commands, RPCs, or publication authorities:
+outside Tokio worker threads.  It joins before publishing its own attachment;
+cold content publication does not join it.  Graph and Project Topology are
+bounded request refinements after candidate parser admission.  Thus cold wall
+time contains neither Tantivy nor Graph work, while only the requested
+candidate cut pays semantic refinement cost:
 
 #+begin_src text
 complete content-generation admission
@@ -1369,17 +1519,12 @@ complete content-generation admission
   -> content/Merkle identity
   -> atomic cold-generation publication
 
-Independent Rust resident-graph transaction
-  -> lease exact complete content generation
-  -> derive graph from the generation's admitted native-syntax relations
-  -> validate exact content-generation identity
-  -> atomic graph capability pointer publication
-
 Cold Search/Query while lexical accelerator is building
   -> lease exact complete content generation
   -> rg query over only the admitted fd inventory
-  -> content-digest and generation-native-syntax verification
-  -> Rust resident graph rank -> exactly one typed terminal
+  -> candidate parser-artifact validation or bounded provider miss
+  -> atomic resident semantic overlay commit
+  -> optional request-local Rust graph rank -> exactly one typed terminal
 
 Runtime-owned lexical accelerator transaction
   -> submit exact generation to the ASP Server resident builder
@@ -1390,11 +1535,13 @@ Runtime-owned lexical accelerator transaction
 
 Tantivy-ready Search/Query
   -> lease exact complete content generation + accelerator
-  -> mmap/open Tantivy + Rust graph + byte-evidence plan
+  -> mmap/open Tantivy + byte-evidence plan
+  -> candidate semantic overlay + optional request-local Rust graph
   -> deterministic merge -> exactly one typed terminal
 #+end_src
 
-The native-syntax playbook consumes the complete provider parser projection:
+The native-syntax playbook consumes the complete projection for every owner in
+the request's admitted candidate cut:
 owner identity, canonical structural selectors, byte ranges, query keys,
 derived projections, module facts, and relations.  It is the semantic core of
 the playbook, not a provider-local lookup or compatibility alias.
@@ -1402,14 +1549,33 @@ Every selector has a proper non-empty byte range and at least one normalized
 query key; every relation is bound to an owner in the same content-proven
 projection.  Duplicate owners, selectors, or relations make the candidate
 incomplete and therefore unpublishable.
-Provider projection is generation construction, never request dispatch.
-Runtime invokes the provider only from the detached single-writer generation
-lane and commits the complete parser projection before resident publication.
-A provider parses each owner once and callable skeletons reuse that owner AST;
+Provider projection is a Runtime-owned candidate materialization, never
+transport-local request logic.  Runtime first validates the content-addressed
+artifact without starting a provider.  Only a typed miss crosses the existing
+provider actor.  Runtime groups all still-missing owners by provider, acquires
+their single-flight claims in canonical owner order, and submits one logical
+candidate batch per provider.  The provider projection layer may split that
+logical batch only by its existing byte/count budget; it MUST NOT restore one
+RPC or one provider-lifecycle check per owner.  All projected owners in the
+request are identity-checked before the workspace writer commits one atomic
+resident overlay revision without rewriting the canonical generation.  A
+provider parses each selected owner once and callable skeletons reuse that AST;
 a second parse per callable is not an admissible implementation.  Provider
 decode, parse, proof projection, and response encoding have generation
-throughput receipts, but no provider frame deadline is permitted to weaken or
-redefine the sub-millisecond cold/warm ASP Server request gate.
+throughput receipts, but no provider frame deadline is permitted to weaken the
+sub-millisecond resident-read gate or conceal separately measured first-compute
+work.
+The complete owner projection is an internal admission artifact, not the
+default Search result.  The resident GREP executor retains exact owner/line
+grounding for parser mapping independently of rg output-format flags.  When an
+argv form does not request line rendering, Runtime still retains one exact
+matching line per owner for this private grounding step.  Automatic Search
+projection maps each retained line to the smallest parser-owned enclosing
+selector and emits only that bounded selector evidence.  It MUST NOT treat an
+exact owner hit without externally rendered line attribution as permission to
+emit every selector in that owner.  Detailed callable, descendant, and
+Relation projection remains an explicit Query operation.  This changes no V1
+request or result field.
 Parser availability is accounted per owner.  A selected owner contributes
 either the complete projection above or one typed
 =source-syntax-unavailable= diagnostic bound to its exact owner path and
@@ -1420,12 +1586,13 @@ or resident/Python graph results.  Missing both alternatives remains an
 unpublishable gap, and the native-syntax stage digest commits the canonical
 projection and diagnostic collections together.
 
-In a published generation, an admitted rg or lexical owner with zero parser
-selectors is the diagnosed alternative, not a pipeline failure.  Runtime MUST emit the
-owner-bound =source-syntax-unavailable= evidence and continue the fixed stage
-order.  It MUST NOT convert that condition into
+In a materialized candidate cut, an admitted rg or lexical owner with zero
+parser selectors is either a valid typed empty projection or the diagnosed
+alternative, never an implicit pipeline state.  Runtime MUST retain that
+distinction, emit owner-bound =source-syntax-unavailable= evidence only for the
+diagnosed case, and continue the fixed stage order.  It MUST NOT convert either condition into
 =client-method-dispatch-failed=, skip Tantivy, or suppress an independently
-admitted Rust/Python graph result.  Only an identity mismatch, an owner absent
+admitted Rust graph result.  Only an identity mismatch, an owner absent
 from the admitted generation, or malformed parser evidence aborts the request.
 This distinction is part of v1; it is not a compatibility fallback.
 The agent-facing receipt projects those facts as bounded
@@ -1544,37 +1711,41 @@ does not own lexical ranking semantics.  Mutation successors use the same
 Tantivy field/token/scoring contract after complete-generation publication;
 there is no overlay lexical authority.
 
-The content receipts form one ordered refinement. Native syntax is committed
-with source bytes at that refinement boundary; accelerator and graph receipts
-are independent transactions over the same admitted identity:
+The content receipts form one ordered refinement.  Source bytes and minimal
+recall indexes establish Search Core; native syntax is attached per candidate.
+The lexical accelerator is a generation transaction, while Graph is a request
+projection over the exact candidate overlay:
 
 #+begin_example
 content-proven source-byte acquisition and complete byte membership
-  -> provider-native syntax playbook and canonical parser facts
-  -> Rust validation, canonicalization, and atomic content publication
+  -> minimal native Rust recall structures
+  -> atomic SearchCoreReady publication
 
 exact content-generation identity
   -> independent Tantivy accelerator publication
-  -> independent Rust resident-graph publication
-       (optionally constructed from a validated detached Python worker result)
+
+fused candidate owner identity
+  -> content-addressed provider parser artifact
+  -> atomic resident semantic overlay revision
+  -> request-local Rust Graph and Project Topology
 #+end_example
 
 The output owner set of each stage is a subset of the preceding admitted
 candidate set.  A later stage may reorder, annotate, or expand relations among
 admitted identities, but it cannot mint an owner, selector, source byte, or
-generation identity.  Content publication requires only acquisition and native
-syntax to have joined with one exact identity.  Derived workers may finish
-later, but attach only after their complete receipt validates against that
-published identity.  Reversing the content stages, replaying from a different
-generation, exposing a partial derived artifact, or attaching stale work is
-fail-closed.
+generation identity.  Content publication requires only acquisition and
+minimal recall structures to have joined with one exact identity.  Lexical
+acceleration may finish later; candidate semantic products attach only after
+their content identity validates against that published base.  Replaying from
+a different generation, exposing a partial parser artifact, or attaching stale
+work is fail-closed.
 
-The resident attachment snapshot has exactly one slot per
+The resident lexical attachment snapshot has exactly one slot per
 =(ProjectId, WorkspaceId, attachmentKind)=.  Content digest proves what was
 built; a nonzero Runtime generation token proves ordering.  Publishing a newer
 =queued= event replaces that slot, while every later event with an older token
 is discarded before both the =watch= snapshot and =broadcast= stream.  Thus a
-slow Graph or Tantivy build for generation N cannot roll back generation N+1,
+slow Tantivy build for generation N cannot roll back generation N+1,
 and snapshot memory is bounded by active workspaces rather than generation
 history.
 

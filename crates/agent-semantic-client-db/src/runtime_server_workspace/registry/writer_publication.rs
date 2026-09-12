@@ -122,6 +122,49 @@ pub(super) async fn publish_owner_delta_command(
     committed.map(|receipt| (scope_key, receipt))
 }
 
+#[derive(Debug)]
+pub(super) struct PublishResidentOwnerDeltaCommand {
+    pub(super) target: super::core::WorkspaceWriteTarget,
+    pub(super) workspace_identity: String,
+    pub(super) delta: crate::runtime_server_workspace::WorkspaceGenerationDelta,
+    pub(super) reply: tokio::sync::oneshot::Sender<Result<String, String>>,
+}
+
+/// Commit a semantic owner delta to the resident read model only.
+///
+/// Parser artifacts are already persisted under their content identity before
+/// this command is admitted. Re-encoding the entire workspace generation here
+/// would turn one candidate parser miss into an O(workspace bytes) Search
+/// barrier, so restart recovery deliberately rehydrates this overlay from the
+/// parser artifact store instead.
+pub(super) async fn publish_resident_owner_delta_command(
+    command: PublishResidentOwnerDeltaCommand,
+) {
+    let PublishResidentOwnerDeltaCommand {
+        target,
+        workspace_identity,
+        delta,
+        reply,
+    } = command;
+    let result = (|| {
+        let base = current_generation(&target.current, &workspace_identity)?;
+        delta.validate()?;
+        if delta.base_generation_digest != base.generation().generation_digest {
+            return Err("workspace generation delta base generation digest mismatch".to_owned());
+        }
+        let staged = target.overlays.publish_semantic_owner_delta(
+            base.generation(),
+            delta.owners,
+            delta.tombstones,
+            delta.relations,
+        )?;
+        let resident_generation_digest = staged.generation_digest().to_owned();
+        target.overlays.commit(staged);
+        Ok(resident_generation_digest)
+    })();
+    let _ = reply.send(result);
+}
+
 pub(super) fn active_epoch(current: &watch::Sender<Option<Arc<WorkspaceMemoryBackend>>>) -> u64 {
     current
         .borrow()
@@ -152,12 +195,16 @@ pub(super) async fn publish_generation(
     let generation = Arc::new(generation);
     let prepared_index =
         WorkspaceMemoryBackend::prepare_index(&generation.owners, &generation.relations);
-    let backend = Arc::new(
+    let backend_generation = Arc::clone(&generation);
+    let backend = tokio::task::spawn_blocking(move || {
         WorkspaceMemoryBackend::from_validated_generation_with_index(
-            Arc::clone(&generation),
+            backend_generation,
             prepared_index,
-        )?,
-    );
+        )
+        .map(Arc::new)
+    })
+    .await
+    .map_err(|error| format!("workspace Search data-plane admission task failed: {error}"))??;
     publisher.publish(generation, active_epoch != 0).await?;
     counters.filesystem_writes.fetch_add(1, Ordering::Relaxed);
     current.send_replace(Some(backend));

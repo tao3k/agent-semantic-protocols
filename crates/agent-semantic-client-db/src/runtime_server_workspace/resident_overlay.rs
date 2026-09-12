@@ -4,7 +4,7 @@
 
 //! Millisecond resident owner and selector overlays behind one writer lane.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::sync::Arc;
 
 use parking_lot::RwLock;
@@ -24,10 +24,11 @@ struct ResidentOverlayState {
     base_generation_digest: String,
     generation_digest: String,
     revision: u64,
-    workspace_snapshot: agent_semantic_content_identity::WorkspaceSnapshot,
+    workspace_snapshot: Arc<agent_semantic_content_identity::WorkspaceSnapshot>,
     owners: HashMap<String, WorkspaceOwnerSnapshot>,
     relations: HashMap<String, Vec<crate::ClientDbSourceIndexOwnedRelation>>,
     tombstones: HashSet<String>,
+    semantic_owners: HashSet<String>,
     selectors:
         HashMap<(super::model::ExactProjectionKind, String), WorkspaceRuntimeSelectorOverlay>,
 }
@@ -77,13 +78,16 @@ impl ResidentOverlayStore {
         let owner_digest = owner.content_digest.clone();
         state.owners.insert(owner_path.clone(), owner);
         state.relations.insert(owner_path.clone(), Vec::new());
+        state.semantic_owners.remove(&owner_path);
         state.tombstones.remove(&owner_path);
         state
             .selectors
             .retain(|_, selector| selector.owner_path != owner_path);
-        state.workspace_snapshot = state
-            .workspace_snapshot
-            .with_overlay([(owner_path, owner_digest)]);
+        state.workspace_snapshot = Arc::new(
+            state
+                .workspace_snapshot
+                .with_overlay([(owner_path, owner_digest)]),
+        );
         state.advance();
         Ok(ResidentOverlaySnapshot { state })
     }
@@ -115,6 +119,7 @@ impl ResidentOverlayStore {
             }
             state.owners.insert(owner_path.clone(), owner);
             state.relations.insert(owner_path.clone(), Vec::new());
+            state.semantic_owners.remove(&owner_path);
             state.tombstones.remove(&owner_path);
             state
                 .selectors
@@ -134,6 +139,7 @@ impl ResidentOverlayStore {
             }
             state.tombstones.insert(owner_path.clone());
             state.relations.remove(&owner_path);
+            state.semantic_owners.remove(&owner_path);
             state
                 .selectors
                 .retain(|_, selector| selector.owner_path != owner_path);
@@ -152,11 +158,30 @@ impl ResidentOverlayStore {
                 .expect("changed owner relation bucket was initialized")
                 .push(relation);
         }
-        state.workspace_snapshot = state
-            .workspace_snapshot
-            .with_overlay_delta(changed, removed);
+        state.workspace_snapshot = Arc::new(
+            state
+                .workspace_snapshot
+                .with_overlay_delta(changed, removed),
+        );
         state.advance();
         Ok(ResidentOverlaySnapshot { state })
+    }
+
+    pub(super) fn publish_semantic_owner_delta(
+        &self,
+        base: &WorkspaceMemoryGeneration,
+        owners: Vec<WorkspaceOwnerSnapshot>,
+        tombstones: Vec<String>,
+        relations: Vec<crate::ClientDbSourceIndexOwnedRelation>,
+    ) -> Result<ResidentOverlaySnapshot, String> {
+        let materialized = owners
+            .iter()
+            .map(|owner| owner.owner_path.clone())
+            .collect::<Vec<_>>();
+        let mut staged = self.publish_owner_delta(base, owners, tombstones, relations)?;
+        staged.state.semantic_owners.extend(materialized);
+        staged.state.advance();
+        Ok(staged)
     }
 
     pub(super) fn tombstone_owner(
@@ -170,13 +195,14 @@ impl ResidentOverlayStore {
         }
         state.tombstones.insert(owner_path.to_owned());
         state.relations.remove(owner_path);
+        state.semantic_owners.remove(owner_path);
         state
             .selectors
             .retain(|_, selector| selector.owner_path != owner_path);
-        state.workspace_snapshot = state.workspace_snapshot.with_overlay_delta(
+        state.workspace_snapshot = Arc::new(state.workspace_snapshot.with_overlay_delta(
             std::iter::empty::<(String, String)>(),
             [owner_path.to_owned()],
-        );
+        ));
         state.advance();
         Ok(ResidentOverlaySnapshot { state })
     }
@@ -198,17 +224,19 @@ impl ResidentOverlayStore {
             return Err("runtime owner relocation source is unavailable".to_owned());
         }
         state.tombstones.insert(previous_owner_path.to_owned());
+        state.semantic_owners.remove(previous_owner_path);
         state
             .selectors
             .retain(|_, selector| selector.owner_path != previous_owner_path);
         let owner_path = owner.owner_path.clone();
         let owner_digest = owner.content_digest.clone();
         state.owners.insert(owner_path.clone(), owner);
+        state.semantic_owners.remove(&owner_path);
         state.tombstones.remove(&owner_path);
-        state.workspace_snapshot = state.workspace_snapshot.with_overlay_delta(
+        state.workspace_snapshot = Arc::new(state.workspace_snapshot.with_overlay_delta(
             [(owner_path, owner_digest)],
             [previous_owner_path.to_owned()],
-        );
+        ));
         state.advance();
         Ok(ResidentOverlaySnapshot { state })
     }
@@ -295,13 +323,16 @@ impl ResidentOverlayStore {
         let owner_path = owner.owner_path.clone();
         let owner_digest = owner.content_digest.clone();
         state.owners.insert(owner_path.clone(), owner.clone());
+        state.semantic_owners.insert(owner_path.clone());
         state.tombstones.remove(&owner_path);
         state
             .selectors
             .retain(|_, selector| selector.owner_path != owner_path);
-        state.workspace_snapshot = state
-            .workspace_snapshot
-            .with_overlay([(owner_path, owner_digest)]);
+        state.workspace_snapshot = Arc::new(
+            state
+                .workspace_snapshot
+                .with_overlay([(owner_path, owner_digest)]),
+        );
         validate_selector_overlay(&owner, &base.projection_capability, &overlay)?;
         let key = (
             overlay.projection_kind.clone(),
@@ -350,6 +381,131 @@ impl ResidentOverlaySnapshot {
         &self.state.generation_digest
     }
 
+    pub(super) fn semantic_owner_materialized(
+        &self,
+        base: &super::WorkspaceMemoryBackend,
+        owner_path: &str,
+    ) -> bool {
+        if self.state.tombstones.contains(owner_path) {
+            return false;
+        }
+        if self.state.owners.contains_key(owner_path) {
+            return self.state.semantic_owners.contains(owner_path);
+        }
+        base.owner_snapshot(owner_path)
+            .is_some_and(base_owner_is_semantic)
+    }
+
+    pub(super) fn topology_source_segments(
+        &self,
+        base: &WorkspaceMemoryGeneration,
+    ) -> Vec<super::WorkspaceTopologySourceSegment> {
+        let mut owner_paths = base
+            .owners
+            .iter()
+            .map(|owner| owner.owner_path.clone())
+            .chain(self.state.owners.keys().cloned())
+            .collect::<BTreeSet<_>>();
+        owner_paths.retain(|owner| !self.state.tombstones.contains(owner));
+        owner_paths
+            .into_iter()
+            .filter_map(|owner_path| {
+                let owner = self.owner_snapshot(base, &owner_path)?;
+                Some(super::WorkspaceTopologySourceSegment {
+                    relations: self.owner_relations(base, &owner_path),
+                    selectors: owner
+                        .selectors
+                        .iter()
+                        .map(|selector| selector.selector.clone())
+                        .collect(),
+                    owner_path: owner.owner_path,
+                    content_digest: owner.content_digest,
+                    authority: owner.authority,
+                })
+            })
+            .collect()
+    }
+
+    pub(super) fn native_syntax_playbook_projection(
+        &self,
+        base: &WorkspaceMemoryGeneration,
+        owner_paths: &[String],
+    ) -> Result<
+        (
+            Vec<agent_semantic_search::NativeSyntaxProjection>,
+            Vec<agent_semantic_search::NativeSyntaxRelation>,
+            Vec<agent_semantic_search::NativeSyntaxDiagnostic>,
+        ),
+        String,
+    > {
+        let admitted = owner_paths
+            .iter()
+            .map(String::as_str)
+            .collect::<BTreeSet<_>>();
+        let mut projections = Vec::with_capacity(admitted.len());
+        let mut diagnostics = Vec::new();
+        let mut relations = Vec::new();
+        for owner_path in admitted {
+            let owner = self
+                .owner_snapshot(base, owner_path)
+                .ok_or_else(|| "native syntax playbook owner is absent".to_owned())?;
+            if let Some(diagnostic) = owner.native_syntax_diagnostic {
+                diagnostics.push(diagnostic);
+                continue;
+            }
+            if owner.selectors.is_empty() && !self.state.semantic_owners.contains(owner_path) {
+                diagnostics.push(agent_semantic_search::NativeSyntaxDiagnostic {
+                    owner_path: owner.owner_path,
+                    content_digest: owner.content_digest,
+                    reason_kind: "source-syntax-unavailable".to_owned(),
+                    message: "the admitted owner has no parser-owned selectors".to_owned(),
+                });
+                continue;
+            }
+            let selectors = owner
+                .selectors
+                .iter()
+                .map(|selector| {
+                    let encoded =
+                        serde_json::to_vec(&selector.derived_projections).map_err(|error| {
+                            format!("encode resident native syntax projections: {error}")
+                        })?;
+                    Ok(agent_semantic_search::NativeSyntaxSelector {
+                        selector: selector.selector.clone(),
+                        byte_start: selector.byte_start,
+                        byte_end: selector.byte_end,
+                        query_keys: selector.query_keys.clone(),
+                        derived_projection_digest: format!(
+                            "blake3-256:{}",
+                            blake3::hash(&encoded).to_hex()
+                        ),
+                    })
+                })
+                .collect::<Result<Vec<_>, String>>()?;
+            for relation in self.owner_relations(base, owner_path) {
+                let encoded = serde_json::to_vec(&relation.relation)
+                    .map_err(|error| format!("encode resident native syntax relation: {error}"))?;
+                relations.push(agent_semantic_search::NativeSyntaxRelation {
+                    owner_path: owner_path.to_owned(),
+                    relation_digest: format!("blake3-256:{}", blake3::hash(&encoded).to_hex()),
+                });
+            }
+            projections.push(agent_semantic_search::NativeSyntaxProjection {
+                owner_path: owner.owner_path,
+                content_digest: owner.content_digest,
+                selectors,
+            });
+        }
+        projections.sort_by(|left, right| left.owner_path.cmp(&right.owner_path));
+        diagnostics.sort_by(|left, right| left.owner_path.cmp(&right.owner_path));
+        relations.sort_by(|left, right| {
+            left.owner_path
+                .cmp(&right.owner_path)
+                .then_with(|| left.relation_digest.cmp(&right.relation_digest))
+        });
+        Ok((projections, relations, diagnostics))
+    }
+
     pub(super) fn owner_bytes(
         &self,
         base: &WorkspaceMemoryGeneration,
@@ -374,9 +530,45 @@ impl ResidentOverlaySnapshot {
             .or_else(|| base_owner(base, owner_path).cloned())
     }
 
-    pub(super) fn read_selector(
+    pub(super) fn owner_snapshot_indexed(
+        &self,
+        base: &super::WorkspaceMemoryBackend,
+        owner_path: &str,
+    ) -> Option<WorkspaceOwnerSnapshot> {
+        if self.state.tombstones.contains(owner_path) {
+            return None;
+        }
+        self.state
+            .owners
+            .get(owner_path)
+            .cloned()
+            .or_else(|| base.owner_snapshot(owner_path).cloned())
+    }
+
+    fn owner_relations(
         &self,
         base: &WorkspaceMemoryGeneration,
+        owner_path: &str,
+    ) -> Vec<crate::ClientDbSourceIndexOwnedRelation> {
+        if self.state.tombstones.contains(owner_path) {
+            return Vec::new();
+        }
+        if let Some(relations) = self.state.relations.get(owner_path) {
+            return relations.clone();
+        }
+        if self.state.owners.contains_key(owner_path) {
+            return Vec::new();
+        }
+        base.relations
+            .iter()
+            .filter(|relation| relation.owner_path.as_str() == owner_path)
+            .cloned()
+            .collect()
+    }
+
+    pub(super) fn read_selector(
+        &self,
+        base: &super::WorkspaceMemoryBackend,
         projection_kind: super::model::ExactProjectionKind,
         structural_selector: &str,
     ) -> Result<WorkspaceRuntimeSelectorRead, String> {
@@ -408,7 +600,7 @@ impl ResidentOverlaySnapshot {
                 structural_selector,
             );
         }
-        read_base_selector_with_identity(
+        read_indexed_base_selector_with_identity(
             base,
             &self.state.generation_digest,
             self.state.workspace_snapshot.root_digest(),
@@ -424,13 +616,15 @@ impl ResidentOverlayState {
             base_generation_digest: String::new(),
             generation_digest: String::new(),
             revision: 0,
-            workspace_snapshot:
+            workspace_snapshot: Arc::new(
                 agent_semantic_content_identity::WorkspaceSnapshot::from_file_hashes(
                     std::iter::empty::<(String, String)>(),
                 ),
+            ),
             owners: HashMap::new(),
             relations: HashMap::new(),
             tombstones: HashSet::new(),
+            semantic_owners: HashSet::new(),
             selectors: HashMap::new(),
         }
     }
@@ -440,24 +634,15 @@ impl ResidentOverlayState {
             base_generation_digest: generation.generation_digest.clone(),
             generation_digest: generation.generation_digest.clone(),
             revision: 0,
-            workspace_snapshot: generation.workspace_snapshot.clone(),
-            owners: generation
-                .owners
-                .iter()
-                .cloned()
-                .map(|owner| (owner.owner_path.clone(), owner))
-                .collect(),
-            relations: generation.relations.iter().cloned().fold(
-                HashMap::<String, Vec<crate::ClientDbSourceIndexOwnedRelation>>::new(),
-                |mut relations, relation| {
-                    relations
-                        .entry(relation.owner_path.as_str().to_owned())
-                        .or_default()
-                        .push(relation);
-                    relations
-                },
-            ),
+            // The canonical generation is already immutable and reachable
+            // through the lease. Keeping a second copy here turns the first
+            // candidate parser delta into O(workspace source bytes). This
+            // state owns only changed owners; reads fall through to `base`.
+            workspace_snapshot: Arc::new(generation.workspace_snapshot.clone()),
+            owners: HashMap::new(),
+            relations: HashMap::new(),
             tombstones: HashSet::new(),
+            semantic_owners: HashSet::new(),
             selectors: HashMap::new(),
         }
     }
@@ -483,6 +668,12 @@ impl ResidentOverlayState {
             hasher.update(path.as_bytes());
             hasher.update(b"\0removed");
         }
+        let mut semantic_owners = self.semantic_owners.iter().collect::<Vec<_>>();
+        semantic_owners.sort_unstable();
+        for path in semantic_owners {
+            hasher.update(path.as_bytes());
+            hasher.update(b"\0semantic");
+        }
         self.generation_digest = format!("blake3-256:{}", hasher.finalize().to_hex());
     }
 }
@@ -500,6 +691,10 @@ fn base_owner<'a>(
     base.owners
         .iter()
         .find(|owner| owner.owner_path == owner_path)
+}
+
+fn base_owner_is_semantic(owner: &WorkspaceOwnerSnapshot) -> bool {
+    !owner.selectors.is_empty() || owner.native_syntax_diagnostic.is_some()
 }
 
 fn validate_owner(owner: &WorkspaceOwnerSnapshot) -> Result<(), String> {
@@ -570,16 +765,26 @@ fn validate_selector_overlay(
     Ok(())
 }
 
-fn read_base_selector_with_identity(
-    base: &WorkspaceMemoryGeneration,
+fn read_indexed_base_selector_with_identity(
+    base: &super::WorkspaceMemoryBackend,
     generation_digest: &str,
     root_digest: &str,
     projection_kind: super::model::ExactProjectionKind,
     structural_selector: &str,
 ) -> Result<WorkspaceRuntimeSelectorRead, String> {
+    if let Some((owner, selector)) = base.selector_snapshot(structural_selector) {
+        return read_resolved_selector(
+            owner,
+            selector,
+            generation_digest,
+            root_digest,
+            projection_kind,
+            structural_selector,
+        );
+    }
     let owner_path = selector_owner_path(structural_selector)?;
-    if let Some(owner) = base_owner(base, &owner_path) {
-        return read_owner_selector(
+    if let Some(owner) = base.owner_snapshot(&owner_path) {
+        return read_owner_without_resolved_selector(
             owner,
             generation_digest,
             root_digest,
@@ -605,32 +810,73 @@ fn read_owner_selector(
         .iter()
         .find(|selector| selector.selector == structural_selector)
     {
-        if projection_kind == super::model::ExactProjectionKind::Source {
-            let bytes = owner
-                .bytes
-                .get(selector.byte_start..selector.byte_end)
-                .ok_or_else(|| "resident selector range is invalid".to_owned())?
-                .to_vec();
-            return Ok(WorkspaceRuntimeSelectorRead::Projection {
-                generation_digest: generation_digest.to_owned(),
-                root_digest: root_digest.to_owned(),
-                resolved_selector: structural_selector.to_owned(),
-                bytes,
-            });
-        }
-        if let Some(derived) = selector
-            .derived_projections
-            .iter()
-            .find(|derived| derived.projection_kind == projection_kind)
-        {
-            return Ok(WorkspaceRuntimeSelectorRead::Projection {
-                generation_digest: generation_digest.to_owned(),
-                root_digest: root_digest.to_owned(),
-                resolved_selector: structural_selector.to_owned(),
-                bytes: derived.bytes.clone(),
-            });
-        }
+        return read_resolved_selector(
+            owner,
+            selector,
+            generation_digest,
+            root_digest,
+            projection_kind,
+            structural_selector,
+        );
     }
+    read_owner_without_resolved_selector(
+        owner,
+        generation_digest,
+        root_digest,
+        projection_kind,
+        structural_selector,
+    )
+}
+
+fn read_resolved_selector(
+    owner: &WorkspaceOwnerSnapshot,
+    selector: &super::WorkspaceSelectorSnapshot,
+    generation_digest: &str,
+    root_digest: &str,
+    projection_kind: super::model::ExactProjectionKind,
+    structural_selector: &str,
+) -> Result<WorkspaceRuntimeSelectorRead, String> {
+    if projection_kind == super::model::ExactProjectionKind::Source {
+        let bytes = owner
+            .bytes
+            .get(selector.byte_start..selector.byte_end)
+            .ok_or_else(|| "resident selector range is invalid".to_owned())?
+            .to_vec();
+        return Ok(WorkspaceRuntimeSelectorRead::Projection {
+            generation_digest: generation_digest.to_owned(),
+            root_digest: root_digest.to_owned(),
+            resolved_selector: structural_selector.to_owned(),
+            bytes,
+        });
+    }
+    if let Some(derived) = selector
+        .derived_projections
+        .iter()
+        .find(|derived| derived.projection_kind == projection_kind)
+    {
+        return Ok(WorkspaceRuntimeSelectorRead::Projection {
+            generation_digest: generation_digest.to_owned(),
+            root_digest: root_digest.to_owned(),
+            resolved_selector: structural_selector.to_owned(),
+            bytes: derived.bytes.clone(),
+        });
+    }
+    read_owner_without_resolved_selector(
+        owner,
+        generation_digest,
+        root_digest,
+        projection_kind,
+        structural_selector,
+    )
+}
+
+fn read_owner_without_resolved_selector(
+    owner: &WorkspaceOwnerSnapshot,
+    generation_digest: &str,
+    root_digest: &str,
+    projection_kind: super::model::ExactProjectionKind,
+    _structural_selector: &str,
+) -> Result<WorkspaceRuntimeSelectorRead, String> {
     // Source is an owner-level projection when this admitted owner has no
     // parser selectors.  Derived projections still fail closed below: they
     // need parser materialization rather than raw source bytes.

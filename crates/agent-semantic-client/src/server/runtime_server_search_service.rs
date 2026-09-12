@@ -379,11 +379,13 @@ pub(super) async fn serve_runtime_search_requests(
                     let _ = response.send(result);
                 });
             }
-            RuntimeSearchServiceRequest::ProviderOwner {
+            RuntimeSearchServiceRequest::ProviderOwners {
                 workspace_identity,
                 project_root,
+                parser_artifact_root,
                 language_id,
-                owner_path,
+                owners,
+                auxiliary_owners,
                 response,
             } => {
                 let result = (|| {
@@ -392,66 +394,44 @@ pub(super) async fn serve_runtime_search_requests(
                         &language_id,
                         &provider_register,
                     )?;
-                    let runtime = runtimes.get(&launch.key).ok_or_else(|| {
-                        format!(
-                            "asp-client-server-not-ready: state=absent languageId={language_id}"
-                        )
-                    })?;
-                    match runtime.authority.client().current() {
-                        agent_semantic_provider_transport::ProviderRuntimeActorState::Ready(
-                            receipt,
-                        ) if receipt == runtime.expected_receipt => {}
-                        agent_semantic_provider_transport::ProviderRuntimeActorState::Ready(_) => {
-                            return Err(format!(
-                                "provider-runtime-contract-drift: languageId={language_id}"
-                            ));
-                        }
-                        agent_semantic_provider_transport::ProviderRuntimeActorState::Starting => {
-                            return Err(format!(
-                                "asp-client-server-not-ready: state=starting languageId={language_id}"
-                            ));
-                        }
-                        agent_semantic_provider_transport::ProviderRuntimeActorState::Warming => {
-                            return Err(format!(
-                                "asp-client-server-not-ready: state=warming languageId={language_id}"
-                            ));
-                        }
-                        agent_semantic_provider_transport::ProviderRuntimeActorState::Draining => {
-                            return Err(format!(
-                                "asp-client-server-not-ready: state=draining languageId={language_id}"
-                            ));
-                        }
-                        agent_semantic_provider_transport::ProviderRuntimeActorState::Failed(
-                            reason,
-                        ) => {
-                            return Err(format!(
-                                "asp-client-server-not-ready: state=failed languageId={language_id} reason={reason}"
-                            ));
-                        }
-                        agent_semantic_provider_transport::ProviderRuntimeActorState::Stopped => {
-                            return Err(format!(
-                                "asp-client-server-not-ready: state=stopped languageId={language_id}"
-                            ));
-                        }
-                    }
+                    let runtime = match runtimes.get(&launch.key) {
+                        None => None,
+                        Some(runtime) => match runtime.authority.client().current() {
+                            agent_semantic_provider_transport::ProviderRuntimeActorState::Ready(
+                                receipt,
+                            ) if receipt == runtime.expected_receipt => {
+                                Some(runtime.authority.client())
+                            }
+                            agent_semantic_provider_transport::ProviderRuntimeActorState::Ready(
+                                _,
+                            ) => {
+                                return Err(format!(
+                                    "provider-runtime-contract-drift: languageId={language_id}"
+                                ));
+                            }
+                            _ => None,
+                        },
+                    };
                     let (registry, _) = crate::command::active_provider_projection::
                         runtime_source_index_provider_projection(
                             &runtime_active_provider_projection,
                             &provider_register,
                             &std::collections::BTreeSet::from([language_id.clone()]),
                         )?;
-                    Ok((runtime.authority.client(), registry))
+                    Ok((runtime, registry))
                 })();
                 tasks.spawn(async move {
                     let result = match result {
                         Ok((runtime, registry)) => {
                             agent_semantic_client_db::server_source_index::
-                                prepare_runtime_server_owner_projection_with_resident_runtime_async(
+                                prepare_runtime_server_resident_owner_projections_async(
                                     runtime,
                                     project_root,
                                     workspace_identity,
-                                    owner_path,
+                                    owners,
+                                    auxiliary_owners,
                                     registry,
+                                    parser_artifact_root,
                                 )
                                 .await
                         }

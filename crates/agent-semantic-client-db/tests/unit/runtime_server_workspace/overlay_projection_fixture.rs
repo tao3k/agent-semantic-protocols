@@ -100,6 +100,7 @@ pub(super) fn generation_with_owners(
             module_graph_digest,
             runtime_provider_execution_binding: Some(runtime_provider_execution_binding),
             project_resolutions: Vec::new(),
+            auxiliary_owners: Vec::new(),
             owners,
         },
     )

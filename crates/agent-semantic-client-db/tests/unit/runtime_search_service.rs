@@ -74,24 +74,59 @@ async fn provider_search_receipt_exposes_runtime_timing_and_zero_external_work()
 }
 
 #[tokio::test]
-async fn provider_owner_request_without_an_actor_response_returns_when_receiver_closes() {
-    let (handle, receiver) = super::runtime_search_service_channel();
-    drop(receiver);
+async fn provider_owner_batch_preserves_one_request_and_one_response_boundary() {
+    let (handle, mut requests) = super::runtime_search_service_channel();
+    let actor = tokio::spawn(async move {
+        let request = tokio_stream::StreamExt::next(&mut requests)
+            .await
+            .expect("owner batch request");
+        let super::RuntimeSearchServiceRequest::ProviderOwners {
+            workspace_identity,
+            language_id,
+            owners,
+            auxiliary_owners,
+            response,
+            ..
+        } = request
+        else {
+            panic!("expected one provider owner batch request");
+        };
+        assert_eq!(workspace_identity, "workspace-test");
+        assert_eq!(language_id, "rust");
+        assert_eq!(
+            owners
+                .iter()
+                .map(|owner| owner.owner_path.as_str())
+                .collect::<Vec<_>>(),
+            ["src/a.rs", "src/b.rs"]
+        );
+        assert!(auxiliary_owners.is_empty());
+        response.send(Ok(Vec::new())).expect("batch response");
+    });
 
-    let result = handle
-        .provider_owner(
+    let projected = handle
+        .provider_owners(
             "workspace-test".to_owned(),
             std::path::PathBuf::from("/workspace"),
+            std::path::PathBuf::from("/artifacts"),
             "rust".to_owned(),
-            "src/lib.rs".to_owned(),
+            ["src/a.rs", "src/b.rs"]
+                .into_iter()
+                .map(
+                    |owner_path| crate::runtime_server_workspace::WorkspaceOwnerSnapshot {
+                        owner_path: owner_path.to_owned(),
+                        authority: None,
+                        content_digest: format!("blake3-256:{}", blake3::hash(b"source").to_hex()),
+                        native_syntax_diagnostic: None,
+                        bytes: b"source".to_vec(),
+                        selectors: Vec::new(),
+                    },
+                )
+                .collect(),
+            Vec::new(),
         )
-        .await;
-    let error = match result {
-        Ok(_) => panic!("missing actor response must not leave provider-owner pending"),
-        Err(error) => error,
-    };
-    assert_eq!(
-        error,
-        "Runtime search service is not accepting owner requests"
-    );
+        .await
+        .expect("owner batch response");
+    assert!(projected.is_empty());
+    actor.await.expect("owner batch actor");
 }

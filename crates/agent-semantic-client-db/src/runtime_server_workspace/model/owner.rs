@@ -43,6 +43,15 @@ pub struct WorkspaceOwnerSnapshot {
     pub selectors: Vec<WorkspaceSelectorSnapshot>,
 }
 
+/// Immutable generation-bound parser input that is not a searchable owner.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceAuxiliaryOwnerSnapshot {
+    pub owner_path: String,
+    pub content_digest: String,
+    pub bytes: Vec<u8>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WorkspaceOwnerProjection {
     pub owner: WorkspaceOwnerSnapshot,

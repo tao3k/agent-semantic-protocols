@@ -192,6 +192,12 @@ async fn dispatch_client_frame<D: AspClientDispatcher>(
             let serialization_started = tokio::time::Instant::now();
             let encoded = encode_response_partitions(response)
                 .map_err(|error| Status::resource_exhausted(error.to_string()));
+            eprintln!(
+                "[runtime-response-serialization] requestId={} elapsedMicros={} state={}",
+                telemetry.request_id.as_str(),
+                elapsed_micros(serialization_started),
+                if encoded.is_ok() { "ready" } else { "failed" }
+            );
             if encoded.is_ok() {
                 frames.response_serialized(&telemetry, elapsed_micros(serialization_started));
             } else {
@@ -370,6 +376,17 @@ fn response_budget_for_frame(frame: &ClientFrame) -> Option<std::time::Duration>
             if classify_client_dispatch(method) == ClientDispatchClass::ColdGenerationAdmission =>
         {
             None
+        }
+        ClientFrame::Request { method, .. }
+            if classify_client_dispatch(method) == ClientDispatchClass::ResidentGenerationRead
+                && method != agent_semantic_client_protocol::GRAPH_EVALUATE_METHOD =>
+        {
+            // The server retains its 1ms ready-read deadline. This transport
+            // envelope also allows first computation and terminal delivery.
+            Some(
+                agent_semantic_client_protocol::FIRST_COMPUTATION_OBSERVATION_BUDGET
+                    + std::time::Duration::from_secs(1),
+            )
         }
         _ => Some(CLIENT_FRAME_RESPONSE_BUDGET),
     }

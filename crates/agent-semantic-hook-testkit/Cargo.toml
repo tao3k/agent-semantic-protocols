@@ -26,7 +26,7 @@ compiler = [
 agent-semantic-hook = { path = "../agent-semantic-hook", default-features = false, optional = true }
 agent-semantic-config = { path = "../agent-semantic-config", optional = true }
 agent-semantic-shell-parser = { path = "../agent-semantic-shell-parser", optional = true }
-asp-rust-project-harness-policy = { path = "../../build-support/asp-rust-project-harness-policy", optional = true }
+asp-rust-project-harness-policy = { path = "../../build-support/asp-rust-project-harness-policy", default-features = false, optional = true }
 globset = { workspace = true, optional = true }
 jsonschema = { workspace = true, optional = true }
 libc.workspace = true

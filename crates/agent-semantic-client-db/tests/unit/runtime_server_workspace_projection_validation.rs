@@ -140,6 +140,7 @@ fn callable_fixture() -> (WorkspaceOwnerSnapshot, WorkspaceSelectorSnapshot) {
     let structural_selector = "rust://src/lib.rs#item/function/run";
     let bytes = b"fn run() {}".to_vec();
     let payload = serde_json::json!({
+        "rootSelector": structural_selector,
         "rootNodeId": "callable:root",
         "callable": { "kind": "function", "displayName": "run", "signature": "run" },
         "nodes": [{

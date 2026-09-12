@@ -789,11 +789,11 @@ constant-time resident context read. The response supplies only the exact
 generation digest and provider capability; the Client performs source parsing
 and plan compilation locally before execution.
 
-`search-playbook-pretool-calibration.v2.schema.json` replaces the flag-oriented
-V1 denial receipt for the public Search command. It records the one-expression
-argument count, a source digest, optional Tree-sitter grammar provenance, the
-fixed normalized V1 layout, and typed issues without echoing Scheme source.
-The V1 schema remains immutable as the historical flag-surface contract.
+`search-playbook-pretool-calibration.v1.schema.json` remains the unchanged
+denial contract. The Scheme parser supplies typed expression issues at the
+outer argv token index. Arrays requiring flag/argv-leaf boundaries are empty
+for Scheme source, rather than populated with fabricated inner indices. No V2
+receipt or alternate public flag grammar is introduced.
 
 The public Search result is `workspace-search-playbook-result.v1`; Runtime joins it to `search-topology-settlement.v1` before the Client renders the single Org/GQL projection. Provider-native exact materialization remains `semantic-query-packet.v1`.
 

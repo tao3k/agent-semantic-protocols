@@ -97,6 +97,22 @@ fn corrupt_artifact_is_rejected_before_query() {
 }
 
 #[test]
+fn fixed_integer_hash_construction_keeps_v1_artifact_deterministic() {
+    let ordered = [
+        ("src/a.rs", b"alpha_key beta_key".as_slice()),
+        ("src/b.rs", b"beta_key gamma_key".as_slice()),
+    ];
+    let reversed = [ordered[1], ordered[0]];
+    let (ordered_owners, ordered_artifact) =
+        ResidentByteCoverageIndex::encode_artifact(owners(&ordered)).unwrap();
+    let (reversed_owners, reversed_artifact) =
+        ResidentByteCoverageIndex::encode_artifact(owners(&reversed)).unwrap();
+
+    assert_eq!(ordered_owners, reversed_owners);
+    assert_eq!(ordered_artifact, reversed_artifact);
+}
+
+#[test]
 fn exact_regex_hits_are_always_a_subset_of_trigram_candidates() {
     let values = [
         ("src/alpha.rs", b"alpha_key and gamma_end".as_slice()),
@@ -155,7 +171,7 @@ fn unicode_case_folding_fails_open_instead_of_repeating_tgrep_false_negative() {
 }
 
 #[test]
-fn rarest_first_stops_decoding_after_candidate_intersection_becomes_empty() {
+fn rarest_first_stops_decoding_at_a_singleton_for_exact_verification() {
     let values = [
         ("src/left.txt", b"abcd".as_slice()),
         ("src/right.txt", b"cdef".as_slice()),
@@ -165,7 +181,7 @@ fn rarest_first_stops_decoding_after_candidate_intersection_becomes_empty() {
     let (candidates, receipt) = index
         .candidate_owner_paths_for_grep_plan_with_receipt(&plan, None, values.len())
         .unwrap();
-    assert!(candidates.is_empty());
+    assert_eq!(candidates.len(), 1);
     assert_eq!(receipt.requested_gram_count, 4);
-    assert_eq!(receipt.decoded_posting_count, 3);
+    assert_eq!(receipt.decoded_posting_count, 1);
 }

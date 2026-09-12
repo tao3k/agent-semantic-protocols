@@ -12,6 +12,7 @@ use agent_semantic_client_db::runtime_server_workspace::RuntimeServerWorkspaceRe
 use agent_semantic_client_db::runtime_telemetry_bus::RuntimeTelemetryBusSender;
 use agent_semantic_client_server::{AspClientDispatchError, AspClientDispatchRequest};
 
+use super::query_generation_support::{RequestDispatchBudget, await_runtime_query_generation};
 use crate::RuntimeQueryGenerationState;
 use crate::runtime_query_generation_key::RuntimeProjectWorkspaceKey;
 
@@ -29,12 +30,17 @@ use super::{
 };
 
 pub(super) struct ResolvedRouteContext {
+    pub(super) dispatch_budget: RequestDispatchBudget,
     pub(super) request: AspClientDispatchRequest,
     pub(super) project_workspace_key: RuntimeProjectWorkspaceKey,
     pub(super) initialized_workspaces:
         Arc<Mutex<HashMap<ClientWorkspaceKey, InitializedWorkspace>>>,
     pub(super) generation_admission: Arc<WorkspaceGenerationAdmission>,
     pub(super) workspace_registry: Arc<RuntimeServerWorkspaceRegistry>,
+    pub(super) runtime_search_service:
+        agent_semantic_client_db::runtime_search_service::RuntimeSearchServiceHandle,
+    pub(super) owner_materializer: super::owner_materialization::RuntimeOwnerMaterializer,
+    pub(super) workspace_store_root: std::path::PathBuf,
     pub(super) active_provider_targets: Arc<[(String, String)]>,
     pub(super) workspace_search_providers: Arc<[agent_semantic_search::WorkspaceSearchProvider]>,
     pub(super) query_generation: tokio::sync::watch::Receiver<
@@ -152,11 +158,15 @@ pub(super) async fn dispatch_resolved_route(
     context: ResolvedRouteContext,
 ) -> Result<serde_json::Value, AspClientOperationError> {
     let ResolvedRouteContext {
+        dispatch_budget,
         request,
         project_workspace_key,
         initialized_workspaces,
         generation_admission,
         workspace_registry,
+        runtime_search_service,
+        owner_materializer,
+        workspace_store_root,
         active_provider_targets,
         workspace_search_providers,
         query_generation,
@@ -275,22 +285,82 @@ pub(super) async fn dispatch_resolved_route(
                 ));
             }
         };
+        if validated_params.as_value()["queryTerms"]
+            .as_array()
+            .is_some_and(|terms| !terms.is_empty())
+        {
+            generation
+                .await_lexical_attachment()
+                .await
+                .map_err(AspClientOperationError::Message)?;
+        }
+        let map_graph_failure = |error: crate::runtime_search_graph::RuntimeSearchGraphFailure| {
+            AspClientOperationError::Terminal(AspClientDispatchError {
+                reason_kind: error.reason_kind.to_owned(),
+                message: error.message,
+                details: error.details,
+            })
+        };
+        let owner_scope = crate::runtime_search_graph::resident_graph_candidate_owner_scope(
+            language_id,
+            provider_id,
+            generation.resident(),
+            validated_params.as_value(),
+        )
+        .map_err(map_graph_failure)?;
+        let mut resident = owner_materializer
+            .ensure_candidates(
+                request.request_id.as_str(),
+                request.workspace_id.as_str(),
+                &project_root,
+                &workspace_store_root,
+                generation.generation_digest(),
+                &owner_scope,
+                workspace_search_providers.as_ref(),
+                &runtime_search_service,
+                &workspace_registry,
+            )
+            .await?;
+        let graph_node_limit = usize::try_from(
+            validated_params.as_value()["budget"]["maxNodes"]
+                .as_u64()
+                .expect("validated maxNodes"),
+        )
+        .map_err(|_| AspClientOperationError::Message("maxNodes exceeds usize".to_owned()))?;
+        let topology_scope = super::workspace_search_playbook::relation_neighbor_scope(
+            &resident,
+            &owner_scope,
+            graph_node_limit.max(owner_scope.len()),
+        )?;
+        if topology_scope != owner_scope {
+            resident = owner_materializer
+                .ensure_candidates(
+                    request.request_id.as_str(),
+                    request.workspace_id.as_str(),
+                    &project_root,
+                    &workspace_store_root,
+                    generation.generation_digest(),
+                    &topology_scope,
+                    workspace_search_providers.as_ref(),
+                    &runtime_search_service,
+                    &workspace_registry,
+                )
+                .await?;
+        }
+        let graph_generation = resident
+            .build_graph_generation_for_owner_scope(&topology_scope)
+            .map_err(AspClientOperationError::Message)?;
         let result = crate::runtime_search_graph::evaluate_resident_search_graph(
             request.request_id.as_str(),
             request.workspace_id.as_str(),
             language_id,
             provider_id,
             generation.generation_digest(),
-            generation.resident(),
+            &resident,
+            &graph_generation,
             validated_params.as_value(),
         )
-        .map_err(|error| {
-            AspClientOperationError::Terminal(AspClientDispatchError {
-                reason_kind: error.reason_kind.to_owned(),
-                message: error.message,
-                details: error.details,
-            })
-        })?;
+        .map_err(map_graph_failure)?;
         record_runtime_route_performance(
             &telemetry_sender,
             request.workspace_id.as_str(),
@@ -316,12 +386,17 @@ pub(super) async fn dispatch_resolved_route(
             serde_json::from_value(request.params.clone()).map_err(|error| error.to_string())?;
         params.validate_schema_identity()?;
         return dispatch_workspace_query_playbook(
+            &dispatch_budget,
             &request,
             params,
             &project_workspace_key,
             &initialized_workspaces,
             generation_admission.as_ref(),
             &workspace_registry,
+            &runtime_search_service,
+            &owner_materializer,
+            &workspace_store_root,
+            workspace_search_providers.as_ref(),
             active_provider_targets.as_ref(),
             &telemetry_sender,
             &telemetry_traces,
@@ -456,76 +531,50 @@ pub(super) async fn dispatch_resolved_route(
         .borrow()
         .get(&project_workspace_key)
         .cloned();
-    let generation = {
-        match generation_state {
-            Some(RuntimeQueryGenerationState::Ready(generation)) => generation,
-            Some(RuntimeQueryGenerationState::Failed { reason, .. }) => {
-                let readiness_submission = request_runtime_query_generation_ready(
-                    generation_admission.as_ref(),
-                    request.workspace_id.as_str().to_owned(),
-                    project_root.clone(),
-                    generation_provider_targets.clone(),
-                );
-                let submission_error = readiness_submission.err();
-                let publication_error = submission_error.as_ref().map_or_else(
-                    || reason.to_string(),
-                    |error| format!("{reason}; recovery submission failed: {error}"),
-                );
-                return Err(AspClientOperationError::Terminal(
-                    query_generation_not_ready_error(QueryNotReadyContext {
-                        operation_id: request.request_id.as_str(),
-                        project_id: request.project_id.as_str(),
-                        workspace_id: request.workspace_id.as_str(),
-                        language_id: &language_id,
-                        provider_id: &provider_id,
-                        exact_query: exact_query_params.as_ref(),
-                        generation_state: if submission_error.is_some() {
-                            "submission-failed"
-                        } else {
-                            "building"
-                        },
-                        publication_error: Some(&publication_error),
-                        elapsed_micros: elapsed_micros(dispatch_started),
-                    })?,
-                ));
-            }
-            None => {
-                let readiness_submission = request_runtime_query_generation_ready(
-                    generation_admission.as_ref(),
-                    request.workspace_id.as_str().to_owned(),
-                    project_root.clone(),
-                    generation_provider_targets.clone(),
-                );
-                let (generation_state, readiness_submission_error) = match readiness_submission {
-                Ok(agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationReadinessRequestState::Accepted) => {
-                    ("building", None)
+    let generation_result = match generation_state {
+        Some(RuntimeQueryGenerationState::Ready(generation)) => Ok(generation),
+        Some(RuntimeQueryGenerationState::Failed { reason, .. }) => Err(reason.to_string()),
+        None => {
+            dispatch_budget.observe_miss();
+            let wait_started = tokio::time::Instant::now();
+            let result = match request_runtime_query_generation_ready(
+                generation_admission.as_ref(),
+                request.workspace_id.as_str().to_owned(),
+                project_root.clone(),
+                generation_provider_targets,
+            ) {
+                Ok(_) => {
+                    await_runtime_query_generation(&query_generation, &project_workspace_key).await
                 }
-                Ok(agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationReadinessRequestState::Coalesced) => {
-                    ("building", None)
-                }
-                Ok(agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationReadinessRequestState::Ready) => {
-                    ("opening-resident", None)
-                }
-                Err(error) => ("submission-failed", Some(error)),
+                Err(error) => Err(error),
             };
-                return Err(AspClientOperationError::Terminal(
-                    query_generation_not_ready_error(QueryNotReadyContext {
-                        operation_id: request.request_id.as_str(),
-                        project_id: request.project_id.as_str(),
-                        workspace_id: request.workspace_id.as_str(),
-                        language_id: &language_id,
-                        provider_id: &provider_id,
-                        exact_query: exact_query_params.as_ref(),
-                        generation_state,
-                        publication_error: readiness_submission_error.as_deref(),
-                        elapsed_micros: elapsed_micros(dispatch_started),
-                    })?,
-                ));
-            }
+            eprintln!(
+                "[runtime-generation-wait] requestId={} elapsedMicros={}",
+                request.request_id.as_str(),
+                wait_started.elapsed().as_micros()
+            );
+            result
         }
     };
-    // CompleteGeneration admission is detached lifecycle work.  The request
-    // path above only clones an already published immutable resident handle.
+    let generation = match generation_result {
+        Ok(generation) => generation,
+        Err(error) => {
+            return Err(AspClientOperationError::Terminal(
+                query_generation_not_ready_error(QueryNotReadyContext {
+                    operation_id: request.request_id.as_str(),
+                    project_id: request.project_id.as_str(),
+                    workspace_id: request.workspace_id.as_str(),
+                    language_id: &language_id,
+                    provider_id: &provider_id,
+                    exact_query: exact_query_params.as_ref(),
+                    generation_state: "failed",
+                    publication_error: Some(&error),
+                    elapsed_micros: elapsed_micros(dispatch_started),
+                })?,
+            ));
+        }
+    };
+    // Only the daemon publishes authority; the request owns a cancellable wait.
     match route {
         agent_semantic_client_protocol::ServerClientRoute::AgentSessionRegister => {
             unreachable!("server-owned AgentSession route is handled before language dispatch")
@@ -561,28 +610,37 @@ pub(super) async fn dispatch_resolved_route(
                     crate::runtime_query_generation::RuntimeSearchMaterializationState::Ready(
                         result,
                     ),
-                ) => Ok(result.as_ref().clone()),
+                ) => {
+                    dispatch_budget.observe_resident_hit();
+                    Ok(result.as_ref().clone())
+                }
                 Some(
                     crate::runtime_query_generation::RuntimeSearchMaterializationState::Failed(
                         error,
                     ),
-                ) => Err(AspClientOperationError::Terminal(error.as_ref().clone())),
+                ) => {
+                    dispatch_budget.observe_resident_hit();
+                    Err(AspClientOperationError::Terminal(error.as_ref().clone()))
+                }
                 Some(
-                    crate::runtime_query_generation::RuntimeSearchMaterializationState::Building,
-                ) => Err(AspClientOperationError::Terminal(
-                    search_materialization_not_ready_error(
-                        request.project_id.as_str(),
-                        request.workspace_id.as_str(),
-                        generation.generation_digest(),
-                        &materialization_key,
-                        elapsed_micros(dispatch_started),
-                    ),
-                )),
+                    crate::runtime_query_generation::RuntimeSearchMaterializationState::Building(_),
+                ) => {
+                    dispatch_budget.observe_miss();
+                    settled_search_materialization(&generation, &materialization_key).await
+                }
                 None => {
+                    dispatch_budget.observe_miss();
                     if generation.begin_search_materialization(materialization_key.clone())? {
                         let materialization_generation = Arc::clone(&generation);
                         let materialization_providers = Arc::clone(&workspace_search_providers);
                         let materialization_project_root = project_root.clone();
+                        let materialization_parser_artifact_root = workspace_store_root.clone();
+                        let materialization_workspace_identity =
+                            request.workspace_id.as_str().to_owned();
+                        let materialization_request_id = request.request_id.as_str().to_owned();
+                        let materialization_runtime_search_service = runtime_search_service.clone();
+                        let materialization_owner_materializer = owner_materializer.clone();
+                        let materialization_workspace_registry = Arc::clone(&workspace_registry);
                         let materialization_key_for_task = materialization_key.clone();
                         let materialization_binding =
                             agent_semantic_search::WorkspaceSearchPlanBinding {
@@ -593,6 +651,7 @@ pub(super) async fn dispatch_resolved_route(
                                     .to_owned(),
                             };
                         tokio::spawn(async move {
+                            let compute_started = std::time::Instant::now();
                             let result = match build_workspace_search_materialization_plan(
                                 params,
                                 materialization_binding,
@@ -601,31 +660,35 @@ pub(super) async fn dispatch_resolved_route(
                                 Ok(plan) => {
                                     materialize_workspace_search(
                                         &materialization_key_for_task,
+                                        &materialization_request_id,
+                                        &materialization_workspace_identity,
                                         plan,
                                         materialization_project_root,
+                                        materialization_parser_artifact_root,
                                         Arc::clone(&materialization_generation),
                                         materialization_providers,
+                                        materialization_runtime_search_service,
+                                        materialization_owner_materializer,
+                                        materialization_workspace_registry,
                                     )
                                     .await
                                 }
                                 Err(error) => Err(error),
                             }
                             .map_err(search_materialization_dispatch_error);
+                            eprintln!(
+                                "[runtime-search-materialization-wall] key={} requestWallMicros={} includesProviderLifecycle=true state={}",
+                                materialization_key_for_task,
+                                compute_started.elapsed().as_micros(),
+                                if result.is_ok() { "ready" } else { "failed" }
+                            );
                             let _ = materialization_generation.publish_search_materialization(
                                 materialization_key_for_task,
                                 result,
                             );
                         });
                     }
-                    Err(AspClientOperationError::Terminal(
-                        search_materialization_not_ready_error(
-                            request.project_id.as_str(),
-                            request.workspace_id.as_str(),
-                            generation.generation_digest(),
-                            &materialization_key,
-                            elapsed_micros(dispatch_started),
-                        ),
-                    ))
+                    settled_search_materialization(&generation, &materialization_key).await
                 }
             }
         }
@@ -633,9 +696,56 @@ pub(super) async fn dispatch_resolved_route(
             unreachable!("workspace Query Playbook is fail-closed before generation admission")
         }
         agent_semantic_client_protocol::ServerClientRoute::WorkspaceSyntaxQuery => {
+            let syntax_params = workspace_syntax_query_params
+                .as_ref()
+                .expect("workspace syntax Query decoded its request");
+            let selected_languages = syntax_params
+                .languages
+                .iter()
+                .flat_map(|languages| languages.split('|'))
+                .chain(
+                    syntax_params
+                        .documents
+                        .iter()
+                        .flat_map(|documents| documents.split('|')),
+                )
+                .collect::<std::collections::BTreeSet<_>>();
+            let selected_extensions = workspace_search_providers
+                .iter()
+                .filter(|provider| {
+                    selected_languages.is_empty()
+                        || selected_languages.contains(provider.language_id.as_str())
+                })
+                .flat_map(|provider| provider.source_extensions.iter().map(String::as_str))
+                .collect::<std::collections::BTreeSet<_>>();
+            let owner_scope = generation
+                .resident()
+                .indexed_owner_paths()
+                .into_iter()
+                .filter(|owner| {
+                    std::path::Path::new(owner)
+                        .extension()
+                        .and_then(|extension| extension.to_str())
+                        .is_some_and(|extension| selected_extensions.contains(extension))
+                })
+                .collect::<std::collections::BTreeSet<_>>();
+            let resident = owner_materializer
+                .ensure_candidates(
+                    request.request_id.as_str(),
+                    request.workspace_id.as_str(),
+                    &project_root,
+                    &workspace_store_root,
+                    generation.generation_digest(),
+                    &owner_scope,
+                    workspace_search_providers.as_ref(),
+                    &runtime_search_service,
+                    &workspace_registry,
+                )
+                .await?;
             dispatch_workspace_syntax_query(
                 workspace_syntax_query_params.expect("workspace syntax Query decoded its request"),
-                generation.as_ref(),
+                generation.generation_digest(),
+                &resident,
                 workspace_search_providers.as_ref(),
             )
             .await
@@ -660,16 +770,41 @@ pub(super) async fn dispatch_resolved_route(
                 &telemetry_sender,
             )
         }
-        agent_semantic_client_protocol::ServerClientRoute::ExactQuery => dispatch_exact_query(
-            request.project_id.as_str(),
-            request.workspace_id.as_str(),
-            request.request_id.as_str(),
-            params,
-            &language_id,
-            &provider_id,
-            generation.as_ref(),
-            &telemetry_sender,
-        ),
+        agent_semantic_client_protocol::ServerClientRoute::ExactQuery => {
+            let selector = exact_query_params
+                .as_ref()
+                .expect("exact Query decoded its request")
+                .selector
+                .as_str();
+            let owner_path = agent_semantic_content_identity::CanonicalItemSelector::parse_root_or_exact_descendant(selector)
+                .and_then(|selector| selector.owner_path())
+                .map_err(AspClientOperationError::Message)?;
+            let owner_scope = std::collections::BTreeSet::from([owner_path]);
+            let resident = owner_materializer
+                .ensure_candidates(
+                    request.request_id.as_str(),
+                    request.workspace_id.as_str(),
+                    &project_root,
+                    &workspace_store_root,
+                    generation.generation_digest(),
+                    &owner_scope,
+                    workspace_search_providers.as_ref(),
+                    &runtime_search_service,
+                    &workspace_registry,
+                )
+                .await?;
+            dispatch_exact_query(
+                request.project_id.as_str(),
+                request.workspace_id.as_str(),
+                request.request_id.as_str(),
+                params,
+                &language_id,
+                &provider_id,
+                generation.as_ref(),
+                &resident,
+                &telemetry_sender,
+            )
+        }
     }
 }
 
@@ -749,16 +884,28 @@ pub(super) fn workspace_search_materialization_key(
 
 async fn materialize_workspace_search(
     materialization_key: &str,
+    request_id: &str,
+    workspace_identity: &str,
     plan: agent_semantic_search::WorkspaceSearchPlaybookPlan,
     project_root: std::path::PathBuf,
+    parser_artifact_root: std::path::PathBuf,
     generation: Arc<crate::RuntimeQueryGeneration>,
     providers: Arc<[agent_semantic_search::WorkspaceSearchProvider]>,
+    runtime_search_service: agent_semantic_client_db::runtime_search_service::RuntimeSearchServiceHandle,
+    owner_materializer: super::owner_materialization::RuntimeOwnerMaterializer,
+    workspace_registry: Arc<RuntimeServerWorkspaceRegistry>,
 ) -> Result<serde_json::Value, AspClientOperationError> {
     let evidence = execute_progressive_search_clauses(
         &plan,
         &project_root,
         Arc::clone(&generation),
         providers.as_ref(),
+        request_id,
+        workspace_identity,
+        &parser_artifact_root,
+        &runtime_search_service,
+        &owner_materializer,
+        &workspace_registry,
     )
     .await?;
     let projection = synthesize_progressive_search_projection(
@@ -766,6 +913,7 @@ async fn materialize_workspace_search(
         "workspace",
         evidence,
         generation.as_ref(),
+        &project_root,
     )
     .await?;
     Ok(projection.result)
@@ -788,33 +936,19 @@ fn search_materialization_dispatch_error(error: AspClientOperationError) -> AspC
     }
 }
 
-fn search_materialization_not_ready_error(
-    project_id: &str,
-    workspace_id: &str,
-    generation_digest: &str,
-    materialization_key: &str,
-    elapsed_micros: u64,
-) -> AspClientDispatchError {
-    AspClientDispatchError {
-        reason_kind: "query-not-ready".to_owned(),
-        message: "the generation-bound Search result is materializing".to_owned(),
-        details: Some(serde_json::json!({
-            "schemaId": "agent.semantic-protocols.asp-client-query-readiness-failure",
-            "schemaVersion": "1",
-            "state": "failed",
-            "phase": "runtime-search-materialization",
-            "reasonKind": "query-not-ready",
-            "projectId": project_id,
-            "workspaceId": workspace_id,
-            "languageId": "workspace",
-            "providerId": "workspace",
-            "generationState": "ready-result-building",
-            "generationDigest": generation_digest,
-            "materializationKey": materialization_key,
-            "publicationError": null,
-            "elapsedMicros": elapsed_micros,
-            "workCounters": agent_semantic_client_protocol::AspClientRuntimeWorkCounters::default(),
-        })),
+async fn settled_search_materialization(
+    generation: &crate::runtime_query_generation::RuntimeQueryGeneration,
+    key: &str,
+) -> Result<serde_json::Value, AspClientOperationError> {
+    use crate::runtime_query_generation::RuntimeSearchMaterializationState;
+    match generation.await_search_materialization(key).await? {
+        RuntimeSearchMaterializationState::Ready(result) => Ok(result.as_ref().clone()),
+        RuntimeSearchMaterializationState::Failed(error) => {
+            Err(AspClientOperationError::Terminal(error.as_ref().clone()))
+        }
+        RuntimeSearchMaterializationState::Building(_) => Err(AspClientOperationError::Message(
+            "Search completion preceded terminal publication".to_owned(),
+        )),
     }
 }
 

@@ -60,6 +60,7 @@ pub use exact_segment::{
 };
 pub use execution_publication::RuntimeWorkspaceExecutionPublicationStore;
 pub use execution_publication_composer::{
+    compose_runtime_workspace_execution_product_from_resident,
     compose_runtime_workspace_execution_publication, publish_runtime_workspace_execution_product,
 };
 pub use lease::WorkspaceGenerationLease;
@@ -67,14 +68,15 @@ pub use memory_backend::WorkspaceProjectionLease;
 pub use model::{
     ExactProjectionKind, RUNTIME_MERKLE_OWNER_READ_RECEIPT_SCHEMA_ID, RuntimeDataPlaneCounters,
     RuntimeProjectionScope, RuntimeServerShutdownReceipt, WORKSPACE_GENERATION_DELTA_SCHEMA_ID,
-    WorkspaceDataPlanePerformanceReceipt, WorkspaceDerivedProjectionSnapshot,
-    WorkspaceGenerationBuild, WorkspaceGenerationDelta, WorkspaceGenerationSnapshot,
-    WorkspaceGenerationState, WorkspaceMemoryGeneration, WorkspaceOwnerProjection,
-    WorkspaceOwnerSearchSeedSnapshot, WorkspaceOwnerSearchSnapshot, WorkspaceOwnerSnapshot,
-    WorkspaceRecoveryReceipt, WorkspaceRecoverySource, WorkspaceRuntimeMerkleOwnerRead,
-    WorkspaceRuntimeOwnerRead, WorkspaceRuntimeOwnerSearchRead, WorkspaceRuntimeSelectorOverlay,
-    WorkspaceRuntimeSelectorOverlayReceipt, WorkspaceRuntimeSelectorRead,
-    WorkspaceRuntimeSelectorRebind, WorkspaceSelectorSnapshot, WorkspaceTopologySourceSegment,
+    WorkspaceAuxiliaryOwnerSnapshot, WorkspaceDataPlanePerformanceReceipt,
+    WorkspaceDerivedProjectionSnapshot, WorkspaceGenerationBuild, WorkspaceGenerationDelta,
+    WorkspaceGenerationSnapshot, WorkspaceGenerationState, WorkspaceMemoryGeneration,
+    WorkspaceOwnerProjection, WorkspaceOwnerSearchSeedSnapshot, WorkspaceOwnerSearchSnapshot,
+    WorkspaceOwnerSnapshot, WorkspaceRecoveryReceipt, WorkspaceRecoverySource,
+    WorkspaceRuntimeMerkleOwnerRead, WorkspaceRuntimeOwnerRead, WorkspaceRuntimeOwnerSearchRead,
+    WorkspaceRuntimeSelectorOverlay, WorkspaceRuntimeSelectorOverlayReceipt,
+    WorkspaceRuntimeSelectorRead, WorkspaceRuntimeSelectorRebind, WorkspaceSelectorSnapshot,
+    WorkspaceTopologySourceSegment,
 };
 pub use pointer::WorkspaceGenerationPointerReader;
 pub use registry::{PublishedWorkspaceGenerationState, RuntimeServerWorkspaceRegistry};

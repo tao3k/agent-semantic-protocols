@@ -17,6 +17,66 @@ pub(crate) struct WorkspaceSearchGraphExecution {
     pub(crate) candidate_owner_ids: Vec<String>,
 }
 
+pub(crate) fn resident_graph_candidate_owner_scope(
+    language_id: &str,
+    provider_id: &str,
+    resident: &RuntimeResidentReadClient,
+    params: &Value,
+) -> Result<std::collections::BTreeSet<String>, RuntimeSearchGraphFailure> {
+    let max_nodes = usize::try_from(
+        params["budget"]["maxNodes"]
+            .as_u64()
+            .expect("validated maxNodes"),
+    )
+    .map_err(|_| RuntimeSearchGraphFailure::invalid("maxNodes exceeds usize"))?;
+    let mut owners = std::collections::BTreeSet::new();
+    let query_terms = params["queryTerms"]
+        .as_array()
+        .expect("validated queryTerms")
+        .iter()
+        .map(|term| term.as_str().expect("validated query term"))
+        .collect::<Vec<_>>();
+    if !query_terms.is_empty() {
+        let authority = agent_semantic_search::ResidentSearchAuthority {
+            language_id: language_id.into(),
+            provider_id: provider_id.into(),
+        };
+        let lookup = resident
+            .read_source_index(
+                &query_terms.join(" "),
+                Some(&authority),
+                u32::try_from(max_nodes).unwrap_or(u32::MAX),
+            )
+            .map_err(RuntimeSearchGraphFailure::invalid)?;
+        owners.extend(lookup.hits.iter().map(|hit| hit.owner_path.clone()));
+    }
+
+    let entry_node_ids = params["entryNodeIds"]
+        .as_array()
+        .expect("validated entryNodeIds")
+        .iter()
+        .map(|seed| seed.as_str().expect("validated seed"))
+        .collect::<std::collections::BTreeSet<_>>();
+    if !entry_node_ids.is_empty() {
+        for owner_path in resident.indexed_owner_paths() {
+            if entry_node_ids.contains(stable_graph_node_id("owner", &owner_path).as_str()) {
+                owners.insert(owner_path);
+            }
+        }
+        for segment in resident
+            .topology_source_segments()
+            .map_err(RuntimeSearchGraphFailure::invalid)?
+        {
+            if segment.selectors.iter().any(|selector| {
+                entry_node_ids.contains(stable_graph_node_id("item", selector).as_str())
+            }) {
+                owners.insert(segment.owner_path);
+            }
+        }
+    }
+    Ok(owners.into_iter().take(max_nodes).collect())
+}
+
 /// Apply ordered Graph clauses to the candidate frontier produced by earlier
 /// Search Playbook clauses. Rust evaluates only the exact published resident
 /// generation and owns the candidate whitelist, limit, and public result.
@@ -29,11 +89,8 @@ pub(crate) fn evaluate_resident_workspace_playbook_graph(
     candidate_owners: &[String],
     budget: Option<ResidentGraphEvaluationBudget>,
     resident: &RuntimeResidentReadClient,
+    graph_generation: &agent_semantic_search::ResidentGraphGeneration,
 ) -> Result<WorkspaceSearchGraphExecution, RuntimeSearchGraphFailure> {
-    let graph_generation = resident
-        .graph_generation()
-        .map_err(RuntimeSearchGraphFailure::invalid)?
-        .ok_or_else(RuntimeSearchGraphFailure::not_ready)?;
     let generation_request = graph_generation
         .generation_request()
         .map_err(RuntimeSearchGraphFailure::invalid)?;
@@ -58,7 +115,7 @@ pub(crate) fn evaluate_resident_workspace_playbook_graph(
                     source_snapshot: &authority.source_snapshot,
                     workspace_generation: &authority.workspace_generation,
                     entry_node_ids: &entry_node_ids,
-                    generation_graph: &graph_generation,
+                    generation_graph: graph_generation,
                 },
                 candidate_owners,
                 relation_patterns,
@@ -128,6 +185,7 @@ pub(crate) fn evaluate_resident_search_graph(
     provider_id: &str,
     generation_digest: &str,
     resident: &RuntimeResidentReadClient,
+    graph_generation: &agent_semantic_search::ResidentGraphGeneration,
     params: &Value,
 ) -> Result<Value, RuntimeSearchGraphFailure> {
     let surface = params["surface"].as_str().expect("validated surface");
@@ -184,10 +242,7 @@ pub(crate) fn evaluate_resident_search_graph(
                     source_snapshot: &authority.source_snapshot,
                     workspace_generation: &authority.workspace_generation,
                     entry_node_ids: &entry_node_ids,
-                    generation_graph: resident
-                        .graph_generation()
-                        .map_err(RuntimeSearchGraphFailure::invalid)?
-                        .ok_or_else(RuntimeSearchGraphFailure::not_ready)?,
+                    generation_graph: graph_generation,
                 },
                 ResidentGraphEvaluationBudget {
                     max_depth,
@@ -268,14 +323,6 @@ impl RuntimeSearchGraphFailure {
             reason_kind: "graph-search-invalid",
             message: message.into(),
             details: None,
-        }
-    }
-
-    fn not_ready() -> Self {
-        Self {
-            reason_kind: "graph-not-ready",
-            message: "exact-generation graph attachment is still building".to_owned(),
-            details: Some(json!({"phase": "background-generation-graph"})),
         }
     }
 }

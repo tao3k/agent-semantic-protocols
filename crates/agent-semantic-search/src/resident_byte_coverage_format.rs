@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
-use std::collections::{BTreeMap, HashSet};
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::RESIDENT_BYTE_GRAM_WIDTH;
 
@@ -19,6 +19,11 @@ struct DirectoryEntry {
     posting_count: usize,
 }
 
+pub(super) struct EncodedByteCoverageArtifact {
+    pub(super) bytes: Vec<u8>,
+    pub(super) layout: ValidatedByteCoverageLayout,
+}
+
 #[derive(Clone, Copy, Debug)]
 pub(super) struct ValidatedByteCoverageLayout {
     owner_count: usize,
@@ -31,26 +36,40 @@ pub(super) fn pack_gram(first: u8, second: u8, third: u8) -> u32 {
     (u32::from(first) << 16) | (u32::from(second) << 8) | u32::from(third)
 }
 
+#[cfg(test)]
 pub(super) fn encode<'a>(owners: impl IntoIterator<Item = &'a [u8]>) -> Result<Vec<u8>, String> {
+    encode_validated(owners).map(|encoded| encoded.bytes)
+}
+
+pub(super) fn encode_validated<'a>(
+    owners: impl IntoIterator<Item = &'a [u8]>,
+) -> Result<EncodedByteCoverageArtifact, String> {
     let owners = owners.into_iter().collect::<Vec<_>>();
     let owner_count = owners.len();
     if owner_count > u32::MAX as usize {
         return Err("resident byte predicate owner count exceeds u32".to_owned());
     }
-    let mut postings = BTreeMap::<u32, Vec<u32>>::new();
+    // Fx hashing is sufficient for packed fixed-width integer grams and avoids
+    // paying SipHash or ordered-tree insertion cost for every owner/gram pair.
+    // The final key sort keeps the V1 artifact byte-for-byte deterministic.
+    let mut postings = FxHashMap::<u32, Vec<u32>>::default();
+    let mut owner_grams = FxHashSet::default();
     for (owner_id, bytes) in owners.into_iter().enumerate() {
-        let mut grams = HashSet::new();
+        owner_grams.clear();
+        owner_grams.reserve(bytes.len().min(65_536));
         for window in bytes.windows(RESIDENT_BYTE_GRAM_WIDTH) {
-            grams.insert(pack_gram(window[0], window[1], window[2]));
+            owner_grams.insert(pack_gram(window[0], window[1], window[2]));
         }
         let owner_id = u32::try_from(owner_id)
             .map_err(|_| "resident byte predicate owner id exceeds u32".to_owned())?;
-        for gram in grams {
+        for &gram in &owner_grams {
             postings.entry(gram).or_default().push(owner_id);
         }
     }
+    let mut postings = postings.into_iter().collect::<Vec<_>>();
+    postings.sort_unstable_by_key(|(gram, _)| *gram);
     let gram_count = postings.len();
-    let posting_count = postings.values().try_fold(0usize, |total, posting| {
+    let posting_count = postings.iter().try_fold(0usize, |total, (_, posting)| {
         total
             .checked_add(posting.len())
             .ok_or_else(|| "resident byte predicate posting count overflows".to_owned())
@@ -102,7 +121,15 @@ pub(super) fn encode<'a>(owners: impl IntoIterator<Item = &'a [u8]>) -> Result<V
     encoded.extend_from_slice(payload_hasher.finalize().as_bytes());
     encoded.extend_from_slice(&directory);
     encoded.extend_from_slice(&posting_bytes);
-    Ok(encoded)
+    Ok(EncodedByteCoverageArtifact {
+        bytes: encoded,
+        layout: ValidatedByteCoverageLayout {
+            owner_count,
+            gram_count,
+            posting_count,
+            postings_offset,
+        },
+    })
 }
 
 impl ValidatedByteCoverageLayout {

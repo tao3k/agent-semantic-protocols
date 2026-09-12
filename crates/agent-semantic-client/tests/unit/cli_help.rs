@@ -103,7 +103,7 @@ fn org_and_markdown_are_document_surfaces_not_language_facades() {
             .get_subcommands()
             .map(|subcommand| subcommand.get_name())
             .collect::<Vec<_>>();
-        assert_eq!(subcommands, ["guide", "search", "query"]);
+        assert_eq!(subcommands, ["guide"]);
         for language_only in [
             "check",
             "cache",

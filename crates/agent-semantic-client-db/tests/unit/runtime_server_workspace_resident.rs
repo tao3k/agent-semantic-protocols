@@ -90,6 +90,7 @@ fn generation_with_owners(
             ),
             runtime_provider_execution_binding: None,
             project_resolutions: Vec::new(),
+            auxiliary_owners: Vec::new(),
             owners,
         },
     )

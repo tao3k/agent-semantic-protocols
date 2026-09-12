@@ -30,6 +30,8 @@ pub(super) struct ProgressiveSearchEvidence {
     pub(super) graph_relation_patterns: Vec<agent_semantic_search::ResidentGraphRelationPattern>,
     pub(super) execution_budget:
         crate::runtime_search_execution_budget::RuntimeSearchExecutionBudget,
+    pub(super) resident: agent_semantic_client_db::runtime_resident_read::RuntimeResidentReadClient,
+    pub(super) topology_scope: BTreeSet<String>,
 }
 
 pub(super) struct ProgressiveSearchProjection {
@@ -45,29 +47,43 @@ struct SearchClauseExecution {
 struct RetrievalLayoutExecution {
     clauses: Vec<SearchClauseExecution>,
     fused_scope: BTreeSet<String>,
+    fused_matches: Vec<RuntimeGrepMatch>,
+    tantivy_expressions_by_owner: BTreeMap<String, BTreeSet<String>>,
 }
 
 pub(super) async fn execute_progressive_search_clauses(
     plan: &WorkspaceSearchPlaybookPlan,
-    _project_root: &std::path::Path,
+    project_root: &std::path::Path,
     generation: Arc<RuntimeQueryGeneration>,
     providers: &[agent_semantic_search::WorkspaceSearchProvider],
+    request_id: &str,
+    workspace_identity: &str,
+    parser_artifact_root: &std::path::Path,
+    runtime_search_service: &agent_semantic_client_db::runtime_search_service::RuntimeSearchServiceHandle,
+    owner_materializer: &super::owner_materialization::RuntimeOwnerMaterializer,
+    workspace_registry: &Arc<
+        agent_semantic_client_db::runtime_server_workspace::RuntimeServerWorkspaceRegistry,
+    >,
 ) -> Result<ProgressiveSearchEvidence, AspClientOperationError> {
-    generation
-        .require_search_playbook_topology_attachment()
-        .map_err(|message| {
-            AspClientOperationError::Terminal(
-                agent_semantic_client_server::AspClientDispatchError {
-                    reason_kind: "runtime-project-topology-attachment-missing".to_owned(),
-                    message,
-                    details: Some(serde_json::json!({
-                        "failureStage": "runtime-project-topology-admission",
-                        "runtimeGenerationDigest": generation.generation_digest(),
-                        "terminalCount": 1
-                    })),
-                },
-            )
-        })?;
+    if !plan.axes.tantivy.is_empty() {
+        generation
+            .await_lexical_attachment()
+            .await
+            .map_err(|message| {
+                AspClientOperationError::Terminal(
+                    agent_semantic_client_server::AspClientDispatchError {
+                        reason_kind: "runtime-search-lexical-attachment-terminal-missing"
+                            .to_owned(),
+                        message,
+                        details: Some(serde_json::json!({
+                            "failureStage": "runtime-search-lexical-admission",
+                            "runtimeGenerationDigest": generation.generation_digest(),
+                            "terminalCount": 1
+                        })),
+                    },
+                )
+            })?;
+    }
     let execution_budget =
         crate::runtime_search_execution_budget::RuntimeSearchExecutionBudget::derive(
             generation.as_ref(),
@@ -127,6 +143,87 @@ pub(super) async fn execute_progressive_search_clauses(
     .map_err(|error| {
         AspClientOperationError::Message(format!("resident Search CPU lane failed: {error}"))
     })??;
+    let mut resident = owner_materializer
+        .ensure_candidates(
+            request_id,
+            workspace_identity,
+            project_root,
+            parser_artifact_root,
+            generation.generation_digest(),
+            &retrieval.fused_scope,
+            providers,
+            runtime_search_service,
+            workspace_registry,
+        )
+        .await?;
+    let topology_scope = if graph_query_clauses.is_empty() {
+        retrieval.fused_scope.clone()
+    } else {
+        relation_neighbor_scope(
+            &resident,
+            &retrieval.fused_scope,
+            execution_budget
+                .graph_candidate_owner_limit()
+                .max(retrieval.fused_scope.len()),
+        )?
+    };
+    if topology_scope != retrieval.fused_scope {
+        resident = owner_materializer
+            .ensure_candidates(
+                request_id,
+                workspace_identity,
+                project_root,
+                parser_artifact_root,
+                generation.generation_digest(),
+                &topology_scope,
+                providers,
+                runtime_search_service,
+                workspace_registry,
+            )
+            .await?;
+    }
+    let grounding_permit = Arc::clone(&RESIDENT_SEARCH_CPU_LANES)
+        .acquire_owned()
+        .await
+        .map_err(|_| {
+            AspClientOperationError::Message("resident Search CPU lanes closed".to_owned())
+        })?;
+    let grounding_scope = retrieval.fused_scope.clone();
+    let grounding_matches = retrieval.fused_matches.clone();
+    let grounding_resident = workspace_registry
+        .resident_read_client(workspace_identity, project_root)
+        .map_err(AspClientOperationError::Message)?;
+    let mut syntax_candidates = tokio::task::spawn_blocking(move || {
+        let _cpu_permit = grounding_permit;
+        syntax_candidates_enclosing_rg_matches(
+            &grounding_resident,
+            &grounding_scope,
+            grounding_matches.iter(),
+        )
+    })
+    .await
+    .map_err(|error| {
+        AspClientOperationError::Message(format!("resident parser grounding lane failed: {error}"))
+    })??;
+    for candidate in &mut syntax_candidates {
+        candidate.hit.tantivy = retrieval
+            .tantivy_expressions_by_owner
+            .get(&candidate.owner)
+            .into_iter()
+            .flatten()
+            .cloned()
+            .collect();
+        if !candidate.hit.rg.is_empty() {
+            candidate.relation = "native-parser:rg-tantivy-fused".to_owned();
+        }
+    }
+    if let Some(clause) = retrieval
+        .clauses
+        .iter_mut()
+        .find(|clause| clause.receipt.axis == WorkspaceSearchAxisKind::Rg)
+    {
+        clause.syntax_candidates = syntax_candidates;
+    }
     if !structural_clauses.is_empty() {
         for clause in &mut retrieval.clauses {
             // An explicit structural query owns the structural frontier. The
@@ -160,9 +257,13 @@ pub(super) async fn execute_progressive_search_clauses(
                         syntax: vec![block.clone()],
                         projection: "matches".to_owned(),
                     };
+                let structural_resident = workspace_registry
+                    .resident_read_client(workspace_identity, project_root)
+                    .map_err(AspClientOperationError::Message)?;
                 let evidence = execute_workspace_syntax_query_evidence(
                     &syntax_request,
-                    generation.as_ref(),
+                    generation.generation_digest(),
+                    &structural_resident,
                     providers,
                     execution_budget.syntax_selector_limit(),
                     Some(&retrieval.fused_scope),
@@ -214,7 +315,10 @@ pub(super) async fn execute_progressive_search_clauses(
                         "native-syntax selector owner is outside the fused rg/Tantivy file-context scope: {owner}"
                     )));
                 }
-                let (projections, _, diagnostics) = generation
+                let resident = workspace_registry
+                    .resident_read_client(workspace_identity, project_root)
+                    .map_err(AspClientOperationError::Message)?;
+                let (projections, _, diagnostics) = resident
                     .native_syntax_playbook_projection(std::slice::from_ref(&owner))
                     .map_err(AspClientOperationError::Message)?;
                 if let Some(diagnostic) = diagnostics.first() {
@@ -274,7 +378,56 @@ pub(super) async fn execute_progressive_search_clauses(
         graph_query_clauses,
         graph_relation_patterns,
         execution_budget,
+        resident,
+        topology_scope,
     })
+}
+
+pub(super) fn relation_neighbor_scope(
+    resident: &agent_semantic_client_db::runtime_resident_read::RuntimeResidentReadClient,
+    seed: &BTreeSet<String>,
+    limit: usize,
+) -> Result<BTreeSet<String>, AspClientOperationError> {
+    let mut scope = seed.clone();
+    if scope.len() >= limit {
+        return Ok(scope);
+    }
+    let indexed = resident
+        .indexed_owner_paths()
+        .into_iter()
+        .collect::<BTreeSet<_>>();
+    for segment in resident
+        .topology_source_segments()
+        .map_err(AspClientOperationError::Message)?
+        .into_iter()
+        .filter(|segment| seed.contains(&segment.owner_path))
+    {
+        for relation in segment.relations {
+            for endpoint in [&relation.relation.from, &relation.relation.to] {
+                let owner = match endpoint.kind {
+                    agent_semantic_content_identity::ProviderRelationEndpointKindV1::Owner => {
+                        Some(endpoint.id.clone())
+                    }
+                    agent_semantic_content_identity::ProviderRelationEndpointKindV1::Item => {
+                        agent_semantic_content_identity::CanonicalItemSelector::parse(
+                            endpoint.id.clone(),
+                        )
+                        .ok()
+                        .and_then(|selector| selector.owner_path().ok())
+                    }
+                };
+                if let Some(owner) = owner
+                    && indexed.contains(&owner)
+                {
+                    scope.insert(owner);
+                    if scope.len() == limit {
+                        return Ok(scope);
+                    }
+                }
+            }
+        }
+    }
+    Ok(scope)
 }
 
 fn execute_default_retrieval_layout(
@@ -287,6 +440,8 @@ fn execute_default_retrieval_layout(
         return Ok(RetrievalLayoutExecution {
             clauses: Vec::new(),
             fused_scope: BTreeSet::new(),
+            fused_matches: Vec::new(),
+            tantivy_expressions_by_owner: BTreeMap::new(),
         });
     }
     let rg_clauses = clauses
@@ -308,11 +463,6 @@ fn execute_default_retrieval_layout(
     // Tantivy is evaluated independently first. Besides ranked recall, its
     // bounded owner set is the sound fused scope for V1 regexes that cannot
     // produce mandatory trigrams (short patterns and Unicode case folding).
-    let all_owner_scope = generation
-        .resident()
-        .indexed_owner_paths()
-        .into_iter()
-        .collect::<BTreeSet<_>>();
     let mut tantivy_results = Vec::with_capacity(tantivy_clauses.len());
     let mut tantivy_scope = BTreeSet::new();
     for (_, block_index, priority_rank) in tantivy_clauses {
@@ -323,7 +473,6 @@ fn execute_default_retrieval_layout(
             block,
             &plan.routes,
             generation,
-            &all_owner_scope,
             budget.lexical_owner_limit(),
         )?;
         result.require_complete_fused_scope()?;
@@ -376,12 +525,10 @@ fn execute_default_retrieval_layout(
     let fused_scope = fused_file_context_scope(&rg_scope, &tantivy_scope);
     let fused_matches = rg_results
         .iter()
-        .flat_map(|(_, _, result)| result.branch_matches.iter().flatten())
+        .flat_map(|(_, _, result)| result.grounding_matches.iter())
         .filter(|matched| fused_scope.contains(&matched.owner_path))
         .cloned()
         .collect::<Vec<_>>();
-    let mut syntax_candidates =
-        syntax_candidates_enclosing_rg_matches(generation, &fused_scope, &fused_matches)?;
     let mut tantivy_expressions_by_owner = BTreeMap::<String, BTreeSet<String>>::new();
     for (_, _, expression, result) in &tantivy_results {
         for owner in &result.owners {
@@ -391,20 +538,8 @@ fn execute_default_retrieval_layout(
                 .insert(expression.clone());
         }
     }
-    for candidate in &mut syntax_candidates {
-        candidate.hit.tantivy = tantivy_expressions_by_owner
-            .get(&candidate.owner)
-            .into_iter()
-            .flatten()
-            .cloned()
-            .collect();
-        if !candidate.hit.rg.is_empty() {
-            candidate.relation = "native-parser:rg-tantivy-fused".to_owned();
-        }
-    }
-
     let mut executions = Vec::with_capacity(rg_results.len() + tantivy_results.len());
-    for (position, (block_index, priority_rank, result)) in rg_results.into_iter().enumerate() {
+    for (block_index, priority_rank, result) in rg_results {
         let candidate_owners = result
             .candidate_owner_paths
             .into_iter()
@@ -420,11 +555,7 @@ fn execute_default_retrieval_layout(
                 !result.truncated,
                 result.truncated,
             ),
-            syntax_candidates: if position == 0 {
-                std::mem::take(&mut syntax_candidates)
-            } else {
-                Vec::new()
-            },
+            syntax_candidates: Vec::new(),
         });
     }
     for (block_index, priority_rank, _, result) in tantivy_results {
@@ -444,6 +575,8 @@ fn execute_default_retrieval_layout(
     Ok(RetrievalLayoutExecution {
         clauses: executions,
         fused_scope,
+        fused_matches,
+        tantivy_expressions_by_owner,
     })
 }
 
@@ -466,7 +599,10 @@ fn resident_grep_candidate_scope(
     String,
 > {
     if !candidate_plan.is_match_all() {
-        return trigram_candidates();
+        let (mut owners, mut receipt) = trigram_candidates()?;
+        owners.retain(|owner| tantivy_scope.contains(owner));
+        receipt.candidate_count = owners.len();
+        return Ok((owners, receipt));
     }
     if tantivy_scope.len() > limit {
         return Err(format!(
@@ -498,29 +634,41 @@ pub(super) async fn synthesize_progressive_search_projection(
     language_id: &str,
     evidence: ProgressiveSearchEvidence,
     generation: &RuntimeQueryGeneration,
+    project_root: &std::path::Path,
 ) -> Result<ProgressiveSearchProjection, AspClientOperationError> {
-    evidence
-        .execution_budget
+    let ProgressiveSearchEvidence {
+        clause_receipts,
+        syntax_candidates,
+        graph_query_clauses,
+        graph_relation_patterns,
+        execution_budget,
+        resident,
+        topology_scope,
+    } = evidence;
+    execution_budget
         .validate_for_generation(generation.generation_digest())
         .map_err(AspClientOperationError::Message)?;
-    let graph_candidate_owner_limit = evidence.execution_budget.graph_candidate_owner_limit();
-    let graph_evaluation_budget = evidence.execution_budget.graph_evaluation_budget();
-    let evidence_item_limit = evidence.execution_budget.evidence_item_limit();
-    let graph_fan_in = if evidence.graph_query_clauses.is_empty() {
+    let graph_candidate_owner_limit = execution_budget.graph_candidate_owner_limit();
+    let evidence_item_limit = execution_budget.evidence_item_limit();
+    let graph_fan_in = if graph_query_clauses.is_empty() {
         None
     } else {
-        let (candidate_owners, candidate_frontier_truncated) = structural_candidate_owner_scope(
-            &evidence.syntax_candidates,
-            graph_candidate_owner_limit,
-        );
+        let (candidate_owners, candidate_frontier_truncated) =
+            structural_candidate_owner_scope(&syntax_candidates, graph_candidate_owner_limit);
+        let graph_generation = resident
+            .build_graph_generation_for_owner_scope(&topology_scope)
+            .map_err(AspClientOperationError::Message)?;
+        let graph_evaluation_budget =
+            execution_budget.graph_evaluation_budget_for(&graph_generation);
         let graph = crate::runtime_search_graph::evaluate_resident_workspace_playbook_graph(
             request_id,
             language_id,
-            &evidence.graph_query_clauses,
-            &evidence.graph_relation_patterns,
+            &graph_query_clauses,
+            &graph_relation_patterns,
             &candidate_owners,
             graph_evaluation_budget,
-            generation.resident(),
+            &resident,
+            &graph_generation,
         )
         .map_err(|error| {
             AspClientOperationError::Terminal(
@@ -538,21 +686,22 @@ pub(super) async fn synthesize_progressive_search_projection(
             });
         Some(agent_semantic_search::WorkspaceSearchGraphFanIn {
             ranked_candidate_owners: graph.candidate_owner_ids,
-            applied_clause_count: evidence.graph_query_clauses.len(),
+            applied_clause_count: graph_query_clauses.len(),
             complete: true,
             truncated,
         })
     };
     let workspace_result = agent_semantic_search::synthesize_workspace_search_playbook_result(
-        evidence.clause_receipts,
-        evidence.syntax_candidates,
+        clause_receipts,
+        syntax_candidates,
         graph_fan_in,
         evidence_item_limit,
     )?;
     let workspace_result = serde_json::to_value(workspace_result)
         .map_err(|error| AspClientOperationError::Message(error.to_string()))?;
     let attachment = generation
-        .require_search_playbook_topology_attachment()
+        .build_project_topology_for_owner_scope(project_root, &resident, &topology_scope)
+        .await
         .map_err(AspClientOperationError::Message)?;
     let settlement =
         agent_semantic_search_projection::SearchTopologySettlement::from_workspace_result(
@@ -596,7 +745,7 @@ fn structural_candidate_owner_scope(
 }
 
 fn syntax_candidates_enclosing_rg_matches<'a>(
-    generation: &RuntimeQueryGeneration,
+    resident: &agent_semantic_client_db::runtime_resident_read::RuntimeResidentReadClient,
     owner_paths: &BTreeSet<String>,
     matches: impl IntoIterator<Item = &'a RuntimeGrepMatch>,
 ) -> Result<Vec<WorkspaceSearchSyntaxCandidate>, AspClientOperationError> {
@@ -605,7 +754,7 @@ fn syntax_candidates_enclosing_rg_matches<'a>(
     if owners.is_empty() {
         return Ok(Vec::new());
     }
-    let (projections, _, _) = generation
+    let (projections, _, _) = resident
         .native_syntax_playbook_projection(&owners)
         .map_err(AspClientOperationError::Message)?;
     let projections = projections
@@ -614,8 +763,7 @@ fn syntax_candidates_enclosing_rg_matches<'a>(
         .collect::<BTreeMap<_, _>>();
     let mut line_ranges = BTreeMap::new();
     for owner in &owners {
-        let snapshot = generation
-            .resident()
+        let snapshot = resident
             .owner_snapshot(owner)
             .map_err(AspClientOperationError::Message)?
             .ok_or_else(|| {
@@ -762,7 +910,6 @@ fn execute_tantivy_block(
     block: &[String],
     routes: &[agent_semantic_search::WorkspaceSearchPlaybookRoute],
     generation: &RuntimeQueryGeneration,
-    allowed_owner_paths: &BTreeSet<String>,
     limit: u32,
 ) -> Result<TantivyClauseResult, AspClientOperationError> {
     let mut owners = Vec::new();
@@ -779,7 +926,7 @@ fn execute_tantivy_block(
             analysis.syntax_diagnostics, analysis.unsupported_fields, analysis.missing_features,
         )));
     }
-    let generation_owner_limit = u32::try_from(generation.resident().indexed_owner_paths().len())
+    let generation_owner_limit = u32::try_from(generation.resident().indexed_owner_count())
         .unwrap_or(u32::MAX)
         .max(1);
     for route in routes {
@@ -790,7 +937,10 @@ fn execute_tantivy_block(
             .read_tantivy_for_language(&expression, &language, generation_owner_limit)
             .map_err(AspClientOperationError::Message)?;
         for hit in &result.hits {
-            if allowed_owner_paths.contains(&hit.owner_path) && seen.insert(hit.owner_path.clone())
+            if generation
+                .resident()
+                .contains_indexed_owner(&hit.owner_path)
+                && seen.insert(hit.owner_path.clone())
             {
                 if owners.len() == limit as usize {
                     truncated = true;

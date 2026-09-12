@@ -80,6 +80,7 @@ fn projection() -> CallableSkeletonPayload {
     let root = root_selector();
     let arm_selector = format!("{}/segment/arm/pattern-command-rust", root.selector);
     CallableSkeletonPayload {
+        root_selector: root.selector.clone(),
         root_node_id: "callable:run".to_owned(),
         callable: CallableDescriptorV1 {
             kind: CallableDescriptorKindV1::new("function").expect("callable kind"),

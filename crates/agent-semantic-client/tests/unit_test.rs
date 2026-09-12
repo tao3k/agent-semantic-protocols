@@ -45,6 +45,8 @@ mod install_provider_cli;
 mod live_corpus_public_route;
 #[path = "unit/live_corpus_registered_languages.rs"]
 mod live_corpus_registered_languages;
+#[path = "unit/package_dependency_boundary.rs"]
+mod package_dependency_boundary;
 #[path = "unit/paths_command.rs"]
 mod paths_command;
 #[path = "unit/command/provider_language_facade.rs"]

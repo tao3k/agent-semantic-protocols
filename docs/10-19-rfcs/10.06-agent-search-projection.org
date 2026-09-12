@@ -13,6 +13,24 @@ compatibility surface.
 
 * Request admission and provider syntax identity
 
+Callable-skeleton payloads retain the required V1 =rootSelector= alongside
+=rootNodeId=. The payload root must equal the enclosing exact Query root;
+the root node must exist and every queryable child stays in that root scope.
+
+For V1 source Query of an exact descendant, the immutable generation may resolve
+the requested selector through its admitted callable-skeleton envelope. The
+envelope root, payload digest, queryable node identity, and enclosing root byte
+range must all agree with the same generation before the parser-supplied byte
+range is used. A source locator hint alone is never authority. Missing nodes,
+missing byte ranges, non-queryable nodes, cross-root selectors and out-of-root
+ranges fail explicitly; they must not relocate to the root or fall back to a
+filesystem read. This uses existing V1 fields and does not change schema or
+exact-selector proof formats. Resident and durable mapped reads share the same
+resolution logic, copying only the selected source slice.
+Providers and Rust DTOs obey the shared schema without accepting a rootless
+compatibility payload. Hashes bind the complete typed payload, including its
+root. A fixture with an empty node set is not a valid executable skeleton.
+
 Research on optional structural evidence, redundancy, and replay is recorded in
 [[file:10.06-agent-search-projection/10.06.14-search-evidence-output-reflection.org][10.06.14 Search Evidence Output Reflection]].
 It does not change this contract's current grammar, default, or admission rules.
@@ -138,6 +156,16 @@ Search Layout receipt. The Search package owns
 the shared layout model and execution; Rust owns schema
 admission, scheduling, execution, and receipts. No Scheme evaluator or
 provider-local planner enters the Search hot path.
+
+Automatic parser grounding uses exact resident-GREP owner/line evidence, not
+only the argv-selected display shape.  Output-attribution flags may suppress
+line rendering for rg compatibility, but they MUST NOT erase Runtime's private
+grounding line.  Runtime retains at least one exact matching line for each
+matched owner and maps it to the smallest enclosing parser-owned selector.
+Only those bounded matching selectors enter Top-K.  Expanding an owner-level
+hit into every selector in the owner is forbidden because Search locates the
+next exact Query target; detailed callable and Relation materialization belongs
+to Query.  This is a V1 execution/projection invariant and adds no public field.
 
 * Fan-in, progressive delta, and freshness
 ** Provider-ranked Top-K projection
@@ -378,9 +406,9 @@ block and must be bound to the exact Project/Workspace/Generation/root identity.
 - generation and source-snapshot identity;
 - matched owner paths and content digests;
 - matched lexical terms and graph-derived rank;
-- parser-owned structural selectors when available;
+- parser-owned structural selectors enclosing exact matches when available;
 - bounded =nativeSyntax.projections[]= records containing each selected
-  owner identity, content digest, canonical selectors, byte ranges, normalized
+  owner identity, content digest, matching canonical selectors, byte ranges, normalized
   query keys, derived projection digests, and owner-bound relation digests;
 - typed work counters and elapsed time.
 

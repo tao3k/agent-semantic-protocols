@@ -171,6 +171,7 @@ pub struct RuntimeAspClientDispatcher {
     pub(super) generation_admission: Arc<WorkspaceGenerationAdmission>,
     pub(super) workspace_registry:
         Arc<agent_semantic_client_db::runtime_server_workspace::RuntimeServerWorkspaceRegistry>,
+    pub(super) owner_materializer: super::owner_materialization::RuntimeOwnerMaterializer,
     pub(super) active_provider_targets: Arc<[(String, String)]>,
     /// Provider/search projection compiled once at Runtime service admission.
     /// Search/Query requests only clone this immutable resident snapshot.
@@ -217,6 +218,7 @@ impl RuntimeAspClientDispatcher {
             runtime_search_service,
             generation_admission,
             workspace_registry,
+            owner_materializer: super::owner_materialization::RuntimeOwnerMaterializer::default(),
             initialized_workspaces,
             active_provider_targets,
             workspace_search_providers,

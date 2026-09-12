@@ -9,6 +9,7 @@ use crate::semantic_projection::SemanticProjection;
 #[test]
 fn python_provider_projection_deserializes_through_shared_contract() {
     let payload = serde_json::json!({
+        "rootSelector": "python://fixture.py#item/function/f",
         "rootNodeId": "callable:root",
         "callable": {"kind": "function", "displayName": "f", "signature": "f"},
         "nodes": [{
@@ -33,7 +34,7 @@ fn python_provider_projection_deserializes_through_shared_contract() {
         "rootSelector": "python://fixture.py#item/function/f",
         "evidenceContextRef": "blake3-256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
         "payloadSchemaId": CALLABLE_SKELETON_PAYLOAD_SCHEMA_ID,
-        "payloadDigest": "blake3-256:bf6d7b55bfebaeb49abb52358b2feca1b2f41babc44e13231f52ca1c724a5983",
+        "payloadDigest": "blake3-256:50510f37ae65932eb4efbf0cddd2a9047dda18cfead846d4afbeabc68bf03bb6",
         "payload": payload
     });
     let decoded: SemanticProjection<CallableSkeletonPayload> =
@@ -43,4 +44,31 @@ fn python_provider_projection_deserializes_through_shared_contract() {
         .expect("Python semantic projection must validate");
     assert_eq!(decoded.language_id, "python");
     assert_eq!(decoded.provider_id, "asp-python");
+}
+
+#[test]
+fn shared_callable_fixture_has_valid_digest_nodes_and_root_scope() {
+    let decoded: SemanticProjection<CallableSkeletonPayload> = serde_json::from_str(include_str!(
+        "../../../../../schemas/fixtures/semantic-projection.callable-skeleton.v1.json"
+    ))
+    .unwrap();
+    decoded.validate().unwrap();
+    decoded.payload.validate().unwrap();
+    decoded
+        .payload
+        .validate_scope(decoded.root_selector.as_str())
+        .unwrap();
+}
+
+#[test]
+fn callable_payload_cannot_omit_its_v1_root() {
+    let mut fixture: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../../../schemas/fixtures/semantic-projection.callable-skeleton.v1.json"
+    ))
+    .unwrap();
+    fixture["payload"]
+        .as_object_mut()
+        .unwrap()
+        .remove("rootSelector");
+    assert!(serde_json::from_value::<CallableSkeletonPayload>(fixture["payload"].clone()).is_err());
 }

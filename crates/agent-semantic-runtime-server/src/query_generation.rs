@@ -53,6 +53,9 @@ pub(super) struct RuntimeSearchGenerationBuilder {
     process_memory_budget_bytes: usize,
     minimum_memory_per_worker_bytes: usize,
     attachment_hub: RuntimeSearchDerivedAttachmentHub,
+    background_tasks: std::sync::Mutex<
+        Vec<agent_semantic_client_db::runtime_server_runtime::RuntimeServerOwnedTask<()>>,
+    >,
 }
 
 type RuntimeSearchGenerationBuild = Box<
@@ -63,6 +66,7 @@ type RuntimeSearchGenerationBuild = Box<
         + 'static,
 >;
 
+#[cfg(test)]
 struct RuntimeSearchGenerationBuildJob {
     graph: RuntimeSearchGenerationBuildOperation,
     lexical: RuntimeSearchGenerationBuildOperation,
@@ -202,6 +206,7 @@ async fn run_runtime_search_generation_build(
     Ok(())
 }
 
+#[cfg(test)]
 async fn run_runtime_search_generation_build_and_wait(
     task_scope: agent_semantic_client_db::runtime_server_runtime::RuntimeServerTaskScope,
     resource_supervisor: agent_semantic_client_db::runtime_server_runtime::RuntimeServerResourceSupervisor,
@@ -262,10 +267,53 @@ impl RuntimeSearchGenerationBuilder {
             process_memory_budget_bytes,
             minimum_memory_per_worker_bytes,
             attachment_hub,
+            background_tasks: std::sync::Mutex::new(Vec::new()),
         })
     }
 
-    pub(super) async fn build_and_wait(
+    pub(super) fn schedule(
+        self: &Arc<Self>,
+        key: RuntimeProjectWorkspaceKey,
+        generation: Arc<RuntimeQueryGeneration>,
+        previous: Option<Arc<RuntimeQueryGeneration>>,
+    ) -> Result<(), String> {
+        if !self.accepting.load(Ordering::Acquire) {
+            return Err("search generation builder is draining".to_owned());
+        }
+        let builder = Arc::clone(self);
+        let terminal_generation = Arc::clone(&generation);
+        let task = self
+            .task_scope
+            .spawn("search-generation-lexical-attachment", async move {
+                let result = builder
+                    .build_lexical_and_wait(
+                        &key,
+                        std::path::Path::new(""),
+                        generation,
+                        previous.as_deref(),
+                    )
+                    .await;
+                terminal_generation.publish_lexical_attachment_terminal();
+                if let Err(error) = result {
+                    eprintln!(
+                        "[runtime-search-lexical-build] {}",
+                        serde_json::json!({
+                            "state": "failed",
+                            "reasonKind": "runtime-search-lexical-build-failed",
+                            "generationDigest": terminal_generation.generation_digest(),
+                            "error": error,
+                        })
+                    );
+                }
+            })?;
+        self.background_tasks
+            .lock()
+            .map_err(|_| "search generation background task registry is poisoned".to_owned())?
+            .push(task);
+        Ok(())
+    }
+
+    pub(super) async fn build_lexical_and_wait(
         &self,
         key: &RuntimeProjectWorkspaceKey,
         _project_root: &std::path::Path,
@@ -379,14 +427,11 @@ impl RuntimeSearchGenerationBuilder {
         let generation_token = generation.generation_token();
         if generation_token == 0 {
             return Err(
-                "search derived attachments require a published generation token".to_owned(),
+                "search lexical attachment requires a published generation token".to_owned(),
             );
         }
-        let graph_build_generation = Arc::clone(&generation);
-        let graph_fail_generation = Arc::clone(&generation);
         let lexical_build_generation = Arc::clone(&generation);
         let lexical_fail_generation = Arc::clone(&generation);
-        let graph_content_generation_digest = content_generation_digest.clone();
         let throughput_by_workload = Arc::clone(&self.throughput_by_workload);
         let calibration_store = Arc::clone(&self.calibration_store);
         let calibration_store_path = self.calibration_store_path.clone();
@@ -395,119 +440,114 @@ impl RuntimeSearchGenerationBuilder {
         let process_memory_budget_bytes = self.process_memory_budget_bytes;
         let (lexical_cpu, lexical_memory) =
             (selected.1.chosen_workers, selected.1.memory_budget_bytes);
-        self.build_job_and_wait(RuntimeSearchGenerationBuildJob {
-            graph: RuntimeSearchGenerationBuildOperation {
-                name: "search-generation-graph-build",
-                identity: RuntimeSearchDerivedAttachmentIdentity {
-                    project_id: key.project_id().as_str().to_owned(),
-                    workspace_id: key.workspace_id().as_str().to_owned(),
-                    generation_token,
-                    content_generation_digest: content_generation_digest.clone(),
-                    attachment: RuntimeSearchDerivedAttachmentKind::Graph,
-                },
-                resources:
-                    agent_semantic_client_db::runtime_server_runtime::RuntimeServerResourceRequest {
-                        cpu: 1,
-                        memory_bytes: lexical_bytes.max(1).min(self.process_memory_budget_bytes),
-                    },
-                build: Box::new(move || {
-                    graph_build_generation
-                        .resident()
-                        .build_graph_attachment(&graph_content_generation_digest)
-                }),
-                fail: Box::new(move |error| {
-                    graph_fail_generation
-                        .resident()
-                        .fail_graph_attachment(&error)
-                }),
+        self.build_operation_and_wait(RuntimeSearchGenerationBuildOperation {
+            name: "search-generation-lexical-build",
+            identity: RuntimeSearchDerivedAttachmentIdentity {
+                project_id: key.project_id().as_str().to_owned(),
+                workspace_id: key.workspace_id().as_str().to_owned(),
+                generation_token,
+                content_generation_digest: content_generation_digest.clone(),
+                attachment: RuntimeSearchDerivedAttachmentKind::Tantivy,
             },
-            lexical: RuntimeSearchGenerationBuildOperation {
-                name: "search-generation-lexical-build",
-                identity: RuntimeSearchDerivedAttachmentIdentity {
-                    project_id: key.project_id().as_str().to_owned(),
-                    workspace_id: key.workspace_id().as_str().to_owned(),
-                    generation_token,
-                    content_generation_digest: content_generation_digest.clone(),
-                    attachment: RuntimeSearchDerivedAttachmentKind::Tantivy,
+            resources:
+                agent_semantic_client_db::runtime_server_runtime::RuntimeServerResourceRequest {
+                    cpu: lexical_cpu,
+                    memory_bytes: lexical_memory,
                 },
-                resources:
-                    agent_semantic_client_db::runtime_server_runtime::RuntimeServerResourceRequest {
-                        cpu: lexical_cpu,
-                        memory_bytes: lexical_memory,
-                    },
-                build: Box::new(move || {
-                    let (resources, resource_receipt, workload_key) = selected;
-                    let started = std::time::Instant::now();
-                    let timing = lexical_build_generation
-                        .resident()
-                        .build_lexical_attachment(&content_generation_digest, resources)?;
-                    let elapsed_nanos = started.elapsed().as_nanos().max(1);
-                    if lexical_build_generation
-                        .resident()
-                        .lexical_accelerator_is_ready()
-                    {
-                        let owners_per_second = u64::try_from(
-                            (owner_count as u128)
-                                .saturating_mul(1_000_000_000)
-                                .checked_div(elapsed_nanos)
-                                .unwrap_or(0),
-                        )
-                        .unwrap_or(u64::MAX);
-                        if let Ok(mut history) = throughput_by_workload.lock() {
-                            history
-                                .entry(workload_key)
-                                .or_default()
-                                .entry(resource_receipt.chosen_workers)
-                                .and_modify(|observed| {
-                                    *observed = observed.saturating_add(owners_per_second) / 2;
-                                })
-                                .or_insert(owners_per_second);
-                        }
-                        let mut store = calibration_store.lock().map_err(|_| {
-                            "Runtime search calibration store is poisoned".to_owned()
-                        })?;
-                        store.schema_id =
-                            "agent.semantic-protocols.runtime-search-calibration-store".to_owned();
-                        store.schema_version = "1".to_owned();
-                        let key = runtime_search_calibration_key(
-                            &engine_digest,
-                            effective_cpu,
-                            process_memory_budget_bytes,
-                            workload_key,
-                        );
-                        upsert_runtime_search_calibration_decision(
-                            &mut store,
-                            key,
-                            RuntimeSearchCalibrationDecision {
-                                strategy: resource_receipt.strategy.to_owned(),
-                                workers: resource_receipt.chosen_workers,
-                                memory_budget_bytes: resource_receipt.memory_budget_bytes,
-                                observed_owners_per_second: owners_per_second,
-                                sample_identity: content_generation_digest.clone(),
-                            },
-                        );
-                        if let Some(path) = calibration_store_path.as_deref() {
-                            persist_runtime_search_calibration_store(path, &store)?;
-                        }
+            build: Box::new(move || {
+                let (resources, resource_receipt, workload_key) = selected;
+                let started = std::time::Instant::now();
+                let timing = lexical_build_generation
+                    .resident()
+                    .build_lexical_attachment(&content_generation_digest, resources)?;
+                let elapsed_nanos = started.elapsed().as_nanos().max(1);
+                if lexical_build_generation
+                    .resident()
+                    .lexical_accelerator_is_ready()
+                {
+                    let owners_per_second = u64::try_from(
+                        (owner_count as u128)
+                            .saturating_mul(1_000_000_000)
+                            .checked_div(elapsed_nanos)
+                            .unwrap_or(0),
+                    )
+                    .unwrap_or(u64::MAX);
+                    if let Ok(mut history) = throughput_by_workload.lock() {
+                        history
+                            .entry(workload_key)
+                            .or_default()
+                            .entry(resource_receipt.chosen_workers)
+                            .and_modify(|observed| {
+                                *observed = observed.saturating_add(owners_per_second) / 2;
+                            })
+                            .or_insert(owners_per_second);
                     }
-                    Ok(timing)
-                }),
-                fail: Box::new(move |error| {
-                    lexical_fail_generation
-                        .resident()
-                        .fail_lexical_attachment(&error)
-                }),
-            },
+                    let mut store = calibration_store
+                        .lock()
+                        .map_err(|_| "Runtime search calibration store is poisoned".to_owned())?;
+                    store.schema_id =
+                        "agent.semantic-protocols.runtime-search-calibration-store".to_owned();
+                    store.schema_version = "1".to_owned();
+                    let key = runtime_search_calibration_key(
+                        &engine_digest,
+                        effective_cpu,
+                        process_memory_budget_bytes,
+                        workload_key,
+                    );
+                    upsert_runtime_search_calibration_decision(
+                        &mut store,
+                        key,
+                        RuntimeSearchCalibrationDecision {
+                            strategy: resource_receipt.strategy.to_owned(),
+                            workers: resource_receipt.chosen_workers,
+                            memory_budget_bytes: resource_receipt.memory_budget_bytes,
+                            observed_owners_per_second: owners_per_second,
+                            sample_identity: content_generation_digest.clone(),
+                        },
+                    );
+                    if let Some(path) = calibration_store_path.as_deref() {
+                        persist_runtime_search_calibration_store(path, &store)?;
+                    }
+                }
+                Ok(timing)
+            }),
+            fail: Box::new(move |error| {
+                lexical_fail_generation
+                    .resident()
+                    .fail_lexical_attachment(&error)
+            }),
         })
         .await
     }
 
+    async fn build_operation_and_wait(
+        &self,
+        operation: RuntimeSearchGenerationBuildOperation,
+    ) -> Result<(), String> {
+        if !self.accepting.load(Ordering::Acquire) {
+            return Err("search generation builder is draining".to_owned());
+        }
+        self.attachment_hub.publish(
+            &operation.identity,
+            RuntimeSearchDerivedAttachmentState::Queued,
+            None,
+            None,
+        );
+        run_runtime_search_generation_build(
+            self.task_scope.clone(),
+            self.resource_supervisor.clone(),
+            self.attachment_hub.clone(),
+            operation,
+        )
+        .await
+    }
+
+    #[cfg(test)]
     async fn build_job_and_wait(&self, job: RuntimeSearchGenerationBuildJob) -> Result<(), String> {
         if !self.accepting.load(Ordering::Acquire) {
             return Err("search generation builder is draining".to_owned());
         }
-        let queued = [job.graph.identity.clone(), job.lexical.identity.clone()];
-        for identity in queued {
+        for identity in [job.graph.identity.clone(), job.lexical.identity.clone()] {
             self.attachment_hub.publish(
                 &identity,
                 RuntimeSearchDerivedAttachmentState::Queued,
@@ -539,7 +579,19 @@ impl RuntimeSearchGenerationBuilder {
 
     pub(super) async fn shutdown(&self) -> Result<(), String> {
         self.accepting.store(false, Ordering::Release);
-        Ok(())
+        let tasks =
+            std::mem::take(&mut *self.background_tasks.lock().map_err(|_| {
+                "search generation background task registry is poisoned".to_owned()
+            })?);
+        let mut first_error = None;
+        for task in tasks {
+            if let Err(error) = task.join().await
+                && first_error.is_none()
+            {
+                first_error = Some(error);
+            }
+        }
+        first_error.map_or(Ok(()), Err)
     }
 }
 

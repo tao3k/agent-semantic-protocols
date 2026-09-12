@@ -46,3 +46,32 @@ pub(super) fn validate_owner_snapshot_membership(
     }
     Ok(())
 }
+
+pub(super) fn validate_auxiliary_snapshot_membership(
+    workspace_snapshot: &agent_semantic_content_identity::WorkspaceSnapshot,
+    owners: &[super::WorkspaceAuxiliaryOwnerSnapshot],
+) -> Result<(), String> {
+    let mut paths = std::collections::BTreeSet::new();
+    for owner in owners {
+        if owner.owner_path.trim().is_empty() || !paths.insert(owner.owner_path.as_str()) {
+            return Err("workspace auxiliary owner paths must be non-empty and unique".to_owned());
+        }
+        let actual =
+            agent_semantic_content_identity::exact_selector_merkle::blake3_content_digest_v1(
+                &owner.bytes,
+            );
+        if owner.content_digest.strip_prefix("blake3-256:") != Some(actual.as_str()) {
+            return Err(format!(
+                "workspace auxiliary owner content digest drift: ownerPath={}",
+                owner.owner_path
+            ));
+        }
+        if workspace_snapshot.file_digest(&owner.owner_path) != Some(actual.as_str()) {
+            return Err(format!(
+                "workspace auxiliary owner is absent from admitted snapshot: ownerPath={}",
+                owner.owner_path
+            ));
+        }
+    }
+    Ok(())
+}

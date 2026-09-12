@@ -29,7 +29,6 @@ const ROOT_COMMANDS: &[(&str, &str)] = &[
         "Qualify and publish provider live-corpus artifacts",
     ),
     ("ast-patch", "Verify or render parser-owned AST patches"),
-    ("graph", "Render ASP evidence graphs"),
     (
         "search",
         "Search with an explicit or inferred language facade",
@@ -54,9 +53,7 @@ const LANGUAGE_COMMANDS: &[(&str, &str)] = &[
     ("ast-patch", "Work with language-owned AST patches"),
 ];
 
-const DOCUMENT_COMMANDS: &[(&str, &str)] = &[
-    ("guide", "Show the document query guide"),
-];
+const DOCUMENT_COMMANDS: &[(&str, &str)] = &[("guide", "Show the document query guide")];
 
 fn command_with_subcommands(
     name: &'static str,

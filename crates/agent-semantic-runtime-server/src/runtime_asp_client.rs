@@ -64,6 +64,9 @@ mod query_playbook;
 #[path = "runtime_asp_client_resolved_route.rs"]
 mod resolved_route;
 
+#[path = "runtime_owner_materialization.rs"]
+mod owner_materialization;
+
 use projection_routes::dispatch_exact_query;
 use projection_routes::dispatch_source_index_lookup;
 use query_generation_support::AspClientOperationError;
@@ -72,7 +75,7 @@ use query_generation_support::RUNTIME_CLIENT_DISPATCH_BUDGET;
 use query_generation_support::classify_exact_query_failure;
 use query_generation_support::query_generation_not_ready_error;
 use query_generation_support::request_runtime_query_generation_ready;
-use query_generation_support::{dispatch_budget_for_method, enforce_completed_dispatch_budget};
+use query_generation_support::{RequestDispatchBudget, enforce_completed_dispatch_budget};
 use resolved_route::{ResolvedRouteContext, dispatch_resolved_route};
 use syntax_plan_context_route::dispatch_workspace_syntax_plan_context;
 use syntax_query_route::dispatch_workspace_syntax_query;
@@ -247,6 +250,7 @@ impl AspClientDispatcher for RuntimeAspClientDispatcher {
         let runtime_search_service = self.runtime_search_service.clone();
         let generation_admission = Arc::clone(&self.generation_admission);
         let workspace_registry = Arc::clone(&self.workspace_registry);
+        let owner_materializer = self.owner_materializer.clone();
         let active_provider_targets = Arc::clone(&self.active_provider_targets);
         let workspace_search_providers = Arc::clone(&self.workspace_search_providers);
         let workspace_store_root = self.workspace_store_root.clone();
@@ -258,7 +262,9 @@ impl AspClientDispatcher for RuntimeAspClientDispatcher {
         let active_telemetry_trace_count = Arc::clone(&self.active_telemetry_trace_count);
         let cancellations = Arc::clone(&self.cancellations);
         let resident_request_seen = Arc::clone(&self.resident_request_seen);
-        let dispatch_budget = dispatch_budget_for_method(&request.method);
+        let dispatch_budget = RequestDispatchBudget::for_method(&request.method);
+        let operation_budget = dispatch_budget.clone();
+        let dispatch_method = request.method.clone();
         let request_plane_operation = resident_request_operation(&request.method);
         let request_plane_operation_id = request.request_id.as_str().to_owned();
         let request_plane_key = (request.project_id.clone(), request.workspace_id.clone());
@@ -604,11 +610,15 @@ impl AspClientDispatcher for RuntimeAspClientDispatcher {
                         .map_err(AspClientOperationError::Message);
                 }
                 dispatch_resolved_route(ResolvedRouteContext {
+                    dispatch_budget: operation_budget,
                     request,
                     project_workspace_key,
                     initialized_workspaces,
                     generation_admission,
                     workspace_registry,
+                    runtime_search_service,
+                    owner_materializer,
+                    workspace_store_root,
                     active_provider_targets,
                     workspace_search_providers,
                     query_generation,
@@ -627,13 +637,8 @@ impl AspClientDispatcher for RuntimeAspClientDispatcher {
                                 },
                                 AspClientOperationError::Terminal(error) => error,
                             }),
-                            _ = async {
-                                match dispatch_budget {
-                                    Some(budget) => tokio::time::sleep(budget).await,
-                                    None => std::future::pending::<()>().await,
-                                }
-                            } => {
-            let budget = dispatch_budget.expect("deadline branch requires an interactive budget");
+                            _ = dispatch_budget.expired(dispatch_started) => {
+            let budget = dispatch_budget.limit().expect("deadline branch requires a request budget");
             Err(AspClientDispatchError {
                 reason_kind: "client-request-deadline-exceeded".to_owned(),
                 message: format!(
@@ -661,8 +666,24 @@ impl AspClientDispatcher for RuntimeAspClientDispatcher {
                         };
             let request_elapsed = dispatch_started.elapsed();
             let result =
-                enforce_completed_dispatch_budget(result, dispatch_budget, request_elapsed);
-            if let Some(operation) = request_plane_operation {
+                enforce_completed_dispatch_budget(result, dispatch_budget.limit(), request_elapsed);
+            eprintln!(
+                "[runtime-dispatch-timing] requestId={} method={} phase={} elapsedMicros={} state={}",
+                request_plane_operation_id,
+                dispatch_method,
+                if dispatch_budget.is_first_computation() {
+                    "first-computation-observation"
+                } else {
+                    "resident-or-control"
+                },
+                request_elapsed.as_micros(),
+                if result.is_ok() { "ready" } else { "failed" },
+            );
+            // The V1 resident receipt asserts zero waits and <1ms. Never issue
+            // it for first computation, even when that computation is fast.
+            if let Some(operation) =
+                request_plane_operation.filter(|_| !dispatch_budget.is_first_computation())
+            {
                 let elapsed_micros = u64::try_from(request_elapsed.as_micros()).unwrap_or(u64::MAX);
                 let receipt_state = match &result {
                     Ok(value) => resident_generation_digest(

@@ -154,7 +154,9 @@ fn generation_fixture(
     )])
     .evidence(
         agent_semantic_content_identity::SourceSnapshotKind::Filesystem,
-        "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+        blake3::hash(b"materialization-provider")
+            .to_hex()
+            .to_string(),
     );
     (
         ClientDbSourceIndexRefreshRequest {
@@ -215,6 +217,33 @@ fn admitted_project_resolution(
 }
 
 #[test]
+fn canonical_assembly_rejects_source_drift_with_reused_owner_digest() {
+    let project_root = fixture_root();
+    std::fs::create_dir_all(&project_root).expect("create source drift fixture");
+    let (request, _) = generation_fixture(&project_root);
+    assert!(!request.import.selectors.is_empty());
+    let source_blobs = ClientDbSourceIndexSourceBlobs::from_normalized([(
+        ClientDbSourceIndexPath::new("src/materialized.rs"),
+        b"pub fn materialized() { }\n".to_vec(),
+    )]);
+    let workspace_snapshot =
+        agent_semantic_content_identity::WorkspaceSnapshot::from_file_bytes(source_blobs.iter());
+    let source_snapshot = workspace_snapshot.evidence(
+        agent_semantic_content_identity::SourceSnapshotKind::Filesystem,
+        blake3::hash(b"source-drift-provider").to_hex().to_string(),
+    );
+    let result = agent_semantic_client_db::runtime_server_workspace::WorkspaceCanonicalMaterialization::from_source_index(
+        "workspace-source-drift",
+        &workspace_snapshot,
+        &source_snapshot,
+        &request.import,
+        &source_blobs,
+        Vec::new(),
+    );
+    assert!(matches!(result, Err(error) if error.contains("source blob digest drift")));
+}
+
+#[test]
 fn auxiliary_snapshot_leaves_are_committed_without_becoming_searchable_owners() {
     let root = fixture_root();
     let project_root = root.join("auxiliary-snapshot-generation");
@@ -252,6 +281,12 @@ fn auxiliary_snapshot_leaves_are_committed_without_becoming_searchable_owners() 
 
     assert_eq!(materialization.owners.len(), 1);
     assert_eq!(materialization.owners[0].owner_path, "src/materialized.rs");
+    assert_eq!(materialization.auxiliary_owners.len(), 1);
+    assert_eq!(materialization.auxiliary_owners[0].owner_path, "gerbil.pkg");
+    assert_eq!(
+        materialization.auxiliary_owners[0].bytes,
+        b"package: test\n"
+    );
     assert!(
         materialization
             .workspace_snapshot
@@ -261,6 +296,19 @@ fn auxiliary_snapshot_leaves_are_committed_without_becoming_searchable_owners() 
     assert_eq!(
         materialization.workspace_snapshot.root_digest(),
         materialization.source_snapshot.root_digest
+    );
+    let encoded = serde_json::to_vec(&materialization).expect("encode canonical materialization");
+    let mut restored = serde_json::from_slice::<
+        agent_semantic_client_db::runtime_server_workspace::WorkspaceCanonicalMaterialization,
+    >(&encoded)
+    .expect("restore canonical materialization");
+    assert_eq!(restored.auxiliary_owners, materialization.auxiliary_owners);
+    restored.auxiliary_owners[0].bytes.push(b'!');
+    assert!(
+        restored
+            .validate_persisted("workspace-auxiliary-snapshot")
+            .expect_err("corrupt persisted auxiliary bytes")
+            .contains("auxiliary owner content digest drift")
     );
 }
 
@@ -273,7 +321,7 @@ fn project_resolution_graph_is_part_of_canonical_and_mmap_generation_identity() 
     let source_snapshot = request.source_snapshot.clone();
     let workspace_snapshot =
         agent_semantic_content_identity::WorkspaceSnapshot::from_file_bytes(source_blobs.iter());
-    let first = agent_semantic_client_db::runtime_server_workspace::WorkspaceCanonicalMaterialization::from_source_index(
+    let mut first = agent_semantic_client_db::runtime_server_workspace::WorkspaceCanonicalMaterialization::from_source_index(
         "workspace-project-resolution-generation",
         &workspace_snapshot,
         &source_snapshot,
@@ -281,10 +329,15 @@ fn project_resolution_graph_is_part_of_canonical_and_mmap_generation_identity() 
         &source_blobs,
         vec![admitted_project_resolution("serde")],
     )
-    .expect("first ProjectResolution materialization")
-    .into_generation(0)
-    .expect("first resident generation");
-    let second = agent_semantic_client_db::runtime_server_workspace::WorkspaceCanonicalMaterialization::from_source_index(
+    .expect("first ProjectResolution materialization");
+    first
+        .attach_content_search_generation(crate::fixture::content_search_generation_receipt(
+            "workspace-project-resolution-generation",
+            &source_snapshot,
+        ))
+        .expect("bind first content-search construction receipt");
+    let first = first.into_generation(0).expect("first resident generation");
+    let mut second = agent_semantic_client_db::runtime_server_workspace::WorkspaceCanonicalMaterialization::from_source_index(
         "workspace-project-resolution-generation",
         &workspace_snapshot,
         &source_snapshot,
@@ -292,9 +345,16 @@ fn project_resolution_graph_is_part_of_canonical_and_mmap_generation_identity() 
         &source_blobs,
         vec![admitted_project_resolution("tokio")],
     )
-    .expect("second ProjectResolution materialization")
-    .into_generation(0)
-    .expect("second resident generation");
+    .expect("second ProjectResolution materialization");
+    second
+        .attach_content_search_generation(crate::fixture::content_search_generation_receipt(
+            "workspace-project-resolution-generation",
+            &source_snapshot,
+        ))
+        .expect("bind second content-search construction receipt");
+    let second = second
+        .into_generation(0)
+        .expect("second resident generation");
 
     assert_ne!(
         first.workspace_source_scope_generation,

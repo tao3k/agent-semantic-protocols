@@ -427,6 +427,38 @@ type OwnerSearchIndexes = (
     BTreeMap<String, String>,
 );
 
+pub(super) fn build_admitted_owner_search_indexes(
+    owner_directory_records: &BTreeMap<String, Arc<SearchOwnerRecord>>,
+) -> Result<OwnerSearchIndexes, String> {
+    let mut source_documents = Vec::with_capacity(owner_directory_records.len());
+    let mut callable_selectors = BTreeMap::new();
+    for (key, record) in owner_directory_records {
+        if record.owner_path != *key {
+            return Err("workspace owner record key drift".to_owned());
+        }
+        if let Some(selector) = record.selectors.iter().find_map(|selector| {
+            selector
+                .derived_projections
+                .iter()
+                .any(|projection| {
+                    projection.projection_kind == super::ExactProjectionKind::CallableSkeleton
+                })
+                .then(|| selector.selector.clone())
+        }) {
+            callable_selectors.insert(key.clone(), selector);
+        }
+        source_documents.push(agent_semantic_search::ResidentSourceDocument {
+            owner_path: record.owner_path.clone(),
+            authority: record.authority.clone(),
+            owner_content_digest: record.content_digest.clone(),
+            line_count: record.line_count,
+            query_keys: record.query_keys.clone(),
+            lexical_body: None,
+        });
+    }
+    Ok((source_documents, callable_selectors))
+}
+
 pub(super) fn build_owner_search_indexes(
     owner_directory_records: &BTreeMap<String, Arc<SearchOwnerRecord>>,
     graph_relations: &[crate::ClientDbSourceIndexOwnedRelation],

@@ -95,13 +95,30 @@ impl ResidentByteCoverageIndex {
     pub fn new<'a>(
         inputs: impl IntoIterator<Item = ResidentByteCoverageInput<'a>>,
     ) -> Result<Self, String> {
-        let (owners, artifact) = Self::encode_artifact(inputs)?;
-        Self::from_owned_artifact(owners, artifact)
+        let (owners, encoded) = Self::encode_validated_artifact(inputs)?;
+        Ok(Self {
+            owners,
+            storage: ResidentByteCoverageStorage::Owned(Arc::from(encoded.bytes)),
+            layout: encoded.layout,
+        })
     }
 
     pub fn encode_artifact<'a>(
         inputs: impl IntoIterator<Item = ResidentByteCoverageInput<'a>>,
     ) -> Result<(Vec<ResidentByteCoverageOwner>, Vec<u8>), String> {
+        let (owners, encoded) = Self::encode_validated_artifact(inputs)?;
+        Ok((owners, encoded.bytes))
+    }
+
+    fn encode_validated_artifact<'a>(
+        inputs: impl IntoIterator<Item = ResidentByteCoverageInput<'a>>,
+    ) -> Result<
+        (
+            Vec<ResidentByteCoverageOwner>,
+            format::EncodedByteCoverageArtifact,
+        ),
+        String,
+    > {
         let mut inputs = inputs.into_iter().collect::<Vec<_>>();
         inputs.sort_unstable_by(|left, right| left.owner_path.cmp(&right.owner_path));
         if inputs
@@ -117,8 +134,8 @@ impl ResidentByteCoverageIndex {
                 authority: input.authority.clone(),
             })
             .collect();
-        let artifact = format::encode(inputs.iter().map(|input| input.bytes))?;
-        Ok((owners, artifact))
+        let encoded = format::encode_validated(inputs.iter().map(|input| input.bytes))?;
+        Ok((owners, encoded))
     }
 
     pub fn from_owned_artifact(
@@ -269,38 +286,12 @@ impl ResidentByteCoverageIndex {
             .windows(RESIDENT_BYTE_GRAM_WIDTH)
             .map(|window| format::pack_gram(window[0], window[1], window[2]))
             .collect::<BTreeSet<_>>();
-        let mut postings = Vec::with_capacity(grams.len());
-        let mut decoded_posting_count = 0usize;
-        for gram in &grams {
-            let Some(posting) = self.layout.posting(self.storage.bytes(), *gram)? else {
-                return Ok((
-                    Vec::new(),
-                    ResidentByteCoverageQueryReceipt {
-                        requested_gram_count: grams.len(),
-                        decoded_posting_count,
-                        smallest_posting_count: 0,
-                        candidate_count: 0,
-                        lookup_nanos: elapsed_nanos(started),
-                    },
-                ));
-            };
-            decoded_posting_count = decoded_posting_count
-                .checked_add(posting.len())
-                .ok_or_else(|| "resident byte predicate posting count overflows".to_owned())?;
-            postings.push(posting);
-        }
-        postings.sort_unstable_by_key(Vec::len);
-        let smallest_posting_count = postings.first().map_or(0, Vec::len);
-        let mut posting_iter = postings.into_iter();
-        let Some(mut candidates) = posting_iter.next() else {
-            return Err("resident byte predicate produced no posting lists".to_owned());
-        };
-        for posting in posting_iter {
-            candidates = intersect_sorted(&candidates, &posting);
-            if candidates.is_empty() {
-                break;
-            }
-        }
+        let evaluation = self.evaluate_grep_plan(&ResidentGrepCandidatePlan::Grams(
+            grams.iter().copied().collect(),
+        ))?;
+        let decoded_posting_count = evaluation.decoded_posting_count;
+        let smallest_posting_count = evaluation.smallest_posting_count.unwrap_or(0);
+        let mut candidates = evaluation.owners;
         candidates.retain(|owner_id| {
             usize::try_from(*owner_id)
                 .ok()
@@ -402,7 +393,14 @@ impl ResidentByteCoverageIndex {
                     decoded_posting_count = decoded_posting_count
                         .checked_add(decoded)
                         .ok_or_else(|| "resident GREP decoded posting count overflows".to_owned())?;
-                    if candidates.as_ref().is_some_and(Vec::is_empty) {
+                    // The exact matcher is authoritative. Once the rarest-first
+                    // intersection reaches a singleton, decoding another
+                    // common delta stream can only retain or remove that owner;
+                    // exact verification must read it either way.
+                    if candidates
+                        .as_ref()
+                        .is_some_and(|candidates| candidates.len() <= 1)
+                    {
                         break;
                     }
                 }

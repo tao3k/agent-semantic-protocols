@@ -7,7 +7,7 @@
   "rootSelector": "rust://crates/example/src/lib.rs#item/function/run",
   "evidenceContextRef": "blake3-256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
   "payloadSchemaId": "agent.semantic-protocols.callable-skeleton",
-  "payloadDigest": "blake3-256:fa8fc5678f7755f523bdc7c6727af59814be9c0e6cd852208fe1ef918b5be8bd",
+  "payloadDigest": "blake3-256:1da8a15833cb3ec2ac5aaf25eb3c19f1328e6f38a8d930e165ece3a539b97246",
   "payload": {
     "rootSelector": "rust://crates/example/src/lib.rs#item/function/run",
     "rootNodeId": "callable:root",
@@ -16,7 +16,13 @@
       "displayName": "run",
       "signature": "run"
     },
-    "nodes": [],
+    "nodes": [{
+      "nodeId": "callable:root",
+      "kind": "callable",
+      "label": "run",
+      "order": 0,
+      "queryable": false
+    }],
     "relations": [],
     "cost": {
       "sourceBytes": 0,

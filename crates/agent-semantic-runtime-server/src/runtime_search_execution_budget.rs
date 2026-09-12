@@ -52,17 +52,14 @@ impl RuntimeSearchExecutionBudget {
     pub(crate) fn derive(generation: &RuntimeQueryGeneration) -> Result<Self, String> {
         let resident = generation.resident();
         let corpus = resident.resident_grep_corpus();
-        let graph = resident.graph_generation()?;
-        let graph_node_count = graph.map_or(0, |graph| graph.node_count());
-        let graph_edge_count = graph.map_or(0, |graph| graph.edge_count());
         let corpus_line_count = corpus.owner_spans.last().map_or(0, |span| span.end_line);
         Self::from_cardinalities(
             generation.generation_digest(),
             resident.indexed_owner_count(),
             corpus.corpus_byte_count(),
             corpus_line_count,
-            graph_node_count,
-            graph_edge_count,
+            0,
+            0,
         )
     }
 
@@ -174,6 +171,7 @@ impl RuntimeSearchExecutionBudget {
         self.limits.graph_candidate_owner_count
     }
 
+    #[cfg(test)]
     pub(crate) fn graph_evaluation_budget(
         &self,
     ) -> Option<agent_semantic_search::ResidentGraphEvaluationBudget> {
@@ -182,6 +180,26 @@ impl RuntimeSearchExecutionBudget {
             max_nodes: self.limits.graph_node_count,
             max_edges: self.limits.graph_edge_count,
             max_results: self.limits.graph_result_count,
+        };
+        (budget.max_depth != 0
+            && budget.max_nodes != 0
+            && budget.max_edges != 0
+            && budget.max_results != 0)
+            .then_some(budget)
+    }
+
+    /// Derive Graph work only after the request-scoped candidate graph exists.
+    /// SearchCoreReady therefore has no dependency on a generation-global
+    /// relation graph, while the V1 caps remain identical.
+    pub(crate) fn graph_evaluation_budget_for(
+        &self,
+        graph: &agent_semantic_search::ResidentGraphGeneration,
+    ) -> Option<agent_semantic_search::ResidentGraphEvaluationBudget> {
+        let budget = agent_semantic_search::ResidentGraphEvaluationBudget {
+            max_depth: graph.node_count().min(GRAPH_DEPTH_V1_LIMIT),
+            max_nodes: graph.node_count().min(GRAPH_NODE_V1_LIMIT),
+            max_edges: graph.edge_count().min(GRAPH_EDGE_V1_LIMIT),
+            max_results: self.limits.graph_result_count.min(graph.node_count()),
         };
         (budget.max_depth != 0
             && budget.max_nodes != 0

@@ -33,102 +33,219 @@ fn elapsed_micros(started: Instant) -> u64 {
     u64::try_from(started.elapsed().as_micros()).unwrap_or(u64::MAX)
 }
 
-enum RuntimeOwnerProjectionExecutor {
-    Resident(ProviderRuntimeActorClient),
-}
+#[cfg(test)]
+#[path = "../../tests/unit/source_index_resident_projection.rs"]
+mod tests;
 
-pub async fn prepare_runtime_server_owner_projection_with_resident_runtime_async(
-    runtime: ProviderRuntimeActorClient,
+/// Project generation-bound candidate bytes without reopening workspace files.
+pub async fn prepare_runtime_server_resident_owner_projections_async(
+    runtime: Option<ProviderRuntimeActorClient>,
     project_root: PathBuf,
     workspace_identity: String,
-    owner_path: String,
+    mut owners: Vec<crate::runtime_server_workspace::WorkspaceOwnerSnapshot>,
+    auxiliary_inputs: Vec<crate::runtime_server_workspace::WorkspaceAuxiliaryOwnerSnapshot>,
     snapshot: RuntimeProviderProjection,
-) -> Result<crate::runtime_server_workspace::WorkspaceOwnerProjection, String> {
-    prepare_runtime_server_owner_projection_async(
-        RuntimeOwnerProjectionExecutor::Resident(runtime),
-        project_root,
-        workspace_identity,
-        owner_path,
-        snapshot,
-    )
-    .await
-}
-
-async fn prepare_runtime_server_owner_projection_async(
-    executor: RuntimeOwnerProjectionExecutor,
-    project_root: PathBuf,
-    workspace_identity: String,
-    owner_path: String,
-    snapshot: RuntimeProviderProjection,
-) -> Result<crate::runtime_server_workspace::WorkspaceOwnerProjection, String> {
+    parser_artifact_root: PathBuf,
+) -> Result<Vec<crate::runtime_server_workspace::WorkspaceOwnerProjection>, String> {
+    let total_started = Instant::now();
+    owners.sort_by(|left, right| left.owner_path.cmp(&right.owner_path));
+    owners.dedup_by(|left, right| left.owner_path == right.owner_path);
+    let Some(first) = owners.first() else {
+        return Ok(Vec::new());
+    };
     let mut providers = snapshot.providers.iter().filter(|provider| {
         provider.runtime_operation("projection-batch").is_some()
             && provider
                 .source_extensions
                 .iter()
-                .any(|extension| owner_path.ends_with(extension.as_str()))
+                .any(|extension| first.owner_path.ends_with(extension.as_str()))
     });
     let provider = providers.next().ok_or_else(|| {
-        format!("runtime owner projection has no registered provider: ownerPath={owner_path}")
+        format!(
+            "runtime owner projection has no registered provider: ownerPath={}",
+            first.owner_path
+        )
     })?;
     if let Some(ambiguous) = providers.next() {
         return Err(format!(
-            "runtime owner projection provider ownership is ambiguous: ownerPath={owner_path} providers={},{}",
-            provider.provider_id, ambiguous.provider_id
+            "runtime owner projection provider ownership is ambiguous: ownerPath={} providers={},{}",
+            first.owner_path, provider.provider_id, ambiguous.provider_id
         ));
     }
     let authority = agent_semantic_search::ResidentSearchAuthority {
         language_id: provider.language_id.clone(),
         provider_id: provider.provider_id.clone(),
     };
-    let source_path = agent_semantic_client_core::scoped_child_path(&project_root, &owner_path)
-        .ok_or_else(|| {
-            format!("runtime owner projection escaped workspace: ownerPath={owner_path}")
-        })?;
-    if !source_path.is_file() {
-        return Err(format!(
-            "runtime owner projection source is unavailable: ownerPath={owner_path}"
-        ));
-    }
-    let files = vec![crate::ClientDbSourceIndexScopeFile {
-        path: source_path,
-        language_id: provider.language_id.clone(),
-        provider_id: provider.provider_id.clone(),
-        projection_coverage: crate::ClientDbSourceIndexProjectionCoverage::NotDeclared,
-        projection_diagnostic: None,
-        selector_receipts: Vec::new(),
-        relations: Vec::new(),
-    }];
-    let registry = snapshot.evidence(&project_root);
-    let (_, _, _, source_blobs, auxiliary_owners) =
-        crate::server_source_index::async_snapshot::source_index_snapshot_from_files_async(
-            &project_root,
-            &files,
-            &registry,
-            &snapshot,
-        )
-        .await?;
-    let projected = match executor {
-        RuntimeOwnerProjectionExecutor::Resident(runtime) => {
-            crate::server_source_index::projection::project_generation_with_resident_runtime(
-                &runtime,
-                &project_root,
-                &workspace_identity,
-                &snapshot,
-                &files,
-                &source_blobs,
-                &auxiliary_owners,
-            )
-            .await?
+    for owner in &owners {
+        if owner.authority.as_ref() != Some(&authority)
+            || !provider
+                .source_extensions
+                .iter()
+                .any(|extension| owner.owner_path.ends_with(extension.as_str()))
+        {
+            return Err(format!(
+                "runtime resident owner escaped provider authority: ownerPath={} providerId={}",
+                owner.owner_path, provider.provider_id
+            ));
         }
-    };
-    let projected = projected
+        let digest = format!("blake3-256:{}", blake3::hash(&owner.bytes).to_hex());
+        if digest != owner.content_digest {
+            return Err(format!(
+                "runtime resident owner content digest drift: ownerPath={}",
+                owner.owner_path
+            ));
+        }
+    }
+    let owner_paths = owners
+        .iter()
+        .map(|owner| owner.owner_path.clone())
+        .collect::<Vec<_>>();
+    let files = owners
+        .iter()
+        .map(|owner| {
+            let path =
+                agent_semantic_client_core::scoped_child_path(&project_root, &owner.owner_path)
+                    .ok_or_else(|| {
+                        format!(
+                            "runtime resident owner escaped workspace: ownerPath={}",
+                            owner.owner_path
+                        )
+                    })?;
+            Ok(crate::ClientDbSourceIndexScopeFile {
+                path,
+                language_id: provider.language_id.clone(),
+                provider_id: provider.provider_id.clone(),
+                projection_coverage: crate::ClientDbSourceIndexProjectionCoverage::NotDeclared,
+                projection_diagnostic: None,
+                selector_receipts: Vec::new(),
+                relations: Vec::new(),
+            })
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    let source_blobs =
+        crate::ClientDbSourceIndexSourceBlobs::from_normalized(owners.iter().map(|owner| {
+            (
+                crate::ClientDbSourceIndexPath::new(owner.owner_path.clone()),
+                owner.bytes.clone(),
+            )
+        }));
+    let config_files = provider
+        .config_files
+        .iter()
+        .collect::<std::collections::BTreeSet<_>>();
+    let mut provider_auxiliary = Vec::new();
+    for auxiliary in auxiliary_inputs {
+        let file_name = std::path::Path::new(&auxiliary.owner_path)
+            .file_name()
+            .and_then(|name| name.to_str());
+        if file_name.is_none_or(|name| !config_files.contains(&name.to_owned()))
+            || !owner_paths.iter().any(|owner_path| {
+                crate::server_source_index::projection::auxiliary_owner_applies_to_source(
+                    &auxiliary.owner_path,
+                    owner_path,
+                )
+            })
+        {
+            continue;
+        }
+        let digest = format!("blake3-256:{}", blake3::hash(&auxiliary.bytes).to_hex());
+        if digest != auxiliary.content_digest {
+            return Err(format!(
+                "runtime resident auxiliary content digest drift: ownerPath={}",
+                auxiliary.owner_path
+            ));
+        }
+        provider_auxiliary.push(
+            agent_semantic_provider_transport::projection_batch::ProviderProjectionOwner {
+                owner_path: auxiliary.owner_path,
+                source_leaf_digest: digest
+                    .strip_prefix("blake3-256:")
+                    .expect("constructed digest prefix")
+                    .to_owned(),
+                source_bytes: auxiliary.bytes,
+            },
+        );
+    }
+    provider_auxiliary.sort_by(|left, right| left.owner_path.cmp(&right.owner_path));
+    let auxiliary_owners = std::collections::BTreeMap::from([(
+        provider.provider_id.as_str().to_owned(),
+        provider_auxiliary,
+    )]);
+    let resident_source_bytes = owners.iter().map(|owner| owner.bytes.len()).sum::<usize>();
+    let resident_auxiliary_bytes = auxiliary_owners
+        .values()
+        .flatten()
+        .map(|owner| owner.source_bytes.len())
+        .sum::<usize>();
+    eprintln!(
+        "[runtime-owner-resident-input-timing] providerId={} ownerCount={} auxiliaryOwnerCount={} sourceFilesystemReadCount=0 auxiliaryFilesystemReadCount=0 residentSourceBytes={} residentAuxiliaryBytes={} inputPreparationMicros={}",
+        provider.provider_id,
+        owners.len(),
+        auxiliary_owners.values().map(Vec::len).sum::<usize>(),
+        resident_source_bytes,
+        resident_auxiliary_bytes,
+        elapsed_micros(total_started),
+    );
+    let projection_started = Instant::now();
+    let projected = crate::server_source_index::projection::project_generation_with_resident_runtime_and_artifact_store(
+        runtime.as_ref(),
+        &project_root,
+        &workspace_identity,
+        &snapshot,
+        &files,
+        &source_blobs,
+        &auxiliary_owners,
+        &parser_artifact_root,
+    )
+    .await?;
+    let projection_micros = elapsed_micros(projection_started);
+    let projected_by_path = projected
         .into_iter()
-        .next()
-        .ok_or_else(|| "runtime owner projection omitted the target owner".to_owned())?;
+        .map(|projected| (projected.path.clone(), projected))
+        .collect::<std::collections::BTreeMap<_, _>>();
+    let result = owner_paths
+        .into_iter()
+        .map(|owner_path| {
+            let source_path =
+                agent_semantic_client_core::scoped_child_path(&project_root, &owner_path)
+                    .ok_or_else(|| {
+                        format!("runtime resident owner escaped workspace: ownerPath={owner_path}")
+                    })?;
+            let projected = projected_by_path
+                .get(&source_path)
+                .cloned()
+                .ok_or_else(|| {
+                    format!("runtime owner projection omitted target owner: ownerPath={owner_path}")
+                })?;
+            owner_projection_from_projected_file(
+                projected,
+                &source_blobs,
+                owner_path,
+                authority.clone(),
+            )
+        })
+        .collect::<Result<Vec<_>, String>>();
+    eprintln!(
+        "[runtime-owner-projection-pipeline-timing] providerId={} ownerCount={} sourceFilesystemReadCount=0 auxiliaryFilesystemReadCount=0 residentSourceBytes={} residentAuxiliaryBytes={} projectionMicros={} totalMicros={}",
+        provider.provider_id,
+        owners.len(),
+        resident_source_bytes,
+        resident_auxiliary_bytes,
+        projection_micros,
+        elapsed_micros(total_started),
+    );
+    result
+}
+
+fn owner_projection_from_projected_file(
+    projected: crate::ClientDbSourceIndexScopeFile,
+    source_blobs: &crate::ClientDbSourceIndexSourceBlobs,
+    owner_path: String,
+    authority: agent_semantic_search::ResidentSearchAuthority,
+) -> Result<crate::runtime_server_workspace::WorkspaceOwnerProjection, String> {
     let bytes = source_blobs
         .iter()
-        .find_map(|(path, bytes)| (path == owner_path).then(|| bytes.to_vec()))
+        .find_map(|(path, bytes)| (path == owner_path.as_str()).then(|| bytes.to_vec()))
         .ok_or_else(|| {
             format!("runtime owner projection omitted source bytes: ownerPath={owner_path}")
         })?;
@@ -209,6 +326,7 @@ pub async fn prepare_runtime_server_workspace_generation_with_runtime_service_as
     workspace_id: String,
     project_root: PathBuf,
     snapshot: RuntimeProviderProjection,
+    recovery_execution: super::generation_recovery::SourceIndexRecoveryExecution,
     collection_scope: SourceIndexCollectionScope,
     candidate: crate::runtime_server_admission::WorkspaceGenerationCandidateIdentity,
     inventory: Vec<String>,
@@ -236,6 +354,7 @@ pub async fn prepare_runtime_server_workspace_generation_with_runtime_service_as
         .prepare_generation_with_runtime_service_async(
             &runtime,
             SourceIndexGenerationRefresh {
+                recovery_execution: Some(&recovery_execution),
                 changed_owner_paths: None,
                 replacement_authority: None,
                 index_root: &project_root,

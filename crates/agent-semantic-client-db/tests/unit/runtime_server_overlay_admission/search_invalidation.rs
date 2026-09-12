@@ -95,6 +95,7 @@ fn generation(
         ),
         runtime_provider_execution_binding: None,
         project_resolutions: Vec::new(),
+        auxiliary_owners: Vec::new(),
         owners: vec![WorkspaceOwnerSnapshot {
             authority: None,
             owner_path: "src/lib.rs".to_owned(),

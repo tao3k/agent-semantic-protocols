@@ -243,9 +243,8 @@ ASP already implements the correct high-level topology:
 
 #+begin_src text
 admitted immutable content generation
-  -> ResidentByteCoverageIndex for V1 rg candidate owners
-  -> resident GREP exact matcher over generation-owned bytes
-  -> intersection with Tantivy lexical candidate retrieval
+  -> complete Tantivy scope and conservative V1 GREP candidate owners
+  -> candidate intersection before resident exact byte matching
   -> native syntax and graph composition
   -> generation-bound result receipt
 #+end_src
@@ -270,11 +269,11 @@ gap.  Remaining gaps are primarily build-time and exact-semantics breadth:
 | per-owner extraction | build-time unique gram set | allocation-aware extraction and bounded external construction |
 | postings | delta-varint postings in the V1 generation mmap | optional positional and next-byte masks |
 | build memory | still proportional to the complete temporary postings map | fixed arena plus external spill/merge |
-| query intersection | decoded sorted postings, rarest first | streaming decode/intersection without temporary vectors |
+| query intersection | retain smallest posting vector; stream later AND postings in place; stop at zero or one candidate because exact verification is authoritative | bound OR-union allocation and measured decoded work |
 | false-positive filter | trigram membership only | optional positional and next-byte masks |
 | reopen | validates and borrows published mmap; no workspace postings rebuild | preserve this invariant under delta generations |
 | delta | build a new immutable attachment | reuse unchanged immutable segments; publish one new generation |
-| regex planning | literal and simple split-alternation extraction | HIR-derived candidate-superset AND/OR plan |
+| regex planning | HIR-derived conservative AND/OR plan shared with literal evaluation | generated candidate-superset differential coverage |
 | correctness evidence | focused candidate-superset differential cases | generated/property differential corpus against rg |
 | case folding | unsafe trigram plans use the bounded Tantivy fused scope, never claim global absence | proved Unicode folding strategy or qualified matcher extractor |
 
@@ -297,11 +296,16 @@ Add one generation-bound receipt covering:
 - index lookup, owner resolution, exact match, projection, graph, serialization,
   ClientFrame transport, and total nanoseconds;
 - allocation/retained-byte estimate for byte coverage;
-- zero filesystem operations, provider calls, native finder processes, and
-  child processes.
+- explicit workspace filesystem calls, provider calls, native finder processes,
+  and child processes. Mapped page faults are not zero physical I/O.
 
 Without this split, a sub-millisecond index can be hidden behind owner-string
 cloning, projection, transport, or rendering.
+
+Generation owner cardinality and membership are direct reads of the authoritative
+resident owner directory. Retrieval must not clone the entire path directory
+into a per-request set merely to validate Tantivy hit ownership. Language-route
+filtering remains mandatory and unchanged by this representation optimization.
 
 ** P1: preserve V1 and introduce a private trigram candidate seam
 
@@ -344,17 +348,24 @@ budget are required before introducing owner-shard parallelism.
 - exact hits are a subset of candidates under =SoundMandatoryGrams=;
 - adding mandatory grams cannot widen the candidate set;
 - only a sound selective plan or exactly verified fused scope may publish absence;
-- zero process and filesystem counts imply no binary/filesystem work;
-- mapped postings plus mapped corpus retain zero workspace-sized query heap;
-- a Tokio-admitted CPU lane performs no search scan on the reactor;
-- 10x, 20x, and 100x claims require an explicit logical-cost witness.
+- pushing a complete Tantivy scope into sound candidates preserves exact hits;
+- streaming decode has a conditional prefix-work bound;
+- fixed request costs impose an Amdahl-style limit on end-to-end acceleration.
+
+The zero-process, mapped-heap and reactor-placement statements are conditional
+model properties, not proofs that the Rust implementation satisfies their
+premises. Neither those statements nor arithmetic witnesses establish a 10x,
+20x or 100x measured speedup. Rust differential tests and attributable request
+receipts must independently discharge the implementation obligations.
 
 The model exposed one implementation bug during this work: the earlier Rust
 path sorted postings by length only after decoding all of them.  The format API
-now reads =posting_count= from the directory first, decodes the rarest posting,
-and stops decoding as soon as the intersection becomes empty.  Rust receipts
-report =decodedPostingCount= so the theorem-side cost model can be calibrated
-against actual executions.
+now reads =posting_count= from the directory first and decodes the rarest
+posting.  Intersection stops at zero candidates, or at one candidate because
+the exact matcher must inspect that owner anyway and remains the result
+authority.  Decoding every remaining common posting cannot improve the work
+bound in that state.  Rust receipts report =decodedPostingCount= so the
+theorem-side cost model can be calibrated against actual executions.
 
 For regexes with no sound mandatory trigram, V1's required =rg ∩ Tantivy=
 composition provides the bounded fallback: Tantivy is evaluated first and the
@@ -542,6 +553,79 @@ MVP is complete or that the failures are unrelated. Search minimal-feature
 compilation is included; its candidate-plan module now follows the same
 feature boundary as the byte-coverage owner.
 
+Implementation follow-through (2026-09-12, uncommitted source qualification):
+the admission resource fixture now resolves real workspace identities and
+requires Ready before measuring; callable payloads now bind the already-required
+V1 =rootSelector=, including Rust and Python provider emitters. Hook calibration
+again validates against the unchanged V1 schema; the speculative V2 calibration
+schema is removed. Literal and HIR candidate plans share the streaming posting
+evaluator. Selective candidates are intersected with complete Tantivy scope
+before exact bytes are read; owner membership no longer clones a whole directory.
+
+The four Content Identity/Search/Runtime/Hook library suites passed 483 tests
+with one explicitly selected reference test ignored by the default run. That
+rg-reference test was executed separately and passed. After owner-directory
+changes, Client DB/Runtime passed 255 tests with the same reference test ignored.
+An earlier broad Client DB run failed the unchanged 5ms cold-store gate at
+6.177458ms; subsequent success does not erase that variability or establish a
+stable performance margin. Lean passed all 328 build jobs. Four shared-schema
+tests and three Python exact-projection tests passed. Rust's historical
+=exact_source_projection= filter selected zero registered tests; it is not
+acceptance. A new test wired to the current resident projection module passed,
+and the provider-server library suite passed 69 tests. Default-feature provider
+qualification and production end-to-end performance remain separate gates.
+
+These are source-level receipts, not a replacement for the mandatory live
+Search/Query, activation-identity, resource-saturation and performance gates.
+
+Later 2026-09-12 live diagnosis used release ASP digest
+=blake3-256:382cf99934e167ace2e73e0c4b757a20b099ab808a2f2b3e7d851f3c30fdb30a=
+and returned a usable Search result in one invocation.  The 2,436-owner sample
+reported 5.43s client wall time, 4,581,241us Runtime dispatch, 3,796,927us
+generation wait, 2,567,541us resident generation publication, 153,806us lexical
+attachment build, 585,862us candidate owner materialization, 783,769us complete
+Search computation, and 40us response serialization.  The preceding build paid
+5,394,040us Search computation and 2,864,038us owner materialization because
+each read handle rebuilt the complete Search plane.  Moving the exact plane into
+=WorkspaceMemoryBackend= therefore removed that repeated work; it did not make
+the one-time generation build free.
+
+The live result also exposed a correctness/size defect: rg-compatible output
+attribution could suppress internal line evidence, after which automatic
+grounding expanded a matched owner into every selector.  Source now retains a
+private exact grounding line independently of display flags and projects only
+the smallest enclosing selector.  This correction is source-qualified but is
+not claimed as live-published evidence here.
+
+A read-only source diagnostic reopened the same 62,938,393-byte durable
+generation through the production admission constructor.  Before the next
+optimizations, Search-plane construction was 995,324--1,034,607us, including
+about 565,208us byte coverage, 278,645us manifest construction and 97,451us
+owner-search reconstruction.  The optimized source retained full external
+artifact validation, changed byte-coverage construction to deterministic
+fixed-integer hashing, and avoided rebuilding the just-created manifest.
+Repeated measurements reduced Search-plane construction to 532,404--554,544us,
+byte coverage to 193,059--207,667us, and owner-search construction to
+14,891--15,248us.  These are single-machine diagnostic samples rather than the
+required 32-sample p95/p99 qualification.  A separate 4,096-owner test opened
+1,024 resident read handles at p99 163,958ns and proved that both handles share
+the same admitted Search-plane =Arc=.
+
+The next Runtime-only qualification used one already-admitted 4,096-owner
+generation and 1,024 samples per operation; Cargo compilation and provider
+lifecycle were outside both timers.  Exact-path Query returned the last owner
+through the generation selector index at p50 2,333ns, p95 2,417ns and p99
+2,459ns.  Resident GREP initially measured wall p50 112,417ns, p95 193,167ns
+and p99 507,375ns; its candidate lookup alone measured p99 334,042ns.  Work
+receipts reported one resident owner read, zero processes and zero filesystem
+operations.  The profile showed repeated common-posting decode after the
+rarest posting had already produced one candidate.  Stopping intersection at
+that singleton reduced Search wall to p50 10,041ns, p95 10,333ns and p99
+11,709ns, while candidate lookup fell to p99 2,042ns.  The final receipt bound
+nine candidate grams to 25 decoded posting entries.  This is a 43.3x Search
+p99 and 163.6x candidate-lookup p99 reduction on the same test cohort; exact
+matching and candidate-superset tests remain the semantic authority.
+
 ** Correctness
 
 - byte-for-byte differential equivalence with the current reference backend;
@@ -577,6 +661,293 @@ Initial hypotheses to test, not acceptance claims:
   output dominate.
 
 ** Product outcome
+
+*** Org / Lean / Rust refinement boundary
+
+Verified source-build recovery reuses existing durable canonical and Source
+Index records only after a fresh complete snapshot agrees in source root,
+provider/scope digest, owner membership and ProjectResolution.  The stored
+execution binding must also match the current Runtime bundle, schema bundle
+and provider closure.  Reconstructed import bytes are the current same-pass
+bytes and must validate against the persisted canonical import digest.  Missing
+or stale products cause ordinary construction; corrupt or cross-generation
+durable records fail closed.  No V1 public field or schema version is added.
+This recovery eliminates provider re-projection for unchanged workspaces, not
+snapshot I/O, durable record decoding or publication validation.
+
+The following Babel blocks are architecture/model sources, not executed
+benchmark receipts.  Lean checks logical work and admission preconditions;
+Rust tests must establish the actual byte binding and implementation behavior.
+
+#+begin_src mermaid :exports code
+flowchart TD
+  A[Current source and execution identity] --> B{Verified content manifest?}
+  B -->|yes| C[Reuse content-addressed Search Core]
+  B -->|no| D[Capture immutable source bytes]
+  D --> U[Separate searchable owners and resident auxiliary inputs]
+  D --> E[Build minimal owner and lexical Search Core]
+  C --> F[Validate Search Core identity]
+  E --> F
+  F --> X[Build generation-bound Search data plane once]
+  X --> G[Atomic in-memory SearchCoreReady]
+  G --> H[Exact GREP candidate verification]
+  H --> I[Candidate owner set]
+  I --> J{Parser artifact reusable?}
+  U --> J
+  J -->|yes| K[Bind proof without provider startup]
+  J -->|typed miss| L[Group misses by provider]
+  L --> T[One lifecycle check plus byte-bounded batch frames]
+  T --> K
+  K --> S[Immutable base reference plus delta-only resident semantic overlay]
+  S --> M[Exact selector and Relation grounding]
+  M --> N[Return first usable Search result]
+  G -. independent attachment .-> O[Content-addressed segment durability]
+  G -. independent attachment .-> P[Tantivy acceleration]
+  K -. candidate scoped .-> Q[Request graph and Project Topology refinement]
+  O --> R[DurableReady for restart]
+#+end_src
+
+#+begin_src typst :exports code :file ../../.data/resident-cold-cost.pdf
+#set text(lang: "en")
+#set page(width: 210mm, height: auto, margin: 10mm)
+= Canonical assembly work model
+For owner bytes $b$ and selector count $s$, count only bytes hashed:
+$ H_("old") = b (s + 1), quad H_("new") = b $
+$ H_("old") = H_("new") + b s $
+These equations exclude parsing, allocation, transport, validation and storage.
+They imply no numerical wall-clock speedup.
+Verified recovery still pays snapshot, durable decoding and validation costs:
+$ T_("restore") = T_("snapshot") + T_("decode") + T_("validate") + T_("publish") $
+It removes provider projection only when all required identities match.
+Reuse requires the cached digest to be computed from the same immutable bytes.
+Durable reuse additionally requires current content, execution and scope
+identity; request-coalescing identity alone is insufficient.
+First-computation observation and ready resident read have distinct budgets:
+$ B_("ready") = 1 "ms", quad T_("first") = T_("generation wait") + T_("compute wait") + T_("return") $
+The temporary 60-second observation deadline bounds diagnosis, not acceptance.
+It is absolute from request admission, never renewed by a notification.
+For an empty-cache workspace, exact source acquisition has a byte-work lower
+bound: $ W_("snapshot") >= B_("source") $.  Therefore no wall-clock bound below
+one millisecond is valid for arbitrary repository size.  The architecture
+instead removes unrelated work from the first-Search critical path:
+$ W_("first Search") = W_("snapshot") + W_("Search Core") + W_("exact verify") + W_("candidate parser") + W_("requested refine") $
+$ W_("full parser") + W_("durability") + W_("global graph") in.not W_("first Search") $
+For a candidate parser artifact of size $c$ in a workspace of size $w$:
+$ W_("resident semantic publish") = c $
+$ W_("canonical rewrite") = c + w $
+The first form is required on the Search path; the second is forbidden there.
+This also forbids a subtler implementation error: cloning every canonical
+owner into an in-memory object called an overlay.  Let $b$ be copied immutable
+base-owner bytes and $d$ be the new semantic delta bytes:
+$ W_("resident overlay publish") = b + d, quad b = 0 $
+The Runtime lease owns the immutable base.  The overlay stores only changed
+owners, tombstones, Relation deltas and selector deltas; base owners and base
+relations are read through the lease.  The workspace snapshot is shared by
+reference until a path delta derives a new snapshot.  Thus no canonical file
+rewrite and no in-memory full-base copy may hide inside candidate publication.
+The same boundary applies to the Search data plane.  Let $p$ be its
+workspace-proportional construction work, $a$ one immutable-reference retain,
+and $h$ the number of resident read handles:
+$ W_("plane admission") = p, quad W_("handle open") = h a $
+$ W_("request workspace rebuild") = 0 $
+The forbidden design pays $h p$ by validating the generation and rebuilding
+Merkle, manifest, corpus and indexes for each handle.  Admission binds and
+constructs the plane once on a bounded blocking lane; every resident handle
+then shares that exact generation-bound plane by reference.  These are logical
+work terms; Rust tests establish shared identity and live timings.
+Internally encoded byte coverage carries its already constructed directory
+layout into the admitted plane.  It does not hash and decode every posting a
+second time as though its own private encoder were an untrusted wire source.
+Externally supplied bytes and mmap restore still cross one complete digest,
+directory and posting validation boundary:
+$ V_("internal encoded") = 0, quad V_("external restore") = 1 $
+Let $r_s$ and $r_a$ be generation-resident source and auxiliary reads, while
+$f_s$ and $f_a$ are request-time filesystem reads. Candidate projection keeps
+the admitted bytes distinct from searchable ownership:
+$ W_("projection input") = r_s + r_a, quad f_s = 0, quad f_a = 0 $
+$ N_("search owners") = N_("searchable source"), quad N_("auxiliary") in.not N_("search owners") $
+Packed integer grams use a fixed-key integer hasher during construction and are
+sorted before encoding, so construction speed cannot change V1 deterministic
+artifact bytes.  Query decoding continues to consume the sorted V1 format.
+For $n$ candidate owners in $g$ provider groups, fixed RPC/lifecycle setup $s$
+and per-owner payload work $p$:
+$ W_("serial owner RPC") = n s + n p $
+$ W_("provider-group batch") = g s + n p, quad g <= n $
+The grouping removes repeated setup; it does not claim that parser payload work
+is constant or that byte-budget frame splitting is free.
+Process-cold recovery targets a small verified manifest; resident lookup keeps
+the 1ms budget.  These equations count logical work, not elapsed time.
+#+end_src
+
+| Obligation | Lean symbol in ResidentGrepCost | Rust/evidence boundary |
+| Same-byte hash reuse preserves comparison | cached_digest_check_equivalent | canonical_materialization.rs computes owner digest before selector loop; source-drift negative test |
+| Remove multiplied hash-byte work | owner_hash_work_decomposition | one owner hash, per-selector digest comparison; not a latency theorem |
+| Move CPU work off reactor | offloaded_assembly_has_no_reactor_work | generation_build.rs awaits spawn_blocking; no fairness or cancellation proof claimed |
+| Reject stale restored source | changed_source_rejects_recovery | generation_recovery.rs requires current content/scope and execution identity before reuse |
+| Coalescing lane is not freshness | same_lane_does_not_prove_freshness | for_runtime_admission has no source bytes; cannot authorize durable reuse |
+| Completion survives late subscription and waiter cancellation | publication_retains_terminal_for_late_waiters; waiter_cancellation_preserves_shared_terminal | Runtime watch completion tests, 32 joiners, timeout and cancelled-waiter cases |
+| Ready reads never inherit first-computation allowance | ready_phase_keeps_resident_budget; first_phase_is_monotone | Request-scoped phase changes only on generation/result miss; absolute deadline tests |
+| First Search excludes unrelated attachments | first_search_work_excludes_attachments; split_critical_path_never_adds_work | SearchCoreReady publishes before segment durability, graph and full parser projection |
+| Empty-cache acquisition cannot be constant work | source_acquisition_has_byte_lower_bound | Performance qualification reports source bytes and distinguishes empty-cache, process-cold and resident |
+| Parser product identity is not generation proof identity | generation_rebind_preserves_parser_artifact; changed_owner_content_rejects_parser_artifact | Artifact key binds provider/parser/query-pack/auxiliary-input/path/content; current generation proof is rebuilt separately |
+| Durability failure does not revoke resident reads | failed_durability_preserves_resident_read; resident_is_not_restart_restorable | Failed attachment rejects restart restore while the validated in-process generation remains readable |
+| Candidate-scoped parser work is bounded by full projection | candidate_projection_work_is_bounded | Exact verifier selects owners before parser/Relation materialization |
+| Provider-group batching removes repeated setup | provider_group_batch_never_exceeds_serial_owner_rpc | Materializer groups misses by language/provider; one service batch reuses cache lookup, lifecycle and bounded projection frames |
+| Cache hit starts no provider | parser_cache_hit_has_zero_provider_starts | Candidate owner lookup validates the content artifact before crossing provider lifecycle |
+| Request graph stays candidate-bounded | request_graph_work_is_candidate_bounded | Graph and Project Topology build from the fused owner cut plus a budgeted one-hop Relation neighbourhood |
+| Candidate publication excludes workspace rewrite | resident_semantic_publication_excludes_workspace_rewrite | Writer commits a resident overlay revision; canonical epoch, pointer and filesystem-write counter remain unchanged |
+| Resident overlay excludes copied base bytes | delta_only_overlay_work_equals_delta; copying_base_bytes_adds_forbidden_work | ResidentOverlayState stores only deltas and reads canonical owners/relations through the immutable lease; base semantic owners remain visible after a delta |
+| Resident handles exclude repeated Search-plane builds | admitted_search_plane_has_zero_request_workspace_build; read_handle_reference_work_is_independent_of_workspace; rebuilding_each_handle_multiplies_workspace_work | WorkspaceMemoryBackend admits one generation-bound Search plane; repeated RuntimeResidentReadClient opens share its Arc and perform no full generation validation or reconstruction |
+| Internal construction and external restore keep distinct validation boundaries | internal_byte_coverage_has_no_duplicate_full_validation; restored_byte_coverage_retains_full_validation | Private encoder carries a validated layout directly; from-owned and mmap artifacts still hash and decode their complete V1 directory before publication |
+| Search output stays exact-grounding bounded | exact_grounding_never_exceeds_full_owner_projection | Runtime retains private exact owner-line grounding independently of rg display flags and emits only smallest enclosing selectors; Query owns detailed owner projection |
+| Lexical readiness excludes Graph readiness | lexical_ready_does_not_require_graph_terminal | Tantivy Search waits on the lexical watch only; request Graph is built after candidate admission |
+| Query uses its explicit selector path | indexed_query_work_is_independent_of_workspace | WorkspaceMemoryBackend builds owner and selector hash indexes at generation admission; resident Query never enumerates unrelated owners |
+| Provider bootstrap is not Search/Query engine work | provider_bootstrap_is_outside_runtime_data_plane | Lifecycle timing is reported separately; generic client code retains only protocol/transport dependencies and provider parse/projection time remains visible |
+| Generic client cannot link one language provider | generic_client_language_provider_dependency_is_forbidden | =cargo tree -e normal= for =agent-semantic-client= contains no =asp-rust=; direct normal/dev dependencies, embedded Runtime calls, and the local build-policy default feature are regression-guarded. The pinned MRR/GQL crates still carry a transitive build-only =asp-rust= policy dependency, so build-graph closure remains explicitly open and is not Runtime evidence |
+| Candidate projection cannot reopen the worktree | resident_candidate_projection_has_zero_filesystem_reads; auxiliary_inputs_do_not_expand_search_owner_count | Canonical generation persists auxiliary bytes separately from searchable owners; Runtime sends source and applicable config bytes from the resident lease, reports both filesystem read counts as zero, and rejects corrupt auxiliary identity without live-filesystem fallback |
+
+The user approved measuring first computation separately before setting its
+production latency limit. Runtime starts each resident request with the strict
+1ms budget. Only a generation miss or uncached Search/Query computation marks
+that request as first-computation, including joiners of existing work. A cache
+hit never makes that transition. For diagnosis the first-computation absolute
+deadline is 60 seconds from dispatch admission, not 60 seconds per stage.
+Timeout is failure, not a usable result. Ready generation failures are terminal;
+the request does not silently resubmit a failed build. ClientFrame dispatch
+timings exclude client startup and network transport; report these separately.
+No V1 wire fields or schema versions change for this internal budget policy.
+
+Cold acceptance distinguishes an empty-artifact full build, a process-cold
+reopen of admitted durable artifacts, and a changed-owner generation.  A
+reopen must not be reported as an empty-artifact build.  Sub-millisecond
+lookup is a hypothesis for bounded resident work, not a promise to read,
+parse and durably publish an unbounded repository in that time.
+
+The existing =snapshotMerkleMaterializationMicros= interval includes source
+snapshot collection, provider projection, and canonical assembly.  Diagnosis
+must split these stages before attributing that interval to hashing.  Provider
+readiness belongs once per participating provider per build, not once per
+projection batch.  Per-stage internal timing does not change the V1 public
+schema or weaken generation admission.  A =materializing= response is not a
+usable result and must not count as successful first-result latency.
+
+The pointer-only =restored_generation_covers_demand= still rejects restored
+coverage without source verification. The source builder now owns verified
+reuse after current snapshot acquisition. The =blake3-runtime-admission-v1= candidate digest
+identifies a coalescing lane, not source bytes. Ordinary RestoreOrBuild skips the
+pointer-only restore attempt; it would otherwise load an unverified generation
+that is always discarded. A lightweight durable source-identity probe rejects
+changed content before decoding the full canonical materialization. The digest
+identifies a coalescing lane, not source bytes; persisting and comparing it
+cannot establish freshness.  Recovery optimization must bind the durable
+generation to content identity, provider execution identity and scope, and
+validate current-worktree changes before admission.  A lost watcher interval,
+changed provider, changed source, deletion or corrupt artifact must not be
+treated as unchanged.  Without continuity evidence, source revalidation may
+still be required, but unchanged content must not require repeating parser
+projection merely because the process restarted. The new path still performs
+snapshot I/O and durable validation. Zero-I/O verified reopen and changed-owner
+parser reuse remain separate requirements.
+
+Canonical import must hash each immutable owner once, then compare every
+selector's source digest with that computed owner digest.  Rehashing the whole
+owner for each selector costs =sum(ownerBytes * selectorCount)= instead of
+=sum(ownerBytes) + totalSelectorCount=.  Reuse is valid only within this
+same-byte assembly; it must not trust an externally supplied digest or skip
+per-selector range and payload checks.
+
+Canonical assembly is synchronous CPU work and must execute on a blocking
+worker, not inside a Tokio async worker poll.  Moving it does not reduce its
+work count or prove faster cold completion; it isolates unrelated request
+latency.  The worker owns the same captured bytes and candidate identity.
+
+2026-09-12 diagnostic sample, installed Runtime binary
+=80b3a09a655003c6a88a18078b822f7e10131e488d351a2da5d3c28dda3383ba=,
+generation =d89f55b1e53a4fa7529d47a523859b4e9afef972646eba2be7f99946b06a2279=:
+
+| Stage | Observed time |
+| Source snapshot, 2,427 owners | 162,839us |
+| Provider projection | 7,101,938us |
+| Canonical assembly | 3,440,921us |
+| Resident publication, enclosing build | 16,590,000us |
+| Lexical attachment | 192,436us |
+| Graph attachment | 166,930us |
+
+This is one process-cold, forced-rebuild sample with pre-existing durable
+artifacts, not an empty-cache distribution.  The initial public Search returned
+=query-not-ready=; no first-result success is claimed.  This binary includes
+provider-readiness hoisting and stage diagnostics but not the subsequent
+per-selector owner-hash elimination.  The prior 16,707,089us resident publication
+sample and this sample do not establish a material end-to-end improvement.
+
+A later first-result sample made the synchronous architecture violation
+explicit: generation wait was 35,449,310us although Search execution itself was
+118,578us and response serialization was 51us.  The generation path spent about
+6.43s in provider projection, 3.36s in canonical assembly and 16.73s waiting for
+resident publication.  That publication encoded, wrote, fsynced and reopened
+three substantially overlapping generation/exact/search artifacts totalling
+about 537MiB before exposing the already validated in-memory backend.  Lexical
+and graph attachment construction added only about 0.39s; the remaining delay
+included execution publication and full Project Topology construction.  This
+is an architecture counterexample, not a tuning baseline: attachment work was
+inside the first-Search critical path.
+
+The replacement invariant is =SearchCoreReady before DurableReady=.  Segment
+and Turso failures remain terminal for restart durability, but they do not turn
+an admitted process-resident generation back into =query-not-ready=.  The
+durable format must become a small manifest over content-addressed components;
+rewriting three complete copies per generation is forbidden.  Unchanged owner
+bytes reuse their source and parser artifacts, while a new generation writes
+only its proof/manifest and changed components.
+
+The parser lookup order is part of that invariant: artifact validation precedes
+provider readiness.  Starting a language process and then discovering a cache
+hit is an architectural miss because it destroys process-cold recovery.  On a
+typed miss the provider is started once and the same owner request is completed;
+there is no polling loop or second public Search invocation.
+
+The parsed owner is published only into the resident semantic overlay.  Calling
+the complete-generation publisher from this path is forbidden: it would turn a
+candidate-sized update back into a full-workspace encode, fsync and reopen
+barrier.  The durable parser artifact is the restart authority, so a later
+process revalidates and reattaches it without provider startup.
+
+Candidate projection must consume the immutable source and auxiliary bytes
+already admitted by the resident generation.  Sending only owner paths and
+then reopening source files or ancestor configuration files on the request
+path is forbidden: it races the admitted content identity, repeats acquisition
+work, and makes parser latency depend on filesystem state after admission.
+Auxiliary inputs are a distinct resident content class: they are bound by the
+same workspace snapshot and persisted generation, but are not searchable source
+owners and do not acquire a language-provider authority merely because they
+influence parser identity.  Runtime projection selects the applicable
+generation-bound auxiliary owners by canonical ancestor path and registered
+=configFiles=, constructs the candidate Merkle tree from those resident bytes,
+and reports zero query-time source and auxiliary filesystem reads.  A missing,
+changed, or corrupt resident auxiliary input is an identity failure; Runtime
+must not fall back to the live filesystem.
+
+A focused 2026-09-12 resident-input counterexample removed both the source file
+and its =Cargo.toml= from the worktree before projection.  The request reached
+the typed parser-artifact miss from the admitted bytes, reporting
+=sourceFilesystemReadCount=0=, =auxiliaryFilesystemReadCount=0=, 21 resident
+source bytes, 28 resident auxiliary bytes, and 485us input preparation.  A
+second case rejected corrupt auxiliary bytes before cache/provider execution.
+This proves the data-plane boundary and a sub-millisecond one-owner preparation
+sample; it is not yet a distribution for provider parsing or complete first
+Search latency.
+
+Project Topology is not a generation-Ready attachment in the minimal-core
+architecture.  Search builds a request-local topology from materialized fused
+candidates and, when graph semantics require it, a bounded one-hop Relation
+neighbourhood.  This prevents both full-repository parser work and a stale
+first-query topology from becoming permanent generation state.
+
+The generation builder owns only the lexical attachment.  A Tantivy clause
+waits for that lexical terminal and never for Graph.  Graph cardinality, budget
+and construction are derived from the request-local semantic owner cut after
+retrieval, so a global Graph build can neither contend with nor delay first
+Search.
 
 Performance work is complete only if the real =search playbook= route reduces
 end-to-end p95/p99 or expands the safely admitted corpus under the same Host
@@ -654,6 +1025,6 @@ ASP does need tgrep's physical-index discipline.  The resident implementation
 now publishes a compact mmap artifact, reopens postings and source bytes without
 workspace-sized heap reconstruction, evaluates regex-HIR AND/OR plans rarest
 first, and runs the lexical phase on a bounded Tokio CPU lane.  External posting
-construction, streaming posting decode, broader rg differential semantics, and
+construction, bounded OR unions, broader rg differential semantics, and
 independently measured end-to-end request cost remain the next performance
 closure points.

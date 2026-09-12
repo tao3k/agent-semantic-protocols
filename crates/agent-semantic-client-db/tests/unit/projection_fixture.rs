@@ -98,6 +98,7 @@ pub(crate) fn callable_skeleton_projection_fixture(
     symbol: &str,
 ) -> agent_semantic_client_db::runtime_server_workspace::WorkspaceDerivedProjectionSnapshot {
     let payload = serde_json::json!({
+        "rootSelector": structural_selector,
         "rootNodeId": "callable:root",
         "callable": {
             "kind": "function",

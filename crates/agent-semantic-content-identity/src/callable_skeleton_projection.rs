@@ -270,6 +270,7 @@ impl ProviderNativeExactProjection {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CallableSkeletonPayload {
+    pub root_selector: String,
     pub root_node_id: String,
     pub callable: CallableDescriptorV1,
     pub nodes: Vec<CallableSkeletonNodeV1>,
@@ -302,7 +303,10 @@ impl CallableSkeletonPayload {
     }
 
     fn validate_payload(&self) -> Result<(), CallableSkeletonValidationError> {
-        if self.root_node_id.is_empty() || self.callable.kind.is_empty() {
+        if self.root_selector.trim().is_empty()
+            || self.root_node_id.is_empty()
+            || self.callable.kind.is_empty()
+        {
             return Err(CallableSkeletonValidationError::EmptyRequiredField);
         }
         if self.nodes.is_empty() {
@@ -379,7 +383,7 @@ impl CallableSkeletonPayload {
         &self,
         root_selector: &str,
     ) -> Result<(), CallableSkeletonValidationError> {
-        if root_selector.trim().is_empty() {
+        if root_selector.trim().is_empty() || self.root_selector != root_selector {
             return Err(CallableSkeletonValidationError::EmptyRequiredField);
         }
         let descendant_prefix = format!("{root_selector}/");

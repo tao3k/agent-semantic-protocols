@@ -14,7 +14,10 @@ mod generation;
 mod generation_build;
 mod generation_commit;
 mod generation_overlay;
+mod generation_recovery;
+pub use generation_recovery::SourceIndexRecoveryExecution;
 mod model;
+mod parser_artifact_store;
 mod projection;
 mod provider_envelope;
 
@@ -22,7 +25,7 @@ mod provider_envelope;
 pub(crate) use api::materialized_current_source_index_snapshot;
 pub use api::{CurrentSourceIndexSnapshot, current_provider_source_index_snapshot_with_registry};
 pub use async_rebuild::{
-    prepare_runtime_server_owner_projection_with_resident_runtime_async,
+    prepare_runtime_server_resident_owner_projections_async,
     prepare_runtime_server_workspace_generation_with_runtime_service_async,
 };
 pub use collect::SourceIndexCollectionScope;

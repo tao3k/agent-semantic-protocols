@@ -7,6 +7,8 @@
 use std::collections::BTreeMap;
 use std::path::Path;
 
+use futures_util::{StreamExt, stream};
+
 use crate::runtime_server_workspace::ExactProjectionKind;
 use crate::{
     ClientDbSourceIndexPath, ClientDbSourceIndexProjectionCoverage, ClientDbSourceIndexQueryKey,
@@ -35,24 +37,23 @@ use agent_semantic_provider_transport::projection_batch::{
 };
 
 enum ProviderProjectionExecutor<'a> {
-    Resident(&'a ProviderRuntimeActorClient),
-    RuntimeService(
-        &'a crate::runtime_search_service::RuntimeSearchServiceHandle,
-        crate::runtime_generation_cancellation::GenerationCancellation,
-    ),
+    Resident(Option<&'a ProviderRuntimeActorClient>),
 }
 
 pub(super) type ProviderProjectionAuxiliaryOwners = BTreeMap<String, Vec<ProviderProjectionOwner>>;
 
-pub(super) async fn project_generation_with_resident_runtime(
-    runtime: &ProviderRuntimeActorClient,
+pub(super) async fn project_generation_with_resident_runtime_and_artifact_store(
+    runtime: Option<&ProviderRuntimeActorClient>,
     project_root: &Path,
     workspace_identity: &str,
     registry: &RuntimeProviderProjection,
     files: &[ClientDbSourceIndexScopeFile],
     source_blobs: &ClientDbSourceIndexSourceBlobs,
     auxiliary_owners: &ProviderProjectionAuxiliaryOwners,
+    artifact_root: &Path,
 ) -> Result<Vec<ClientDbSourceIndexScopeFile>, String> {
+    let artifact_store =
+        super::parser_artifact_store::ParserArtifactStore::for_artifact_root(artifact_root);
     project_generation_with_executor(
         ProviderProjectionExecutor::Resident(runtime),
         project_root,
@@ -61,28 +62,7 @@ pub(super) async fn project_generation_with_resident_runtime(
         files,
         source_blobs,
         auxiliary_owners,
-    )
-    .await
-}
-
-pub(super) async fn project_generation_with_runtime_service(
-    runtime: &crate::runtime_search_service::RuntimeSearchServiceHandle,
-    cancellation: crate::runtime_generation_cancellation::GenerationCancellation,
-    project_root: &Path,
-    workspace_identity: &str,
-    registry: &RuntimeProviderProjection,
-    files: &[ClientDbSourceIndexScopeFile],
-    source_blobs: &ClientDbSourceIndexSourceBlobs,
-    auxiliary_owners: &ProviderProjectionAuxiliaryOwners,
-) -> Result<Vec<ClientDbSourceIndexScopeFile>, String> {
-    project_generation_with_executor(
-        ProviderProjectionExecutor::RuntimeService(runtime, cancellation),
-        project_root,
-        workspace_identity,
-        registry,
-        files,
-        source_blobs,
-        auxiliary_owners,
+        Some(&artifact_store),
     )
     .await
 }
@@ -95,6 +75,7 @@ async fn project_generation_with_executor(
     files: &[ClientDbSourceIndexScopeFile],
     source_blobs: &ClientDbSourceIndexSourceBlobs,
     auxiliary_owners: &ProviderProjectionAuxiliaryOwners,
+    artifact_store: Option<&super::parser_artifact_store::ParserArtifactStore>,
 ) -> Result<Vec<ClientDbSourceIndexScopeFile>, String> {
     let mut generation_leaves = source_blobs
         .iter()
@@ -127,6 +108,7 @@ async fn project_generation_with_executor(
             &tree,
             source_blobs,
             auxiliary_owners,
+            artifact_store,
             &mut projected,
         )
         .await?;
@@ -142,6 +124,7 @@ async fn project_provider(
     tree: &WorkspacePathMerkleTreeV1,
     source_blobs: &ClientDbSourceIndexSourceBlobs,
     auxiliary_owners: &ProviderProjectionAuxiliaryOwners,
+    artifact_store: Option<&super::parser_artifact_store::ParserArtifactStore>,
     files: &mut [ClientDbSourceIndexScopeFile],
 ) -> Result<(), String> {
     let operation = provider
@@ -169,7 +152,106 @@ async fn project_provider(
     let query_pack_json = serde_json::to_vec(&provider.query_pack_descriptor)
         .map_err(|error| format!("encode provider query-pack identity: {error}"))?;
     let query_pack_digest = derive_query_pack_identity_digest_v1(&query_pack_json);
-    let owner_sizes = owner_indexes
+    let auxiliary_owners = auxiliary_owners
+        .get(provider.provider_id.as_str())
+        .cloned()
+        .unwrap_or_default();
+    let auxiliary_input_digest = parser_auxiliary_input_digest(&auxiliary_owners)?;
+    let artifact_identities = owner_indexes
+        .iter()
+        .map(|index| {
+            let owner_path = relative_owner_path(project_root, &files[*index].path);
+            let source_leaf_digest = tree.source_blob_digest(&owner_path).ok_or_else(|| {
+                format!("projection owner is absent from Merkle tree: {owner_path}")
+            })?;
+            Ok((
+                *index,
+                super::parser_artifact_store::ParserArtifactIdentity {
+                    provider_id: provider.provider_id.as_str().to_owned(),
+                    parser_identity_digest: parser_identity_digest.as_str().to_owned(),
+                    query_pack_digest: query_pack_digest.as_str().to_owned(),
+                    auxiliary_input_digest: auxiliary_input_digest.clone(),
+                    owner_path,
+                    owner_content_digest: source_leaf_digest.as_str().to_owned(),
+                },
+            ))
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    let artifact_identity_by_owner = artifact_identities
+        .iter()
+        .map(|(_, identity)| (identity.owner_path.clone(), identity.clone()))
+        .collect::<BTreeMap<_, _>>();
+    let cache_started = std::time::Instant::now();
+    let cached = if let Some(store) = artifact_store.cloned() {
+        stream::iter(
+            artifact_identities
+                .iter()
+                .cloned()
+                .map(|(index, identity)| {
+                    let store = store.clone();
+                    async move {
+                        let result = store.read(&identity).await;
+                        (index, identity, result)
+                    }
+                }),
+        )
+        .buffer_unordered(32)
+        .collect::<Vec<_>>()
+        .await
+    } else {
+        Vec::new()
+    };
+    let mut response_by_owner = BTreeMap::new();
+    let mut cache_rejected = 0usize;
+    let mut cache_indexes = std::collections::BTreeSet::new();
+    for (index, identity, cached_owner) in cached {
+        let admitted = match cached_owner {
+            Ok(Some(owner)) => validate_cached_projected_owner(
+                provider,
+                tree,
+                workspace_identity,
+                source_blobs,
+                &identity.owner_path,
+                owner,
+            )
+            .map(Some),
+            Ok(None) => Ok(None),
+            Err(error) => Err(error),
+        };
+        match admitted {
+            Ok(Some(owner)) => {
+                cache_indexes.insert(index);
+                response_by_owner.insert(identity.owner_path, owner);
+            }
+            Ok(None) => {}
+            Err(error) => {
+                cache_rejected = cache_rejected.saturating_add(1);
+                eprintln!(
+                    "[parser-artifact-reuse] providerId={} ownerPath={} state=rejected error={}",
+                    provider.provider_id, identity.owner_path, error,
+                );
+            }
+        }
+    }
+    let miss_indexes = owner_indexes
+        .iter()
+        .copied()
+        .filter(|index| !cache_indexes.contains(index))
+        .collect::<Vec<_>>();
+    eprintln!(
+        "[parser-artifact-reuse] providerId={} state=observed hits={} misses={} rejected={} elapsedMicros={}",
+        provider.provider_id,
+        cache_indexes.len(),
+        miss_indexes.len(),
+        cache_rejected,
+        cache_started.elapsed().as_micros(),
+    );
+    if !miss_indexes.is_empty() && matches!(&executor, ProviderProjectionExecutor::Resident(None)) {
+        return Err("state=cache-miss reasonKind=provider-parser-runtime-required".to_owned());
+    }
+    // Readiness is provider-scoped and needed only when at least one content
+    // artifact missed. A fully reusable generation starts no provider process.
+    let owner_sizes = miss_indexes
         .iter()
         .map(|index| {
             let owner_path = relative_owner_path(project_root, &files[*index].path);
@@ -179,10 +261,6 @@ async fn project_provider(
                 .ok_or_else(|| format!("projection source bytes are missing: {owner_path}"))
         })
         .collect::<Result<Vec<_>, String>>()?;
-    let auxiliary_owners = auxiliary_owners
-        .get(provider.provider_id.as_str())
-        .cloned()
-        .unwrap_or_default();
     let auxiliary_source_bytes = auxiliary_owners
         .iter()
         .map(|owner| owner.source_bytes.len())
@@ -190,7 +268,8 @@ async fn project_provider(
     for range in
         provider_projection_batch_ranges_with_auxiliary_bytes(&owner_sizes, auxiliary_source_bytes)
     {
-        let batch_indexes = &owner_indexes[range];
+        let frame_started = std::time::Instant::now();
+        let batch_indexes = &miss_indexes[range];
         let batch_owner_paths = batch_indexes
             .iter()
             .map(|index| relative_owner_path(project_root, &files[*index].path))
@@ -239,9 +318,13 @@ async fn project_provider(
             .collect::<Vec<_>>()
             .join(",");
         let response = match executor {
-            ProviderProjectionExecutor::Resident(runtime) => {
+            ProviderProjectionExecutor::Resident(Some(runtime)) => {
+                let encode_started = std::time::Instant::now();
                 let encoded = request.encode().map_err(|error| error.to_string())?;
-                let response = runtime
+                let request_bytes = encoded.len();
+                let encode_micros = encode_started.elapsed().as_micros();
+                let request_started = std::time::Instant::now();
+                let response_bytes = runtime
                     .request(&operation.operation, encoded)
                     .await
                     .map_err(|error| {
@@ -249,90 +332,175 @@ async fn project_provider(
                             "provider projection frame failed: ownerPaths={frame_owner_paths} error={error}"
                         )
                     })?;
-                agent_semantic_provider_transport::projection_batch::ProviderProjectionBatchResponse::decode_for(
+                let request_micros = request_started.elapsed().as_micros();
+                let response_len = response_bytes.len();
+                let decode_started = std::time::Instant::now();
+                let response = agent_semantic_provider_transport::projection_batch::ProviderProjectionBatchResponse::decode_for(
                     &request,
-                    &response,
+                    &response_bytes,
                 )
-                .map_err(|error| error.to_string())?
+                .map_err(|error| error.to_string())?;
+                eprintln!(
+                    "[provider-projection-frame-timing] providerId={} ownerCount={} requestBytes={} responseBytes={} encodeMicros={} requestMicros={} decodeMicros={} elapsedMicros={}",
+                    provider.provider_id,
+                    request.owners.len(),
+                    request_bytes,
+                    response_len,
+                    encode_micros,
+                    request_micros,
+                    decode_started.elapsed().as_micros(),
+                    frame_started.elapsed().as_micros(),
+                );
+                response
             }
-            ProviderProjectionExecutor::RuntimeService(runtime, cancellation) => {
-                runtime
-                    .provider_runtime(
-                        project_root.to_path_buf(),
-                        provider.language_id.as_str().to_owned(),
-                    )
-                    .await?;
-                runtime
-                    .provider_runtime_await_ready(
-                        project_root.to_path_buf(),
-                        provider.language_id.as_str().to_owned(),
-                        cancellation.clone(),
-                    )
-                    .await?;
-                let encoded = request.encode().map_err(|error| error.to_string())?;
-                let response = runtime
-                    .provider_operation(
-                        project_root.to_path_buf(),
-                        provider.language_id.as_str().to_owned(),
-                        operation.operation.clone(),
-                        encoded,
-                        cancellation.clone(),
-                    )
-                    .await
-                    .map_err(|error| {
-                        format!(
-                            "provider projection frame failed: ownerPaths={frame_owner_paths} error={error}"
-                        )
-                    })?;
-                agent_semantic_provider_transport::projection_batch::ProviderProjectionBatchResponse::decode_for(
-                    &request,
-                    &response,
-                )
-                .map_err(|error| error.to_string())?
+            ProviderProjectionExecutor::Resident(None) => {
+                unreachable!("parser cache misses require a resident provider runtime")
             }
         };
-        let response_by_owner = response
-            .owners
-            .into_iter()
-            .map(|owner| (owner.owner_path.clone(), owner))
-            .collect::<BTreeMap<_, _>>();
-        for index in batch_indexes {
-            let file = &mut files[*index];
-            let owner_path = relative_owner_path(project_root, &file.path);
-            let projected_owner = response_by_owner.get(&owner_path).ok_or_else(|| {
-                format!("projection response omitted admitted owner: {owner_path}")
-            })?;
-            let source = source_blobs
-                .get(&ClientDbSourceIndexPath::new(&owner_path))
-                .ok_or_else(|| format!("projection source bytes are missing: {owner_path}"))?;
-            match projected_owner.projection_state {
-                agent_semantic_provider_transport::projection_batch::ProviderProjectionState::Ready => {
-                    file.selector_receipts = selector_receipts(
-                        provider,
-                        tree,
-                        source,
-                        projected_owner,
-                        &parser_identity_digest,
-                        &query_pack_digest,
-                    )?;
-                    file.relations = projected_owner.relations.clone();
-                    file.projection_coverage = ClientDbSourceIndexProjectionCoverage::Complete;
-                    file.projection_diagnostic = None;
+        let projected_owners = response.owners;
+        if let Some(store) = artifact_store.cloned() {
+            let publication_started = std::time::Instant::now();
+            let writes = stream::iter(projected_owners.iter().cloned().filter_map(|owner| {
+                artifact_identity_by_owner
+                    .get(&owner.owner_path)
+                    .cloned()
+                    .map(|identity| {
+                        let store = store.clone();
+                        async move {
+                            (
+                                identity.owner_path.clone(),
+                                store.publish(identity, owner).await,
+                            )
+                        }
+                    })
+            }))
+            .buffer_unordered(8)
+            .collect::<Vec<_>>()
+            .await;
+            for (owner_path, result) in writes {
+                if let Err(error) = result {
+                    eprintln!(
+                        "[parser-artifact-publication] providerId={} ownerPath={} state=failed error={}",
+                        provider.provider_id, owner_path, error,
+                    );
                 }
-                agent_semantic_provider_transport::projection_batch::ProviderProjectionState::SyntaxUnavailable => {
-                    file.selector_receipts.clear();
-                    file.relations.clear();
-                    file.projection_coverage =
-                        ClientDbSourceIndexProjectionCoverage::SyntaxUnavailable;
-                    file.projection_diagnostic = projected_owner.diagnostic.clone();
-                }
+            }
+            eprintln!(
+                "[parser-artifact-publication-timing] providerId={} ownerCount={} elapsedMicros={}",
+                provider.provider_id,
+                projected_owners.len(),
+                publication_started.elapsed().as_micros(),
+            );
+        }
+        response_by_owner.extend(
+            projected_owners
+                .into_iter()
+                .map(|owner| (owner.owner_path.clone(), owner)),
+        );
+    }
+    for index in owner_indexes {
+        let file = &mut files[index];
+        let owner_path = relative_owner_path(project_root, &file.path);
+        let projected_owner = response_by_owner
+            .get(&owner_path)
+            .ok_or_else(|| format!("projection response omitted admitted owner: {owner_path}"))?;
+        let source = source_blobs
+            .get(&ClientDbSourceIndexPath::new(&owner_path))
+            .ok_or_else(|| format!("projection source bytes are missing: {owner_path}"))?;
+        match projected_owner.projection_state {
+            agent_semantic_provider_transport::projection_batch::ProviderProjectionState::Ready => {
+                file.selector_receipts = selector_receipts(
+                    provider,
+                    tree,
+                    source,
+                    projected_owner,
+                    &parser_identity_digest,
+                    &query_pack_digest,
+                )?;
+                file.relations = projected_owner.relations.clone();
+                file.projection_coverage = ClientDbSourceIndexProjectionCoverage::Complete;
+                file.projection_diagnostic = None;
+            }
+            agent_semantic_provider_transport::projection_batch::ProviderProjectionState::SyntaxUnavailable => {
+                file.selector_receipts.clear();
+                file.relations.clear();
+                file.projection_coverage =
+                    ClientDbSourceIndexProjectionCoverage::SyntaxUnavailable;
+                file.projection_diagnostic = projected_owner.diagnostic.clone();
             }
         }
     }
     Ok(())
 }
 
-fn auxiliary_owner_applies_to_source(auxiliary_path: &str, owner_path: &str) -> bool {
+fn parser_auxiliary_input_digest(owners: &[ProviderProjectionOwner]) -> Result<String, String> {
+    let mut inputs = owners
+        .iter()
+        .map(|owner| {
+            (
+                owner.owner_path.as_str(),
+                format!("blake3-256:{}", blake3::hash(&owner.source_bytes).to_hex()),
+            )
+        })
+        .collect::<Vec<_>>();
+    inputs.sort_unstable();
+    let bytes = serde_json::to_vec(&inputs)
+        .map_err(|error| format!("encode parser auxiliary input identity: {error}"))?;
+    Ok(format!("blake3-256:{}", blake3::hash(&bytes).to_hex()))
+}
+
+fn validate_cached_projected_owner(
+    provider: &RuntimeProvider,
+    tree: &WorkspacePathMerkleTreeV1,
+    workspace_identity: &str,
+    source_blobs: &ClientDbSourceIndexSourceBlobs,
+    owner_path: &str,
+    owner: ProviderProjectedOwner,
+) -> Result<ProviderProjectedOwner, String> {
+    let source = source_blobs
+        .get(&ClientDbSourceIndexPath::new(owner_path))
+        .ok_or_else(|| format!("cached parser source bytes are missing: {owner_path}"))?;
+    let source_leaf_digest = tree
+        .source_blob_digest(owner_path)
+        .ok_or_else(|| format!("cached parser owner is absent from Merkle tree: {owner_path}"))?;
+    let request = ProviderProjectionBatchRequest {
+        language_id: provider.language_id.as_str().to_owned(),
+        provider_id: provider.provider_id.as_str().to_owned(),
+        workspace_identity: workspace_identity.to_owned(),
+        generation_root_digest: tree.root_digest().as_str().to_owned(),
+        parser_identity_digest: "cached-parser-artifact-validation".to_owned(),
+        query_pack_digest: "cached-parser-artifact-validation".to_owned(),
+        base_generation_root_digest: None,
+        owners: vec![ProviderProjectionOwner {
+            owner_path: owner_path.to_owned(),
+            source_leaf_digest: source_leaf_digest.as_str().to_owned(),
+            source_bytes: source.to_vec(),
+        }],
+        auxiliary_owners: Vec::new(),
+    };
+    let encoded = serde_json::to_vec(
+        &agent_semantic_provider_transport::projection_batch::ProviderProjectionBatchResponse {
+            schema_id: agent_semantic_provider_transport::projection_batch::PROJECTION_BATCH_RESPONSE_SCHEMA_ID.to_owned(),
+            schema_version: "1".to_owned(),
+            language_id: provider.language_id.as_str().to_owned(),
+            provider_id: provider.provider_id.as_str().to_owned(),
+            generation_root_digest: tree.root_digest().as_str().to_owned(),
+            owners: vec![owner],
+        },
+    )
+    .map_err(|error| format!("encode cached parser artifact for validation: {error}"))?;
+    agent_semantic_provider_transport::projection_batch::ProviderProjectionBatchResponse::decode_for(
+        &request,
+        &encoded,
+    )
+    .map_err(|error| format!("validate cached parser artifact: {error}"))?
+    .owners
+    .into_iter()
+    .next()
+    .ok_or_else(|| "validated cached parser artifact omitted its owner".to_owned())
+}
+
+pub(super) fn auxiliary_owner_applies_to_source(auxiliary_path: &str, owner_path: &str) -> bool {
     let auxiliary_directory = Path::new(auxiliary_path)
         .parent()
         .unwrap_or_else(|| Path::new(""));

@@ -23,6 +23,7 @@ use crate::server_source_index::config::{
 use crate::server_source_index::generation_commit::PreparedSourceIndexGeneration;
 use crate::server_source_index::model::SourceIndexScopeFile;
 
+#[derive(Clone)]
 pub(super) struct SourceIndexRefreshContext {
     db_path: std::path::PathBuf,
     schema_id: SemanticSchemaId,
@@ -91,7 +92,7 @@ impl SourceIndexRefreshContext {
 
     async fn prepare_partial_generation_with_runtime_service_async(
         &self,
-        runtime: &crate::runtime_search_service::RuntimeSearchServiceHandle,
+        _runtime: &crate::runtime_search_service::RuntimeSearchServiceHandle,
         request: SourceIndexGenerationRefresh<'_>,
         cancellation: crate::runtime_generation_cancellation::GenerationCancellation,
     ) -> Result<PreparedSourceIndexGeneration, String> {
@@ -107,40 +108,75 @@ impl SourceIndexRefreshContext {
                 return Err("runtime-generation-cancelled: source snapshot cancelled".to_owned());
             }
         };
+        let snapshot_micros = trace_started.elapsed().as_micros();
         let workspace_identity =
             agent_semantic_client_core::state_core::ResolvedState::resolve(request.index_root)?
                 .workspace
                 .workspace_id
                 .to_string();
-        let projected_files =
-            crate::server_source_index::projection::project_generation_with_runtime_service(
-                runtime,
-                cancellation,
-                request.index_root,
-                &workspace_identity,
-                request.provider_registry,
-                request.files,
-                &source_blobs,
-                &auxiliary_owners,
-            )
-            .await?;
-        self.prepare_generation_from_snapshot(
-            SourceIndexGenerationRefresh {
-                index_root: request.index_root,
-                files: &projected_files,
-                project_resolutions: request.project_resolutions,
-                changed_owner_paths: request.changed_owner_paths,
-                replacement_authority: request.replacement_authority,
-                candidate: request.candidate,
-                registry: request.registry,
-                provider_registry: request.provider_registry,
-            },
-            file_hashes,
-            workspace_snapshot,
-            source_snapshot,
-            source_blobs,
-            trace_started,
+        if let Some(recovered) = super::generation_recovery::recover_unchanged_generation(
+            &self.db_path,
+            &request,
+            &workspace_identity,
+            &source_snapshot,
+            &source_blobs,
         )
+        .await?
+        {
+            eprintln!(
+                "[base-generation-recovery] state=reused owners={} providerProjectionCount=0 elapsedMicros={}",
+                request.files.len(),
+                trace_started.elapsed().as_micros()
+            );
+            return Ok(recovered);
+        }
+        // SearchCoreReady owns bytes and immutable content identity only.
+        // Parser selectors and relations are content-addressed semantic
+        // attachments materialized for the bounded candidate owner set.  A
+        // complete-generation projection here made every first Search wait for
+        // every parser even when the query touched one owner.
+        let _auxiliary_owners = auxiliary_owners;
+        let projection_micros = 0;
+        let assembly_started = Instant::now();
+        let context = self.clone();
+        let index_root = request.index_root.to_path_buf();
+        let project_resolutions = request.project_resolutions.to_vec();
+        let files = request.files.to_vec();
+        let candidate = request.candidate.clone();
+        let registry = request.registry.clone();
+        let provider_registry = request.provider_registry.clone();
+        let owner_count = request.files.len();
+        let prepared = tokio::task::spawn_blocking(move || {
+            context.prepare_generation_from_snapshot(
+                SourceIndexGenerationRefresh {
+                    index_root: &index_root,
+                    files: &files,
+                    project_resolutions: &project_resolutions,
+                    changed_owner_paths: None,
+                    replacement_authority: None,
+                    candidate: &candidate,
+                    registry: &registry,
+                    provider_registry: &provider_registry,
+                    recovery_execution: None,
+                },
+                file_hashes,
+                workspace_snapshot,
+                source_snapshot,
+                source_blobs,
+                trace_started,
+            )
+        })
+        .await
+        .map_err(|error| format!("canonical assembly worker failed: {error}"))??;
+        eprintln!(
+            "[base-generation-stage-timing] owners={} snapshotMicros={} providerProjectionMicros={} canonicalAssemblyMicros={} totalMicros={}",
+            owner_count,
+            snapshot_micros,
+            projection_micros,
+            assembly_started.elapsed().as_micros(),
+            trace_started.elapsed().as_micros(),
+        );
+        Ok(prepared)
     }
 
     fn prepare_generation_from_snapshot(
@@ -201,6 +237,8 @@ impl SourceIndexRefreshContext {
 }
 
 pub(super) struct SourceIndexGenerationRefresh<'a> {
+    pub(super) recovery_execution:
+        Option<&'a super::generation_recovery::SourceIndexRecoveryExecution>,
     pub(super) changed_owner_paths: Option<&'a [String]>,
     pub(super) replacement_authority: Option<&'a agent_semantic_search::ResidentSearchAuthority>,
     pub(super) index_root: &'a Path,

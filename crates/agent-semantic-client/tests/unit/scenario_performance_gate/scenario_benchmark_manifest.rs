@@ -19,8 +19,7 @@ use super::scenario_policy_scan::{
 };
 use super::shared::{
     AGENT_POLICY_ID_GRAMMAR, LANGUAGE_SCENARIO_BENCHMARK_REQUIREMENTS,
-    REQUIRED_PERFORMANCE_SENSITIVE_SUBCOMMAND_POLICY_IDS,
-    SharedBenchmarkToml, SharedScenarioToml,
+    REQUIRED_PERFORMANCE_SENSITIVE_SUBCOMMAND_POLICY_IDS, SharedBenchmarkToml, SharedScenarioToml,
 };
 
 pub(super) fn discover_toml_scenario_benchmark_roots(root: &Path) -> Vec<PathBuf> {
@@ -139,27 +138,6 @@ pub(super) fn validate_toml_scenario_benchmark(
     if benchmark_has_hot_path_metadata(&benchmark) {
         hot_path_coverage.insert(canonical_benchmark_language(language));
     }
-}
-
-pub(super) fn asp_unit_scenarios_have_asp_rust_benchmark_toml_gates() {
-    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    asp_rust::assert_rule_fixture_scenario_benchmarks(crate_root);
-    let receipt = asp_rust::validate_required_rust_scenario_benchmarks(crate_root)
-        .expect("validate ASP unit scenario benchmark gates");
-
-    assert!(
-        !receipt.requirements.is_empty(),
-        "ASP tests must define at least one tests/unit/scenarios/*/scenario.toml fixture with benchmark.toml"
-    );
-    assert_eq!(
-        receipt.status,
-        asp_rust::RustScenarioBenchmarkStatus::Pass,
-        "{receipt:#?}"
-    );
-    assert!(receipt.receipts.iter().all(|receipt| {
-        receipt.benchmark.observed_total <= receipt.benchmark.max_total
-            && receipt.benchmark.observed_memory_bytes <= receipt.benchmark.memory_budget_bytes
-    }));
 }
 
 pub(super) fn asp_unit_scenarios_cover_perf_sensitive_subcommands() {

@@ -34,6 +34,7 @@ mod turso_schema_lifecycle_tests;
 mod turso_search;
 mod turso_source_index;
 pub(crate) use turso_source_index::active_turso_workspace_generation_materialization;
+pub(crate) use turso_source_index::latest_turso_source_index_stats;
 pub use turso_source_index::{
     ClientDbActiveGenerationSourceBlob, ClientDbActiveGenerationSourceBlobs,
     ClientDbActiveSourceIndexGeneration, ClientDbSourceIndexGenerationOwner,

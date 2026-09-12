@@ -408,6 +408,38 @@ impl WorkspaceSearchGenerationDataPlaneClient {
     }
 
     #[must_use]
+    pub fn contains_indexed_owner(&self, owner_path: &str) -> bool {
+        self.owner_directory_records.contains_key(owner_path)
+    }
+
+    /// Slice parser-materialized descendant bytes only inside its admitted root.
+    pub(crate) fn read_admitted_selector_slice(
+        &self,
+        root_selector: &str,
+        range: std::ops::Range<usize>,
+    ) -> Result<Vec<u8>, String> {
+        let canonical =
+            agent_semantic_content_identity::CanonicalItemSelector::parse(root_selector)?;
+        let owner_path = canonical.owner_path()?;
+        let owner = self
+            .owner_directory_records
+            .get(&owner_path)
+            .ok_or_else(|| "resident exact descendant owner is not admitted".to_owned())?;
+        let root = owner
+            .selectors
+            .iter()
+            .find(|root| root.selector == root_selector)
+            .ok_or_else(|| "resident exact descendant root is not admitted".to_owned())?;
+        if range.start >= range.end || range.start < root.byte_start || range.end > root.byte_end {
+            return Err("resident exact descendant byte range is outside its root".to_owned());
+        }
+        self.resident_owner_bytes(owner)?
+            .get(range)
+            .map(<[u8]>::to_vec)
+            .ok_or_else(|| "resident exact descendant byte range is outside its owner".to_owned())
+    }
+
+    #[must_use]
     pub fn indexed_owner_paths(&self) -> Vec<String> {
         self.owner_directory_records.keys().cloned().collect()
     }

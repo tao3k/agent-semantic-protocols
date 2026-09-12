@@ -78,6 +78,10 @@ impl WorkspaceMemoryGeneration {
                 );
             }
         }
+        crate::runtime_server_workspace::canonical_snapshot::validate_auxiliary_snapshot_membership(
+            &self.workspace_snapshot,
+            &self.auxiliary_owners,
+        )?;
         validate_owners(&self.owners)
     }
 }

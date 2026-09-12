@@ -19,6 +19,8 @@ use tokio::io::AsyncWriteExt;
 
 #[path = "runtime_server_daemon.rs"]
 mod runtime_server_daemon;
+#[path = "runtime_server_generation_builder.rs"]
+mod runtime_server_generation_builder;
 #[path = "runtime_server_identity_handoff.rs"]
 mod runtime_server_identity_handoff;
 #[path = "runtime_server_query_generation_observer.rs"]

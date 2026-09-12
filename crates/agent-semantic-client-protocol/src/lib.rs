@@ -124,6 +124,7 @@ pub use server_method_catalog::CANCELLATION_PROBE_METHOD;
 pub use server_method_catalog::CANCELLATION_PROBE_REQUEST_SCHEMA_ID;
 pub use server_method_catalog::CANCELLATION_PROBE_RESPONSE_SCHEMA_ID;
 pub use server_method_catalog::ClientDispatchClass;
+pub use server_method_catalog::FIRST_COMPUTATION_OBSERVATION_BUDGET;
 pub use server_method_catalog::GRAPH_EVALUATE_METHOD;
 pub use server_method_catalog::GRAPH_EVALUATE_REQUEST_SCHEMA_ID;
 pub use server_method_catalog::GRAPH_EVALUATE_RESPONSE_SCHEMA_ID;
