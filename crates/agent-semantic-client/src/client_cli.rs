@@ -52,7 +52,7 @@ pub async fn run_cli_args(
         Some("cloud") => run_cloud(parsed),
         Some("search") => {
             Err(
-                "Search is Playbook-only; use `asp search playbook --language <producer|...> ...`"
+                "Search is Playbook-only; use `asp search playbook '<scheme-expression>'`"
                     .to_owned(),
             )
         }

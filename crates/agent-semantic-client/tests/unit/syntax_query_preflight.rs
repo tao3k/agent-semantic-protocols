@@ -158,9 +158,10 @@ fn rejects_invalid_inline_tree_sitter_query_before_provider_execution() {
 
     let error = validate_syntax_query_request(&request).expect_err("invalid query");
 
-    assert_eq!(
-        error,
-        "invalid tree-sitter query ABI source before provider execution: unclosed query pattern"
+    assert!(
+        error.starts_with("invalid tree-sitter query ABI source before provider execution:")
+            && error.contains("syntactically invalid"),
+        "{error}"
     );
 }
 

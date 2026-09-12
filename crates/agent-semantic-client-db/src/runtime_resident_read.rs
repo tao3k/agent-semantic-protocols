@@ -206,7 +206,7 @@ impl RuntimeResidentReadClient {
             .read_tantivy_for_language(expression, language_id, limit)
     }
 
-    pub fn read_cold_rg_candidates(
+    pub fn read_resident_grep_candidates(
         &self,
         query: &str,
         owner_paths: &[String],
@@ -215,12 +215,12 @@ impl RuntimeResidentReadClient {
     ) -> Result<std::sync::Arc<agent_semantic_search_projection::ResidentSearchReadyResult>, String>
     {
         self.search_projection
-            .read_cold_rg_candidates(query, owner_paths, authority, limit)
+            .read_resident_grep_candidates(query, owner_paths, authority, limit)
     }
 
     #[must_use]
-    pub fn cold_rg_corpus(&self) -> &agent_semantic_search::ColdRgCorpusArtifact {
-        self.search_projection.cold_rg_corpus()
+    pub fn resident_grep_corpus(&self) -> &agent_semantic_search::ResidentGrepCorpusArtifact {
+        self.search_projection.resident_grep_corpus()
     }
 
     pub fn read_byte_evidence(
@@ -232,6 +232,30 @@ impl RuntimeResidentReadClient {
     {
         self.search_projection
             .read_byte_evidence(query, authority, limit)
+    }
+
+    pub fn resident_byte_candidate_owner_paths(
+        &self,
+        literal: &[u8],
+        limit: usize,
+    ) -> Result<Vec<String>, String> {
+        self.search_projection
+            .resident_byte_candidate_owner_paths(literal, limit)
+    }
+
+    pub fn resident_grep_candidate_owner_paths(
+        &self,
+        plan: &agent_semantic_search::ResidentGrepCandidatePlan,
+        limit: usize,
+    ) -> Result<
+        (
+            Vec<String>,
+            agent_semantic_search::ResidentByteCoverageQueryReceipt,
+        ),
+        String,
+    > {
+        self.search_projection
+            .resident_grep_candidate_owner_paths(plan, limit)
     }
 
     pub fn read_byte_evidence_for_owner_scope(

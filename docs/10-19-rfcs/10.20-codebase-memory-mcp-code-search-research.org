@@ -876,7 +876,7 @@ gap without giving up native provider authority.
 Use the sole first-class Search entry:
 
 #+begin_src text
-asp search playbook --language <producer|...> --rg <native argv...> --tantivy <native query...>
+asp search playbook '<one (search ...) Scheme expression>'
   -> admitted Search Layout
   -> graph/entity/dependency/doc candidates
   -> Python rank/diversity

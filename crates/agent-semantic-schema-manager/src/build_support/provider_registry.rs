@@ -25,6 +25,71 @@ pub struct ProviderIdentityBuild {
     pub provider_id: String,
 }
 
+/// Resolve one provider registration and its source-owned enhanced Query table.
+///
+/// The checked-in registration retains a relative reference so the capability
+/// table has one source owner. Build/install publication embeds the resolved
+/// table in the immutable Runtime Provider Register.
+pub fn resolve_provider_registration(
+    provider_root: &Path,
+    registration_path: &Path,
+) -> Result<(Value, Vec<PathBuf>), String> {
+    let mut registration = read_json(registration_path)?;
+    let Some(capability) =
+        registration.pointer_mut("/searchCapabilities/enhancedSyntaxQueryCapability")
+    else {
+        return Ok((registration, vec![registration_path.to_path_buf()]));
+    };
+    let reference = capability
+        .get("$ref")
+        .and_then(Value::as_str)
+        .ok_or_else(|| {
+            format!(
+                "provider enhanced Query capability must be one relative $ref: {}",
+                registration_path.display()
+            )
+        })?;
+    let reference_path = Path::new(reference);
+    if reference_path.is_absolute()
+        || reference_path.components().any(|component| {
+            matches!(
+                component,
+                std::path::Component::Prefix(_) | std::path::Component::RootDir
+            )
+        })
+    {
+        return Err("provider enhanced Query capability $ref must be relative".to_owned());
+    }
+    let provider_root = provider_root.canonicalize().map_err(|error| {
+        format!(
+            "canonicalize provider root {}: {error}",
+            provider_root.display()
+        )
+    })?;
+    let capability_path = registration_path
+        .parent()
+        .ok_or_else(|| "provider registration path has no parent".to_owned())?
+        .join(reference_path)
+        .canonicalize()
+        .map_err(|error| {
+            format!(
+                "resolve provider enhanced Query capability {}: {error}",
+                reference
+            )
+        })?;
+    if !capability_path.starts_with(&provider_root) {
+        return Err(format!(
+            "provider enhanced Query capability escapes provider root: {}",
+            capability_path.display()
+        ));
+    }
+    *capability = read_json(&capability_path)?;
+    Ok((
+        registration,
+        vec![registration_path.to_path_buf(), capability_path],
+    ))
+}
+
 /// Resolves canonical provider registrations and their build-script rerun inputs.
 pub fn resolve_provider_register(
     source_root: impl AsRef<Path>,
@@ -85,7 +150,9 @@ pub fn resolve_provider_register(
             .parent()
             .ok_or("provider workspace install parent missing")?
             .join(registration_reference);
-        let registration = read_json(&registration_path)?;
+        let provider_root = root.join(source_root);
+        let (registration, registration_inputs) =
+            resolve_provider_registration(&provider_root, &registration_path)?;
         if registration["languageId"].as_str() != Some(identity.language_id.as_str())
             || registration["providerId"].as_str() != Some(identity.provider_id.as_str())
         {
@@ -96,7 +163,8 @@ pub fn resolve_provider_register(
                 registration_path.display()
             ));
         }
-        input_paths.extend([workspace_install_path, registration_path]);
+        input_paths.push(workspace_install_path);
+        input_paths.extend(registration_inputs);
         registrations.push(registration);
     }
     register["providers"] = Value::Array(registrations);

@@ -158,9 +158,57 @@ pub(crate) fn decode_runtime_artifact_activation_event(
 pub(crate) async fn validate_current_activation_receipts_content(
     state_home: &Path,
 ) -> Result<(), String> {
-    for path in [
-        runtime_artifact_activation_event_path(state_home),
-        crate::RuntimeArtifactStateLayout::new(state_home).applied_activation(),
+    for (is_pending, current) in read_current_activation_receipts(state_home)? {
+        if is_pending && is_retired_rollback_pending(state_home, &current)? {
+            continue;
+        }
+        validate_current_activation_content(&current).await?;
+    }
+    Ok(())
+}
+
+pub(crate) async fn validate_current_activation_receipts_for_preverified_predecessor(
+    state_home: &Path,
+    predecessor: &Path,
+    bundle_digest: &Blake3ContentDigest,
+) -> Result<(), String> {
+    let predecessor = std::fs::canonicalize(predecessor).map_err(|error| {
+        format!(
+            "state=runtime-artifact-publication-failed reasonKind=predecessor-unavailable path={} error={error}",
+            predecessor.display()
+        )
+    })?;
+    for (is_pending, current) in read_current_activation_receipts(state_home)? {
+        if is_pending && is_retired_rollback_pending(state_home, &current)? {
+            continue;
+        }
+        let candidate = std::fs::canonicalize(&current.candidate_slot_path).map_err(|error| {
+            format!(
+                "state=runtime-artifact-publication-failed reasonKind=activation-candidate-invalid path={} error={error}",
+                current.candidate_slot_path.display()
+            )
+        })?;
+        if candidate != predecessor || &current.bundle_digest != bundle_digest {
+            return Err(
+                "state=runtime-artifact-publication-failed reasonKind=activation-predecessor-binding-drift"
+                    .to_owned(),
+            );
+        }
+        validate_current_activation_member_content(&current).await?;
+    }
+    Ok(())
+}
+
+fn read_current_activation_receipts(
+    state_home: &Path,
+) -> Result<Vec<(bool, RuntimeArtifactActivationEvent)>, String> {
+    let mut receipts = Vec::new();
+    for (is_pending, path) in [
+        (true, runtime_artifact_activation_event_path(state_home)),
+        (
+            false,
+            crate::RuntimeArtifactStateLayout::new(state_home).applied_activation(),
+        ),
     ] {
         let bytes = match std::fs::read(&path) {
             Ok(bytes) => bytes,
@@ -182,12 +230,77 @@ pub(crate) async fn validate_current_activation_receipts_content(
                 path.display()
             )
         })?;
-        validate_current_activation_content(&current).await?;
+        receipts.push((is_pending, current));
     }
-    Ok(())
+    Ok(receipts)
+}
+
+fn is_retired_rollback_pending(
+    state_home: &Path,
+    pending: &RuntimeArtifactActivationEvent,
+) -> Result<bool, String> {
+    if pending.candidate_slot_path.exists() {
+        return Ok(false);
+    }
+    let Some(applied) = read_applied_runtime_artifact_activation_event_blocking(state_home)? else {
+        return Ok(false);
+    };
+    if pending.previous_artifact_digest.as_ref() != Some(&applied.artifact_digest) {
+        return Ok(false);
+    }
+    let layout = crate::RuntimeArtifactStateLayout::new(state_home);
+    let applied_candidate = std::fs::canonicalize(&applied.candidate_slot_path).map_err(|error| {
+        format!(
+            "state=runtime-artifact-publication-failed reasonKind=applied-candidate-invalid path={} error={error}",
+            applied.candidate_slot_path.display()
+        )
+    })?;
+    let active = std::fs::canonicalize(layout.active_slot()).map_err(|error| {
+        format!(
+            "state=runtime-artifact-publication-failed reasonKind=active-slot-invalid error={error}"
+        )
+    })?;
+    let healthy = std::fs::canonicalize(layout.healthy_slot()).map_err(|error| {
+        format!(
+            "state=runtime-artifact-publication-failed reasonKind=healthy-slot-invalid error={error}"
+        )
+    })?;
+    Ok(active == applied_candidate && healthy == applied_candidate)
+}
+
+fn read_applied_runtime_artifact_activation_event_blocking(
+    state_home: &Path,
+) -> Result<Option<RuntimeArtifactActivationEvent>, String> {
+    let path = crate::RuntimeArtifactStateLayout::new(state_home).applied_activation();
+    match std::fs::read(&path) {
+        Ok(bytes) => decode_runtime_artifact_activation_event(
+            &bytes,
+            "applied Runtime artifact activation receipt",
+        )
+        .map(Some),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(format!(
+            "state=runtime-artifact-publication-failed reasonKind=applied-receipt-unreadable path={} error={error}",
+            path.display()
+        )),
+    }
 }
 
 async fn validate_current_activation_content(
+    event: &RuntimeArtifactActivationEvent,
+) -> Result<(), String> {
+    let actual_bundle =
+        runtime_artifact_candidate_bundle_digest(&event.candidate_slot_path).await?;
+    if actual_bundle != event.bundle_digest {
+        return Err(format!(
+            "state=runtime-artifact-publication-failed reasonKind=activation-receipt-content-drift expectedBundleDigest={} actualBundleDigest={actual_bundle}",
+            event.bundle_digest
+        ));
+    }
+    validate_current_activation_member_content(event).await
+}
+
+async fn validate_current_activation_member_content(
     event: &RuntimeArtifactActivationEvent,
 ) -> Result<(), String> {
     let artifact_kind = event
@@ -207,21 +320,16 @@ async fn validate_current_activation_content(
         )
     })?;
     let actual_digest = runtime_artifact_candidate_digest(&member_target).await?;
-    let actual_bundle =
-        runtime_artifact_candidate_bundle_digest(&event.candidate_slot_path).await?;
     let recorded_artifact = std::fs::canonicalize(&event.artifact_path).map_err(|error| {
         format!(
             "state=runtime-artifact-publication-failed reasonKind=activation-artifact-invalid path={} error={error}",
             event.artifact_path.display()
         )
     })?;
-    if member_target != recorded_artifact
-        || actual_digest != event.artifact_digest
-        || actual_bundle != event.bundle_digest
-    {
+    if member_target != recorded_artifact || actual_digest != event.artifact_digest {
         return Err(format!(
-            "state=runtime-artifact-publication-failed reasonKind=activation-receipt-content-drift expectedArtifactDigest={} actualArtifactDigest={actual_digest} expectedBundleDigest={} actualBundleDigest={actual_bundle}",
-            event.artifact_digest, event.bundle_digest
+            "state=runtime-artifact-publication-failed reasonKind=activation-receipt-content-drift expectedArtifactDigest={} actualArtifactDigest={actual_digest}",
+            event.artifact_digest
         ));
     }
     Ok(())

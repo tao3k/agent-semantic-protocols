@@ -3,9 +3,34 @@
 // SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 use super::{
-    compile_graph_relation_pattern, fused_file_context_scope, smallest_selector_overlapping_line,
-    source_line_ranges, structural_candidate_owner_scope,
+    compile_graph_relation_pattern, fused_file_context_scope, resident_grep_candidate_scope,
+    smallest_selector_overlapping_line, source_line_ranges, structural_candidate_owner_scope,
 };
+
+#[test]
+fn truncated_tantivy_scope_cannot_authorize_an_empty_intersection() {
+    let ranked = ["src/unrelated.rs", "src/hit.rs"];
+    let grep = ["src/hit.rs".to_owned()].into_iter().collect();
+    let scope = super::TantivyClauseResult {
+        owners: ranked
+            .iter()
+            .take(1)
+            .map(|path| (*path).to_owned())
+            .collect(),
+        truncated: true,
+    };
+    assert!(fused_file_context_scope(&grep, &scope.owners.iter().cloned().collect()).is_empty());
+    assert!(scope.require_complete_fused_scope().is_err());
+    let complete = super::TantivyClauseResult {
+        owners: ranked.iter().map(|path| (*path).to_owned()).collect(),
+        truncated: false,
+    };
+    assert!(complete.require_complete_fused_scope().is_ok());
+    assert_eq!(
+        fused_file_context_scope(&grep, &complete.owners.into_iter().collect()),
+        grep
+    );
+}
 
 #[test]
 fn rg_and_tantivy_intersection_owns_the_file_context_scope() {
@@ -21,6 +46,25 @@ fn rg_and_tantivy_intersection_owns_the_file_context_scope() {
         fused_file_context_scope(&rg, &tantivy),
         ["src/shared.rs"].into_iter().map(str::to_owned).collect()
     );
+}
+
+#[test]
+fn non_selective_grep_plan_uses_only_the_bounded_tantivy_scope() {
+    let tantivy = ["src/a.rs", "src/b.rs"]
+        .into_iter()
+        .map(str::to_owned)
+        .collect();
+    let (owners, receipt) = resident_grep_candidate_scope(
+        &agent_semantic_search::ResidentGrepCandidatePlan::MatchAll,
+        &tantivy,
+        2,
+        || panic!("MatchAll must not enter the trigram index"),
+    )
+    .unwrap();
+    assert_eq!(owners, ["src/a.rs", "src/b.rs"]);
+    assert_eq!(receipt.requested_gram_count, 0);
+    assert_eq!(receipt.candidate_count, 2);
+    assert_eq!(receipt.decoded_posting_count, 0);
 }
 
 #[test]

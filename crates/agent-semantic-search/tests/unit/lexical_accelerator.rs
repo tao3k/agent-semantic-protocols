@@ -78,7 +78,7 @@ fn accelerator_publication_requires_rg_tantivy_equivalence() {
         digest("tantivy"),
         vec![LexicalRouteEquivalenceCase {
             normalized_query_digest: digest("query"),
-            cold_rg_candidate_set_digest: candidates.clone(),
+            resident_grep_candidate_set_digest: candidates.clone(),
             tantivy_candidate_set_digest: candidates,
         }],
     )
@@ -93,7 +93,7 @@ fn accelerator_candidate_drift_fails_closed() {
         digest("tantivy"),
         vec![LexicalRouteEquivalenceCase {
             normalized_query_digest: digest("query"),
-            cold_rg_candidate_set_digest: digest("rg"),
+            resident_grep_candidate_set_digest: digest("rg"),
             tantivy_candidate_set_digest: digest("tantivy-results"),
         }],
     )
@@ -105,7 +105,7 @@ fn accelerator_candidate_drift_fails_closed() {
 fn content_generation_routes_to_rg_before_accelerator_publication() {
     assert_eq!(
         plan_lexical_recall_route(&content_generation(), None).expect("cold route"),
-        LexicalRecallRoute::ColdRg,
+        LexicalRecallRoute::ResidentGrep,
     );
 }
 
@@ -118,7 +118,7 @@ fn exact_accelerator_switches_the_same_generation_to_tantivy() {
         digest("tantivy"),
         vec![LexicalRouteEquivalenceCase {
             normalized_query_digest: digest("query"),
-            cold_rg_candidate_set_digest: candidates.clone(),
+            resident_grep_candidate_set_digest: candidates.clone(),
             tantivy_candidate_set_digest: candidates,
         }],
     )
@@ -140,7 +140,7 @@ fn accelerator_from_another_content_generation_fails_closed() {
         digest("tantivy"),
         vec![LexicalRouteEquivalenceCase {
             normalized_query_digest: digest("query"),
-            cold_rg_candidate_set_digest: candidates.clone(),
+            resident_grep_candidate_set_digest: candidates.clone(),
             tantivy_candidate_set_digest: candidates,
         }],
     )

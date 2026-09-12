@@ -37,7 +37,7 @@ event = "pre-tool"
 message = "Project replacement owns the complete policy unit."
 
 [hook.rules.match]
-argvPatternAny = [["asp", "<registered-language>", "search"]]
+argvPatternAny = [["asp", "search", "playbook"]]
 "#,
     )
     .expect("write project hook config");
@@ -51,7 +51,7 @@ argvPatternAny = [["asp", "<registered-language>", "search"]]
         event: "pre-tool",
         payload: &json!({
             "tool_name": "Bash",
-            "tool_input": {"command": "asp search playbook --language rust --rg ownership"}
+            "tool_input": {"command": "asp search playbook '(search (producers (language rust)) (intersect (rg \"ownership\" \".\") (tantivy \"title:ownership^2 OR body:authority\")))'"}
         }),
     });
 

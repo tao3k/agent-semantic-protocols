@@ -78,7 +78,7 @@ impl WorkspaceSearchGenerationDataPlaneClient {
         self.cold_lexical_result(query, Some(&[owner_path.to_owned()]), authority, limit)
     }
 
-    pub fn read_cold_rg_candidates(
+    pub fn read_resident_grep_candidates(
         &self,
         query: &str,
         owner_paths: &[String],
@@ -89,8 +89,12 @@ impl WorkspaceSearchGenerationDataPlaneClient {
     }
 
     #[must_use]
-    pub fn cold_rg_corpus(&self) -> &agent_semantic_search::ColdRgCorpusArtifact {
-        &self.cold_rg_corpus
+    pub fn resident_grep_corpus(&self) -> &agent_semantic_search::ResidentGrepCorpusArtifact {
+        &self.resident_grep_corpus
+    }
+
+    pub fn resident_grep_index_stats(&self) -> agent_semantic_search::ResidentByteCoverageStats {
+        self.resident_byte_coverage.stats()
     }
 
     pub fn read_byte_evidence(
@@ -118,6 +122,33 @@ impl WorkspaceSearchGenerationDataPlaneClient {
             }
         }
         self.cold_lexical_result(query, Some(&exact_matches), authority, limit)
+    }
+
+    /// Return the bounded resident trigram candidate set for an exact byte
+    /// literal. The caller must still verify the literal or admitted regex
+    /// against the immutable owner bytes before claiming a match.
+    pub fn resident_byte_candidate_owner_paths(
+        &self,
+        literal: &[u8],
+        limit: usize,
+    ) -> Result<Vec<String>, String> {
+        self.resident_byte_coverage
+            .candidate_owner_paths(literal, None, limit)
+    }
+
+    pub fn resident_grep_candidate_owner_paths(
+        &self,
+        plan: &agent_semantic_search::ResidentGrepCandidatePlan,
+        limit: usize,
+    ) -> Result<
+        (
+            Vec<String>,
+            agent_semantic_search::ResidentByteCoverageQueryReceipt,
+        ),
+        String,
+    > {
+        self.resident_byte_coverage
+            .candidate_owner_paths_for_grep_plan_with_receipt(plan, None, limit)
     }
 
     pub fn read_byte_evidence_for_owner_scope(

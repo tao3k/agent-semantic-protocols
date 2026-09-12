@@ -178,19 +178,9 @@ pub(super) async fn build_registered_provider_workspace(
         &provider_source_root,
         "provider registration",
     )?;
-    let provider_registration_value: serde_json::Value =
-        serde_json::from_slice(&fs::read(&provider_registration_path).map_err(|error| {
-            format!(
-                "read provider registration {}: {error}",
-                provider_registration_path.display()
-            )
-        })?)
-        .map_err(|error| {
-            format!(
-                "decode provider registration {}: {error}",
-                provider_registration_path.display()
-            )
-        })?;
+    let (provider_registration_value, _) =
+        agent_semantic_schema_manager::build_support::provider_registry::
+            resolve_provider_registration(&provider_source_root, &provider_registration_path)?;
     let provider_registration = agent_semantic_provider_protocol::ProviderRegistrationDocument {
         language_id: descriptor.language_id.clone(),
         provider_id: descriptor.provider_id.clone(),
@@ -682,7 +672,7 @@ fn ensure_within(path: &Path, root: &Path, label: &str) -> Result<(), String> {
     }
 }
 
-fn artifact_snapshot(root: &Path) -> Result<(String, usize), String> {
+pub(super) fn artifact_snapshot(root: &Path) -> Result<(String, usize), String> {
     let mut leaves = Vec::new();
     if root.is_file() {
         let leaf_name = root

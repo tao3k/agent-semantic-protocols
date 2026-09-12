@@ -52,6 +52,12 @@ fn provider_workspace_registration_must_equal_the_client_build_contract() {
         .find(|registration| registration.provider_id == "asp-rust")
         .expect("Rust registration");
     validate_embedded_provider_registration(&embedded).expect("exact embedded registration");
+    let capability = &embedded.registration["searchCapabilities"]["enhancedSyntaxQueryCapability"];
+    assert_eq!(
+        capability["schemaId"],
+        "agent.semantic-protocols.enhanced-tree-sitter-query-capability-table"
+    );
+    assert!(capability.get("$ref").is_none());
 
     let mut drifted = embedded;
     drifted.registration["namespace"] = serde_json::json!("forged-rust");

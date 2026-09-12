@@ -81,12 +81,40 @@ pub fn workspace_search_providers_from_provider_register(
                     }
                 })
                 .collect();
+            let enhanced_query_capability = provider
+                .registration_field("searchCapabilities")?
+                .get("enhancedSyntaxQueryCapability")
+                .cloned()
+                .map(|value| {
+                    let table: agent_semantic_client_protocol::EnhancedQueryCapabilityTable =
+                        serde_json::from_value(value).map_err(|error| {
+                            format!(
+                                "provider enhanced Query capability is invalid: languageId={} error={error}",
+                                provider.language_id
+                            )
+                        })?;
+                    table.validate()?;
+                    if table.language_id != provider.language_id
+                        || table.provider_id != provider.provider_id
+                    {
+                        return Err(format!(
+                            "provider enhanced Query capability identity drift: expected={}/{} actual={}/{}",
+                            provider.language_id,
+                            provider.provider_id,
+                            table.language_id,
+                            table.provider_id
+                        ));
+                    }
+                    Ok(table)
+                })
+                .transpose()?;
             Ok(WorkspaceSearchProvider {
                 language_id: provider.language_id.clone(),
                 provider_id: provider.provider_id.clone(),
                 source_extensions,
                 search_supported,
                 producer_axes,
+                enhanced_query_capability,
             })
         })
         .collect::<Result<Vec<_>, String>>()?;
@@ -144,11 +172,9 @@ pub struct RuntimeAspClientDispatcher {
     pub(super) workspace_registry:
         Arc<agent_semantic_client_db::runtime_server_workspace::RuntimeServerWorkspaceRegistry>,
     pub(super) active_provider_targets: Arc<[(String, String)]>,
-    /// Runtime-owned provider authority. Each Search/Query request derives one
-    /// immutable snapshot, so a committed provider refresh is visible to the
-    /// next request without client inference or daemon restart.
-    pub(super) provider_register:
-        Arc<agent_semantic_client_db::runtime_provider_register::RuntimeProviderRegister>,
+    /// Provider/search projection compiled once at Runtime service admission.
+    /// Search/Query requests only clone this immutable resident snapshot.
+    pub(super) workspace_search_providers: Arc<[WorkspaceSearchProvider]>,
     pub(super) workspace_store_root: std::path::PathBuf,
     pub(super) query_generation_authority: RuntimeQueryGenerationAuthority,
     pub(super) telemetry_sender:
@@ -180,9 +206,7 @@ impl RuntimeAspClientDispatcher {
         >,
         initialized_workspaces: Arc<Mutex<HashMap<ClientWorkspaceKey, InitializedWorkspace>>>,
         active_provider_targets: Arc<[(String, String)]>,
-        provider_register: Arc<
-            agent_semantic_client_db::runtime_provider_register::RuntimeProviderRegister,
-        >,
+        workspace_search_providers: Arc<[WorkspaceSearchProvider]>,
         workspace_store_root: std::path::PathBuf,
         query_generation_authority: RuntimeQueryGenerationAuthority,
         telemetry_sender: agent_semantic_client_db::runtime_telemetry_bus::RuntimeTelemetryBusSender,
@@ -195,7 +219,7 @@ impl RuntimeAspClientDispatcher {
             workspace_registry,
             initialized_workspaces,
             active_provider_targets,
-            provider_register,
+            workspace_search_providers,
             workspace_store_root,
             query_generation_authority,
             telemetry_sender,
@@ -231,6 +255,10 @@ pub fn build_frame_service(
     let initialized_workspaces = Arc::new(Mutex::new(HashMap::new()));
     let catalog_generation = client_catalog_generation;
     let catalog_provider_targets = Arc::clone(&active_provider_targets);
+    let workspace_search_providers = workspace_search_providers_from_provider_register(
+        provider_register.as_ref(),
+        &schema_bundles,
+    )?;
     let dispatcher = Arc::new(RuntimeAspClientDispatcher::new(
         schema_bundles,
         agent_session_registry,
@@ -239,7 +267,7 @@ pub fn build_frame_service(
         workspace_registry,
         Arc::clone(&initialized_workspaces),
         active_provider_targets,
-        provider_register,
+        workspace_search_providers,
         workspace_store_root,
         query_generation_authority,
         telemetry_sender,

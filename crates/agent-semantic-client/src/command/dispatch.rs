@@ -5,7 +5,6 @@
 //! Top-level command dispatch for protocol subcommands.
 
 use std::env;
-use std::path::PathBuf;
 
 use super::agent_control_plane::run_config_command;
 use super::ast_patch::run_ast_patch_command;
@@ -35,7 +34,6 @@ pub(crate) async fn run_protocol_command_started(
         return Ok(());
     }
     reject_agent_platform_json_output(&args)?;
-    reject_file_workspace_for_search(&args)?;
     if args.first().is_some_and(|command| command == "hook")
         && super::hook::is_runtime_independent_control_command(&args[1..])
     {
@@ -116,54 +114,6 @@ fn agent_platform_session_active() -> bool {
 
 fn env_var_nonempty(name: &str) -> bool {
     std::env::var_os(name).is_some_and(|value| !value.is_empty())
-}
-
-fn reject_file_workspace_for_search(args: &[String]) -> Result<(), String> {
-    // Root Search accepts only a registered WorkspaceId. Its parser and the
-    // Runtime-owned admission catalog validate that identity; interpreting it
-    // as a path here would make a coincidentally named file change semantics.
-    if matches!(args.first().map(String::as_str), Some("search")) {
-        return Ok(());
-    }
-    if !is_search_command_args(args) {
-        return Ok(());
-    }
-    let Some(workspace) = arg_option_value(args, "--workspace") else {
-        return Ok(());
-    };
-    if workspace.starts_with('-') {
-        return Ok(());
-    }
-    let workspace_path = PathBuf::from(workspace);
-    let workspace_path = if workspace_path.is_absolute() {
-        workspace_path
-    } else {
-        env::current_dir()
-            .map_err(|error| format!("failed to resolve current project directory: {error}"))?
-            .join(workspace_path)
-    };
-    if workspace_path.is_file() {
-        return Err(format!(
-            "--workspace requires a directory project root, got file `{}`. Keep the file path as the search scope and use a directory workspace, for example `asp search playbook --language gerbil-scheme '<terms>' --scope owner:<file> --workspace .`.",
-            workspace_path.display()
-        ));
-    }
-    Ok(())
-}
-
-fn is_search_command_args(args: &[String]) -> bool {
-    matches!(args.first().map(String::as_str), Some("search"))
-        || matches!(args.get(1).map(String::as_str), Some("search"))
-}
-
-fn arg_option_value<'a>(args: &'a [String], flag: &str) -> Option<&'a str> {
-    let prefix = format!("{flag}=");
-    args.iter()
-        .find_map(|arg| arg.strip_prefix(&prefix))
-        .or_else(|| {
-            args.windows(2)
-                .find_map(|window| (window[0] == flag).then_some(window[1].as_str()))
-        })
 }
 
 fn usage() -> String {

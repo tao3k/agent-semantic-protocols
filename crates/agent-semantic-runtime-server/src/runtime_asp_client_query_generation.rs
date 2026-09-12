@@ -23,13 +23,6 @@ pub(super) const RUNTIME_CLIENT_DISPATCH_BUDGET: std::time::Duration =
     std::time::Duration::from_micros(1_000);
 
 pub(super) fn dispatch_budget_for_method(method: &str) -> Option<std::time::Duration> {
-    if method == agent_semantic_client_protocol::WORKSPACE_SEARCH_PLAYBOOK_METHOD {
-        // A composite playbook may scan the complete immutable rg corpus and
-        // evaluate the generation-derived Graph frontier. Its finite work and
-        // cancellation are owned by the playbook budget, not the exact-read
-        // latency gate retained by Query.
-        return None;
-    }
     (agent_semantic_client_protocol::classify_client_dispatch(method)
         == agent_semantic_client_protocol::ClientDispatchClass::ResidentGenerationRead)
         .then_some(RUNTIME_CLIENT_DISPATCH_BUDGET)

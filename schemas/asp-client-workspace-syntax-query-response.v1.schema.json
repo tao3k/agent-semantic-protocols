@@ -15,12 +15,73 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["owner", "selector", "relation"],
+        "required": ["owner", "selector", "capture", "relation", "selected"],
         "properties": {
           "owner": {"type": "string", "minLength": 1},
           "selector": {"type": "string", "pattern": "^[^:]+://.+#item/.+$"},
-          "relation": {"type": "string", "minLength": 1}
+          "capture": {"type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_.-]*$"},
+          "relation": {"type": "string", "minLength": 1},
+          "selected": {"$ref": "#/$defs/selection"}
         }
+      }
+    }
+  },
+  "$defs": {
+    "selection": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "kind": {"type": "string", "minLength": 1},
+        "name": {"type": "string", "minLength": 1},
+        "selector": {"type": "string", "pattern": "^[^:]+://.+#item/.+$"},
+        "byteRange": {
+          "type": "array",
+          "prefixItems": [
+            {"type": "integer", "minimum": 0},
+            {"type": "integer", "minimum": 0}
+          ],
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "scopes": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/scope"}
+        },
+        "queryKeys": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "projections": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/projection"}
+        },
+        "relations": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "provider-definitions.v1.schema.json#/$defs/relation"}
+        }
+      }
+    },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["relation", "kind", "symbol"],
+      "properties": {
+        "relation": {"type": "string", "minLength": 1},
+        "kind": {"type": "string", "minLength": 1},
+        "symbol": {"type": "string", "minLength": 1}
+      }
+    },
+    "projection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "digest"],
+      "properties": {
+        "kind": {"type": "string", "minLength": 1},
+        "digest": {"type": "string", "pattern": "^blake3-256:[0-9a-f]{64}$"}
       }
     }
   }

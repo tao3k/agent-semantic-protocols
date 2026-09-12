@@ -30,6 +30,7 @@ default = ["tantivy-accelerator"]
 tantivy-accelerator = ["dep:tantivy"]
 
 [dependencies]
+agent-semantic-client-protocol = { path = "../agent-semantic-client-protocol" }
 sha2.workspace = true
 serde = { workspace = true, features = ["derive"] }
 agent-semantic-content-identity.workspace = true
@@ -39,12 +40,14 @@ blake3.workspace = true
 globset.workspace = true
 agent-semantic-config = { path = "../agent-semantic-config" }
 agent-semantic-search-projection = { path = "../agent-semantic-search-projection" }
+agent-semantic-tree-sitter = { path = "../agent-semantic-tree-sitter" }
 bytes = { workspace = true }
 ignore = { workspace = true }
 serde_json = { workspace = true }
 memmap2.workspace = true
 memchr = "2"
 regex.workspace = true
+regex-syntax.workspace = true
 toml = { workspace = true }
 tokio = { workspace = true }
 tokio-stream.workspace = true

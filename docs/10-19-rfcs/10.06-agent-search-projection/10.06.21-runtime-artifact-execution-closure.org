@@ -69,6 +69,42 @@ verified bound bundle, replaces requested executable members, regenerates any
 content-dependent closure members, and publishes one complete successor. It
 does not run a separate provider-registry refresh after activation.
 
+Provider replacement has one additional, bounded upgrade rule.  The immutable
+predecessor envelope MUST still reproduce its manifest digest, member digests,
+execution binding, provider coverage, and provider-artifact bindings.  The
+installer MAY tolerate a built-in registration-digest mismatch only for the
+single provider member being replaced in that transaction.  Its provider ID,
+language ID, and artifact-member identity MUST still equal the current
+source-owned registration.  Every other predecessor registration remains
+subject to normal built-in equality.  The successor replaces that provider
+artifact and regenerates both provider closure documents from the current
+built-in registration before it can reach the active slot.
+
+This rule is an installation-only predecessor admission, not serving
+admission.  It exists so a registration and its provider artifact can advance
+atomically without requiring the old active registration to equal the new
+client binary before the replacement transaction starts.  It cannot authorize
+carrying an old artifact across a changed registration, widening drift to a
+second provider, or exposing the predecessor to Runtime dispatch.
+
+Provider-install preparation reads only the configured artifact mode and its
+qualified development or release source.  It MUST NOT load the strict serving
+provider catalog before replacement, because that would require the
+predecessor registration to equal the successor registration and make the
+atomic upgrade rule unreachable.  Runtime startup and request dispatch
+continue to use only the strict serving loader.
+
+When the resident predecessor is restored by an older Runtime before a
+provider-only candidate becomes healthy, binary refresh MAY use the immutable
+provider-install receipt as migration input.  For every predecessor
+registration whose digest differs from the new binary's built-in registry,
+the same binary-refresh transaction MUST replace that provider member from a
+qualified, content-verified staged artifact produced for the current
+development root or locked release.  A drifted registration without such a
+replacement fails closed.  The old provider artifact is never rebound to the
+new registration, and the provider-only active selector is not treated as the
+authority for this reconciliation.
+
 ** Automatic Refresh Boundary
 
 Provider registration is source-owned by the built-in provider registry.
@@ -156,6 +192,9 @@ remain non-empty. Absence of any of the five documents is always invalid.
 7. Binary refresh preserves unchanged closure bytes and regenerates changed
    content in the same atomic successor transaction.
 8. No closure member contains an absolute workspace or State Home path.
+9. Provider replacement admits at most the replaced provider's predecessor
+   registration-digest drift and produces a successor that passes ordinary
+   strict serving admission.
 
 ** Implementation Order
 

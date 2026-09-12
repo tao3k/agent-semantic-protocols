@@ -11,6 +11,7 @@ mod binary;
 mod cli_support;
 mod core;
 mod development;
+mod reconciliation;
 mod release;
 mod target;
 mod workspace;

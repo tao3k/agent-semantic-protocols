@@ -9,33 +9,37 @@ use std::sync::Arc;
 
 use super::{SearchOwnerRecord, WorkspaceSearchGenerationAuthority};
 
-pub(in crate::runtime_server_workspace) fn build_cold_rg_corpus(
-    mapping: &[u8],
+pub(in crate::runtime_server_workspace) fn build_resident_grep_corpus(
+    mapping: Arc<memmap2::Mmap>,
     owner_bytes_range: &std::ops::Range<usize>,
     owner_directory_records: &BTreeMap<String, Arc<SearchOwnerRecord>>,
     content_generation_digest: &str,
-) -> Result<agent_semantic_search::ColdRgCorpusArtifact, String> {
+) -> Result<agent_semantic_search::ResidentGrepCorpusArtifact, String> {
     let owners = owner_directory_records
         .values()
         .map(|record| {
             let start = owner_bytes_range
                 .start
                 .checked_add(record.byte_offset as usize)
-                .ok_or_else(|| "cold rg corpus owner offset overflows".to_owned())?;
+                .ok_or_else(|| "resident GREP corpus owner offset overflows".to_owned())?;
             let end = start
                 .checked_add(record.byte_length as usize)
-                .ok_or_else(|| "cold rg corpus owner range overflows".to_owned())?;
-            let bytes = mapping
-                .get(start..end)
-                .ok_or_else(|| "cold rg corpus owner exceeds mapped generation".to_owned())?;
-            Ok(agent_semantic_search::ColdRgCorpusOwner {
-                owner_path: &record.owner_path,
-                content_digest: &record.content_digest,
-                bytes,
+                .ok_or_else(|| "resident GREP corpus owner range overflows".to_owned())?;
+            if end > owner_bytes_range.end {
+                return Err("resident GREP corpus owner exceeds mapped generation".to_owned());
+            }
+            Ok(agent_semantic_search::ResidentGrepMappedCorpusOwner {
+                owner_path: record.owner_path.clone(),
+                content_digest: record.content_digest.clone(),
+                byte_range: start..end,
             })
         })
         .collect::<Result<Vec<_>, String>>()?;
-    agent_semantic_search::build_cold_rg_corpus(content_generation_digest, owners)
+    agent_semantic_search::open_mapped_resident_grep_corpus(
+        content_generation_digest,
+        mapping,
+        owners,
+    )
 }
 
 pub(in crate::runtime_server_workspace) fn build_resident_graph_generation(

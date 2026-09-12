@@ -5,7 +5,6 @@
 
 //! Search orchestration services for ASP agent-facing queries.
 
-mod cold_rg_corpus;
 pub mod command_diagnostics;
 mod content_generation;
 mod derived_attachment_lifecycle;
@@ -15,6 +14,7 @@ mod evidence_graph_rank;
 mod generation_graph_protocol;
 mod graph_action_frontier;
 mod graph_candidate_projection;
+mod resident_grep_corpus;
 pub use graph_action_frontier::DependencyActionNodeV1;
 pub use graph_action_frontier::matched_dependency_action_targets;
 mod graph_candidate_sparsity;
@@ -28,7 +28,6 @@ pub use graph_owner_rank::GraphOwnerRankRequest;
 pub use graph_owner_rank::GraphOwnerRankScore;
 pub use graph_owner_rank::GraphOwnerRankedOwner;
 pub use graph_owner_rank::rank_graph_owner_report;
-mod content_bound_native_rg;
 pub mod exact_selector_generation_fixture;
 mod graph_topology_projection;
 mod lexical_accelerator;
@@ -37,10 +36,6 @@ mod lexical_overlay;
 pub mod memory_search;
 #[cfg(feature = "tantivy-accelerator")]
 mod merkle_search_generation;
-pub use content_bound_native_rg::{
-    ContentBoundNativeRgAxisReceipt, ContentBoundNativeRgMatch, ContentBoundNativeRgProcessReceipt,
-    ContentBoundNativeRgReceipt, execute_content_bound_native_rg_blocks,
-};
 pub use memory_search::MemorySearchGeneration;
 pub use memory_search::MemorySearchGenerationReceipt;
 pub use memory_search::MemorySearchItem;
@@ -58,8 +53,11 @@ pub mod provider_relation_memory;
 mod resident_byte_coverage;
 mod resident_graph_search;
 #[cfg(feature = "tantivy-accelerator")]
+mod resident_grep_candidate_plan;
+#[cfg(feature = "tantivy-accelerator")]
 mod resident_source_index;
 mod runtime_search_receipt;
+mod scheme_playbook_source;
 mod search_candidate;
 mod search_generation_segment;
 mod search_language_files;
@@ -109,6 +107,9 @@ mod resident_source_index_tests;
 #[path = "../tests/unit/runtime_search_receipt.rs"]
 mod runtime_search_receipt_tests;
 #[cfg(test)]
+#[path = "../tests/unit/scheme_playbook_source.rs"]
+mod scheme_playbook_source_tests;
+#[cfg(test)]
 #[path = "../tests/unit/workspace_playbook_plan.rs"]
 mod workspace_playbook_plan_tests;
 #[cfg(test)]
@@ -116,13 +117,6 @@ mod workspace_playbook_plan_tests;
 mod workspace_playbook_result_tests;
 
 pub use agent_semantic_search_projection::WORKSPACE_SEARCH_PLAYBOOK_V1_EVIDENCE_ITEM_LIMIT;
-pub use cold_rg_corpus::COLD_RG_CORPUS_RECEIPT_SCHEMA_ID;
-pub use cold_rg_corpus::ColdRgCorpusArtifact;
-pub use cold_rg_corpus::ColdRgCorpusOwner;
-pub use cold_rg_corpus::ColdRgCorpusReceipt;
-pub use cold_rg_corpus::ColdRgOwnerSpan;
-pub use cold_rg_corpus::build_cold_rg_corpus;
-pub use cold_rg_corpus::owner_for_corpus_line;
 pub use content_generation::CONTENT_SEARCH_GENERATION_RECEIPT_SCHEMA_ID;
 pub use content_generation::ContentSearchGenerationReceipt;
 pub use content_generation::NativeSyntaxDiagnostic;
@@ -227,7 +221,8 @@ pub use merkle_search_generation::search_projection_analyzer_digest;
 pub use progressive_playbook::{
     GraphNativeBlock, ProducerNativeBlock, ProgressiveSearchPlaybookError,
     ProgressiveSearchPlaybookRequest, SearchPlaybookClauseAxis, SearchPlaybookClauseRef,
-    parse_progressive_search_playbook_args,
+    SearchPlaybookProducerDeclaration, parse_progressive_search_playbook_args,
+    parse_search_playbook_producer_declaration,
 };
 pub use progressive_query::{
     ProgressiveQueryRequest, QueryOutputFormat, parse_progressive_query_args, query_output_format,
@@ -244,6 +239,12 @@ pub use resident_byte_coverage::RESIDENT_BYTE_GRAM_WIDTH;
 pub use resident_byte_coverage::ResidentByteCoverageIndex;
 #[cfg(feature = "tantivy-accelerator")]
 pub use resident_byte_coverage::ResidentByteCoverageInput;
+#[cfg(feature = "tantivy-accelerator")]
+pub use resident_byte_coverage::ResidentByteCoverageOwner;
+#[cfg(feature = "tantivy-accelerator")]
+pub use resident_byte_coverage::ResidentByteCoverageQueryReceipt;
+#[cfg(feature = "tantivy-accelerator")]
+pub use resident_byte_coverage::ResidentByteCoverageStats;
 pub use resident_graph_search::ResidentGraphBuildMetrics;
 pub use resident_graph_search::ResidentGraphEvaluatedEdge;
 pub use resident_graph_search::ResidentGraphEvaluation;
@@ -263,6 +264,19 @@ pub use resident_graph_search::evaluate_resident_graph_generation;
 pub use resident_graph_search::evaluate_resident_graph_relation_patterns;
 pub use resident_graph_search::open_resident_graph_generation;
 pub use resident_graph_search::rank_resident_graph_generation;
+#[cfg(feature = "tantivy-accelerator")]
+pub use resident_grep_candidate_plan::{
+    ResidentGrepCandidatePlan, build_resident_grep_candidate_plan,
+};
+pub use resident_grep_corpus::RESIDENT_GREP_CORPUS_RECEIPT_SCHEMA_ID;
+pub use resident_grep_corpus::ResidentGrepCorpusArtifact;
+pub use resident_grep_corpus::ResidentGrepCorpusOwner;
+pub use resident_grep_corpus::ResidentGrepCorpusReceipt;
+pub use resident_grep_corpus::ResidentGrepMappedCorpusOwner;
+pub use resident_grep_corpus::ResidentGrepOwnerSpan;
+pub use resident_grep_corpus::build_resident_grep_corpus;
+pub use resident_grep_corpus::open_mapped_resident_grep_corpus;
+pub use resident_grep_corpus::owner_for_corpus_line;
 #[cfg(feature = "tantivy-accelerator")]
 pub use resident_source_index::ResidentIndexBuildResources;
 #[cfg(feature = "tantivy-accelerator")]
@@ -292,6 +306,10 @@ pub use runtime_search_receipt::bounded_ranked_selector_owner_paths;
 pub use runtime_search_receipt::bounded_runtime_search_source;
 pub use runtime_search_receipt::build_runtime_provider_search_receipt;
 pub use runtime_search_receipt::build_runtime_provider_search_receipt_with_graph;
+pub use scheme_playbook_source::{
+    DEFAULT_SEARCH_PLAYBOOK_SOURCE, admit_default_search_playbook_source,
+    admit_search_playbook_source,
+};
 pub use search_candidate::FieldHit;
 pub use search_candidate::RankFeature;
 pub use search_candidate::RankedSearchCandidate;
@@ -323,12 +341,13 @@ pub use syntax_query_replay::SyntaxQueryReplayCapture;
 pub use syntax_query_replay::SyntaxQueryRowsReplay;
 pub use syntax_query_replay::render_semantic_tree_sitter_query_rows_stdout;
 pub use syntax_query_replay::render_semantic_tree_sitter_query_stdout;
+pub use workspace_playbook_plan::NormalizedWorkspaceSearchPlaybookRequest;
 pub use workspace_playbook_plan::WorkspaceSearchPlanBinding;
 pub use workspace_playbook_plan::WorkspaceSearchPlaybookPlan;
 pub use workspace_playbook_plan::WorkspaceSearchPlaybookRoute;
+pub use workspace_playbook_plan::WorkspaceSearchProducerAxis;
 pub use workspace_playbook_plan::WorkspaceSearchProgressivePlan;
 pub use workspace_playbook_plan::WorkspaceSearchProvider;
-pub use workspace_playbook_plan::WorkspaceSearchProducerAxis;
 pub use workspace_playbook_plan::build_workspace_search_playbook_plan;
 pub use workspace_playbook_result::{
     WORKSPACE_SEARCH_PLAYBOOK_RESULT_SCHEMA_ID, WorkspaceSearchAxisKind,

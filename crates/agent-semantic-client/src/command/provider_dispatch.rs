@@ -68,7 +68,7 @@ pub(crate) async fn run_language_command(
     match command_args.first().map(String::as_str) {
         Some("search") => {
             return Err(
-                "language-first Search was removed; use `asp search playbook --language <producer|...> ...`"
+                "language-first Search was removed; use `asp search playbook '<scheme-expression>'`"
                     .to_owned(),
             );
         }

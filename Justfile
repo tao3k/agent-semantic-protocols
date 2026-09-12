@@ -236,7 +236,7 @@ agent-tools-build-gerbil bin_dir="":
       package_dir="${repo_root}/{{asp_gerbil_scheme_project}}"; \
       artifact_root="${package_dir}/build/workspace-provider"; \
       cd "${package_dir}"; \
-      gxpkg env gxi ./build-provider.ss compile; \
+      gxpkg env gxi ./build-provider.ss compile --release; \
       provider_binary="${artifact_root}/bin/asp-gerbil-scheme"; \
       test -x "${provider_binary}"; \
       if [ -n "{{bin_dir}}" ]; then \
@@ -249,10 +249,13 @@ test-gerbil-provider-http-json: agent-tools-build-gerbil
     @set -e; \
       repo_root="$PWD"; \
       package_dir="${repo_root}/{{asp_gerbil_scheme_project}}"; \
+      artifact_root="${package_dir}/build/workspace-provider"; \
       cd "${package_dir}"; \
       GERBIL_PATH="${package_dir}/.gerbil" \
+        GERBIL_LOADPATH="${artifact_root}/lib:${package_dir}/.gerbil/lib" \
         gxtest t/projection-batch-test.ss; \
       GERBIL_PATH="${package_dir}/.gerbil" \
+        GERBIL_LOADPATH="${artifact_root}/lib:${package_dir}/.gerbil/lib" \
         gxtest t/provider-http-json-server-test.ss
 
 agent-tools-install-gx bin_dir="":

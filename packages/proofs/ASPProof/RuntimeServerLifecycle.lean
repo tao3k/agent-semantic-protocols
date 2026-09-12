@@ -319,4 +319,123 @@ theorem ready_and_failed_dispositions_close_derived_generation_terminal :
       closesDerivedGenerationTerminal .publishFailed = true := by
   decide
 
+/- A Search result is a semantic materialization inside one immutable
+   generation. Envelope request identity remains attribution and is not a
+   member of the reusable semantic key. -/
+structure SearchRequestIdentity where
+  semanticIdentity : Nat
+  envelopeRequestId : Nat
+  deriving DecidableEq, Repr
+
+structure SearchMaterializationKey where
+  generationIdentity : Nat
+  semanticIdentity : Nat
+  deriving DecidableEq, Repr
+
+def searchMaterializationKey
+    (generationIdentity : Nat)
+    (request : SearchRequestIdentity) : SearchMaterializationKey :=
+  ⟨generationIdentity, request.semanticIdentity⟩
+
+theorem envelope_request_id_does_not_change_search_materialization_key
+    (generation semantic requestA requestB : Nat) :
+    searchMaterializationKey generation ⟨semantic, requestA⟩ =
+      searchMaterializationKey generation ⟨semantic, requestB⟩ := by
+  rfl
+
+theorem search_materialization_cannot_cross_generation
+    (generationA generationB semantic requestId : Nat)
+    (different : generationA ≠ generationB) :
+    searchMaterializationKey generationA ⟨semantic, requestId⟩ ≠
+      searchMaterializationKey generationB ⟨semantic, requestId⟩ := by
+  intro equal
+  exact different (SearchMaterializationKey.mk.inj equal).1
+
+inductive SearchMaterializationState where
+  | missing | building | ready | failed
+  deriving DecidableEq, Repr
+
+inductive SearchMaterializationTerminal where
+  | queryNotReady | ready | failed
+  deriving DecidableEq, Repr
+
+structure SearchMaterializationRequestEffects where
+  cacheLookups : Nat
+  claimPublications : Nat
+  planBuilds : Nat
+  clauseExecutions : Nat
+  deriving DecidableEq, Repr
+
+def dispatchSearchMaterialization
+    (state : SearchMaterializationState) :
+    SearchMaterializationTerminal × SearchMaterializationState ×
+      SearchMaterializationRequestEffects :=
+  match state with
+  | .missing => (.queryNotReady, .building, ⟨1, 1, 0, 0⟩)
+  | .building => (.queryNotReady, .building, ⟨1, 0, 0, 0⟩)
+  | .ready => (.ready, .ready, ⟨1, 0, 0, 0⟩)
+  | .failed => (.failed, .failed, ⟨1, 0, 0, 0⟩)
+
+theorem first_search_materialization_miss_claims_once_without_foreground_work :
+    dispatchSearchMaterialization .missing =
+      (.queryNotReady, .building, ⟨1, 1, 0, 0⟩) := by
+  rfl
+
+theorem concurrent_search_materialization_request_coalesces_without_claim :
+    dispatchSearchMaterialization .building =
+      (.queryNotReady, .building, ⟨1, 0, 0, 0⟩) := by
+  rfl
+
+theorem warm_search_materialization_performs_no_plan_or_clause_work :
+    (dispatchSearchMaterialization .ready).2.2.planBuilds = 0 ∧
+      (dispatchSearchMaterialization .ready).2.2.clauseExecutions = 0 := by
+  decide
+
+theorem failed_search_materialization_is_generation_local_terminal :
+    dispatchSearchMaterialization .failed =
+      (.failed, .failed, ⟨1, 0, 0, 0⟩) := by
+  rfl
+
+/- Query uses the same generation-local state machine, while its warm frame
+   substitutes only the current envelope request identity. -/
+abbrev QueryMaterializationState := SearchMaterializationState
+abbrev QueryMaterializationTerminal := SearchMaterializationTerminal
+
+def dispatchQueryMaterialization := dispatchSearchMaterialization
+
+structure QueryResidentTemplate where
+  decisionIdentity : Nat
+  semanticPayload : Nat
+  deriving DecidableEq, Repr
+
+structure QueryFrameProjection where
+  requestId : Nat
+  decisionIdentity : Nat
+  semanticPayload : Nat
+  deriving DecidableEq, Repr
+
+def bindQueryTemplate
+    (requestId : Nat)
+    (template : QueryResidentTemplate) : QueryFrameProjection :=
+  ⟨requestId, template.decisionIdentity, template.semanticPayload⟩
+
+theorem query_materialization_miss_returns_not_ready_without_selector_work :
+    dispatchQueryMaterialization .missing =
+      (.queryNotReady, .building, ⟨1, 1, 0, 0⟩) := by
+  rfl
+
+theorem warm_query_materialization_performs_no_plan_or_clause_work :
+    (dispatchQueryMaterialization .ready).2.2.planBuilds = 0 ∧
+      (dispatchQueryMaterialization .ready).2.2.clauseExecutions = 0 := by
+  decide
+
+theorem query_request_rebinding_preserves_semantic_template
+    (requestId : Nat)
+    (template : QueryResidentTemplate) :
+    (bindQueryTemplate requestId template).decisionIdentity =
+        template.decisionIdentity ∧
+      (bindQueryTemplate requestId template).semanticPayload =
+        template.semanticPayload := by
+  constructor <;> rfl
+
 end ASPProof.RuntimeServerLifecycle

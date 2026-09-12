@@ -99,8 +99,13 @@ pub fn parse_progressive_query_args(args: &[String]) -> Result<ProgressiveQueryR
     if language.is_none() && documents.is_none() {
         return Err("query playbook requires --language or --documents".to_owned());
     }
-    if language.as_deref().is_some_and(|value| !valid_producer_expression(value)) {
-        return Err("query playbook --language must be a registered-producer expression".to_owned());
+    if language
+        .as_deref()
+        .is_some_and(|value| !valid_producer_expression(value))
+    {
+        return Err(
+            "query playbook --language must be a registered-producer expression".to_owned(),
+        );
     }
     if documents
         .as_deref()

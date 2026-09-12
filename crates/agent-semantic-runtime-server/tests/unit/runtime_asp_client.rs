@@ -27,6 +27,44 @@ fn digest(character: char) -> String {
     format!("blake3-256:{}", character.to_string().repeat(64))
 }
 
+fn resident_syntax_plan_fixture() -> serde_json::Value {
+    let fixture_digest = digest('1');
+    serde_json::json!({
+        "schemaId": "agent.semantic-protocols.resident-syntax-query-plan",
+        "schemaVersion": "1",
+        "profileId": "asp.enhanced-tree-sitter-query.v1",
+        "planDigest": fixture_digest,
+        "queryDigest": fixture_digest,
+        "languageId": "rust",
+        "providerId": "asp-rust",
+        "parserAbiDigest": fixture_digest,
+        "queryGrammarDigest": fixture_digest,
+        "operatorTableDigest": fixture_digest,
+        "capabilityTableDigest": fixture_digest,
+        "generationDigest": fixture_digest,
+        "patterns": [{
+            "index": 0,
+            "captures": [{
+                "name": "item",
+                "residentFactPath": "selector",
+                "cardinality": {"minimum": 1, "maximum": 1},
+                "capabilityRowId": "rust.capture.item"
+            }],
+            "structure": {
+                "kind": "true",
+                "origin": {
+                    "kind": "capture",
+                    "capabilityRowId": "rust.capture.item"
+                }
+            },
+            "predicates": []
+        }],
+        "selectedFields": ["selector"],
+        "requiredCapabilityRows": ["rust.capture.item"],
+        "regexPrograms": []
+    })
+}
+
 fn test_project_workspace_resolver()
 -> agent_semantic_runtime_server::HostWorkspaceInitializationBindingResolver {
     Arc::new(|_| {
@@ -121,7 +159,10 @@ fn assert_exact_query_not_ready_terminal(response_frame: &ClientFrame, params: &
         panic!("exact query generation failure must be typed: {response_frame:?}");
     };
     let terminal = &error["terminal"];
-    assert_eq!(error["reasonKind"], "query-not-ready");
+    assert_eq!(
+        error["reasonKind"], "query-not-ready",
+        "unexpected resident request terminal: {error}"
+    );
     assert_eq!(
         terminal["schemaId"],
         "agent.semantic-protocols.asp-client-exact-query-failure"
@@ -198,9 +239,10 @@ async fn dispatch_without_resident_generation_returns_query_not_ready(
         Arc::from(registered_language_provider_pairs()),
         Arc::new(
             agent_semantic_client_db::runtime_provider_register::RuntimeProviderRegister::from_seed(
-                Vec::new(),
+                agent_semantic_provider_protocol::builtin_provider_registrations()
+                    .expect("builtin provider registrations"),
             )
-            .expect("empty provider register"),
+            .expect("validated provider register"),
         ),
         directory.path().join("workspace-store"),
         test_project_workspace_resolver(),
@@ -259,6 +301,8 @@ async fn dispatch_without_resident_generation_returns_query_not_ready(
 
     if method == agent_semantic_client_protocol::WORKSPACE_SEARCH_PLAYBOOK_METHOD
         && params.get("fd").is_none()
+        && params.get("rg").is_none()
+        && params.get("tantivy").is_none()
     {
         let ClientFrame::Response {
             result: None,
@@ -290,13 +334,37 @@ async fn dispatch_without_resident_generation_returns_query_not_ready(
         else {
             panic!("Query Playbook hard cut must emit one typed failure response")
         };
-        assert_eq!(
-            error["reasonKind"],
-            "query-playbook-runtime-binding-unavailable"
-        );
+        assert_eq!(error["reasonKind"], "query-not-ready");
         assert_eq!(
             error["terminal"]["failureStage"],
             "runtime-execution-binding-admission"
+        );
+        let request_plane_receipt = telemetry_sender
+            .resident_request_plane_receipt(request_id)
+            .expect("Query Playbook must emit the typed request-plane receipt");
+        request_plane_receipt
+            .validate()
+            .expect("Query Playbook request-plane receipt must be admissible");
+        assert_eq!(
+            request_plane_receipt.operation,
+            agent_semantic_client_protocol::RuntimeResidentRequestOperation::Query
+        );
+        assert_eq!(request_plane_receipt.state, "query-not-ready");
+        assert_eq!(request_plane_receipt.generation_lookup_count, 1);
+        assert_eq!(request_plane_receipt.generation_wait_count, 0);
+        assert_eq!(request_plane_receipt.generation_build_count, 0);
+        assert_eq!(request_plane_receipt.filesystem_read_count, 0);
+        assert_eq!(request_plane_receipt.database_read_count, 0);
+        assert_eq!(request_plane_receipt.provider_process_count, 0);
+        assert_eq!(request_plane_receipt.parser_invocation_count, 0);
+        assert!(
+            request_plane_receipt.elapsed_micros < 1_000,
+            "Query Playbook cold request must be sub-millisecond: {request_plane_receipt:?}"
+        );
+        eprintln!(
+            "Query Playbook resident request-plane receipt: {}",
+            serde_json::to_string(&request_plane_receipt)
+                .expect("encode Query Playbook request-plane receipt")
         );
         return;
     }
@@ -311,7 +379,10 @@ async fn dispatch_without_resident_generation_returns_query_not_ready(
     else {
         unreachable!("typed error response was asserted above")
     };
-    assert_eq!(error["reasonKind"], "query-not-ready");
+    assert_eq!(
+        error["reasonKind"], "query-not-ready",
+        "unexpected resident request terminal: {error}"
+    );
     assert_eq!(error["terminal"]["phase"], "runtime-generation-authority");
     assert_eq!(error["terminal"]["workCounters"]["filesystemReadCount"], 0);
     assert_eq!(error["terminal"]["workCounters"]["providerProcessCount"], 0);
@@ -366,19 +437,9 @@ async fn workspace_search_playbook_requires_a_committed_complete_generation() {
             "language": "rust",
             "rg": [["-n", "ready", "."]],
             "tantivy": [["title:\"ready route\"^2 OR body:runtime"]],
-            "syntax": [{
-                "producer": "rust",
-                "argv": ["--treesitter-query", "((identifier) @symbol)"]
-            }],
-            "graph": [{
-                "language": "gql",
-                "argv": ["MATCH (a:Owner)-[:DEPENDS_ON]->(b:Owner) RETURN a, b"]
-            }],
             "clauseOrder": [
                 {"axis": "rg", "blockIndex": 0},
-                {"axis": "tantivy", "blockIndex": 0},
-                {"axis": "syntax", "blockIndex": 0},
-                {"axis": "graph", "blockIndex": 0}
+                {"axis": "tantivy", "blockIndex": 0}
             ]
         }),
     )
@@ -416,7 +477,7 @@ async fn workspace_syntax_query_requires_a_committed_complete_generation() {
             "languages": "rust",
             "syntax": [{
                 "producer": "rust",
-                "argv": ["--treesitter-query", "((identifier) @symbol)"]
+                "plan": resident_syntax_plan_fixture()
             }],
             "projection": "matches"
         }),

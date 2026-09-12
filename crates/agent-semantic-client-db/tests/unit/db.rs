@@ -531,7 +531,9 @@ async fn agent_session_registry_storage_is_turso_owned() {
     assert_eq!(updated.last_tool_event.as_deref(), Some("search"));
     assert_eq!(
         updated.last_command.as_deref(),
-        Some("asp search playbook --language rust --rg -n -e source-structure . --tantivy term source-structure")
+        Some(
+            "asp search playbook --language rust --rg -n -e source-structure . --tantivy term source-structure"
+        )
     );
     assert_eq!(updated.last_evidence_ref.as_deref(), Some("receipt:1"));
 

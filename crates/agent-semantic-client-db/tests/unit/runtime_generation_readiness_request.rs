@@ -15,6 +15,7 @@ use agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmis
 use agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmissionState;
 use agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationBuildCompletion;
 use agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationBuildFailure;
+use agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationCandidateIdentity;
 use agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationCommitReceipt;
 use agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationFailureStage;
 use agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationProviderTarget;
@@ -465,9 +466,18 @@ async fn readiness_request_joins_complete_generation_build_without_rebuilding() 
     let workspace_identity =
         agent_semantic_client_db::AgentSessionRegistry::workspace_id(&project_root)
             .expect("derive canonical workspace identity");
-    let candidate = discover_workspace_generation_candidate(&project_root)
-        .await
-        .expect("discover complete-generation candidate");
+    let project_id = agent_semantic_client_db::runtime_server_admission_catalog::RuntimeWorkspaceAdmissionCatalogEntry::resolve(
+        workspace_identity.clone(),
+        project_root.clone(),
+    )
+    .expect("resolve complete-generation project identity")
+    .project_id;
+    let candidate = WorkspaceGenerationCandidateIdentity::for_runtime_admission(
+        &project_id,
+        &workspace_identity,
+        None,
+    )
+    .expect("construct complete-generation admission identity");
 
     let build_count = Arc::new(AtomicUsize::new(0));
     let first_build_started = Arc::new(tokio::sync::Semaphore::new(0));

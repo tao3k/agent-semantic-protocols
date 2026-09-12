@@ -36,14 +36,7 @@ fn configured_message_binds_language_and_appends_executable_provider_route() {
                 "asp".to_owned(),
                 "search".to_owned(),
                 "playbook".to_owned(),
-                "--language".to_owned(),
-                "rust".to_owned(),
-                "--rg".to_owned(),
-                "--files".to_owned(),
-                "-g".to_owned(),
-                "src/a file.rs".to_owned(),
-                "--tantivy".to_owned(),
-                "title:[* TO *] OR body:[* TO *]".to_owned(),
+                "(search (producers (language rust)) (intersect (rg \"--files\" \"-g\" \"src/a file.rs\") (tantivy \"title:[* TO *] OR body:[* TO *]\")))".to_owned(),
             ],
             stdin_mode: None,
         }],
@@ -59,7 +52,7 @@ fn configured_message_binds_language_and_appends_executable_provider_route() {
             .starts_with("Registered rust source reads are denied.")
     );
     assert!(decision.message.contains(
-        "ASP route: `asp search playbook --language rust --rg --files -g 'src/a file.rs' --tantivy 'title:[* TO *] OR body:[* TO *]'`"
+        "ASP route: `asp search playbook '(search (producers (language rust)) (intersect (rg \"--files\" \"-g\" \"src/a file.rs\") (tantivy \"title:[* TO *] OR body:[* TO *]\")))'`"
     ));
 }
 

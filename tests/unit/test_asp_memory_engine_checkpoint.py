@@ -24,7 +24,7 @@ def test_json_backend_round_trips_checkpoint_snapshot(tmp_path) -> None:
                 "title": "resume durable checkpoint",
                 "status": "open",
                 "sourceLocator": "plans/current.org:12:12",
-                "resumeCommand": "asp query playbook --documents org --selector plans/current.org:12:12",
+                "resumeCommand": "asp search playbook --documents org --rg -n -e plan-a -e recovery -e evidence -e next-action . --tantivy 'title:recovery^2 OR body:next-action'",
             }
         )
     )

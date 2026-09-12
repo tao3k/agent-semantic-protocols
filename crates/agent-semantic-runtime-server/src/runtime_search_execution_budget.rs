@@ -51,7 +51,7 @@ struct RuntimeSearchExecutionLimits {
 impl RuntimeSearchExecutionBudget {
     pub(crate) fn derive(generation: &RuntimeQueryGeneration) -> Result<Self, String> {
         let resident = generation.resident();
-        let corpus = resident.cold_rg_corpus();
+        let corpus = resident.resident_grep_corpus();
         let graph = resident.graph_generation()?;
         let graph_node_count = graph.map_or(0, |graph| graph.node_count());
         let graph_edge_count = graph.map_or(0, |graph| graph.edge_count());
@@ -59,7 +59,7 @@ impl RuntimeSearchExecutionBudget {
         Self::from_cardinalities(
             generation.generation_digest(),
             resident.indexed_owner_count(),
-            corpus.bytes.len(),
+            corpus.corpus_byte_count(),
             corpus_line_count,
             graph_node_count,
             graph_edge_count,

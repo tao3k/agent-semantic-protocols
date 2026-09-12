@@ -19,6 +19,14 @@ pub struct ProviderSearchCapabilities {
     pub semantic_facts: bool,
     pub dependency_topology: bool,
     pub dependency_topology_metadata: bool,
+    /// Provider-owned stable V1 enhanced Query capability table.
+    ///
+    /// The Provider Protocol preserves this registration value without taking
+    /// a dependency on the higher-level Client Protocol model. Runtime
+    /// admission performs the typed table validation before publishing the
+    /// immutable resident Search provider snapshot.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enhanced_syntax_query_capability: Option<serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub source_snapshot: Option<ProviderSourceSnapshotDescriptor>,
 }

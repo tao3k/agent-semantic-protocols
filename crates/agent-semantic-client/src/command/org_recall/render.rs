@@ -212,7 +212,7 @@ fn plan_row(
 
 fn search_resume_command(plan_id: &str) -> String {
     format!(
-        "asp search playbook --documents org --rg -n -e {} -e recovery -e evidence -e next-action . --tantivy 'title:recovery^2 OR body:next-action'",
+        "asp search playbook '(search (producers (documents org)) (intersect (rg \"-n\" \"-e\" \"{}\" \"-e\" \"recovery\" \"-e\" \"evidence\" \"-e\" \"next-action\" \".\") (tantivy \"title:recovery^2 OR body:next-action\")))'",
         shell_single_quote(plan_id)
     )
 }

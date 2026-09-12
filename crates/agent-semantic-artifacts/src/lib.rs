@@ -82,6 +82,7 @@ pub use runtime_active_provider_set::ActiveRuntimeProviderArtifact;
 pub use runtime_active_provider_set::BoundActiveRuntimeProviderSet;
 pub use runtime_active_provider_set::load_active_runtime_bound_provider_set;
 pub use runtime_active_provider_set::load_active_runtime_bound_provider_set_async;
+pub use runtime_active_provider_set::load_active_runtime_bound_provider_set_for_binary_replacement;
 pub use state_home_binding::HostProjectReference;
 pub use state_home_binding::PROJECT_BINDING_SCHEMA_ID;
 pub use state_home_binding::PROJECT_BINDING_SCHEMA_VERSION;

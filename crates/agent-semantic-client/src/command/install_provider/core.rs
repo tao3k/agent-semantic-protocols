@@ -37,6 +37,10 @@ pub(super) struct PreparedActiveProviderReconciliation {
     staging_root: PathBuf,
     members: Vec<(String, PathBuf)>,
     closure_members: Vec<(String, PathBuf)>,
+    predecessor_bundle: Option<(
+        PathBuf,
+        agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest,
+    )>,
 }
 
 impl PreparedActiveProviderReconciliation {
@@ -61,6 +65,17 @@ impl PreparedActiveProviderReconciliation {
 
     pub(super) fn provider_count(&self) -> usize {
         self.members.len()
+    }
+
+    pub(super) fn predecessor_bundle(
+        &self,
+    ) -> Option<(
+        &Path,
+        &agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest,
+    )> {
+        self.predecessor_bundle
+            .as_ref()
+            .map(|(path, digest)| (path.as_path(), digest))
     }
 
     pub(super) async fn bind_runtime_execution_closure(
@@ -232,12 +247,12 @@ pub(super) fn prepare_active_provider_reconciliation(
         staging_root,
         members: Vec::new(),
         closure_members: Vec::new(),
+        predecessor_bundle: None,
     };
-    let developer_mode =
+    let developer_root =
         agent_semantic_artifacts::runtime_artifact_catalog::load_runtime_developer_root(
             state_home,
-        )?
-        .is_some();
+        )?;
     let active_slot = agent_semantic_artifacts::RuntimeArtifactStateLayout::new(state_home)
         .active_slot()
         .to_path_buf();
@@ -250,16 +265,35 @@ pub(super) fn prepare_active_provider_reconciliation(
             active_slot.display()
         ));
     }
-    let active = agent_semantic_artifacts::load_active_runtime_bound_provider_set(state_home)?;
+    let active =
+        agent_semantic_artifacts::load_active_runtime_bound_provider_set_for_binary_replacement(
+            state_home,
+        )?;
+    reconciliation.predecessor_bundle = Some((
+        active.runtime_bundle_path.clone(),
+        active.runtime_bundle_digest.clone(),
+    ));
     if active.providers.is_empty() {
         return Ok(reconciliation);
     }
-    if developer_mode {
+    if let Some(developer_root) = developer_root.as_deref() {
         reconciliation.members = active
             .providers
             .into_iter()
-            .map(|provider| (provider.provider_id, provider.materialized_path))
-            .collect();
+            .map(|provider| {
+                let source = if provider.registration_digest_matches_current {
+                    provider.materialized_path
+                } else {
+                    super::reconciliation::qualified_staged_development_provider(
+                        state_home,
+                        developer_root,
+                        &provider.language_id,
+                        &provider.provider_id,
+                    )?
+                };
+                Ok((provider.provider_id, source))
+            })
+            .collect::<Result<Vec<_>, String>>()?;
         reconciliation
             .members
             .sort_by(|left, right| left.0.cmp(&right.0));
@@ -364,12 +398,11 @@ async fn run_install_provider(args: &[String]) -> Result<(), String> {
     let invocation_root =
         env::current_dir().map_err(|error| format!("failed to read current directory: {error}"))?;
     let state_home = agent_semantic_runtime::resolve_state_home()?;
-    let artifact_catalog =
-        agent_semantic_artifacts::runtime_artifact_catalog::load_runtime_artifact_catalog(
+    let artifact_mode =
+        agent_semantic_artifacts::runtime_artifact_catalog::load_runtime_artifact_mode(
             &state_home,
-        )
-        .await?;
-    match provider_artifact_authority(artifact_catalog.mode())? {
+        )?;
+    match provider_artifact_authority(&artifact_mode)? {
         ProviderArtifactAuthority::DevelopBuild { root } => {
             let install_registration =
                 crate::command::provider_install_registry::provider_install_registration(

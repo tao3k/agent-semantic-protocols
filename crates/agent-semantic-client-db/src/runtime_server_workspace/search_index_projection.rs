@@ -43,7 +43,7 @@ pub(super) struct SearchMerkleOwnerRecord {
 
 #[derive(Debug)]
 pub struct WorkspaceSearchGenerationDataPlaneClient {
-    pub(super) mapping: Option<Mmap>,
+    pub(super) mapping: Option<Arc<Mmap>>,
     pub(super) resident_generation: Option<Arc<WorkspaceMemoryGeneration>>,
     pub(super) resident_owner_positions: BTreeMap<String, usize>,
     pub(super) authority: WorkspaceSearchGenerationAuthority,
@@ -51,7 +51,7 @@ pub struct WorkspaceSearchGenerationDataPlaneClient {
     pub(super) owner_directory_records: BTreeMap<String, Arc<SearchOwnerRecord>>,
     pub(super) source_documents: Vec<agent_semantic_search::ResidentSourceDocument>,
     pub(super) resident_byte_coverage: agent_semantic_search::ResidentByteCoverageIndex,
-    pub(super) cold_rg_corpus: agent_semantic_search::ColdRgCorpusArtifact,
+    pub(super) resident_grep_corpus: agent_semantic_search::ResidentGrepCorpusArtifact,
     pub(super) callable_selector_by_owner: BTreeMap<String, String>,
     pub(super) owner_bytes_range: Option<std::ops::Range<usize>>,
     pub(super) merkle_owner_records: BTreeMap<String, Arc<SearchMerkleOwnerRecord>>,
@@ -298,7 +298,7 @@ pub(super) fn encode_workspace_search_generation_segment_with_authority(
     let mut owner_bytes = Vec::new();
     let mut owner_records = Vec::with_capacity(owners.len());
     let mut selectors = Vec::<(Vec<u8>, Vec<u8>)>::new();
-    for owner in owners {
+    for owner in &owners {
         let text = std::str::from_utf8(&owner.bytes).unwrap_or_default();
         let query_keys = search_projection_manifest
             .owner(&owner.owner_path)
@@ -337,6 +337,15 @@ pub(super) fn encode_workspace_search_generation_segment_with_authority(
                 .map_err(|error| format!("encode workspace owner record: {error}"))?,
         ));
     }
+    let (_, byte_coverage_artifact) =
+        agent_semantic_search::ResidentByteCoverageIndex::encode_artifact(owners.iter().map(
+            |owner| agent_semantic_search::ResidentByteCoverageInput {
+                owner_path: owner.owner_path.clone(),
+                authority: owner.authority.clone(),
+                bytes: owner.bytes.as_slice(),
+            },
+        ))?;
+    owner_bytes.extend_from_slice(&byte_coverage_artifact);
     let mut graph = BTreeMap::<Vec<u8>, Vec<_>>::new();
     for owned in &generation.relations {
         let relation = &owned.relation;
@@ -502,40 +511,61 @@ pub(super) fn build_owner_search_indexes(
 }
 
 pub(super) fn build_resident_byte_coverage_index(
-    mapping: &[u8],
+    mapping: Arc<Mmap>,
     owner_bytes_range: &std::ops::Range<usize>,
     owner_directory_records: &BTreeMap<String, Arc<SearchOwnerRecord>>,
 ) -> Result<agent_semantic_search::ResidentByteCoverageIndex, String> {
-    let mut seeds = Vec::with_capacity(owner_directory_records.len());
+    let mut owners = Vec::with_capacity(owner_directory_records.len());
+    let mut owner_payload_len = 0usize;
     for (owner_path, record) in owner_directory_records {
         if record.owner_path != *owner_path {
             return Err("workspace byte-coverage owner key drift".to_owned());
         }
+        let relative_start = usize::try_from(record.byte_offset)
+            .map_err(|_| "workspace byte-coverage offset exceeds usize".to_owned())?;
+        let relative_end = relative_start
+            .checked_add(
+                usize::try_from(record.byte_length)
+                    .map_err(|_| "workspace byte-coverage length exceeds usize".to_owned())?,
+            )
+            .ok_or_else(|| "workspace byte-coverage range overflows".to_owned())?;
+        owner_payload_len = owner_payload_len.max(relative_end);
         let start = owner_bytes_range
             .start
-            .checked_add(record.byte_offset as usize)
+            .checked_add(relative_start)
             .ok_or_else(|| "workspace byte-coverage offset overflows".to_owned())?;
-        let end = start
-            .checked_add(record.byte_length as usize)
+        let end = owner_bytes_range
+            .start
+            .checked_add(relative_end)
             .ok_or_else(|| "workspace byte-coverage range overflows".to_owned())?;
         if end > owner_bytes_range.end {
             return Err("workspace byte-coverage bytes exceed section bounds".to_owned());
         }
-        let bytes = mapping
+        mapping
             .get(start..end)
             .ok_or_else(|| "workspace byte-coverage bytes exceed mapping".to_owned())?;
-        seeds.push(agent_semantic_search::ResidentByteCoverageInput {
+        owners.push(agent_semantic_search::ResidentByteCoverageOwner {
             owner_path: record.owner_path.clone(),
             authority: record.authority.clone(),
-            bytes,
         });
     }
-    Ok(agent_semantic_search::ResidentByteCoverageIndex::new(seeds))
+    let artifact_start = owner_bytes_range
+        .start
+        .checked_add(owner_payload_len)
+        .ok_or_else(|| "workspace byte-coverage artifact offset overflows".to_owned())?;
+    if artifact_start == owner_bytes_range.end {
+        return Err("workspace search generation has no resident trigram artifact".to_owned());
+    }
+    agent_semantic_search::ResidentByteCoverageIndex::from_mapped_artifact(
+        owners,
+        mapping,
+        artifact_start..owner_bytes_range.end,
+    )
 }
 
 #[path = "search_index_projection_builders.rs"]
 mod builders;
-pub(super) use builders::{build_cold_rg_corpus, build_resident_graph_generation};
+pub(super) use builders::{build_resident_graph_generation, build_resident_grep_corpus};
 
 #[path = "search_index_projection_reads.rs"]
 mod reads;

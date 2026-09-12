@@ -144,74 +144,15 @@ fn workspace_search_playbook_command() -> Command {
     Command::new("playbook")
         .bin_name("asp search playbook")
         .about("Run the Runtime-owned Search Playbook")
-        .override_usage(
-            "asp search playbook [--language <CODE_PRODUCER(|CODE_PRODUCER)*>] [--documents <DOCUMENT_PRODUCER(|DOCUMENT_PRODUCER)*>] [--workspace <REGISTERED_WORKSPACE_ID>] --rg <NATIVE_RG_ARG>... --tantivy <NATIVE_TANTIVY_ARG>... [--syntax <PRODUCER> <NATIVE_ARG>...]... [--native-syntax <SELECTOR>]... [--graph <gql|pgql> <NATIVE_ARG>...]...",
-        )
+        .override_usage("asp search playbook '<SCHEME_COMPOSITION_EXPRESSION>'")
         .arg(
-            Arg::new("language")
-                .long("language")
-                .value_name("CODE_PRODUCER(|CODE_PRODUCER)*")
-                .required_unless_present("documents")
-                .help("Select registry-bound programming-language producers"),
-        )
-        .arg(
-            Arg::new("documents")
-                .long("documents")
-                .value_name("DOCUMENT_PRODUCER(|DOCUMENT_PRODUCER)*")
-                .required_unless_present("language")
-                .help("Select registry-bound document producers such as org or md"),
-        )
-        .arg(
-            Arg::new("workspace")
-                .long("workspace")
-                .value_name("REGISTERED_WORKSPACE_ID")
-                .help("Select an explicit registered cross-workspace target"),
-        )
-        .arg(
-            Arg::new("rg")
-                .long("rg")
-                .value_name("NATIVE_RG_ARG")
-                .num_args(1..)
-                .allow_hyphen_values(true)
-                .action(ArgAction::Append)
-                .help("Append one exact native ripgrep argv block, including patterns and roots"),
-        )
-        .arg(
-            Arg::new("tantivy")
-                .long("tantivy")
-                .value_name("NATIVE_TANTIVY_ARG")
-                .num_args(1..)
-                .allow_hyphen_values(true)
-                .action(ArgAction::Append)
-                .help("Append one structured native Tantivy query block"),
-        )
-        .arg(
-            Arg::new("syntax")
-                .long("syntax")
-                .value_names(["PRODUCER", "NATIVE_ARG"])
-                .num_args(2..)
-                .allow_hyphen_values(true)
-                .action(ArgAction::Append)
-                .help("Append one registered structural query; Tree-sitter S-expressions are the current native form"),
-        )
-        .arg(
-            Arg::new("native-syntax")
-                .long("native-syntax")
-                .value_name("SELECTOR")
-                .action(ArgAction::Append)
-                .help("Append one canonical parser-owned exact structural-scope query"),
-        )
-        .arg(
-            Arg::new("graph")
-                .long("graph")
-                .value_names(["gql|pgql", "NATIVE_ARG"])
-                .num_args(2..)
-                .allow_hyphen_values(true)
-                .action(ArgAction::Append)
-                .help("Append a final V1 Graph fan-in block; Graph blocks must remain last"),
+            Arg::new("expression")
+                .value_name("SCHEME_COMPOSITION_EXPRESSION")
+                .required(true)
+                .help("One (search ...) expression compiled by the MRR-owned Search Playbook macro"),
         )
         .after_help(
-            "Native rg argv is preserved exactly; use ./--option for a literal search root whose name collides with a PlayBook option. The default layout intersects rg and Tantivy owner sets to establish file context. Explicit syntax or native-syntax matches then establish the structural selector scope; a future registered ast-grep adapter fits --syntax rather than adding a retrieval axis. Tantivy requires a multi-leaf, fielded, explicit Boolean expression with a phrase, boost, range, set, exists, or regex predicate. Graph blocks are the final fan-in barrier.",
+            "Example: (search (producers (language rust) (documents org)) (chain (intersect (rg \"-n\" \"owner\" \".\") (tantivy \"title:owner^2 OR body:authority\")) (syntax rust \"((function_item) @item (#asp-select! @item \\\"kind\\\" \\\"name\\\" \\\"selector\\\"))\"))). String-native argv and the single enhanced Tree-sitter Query source remain Scheme strings. V1 begins with intersect(rg, tantivy), chain adds structural stages, and graph remains the final barrier. The MRR-owned macro may add new POO Flow forms before the normalized Runtime request admits them.",
         )
 }
 

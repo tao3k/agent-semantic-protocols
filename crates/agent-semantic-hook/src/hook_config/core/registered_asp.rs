@@ -80,23 +80,41 @@ fn registered_root_query_playbook_pattern(pattern: &[String]) -> bool {
 }
 
 /// Match the canonical root playbook spelling against the same declarative
-/// registered-provider search pattern. Producer-set union is data carried by
-/// `--language` or `--documents`; producer-first command namespaces are not aliases.
+/// registered-provider search pattern. Producer axes are data inside the one
+/// Scheme expression; producer-first command namespaces are not aliases.
 fn registered_root_search_playbook_matches(
     stages: &[agent_semantic_shell_parser::CommandStage],
     language_id: &str,
 ) -> bool {
     stages.iter().any(|stage| {
         let words = stage.words();
-        words.windows(3).any(|prefix| {
-            prefix == ["asp", "search", "playbook"]
-                && words.windows(2).any(|argument| {
-                    matches!(argument[0].as_str(), "--language" | "--documents")
-                        && argument[1]
-                            .split('|')
-                            .any(|producer| producer == language_id)
-                })
-        })
+        let scheme_match = words
+            .windows(3)
+            .position(|prefix| prefix == ["asp", "search", "playbook"])
+            .and_then(|index| words.get(index + 3))
+            .and_then(|source| {
+                agent_semantic_search::parse_search_playbook_producer_declaration(source).ok()
+            })
+            .is_some_and(|declaration| {
+                declaration
+                    .language
+                    .iter()
+                    .chain(&declaration.documents)
+                    .any(|producer| producer == language_id)
+            });
+        // Keep the retired flag spelling inside the protected Hook route so
+        // PreTool can return its typed one-expression denial. This is routing,
+        // not CLI compatibility or legacy execution.
+        scheme_match
+            || words.windows(3).any(|prefix| {
+                prefix == ["asp", "search", "playbook"]
+                    && words.windows(2).any(|argument| {
+                        matches!(argument[0].as_str(), "--language" | "--documents")
+                            && argument[1]
+                                .split('|')
+                                .any(|producer| producer == language_id)
+                    })
+            })
     })
 }
 

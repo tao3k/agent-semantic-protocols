@@ -20,6 +20,7 @@ use agent_semantic_client_protocol::AgentSessionTransport;
 use agent_semantic_client_protocol::AspClientExactQueryRequest;
 use agent_semantic_client_protocol::AspClientWorkspaceQueryPlaybookRequest;
 use agent_semantic_client_protocol::AspClientWorkspaceSearchPlaybookRequest;
+use agent_semantic_client_protocol::AspClientWorkspaceSyntaxPlanContextRequest;
 use agent_semantic_client_protocol::AspClientWorkspaceSyntaxQueryRequest;
 use agent_semantic_client_protocol::ClientProjectId;
 use agent_semantic_client_protocol::ClientRequestId;
@@ -44,6 +45,9 @@ mod query_generation_support;
 
 #[path = "runtime_asp_client_syntax_query.rs"]
 mod syntax_query_route;
+
+#[path = "runtime_asp_client_syntax_plan_context.rs"]
+mod syntax_plan_context_route;
 
 #[path = "runtime_workspace_search_playbook.rs"]
 mod workspace_search_playbook;
@@ -70,6 +74,7 @@ use query_generation_support::query_generation_not_ready_error;
 use query_generation_support::request_runtime_query_generation_ready;
 use query_generation_support::{dispatch_budget_for_method, enforce_completed_dispatch_budget};
 use resolved_route::{ResolvedRouteContext, dispatch_resolved_route};
+use syntax_plan_context_route::dispatch_workspace_syntax_plan_context;
 use syntax_query_route::dispatch_workspace_syntax_query;
 use telemetry::elapsed_micros;
 use telemetry::record_runtime_route_performance;
@@ -243,7 +248,7 @@ impl AspClientDispatcher for RuntimeAspClientDispatcher {
         let generation_admission = Arc::clone(&self.generation_admission);
         let workspace_registry = Arc::clone(&self.workspace_registry);
         let active_provider_targets = Arc::clone(&self.active_provider_targets);
-        let provider_register = Arc::clone(&self.provider_register);
+        let workspace_search_providers = Arc::clone(&self.workspace_search_providers);
         let workspace_store_root = self.workspace_store_root.clone();
         let query_generation_authority = self.query_generation_authority.clone();
         let query_generation = query_generation_authority.subscribe();
@@ -600,13 +605,12 @@ impl AspClientDispatcher for RuntimeAspClientDispatcher {
                 }
                 dispatch_resolved_route(ResolvedRouteContext {
                     request,
-                    schema_bundles,
                     project_workspace_key,
                     initialized_workspaces,
                     generation_admission,
                     workspace_registry,
                     active_provider_targets,
-                    provider_register,
+                    workspace_search_providers,
                     query_generation,
                     telemetry_sender,
                     telemetry_traces,

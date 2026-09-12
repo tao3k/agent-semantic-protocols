@@ -274,6 +274,8 @@ async fn topology_source_segments_preserve_owner_attribution_across_resident_and
         .topology_source_segments()
         .expect("mapped topology source segments");
 
+    assert_eq!(restored.resident_grep_corpus().corpus_heap_bytes(), 0);
+    assert_eq!(restored.resident_grep_index_stats().artifact_heap_bytes, 0);
     assert_eq!(resident_segments, restored_segments);
     assert_eq!(resident_segments.len(), 1);
     assert_eq!(resident_segments[0].owner_path, "src/lib.rs");

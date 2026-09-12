@@ -9,6 +9,132 @@ use crate::protocol_identity::CLIENT_PROTOCOL_VERSION;
 use crate::protocol_identity::SCHEMA_VERSION;
 use serde_json::json;
 
+fn resident_syntax_plan_fixture() -> crate::ResidentSyntaxQueryPlan {
+    let digest = format!("blake3-256:{}", "1".repeat(64));
+    serde_json::from_value(json!({
+        "schemaId": "agent.semantic-protocols.resident-syntax-query-plan",
+        "schemaVersion": "1",
+        "profileId": "asp.enhanced-tree-sitter-query.v1",
+        "planDigest": digest,
+        "queryDigest": digest,
+        "languageId": "rust",
+        "providerId": "asp-rust",
+        "parserAbiDigest": digest,
+        "queryGrammarDigest": digest,
+        "operatorTableDigest": digest,
+        "capabilityTableDigest": digest,
+        "generationDigest": digest,
+        "patterns": [{
+            "index": 0,
+            "captures": [{
+                "name": "item",
+                "residentFactPath": "selector",
+                "cardinality": {"minimum": 1, "maximum": 1},
+                "capabilityRowId": "rust.capture.item"
+            }],
+            "structure": {"kind": "true", "origin": {
+                "kind": "capture", "capabilityRowId": "rust.capture.item"
+            }},
+            "predicates": []
+        }],
+        "selectedFields": ["selector"],
+        "requiredCapabilityRows": ["rust.capture.item"],
+        "regexPrograms": []
+    }))
+    .expect("resident syntax plan fixture")
+}
+
+fn enhanced_query_capability_fixture() -> crate::EnhancedQueryCapabilityTable {
+    let digest = format!("blake3-256:{}", "2".repeat(64));
+    let mut table = crate::EnhancedQueryCapabilityTable {
+        schema_id: crate::ENHANCED_QUERY_CAPABILITY_TABLE_SCHEMA_ID.to_owned(),
+        schema_version: "1".to_owned(),
+        language_id: "rust".to_owned(),
+        provider_id: "asp-rust".to_owned(),
+        parser_abi: crate::EnhancedQueryVersionedIdentity {
+            id: "tree-sitter-rust".to_owned(),
+            version: "0.24.0".to_owned(),
+            digest: digest.clone(),
+        },
+        query_grammar: crate::EnhancedQueryVersionedIdentity {
+            id: "tree-sitter-query".to_owned(),
+            version: "0.1.0".to_owned(),
+            digest: digest.clone(),
+        },
+        operator_table_digest: digest.clone(),
+        table_digest: digest.clone(),
+        rows: vec![crate::EnhancedQueryCapabilityRow {
+            row_id: "rust.node.function_item".to_owned(),
+            kind: crate::EnhancedQueryCapabilityRowKind::NodeType,
+            source_name: "function_item".to_owned(),
+            publication_state: crate::EnhancedQueryPublicationState::Runtime,
+            lowering: Some(crate::EnhancedQueryCapabilityLowering {
+                resident_fact_path: crate::ResidentSyntaxQueryFactPath::Kind,
+                constraint_kind: crate::EnhancedQueryConstraintKind::Scalar,
+                resident_value: Some("function".to_owned()),
+            }),
+            equivalence_evidence: Some(crate::EnhancedQueryEquivalenceEvidence {
+                method: "native-parser-tree-sitter-differential-v1".to_owned(),
+                corpus_digest: digest.clone(),
+                receipt_digest: digest,
+            }),
+        }],
+    };
+    let mut value = serde_json::to_value(&table).expect("serialize capability fixture");
+    value
+        .as_object_mut()
+        .expect("capability table object")
+        .remove("tableDigest");
+    let canonical = crate::canonical_json::to_jcs_vec(&value).expect("canonical capability");
+    table.table_digest = format!("blake3-256:{}", blake3::hash(&canonical).to_hex());
+    table
+}
+
+#[test]
+fn syntax_plan_context_contract_is_typed_and_digest_bound() {
+    let request = crate::AspClientWorkspaceSyntaxPlanContextRequest {
+        schema_id: "agent.semantic-protocols.asp-client-workspace-syntax-plan-context-request"
+            .to_owned(),
+        schema_version: "1".to_owned(),
+        producer: "rust".to_owned(),
+    };
+    request
+        .validate_schema_identity()
+        .expect("complete context request");
+    let mut blank = request.clone();
+    blank.producer = " ".to_owned();
+    assert!(blank.validate_schema_identity().is_err());
+
+    let generation_digest = format!("blake3-256:{}", "3".repeat(64));
+    let response = crate::AspClientWorkspaceSyntaxPlanContextResponse {
+        schema_id: "agent.semantic-protocols.asp-client-workspace-syntax-plan-context-response"
+            .to_owned(),
+        schema_version: "1".to_owned(),
+        generation_digest,
+        capability: enhanced_query_capability_fixture(),
+    };
+    response.validate().expect("exact context response");
+
+    let mut tampered_generation = response.clone();
+    tampered_generation.generation_digest = "blake3-256:short".to_owned();
+    assert!(tampered_generation.validate().is_err());
+
+    let mut tampered_capability = response;
+    tampered_capability.capability.table_digest = format!("blake3-256:{}", "4".repeat(64));
+    assert!(tampered_capability.validate().is_err());
+
+    let unknown_field = json!({
+        "schemaId": "agent.semantic-protocols.asp-client-workspace-syntax-plan-context-request",
+        "schemaVersion": "1",
+        "producer": "rust",
+        "query": "(function_item) @item"
+    });
+    assert!(
+        serde_json::from_value::<crate::AspClientWorkspaceSyntaxPlanContextRequest>(unknown_field)
+            .is_err()
+    );
+}
+
 #[test]
 fn cancellation_probe_has_a_language_neutral_route_operation() {
     assert_eq!(
@@ -188,10 +314,7 @@ fn northbound_client_requests_are_distinct_from_provider_runtime_requests() {
         workspace: None,
         syntax: vec![crate::AspClientSearchPlaybookSyntaxBlock {
             producer: "rust".to_owned(),
-            argv: vec![
-                "--treesitter-query".to_owned(),
-                "((identifier) @symbol)".to_owned(),
-            ],
+            plan: resident_syntax_plan_fixture(),
         }],
         projection: "matches".to_owned(),
     };

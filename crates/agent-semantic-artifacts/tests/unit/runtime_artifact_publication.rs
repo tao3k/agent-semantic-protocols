@@ -334,9 +334,11 @@ async fn bound_provider_refresh_regenerates_registration_and_artifact_closure_at
     let asp_source = sources.join("asp");
     let hook_source = sources.join("asp-hook");
     let rust_source = sources.join("asp-rust");
+    let next_rust_source = sources.join("asp-rust-next");
     write_executable(&asp_source, "#!/bin/sh\nexit 0\n");
     write_executable(&hook_source, "#!/bin/sh\nexit 1\n");
     write_executable(&rust_source, "#!/bin/sh\nexit 2\n");
+    write_executable(&next_rust_source, "#!/bin/sh\nexit 3\n");
     let base_members = std::collections::BTreeMap::from([
         (
             "asp".to_owned(),
@@ -422,6 +424,92 @@ async fn bound_provider_refresh_regenerates_registration_and_artifact_closure_at
     assert_eq!(
         closure.provider_artifact_set.entries[0].artifact_digest,
         *verified.member_digest("asp-rust").expect("Rust member")
+    );
+
+    let mut stale_closure = closure;
+    stale_closure.provider_registration.entries[0].registration_digest =
+        Blake3ContentDigest::from_bytes(b"predecessor-registration");
+    let stale_registration = serde_json::to_vec(&stale_closure.provider_registration)
+        .expect("stale predecessor registration");
+    std::fs::write(
+        active.join("provider-registration.json"),
+        &stale_registration,
+    )
+    .expect("write stale predecessor registration");
+    let mut stale_members = verified.members().clone();
+    stale_members.insert(
+        "provider-registration.json".into(),
+        Blake3ContentDigest::from_bytes(&stale_registration),
+    );
+    let stale_binding = crate::runtime_artifact_slots::RuntimeArtifactBundleBinding::new(
+        stale_members["provider-registration.json"].clone(),
+        verified
+            .execution_binding()
+            .provider_artifact_set_digest()
+            .clone(),
+        verified
+            .execution_binding()
+            .evaluator_policy_digest()
+            .clone(),
+        verified.execution_binding().evaluator_abi_digest().clone(),
+        verified.execution_binding().schema_bundle_digest().clone(),
+    );
+    let stale_bundle_digest =
+        crate::runtime_artifact_slots::stage_runtime_artifact_bound_bundle_manifest(
+            &active,
+            &stale_members,
+            &stale_binding,
+        )
+        .expect("restage self-consistent predecessor manifest");
+    for receipt_path in [
+        active.join("activation.json"),
+        runtime_artifact_activation_event_path(&state_home),
+    ] {
+        let mut receipt: serde_json::Value = serde_json::from_slice(
+            &std::fs::read(&receipt_path).expect("predecessor activation receipt"),
+        )
+        .expect("predecessor activation JSON");
+        receipt["bundleDigest"] = serde_json::json!(stale_bundle_digest);
+        std::fs::write(
+            &receipt_path,
+            serde_json::to_vec_pretty(&receipt).expect("updated activation receipt"),
+        )
+        .expect("write updated activation receipt");
+    }
+    let strict_error = crate::runtime_artifact_slots::verify_runtime_artifact_bound_bundle(&active)
+        .await
+        .expect_err("stale registration cannot enter serving admission");
+    assert!(strict_error.contains("provider-registration-drift"));
+    crate::runtime_artifact_slots::verify_runtime_artifact_bound_bundle_for_provider_replacement(
+        &active, "asp-rust",
+    )
+    .await
+    .expect("installation-only predecessor admission");
+
+    publish_runtime_artifact_bound_provider_member_from_active(
+        &state_home,
+        "asp-rust",
+        &next_rust_source,
+        "dev",
+    )
+    .await
+    .expect("atomically replace the drifted Provider and registration");
+    let upgraded = RuntimeArtifactSlotAuthority::new(state_home.join("runtime/artifacts"))
+        .active_target()
+        .await
+        .unwrap()
+        .unwrap();
+    let upgraded = crate::runtime_artifact_slots::verify_runtime_artifact_bound_bundle(&upgraded)
+        .await
+        .expect("replacement successor passes ordinary serving admission");
+    assert_eq!(
+        std::fs::read(
+            upgraded
+                .member_path("asp-rust")
+                .expect("upgraded Rust member")
+        )
+        .unwrap(),
+        std::fs::read(&next_rust_source).unwrap()
     );
 }
 

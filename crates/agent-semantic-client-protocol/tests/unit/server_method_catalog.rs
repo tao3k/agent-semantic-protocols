@@ -31,6 +31,7 @@ fn server_catalog_exposes_workspace_search_exact_query_and_schema_bundle_methods
             "asp.workspace.generation.ensure-ready",
             "asp.workspace.query.playbook",
             "asp.workspace.query.syntax",
+            "asp.workspace.query.syntax-plan-context",
             "asp.workspace.search.playbook",
             "rust.query",
             "rust.source-index.lookup"
@@ -93,6 +94,23 @@ fn workspace_syntax_query_is_server_owned_and_complete_generation_scoped() {
     );
     assert_eq!(
         classify_client_dispatch(crate::WORKSPACE_SYNTAX_QUERY_METHOD),
+        ClientDispatchClass::ResidentGenerationRead,
+    );
+}
+
+#[test]
+fn workspace_syntax_plan_is_server_owned_and_complete_generation_scoped() {
+    assert_eq!(
+        resolve_server_client_method_owner(
+            crate::WORKSPACE_SYNTAX_PLAN_CONTEXT_METHOD,
+            ["rust".to_owned(), "python".to_owned()],
+        ),
+        Ok(ResolvedServerClientMethod::Server(
+            ServerClientRoute::WorkspaceSyntaxPlanContext,
+        ))
+    );
+    assert_eq!(
+        classify_client_dispatch(crate::WORKSPACE_SYNTAX_PLAN_CONTEXT_METHOD),
         ClientDispatchClass::ResidentGenerationRead,
     );
 }

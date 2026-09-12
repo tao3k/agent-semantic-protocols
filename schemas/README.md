@@ -376,17 +376,15 @@ references, and open gaps. It deliberately keeps references by graph node id
 instead of embedding another full graph, so assurance rendering stays portable
 without becoming a storage or visualization layer.
 
-`semantic-query-packet.v1.schema.json` is the shared JSON contract for
-provider-native parser queries that return compact code by default. Query is a
-language-provider capability, not a root hook capability: Rust, TypeScript,
-Python, and future providers own AST/parser lookup, exact item matching,
-multi-term expressions such as `fun1|fun2|fun3`, and compact code extraction.
-Document providers use `semantic-document-query-packet.v1.schema.json` instead
-of this source-language packet. Discovery is always
-`asp search playbook <query> --language <language> --scope owner:<path>`, and exact
-materialization is always `asp <language> query --selector <exact-selector>
---projection <source|callable-skeleton>`. Root hooks must use those two public
-operations and must not maintain a parallel read/query engine.
+`semantic-query-packet.v1.schema.json` is the provider-to-Runtime data-plane
+contract for parser-owned facts. It is not a public provider CLI. Public
+discovery uses only `asp search playbook '<scheme-expression>'`: its
+`producers`, `rg`, `tantivy`, `syntax`, and optional `graph` forms establish
+the shared file and structural context. Exact
+materialization uses only `asp query playbook` with the matching producer-axis
+declaration, canonical `--selector`, and `--projection
+<source|callable-skeleton>`. Root hooks must use those two public operations
+and must not maintain a parallel read/query engine.
 The query packet also supports owner-local discovery without source windows:
 `outputMode=names` or `outline` may omit match `code`, while `queryCoverage`
 and bounded `candidateItems` explain missed terms and parser-owned repair
@@ -767,6 +765,36 @@ provider dry-run/temp-apply receipt events. It deliberately rejects source text
 fields and requires `sourceStored=false`, so real-project evidence can live in
 fixtures without vendoring external project code.
 
+`asp-client-workspace-search-playbook-request.v1.schema.json` remains the
+normalized northbound request. The MRR repository owns the
+`defsearch-playbook` macro, POO Flow lowering, and importable AOT SCM alongside
+the native Rust Ascent/GQL crates. `agent-semantic-search` owns the short configuration and
+native Scheme/query-table admission. Neither Scheme source nor a private POO
+IR is added to Client Protocol; the former flag-shaped CLI is removed rather
+than retained as a compatibility path.
+
+`enhanced-tree-sitter-query-operator-table.v1.schema.json` defines the
+language-neutral MRR Gerbil AOT operator declaration for the namespaced
+`#asp-*` predicates and result directive.
+`enhanced-tree-sitter-query-capability-table.v1.schema.json` defines each
+provider's parser/grammar-bound publication and equivalence rows.
+`resident-syntax-query-plan.v1.schema.json` is the complete normalized plan
+executed over one active generation. Search and direct Syntax requests carry
+that plan rather than Tree-sitter Query source or provider argv. These are
+stable V1 contracts completed as one hard cut; no V2 or compatibility route is
+created.
+`asp-client-workspace-syntax-plan-context-request.v1.schema.json` and
+`asp-client-workspace-syntax-plan-context-response.v1.schema.json` own the
+constant-time resident context read. The response supplies only the exact
+generation digest and provider capability; the Client performs source parsing
+and plan compilation locally before execution.
+
+`search-playbook-pretool-calibration.v2.schema.json` replaces the flag-oriented
+V1 denial receipt for the public Search command. It records the one-expression
+argument count, a source digest, optional Tree-sitter grammar provenance, the
+fixed normalized V1 layout, and typed issues without echoing Scheme source.
+The V1 schema remains immutable as the historical flag-surface contract.
+
 The public Search result is `workspace-search-playbook-result.v1`; Runtime joins it to `search-topology-settlement.v1` before the Client renders the single Org/GQL projection. Provider-native exact materialization remains `semantic-query-packet.v1`.
 
 Structured path fields use the shared `projectPath` definition. A project path
@@ -929,9 +957,9 @@ new schema version.
 The current TypeScript public discovery and materialization surfaces are:
 
 ```shell
-asp search playbook --language typescript --rg -n -F OrderStatus . --tantivy 'title:OrderStatus^2 OR body:OrderStatus' --workspace .
-asp search playbook --language typescript --rg -n -F OrderStatus src/index.ts --tantivy 'body:OrderStatus' --workspace .
-asp query playbook --language typescript --selector <exact-selector> --projection source --workspace .
+asp search playbook '(search (workspace "main") (producers (language typescript)) (intersect (rg "-n" "-F" "OrderStatus" ".") (tantivy "title:OrderStatus^2 OR body:OrderStatus")))'
+asp search playbook '(search (workspace "main") (producers (language typescript)) (intersect (rg "-n" "-F" "OrderStatus" "src/index.ts") (tantivy "title:OrderStatus^2 OR body:OrderStatus")))'
+asp query playbook --language typescript --selector <exact-selector> --projection source --workspace main
 ```
 
 Provider-internal parser and lexical stages may resolve reasoning owners,
@@ -952,9 +980,9 @@ docs, api, public-external-types, tests, and ingest views.
 The current Python public discovery and materialization surfaces are:
 
 ```shell
-asp search playbook --language python --rg -n -F AspPythonReport . --tantivy 'title:AspPythonReport^2 OR body:AspPythonReport' --workspace .
-asp search playbook --language python --rg -n -F AspPythonReport src/asp_python/_cli.py --tantivy 'body:AspPythonReport' --workspace .
-asp query playbook --language python --selector <exact-selector> --projection source --workspace .
+asp search playbook '(search (workspace "main") (producers (language python)) (intersect (rg "-n" "-F" "AspPythonReport" ".") (tantivy "title:AspPythonReport^2 OR body:AspPythonReport")))'
+asp search playbook '(search (workspace "main") (producers (language python)) (intersect (rg "-n" "-F" "AspPythonReport" "src/asp_python/_cli.py") (tantivy "title:AspPythonReport^2 OR body:AspPythonReport")))'
+asp query playbook --language python --selector <exact-selector> --projection source --workspace main
 ```
 
 `runtime-selector-overlay-receipt.v1.schema.json` records a selector-only

@@ -273,6 +273,15 @@ retention deletes every generation unreachable from those two selectors. A
 failed candidate restores =active= from =healthy= and deletes only the failed
 candidate.  Installation itself cannot mark a candidate healthy.
 
+The failed candidate's exact pending receipt MAY remain as the idempotence
+marker for replaying the same rollback after its generation is pruned.  A
+later publisher treats that receipt as retired only when the candidate path is
+absent, =active= and =healthy= both equal the separately validated applied
+generation, and the pending receipt names that applied artifact as its
+predecessor.  Any other missing pending candidate remains corruption.  A new
+successful publication atomically replaces the retired marker; it is never a
+serving or rollback selector.
+
 * One State Home physical interface
 
 =agent-semantic-artifacts= owns the only V1 physical State Home interface.

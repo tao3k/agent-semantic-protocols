@@ -260,19 +260,26 @@ pub(crate) async fn ensure_protocol_binary_bundle_members_installed_transaction(
     plan: &ProtocolBinaryInstallPlan,
     members: &[agent_semantic_artifacts::runtime_artifact_publication::RuntimeArtifactBundleMemberSource<'_>],
 ) -> Result<ProtocolBinaryInstall, String> {
-    ensure_protocol_binary_bundle_members_installed_transaction_with_binding(plan, members, None)
-        .await
+    ensure_protocol_binary_bundle_members_installed_transaction_with_binding(
+        plan, members, None, None,
+    )
+    .await
 }
 
 pub(crate) async fn ensure_protocol_binary_bound_bundle_members_installed_transaction(
     plan: &ProtocolBinaryInstallPlan,
     members: &[agent_semantic_artifacts::runtime_artifact_publication::RuntimeArtifactBundleMemberSource<'_>],
     execution_binding: &agent_semantic_artifacts::runtime_artifact_slots::RuntimeArtifactBundleBinding,
+    predecessor_bundle: Option<(
+        &Path,
+        &agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest,
+    )>,
 ) -> Result<ProtocolBinaryInstall, String> {
     ensure_protocol_binary_bundle_members_installed_transaction_with_binding(
         plan,
         members,
         Some(execution_binding),
+        predecessor_bundle,
     )
     .await
 }
@@ -283,6 +290,10 @@ async fn ensure_protocol_binary_bundle_members_installed_transaction_with_bindin
     execution_binding: Option<
         &agent_semantic_artifacts::runtime_artifact_slots::RuntimeArtifactBundleBinding,
     >,
+    predecessor_bundle: Option<(
+        &Path,
+        &agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest,
+    )>,
 ) -> Result<ProtocolBinaryInstall, String> {
     let runtime_root = plan.artifact_root.parent().ok_or_else(|| {
         format!(
@@ -308,15 +319,32 @@ async fn ensure_protocol_binary_bundle_members_installed_transaction_with_bindin
         };
     let receipt = match execution_binding {
         Some(binding) => {
-            agent_semantic_artifacts::runtime_artifact_publication::publish_runtime_artifact_bound_bundle_members(
-                state_home,
-                plan.candidate_source(),
-                &plan.target,
-                artifact_mode,
-                members,
-                binding,
-            )
-            .await?
+            match predecessor_bundle {
+                Some((predecessor_path, predecessor_digest)) => {
+                    agent_semantic_artifacts::runtime_artifact_publication::publish_runtime_artifact_bound_bundle_members_for_binary_replacement(
+                        state_home,
+                        plan.candidate_source(),
+                        &plan.target,
+                        artifact_mode,
+                        members,
+                        binding,
+                        predecessor_path,
+                        predecessor_digest,
+                    )
+                    .await?
+                }
+                None => {
+                    agent_semantic_artifacts::runtime_artifact_publication::publish_runtime_artifact_bound_bundle_members(
+                        state_home,
+                        plan.candidate_source(),
+                        &plan.target,
+                        artifact_mode,
+                        members,
+                        binding,
+                    )
+                    .await?
+                }
+            }
         }
         None => {
             agent_semantic_artifacts::runtime_artifact_publication::publish_runtime_artifact_bundle_successor_from_active(

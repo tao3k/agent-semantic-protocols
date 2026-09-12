@@ -3,9 +3,10 @@
 // SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 use super::{
-    AspClientWorkspaceQueryPlaybookRequest, emit_runtime_search_trace_observation,
-    materialize_query_playbook_receipt, record_settled_client_timing_observations,
-    runtime_search_trace_budget_micros,
+    AspClientWorkspaceQueryPlaybookRequest, bind_query_materialization_to_request,
+    emit_runtime_search_trace_observation, materialize_query_playbook_receipt,
+    record_settled_client_timing_observations, runtime_search_trace_budget_micros,
+    workspace_query_materialization_key,
 };
 use agent_semantic_content_identity::content_binding::{
     AuthorityStamp, ContentBinding, ContentIdentity, ContentPublicationCommit,
@@ -92,6 +93,38 @@ fn execution_publication() -> RuntimeWorkspaceExecutionPublication {
         runtime_bundle_digest: digest('f').into(),
     })
     .expect("workspace execution publication")
+}
+
+#[test]
+fn query_materialization_identity_binds_semantics_and_rebinds_only_envelope_request_id() {
+    let request = params();
+    let first = workspace_query_materialization_key(&request, "blake3-256:generation-a")
+        .unwrap_or_else(|_| panic!("first Query materialization key"));
+    let repeated = workspace_query_materialization_key(&request, "blake3-256:generation-a")
+        .unwrap_or_else(|_| panic!("repeated Query materialization key"));
+    let next_generation = workspace_query_materialization_key(&request, "blake3-256:generation-b")
+        .unwrap_or_else(|_| panic!("next-generation Query materialization key"));
+    let mut changed = request.clone();
+    changed.projection = "callable-skeleton".to_owned();
+    let next_projection = workspace_query_materialization_key(&changed, "blake3-256:generation-a")
+        .unwrap_or_else(|_| panic!("next-projection Query materialization key"));
+    assert_eq!(first, repeated);
+    assert_ne!(first, next_generation);
+    assert_ne!(first, next_projection);
+
+    let template = serde_json::json!({
+        "requestId": first,
+        "requestedSelectors": request.selectors,
+        "terminal": {"state": "ready"}
+    });
+    let rebound = bind_query_materialization_to_request(&template, "request-current")
+        .unwrap_or_else(|_| panic!("bind current request identity"));
+    assert_eq!(rebound["requestId"], "request-current");
+    assert_eq!(
+        rebound["requestedSelectors"],
+        template["requestedSelectors"]
+    );
+    assert_eq!(rebound["terminal"], template["terminal"]);
 }
 
 #[test]

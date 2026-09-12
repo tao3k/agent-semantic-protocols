@@ -20,6 +20,8 @@ use crate::query_generation_calibration::select_runtime_search_build_resources;
 use crate::query_generation_calibration::select_single_segment_bulk;
 use crate::query_generation_calibration::upsert_runtime_search_calibration_decision;
 use crate::query_generation_calibration::workload_bucket;
+use crate::runtime_query_generation::RuntimeQueryMaterializationState;
+use crate::runtime_query_generation::RuntimeSearchMaterializationState;
 
 fn key(project_id: &str, workspace_id: &str) -> RuntimeProjectWorkspaceKey {
     RuntimeProjectWorkspaceKey::new(
@@ -328,7 +330,109 @@ fn test_generation(digest: &str) -> std::sync::Arc<super::RuntimeQueryGeneration
         execution_publication: None,
         project_topology_attachment: std::sync::OnceLock::new(),
         build_resource_receipt: std::sync::OnceLock::new(),
+        search_materializations: std::sync::Mutex::new(std::collections::HashMap::new()),
+        query_materializations: std::sync::Mutex::new(std::collections::HashMap::new()),
     })
+}
+
+#[test]
+fn search_materialization_claims_once_and_publishes_one_terminal() {
+    let generation = test_generation("blake3-256:generation-a");
+    let key = "blake3-256:search-a".to_owned();
+
+    assert!(
+        generation
+            .begin_search_materialization(key.clone())
+            .unwrap()
+    );
+    assert!(
+        !generation
+            .begin_search_materialization(key.clone())
+            .unwrap()
+    );
+    assert!(matches!(
+        generation.search_materialization(&key).unwrap(),
+        Some(RuntimeSearchMaterializationState::Building)
+    ));
+
+    let value = serde_json::json!({"result": "resident"});
+    generation
+        .publish_search_materialization(key.clone(), Ok(value.clone()))
+        .unwrap();
+    let Some(RuntimeSearchMaterializationState::Ready(published)) =
+        generation.search_materialization(&key).unwrap()
+    else {
+        panic!("claimed materialization must publish Ready")
+    };
+    assert_eq!(published.as_ref(), &value);
+    assert!(
+        generation
+            .publish_search_materialization(key, Ok(value))
+            .is_err()
+    );
+}
+
+#[test]
+fn search_materialization_failure_is_terminal_and_generation_local() {
+    let older = test_generation("blake3-256:generation-old");
+    let newer = test_generation("blake3-256:generation-new");
+    let key = "blake3-256:same-query".to_owned();
+
+    assert!(older.begin_search_materialization(key.clone()).unwrap());
+    older
+        .publish_search_materialization(
+            key.clone(),
+            Err(agent_semantic_client_server::AspClientDispatchError {
+                reason_kind: "search-materialization-failed".to_owned(),
+                message: "fixture failure".to_owned(),
+                details: None,
+            }),
+        )
+        .unwrap();
+    let Some(RuntimeSearchMaterializationState::Failed(error)) =
+        older.search_materialization(&key).unwrap()
+    else {
+        panic!("failed materialization must remain terminal")
+    };
+    assert_eq!(error.reason_kind, "search-materialization-failed");
+
+    assert!(newer.search_materialization(&key).unwrap().is_none());
+    assert!(newer.begin_search_materialization(key).unwrap());
+}
+
+#[test]
+fn query_materialization_claims_once_and_preserves_a_generation_local_terminal() {
+    let generation = test_generation("blake3-256:query-generation");
+    let other_generation = test_generation("blake3-256:other-query-generation");
+    let key = "blake3-256:query-materialization".to_owned();
+
+    assert!(generation.begin_query_materialization(key.clone()).unwrap());
+    assert!(!generation.begin_query_materialization(key.clone()).unwrap());
+    assert!(matches!(
+        generation.query_materialization(&key).unwrap(),
+        Some(RuntimeQueryMaterializationState::Building)
+    ));
+    let template = serde_json::json!({"requestId": key, "terminal": {"state": "ready"}});
+    generation
+        .publish_query_materialization(key.clone(), Ok(template.clone()))
+        .unwrap();
+    let Some(RuntimeQueryMaterializationState::Ready(published)) =
+        generation.query_materialization(&key).unwrap()
+    else {
+        panic!("Query materialization must publish Ready")
+    };
+    assert_eq!(published.as_ref(), &template);
+    assert!(
+        other_generation
+            .query_materialization(&key)
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        generation
+            .publish_query_materialization(key, Ok(template))
+            .is_err()
+    );
 }
 
 #[test]

@@ -54,6 +54,7 @@ pub(crate) async fn run_install_binary(args: &[String]) -> Result<(), String> {
             &plan,
             &members,
             &execution_binding,
+            provider_reconciliation.predecessor_bundle(),
         )
         .await?;
     let install_registry_digest =

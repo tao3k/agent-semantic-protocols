@@ -184,7 +184,7 @@ fn checkpoint_payload(
         plan_id: plan_id.clone(),
         branch_id: branch_id(candidate, options.branch),
         resume_command: format!(
-            "asp search playbook --documents org --rg -n -e {} -e recovery -e evidence -e next-action . --tantivy 'title:recovery^2 OR body:next-action'",
+            "asp search playbook '(search (producers (documents org)) (intersect (rg \"-n\" \"-e\" \"{}\" \"-e\" \"recovery\" \"-e\" \"evidence\" \"-e\" \"next-action\" \".\") (tantivy \"title:recovery^2 OR body:next-action\")))'",
             shell_single_quote(&plan_id)
         ),
         source_locator,

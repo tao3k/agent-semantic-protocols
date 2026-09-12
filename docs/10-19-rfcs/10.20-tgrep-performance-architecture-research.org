@@ -1,0 +1,659 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+TITLE: RFC 10.20 Research - tgrep Performance Architecture
+#+DATE: 2026-09-12
+#+STATUS: Research
+
+* One-sentence summary
+
+The fundamental lesson from =tgrep= is not to remove GREP from SearchLoop or add
+another search daemon.  V1 GREP is the fast lexical-anchor stage before parser
+and Relation/Query reasoning.  The high-leverage change is to implement that
+existing =rg= axis as a generation-bound trigram candidate index followed by
+an in-process resident GREP exact matcher, then fuse it with Tantivy before
+native syntax and graph reasoning, all under ASP Runtime Server authority.
+
+* Scope and authority boundary
+
+This note studies performance architecture only.  It does not change the public
+Search/Query contract and does not authorize:
+
+- a =tgrep= subprocess or TCP daemon on the ASP request path;
+- a second workspace crawler, watcher, lifecycle owner, or index directory;
+- client-local search fallback;
+- weakening =ProjectId=/=WorkspaceId=/content-generation identity;
+- replacing Tantivy lexical retrieval or provider-native structural facts;
+- changing V1 Scheme source, request/result schema, or the public =rg= axis;
+- treating benchmark wall time without work-count and identity receipts as
+  acceptance.
+
+ASP Runtime Server remains the sole owner of inventory, source bytes,
+generation admission, derived attachments, query execution, cancellation, and
+publication.  The byte-coverage attachment discussed here is an internal
+generation artifact, not a new public backend.
+
+* External source snapshot
+
+#+begin_src text
+repository: https://github.com/microsoft/tgrep
+local checkout: .data/tgrep
+snapshot commit: b1d0fc2f6245cc78f1943e5864ceeab812452404
+snapshot commit date: 2026-09-11T17:20:27-07:00
+observed date: 2026-09-12
+license: MIT
+#+end_src
+
+Primary implementation owners inspected:
+
+- =tgrep-core/src/query.rs=: regex HIR to trigram plan and posting
+  intersection/union;
+- =tgrep-core/src/trigram.rs=: collision-free packed 24-bit keys, custom
+  hasher, single-pass case folding, positional masks, and next-byte Bloom masks;
+- =tgrep-core/src/reader.rs=: sorted lookup table and mmap posting reader;
+- =tgrep-core/src/external.rs=: bounded posting arena, spill segments, delta
+  encoding, and k-way merge;
+- =tgrep-core/src/builder.rs=: count-, heap-byte-, and mapped-byte-bounded
+  parallel extraction;
+- =tgrep-core/src/hybrid.rs= and =live.rs=: immutable reader snapshot plus
+  mutable overlay, with atomic reader replacement;
+- =tgrep-cli/src/serve.rs=: background indexing, cache discipline, watcher
+  recovery, reconciliation, and query instrumentation;
+- =BENCHMARKS.md=: large-repository and Criterion measurement methodology.
+
+The ripgrep source snapshot used for the library and index comparison is:
+
+#+begin_src text
+repository: https://github.com/BurntSushi/ripgrep
+local checkout: .data/ripgrep
+snapshot commit: 3fce3b5bb0236da2df6d99672afb8a719642eca7
+observed version: 15.2.0
+observed repository MSRV: 1.96
+ASP workspace MSRV/toolchain: 1.95
+license: Unlicense OR MIT
+#+end_src
+
+The official =grep= facade exposes matcher, regex, searcher, printer, and CLI
+crates, but does not provide a documented high-level integration recipe.  Its
+new =grep-index= remains behind ripgrep's =unstable-index= feature and describes
+its n-gram implementation as a prototype.  Therefore neither current ripgrep
+index code nor the full rg binary is an admissible drop-in V1 backend.
+
+Upstream performance claims remain external claims.  ASP acceptance requires
+independent measurements through the real Runtime route.
+
+* Reproduced local evidence
+
+The following measurements used the release build from the pinned checkout and
+the current ASP working tree.  The temporary index was outside the repository
+at =/private/tmp/tgrep-asp-01a09400-index=.  The watcher was disabled so the
+experiment measured a stable snapshot rather than watcher freshness.
+
+#+begin_src text
+tgrep-core tests: 270 passed, 5 suites, 1.17s
+release build: 68 crates compiled, 28.03s
+
+inventory walk: 48,399 text-file candidates
+content-admitted searchable files: 10,968
+binary files rejected after content check: 37,431
+oversized files: 2
+unique trigrams: 199,682
+spill segments: 2
+external index build: 2.4s
+reported peak memory: 189.2 MiB
+server open: 18.5ms
+server ready: 190.2ms
+#+end_src
+
+Fresh client processes were retained in the timed loops.  Output was discarded,
+but query work was not short-circuited.
+
+| query | runs | tgrep client/server | rg | observed ratio |
+|-
+| =RuntimeServerLifecycle=, fixed string | 20 | 0.20s | 3.29s | 16.5x |
+| =pub =, fixed string, files only | 10 | 0.19s | 1.74s | 9.2x |
+
+The selective query produced 12 candidate files and 16 matches.  After the
+first query, server-side elapsed time was normally 0.5-1.5ms, with roughly
+0.3-0.6ms in index selection.  The broad query produced 1,157 raw candidates,
+1,085 filtered candidates, and 1,080 matching files; warm server-side time was
+normally 4-6ms.  Therefore:
+
+1. candidate selectivity is the dominant algorithmic win;
+2. result resolution and exact scanning dominate as the candidate set widens;
+3. a large part of the observed shell latency is fixed client/process/protocol
+   cost rather than index execution;
+4. the benefit must be measured by query cohort, not one favorable pattern.
+
+These are local observations, not a repository acceptance gate.  The current
+tree contains nested language workspaces and ignored/generated content, and the
+temporary tgrep corpus is not identical to an ASP admitted generation.
+
+** Differential correctness counterexample
+
+The upstream fuzz target for =tgrep-core::query= checks that arbitrary patterns
+do not panic; it does not prove the required candidate-superset property.  A
+direct indexed differential found a false absence for Unicode case folding:
+
+#+begin_src text
+fixture owner A: contains both "ÜBER" and "über"
+fixture owner B: contains only "ÜBER"
+query: -i 'über'
+
+tgrep indexed plan: AND(3 trigrams), candidates 1/2
+tgrep owners: A
+rg owners: A, B
+#+end_src
+
+The tgrep builder materializes original bytes plus ASCII-lowercased trigrams,
+while its case-insensitive query plan lowercases a UTF-8 string with Unicode
+case conversion.  The exact matcher can match owner B, but the candidate index
+removes it first.  This is a concrete false negative, so tgrep's current query
+planner and case-folded index cannot be imported as V1 correctness authority.
+The packed key, mmap, external-sort, and posting-intersection techniques remain
+useful only after ASP-specific candidate-superset differential proof.
+
+* What tgrep changes fundamentally
+
+** Query cost becomes candidate-dependent
+
+A scanning grep pays approximately =O(total admitted bytes)= per query.  tgrep
+extracts mandatory literals from regex HIR, turns their overlapping trigrams
+into posting lists, starts with the shortest posting, and verifies the original
+matcher only against the surviving files.  The steady-state cost is closer to:
+
+#+begin_src text
+posting lookup + posting intersection + bytes of candidate files + output
+#+end_src
+
+This is the architectural gain.  SIMD tuning of a full-corpus scan cannot
+remove its dependence on total corpus bytes.
+
+** Read and write representations are deliberately different
+
+The build path uses mutable maps, bounded arenas, spill files, sorting, and
+merge.  The read path uses immutable sorted tables and mmap slices.  tgrep does
+not keep the convenient build representation alive merely because it was easy
+to construct.
+
+That separation yields:
+
+- bounded heap independent of repository posting volume;
+- compact sequential posting reads;
+- OS-managed page residency;
+- cheap process/server reopen;
+- a publication artifact that can be validated before it becomes current.
+
+** Memory is budgeted by actual liability
+
+tgrep bounds a batch simultaneously by file count, owned heap bytes, and mapped
+bytes.  Large mapped inputs receive a small heap charge plus a separate mapped
+residency budget.  This avoids both failure modes: reading several large files
+onto the heap at once, and serializing mmap work because mapped bytes were
+charged as heap.
+
+The external posting sorter applies the same principle to index construction:
+the arena budget controls peak heap, sorted spill segments absorb excess work,
+and a k-way merge streams the final index.
+
+** Publication is snapshot-based
+
+The server queries one =Arc<IndexReader>= snapshot for the complete request.
+Flush builds a replacement generation outside the query lock and swaps the
+reader briefly.  In-flight requests retain the old mmap until their =Arc=
+drops.  This avoids mixed file-id generations and long stop-the-world flushes.
+
+The live overlay is useful as a latency pattern, but ASP must not copy its
+weaker identity semantics directly.  In ASP, any delta visible to a query must
+be bound to an explicit content generation and publication receipt.
+
+** False positives are made cheap before exact verification
+
+tgrep stores per-file positional masks and an 8-bit next-byte Bloom mask beside
+each trigram posting.  They cannot establish a match, but they can reject more
+files before opening/scanning contents.  Exact matching remains authoritative.
+
+* GREP's position in the complete ASP SearchLoop
+
+GREP is not the final code-understanding engine.  Its V1 responsibility is to
+turn native rg keyword/regex combinations into fast owner and byte anchors.
+Those anchors bound the expensive work that follows:
+
+#+begin_src text
+one admitted Scheme composition
+  -> V1 rg lexical anchors (trigram candidates, then exact resident match)
+  -> V1 Tantivy ranked lexical owner set
+  -> fused immutable owner context
+  -> provider-native syntax selectors
+  -> Relation / graph Query computation
+  -> compact generation-bound evidence
+#+end_src
+
+The stages are deliberately complementary.  Tantivy is good at tokenized,
+ranked lexical retrieval but does not preserve arbitrary byte substring,
+punctuation, or native rg regex semantics.  A parser gives structural precision
+but should not pay to parse or traverse the whole workspace for every lexical
+question.  The GREP stage therefore remains architecturally necessary even
+when no =rg= process remains on the request path.
+
+* Current ASP position
+
+ASP already implements the correct high-level topology:
+
+#+begin_src text
+admitted immutable content generation
+  -> ResidentByteCoverageIndex for V1 rg candidate owners
+  -> resident GREP exact matcher over generation-owned bytes
+  -> intersection with Tantivy lexical candidate retrieval
+  -> native syntax and graph composition
+  -> generation-bound result receipt
+#+end_src
+
+The important current owners are:
+
+- =crates/agent-semantic-search/src/resident_byte_coverage.rs=;
+- =crates/agent-semantic-search/src/resident_source_index.rs=;
+- =crates/agent-semantic-search/src/tantivy_lexical.rs=;
+- =crates/agent-semantic-search/src/resident_grep_candidate_plan.rs=;
+- =crates/agent-semantic-search/src/resident_grep_corpus.rs=;
+- =crates/agent-semantic-runtime-server/src/runtime_resident_grep.rs=;
+- =crates/agent-semantic-runtime-server/src/runtime_workspace_search_playbook.rs=;
+- RFC 10.05's resident recall and byte-verification contract.
+
+The first resident GREP implementation closes the query-time representation
+gap.  Remaining gaps are primarily build-time and exact-semantics breadth:
+
+| concern | resident GREP implementation | remaining lesson |
+|-
+| trigram key | packed 24-bit =u32= in a sorted directory | benchmark lookup layout and optional perfect hashing |
+| per-owner extraction | build-time unique gram set | allocation-aware extraction and bounded external construction |
+| postings | delta-varint postings in the V1 generation mmap | optional positional and next-byte masks |
+| build memory | still proportional to the complete temporary postings map | fixed arena plus external spill/merge |
+| query intersection | decoded sorted postings, rarest first | streaming decode/intersection without temporary vectors |
+| false-positive filter | trigram membership only | optional positional and next-byte masks |
+| reopen | validates and borrows published mmap; no workspace postings rebuild | preserve this invariant under delta generations |
+| delta | build a new immutable attachment | reuse unchanged immutable segments; publish one new generation |
+| regex planning | literal and simple split-alternation extraction | HIR-derived candidate-superset AND/OR plan |
+| correctness evidence | focused candidate-superset differential cases | generated/property differential corpus against rg |
+| case folding | unsafe trigram plans use the bounded Tantivy fused scope, never claim global absence | proved Unicode folding strategy or qualified matcher extractor |
+
+ASP is already stricter where it matters: content/Merkle identity, authority,
+typed budgets, exact-byte verification, selector projection, and atomic Runtime
+publication.  Those properties must constrain the optimization rather than be
+traded away for tgrep compatibility.
+
+* Recommended architecture
+
+** P0: instrument the real request path before replacement
+
+Add one generation-bound receipt covering:
+
+- query-plan construction nanoseconds;
+- grams requested and distinct grams;
+- posting lengths and chosen first posting;
+- raw candidate count and verified owner count;
+- bytes verified;
+- index lookup, owner resolution, exact match, projection, graph, serialization,
+  ClientFrame transport, and total nanoseconds;
+- allocation/retained-byte estimate for byte coverage;
+- zero filesystem operations, provider calls, native finder processes, and
+  child processes.
+
+Without this split, a sub-millisecond index can be hidden behind owner-string
+cloning, projection, transport, or rendering.
+
+** P1: preserve V1 and introduce a private trigram candidate seam
+
+Keep =ResidentByteCoverageIndex= behavior but move the physical representation
+behind a private generation-local interface:
+
+#+begin_src rust
+trait GrepCandidateAttachment {
+    fn candidate_owner_ids(
+        &self,
+        plan: &GrepCandidatePlan,
+        authority: Option<&ResidentSearchAuthority>,
+        budget: CandidateBudget,
+    ) -> Result<CandidateOwnerIds, ByteCoverageError>;
+}
+#+end_src
+
+The public input remains the V1 =(rg ...)= native argv leaf.  Runtime compiles
+it into an internal =GrepCandidatePlan=; no plan object crosses the wire and no
+schema version changes.  The interface returns generation-local owner IDs, not cloned paths.  Path and
+content resolution happen against the same leased generation after candidate
+selection.  The exact matcher and rg differential corpus are the correctness
+references; no heap-map fallback is selected silently in production.
+
+** P1.5: Tokio owns scheduling, not the search algorithm
+
+Resident GREP remains a synchronous CPU/mmap kernel.  Making posting decode or
+regex matching syntactically =async= would not accelerate it and would obscure
+benchmarks.  The async Runtime route instead acquires a bounded global Tokio
+semaphore and moves the deterministic GREP plus Tantivy retrieval phase to
+=spawn_blocking=.  This prevents CPU scans and mmap page faults from occupying
+the RPC reactor while preserving one ordered fan-in.  Do not spawn one task per
+file: batching, cancellation checkpoints, and one request-level concurrency
+budget are required before introducing owner-shard parallelism.
+
+** Lean/Rust cost refinement loop
+
+=ASPProof.ResidentGrepCost= models the Rust receipt fields and proves:
+
+- exact hits are a subset of candidates under =SoundMandatoryGrams=;
+- adding mandatory grams cannot widen the candidate set;
+- only a sound selective plan or exactly verified fused scope may publish absence;
+- zero process and filesystem counts imply no binary/filesystem work;
+- mapped postings plus mapped corpus retain zero workspace-sized query heap;
+- a Tokio-admitted CPU lane performs no search scan on the reactor;
+- 10x, 20x, and 100x claims require an explicit logical-cost witness.
+
+The model exposed one implementation bug during this work: the earlier Rust
+path sorted postings by length only after decoding all of them.  The format API
+now reads =posting_count= from the directory first, decodes the rarest posting,
+and stops decoding as soon as the intersection becomes empty.  Rust receipts
+report =decodedPostingCount= so the theorem-side cost model can be calibrated
+against actual executions.
+
+For regexes with no sound mandatory trigram, V1's required =rg ∩ Tantivy=
+composition provides the bounded fallback: Tantivy is evaluated first and the
+resident exact matcher scans only that owner scope.  A standalone
+=notMaterialized= plan still cannot publish absence.
+
+** P2: build a compact mmap byte-coverage artifact
+
+Recommended V1 physical layout:
+
+#+begin_src text
+header:
+  schema/version, gram width, generation digest, owner-table digest,
+  artifact digest, complete coverage count
+
+lookup table, sorted by packed 24-bit gram:
+  gram, posting byte offset, posting count
+
+posting stream:
+  delta-varint owner id, optional loc mask, optional next-byte mask
+
+owner table:
+  generation-local owner id -> owner record index/content digest authority
+#+end_src
+
+Open validates bounds, ordering, coverage identity, and artifact digest before
+publication.  Queries binary-search the fixed lookup table and decode only the
+selected postings.  No request rebuilds or mutates the artifact.
+
+** P3: make construction externally sorted and resource-owned
+
+Use the already-admitted inventory and owner bytes exactly once.  Extraction
+workers emit =(gram, owner-id, masks)= records into a bounded arena.  Full
+arenas sort and spill; final construction k-way merges directly into the mmap
+artifact.  Resource selection comes from Runtime Server's existing CPU and
+memory supervisor and is included in the build receipt.
+
+The batch contract must bound:
+
+- file count;
+- owned input bytes;
+- mapped input bytes;
+- extracted posting arena bytes;
+- spill count and merge fan-in;
+- deadline/cancellation checks.
+
+No product constant such as 64 MiB is accepted solely because tgrep uses it;
+ASP calibrates within Host-authorized bounds and binds the decision to engine,
+capacity, and workload identity.
+
+** P4: reuse immutable shards, not a query-visible uncommitted overlay
+
+RFC 10.05 already requires content-addressed shard reuse.  Implement the byte
+attachment in the same model:
+
+#+begin_src text
+previous generation immutable byte shards
+  + added/changed owner posting shards
+  - retired owners
+  -> validated candidate artifact
+  -> equivalence checks
+  -> atomic attachment publication for exact contentGenerationDigest
+#+end_src
+
+An in-memory delta may be used while constructing the candidate generation, but
+it is not query-visible until generation identity and complete coverage are
+committed.  This preserves ASP's stronger absence and provenance guarantees.
+
+** P5: add safe pre-verification masks only after equivalence
+
+Positional and next-byte masks are worthwhile when candidate verification bytes
+remain material after P2/P3.  They are optional pruning evidence, never match
+evidence.  Differential tests must prove that every exact matcher hit remains
+inside the candidate set across fixed strings, HIR concatenation/alternation/
+repetition/classes, repeated grams, ASCII and Unicode case modes, word/line
+anchors, and every admitted V1 native rg option.  Candidate false positives are
+allowed; candidate false negatives are not.
+
+** P6: remove fixed client overhead from the dominant path
+
+tgrep's local run showed server work below 1ms for selective warm queries while
+fresh client wall time averaged about 10ms.  ASP should measure and then reduce:
+
+- CLI startup and configuration resolution;
+- Runtime endpoint discovery/admission checks already proven by a live lease;
+- repeated ClientFrame encoding/decoding;
+- owner-path/string cloning before result limits are applied;
+- rendering work for fields the requested view does not consume.
+
+The solution remains the existing Runtime service and typed ClientFrame, not a
+benchmark-only socket or persistent CLI process.
+
+* What not to copy
+
+- Do not copy tgrep's TCP JSON-RPC protocol; ASP already has a typed Runtime
+  transport and stronger request identity.
+- Do not let a file watcher define freshness.  Watch events may propose a new
+  generation, but Merkle/content admission proves it.
+- Do not serve an on-disk index whose age is merely documented.  ASP requests
+  bind the exact generation or fail typed.
+- Do not scan the filesystem when the byte attachment is absent or a query is
+  unsupported.  Preserve =query-not-ready= and the declared next action.
+- Do not replace either GREP or Tantivy with the other.  GREP owns byte/regex
+  lexical anchors; Tantivy owns tokenized ranked lexical recall; V1 fuses them.
+- Do not broaden the public grammar to tgrep/ripgrep compatibility while doing
+  storage work.  Query semantics and physical representation are separate
+  changes.
+- Do not depend on =tgrep-core= as an authority: its matcher is private to the
+  CLI, its walker/index publication duplicates ASP ownership, and the Unicode
+  counterexample disproves full rg parity.
+- Do not fork the full rg CLI.  If exact matching needs ripgrep code, consume a
+  toolchain-compatible published library boundary after differential admission;
+  directory walking, ignore discovery, printing, and process dispatch remain
+  outside the resident V1 executor.
+
+* Acceptance matrix
+
+** Resident Search V1 MVP: one product boundary
+
+The deliverable is a usable vertical SearchLoop, not a collection of decoder,
+proof, or matcher milestones. One admitted immutable CompleteGeneration must
+support Scheme Search composition, in-process lexical acquisition, native
+structural grounding, optional Relation evaluation, and exact Query projection.
+The same generation identity must survive durable reopen. No runtime rg binary,
+second workspace walker, client-owned index, or public version upgrade is
+introduced. Unsupported rg semantics fail explicitly rather than silently
+changing the matched set.
+
+The MVP has one acceptance decision and the following mandatory gates:
+
+| Gate | Required product evidence | Insufficient evidence |
+| Source identity | Tested source/build and active Runtime artifact are attributable | Installed older binary happens to answer |
+| Correctness | Admitted regex/flags agree with reference; no false-negative candidate plan; filter/limit ordering and Unicode covered | Empty results or hand-authored receipts |
+| Lifecycle | Real generation publication and durable reopen preserve owners, selectors and relations | Server health alone |
+| Vertical route | Public Scheme search yields parser-owned selectors, exact Query consumes them, optional graph stays structurally scoped | Calling only the GREP kernel |
+| Resource safety | Bounded CPU admission, decoded work, bytes read, memory ownership and incomplete coverage are explicit | Tokio use or mmap use alone |
+| Performance | Same-corpus cold and warm p50/p95/p99, build/reopen cost and concurrent behavior, with work counters | A selective microbenchmark or a Lean arithmetic example |
+
+Full Search, Runtime Server, Client DB and Lean suites are supporting gates.
+A zero-test filtered invocation is NOT_EVALUATED. A failed broad suite remains
+failed until fixed or independently demonstrated to be outside this change;
+focused passes cannot replace it. Missing real-route publication, identity,
+projection, parity, or performance evidence means MVP NOT_COMPLETE.
+
+The first MVP does not require external-sort construction, incremental shards,
+positional masks, a tgrep-core dependency, or a new protocol. Those mechanisms
+are subsequent optimizations unless measured MVP resource admission requires
+them. Public native Scheme and Tree-sitter Query remain the source language;
+the acceptance tooling is not a second query API.
+
+Implementation and verification proceed as one continuous delivery:
+contract reconciliation -> lexical semantics and unified candidate execution ->
+generation publication/reopen -> real Search/Query route -> resource and
+performance qualification -> single acceptance report. Intermediate test
+counts are progress only, not separate MVP deliveries.
+
+Initial audit baseline (2026-09-12): Search has 168 passing unit tests and
+Lean builds 328 jobs. The runtime guard has focused regression coverage, but
+these results do not establish the vertical route. A real public Search request
+reached the active Runtime and returned no immutable CompleteGeneration,
+=state=building=; Server status and healthcheck independently reported healthy.
+The active binary digest was
+=blake3-256:2550369eecba7d9ba371a7e5002be8aff8db91ef9fc170dee665682382f77267=.
+Its equivalence to the current dirty source/build is not established.
+
+Source gates use the existing project entry point directly; a task-local shell
+orchestrator is not a versioned product artifact:
+
+#+begin_src sh
+.devenv/devenv-profile-exec rtk cargo test -p agent-semantic-search --lib
+.devenv/devenv-profile-exec rtk cargo check -p agent-semantic-search --no-default-features
+.devenv/devenv-profile-exec rtk cargo test -p agent-semantic-runtime-server --lib
+.devenv/devenv-profile-exec rtk cargo test -p agent-semantic-client-db --lib
+.devenv/devenv-profile-exec lake -d packages/proofs build ASPProof
+#+end_src
+
+These commands do not deploy or restart anything. All source gates passing
+still leaves the product incomplete without the mandatory real-route evidence.
+Runtime Server full-suite baseline is 82 passing tests. Client DB has 168
+passing and 2 failing tests: the concurrency resource fixture supplies a
+workspace identity that cannot satisfy current catalog resolution, and the
+shared callable-skeleton schema requires =rootSelector= while the Rust payload
+type rejects it. These are unresolved acceptance gaps, not evidence that the
+MVP is complete or that the failures are unrelated. Search minimal-feature
+compilation is included; its candidate-plan module now follows the same
+feature boundary as the byte-coverage owner.
+
+** Correctness
+
+- byte-for-byte differential equivalence with the current reference backend;
+- no false absence under posting/mask false positives;
+- corrupt/truncated/identity-mismatched artifacts fail before publication;
+- one request resolves candidates, owner identities, and bytes from one leased
+  generation;
+- dirty changes cannot appear until a new generation is admitted;
+- concurrent publication cannot mix owner IDs across generations.
+
+** Performance
+
+Use at least 4,096 admitted owners, 32 cold build samples, 512 warm query
+samples, and a 32-query burst, separated into selective, medium, high-hit,
+repeated-gram, and no-hit cohorts.  Report p50/p95/p99/max plus:
+
+- owners, source bytes, unique grams, posting entries, and artifact bytes;
+- build throughput and peak private/anonymous bytes;
+- spill segments and merge fan-in;
+- raw candidates, verified owners, and verified bytes per query;
+- transport and render time separate from server execution;
+- zero query-time filesystem/provider/process work.
+
+Initial hypotheses to test, not acceptance claims:
+
+- warm selective byte-candidate lookup p99 below 1ms at 4,096 owners;
+- byte-coverage retained heap at least 70% below the former heap map on a
+  large generation;
+- build peak private bytes bounded by the admitted arena plus owner metadata,
+  rather than total posting count;
+- delta build work proportional to changed/retired owners and affected shards;
+- no more than 5% regression for high-hit queries where exact verification and
+  output dominate.
+
+** Product outcome
+
+Performance work is complete only if the real =search playbook= route reduces
+end-to-end p95/p99 or expands the safely admitted corpus under the same Host
+budget.  A faster microbenchmark with unchanged or slower ClientFrame-to-result
+latency is diagnostic evidence, not closure.
+
+* Recommended implementation order
+
+#+begin_src text
+P0 real-route measurements
+  -> P1 private backend seam + differential reference
+  -> P2 mmap read artifact + corruption/identity tests
+  -> P3 bounded external builder + peak-memory receipts
+  -> P4 content-addressed delta/shard publication
+  -> P5 masks if verified-byte receipts justify them
+  -> P6 fixed request/transport/render overhead
+  -> real-project and concurrent acceptance
+#+end_src
+
+The implemented milestone covers the private seam, compact mapped artifact,
+rarest-first AND/OR candidate plans, mapped source corpus, and bounded Tokio CPU
+lane without changing the public Search protocol.  External construction is the
+next generation-build gain; masks and broader regex semantics remain
+evidence-driven refinements.
+
+* Dependency verdict
+
+** Decoder audit constraint (V1 unchanged)
+
+Reopening validates delta postings with constant auxiliary decoder state, not
+one allocated owner vector per posting. Declared counts must be bounded by
+both encoded bytes and owner cardinality before allocation. Query intersections
+retain only the smallest candidate vector and stream subsequent postings;
+decoding may stop once all candidates have been decided. Sequential delta
+encoding does not support constant-time membership probes: worst-case decoded
+work remains the sum of traversed posting lengths. Logical work reductions
+are not wall-clock speedup claims; fixed request costs must remain in the model.
+The directory stores each three-byte gram in a four-byte field and occupies
+32 bytes per entry. No eightfold key-memory or 100-fold performance theorem
+is justified by those field sizes alone.
+
+A Tantivy result truncated before lexical intersection is not a complete
+candidate authority. The current Tantivy-first execution must reject that
+scope as =query-not-ready= before exact GREP or absence publication. This
+conservative admission can reject queries previously answerable by filtering
+before top-k; recovering that capacity requires scoped retrieval or pagination,
+not silently treating truncated recall as a complete intersection.
+
+The two proposed choices are not equivalent responsibilities:
+
+1. =tgrep-core= supplies indexed candidate selection but not the full CLI's
+   exact matcher.  Direct dependency would also import a second index format,
+   filesystem builder, walker, and publication model.  Verdict: do not import
+   it wholesale; reproduce only the admitted physical techniques.
+2. ripgrep's published library crates supply exact regex/search semantics, but
+   the full rg binary is not a library backend and its index is explicitly
+   unstable.  The current upstream repository also requires Rust 1.96 while
+   ASP is fixed at 1.95.  Verdict: do not fork or raise MSRV.  First preserve
+   the current resident exact matcher; separately qualify the newest compatible
+   =grep-regex=/=grep-searcher= release before adding a dependency.
+
+The selected architecture is therefore an ASP-owned trigram candidate artifact
+plus an independently qualified in-process exact matcher.  This retains the
+role of GREP while eliminating query-time rg processes and duplicate lifecycle
+authority.
+
+* Verdict
+
+ASP does not need tgrep's product architecture, but it does need GREP's role.
+The V1 =rg= axis remains the coarse lexical-anchor stage that makes parser and
+Relation/Query work selective.  What may disappear is the external rg process,
+not the rg semantics or its position in the SearchLoop.
+
+ASP does need tgrep's physical-index discipline.  The resident implementation
+now publishes a compact mmap artifact, reopens postings and source bytes without
+workspace-sized heap reconstruction, evaluates regex-HIR AND/OR plans rarest
+first, and runs the lexical phase on a bounded Tokio CPU lane.  External posting
+construction, streaming posting decode, broader rg differential semantics, and
+independently measured end-to-end request cost remain the next performance
+closure points.

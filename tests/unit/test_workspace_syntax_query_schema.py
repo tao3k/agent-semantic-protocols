@@ -6,6 +6,7 @@
 
 from pathlib import Path
 
+import json
 import jsonschema
 import pytest
 
@@ -14,9 +15,51 @@ from unit.schema_validation import schema_validator_for
 
 ROOT = Path(__file__).resolve().parents[2]
 SCHEMAS = ROOT / "schemas"
+DIGEST = "blake3-256:" + "1" * 64
 
 
-def test_workspace_syntax_query_request_preserves_pipe_and_native_argv() -> None:
+def resident_plan() -> dict[str, object]:
+    return {
+        "schemaId": "agent.semantic-protocols.resident-syntax-query-plan",
+        "schemaVersion": "1",
+        "profileId": "asp.enhanced-tree-sitter-query.v1",
+        "planDigest": DIGEST,
+        "queryDigest": DIGEST,
+        "languageId": "rust",
+        "providerId": "asp-rust",
+        "parserAbiDigest": DIGEST,
+        "queryGrammarDigest": DIGEST,
+        "operatorTableDigest": DIGEST,
+        "capabilityTableDigest": DIGEST,
+        "generationDigest": DIGEST,
+        "patterns": [
+            {
+                "index": 0,
+                "captures": [
+                    {
+                        "name": "item",
+                        "residentFactPath": "selector",
+                        "cardinality": {"minimum": 1, "maximum": 1},
+                        "capabilityRowId": "rust.capture.item",
+                    }
+                ],
+                "structure": {
+                    "kind": "true",
+                    "origin": {
+                        "kind": "capture",
+                        "capabilityRowId": "rust.capture.item",
+                    },
+                },
+                "predicates": [],
+            }
+        ],
+        "selectedFields": ["selector"],
+        "requiredCapabilityRows": ["rust.capture.item"],
+        "regexPrograms": [],
+    }
+
+
+def test_workspace_syntax_query_request_preserves_pipe_and_resident_plan() -> None:
     packet = {
         "schemaId": "agent.semantic-protocols.asp-client-workspace-syntax-query-request",
         "schemaVersion": "1",
@@ -26,10 +69,7 @@ def test_workspace_syntax_query_request_preserves_pipe_and_native_argv() -> None
         "syntax": [
             {
                 "producer": "rust",
-                "argv": [
-                    "--treesitter-query",
-                    '((identifier) @symbol (#match? @symbol "Runtime|Client"))',
-                ],
+                "plan": resident_plan(),
             }
         ],
         "projection": "matches",
@@ -46,7 +86,7 @@ def test_workspace_syntax_query_producer_is_sufficient_without_calibration() -> 
         "syntax": [
             {
                 "producer": "rust",
-                "argv": ["--treesitter-query", "((function_item) @function)"],
+                "plan": resident_plan(),
             }
         ],
         "projection": "matches",
@@ -62,7 +102,7 @@ def test_workspace_syntax_query_rejects_filesystem_paths(workspace: str) -> None
         "schemaId": "agent.semantic-protocols.asp-client-workspace-syntax-query-request",
         "schemaVersion": "1",
         "workspace": workspace,
-        "syntax": [{"producer": "rust", "argv": ["query"]}],
+        "syntax": [{"producer": "rust", "plan": resident_plan()}],
         "projection": "matches",
     }
     with pytest.raises(jsonschema.ValidationError):
@@ -71,7 +111,7 @@ def test_workspace_syntax_query_rejects_filesystem_paths(workspace: str) -> None
         ).validate(packet)
 
 
-def test_workspace_syntax_query_response_is_top3_selector_only_evidence() -> None:
+def test_workspace_syntax_query_response_contains_the_selected_match_fields() -> None:
     packet = {
         "schemaId": "agent.semantic-protocols.asp-client-workspace-syntax-query-response",
         "schemaVersion": "1",
@@ -80,7 +120,13 @@ def test_workspace_syntax_query_response_is_top3_selector_only_evidence() -> Non
             {
                 "owner": "src/lib.rs",
                 "selector": "rust://src/lib.rs#item/function/run",
+                "capture": "item",
                 "relation": "syntax-capture:function.name",
+                "selected": {
+                    "kind": "function",
+                    "name": "run",
+                    "selector": "rust://src/lib.rs#item/function/run",
+                },
             }
         ],
     }
@@ -92,3 +138,31 @@ def test_workspace_syntax_query_response_is_top3_selector_only_evidence() -> Non
     assert "nextCommand" not in encoded
     assert "sourceContent" not in encoded
     assert "digest" not in encoded
+
+
+def test_workspace_syntax_plan_context_is_identity_only() -> None:
+    request = {
+        "schemaId": "agent.semantic-protocols.asp-client-workspace-syntax-plan-context-request",
+        "schemaVersion": "1",
+        "producer": "rust",
+    }
+    schema_validator_for(
+        SCHEMAS / "asp-client-workspace-syntax-plan-context-request.v1.schema.json"
+    ).validate(request)
+    capability = json.loads(
+        (
+            ROOT
+            / "languages/asp-rust/tree-sitter/tree-sitter-rust/enhanced-query-capabilities.v1.json"
+        ).read_text(encoding="utf-8")
+    )
+    response = {
+        "schemaId": "agent.semantic-protocols.asp-client-workspace-syntax-plan-context-response",
+        "schemaVersion": "1",
+        "generationDigest": DIGEST,
+        "capability": capability,
+    }
+    schema_validator_for(
+        SCHEMAS / "asp-client-workspace-syntax-plan-context-response.v1.schema.json"
+    ).validate(response)
+    assert "querySource" not in request
+    assert "plan" not in response

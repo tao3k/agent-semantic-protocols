@@ -101,9 +101,6 @@
           "recommendedNext=A1.syntax-outline",
           "reason=owner-item-selector-ready",
           "reason=owner-item-structural-selector-ready",
-          "nextCommand=asp query playbook --language typescript --selector src/compiler/program.ts:",
-          "nextCommand=asp query playbook --language typescript --selector src/compiler/program.ts:1514:1514 --workspace . --code",
-          "nextCommand=asp query playbook --language typescript --from-hook syntax-outline",
           "actionFrontier=A1.query-code",
           "MaterializationSet"
         ],

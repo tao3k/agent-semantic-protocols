@@ -27,4 +27,13 @@ fn resolves_canonical_provider_registration_from_the_install_register() {
         .unwrap();
     assert!(rust.get("searchCapabilities").is_some());
     assert!(rust.get("queryPackDescriptor").is_some());
+    let capability = &rust["searchCapabilities"]["enhancedSyntaxQueryCapability"];
+    assert_eq!(
+        capability["schemaId"],
+        "agent.semantic-protocols.enhanced-tree-sitter-query-capability-table"
+    );
+    assert!(capability.get("$ref").is_none());
+    assert!(result.input_paths.iter().any(|path| {
+        path.ends_with("tree-sitter/tree-sitter-rust/enhanced-query-capabilities.v1.json")
+    }));
 }

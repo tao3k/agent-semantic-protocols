@@ -13,6 +13,7 @@ use super::{
     rollback_runtime_artifact_activation, runtime_artifact_activation_event_path,
     runtime_artifact_bundle_digest, runtime_artifact_candidate_digest, write_executable,
 };
+use crate::runtime_artifact_publication::PredecessorReceiptAdmission;
 
 #[tokio::test]
 async fn activation_failure_restores_active_from_healthy_without_moving_healthy() {
@@ -74,6 +75,14 @@ async fn activation_failure_restores_active_from_healthy_without_moving_healthy(
         )
         .unwrap()
     );
+    publish_runtime_artifact(&state_home, &candidate_source, &target, "dev")
+        .await
+        .expect("a retired rollback receipt must not block a new publication");
+    let republished = read_runtime_artifact_activation_event(&state_home)
+        .await
+        .unwrap()
+        .expect("new pending publication replaces the retired rollback marker");
+    assert!(republished.candidate_slot_path.exists());
 }
 
 #[tokio::test]
@@ -177,6 +186,7 @@ async fn publication_derives_previous_serving_after_acquiring_the_mutation_guard
             &[],
             None,
             None,
+            PredecessorReceiptAdmission::Strict,
             &[],
             move || async move {
                 before_guard_tx

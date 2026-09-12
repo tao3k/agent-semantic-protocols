@@ -7,9 +7,25 @@
 use std::path::Path;
 use std::path::PathBuf;
 
+#[path = "runtime_artifact_binary_replacement.rs"]
+mod binary_replacement;
+#[path = "runtime_artifact_bound_bundle_verification.rs"]
+mod bound_bundle_verification;
+#[path = "runtime_artifact_provider_replacement.rs"]
+mod provider_replacement;
 #[path = "runtime_artifact_slot_links.rs"]
 mod slot_links;
 
+pub(crate) use binary_replacement::verify_runtime_artifact_bound_bundle_for_binary_replacement;
+pub(crate) use bound_bundle_verification::{
+    BoundBundleRegistrationAdmission, VerifiedRuntimeArtifactBoundEnvelope,
+    verify_runtime_artifact_bound_bundle_envelope,
+};
+pub use bound_bundle_verification::{
+    VerifiedRuntimeArtifactBoundBundle, verify_runtime_artifact_bound_bundle,
+    verify_runtime_artifact_bound_bundle_blocking,
+};
+pub(crate) use provider_replacement::verify_runtime_artifact_bound_bundle_for_provider_replacement;
 pub(crate) use slot_links::publish_runtime_artifact_slot;
 pub(crate) use slot_links::publish_runtime_artifact_slot_under_guard;
 pub(crate) use slot_links::read_runtime_artifact_slot;
@@ -186,16 +202,6 @@ pub(super) struct RuntimeArtifactBundleManifest {
         std::collections::BTreeMap<String, crate::blake3_content_digest::Blake3ContentDigest>,
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct RuntimeArtifactBoundBundleManifest {
-    schema_id: String,
-    schema_version: u64,
-    bundle_digest: crate::blake3_content_digest::Blake3ContentDigest,
-    members: std::collections::BTreeMap<String, crate::blake3_content_digest::Blake3ContentDigest>,
-    execution_binding: RuntimeArtifactBundleBinding,
-}
-
 /// A content-proven immutable Runtime bundle.  Consumers may resolve optional
 /// capability executables only through this authority; state-home descriptors
 /// and PATH lookup are deliberately outside the model.
@@ -325,7 +331,7 @@ pub async fn runtime_artifact_candidate_bundle_digest(
     if value.get("executionBinding").is_some() {
         verify_runtime_artifact_bound_bundle(candidate)
             .await
-            .map(|bundle| bundle.bundle_digest)
+            .map(|bundle| bundle.bundle_digest().clone())
     } else {
         verify_runtime_artifact_bundle(candidate)
             .await
@@ -390,146 +396,6 @@ pub fn verify_runtime_artifact_bundle_blocking(
         root: candidate.to_path_buf(),
         bundle_digest: derived,
         members: manifest.members,
-    })
-}
-
-/// A serving-admissible Runtime bundle whose executable members and complete
-/// execution closure are proven by one immutable manifest digest.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct VerifiedRuntimeArtifactBoundBundle {
-    root: PathBuf,
-    bundle_digest: crate::blake3_content_digest::Blake3ContentDigest,
-    members: std::collections::BTreeMap<String, crate::blake3_content_digest::Blake3ContentDigest>,
-    execution_binding: RuntimeArtifactBundleBinding,
-}
-
-impl VerifiedRuntimeArtifactBoundBundle {
-    #[must_use]
-    pub fn bundle_digest(&self) -> &crate::blake3_content_digest::Blake3ContentDigest {
-        &self.bundle_digest
-    }
-
-    #[must_use]
-    pub fn execution_binding(&self) -> &RuntimeArtifactBundleBinding {
-        &self.execution_binding
-    }
-
-    #[must_use]
-    pub fn member_path(&self, member: &str) -> Option<PathBuf> {
-        self.members
-            .contains_key(member)
-            .then(|| self.root.join(member))
-    }
-
-    #[must_use]
-    pub fn member_digest(
-        &self,
-        member: &str,
-    ) -> Option<&crate::blake3_content_digest::Blake3ContentDigest> {
-        self.members.get(member)
-    }
-
-    #[must_use]
-    pub fn members(
-        &self,
-    ) -> &std::collections::BTreeMap<String, crate::blake3_content_digest::Blake3ContentDigest>
-    {
-        &self.members
-    }
-}
-
-/// Strict serving admission for the content-addressed Runtime architecture.
-/// Unbound members-only manifests are observable migration inputs, never valid
-/// serving authorities.
-pub async fn verify_runtime_artifact_bound_bundle(
-    candidate: &Path,
-) -> Result<VerifiedRuntimeArtifactBoundBundle, String> {
-    let candidate = candidate.to_path_buf();
-    tokio::task::spawn_blocking(move || verify_runtime_artifact_bound_bundle_blocking(&candidate))
-        .await
-        .map_err(|error| format!("verify Runtime artifact bound bundle task failed: {error}"))?
-}
-
-/// Blocking form for startup and installation boundaries that are not inside
-/// an async request path.
-pub fn verify_runtime_artifact_bound_bundle_blocking(
-    candidate: &Path,
-) -> Result<VerifiedRuntimeArtifactBoundBundle, String> {
-    let manifest_path = candidate.join("bundle.json");
-    let bytes = std::fs::read(&manifest_path).map_err(|error| {
-        format!(
-            "read Runtime artifact bundle manifest {}: {error}",
-            manifest_path.display()
-        )
-    })?;
-    let value: serde_json::Value = serde_json::from_slice(&bytes).map_err(|error| {
-        format!(
-            "decode Runtime artifact bundle manifest {}: {error}",
-            manifest_path.display()
-        )
-    })?;
-    if value.get("executionBinding").is_none() {
-        return Err(
-            "reasonKind=runtime-bundle-binding-missing Runtime bundle manifest has no execution binding"
-                .to_owned(),
-        );
-    }
-    let manifest: RuntimeArtifactBoundBundleManifest = serde_json::from_value(value).map_err(
-        |error| {
-            format!(
-                "reasonKind=runtime-bundle-binding-invalid decode Runtime artifact bound bundle manifest {}: {error}",
-                manifest_path.display()
-            )
-        },
-    )?;
-    if manifest.schema_id != "agent.semantic-protocols.runtime-binary-bundle"
-        || manifest.schema_version != 2
-        || manifest.members.is_empty()
-    {
-        return Err("invalid Runtime artifact bound bundle manifest authority".to_owned());
-    }
-    manifest.execution_binding.validate()?;
-    let derived =
-        runtime_artifact_bound_bundle_digest(&manifest.members, &manifest.execution_binding);
-    if derived != manifest.bundle_digest {
-        return Err(
-            "reasonKind=runtime-bundle-binding-digest-mismatch Runtime artifact bound bundle manifest digest mismatch"
-                .to_owned(),
-        );
-    }
-    manifest
-        .execution_binding
-        .validate_materialized_members(&manifest.members)?;
-    for (member, expected_digest) in &manifest.members {
-        let member_path = Path::new(member);
-        if member_path.components().count() != 1 || member == "." || member == ".." {
-            return Err(format!("invalid Runtime artifact bundle member `{member}`"));
-        }
-        let artifact = candidate.join(member);
-        let observed_digest = runtime_artifact_content_digest(&artifact)?;
-        if &observed_digest != expected_digest {
-            return Err(format!(
-                "Runtime artifact bundle member digest mismatch: member={member} expected={expected_digest} observed={observed_digest}"
-            ));
-        }
-    }
-    let closure =
-        crate::runtime_artifact_execution_closure::RuntimeArtifactExecutionClosure::from_materialized_members(
-            candidate,
-            &manifest.members,
-        )?;
-    if closure.binding()? != manifest.execution_binding {
-        return Err(
-            "reasonKind=runtime-execution-closure-binding-drift Runtime execution closure bytes do not reproduce the manifest binding"
-                .to_owned(),
-        );
-    }
-    closure.validate_against_bundle(&manifest.members)?;
-    Ok(VerifiedRuntimeArtifactBoundBundle {
-        root: candidate.to_path_buf(),
-        bundle_digest: derived,
-        members: manifest.members,
-        execution_binding: manifest.execution_binding,
     })
 }
 

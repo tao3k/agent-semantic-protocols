@@ -3,10 +3,11 @@
 // SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 use agent_semantic_search::{
-    GraphNativeBlock, ProducerNativeBlock, ProgressiveSearchPlaybookRequest,
-    SearchPlaybookClauseAxis, SearchPlaybookClauseRef, WorkspaceSearchPlanBinding,
-    WorkspaceSearchProducerAxis, WorkspaceSearchProvider, build_workspace_search_playbook_plan,
+    GraphNativeBlock, NormalizedWorkspaceSearchPlaybookRequest, SearchPlaybookClauseAxis,
+    SearchPlaybookClauseRef, WorkspaceSearchPlanBinding, WorkspaceSearchProducerAxis,
+    WorkspaceSearchProvider, build_workspace_search_playbook_plan,
 };
+use serde_json::json;
 
 fn provider(language: &str, axis: WorkspaceSearchProducerAxis) -> WorkspaceSearchProvider {
     WorkspaceSearchProvider {
@@ -15,7 +16,43 @@ fn provider(language: &str, axis: WorkspaceSearchProducerAxis) -> WorkspaceSearc
         source_extensions: vec![if language == "rust" { "rs" } else { "py" }.to_owned()],
         search_supported: true,
         producer_axes: vec![axis],
+        enhanced_query_capability: None,
     }
+}
+
+fn syntax_plan() -> agent_semantic_client_protocol::ResidentSyntaxQueryPlan {
+    let digest = format!("blake3-256:{}", "1".repeat(64));
+    serde_json::from_value(json!({
+        "schemaId": "agent.semantic-protocols.resident-syntax-query-plan",
+        "schemaVersion": "1",
+        "profileId": "asp.enhanced-tree-sitter-query.v1",
+        "planDigest": digest,
+        "queryDigest": digest,
+        "languageId": "rust",
+        "providerId": "asp-rust",
+        "parserAbiDigest": digest,
+        "queryGrammarDigest": digest,
+        "operatorTableDigest": digest,
+        "capabilityTableDigest": digest,
+        "generationDigest": digest,
+        "patterns": [{
+            "index": 0,
+            "captures": [{
+                "name": "item",
+                "residentFactPath": "selector",
+                "cardinality": {"minimum": 1, "maximum": 1},
+                "capabilityRowId": "rust.capture.item"
+            }],
+            "structure": {"kind": "true", "origin": {
+                "kind": "capture", "capabilityRowId": "rust.capture.item"
+            }},
+            "predicates": []
+        }],
+        "selectedFields": ["selector"],
+        "requiredCapabilityRows": ["rust.capture.item"],
+        "regexPrograms": []
+    }))
+    .expect("resident syntax plan fixture")
 }
 
 #[test]
@@ -36,7 +73,6 @@ fn document_producers_use_the_documents_selector() {
         )
         .is_ok()
     );
-
 }
 
 #[test]
@@ -57,8 +93,8 @@ fn document_producer_is_rejected_on_the_language_axis() {
     assert!(error.contains("wrong axis"), "{error}");
 }
 
-fn request() -> ProgressiveSearchPlaybookRequest {
-    ProgressiveSearchPlaybookRequest {
+fn request() -> NormalizedWorkspaceSearchPlaybookRequest {
+    NormalizedWorkspaceSearchPlaybookRequest {
         language: Some("rust|python".to_owned()),
         documents: None,
         workspace: None,
@@ -70,13 +106,12 @@ fn request() -> ProgressiveSearchPlaybookRequest {
         tantivy: vec![vec![
             "title:\"authority owner\"^2 OR body:impact".to_owned(),
         ]],
-        syntax: vec![ProducerNativeBlock {
-            producer: "rust".to_owned(),
-            argv: vec![
-                "--treesitter-query".to_owned(),
-                "((identifier) @id)".to_owned(),
-            ],
-        }],
+        syntax: vec![
+            agent_semantic_client_protocol::AspClientSearchPlaybookSyntaxBlock {
+                producer: "rust".to_owned(),
+                plan: syntax_plan(),
+            },
+        ],
         native_syntax: vec!["rust://src/registry.rs#item/implementation/type/Registry".to_owned()],
         graph: vec![GraphNativeBlock {
             language: "pgql".to_owned(),
@@ -155,7 +190,7 @@ fn plan_preserves_agent_authored_clause_priority_and_graph_barrier() {
 #[test]
 fn request_without_a_producer_axis_is_rejected() {
     let error = build_workspace_search_playbook_plan(
-        &ProgressiveSearchPlaybookRequest {
+        &NormalizedWorkspaceSearchPlaybookRequest {
             language: None,
             documents: None,
             workspace: None,
@@ -186,7 +221,10 @@ fn request_without_a_producer_axis_is_rejected() {
         ],
     )
     .expect_err("a producer axis is required");
-    assert!(error.contains("requires --language or --documents"), "{error}");
+    assert!(
+        error.contains("requires --language or --documents"),
+        "{error}"
+    );
 }
 
 #[test]

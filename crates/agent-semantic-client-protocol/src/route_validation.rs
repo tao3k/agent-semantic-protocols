@@ -12,12 +12,13 @@ use crate::routes::{
     AspClientExactQueryFailure, AspClientExactQueryRequest, AspClientExactQueryResponse,
     AspClientGraphsTimelineRequest, AspClientSearchPlaybookClauseAxis,
     AspClientSourceIndexLookupRequest, AspClientWorkspaceQueryPlaybookRequest,
-    AspClientWorkspaceSearchPlaybookRequest, AspClientWorkspaceSyntaxQueryRequest,
-    CLIENT_EXACT_QUERY_FAILURE, CLIENT_EXACT_QUERY_REQUEST, CLIENT_EXACT_QUERY_RESPONSE,
-    CLIENT_GRAPHS_TIMELINE_REQUEST, CLIENT_SOURCE_INDEX_LOOKUP_REQUEST,
-    CLIENT_WORKSPACE_QUERY_PLAYBOOK_REQUEST, CLIENT_WORKSPACE_SEARCH_PLAYBOOK_REQUEST,
-    CLIENT_WORKSPACE_SYNTAX_QUERY_REQUEST, EXACT_REQUEST, EXACT_RESPONSE,
-    ProviderNativeExactProjection, ProviderNativeExactRequest,
+    AspClientWorkspaceSearchPlaybookRequest, AspClientWorkspaceSyntaxPlanContextResponse,
+    AspClientWorkspaceSyntaxQueryRequest, CLIENT_EXACT_QUERY_FAILURE, CLIENT_EXACT_QUERY_REQUEST,
+    CLIENT_EXACT_QUERY_RESPONSE, CLIENT_GRAPHS_TIMELINE_REQUEST,
+    CLIENT_SOURCE_INDEX_LOOKUP_REQUEST, CLIENT_WORKSPACE_QUERY_PLAYBOOK_REQUEST,
+    CLIENT_WORKSPACE_SEARCH_PLAYBOOK_REQUEST, CLIENT_WORKSPACE_SYNTAX_PLAN_CONTEXT_REQUEST,
+    CLIENT_WORKSPACE_SYNTAX_PLAN_CONTEXT_RESPONSE, CLIENT_WORKSPACE_SYNTAX_QUERY_REQUEST,
+    EXACT_REQUEST, EXACT_RESPONSE, ProviderNativeExactProjection, ProviderNativeExactRequest,
     RUNTIME_RESIDENT_REQUEST_PLANE_RECEIPT_SCHEMA_ID, RuntimeProviderSearchRequest,
     RuntimeResidentRequestPlaneReceipt, SEARCH_REQUEST,
 };
@@ -157,12 +158,11 @@ impl AspClientWorkspaceSearchPlaybookRequest {
                 return Err("ASP workspace Search native argv must not be empty".to_owned());
             }
         }
-        if self
-            .syntax
-            .iter()
-            .flatten()
-            .any(|block| block.producer.is_empty() || block.argv.is_empty())
-        {
+        if self.syntax.iter().flatten().any(|block| {
+            block.producer.is_empty()
+                || block.plan.language_id != block.producer
+                || block.plan.validate().is_err()
+        }) {
             return Err("ASP workspace Search Syntax query block must not be empty".to_owned());
         }
         if self.native_syntax.iter().flatten().any(|selector| {
@@ -204,16 +204,11 @@ impl AspClientWorkspaceQueryPlaybookRequest {
         if selected.is_empty()
             || selected.iter().any(|producer| producer.is_empty())
             || self.selectors.is_empty()
-            || self
-                .selectors
-                .iter()
-                .any(|selector| {
-                    selector
-                        .split_once("://")
-                        .is_none_or(|(producer, rest)| {
-                            !selected.contains(producer) || !rest.contains("#item/")
-                        })
+            || self.selectors.iter().any(|selector| {
+                selector.split_once("://").is_none_or(|(producer, rest)| {
+                    !selected.contains(producer) || !rest.contains("#item/")
                 })
+            })
             || self.selectors.iter().collect::<BTreeSet<_>>().len() != self.selectors.len()
         {
             return Err(
@@ -238,16 +233,42 @@ impl AspClientWorkspaceSyntaxQueryRequest {
         if self.syntax.is_empty()
             || self.syntax.iter().any(|block| {
                 block.producer.trim().is_empty()
-                    || block.argv.is_empty()
-                    || block.argv.iter().any(|argument| argument.is_empty())
+                    || block.plan.language_id != block.producer
+                    || block.plan.validate().is_err()
             })
         {
-            return Err("workspace syntax Query requires complete native blocks".to_owned());
+            return Err("workspace syntax Query requires complete resident plans".to_owned());
         }
         if self.projection != "matches" {
             return Err("workspace syntax Query projection must be matches".to_owned());
         }
         Ok(())
+    }
+}
+
+impl crate::AspClientWorkspaceSyntaxPlanContextRequest {
+    pub fn validate_schema_identity(&self) -> Result<(), String> {
+        check(
+            &self.schema_id,
+            CLIENT_WORKSPACE_SYNTAX_PLAN_CONTEXT_REQUEST,
+            &self.schema_version,
+        )?;
+        if self.producer.trim().is_empty() {
+            return Err("workspace syntax plan context request is incomplete".to_owned());
+        }
+        Ok(())
+    }
+}
+
+impl AspClientWorkspaceSyntaxPlanContextResponse {
+    pub fn validate(&self) -> Result<(), String> {
+        check(
+            &self.schema_id,
+            CLIENT_WORKSPACE_SYNTAX_PLAN_CONTEXT_RESPONSE,
+            &self.schema_version,
+        )?;
+        validate_digest("generationDigest", &self.generation_digest, true)?;
+        self.capability.validate()
     }
 }
 

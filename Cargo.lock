@@ -262,6 +262,7 @@ dependencies = [
  "agent-semantic-provider-protocol",
  "agent-semantic-runtime",
  "agent-semantic-schema-manager",
+ "agent-semantic-search",
  "agent-semantic-shell-parser",
  "aho-corasick",
  "arc-swap",
@@ -430,14 +431,19 @@ dependencies = [
  "agent-semantic-schema-manager",
  "agent-semantic-search",
  "agent-semantic-search-projection",
+ "agent-semantic-shell-parser",
  "agent-semantic-topology",
+ "agent-semantic-tree-sitter",
  "asp-rust-project-harness-policy",
+ "base64 0.23.1",
  "blake3",
  "criterion",
  "futures-util",
+ "globset",
  "hyper-util",
  "prost",
  "regex",
+ "regex-automata",
  "serde",
  "serde_json",
  "tempfile",
@@ -465,12 +471,14 @@ dependencies = [
 name = "agent-semantic-search"
 version = "0.1.0"
 dependencies = [
+ "agent-semantic-client-protocol",
  "agent-semantic-config",
  "agent-semantic-content-identity",
  "agent-semantic-mrr",
  "agent-semantic-provider-protocol",
  "agent-semantic-search-projection",
  "agent-semantic-shell-parser",
+ "agent-semantic-tree-sitter",
  "asp-rust-project-harness-policy",
  "blake3",
  "bytes",
@@ -479,6 +487,7 @@ dependencies = [
  "memchr",
  "memmap2",
  "regex",
+ "regex-syntax",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -513,7 +522,7 @@ dependencies = [
  "globset",
  "tantivy-query-grammar",
  "toml 0.9.12+spec-1.1.0",
- "tree-sitter",
+ "tree-sitter 0.26.11",
  "tree-sitter-bash",
 ]
 
@@ -536,9 +545,18 @@ dependencies = [
 name = "agent-semantic-tree-sitter"
 version = "0.1.0"
 dependencies = [
+ "agent-semantic-client-protocol",
  "agent-semantic-provider-protocol",
  "asp-rust 0.1.2",
  "asp-rust-project-harness-policy",
+ "base64 0.23.1",
+ "blake3",
+ "regex-automata",
+ "serde_json",
+ "tree-sitter 0.20.10",
+ "tree-sitter 0.26.11",
+ "tree-sitter-query",
+ "tree-sitter-scheme",
 ]
 
 [[package]]
@@ -2623,7 +2641,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1a791e6620676a875f362f3156ed213e73ca099a09bf992c18812abe65cc37b1"
 dependencies = [
  "bstr",
- "hashbrown 0.15.5",
+ "hashbrown 0.17.1",
 ]
 
 [[package]]
@@ -6511,6 +6529,16 @@ dependencies = [
 
 [[package]]
 name = "tree-sitter"
+version = "0.20.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e747b1f9b7b931ed39a548c1fae149101497de3c1fc8d9e18c62c1a66c683d3d"
+dependencies = [
+ "cc",
+ "regex",
+]
+
+[[package]]
+name = "tree-sitter"
 version = "0.26.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "af1c71c1c4cc0920b20d6b0f6572e7682cd07a6a2faec71067a31fa394c586df"
@@ -6538,6 +6566,26 @@ name = "tree-sitter-language"
 version = "0.1.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "009994f150cc0cd50ff54917d5bc8bffe8cad10ca10d81c34da2ec421ae61782"
+
+[[package]]
+name = "tree-sitter-query"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9d4374ba146382b2c9a50290e79283b5035544912c0e1387e3ff08e6137f4cb4"
+dependencies = [
+ "cc",
+ "tree-sitter 0.20.10",
+]
+
+[[package]]
+name = "tree-sitter-scheme"
+version = "0.24.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8a7e7f156bdf38145f26705d1733185698845307d3e9d9c071ecce4375575131"
+dependencies = [
+ "cc",
+ "tree-sitter-language",
+]
 
 [[package]]
 name = "try-lock"

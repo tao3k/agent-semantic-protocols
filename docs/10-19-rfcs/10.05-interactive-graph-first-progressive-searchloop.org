@@ -240,10 +240,12 @@ evidence.
 
 *** SP-REQUEST-002 — The public request is single-layer
 
-The V1 executable request contains the required global =--language=
-scope-calibration expressions, an optional cross-workspace
-=--workspace <registered WorkspaceId>=, native =--rg=, =--tantivy=,
-=--syntax=, and =--native-syntax= inputs, and optional trailing =--graph= input.
+The V1 executable request is exactly one =(search ...)= Scheme expression. It
+contains a required =(producers ...)= declaration, an optional
+=(workspace "registered-workspace-id")= form, a leading
+=(intersect (rg ...) (tantivy ...))= acquisition form, optional trailing
+=(syntax ...)= and =(native-syntax ...)= leaves, and optional final
+=(graph ...)= leaves.
 Native rg and Tantivy jointly establish the fused file-context scope. The
 immutable generation's owner/provider bindings select native parsers, optionally
 narrowed by the calibration expressions. Explicit Syntax and native-syntax
@@ -253,58 +255,53 @@ materialization remains a Query operation.
 Every input required by the admitted layout is present with one or more native blocks.
 All Graph blocks follow every retrieval and syntax block as the final fan-in barrier.
 An absent rg or Tantivy block, an incomplete native
-block, or an invalid option is a typed request failure.  The
-top-level parser recognizes global parameters and block boundaries. For rg it
-consults the registered option-arity table only to keep a following option value
-inside the native block. It passes each block's token sequence
-unchanged to its registered native parser; it MUST NOT stringify, split,
-reparse, interpolate, or shell-evaluate those tokens.
+block, or an invalid argument is a typed request failure. The MRR-owned native
+Scheme reader admits the structure without evaluating it. For rg it projects
+the leaf's string arguments and consults the registered option-arity table.
+String-native leaves retain their exact token sequence. A Syntax leaf instead
+carries one enhanced Tree-sitter Query source string. Its standard
+pattern/capture grammar is preserved, while only namespaced =#asp-*= general
+predicates and directives receive ASP semantics.
 
 The PreTool Hook applies this same boundary parser before execution. A complete
-request passes once without a Hook message. An incomplete or conflicting request
-returns one typed =search-playbook-pretool-calibration= terminal with producer
-fields, layout id and shape, input occurrences, exact rg argv boundaries,
-missing/conflicting fields, and token locations. The Hook does not return a
-Guide or require a repair round trip.
+request passes once without a Hook message. An incomplete or conflicting
+request returns one typed =search-playbook-pretool-calibration= terminal
+with the expression-argument count, source digest, Scheme-reader/Tree-sitter
+Query ABI/extension-table provenance, fixed normalized layout, and typed issue. It neither echoes the
+source nor returns a Guide or requires a repair round trip.
 
 *** SP-GRAMMAR-003 — Native grammar and shell separation
 
 =rg= receives native argv tokens including its paths and globs. After Host shell
-tokenization ASP passes the complete rg argv unchanged to the admitted native rg
-executable. The boundary parser consults native rg option arity for unambiguous
-segmentation, and the PreTool and Runtime admission paths parse the retained argv
+tokenization ASP passes the complete =(rg ...)= string sequence unchanged to
+the admitted native rg adapter. The leaf parser consults native rg option
+arity, and the PreTool and Runtime admission paths parse the retained argv
 against the same registered native grammar. Neither path normalizes or rewrites
 an admitted token. After native rg =--=, the first positional token is retained as
-the pattern when no explicit pattern source exists. A literal search root whose
-spelling equals a PlayBook boundary uses an explicit relative spelling such as
-=./--graph=. Tantivy receives its native
+the pattern when no explicit pattern source exists. Tantivy receives its native
 query tokens and is parsed during PreTool calibration and execution admission.
 V1 requires a multi-leaf, explicitly Boolean, fielded expression with at least
 one phrase, boost, range, set, exists, or regex predicate; a bare word or plain
-sentence is structurally incomplete. Syntax receives its registered producer's native query
-tokens, native-syntax receives a canonical selector, and Graph receives a
+sentence is structurally incomplete. Syntax receives its registered producer
+plus one enhanced Tree-sitter Query string, native-syntax receives a canonical selector, and Graph receives a
 registry-admitted persistent property-graph query language such as =pgql= or
 =sql-pgq= followed by native language tokens.  No wrapper grammar replaces any
 of these registered grammars.
 
-*** SP-PIPE-003A — Pipe is the first-class reasoning composition operator
+*** SP-PIPE-003A — Scheme forms own reasoning composition
 
-A quoted =|= is a first-class composition boundary throughout the request.
-=--language 'rust|python|org|md'= forms a registered producer
-set unions. Within rg, Tantivy, Syntax, and Graph blocks, =|= retains
-the meaning assigned by that native parser.  The shared Search contract does
-not reinterpret the native expression, but it records an ordered
-=pipeComposition= receipt containing each branch digest, producer binding,
-budget, evidence ids, and marginal verified gain.
+=chain= and =intersect= are first-class composition boundaries. Producer sets
+are explicit symbol lists inside =(language ...)= and =(documents ...)=. A =|=
+inside an rg, Tantivy, or Graph string retains only the meaning assigned
+by that native parser. Syntax Boolean structure retains ordinary Tree-sitter
+Query semantics, with additional predicates defined by the Gerbil-owned
+=#asp-*= extension table. The shared Search contract does not reinterpret native
+expressions; it records each branch digest, producer binding, budget, evidence
+ids, and marginal verified gain.
 
-The schema-owned contract teaches the Agent to use pipe alternatives for
-complementary facets such as surface evidence, mechanism, authority/invariant,
-and impact. Within one option occurrence those alternatives occupy the same
-priority band. Repeating =--rg=, =--tantivy=, =--syntax=, or
-=--native-syntax= creates a later,
-lower-priority input band. No synthetic
-=--priority= number is admitted: left-to-right option occurrence is the
-Agent-authored priority order.
+Repeated leaves remain distinct, source-ordered layout inputs. No synthetic
+=priority= field is admitted: composition structure and leaf order are the
+Agent-authored priority evidence that the admitted layout preserves.
 
 Top-K is produced only after clause provenance has been retained and Graph
 fan-in has related and filtered the acquired candidates.  A standalone
@@ -407,11 +404,12 @@ insufficient.
 
 *** SP-SYNTAX-007A — Syntax Search and Query share one native contract
 
-=--syntax <registered-producer> <native syntax query tokens...>= is the public
-provider-query Search block.  It is not Tree-sitter-specific: language and document
-producers register their own native grammar identity and parser receipt.
-=--treesitter-query '<s-expression>'= is one possible native token sequence
-inside such a block.
+=(syntax <registered-producer> "<enhanced Tree-sitter Query>")= is the public
+provider-query Search block. Tree-sitter Query remains the base grammar; the
+Gerbil-owned extension table defines only namespaced =#asp-*= forms. Language
+and document producers register concrete native fact vocabularies, publication
+states, parser identities, and receipts. Tree-sitter parsing is not an
+automatic request-time fallback path.
 
 =--native-syntax <canonical-exact-selector>= is not that query block.  It
 admits one already-known parser-owned selector from the current generation as
@@ -425,8 +423,8 @@ without launching a provider.  A Syntax block in first position has the whole
 selected workspace as its owner domain.  Axis-internal =|= alternatives remain
 one composed clause and do not erase this inter-clause priority.
 
-Every admitted Search syntax block maps without semantic rewriting to one
-registered provider parser request. Its result maps back to the same
+Every admitted Search syntax block maps without semantic weakening to one
+registered provider fact query. Its result maps back to the same
 structural selector and parser node. Query Playbook later accepts that public
 selector directly, without a Search handle or embedded command. Search syntax
 acquisition and exact Query materialization are independent operations over one
@@ -442,11 +440,13 @@ coordinates.  ASP extends that envelope with =grammarId=, =grammarVersion=,
 MUST NOT label a Tree-sitter, Org, Markdown, or compiler query expression as an
 LSP-standard grammar.
 
-The provider-owned language/document schema is the sole authority for native
-syntax granularity.  It defines admitted node kinds, fields, captures, query
-grammar, projections, and parser capability for that producer.  ASP Server
-admits the schema and binds its id/digest to the active generation; Search
-Playbook dispatches the untouched syntax tokens through that admitted contract.
+Tree-sitter Query is the base pattern/capture grammar. The MRR Gerbil table is
+the sole authority for =#asp-*= operators, operand domains, projections,
+lowering, and recovery codes. The provider-owned language/document
+capability table is the sole authority for native syntax granularity, concrete
+node kinds, fields, relations, projection availability, and parser capability.
+ASP Server admits both and binds their id/digest to the active generation;
+Search Playbook dispatches the typed query through that admitted contract.
 The shared envelope MUST NOT copy language-specific node or field enums.
 Neither the Agent nor CLI supplies the syntax-contract digest: the Server
 resolves it from the producer registry and returns =syntaxContractId= and
@@ -498,7 +498,7 @@ ordered clause receipts remain unchanged.
 *** SP-GRAPH-010 — Persistent graph query and logical reasoning are co-cores
 
 =--graph gql <native GQL tokens...>= selects the generation-bound snapshot graph
-adapter used by V1 Search Playbook.  The query is parsed by the pinned gql-rust
+adapter used by V1 Search Playbook.  The query is parsed by the pinned MRR GQL
 frontend and executed against the immutable Runtime graph; it is not emulated by
 lexical token extraction.  PGQL and SQL/PGQ remain registry-declared persistent
 query languages for the admitted low-volatility Workspace graph.  High-volatility
@@ -539,7 +539,7 @@ nor a derived relation is an exact selector: exact materialization must return
 to a grounded, generation-current provider/parser selector.
 
 The current contract defines this transition boundary and its proof
-obligations; it does not claim that future gql-rust Meta Reasoning, Relation
+obligations; it does not claim that future MRR Meta Reasoning, Relation
 Reasoning, PGQL/SQL-PGQ lowering, or Ascent execution is implemented.
 
 *** SP-PROJECTION-011 — Token-bounded evidence preserves reasoning utility
@@ -669,7 +669,7 @@ graph-aware ranking and emits the first thirty candidates. The compiled Search
 Layout, rather than CLI option spelling or a flat union, determines which
 stages share an input scope and which consume a predecessor's scope.
 
-=--graph= is this fan-in reasoning stage; it is not a fifth keyword-acquisition
+=(graph ...)= is this fan-in reasoning stage; it is not a fifth keyword-acquisition
 axis and it does not query an unrelated graph.  The Agent uses
 the candidate evidence returned by an earlier broad round, or relationships it
 already knows in the first round, to express a GQL/PGQL relation query.  The
@@ -697,9 +697,9 @@ semantics.
 A native pipe inside one clause, such as =runtime|client|host=, combines
 same-priority alternatives using that producer's native grammar.  ASP MUST NOT
 reinterpret or rewrite native rg, Tantivy, or Graph expressions merely to
-recover branch weights.  When the Agent needs different priority, it writes
-separate repeated clauses in the required order.  Pipes in =--language= and
-=--language= expresses a producer-set union, not a hidden global weight.
+recover branch weights. When the Agent needs different priority, it writes
+separate repeated leaves in the required order. Producer symbol lists express
+a registry-bound producer set, not a hidden global weight.
 
 The request projection records each parsed acquisition clause as a typed
 =(axis, block-index)= reference in occurrence order.  This derived ordering is
@@ -713,7 +713,7 @@ any Graph references form the final suffix. A receipt whose stage order is not
 a path through the admitted compiled layout is rejected as false execution
 history.
 
-=--graph= is an ordered barrier after structural-scope selection. V1 rejects new
+=(graph ...)= is an ordered barrier after structural-scope selection. V1 rejects new
 retrieval input after the first Graph input: graph reasoning is the final
 progressive filtering phase, not an independent vote or an early keyword
 source. Multiple Graph blocks are evaluated in written order as progressively
@@ -740,10 +740,10 @@ which selector to inspect or which independent search axes to recombine.
 
 
 Search and exact query are two root operations on one public =ClientFrame=
-data plane.  =asp search playbook= may calibrate provider scope through
-=--language=; =asp query playbook= consumes a producer-bound exact selector and
-declares native Syntax blocks.  Language-first Search/Query adapters are not a
-second public route.
+data plane.  =asp search playbook= declares provider scope inside the
+=(producers ...)= form of its sole Scheme expression; =asp query playbook=
+consumes producer-bound exact selectors through its normalized flag request.
+Language-first Search/Query adapters are not a second public route.
 
 Every successful or terminal frame carries the same workspace identity,
 provider identity, generation identity, source-snapshot identity, request
@@ -788,6 +788,33 @@ waits.  Detached generation latency is measured on its own lifecycle
 receipt and can never be added to, hidden behind, or excluded from a successful
 Search/Query request after the fact.
 
+A complete Search result is a generation-owned immutable materialization, not
+foreground request work.  Its stable V1 key is
+=BLAKE3("agent.semantic-protocols.workspace-search-materialization.v1\\0" ||
+generationDigest || "\\0" || RFC8785-JCS(normalizedSearchRequest))=, rendered
+as =blake3-256:<lowercase-hex>=.  The normalized request includes the stable V1
+schema identity and ordered clause plan but excludes the =ClientFrame=
+=requestId=.  On a missing key, one caller atomically publishes =Building= and
+submits one detached materialization; all concurrent callers observe the same
+=Building= state and return =query-not-ready=.  A terminal materialization is
+either one bounded =Ready= value or one typed =Failed= value stored inside the
+exact =RuntimeQueryGeneration=.  A later generation owns a distinct map and
+cannot reuse either terminal.  Warm request handling computes the key, reads
+that map, and clones the bounded resident value; it MUST NOT rebuild the Search
+plan or execute any Search clause.
+
+Query Playbook uses the same lifecycle shape with domain
+=agent.semantic-protocols.workspace-query-materialization.v1= and the RFC 8785
+canonical normalized Query request.  The key binds the exact generation,
+ordered selector set, and projection while excluding envelope =requestId=.
+Detached materialization performs all selector reads, content hashing, Runtime
+binding validation, and receipt admission.  The admitted resident template
+uses the materialization key as its internal decision identity.  A warm frame
+may clone that bounded template and replace only its top-level =requestId= with
+the current frame identity; selectors, projection, bytes, digests, binding, and
+terminal are immutable.  A miss or coalesced =Building= state returns typed
+=query-not-ready= under the same request-plane gate.
+
 This is the semantic request-plane gate, ending when the dispatcher returns the
 fully constructed typed result or terminal.  ClientFrame envelope encoding,
 transport queue residence, kernel delivery, and peer consumption are separate
@@ -798,12 +825,15 @@ serialization and terminal egress independently.  Those observations may fail
 a transport SLO, but they are not permitted to hide inside
 =runtime-resident-request-plane-receipt= or weaken its strict dispatch gate.
 
-Replay is identity-bound: replaying the same request against the same
+Replay is identity-bound: replaying the same semantic request against the same
 workspace, provider, generation, source snapshot, selector, and schema
-references is deterministic; a changed request nonce or any changed identity
-must produce a new request and cannot reuse the prior terminal. Search and
-query terminals therefore preserve the original request identity and expose
-the server-owned error reason and next action without silent retry.
+references is deterministic.  A changed semantic identity cannot reuse the
+prior result.  A changed request nonce creates a new frame and attributable
+request-plane receipt, but does not invalidate an otherwise identical
+generation-bound Search materialization; the server never replays the prior
+frame envelope as the new terminal. Search and query terminals therefore
+preserve the current request identity and expose the server-owned error reason
+and next action without silent retry.
 
 * Global invariants
 
@@ -1298,6 +1328,27 @@ access, child processes, Tokio task creation, or Tantivy builds.  On the
 below 1ms.  A compiled-pattern or result cache may improve repeated reads, but
 a cache miss may not escape the same request-plane gate or become a second
 publication authority.
+The stable V1 resident adapter admits an rg pattern only when it can derive an
+exact case-sensitive byte-coverage key before evaluation.  Fixed literals and
+alternations of literal symbol terms use the generation's immutable trigram
+postings and verify matches against the same resident owner bytes.  An option,
+pattern file, case-folded pattern, or general regular expression whose complete
+semantics are not represented by that resident plan fails typed as
+=resident-rg-*-not-materialized=; it MUST NOT fall back to a temporary tree,
+spawn =rg=, or scan every corpus owner.  Output-shaping argv remains evidence,
+not permission to recreate native process execution on the request plane.
+For a resident regex with no sound mandatory trigram, an independently complete,
+budget-admitted Tantivy owner scope may bound exact verification of the fused
+intersection. A truncated Tantivy top-k is not such an authority: the
+Tantivy-first adapter MUST return =query-not-ready= before GREP intersection
+if that candidate scope was truncated. Empty verification within an incomplete
+scope MUST NOT establish absence. Restoring admission for broad queries requires
+filter-before-limit retrieval or bounded pagination, not dropping this guard.
+V1 delta-posting validation uses constant auxiliary decoder state; declared
+posting counts are bounded by encoded byte length and owner cardinality before
+allocation. The GREP conjunction retains the smallest posting and intersects
+later postings in place while decoding their required prefixes. This does not
+imply constant-time membership or a measured wall-clock speedup.
 Owner-byte acquisition uses a bounded set of blocking shards derived from the
 Host's available parallelism.  Canonically adjacent paths are distributed
 round-robin rather than in contiguous chunks, because directory ordering
@@ -1432,7 +1483,7 @@ shard artifact), =deltaAccelerator= (prior accelerator plus a declared owner
 change set), and =firstTantivyOpen=.  The first reports immutable corpus reuse,
 zero process launches, content-generation identity validation, bounded
 fixed-string scan work, and native-syntax verification.  It MUST NOT be named
-or reported as ripgrep execution.  Native =--rg= Playbook clauses preserve rg
+or reported as ripgrep execution. Native =(rg ...)= Playbook leaves preserve rg
 argv semantics through the registered resident adapter and produce explicit
 zero-process byte-evidence counters; they are not passthrough subprocesses.  The
 accelerator phases report reused/rebuilt/retired shard counts, Tantivy
@@ -1443,9 +1494,9 @@ qualify the cold path.
 The Rust resident graph is the base relation authority, but it is not part of
 the content-generation publication quorum.  It is independently derived from
 the same admitted provider facts and attaches only through the exact content
-generation identity.  Cold byte/native-syntax search remains available while
-that graph transaction is absent or building.  A present =--graph=
-block selects a registry-admitted graph-language compiler and requires an exact
+generation identity. Cold byte/native-syntax search remains available while
+that graph transaction is absent or building. A present =(graph ...)= leaf
+selects a registry-admitted graph-language compiler and requires an exact
 Project/Workspace/Generation/root-bound resident graph attachment.  The
 compiler MUST lower every admitted block to an executable relation plan; the
 request evaluator applies endpoint kinds, relation kind, direction, projection,
@@ -1579,10 +1630,11 @@ from an omitted clause to a workspace-wide provider call.
 Language providers retain an internal execution data plane for their declared
 extensions and parser-owned facts, but it is not a public Search/Query CLI
 namespace. The only public leaves are =asp search playbook= and
-=asp query playbook=. Both require at least one producer axis: programming
-languages use =--language '<producer|...>'= and document formats such as Org
-and Markdown use =--documents '<producer|...>'=. Both axes may appear in one
-cross-domain request.
+=asp query playbook=. Search requires at least one producer axis inside its
+single Scheme expression: programming languages use =(language ...)= and
+document formats such as Org and Markdown use =(documents ...)=. Both axes may
+appear in one cross-domain Search request. Query retains its normalized
+=--language=/=--documents= producer fields alongside exact selectors.
 =asp <language> search|query= fails
 closed and is never retained as an alias. Language/document calibration may
 narrow the registered fact-producer set; it does not select files, establish
@@ -1649,13 +1701,7 @@ The agent-facing namespace has one Search Playbook route and one exact
 materialization route:
 
 #+begin_src shell
-asp search playbook --language '<producer|...>' \
-  [--workspace <registered WorkspaceId>] \
-  --rg <native rg argv including paths/globs...> \
-  --tantivy <native Tantivy query...> \
-  [--syntax <registered-producer> <native syntax query tokens...>] \
-  [--native-syntax <canonical-exact-selector>] \
-  [--graph <gql|pgql> <native graph query...>]
+asp search playbook '<one (search ...) Scheme expression>'
 
 asp query playbook --language '<producer|...>' \
   --selector <exact-selector> \
@@ -1664,21 +1710,20 @@ asp query playbook --language '<producer|...>' \
 
 #+end_src
 
-Each =playbook= operation requires one =--language= producer expression. Its
-quoted =|=-expression denotes registry-bound set union; an unquoted shell pipe
-remains invalid. Programming and document language kinds select registered
-producers inside the shared Search/Query namespaces, never command namespaces
-and never separate entrypoints. A language-specific native
-syntax block may repeat; no cross-language wrapper grammar is invented around
-its native expression. Direct syntax query uses the native syntax-block contract.
-Exact selector materialization must agree with =--language= even though the
+Search requires one Scheme expression with at least one =language= or
+=documents= producer axis. Producer atoms are registry-bound symbols inside the
+shared Search namespace, never command namespaces and never separate
+entrypoints. A language-specific =syntax= leaf may repeat; its second value is
+one quoted enhanced Tree-sitter Query source string, not a second
+=(where ...)= DSL.
+Exact selector materialization must agree with Query's =--language= even though the
 selector also binds provider and parser identity; it bypasses lexical, graph,
 and ripgrep planning when current.
 
 By default the Host injects the current =ProjectId= and =WorkspaceId= and
 Runtime binds the active source generation.  The Server generates =roundId=
 and =contextDigest= for the receipt.  None is accepted as an ordinary
-CLI argument.  =--workspace= exists only for an explicit registered
+CLI argument.  =(workspace "...")= exists only for an explicit registered
 cross-workspace target. The CLI adapter resolves it through the Runtime-owned
 workspace-admission catalog before opening the target-bound Client session;
 Runtime then validates the request identity against that session binding before

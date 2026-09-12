@@ -99,7 +99,7 @@ fn load_catalog_rejects_malformed_query_source() {
         error.contains("failed to compile syntax query catalog"),
         "{error}"
     );
-    assert!(error.contains("unclosed query pattern"), "{error}");
+    assert!(error.contains("syntactically invalid"), "{error}");
 
     let _ = fs::remove_dir_all(dir);
 }

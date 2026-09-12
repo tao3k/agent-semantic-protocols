@@ -2,12 +2,9 @@
 //
 // SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
-//! PreTool fill-form calibration for the public Search Playbook command.
+//! PreTool structural and native admission for the public Search Playbook command.
 
-use agent_semantic_shell_parser::{
-    CommandStage, SearchPlaybookBlockKind, SearchPlaybookGlobalKind,
-    parse_search_playbook_boundaries,
-};
+use agent_semantic_shell_parser::CommandStage;
 use serde_json::{Value, json};
 
 pub fn evaluate(payload_json: &str, host_matcher: &str) -> Result<Option<Value>, String> {
@@ -33,159 +30,50 @@ pub fn evaluate(payload_json: &str, host_matcher: &str) -> Result<Option<Value>,
         let Some(args) = search_playbook_args(stage) else {
             continue;
         };
-        let parsed = parse_search_playbook_boundaries(args);
-        if parsed.is_valid() {
+        let Err(error) = agent_semantic_search::parse_progressive_search_playbook_args(args) else {
             continue;
+        };
+        let source = args.get(2).map(String::as_str);
+        let grammar = source
+            .and_then(|source| agent_semantic_search::admit_search_playbook_source(source).ok())
+            .map(|receipt| {
+                json!({
+                    "grammarId": receipt.grammar_id,
+                    "grammarVersion": receipt.grammar_version,
+                    "grammarRepository": receipt.grammar_repository,
+                    "byteLength": receipt.byte_len,
+                    "rootKind": receipt.root_kind,
+                    "topLevelFormCount": receipt.top_level_form_count,
+                    "topLevelFormHeads": receipt.top_level_form_heads,
+                })
+            });
+        let mut issue = json!({
+            "reasonKind": error.reason_kind(),
+            "field": "expression",
+            "message": error.to_string(),
+        });
+        if source.is_some() {
+            issue["sourceTokenIndex"] = json!(2);
         }
-        let producers = parsed
-            .globals
-            .iter()
-            .filter(|global| global.kind == SearchPlaybookGlobalKind::Language)
-            .map(|global| {
-                json!({
-                    "field": global.kind.field_name(),
-                    "value": global.value,
-                    "optionTokenIndex": global.option_token_index,
-                    "valueTokenIndex": global.value_token_index,
-                })
-            })
-            .collect::<Vec<_>>();
-        let input_occurrences = parsed
-            .blocks
-            .iter()
-            .map(input_occurrence)
-            .collect::<Vec<_>>();
-        let rg_argv_boundaries = parsed
-            .blocks
-            .iter()
-            .filter(|block| block.kind == SearchPlaybookBlockKind::Rg)
-            .map(input_occurrence)
-            .collect::<Vec<_>>();
-        let rg_analyses = parsed
-            .blocks
-            .iter()
-            .filter(|block| block.kind == SearchPlaybookBlockKind::Rg)
-            .zip(parsed.rg_analyses.iter())
-            .map(|(block, analysis)| {
-                json!({
-                    "blockIndex": block.block_index,
-                    "admitted": analysis.is_admitted(),
-                    "exactArgv": analysis.argv,
-                    "outputAttribution": analysis.output_attribution.as_str(),
-                    "options": analysis.options.iter().map(|option| {
-                        let mut value = json!({
-                            "option": option.option,
-                            "optionTokenIndex": option.option_token_index,
-                        });
-                        if let Some(value_token_index) = option.value_token_index {
-                            value["valueTokenIndex"] = json!(value_token_index);
-                        }
-                        if let Some(option_value) = option.value.as_ref() {
-                            value["value"] = json!(option_value);
-                        }
-                        value
-                    }).collect::<Vec<_>>(),
-                    "patterns": analysis.patterns.iter().map(|pattern| {
-                        let mut value = json!({"value": pattern.value});
-                        if let Some(token_index) = pattern.token_index {
-                            value["tokenIndex"] = json!(token_index);
-                        }
-                        value
-                    }).collect::<Vec<_>>(),
-                    "searchRoots": analysis.search_roots.iter().map(|root| {
-                        let mut value = json!({"value": root.value});
-                        if let Some(token_index) = root.token_index {
-                            value["tokenIndex"] = json!(token_index);
-                        }
-                        value
-                    }).collect::<Vec<_>>(),
-                    "diagnostics": analysis.diagnostics.iter().map(|diagnostic| {
-                        let mut value = json!({
-                            "reasonKind": diagnostic.kind.reason_kind(),
-                            "message": diagnostic.message,
-                        });
-                        if let Some(token_index) = diagnostic.argv_token_index {
-                            value["argvTokenIndex"] = json!(token_index);
-                        }
-                        value
-                    }).collect::<Vec<_>>(),
-                })
-            })
-            .collect::<Vec<_>>();
-        let issues = parsed
-            .issues
-            .iter()
-            .map(|issue| {
-                let mut value = json!({
-                    "reasonKind": issue.kind.reason_kind(),
-                    "field": issue.field,
-                    "message": issue.message,
-                });
-                if let Some(token_index) = issue.token_index {
-                    value["tokenIndex"] = json!(token_index);
-                }
-                value
-            })
-            .collect::<Vec<_>>();
-        let tantivy_analyses = parsed
-            .blocks
-            .iter()
-            .filter(|block| block.kind == SearchPlaybookBlockKind::Tantivy)
-            .zip(parsed.tantivy_analyses.iter())
-            .map(|(block, analysis)| {
-                json!({
-                    "blockIndex": block.block_index,
-                    "expression": analysis.expression,
-                    "admitted": analysis.is_admitted(),
-                    "fields": analysis.fields,
-                    "metrics": {
-                        "leafCount": analysis.metrics.leaf_count,
-                        "fieldedLeafCount": analysis.metrics.fielded_leaf_count,
-                        "explicitBooleanCount": analysis.metrics.explicit_boolean_count,
-                        "phraseCount": analysis.metrics.phrase_count,
-                        "boostCount": analysis.metrics.boost_count,
-                        "rangeCount": analysis.metrics.range_count,
-                        "setCount": analysis.metrics.set_count,
-                        "existsCount": analysis.metrics.exists_count,
-                        "regexCount": analysis.metrics.regex_count,
-                        "maxDepth": analysis.metrics.max_depth,
-                    },
-                    "syntaxDiagnostics": analysis.syntax_diagnostics.iter().map(|diagnostic| {
-                        let mut value = json!({"message": diagnostic.message});
-                        if let Some(char_offset) = diagnostic.char_offset {
-                            value["charOffset"] = json!(char_offset);
-                        }
-                        value
-                    }).collect::<Vec<_>>(),
-                    "unsupportedFields": analysis.unsupported_fields,
-                    "missingFeatures": analysis.missing_features,
-                })
-            })
-            .collect::<Vec<_>>();
         let calibration = json!({
             "schemaId": "agent.semantic-protocols.search-playbook-pretool-calibration",
-            "schemaVersion": "1",
+            "schemaVersion": "2",
             "state": "rejected",
             "reasonKind": "search-playbook-pretool-calibration",
-            "tokenIndexBasis": "search-playbook-argv",
+            "argumentModel": "one-scheme-expression",
+            "sourceDigest": source.map(source_digest),
+            "expressionArgCount": args.len().saturating_sub(2),
+            "grammar": grammar,
             "layout": {
                 "layoutId": "rg-tantivy-structural-scope",
-                "shape": "intersect(rg,tantivy)->structural-scope-facts->graph?",
-                "requiredInputSets": [["rg", "tantivy"]],
+                "shape": "chain(intersect(rg,tantivy),syntax*,native-syntax*,graph*)",
                 "graphBarrierAfter": "structural-scope-facts",
             },
-            "producers": producers,
-            "inputOccurrences": input_occurrences,
-            "rgArgvBoundaries": rg_argv_boundaries,
-            "rgAnalyses": rg_analyses,
-            "tantivyAnalyses": tantivy_analyses,
-            "missingFields": parsed.missing_fields,
-            "conflictingFields": parsed.conflicting_fields,
-            "issues": issues,
+            "issues": [issue],
         });
         let encoded = serde_json::to_string(&calibration)
             .map_err(|error| format!("encode Search calibration: {error}"))?;
-        let summary = "ASP Search Playbook was rejected before execution; additionalContext contains the complete typed fill-form calibration.";
+        let summary = "ASP Search Playbook was rejected before execution; additionalContext contains the typed Scheme-source calibration.";
         return Ok(Some(json!({
             "hookSpecificOutput": {
                 "hookEventName": "PreToolUse",
@@ -211,13 +99,6 @@ fn search_playbook_args(stage: &CommandStage) -> Option<&[String]> {
     })
 }
 
-fn input_occurrence(block: &agent_semantic_shell_parser::SearchPlaybookNativeBlock) -> Value {
-    json!({
-        "field": block.kind.field_name(),
-        "blockIndex": block.block_index,
-        "optionTokenIndex": block.option_token_index,
-        "argvStartTokenIndex": block.argv_start_token_index,
-        "argvEndTokenIndexExclusive": block.argv_end_token_index_exclusive,
-        "argv": block.argv,
-    })
+fn source_digest(source: &str) -> String {
+    format!("blake3-256:{}", blake3::hash(source.as_bytes()).to_hex())
 }

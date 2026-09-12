@@ -93,12 +93,12 @@ ruleComposition = [
   { pointer = "/dispatch/agent", equals = "asp_explorer" },
 ]
 positiveCommands = [
-  "asp search playbook --language rust --rg --files -g crates/agent-semantic-hook/src/lib.rs --tantivy 'title:[* TO *] OR body:[* TO *]'",
-  "env TRACE=1 asp search playbook --language rust --rg HookDecision",
-  "asp search playbook --language typescript --rg Effect",
-  "asp search playbook --language python --rg --files -g packages/python/project.py --tantivy 'title:[* TO *] OR body:[* TO *]'",
-  "asp search playbook --language julia --rg runtime",
-  "asp search playbook --language gerbil-scheme --rg --files -g src/main.ss --tantivy 'title:[* TO *] OR body:[* TO *]'",
+  "asp search playbook '(search (producers (language rust)) (intersect (rg \"--files\" \"-g\" \"crates/agent-semantic-hook/src/lib.rs\") (tantivy \"title:[* TO *] OR body:[* TO *]\")))'",
+  "env TRACE=1 asp search playbook '(search (producers (language rust)) (intersect (rg \"HookDecision\" \".\") (tantivy \"title:HookDecision^2 OR body:policy\")))'",
+  "asp search playbook '(search (producers (language typescript)) (intersect (rg \"Effect\" \".\") (tantivy \"title:Effect^2 OR body:effect\")))'",
+  "asp search playbook '(search (producers (language python)) (intersect (rg \"--files\" \"-g\" \"packages/python/project.py\") (tantivy \"title:[* TO *] OR body:[* TO *]\")))'",
+  "asp search playbook '(search (producers (language julia)) (intersect (rg \"runtime\" \".\") (tantivy \"title:runtime^2 OR body:runtime\")))'",
+  "asp search playbook '(search (producers (language gerbil-scheme)) (intersect (rg \"--files\" \"-g\" \"src/main.ss\") (tantivy \"title:[* TO *] OR body:[* TO *]\")))'",
 ]
 negativeCommands = [
   "asp healthcheck",
@@ -120,8 +120,8 @@ positiveCommands = [
 ]
 negativeCommands = [
   "asp healthcheck",
-  "asp search playbook --language rust --rg HookDecision",
-  "asp search playbook --language python --rg policy",
+  "asp search playbook '(search (producers (language rust)) (intersect (rg \"HookDecision\" \".\") (tantivy \"title:HookDecision^2 OR body:policy\")))'",
+  "asp search playbook '(search (producers (language python)) (intersect (rg \"policy\" \".\") (tantivy \"title:policy^2 OR body:policy\")))'",
 ]
 
 [[rules]]
@@ -265,7 +265,7 @@ ruleComposition = [
   { pointer = "/matcherPolicies", contains = "wrapped_command" },
   { pointer = "/match/commandContainsAny", contains = "--json" },
 ]
-positiveCommands = ["asp search playbook --language rust --rg Effect --json", "asp search playbook --language typescript --rg Effect --json"]
+positiveCommands = ["asp search playbook '(search (producers (language rust)) (intersect (rg \"Effect\" \".\") (tantivy \"title:Effect^2 OR body:effect\")))' --json", "asp search playbook '(search (producers (language typescript)) (intersect (rg \"Effect\" \".\") (tantivy \"title:Effect^2 OR body:effect\")))' --json"]
 negativeCommands = ["asp healthcheck --json", "asp paths --json"]
 
 [[rules]]

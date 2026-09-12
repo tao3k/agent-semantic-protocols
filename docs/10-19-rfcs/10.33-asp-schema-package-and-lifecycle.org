@@ -179,6 +179,21 @@ the bundle receipt and membership digest in the same operation, and make
 render the Rust-produced receipt, but they do not implement a second Schema
 Manager or choose an alternate root closure.
 
+* Language policy packet and presentation ownership
+
+Language providers own parsing, language-specific policy evaluation, rule
+identity, source locations, evidence, and repair metadata.  They publish those
+facts as =semantic-language-policy-report.v1= JSON.  A provider MUST NOT define
+its own text, Org, terminal, or agent-line rendering contract, and a consumer
+MUST NOT infer policy semantics by parsing provider output strings.
+
+Unified ASP owns presentation after validating the shared packet.  Presentation
+is an internal consumer concern, not a public policy-rendering subcommand or a
+language-provider API.  Provider-specific report identities and legacy line
+protocols fail closed; they are not compatibility inputs.  Package-local
+=gxtest= integration may write the shared JSON packet when a policy gate fails,
+but it remains a data producer rather than a presentation owner.
+
 * CLI
 
 #+begin_src sh

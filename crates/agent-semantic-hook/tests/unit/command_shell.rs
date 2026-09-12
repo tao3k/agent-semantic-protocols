@@ -70,17 +70,16 @@ fn bash_ast_tokens_preserve_absolute_shell_and_nested_command_modes() {
 
 #[test]
 fn bash_ast_tokens_keep_playbook_stage_and_following_pipeline_words() {
+    let expression = "(search (producers (language rust)) (intersect (rg \"workspace\" \".\") (tantivy \"title:workspace^2 OR body:identity\")))";
     assert_eq!(
-        semantic_shell_tokens(
-            "asp search playbook --language rust --rg workspace | rg HookDecision src/lib.rs"
-        ),
+        semantic_shell_tokens(&format!(
+            "asp search playbook '{expression}' | rg HookDecision src/lib.rs"
+        )),
         vec![
             "asp",
             "search",
             "playbook",
-            "--language",
-            "rust",
-            "workspace",
+            expression,
             "|",
             "rg",
             "HookDecision",
@@ -147,20 +146,10 @@ fn bash_ast_tokens_surface_nested_command_stages() {
 
 #[test]
 fn bash_ast_tokens_keep_quoted_search_playbook_stage() {
+    let expression = "(search (producers (language typescript)) (intersect (rg \"Effect concurrency Fiber\" \".\") (tantivy \"title:Effect^2 OR body:Fiber\")))";
     assert_eq!(
-        semantic_shell_tokens(
-            "asp search playbook --language typescript --rg 'Effect concurrency Fiber'",
-        ),
-        vec![
-            "asp",
-            "search",
-            "playbook",
-            "--language",
-            "typescript",
-            "Effect concurrency Fiber",
-            "--workspace",
-            ".",
-        ]
+        semantic_shell_tokens(&format!("asp search playbook '{expression}'")),
+        vec!["asp", "search", "playbook", expression]
     );
 }
 

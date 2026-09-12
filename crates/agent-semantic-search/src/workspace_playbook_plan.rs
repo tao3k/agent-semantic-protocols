@@ -17,6 +17,8 @@ pub struct WorkspaceSearchProvider {
     pub source_extensions: Vec<String>,
     pub search_supported: bool,
     pub producer_axes: Vec<WorkspaceSearchProducerAxis>,
+    pub enhanced_query_capability:
+        Option<agent_semantic_client_protocol::EnhancedQueryCapabilityTable>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -39,7 +41,23 @@ pub struct WorkspaceSearchPlaybookRoute {
 pub struct WorkspaceSearchProgressivePlan {
     pub rg: Vec<Vec<String>>,
     pub tantivy: Vec<Vec<String>>,
-    pub syntax: Vec<crate::ProducerNativeBlock>,
+    pub syntax: Vec<agent_semantic_client_protocol::AspClientSearchPlaybookSyntaxBlock>,
+    pub native_syntax: Vec<String>,
+    pub graph: Vec<crate::GraphNativeBlock>,
+    pub clause_order: Vec<crate::SearchPlaybookClauseRef>,
+}
+
+/// Plan-only normalized request after enhanced Query compilation/admission.
+/// Public Scheme source belongs to the Client-side source plane and cannot be
+/// stored in this scheduler input.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct NormalizedWorkspaceSearchPlaybookRequest {
+    pub language: Option<String>,
+    pub documents: Option<String>,
+    pub workspace: Option<String>,
+    pub rg: Vec<Vec<String>>,
+    pub tantivy: Vec<Vec<String>>,
+    pub syntax: Vec<agent_semantic_client_protocol::AspClientSearchPlaybookSyntaxBlock>,
     pub native_syntax: Vec<String>,
     pub graph: Vec<crate::GraphNativeBlock>,
     pub clause_order: Vec<crate::SearchPlaybookClauseRef>,
@@ -59,11 +77,11 @@ pub struct WorkspaceSearchPlaybookPlan {
 }
 
 pub fn build_workspace_search_playbook_plan(
-    request: &crate::ProgressiveSearchPlaybookRequest,
+    request: &NormalizedWorkspaceSearchPlaybookRequest,
     binding: WorkspaceSearchPlanBinding,
     providers: impl IntoIterator<Item = WorkspaceSearchProvider>,
 ) -> Result<WorkspaceSearchPlaybookPlan, String> {
-    let crate::ProgressiveSearchPlaybookRequest {
+    let NormalizedWorkspaceSearchPlaybookRequest {
         language,
         documents,
         workspace,

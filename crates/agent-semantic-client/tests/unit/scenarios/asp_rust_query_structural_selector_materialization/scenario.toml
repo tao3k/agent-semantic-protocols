@@ -8,7 +8,7 @@ policy_ids = ["RUST-AGENT-ASP-SEARCH-FRAME-EXACT-SELECTOR-MATERIALIZATION-001"]
 agent_goal = "When the main agent has a parser-owned Rust structural selector, code projection should either return that exact item code or return a typed selector miss. Impl blocks are materializable owner items; missing names and kind mismatches are not empty payloads."
 reference_repositories = ["tao3k/agent-semantic-protocols"]
 reference_patterns = [
-  "asp query playbook --language rust --selector rust://src/lib.rs#item/impl/<Type> --workspace . --code",
+  "asp query playbook --language rust --selector rust://src/lib.rs#item/impl/<Type> --projection source",
   "state=not-found reason=item-not-found",
   "state=kind-mismatch reason=item-kind-mismatch actualKinds=<kinds>",
   "providerProcessCount=0",

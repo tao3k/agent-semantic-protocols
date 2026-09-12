@@ -25,17 +25,7 @@ pub(crate) async fn run_workspace_search_playbook(args: &[String]) -> Result<(),
     } = request;
     let rg = (!rg.is_empty()).then_some(rg);
     let tantivy = (!tantivy.is_empty()).then_some(tantivy);
-    let syntax = (!syntax.is_empty()).then(|| {
-        syntax
-            .into_iter()
-            .map(
-                |block| agent_semantic_client_protocol::AspClientSearchPlaybookSyntaxBlock {
-                    producer: block.producer,
-                    argv: block.argv,
-                },
-            )
-            .collect()
-    });
+    let syntax_sources = syntax;
     let native_syntax = (!native_syntax.is_empty()).then_some(native_syntax);
     let graph = (!graph.is_empty()).then(|| {
         graph
@@ -86,6 +76,7 @@ pub(crate) async fn run_workspace_search_playbook(args: &[String]) -> Result<(),
     #[cfg(not(unix))]
     let client = crate::AspClient::new(state_home, &project_root);
     let client = client.admit_runtime_workspace("Search Playbook").await?;
+    let syntax = compile_resident_syntax_blocks(&client, syntax_sources).await?;
     let frame = client
         .dispatch_playbook_method(
             agent_semantic_client_protocol::WORKSPACE_SEARCH_PLAYBOOK_METHOD.to_owned(),
@@ -115,6 +106,71 @@ pub(crate) async fn run_workspace_search_playbook(args: &[String]) -> Result<(),
         crate::projection_presentation::render_workspace_search_playbook_gql(&frame)?
     );
     Ok(())
+}
+
+async fn compile_resident_syntax_blocks(
+    client: &crate::AspClient,
+    blocks: Vec<agent_semantic_search::ProducerNativeBlock>,
+) -> Result<Option<Vec<agent_semantic_client_protocol::AspClientSearchPlaybookSyntaxBlock>>, String>
+{
+    if blocks.is_empty() {
+        return Ok(None);
+    }
+    let mut compiled = Vec::with_capacity(blocks.len());
+    for block in blocks {
+        let [query_source] = block.argv.as_slice() else {
+            return Err("syntax requires exactly one enhanced Tree-sitter Query string".to_owned());
+        };
+        let frame = client
+            .dispatch_method(
+                agent_semantic_client_protocol::WORKSPACE_SYNTAX_PLAN_CONTEXT_METHOD.to_owned(),
+                serde_json::to_value(
+                    agent_semantic_client_protocol::AspClientWorkspaceSyntaxPlanContextRequest {
+                        schema_id:
+                            "agent.semantic-protocols.asp-client-workspace-syntax-plan-context-request"
+                                .to_owned(),
+                        schema_version: "1".to_owned(),
+                        producer: block.producer.clone(),
+                    },
+                )
+                .map_err(|error| format!("encode syntax plan context request: {error}"))?,
+            )
+            .await?;
+        let agent_semantic_client_protocol::ClientFrame::Response {
+            outcome: agent_semantic_client_protocol::ClientOutcome::Ready,
+            result: Some(result),
+            error: None,
+            ..
+        } = frame
+        else {
+            return Err(format!(
+                "Runtime rejected enhanced syntax plan context read: {frame:?}"
+            ));
+        };
+        let response: agent_semantic_client_protocol::AspClientWorkspaceSyntaxPlanContextResponse =
+            serde_json::from_value(result)
+                .map_err(|error| format!("decode syntax plan context response: {error}"))?;
+        response.validate()?;
+        if response.schema_id
+            != "agent.semantic-protocols.asp-client-workspace-syntax-plan-context-response"
+            || response.schema_version != "1"
+            || response.capability.language_id != block.producer
+        {
+            return Err("Runtime syntax plan context response identity mismatch".to_owned());
+        }
+        let plan = agent_semantic_tree_sitter::compile_resident_syntax_plan(
+            query_source,
+            &response.generation_digest,
+            &response.capability,
+        )?;
+        compiled.push(
+            agent_semantic_client_protocol::AspClientSearchPlaybookSyntaxBlock {
+                producer: block.producer,
+                plan,
+            },
+        );
+    }
+    Ok(Some(compiled))
 }
 
 pub(crate) async fn run_workspace_query(args: &[String]) -> Result<(), String> {

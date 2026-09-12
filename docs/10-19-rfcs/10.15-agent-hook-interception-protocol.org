@@ -133,7 +133,7 @@ replacement Search/Query itself. Canonical source-search guidance names only
 the public root operations:
 
 #+begin_src text
-asp search playbook --language <language-set> --rg <native-rg-argv...> --tantivy <native-query...>
+asp search playbook '<one (search ...) Scheme expression>'
 asp query playbook --language <producer|...> --selector <exact-selector> --projection <source|callable-skeleton>
 #+end_src
 

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://agent-semantic-protocols.dev/schemas/asp-client-workspace-search-playbook-request.v1.schema.json",
   "title": "ASP Client Workspace Search Playbook Request V1",
-  "description": "The sole public Search request. Code producers are selected through --language and document producers through --documents; producer-first command namespaces are not part of this contract.",
+  "description": "The normalized northbound Search request produced from one admitted Scheme composition expression. Code and document producer axes are projected into language and documents; Scheme source and POO implementation objects do not cross this boundary.",
   "type": "object",
   "additionalProperties": false,
   "required": ["schemaId", "schemaVersion", "clauseOrder"],
@@ -15,10 +15,10 @@
     "workspace": {"description": "Explicit registered cross-workspace identity. Filesystem paths are not workspace identities.", "$ref": "#/$defs/registeredName"},
     "rg": {"$ref": "#/$defs/nativeBlocks"},
     "tantivy": {"$ref": "#/$defs/nativeBlocks"},
-    "syntax": {"description": "Registered structural queries whose admitted matches establish selector scope inside the fused rg/Tantivy file context.", "type": "array", "minItems": 1, "items": {"$ref": "#/$defs/producerNativeBlock"}},
+    "syntax": {"description": "Compiled resident structural query plans whose admitted matches establish selector scope inside the fused rg/Tantivy file context. Tree-sitter Query source does not cross this normalized boundary.", "type": "array", "minItems": 1, "items": {"$ref": "#/$defs/residentSyntaxBlock"}},
     "nativeSyntax": {"description": "Exact selector queries whose singleton matches establish structural scope inside the fused rg/Tantivy file context.", "type": "array", "minItems": 1, "items": {"$ref": "#/$defs/exactSelector"}},
     "graph": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/graphNativeBlock"}},
-    "clauseOrder": {"description": "Exact CLI occurrence order of registered layout inputs. This preserves repeated-block identity but does not create execution edges; the admitted Search Layout owns shared-scope and serial composition.", "type": "array", "minItems": 1, "items": {"$ref": "#/$defs/clauseRef"}}
+    "clauseOrder": {"description": "Exact source order of leaves in the admitted V1 composition. This preserves repeated-leaf identity but does not independently create execution edges; the admitted Search Layout owns shared-scope and serial composition.", "type": "array", "minItems": 1, "items": {"$ref": "#/$defs/clauseRef"}}
   },
   "allOf": [
     {"anyOf": [{"required": ["language"]}, {"required": ["documents"]}]},
@@ -30,7 +30,7 @@
     "producerExpression": {"description": "One or more registered producers from the axis named by the enclosing field.", "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._+-]*(\\|[A-Za-z0-9][A-Za-z0-9._+-]*)*$"},
     "nativeArgv": {"type": "array", "minItems": 1, "items": {"type": "string"}},
     "nativeBlocks": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/nativeArgv"}},
-    "producerNativeBlock": {"type": "object", "additionalProperties": false, "required": ["producer", "argv"], "properties": {"producer": {"$ref": "#/$defs/registeredName"}, "argv": {"$ref": "#/$defs/nativeArgv"}}},
+    "residentSyntaxBlock": {"type": "object", "additionalProperties": false, "required": ["producer", "plan"], "properties": {"producer": {"$ref": "#/$defs/registeredName"}, "plan": {"$ref": "resident-syntax-query-plan.v1.schema.json"}}},
     "graphNativeBlock": {"type": "object", "additionalProperties": false, "required": ["language", "argv"], "properties": {"language": {"enum": ["gql", "pgql"]}, "argv": {"$ref": "#/$defs/nativeArgv"}}},
     "clauseRef": {"type": "object", "additionalProperties": false, "required": ["axis", "blockIndex"], "properties": {"axis": {"enum": ["rg", "tantivy", "syntax", "native-syntax", "graph"]}, "blockIndex": {"type": "integer", "minimum": 0}}}
   }

@@ -11,7 +11,7 @@ agent_goal = "Keep every agent-semantic-search unit and integration surface repr
 reference_repositories = ["tao3k/agent-semantic-protocols"]
 monitored_surfaces = ["runtime_search_receipt"]
 reference_patterns = [
-  "cold_rg_corpus",
+  "resident_grep_corpus",
   "command_diagnostics",
   "dynamic_owner_items",
   "dynamic_overlay",
@@ -36,11 +36,14 @@ reference_patterns = [
   "playbook_receipt",
   "playbook_pipeline_performance",
   "progressive_playbook",
+  "scheme_playbook_source",
   "progressive_query",
   "provider_candidate_annotations",
   "resident_source_index",
   "resident_byte_coverage",
+  "resident_byte_coverage_format",
   "resident_graph_search",
+  "resident_grep_candidate_plan",
   "merkle_search_generation",
   "scope_topology_candidates",
   "search_candidate",

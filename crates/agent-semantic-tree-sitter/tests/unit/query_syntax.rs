@@ -25,7 +25,7 @@ fn compiles_function_name_query_to_abi_plan() {
 }
 
 #[test]
-fn compiles_alternation_predicates_and_comments_without_grammar() {
+fn compiles_alternation_predicates_and_comments_through_official_grammar() {
     let plan = compile_query_abi_source(
         r#"
         ; ASP syntax ABI declaration frontier
@@ -130,12 +130,12 @@ fn rejects_unbalanced_query_source() {
     let error = compile_query_abi_source("(function_item name: (identifier) @function.name")
         .expect_err("unbalanced query should fail");
 
-    assert_eq!(error.message, "unclosed query pattern");
+    assert!(error.message.contains("syntactically invalid"));
 }
 
 #[test]
 fn rejects_empty_capture_name() {
     let error = compile_query_abi_source("(identifier) @").expect_err("empty capture should fail");
 
-    assert_eq!(error.message, "empty capture name");
+    assert!(error.message.contains("syntactically invalid"));
 }

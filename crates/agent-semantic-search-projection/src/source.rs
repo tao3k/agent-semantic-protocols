@@ -39,11 +39,7 @@ impl ResidentGraphEvaluationRequestV1 {
                 "languageId must be a lowercase hyphenated identifier".to_owned(),
             ));
         }
-        require_allowed_string(
-            object,
-            "surface",
-            &["search-playbook", "query"],
-        )?;
+        require_allowed_string(object, "surface", &["search-playbook", "query"])?;
         require_bounded_unique_string_array(object, "queryTerms", 32, 256)?;
         require_allowed_string(object, "profile", &["balanced", "structural", "dependency"])?;
         require_bounded_unique_string_array(object, "entryNodeIds", 128, 1024)?;

@@ -7,7 +7,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
-use std::sync::{Arc, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use agent_semantic_client_db::runtime_resident_read::RuntimeResidentReadClient;
 
@@ -35,6 +35,26 @@ pub struct RuntimeQueryGeneration {
         >,
     pub(super) build_resource_receipt:
         std::sync::OnceLock<RuntimeSearchGenerationBuildResourceReceipt>,
+    pub(super) search_materializations: Mutex<
+        std::collections::HashMap<String, RuntimeSearchMaterializationState>,
+    >,
+    pub(super) query_materializations: Mutex<
+        std::collections::HashMap<String, RuntimeQueryMaterializationState>,
+    >,
+}
+
+#[derive(Clone)]
+pub(crate) enum RuntimeSearchMaterializationState {
+    Building,
+    Ready(Arc<serde_json::Value>),
+    Failed(Arc<agent_semantic_client_server::AspClientDispatchError>),
+}
+
+#[derive(Clone)]
+pub(crate) enum RuntimeQueryMaterializationState {
+    Building,
+    Ready(Arc<serde_json::Value>),
+    Failed(Arc<agent_semantic_client_server::AspClientDispatchError>),
 }
 
 impl RuntimeQueryGeneration {
@@ -56,6 +76,8 @@ impl RuntimeQueryGeneration {
             execution_publication: None,
             project_topology_attachment: OnceLock::new(),
             build_resource_receipt: std::sync::OnceLock::new(),
+            search_materializations: Mutex::new(std::collections::HashMap::new()),
+            query_materializations: Mutex::new(std::collections::HashMap::new()),
         })
     }
 
@@ -74,7 +96,106 @@ impl RuntimeQueryGeneration {
             execution_publication: None,
             project_topology_attachment: OnceLock::new(),
             build_resource_receipt: std::sync::OnceLock::new(),
+            search_materializations: Mutex::new(std::collections::HashMap::new()),
+            query_materializations: Mutex::new(std::collections::HashMap::new()),
         })
+    }
+
+    pub(crate) fn search_materialization(
+        &self,
+        key: &str,
+    ) -> Result<Option<RuntimeSearchMaterializationState>, String> {
+        Ok(self
+            .search_materializations
+            .lock()
+            .map_err(|_| "Runtime Search materialization cache poisoned".to_owned())?
+            .get(key)
+            .cloned())
+    }
+
+    /// Atomically claim one generation-bound Search materialization.
+    #[must_use]
+    pub(crate) fn begin_search_materialization(&self, key: String) -> Result<bool, String> {
+        let mut materializations = self
+            .search_materializations
+            .lock()
+            .map_err(|_| "Runtime Search materialization cache poisoned".to_owned())?;
+        if materializations.contains_key(&key) {
+            return Ok(false);
+        }
+        materializations.insert(key, RuntimeSearchMaterializationState::Building);
+        Ok(true)
+    }
+
+    pub(crate) fn publish_search_materialization(
+        &self,
+        key: String,
+        result: Result<serde_json::Value, agent_semantic_client_server::AspClientDispatchError>,
+    ) -> Result<(), String> {
+        let mut materializations = self
+            .search_materializations
+            .lock()
+            .map_err(|_| "Runtime Search materialization cache poisoned".to_owned())?;
+        if !matches!(
+            materializations.get(&key),
+            Some(RuntimeSearchMaterializationState::Building)
+        ) {
+            return Err("Runtime Search materialization lost its Building claim".to_owned());
+        }
+        let terminal = match result {
+            Ok(value) => RuntimeSearchMaterializationState::Ready(Arc::new(value)),
+            Err(error) => RuntimeSearchMaterializationState::Failed(Arc::new(error)),
+        };
+        materializations.insert(key, terminal);
+        Ok(())
+    }
+
+    pub(crate) fn query_materialization(
+        &self,
+        key: &str,
+    ) -> Result<Option<RuntimeQueryMaterializationState>, String> {
+        Ok(self
+            .query_materializations
+            .lock()
+            .map_err(|_| "Runtime Query materialization cache poisoned".to_owned())?
+            .get(key)
+            .cloned())
+    }
+
+    /// Atomically claim one generation-bound Query materialization.
+    pub(crate) fn begin_query_materialization(&self, key: String) -> Result<bool, String> {
+        let mut materializations = self
+            .query_materializations
+            .lock()
+            .map_err(|_| "Runtime Query materialization cache poisoned".to_owned())?;
+        if materializations.contains_key(&key) {
+            return Ok(false);
+        }
+        materializations.insert(key, RuntimeQueryMaterializationState::Building);
+        Ok(true)
+    }
+
+    pub(crate) fn publish_query_materialization(
+        &self,
+        key: String,
+        result: Result<serde_json::Value, agent_semantic_client_server::AspClientDispatchError>,
+    ) -> Result<(), String> {
+        let mut materializations = self
+            .query_materializations
+            .lock()
+            .map_err(|_| "Runtime Query materialization cache poisoned".to_owned())?;
+        if !matches!(
+            materializations.get(&key),
+            Some(RuntimeQueryMaterializationState::Building)
+        ) {
+            return Err("Runtime Query materialization lost its Building claim".to_owned());
+        }
+        let terminal = match result {
+            Ok(value) => RuntimeQueryMaterializationState::Ready(Arc::new(value)),
+            Err(error) => RuntimeQueryMaterializationState::Failed(Arc::new(error)),
+        };
+        materializations.insert(key, terminal);
+        Ok(())
     }
 
     pub fn from_resident_with_execution_publication(

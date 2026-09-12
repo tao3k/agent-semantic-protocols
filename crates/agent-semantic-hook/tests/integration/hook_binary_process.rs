@@ -399,7 +399,7 @@ fn default_hook_process_applies_state_home_config_overlay_without_policy_bundle_
     )
     .expect("create State Home Hook config root");
     let source = agent_semantic_config::default_hook_client_config_template().replace(
-        "Agent-facing search JSON is denied; use the compact ASP search route.",
+        "The current Agent cannot run this registered-source Search playbook.",
         "State Home overlay policy is active.",
     );
     std::fs::write(&config_path, source).expect("write State Home Hook config");
@@ -416,7 +416,7 @@ fn default_hook_process_applies_state_home_config_overlay_without_policy_bundle_
         child.stdin.as_mut().expect("Hook stdin"),
         &serde_json::json!({
             "tool_name": "Bash",
-            "tool_input": {"command": "asp search playbook --language rust --rg HookDecision --json"}
+            "tool_input": {"command": "asp search playbook '(search (producers (language rust)) (intersect (rg \"HookDecision\" \".\") (tantivy \"title:HookDecision^2 OR body:policy\")))'"}
         }),
     )
     .expect("write Host payload");

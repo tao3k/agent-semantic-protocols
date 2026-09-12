@@ -2,10 +2,10 @@
 //
 // SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
-//! Generation-bound cold-rg and Tantivy accelerator admission.
+//! Generation-bound resident GREP and Tantivy accelerator admission.
 //!
-//! This module owns identity/equivalence validation. Both the cold
-//! rg-compatible matcher and Tantivy read immutable resident products; file
+//! This module owns identity/equivalence validation. Both the resident GREP
+//! matcher and Tantivy read immutable resident products; file
 //! discovery, child-process execution, repository admission, and native syntax
 //! are already complete before either route is admitted.
 
@@ -21,14 +21,14 @@ pub const LEXICAL_ACCELERATOR_RECEIPT_SCHEMA_ID: &str =
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum LexicalRecallRoute {
-    ColdRg,
+    ResidentGrep,
     Tantivy,
 }
 
 /// Select the lexical executor from immutable published authority only.
 ///
 /// A complete content generation is immediately searchable through its
-/// resident cold corpus. Tantivy becomes eligible only when its independently
+/// resident GREP corpus. Tantivy becomes eligible only when its independently
 /// published receipt is bound to the exact content-generation digest. This
 /// function performs no file discovery, process launch, or index build.
 pub fn plan_lexical_recall_route(
@@ -37,7 +37,7 @@ pub fn plan_lexical_recall_route(
 ) -> Result<LexicalRecallRoute, String> {
     content.validate()?;
     let Some(accelerator) = accelerator else {
-        return Ok(LexicalRecallRoute::ColdRg);
+        return Ok(LexicalRecallRoute::ResidentGrep);
     };
     accelerator.validate()?;
     if &accelerator.identity != content.identity()
@@ -52,7 +52,9 @@ pub fn plan_lexical_recall_route(
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct LexicalRouteEquivalenceCase {
     pub normalized_query_digest: String,
-    pub cold_rg_candidate_set_digest: String,
+    // V1 wire compatibility: only the Rust implementation namespace changes.
+    #[serde(rename = "coldRgCandidateSetDigest")]
+    pub resident_grep_candidate_set_digest: String,
     pub tantivy_candidate_set_digest: String,
 }
 
@@ -133,14 +135,14 @@ fn validate_equivalence_cases(cases: &[LexicalRouteEquivalenceCase]) -> Result<(
         validate_digest("normalizedQueryDigest", &case.normalized_query_digest)?;
         validate_digest(
             "coldRgCandidateSetDigest",
-            &case.cold_rg_candidate_set_digest,
+            &case.resident_grep_candidate_set_digest,
         )?;
         validate_digest(
             "tantivyCandidateSetDigest",
             &case.tantivy_candidate_set_digest,
         )?;
-        if case.cold_rg_candidate_set_digest != case.tantivy_candidate_set_digest {
-            return Err("cold rg and Tantivy candidate sets are not equivalent".to_owned());
+        if case.resident_grep_candidate_set_digest != case.tantivy_candidate_set_digest {
+            return Err("resident GREP and Tantivy candidate sets are not equivalent".to_owned());
         }
     }
     Ok(())

@@ -29,6 +29,9 @@
       "asp-client-workspace-query-playbook-request.v1.schema.json",
       "asp-client-workspace-syntax-query-request.v1.schema.json",
       "asp-client-workspace-syntax-query-response.v1.schema.json",
+      "asp-client-workspace-syntax-plan-context-request.v1.schema.json",
+      "asp-client-workspace-syntax-plan-context-response.v1.schema.json",
+      "resident-syntax-query-plan.v1.schema.json",
       "search-topology-settlement.v1.schema.json",
       "runtime-search-execution-budget.v1.schema.json",
       "runtime-resident-request-plane-receipt.v1.schema.json",
@@ -84,6 +87,9 @@
       "semantic-tree-sitter-provenance.v1.schema.json",
       "semantic-tree-sitter-query.v1.schema.json",
       "semantic-tree-sitter-grammar-profile.v1.schema.json",
+      "enhanced-tree-sitter-query-operator-table.v1.schema.json",
+      "enhanced-tree-sitter-query-capability-table.v1.schema.json",
+      "resident-syntax-query-plan.v1.schema.json",
       "semantic-relation-plan.v1.schema.json",
       "semantic-flow-lite.v1.schema.json",
       "semantic-codeql-evidence.v1.schema.json",
@@ -209,6 +215,7 @@
         "semantic-owner-item-evidence.v1.schema.json",
         "semantic-extension-pattern-mapping.v1.schema.json",
         "semantic-language-evidence.v1.schema.json",
+        "semantic-language-policy-report.v1.schema.json",
         "semantic-runtime-source-acquisition.v1.schema.json",
         "semantic-type-proof.v1.schema.json"
       ],
@@ -292,7 +299,8 @@
       "definitionVisibility": "family",
       "namespace": {
         "filenamePrefixes": [
-          "semantic-policy-"
+          "semantic-policy-",
+          "semantic-language-policy-"
         ]
       }
     },
@@ -568,9 +576,14 @@
           "schemas/asp-client-workspace-search-playbook-request.v1.schema.json",
           "schemas/asp-client-workspace-syntax-query-request.v1.schema.json",
           "schemas/asp-client-workspace-syntax-query-response.v1.schema.json",
+          "schemas/asp-client-workspace-syntax-plan-context-request.v1.schema.json",
+          "schemas/asp-client-workspace-syntax-plan-context-response.v1.schema.json",
           "schemas/search-topology-settlement.v1.schema.json",
           "schemas/runtime-search-execution-budget.v1.schema.json",
-          "schemas/runtime-resident-request-plane-receipt.v1.schema.json"
+          "schemas/runtime-resident-request-plane-receipt.v1.schema.json",
+          "schemas/enhanced-tree-sitter-query-operator-table.v1.schema.json",
+          "schemas/enhanced-tree-sitter-query-capability-table.v1.schema.json",
+          "schemas/resident-syntax-query-plan.v1.schema.json"
         ]
       }
     },
@@ -862,12 +875,11 @@
     },
     {
       "fingerprint": "sha256:c22956b8502199745da256f13a5747fe11075368a61e8f7fff5950512adaed06",
-      "occurrenceSetDigest": "sha256:5f831420dec56dc99250c5c693789d877e6f97fa7b5ab89a130927bd313d2200",
+      "occurrenceSetDigest": "sha256:1ee1603a661680b10d8677b14aeb3a22f8317d5b4d5243406d77714684058603",
       "familyIds": [
         "asp.schema-family.rust-project-harness",
         "asp.schema-family.semantic",
-        "asp.schema-family.semantic-ast-patch",
-        "asp.schema-family.semantic-search"
+        "asp.schema-family.semantic-ast-patch"
       ],
       "decision": "defer",
       "reviewState": "accepted",
@@ -1007,18 +1019,6 @@
       "rationale": "Assurance fields will reference semantic fields after public ownership is established."
     },
     {
-      "fingerprint": "sha256:f44b93d3e1a66d00bef14c09cc2f27d0efb8e552b12da07d92cd11994e8c3eb2",
-      "occurrenceSetDigest": "sha256:4efd316ddd677c115f41e7fa5efc5affd219cc86d27616998cd9957f3803ac37",
-      "familyIds": [
-        "asp.schema-family.semantic-graph-turbo",
-        "asp.schema-family.semantic-search"
-      ],
-      "decision": "defer",
-      "reviewState": "accepted",
-      "owner": "asp.schema-family.semantic-search",
-      "rationale": "Delegation receipts need a shared search definition before graph-turbo references it."
-    },
-    {
       "fingerprint": "sha256:1733d812bb1b355644fb1907ba739cbfa6446038604ae4fe16614eb3421abbfd",
       "occurrenceSetDigest": "sha256:e6e8f94e9650c529c0f21d3af2715c4bd2645525da6aece9bf1879f7282411e8",
       "familyIds": [
@@ -1102,30 +1102,6 @@
       "reviewState": "accepted",
       "owner": "asp.schema-family.schema-manager",
       "rationale": "Provider process failures and semantic failures have different lifecycle semantics."
-    },
-    {
-      "fingerprint": "sha256:11465fde644bba159bfc73175a389bab91c90a46416296274ce387cdfccd9477",
-      "occurrenceSetDigest": "sha256:2adb2f0211ee7cea88ad11e82a20557545c4c9b9fd8d5332c65c19f7d6ee974c",
-      "familyIds": [
-        "asp.schema-family.semantic-graph",
-        "asp.schema-family.semantic-search"
-      ],
-      "decision": "defer",
-      "reviewState": "accepted",
-      "owner": "asp.schema-family.semantic-graph",
-      "rationale": "Search graph node kinds need a public semantic-graph definition."
-    },
-    {
-      "fingerprint": "sha256:e5c6d1791bd4981e88a37880d1b8d111f966294cd130fe5e6b541dd2344239f2",
-      "occurrenceSetDigest": "sha256:5e4c67dd434f94b5f5f37c3536120aabea0626cede00cc2c906f48bf95090b88",
-      "familyIds": [
-        "asp.schema-family.semantic",
-        "asp.schema-family.semantic-agent"
-      ],
-      "decision": "intentional-duplication",
-      "reviewState": "accepted",
-      "owner": "asp.schema-family.schema-manager",
-      "rationale": "Semantic failure envelopes and agent document notes are independently owned concepts."
     },
     {
       "fingerprint": "sha256:cdc2dcd81e732654fa694ca6c35927e035f59839a13122496ad8fd2c53646119",
@@ -1212,6 +1188,30 @@
       "reviewState": "accepted",
       "owner": "asp.schema-family.semantic-topology",
       "rationale": "Runtime topology attachment should consume a public semantic-topology terminal when both receipt versions advance together."
+    },
+    {
+      "fingerprint": "sha256:c465d5f469ab9c381adf69dc3d3face89a56567a48f4a5fef5fede3a505cd9dc",
+      "occurrenceSetDigest": "sha256:48be1536c39609814566ecf7738534774c3939fdf59f785b08bd17ff74680d23",
+      "familyIds": [
+        "asp.schema-family.asp-client",
+        "asp.schema-family.exact"
+      ],
+      "decision": "extract-family-definition",
+      "reviewState": "accepted",
+      "owner": "asp.schema-family.exact",
+      "rationale": "Enhanced Query selected scopes and exact projections share one typed scope-list contract that should be referenced from the exact family when the response contract next advances."
+    },
+    {
+      "fingerprint": "sha256:b8337080f84bfb99894ba5d37d84e679ea0f6b9a1d407abe1134298fe755bfaa",
+      "occurrenceSetDigest": "sha256:f60bd9fcc62a79543e213098b06210db119ff0110d44dcce20e7adb2ba5d72b0",
+      "familyIds": [
+        "asp.schema-family.asp-client",
+        "asp.schema-family.exact"
+      ],
+      "decision": "extract-family-definition",
+      "reviewState": "accepted",
+      "owner": "asp.schema-family.exact",
+      "rationale": "Enhanced Query selected scope objects and exact projections use the same typed scope semantics and should converge on the exact-family public definition."
     }
   ]
 }

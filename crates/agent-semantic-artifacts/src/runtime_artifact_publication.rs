@@ -4,6 +4,11 @@
 
 //! Millisecond immutable bundle publication and launcher switching.
 
+#[path = "runtime_artifact_provider_publication.rs"]
+mod provider_publication;
+
+pub use provider_publication::publish_runtime_artifact_bound_provider_member_from_active;
+
 use std::path::Path;
 use std::path::PathBuf;
 use std::time::SystemTime;
@@ -25,6 +30,7 @@ use crate::runtime_artifact_activation::restore_runtime_artifact_symlink;
 use crate::runtime_artifact_activation::runtime_artifact_activation_event_path;
 use crate::runtime_artifact_activation::stage_pending_runtime_artifact_activation;
 use crate::runtime_artifact_activation::validate_current_activation_receipts_content;
+use crate::runtime_artifact_activation::validate_current_activation_receipts_for_preverified_predecessor;
 use crate::runtime_artifact_publication_support::{
     discard_prepared_runtime_artifact_bundle_members, publish_runtime_bundle_member_launcher,
     repair_empty_artifact_selector_under_guard, validate_runtime_bundle_launcher,
@@ -91,6 +97,13 @@ pub struct RuntimeArtifactPublicationPhaseTrace {
     pub client_launcher_switch_micros: u128,
 }
 
+#[derive(Clone, Copy)]
+enum PredecessorReceiptAdmission<'a> {
+    Strict,
+    PreverifiedProviderReplacement(&'a Blake3ContentDigest),
+    PreverifiedBinaryReplacement(&'a Blake3ContentDigest),
+}
+
 pub async fn publish_runtime_artifact(
     state_home: &Path,
     source: &Path,
@@ -105,6 +118,7 @@ pub async fn publish_runtime_artifact(
         &[],
         None,
         None,
+        PredecessorReceiptAdmission::Strict,
         &[],
         || async {},
     )
@@ -147,6 +161,7 @@ pub async fn publish_runtime_artifact_bundle_members(
         member_sources,
         None,
         None,
+        PredecessorReceiptAdmission::Strict,
         &stable_launchers,
         || async {},
     )
@@ -237,6 +252,7 @@ pub async fn publish_runtime_artifact_bundle_successor_from_active(
         &successor_members,
         None,
         Some(&active_bundle),
+        PredecessorReceiptAdmission::Strict,
         &stable_launchers,
         || async {},
     )
@@ -263,6 +279,36 @@ pub async fn publish_runtime_artifact_bound_bundle_members(
         member_sources,
         Some(execution_binding),
         None,
+        PredecessorReceiptAdmission::Strict,
+        &stable_launchers,
+        || async {},
+    )
+    .await
+}
+
+/// Publish an atomic protocol/Provider successor from an installation-only
+/// preverified predecessor. Strict serving admission still applies to the
+/// complete successor before the active selector moves.
+pub async fn publish_runtime_artifact_bound_bundle_members_for_binary_replacement(
+    state_home: &Path,
+    source: &Path,
+    target: &Path,
+    artifact_mode: &str,
+    member_sources: &[RuntimeArtifactBundleMemberSource<'_>],
+    execution_binding: &RuntimeArtifactBundleBinding,
+    predecessor_bundle: &Path,
+    predecessor_bundle_digest: &Blake3ContentDigest,
+) -> Result<RuntimeArtifactPublicationReceipt, String> {
+    let stable_launchers = client_bundle_stable_launchers(member_sources);
+    publish_runtime_artifact_with_before_guard(
+        state_home,
+        source,
+        target,
+        artifact_mode,
+        member_sources,
+        Some(execution_binding),
+        Some(predecessor_bundle),
+        PredecessorReceiptAdmission::PreverifiedBinaryReplacement(predecessor_bundle_digest),
         &stable_launchers,
         || async {},
     )
@@ -337,124 +383,11 @@ pub async fn publish_runtime_artifact_bundle_member_from_active(
         &member_sources,
         None,
         Some(&active_bundle),
+        PredecessorReceiptAdmission::Strict,
         &[member_name],
         || async {},
     )
     .await
-}
-
-/// Replace one Provider executable in a serving-admissible bound Runtime
-/// bundle. The provider registry and artifact-set documents are regenerated in
-/// the same candidate transaction; policy, ABI, and schema entries are carried
-/// forward from the verified predecessor closure.
-pub async fn publish_runtime_artifact_bound_provider_member_from_active(
-    state_home: &Path,
-    member_name: &str,
-    source: &Path,
-    artifact_mode: &str,
-) -> Result<RuntimeArtifactPublicationReceipt, String> {
-    let member_path = Path::new(member_name);
-    if member_path.components().count() != 1
-        || member_name == "."
-        || member_name == ".."
-        || member_name == "asp"
-    {
-        return Err(format!(
-            "invalid Runtime replacement bundle member `{member_name}`"
-        ));
-    }
-    let layout = crate::RuntimeArtifactStateLayout::new(state_home);
-    let active_bundle = std::fs::canonicalize(layout.active_slot()).map_err(|error| {
-        format!(
-            "reasonKind=runtime-active-generation-unavailable path={} error={error}",
-            layout.active_slot().display()
-        )
-    })?;
-    let verified =
-        crate::runtime_artifact_slots::verify_runtime_artifact_bound_bundle(&active_bundle).await?;
-    let predecessor_closure = crate::runtime_artifact_execution_closure::RuntimeArtifactExecutionClosure::from_materialized_members(
-        &active_bundle,
-        verified.members(),
-    )?;
-    let closure_names = [
-        "provider-registration.json",
-        "provider-artifact-set",
-        "evaluator-policy.json",
-        "evaluator-abi.json",
-        "schema-bundle.json",
-    ];
-    let mut successor_members = verified.members().clone();
-    successor_members.insert(
-        member_name.to_owned(),
-        crate::runtime_artifact_slots::runtime_artifact_candidate_digest(source).await?,
-    );
-    for name in closure_names {
-        successor_members.remove(name);
-    }
-    let successor_closure = crate::runtime_artifact_execution_closure::RuntimeArtifactExecutionClosure::from_runtime_bundle_members(
-        &successor_members,
-        predecessor_closure.evaluator_policy.entries,
-        predecessor_closure.evaluator_abi.entries,
-        predecessor_closure.schema_bundle.entries,
-    )?;
-    let execution_binding = successor_closure.binding()?;
-    let closure_staging = layout.provider_staging().join(format!(
-        ".runtime-execution-closure-{}-{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_err(|error| format!("system time before Unix epoch: {error}"))?
-            .as_nanos()
-    ));
-    std::fs::create_dir_all(&closure_staging).map_err(|error| {
-        format!(
-            "create Runtime execution closure staging {}: {error}",
-            closure_staging.display()
-        )
-    })?;
-    let result = async {
-        let closure_members = successor_closure.materialized_members()?;
-        for (name, bytes) in &closure_members {
-            std::fs::write(closure_staging.join(name), bytes).map_err(|error| {
-                format!("write Runtime execution closure successor `{name}`: {error}")
-            })?;
-        }
-        let asp_source = active_bundle.join("asp");
-        let mut owned_members = successor_members
-            .keys()
-            .filter(|name| name.as_str() != "asp" && name.as_str() != member_name)
-            .map(|name| (name.clone(), active_bundle.join(name)))
-            .collect::<Vec<_>>();
-        owned_members.push((member_name.to_owned(), source.to_path_buf()));
-        owned_members.extend(
-            closure_members
-                .keys()
-                .map(|name| ((*name).to_owned(), closure_staging.join(name))),
-        );
-        owned_members.sort_by(|left, right| left.0.cmp(&right.0));
-        let member_sources = owned_members
-            .iter()
-            .map(|(name, source)| RuntimeArtifactBundleMemberSource {
-                name: name.as_str(),
-                source,
-            })
-            .collect::<Vec<_>>();
-        publish_runtime_artifact_with_before_guard(
-            state_home,
-            &asp_source,
-            &state_home.join("runtime/bin/asp"),
-            artifact_mode,
-            &member_sources,
-            Some(&execution_binding),
-            Some(&active_bundle),
-            &[member_name],
-            || async {},
-        )
-        .await
-    }
-    .await;
-    let _ = std::fs::remove_dir_all(&closure_staging);
-    result
 }
 
 async fn publish_runtime_artifact_with_before_guard<BeforeGuard, BeforeGuardFuture>(
@@ -465,6 +398,7 @@ async fn publish_runtime_artifact_with_before_guard<BeforeGuard, BeforeGuardFutu
     member_sources: &[RuntimeArtifactBundleMemberSource<'_>],
     execution_binding: Option<&RuntimeArtifactBundleBinding>,
     expected_active_bundle: Option<&Path>,
+    predecessor_receipt_admission: PredecessorReceiptAdmission<'_>,
     stable_member_launchers: &[&str],
     before_guard: BeforeGuard,
 ) -> Result<RuntimeArtifactPublicationReceipt, String>
@@ -580,12 +514,42 @@ where
     if let Err(error) = slots.validate_candidate(&candidate_dir).await {
         discard_prepared_runtime_artifact(&prepared).await?;
         discard_prepared_runtime_artifact_bundle_members(&prepared_members).await?;
-        return Err(error);
+        return Err(format!(
+            "state=runtime-artifact-publication-failed reasonKind=candidate-admission-failed error={error}"
+        ));
     }
     let activation_event_path = runtime_artifact_activation_event_path(state_home);
 
     let quiescence_operation = format!("publish:{binary_name}");
-    validate_current_activation_receipts_content(state_home).await?;
+    match predecessor_receipt_admission {
+        PredecessorReceiptAdmission::Strict => {
+            validate_current_activation_receipts_content(state_home).await?
+        }
+        PredecessorReceiptAdmission::PreverifiedProviderReplacement(bundle_digest) => {
+            let predecessor = expected_active_bundle.ok_or_else(|| {
+                "state=runtime-artifact-publication-failed reasonKind=provider-replacement-predecessor-missing"
+                    .to_owned()
+            })?;
+            validate_current_activation_receipts_for_preverified_predecessor(
+                state_home,
+                predecessor,
+                bundle_digest,
+            )
+            .await?;
+        }
+        PredecessorReceiptAdmission::PreverifiedBinaryReplacement(bundle_digest) => {
+            let predecessor = expected_active_bundle.ok_or_else(|| {
+                "state=runtime-artifact-publication-failed reasonKind=binary-replacement-predecessor-missing"
+                    .to_owned()
+            })?;
+            validate_current_activation_receipts_for_preverified_predecessor(
+                state_home,
+                predecessor,
+                bundle_digest,
+            )
+            .await?;
+        }
+    }
     before_guard().await;
 
     let mut phase_trace = RuntimeArtifactPublicationPhaseTrace::default();

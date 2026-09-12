@@ -139,24 +139,21 @@ fn search_playbook_help_owns_the_composed_root_contract() {
     let mut command = help_model::selected_command(&owned_args(&["search", "playbook", "--help"]));
     let help = command.render_help().to_string();
     for token in [
-        "--language",
-        "--workspace",
-        "--rg",
-        "--tantivy",
-        "--syntax",
-        "--native-syntax",
-        "--graph",
+        "SCHEME_COMPOSITION_EXPRESSION",
+        "One (search ...) expression",
+        "(producers (language rust) (documents org))",
+        "((function_item) @item (#asp-select!",
+        "single enhanced Tree-sitter Query source",
+        "intersect(rg, tantivy)",
+        "graph remains the final barrier",
     ] {
         assert!(help.contains(token), "missing {token}: {help}");
     }
-    for contract in [
-        "Select a registry-bound union",
-        "native ripgrep argv block",
-        "structured native Tantivy query block",
-        "canonical parser-owned exact structural-scope query",
-        "final V1 Graph fan-in block",
-    ] {
-        assert!(help.contains(contract), "missing {contract}: {help}");
+    for removed in ["--language", "--rg", "--tantivy", "--syntax", "--graph"] {
+        assert!(!help.contains(removed), "legacy flag leaked: {help}");
+    }
+    for removed in ["native-query", "(where (kind function))"] {
+        assert!(!help.contains(removed), "retired Query DSL leaked: {help}");
     }
 
     let mut language = help_model::selected_command(&owned_args(&["rust", "--help"]));
@@ -226,7 +223,11 @@ fn removed_language_leaves_do_not_select_command_help() {
 fn non_help_invocations_are_not_intercepted() {
     for parts in [
         &["install", "plugin", "--codex"][..],
-        &["search", "playbook", "--language", "rust"][..],
+        &[
+            "search",
+            "playbook",
+            "(search (producers (language rust)) (intersect (rg \"owner\" \".\") (tantivy \"title:owner^2 OR body:authority\")))",
+        ][..],
         &["graph", "render", "--packet", "-"][..],
         &["rust", "search", "--", "--help"][..],
     ] {

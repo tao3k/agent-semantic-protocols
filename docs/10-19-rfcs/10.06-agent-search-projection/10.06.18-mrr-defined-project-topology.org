@@ -130,10 +130,14 @@ parser-produced facts, source identity, modality, witness provenance,
 workspace containment, MRR admission, or terminal semantics. A project can
 override its domain policy without overriding the truth kernel.
 
-Gerbil Scheme and POO own the declarative MRR program, outer scheduling,
-resource ordering, retry budgets, and termination policy. =build.ss= compiles
-the declaration ahead of time into a typed native boundary. Scheme does not run
-inside the Rust/Ascent Search or Query hot path.
+Gerbil Scheme and POO own declarative Search Layout composition, resource
+ordering, and termination policy. MRR owns the specific
+=defsearch-playbook= macro and compiles it to SCM through its existing AOT
+build. =agent-semantic-search= owns only a short macro invocation and native
+Scheme admission for the outer Search expression plus enhanced Tree-sitter
+Query admission against the AOT extension table. The compiled SCM is an
+importable extension artifact, not a Scheme hot path. Rust-owned Ascent inference and GQL evaluation
+remain native operations in the MRR workspace.
 
 *** Relation, Proof, And Frontier Algebra
 
@@ -411,8 +415,10 @@ does not replace the subgraph.
 
 ** Search And Query Projection
 
-Search Playbook automatically imports the admitted MRR topology bundle. It does
-not expose program loading, Scheme, or Ascent as public flags. The default
+Search Playbook automatically imports the admitted MRR topology bundle. Its one
+public composition value uses the admitted MRR Scheme S-expression grammar; it
+does not expose program loading, Scheme evaluation, or Ascent as public flags.
+The default
 response is one compact Org container with one GQL settlement graph containing:
 
 - native and document nodes with exact selectors;

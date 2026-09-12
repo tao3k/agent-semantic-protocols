@@ -37,7 +37,7 @@ pub(crate) async fn run_language_command_with_config(
     };
     if matches!(command, "search" | "query" | "elements-query") {
         return Err(format!(
-            "language-first {command} was removed; use `asp search playbook --language {language_id} ...` or `asp query playbook --language {language_id} --selector <exact-selector>...`"
+            "language-first {command} was removed; use `asp search playbook '<scheme-expression>'` with `{language_id}` in its producers declaration, or `asp query playbook --language {language_id} --selector <exact-selector>...`"
         ));
     }
     if command == "contract" && language_id == "org" {
@@ -157,9 +157,7 @@ fn usage(language_id: &str) -> String {
 
 fn supported_commands(language_id: &str) -> &'static str {
     match language_id {
-        "org" => {
-            "guide|contract|capture|recall|archive|eval|export|fmt|lint"
-        }
+        "org" => "guide|contract|capture|recall|archive|eval|export|fmt|lint",
         _ => "guide",
     }
 }

@@ -19,9 +19,9 @@ mod runtime_query_generation_authority;
 pub(crate) use runtime_query_generation::RuntimeQueryGeneration;
 pub use runtime_query_generation_authority::RuntimeQueryGenerationAuthority;
 pub use runtime_query_generation_authority::RuntimeQueryGenerationState;
-mod runtime_cold_rg;
 pub mod runtime_evidence_graph;
 mod runtime_query_generation_key;
+mod runtime_resident_grep;
 mod runtime_search_execution_budget;
 mod runtime_search_graph;
 

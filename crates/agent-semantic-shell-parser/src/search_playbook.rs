@@ -233,8 +233,7 @@ pub fn parse_search_playbook_boundaries(args: &[String]) -> SearchPlaybookBounda
                 if matches!(
                     kind,
                     SearchPlaybookGlobalKind::Language | SearchPlaybookGlobalKind::Documents
-                )
-                    && !valid_producer_expression(value)
+                ) && !valid_producer_expression(value)
                 {
                     parsed.issues.push(issue(
                         SearchPlaybookIssueKind::InvalidProducerExpression,
@@ -386,7 +385,9 @@ pub fn parse_search_playbook_boundaries(args: &[String]) -> SearchPlaybookBounda
         .blocks
         .iter()
         .any(|block| block.kind == SearchPlaybookBlockKind::Tantivy);
-    if parsed.global_value(SearchPlaybookGlobalKind::Language).is_none()
+    if parsed
+        .global_value(SearchPlaybookGlobalKind::Language)
+        .is_none()
         && parsed
             .global_value(SearchPlaybookGlobalKind::Documents)
             .is_none()

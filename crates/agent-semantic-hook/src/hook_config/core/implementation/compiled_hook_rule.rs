@@ -112,18 +112,16 @@ impl CompiledHookRule {
         })
         .into_iter()
         .map(|matched| {
+            let producer = matched.provider.language_id.as_str();
+            let selector = scheme_string_literal(&matched.route_selector);
+            let source = format!(
+                "(search (producers (language {producer})) (intersect (rg \"--files\" \"-g\" {selector}) (tantivy \"title:[* TO *] OR body:[* TO *]\")))"
+            );
             let argv = [
                 "asp".to_owned(),
                 "search".to_owned(),
                 "playbook".to_owned(),
-                "--language".to_owned(),
-                matched.provider.language_id.as_str().to_owned(),
-                "--rg".to_owned(),
-                "--files".to_owned(),
-                "-g".to_owned(),
-                matched.route_selector,
-                "--tantivy".to_owned(),
-                "title:[* TO *] OR body:[* TO *]".to_owned(),
+                source,
             ]
             .into_iter()
             .collect::<Vec<_>>();
@@ -138,6 +136,23 @@ impl CompiledHookRule {
         })
         .collect()
     }
+}
+
+fn scheme_string_literal(value: &str) -> String {
+    let mut literal = String::with_capacity(value.len() + 2);
+    literal.push('"');
+    for character in value.chars() {
+        match character {
+            '"' => literal.push_str("\\\""),
+            '\\' => literal.push_str("\\\\"),
+            '\n' => literal.push_str("\\n"),
+            '\r' => literal.push_str("\\r"),
+            '\t' => literal.push_str("\\t"),
+            other => literal.push(other),
+        }
+    }
+    literal.push('"');
+    literal
 }
 
 impl RuleRoute {

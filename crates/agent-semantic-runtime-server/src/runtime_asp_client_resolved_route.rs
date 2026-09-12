@@ -7,7 +7,6 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use agent_semantic_client_db::runtime_provider_register::RuntimeProviderRegister;
 use agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmission;
 use agent_semantic_client_db::runtime_server_workspace::RuntimeServerWorkspaceRegistry;
 use agent_semantic_client_db::runtime_telemetry_bus::RuntimeTelemetryBusSender;
@@ -21,23 +20,23 @@ use super::workspace_search_playbook::execute_progressive_search_clauses;
 use super::workspace_search_playbook::synthesize_progressive_search_projection;
 use super::{
     AspClientExactQueryRequest, AspClientOperationError, AspClientWorkspaceQueryPlaybookRequest,
-    AspClientWorkspaceSearchPlaybookRequest, AspClientWorkspaceSyntaxQueryRequest,
-    QueryNotReadyContext, ResidentGraphEvaluationRequestV1, ServerClientRoute,
-    dispatch_exact_query, dispatch_source_index_lookup, dispatch_workspace_syntax_query,
-    elapsed_micros, query_generation_not_ready_error, record_runtime_route_performance,
-    request_runtime_query_generation_ready, workspace_search_providers_from_provider_register,
+    AspClientWorkspaceSearchPlaybookRequest, AspClientWorkspaceSyntaxPlanContextRequest,
+    AspClientWorkspaceSyntaxQueryRequest, QueryNotReadyContext, ResidentGraphEvaluationRequestV1,
+    ServerClientRoute, dispatch_exact_query, dispatch_source_index_lookup,
+    dispatch_workspace_syntax_plan_context, dispatch_workspace_syntax_query, elapsed_micros,
+    query_generation_not_ready_error, record_runtime_route_performance,
+    request_runtime_query_generation_ready,
 };
 
 pub(super) struct ResolvedRouteContext {
     pub(super) request: AspClientDispatchRequest,
-    pub(super) schema_bundles: crate::schema_bundle::RuntimeSchemaBundleCatalog,
     pub(super) project_workspace_key: RuntimeProjectWorkspaceKey,
     pub(super) initialized_workspaces:
         Arc<Mutex<HashMap<ClientWorkspaceKey, InitializedWorkspace>>>,
     pub(super) generation_admission: Arc<WorkspaceGenerationAdmission>,
     pub(super) workspace_registry: Arc<RuntimeServerWorkspaceRegistry>,
     pub(super) active_provider_targets: Arc<[(String, String)]>,
-    pub(super) provider_register: Arc<RuntimeProviderRegister>,
+    pub(super) workspace_search_providers: Arc<[agent_semantic_search::WorkspaceSearchProvider]>,
     pub(super) query_generation: tokio::sync::watch::Receiver<
         Arc<HashMap<RuntimeProjectWorkspaceKey, RuntimeQueryGenerationState>>,
     >,
@@ -103,14 +102,17 @@ fn selected_playbook_provider_targets(
                 agent_semantic_search::WorkspaceSearchProducerAxis::Language,
             )
         })
-        .chain(documents.into_iter().flat_map(|expression| expression.split('|')).map(
-            |producer| {
-                (
-                    producer.trim(),
-                    agent_semantic_search::WorkspaceSearchProducerAxis::Document,
-                )
-            },
-        ))
+        .chain(
+            documents
+                .into_iter()
+                .flat_map(|expression| expression.split('|'))
+                .map(|producer| {
+                    (
+                        producer.trim(),
+                        agent_semantic_search::WorkspaceSearchProducerAxis::Document,
+                    )
+                }),
+        )
         .filter(|(producer, _)| !producer.is_empty())
         .collect::<Vec<_>>();
     requested.sort_unstable();
@@ -144,24 +146,19 @@ fn selected_playbook_provider_targets(
     Ok(targets)
 }
 
-use super::query_playbook::{
-    dispatch_workspace_query_playbook, emit_runtime_search_trace_observation,
-    insert_runtime_search_trace, record_settled_client_timing_observations,
-    runtime_search_trace_budget_micros,
-};
+use super::query_playbook::dispatch_workspace_query_playbook;
 
 pub(super) async fn dispatch_resolved_route(
     context: ResolvedRouteContext,
 ) -> Result<serde_json::Value, AspClientOperationError> {
     let ResolvedRouteContext {
         request,
-        schema_bundles,
         project_workspace_key,
         initialized_workspaces,
         generation_admission,
         workspace_registry,
         active_provider_targets,
-        provider_register,
+        workspace_search_providers,
         query_generation,
         telemetry_sender,
         telemetry_traces,
@@ -318,20 +315,6 @@ pub(super) async fn dispatch_resolved_route(
         let params: AspClientWorkspaceQueryPlaybookRequest =
             serde_json::from_value(request.params.clone()).map_err(|error| error.to_string())?;
         params.validate_schema_identity()?;
-        let query_providers = workspace_search_providers_from_provider_register(
-            provider_register.as_ref(),
-            &schema_bundles,
-        )
-        .map_err(AspClientOperationError::Message)?;
-        selected_playbook_provider_targets(
-            params.language.as_deref(),
-            params.documents.as_deref(),
-            query_providers.as_ref(),
-        )?;
-        let query_provider_targets = query_providers
-        .iter()
-        .map(|provider| (provider.language_id.clone(), provider.provider_id.clone()))
-        .collect::<Vec<_>>();
         return dispatch_workspace_query_playbook(
             &request,
             params,
@@ -339,7 +322,7 @@ pub(super) async fn dispatch_resolved_route(
             &initialized_workspaces,
             generation_admission.as_ref(),
             &workspace_registry,
-            &query_provider_targets,
+            active_provider_targets.as_ref(),
             &telemetry_sender,
             &telemetry_traces,
             active_telemetry_trace_count.as_ref(),
@@ -376,6 +359,13 @@ pub(super) async fn dispatch_resolved_route(
             "workspace".to_owned(),
             ServerClientRoute::WorkspaceSyntaxQuery,
         ),
+        agent_semantic_client_protocol::ResolvedServerClientMethod::Server(
+            ServerClientRoute::WorkspaceSyntaxPlanContext,
+        ) => (
+            "workspace".to_owned(),
+            "workspace".to_owned(),
+            ServerClientRoute::WorkspaceSyntaxPlanContext,
+        ),
         agent_semantic_client_protocol::ResolvedServerClientMethod::Server(_) => {
             return Err(AspClientOperationError::Message(
                 "unsupported server-owned client method".to_owned(),
@@ -409,26 +399,37 @@ pub(super) async fn dispatch_resolved_route(
     } else {
         None
     };
+    let workspace_syntax_plan_context_params =
+        if matches!(&route, ServerClientRoute::WorkspaceSyntaxPlanContext) {
+            let params: AspClientWorkspaceSyntaxPlanContextRequest =
+                serde_json::from_value(request.params.clone())
+                    .map_err(|error| error.to_string())?;
+            params.validate_schema_identity()?;
+            Some(params)
+        } else {
+            None
+        };
     let generation_provider_targets = match &route {
         ServerClientRoute::WorkspaceSearchPlaybook => {
             let params = workspace_search_playbook_params
                 .as_ref()
                 .expect("workspace Search Playbook request was decoded");
-            let providers = workspace_search_providers_from_provider_register(
-                provider_register.as_ref(),
-                &schema_bundles,
-            )
-            .map_err(AspClientOperationError::Message)?;
             selected_playbook_provider_targets(
                 params.language.as_deref(),
                 params.documents.as_deref(),
-                providers.as_ref(),
+                workspace_search_providers.as_ref(),
             )?
         }
         ServerClientRoute::WorkspaceSyntaxQuery => selected_provider_targets(
             workspace_syntax_query_params
                 .as_ref()
                 .and_then(|params| params.languages.as_deref()),
+            active_provider_targets.as_ref(),
+        )?,
+        ServerClientRoute::WorkspaceSyntaxPlanContext => selected_provider_targets(
+            workspace_syntax_plan_context_params
+                .as_ref()
+                .map(|params| params.producer.as_str()),
             active_provider_targets.as_ref(),
         )?,
         _ => vec![
@@ -525,11 +526,6 @@ pub(super) async fn dispatch_resolved_route(
     };
     // CompleteGeneration admission is detached lifecycle work.  The request
     // path above only clones an already published immutable resident handle.
-    let workspace_search_providers = workspace_search_providers_from_provider_register(
-        provider_register.as_ref(),
-        &schema_bundles,
-    )
-    .map_err(AspClientOperationError::Message)?;
     match route {
         agent_semantic_client_protocol::ServerClientRoute::AgentSessionRegister => {
             unreachable!("server-owned AgentSession route is handled before language dispatch")
@@ -558,166 +554,80 @@ pub(super) async fn dispatch_resolved_route(
         agent_semantic_client_protocol::ServerClientRoute::WorkspaceSearchPlaybook => {
             let params = workspace_search_playbook_params
                 .expect("workspace Search playbook route decoded its request");
-            let plan_request = agent_semantic_search::ProgressiveSearchPlaybookRequest {
-                language: params.language,
-                documents: params.documents,
-                workspace: params.workspace,
-                rg: params.rg.unwrap_or_default(),
-                tantivy: params.tantivy.unwrap_or_default(),
-                syntax: params
-                    .syntax
-                    .unwrap_or_default()
-                    .into_iter()
-                    .map(|block| agent_semantic_search::ProducerNativeBlock {
-                        producer: block.producer,
-                        argv: block.argv,
-                    })
-                    .collect(),
-                native_syntax: params.native_syntax.unwrap_or_default(),
-                graph: params
-                    .graph
-                    .unwrap_or_default()
-                    .into_iter()
-                    .map(|block| agent_semantic_search::GraphNativeBlock {
-                        language: block.language,
-                        argv: block.argv,
-                    })
-                    .collect(),
-                clause_order: params
-                    .clause_order
-                    .into_iter()
-                    .map(|clause| agent_semantic_search::SearchPlaybookClauseRef {
-                        axis: match clause.axis {
-                            agent_semantic_client_protocol::AspClientSearchPlaybookClauseAxis::Rg => {
-                                agent_semantic_search::SearchPlaybookClauseAxis::Rg
+            let materialization_key =
+                workspace_search_materialization_key(&params, generation.generation_digest())?;
+            match generation.search_materialization(&materialization_key)? {
+                Some(
+                    crate::runtime_query_generation::RuntimeSearchMaterializationState::Ready(
+                        result,
+                    ),
+                ) => Ok(result.as_ref().clone()),
+                Some(
+                    crate::runtime_query_generation::RuntimeSearchMaterializationState::Failed(
+                        error,
+                    ),
+                ) => Err(AspClientOperationError::Terminal(error.as_ref().clone())),
+                Some(
+                    crate::runtime_query_generation::RuntimeSearchMaterializationState::Building,
+                ) => Err(AspClientOperationError::Terminal(
+                    search_materialization_not_ready_error(
+                        request.project_id.as_str(),
+                        request.workspace_id.as_str(),
+                        generation.generation_digest(),
+                        &materialization_key,
+                        elapsed_micros(dispatch_started),
+                    ),
+                )),
+                None => {
+                    if generation.begin_search_materialization(materialization_key.clone())? {
+                        let materialization_generation = Arc::clone(&generation);
+                        let materialization_providers = Arc::clone(&workspace_search_providers);
+                        let materialization_project_root = project_root.clone();
+                        let materialization_key_for_task = materialization_key.clone();
+                        let materialization_binding =
+                            agent_semantic_search::WorkspaceSearchPlanBinding {
+                                project_id: request.project_id.as_str().to_owned(),
+                                workspace_id: request.workspace_id.as_str().to_owned(),
+                                content_generation_digest: generation
+                                    .content_generation_digest()
+                                    .to_owned(),
+                            };
+                        tokio::spawn(async move {
+                            let result = match build_workspace_search_materialization_plan(
+                                params,
+                                materialization_binding,
+                                materialization_providers.iter().cloned(),
+                            ) {
+                                Ok(plan) => {
+                                    materialize_workspace_search(
+                                        &materialization_key_for_task,
+                                        plan,
+                                        materialization_project_root,
+                                        Arc::clone(&materialization_generation),
+                                        materialization_providers,
+                                    )
+                                    .await
+                                }
+                                Err(error) => Err(error),
                             }
-                            agent_semantic_client_protocol::AspClientSearchPlaybookClauseAxis::Tantivy => {
-                                agent_semantic_search::SearchPlaybookClauseAxis::Tantivy
-                            }
-                            agent_semantic_client_protocol::AspClientSearchPlaybookClauseAxis::Syntax => {
-                                agent_semantic_search::SearchPlaybookClauseAxis::Syntax
-                            }
-                            agent_semantic_client_protocol::AspClientSearchPlaybookClauseAxis::NativeSyntax => {
-                                agent_semantic_search::SearchPlaybookClauseAxis::NativeSyntax
-                            }
-                            agent_semantic_client_protocol::AspClientSearchPlaybookClauseAxis::Graph => {
-                                agent_semantic_search::SearchPlaybookClauseAxis::Graph
-                            }
-                        },
-                        block_index: clause.block_index,
-                    })
-                    .collect(),
-            };
-            let provider_dispatch_started = tokio::time::Instant::now();
-            let plan = agent_semantic_search::build_workspace_search_playbook_plan(
-                &plan_request,
-                agent_semantic_search::WorkspaceSearchPlanBinding {
-                    project_id: request.project_id.as_str().to_owned(),
-                    workspace_id: request.workspace_id.as_str().to_owned(),
-                    content_generation_digest: generation.content_generation_digest().to_owned(),
-                },
-                workspace_search_providers.iter().cloned(),
-            )
-            .map_err(AspClientOperationError::Message)?;
-            let mut telemetry_trace = None;
-            let snapshot_resolve_started = tokio::time::Instant::now();
-            if let (Some(witness), Some(execution_publication)) = (
-                request.client_timing_witness.as_ref(),
-                generation.execution_publication(),
-            ) {
-                let language_ids = plan
-                    .routes
-                    .iter()
-                    .map(|route| route.language_id.clone())
-                    .collect::<std::collections::BTreeSet<_>>()
-                    .into_iter()
-                    .collect();
-                let provider_ids = plan
-                    .routes
-                    .iter()
-                    .map(|route| route.provider_id.clone())
-                    .collect::<std::collections::BTreeSet<_>>()
-                    .into_iter()
-                    .collect();
-                if let Ok(trace) = record_settled_client_timing_observations(
-                    execution_publication,
-                    witness,
-                    request.session_id.as_str(),
-                    request.request_id.as_str(),
-                    language_ids,
-                    provider_ids,
-                    None,
-                    &telemetry_sender,
-                ) {
-                    emit_runtime_search_trace_observation(
-                        &telemetry_sender,
-                        trace.record_server_admission_queue(
+                            .map_err(search_materialization_dispatch_error);
+                            let _ = materialization_generation.publish_search_materialization(
+                                materialization_key_for_task,
+                                result,
+                            );
+                        });
+                    }
+                    Err(AspClientOperationError::Terminal(
+                        search_materialization_not_ready_error(
+                            request.project_id.as_str(),
+                            request.workspace_id.as_str(),
+                            generation.generation_digest(),
+                            &materialization_key,
                             elapsed_micros(dispatch_started),
-                            runtime_search_trace_budget_micros(),
                         ),
-                    );
-                    emit_runtime_search_trace_observation(
-                        &telemetry_sender,
-                        trace.record_snapshot_resolve(
-                            elapsed_micros(snapshot_resolve_started),
-                            runtime_search_trace_budget_micros(),
-                        ),
-                    );
-                    emit_runtime_search_trace_observation(
-                        &telemetry_sender,
-                        trace.record_provider_dispatch(
-                            elapsed_micros(provider_dispatch_started),
-                            runtime_search_trace_budget_micros(),
-                        ),
-                    );
-                    insert_runtime_search_trace(
-                        &telemetry_traces,
-                        active_telemetry_trace_count.as_ref(),
-                        (
-                            request.project_id.clone(),
-                            request.workspace_id.clone(),
-                            request.session_id.clone(),
-                            request.request_id.clone(),
-                        ),
-                        trace.clone(),
-                    );
-                    telemetry_trace = Some(trace);
+                    ))
                 }
             }
-            let evidence = execute_progressive_search_clauses(
-                &plan,
-                &project_root,
-                generation.as_ref(),
-                workspace_search_providers.as_ref(),
-            )
-            .await?;
-            if let Some(trace) = telemetry_trace.as_ref() {
-                emit_runtime_search_trace_observation(
-                    &telemetry_sender,
-                    trace.record_search_execution(
-                        evidence.search_execution_elapsed_micros,
-                        runtime_search_trace_budget_micros(),
-                    ),
-                );
-            }
-            let projection = synthesize_progressive_search_projection(
-                request.request_id.as_str(),
-                &language_id,
-                evidence,
-                generation.as_ref(),
-            )
-            .await?;
-            let result = Ok(projection.result);
-            if let Some(trace) = telemetry_trace.as_ref() {
-                emit_runtime_search_trace_observation(
-                    &telemetry_sender,
-                    trace.record_search_projection(
-                        projection.elapsed_micros,
-                        runtime_search_trace_budget_micros(),
-                    ),
-                );
-            }
-            result
         }
         agent_semantic_client_protocol::ServerClientRoute::WorkspaceQueryPlaybook => {
             unreachable!("workspace Query Playbook is fail-closed before generation admission")
@@ -729,6 +639,14 @@ pub(super) async fn dispatch_resolved_route(
                 workspace_search_providers.as_ref(),
             )
             .await
+        }
+        agent_semantic_client_protocol::ServerClientRoute::WorkspaceSyntaxPlanContext => {
+            dispatch_workspace_syntax_plan_context(
+                workspace_syntax_plan_context_params
+                    .expect("workspace syntax plan context decoded its request"),
+                generation.as_ref(),
+                workspace_search_providers.as_ref(),
+            )
         }
         agent_semantic_client_protocol::ServerClientRoute::SourceIndexLookup => {
             dispatch_source_index_lookup(
@@ -752,6 +670,151 @@ pub(super) async fn dispatch_resolved_route(
             generation.as_ref(),
             &telemetry_sender,
         ),
+    }
+}
+
+fn build_workspace_search_materialization_plan(
+    params: AspClientWorkspaceSearchPlaybookRequest,
+    binding: agent_semantic_search::WorkspaceSearchPlanBinding,
+    providers: impl IntoIterator<Item = agent_semantic_search::WorkspaceSearchProvider>,
+) -> Result<agent_semantic_search::WorkspaceSearchPlaybookPlan, AspClientOperationError> {
+    let request = agent_semantic_search::NormalizedWorkspaceSearchPlaybookRequest {
+        language: params.language,
+        documents: params.documents,
+        workspace: params.workspace,
+        rg: params.rg.unwrap_or_default(),
+        tantivy: params.tantivy.unwrap_or_default(),
+        syntax: params.syntax.unwrap_or_default(),
+        native_syntax: params.native_syntax.unwrap_or_default(),
+        graph: params
+            .graph
+            .unwrap_or_default()
+            .into_iter()
+            .map(|block| agent_semantic_search::GraphNativeBlock {
+                language: block.language,
+                argv: block.argv,
+            })
+            .collect(),
+        clause_order: params
+            .clause_order
+            .into_iter()
+            .map(|clause| agent_semantic_search::SearchPlaybookClauseRef {
+                axis: match clause.axis {
+                    agent_semantic_client_protocol::AspClientSearchPlaybookClauseAxis::Rg => {
+                        agent_semantic_search::SearchPlaybookClauseAxis::Rg
+                    }
+                    agent_semantic_client_protocol::AspClientSearchPlaybookClauseAxis::Tantivy => {
+                        agent_semantic_search::SearchPlaybookClauseAxis::Tantivy
+                    }
+                    agent_semantic_client_protocol::AspClientSearchPlaybookClauseAxis::Syntax => {
+                        agent_semantic_search::SearchPlaybookClauseAxis::Syntax
+                    }
+                    agent_semantic_client_protocol::AspClientSearchPlaybookClauseAxis::NativeSyntax => {
+                        agent_semantic_search::SearchPlaybookClauseAxis::NativeSyntax
+                    }
+                    agent_semantic_client_protocol::AspClientSearchPlaybookClauseAxis::Graph => {
+                        agent_semantic_search::SearchPlaybookClauseAxis::Graph
+                    }
+                },
+                block_index: clause.block_index,
+            })
+            .collect(),
+    };
+    agent_semantic_search::build_workspace_search_playbook_plan(&request, binding, providers)
+        .map_err(AspClientOperationError::Message)
+}
+
+pub(super) fn workspace_search_materialization_key(
+    request: &AspClientWorkspaceSearchPlaybookRequest,
+    generation_digest: &str,
+) -> Result<String, AspClientOperationError> {
+    let request_value = serde_json::to_value(request).map_err(|error| {
+        AspClientOperationError::Message(format!(
+            "encode normalized Search materialization identity: {error}"
+        ))
+    })?;
+    let request_bytes = agent_semantic_client_protocol::canonical_json_bytes(&request_value)
+        .map_err(|error| {
+            AspClientOperationError::Message(format!(
+                "canonicalize normalized Search materialization identity: {error}"
+            ))
+        })?;
+    let mut hasher = blake3::Hasher::new();
+    hasher.update(b"agent.semantic-protocols.workspace-search-materialization.v1\0");
+    hasher.update(generation_digest.as_bytes());
+    hasher.update(b"\0");
+    hasher.update(&request_bytes);
+    Ok(format!("blake3-256:{}", hasher.finalize().to_hex()))
+}
+
+async fn materialize_workspace_search(
+    materialization_key: &str,
+    plan: agent_semantic_search::WorkspaceSearchPlaybookPlan,
+    project_root: std::path::PathBuf,
+    generation: Arc<crate::RuntimeQueryGeneration>,
+    providers: Arc<[agent_semantic_search::WorkspaceSearchProvider]>,
+) -> Result<serde_json::Value, AspClientOperationError> {
+    let evidence = execute_progressive_search_clauses(
+        &plan,
+        &project_root,
+        Arc::clone(&generation),
+        providers.as_ref(),
+    )
+    .await?;
+    let projection = synthesize_progressive_search_projection(
+        materialization_key,
+        "workspace",
+        evidence,
+        generation.as_ref(),
+    )
+    .await?;
+    Ok(projection.result)
+}
+
+fn search_materialization_dispatch_error(error: AspClientOperationError) -> AspClientDispatchError {
+    match error {
+        AspClientOperationError::Terminal(error) => error,
+        AspClientOperationError::Message(message) => AspClientDispatchError {
+            reason_kind: "search-materialization-failed".to_owned(),
+            message,
+            details: Some(serde_json::json!({
+                "schemaId": "agent.semantic-protocols.asp-client-dispatch-failure",
+                "schemaVersion": "1",
+                "state": "failed",
+                "phase": "runtime-search-materialization",
+                "reasonKind": "search-materialization-failed"
+            })),
+        },
+    }
+}
+
+fn search_materialization_not_ready_error(
+    project_id: &str,
+    workspace_id: &str,
+    generation_digest: &str,
+    materialization_key: &str,
+    elapsed_micros: u64,
+) -> AspClientDispatchError {
+    AspClientDispatchError {
+        reason_kind: "query-not-ready".to_owned(),
+        message: "the generation-bound Search result is materializing".to_owned(),
+        details: Some(serde_json::json!({
+            "schemaId": "agent.semantic-protocols.asp-client-query-readiness-failure",
+            "schemaVersion": "1",
+            "state": "failed",
+            "phase": "runtime-search-materialization",
+            "reasonKind": "query-not-ready",
+            "projectId": project_id,
+            "workspaceId": workspace_id,
+            "languageId": "workspace",
+            "providerId": "workspace",
+            "generationState": "ready-result-building",
+            "generationDigest": generation_digest,
+            "materializationKey": materialization_key,
+            "publicationError": null,
+            "elapsedMicros": elapsed_micros,
+            "workCounters": agent_semantic_client_protocol::AspClientRuntimeWorkCounters::default(),
+        })),
     }
 }
 

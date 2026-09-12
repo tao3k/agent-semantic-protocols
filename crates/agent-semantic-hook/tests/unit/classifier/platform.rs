@@ -123,13 +123,15 @@ fn user_prompt_submit_allow_adds_search_first_context_for_claude() {
     assert!(response["hookSpecificOutput"]["permissionDecision"].is_null());
     for expected in [
         "ASP Search playbook routing is active for this prompt",
-        "`asp search playbook --language <producer|...>`",
-        "explicit native acquisition blocks",
-        "Preserve every native block as argv",
+        "`asp search playbook '<scheme-expression>'`",
+        "`(producers (language ...) (documents ...))`",
+        "begin V1 composition with `(intersect (rg ...) (tantivy ...))`",
+        "Preserve every native argv token as a Scheme string",
         "one admitted immutable workspace generation",
         "without prescribing the Agent's next action",
-        "asp query playbook --language <producer|...> --selector <exact-selector>",
-        "Query has no language switch",
+        "one `asp query playbook` request",
+        "`--selector <exact-selector>`",
+        "Query has no implicit Search state",
     ] {
         assert!(
             context.contains(expected),
@@ -156,14 +158,15 @@ fn user_prompt_submit_locator_questions_do_not_push_code_reads() {
         .expect("user prompt additional context");
     for expected in [
         "ASP Search playbook routing is active for this locator question",
-        "`asp search playbook --language <producer|...>`",
-        "explicit native acquisition blocks",
-        "graph blocks, when needed, follow acquisition",
-        "Preserve every native block as argv",
+        "`asp search playbook '<scheme-expression>'`",
+        "`(producers (language ...) (documents ...))`",
+        "with `graph` leaves last",
+        "Preserve every native argv token as a Scheme string",
         "one admitted immutable workspace generation",
         "without prescribing the Agent's next action",
-        "asp query playbook --language <producer|...> --selector <exact-selector>",
-        "Query has no language switch",
+        "one `asp query playbook` request",
+        "`--selector <exact-selector>`",
+        "Query has no implicit Search state",
     ] {
         assert!(
             context.contains(expected),

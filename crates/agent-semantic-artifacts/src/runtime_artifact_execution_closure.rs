@@ -240,6 +240,36 @@ impl RuntimeArtifactExecutionClosure {
         &self,
         members: &BTreeMap<String, Blake3ContentDigest>,
     ) -> Result<(), String> {
+        self.validate_provider_registrations(None)?;
+        self.validate_provider_artifacts(members)
+    }
+
+    pub(crate) fn validate_provider_replacement_predecessor(
+        &self,
+        members: &BTreeMap<String, Blake3ContentDigest>,
+        replaced_provider_id: &str,
+    ) -> Result<(), String> {
+        if replaced_provider_id.is_empty() {
+            return Err(
+                "reasonKind=runtime-execution-closure-provider-replacement-empty".to_owned(),
+            );
+        }
+        self.validate_provider_registrations(Some(replaced_provider_id))?;
+        self.validate_provider_artifacts(members)
+    }
+
+    pub(crate) fn validate_binary_replacement_predecessor(
+        &self,
+        members: &BTreeMap<String, Blake3ContentDigest>,
+    ) -> Result<(), String> {
+        self.validate_provider_registrations_for_binary_replacement()?;
+        self.validate_provider_artifacts(members)
+    }
+
+    fn validate_provider_registrations(
+        &self,
+        replaced_provider_id: Option<&str>,
+    ) -> Result<(), String> {
         self.validate()?;
         let registrations = agent_semantic_provider_protocol::builtin_provider_registrations()?;
         let registrations = registrations
@@ -253,12 +283,15 @@ impl RuntimeArtifactExecutionClosure {
                     entry.provider_id
                 )
             })?;
-            if registration.language_id != entry.language_id
-                || Blake3ContentDigest::from_bytes(
-                    &serde_json::to_vec(&registration.registration).map_err(|error| {
-                        format!("encode built-in provider registration: {error}")
-                    })?,
-                ) != entry.registration_digest
+            let identity_matches = registration.language_id == entry.language_id
+                && registration.provider_id == entry.artifact_member;
+            let registration_digest = Blake3ContentDigest::from_bytes(
+                &serde_json::to_vec(&registration.registration)
+                    .map_err(|error| format!("encode built-in provider registration: {error}"))?,
+            );
+            if !identity_matches
+                || (registration_digest != entry.registration_digest
+                    && replaced_provider_id != Some(entry.provider_id.as_str()))
             {
                 return Err(format!(
                     "reasonKind=runtime-execution-closure-provider-registration-drift providerId={}",
@@ -266,6 +299,39 @@ impl RuntimeArtifactExecutionClosure {
                 ));
             }
         }
+        Ok(())
+    }
+
+    fn validate_provider_registrations_for_binary_replacement(&self) -> Result<(), String> {
+        self.validate()?;
+        let registrations = agent_semantic_provider_protocol::builtin_provider_registrations()?
+            .into_iter()
+            .map(|registration| (registration.provider_id.clone(), registration))
+            .collect::<BTreeMap<_, _>>();
+        for entry in &self.provider_registration.entries {
+            let registration = registrations.get(&entry.provider_id).ok_or_else(|| {
+                format!(
+                    "reasonKind=runtime-execution-closure-provider-registration-unknown providerId={}",
+                    entry.provider_id
+                )
+            })?;
+            if registration.language_id != entry.language_id
+                || registration.provider_id != entry.artifact_member
+            {
+                return Err(format!(
+                    "reasonKind=runtime-execution-closure-provider-registration-drift providerId={}",
+                    entry.provider_id
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    fn validate_provider_artifacts(
+        &self,
+        members: &BTreeMap<String, Blake3ContentDigest>,
+    ) -> Result<(), String> {
+        self.validate()?;
         for entry in &self.provider_artifact_set.entries {
             let observed = members.get(&entry.artifact_member).ok_or_else(|| {
                 format!(

@@ -315,3 +315,7 @@ import ASPProof.ProjectTopologyIdentityRefinement
 import ASPProof.Audit.ProjectTopologyIdentityRefinement
 import ASPProof.RuntimeProjectTopologyAttachment
 import ASPProof.Audit.RuntimeProjectTopologyAttachment
+import ASPProof.EnhancedSyntaxQueryPlan
+import ASPProof.Audit.EnhancedSyntaxQueryPlan
+import ASPProof.ResidentGrepCost
+import ASPProof.Audit.ResidentGrepCost

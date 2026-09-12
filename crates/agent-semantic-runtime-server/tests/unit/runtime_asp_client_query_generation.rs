@@ -6,6 +6,7 @@ use agent_semantic_client_db::runtime_server_workspace::WorkspaceRuntimeSelector
 use agent_semantic_client_protocol::AspClientExactQueryRequest;
 
 use super::QueryNotReadyContext;
+use super::RUNTIME_CLIENT_DISPATCH_BUDGET;
 use super::classify_exact_query_failure;
 use super::dispatch_budget_for_method;
 use super::enforce_completed_dispatch_budget;
@@ -125,8 +126,8 @@ fn detached_generation_has_no_request_deadline_but_resident_reads_do() {
         dispatch_budget_for_method(
             agent_semantic_client_protocol::WORKSPACE_SEARCH_PLAYBOOK_METHOD
         ),
-        None,
-        "composite Search is cardinality-bounded and must not inherit Query's exact-read deadline"
+        Some(RUNTIME_CLIENT_DISPATCH_BUDGET),
+        "Search and Query share the strict resident request-plane deadline"
     );
 }
 

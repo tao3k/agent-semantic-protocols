@@ -43,31 +43,6 @@ fn selector_owner_path(selector: &str) -> Option<&str> {
         .filter(|owner_path| !owner_path.is_empty())
 }
 
-fn query_playbook_provider_identity_sets(
-    selectors: &[String],
-    active_provider_targets: &[(String, String)],
-) -> Option<(Vec<String>, Vec<String>)> {
-    let mut languages = std::collections::BTreeSet::new();
-    let mut providers = std::collections::BTreeSet::new();
-    for selector in selectors {
-        let language = selector.split_once("://")?.0;
-        let provider =
-            active_provider_targets
-                .iter()
-                .find_map(|(candidate_language, provider)| {
-                    (candidate_language == language).then_some(provider)
-                })?;
-        languages.insert(language.to_owned());
-        providers.insert(provider.clone());
-    }
-    (!languages.is_empty() && !providers.is_empty()).then(|| {
-        (
-            languages.into_iter().collect(),
-            providers.into_iter().collect(),
-        )
-    })
-}
-
 fn query_playbook_generation_provider_targets(
     selectors: &[String],
     active_provider_targets: &[(String, String)],
@@ -127,6 +102,54 @@ pub(super) fn record_settled_client_timing_observations(
     Ok(trace)
 }
 
+fn schedule_settled_query_client_timing_observations(
+    request: &AspClientDispatchRequest,
+    params: &AspClientWorkspaceQueryPlaybookRequest,
+    generation: Arc<crate::RuntimeQueryGeneration>,
+    active_provider_targets: &[(String, String)],
+    telemetry_sender: &RuntimeTelemetryBusSender,
+) {
+    let Some(witness) = request.client_timing_witness.clone() else {
+        return;
+    };
+    let session_id = request.session_id.as_str().to_owned();
+    let request_id = request.request_id.as_str().to_owned();
+    let selectors = params.selectors.clone();
+    let projection = params.projection.clone();
+    let provider_targets = active_provider_targets.to_vec();
+    let telemetry_sender = telemetry_sender.clone();
+    tokio::spawn(async move {
+        let mut languages = std::collections::BTreeSet::new();
+        let mut providers = std::collections::BTreeSet::new();
+        for selector in selectors {
+            let Some((language, _)) = selector.split_once("://") else {
+                return;
+            };
+            let Some(provider) = provider_targets
+                .iter()
+                .find_map(|(candidate, provider)| (candidate == language).then_some(provider))
+            else {
+                return;
+            };
+            languages.insert(language.to_owned());
+            providers.insert(provider.clone());
+        }
+        let Some(publication) = generation.execution_publication() else {
+            return;
+        };
+        let _ = record_settled_client_timing_observations(
+            publication,
+            &witness,
+            &session_id,
+            &request_id,
+            languages.into_iter().collect(),
+            providers.into_iter().collect(),
+            Some(&projection),
+            &telemetry_sender,
+        );
+    });
+}
+
 pub(super) fn emit_runtime_search_trace_observation(
     telemetry_sender: &RuntimeTelemetryBusSender,
     observation: Result<
@@ -143,26 +166,6 @@ pub(super) fn runtime_search_trace_budget_micros() -> u64 {
     RUNTIME_CLIENT_DISPATCH_BUDGET
         .as_micros()
         .min(u128::from(u64::MAX)) as u64
-}
-
-pub(super) fn insert_runtime_search_trace(
-    traces: &Arc<
-        Mutex<
-            HashMap<
-                ClientRequestKey,
-                agent_semantic_client_db::runtime_server_opentelemetry::RuntimeSearchTelemetryTrace,
-            >,
-        >,
-    >,
-    active_count: &std::sync::atomic::AtomicUsize,
-    key: ClientRequestKey,
-    trace: agent_semantic_client_db::runtime_server_opentelemetry::RuntimeSearchTelemetryTrace,
-) {
-    if let Ok(mut traces) = traces.lock()
-        && traces.insert(key, trace).is_none()
-    {
-        active_count.fetch_add(1, std::sync::atomic::Ordering::Release);
-    }
 }
 
 fn materialize_query_playbook_receipt(
@@ -349,6 +352,129 @@ fn materialize_query_playbook_receipt(
     Ok(receipt.as_json().clone())
 }
 
+fn workspace_query_materialization_key(
+    params: &AspClientWorkspaceQueryPlaybookRequest,
+    generation_digest: &str,
+) -> Result<String, AspClientOperationError> {
+    let value = serde_json::to_value(params).map_err(|error| {
+        AspClientOperationError::Message(format!(
+            "encode normalized Query materialization identity: {error}"
+        ))
+    })?;
+    let canonical =
+        agent_semantic_client_protocol::canonical_json_bytes(&value).map_err(|error| {
+            AspClientOperationError::Message(format!(
+                "canonicalize normalized Query materialization identity: {error}"
+            ))
+        })?;
+    let mut hasher = blake3::Hasher::new();
+    hasher.update(b"agent.semantic-protocols.workspace-query-materialization.v1\0");
+    hasher.update(generation_digest.as_bytes());
+    hasher.update(b"\0");
+    hasher.update(&canonical);
+    Ok(format!("blake3-256:{}", hasher.finalize().to_hex()))
+}
+
+fn query_materialization_dispatch_error(error: AspClientOperationError) -> AspClientDispatchError {
+    match error {
+        AspClientOperationError::Terminal(error) => error,
+        AspClientOperationError::Message(message) => AspClientDispatchError {
+            reason_kind: "query-materialization-failed".to_owned(),
+            message,
+            details: Some(serde_json::json!({
+                "schemaId": "agent.semantic-protocols.asp-client-dispatch-failure",
+                "schemaVersion": "1",
+                "state": "failed",
+                "phase": "runtime-query-materialization",
+                "reasonKind": "query-materialization-failed"
+            })),
+        },
+    }
+}
+
+fn bind_query_materialization_to_request(
+    template: &serde_json::Value,
+    request_id: &str,
+) -> Result<serde_json::Value, AspClientOperationError> {
+    let mut result = template.clone();
+    result
+        .as_object_mut()
+        .ok_or_else(|| {
+            AspClientOperationError::Message(
+                "resident Query materialization is not an object".to_owned(),
+            )
+        })?
+        .insert(
+            "requestId".to_owned(),
+            serde_json::Value::String(request_id.to_owned()),
+        );
+    Ok(result)
+}
+
+fn materialize_generation_bound_query_playbook(
+    materialization_key: &str,
+    workspace_id: &str,
+    params: &AspClientWorkspaceQueryPlaybookRequest,
+    initialized: &InitializedWorkspace,
+    workspace_registry: &RuntimeServerWorkspaceRegistry,
+    active_provider_targets: &[(String, String)],
+    generation: &crate::RuntimeQueryGeneration,
+) -> Result<serde_json::Value, AspClientOperationError> {
+    let (resident_root, resident_generation_digest) = workspace_registry
+        .unique_resident_scope(workspace_id)
+        .map_err(|error| {
+            query_playbook_terminal(
+                "query-playbook-runtime-binding-unavailable",
+                error,
+                params.selectors.len(),
+            )
+        })?;
+    if resident_root != initialized.project_root
+        || resident_generation_digest != generation.generation_digest()
+    {
+        return Err(query_playbook_terminal(
+            "query-playbook-runtime-binding-mismatch",
+            "Query Playbook resident generation changed after execution publication",
+            params.selectors.len(),
+        ));
+    }
+    let execution_publication = generation.execution_publication().ok_or_else(|| {
+        query_playbook_terminal(
+            "query-playbook-runtime-binding-unavailable",
+            "Query Playbook generation has no admitted RuntimeExecutionBinding V2",
+            params.selectors.len(),
+        )
+    })?;
+    execution_publication.validate().map_err(|error| {
+        query_playbook_terminal(
+            "query-playbook-runtime-binding-mismatch",
+            format!("invalid Runtime execution publication: {error:?}"),
+            params.selectors.len(),
+        )
+    })?;
+    let runtime_binding = &execution_publication.runtime_execution_binding;
+    if runtime_binding.project_workspace != *initialized.host_workspace.project_workspace()
+        || runtime_binding.worktree_instance_id != initialized.host_workspace.worktree_instance_id()
+    {
+        return Err(query_playbook_terminal(
+            "query-playbook-runtime-context-mismatch",
+            "Query Playbook Host workspace differs from the resident Runtime binding",
+            params.selectors.len(),
+        ));
+    }
+    materialize_query_playbook_receipt(
+        materialization_key,
+        params,
+        runtime_binding,
+        execution_publication.publication_digest.as_str(),
+        execution_publication.runtime_bundle_digest.as_str(),
+        initialized.host_workspace.project_workspace(),
+        active_provider_targets,
+        None,
+        |projection, selector| generation.read_runtime_selector(projection, selector),
+    )
+}
+
 pub(super) async fn dispatch_workspace_query_playbook(
     request: &AspClientDispatchRequest,
     params: AspClientWorkspaceQueryPlaybookRequest,
@@ -358,7 +484,7 @@ pub(super) async fn dispatch_workspace_query_playbook(
     workspace_registry: &Arc<RuntimeServerWorkspaceRegistry>,
     active_provider_targets: &[(String, String)],
     telemetry_sender: &RuntimeTelemetryBusSender,
-    telemetry_traces: &Arc<
+    _telemetry_traces: &Arc<
         Mutex<
             HashMap<
                 ClientRequestKey,
@@ -366,12 +492,11 @@ pub(super) async fn dispatch_workspace_query_playbook(
             >,
         >,
     >,
-    active_telemetry_trace_count: &std::sync::atomic::AtomicUsize,
+    _active_telemetry_trace_count: &std::sync::atomic::AtomicUsize,
     query_generation: &tokio::sync::watch::Receiver<
         Arc<HashMap<RuntimeProjectWorkspaceKey, RuntimeQueryGenerationState>>,
     >,
 ) -> Result<serde_json::Value, AspClientOperationError> {
-    let server_admission_started = tokio::time::Instant::now();
     params.validate_schema_identity()?;
     let initialized = initialized_workspaces
         .lock()
@@ -422,7 +547,7 @@ pub(super) async fn dispatch_workspace_query_playbook(
                 .or(prior_failure)
                 .map_or_else(String::new, |error| format!(" cause={error}"));
             return Err(query_playbook_terminal(
-                "query-playbook-runtime-binding-unavailable",
+                "query-not-ready",
                 format!(
                     "Query Playbook requires an already resident source/Runtime execution product: state={state_name}{cause}"
                 ),
@@ -430,108 +555,66 @@ pub(super) async fn dispatch_workspace_query_playbook(
             ));
         }
     };
-    let server_admission_elapsed = elapsed_micros(server_admission_started);
-    let snapshot_resolve_started = tokio::time::Instant::now();
-    let (resident_root, resident_generation_digest) = workspace_registry
-        .unique_resident_scope(request.workspace_id.as_str())
-        .map_err(|error| {
-            query_playbook_terminal(
-                "query-playbook-runtime-binding-unavailable",
-                error,
-                params.selectors.len(),
-            )
-        })?;
-    if resident_root != initialized.project_root
-        || resident_generation_digest != generation.generation_digest()
-    {
-        return Err(query_playbook_terminal(
-            "query-playbook-runtime-binding-mismatch",
-            "Query Playbook resident generation changed after execution publication",
-            params.selectors.len(),
-        ));
-    }
-    let execution_publication = generation.execution_publication().ok_or_else(|| {
-        query_playbook_terminal(
-            "query-playbook-runtime-binding-unavailable",
-            "Query Playbook generation has no admitted RuntimeExecutionBinding V2",
-            params.selectors.len(),
-        )
-    })?;
-    execution_publication.validate().map_err(|error| {
-        query_playbook_terminal(
-            "query-playbook-runtime-binding-mismatch",
-            format!("invalid Runtime execution publication: {error:?}"),
-            params.selectors.len(),
-        )
-    })?;
-    let runtime_binding = &execution_publication.runtime_execution_binding;
-    if runtime_binding.project_workspace != *initialized.host_workspace.project_workspace()
-        || runtime_binding.worktree_instance_id != initialized.host_workspace.worktree_instance_id()
-    {
-        return Err(query_playbook_terminal(
-            "query-playbook-runtime-context-mismatch",
-            "Query Playbook Host workspace differs from the resident Runtime binding",
-            params.selectors.len(),
-        ));
-    }
-    let snapshot_resolve_elapsed = elapsed_micros(snapshot_resolve_started);
-    let mut telemetry_trace = None;
-    if let Some(witness) = request.client_timing_witness.as_ref() {
-        if let Some((language_ids, provider_ids)) =
-            query_playbook_provider_identity_sets(&params.selectors, active_provider_targets)
-        {
-            if let Ok(trace) = record_settled_client_timing_observations(
-                execution_publication,
-                witness,
-                request.session_id.as_str(),
+    let materialization_key =
+        workspace_query_materialization_key(&params, generation.generation_digest())?;
+    let selector_count = params.selectors.len();
+    match generation.query_materialization(&materialization_key)? {
+        Some(crate::runtime_query_generation::RuntimeQueryMaterializationState::Ready(
+            template,
+        )) => {
+            let result = bind_query_materialization_to_request(
+                template.as_ref(),
                 request.request_id.as_str(),
-                language_ids,
-                provider_ids,
-                Some(&params.projection),
+            )?;
+            schedule_settled_query_client_timing_observations(
+                request,
+                &params,
+                Arc::clone(&generation),
+                active_provider_targets,
                 telemetry_sender,
-            ) {
-                emit_runtime_search_trace_observation(
-                    telemetry_sender,
-                    trace.record_server_admission_queue(
-                        server_admission_elapsed,
-                        runtime_search_trace_budget_micros(),
-                    ),
-                );
-                emit_runtime_search_trace_observation(
-                    telemetry_sender,
-                    trace.record_snapshot_resolve(
-                        snapshot_resolve_elapsed,
-                        runtime_search_trace_budget_micros(),
-                    ),
-                );
-                insert_runtime_search_trace(
-                    telemetry_traces,
-                    active_telemetry_trace_count,
-                    (
-                        request.project_id.clone(),
-                        request.workspace_id.clone(),
-                        request.session_id.clone(),
-                        request.request_id.clone(),
-                    ),
-                    trace.clone(),
-                );
-                telemetry_trace = Some(trace);
+            );
+            Ok(result)
+        }
+        Some(crate::runtime_query_generation::RuntimeQueryMaterializationState::Failed(error)) => {
+            Err(AspClientOperationError::Terminal(error.as_ref().clone()))
+        }
+        Some(crate::runtime_query_generation::RuntimeQueryMaterializationState::Building) => {
+            Err(query_playbook_terminal(
+                "query-not-ready",
+                "the generation-bound Query result is materializing",
+                selector_count,
+            ))
+        }
+        None => {
+            if generation.begin_query_materialization(materialization_key.clone())? {
+                let materialization_generation = Arc::clone(&generation);
+                let materialization_registry = Arc::clone(workspace_registry);
+                let materialization_targets = active_provider_targets.to_vec();
+                let materialization_workspace_id = request.workspace_id.as_str().to_owned();
+                let materialization_key_for_task = materialization_key.clone();
+                let materialization_initialized = initialized;
+                tokio::spawn(async move {
+                    let result = materialize_generation_bound_query_playbook(
+                        &materialization_key_for_task,
+                        &materialization_workspace_id,
+                        &params,
+                        &materialization_initialized,
+                        materialization_registry.as_ref(),
+                        &materialization_targets,
+                        materialization_generation.as_ref(),
+                    )
+                    .map_err(query_materialization_dispatch_error);
+                    let _ = materialization_generation
+                        .publish_query_materialization(materialization_key_for_task, result);
+                });
             }
+            Err(query_playbook_terminal(
+                "query-not-ready",
+                "the generation-bound Query result is materializing",
+                selector_count,
+            ))
         }
     }
-    materialize_query_playbook_receipt(
-        request.request_id.as_str(),
-        &params,
-        runtime_binding,
-        execution_publication.publication_digest.as_str(),
-        execution_publication.runtime_bundle_digest.as_str(),
-        initialized.host_workspace.project_workspace(),
-        active_provider_targets,
-        telemetry_trace
-            .as_ref()
-            .map(|trace| (trace, telemetry_sender)),
-        |projection, selector| generation.read_runtime_selector(projection, selector),
-    )
 }
 
 #[cfg(test)]

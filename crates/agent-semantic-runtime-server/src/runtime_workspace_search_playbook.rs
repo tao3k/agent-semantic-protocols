@@ -5,15 +5,23 @@
 //! Runtime execution of the Agent-authored progressive Search Playbook.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::sync::{Arc, LazyLock};
 
 use crate::RuntimeQueryGeneration;
 use crate::runtime_asp_client::AspClientOperationError;
 use crate::runtime_asp_client::syntax_query_route::execute_workspace_syntax_query_evidence;
-use crate::runtime_cold_rg::{RuntimeRgMatch, execute_runtime_native_rg_blocks};
+use crate::runtime_resident_grep::{RuntimeGrepMatch, execute_runtime_resident_grep_blocks};
 use agent_semantic_search::{
     GraphNativeBlock, SearchPlaybookClauseAxis, WorkspaceSearchAxisKind,
     WorkspaceSearchClauseReceipt, WorkspaceSearchPlaybookPlan, WorkspaceSearchSyntaxCandidate,
 };
+
+static RESIDENT_SEARCH_CPU_LANES: LazyLock<Arc<tokio::sync::Semaphore>> = LazyLock::new(|| {
+    let lanes = std::thread::available_parallelism()
+        .map_or(1, std::num::NonZeroUsize::get)
+        .clamp(1, 8);
+    Arc::new(tokio::sync::Semaphore::new(lanes))
+});
 
 pub(super) struct ProgressiveSearchEvidence {
     pub(super) clause_receipts: Vec<WorkspaceSearchClauseReceipt>,
@@ -22,12 +30,10 @@ pub(super) struct ProgressiveSearchEvidence {
     pub(super) graph_relation_patterns: Vec<agent_semantic_search::ResidentGraphRelationPattern>,
     pub(super) execution_budget:
         crate::runtime_search_execution_budget::RuntimeSearchExecutionBudget,
-    pub(super) search_execution_elapsed_micros: u64,
 }
 
 pub(super) struct ProgressiveSearchProjection {
     pub(super) result: serde_json::Value,
-    pub(super) elapsed_micros: u64,
 }
 
 struct SearchClauseExecution {
@@ -44,10 +50,9 @@ struct RetrievalLayoutExecution {
 pub(super) async fn execute_progressive_search_clauses(
     plan: &WorkspaceSearchPlaybookPlan,
     _project_root: &std::path::Path,
-    generation: &RuntimeQueryGeneration,
+    generation: Arc<RuntimeQueryGeneration>,
     providers: &[agent_semantic_search::WorkspaceSearchProvider],
 ) -> Result<ProgressiveSearchEvidence, AspClientOperationError> {
-    let started = tokio::time::Instant::now();
     generation
         .require_search_playbook_topology_attachment()
         .map_err(|message| {
@@ -64,8 +69,10 @@ pub(super) async fn execute_progressive_search_clauses(
             )
         })?;
     let execution_budget =
-        crate::runtime_search_execution_budget::RuntimeSearchExecutionBudget::derive(generation)
-            .map_err(AspClientOperationError::Message)?;
+        crate::runtime_search_execution_budget::RuntimeSearchExecutionBudget::derive(
+            generation.as_ref(),
+        )
+        .map_err(AspClientOperationError::Message)?;
     let mut input_rank = 0;
     let mut graph_query_clauses = Vec::new();
     let mut graph_relation_patterns = Vec::new();
@@ -98,8 +105,28 @@ pub(super) async fn execute_progressive_search_clauses(
     // rg and Tantivy first determine one fused file-context scope; explicit
     // syntax/native-syntax queries then determine the structural frontier
     // inside it.
-    let mut retrieval =
-        execute_default_retrieval_layout(plan, generation, &execution_budget, &retrieval_clauses)?;
+    let cpu_permit = Arc::clone(&RESIDENT_SEARCH_CPU_LANES)
+        .acquire_owned()
+        .await
+        .map_err(|_| {
+            AspClientOperationError::Message("resident Search CPU lanes closed".to_owned())
+        })?;
+    let retrieval_plan = plan.clone();
+    let retrieval_generation = Arc::clone(&generation);
+    let retrieval_budget = execution_budget.clone();
+    let mut retrieval = tokio::task::spawn_blocking(move || {
+        let _cpu_permit = cpu_permit;
+        execute_default_retrieval_layout(
+            &retrieval_plan,
+            retrieval_generation.as_ref(),
+            &retrieval_budget,
+            &retrieval_clauses,
+        )
+    })
+    .await
+    .map_err(|error| {
+        AspClientOperationError::Message(format!("resident Search CPU lane failed: {error}"))
+    })??;
     if !structural_clauses.is_empty() {
         for clause in &mut retrieval.clauses {
             // An explicit structural query owns the structural frontier. The
@@ -130,17 +157,12 @@ pub(super) async fn execute_progressive_search_clauses(
                         languages: plan.language.clone(),
                         documents: plan.documents.clone(),
                         workspace: None,
-                        syntax: vec![
-                            agent_semantic_client_protocol::AspClientSearchPlaybookSyntaxBlock {
-                                producer: block.producer.clone(),
-                                argv: block.argv.clone(),
-                            },
-                        ],
+                        syntax: vec![block.clone()],
                         projection: "matches".to_owned(),
                     };
                 let evidence = execute_workspace_syntax_query_evidence(
                     &syntax_request,
-                    generation,
+                    generation.as_ref(),
                     providers,
                     execution_budget.syntax_selector_limit(),
                     Some(&retrieval.fused_scope),
@@ -252,7 +274,6 @@ pub(super) async fn execute_progressive_search_clauses(
         graph_query_clauses,
         graph_relation_patterns,
         execution_budget,
-        search_execution_elapsed_micros: elapsed_micros(started),
     })
 }
 
@@ -284,22 +305,14 @@ fn execute_default_retrieval_layout(
         ));
     }
 
-    let mut rg_results = Vec::with_capacity(rg_clauses.len());
-    let mut rg_scope = BTreeSet::new();
-    for (_, block_index, priority_rank) in rg_clauses {
-        let block = plan.axes.rg.get(block_index).ok_or_else(|| {
-            AspClientOperationError::Message("rg clause index is out of bounds".to_owned())
-        })?;
-        let result = execute_runtime_native_rg_blocks(
-            generation.resident().cold_rg_corpus(),
-            std::slice::from_ref(block),
-            budget.rg_match_limit(),
-        )
-        .map_err(AspClientOperationError::Message)?;
-        rg_scope.extend(result.candidate_owner_paths.iter().cloned());
-        rg_results.push((block_index, priority_rank, result));
-    }
-
+    // Tantivy is evaluated independently first. Besides ranked recall, its
+    // bounded owner set is the sound fused scope for V1 regexes that cannot
+    // produce mandatory trigrams (short patterns and Unicode case folding).
+    let all_owner_scope = generation
+        .resident()
+        .indexed_owner_paths()
+        .into_iter()
+        .collect::<BTreeSet<_>>();
     let mut tantivy_results = Vec::with_capacity(tantivy_clauses.len());
     let mut tantivy_scope = BTreeSet::new();
     for (_, block_index, priority_rank) in tantivy_clauses {
@@ -310,11 +323,54 @@ fn execute_default_retrieval_layout(
             block,
             &plan.routes,
             generation,
-            &rg_scope,
+            &all_owner_scope,
             budget.lexical_owner_limit(),
         )?;
+        result.require_complete_fused_scope()?;
         tantivy_scope.extend(result.owners.iter().cloned());
         tantivy_results.push((block_index, priority_rank, block.join(" "), result));
+    }
+
+    let mut rg_results = Vec::with_capacity(rg_clauses.len());
+    let mut rg_scope = BTreeSet::new();
+    for (_, block_index, priority_rank) in rg_clauses {
+        let block = plan.axes.rg.get(block_index).ok_or_else(|| {
+            AspClientOperationError::Message("rg clause index is out of bounds".to_owned())
+        })?;
+        let result = execute_runtime_resident_grep_blocks(
+            generation.resident().resident_grep_corpus(),
+            std::slice::from_ref(block),
+            budget.rg_match_limit(),
+            |candidate_plan, limit| {
+                resident_grep_candidate_scope(candidate_plan, &tantivy_scope, limit, || {
+                    generation
+                        .resident()
+                        .resident_grep_candidate_owner_paths(candidate_plan, limit)
+                })
+            },
+        )
+        .map_err(|message| {
+            let reason_kind = message
+                .strip_prefix("reasonKind=")
+                .and_then(|suffix| suffix.split_whitespace().next());
+            if reason_kind.is_some_and(|kind| kind.starts_with("resident-rg-")) {
+                AspClientOperationError::Terminal(
+                    agent_semantic_client_server::AspClientDispatchError {
+                        reason_kind: reason_kind.expect("checked resident rg reason").to_owned(),
+                        message,
+                        details: Some(serde_json::json!({
+                            "failureStage": "resident-rg-admission",
+                            "runtimeGenerationDigest": generation.generation_digest(),
+                            "terminalCount": 1
+                        })),
+                    },
+                )
+            } else {
+                AspClientOperationError::Message(message)
+            }
+        })?;
+        rg_scope.extend(result.candidate_owner_paths.iter().cloned());
+        rg_results.push((block_index, priority_rank, result));
     }
 
     let fused_scope = fused_file_context_scope(&rg_scope, &tantivy_scope);
@@ -391,6 +447,45 @@ fn execute_default_retrieval_layout(
     })
 }
 
+fn resident_grep_candidate_scope(
+    candidate_plan: &agent_semantic_search::ResidentGrepCandidatePlan,
+    tantivy_scope: &BTreeSet<String>,
+    limit: usize,
+    trigram_candidates: impl FnOnce() -> Result<
+        (
+            Vec<String>,
+            agent_semantic_search::ResidentByteCoverageQueryReceipt,
+        ),
+        String,
+    >,
+) -> Result<
+    (
+        Vec<String>,
+        agent_semantic_search::ResidentByteCoverageQueryReceipt,
+    ),
+    String,
+> {
+    if !candidate_plan.is_match_all() {
+        return trigram_candidates();
+    }
+    if tantivy_scope.len() > limit {
+        return Err(format!(
+            "query-not-ready: resident GREP fused candidate budget exceeded: candidates={} limit={limit}",
+            tantivy_scope.len()
+        ));
+    }
+    Ok((
+        tantivy_scope.iter().cloned().collect(),
+        agent_semantic_search::ResidentByteCoverageQueryReceipt {
+            requested_gram_count: 0,
+            decoded_posting_count: 0,
+            smallest_posting_count: 0,
+            candidate_count: tantivy_scope.len(),
+            lookup_nanos: 0,
+        },
+    ))
+}
+
 fn fused_file_context_scope(
     rg_scope: &BTreeSet<String>,
     tantivy_scope: &BTreeSet<String>,
@@ -404,7 +499,6 @@ pub(super) async fn synthesize_progressive_search_projection(
     evidence: ProgressiveSearchEvidence,
     generation: &RuntimeQueryGeneration,
 ) -> Result<ProgressiveSearchProjection, AspClientOperationError> {
-    let started = tokio::time::Instant::now();
     evidence
         .execution_budget
         .validate_for_generation(generation.generation_digest())
@@ -481,7 +575,6 @@ pub(super) async fn synthesize_progressive_search_projection(
         })?;
     Ok(ProgressiveSearchProjection {
         result: settlement.as_json().clone(),
-        elapsed_micros: elapsed_micros(started),
     })
 }
 
@@ -502,14 +595,10 @@ fn structural_candidate_owner_scope(
     (owners, false)
 }
 
-fn elapsed_micros(started: tokio::time::Instant) -> u64 {
-    started.elapsed().as_micros().min(u128::from(u64::MAX)) as u64
-}
-
 fn syntax_candidates_enclosing_rg_matches<'a>(
     generation: &RuntimeQueryGeneration,
     owner_paths: &BTreeSet<String>,
-    matches: impl IntoIterator<Item = &'a RuntimeRgMatch>,
+    matches: impl IntoIterator<Item = &'a RuntimeGrepMatch>,
 ) -> Result<Vec<WorkspaceSearchSyntaxCandidate>, AspClientOperationError> {
     let matches = matches.into_iter().cloned().collect::<Vec<_>>();
     let owners = owner_paths.iter().cloned().collect::<Vec<_>>();
@@ -655,6 +744,18 @@ fn compile_graph_relation_pattern(
 struct TantivyClauseResult {
     owners: Vec<String>,
     truncated: bool,
+}
+
+impl TantivyClauseResult {
+    fn require_complete_fused_scope(&self) -> Result<(), AspClientOperationError> {
+        if self.truncated {
+            return Err(AspClientOperationError::Message(
+                "query-not-ready: Tantivy candidate scope truncated before GREP intersection"
+                    .to_owned(),
+            ));
+        }
+        Ok(())
+    }
 }
 
 fn execute_tantivy_block(

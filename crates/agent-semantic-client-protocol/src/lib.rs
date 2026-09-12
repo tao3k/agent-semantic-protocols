@@ -5,13 +5,16 @@
 //! Typed Runtime client frames, identities, catalogs, routes, and conformance contracts.
 
 mod agent_session;
+mod canonical_json;
 mod catalog;
 mod client_timing;
 mod conformance;
+mod enhanced_query_capability;
 mod frame;
 mod identity;
 pub mod protocol_identity;
 mod protocol_validation;
+mod resident_syntax_query_plan;
 mod route_validation;
 mod routes;
 mod schema_bundle;
@@ -21,6 +24,7 @@ mod server_method_catalog;
 mod server_method_catalog_tests;
 mod session;
 pub mod workspace_source_mutation;
+pub use canonical_json::to_jcs_vec as canonical_json_bytes;
 pub use catalog::ClientCapabilities;
 pub use catalog::ClientMethod;
 pub use catalog::ClientParameter;
@@ -39,6 +43,12 @@ pub use conformance::ClientAdmissionError;
 pub use conformance::ClientConformanceCase;
 pub use conformance::ClientConformanceReceipt;
 pub use conformance::ClientConformanceSuite;
+pub use enhanced_query_capability::{
+    ENHANCED_QUERY_CAPABILITY_TABLE_SCHEMA_ID, EnhancedQueryCapabilityLowering,
+    EnhancedQueryCapabilityRow, EnhancedQueryCapabilityRowKind, EnhancedQueryCapabilityTable,
+    EnhancedQueryConstraintKind, EnhancedQueryEquivalenceEvidence, EnhancedQueryPublicationState,
+    EnhancedQueryVersionedIdentity,
+};
 pub use frame::ClientFrame;
 pub use frame::ClientFrameBase;
 pub use frame::ClientInfo;
@@ -62,6 +72,15 @@ pub use session::ClientSessionState;
 #[cfg(test)]
 #[path = "../tests/unit/workspace_source_mutation.rs"]
 mod workspace_source_mutation_tests;
+pub use resident_syntax_query_plan::{
+    ENHANCED_TREE_SITTER_QUERY_PROFILE_ID, RESIDENT_SYNTAX_QUERY_PLAN_SCHEMA_ID,
+    ResidentRegexProgram, ResidentSyntaxQueryCapture, ResidentSyntaxQueryCardinality,
+    ResidentSyntaxQueryCondition, ResidentSyntaxQueryDirection, ResidentSyntaxQueryFactPath,
+    ResidentSyntaxQueryOrigin, ResidentSyntaxQueryOriginKind, ResidentSyntaxQueryPattern,
+    ResidentSyntaxQueryPlan, ResidentSyntaxQueryRangeMode, ResidentSyntaxQueryRelationOperator,
+    ResidentSyntaxQueryResultField, ResidentSyntaxQueryScalarOperator,
+    ResidentSyntaxQueryScalarValue, ResidentSyntaxQuerySetOperator,
+};
 pub use routes::AspClientExactQueryFailure;
 pub use routes::AspClientExactQueryRequest;
 pub use routes::AspClientExactQueryResponse;
@@ -74,9 +93,14 @@ pub use routes::AspClientSearchPlaybookSyntaxBlock;
 pub use routes::AspClientSourceIndexLookupRequest;
 pub use routes::AspClientWorkspaceQueryPlaybookRequest;
 pub use routes::AspClientWorkspaceSearchPlaybookRequest;
+pub use routes::AspClientWorkspaceSyntaxPlanContextRequest;
+pub use routes::AspClientWorkspaceSyntaxPlanContextResponse;
 pub use routes::AspClientWorkspaceSyntaxQueryEvidence;
+pub use routes::AspClientWorkspaceSyntaxQueryProjection;
 pub use routes::AspClientWorkspaceSyntaxQueryRequest;
 pub use routes::AspClientWorkspaceSyntaxQueryResponse;
+pub use routes::AspClientWorkspaceSyntaxQueryScope;
+pub use routes::AspClientWorkspaceSyntaxQuerySelection;
 pub use routes::LIVE_CORPUS_CACHE_STATE_RECEIPT_SCHEMA_ID;
 pub use routes::LIVE_CORPUS_CACHE_STATE_REQUEST_SCHEMA_ID;
 pub use routes::LiveCorpusCacheStateReceipt;
@@ -116,6 +140,7 @@ pub use server_method_catalog::WORKSPACE_GENERATION_ENSURE_READY_REQUEST_SCHEMA_
 pub use server_method_catalog::WORKSPACE_GENERATION_ENSURE_READY_RESPONSE_SCHEMA_ID;
 pub use server_method_catalog::WORKSPACE_QUERY_PLAYBOOK_METHOD;
 pub use server_method_catalog::WORKSPACE_SEARCH_PLAYBOOK_METHOD;
+pub use server_method_catalog::WORKSPACE_SYNTAX_PLAN_CONTEXT_METHOD;
 pub use server_method_catalog::WORKSPACE_SYNTAX_QUERY_METHOD;
 pub use server_method_catalog::classify_client_dispatch;
 pub use server_method_catalog::resolve_server_client_method;

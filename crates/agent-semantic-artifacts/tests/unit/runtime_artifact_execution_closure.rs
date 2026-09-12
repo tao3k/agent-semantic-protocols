@@ -90,6 +90,52 @@ fn activation_sequence_cannot_fill_an_empty_member() {
         Err("reasonKind=runtime-execution-closure-member-invalid".to_owned())
     );
 }
+
+#[test]
+fn provider_replacement_admits_only_the_replaced_registration_digest_drift() {
+    let members = std::collections::BTreeMap::from([
+        ("asp".to_owned(), digest(1)),
+        ("asp-rust".to_owned(), digest(2)),
+    ]);
+    let mut closure = RuntimeArtifactExecutionClosure::from_runtime_bundle_members(
+        &members,
+        vec![NamedRuntimeDigestClosureEntry {
+            id: "query-admission".into(),
+            digest: digest(3),
+        }],
+        vec![NamedRuntimeDigestClosureEntry {
+            id: "query-playbook-v1".into(),
+            digest: digest(4),
+        }],
+        vec![LanguageSchemaClosureEntry {
+            language_id: "rust".into(),
+            schema_digest: digest(5),
+        }],
+    )
+    .expect("current built-in closure");
+    assert_eq!(closure.provider_registration.entries.len(), 1);
+    closure.provider_registration.entries[0].registration_digest = digest(99);
+
+    let strict_error = closure
+        .validate_against_bundle(&members)
+        .expect_err("serving admission must reject stale registration bytes");
+    assert!(strict_error.contains("provider-registration-drift"));
+    closure
+        .validate_provider_replacement_predecessor(&members, "asp-rust")
+        .expect("the replaced Provider may carry the sole predecessor digest drift");
+    closure
+        .validate_binary_replacement_predecessor(&members)
+        .expect("binary replacement may inspect registration drift before replacing its artifact");
+    let other_error = closure
+        .validate_provider_replacement_predecessor(&members, "asp-python")
+        .expect_err("a different Provider cannot authorize Rust registration drift");
+    assert!(other_error.contains("providerId=asp-rust"));
+    closure.provider_registration.entries[0].language_id = "python".into();
+    let identity_error = closure
+        .validate_binary_replacement_predecessor(&members)
+        .expect_err("binary replacement cannot relax provider identity");
+    assert!(identity_error.contains("providerId=asp-rust"));
+}
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 //
 // SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later

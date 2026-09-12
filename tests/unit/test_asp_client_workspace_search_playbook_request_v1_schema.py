@@ -2,17 +2,59 @@
 #
 # SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
-import json
 from pathlib import Path
 
 import jsonschema
 import pytest
 
+from unit.schema_validation import schema_validator_for
+
 
 ROOT = Path(__file__).resolve().parents[2]
-SCHEMA = json.loads(
-    (ROOT / "schemas/asp-client-workspace-search-playbook-request.v1.schema.json").read_text()
-)
+SCHEMA_PATH = ROOT / "schemas/asp-client-workspace-search-playbook-request.v1.schema.json"
+VALIDATOR = schema_validator_for(SCHEMA_PATH)
+
+
+def resident_plan() -> dict:
+    digest = "blake3-256:" + "1" * 64
+    return {
+        "schemaId": "agent.semantic-protocols.resident-syntax-query-plan",
+        "schemaVersion": "1",
+        "profileId": "asp.enhanced-tree-sitter-query.v1",
+        "planDigest": digest,
+        "queryDigest": digest,
+        "languageId": "rust",
+        "providerId": "asp-rust",
+        "parserAbiDigest": digest,
+        "queryGrammarDigest": digest,
+        "operatorTableDigest": digest,
+        "capabilityTableDigest": digest,
+        "generationDigest": digest,
+        "patterns": [
+            {
+                "index": 0,
+                "captures": [
+                    {
+                        "name": "item",
+                        "residentFactPath": "selector",
+                        "cardinality": {"minimum": 1, "maximum": 1},
+                        "capabilityRowId": "rust.capture.item",
+                    }
+                ],
+                "structure": {
+                    "kind": "true",
+                    "origin": {
+                        "kind": "capture",
+                        "capabilityRowId": "rust.capture.item",
+                    },
+                },
+                "predicates": [],
+            }
+        ],
+        "selectedFields": ["selector"],
+        "requiredCapabilityRows": ["rust.capture.item"],
+        "regexPrograms": [],
+    }
 
 
 def request() -> dict:
@@ -30,21 +72,21 @@ def request() -> dict:
 
 
 def test_workspace_playbook_request_v1_accepts_executable_search() -> None:
-    jsonschema.Draft202012Validator(SCHEMA).validate(request())
+    VALIDATOR.validate(request())
 
 
 def test_workspace_playbook_request_v1_requires_a_producer_axis() -> None:
     value = request()
     del value["language"]
     with pytest.raises(jsonschema.ValidationError):
-        jsonschema.Draft202012Validator(SCHEMA).validate(value)
+        VALIDATOR.validate(value)
 
 
 def test_workspace_playbook_request_v1_accepts_document_producers() -> None:
     value = request()
     del value["language"]
     value["documents"] = "org|md"
-    jsonschema.Draft202012Validator(SCHEMA).validate(value)
+    VALIDATOR.validate(value)
 
 
 @pytest.mark.parametrize("fact_axis", ["syntax", "nativeSyntax"])
@@ -68,7 +110,7 @@ def test_workspace_playbook_request_v1_rejects_fact_extraction_without_file_cont
         ],
     }
     with pytest.raises(jsonschema.ValidationError):
-        jsonschema.Draft202012Validator(SCHEMA).validate(value)
+        VALIDATOR.validate(value)
 
 
 def test_workspace_playbook_request_v1_rejects_contract_only_invocation() -> None:
@@ -78,14 +120,14 @@ def test_workspace_playbook_request_v1_rejects_contract_only_invocation() -> Non
         "language": "rust",
     }
     with pytest.raises(jsonschema.ValidationError):
-        jsonschema.Draft202012Validator(SCHEMA).validate(value)
+        VALIDATOR.validate(value)
 
 
 def test_workspace_playbook_request_v1_rejects_unknown_axis() -> None:
     value = request()
     value["unknownAxis"] = [["argument"]]
     with pytest.raises(jsonschema.ValidationError):
-        jsonschema.Draft202012Validator(SCHEMA).validate(value)
+        VALIDATOR.validate(value)
 
 
 @pytest.mark.parametrize("missing", ["rg", "tantivy"])
@@ -96,7 +138,7 @@ def test_workspace_playbook_request_v1_pairs_rg_and_tantivy(missing: str) -> Non
         clause for clause in value["clauseOrder"] if clause["axis"] != missing
     ]
     with pytest.raises(jsonschema.ValidationError):
-        jsonschema.Draft202012Validator(SCHEMA).validate(value)
+        VALIDATOR.validate(value)
 
 
 def test_workspace_playbook_request_v1_keeps_syntax_query_and_native_selector_distinct() -> None:
@@ -109,7 +151,7 @@ def test_workspace_playbook_request_v1_keeps_syntax_query_and_native_selector_di
         "syntax": [
             {
                 "producer": "rust",
-                "argv": ["--treesitter-query", "((function_item) @function)"],
+                "plan": resident_plan(),
             }
         ],
         "nativeSyntax": [
@@ -122,7 +164,7 @@ def test_workspace_playbook_request_v1_keeps_syntax_query_and_native_selector_di
             {"axis": "native-syntax", "blockIndex": 0},
         ],
     }
-    jsonschema.Draft202012Validator(SCHEMA).validate(value)
+    VALIDATOR.validate(value)
 
 
 @pytest.mark.parametrize(
@@ -143,7 +185,7 @@ def test_workspace_playbook_request_v1_rejects_invalid_registered_values(
     if field == "graph":
         value["clauseOrder"].append({"axis": "graph", "blockIndex": 0})
     with pytest.raises(jsonschema.ValidationError):
-        jsonschema.Draft202012Validator(SCHEMA).validate(value)
+        VALIDATOR.validate(value)
 
 
 @pytest.mark.parametrize("legacy_field", ["query", "languages", "documents", "next"])
@@ -153,4 +195,4 @@ def test_workspace_playbook_request_v1_rejects_reasoning_and_continuation_fields
     value = request()
     value[legacy_field] = "must remain agent-owned"
     with pytest.raises(jsonschema.ValidationError):
-        jsonschema.Draft202012Validator(SCHEMA).validate(value)
+        VALIDATOR.validate(value)

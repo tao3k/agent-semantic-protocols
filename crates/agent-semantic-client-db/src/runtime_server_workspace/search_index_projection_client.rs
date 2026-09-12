@@ -13,9 +13,9 @@ use tokio::fs;
 
 use super::search_index_projection::{
     RuntimeDerivedAttachmentBuildTiming, SearchMerkleOwnerRecord, SearchOwnerRecord,
-    WorkspaceSearchGenerationDataPlaneClient, build_cold_rg_corpus, build_merkle_search_generation,
+    WorkspaceSearchGenerationDataPlaneClient, build_merkle_search_generation,
     build_owner_search_indexes, build_resident_byte_coverage_index,
-    build_resident_graph_generation, elapsed_micros, graph_key,
+    build_resident_graph_generation, build_resident_grep_corpus, elapsed_micros, graph_key,
     workspace_search_generation_segment_path,
 };
 use super::{
@@ -153,18 +153,18 @@ impl WorkspaceSearchGenerationDataPlaneClient {
                     authority: owner.authority.clone(),
                     bytes: owner.bytes.as_slice(),
                 },
-            ));
-        let cold_rg_corpus = agent_semantic_search::build_cold_rg_corpus(
+            ))?;
+        let resident_grep_corpus = agent_semantic_search::build_resident_grep_corpus(
             &authority
                 .content_search_generation
                 .content_generation_digest,
-            owners
-                .iter()
-                .map(|(_, owner)| agent_semantic_search::ColdRgCorpusOwner {
+            owners.iter().map(
+                |(_, owner)| agent_semantic_search::ResidentGrepCorpusOwner {
                     owner_path: &owner.owner_path,
                     content_digest: &owner.content_digest,
                     bytes: &owner.bytes,
-                }),
+                },
+            ),
         )?;
         drop(owners);
         Ok(Self {
@@ -176,7 +176,7 @@ impl WorkspaceSearchGenerationDataPlaneClient {
             owner_directory_records,
             source_documents,
             resident_byte_coverage,
-            cold_rg_corpus,
+            resident_grep_corpus,
             callable_selector_by_owner,
             owner_bytes_range: None,
             merkle_owner_records,
@@ -194,7 +194,8 @@ impl WorkspaceSearchGenerationDataPlaneClient {
         expected_workspace_identity: &str,
         expected_generation_digest: &str,
     ) -> Result<Self, String> {
-        let segment = ValidatedSearchGenerationSegment::parse(&mapping)?;
+        let mapping = Arc::new(mapping);
+        let segment = ValidatedSearchGenerationSegment::parse(mapping.as_ref())?;
         let (evidence, _, _) = segment.section(SearchGenerationSectionKind::GenerationEvidence);
         let authority: WorkspaceSearchGenerationAuthority = serde_json::from_slice(evidence)
             .map_err(|error| format!("decode workspace search generation evidence: {error}"))?;
@@ -223,12 +224,12 @@ impl WorkspaceSearchGenerationDataPlaneClient {
             .collect::<Result<BTreeMap<_, _>, String>>()?;
         let owner_bytes_range = segment.section_range(SearchGenerationSectionKind::OwnerBytes);
         let resident_byte_coverage = build_resident_byte_coverage_index(
-            &mapping,
+            Arc::clone(&mapping),
             &owner_bytes_range,
             &owner_directory_records,
         )?;
-        let cold_rg_corpus = build_cold_rg_corpus(
-            &mapping,
+        let resident_grep_corpus = build_resident_grep_corpus(
+            Arc::clone(&mapping),
             &owner_bytes_range,
             &owner_directory_records,
             &authority
@@ -295,7 +296,7 @@ impl WorkspaceSearchGenerationDataPlaneClient {
             owner_directory_records,
             source_documents,
             resident_byte_coverage,
-            cold_rg_corpus,
+            resident_grep_corpus,
             callable_selector_by_owner,
             owner_bytes_range: Some(owner_bytes_range),
             merkle_owner_records,
