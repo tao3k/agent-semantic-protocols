@@ -2,6 +2,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
+import re
 from pathlib import Path
 
 
@@ -9,6 +10,16 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 CI_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "ci.yml"
 JUSTFILE = REPO_ROOT / "Justfile"
 RELEASE_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "release.yml"
+
+
+def test_root_schema_gate_references_only_present_test_paths() -> None:
+    workflow = CI_WORKFLOW.read_text(encoding="utf-8")
+    root_schema_gate = workflow.split("- name: Root schema gates", 1)[1]
+    root_schema_gate = root_schema_gate.split("- name: Python provider schema gates", 1)[0]
+    referenced_paths = sorted(set(re.findall(r"tests/[A-Za-z0-9_./-]+", root_schema_gate)))
+
+    assert referenced_paths
+    assert [path for path in referenced_paths if not (REPO_ROOT / path).exists()] == []
 
 
 def test_asp_rust_ci_checks_out_provider_catalog_submodules() -> None:
