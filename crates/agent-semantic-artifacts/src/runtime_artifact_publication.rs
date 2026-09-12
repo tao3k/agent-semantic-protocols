@@ -6,20 +6,18 @@
 
 #[path = "runtime_artifact_provider_publication.rs"]
 mod provider_publication;
+#[path = "runtime_artifact_publication_transaction.rs"]
+mod transaction;
 
 pub use provider_publication::publish_runtime_artifact_bound_provider_member_from_active;
 
 use std::path::Path;
 use std::path::PathBuf;
-use std::time::SystemTime;
-use std::time::UNIX_EPOCH;
 
 use serde::Deserialize;
 use serde::Serialize;
 
 use crate::blake3_content_digest::Blake3ContentDigest;
-use crate::runtime_artifact_activation::RuntimeArtifactActivationEvent;
-use crate::runtime_artifact_activation::RuntimeArtifactCandidateIdentityReceipt;
 use crate::runtime_artifact_activation::commit_staged_pending_runtime_artifact_activation;
 use crate::runtime_artifact_activation::decode_runtime_artifact_activation_event;
 use crate::runtime_artifact_activation::next_runtime_artifact_activation_generation_sync_under_guard;
@@ -29,14 +27,12 @@ use crate::runtime_artifact_activation::read_optional_symlink;
 use crate::runtime_artifact_activation::restore_pending_runtime_artifact_activation;
 use crate::runtime_artifact_activation::restore_runtime_artifact_symlink;
 use crate::runtime_artifact_activation::runtime_artifact_activation_event_path;
-use crate::runtime_artifact_activation::stage_pending_runtime_artifact_activation;
 use crate::runtime_artifact_activation::validate_current_activation_receipts_content;
 use crate::runtime_artifact_activation::validate_current_activation_receipts_for_preverified_predecessor;
 use crate::runtime_artifact_publication_support::{
     discard_prepared_runtime_artifact_bundle_members, publish_runtime_bundle_member_launcher,
     repair_empty_artifact_selector_under_guard, validate_runtime_bundle_launcher,
 };
-use crate::runtime_artifact_quiescence::stage_runtime_artifact_quiescence_lease;
 use crate::runtime_artifact_retention::RuntimeArtifactCandidatePreparationLease;
 use crate::runtime_artifact_retention::RuntimeArtifactMutationGuard;
 use crate::runtime_artifact_retention::prune_unreachable_runtime_artifacts;
@@ -49,6 +45,8 @@ use crate::runtime_artifact_slots::runtime_artifact_bound_bundle_digest;
 use crate::runtime_artifact_slots::runtime_artifact_bundle_digest;
 use crate::runtime_artifact_slots::runtime_artifact_candidate_digest;
 use crate::runtime_artifact_slots::stage_runtime_artifact_bound_bundle_manifest;
+use transaction::RuntimeArtifactActivationStagingRequest;
+use transaction::stage_runtime_artifact_activation_transaction;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct RuntimeArtifactBundleMemberSource<'a> {
@@ -598,73 +596,28 @@ where
     // mutation guard. The guard admits the lease and generation fence, then
     // performs only bounded receipt reads and atomic namespace switches.
     let phase_started = std::time::Instant::now();
-    let mut quiescence = match stage_runtime_artifact_quiescence_lease(
-        state_home,
-        &quiescence_operation,
-        &prepared.content_digest,
-    ) {
-        Ok(quiescence) => quiescence,
+    let activation_generation = match crate::runtime_artifact_activation::next_runtime_artifact_activation_generation_under_guard(state_home).await {
+        Ok(generation) => generation,
         Err(error) => {
             discard_prepared_runtime_artifact(&prepared).await?;
             discard_prepared_runtime_artifact_bundle_members(&prepared_members).await?;
             return Err(error);
         }
     };
-    let publication_nonce = quiescence.lease.lease_nonce.clone();
-    let published_at_unix_millis = match SystemTime::now().duration_since(UNIX_EPOCH) {
-        Ok(duration) => duration.as_millis(),
-        Err(error) => {
-            discard_prepared_runtime_artifact(&prepared).await?;
-            discard_prepared_runtime_artifact_bundle_members(&prepared_members).await?;
-            return Err(format!(
-                "Runtime artifact publication clock failed: {error}"
-            ));
-        }
-    };
-    let event = RuntimeArtifactActivationEvent {
-        schema_id: "agent.semantic-protocols.runtime-artifact-activation".to_owned(),
-        schema_version: 1,
-        activation_generation: match crate::runtime_artifact_activation::next_runtime_artifact_activation_generation_under_guard(state_home).await {
-            Ok(generation) => generation,
-            Err(error) => {
-                discard_prepared_runtime_artifact(&prepared).await?;
-                discard_prepared_runtime_artifact_bundle_members(&prepared_members).await?;
-                return Err(error);
-            }
+    let staged = match stage_runtime_artifact_activation_transaction(
+        RuntimeArtifactActivationStagingRequest {
+            state_home,
+            activation_event_path: &activation_event_path,
+            candidate_dir: &candidate_dir,
+            artifact_path: &prepared.path,
+            stable_path: target,
+            artifact_mode,
+            quiescence_operation: &quiescence_operation,
+            activation_generation,
+            bundle_digest: &bundle_digest,
+            artifact_digest: &prepared.content_digest,
+            previous_artifact_digest: serving_snapshot.artifact_digest.clone(),
         },
-        bundle_digest: bundle_digest.clone(),
-        artifact_digest: prepared.content_digest.clone(),
-        artifact_path: prepared.path.clone(),
-        candidate_slot_path: candidate_dir.clone(),
-        previous_artifact_digest: serving_snapshot.artifact_digest.clone(),
-        artifact_mode: artifact_mode.to_owned(),
-        published_at_unix_millis,
-        publication_nonce: publication_nonce.clone(),
-        candidate_identity: RuntimeArtifactCandidateIdentityReceipt {
-            artifact_digest: prepared.content_digest.clone(),
-            artifact_path: prepared.path.clone(),
-            stable_path: target.to_path_buf(),
-            artifact_mode: artifact_mode.to_owned(),
-            publication_nonce,
-        },
-    };
-    let event_bytes = match serde_json::to_vec_pretty(&event) {
-        Ok(bytes) => bytes,
-        Err(error) => {
-            discard_prepared_runtime_artifact(&prepared).await?;
-            discard_prepared_runtime_artifact_bundle_members(&prepared_members).await?;
-            return Err(format!("encode Runtime artifact activation event: {error}"));
-        }
-    };
-    if let Err(error) = std::fs::write(candidate_dir.join("activation.json"), &event_bytes) {
-        discard_prepared_runtime_artifact(&prepared).await?;
-        discard_prepared_runtime_artifact_bundle_members(&prepared_members).await?;
-        return Err(format!("stage Runtime artifact activation event: {error}"));
-    }
-    let staged_pending = match stage_pending_runtime_artifact_activation(
-        &activation_event_path,
-        &event_bytes,
-        &event.publication_nonce,
     ) {
         Ok(staged) => staged,
         Err(error) => {
@@ -673,6 +626,9 @@ where
             return Err(error);
         }
     };
+    let event = staged.event;
+    let staged_pending = staged.pending_path;
+    let mut quiescence = staged.quiescence;
     phase_trace.candidate_activation_staging_micros = phase_started.elapsed().as_micros();
 
     let phase_started = std::time::Instant::now();
