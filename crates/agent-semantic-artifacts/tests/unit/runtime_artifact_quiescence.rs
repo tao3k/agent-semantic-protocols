@@ -7,6 +7,7 @@ use super::RuntimeArtifactQuiescenceLease;
 use super::prepare_runtime_artifact_quiescence_lease;
 use super::producer_process_started_at_unix_millis;
 use super::runtime_artifact_quiescence_lease_path;
+use super::stage_runtime_artifact_quiescence_lease;
 use crate::runtime_artifact_retention::RuntimeArtifactMutationGuard;
 
 fn digest(byte: char) -> Blake3ContentDigest {
@@ -17,6 +18,56 @@ fn digest(byte: char) -> Blake3ContentDigest {
 fn artifact_guard(state_home: &std::path::Path) -> RuntimeArtifactMutationGuard {
     RuntimeArtifactMutationGuard::try_acquire(&state_home.join("runtime/artifacts"))
         .expect("canonical Artifact mutation guard")
+}
+
+#[test]
+fn staged_lease_is_invisible_until_single_guard_admission() {
+    let temporary = tempfile::tempdir().expect("temporary state");
+    let path = runtime_artifact_quiescence_lease_path(temporary.path());
+    let mut staged =
+        stage_runtime_artifact_quiescence_lease(temporary.path(), "publish:asp", &digest('a'))
+            .expect("stage lease outside mutation guard");
+
+    assert!(
+        !path.exists(),
+        "staging must not publish canonical authority"
+    );
+    let guard = artifact_guard(temporary.path());
+    staged
+        .admit_under_artifact_guard(&guard)
+        .expect("admit staged lease under mutation guard");
+
+    let admitted: RuntimeArtifactQuiescenceLease =
+        serde_json::from_slice(&std::fs::read(path).expect("read admitted lease"))
+            .expect("decode admitted lease");
+    assert_eq!(admitted, staged.lease);
+}
+
+#[test]
+fn staged_lease_rejects_a_competing_authority_published_before_admission() {
+    let temporary = tempfile::tempdir().expect("temporary state");
+    let mut staged =
+        stage_runtime_artifact_quiescence_lease(temporary.path(), "publish:asp", &digest('a'))
+            .expect("stage proposed lease");
+    let guard = artifact_guard(temporary.path());
+    let competing = prepare_runtime_artifact_quiescence_lease(
+        temporary.path(),
+        "publish:other",
+        &digest('b'),
+        &guard,
+    )
+    .expect("publish competing lease");
+
+    let error = staged
+        .admit_under_artifact_guard(&guard)
+        .expect_err("stale proposal must not replace a live authority");
+    assert!(error.contains("reasonKind=runtime-artifact-quiescence-live-owner-conflict"));
+    let current: RuntimeArtifactQuiescenceLease = serde_json::from_slice(
+        &std::fs::read(runtime_artifact_quiescence_lease_path(temporary.path()))
+            .expect("read competing authority"),
+    )
+    .expect("decode competing authority");
+    assert_eq!(current, competing.lease);
 }
 
 #[test]

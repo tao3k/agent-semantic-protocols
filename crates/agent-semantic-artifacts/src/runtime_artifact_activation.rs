@@ -144,6 +144,33 @@ pub async fn next_runtime_artifact_activation_generation_under_guard(
         .ok_or_else(|| "Runtime artifact activation generation overflow".to_owned())
 }
 
+pub(crate) fn next_runtime_artifact_activation_generation_sync_under_guard(
+    state_home: &Path,
+) -> Result<u64, String> {
+    let layout = crate::RuntimeArtifactStateLayout::new(state_home);
+    let mut maximum = 0;
+    for path in [layout.pending_activation(), layout.applied_activation()] {
+        let bytes = match std::fs::read(&path) {
+            Ok(bytes) => bytes,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(error) => {
+                return Err(format!(
+                    "read Runtime artifact activation generation {}: {error}",
+                    path.display()
+                ));
+            }
+        };
+        let event = decode_runtime_artifact_activation_event(
+            &bytes,
+            "Runtime artifact activation generation receipt",
+        )?;
+        maximum = maximum.max(event.activation_generation);
+    }
+    maximum
+        .checked_add(1)
+        .ok_or_else(|| "Runtime artifact activation generation overflow".to_owned())
+}
+
 pub(crate) fn decode_runtime_artifact_activation_event(
     bytes: &[u8],
     context: &str,

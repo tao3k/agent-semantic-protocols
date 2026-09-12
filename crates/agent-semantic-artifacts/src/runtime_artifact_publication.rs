@@ -22,6 +22,7 @@ use crate::runtime_artifact_activation::RuntimeArtifactActivationEvent;
 use crate::runtime_artifact_activation::RuntimeArtifactCandidateIdentityReceipt;
 use crate::runtime_artifact_activation::commit_staged_pending_runtime_artifact_activation;
 use crate::runtime_artifact_activation::decode_runtime_artifact_activation_event;
+use crate::runtime_artifact_activation::next_runtime_artifact_activation_generation_sync_under_guard;
 use crate::runtime_artifact_activation::prepare_active_slot_snapshot;
 use crate::runtime_artifact_activation::prepare_runtime_artifact_serving_snapshot;
 use crate::runtime_artifact_activation::read_optional_symlink;
@@ -35,7 +36,7 @@ use crate::runtime_artifact_publication_support::{
     discard_prepared_runtime_artifact_bundle_members, publish_runtime_bundle_member_launcher,
     repair_empty_artifact_selector_under_guard, validate_runtime_bundle_launcher,
 };
-use crate::runtime_artifact_quiescence::prepare_runtime_artifact_quiescence_lease;
+use crate::runtime_artifact_quiescence::stage_runtime_artifact_quiescence_lease;
 use crate::runtime_artifact_retention::RuntimeArtifactCandidatePreparationLease;
 use crate::runtime_artifact_retention::RuntimeArtifactMutationGuard;
 use crate::runtime_artifact_retention::prune_unreachable_runtime_artifacts;
@@ -593,29 +594,17 @@ where
     };
     phase_trace.authority_read_micros = phase_started.elapsed().as_micros();
 
-    // Lease recovery, pending publication, stable launchers, and the sole active
-    // directory selector are one Artifacts-owned transaction. A dead producer
-    // may be recovered only while this canonical mutation guard is held.
+    // Serialize and durably stage the transaction before acquiring the global
+    // mutation guard. The guard admits the lease and generation fence, then
+    // performs only bounded receipt reads and atomic namespace switches.
     let phase_started = std::time::Instant::now();
-    let guard = match RuntimeArtifactMutationGuard::try_acquire(&artifact_root) {
-        Ok(guard) => guard,
-        Err(error) => {
-            discard_prepared_runtime_artifact(&prepared).await?;
-            discard_prepared_runtime_artifact_bundle_members(&prepared_members).await?;
-            return Err(error);
-        }
-    };
-    phase_trace.guard_acquisition_micros = phase_started.elapsed().as_micros();
-    let lock_started = std::time::Instant::now();
-    let quiescence = match prepare_runtime_artifact_quiescence_lease(
+    let mut quiescence = match stage_runtime_artifact_quiescence_lease(
         state_home,
         &quiescence_operation,
         &prepared.content_digest,
-        &guard,
     ) {
         Ok(quiescence) => quiescence,
         Err(error) => {
-            drop(guard);
             discard_prepared_runtime_artifact(&prepared).await?;
             discard_prepared_runtime_artifact_bundle_members(&prepared_members).await?;
             return Err(error);
@@ -625,7 +614,6 @@ where
     let published_at_unix_millis = match SystemTime::now().duration_since(UNIX_EPOCH) {
         Ok(duration) => duration.as_millis(),
         Err(error) => {
-            drop(guard);
             discard_prepared_runtime_artifact(&prepared).await?;
             discard_prepared_runtime_artifact_bundle_members(&prepared_members).await?;
             return Err(format!(
@@ -636,11 +624,14 @@ where
     let event = RuntimeArtifactActivationEvent {
         schema_id: "agent.semantic-protocols.runtime-artifact-activation".to_owned(),
         schema_version: 1,
-        activation_generation:
-            crate::runtime_artifact_activation::next_runtime_artifact_activation_generation_under_guard(
-                state_home,
-            )
-            .await?,
+        activation_generation: match crate::runtime_artifact_activation::next_runtime_artifact_activation_generation_under_guard(state_home).await {
+            Ok(generation) => generation,
+            Err(error) => {
+                discard_prepared_runtime_artifact(&prepared).await?;
+                discard_prepared_runtime_artifact_bundle_members(&prepared_members).await?;
+                return Err(error);
+            }
+        },
         bundle_digest: bundle_digest.clone(),
         artifact_digest: prepared.content_digest.clone(),
         artifact_path: prepared.path.clone(),
@@ -657,18 +648,15 @@ where
             publication_nonce,
         },
     };
-    let phase_started = std::time::Instant::now();
     let event_bytes = match serde_json::to_vec_pretty(&event) {
         Ok(bytes) => bytes,
         Err(error) => {
-            drop(guard);
             discard_prepared_runtime_artifact(&prepared).await?;
             discard_prepared_runtime_artifact_bundle_members(&prepared_members).await?;
             return Err(format!("encode Runtime artifact activation event: {error}"));
         }
     };
     if let Err(error) = std::fs::write(candidate_dir.join("activation.json"), &event_bytes) {
-        drop(guard);
         discard_prepared_runtime_artifact(&prepared).await?;
         discard_prepared_runtime_artifact_bundle_members(&prepared_members).await?;
         return Err(format!("stage Runtime artifact activation event: {error}"));
@@ -680,13 +668,57 @@ where
     ) {
         Ok(staged) => staged,
         Err(error) => {
-            drop(guard);
             discard_prepared_runtime_artifact(&prepared).await?;
             discard_prepared_runtime_artifact_bundle_members(&prepared_members).await?;
             return Err(error);
         }
     };
     phase_trace.candidate_activation_staging_micros = phase_started.elapsed().as_micros();
+
+    let phase_started = std::time::Instant::now();
+    let guard = match RuntimeArtifactMutationGuard::try_acquire(&artifact_root) {
+        Ok(guard) => guard,
+        Err(error) => {
+            let _ = std::fs::remove_file(&staged_pending);
+            discard_prepared_runtime_artifact(&prepared).await?;
+            discard_prepared_runtime_artifact_bundle_members(&prepared_members).await?;
+            return Err(error);
+        }
+    };
+    phase_trace.guard_acquisition_micros = phase_started.elapsed().as_micros();
+    let lock_started = std::time::Instant::now();
+    if let Err(error) = quiescence.admit_under_artifact_guard(&guard) {
+        drop(guard);
+        let _ = std::fs::remove_file(&staged_pending);
+        discard_prepared_runtime_artifact(&prepared).await?;
+        discard_prepared_runtime_artifact_bundle_members(&prepared_members).await?;
+        return Err(error);
+    }
+    let admitted_generation =
+        match next_runtime_artifact_activation_generation_sync_under_guard(state_home) {
+            Ok(generation) => generation,
+            Err(error) => {
+                drop(guard);
+                let _ = std::fs::remove_file(&staged_pending);
+                discard_prepared_runtime_artifact(&prepared).await?;
+                discard_prepared_runtime_artifact_bundle_members(&prepared_members).await?;
+                return Err(error);
+            }
+        };
+    if admitted_generation != event.activation_generation {
+        let lease_cleanup = quiescence
+            .consume_under_artifact_guard(&guard)
+            .and_then(|consumed| quiescence.finish_consumption(&consumed, &guard));
+        drop(guard);
+        let _ = std::fs::remove_file(&staged_pending);
+        discard_prepared_runtime_artifact(&prepared).await?;
+        discard_prepared_runtime_artifact_bundle_members(&prepared_members).await?;
+        lease_cleanup?;
+        return Err(format!(
+            "state=runtime-artifact-publication-failed reasonKind=activation-generation-cas-mismatch expectedGeneration={} actualGeneration={admitted_generation}",
+            event.activation_generation
+        ));
+    }
 
     let phase_started = std::time::Instant::now();
     let consumed_lease = match quiescence.consume_under_artifact_guard(&guard) {
@@ -955,7 +987,7 @@ where
         phase_trace,
         lock_acquisition_count: 1,
         quiescence_operation,
-        quiescence_lease_nonce: quiescence.lease.lease_nonce,
+        quiescence_lease_nonce: quiescence.lease.lease_nonce.clone(),
         lease_producer_process_id: quiescence.lease.producer_process_id,
         lease_consumer_process_id: std::process::id(),
     })

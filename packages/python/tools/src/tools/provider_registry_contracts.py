@@ -54,8 +54,62 @@ def validate_provider_registries(
     validator = _language_registry_validator(root)
     failures: list[str] = []
     for provider in provider_ids or ["rust", "typescript", "python"]:
+        if provider == "rust":
+            failures.extend(_rust_capability_table_failures(root))
+            continue
         failures.extend(_provider_failures(asp, provider, root, validator, env=env))
     return failures
+
+
+def _rust_capability_table_failures(root: Path) -> list[str]:
+    """Validate Rust's server-owned V1 capability source without a legacy CLI."""
+    table_path = (
+        root
+        / "languages/asp-rust/tree-sitter/tree-sitter-rust"
+        / "enhanced-query-capabilities.v1.json"
+    )
+    schema_path = (
+        root / "schemas/enhanced-tree-sitter-query-capability-table.v1.schema.json"
+    )
+    registration_path = (
+        root / "languages/asp-rust/provider/asp-provider-registration.json"
+    )
+    try:
+        table = load_json(table_path)
+        schema = load_json(schema_path)
+        registration = load_json(registration_path)
+    except (OSError, SystemExit) as error:
+        return [f"rust: capability source unavailable: {error}"]
+
+    errors = sorted(Draft202012Validator(schema).iter_errors(table), key=str)
+    if errors:
+        return [
+            "rust: capability table schema validation failed: "
+            f"{_format_schema_error(errors[0])}"
+        ]
+    capability_ref = (
+        registration.get("searchCapabilities", {})
+        .get("enhancedSyntaxQueryCapability", {})
+        .get("$ref")
+    )
+    expected_ref = "../tree-sitter/tree-sitter-rust/enhanced-query-capabilities.v1.json"
+    if capability_ref != expected_ref:
+        return [
+            "rust: provider registration must bind the canonical V1 capability table: "
+            f"expected={expected_ref!r} actual={capability_ref!r}"
+        ]
+    if table.get("languageId") != registration.get("languageId") or table.get(
+        "providerId"
+    ) != registration.get("providerId"):
+        return ["rust: capability table identity does not match provider registration"]
+
+    runtime_rows = sum(
+        row.get("publicationState") == "runtime" for row in table.get("rows", [])
+    )
+    sys.stdout.write(
+        f"rust ok capabilityRows={len(table['rows'])} runtimeRows={runtime_rows}\n"
+    )
+    return []
 
 
 def _parse_args(argv: list[str] | None) -> argparse.Namespace:
@@ -92,7 +146,9 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
 def _language_registry_validator(root: Path) -> Draft202012Validator:
     schema_dir = root / "schemas"
     schema = load_json(schema_dir / "semantic-language-registry.v1.schema.json")
-    local_schemas = [load_json(path) for path in sorted(schema_dir.glob("*.schema.json"))]
+    local_schemas = [
+        load_json(path) for path in sorted(schema_dir.glob("*.schema.json"))
+    ]
     registry = Registry().with_resources(
         (schema_id, Resource.from_contents(local_schema))
         for local_schema in local_schemas
@@ -145,9 +201,7 @@ def _write_provider_summary(provider: str, registry: dict[str, Any]) -> None:
     descriptors = query_descriptors(language)
     catalog_count = sum(len(desc.get("queryCatalogs", [])) for desc in descriptors)
     sys.stdout.write(
-        f"{provider} ok "
-        f"queryDescriptors={len(descriptors)} "
-        f"catalogs={catalog_count}\n"
+        f"{provider} ok queryDescriptors={len(descriptors)} catalogs={catalog_count}\n"
     )
 
 
