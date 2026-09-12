@@ -259,7 +259,8 @@ fn producer_process_started_at_unix_millis(process_id: u32) -> Option<u128> {
         .nth(19)?
         .parse::<u128>()
         .ok()?;
-    let boot_time_seconds = std::fs::read_to_string("/proc/stat")?
+    let boot_time_seconds = std::fs::read_to_string("/proc/stat")
+        .ok()?
         .lines()
         .find_map(|line| line.strip_prefix("btime "))?
         .parse::<u128>()
