@@ -270,9 +270,6 @@ jobs:
           uv run --project languages/asp-python --frozen python -c
           'from asp_python import assert_asp_python_clean; assert_asp_python_clean(".")'
 
-      - name: Language facade smoke gate
-        run: uv run --project packages/python --frozen pytest tests/unit/test_language_facade_smoke.py -q
-
   catalog-provider-gates:
     name: Catalog and TypeScript provider contracts
     runs-on: ubuntu-latest
@@ -330,6 +327,36 @@ jobs:
             dist/tests/unit/semantic_search_schema.test.js \
             dist/tests/unit/semantic_language_registry_read_packet.test.js
         working-directory: languages/asp-typescript
+
+  language-facade-gates:
+    name: Cross-language facade contracts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Checkout provider catalog submodules
+        run: |
+          git submodule update --init --depth 1 \
+            languages/asp-rust \
+            languages/asp-gerbil-scheme \
+            org \
+            languages/orgize \
+            languages/asp-typescript \
+            languages/asp-python \
+            languages/AspJulia.jl
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Language facade smoke gate
+        run: uv run --project packages/python --frozen pytest tests/unit/test_language_facade_smoke.py -q
 
   rust-provider-gates:
     name: Rust provider graph and schema contracts

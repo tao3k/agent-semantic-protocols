@@ -127,7 +127,7 @@ def test_language_facade_ci_gate_is_static() -> None:
     workflow = CI_WORKFLOW.read_text(encoding="utf-8")
 
     step = workflow.split("- name: Language facade smoke gate", 1)[1]
-    step = step.split("  catalog-provider-gates:", 1)[0]
+    step = step.split("  rust-provider-gates:", 1)[0]
 
     assert (
         "uv run --project packages/python --frozen pytest "

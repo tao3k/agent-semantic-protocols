@@ -20,6 +20,7 @@ def test_contract_gates_form_a_parallel_dag_around_one_asp_binary() -> None:
     assert "  shared-contract-gates:" in contract_jobs
     assert "  python-provider-gates:" in contract_jobs
     assert "  catalog-provider-gates:" in contract_jobs
+    assert "  language-facade-gates:" in contract_jobs
     assert "  rust-provider-gates:" in contract_jobs
     assert "  tree-sitter-contract-gates:" in contract_jobs
 
@@ -31,7 +32,7 @@ def test_contract_gates_form_a_parallel_dag_around_one_asp_binary() -> None:
     assert "Set up Rust" not in python_provider
 
     catalog_provider = contract_jobs.split("  catalog-provider-gates:", 1)[1].split(
-        "  rust-provider-gates:", 1
+        "  language-facade-gates:", 1
     )[0]
     assert (
         "canonical_client_profile_publishes_the_shared_schema_bundle_route"
@@ -41,6 +42,12 @@ def test_contract_gates_form_a_parallel_dag_around_one_asp_binary() -> None:
         "host_uds_schema_bundle_route_bypasses_workspace_generation"
         in catalog_provider
     )
+
+    language_facade = contract_jobs.split("  language-facade-gates:", 1)[1].split(
+        "  rust-provider-gates:", 1
+    )[0]
+    assert "Language facade smoke gate" in language_facade
+    assert "Set up Rust" not in language_facade
 
     rust_provider = contract_jobs.split("  rust-provider-gates:", 1)[1].split(
         "  tree-sitter-contract-gates:", 1
