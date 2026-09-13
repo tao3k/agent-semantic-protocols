@@ -57,7 +57,7 @@ def test_rust_package_matrix_covers_each_workspace_package_once() -> None:
     assert "rust-format:" in monolithic_workflow
     assert "rust-platform-smoke:" in monolithic_workflow
     platform_matrix = monolithic_workflow.split("rust-platform-smoke:", 1)[1].split(
-        "schema-and-provider-gates:", 1
+        "asp-linux-binary:", 1
     )[0]
     assert "ubuntu-latest" not in platform_matrix
     assert "macos-latest" in platform_matrix
@@ -66,10 +66,37 @@ def test_rust_package_matrix_covers_each_workspace_package_once() -> None:
     assert "cargo run --quiet --bin asp -- guide" not in platform_matrix
 
 
+def test_contract_gates_form_a_parallel_dag_around_one_asp_binary() -> None:
+    workflow = CI_WORKFLOW.read_text(encoding="utf-8")
+
+    assert workflow.count("cargo build --bin asp") == 2
+    contract_jobs = workflow.split("  asp-linux-binary:", 1)[1]
+    assert contract_jobs.count("cargo build --bin asp") == 1
+    assert "name: asp-linux-contract-binary" in contract_jobs
+    assert "  shared-contract-gates:" in contract_jobs
+    assert "  python-provider-gates:" in contract_jobs
+    assert "  catalog-provider-gates:" in contract_jobs
+    assert "  rust-provider-gates:" in contract_jobs
+    assert "  tree-sitter-contract-gates:" in contract_jobs
+
+    rust_provider = contract_jobs.split("  rust-provider-gates:", 1)[1].split(
+        "  tree-sitter-contract-gates:", 1
+    )[0]
+    assert "needs: asp-linux-binary" in rust_provider
+    assert "actions/download-artifact@v4" in rust_provider
+    assert "cargo run --quiet --bin asp" not in rust_provider
+    assert ".ci/bin/asp schema materialize" in rust_provider
+
+    tree_sitter = contract_jobs.split("  tree-sitter-contract-gates:", 1)[1]
+    assert "needs: asp-linux-binary" in tree_sitter
+    assert "--asp-bin .ci/bin/asp" in tree_sitter
+    assert "--no-build" in tree_sitter
+
+
 def test_root_schema_gate_references_only_present_test_paths() -> None:
     workflow = CI_WORKFLOW.read_text(encoding="utf-8")
     root_schema_gate = workflow.split("- name: Root schema gates", 1)[1]
-    root_schema_gate = root_schema_gate.split("- name: Python provider schema gates", 1)[0]
+    root_schema_gate = root_schema_gate.split("  python-provider-gates:", 1)[0]
     referenced_paths = sorted(set(re.findall(r"tests/[A-Za-z0-9_./-]+", root_schema_gate)))
 
     assert referenced_paths
@@ -127,7 +154,7 @@ def test_language_facade_ci_gate_is_static() -> None:
     workflow = CI_WORKFLOW.read_text(encoding="utf-8")
 
     step = workflow.split("- name: Language facade smoke gate", 1)[1]
-    step = step.split("- name: Tree-sitter query contract gates", 1)[0]
+    step = step.split("  catalog-provider-gates:", 1)[0]
 
     assert (
         "uv run --project packages/python/asp_python_graphs --frozen pytest "

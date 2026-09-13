@@ -135,10 +135,52 @@ jobs:
         shell: bash
         run: sccache --show-stats || true
 
-  schema-and-provider-gates:
+  asp-linux-binary:
+    name: Build ASP Linux contract binary
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
+
+      - name: Checkout provider submodules
+        run: |
+          git submodule update --init --depth 1 \
+            languages/asp-rust \
+            languages/asp-gerbil-scheme \
+            org \
+            languages/orgize \
+            languages/asp-typescript \
+            languages/asp-python \
+            languages/AspJulia.jl
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: . -> target
+          shared-key: asp-contract-binary-${{ runner.os }}
+          cache-on-failure: true
+
+      - name: Fetch Rust dependencies
+        run: cargo fetch
+
+      - name: Build asp binary once
+        run: cargo build --bin asp
+
+      - name: Upload asp contract binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: asp-linux-contract-binary
+          path: target/debug/asp
+          if-no-files-found: error
+          retention-days: 1
+
+  shared-contract-gates:
+    name: Shared schema and workspace policy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
 
       - name: Checkout provider submodules
         run: |
@@ -161,31 +203,15 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Set up Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: "24"
-          cache: npm
-          cache-dependency-path: languages/asp-typescript/package-lock.json
-
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy, rustfmt
 
       - name: Cache Rust artifacts
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: |
-            . -> target
-            languages/asp-rust -> languages/asp-rust/target
-          shared-key: asp-rust-ci-${{ runner.os }}
+          workspaces: . -> target
+          shared-key: asp-shared-contracts-${{ runner.os }}
           cache-on-failure: true
-
-      - name: Fetch Rust dependencies
-        run: |
-          cargo fetch
-          cargo fetch --manifest-path languages/asp-rust/Cargo.toml
 
       - name: ASP Rust workspace policy
         run: >-
@@ -213,6 +239,35 @@ jobs:
             tests/unit/semantic_language_registry_schema \
             -q
 
+  python-provider-gates:
+    name: Python provider contracts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Checkout Python provider
+        run: git submodule update --init --depth 1 languages/asp-python
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: . -> target
+          shared-key: asp-python-contracts-${{ runner.os }}
+          cache-on-failure: true
+
       - name: Python provider schema gates
         run: |
           cargo test -p agent-semantic-schema-manager \
@@ -225,6 +280,48 @@ jobs:
             languages/asp-python/tests/unit/asp_python/test_semantic_language_schemas.py \
             -q
 
+      - name: Python provider policy gate
+        run: >-
+          uv run --project languages/asp-python --frozen python -c
+          'from asp_python import assert_asp_python_clean; assert_asp_python_clean(".")'
+
+      - name: Language facade smoke gate
+        run: uv run --project packages/python/asp_python_graphs --frozen pytest tests/unit/test_language_facade_smoke.py -q
+
+  catalog-provider-gates:
+    name: Catalog and TypeScript provider contracts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Checkout provider catalog submodules
+        run: |
+          git submodule update --init --depth 1 \
+            languages/asp-rust \
+            languages/asp-gerbil-scheme \
+            org \
+            languages/orgize \
+            languages/asp-typescript \
+            languages/asp-python \
+            languages/AspJulia.jl
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: languages/asp-typescript/package-lock.json
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: . -> target
+          shared-key: asp-catalog-contracts-${{ runner.os }}
+          cache-on-failure: true
+
       - name: Gerbil central schema profile gates
         run: |
           cargo test -p agent-semantic-schema-manager \
@@ -233,35 +330,6 @@ jobs:
           cargo test -p agent-semantic-runtime-server \
             canonical_profiles_project_ready_and_unchanged_in_process_under_one_millisecond \
             --quiet
-
-      - name: Python provider policy gate
-        run: >-
-          uv run --project languages/asp-python --frozen python -c
-          'from asp_python import assert_asp_python_clean; assert_asp_python_clean(".")'
-
-      - name: Build asp binary
-        run: cargo build --bin asp
-
-      - name: Rust provider graph-render smoke gates
-        run: |
-          SEMANTIC_AGENT_PROTOCOL_BIN="$PWD/target/debug/asp" \
-            cargo test --manifest-path languages/asp-rust/Cargo.toml \
-              --workspace --all-targets --all-features --quiet \
-              cli_search_graph_profiles_filter_to_rendered_aliases
-          SEMANTIC_AGENT_PROTOCOL_BIN="$PWD/target/debug/asp" \
-            cargo test --manifest-path languages/asp-rust/Cargo.toml \
-              --workspace --all-targets --all-features --quiet \
-              cli_search_policy_renders_semantic_handles
-
-      - name: Rust provider schema gates
-        run: |
-          cargo run --quiet --bin asp -- schema materialize --workspace . --language rust
-          cargo run --quiet --bin asp -- schema verify --workspace . --language rust
-          cargo run --quiet --bin asp -- schema publish-client \
-            --workspace . \
-            --language rust \
-            --output languages/asp-rust/schemas
-          cargo test --manifest-path languages/asp-rust/Cargo.toml schema --features provider-server --quiet
 
       - name: TypeScript provider schema gates
         run: |
@@ -272,8 +340,120 @@ jobs:
             dist/tests/unit/semantic_language_registry_read_packet.test.js
         working-directory: languages/asp-typescript
 
-      - name: Language facade smoke gate
-        run: uv run --project packages/python/asp_python_graphs --frozen pytest tests/unit/test_language_facade_smoke.py -q
+  rust-provider-gates:
+    name: Rust provider graph and schema contracts
+    needs: asp-linux-binary
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Checkout provider catalog submodules
+        run: |
+          git submodule update --init --depth 1 \
+            languages/asp-rust \
+            languages/asp-gerbil-scheme \
+            org \
+            languages/orgize \
+            languages/asp-typescript \
+            languages/asp-python \
+            languages/AspJulia.jl
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust provider artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: languages/asp-rust -> languages/asp-rust/target
+          shared-key: asp-rust-provider-contracts-${{ runner.os }}
+          cache-on-failure: true
+
+      - name: Download asp contract binary
+        uses: actions/download-artifact@v4
+        with:
+          name: asp-linux-contract-binary
+          path: .ci/bin
+
+      - name: Make asp contract binary executable
+        run: chmod +x .ci/bin/asp
+
+      - name: Rust provider graph-render smoke gates
+        run: |
+          SEMANTIC_AGENT_PROTOCOL_BIN="$PWD/.ci/bin/asp" \
+            cargo test --manifest-path languages/asp-rust/Cargo.toml \
+              --workspace --all-targets --all-features --quiet \
+              cli_search_graph_profiles_filter_to_rendered_aliases
+          SEMANTIC_AGENT_PROTOCOL_BIN="$PWD/.ci/bin/asp" \
+            cargo test --manifest-path languages/asp-rust/Cargo.toml \
+              --workspace --all-targets --all-features --quiet \
+              cli_search_policy_renders_semantic_handles
+
+      - name: Rust provider schema gates
+        run: |
+          .ci/bin/asp schema materialize --workspace . --language rust
+          .ci/bin/asp schema verify --workspace . --language rust
+          .ci/bin/asp schema publish-client \
+            --workspace . \
+            --language rust \
+            --output languages/asp-rust/schemas
+          cargo test --manifest-path languages/asp-rust/Cargo.toml schema --features provider-server --quiet
+
+  tree-sitter-contract-gates:
+    name: Tree-sitter provider runtime contracts
+    needs: asp-linux-binary
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Checkout syntax provider submodules
+        run: |
+          git submodule update --init --depth 1 \
+            languages/asp-rust \
+            languages/asp-typescript \
+            languages/asp-python
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: languages/asp-typescript/package-lock.json
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust provider artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: languages/asp-rust -> languages/asp-rust/target
+          shared-key: asp-tree-sitter-contracts-${{ runner.os }}
+          cache-on-failure: true
+
+      - name: Download asp contract binary
+        uses: actions/download-artifact@v4
+        with:
+          name: asp-linux-contract-binary
+          path: .ci/bin
+
+      - name: Make asp contract binary executable
+        run: chmod +x .ci/bin/asp
+
+      - name: Build syntax provider runtimes
+        run: |
+          npm --prefix languages/asp-typescript ci
+          npm --prefix languages/asp-typescript run build
+          cargo build --quiet \
+            --manifest-path languages/asp-rust/Cargo.toml \
+            --features provider-server \
+            --bin asp-rust
 
       - name: Tree-sitter query contract gates
-        run: uv run --project packages/python --frozen python -m tools tree-sitter validate contracts
+        run: >-
+          uv run --project packages/python --frozen python -m tools tree-sitter validate contracts
+          --asp-bin .ci/bin/asp
+          --no-build
