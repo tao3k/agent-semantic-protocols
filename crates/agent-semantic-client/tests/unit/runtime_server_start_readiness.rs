@@ -188,6 +188,7 @@ fn stop_isolated_runtime(state_home: &Path) {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn pending_activation_bootstrap_waits_for_one_healthy_runtime_owner() {
+    let _runtime_fixture_guard = crate::install_binary_test_guard::acquire();
     let temporary = tempfile::tempdir().expect("create isolated state home");
     let state_home = temporary.path().to_path_buf();
     publish_pending_runtime(&state_home).await;
@@ -234,6 +235,7 @@ async fn pending_activation_bootstrap_waits_for_one_healthy_runtime_owner() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn explicit_activation_waits_for_one_bound_resident_transaction_without_polling() {
+    let _runtime_fixture_guard = crate::install_binary_test_guard::acquire();
     let temporary = tempfile::tempdir().expect("create isolated state home");
     let state_home = temporary.path().to_path_buf();
     publish_pending_runtime(&state_home).await;
@@ -281,6 +283,7 @@ async fn explicit_activation_waits_for_one_bound_resident_transaction_without_po
 
 #[tokio::test(flavor = "multi_thread")]
 async fn restart_replaces_owner_from_applied_generation_in_one_typed_transaction() {
+    let _runtime_fixture_guard = crate::install_binary_test_guard::acquire();
     let temporary = tempfile::tempdir().expect("create isolated state home");
     let state_home = temporary.path().to_path_buf();
     publish_pending_runtime(&state_home).await;
@@ -361,6 +364,7 @@ async fn restart_replaces_owner_from_applied_generation_in_one_typed_transaction
 
 #[tokio::test(flavor = "multi_thread")]
 async fn runtime_client_recovers_one_dead_applied_owner_and_respects_operator_stop() {
+    let _runtime_fixture_guard = crate::install_binary_test_guard::acquire();
     let temporary = tempfile::tempdir().expect("create isolated state home");
     let state_home = temporary.path().to_path_buf();
     publish_pending_runtime(&state_home).await;
@@ -480,6 +484,7 @@ async fn runtime_client_recovers_one_dead_applied_owner_and_respects_operator_st
 
 #[tokio::test(flavor = "multi_thread")]
 async fn activation_child_exit_terminalizes_and_preserves_pending_without_polling() {
+    let _runtime_fixture_guard = crate::install_binary_test_guard::acquire();
     let temporary = tempfile::tempdir().expect("create isolated state home");
     let state_home = temporary.path().to_path_buf();
     let source = temporary.path().join("exiting-asp");
@@ -524,6 +529,7 @@ async fn activation_child_exit_terminalizes_and_preserves_pending_without_pollin
 
 #[tokio::test(flavor = "multi_thread")]
 async fn concurrent_pending_activation_bootstraps_share_one_runtime_server_owner() {
+    let _runtime_fixture_guard = crate::install_binary_test_guard::acquire();
     let temporary = tempfile::tempdir().expect("create isolated state home");
     let state_home = temporary.path().to_path_buf();
     publish_pending_runtime(&state_home).await;
@@ -557,6 +563,7 @@ async fn concurrent_pending_activation_bootstraps_share_one_runtime_server_owner
 
 #[tokio::test(flavor = "multi_thread")]
 async fn operator_stop_suppresses_old_activation_until_a_newer_publication() {
+    let _runtime_fixture_guard = crate::install_binary_test_guard::acquire();
     let temporary = tempfile::tempdir().expect("create isolated state home");
     let state_home = temporary.path().to_path_buf();
     publish_pending_runtime(&state_home).await;
@@ -610,6 +617,7 @@ async fn operator_stop_suppresses_old_activation_until_a_newer_publication() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn current_schema_v1_operator_stop_suppresses_covered_activation() {
+    let _runtime_fixture_guard = crate::install_binary_test_guard::acquire();
     let temporary = tempfile::tempdir().expect("create isolated state home");
     let state_home = temporary.path().to_path_buf();
     publish_pending_runtime(&state_home).await;
@@ -663,6 +671,7 @@ async fn current_schema_v1_operator_stop_suppresses_covered_activation() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn invalid_operator_stop_receipts_fail_closed_without_starting_an_owner() {
+    let _runtime_fixture_guard = crate::install_binary_test_guard::acquire();
     let cases = [
         ("malformed", "{"),
         (
@@ -709,6 +718,7 @@ async fn invalid_operator_stop_receipts_fail_closed_without_starting_an_owner() 
 
 #[tokio::test(flavor = "multi_thread")]
 async fn concurrent_current_schema_v1_reads_are_idempotent() {
+    let _runtime_fixture_guard = crate::install_binary_test_guard::acquire();
     let temporary = tempfile::tempdir().expect("create isolated state home");
     let state_home = temporary.path().to_path_buf();
     publish_pending_runtime(&state_home).await;
