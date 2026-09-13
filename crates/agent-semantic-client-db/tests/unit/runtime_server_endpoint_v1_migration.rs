@@ -13,7 +13,7 @@ fn old_v1_endpoint(owner_process_id: u32) -> Value {
     json!({
         "schemaId": "agent.semantic-protocols.runtime-server-endpoint",
         "schemaVersion": "1",
-        "transportContractDigest": "test-transport-contract",
+        "transportContractDigest": agent_semantic_client_db::runtime_server_control::runtime_server_transport_contract_digest(),
         "ownerEpoch": 7,
         "ownerProcessId": owner_process_id,
         "runtimeArtifactPath": "/tmp/asp-artifacts/active/asp",
@@ -29,6 +29,9 @@ fn old_v1_endpoint(owner_process_id: u32) -> Value {
         "artifactMode": "dev",
         "artifactCatalogDigest": digest,
         "bindingToken": "owner-nonce",
+        "controlEndpoint": {"transport": "loopback-tcp", "address": "127.0.0.1", "port": 43191},
+        "dataEndpoint": {"transport": "loopback-tcp", "address": "127.0.0.1", "port": 43192},
+        "providerEndpoint": {"transport": "loopback-tcp", "address": "127.0.0.1", "port": 43193},
         "socketPath": "/tmp/asp-runtime/control.sock",
         "dataPlaneSocketPath": "/tmp/asp-runtime/data.sock",
         "providerPlaneSocketPath": "/tmp/asp-runtime/provider.sock",

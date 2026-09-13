@@ -15,8 +15,7 @@ mod artifact_pointer_crash_tests {
     use agent_semantic_content_identity::hash_blob;
 
     const CHILD_PATH_ENV: &str = "ASP_ARTIFACT_POINTER_CRASH_CHILD_PATH";
-    const CHILD_TEST: &str =
-        "db_engine::artifact_pointer_crash_tests::artifact_pointer_crash_writer_child";
+    const CHILD_TEST: &str = "db_engine::artifact_pointer_crash::artifact_pointer_crash_tests::artifact_pointer_crash_writer_child";
 
     fn temp_db() -> PathBuf {
         let nonce = SystemTime::now()

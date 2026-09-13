@@ -151,7 +151,7 @@ async fn selector_overlay_atomically_rebinds_a_stale_generation_owner() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn moved_owner_overlay_publishes_one_atomic_relocation_epoch() {
+async fn moved_owner_overlay_requires_a_canonical_generation_rebuild() {
     let root = fixture_root();
     let registry =
         RuntimeServerWorkspaceRegistry::new(root.clone()).expect("create workspace registry");
@@ -165,7 +165,7 @@ async fn moved_owner_overlay_publishes_one_atomic_relocation_epoch() {
         .await
         .expect("publish canonical generation");
     let moved_bytes = b"fn moved() { println!(\"moved\"); }\n";
-    registry
+    let error = registry
         .relocate_owner_overlay(
             "relocate-owner-atomically",
             workspace_identity,
@@ -181,17 +181,15 @@ async fn moved_owner_overlay_publishes_one_atomic_relocation_epoch() {
             },
         )
         .await
-        .expect("relocate owner in one writer epoch");
+        .expect_err("owner relocation cannot mint a content generation");
+    assert!(error.contains("canonical generation rebuild required"));
 
     let lease = registry
         .lease(workspace_identity, &root)
-        .expect("lease moved generation");
-    assert_eq!(lease.epoch(), 2);
-    assert!(lease.owner("src/lib.rs").is_none());
-    assert_eq!(
-        lease.owner("src/moved.rs").as_deref(),
-        Some(moved_bytes.as_slice())
-    );
+        .expect("lease unchanged canonical generation");
+    assert_eq!(lease.epoch(), 1);
+    assert!(lease.owner("src/lib.rs").is_some());
+    assert!(lease.owner("src/moved.rs").is_none());
     assert_eq!(lease.generation().root_depth, [1, 0]);
     assert_eq!(lease.generation().source_snapshot.leaf_count, 1);
     assert_eq!(lease.generation().workspace_generation.owner_count, 1);
@@ -208,7 +206,7 @@ async fn moved_owner_overlay_publishes_one_atomic_relocation_epoch() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn multi_owner_delta_publishes_one_atomic_generation_epoch() {
+async fn multi_owner_delta_requires_a_canonical_generation_rebuild() {
     let root = fixture_root();
     let registry =
         RuntimeServerWorkspaceRegistry::new(root.clone()).expect("create workspace registry");
@@ -226,7 +224,7 @@ async fn multi_owner_delta_publishes_one_atomic_generation_epoch() {
         .expect("lease generation before delta");
     let first = b"fn first() {}\n";
     let second = b"fn second() {}\n";
-    let receipt = registry
+    let error = registry
         .publish_owner_delta(
             "publish-owner-delta-atomically",
             workspace_identity,
@@ -258,27 +256,20 @@ async fn multi_owner_delta_publishes_one_atomic_generation_epoch() {
             },
         )
         .await
-        .expect("publish owner delta in one writer epoch");
+        .expect_err("owner delta cannot mint a content generation");
 
-    assert_eq!(receipt.active_epoch, 1);
-    assert_eq!(receipt.target_epoch, 2);
+    assert!(error.contains("canonical generation rebuild required"));
     assert_eq!(old_lease.epoch(), 1);
     assert!(old_lease.owner("src/lib.rs").is_some());
     let current = registry
         .lease(workspace_identity, &root)
-        .expect("lease generation after delta");
-    assert_eq!(current.epoch(), 2);
-    assert!(current.owner("src/lib.rs").is_none());
-    assert_eq!(
-        current.owner("src/first.rs").as_deref(),
-        Some(first.as_slice())
-    );
-    assert_eq!(
-        current.owner("src/second.rs").as_deref(),
-        Some(second.as_slice())
-    );
-    assert_eq!(current.generation().source_snapshot.leaf_count, 2);
-    assert_eq!(current.generation().workspace_generation.owner_count, 2);
+        .expect("lease unchanged generation after rejected delta");
+    assert_eq!(current.epoch(), 1);
+    assert!(current.owner("src/lib.rs").is_some());
+    assert!(current.owner("src/first.rs").is_none());
+    assert!(current.owner("src/second.rs").is_none());
+    assert_eq!(current.generation().source_snapshot.leaf_count, 1);
+    assert_eq!(current.generation().workspace_generation.owner_count, 1);
     assert_eq!(
         current.generation().workspace_generation.root_digest,
         current.generation().source_snapshot.root_digest
@@ -292,7 +283,7 @@ async fn multi_owner_delta_publishes_one_atomic_generation_epoch() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn stale_owner_delta_is_rejected_before_pointer_or_epoch_change() {
+async fn stale_and_current_base_owner_deltas_cannot_replace_the_canonical_generation() {
     let root = fixture_root();
     let registry =
         RuntimeServerWorkspaceRegistry::new(root.clone()).expect("create workspace registry");
@@ -358,7 +349,7 @@ async fn stale_owner_delta_is_rejected_before_pointer_or_epoch_change() {
     assert_eq!(unchanged.generation().generation_digest, baseline_digest);
     assert!(unchanged.owner("src/lib.rs").is_some());
 
-    let valid = registry
+    let current_base_error = registry
         .publish_owner_delta(
             "publish-valid-owner-delta-after-cas",
             workspace_identity,
@@ -373,30 +364,16 @@ async fn stale_owner_delta_is_rejected_before_pointer_or_epoch_change() {
             },
         )
         .await
-        .expect("current-base owner delta publishes");
-    assert_eq!(valid.target_epoch, baseline_epoch + 1);
-    assert!(valid.old_generation_readable);
+        .expect_err("current-base owner delta still requires canonical rebuild");
+    assert!(current_base_error.contains("canonical generation rebuild required"));
     let current = registry
         .lease(workspace_identity, &root)
-        .expect("lease published generation");
-    assert_ne!(current.generation().generation_digest, baseline_digest);
+        .expect("lease unchanged canonical generation");
+    assert_eq!(current.generation().generation_digest, baseline_digest);
     let pointer_after_valid = tokio::fs::read(&pointer_path)
         .await
-        .expect("read pointer after valid delta");
-    assert_ne!(pointer_after_valid, pointer_before);
-    let data_plane = agent_semantic_client_db::runtime_server_workspace::WorkspaceSearchGenerationDataPlaneClient::open(
-        &pointer_path,
-        &root,
-    )
-    .await
-    .expect("open fresh published search generation");
-    let fresh_owner = data_plane
-        .read_merkle_owner("src/lib.rs")
-        .expect("read fresh owner proof");
-    assert!(matches!(
-        fresh_owner,
-        agent_semantic_client_db::runtime_server_workspace::WorkspaceRuntimeMerkleOwnerRead::Owner { .. }
-    ));
+        .expect("read pointer after rejected current-base delta");
+    assert_eq!(pointer_after_valid, pointer_before);
     assert_eq!(registry.data_plane_counters().database_opens, 0);
     assert_eq!(registry.data_plane_counters().provider_spawns, 0);
     registry.shutdown().await.expect("drain CAS writer lane");
@@ -563,6 +540,24 @@ async fn concurrent_cold_restore_publishes_one_canonical_epoch() {
             &source_snapshot,
         ))
         .expect("bind canonical cold-restore content search generation");
+    let mut canonical_import = import.clone();
+    for selector in &mut canonical_import.selectors {
+        selector.source = "".into();
+    }
+    let source_index_digest = format!(
+        "blake3-256:{}",
+        blake3::hash(
+            &serde_json::to_vec(&canonical_import).expect("encode canonical cold-restore import")
+        )
+        .to_hex()
+    );
+    materialization
+        .bind_runtime_provider_execution(crate::fixture::runtime_provider_execution_binding(
+            workspace_identity,
+            &source_snapshot,
+            &source_index_digest,
+        ))
+        .expect("bind canonical cold-restore Runtime provider execution");
     let mut restores = tokio::task::JoinSet::new();
     for request in 0..64 {
         let registry = std::sync::Arc::clone(&registry);
@@ -627,40 +622,6 @@ async fn concurrent_cold_restore_publishes_one_canonical_epoch() {
             &root,
         )
         .expect("resolve active generation pointer");
-    tokio::fs::remove_file(&pointer_path)
-        .await
-        .expect("remove the published pointer while resident memory remains warm");
-    assert_eq!(
-        registry
-            .published_generation_state(workspace_identity, &root)
-            .await
-            .expect("observe missing immutable generation"),
-        agent_semantic_client_db::runtime_server_workspace::PublishedWorkspaceGenerationState::Missing,
-    );
-    let resident_republication = registry
-        .admit_canonical_generation_resident(
-            "resident-ready-before-durability",
-            workspace_identity,
-            materialization
-                .clone()
-                .into_validated(workspace_identity)
-                .expect("validate resident republish materialization"),
-        )
-        .await
-        .expect("resident publication must not wait for its durable pointer");
-    let resident_lease = registry
-        .lease(workspace_identity, &root)
-        .expect("resident generation remains queryable");
-    assert_eq!(resident_lease.epoch(), resident_republication.target_epoch);
-    registry
-        .wait_canonical_generation_durable(
-            workspace_identity,
-            &root,
-            &resident_republication.generation_digest,
-            resident_republication.target_epoch,
-        )
-        .await
-        .expect("explicit restore boundary waits for durability");
     let current_snapshot =
         agent_semantic_client_db::runtime_server_workspace::WorkspaceGenerationPointerReader::open(
             &pointer_path,
@@ -836,7 +797,7 @@ async fn atomic_epoch_switch_keeps_old_reader_leases_on_the_old_generation() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn restarted_registry_restores_mmap_before_admitting_owner_overlay() {
+async fn restarted_registry_restores_mmap_before_rejecting_owner_generation_minting() {
     let root = fixture_root();
     let workspace_identity = "workspace-mmap-restore";
     let first =
@@ -854,7 +815,7 @@ async fn restarted_registry_restores_mmap_before_admitting_owner_overlay() {
 
     let restarted = RuntimeServerWorkspaceRegistry::new(root.clone())
         .expect("create restarted workspace registry");
-    let receipt = restarted
+    let error = restarted
         .publish_owner_overlay(
             "overlay-after-restart",
             workspace_identity,
@@ -869,24 +830,18 @@ async fn restarted_registry_restores_mmap_before_admitting_owner_overlay() {
             },
         )
         .await
-        .expect("restore mmap generation before applying overlay");
-    assert_eq!(
-        receipt.source,
-        WorkspaceRecoverySource::ProviderOwnerOverlay
-    );
-    assert_eq!(receipt.active_epoch, 1);
-    assert_eq!(receipt.target_epoch, 2);
-    assert!(receipt.old_generation_readable);
+        .expect_err("restored owner overlay requires canonical generation rebuild");
+    assert!(error.contains("canonical generation rebuild required"));
     let current = restarted
         .lease(workspace_identity, &root)
-        .expect("lease restored and overlaid generation");
-    assert_eq!(current.epoch(), 2);
+        .expect("lease restored canonical generation");
+    assert_eq!(current.epoch(), 1);
     assert_eq!(
         current
             .owner("src/lib.rs")
             .expect("overlaid owner bytes")
             .as_ref(),
-        b"live"
+        b"canonical"
     );
 
     restarted

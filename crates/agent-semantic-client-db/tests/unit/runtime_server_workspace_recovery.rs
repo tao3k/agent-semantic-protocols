@@ -30,6 +30,15 @@ fn generation(workspace_identity: &str) -> WorkspaceMemoryGeneration {
             blake3::hash(b"resident-recovery-fixture-provider").to_hex()
         ),
     );
+    let module_graph_digest = format!(
+        "blake3-256:{}",
+        blake3::hash(b"resident-recovery-fixture-module-graph").to_hex()
+    );
+    let runtime_provider_execution_binding = crate::fixture::runtime_provider_execution_binding(
+        workspace_identity,
+        &source_snapshot,
+        &module_graph_digest,
+    );
     WorkspaceMemoryGeneration::try_from_build(
         agent_semantic_client_db::runtime_server_workspace::WorkspaceGenerationBuild {
     projection_capability: agent_semantic_client_db::active_generation_projection_capability::ActiveGenerationProjectionCapabilityManifest::single_selector("blake3-256:0000000000000000000000000000000000000000000000000000000000000000".to_owned(), "rust://fixture/src/lib.rs#item/function/fixture".to_owned(), "src/lib.rs".to_owned(), std::collections::BTreeSet::from([agent_semantic_client_db::active_generation_projection_capability::ActiveGenerationProjectionMode::Source])).expect("test projection capability manifest"),
@@ -43,11 +52,8 @@ fn generation(workspace_identity: &str) -> WorkspaceMemoryGeneration {
                 &source_snapshot,
             ),
             source_snapshot,
-            module_graph_digest: format!(
-                "blake3-256:{}",
-                blake3::hash(b"resident-recovery-fixture-module-graph").to_hex()
-            ),
-            runtime_provider_execution_binding: None,
+            module_graph_digest,
+            runtime_provider_execution_binding: Some(runtime_provider_execution_binding),
             project_resolutions: Vec::new(),
             auxiliary_owners: Vec::new(),
             owners: vec![WorkspaceOwnerSnapshot {
@@ -102,7 +108,19 @@ fn canonical_materialization(
         owners: Vec::new(),
         selectors: Vec::new(),
     };
-    WorkspaceCanonicalMaterialization::new(
+    let content_search_generation =
+        crate::fixture::content_search_generation_receipt(workspace_identity, &source_snapshot);
+    let source_index_digest = format!(
+        "blake3-256:{}",
+        blake3::hash(&serde_json::to_vec(&import).expect("encode canonical fixture import"))
+            .to_hex()
+    );
+    let runtime_provider_execution_binding = crate::fixture::runtime_provider_execution_binding(
+        workspace_identity,
+        &source_snapshot,
+        &source_index_digest,
+    );
+    let mut materialization = WorkspaceCanonicalMaterialization::new(
         workspace_identity,
         source_snapshot,
         &import,
@@ -117,7 +135,14 @@ fn canonical_materialization(
         }],
         Vec::new(),
     )
-    .expect("canonical recovery materialization")
+    .expect("canonical recovery materialization");
+    materialization
+        .attach_content_search_generation(content_search_generation)
+        .expect("bind canonical recovery content search generation");
+    materialization
+        .bind_runtime_provider_execution(runtime_provider_execution_binding)
+        .expect("bind canonical recovery Runtime provider execution");
+    materialization
 }
 
 #[tokio::test]
@@ -470,7 +495,7 @@ async fn canonical_ready_reuse_republishes_an_obsolete_exact_layout() {
     let bytes = tokio::fs::read(exact_path)
         .await
         .expect("read republished exact segment");
-    assert_eq!(&bytes[..16], b"ASPEXACTMMAP0004");
+    assert_eq!(&bytes[..16], b"ASPEXACTMMAP0005");
     assert!(matches!(
         registry
             .published_generation_state(workspace_identity, &canonical_project_root)

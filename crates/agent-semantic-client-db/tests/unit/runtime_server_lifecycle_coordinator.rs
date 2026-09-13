@@ -11,6 +11,13 @@ use agent_semantic_client_db::runtime_server_lifecycle_coordinator::RuntimeServe
 use std::os::unix::fs::PermissionsExt;
 use tempfile::tempdir;
 
+fn owner_receipt_path(state_home: &std::path::Path) -> std::path::PathBuf {
+    agent_semantic_artifacts::StateHomeLayout::new(state_home)
+        .runtime_state()
+        .serving()
+        .lifecycle_receipt(agent_semantic_artifacts::RuntimeLifecycleReceiptName::OwnerSpawn)
+}
+
 fn activation_request(
     state_home: &std::path::Path,
     executable: std::path::PathBuf,
@@ -110,7 +117,7 @@ async fn owner_receipt_roundtrip_is_atomic_and_schema_stable() {
 #[tokio::test]
 async fn legacy_v1_owner_receipt_is_typed_stale_and_not_current() {
     let dir = tempdir().unwrap();
-    let path = dir.path().join("runtime/server/owner-spawn.v1.json");
+    let path = owner_receipt_path(dir.path());
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     std::fs::write(
         &path,
@@ -144,7 +151,7 @@ async fn legacy_v1_owner_receipt_is_typed_stale_and_not_current() {
 #[tokio::test]
 async fn validated_activation_classifies_legacy_owner_as_not_current() {
     let dir = tempdir().unwrap();
-    let path = dir.path().join("runtime/server/owner-spawn.v1.json");
+    let path = owner_receipt_path(dir.path());
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     std::fs::write(
         &path,
@@ -176,7 +183,7 @@ async fn validated_activation_classifies_legacy_owner_as_not_current() {
 #[tokio::test]
 async fn malformed_owner_cannot_be_hidden_by_a_validated_activation() {
     let dir = tempdir().unwrap();
-    let path = dir.path().join("runtime/server/owner-spawn.v1.json");
+    let path = owner_receipt_path(dir.path());
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     std::fs::write(&path, b"{").unwrap();
     let request = activation_request(
@@ -264,7 +271,7 @@ async fn current_owner_and_pending_activation_use_one_nonce_digest_comparator() 
 #[tokio::test]
 async fn malformed_partial_and_unknown_owner_receipts_fail_closed() {
     let dir = tempdir().unwrap();
-    let path = dir.path().join("runtime/server/owner-spawn.v1.json");
+    let path = owner_receipt_path(dir.path());
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     std::fs::write(&path, b"{").unwrap();
     assert!(
@@ -305,7 +312,7 @@ async fn malformed_partial_and_unknown_owner_receipts_fail_closed() {
 #[tokio::test]
 async fn unreleased_schema_version_2_is_rejected() {
     let dir = tempdir().unwrap();
-    let path = dir.path().join("runtime/server/owner-spawn.v1.json");
+    let path = owner_receipt_path(dir.path());
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     std::fs::write(
         &path,

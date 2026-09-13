@@ -52,7 +52,12 @@ async fn agent_session_registry_project_open_without_runtime_owner_helper() {
         .expect("ensure canonical workspace state layout");
     let state_root =
         AgentSessionRegistry::state_root_for_project(&project_root).expect("resolve project root");
-    assert_eq!(state_root, state.state_home);
+    assert_eq!(
+        state_root,
+        agent_semantic_artifacts::StateHomeLayout::new(&state.state_home)
+            .control()
+            .session_registry_root()
+    );
     let error = match AgentSessionRegistry::open_or_create_project(&project_root).await {
         Ok(_) => panic!("client project open without Runtime Server must fail closed"),
         Err(error) => error,

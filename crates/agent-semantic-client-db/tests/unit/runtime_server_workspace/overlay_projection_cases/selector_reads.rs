@@ -400,6 +400,15 @@ async fn process_cold_owner_snapshot_is_independent_of_unrelated_selector_volume
             blake3::hash(b"owner-identity-performance-provider").to_hex()
         ),
     );
+    let module_graph_digest = format!(
+        "blake3-256:{}",
+        blake3::hash(b"owner-identity-performance-module-graph").to_hex()
+    );
+    let runtime_provider_execution_binding = crate::fixture::runtime_provider_execution_binding(
+        "workspace-owner-identity-performance",
+        &source_snapshot,
+        &module_graph_digest,
+    );
     let published = WorkspaceMemoryGeneration::try_from_build(
         agent_semantic_client_db::runtime_server_workspace::WorkspaceGenerationBuild {
             projection_capability: crate::fixture::overlay_projection_capability_manifest_fixture(),
@@ -415,11 +424,8 @@ async fn process_cold_owner_snapshot_is_independent_of_unrelated_selector_volume
                 &source_snapshot,
             ),
             source_snapshot,
-            module_graph_digest: format!(
-                "blake3-256:{}",
-                blake3::hash(b"owner-identity-performance-module-graph").to_hex()
-            ),
-            runtime_provider_execution_binding: None,
+            module_graph_digest,
+            runtime_provider_execution_binding: Some(runtime_provider_execution_binding),
             project_resolutions: Vec::new(),
             auxiliary_owners: Vec::new(),
             owners,

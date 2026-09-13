@@ -9,6 +9,9 @@ fn db_engine_active_backend_contract_tracks_turso_default() {
     init_git_repository(&project_root);
     let state = ResolvedState::resolve_with_state_home(&project_root, &state_home)
         .expect("resolve state with explicit state home");
+    let binding = state
+        .project_binding()
+        .expect("resolve artifact identity binding");
     let workspace_paths = state
         .ensure_workspace_state_layout()
         .expect("commit State Core identity before DB manifest write");
@@ -26,8 +29,8 @@ fn db_engine_active_backend_contract_tracks_turso_default() {
         workspace_paths.db_manifest_path().as_path()
     );
     assert_eq!(engine.artifact_path(), workspace_paths.artifacts.as_path());
-    assert_eq!(engine.repo_id(), state.repo.repo_id.as_str());
-    assert_eq!(engine.workspace_id(), state.workspace.workspace_id.as_str());
+    assert_eq!(engine.repo_id(), binding.repo.digest.as_str());
+    assert_eq!(engine.workspace_id(), binding.workspace.digest.as_str());
     assert_eq!(engine.scope_id(), state.scope_id.to_string());
     engine
         .write_manifest()
@@ -37,11 +40,8 @@ fn db_engine_active_backend_contract_tracks_turso_default() {
             .expect("parse DB manifest");
     assert_eq!(manifest["layoutVersion"], STATE_LAYOUT_VERSION);
     assert_eq!(manifest["backend"], report.backend);
-    assert_eq!(manifest["repoId"], state.repo.repo_id.as_str());
-    assert_eq!(
-        manifest["workspaceId"],
-        state.workspace.workspace_id.as_str()
-    );
+    assert_eq!(manifest["repoId"], binding.repo.digest.as_str());
+    assert_eq!(manifest["workspaceId"], binding.workspace.digest.as_str());
     assert_eq!(manifest["scopeId"], state.scope_id.to_string());
     assert_eq!(manifest["dbFileName"], report.db_file_name);
     assert_eq!(manifest["schemaVersion"], report.schema_version);
@@ -143,10 +143,10 @@ fn db_engine_active_backend_contract_tracks_turso_default() {
     );
     let report_json = serde_json::to_value(&report).expect("serialize db engine report");
     assert_eq!(report_json["layoutVersion"], STATE_LAYOUT_VERSION);
-    assert_eq!(report_json["repoId"], state.repo.repo_id.as_str());
+    assert_eq!(report_json["repoId"], binding.repo.digest.as_str());
     assert_eq!(
         report_json["workspaceId"],
-        state.workspace.workspace_id.as_str()
+        binding.workspace.digest.as_str()
     );
     assert_eq!(report_json["scopeId"], state.scope_id.to_string());
     assert_eq!(report_json["features"]["concurrentWrites"], true);

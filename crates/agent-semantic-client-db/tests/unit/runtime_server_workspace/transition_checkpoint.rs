@@ -68,6 +68,15 @@ fn generation(
         .selector
         .clone();
     let selector_owner_path = owner.owner_path.clone();
+    let module_graph_digest = format!(
+        "blake3-256:{}",
+        blake3::hash(b"runtime-workspace-fixture-module-graph").to_hex()
+    );
+    let runtime_provider_execution_binding = crate::fixture::runtime_provider_execution_binding(
+        workspace_identity,
+        &source_snapshot,
+        &module_graph_digest,
+    );
     WorkspaceMemoryGeneration::try_from_build(
         agent_semantic_client_db::runtime_server_workspace::WorkspaceGenerationBuild {
             projection_capability: agent_semantic_client_db::active_generation_projection_capability::ActiveGenerationProjectionCapabilityManifest::single_selector(
@@ -89,11 +98,8 @@ fn generation(
                 &source_snapshot,
             ),
             source_snapshot,
-            module_graph_digest: format!(
-                "blake3-256:{}",
-                blake3::hash(b"runtime-workspace-fixture-module-graph").to_hex()
-            ),
-            runtime_provider_execution_binding: None,
+            module_graph_digest,
+            runtime_provider_execution_binding: Some(runtime_provider_execution_binding),
             project_resolutions: Vec::new(),
             auxiliary_owners: Vec::new(),
             owners: vec![owner],
@@ -189,11 +195,14 @@ async fn source_generation_transition_invalidates_selector_overlays() {
         .await
         .expect("publish selector overlay");
     registry
-        .publish_owner_overlay(
+        .publish(
             "source-generation-transition",
-            "workspace-selector-invalidation",
-            &project_root("workspace-selector-invalidation"),
-            owner("src/lib.rs", selector, b"fn first() { changed(); }"),
+            agent_semantic_client_db::runtime_server_workspace::WorkspaceRecoverySource::TursoGeneration,
+            generation(
+                "workspace-selector-invalidation",
+                2,
+                owner("src/lib.rs", selector, b"fn first() { changed(); }"),
+            ),
         )
         .await
         .expect("publish changed owner");
@@ -237,14 +246,17 @@ async fn epoch_publication_keeps_the_previous_generation_readable() {
     let selector = "rust://src/lib.rs#item/function/run";
 
     let receipt = registry
-        .publish_owner_overlay(
+        .publish(
             "publish-2",
-            "workspace-a",
-            &project_root("workspace-a"),
-            owner(
-                "src/lib.rs",
-                "rust://src/lib.rs#item/function/run",
-                b"fn run() { changed() }",
+            agent_semantic_client_db::runtime_server_workspace::WorkspaceRecoverySource::TursoGeneration,
+            generation(
+                "workspace-a",
+                2,
+                owner(
+                    "src/lib.rs",
+                    "rust://src/lib.rs#item/function/run",
+                    b"fn run() { changed() }",
+                ),
             ),
         )
         .await
@@ -281,7 +293,7 @@ async fn epoch_publication_keeps_the_previous_generation_readable() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn concurrent_sessions_share_one_writer_lane_and_monotonic_epochs() {
+async fn concurrent_owner_overlays_cannot_mint_generation_epochs() {
     let temporary = tempdir().expect("temporary runtime root");
     let registry = Arc::new(
         RuntimeServerWorkspaceRegistry::new(temporary.path().to_path_buf()).expect("registry"),
@@ -323,17 +335,24 @@ async fn concurrent_sessions_share_one_writer_lane_and_monotonic_epochs() {
                 .await
         }));
     }
-    let mut epochs = Vec::with_capacity(session_count);
+    let mut errors = Vec::with_capacity(session_count);
     for task in tasks {
-        epochs.push(
+        errors.push(
             task.await
                 .expect("join concurrent session")
-                .expect("publish concurrent overlay")
-                .target_epoch,
+                .expect_err("owner overlay must require canonical generation rebuild"),
         );
     }
-    epochs.sort_unstable();
-    assert_eq!(epochs, (2..=session_count as u64 + 1).collect::<Vec<_>>());
+    assert!(errors.iter().all(|error| error.contains(
+        "resident overlay cannot mint a content search generation; canonical generation rebuild required"
+    )));
+    assert_eq!(
+        registry
+            .lease("workspace-a", &project_root("workspace-a"))
+            .expect("canonical generation remains resident")
+            .epoch(),
+        1
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -549,7 +568,7 @@ async fn generation_pointer_never_exposes_a_torn_epoch_during_publication() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn published_generation_exposes_parser_owned_selectors_without_hidden_lexical_scan() {
+async fn published_generation_exposes_parser_owned_selectors_and_resident_content_search() {
     let temporary = tempdir().expect("temporary runtime root");
     let publisher = WorkspaceGenerationPublisher::new(temporary.path().join("published"))
         .await
@@ -589,9 +608,10 @@ async fn published_generation_exposes_parser_owned_selectors_without_hidden_lexi
     let lookup = client
         .read_source_index("run_search", None, 8)
         .expect("read lexical section");
-    assert!(
-        lookup.hits.is_empty(),
-        "source bytes must not become a hidden lexical-search implementation"
+    assert_eq!(
+        lookup.hits.len(),
+        1,
+        "resident grep corpus must find source bytes"
     );
     assert_eq!(
         client

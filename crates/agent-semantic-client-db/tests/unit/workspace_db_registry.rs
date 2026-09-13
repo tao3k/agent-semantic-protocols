@@ -313,7 +313,7 @@ async fn resident_turso_restore_returns_authority_owned_source_query_without_reo
         }],
         selectors: vec![],
     };
-    let materialization =
+    let mut materialization =
         agent_semantic_client_db::runtime_server_workspace::WorkspaceCanonicalMaterialization::from_source_index(
             scope.workspace_identity.clone(),
             &workspace_snapshot,
@@ -323,6 +323,23 @@ async fn resident_turso_restore_returns_authority_owned_source_query_without_reo
             Vec::new(),
         )
         .expect("build complete canonical materialization");
+    materialization
+        .attach_content_search_generation(crate::fixture::content_search_generation_receipt(
+            &scope.workspace_identity,
+            &source_snapshot,
+        ))
+        .expect("bind resident Turso content search generation");
+    let source_index_digest = format!(
+        "blake3-256:{}",
+        blake3::hash(&serde_json::to_vec(&import).expect("encode resident Turso import")).to_hex()
+    );
+    materialization
+        .bind_runtime_provider_execution(crate::fixture::runtime_provider_execution_binding(
+            &scope.workspace_identity,
+            &source_snapshot,
+            &source_index_digest,
+        ))
+        .expect("bind resident Turso Runtime provider execution");
     session
         .commit_source_index_generation(
             agent_semantic_client_db::ClientDbSourceIndexRefreshRequest {

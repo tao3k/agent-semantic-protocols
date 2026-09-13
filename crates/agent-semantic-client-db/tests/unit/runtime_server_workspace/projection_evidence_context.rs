@@ -143,6 +143,12 @@ fn generation(owner: WorkspaceOwnerSnapshot, active_epoch: u64) -> WorkspaceMemo
         agent_semantic_content_identity::SourceSnapshotKind::Filesystem,
         format!("blake3-256:{}", blake3::hash(b"fixture-provider").to_hex()),
     );
+    let module_graph_digest = format!("blake3-256:{}", blake3::hash(b"module-graph").to_hex());
+    let runtime_provider_execution_binding = crate::fixture::runtime_provider_execution_binding(
+        "workspace-compact-callable-identity",
+        &source_snapshot,
+        &module_graph_digest,
+    );
     WorkspaceMemoryGeneration::try_from_build(WorkspaceGenerationBuild {
         projection_capability: crate::fixture::overlay_projection_capability_manifest_fixture(),
         relations: Vec::new(),
@@ -155,8 +161,8 @@ fn generation(owner: WorkspaceOwnerSnapshot, active_epoch: u64) -> WorkspaceMemo
             &source_snapshot,
         ),
         source_snapshot,
-        module_graph_digest: format!("blake3-256:{}", blake3::hash(b"module-graph").to_hex()),
-        runtime_provider_execution_binding: None,
+        module_graph_digest,
+        runtime_provider_execution_binding: Some(runtime_provider_execution_binding),
         project_resolutions: Vec::new(),
         auxiliary_owners: Vec::new(),
         owners: vec![owner],

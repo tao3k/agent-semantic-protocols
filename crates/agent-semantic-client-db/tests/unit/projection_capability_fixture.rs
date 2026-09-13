@@ -11,6 +11,25 @@ use agent_semantic_client_db::active_generation_projection_capability::ActiveGen
 
 pub(crate) const FIXTURE_PROJECT_ID: &str = "repo-0000000000000001";
 
+pub(crate) fn runtime_provider_execution_binding(
+    workspace_identity: &str,
+    source_snapshot: &agent_semantic_content_identity::SourceSnapshotEvidence,
+    module_graph_digest: &str,
+) -> agent_semantic_artifacts::runtime_provider_execution_binding::RuntimeProviderExecutionBinding {
+    agent_semantic_artifacts::runtime_provider_execution_binding::RuntimeProviderExecutionBinding::build(
+        FIXTURE_PROJECT_ID.to_owned(),
+        workspace_identity.to_owned(),
+        format!("blake3-256:{}", "1".repeat(64)),
+        format!("blake3-256:{}", "2".repeat(64)),
+        format!("blake3-256:{}", "3".repeat(64)),
+        source_snapshot
+            .root_integrity_reference()
+            .expect("fixture source snapshot integrity reference"),
+        module_graph_digest.to_owned(),
+    )
+    .expect("fixture Runtime provider execution binding")
+}
+
 pub(crate) fn content_search_generation_receipt(
     workspace_identity: &str,
     source_snapshot: &agent_semantic_content_identity::SourceSnapshotEvidence,

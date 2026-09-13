@@ -733,7 +733,9 @@ impl ClientDbEngine {
             "artifactPath": report.artifact_path,
             "manifestPath": report.manifest_path,
             "generationManifestPath": self
-                .client_dir
+                .manifest_path
+                .parent()
+                .expect("DB manifest always has an observations parent")
                 .join(AGENT_SEMANTIC_CLIENT_CACHE_MANIFEST_FILE),
         });
         let encoded = serde_json::to_vec_pretty(&manifest)

@@ -100,7 +100,7 @@ fn publication_point_validates_the_schema_shaped_binding() {
 #[test]
 fn admission_rejects_a_tampered_schema_binding() {
     let mut ledger = ContentPublicationLedger::default();
-    let content = identity('g');
+    let content = identity('7');
     let mut binding = ContentBinding::new(content.clone(), authority(&content)).unwrap();
     ledger.publish_binding(None, binding.clone()).unwrap();
     binding.schema_version = "2".to_owned();

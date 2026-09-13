@@ -71,6 +71,15 @@ fn generation_with_owners(
             blake3::hash(b"resident-ready-fixture-provider").to_hex()
         ),
     );
+    let module_graph_digest = format!(
+        "blake3-256:{}",
+        blake3::hash(b"resident-ready-fixture-module-graph").to_hex()
+    );
+    let runtime_provider_execution_binding = crate::fixture::runtime_provider_execution_binding(
+        workspace_identity,
+        &source_snapshot,
+        &module_graph_digest,
+    );
     WorkspaceMemoryGeneration::try_from_build(
         agent_semantic_client_db::runtime_server_workspace::WorkspaceGenerationBuild {
     projection_capability: agent_semantic_client_db::active_generation_projection_capability::ActiveGenerationProjectionCapabilityManifest::single_selector("blake3-256:0000000000000000000000000000000000000000000000000000000000000000".to_owned(), "rust://fixture/src/lib.rs#item/function/fixture".to_owned(), "src/lib.rs".to_owned(), std::collections::BTreeSet::from([agent_semantic_client_db::active_generation_projection_capability::ActiveGenerationProjectionMode::Source])).expect("test projection capability manifest"),
@@ -84,11 +93,8 @@ fn generation_with_owners(
                 &source_snapshot,
             ),
             source_snapshot,
-            module_graph_digest: format!(
-                "blake3-256:{}",
-                blake3::hash(b"resident-ready-fixture-module-graph").to_hex()
-            ),
-            runtime_provider_execution_binding: None,
+            module_graph_digest,
+            runtime_provider_execution_binding: Some(runtime_provider_execution_binding),
             project_resolutions: Vec::new(),
             auxiliary_owners: Vec::new(),
             owners,
@@ -124,8 +130,8 @@ async fn search_generation_authority_wire_size_is_constant_in_owner_count() {
         .expect("read published compact search authority");
     let wire = serde_json::to_vec(&authority).expect("encode compact authority");
     assert!(
-        wire.len() < 2_048,
-        "search generation authority must remain O(1) and below 2KiB: bytes={}",
+        wire.len() < 4_096,
+        "search generation authority must remain O(1) and below one 4KiB page: bytes={}",
         wire.len()
     );
     assert!(

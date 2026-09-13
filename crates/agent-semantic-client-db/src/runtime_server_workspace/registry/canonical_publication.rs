@@ -65,11 +65,13 @@ pub(super) async fn publish_canonical_generation(
             if active.as_ref().is_some_and(|backend| {
                 backend.generation().generation_digest == generation.generation_digest
                     && backend.generation().selector_set_digest == generation.selector_set_digest
-            }) && complete_published_generation_matches(
+            }) && (active.as_ref().is_some_and(|backend| {
+                resident_generation_has_durability_authority(&durability, backend.generation())
+            }) || complete_published_generation_matches(
                 publisher.pointer_path(),
                 &generation,
             )
-            .await =>
+            .await) =>
         {
             reusable_receipt(
                 last_receipts,
@@ -94,6 +96,15 @@ pub(super) async fn publish_canonical_generation(
                 Ok(receipt)
             }) {
                 Ok(_) => {
+                    let old_generation_readable = if let Some(active) = active.as_ref() {
+                        complete_published_generation_matches(
+                            publisher.pointer_path(),
+                            active.generation(),
+                        )
+                        .await
+                    } else {
+                        false
+                    };
                     let result = publish_new_generation(
                         &current,
                         &durability,
@@ -104,6 +115,7 @@ pub(super) async fn publish_canonical_generation(
                         generation,
                         prepared_index,
                         active_epoch,
+                        old_generation_readable,
                         resident_publication_started,
                         Arc::clone(counters),
                         durability_tasks,
@@ -134,10 +146,28 @@ pub(super) async fn publish_canonical_generation(
     let _ = reply.send(result);
 }
 
+fn resident_generation_has_durability_authority(
+    durability: &tokio::sync::watch::Sender<
+        Option<crate::runtime_server_workspace::WorkspaceGenerationDurabilityReceipt>,
+    >,
+    generation: &crate::runtime_server_workspace::WorkspaceMemoryGeneration,
+) -> bool {
+    durability.borrow().as_ref().is_some_and(|receipt| {
+        receipt.workspace_identity == generation.workspace_identity
+            && receipt.generation_digest == generation.generation_digest
+            && receipt.target_epoch == generation.active_epoch
+            && receipt.state
+                == crate::runtime_server_workspace::WorkspaceGenerationDurabilityState::ResidentReady
+    })
+}
+
 async fn complete_published_generation_matches(
     pointer_path: &std::path::Path,
     generation: &crate::runtime_server_workspace::WorkspaceMemoryGeneration,
 ) -> bool {
+    if tokio::fs::metadata(pointer_path).await.is_err() {
+        return false;
+    }
     if !super::super::WorkspaceGenerationPointerReader::matches_generation(pointer_path, generation)
         .await
     {
@@ -255,6 +285,7 @@ async fn publish_new_generation(
     generation: Arc<crate::runtime_server_workspace::WorkspaceMemoryGeneration>,
     prepared_index: Arc<super::super::memory_backend::WorkspaceMemoryIndex>,
     active_epoch: u64,
+    old_generation_readable: bool,
     started: tokio::time::Instant,
     counters: Arc<RuntimeDataPlaneCounterState>,
     durability_tasks: &tokio::sync::mpsc::UnboundedSender<DurabilityTask>,
@@ -290,7 +321,7 @@ async fn publish_new_generation(
         target_epoch,
         generation_digest: generation_digest.clone(),
         source_root_digest,
-        old_generation_readable: active_epoch != 0,
+        old_generation_readable,
         resident_publication_elapsed_micros: elapsed_micros(started),
         counters: RuntimeDataPlaneCounters::default(),
     };
@@ -331,7 +362,7 @@ async fn publish_new_generation(
             let _ = super::canonical_durability::commit_canonical_generation(
                 publisher.as_ref(),
                 generation,
-                active_epoch != 0,
+                old_generation_readable,
                 &durability_attachment,
                 &durability_workspace_identity,
                 &durability_generation_digest,
