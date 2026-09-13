@@ -11,6 +11,13 @@ use crate::runtime_identity_monitor::RuntimeIdentityMonitor;
 use crate::runtime_identity_monitor::runtime_identity_poll_interval;
 use crate::runtime_identity_monitor::spawn_runtime_identity_monitor_with_intervals;
 
+fn monitor_receipt(state_home: &Path) -> std::path::PathBuf {
+    agent_semantic_artifacts::StateHomeLayout::new(state_home)
+        .runtime_state()
+        .serving()
+        .identity_monitor_receipt()
+}
+
 #[test]
 fn developer_monitor_is_millisecond_cadence_without_accelerating_release_polling() {
     assert_eq!(
@@ -164,7 +171,7 @@ async fn unchanged_identity_does_not_emit_or_hot_write() {
         Duration::from_secs(1),
     );
     tokio::time::sleep(Duration::from_millis(100)).await;
-    let monitor_receipt = root.path().join("runtime/server/monitor-state.json");
+    let monitor_receipt = monitor_receipt(root.path());
     let before = tokio::fs::read(&monitor_receipt)
         .await
         .expect("initial monitor receipt");
@@ -198,7 +205,7 @@ async fn cancellation_terminates_monitor_task() {
 #[tokio::test]
 async fn startup_overwrites_stale_receipt_with_current_starting_owner() {
     let root = tempfile::tempdir().expect("tempdir");
-    let path = root.path().join("runtime/server/monitor-state.json");
+    let path = monitor_receipt(root.path());
     tokio::fs::create_dir_all(path.parent().unwrap())
         .await
         .unwrap();
@@ -238,7 +245,7 @@ async fn first_identity_tick_transitions_current_owner_to_watching() {
         Duration::from_secs(5),
     );
     tokio::time::sleep(Duration::from_millis(100)).await;
-    let path = root.path().join("runtime/server/monitor-state.json");
+    let path = monitor_receipt(root.path());
     let value: serde_json::Value =
         serde_json::from_slice(&tokio::fs::read(path).await.unwrap()).unwrap();
     assert_eq!(value["phase"], "watching");
@@ -430,7 +437,7 @@ async fn absent_or_malformed_applied_authority_never_drains_the_running_owner() 
             "unavailable applied authority must not fabricate a replacement"
         );
         let receipt: serde_json::Value = serde_json::from_slice(
-            &tokio::fs::read(root.path().join("runtime/server/monitor-state.json"))
+            &tokio::fs::read(monitor_receipt(root.path()))
                 .await
                 .expect("read monitor failure receipt"),
         )

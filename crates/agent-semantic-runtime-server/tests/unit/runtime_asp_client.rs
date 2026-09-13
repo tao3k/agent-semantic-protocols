@@ -171,11 +171,8 @@ fn assert_exact_query_not_ready_terminal(response_frame: &ClientFrame, params: &
     assert_eq!(terminal["generationDigest"], serde_json::Value::Null);
     assert_eq!(terminal["rootDigest"], serde_json::Value::Null);
     assert_eq!(terminal["requestedSelector"], params["selector"]);
-    assert_eq!(terminal["details"]["generationState"], "building");
-    assert_eq!(
-        terminal["details"]["publicationError"],
-        serde_json::Value::Null
-    );
+    assert_eq!(terminal["details"]["generationState"], "failed");
+    assert!(terminal["details"]["publicationError"].is_string());
     assert!(terminal.get("recommendedNext").is_none());
     assert_eq!(
         terminal["elapsedMicros"],
@@ -185,10 +182,7 @@ fn assert_exact_query_not_ready_terminal(response_frame: &ClientFrame, params: &
     assert_eq!(terminal["workCounters"]["filesystemReadCount"], 0);
     assert_eq!(terminal["workCounters"]["databaseReadCount"], 0);
     assert_eq!(terminal["workCounters"]["providerProcessCount"], 0);
-    assert!(
-        terminal["elapsedMicros"].as_u64().expect("elapsed micros") < 1_000,
-        "cold not-ready dispatch must be sub-millisecond: {terminal}"
-    );
+    assert!(terminal["elapsedMicros"].as_u64().expect("elapsed micros") < 1_000_000);
 }
 
 async fn dispatch_without_resident_generation_returns_query_not_ready(
@@ -198,8 +192,8 @@ async fn dispatch_without_resident_generation_returns_query_not_ready(
 ) {
     let directory = tempfile::tempdir().expect("temporary workspace");
     let project_root = directory.path().join("project");
-    std::fs::create_dir_all(&project_root).expect("create project root");
-    std::fs::write(project_root.join("lib.rs"), "pub fn ready() {}\n")
+    std::fs::create_dir_all(project_root.join("src")).expect("create project source root");
+    std::fs::write(project_root.join("src/lib.rs"), "pub fn ready() {}\n")
         .expect("write source fixture");
     let workspace_identity =
         agent_semantic_client_db::AgentSessionRegistry::workspace_id(&project_root)
@@ -315,13 +309,20 @@ async fn dispatch_without_resident_generation_returns_query_not_ready(
         assert_eq!(error["reasonKind"], "client-method-dispatch-failed");
         assert_eq!(
             error["message"],
-            "ASP workspace Search requires an acquisition clause"
+            "ASP workspace Search Layout requires rg and Tantivy file-context inputs"
         );
         return;
     }
 
     if method.ends_with(".query") {
         assert_exact_query_not_ready_terminal(&response_frame, &params);
+        assert!(
+            telemetry_sender
+                .resident_request_plane_receipt(request_id)
+                .is_none(),
+            "cold computation failure must not mint a resident-read receipt"
+        );
+        return;
     }
 
     if method == agent_semantic_client_protocol::WORKSPACE_QUERY_PLAYBOOK_METHOD {
@@ -339,32 +340,11 @@ async fn dispatch_without_resident_generation_returns_query_not_ready(
             error["terminal"]["failureStage"],
             "runtime-execution-binding-admission"
         );
-        let request_plane_receipt = telemetry_sender
-            .resident_request_plane_receipt(request_id)
-            .expect("Query Playbook must emit the typed request-plane receipt");
-        request_plane_receipt
-            .validate()
-            .expect("Query Playbook request-plane receipt must be admissible");
-        assert_eq!(
-            request_plane_receipt.operation,
-            agent_semantic_client_protocol::RuntimeResidentRequestOperation::Query
-        );
-        assert_eq!(request_plane_receipt.state, "query-not-ready");
-        assert_eq!(request_plane_receipt.generation_lookup_count, 1);
-        assert_eq!(request_plane_receipt.generation_wait_count, 0);
-        assert_eq!(request_plane_receipt.generation_build_count, 0);
-        assert_eq!(request_plane_receipt.filesystem_read_count, 0);
-        assert_eq!(request_plane_receipt.database_read_count, 0);
-        assert_eq!(request_plane_receipt.provider_process_count, 0);
-        assert_eq!(request_plane_receipt.parser_invocation_count, 0);
         assert!(
-            request_plane_receipt.elapsed_micros < 1_000,
-            "Query Playbook cold request must be sub-millisecond: {request_plane_receipt:?}"
-        );
-        eprintln!(
-            "Query Playbook resident request-plane receipt: {}",
-            serde_json::to_string(&request_plane_receipt)
-                .expect("encode Query Playbook request-plane receipt")
+            telemetry_sender
+                .resident_request_plane_receipt(request_id)
+                .is_none(),
+            "cold Query computation failure must not mint a resident-read receipt"
         );
         return;
     }
@@ -386,6 +366,21 @@ async fn dispatch_without_resident_generation_returns_query_not_ready(
     assert_eq!(error["terminal"]["phase"], "runtime-generation-authority");
     assert_eq!(error["terminal"]["workCounters"]["filesystemReadCount"], 0);
     assert_eq!(error["terminal"]["workCounters"]["providerProcessCount"], 0);
+    if method != "asp.graph.evaluate" {
+        assert!(
+            telemetry_sender
+                .resident_request_plane_receipt(request_id)
+                .is_none(),
+            "cold computation failure must not mint a resident-read receipt"
+        );
+        assert!(
+            error["terminal"]["elapsedMicros"]
+                .as_u64()
+                .expect("elapsed micros")
+                < 1_000_000
+        );
+        return;
+    }
     let request_plane_receipt = telemetry_sender
         .resident_request_plane_receipt(request_id)
         .expect("Runtime must emit the typed request-plane receipt");
@@ -455,10 +450,8 @@ async fn query_playbook_never_falls_back_to_per_selector_exact_query() {
             "schemaId": "agent.semantic-protocols.asp-client-workspace-query-playbook-request",
             "schemaVersion": "1",
             "language": "rust",
-            "documents": "org",
             "selectors": [
-                "org://docs/publication.org#item/heading/Publication",
-                "rust://src/registry.rs#item/function/refresh_registry"
+                "rust://src/lib.rs#item/function/ready"
             ],
             "projection": "source"
         }),

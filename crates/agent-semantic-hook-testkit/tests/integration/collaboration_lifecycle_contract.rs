@@ -26,6 +26,26 @@ const WAIT_RESULT_SCHEMA: &str =
     include_str!("../../../../schemas/codex-collaboration-wait-result.v1.schema.json");
 const ORG_CONTRACT: &str =
     include_str!("../../../../org/contracts/agent.multi-agent-session-control-plane.v1.org");
+const AGENT_DEFINITIONS_SCHEMA: &str =
+    include_str!("../../../../schemas/semantic-agent-definitions.schema.json");
+
+fn collaboration_validator(schema: &str) -> jsonschema::Validator {
+    let schema: serde_json::Value = serde_json::from_str(schema).expect("result schema");
+    let definitions: serde_json::Value =
+        serde_json::from_str(AGENT_DEFINITIONS_SCHEMA).expect("agent definitions schema");
+    let registry = jsonschema::Registry::new()
+        .add(
+            "https://schemas.agent-semantic-protocols.dev/semantic-agent-definitions.schema.json",
+            definitions,
+        )
+        .expect("register agent definitions schema")
+        .prepare()
+        .expect("prepare collaboration schema registry");
+    jsonschema::options()
+        .with_registry(&registry)
+        .build(&schema)
+        .expect("compile collaboration schema")
+}
 
 const TESTING_DISPATCH_GENERATION: &str = r#"{
   "schemaId":"agent.semantic-protocols.hook-policy-bundle",
@@ -115,9 +135,7 @@ fn all_native_collaboration_tool_fixtures_match_one_schema() {
 
 #[test]
 fn live_agent_status_schema_matches_codex_multi_agent_v2_exactly() {
-    let schema: serde_json::Value =
-        serde_json::from_str(LIVE_AGENTS_SCHEMA).expect("live agents schema");
-    let validator = jsonschema::validator_for(&schema).expect("compile live agents schema");
+    let validator = collaboration_validator(LIVE_AGENTS_SCHEMA);
 
     for status in [
         serde_json::json!("pending_init"),
@@ -171,8 +189,7 @@ fn structured_host_results_match_codex_v2_without_inventing_message_envelopes() 
         ),
     ];
     for (schema, value) in &cases {
-        let schema: serde_json::Value = serde_json::from_str(schema).expect("result schema");
-        let validator = jsonschema::validator_for(&schema).expect("compile result schema");
+        let validator = collaboration_validator(schema);
         assert!(validator.is_valid(value), "result={value}");
     }
 

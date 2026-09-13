@@ -12,7 +12,9 @@ use agent_semantic_client_db::runtime_server_workspace::RuntimeServerWorkspaceRe
 use agent_semantic_client_db::runtime_telemetry_bus::RuntimeTelemetryBusSender;
 use agent_semantic_client_server::{AspClientDispatchError, AspClientDispatchRequest};
 
-use super::query_generation_support::{RequestDispatchBudget, await_runtime_query_generation};
+use super::query_generation_support::{
+    RequestDispatchBudget, request_and_await_runtime_query_generation_ready,
+};
 use crate::RuntimeQueryGenerationState;
 use crate::runtime_query_generation_key::RuntimeProjectWorkspaceKey;
 
@@ -537,17 +539,15 @@ pub(super) async fn dispatch_resolved_route(
         None => {
             dispatch_budget.observe_miss();
             let wait_started = tokio::time::Instant::now();
-            let result = match request_runtime_query_generation_ready(
+            let result = request_and_await_runtime_query_generation_ready(
                 generation_admission.as_ref(),
                 request.workspace_id.as_str().to_owned(),
                 project_root.clone(),
                 generation_provider_targets,
-            ) {
-                Ok(_) => {
-                    await_runtime_query_generation(&query_generation, &project_workspace_key).await
-                }
-                Err(error) => Err(error),
-            };
+                &query_generation,
+                &project_workspace_key,
+            )
+            .await;
             eprintln!(
                 "[runtime-generation-wait] requestId={} elapsedMicros={}",
                 request.request_id.as_str(),

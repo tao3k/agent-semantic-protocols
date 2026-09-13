@@ -17,7 +17,7 @@ use crate::runtime_query_generation_key::RuntimeProjectWorkspaceKey;
 use super::service::{ClientRequestKey, ClientWorkspaceKey, InitializedWorkspace};
 use super::{
     AspClientOperationError, AspClientWorkspaceQueryPlaybookRequest,
-    RUNTIME_CLIENT_DISPATCH_BUDGET, elapsed_micros, request_runtime_query_generation_ready,
+    RUNTIME_CLIENT_DISPATCH_BUDGET, elapsed_micros,
 };
 
 fn query_playbook_terminal(
@@ -672,23 +672,19 @@ pub(super) async fn dispatch_workspace_query_playbook(
             // generation work; a ready resident generation remains the sole
             // authority for retained content after source changes.
             admit_cold_query_owner_paths(&initialized.project_root, &params.selectors).await?;
-            request_runtime_query_generation_ready(
-                generation_admission,
-                request.workspace_id.as_str().to_owned(),
-                initialized.project_root.clone(),
-                provider_targets,
-            )
-            .map_err(|error| {
-                query_playbook_terminal("query-not-ready", error, params.selectors.len())
-            })?;
-            let generation = super::query_generation_support::await_runtime_query_generation(
-                query_generation,
-                project_workspace_key,
-            )
-            .await
-            .map_err(|error| {
-                query_playbook_terminal("query-not-ready", error, params.selectors.len())
-            })?;
+            let generation =
+                super::query_generation_support::request_and_await_runtime_query_generation_ready(
+                    generation_admission,
+                    request.workspace_id.as_str().to_owned(),
+                    initialized.project_root.clone(),
+                    provider_targets,
+                    query_generation,
+                    project_workspace_key,
+                )
+                .await
+                .map_err(|error| {
+                    query_playbook_terminal("query-not-ready", error, params.selectors.len())
+                })?;
             eprintln!(
                 "[runtime-generation-wait] requestId={} elapsedMicros={}",
                 request.request_id.as_str(),

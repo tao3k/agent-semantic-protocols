@@ -424,7 +424,7 @@ and document producers register concrete native fact vocabularies, publication
 states, parser identities, and receipts. Tree-sitter parsing is not an
 automatic request-time fallback path.
 
-=--native-syntax <canonical-exact-selector>= is not that query block.  It
+=(native-syntax "<canonical-exact-selector>")= is not that query block.  It
 admits one already-known parser-owned selector from the current generation as
 Search evidence.  It is repeatable, accepts no producer name or query argv,
 and MUST reject values without a canonical =scheme://...#item/...= identity.

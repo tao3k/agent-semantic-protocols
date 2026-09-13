@@ -342,3 +342,45 @@ pub(super) fn request_runtime_query_generation_ready(
         provider_targets,
     )
 }
+
+/// Submit source-generation work and wait on the two terminal authorities:
+/// admission may fail before any durable publication exists, while only the
+/// daemon observer may publish a successful resident generation.
+pub(super) async fn request_and_await_runtime_query_generation_ready(
+    generation_admission: &WorkspaceGenerationAdmission,
+    workspace_identity: String,
+    project_root: std::path::PathBuf,
+    provider_targets: Vec<
+        agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationProviderTarget,
+    >,
+    generations: &tokio::sync::watch::Receiver<
+        std::sync::Arc<
+            std::collections::HashMap<
+                crate::runtime_query_generation_key::RuntimeProjectWorkspaceKey,
+                crate::RuntimeQueryGenerationState,
+            >,
+        >,
+    >,
+    key: &crate::runtime_query_generation_key::RuntimeProjectWorkspaceKey,
+) -> Result<std::sync::Arc<crate::RuntimeQueryGeneration>, String> {
+    let (terminal_sender, terminal_receiver) = tokio::sync::oneshot::channel();
+    generation_admission.request_runtime_generations_ready_for_providers_with_terminal(
+        workspace_identity,
+        project_root,
+        provider_targets,
+        move |terminal| async move {
+            let _ = terminal_sender.send(terminal.map(|_| ()));
+        },
+    )?;
+    let generation = await_runtime_query_generation(generations, key);
+    tokio::pin!(generation);
+    match tokio::select! {
+        result = &mut generation => return result,
+        terminal = terminal_receiver => terminal,
+    } {
+        Ok(Err(error)) => Err(error),
+        // Success still requires the daemon-owned resident publication. A
+        // coalesced submission drops this callback and joins the same event.
+        Ok(Ok(())) | Err(_) => generation.await,
+    }
+}

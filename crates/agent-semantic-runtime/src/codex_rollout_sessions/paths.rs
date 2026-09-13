@@ -246,49 +246,67 @@ pub(super) fn root_attributed_rollout_paths_for_session_id(
     sessions_dir: &Path,
     root_session_id: &str,
 ) -> Result<Vec<PathBuf>, String> {
-    let output = match Command::new("rg")
-        .arg("--files-with-matches")
-        .arg("--fixed-strings")
-        .arg(root_session_id)
-        .arg("--glob")
-        .arg("**/rollout-*.jsonl")
-        .arg(sessions_dir)
-        .output()
-    {
-        Ok(output) => output,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
-        Err(error) => {
-            return Err(format!(
-                "failed to scan root-attributed Codex rollouts below {}: {error}",
-                sessions_dir.display()
-            ));
-        }
-    };
-    if !output.status.success() && output.status.code() != Some(1) {
-        return Err(format!(
-            "rg failed while locating root-attributed Codex rollouts for session \
-             {root_session_id} below {}: {}",
-            sessions_dir.display(),
-            String::from_utf8_lossy(&output.stderr).trim()
-        ));
-    }
-    let mut paths = String::from_utf8_lossy(&output.stdout)
-        .lines()
-        .map(str::trim)
-        .filter(|line| !line.is_empty())
-        .map(|line| {
-            let path = PathBuf::from(line);
-            if path.is_absolute() {
-                path
-            } else {
-                sessions_dir.join(path)
+    // This is Runtime metadata discovery, not source-code acquisition. Keep it
+    // self-contained so session recovery never depends on an external rg
+    // process or its PATH/startup state.
+    let mut candidates = Vec::new();
+    collect_rollout_files_bounded(sessions_dir, 5, 0, &mut candidates)?;
+    let mut paths = candidates
+        .into_iter()
+        .filter_map(|path| match fs::read(&path) {
+            Ok(bytes)
+                if bytes
+                    .windows(root_session_id.len())
+                    .any(|window| window == root_session_id.as_bytes()) =>
+            {
+                Some(Ok(path))
             }
+            Ok(_) => None,
+            Err(error) => Some(Err(format!(
+                "failed to read root-attributed Codex rollout {}: {error}",
+                path.display()
+            ))),
         })
-        .collect::<Vec<_>>();
-    paths.retain(|path| path.is_file());
+        .collect::<Result<Vec<_>, _>>()?;
     paths.sort();
     paths.dedup();
     Ok(paths)
+}
+
+fn collect_rollout_files_bounded(
+    root: &Path,
+    max_depth: usize,
+    depth: usize,
+    paths: &mut Vec<PathBuf>,
+) -> Result<(), String> {
+    for entry in
+        fs::read_dir(root).map_err(|error| format!("failed to read {}: {error}", root.display()))?
+    {
+        let entry = entry.map_err(|error| {
+            format!(
+                "failed to read Codex session entry below {}: {error}",
+                root.display()
+            )
+        })?;
+        let file_type = entry.file_type().map_err(|error| {
+            format!(
+                "failed to inspect Codex session entry {}: {error}",
+                entry.path().display()
+            )
+        })?;
+        let path = entry.path();
+        if file_type.is_file()
+            && path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name.starts_with("rollout-") && name.ends_with(".jsonl"))
+        {
+            paths.push(path);
+        } else if file_type.is_dir() && depth < max_depth {
+            collect_rollout_files_bounded(&path, max_depth, depth + 1, paths)?;
+        }
+    }
+    Ok(())
 }
 pub(super) fn codex_sessions_dir() -> Result<PathBuf, String> {
     if let Some(codex_home) = std::env::var_os("CODEX_HOME") {

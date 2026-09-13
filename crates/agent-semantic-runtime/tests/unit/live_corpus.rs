@@ -44,12 +44,12 @@ fn remote_identity_is_gix_normalized_and_blake3_addressed() {
     assert_eq!(
         https.repository_dir,
         state_home
-            .join("git/repo/blake3-256")
+            .join("resources/live-corpus/git/repo/blake3-256")
             .join(&https.remote_digest)
     );
     assert_eq!(
         https.ghq_alias_path,
-        state_home.join("git/by-remote/github.com/tokio-rs/tokio")
+        state_home.join("resources/live-corpus/git/by-remote/github.com/tokio-rs/tokio")
     );
 }
 

@@ -212,55 +212,6 @@ const SHORT_BOOLEAN_OPTIONS: &[char] = &[
     'p', 'q', 's', 'u', 'v', 'w', 'x', 'z',
 ];
 
-/// Return whether one native rg option token consumes the following argv
-/// token as its value. The PlayBook boundary parser uses the same option-arity
-/// table as native rg admission so a value such as `--graph` is not mistaken
-/// for a top-level PlayBook boundary.
-pub(crate) fn option_consumes_following_value(token: &str) -> bool {
-    if let Some(name) = token.strip_prefix("--") {
-        let (name, attached) = name
-            .split_once('=')
-            .map_or((name, None), |(name, value)| (name, Some(value)));
-        return attached.is_none() && VALUE_LONG_OPTIONS.contains(&format!("--{name}").as_str());
-    }
-    let Some(cluster) = token
-        .strip_prefix('-')
-        .filter(|cluster| !cluster.is_empty())
-    else {
-        return false;
-    };
-    for (offset, option) in cluster.char_indices() {
-        if SHORT_VALUE_OPTIONS.contains(&option) {
-            return offset + option.len_utf8() == cluster.len();
-        }
-    }
-    false
-}
-
-/// Return whether one native rg option token supplies an explicit pattern (or
-/// selects the pattern-free `--files` operation). This is needed only to
-/// disambiguate the first positional token after native `--` from a PlayBook
-/// boundary.
-pub(crate) fn option_supplies_pattern(token: &str) -> bool {
-    if token == "--files" {
-        return true;
-    }
-    if let Some(name) = token.strip_prefix("--") {
-        let name = name.split_once('=').map_or(name, |(name, _)| name);
-        return matches!(name, "regexp" | "file");
-    }
-    let Some(cluster) = token
-        .strip_prefix('-')
-        .filter(|cluster| !cluster.is_empty())
-    else {
-        return false;
-    };
-    cluster
-        .chars()
-        .find(|option| SHORT_VALUE_OPTIONS.contains(option))
-        .is_some_and(|option| matches!(option, 'e' | 'f'))
-}
-
 #[must_use]
 pub fn analyze_native_rg_argv(argv: &[String]) -> NativeRgArgvAnalysis {
     let mut analysis = NativeRgArgvAnalysis {

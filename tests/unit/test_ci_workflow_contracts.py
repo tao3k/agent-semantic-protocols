@@ -37,6 +37,11 @@ def test_rust_package_matrix_covers_each_workspace_package_once() -> None:
     assert "setup-uv" not in workflow
     assert "setup-node" not in workflow
     assert "download-artifact" not in workflow
+    assert "matrix.package == 'agent-semantic-provider-transport'" in workflow
+    assert "fd-find ripgrep" in workflow
+    assert "matrix.package == 'agent-semantic-client'" in workflow
+    assert "cargo build -p agent-semantic-hook --bin asp-hook" in workflow
+    assert "--ignored --exact" not in workflow
     assert "cargo test --workspace --all-targets --all-features" not in CI_WORKFLOW.read_text(
         encoding="utf-8"
     )

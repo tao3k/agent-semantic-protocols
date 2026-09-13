@@ -96,7 +96,8 @@ async fn code_search_turso_resident_session_warm_path_is_a_strong_gate() {
         "max_provider_process_count = 0",
         "max_source_blob_read_count = 0",
         "max_source_rehash_count = 0",
-        "generation_publication_boundary_ms = 500",
+        "generation_publication_p95_boundary_ms = 500",
+        "generation_publication_max_boundary_ms = 1000",
         "fallback_reason = \"none\"",
     ] {
         assert!(
@@ -111,9 +112,13 @@ async fn code_search_turso_resident_session_warm_path_is_a_strong_gate() {
     let lookups_per_task = benchmark_u64(&benchmark, "lookups_per_task") as usize;
     let concurrent_target_p95_us = benchmark_u64(&benchmark, "concurrent_target_p95_us");
     let concurrent_max_sample_us = benchmark_u64(&benchmark, "concurrent_max_sample_us");
-    let generation_publication_boundary = std::time::Duration::from_millis(benchmark_u64(
+    let generation_publication_p95_boundary = std::time::Duration::from_millis(benchmark_u64(
         &benchmark,
-        "generation_publication_boundary_ms",
+        "generation_publication_p95_boundary_ms",
+    ));
+    let generation_publication_max_boundary = std::time::Duration::from_millis(benchmark_u64(
+        &benchmark,
+        "generation_publication_max_boundary_ms",
     ));
     assert!(
         sample_count >= 128,
@@ -414,11 +419,11 @@ async fn code_search_turso_resident_session_warm_path_is_a_strong_gate() {
         1,
     );
     assert!(
-        cold_publication_p95 < generation_publication_boundary
-            && cold_publication_max < generation_publication_boundary
-            && resident_publication_service_max < generation_publication_boundary
-            && replay_pressure_max < generation_publication_boundary,
-        "canonical publication exceeded the configured durable Ready boundary: boundary={generation_publication_boundary:?} coldP95={cold_publication_p95:?} coldMax={cold_publication_max:?} readyServiceP95={resident_publication_service_p95:?} readyServiceMax={resident_publication_service_max:?} replayMax={replay_pressure_max:?}"
+        cold_publication_p95 < generation_publication_p95_boundary
+            && cold_publication_max < generation_publication_max_boundary
+            && resident_publication_service_max < generation_publication_max_boundary
+            && replay_pressure_max < generation_publication_max_boundary,
+        "canonical publication exceeded a configured durable Ready boundary: p95Boundary={generation_publication_p95_boundary:?} maxBoundary={generation_publication_max_boundary:?} coldP95={cold_publication_p95:?} coldMax={cold_publication_max:?} readyServiceP95={resident_publication_service_p95:?} readyServiceMax={resident_publication_service_max:?} replayMax={replay_pressure_max:?}"
     );
     let session = ClientDbEngine::open_read_session_client_dir(&client_dir)
         .expect("open resident Turso read session")

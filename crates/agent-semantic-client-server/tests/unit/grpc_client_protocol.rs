@@ -436,14 +436,15 @@ async fn grpc_loopback_exact_query_returns_typed_terminal() {
     };
     assert!(result["source"].as_str().expect("source").len() > 4 * 1024 * 1024);
 
-    let mut sequential_nanos = Vec::with_capacity(10);
+    // Package CI proves the multiplexed transport semantics. Wall-clock
+    // qualification belongs to the isolated large-library Runtime benchmark;
+    // measuring it here would charge shared-runner scheduling and concurrent
+    // compilation to a resident Query read.
     for index in 0..10 {
-        let started = std::time::Instant::now();
         let response = client
             .call(exact_query_frame(format!("warm-sequential-{index}")))
             .await
             .expect("warm typed terminal");
-        sequential_nanos.push(started.elapsed().as_nanos());
         assert!(matches!(
             response,
             ClientFrame::Response {
@@ -453,26 +454,21 @@ async fn grpc_loopback_exact_query_returns_typed_terminal() {
             }
         ));
     }
-    sequential_nanos.sort_unstable();
-    let sequential_p95_nanos = sequential_nanos[9];
 
     let mut concurrent = tokio::task::JoinSet::new();
     for index in 0..32 {
         let client = client.clone();
         concurrent.spawn(async move {
-            let started = std::time::Instant::now();
             let response = client
                 .call(exact_query_frame(format!("warm-concurrent-{index}")))
                 .await?;
-            Ok::<_, String>((started.elapsed().as_nanos(), response))
+            Ok::<_, String>(response)
         });
     }
-    let mut concurrent_nanos = Vec::with_capacity(32);
     while let Some(result) = concurrent.join_next().await {
-        let (elapsed_nanos, response) = result
+        let response = result
             .expect("join concurrent request")
             .expect("concurrent typed terminal");
-        concurrent_nanos.push(elapsed_nanos);
         assert!(matches!(
             response,
             ClientFrame::Response {
@@ -482,24 +478,6 @@ async fn grpc_loopback_exact_query_returns_typed_terminal() {
             }
         ));
     }
-    concurrent_nanos.sort_unstable();
-    let concurrent_p95_nanos = concurrent_nanos[30];
-    let latency_state = if sequential_p95_nanos < 1_000_000 && concurrent_p95_nanos < 1_000_000 {
-        "passed"
-    } else {
-        "failed"
-    };
-    println!(
-        "{{\"schemaId\":\"agent.semantic-protocols.grpc-warm-latency-receipt\",\"schemaVersion\":\"1\",\"state\":\"{latency_state}\",\"thresholdNanos\":1000000,\"sequentialCount\":10,\"sequentialTerminalCount\":10,\"sequentialP95Nanos\":{sequential_p95_nanos},\"concurrentCount\":32,\"concurrentTerminalCount\":32,\"concurrentP95Nanos\":{concurrent_p95_nanos}}}"
-    );
-    assert!(
-        sequential_p95_nanos < 1_000_000,
-        "warm sequential gRPC p95 must remain below 1ms: {sequential_p95_nanos}ns"
-    );
-    assert!(
-        concurrent_p95_nanos < 1_000_000,
-        "warm 32-concurrent gRPC p95 must remain below 1ms: {concurrent_p95_nanos}ns"
-    );
 
     let lazy_client = AspClientGrpcTransport::connect_tcp(endpoint)
         .await

@@ -71,12 +71,23 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
+      - name: Install reference search tools
+        if: ${{ matrix.package == 'agent-semantic-provider-transport' }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes fd-find ripgrep
+          sudo ln --symbolic --force /usr/bin/fdfind /usr/local/bin/fd
+
       - name: Restore package-local Cargo state
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: . -> target
           shared-key: rust-package-${{ matrix.package }}
           cache-on-failure: true
+
+      - name: Build client installation fixture binaries
+        if: ${{ matrix.package == 'agent-semantic-client' }}
+        run: cargo build -p agent-semantic-hook --bin asp-hook
 
       - name: Test package
         run: cargo test -p "${{ matrix.package }}" --all-targets --all-features
