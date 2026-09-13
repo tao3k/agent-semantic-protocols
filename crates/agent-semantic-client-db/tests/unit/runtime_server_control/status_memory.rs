@@ -435,6 +435,37 @@ async fn removed_status_memory_invalidates_a_cached_mapping() {
     assert!(error.contains("failed to inspect Runtime Server status memory"));
 }
 
+#[tokio::test]
+async fn duplicate_writer_cannot_truncate_a_live_reader_mapping() {
+    let root = tempfile::tempdir().expect("status memory fixture");
+    let endpoint = fixture_endpoint(root.path(), 8);
+    let mut writer = RuntimeServerStatusMemoryWriter::create(&endpoint)
+        .await
+        .expect("create status memory");
+    writer
+        .publish(RuntimeServerState::Healthy, 5)
+        .expect("publish healthy status");
+    let before = read_runtime_server_status(&endpoint, "before-duplicate".to_owned())
+        .await
+        .expect("map live status memory");
+    assert_eq!(before.state, RuntimeServerState::Healthy);
+
+    let error = match RuntimeServerStatusMemoryWriter::create(&endpoint).await {
+        Ok(_) => panic!("same generation and binding must reject a second writer"),
+        Err(error) => error,
+    };
+    assert!(
+        error.contains("failed to create Runtime Server status memory"),
+        "{error}"
+    );
+
+    let after = read_runtime_server_status(&endpoint, "after-duplicate".to_owned())
+        .await
+        .expect("live mapping remains readable after rejected duplicate");
+    assert_eq!(after.state, RuntimeServerState::Healthy);
+    assert_eq!(after.workspace_entry_count, 5);
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn replacement_epoch_reopens_once_for_concurrent_sessions() {
     let root = tempfile::tempdir().expect("status memory fixture");

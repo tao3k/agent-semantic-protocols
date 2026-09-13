@@ -65,8 +65,7 @@ pub struct RuntimeServerStatusMemoryMetrics {
 impl RuntimeServerStatusMemoryWriter {
     pub(crate) async fn create(endpoint: &RuntimeServerEndpoint) -> Result<Self, String> {
         let file = tokio::fs::OpenOptions::new()
-            .create(true)
-            .truncate(true)
+            .create_new(true)
             .read(true)
             .write(true)
             .open(&endpoint.status_memory_path)
