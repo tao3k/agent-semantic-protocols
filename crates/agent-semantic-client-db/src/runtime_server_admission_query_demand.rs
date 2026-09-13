@@ -114,6 +114,13 @@ impl WorkspaceGenerationAdmission {
             None
         };
 
+        if let Some(receipt) = ready {
+            self.submit_background_mutation(async move {
+                terminal(Ok(receipt)).await;
+            })?;
+            return Ok(WorkspaceGenerationReadinessRequestState::Ready);
+        }
+
         let guard = {
             let mut requests = self.pending_readiness_requests.lock().map_err(|_| {
                 "workspace generation readiness request registry poisoned".to_owned()
@@ -136,24 +143,14 @@ impl WorkspaceGenerationAdmission {
         };
 
         let admission = self.clone();
-        let state = if ready.is_some() {
-            WorkspaceGenerationReadinessRequestState::Ready
-        } else {
-            WorkspaceGenerationReadinessRequestState::Accepted
-        };
         self.submit_background_mutation(async move {
             let _guard = guard;
-            let result = match ready {
-                Some(receipt) => Ok(receipt),
-                None => {
-                    admission
-                        .ensure_runtime_generation_ready(workspace_identity, project_root)
-                        .await
-                }
-            };
+            let result = admission
+                .ensure_runtime_generation_ready(workspace_identity, project_root)
+                .await;
             terminal(result).await;
         })?;
-        Ok(state)
+        Ok(WorkspaceGenerationReadinessRequestState::Accepted)
     }
 
     /// Submit one ordered set of language-scoped generation demands and emit
