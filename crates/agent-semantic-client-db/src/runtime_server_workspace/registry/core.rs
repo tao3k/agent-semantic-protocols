@@ -214,9 +214,12 @@ impl RuntimeServerWorkspaceRegistry {
     }
 
     /// Resolve the only resident project scope admitted for one workspace and
-    /// bind it to the current immutable generation. Public client sessions do
-    /// not accept a caller-supplied project root; an absent or multi-scope
-    /// workspace fails closed instead of crossing a RuntimeContext boundary.
+    /// bind it to the immutable base generation. Semantic owner overlays may
+    /// advance their request-serving digest without minting a new content
+    /// generation, so they are deliberately excluded from this identity.
+    /// Public client sessions do not accept a caller-supplied project root; an
+    /// absent or multi-scope workspace fails closed instead of crossing a
+    /// RuntimeContext boundary.
     pub fn unique_resident_scope(
         &self,
         workspace_identity: &str,
@@ -248,7 +251,9 @@ impl RuntimeServerWorkspaceRegistry {
         };
         let generation_digest = self
             .lease(workspace_identity, &project_root)?
-            .runtime_generation_digest();
+            .generation()
+            .generation_digest
+            .clone();
         Ok((project_root, generation_digest))
     }
 

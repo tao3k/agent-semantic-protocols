@@ -163,6 +163,14 @@ async fn resident_parser_delta_is_visible_without_rewriting_the_canonical_genera
         .expect("read parser-owned resident owner");
     assert_eq!(observed_resident_digest, resident_digest);
     assert_ne!(resident_digest, base_generation_digest);
+    let (scope_root, scope_generation_digest) = registry
+        .unique_resident_scope(workspace_identity)
+        .expect("resolve Query execution scope after resident overlay publication");
+    assert_eq!(scope_root, root);
+    assert_eq!(
+        scope_generation_digest, base_generation_digest,
+        "request-serving overlay identity must not replace the immutable base generation binding"
+    );
     assert_eq!(owner.selectors[0].selector, selector);
     assert_eq!(current.epoch(), 1);
     assert_eq!(
