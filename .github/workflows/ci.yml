@@ -271,7 +271,7 @@ jobs:
           'from asp_python import assert_asp_python_clean; assert_asp_python_clean(".")'
 
       - name: Language facade smoke gate
-        run: uv run --project packages/python/asp_python_graphs --frozen pytest tests/unit/test_language_facade_smoke.py -q
+        run: uv run --project packages/python --frozen pytest tests/unit/test_language_facade_smoke.py -q
 
   catalog-provider-gates:
     name: Catalog and TypeScript provider contracts

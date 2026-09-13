@@ -130,7 +130,7 @@ def test_language_facade_ci_gate_is_static() -> None:
     step = step.split("  catalog-provider-gates:", 1)[0]
 
     assert (
-        "uv run --project packages/python/asp_python_graphs --frozen pytest "
+        "uv run --project packages/python --frozen pytest "
         "tests/unit/test_language_facade_smoke.py -q"
     ) in step
     for obsolete_setup in (
