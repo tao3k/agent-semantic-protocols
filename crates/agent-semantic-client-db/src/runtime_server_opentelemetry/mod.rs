@@ -8,6 +8,7 @@
 //! they never perform blocking lifecycle or filesystem work.
 
 mod exporter;
+mod handle;
 mod live_store;
 mod observation;
 mod process_memory;
@@ -22,6 +23,7 @@ pub use runtime::try_record_to_active_runtime;
 mod semconv;
 
 pub use exporter::{ActiveSearchIncident, TursoOpenTelemetrySpanExporter};
+pub use handle::RuntimeServerOpenTelemetryHandle;
 pub use observation::{
     RUNTIME_SEARCH_TELEMETRY_PHASES, RuntimeLifecycleEvent, RuntimePerformanceObservation,
     RuntimeSearchTelemetryArtifact, RuntimeSearchTelemetryCollector, RuntimeSearchTelemetryError,
@@ -31,6 +33,4 @@ pub use observation::{
 pub use query::{
     RuntimePerformanceQuery, RuntimePerformanceQueryReceipt, query_runtime_performance,
 };
-pub use runtime::{
-    RuntimePerformanceIngressReceipt, RuntimeServerOpenTelemetry, RuntimeServerOpenTelemetryHandle,
-};
+pub use runtime::{RuntimePerformanceIngressReceipt, RuntimeServerOpenTelemetry};

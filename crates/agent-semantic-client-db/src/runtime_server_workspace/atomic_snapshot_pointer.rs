@@ -404,39 +404,5 @@ async fn set_private_permissions(_path: &Path) -> Result<(), String> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::{AtomicSnapshotPointerWriter, POINTER_LEN};
-
-    #[tokio::test]
-    async fn existing_invalid_pointer_is_replaced_without_truncation() {
-        let root = tempfile::tempdir().expect("atomic pointer fixture");
-        let path = root.path().join("pointer.memory");
-        tokio::fs::write(&path, vec![7_u8; 31])
-            .await
-            .expect("write invalid existing pointer");
-
-        let old_inode = tokio::fs::OpenOptions::new()
-            .read(true)
-            .open(&path)
-            .await
-            .expect("retain old pointer inode");
-        let writer = AtomicSnapshotPointerWriter::open(path.clone(), "test pointer")
-            .await
-            .expect("invalid existing pointer should be replaced by inode");
-        assert_eq!(
-            old_inode
-                .metadata()
-                .await
-                .expect("inspect retained old pointer inode")
-                .len(),
-            31
-        );
-        assert_eq!(
-            tokio::fs::metadata(writer.path())
-                .await
-                .expect("inspect initialized pointer")
-                .len(),
-            POINTER_LEN as u64
-        );
-    }
-}
+#[path = "../../tests/unit/runtime_server_workspace_atomic_snapshot_pointer.rs"]
+mod tests;
