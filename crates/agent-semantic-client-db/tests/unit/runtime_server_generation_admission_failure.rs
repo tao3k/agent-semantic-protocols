@@ -9,7 +9,7 @@ use agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmis
 use agent_semantic_client_db::runtime_telemetry_bus::RuntimeTelemetryBus;
 use agent_semantic_client_db::runtime_telemetry_bus::RuntimeTelemetryEvent;
 
-use super::candidate_identity;
+use super::{candidate_identity, within_generation_test_deadline, workspace_identity};
 
 #[tokio::test]
 async fn panicking_generation_builder_publishes_a_failed_terminal_receipt() {
@@ -32,17 +32,18 @@ async fn panicking_generation_builder_publishes_a_failed_terminal_receipt() {
         bus.sender,
     );
     let project_root = std::env::temp_dir().join("asp-generation-admission-panic");
+    let workspace_identity = workspace_identity(&project_root);
 
     admission
         .admit(
-            "workspace-panicking-builder",
+            &workspace_identity,
             project_root.clone(),
             candidate_identity(),
         )
         .await
         .expect("schedule panicking builder");
     let receipt = admission
-        .wait_terminal("workspace-panicking-builder", &project_root)
+        .wait_terminal(&workspace_identity, &project_root)
         .await
         .expect("supervisor publishes a terminal failure");
 
@@ -71,7 +72,7 @@ async fn panicking_generation_builder_publishes_a_failed_terminal_receipt() {
     assert_eq!(terminal_event.state, "failed");
     assert_eq!(
         terminal_event.workspace_identity.as_deref(),
-        Some("workspace-panicking-builder")
+        Some(workspace_identity.as_str())
     );
     admission.shutdown().await.expect("shutdown admission");
 }
@@ -101,15 +102,14 @@ async fn shutdown_cancels_tracked_generation_builds() {
             })
         }
     }));
+    let project_root = std::env::temp_dir().join("asp-generation-admission-shutdown");
+    let workspace_identity = workspace_identity(&project_root);
     admission
-        .admit(
-            "workspace-shutdown",
-            std::env::temp_dir().join("asp-generation-admission-shutdown"),
-            candidate_identity(),
-        )
+        .admit(&workspace_identity, project_root, candidate_identity())
         .await
         .expect("schedule tracked builder");
-    started.notified().await;
+    within_generation_test_deadline("tracked builder start before shutdown", started.notified())
+        .await;
 
     assert_eq!(
         admission.shutdown().await.expect("cancel tracked builder"),
@@ -140,14 +140,15 @@ async fn dropping_the_request_handle_does_not_cancel_the_runtime_owned_build() {
             })
         }
     })));
-    let workspace_identity = "workspace-request-drop";
     let project_root = std::env::temp_dir().join("asp-generation-admission-request-drop");
+    let workspace_identity = workspace_identity(&project_root);
     let request_handle = Arc::clone(&admission);
     let request_project_root = project_root.clone();
+    let request_workspace_identity = workspace_identity.clone();
     let request = tokio::spawn(async move {
         request_handle
             .admit(
-                workspace_identity,
+                &request_workspace_identity,
                 request_project_root,
                 candidate_identity(),
             )
@@ -159,11 +160,11 @@ async fn dropping_the_request_handle_does_not_cancel_the_runtime_owned_build() {
         .expect("request task")
         .expect("submit Runtime-owned build");
     assert_eq!(submitted.state, WorkspaceGenerationAdmissionState::Queued);
-    started.notified().await;
+    within_generation_test_deadline("Runtime-owned builder start", started.notified()).await;
     release.notify_one();
 
     let terminal = admission
-        .wait_terminal(workspace_identity, &project_root)
+        .wait_terminal(&workspace_identity, &project_root)
         .await
         .expect("observe terminal build after request drop");
     assert_eq!(terminal.state, WorkspaceGenerationAdmissionState::Failed);

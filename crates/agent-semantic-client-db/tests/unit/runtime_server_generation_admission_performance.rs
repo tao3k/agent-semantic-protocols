@@ -9,6 +9,7 @@ use agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmis
 
 use super::candidate_identity;
 use super::completed_generation;
+use super::workspace_identity;
 
 #[tokio::test(flavor = "multi_thread")]
 async fn unchanged_merkle_admission_performs_zero_owner_rescans() {
@@ -48,8 +49,8 @@ async fn thirty_run_admission_p99_within_durable_publication_boundary() {
     ));
     let mut latencies = Vec::with_capacity(RUN_COUNT);
     for run in 0..RUN_COUNT {
-        let workspace_identity = format!("workspace-admission-p99-{run}");
-        let project_root = std::env::temp_dir().join(&workspace_identity);
+        let project_root = std::env::temp_dir().join(format!("asp-admission-p99-{run}"));
+        let workspace_identity = workspace_identity(&project_root);
         let started = tokio::time::Instant::now();
         let receipt = admission
             .admit(

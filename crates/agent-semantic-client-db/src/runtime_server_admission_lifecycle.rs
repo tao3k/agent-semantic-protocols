@@ -53,23 +53,29 @@ impl WorkspaceGenerationAdmission {
             ));
         }
         candidate.validate()?;
+        let status = self.status(workspace_identity, project_root);
+        if let Some(receipt) = status.as_ref()
+            && !matches!(
+                receipt.state,
+                WorkspaceGenerationAdmissionState::Failed
+                    | WorkspaceGenerationAdmissionState::Cancelled
+            )
+            && receipt.candidate_generation == candidate.candidate_generation
+            && receipt.policy_overlay_digest == candidate.policy_overlay_digest
+        {
+            // The entry owns one immutable identity-to-root partition, and its
+            // builder must pass State Core resolution before it can publish
+            // Ready. Observing that same resident attempt is not a new admission
+            // and must not repeat filesystem-backed resolution on the hot path.
+            return Ok(receipt.clone());
+        }
         self.record_catalog_resident(
             crate::runtime_server_admission_catalog::RuntimeWorkspaceAdmissionCatalogEntry::resolve(
                 workspace_identity.to_owned(),
                 project_root.to_path_buf(),
             )?,
         )?;
-        match self.status(workspace_identity, project_root) {
-            Some(receipt)
-                if !matches!(
-                    receipt.state,
-                    WorkspaceGenerationAdmissionState::Failed
-                        | WorkspaceGenerationAdmissionState::Cancelled
-                ) && receipt.candidate_generation == candidate.candidate_generation
-                    && receipt.policy_overlay_digest == candidate.policy_overlay_digest =>
-            {
-                Ok(receipt)
-            }
+        match status {
             Some(receipt)
                 if matches!(
                     receipt.state,

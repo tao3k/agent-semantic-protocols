@@ -9,6 +9,7 @@ use agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmis
 
 use super::candidate_identity;
 use super::completed_generation;
+use super::workspace_identity;
 
 #[tokio::test(flavor = "multi_thread")]
 async fn concurrent_generation_rebuild_admission_is_single_flight_and_sub_millisecond() {
@@ -31,17 +32,18 @@ async fn concurrent_generation_rebuild_admission_is_single_flight_and_sub_millis
         }
     })));
     let project_root = std::env::temp_dir().join("asp-ready-locator-reconciliation");
+    let workspace_identity = workspace_identity(&project_root);
 
     admission
         .admit(
-            "workspace-ready-locator-reconciliation",
+            &workspace_identity,
             project_root.clone(),
             candidate_identity(),
         )
         .await
         .expect("admit initial generation");
     admission
-        .wait_terminal("workspace-ready-locator-reconciliation", &project_root)
+        .wait_terminal(&workspace_identity, &project_root)
         .await
         .expect("initial generation reaches Ready");
 
@@ -49,12 +51,13 @@ async fn concurrent_generation_rebuild_admission_is_single_flight_and_sub_millis
     for _ in 0..REQUEST_COUNT {
         let admission = Arc::clone(&admission);
         let project_root = project_root.clone();
+        let workspace_identity = workspace_identity.clone();
         requests.spawn(async move {
             let started = tokio::time::Instant::now();
             let receipt = admission
                 .admit_cache_rebuild(
                     "ready-locator-reconciliation",
-                    "workspace-ready-locator-reconciliation",
+                    workspace_identity,
                     project_root,
                     candidate_identity(),
                 )
@@ -86,7 +89,7 @@ async fn concurrent_generation_rebuild_admission_is_single_flight_and_sub_millis
 
     release_repair.notify_one();
     let ready = admission
-        .wait_terminal("workspace-ready-locator-reconciliation", &project_root)
+        .wait_terminal(&workspace_identity, &project_root)
         .await
         .expect("reconciled generation reaches Ready");
     assert_eq!(ready.state, WorkspaceGenerationAdmissionState::Ready);

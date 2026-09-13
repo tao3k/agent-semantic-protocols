@@ -15,6 +15,7 @@ use tokio::sync::Mutex;
 
 use super::candidate_identity_for;
 use super::completed_generation;
+use super::workspace_identity;
 
 #[tokio::test]
 async fn workspace_identity_cannot_split_admission_by_absolute_root() {
@@ -29,16 +30,17 @@ async fn workspace_identity_cannot_split_admission_by_absolute_root() {
     ));
     let first_root = std::env::temp_dir().join("asp-single-workspace-key-first");
     let second_root = std::env::temp_dir().join("asp-single-workspace-key-second");
+    let workspace_identity = workspace_identity(&first_root);
     let candidate = candidate_identity_for(
         "blake3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     );
 
     admission
-        .admit("workspace-single-key", first_root, candidate.clone())
+        .admit(&workspace_identity, first_root, candidate.clone())
         .await
         .expect("admit canonical workspace partition");
     let error = admission
-        .admit("workspace-single-key", second_root, candidate)
+        .admit(&workspace_identity, second_root, candidate)
         .await
         .expect_err("same workspace identity cannot create a second root partition");
     assert!(error.contains("workspace generation admission root drift"));
@@ -70,15 +72,19 @@ async fn ready_receipt_is_reused_only_while_resident_digest_matches() {
     )
     .expect("write source owner");
     run_git(project_root, &["add", "src/lib.rs"]);
-    let candidate = discover_workspace_generation_candidate(project_root)
-        .await
-        .expect("discover complete generation candidate");
-    let workspace_identity =
-        agent_semantic_client_core::state_core::ResolvedState::resolve(project_root)
-            .expect("resolve complete generation workspace")
-            .workspace
-            .workspace_id
-            .to_string();
+    let workspace_identity = workspace_identity(project_root);
+    let project_id = agent_semantic_client_db::runtime_server_admission_catalog::RuntimeWorkspaceAdmissionCatalogEntry::resolve(
+        workspace_identity.clone(),
+        project_root.to_path_buf(),
+    )
+    .expect("resolve complete-generation project identity")
+    .project_id;
+    let candidate = agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationCandidateIdentity::for_runtime_admission(
+        &project_id,
+        &workspace_identity,
+        None,
+    )
+    .expect("construct complete-generation admission identity");
 
     let builds = Arc::new(Mutex::new(0_u8));
     let resident_generation_digest = Arc::new(std::sync::Mutex::new(String::new()));
@@ -196,10 +202,11 @@ async fn ensure_rebuilds_when_repository_candidate_generation_advances() {
         }
     }));
     let project_root = std::env::temp_dir().join("asp-generation-candidate-advance");
+    let workspace_identity = workspace_identity(&project_root);
 
     admission
         .admit(
-            "workspace-candidate-advance",
+            &workspace_identity,
             project_root.clone(),
             candidate_identity_for(
                 "blake3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -208,12 +215,12 @@ async fn ensure_rebuilds_when_repository_candidate_generation_advances() {
         .await
         .expect("admit initial candidate");
     admission
-        .wait_terminal("workspace-candidate-advance", &project_root)
+        .wait_terminal(&workspace_identity, &project_root)
         .await
         .expect("wait for initial candidate");
     let advanced = admission
         .ensure(
-            "workspace-candidate-advance",
+            &workspace_identity,
             &project_root,
             candidate_identity_for(
                 "blake3:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
@@ -224,7 +231,7 @@ async fn ensure_rebuilds_when_repository_candidate_generation_advances() {
     assert_eq!(advanced.state, WorkspaceGenerationAdmissionState::Queued);
     assert_eq!(advanced.attempt, 2);
     let ready = admission
-        .wait_terminal("workspace-candidate-advance", &project_root)
+        .wait_terminal(&workspace_identity, &project_root)
         .await
         .expect("wait for advanced candidate");
     assert_eq!(
@@ -242,7 +249,7 @@ async fn ensure_rebuilds_when_repository_candidate_generation_advances() {
 }
 
 #[tokio::test]
-async fn ready_receipt_uses_the_candidate_captured_by_the_builder() {
+async fn ready_receipt_rejects_a_builder_candidate_that_differs_from_admission() {
     let captured = candidate_identity_for(
         "blake3:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
     );
@@ -260,10 +267,11 @@ async fn ready_receipt_uses_the_candidate_captured_by_the_builder() {
         }
     }));
     let project_root = std::env::temp_dir().join("asp-generation-captured-candidate");
+    let workspace_identity = workspace_identity(&project_root);
 
     admission
         .admit(
-            "workspace-captured-candidate",
+            &workspace_identity,
             project_root.clone(),
             candidate_identity_for(
                 "blake3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -271,14 +279,17 @@ async fn ready_receipt_uses_the_candidate_captured_by_the_builder() {
         )
         .await
         .expect("admit requested candidate");
-    let ready = admission
-        .wait_terminal("workspace-captured-candidate", &project_root)
+    let failed = admission
+        .wait_terminal(&workspace_identity, &project_root)
         .await
-        .expect("captured candidate reaches Ready");
+        .expect("candidate binding mismatch reaches a terminal receipt");
 
-    assert_eq!(ready.state, WorkspaceGenerationAdmissionState::Ready);
-    assert_eq!(ready.candidate_generation, captured.candidate_generation);
-    assert_eq!(ready.policy_overlay_digest, captured.policy_overlay_digest);
+    assert_eq!(failed.state, WorkspaceGenerationAdmissionState::Failed);
+    assert!(failed.commit.is_none());
+    assert!(failed.error.as_deref().is_some_and(|error| {
+        error.contains("workspace-generation-admission-binding-mismatch")
+            && error.contains(&captured.candidate_generation.digest)
+    }));
     admission.shutdown().await.expect("drain admission lane");
 }
 
@@ -298,6 +309,7 @@ async fn tracked_source_edit_discovers_and_admits_a_new_generation() {
     let initial = discover_workspace_generation_candidate(project_root)
         .await
         .expect("discover initial candidate");
+    let workspace_identity = workspace_identity(project_root);
     let builds = Arc::new(Mutex::new(Vec::new()));
     let admission = WorkspaceGenerationAdmission::new(Arc::new({
         let builds = Arc::clone(&builds);
@@ -321,14 +333,14 @@ async fn tracked_source_edit_discovers_and_admits_a_new_generation() {
 
     admission
         .admit(
-            "workspace-tracked-source-edit",
+            &workspace_identity,
             project_root.to_path_buf(),
             initial.clone(),
         )
         .await
         .expect("admit initial tracked candidate");
     admission
-        .wait_terminal("workspace-tracked-source-edit", project_root)
+        .wait_terminal(&workspace_identity, project_root)
         .await
         .expect("wait for initial tracked candidate");
 
@@ -345,17 +357,13 @@ async fn tracked_source_edit_discovers_and_admits_a_new_generation() {
         advanced.candidate_generation.digest
     );
     let building = admission
-        .ensure(
-            "workspace-tracked-source-edit",
-            project_root,
-            advanced.clone(),
-        )
+        .ensure(&workspace_identity, project_root, advanced.clone())
         .await
         .expect("admit advanced tracked candidate");
     assert_eq!(building.state, WorkspaceGenerationAdmissionState::Queued);
     assert_eq!(building.attempt, 2);
     let ready = admission
-        .wait_terminal("workspace-tracked-source-edit", project_root)
+        .wait_terminal(&workspace_identity, project_root)
         .await
         .expect("wait for advanced tracked candidate");
     assert_eq!(
@@ -396,6 +404,7 @@ async fn untracked_source_owner_discovers_and_admits_a_new_generation() {
     let advanced = discover_workspace_generation_candidate(project_root)
         .await
         .expect("discover candidate with untracked owner");
+    let workspace_identity = workspace_identity(project_root);
 
     assert_ne!(
         initial.candidate_generation.digest, advanced.candidate_generation.digest,
@@ -424,14 +433,14 @@ async fn untracked_source_owner_discovers_and_admits_a_new_generation() {
     }));
     admission
         .admit(
-            "workspace-untracked-source-owner",
+            &workspace_identity,
             project_root.to_path_buf(),
             advanced.clone(),
         )
         .await
         .expect("admit candidate containing untracked owner");
     let ready = admission
-        .wait_terminal("workspace-untracked-source-owner", project_root)
+        .wait_terminal(&workspace_identity, project_root)
         .await
         .expect("wait for untracked owner candidate");
     assert_eq!(
@@ -507,10 +516,11 @@ async fn ensure_coalesces_an_advanced_candidate_behind_an_inflight_build() {
         }
     }));
     let project_root = std::env::temp_dir().join("asp-generation-candidate-coalesce");
+    let workspace_identity = workspace_identity(&project_root);
 
     admission
         .admit(
-            "workspace-candidate-coalesce",
+            &workspace_identity,
             project_root.clone(),
             candidate_identity_for(
                 "blake3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -520,7 +530,7 @@ async fn ensure_coalesces_an_advanced_candidate_behind_an_inflight_build() {
         .expect("admit initial candidate");
     let queued = admission
         .ensure(
-            "workspace-candidate-coalesce",
+            &workspace_identity,
             &project_root,
             candidate_identity_for(
                 "blake3:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
@@ -532,7 +542,7 @@ async fn ensure_coalesces_an_advanced_candidate_behind_an_inflight_build() {
     assert_eq!(queued.attempt, 2);
     first_release.wait().await;
     let ready = admission
-        .wait_terminal("workspace-candidate-coalesce", &project_root)
+        .wait_terminal(&workspace_identity, &project_root)
         .await
         .expect("wait for coalesced candidate");
     assert_eq!(ready.attempt, 2);

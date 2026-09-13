@@ -21,6 +21,23 @@ use agent_semantic_client_db::runtime_telemetry_bus::RuntimeTelemetryEvent;
 use tokio::sync::Barrier;
 use tokio::sync::Mutex;
 
+pub(super) fn workspace_identity(project_root: &std::path::Path) -> String {
+    agent_semantic_client_core::state_core::ResolvedState::resolve(project_root)
+        .expect("resolve canonical fixture workspace identity")
+        .workspace
+        .workspace_id
+        .to_string()
+}
+
+pub(super) async fn within_generation_test_deadline<T>(
+    context: &str,
+    future: impl std::future::Future<Output = T>,
+) -> T {
+    tokio::time::timeout(std::time::Duration::from_secs(5), future)
+        .await
+        .unwrap_or_else(|_| panic!("generation admission test deadline exceeded: {context}"))
+}
+
 pub(super) fn candidate_identity() -> WorkspaceGenerationCandidateIdentity {
     candidate_identity_for(
         "blake3:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
@@ -141,10 +158,11 @@ async fn enqueue_is_queued_until_dispatcher_publishes_one_build_started_event() 
         bus.sender,
     );
     let project_root = std::env::temp_dir().join("asp-generation-queued-dispatch");
+    let workspace_identity = workspace_identity(&project_root);
 
     let queued = admission
         .admit(
-            "workspace-queued-dispatch",
+            &workspace_identity,
             project_root.clone(),
             candidate_identity(),
         )
@@ -184,16 +202,16 @@ async fn enqueue_is_queued_until_dispatcher_publishes_one_build_started_event() 
     assert_eq!(started.active_task_count, 1);
     assert_eq!(
         admission
-            .current("workspace-queued-dispatch", &project_root)
+            .current(&workspace_identity, &project_root)
             .expect("resident admission")
             .state,
         WorkspaceGenerationAdmissionState::Building
     );
-    build_invoked.notified().await;
+    within_generation_test_deadline("queued builder dispatch", build_invoked.notified()).await;
     release.notify_one();
 
     let terminal = admission
-        .wait_terminal("workspace-queued-dispatch", &project_root)
+        .wait_terminal(&workspace_identity, &project_root)
         .await
         .expect("terminal generation");
     assert_eq!(terminal.state, WorkspaceGenerationAdmissionState::Ready);
@@ -235,6 +253,7 @@ fn cold_restore_publishes_committed_generation_without_live_checkout_probe() {
 #[test]
 fn cold_byte_generation_is_published_before_source_index_durability_attachment() {
     let source = include_str!("../../src/runtime_server/core.rs");
+    let durability_source = include_str!("../../src/runtime_server/durability.rs");
     assert!(source.contains("let durable_restore_admitted ="));
     assert!(source.contains("durable_runtime_bundle_matches_current("));
     let publication = source
@@ -260,8 +279,11 @@ fn cold_byte_generation_is_published_before_source_index_durability_attachment()
         "Turso bootstrap and commit must both run only inside the post-publication durability task"
     );
     assert!(!source.contains("tokio::spawn(async move"));
-    assert!(source.contains("agent.semantic-protocols.source-index-durability-attachment-receipt"));
-    assert!(source.contains("source-index-durability-attachment-failed"));
+    assert!(
+        durability_source
+            .contains("agent.semantic-protocols.source-index-durability-attachment-receipt")
+    );
+    assert!(durability_source.contains("source-index-durability-attachment-failed"));
 }
 
 #[test]
@@ -296,18 +318,16 @@ fn concurrent_256_requests_share_one_server_workspace_writer_lease() {
         }));
 
         let project_root = std::env::temp_dir().join("asp-generation-admission-project");
+        let workspace_identity = workspace_identity(&project_root);
         let mut requests = tokio::task::JoinSet::new();
         for _ in 0..REQUEST_COUNT {
             let admission = admission.clone();
             let project_root = project_root.clone();
+            let workspace_identity = workspace_identity.clone();
             requests.spawn(async move {
                 let started = tokio::time::Instant::now();
                 let receipt = admission
-                    .admit(
-                        "workspace-server-writer-lease",
-                        project_root,
-                        candidate_identity(),
-                    )
+                    .admit(&workspace_identity, project_root, candidate_identity())
                     .await;
                 (receipt, started.elapsed())
             });
@@ -333,11 +353,11 @@ fn concurrent_256_requests_share_one_server_workspace_writer_lease() {
             p99 < std::time::Duration::from_millis(1),
             "generation admission submit p99 must remain sub-millisecond: {p99:?}"
         );
-        release.wait().await;
+        within_generation_test_deadline("single-flight builder dispatch", release.wait()).await;
         assert_eq!(accepted_count, 1);
         assert_eq!(*build_count.lock().await, 1);
         let receipt = admission
-            .wait_terminal("workspace-server-writer-lease", &project_root)
+            .wait_terminal(&workspace_identity, &project_root)
             .await
             .expect("wait for completed admission");
         assert_eq!(receipt.state, WorkspaceGenerationAdmissionState::Ready);
@@ -372,28 +392,22 @@ async fn project_roots_have_independent_admission_flights() {
     }));
     let first_root = std::env::temp_dir().join("asp-generation-admission-first-project");
     let second_root = std::env::temp_dir().join("asp-generation-admission-second-project");
+    let first_identity = workspace_identity(&first_root);
+    let second_identity = workspace_identity(&second_root);
 
     let first = admission
-        .admit(
-            "shared-repository-identity",
-            first_root.clone(),
-            candidate_identity(),
-        )
+        .admit(&first_identity, first_root.clone(), candidate_identity())
         .await
         .expect("admit first project root");
     let second = admission
-        .admit(
-            "shared-repository-identity",
-            second_root.clone(),
-            candidate_identity(),
-        )
+        .admit(&second_identity, second_root.clone(), candidate_identity())
         .await
         .expect("admit second project root");
     assert!(first.accepted);
     assert!(second.accepted);
     assert_eq!(
         admission
-            .wait_terminal("shared-repository-identity", &first_root)
+            .wait_terminal(&first_identity, &first_root)
             .await
             .expect("first project terminal state")
             .state,
@@ -401,7 +415,7 @@ async fn project_roots_have_independent_admission_flights() {
     );
     assert_eq!(
         admission
-            .wait_terminal("shared-repository-identity", &second_root)
+            .wait_terminal(&second_identity, &second_root)
             .await
             .expect("second project terminal state")
             .state,
@@ -461,11 +475,13 @@ async fn multi_workspace_admission_uses_independent_server_writer_leases_and_is_
 
     let mut requests = tokio::task::JoinSet::new();
     for workspace_index in 0..workspace_count {
+        let root = std::env::temp_dir().join(format!("asp-multi-workspace-{workspace_index}"));
+        let workspace_identity = workspace_identity(&root);
         for _ in 0..calls_per_workspace {
             let admission = Arc::clone(&admission);
+            let workspace_identity = workspace_identity.clone();
+            let root = root.clone();
             requests.spawn(async move {
-                let workspace_identity = format!("workspace-{workspace_index}");
-                let root = std::env::temp_dir().join(&workspace_identity);
                 let started = tokio::time::Instant::now();
                 let receipt = admission
                     .admit_observed_mutation(
@@ -531,8 +547,8 @@ async fn multi_workspace_admission_uses_independent_server_writer_leases_and_is_
 
     release.add_permits(workspace_count);
     for workspace_index in 0..workspace_count {
-        let workspace_identity = format!("workspace-{workspace_index}");
-        let root = std::env::temp_dir().join(&workspace_identity);
+        let root = std::env::temp_dir().join(format!("asp-multi-workspace-{workspace_index}"));
+        let workspace_identity = workspace_identity(&root);
         let terminal = tokio::time::timeout(
             std::time::Duration::from_millis(100),
             admission.wait_terminal(&workspace_identity, &root),
@@ -571,21 +587,22 @@ async fn ensure_observes_ready_attempt_without_starting_another_build() {
         }
     }));
     let project_root = std::env::temp_dir().join("asp-generation-ensure-project");
+    let workspace_identity = workspace_identity(&project_root);
 
     admission
         .admit(
-            "workspace-ensure",
+            &workspace_identity,
             project_root.clone(),
             candidate_identity(),
         )
         .await
         .expect("admit generation");
     admission
-        .wait_terminal("workspace-ensure", &project_root)
+        .wait_terminal(&workspace_identity, &project_root)
         .await
         .expect("wait for admitted generation");
     let ready = admission
-        .ensure("workspace-ensure", &project_root, candidate_identity())
+        .ensure(&workspace_identity, &project_root, candidate_identity())
         .await
         .expect("ensure admitted generation");
 
@@ -600,6 +617,7 @@ mod runtime_server_generation_candidate_admission;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn ensure_schedules_once_without_waiting_for_generation_build() {
+    let _performance = crate::test_support::performance_lock();
     let build_count = Arc::new(Mutex::new(0_u32));
     let release = Arc::new(Barrier::new(2));
     let admission = WorkspaceGenerationAdmission::new(Arc::new({
@@ -622,21 +640,14 @@ async fn ensure_schedules_once_without_waiting_for_generation_build() {
         }
     }));
     let project_root = std::env::temp_dir().join("asp-generation-ensure-submit-project");
+    let workspace_identity = workspace_identity(&project_root);
 
     let first = admission
-        .ensure(
-            "workspace-ensure-submit",
-            &project_root,
-            candidate_identity(),
-        )
+        .ensure(&workspace_identity, &project_root, candidate_identity())
         .await
         .expect("schedule generation");
     let second = admission
-        .ensure(
-            "workspace-ensure-submit",
-            &project_root,
-            candidate_identity(),
-        )
+        .ensure(&workspace_identity, &project_root, candidate_identity())
         .await
         .expect("observe scheduled generation");
 
@@ -646,7 +657,6 @@ async fn ensure_schedules_once_without_waiting_for_generation_build() {
         WorkspaceGenerationAdmissionState::Queued | WorkspaceGenerationAdmissionState::Building
     ));
     assert!(first.accepted);
-    assert!(second.accepted);
     assert_eq!(first.attempt, 1);
     assert_eq!(second.attempt, 1);
     const OBSERVATION_COUNT: usize = 4_096;
@@ -654,11 +664,7 @@ async fn ensure_schedules_once_without_waiting_for_generation_build() {
     for _ in 0..OBSERVATION_COUNT {
         let started = tokio::time::Instant::now();
         let observed = admission
-            .ensure(
-                "workspace-ensure-submit",
-                &project_root,
-                candidate_identity(),
-            )
+            .ensure(&workspace_identity, &project_root, candidate_identity())
             .await
             .expect("observe resident scheduled generation");
         latencies.push(started.elapsed());
@@ -680,7 +686,7 @@ async fn ensure_schedules_once_without_waiting_for_generation_build() {
     );
     release.wait().await;
     let ready = admission
-        .wait_terminal("workspace-ensure-submit", &project_root)
+        .wait_terminal(&workspace_identity, &project_root)
         .await
         .expect("wait for scheduled generation");
     assert_eq!(ready.state, WorkspaceGenerationAdmissionState::Ready);
@@ -715,18 +721,19 @@ async fn failed_generation_build_retries_only_on_explicit_admission() {
         }
     }));
     let project_root = std::env::temp_dir().join("asp-generation-admission-failure");
+    let workspace_identity = workspace_identity(&project_root);
 
     admission
         .admit(
-            "workspace-sticky-failure",
+            &workspace_identity,
             project_root.clone(),
             candidate_identity(),
         )
         .await
         .expect("schedule failed builder");
-    failed.notified().await;
+    within_generation_test_deadline("first failed generation build", failed.notified()).await;
     let receipt = admission
-        .wait_terminal("workspace-sticky-failure", &project_root)
+        .wait_terminal(&workspace_identity, &project_root)
         .await
         .expect("failure state must become visible");
 
@@ -740,17 +747,13 @@ async fn failed_generation_build_retries_only_on_explicit_admission() {
     receipt.validate().expect("valid failure receipt");
 
     let retry = admission
-        .admit(
-            "workspace-sticky-failure",
-            project_root,
-            candidate_identity(),
-        )
+        .admit(&workspace_identity, project_root, candidate_identity())
         .await
         .expect("explicitly retry failed admission");
     assert_eq!(retry.state, WorkspaceGenerationAdmissionState::Queued);
     assert!(retry.accepted);
     assert_eq!(retry.attempt, 2);
-    failed.notified().await;
+    within_generation_test_deadline("explicit failed generation retry", failed.notified()).await;
     assert_eq!(*build_count.lock().await, 2);
 
     admission

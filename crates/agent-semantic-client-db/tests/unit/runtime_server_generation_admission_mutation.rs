@@ -17,6 +17,7 @@ use super::WorkspaceGenerationMutationAdmissionReceipt;
 use super::candidate_identity;
 use super::completed_generation;
 use super::ready_receipt;
+use super::workspace_identity;
 
 #[test]
 fn mutation_rebuild_does_not_attempt_to_restore_the_superseded_materialization() {
@@ -67,13 +68,14 @@ async fn mutation_admission_rejects_non_normalized_paths_and_workspace_identity_
     let temp = tempfile::tempdir().expect("temporary resident catalog");
     let parent_root = temp.path().join("repository");
     let conflicting_root = temp.path().join("other-checkout");
+    let parent_workspace_identity = workspace_identity(&parent_root);
     let catalog = RuntimeWorkspaceAdmissionCatalog::load(temp.path().join("catalog.json"))
         .await
         .expect("load resident workspace catalog");
     catalog
         .record(RuntimeWorkspaceAdmissionCatalogEntry {
             project_id: "repo-parent".to_owned(),
-            workspace_identity: "workspace-parent".to_owned(),
+            workspace_identity: parent_workspace_identity.clone(),
             project_root: parent_root.clone(),
         })
         .await
@@ -90,7 +92,7 @@ async fn mutation_admission_rejects_non_normalized_paths_and_workspace_identity_
     let path_error = admission
         .admit_observed_mutation(
             "mutation-path-normalization",
-            "workspace-parent",
+            &parent_workspace_identity,
             parent_root.clone(),
             vec![std::path::PathBuf::from("src/../src/lib.rs")],
             candidate_identity(),
@@ -102,7 +104,7 @@ async fn mutation_admission_rejects_non_normalized_paths_and_workspace_identity_
     let identity_error = admission
         .admit_observed_mutation(
             "mutation-identity-drift",
-            "workspace-parent",
+            &parent_workspace_identity,
             conflicting_root.clone(),
             vec![conflicting_root.join("src/lib.rs")],
             candidate_identity(),
@@ -119,6 +121,7 @@ async fn explicit_mutation_admission_returns_the_exact_attempt_terminal_receipt(
     tokio::fs::create_dir_all(project_root.join("src"))
         .await
         .expect("create resident source root");
+    let workspace_identity = workspace_identity(&project_root);
     let admission = WorkspaceGenerationAdmission::new(Arc::new(
         |_, _, candidate, _, _changed_paths, _provider_target, _cancellation| {
             Box::pin(async move {
@@ -131,7 +134,7 @@ async fn explicit_mutation_admission_returns_the_exact_attempt_terminal_receipt(
     let receipt = admission
         .admit_observed_mutation_terminal(
             "mutation-terminal-attempt",
-            "workspace-terminal-attempt",
+            &workspace_identity,
             project_root.clone(),
             vec![project_root.join("src/lib.rs")],
             candidate_identity(),
@@ -160,18 +163,8 @@ async fn changed_paths_are_inventory_hints_to_each_complete_generation_builder()
     tokio::fs::create_dir_all(&nested_root)
         .await
         .expect("nested workspace root");
-    let parent_workspace_identity =
-        agent_semantic_client_core::state_core::ResolvedState::resolve(&parent_root)
-            .expect("resolve parent workspace state")
-            .workspace
-            .workspace_id
-            .to_string();
-    let nested_workspace_identity =
-        agent_semantic_client_core::state_core::ResolvedState::resolve(&nested_root)
-            .expect("resolve nested workspace state")
-            .workspace
-            .workspace_id
-            .to_string();
+    let parent_workspace_identity = workspace_identity(&parent_root);
+    let nested_workspace_identity = workspace_identity(&nested_root);
     let catalog = RuntimeWorkspaceAdmissionCatalog::load(temp.path().join("catalog.json"))
         .await
         .expect("load resident workspace catalog");
@@ -254,38 +247,37 @@ async fn changed_paths_are_inventory_hints_to_each_complete_generation_builder()
     receipt.validate().expect("valid mutation receipt");
     assert_eq!(receipt.changed_path_count, 2);
     assert_eq!(receipt.affected_workspace_count, 2);
-    assert_eq!(
-        receipt
-            .receipts
-            .iter()
-            .map(|receipt| receipt.workspace_identity.as_str())
-            .collect::<Vec<_>>(),
-        vec![
-            nested_workspace_identity.as_str(),
-            parent_workspace_identity.as_str(),
-        ]
-    );
+    let mut receipt_workspace_identities = receipt
+        .receipts
+        .iter()
+        .map(|receipt| receipt.workspace_identity.as_str())
+        .collect::<Vec<_>>();
+    receipt_workspace_identities.sort_unstable();
+    let mut expected_workspace_identities = vec![
+        nested_workspace_identity.as_str(),
+        parent_workspace_identity.as_str(),
+    ];
+    expected_workspace_identities.sort_unstable();
+    assert_eq!(receipt_workspace_identities, expected_workspace_identities);
     let mut builds = builds.lock().await.clone();
     builds.sort();
-    assert_eq!(
-        builds,
-        vec![
-            (
-                nested_workspace_identity,
-                nested_root.clone(),
-                std::collections::BTreeSet::from([nested_root.join("src/exact_source.rs")]),
-            ),
-            (
-                parent_workspace_identity,
-                parent_root.clone(),
-                std::collections::BTreeSet::from([
-                    parent_root.join("README.md"),
-                    nested_root.join("src/exact_source.rs"),
-                ]),
-            ),
-        ],
-        "mutation receipt: {receipt:?}"
-    );
+    let mut expected_builds = vec![
+        (
+            nested_workspace_identity,
+            nested_root.clone(),
+            std::collections::BTreeSet::from([nested_root.join("src/exact_source.rs")]),
+        ),
+        (
+            parent_workspace_identity,
+            parent_root.clone(),
+            std::collections::BTreeSet::from([
+                parent_root.join("README.md"),
+                nested_root.join("src/exact_source.rs"),
+            ]),
+        ),
+    ];
+    expected_builds.sort();
+    assert_eq!(builds, expected_builds, "mutation receipt: {receipt:?}");
     assert!(builds.iter().all(|(_, _, changed_paths)| {
         !changed_paths.contains(&parent_root.join("src/untouched.rs"))
             && !changed_paths.contains(&nested_root.join("src/untouched.rs"))
@@ -336,11 +328,12 @@ async fn first_observed_mutation_admits_an_empty_workspace_catalog() {
     }))
     .with_catalog(catalog);
     let changed_owner = project_root.join("src/lib.rs");
+    let workspace_identity = workspace_identity(&project_root);
 
     let receipt = admission
         .admit_observed_mutation(
             "first-post-tool-mutation",
-            "workspace-fresh",
+            &workspace_identity,
             project_root.clone(),
             vec![changed_owner.clone()],
             candidate_identity(),
@@ -352,13 +345,13 @@ async fn first_observed_mutation_admits_an_empty_workspace_catalog() {
     assert_eq!(receipt.affected_workspace_count, 1);
 
     admission
-        .wait_terminal("workspace-fresh", &project_root)
+        .wait_terminal(&workspace_identity, &project_root)
         .await
         .expect("fresh workspace reaches terminal Ready");
     assert_eq!(
         builds.lock().await.as_slice(),
         &[(
-            "workspace-fresh".to_owned(),
+            workspace_identity,
             project_root.clone(),
             std::collections::BTreeSet::from([changed_owner]),
         )]
@@ -395,11 +388,12 @@ async fn failed_missing_base_retry_remains_a_full_generation_build() {
     }));
     let root = std::env::temp_dir().join("asp-mutation-failed-base-retry");
     let changed_path = root.join("src/lib.rs");
+    let workspace_identity = workspace_identity(&root);
 
     admission
         .admit_observed_mutation(
             "mutation-failed-base-1",
-            "workspace-failed-base",
+            &workspace_identity,
             root.clone(),
             vec![changed_path.clone()],
             candidate_identity(),
@@ -408,7 +402,7 @@ async fn failed_missing_base_retry_remains_a_full_generation_build() {
         .expect("admit first missing-base mutation");
     assert_eq!(
         admission
-            .wait_terminal("workspace-failed-base", &root)
+            .wait_terminal(&workspace_identity, &root)
             .await
             .expect("first missing-base attempt reaches terminal state")
             .state,
@@ -418,7 +412,7 @@ async fn failed_missing_base_retry_remains_a_full_generation_build() {
     admission
         .admit_observed_mutation(
             "mutation-failed-base-2",
-            "workspace-failed-base",
+            &workspace_identity,
             root.clone(),
             vec![changed_path],
             candidate_identity(),
@@ -427,7 +421,7 @@ async fn failed_missing_base_retry_remains_a_full_generation_build() {
         .expect("retry missing-base mutation");
     assert_eq!(
         admission
-            .wait_terminal("workspace-failed-base", &root)
+            .wait_terminal(&workspace_identity, &root)
             .await
             .expect("retry reaches terminal Ready")
             .state,
@@ -481,11 +475,12 @@ async fn mutation_queued_after_failed_base_rechecks_base_authority() {
     }));
     let root = std::env::temp_dir().join("asp-mutation-queued-failed-base");
     let changed_path = root.join("src/lib.rs");
+    let workspace_identity = workspace_identity(&root);
 
     admission
         .admit_observed_mutation(
             "mutation-queued-failed-base-1",
-            "workspace-queued-failed-base",
+            &workspace_identity,
             root.clone(),
             vec![changed_path.clone()],
             candidate_identity(),
@@ -495,7 +490,7 @@ async fn mutation_queued_after_failed_base_rechecks_base_authority() {
     admission
         .admit_observed_mutation(
             "mutation-queued-failed-base-2",
-            "workspace-queued-failed-base",
+            &workspace_identity,
             root.clone(),
             vec![changed_path],
             candidate_identity(),
@@ -506,7 +501,7 @@ async fn mutation_queued_after_failed_base_rechecks_base_authority() {
 
     assert_eq!(
         admission
-            .wait_terminal("workspace-queued-failed-base", &root)
+            .wait_terminal(&workspace_identity, &root)
             .await
             .expect("queued retry reaches terminal Ready")
             .state,
@@ -550,11 +545,12 @@ async fn distinct_mutation_queued_during_build_runs_as_the_next_generation_attem
     }));
     let root = std::env::temp_dir().join("asp-mutation-queue-workspace");
     let changed_path = root.join("src/lib.rs");
+    let workspace_identity = workspace_identity(&root);
 
     let first = admission
         .admit_observed_mutation(
             "mutation-1",
-            "workspace-mutation-queue",
+            &workspace_identity,
             root.clone(),
             vec![changed_path.clone()],
             candidate_identity(),
@@ -567,7 +563,7 @@ async fn distinct_mutation_queued_during_build_runs_as_the_next_generation_attem
     let second = admission
         .admit_observed_mutation(
             "mutation-2",
-            "workspace-mutation-queue",
+            &workspace_identity,
             root.clone(),
             vec![changed_path.clone()],
             candidate_identity(),
@@ -580,7 +576,7 @@ async fn distinct_mutation_queued_during_build_runs_as_the_next_generation_attem
     let third = admission
         .admit_observed_mutation(
             "mutation-3",
-            "workspace-mutation-queue",
+            &workspace_identity,
             root.clone(),
             vec![changed_path.clone()],
             candidate_identity(),
@@ -593,7 +589,7 @@ async fn distinct_mutation_queued_during_build_runs_as_the_next_generation_attem
     let duplicate = admission
         .admit_observed_mutation(
             "mutation-2",
-            "workspace-mutation-queue",
+            &workspace_identity,
             root.clone(),
             vec![changed_path.clone()],
             candidate_identity(),
@@ -622,7 +618,7 @@ async fn distinct_mutation_queued_during_build_runs_as_the_next_generation_attem
     release.add_permits(1);
     let terminal = tokio::time::timeout(
         std::time::Duration::from_millis(100),
-        admission.wait_terminal("workspace-mutation-queue", &root),
+        admission.wait_terminal(&workspace_identity, &root),
     )
     .await
     .expect("queued successor must reach terminal state within 100ms")
@@ -634,7 +630,7 @@ async fn distinct_mutation_queued_during_build_runs_as_the_next_generation_attem
     let completed_duplicate = admission
         .admit_observed_mutation(
             "mutation-3",
-            "workspace-mutation-queue",
+            &workspace_identity,
             root.clone(),
             vec![changed_path],
             candidate_identity(),
