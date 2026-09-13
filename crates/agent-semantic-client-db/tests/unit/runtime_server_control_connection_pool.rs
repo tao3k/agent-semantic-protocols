@@ -3,13 +3,33 @@
 // SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 use super::{
-    RuntimeServerControlRequest, RuntimeServerEndpoint, discard_closed_or_dirty_control_stream,
-    exchange_runtime_server_request_with_budget,
+    RUNTIME_SERVER_CONTROL_EXCHANGE_BUDGET, RUNTIME_SERVER_ENSURE_WORKSPACE_EXCHANGE_BUDGET,
+    RuntimeServerControlRequest, RuntimeServerEndpoint, control_exchange_budget,
+    discard_closed_or_dirty_control_stream, exchange_runtime_server_request_with_budget,
 };
 use crate::runtime_server_control::{
     RuntimeServerOperation, runtime_server_transport_contract_digest,
 };
 use agent_semantic_artifacts::runtime_artifact_catalog::RuntimeBinaryIdentity;
+
+#[test]
+fn first_workspace_admission_has_a_distinct_bounded_compute_deadline() {
+    assert_eq!(
+        control_exchange_budget(RuntimeServerOperation::EnsureWorkspace),
+        RUNTIME_SERVER_ENSURE_WORKSPACE_EXCHANGE_BUDGET
+    );
+    assert_eq!(
+        control_exchange_budget(RuntimeServerOperation::Status),
+        RUNTIME_SERVER_CONTROL_EXCHANGE_BUDGET
+    );
+    assert_eq!(
+        control_exchange_budget(RuntimeServerOperation::Restart),
+        RUNTIME_SERVER_CONTROL_EXCHANGE_BUDGET
+    );
+    assert!(
+        RUNTIME_SERVER_ENSURE_WORKSPACE_EXCHANGE_BUDGET > RUNTIME_SERVER_CONTROL_EXCHANGE_BUDGET
+    );
+}
 
 #[tokio::test]
 async fn pooled_lane_discards_a_closed_previous_generation_before_write() {

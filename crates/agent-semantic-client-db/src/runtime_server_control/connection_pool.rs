@@ -12,7 +12,7 @@ use tokio::sync::{Mutex, OnceCell, RwLock};
 use super::frame::{read_frame, write_frame};
 use super::{
     RuntimeServerControlReceipt, RuntimeServerControlRequest, RuntimeServerEndpoint,
-    runtime_server_connection_pool_capacity,
+    RuntimeServerOperation, runtime_server_connection_pool_capacity,
 };
 
 static RUNTIME_SERVER_CONNECTION_POOLS: OnceCell<
@@ -21,6 +21,8 @@ static RUNTIME_SERVER_CONNECTION_POOLS: OnceCell<
 
 const RUNTIME_SERVER_CONTROL_EXCHANGE_BUDGET: std::time::Duration =
     std::time::Duration::from_millis(650);
+const RUNTIME_SERVER_ENSURE_WORKSPACE_EXCHANGE_BUDGET: std::time::Duration =
+    std::time::Duration::from_millis(800);
 
 pub(super) struct RuntimeServerConnectionPool {
     endpoint: RuntimeServerEndpoint,
@@ -136,9 +138,21 @@ async fn exchange_runtime_server_request(
         endpoint,
         stream,
         request,
-        RUNTIME_SERVER_CONTROL_EXCHANGE_BUDGET,
+        control_exchange_budget(request.operation),
     )
     .await
+}
+
+fn control_exchange_budget(operation: RuntimeServerOperation) -> std::time::Duration {
+    match operation {
+        // EnsureWorkspace may perform the first content-bound workspace
+        // admission.  Keep that compute deadline distinct from resident
+        // control exchanges; it is still one bounded request, never a retry.
+        RuntimeServerOperation::EnsureWorkspace => RUNTIME_SERVER_ENSURE_WORKSPACE_EXCHANGE_BUDGET,
+        RuntimeServerOperation::Status | RuntimeServerOperation::Restart => {
+            RUNTIME_SERVER_CONTROL_EXCHANGE_BUDGET
+        }
+    }
 }
 
 async fn exchange_runtime_server_request_with_budget(
