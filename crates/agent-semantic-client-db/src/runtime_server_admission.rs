@@ -284,11 +284,11 @@ impl WorkspaceGenerationAdmission {
                 workspace_identity,
                 project_root,
             )?;
-        self.catalog
-            .as_ref()
-            .ok_or_else(|| "Runtime Server workspace admission catalog is unavailable".to_owned())?
-            .record(entry.clone())
-            .await?;
+        // The catalog is a derived locator.  Linearize its resident identity
+        // before acknowledging control admission, but keep flush/rename off
+        // the request path; callers that require durable settlement use the
+        // catalog's explicit wait_durable receipt.
+        self.record_catalog_resident(entry.clone())?;
         Ok(entry)
     }
 

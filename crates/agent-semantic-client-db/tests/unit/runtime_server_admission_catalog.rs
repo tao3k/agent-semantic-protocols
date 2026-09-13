@@ -154,7 +154,7 @@ async fn identity_only_admission_publishes_v1_catalog_without_generation_build()
                 }
             }),
         )
-        .with_catalog(catalog);
+        .with_catalog(catalog.clone());
 
     let entry = admission
         .admit_project_workspace_identity(project_root.clone())
@@ -168,6 +168,10 @@ async fn identity_only_admission_publishes_v1_catalog_without_generation_build()
             .current(&entry.workspace_identity, &project_root)
             .is_none()
     );
+    catalog
+        .wait_durable()
+        .await
+        .expect("identity-only admission durability settlement");
     assert_eq!(
         RuntimeWorkspaceAdmissionCatalog::resolve_mapped(&catalog_path, &project_root).unwrap(),
         entry
