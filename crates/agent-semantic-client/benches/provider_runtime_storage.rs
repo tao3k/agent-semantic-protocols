@@ -20,7 +20,14 @@ impl BenchProject {
             .duration_since(std::time::UNIX_EPOCH)
             .expect("system clock after Unix epoch")
             .as_nanos();
-        let path = std::env::temp_dir().join(format!(
+        // Exercise the production binding with a durable checkout identity.
+        // State Core intentionally rejects standalone OS-temporary projects,
+        // so keep the disposable fixture under this checkout's ignored target
+        // tree instead of weakening production admission for a benchmark.
+        let fixture_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("target/provider-runtime-storage-benches");
+        std::fs::create_dir_all(&fixture_root).expect("create benchmark fixture root");
+        let path = fixture_root.join(format!(
             "asp-provider-runtime-storage-bench-{}-{nonce}",
             std::process::id()
         ));
