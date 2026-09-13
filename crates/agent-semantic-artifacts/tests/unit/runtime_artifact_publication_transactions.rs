@@ -261,6 +261,49 @@ async fn publication_repairs_an_empty_selector_directory_inside_the_artifact_tra
 }
 
 #[tokio::test]
+async fn binary_successor_treats_an_empty_selector_directory_as_initial_publication() {
+    let temporary = tempfile::tempdir().expect("successor repair fixture");
+    let state_home = temporary.path().join("state");
+    let source = temporary.path().join("asp");
+    let hook = temporary.path().join("asp-hook");
+    let target = state_home.join("bin/asp");
+    write_executable(&source, "#!/bin/sh\nexit 0\n");
+    write_executable(&hook, "#!/bin/sh\nexit 0\n");
+    let active = state_home.join("runtime/artifacts/active");
+    std::fs::create_dir_all(&active).expect("empty initial selector directory");
+
+    let members = [super::RuntimeArtifactBundleMemberSource {
+        name: "asp-hook",
+        source: &hook,
+    }];
+    let receipt = super::publish_runtime_artifact_bundle_successor_from_active(
+        &state_home,
+        &source,
+        &target,
+        "release",
+        &members,
+    )
+    .await
+    .expect("empty selector must enter initial publication");
+
+    assert!(
+        std::fs::symlink_metadata(&active)
+            .expect("active selector")
+            .file_type()
+            .is_symlink()
+    );
+    assert_eq!(
+        std::fs::canonicalize(active).expect("active generation"),
+        std::fs::canonicalize(
+            state_home
+                .join("runtime/artifacts/generations")
+                .join(receipt.bundle_digest.content_digest().as_str())
+        )
+        .expect("published generation")
+    );
+}
+
+#[tokio::test]
 async fn publication_rejects_a_populated_selector_directory_without_deleting_it() {
     let temporary = tempfile::tempdir().expect("publication conflict fixture");
     let state_home = temporary.path().join("state");

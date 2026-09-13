@@ -99,10 +99,10 @@ jobs:
         uses: actions/cache/restore@v5
         with:
           path: ${{ github.workspace }}/.sccache/
-          key: asp-rust-sccache-${{ runner.os }}-${{ github.job }}-${{ hashFiles('Cargo.toml', 'Cargo.lock', '.github/workflows/ci.yml') }}-${{ github.run_id }}
+          key: asp-rust-sccache-${{ runner.os }}-${{ github.job }}-${{ hashFiles('Cargo.toml', 'Cargo.lock', '.github/workflows/ci.yml', 'schemas/provider-register.json', 'schemas/provider-install-register.json', 'languages/*/provider/asp-provider-registration.json', 'languages/*/tree-sitter/**/enhanced-query-capabilities.v1.json') }}-${{ github.run_id }}
           restore-keys: |
-            asp-rust-sccache-${{ runner.os }}-${{ github.job }}-${{ hashFiles('Cargo.toml', 'Cargo.lock', '.github/workflows/ci.yml') }}-
-            asp-rust-sccache-${{ runner.os }}-${{ hashFiles('Cargo.toml', 'Cargo.lock', '.github/workflows/ci.yml') }}-
+            asp-rust-sccache-${{ runner.os }}-${{ github.job }}-${{ hashFiles('Cargo.toml', 'Cargo.lock', '.github/workflows/ci.yml', 'schemas/provider-register.json', 'schemas/provider-install-register.json', 'languages/*/provider/asp-provider-registration.json', 'languages/*/tree-sitter/**/enhanced-query-capabilities.v1.json') }}-
+            asp-rust-sccache-${{ runner.os }}-${{ hashFiles('Cargo.toml', 'Cargo.lock', '.github/workflows/ci.yml', 'schemas/provider-register.json', 'schemas/provider-install-register.json', 'languages/*/provider/asp-provider-registration.json', 'languages/*/tree-sitter/**/enhanced-query-capabilities.v1.json') }}-
             asp-rust-sccache-${{ runner.os }}-
 
       - name: Cache cargo artifacts
@@ -110,7 +110,7 @@ jobs:
         with:
           workspaces: |
             . -> target
-          shared-key: asp-rust-ci-${{ runner.os }}
+          shared-key: asp-rust-ci-${{ runner.os }}-${{ hashFiles('schemas/provider-register.json', 'schemas/provider-install-register.json', 'languages/*/provider/asp-provider-registration.json', 'languages/*/tree-sitter/**/enhanced-query-capabilities.v1.json') }}
           cache-on-failure: true
 
       - name: Fetch cargo dependencies

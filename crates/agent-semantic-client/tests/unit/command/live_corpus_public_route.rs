@@ -43,8 +43,8 @@ fn cli_live_corpus_forwards_only_typed_public_client_requests() {
     for required in [
         "tokio::task::JoinSet::new()",
         "case_tasks.spawn(async move",
-        "case_tasks.join_next().await",
-        "completed_cases.sort_by_key",
+        "join_tasks_in_plan_order(",
+        "for (_, (qualified, cancellation_elapsed)) in completed_cases",
         "workspace_scheduling: \"tokio-join-set\"",
     ] {
         assert!(

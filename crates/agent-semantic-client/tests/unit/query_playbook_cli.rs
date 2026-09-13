@@ -5,9 +5,12 @@
 use std::process::Command;
 
 #[test]
-fn query_playbook_is_a_real_facade_before_runtime_handoff() {
+fn query_playbook_is_a_real_facade_before_workspace_admission() {
     let state_home = tempfile::tempdir().expect("temporary ASP State Home");
-    let workspace = std::env::current_dir().expect("current workspace");
+    let workspace = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(std::path::Path::parent)
+        .expect("workspace root");
     let output = Command::new(env!("CARGO_BIN_EXE_asp"))
         .args([
             "query",
@@ -39,8 +42,7 @@ fn query_playbook_is_a_real_facade_before_runtime_handoff() {
         "playbook must be parsed as the Query facade before Runtime admission: {terminal}"
     );
     assert!(
-        terminal.contains("reasonKind=runtime-client-bootstrap-failed")
-            && terminal.contains("reasonKind=activation-event-missing"),
-        "Query facade must fail at the typed Runtime activation boundary: {terminal}"
+        terminal.contains("Runtime Server workspace admission catalog has no binding"),
+        "Query facade must fail at the registered-workspace admission boundary: {terminal}"
     );
 }

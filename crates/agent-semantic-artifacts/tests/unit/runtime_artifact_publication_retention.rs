@@ -9,7 +9,7 @@ use crate::runtime_artifact_retention::RuntimeArtifactCandidatePreparationLease;
 use crate::runtime_artifact_retention::prune_unreachable_runtime_artifacts;
 
 #[tokio::test]
-async fn canonical_publication_retains_only_active_and_healthy_artifact_digests() {
+async fn canonical_publication_without_health_retains_only_the_active_artifact_digest() {
     let temp = tempfile::tempdir().expect("create temporary State Home");
     let state_home = temp.path();
     let target = state_home.join("runtime/bin/asp");
@@ -42,13 +42,17 @@ async fn canonical_publication_retains_only_active_and_healthy_artifact_digests(
                 .into_owned()
         })
         .collect::<BTreeSet<_>>();
-    assert_eq!(retained.len(), 2);
+    assert_eq!(retained.len(), 1);
     assert!(!state_home.join("runtime/artifacts/blake3-256").exists());
     assert!(!state_home.join("runtime/artifacts/bundles").exists());
     assert_ne!(first.bundle_digest, second.bundle_digest);
     assert_ne!(second.bundle_digest, third.bundle_digest);
-    assert!(retained.contains(first.bundle_digest.content_digest().as_str()));
+    assert!(!retained.contains(first.bundle_digest.content_digest().as_str()));
     assert!(retained.contains(third.bundle_digest.content_digest().as_str()));
+    assert!(
+        std::fs::symlink_metadata(state_home.join("runtime/artifacts/healthy")).is_err(),
+        "publication alone must not synthesize Runtime health authority"
+    );
 }
 
 #[tokio::test]

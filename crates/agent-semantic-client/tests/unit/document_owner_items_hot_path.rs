@@ -8,9 +8,9 @@ use std::time::Duration;
 use std::time::Instant;
 
 #[test]
-fn org_owner_items_stays_on_document_fast_path() {
+fn removed_org_owner_items_route_fails_before_filesystem_work() {
     let repo_root = repo_root();
-    let owner_path = "docs/10-19-rfcs/10.31-evidence-graph-codebase-memory-mcp-flow.org";
+    let owner_path = "docs/10-19-rfcs/10.20-codebase-memory-mcp-code-search-research.org";
     assert!(
         repo_root.join(owner_path).is_file(),
         "expected fixture owner path to exist: {}",
@@ -22,9 +22,8 @@ fn org_owner_items_stays_on_document_fast_path() {
         .output()
         .unwrap_or_else(|error| panic!("failed to warm asp: {error}; asp_bin={asp_bin}"));
     assert!(
-        warmup.status.success(),
-        "org owner-items warmup should succeed; stderr={}",
-        String::from_utf8_lossy(&warmup.stderr)
+        !warmup.status.success(),
+        "removed route unexpectedly succeeded"
     );
     let mut command = org_owner_items_command(asp_bin, &repo_root, owner_path);
 
@@ -35,33 +34,18 @@ fn org_owner_items_stays_on_document_fast_path() {
     let elapsed = started.elapsed();
     assert!(
         elapsed < Duration::from_millis(1500),
-        "org owner-items should stay on the document fast path; elapsed={elapsed:?}; stderr={}",
+        "removed Org route should fail before filesystem work; elapsed={elapsed:?}; stderr={}",
         String::from_utf8_lossy(&output.stderr)
     );
     assert!(
-        output.status.success(),
-        "org owner-items document fast path should succeed; stderr={}",
-        String::from_utf8_lossy(&output.stderr)
+        !output.status.success(),
+        "removed route unexpectedly succeeded"
     );
-    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        stdout.starts_with("[search-playbook] lang=org")
-            && stdout.contains(&format!("q={owner_path}"))
-            && stdout.contains(" item="),
-        "org owner-items should render a query packet; stdout={stdout}"
-    );
-    assert!(
-        stdout.lines().any(|line| line.starts_with("|heading ")),
-        "org owner-items should expose heading items; stdout={stdout}"
-    );
-    assert!(
-        stdout.contains("EvidenceGraph flow"),
-        "org owner-items should match the RFC heading query; stdout={stdout}"
-    );
-    assert!(
-        !String::from_utf8_lossy(&output.stderr).contains("failed to execute provider"),
-        "org owner-items must not recurse through provider execution; stderr={}",
-        String::from_utf8_lossy(&output.stderr)
+        stderr.contains("language-first search was removed")
+            && stderr.contains("asp search playbook '<scheme-expression>'"),
+        "removed route must point to the sole Search Playbook: {stderr}"
     );
 }
 

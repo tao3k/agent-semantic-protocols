@@ -5,7 +5,7 @@
 use std::process::Command;
 
 #[test]
-fn exact_query_requires_a_published_activation_before_runtime_bootstrap() {
+fn exact_query_requires_a_registered_workspace_before_runtime_bootstrap() {
     let state_home = tempfile::tempdir().expect("isolated State Home");
     let workspace = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
@@ -15,6 +15,8 @@ fn exact_query_requires_a_published_activation_before_runtime_bootstrap() {
         .args([
             "query",
             "playbook",
+            "--language",
+            "rust",
             "--selector",
             "rust://crates/agent-semantic-client/src/language_command.rs#item/struct/RuntimeLanguageCommandClient",
             "--workspace",
@@ -35,9 +37,8 @@ fn exact_query_requires_a_published_activation_before_runtime_bootstrap() {
         "isolated State Home has no handoff"
     );
     assert!(
-        terminal.contains("reasonKind=runtime-client-bootstrap-failed")
-            && terminal.contains("reasonKind=activation-event-missing"),
-        "Query must fail at the activation admission boundary: {terminal}"
+        terminal.contains("Runtime Server workspace admission catalog has no binding"),
+        "Query must fail at the registered-workspace admission boundary: {terminal}"
     );
     assert!(
         !terminal.contains("endpoint.v1.json")

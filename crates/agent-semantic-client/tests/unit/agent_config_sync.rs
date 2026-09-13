@@ -7,7 +7,9 @@ fn embedded_registry_sync_replaces_stale_state_catalog_without_project_agents_di
     let root = tempfile::tempdir().expect("agent config sync fixture");
     let state_home = root.path().join("state");
     let codex_home = root.path().join("codex");
-    let state_agents = state_home.join("agents");
+    let state_agents = agent_semantic_artifacts::StateHomeLayout::new(&state_home)
+        .control()
+        .agent_registry_root();
     std::fs::create_dir_all(&state_agents).expect("state agents fixture");
     std::fs::write(
         state_agents.join("config.toml"),

@@ -182,8 +182,37 @@ pub async fn publish_runtime_artifact_bundle_successor_from_active(
     replacement_members: &[RuntimeArtifactBundleMemberSource<'_>],
 ) -> Result<RuntimeArtifactPublicationReceipt, String> {
     let layout = crate::RuntimeArtifactStateLayout::new(state_home);
-    let active_bundle = match std::fs::canonicalize(layout.active_slot()) {
-        Ok(active) => active,
+    let active_slot = layout.active_slot();
+    match std::fs::symlink_metadata(&active_slot) {
+        Ok(metadata) if metadata.is_dir() => {
+            let mut entries = std::fs::read_dir(&active_slot).map_err(|error| {
+                format!(
+                    "state=runtime-artifact-publication-failed reasonKind=artifact-selector-unreadable path={} error={error}",
+                    active_slot.display()
+                )
+            })?;
+            if entries.next().is_none() {
+                return publish_runtime_artifact_bundle_members(
+                    state_home,
+                    source,
+                    target,
+                    artifact_mode,
+                    replacement_members,
+                )
+                .await;
+            }
+            return Err(format!(
+                "state=runtime-artifact-publication-failed reasonKind=artifact-selector-directory-conflict path={}",
+                active_slot.display()
+            ));
+        }
+        Ok(metadata) if !metadata.file_type().is_symlink() => {
+            return Err(format!(
+                "state=runtime-artifact-publication-failed reasonKind=artifact-selector-type-conflict path={}",
+                active_slot.display()
+            ));
+        }
+        Ok(_) => {}
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
             return publish_runtime_artifact_bundle_members(
                 state_home,
@@ -194,6 +223,15 @@ pub async fn publish_runtime_artifact_bundle_successor_from_active(
             )
             .await;
         }
+        Err(error) => {
+            return Err(format!(
+                "state=runtime-artifact-publication-failed reasonKind=artifact-selector-unreadable path={} error={error}",
+                active_slot.display()
+            ));
+        }
+    }
+    let active_bundle = match std::fs::canonicalize(layout.active_slot()) {
+        Ok(active) => active,
         Err(error) => {
             return Err(format!(
                 "reasonKind=runtime-active-generation-unavailable path={} error={error}",

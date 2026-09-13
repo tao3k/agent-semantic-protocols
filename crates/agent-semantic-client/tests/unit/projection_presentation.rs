@@ -129,7 +129,7 @@ fn search_result() -> ClientFrame {
         "../../../../schemas/fixtures/search-topology-settlement/valid-derived-and-proposed.v1.json"
     ))
     .expect("valid Search settlement fixture");
-    packet["schemaVersion"] = serde_json::json!("2");
+    packet["schemaVersion"] = serde_json::json!("1");
     packet["resultState"] = serde_json::json!("queryable");
     packet.as_object_mut().unwrap().remove("materializationSet");
     response(packet)

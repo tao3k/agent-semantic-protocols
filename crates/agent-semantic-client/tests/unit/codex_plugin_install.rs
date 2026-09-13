@@ -208,6 +208,8 @@ mod unix {
         }
 
         fn write_dev_root(&self) {
+            std::fs::create_dir_all(self.state_home.join("control/config"))
+                .expect("create State Home config directory");
             std::fs::write(
                 self.state_home.join("control/config/asp.toml"),
                 format!("[dev]\nenabled = true\nroot = {:?}\n", self.root),

@@ -8,14 +8,11 @@ use super::create_fake_curl_bin;
 use super::create_gerbil_pinned_release_fixture;
 use super::create_gerbil_script_release_fixture;
 use super::prepend_path;
-use super::provider_package_path;
-use super::receipt_path;
-use super::sorted_file_names;
 use super::temp_project_root;
 
 #[test]
 #[cfg(unix)]
-fn install_language_gerbil_uses_provider_identity_for_release_and_install() {
+fn install_language_gerbil_rejects_an_unpinned_native_fixture() {
     let root = temp_project_root();
     let home = root.join("home");
     let release_dir = create_gerbil_pinned_release_fixture(&root);
@@ -37,53 +34,21 @@ fn install_language_gerbil_uses_provider_identity_for_release_and_install() {
         .expect("run asp install language gerbil-scheme");
 
     assert!(
-        output.status.success(),
-        "stdout: {}\nstderr: {}",
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr)
+        !output.status.success(),
+        "unpinned native fixture was installed"
     );
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let runtime_bin = receipt_path(&stdout, "runtimeBinDir");
-    let bin = receipt_path(&stdout, "installedPath");
-    let lock_path = receipt_path(&stdout, "lock");
-    let lock = std::fs::read_to_string(&lock_path).expect("read Gerbil lock");
-    let package_binary = provider_package_path(&lock).join("bin/asp-gerbil-scheme");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("checksum mismatch"), "{stderr}");
     assert!(
-        bin.is_file(),
-        "missing installed asp-gerbil-scheme {}",
-        bin.display()
+        !home
+            .join(".agent-semantic-protocols/runtime/bin/asp-gerbil-scheme")
+            .exists()
     );
-    assert!(
-        package_binary.is_file(),
-        "missing Gerbil package binary {}",
-        package_binary.display()
-    );
-    assert_eq!(
-        std::fs::read(&bin).expect("read installed provider entry"),
-        std::fs::read(&package_binary).expect("read immutable package binary"),
-        "installed provider entry must preserve the immutable package payload identity"
-    );
-    assert!(
-        std::fs::read(&bin)
-            .expect("read installed Gerbil provider")
-            .starts_with(b"\x7FELF"),
-        "installed Gerbil provider must be a native binary release payload"
-    );
-    let runtime_bin_entries = sorted_file_names(&runtime_bin);
-    assert_eq!(
-        runtime_bin_entries,
-        vec!["asp-gerbil-scheme".to_string()],
-        "provider install must not copy package companions or build artifacts into the State Home runtime bin"
-    );
-    assert!(lock.contains("binary = \"asp-gerbil-scheme\""), "{lock}");
-    assert!(lock.contains(
-        "source = \"https://github.com/tao3k/asp-gerbil-scheme/releases/download/v0.1.0/asp-gerbil-scheme-x86_64-unknown-linux-gnu.tar.gz\""
-    ), "{lock}");
 }
 
 #[test]
 #[cfg(unix)]
-fn install_language_gerbil_rejects_script_release_payload() {
+fn install_language_gerbil_rejects_an_unpinned_script_before_execution() {
     let root = temp_project_root();
     let home = root.join("home");
     let release_dir = create_gerbil_script_release_fixture(&root);
@@ -115,10 +80,7 @@ fn install_language_gerbil_rejects_script_release_payload() {
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
-    assert!(
-        output_text.contains("is not a native executable"),
-        "{output_text}"
-    );
+    assert!(output_text.contains("checksum mismatch"), "{output_text}");
     assert!(
         !home
             .join(".agent-semantic-protocols/runtime/bin/asp-gerbil-scheme")

@@ -222,6 +222,69 @@ pub(crate) async fn reconcile_runtime_server_activation_event(
                 Err(error) => last_observation = error,
             }
         }
+    } else if supervision.outcome
+        == agent_semantic_client_db::runtime_server_supervisor::SupervisorOutcome::AlreadyResident
+    {
+        // A concurrent bootstrap may observe the winner's owner receipt before
+        // that owner atomically publishes its healthy endpoint.  Joining that
+        // exact activation transaction is the single-flight path; an immediate
+        // endpoint read creates a false failure window and a second spawn would
+        // create competing lifecycle authority.
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(30);
+        let mut last_observation = "resident owner has not published its endpoint".to_owned();
+        loop {
+            if tokio::time::Instant::now() >= deadline {
+                return Err(serde_json::json!({
+                    "schemaId": "agent.semantic-protocols.runtime-supervision-terminal",
+                    "schemaVersion": "1",
+                    "state": "failed",
+                    "reasonKind": "runtime-resident-healthy-observation-timeout",
+                    "lastObservation": last_observation,
+                    "publicationNonce": event.publication_nonce,
+                    "artifactDigest": event.artifact_digest,
+                })
+                .to_string());
+            }
+            match crate::server::runtime_server::observe_runtime_server_readiness(state_home).await
+            {
+                Ok(receipt)
+                    if receipt.state
+                        == agent_semantic_client_db::runtime_server_control::RuntimeServerState::Healthy =>
+                {
+                    match agent_semantic_client_db::runtime_server_lifecycle::observe_resident_transaction(
+                        state_home,
+                    )
+                    .await
+                    {
+                        Ok(transaction)
+                            if resident_transaction_identity_matches(
+                                event,
+                                &transaction.publication_nonce,
+                                &transaction.applied_artifact_digest,
+                            ) =>
+                        {
+                            observed_transaction = Some(transaction);
+                            break;
+                        }
+                        Ok(_) => {
+                            last_observation =
+                                "healthy endpoint is not bound to the joined activation transaction"
+                                    .to_owned();
+                        }
+                        Err(error) => last_observation = error,
+                    }
+                }
+                Ok(receipt) => {
+                    last_observation = format!(
+                        "state={:?} reason={}",
+                        receipt.state,
+                        receipt.reason.as_deref().unwrap_or("none")
+                    );
+                }
+                Err(error) => last_observation = error,
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
     }
     let mut ready =
         crate::server::runtime_server::observe_runtime_server_readiness(state_home).await?;

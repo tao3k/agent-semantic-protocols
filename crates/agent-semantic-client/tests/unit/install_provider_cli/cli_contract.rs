@@ -17,7 +17,7 @@ fn install_language_help_separates_locked_release_from_develop_mode() {
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
-    assert!(receipt.contains("Install a language provider"), "{receipt}");
+    assert!(receipt.contains("Publish a language provider"), "{receipt}");
     assert!(receipt.contains("--target <TARGET>"), "{receipt}");
     assert!(
         !receipt.contains("--from-workspace"),

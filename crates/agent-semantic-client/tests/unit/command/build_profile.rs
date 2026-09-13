@@ -103,19 +103,25 @@ fn debug_install_never_publishes_a_stale_target_after_build_failure() {
 }
 
 #[test]
-fn asp_recipe_freshness_uses_binary_content_identity() {
+fn asp_recipe_delegates_freshness_to_the_content_addressed_installer() {
     let justfile = fs::read_to_string(workspace_root().join("justfile")).expect("read justfile");
+    let recipe = justfile
+        .split("agent-tools-install-protocol bin_dir=\"\"")
+        .nth(1)
+        .and_then(|tail| tail.split("# Install the debug protocol binary").next())
+        .expect("release protocol install recipe");
 
     assert!(
-        justfile.contains("! cmp -s target/release/asp \"${protocol_bin}\""),
-        "ASP recipe freshness must compare release and installed binary bytes"
+        recipe.contains("\"${asp_artifact}\" install binary || exit $?"),
+        "ASP recipe must delegate freshness to the content-addressed installer"
     );
     assert!(
-        !justfile.contains("target/release/asp -nt \"${protocol_bin}\""),
-        "atomic content-addressed installs must not be invalidated by mtime"
+        !recipe.contains("target/release/asp -nt \"${protocol_bin}\"")
+            && !recipe.contains("! cmp -s target/release/asp \"${protocol_bin}\""),
+        "the recipe must not duplicate artifact identity with mtime or byte-comparison probes"
     );
     assert!(
-        !justfile.contains("find crates/agent-semantic-client/src"),
+        !recipe.contains("find crates/agent-semantic-client/src"),
         "recipe freshness must not hard-code one package's source layout"
     );
 }

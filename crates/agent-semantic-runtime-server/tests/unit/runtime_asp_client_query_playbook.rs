@@ -3,8 +3,9 @@
 // SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 use super::{
-    AspClientWorkspaceQueryPlaybookRequest, bind_query_materialization_to_request,
-    emit_runtime_search_trace_observation, materialize_query_playbook_receipt,
+    AspClientWorkspaceQueryPlaybookRequest, admit_cold_query_owner_paths,
+    bind_query_materialization_to_request, emit_runtime_search_trace_observation,
+    materialize_query_playbook_receipt, query_playbook_generation_provider_targets,
     record_settled_client_timing_observations, runtime_search_trace_budget_micros,
     workspace_query_materialization_key,
 };
@@ -93,6 +94,34 @@ fn execution_publication() -> RuntimeWorkspaceExecutionPublication {
         runtime_bundle_digest: digest('f').into(),
     })
     .expect("workspace execution publication")
+}
+
+#[tokio::test]
+async fn cold_query_rejects_an_impossible_owner_before_generation_admission() {
+    let root = tempfile::tempdir().expect("cold Query workspace");
+    let error = admit_cold_query_owner_paths(
+        root.path(),
+        &["rust://src/missing.rs#item/function/missing".to_owned()],
+    )
+    .await
+    .expect_err("missing exact owner must fail before cold generation");
+    let super::AspClientOperationError::Terminal(error) = error else {
+        panic!("cold owner rejection must be typed");
+    };
+    assert_eq!(error.reason_kind, "query-playbook-owner-missing");
+}
+
+#[test]
+fn query_provider_targets_fail_closed_before_generation_admission() {
+    let error = query_playbook_generation_provider_targets(
+        &["rust://src/lib.rs#item/function/missing".to_owned()],
+        &[],
+    )
+    .expect_err("uninstalled selector producer must fail before cold generation");
+    let super::AspClientOperationError::Terminal(error) = error else {
+        panic!("provider rejection must be typed");
+    };
+    assert_eq!(error.reason_kind, "query-playbook-provider-not-installed");
 }
 
 #[test]

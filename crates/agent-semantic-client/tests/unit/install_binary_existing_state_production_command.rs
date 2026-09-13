@@ -68,8 +68,23 @@ async fn built_asp_install_canonicalizes_pending_identity_and_publishes_a_new_ge
         Some(migrated_event.artifact_path.to_string_lossy().as_ref()),
         "same content must reuse one immutable artifact while publishing a distinct publication"
     );
-    assert!(!state_home.path().join("runtime/artifacts/active").exists());
-    assert!(!state_home.path().join("runtime/artifacts/healthy").exists());
+    let active = state_home.path().join("runtime/artifacts/active");
+    let active_metadata = fs::symlink_metadata(&active).expect("inspect active selector");
+    assert!(
+        active_metadata.file_type().is_symlink(),
+        "binary publication must select exactly one immutable candidate awaiting health"
+    );
+    let active_bundle = fs::canonicalize(&active).expect("resolve active candidate bundle");
+    assert!(active_bundle.is_dir());
+    assert_eq!(
+        fs::canonicalize(active_bundle.join("asp")).expect("resolve active ASP member"),
+        fs::canonicalize(&migrated_event.artifact_path).expect("resolve pending ASP member")
+    );
+    let healthy = state_home.path().join("runtime/artifacts/healthy");
+    assert!(
+        !healthy.exists() && fs::symlink_metadata(&healthy).is_err(),
+        "binary publication must not synthesize healthy from an unvalidated active predecessor"
+    );
     assert!(
         !state_home
             .path()

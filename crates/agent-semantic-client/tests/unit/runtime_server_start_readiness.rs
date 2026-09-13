@@ -15,10 +15,10 @@ use agent_semantic_artifacts::runtime_artifact_publication::publish_runtime_arti
 const RUNTIME_CLIENT_QUERY_ARGS: &[&str] = &[
     "query",
     "playbook",
+    "--language",
+    "rust",
     "--selector",
     "rust://src/lib.rs#item/function/missing",
-    "--workspace",
-    ".",
     "--projection",
     "source",
 ];
@@ -59,7 +59,7 @@ fn assert_success(output: &Output, operation: &str) {
     );
 }
 
-fn assert_workspace_admission_precedes_language_route(output: &Output, operation: &str) {
+fn assert_workspace_admission_precedes_cold_generation(output: &Output, operation: &str) {
     let text = format!(
         "{}{}",
         String::from_utf8_lossy(&output.stdout),
@@ -74,8 +74,11 @@ fn assert_workspace_admission_precedes_language_route(output: &Output, operation
         "{operation} skipped automatic Runtime workspace admission: {text}"
     );
     assert!(
-        text.contains("reasonKind=method-not-in-server-client-catalog method=rust.query"),
-        "{operation} did not reach the language route catalog after workspace admission: {text}"
+        text.contains("query-playbook-provider-not-installed")
+            || text.contains("Query Playbook provider is not installed")
+            || text.contains("query-playbook-owner-missing")
+            || text.contains("Query Playbook owner path does not exist"),
+        "{operation} did not reject an impossible exact Query before cold generation: {text}"
     );
 }
 
@@ -98,7 +101,63 @@ fn assert_operator_stopped(output: &Output, operation: &str) {
 async fn publish_pending_runtime(state_home: &Path) {
     let source = asp_binary();
     let target = state_home.join("runtime/bin/asp");
-    publish_runtime_artifact(state_home, &source, &target, "dev")
+    let source_digest =
+        agent_semantic_artifacts::runtime_artifact_slots::runtime_artifact_candidate_digest(
+            &source,
+        )
+        .await
+        .expect("Runtime binary digest");
+    let closure = agent_semantic_artifacts::runtime_artifact_execution_closure::
+        RuntimeArtifactExecutionClosure::from_runtime_bundle_members(
+            &std::collections::BTreeMap::from([("asp".to_owned(), source_digest)]),
+            vec![agent_semantic_artifacts::runtime_artifact_execution_closure::
+                NamedRuntimeDigestClosureEntry {
+                    id: "runtime-admission-v1".to_owned(),
+                    digest: agent_semantic_artifacts::blake3_content_digest::
+                        Blake3ContentDigest::from_bytes(b"runtime-admission-v1"),
+                }],
+            vec![agent_semantic_artifacts::runtime_artifact_execution_closure::
+                NamedRuntimeDigestClosureEntry {
+                    id: "client-frame-v1".to_owned(),
+                    digest: agent_semantic_artifacts::blake3_content_digest::
+                        Blake3ContentDigest::from_bytes(b"client-frame-v1"),
+                }],
+            vec![agent_semantic_artifacts::runtime_artifact_execution_closure::
+                LanguageSchemaClosureEntry {
+                    language_id: "rust".to_owned(),
+                    schema_digest: agent_semantic_artifacts::blake3_content_digest::
+                        Blake3ContentDigest::from_bytes(b"rust-schema-v1"),
+                }],
+        )
+        .expect("minimal Runtime execution closure");
+    let closure_root = state_home.join("runtime/test-execution-closure");
+    std::fs::create_dir_all(&closure_root).expect("execution closure staging root");
+    let closure_sources = closure
+        .materialized_members()
+        .expect("execution closure members")
+        .into_iter()
+        .map(|(name, bytes)| {
+            let path = closure_root.join(name);
+            std::fs::write(&path, bytes).expect("execution closure member");
+            (name, path)
+        })
+        .collect::<Vec<_>>();
+    let members = closure_sources
+        .iter()
+        .map(|(name, source)| {
+            agent_semantic_artifacts::runtime_artifact_publication::
+                RuntimeArtifactBundleMemberSource { name, source }
+        })
+        .collect::<Vec<_>>();
+    agent_semantic_artifacts::runtime_artifact_publication::
+        publish_runtime_artifact_bound_bundle_members(
+            state_home,
+            &source,
+            &target,
+            "dev",
+            &members,
+            &closure.binding().expect("execution binding"),
+        )
         .await
         .expect("publish immutable Runtime artifact activation");
     assert!(
@@ -134,7 +193,7 @@ async fn pending_activation_bootstrap_waits_for_one_healthy_runtime_owner() {
     publish_pending_runtime(&state_home).await;
 
     let bootstrap = run_asp(&state_home, RUNTIME_CLIENT_QUERY_ARGS);
-    assert_workspace_admission_precedes_language_route(
+    assert_workspace_admission_precedes_cold_generation(
         &bootstrap,
         "pending-activation client bootstrap",
     );
@@ -344,7 +403,7 @@ async fn runtime_client_recovers_one_dead_applied_owner_and_respects_operator_st
     }
 
     let recovered = run_runtime_client(&state_home, RUNTIME_CLIENT_QUERY_ARGS);
-    assert_workspace_admission_precedes_language_route(&recovered, "dead-owner recovery query");
+    assert_workspace_admission_precedes_cold_generation(&recovered, "dead-owner recovery query");
     let recovery_output = format!(
         "{}{}",
         String::from_utf8_lossy(&recovered.stdout),
@@ -473,11 +532,11 @@ async fn concurrent_pending_activation_bootstraps_share_one_runtime_server_owner
     let second_home = state_home.clone();
     let first = thread::spawn(move || run_asp(&first_home, RUNTIME_CLIENT_QUERY_ARGS));
     let second = thread::spawn(move || run_asp(&second_home, RUNTIME_CLIENT_QUERY_ARGS));
-    assert_workspace_admission_precedes_language_route(
+    assert_workspace_admission_precedes_cold_generation(
         &first.join().expect("join first bootstrap"),
         "first bootstrap",
     );
-    assert_workspace_admission_precedes_language_route(
+    assert_workspace_admission_precedes_cold_generation(
         &second.join().expect("join second bootstrap"),
         "second bootstrap",
     );
@@ -540,7 +599,7 @@ async fn operator_stop_suppresses_old_activation_until_a_newer_publication() {
     );
 
     let resumed = run_asp(&state_home, RUNTIME_CLIENT_QUERY_ARGS);
-    assert_workspace_admission_precedes_language_route(&resumed, "newer activation bootstrap");
+    assert_workspace_admission_precedes_cold_generation(&resumed, "newer activation bootstrap");
     assert!(
         runtime_serving(&state_home).owner_spawn_receipt().is_file(),
         "distinct content-bound publication must reacquire supervisor authority"
@@ -594,7 +653,7 @@ async fn current_schema_v1_operator_stop_suppresses_covered_activation() {
 
     publish_pending_runtime(&state_home).await;
     let resumed = run_asp(&state_home, RUNTIME_CLIENT_QUERY_ARGS);
-    assert_workspace_admission_precedes_language_route(
+    assert_workspace_admission_precedes_cold_generation(
         &resumed,
         "newer activation after canonical stop",
     );

@@ -256,14 +256,38 @@ pub(super) fn prepare_active_provider_reconciliation(
     let active_slot = agent_semantic_artifacts::RuntimeArtifactStateLayout::new(state_home)
         .active_slot()
         .to_path_buf();
-    if let Err(error) = std::fs::symlink_metadata(&active_slot) {
-        if error.kind() == std::io::ErrorKind::NotFound {
+    match std::fs::symlink_metadata(&active_slot) {
+        Ok(metadata) if metadata.is_dir() => {
+            let mut entries = std::fs::read_dir(&active_slot).map_err(|error| {
+                format!(
+                    "reasonKind=runtime-active-generation-unavailable path={} error={error}",
+                    active_slot.display()
+                )
+            })?;
+            if entries.next().is_none() {
+                return Ok(reconciliation);
+            }
+            return Err(format!(
+                "reasonKind=artifact-selector-directory-conflict path={}",
+                active_slot.display()
+            ));
+        }
+        Ok(metadata) if !metadata.file_type().is_symlink() => {
+            return Err(format!(
+                "reasonKind=artifact-selector-type-conflict path={}",
+                active_slot.display()
+            ));
+        }
+        Ok(_) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
             return Ok(reconciliation);
         }
-        return Err(format!(
-            "reasonKind=runtime-active-generation-unavailable path={} error={error}",
-            active_slot.display()
-        ));
+        Err(error) => {
+            return Err(format!(
+                "reasonKind=runtime-active-generation-unavailable path={} error={error}",
+                active_slot.display()
+            ));
+        }
     }
     let active =
         agent_semantic_artifacts::load_active_runtime_bound_provider_set_for_binary_replacement(

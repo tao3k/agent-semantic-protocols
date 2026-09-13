@@ -60,15 +60,12 @@ impl RuntimeArtifactSlotAuthority {
     }
 
     /// Atomically expose a complete immutable candidate through the sole active
-    /// directory selector. The prior healthy selector is deliberately retained
-    /// until Runtime validates the newly active candidate.
+    /// directory selector. An existing healthy selector is deliberately
+    /// retained until Runtime validates the newly active candidate. A prior
+    /// active candidate is never promoted here: only Runtime health admission
+    /// may create or move the healthy authority.
     pub async fn publish_active_candidate(&self, candidate: &Path) -> Result<(), String> {
         self.validate_candidate(candidate).await?;
-        if self.healthy_target().await?.is_none()
-            && let Some(previous) = self.active_target().await?
-        {
-            publish_runtime_artifact_slot(&previous, &self.healthy_path()).await?;
-        }
         publish_runtime_artifact_slot(candidate, &self.active_path()).await
     }
 
@@ -79,11 +76,6 @@ impl RuntimeArtifactSlotAuthority {
         &self,
         candidate: &Path,
     ) -> Result<(), String> {
-        if self.healthy_target_under_guard()?.is_none()
-            && let Some(previous) = self.active_target_under_guard()?
-        {
-            publish_runtime_artifact_slot_under_guard(&previous, &self.healthy_path())?;
-        }
         publish_runtime_artifact_slot_under_guard(candidate, &self.active_path())
     }
 

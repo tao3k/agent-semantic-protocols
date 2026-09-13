@@ -4,10 +4,12 @@
 
 //! Reader-route classification, dynamic observation, and cache-bound contracts.
 
+#[cfg(target_os = "macos")]
+use super::{Duration, materialize_reader_probe_fixture};
 use super::{
-    Duration, GENERATION, ReaderProbeAccess, ReaderProbeObservation, bind_reader_probe_observation,
+    GENERATION, ReaderProbeAccess, ReaderProbeObservation, bind_reader_probe_observation,
     canonical_generation, diagnose_reader_probe, diagnose_reader_probe_with_state_home,
-    evaluate_pre_tool, materialize_reader_probe_fixture, reader_probe_request,
+    evaluate_pre_tool, reader_probe_request,
 };
 
 #[test]
@@ -303,6 +305,7 @@ fn declared_reader_behavior_pattern_routes_without_process_launch() {
 }
 
 #[test]
+#[cfg(target_os = "macos")]
 fn reader_probe_permission_differential_authorizes_only_read_behavior() {
     let fixture = materialize_reader_probe_fixture().expect("Reader behavior fixture");
     let random_root = tempfile::tempdir().expect("random Reader fixture root");

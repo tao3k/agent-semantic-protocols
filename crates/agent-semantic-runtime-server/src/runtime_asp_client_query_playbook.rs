@@ -46,12 +46,15 @@ fn selector_owner_path(selector: &str) -> Option<&str> {
 fn query_playbook_generation_provider_targets(
     selectors: &[String],
     active_provider_targets: &[(String, String)],
-) -> Vec<agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationProviderTarget> {
+) -> Result<
+    Vec<agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationProviderTarget>,
+    AspClientOperationError,
+> {
     let languages = selectors
         .iter()
         .filter_map(|selector| selector.split_once("://").map(|(language, _)| language))
         .collect::<std::collections::BTreeSet<_>>();
-    active_provider_targets
+    let targets = active_provider_targets
         .iter()
         .filter(|(language, _)| languages.contains(language.as_str()))
         .map(|(language_id, provider_id)| {
@@ -60,7 +63,111 @@ fn query_playbook_generation_provider_targets(
                 provider_id: Some(provider_id.clone()),
             }
         })
-        .collect()
+        .collect::<Vec<_>>();
+    if targets.len() != languages.len() {
+        let installed = targets
+            .iter()
+            .map(|target| target.language_id.as_str())
+            .collect::<std::collections::BTreeSet<_>>();
+        let missing = languages
+            .into_iter()
+            .filter(|language| !installed.contains(language))
+            .collect::<Vec<_>>()
+            .join("|");
+        return Err(query_playbook_terminal(
+            "query-playbook-provider-not-installed",
+            format!("Query Playbook provider is not installed: languageId={missing}"),
+            selectors.len(),
+        ));
+    }
+    Ok(targets)
+}
+
+async fn admit_cold_query_owner_paths(
+    project_root: &std::path::Path,
+    selectors: &[String],
+) -> Result<(), AspClientOperationError> {
+    let canonical_root = tokio::fs::canonicalize(project_root)
+        .await
+        .map_err(|error| {
+            query_playbook_terminal(
+                "query-playbook-workspace-root-unavailable",
+                format!(
+                    "resolve Query Playbook workspace root {}: {error}",
+                    project_root.display()
+                ),
+                selectors.len(),
+            )
+        })?;
+    for selector in selectors {
+        let Some(owner_path) = selector_owner_path(selector) else {
+            return Err(query_playbook_terminal(
+                "query-playbook-selector-invalid",
+                format!("Query Playbook selector has no exact owner path: {selector}"),
+                selectors.len(),
+            ));
+        };
+        let relative = std::path::Path::new(owner_path);
+        if relative.is_absolute()
+            || relative.components().any(|component| {
+                matches!(
+                    component,
+                    std::path::Component::ParentDir
+                        | std::path::Component::RootDir
+                        | std::path::Component::Prefix(_)
+                )
+            })
+        {
+            return Err(query_playbook_terminal(
+                "query-playbook-owner-path-invalid",
+                format!("Query Playbook owner path escapes its workspace: {owner_path}"),
+                selectors.len(),
+            ));
+        }
+        let path = project_root.join(relative);
+        let canonical_path = match tokio::fs::canonicalize(&path).await {
+            Ok(path) if path.starts_with(&canonical_root) => path,
+            Ok(_) => {
+                return Err(query_playbook_terminal(
+                    "query-playbook-owner-path-invalid",
+                    format!("Query Playbook owner path escapes its workspace: {owner_path}"),
+                    selectors.len(),
+                ));
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                return Err(query_playbook_terminal(
+                    "query-playbook-owner-missing",
+                    format!("Query Playbook owner path does not exist: {owner_path}"),
+                    selectors.len(),
+                ));
+            }
+            Err(error) => {
+                return Err(query_playbook_terminal(
+                    "query-playbook-owner-metadata-failed",
+                    format!("resolve Query Playbook owner path {owner_path}: {error}"),
+                    selectors.len(),
+                ));
+            }
+        };
+        match tokio::fs::metadata(&canonical_path).await {
+            Ok(metadata) if metadata.is_file() => {}
+            Ok(_) => {
+                return Err(query_playbook_terminal(
+                    "query-playbook-owner-not-file",
+                    format!("Query Playbook owner path is not a file: {owner_path}"),
+                    selectors.len(),
+                ));
+            }
+            Err(error) => {
+                return Err(query_playbook_terminal(
+                    "query-playbook-owner-metadata-failed",
+                    format!("inspect Query Playbook owner path {owner_path}: {error}"),
+                    selectors.len(),
+                ));
+            }
+        }
+    }
+    Ok(())
 }
 
 #[expect(
@@ -559,7 +666,12 @@ pub(super) async fn dispatch_workspace_query_playbook(
             let provider_targets = query_playbook_generation_provider_targets(
                 &params.selectors,
                 active_provider_targets,
-            );
+            )?;
+            // An exact Query has a directly addressable owner.  Reject an
+            // impossible cold request before admitting any repository-wide
+            // generation work; a ready resident generation remains the sole
+            // authority for retained content after source changes.
+            admit_cold_query_owner_paths(&initialized.project_root, &params.selectors).await?;
             request_runtime_query_generation_ready(
                 generation_admission,
                 request.workspace_id.as_str().to_owned(),

@@ -757,11 +757,11 @@ fn next_guidance_for_receipt(
     }
     if mutation_source == Some("provider-native") {
         return format!(
-            "provider-dry-run: asp {language} ast-patch dry-run --packet semantic-ast-patch.json .; provider-apply: asp {language} ast-patch apply --packet semantic-ast-patch.json .; exact-read: asp {language} query --selector {read} --workspace . --projection source; check: asp {language} check --changed ."
+            "provider-dry-run: asp {language} ast-patch dry-run --packet semantic-ast-patch.json .; provider-apply: asp {language} ast-patch apply --packet semantic-ast-patch.json .; exact-read: asp query playbook --language {language} --selector {read} --workspace . --projection source; check: asp {language} check --changed ."
         );
     }
     format!(
-        "provider-dry-run: asp {language} ast-patch dry-run --packet semantic-ast-patch.json .; exact-read: asp {language} query --selector {read} --workspace . --projection source; fallback: Codex apply_patch only when mutationSource=codex-text-fallback or receipt.requiresCodexApplyPatch=true; check: asp {language} check --changed ."
+        "provider-dry-run: asp {language} ast-patch dry-run --packet semantic-ast-patch.json .; exact-read: asp query playbook --language {language} --selector {read} --workspace . --projection source; fallback: Codex apply_patch only when mutationSource=codex-text-fallback or receipt.requiresCodexApplyPatch=true; check: asp {language} check --changed ."
     )
 }
 

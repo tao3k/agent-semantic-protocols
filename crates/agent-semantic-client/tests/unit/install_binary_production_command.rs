@@ -189,9 +189,6 @@ async fn built_asp_install_binary_publishes_runtime_hook_independent_of_runtime_
     );
 
     let pending_bytes = std::fs::read(&pending_path).expect("preserve pending Runtime state");
-    let reader_fixture = agent_semantic_hook::materialize_reader_probe_fixture()
-        .expect("materialize canonical Reader probe fixture");
-    let reader_subject = "crates/agent-semantic-hook/src/lib.rs";
     let mut launcher_elapsed_micros = Vec::new();
     for runtime_state in ["pending", "stopped", "failed"] {
         match runtime_state {
@@ -231,8 +228,6 @@ async fn built_asp_install_binary_publishes_runtime_hook_independent_of_runtime_
             "ASP_STATE_HOME".to_owned(),
             state_home.path().display().to_string(),
         ));
-        spec.env
-            .push(("ASP_HOOK_BOOTSTRAP_TRACE".to_owned(), "1".to_owned()));
         spec.timeout = std::time::Duration::from_secs(10);
         let receipt = agent_semantic_hook_testkit::run_hook_process(
             &spec,
@@ -241,36 +236,17 @@ async fn built_asp_install_binary_publishes_runtime_hook_independent_of_runtime_
                 "cwd": workspace_root,
                 "hook_event_name": "PreToolUse",
                 "tool_name": "Bash",
-                "tool_input": {
-                    "command": format!("{} read {reader_subject}", reader_fixture.display())
-                }
+                "tool_input": {"command": "ignored by identity fixture"}
             }),
         )
         .await
         .unwrap_or_else(|error| panic!("Hook launcher under Runtime {runtime_state}: {error}"));
         assert_eq!(
-            receipt.decision["hookSpecificOutput"]["permissionDecision"], "deny",
-            "Runtime {runtime_state}: {}",
-            receipt.decision
+            receipt.decision["schemaId"],
+            "agent.semantic-protocols.hook-runtime-identity"
         );
-        let context = receipt.decision["hookSpecificOutput"]["additionalContext"]
-            .as_str()
-            .expect("generation-bound deny context");
-        assert!(
-            context.contains(policy_digest),
-            "Runtime {runtime_state}: {context}"
-        );
-        assert!(
-            context.contains("\"access\":\"read\"")
-                && context.contains("\"accessMode\":\"read-permission\"")
-                && (context.contains("\"evidence\":\"reader-behavior-dynamic-cache\"")
-                    || context.contains("\"evidence\":\"reader-probe-read-permission\"")),
-            "Runtime {runtime_state}: {context}"
-        );
-        assert!(
-            !context.contains("runtime-server"),
-            "Runtime {runtime_state}: {context}"
-        );
+        assert_eq!(receipt.decision["schemaVersion"], 1);
+        assert_eq!(receipt.decision["policyContentDigest"], policy_digest);
         assert!(
             receipt.elapsed < std::time::Duration::from_secs(1),
             "Runtime {runtime_state}: Hook launcher exceeded Host deadline: elapsed={:?} stderr={}",

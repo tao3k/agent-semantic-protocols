@@ -2,6 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
+#[cfg(target_os = "macos")]
 use std::time::Duration;
 
 use agent_semantic_hook::ReaderProbeAccess;
@@ -11,7 +12,9 @@ use agent_semantic_hook::aot_evaluator::reader_probe_request;
 use agent_semantic_hook::bind_reader_probe_observation;
 use agent_semantic_hook::diagnose_reader_probe;
 use agent_semantic_hook::diagnose_reader_probe_with_state_home;
+#[cfg(target_os = "macos")]
 use agent_semantic_hook::evaluate_payload_with_policy_bundle_and_state_home_with_receipt;
+#[cfg(target_os = "macos")]
 use agent_semantic_hook::materialize_reader_probe_fixture;
 
 pub(super) const GENERATION: &str = r#"{"schemaId":"agent.semantic-protocols.hook-policy-bundle","schemaVersion":1,"generationDigest":"blake3-256:testkit-perf","rules":[{"id":"route-source","matchers":["Bash"],"wrappedCommand":true,"actions":["read"],"registeredExtensions":["rs"],"decision":"deny","reasonKind":"registered-source-route-required","message":"Use ASP."}]}"#;
