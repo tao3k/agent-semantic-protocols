@@ -618,7 +618,14 @@ impl WorkspaceGenerationAdmission {
             }
             return Ok(entry.observed());
         }
-        if !entry.lane.observed().building {
+        let observed_state = entry.observed().state;
+        if !entry.lane.observed().building
+            && !matches!(
+                observed_state,
+                WorkspaceGenerationAdmissionState::Queued
+                    | WorkspaceGenerationAdmissionState::Building
+            )
+        {
             let attempt = claimed_attempt;
             let accepted = claimed_submission.clone();
             let build_mode = observed_mutation_build_mode(&entry.observed());
@@ -648,11 +655,19 @@ impl WorkspaceGenerationAdmission {
             return Ok(accepted);
         }
 
-        if entry.lane.observed().building {
+        if entry.lane.observed().building
+            || matches!(
+                observed_state,
+                WorkspaceGenerationAdmissionState::Queued
+                    | WorkspaceGenerationAdmissionState::Building
+            )
+        {
             let attempt = claimed_attempt;
-            // A mutation that arrives during source construction invalidates
-            // that attempt before its canonical publication point. The next
-            // queued mutation receives a fresh cancellation epoch.
+            // Queued is already an in-flight dispatcher-owned attempt even
+            // before its start callback flips the lane's building bit. Treat
+            // that scheduling window exactly like active source construction:
+            // invalidate the current epoch and serialize the successor behind
+            // the same single-flight owner.
             entry.cancel_and_renew_generation();
             entry
                 .lane

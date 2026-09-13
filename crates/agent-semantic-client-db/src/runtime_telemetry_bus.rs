@@ -260,7 +260,7 @@ impl RuntimeTelemetryBusSender {
     pub async fn send_terminal(
         &self,
         event: RuntimeLifecycleEvent,
-    ) -> Result<(), RuntimeLifecycleEvent> {
+    ) -> Result<(), Box<RuntimeLifecycleEvent>> {
         let event = RuntimeTelemetryEvent::Lifecycle(event);
         let sender = if self.has_pending_transition(&telemetry_order_key(&event)) {
             &self.ordered
@@ -275,7 +275,7 @@ impl RuntimeTelemetryBusSender {
             })
             .await
             .map_err(|error| match error.0.event {
-                RuntimeTelemetryEvent::Lifecycle(event) => event,
+                RuntimeTelemetryEvent::Lifecycle(event) => Box::new(event),
                 RuntimeTelemetryEvent::SearchIncident(_) => {
                     unreachable!("lifecycle send returned a different telemetry variant")
                 }
