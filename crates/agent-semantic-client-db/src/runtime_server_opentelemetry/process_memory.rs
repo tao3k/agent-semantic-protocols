@@ -272,7 +272,21 @@ fn current_resident_bytes() -> Option<u64> {
     (read == size).then_some(info.resident_size)
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "linux")]
+fn current_resident_bytes() -> Option<u64> {
+    let statm = std::fs::read_to_string("/proc/self/statm").ok()?;
+    let page_size = unsafe { libc::sysconf(libc::_SC_PAGESIZE) };
+    let page_size = u64::try_from(page_size).ok()?;
+    linux_statm_resident_bytes(&statm, page_size)
+}
+
+#[cfg(any(test, target_os = "linux"))]
+fn linux_statm_resident_bytes(statm: &str, page_size: u64) -> Option<u64> {
+    let resident_pages = statm.split_ascii_whitespace().nth(1)?.parse::<u64>().ok()?;
+    resident_pages.checked_mul(page_size)
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
 fn current_resident_bytes() -> Option<u64> {
     None
 }

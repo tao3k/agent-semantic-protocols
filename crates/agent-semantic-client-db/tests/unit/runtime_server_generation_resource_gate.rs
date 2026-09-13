@@ -7,7 +7,7 @@ use std::sync::{
     atomic::{AtomicUsize, Ordering},
 };
 
-use super::{RuntimeSchedulerObservation, observe_process_memory};
+use super::{RuntimeSchedulerObservation, linux_statm_resident_bytes, observe_process_memory};
 use crate::runtime_server_admission::{
     WorkspaceGenerationAdmission, WorkspaceGenerationBuildCompletion,
     WorkspaceGenerationBuildFailure, WorkspaceGenerationCandidateIdentity,
@@ -76,6 +76,31 @@ fn monotonic_delta(before: Option<u64>, after: Option<u64>) -> Option<u64> {
     before
         .zip(after)
         .map(|(before, after)| after.saturating_sub(before))
+}
+
+#[test]
+fn linux_statm_resident_pages_are_converted_without_truncation() {
+    assert_eq!(
+        linux_statm_resident_bytes("4096 1024 128 32 0 512 0\n", 4096),
+        Some(4 * 1024 * 1024)
+    );
+    assert_eq!(linux_statm_resident_bytes("4096", 4096), None);
+    assert_eq!(linux_statm_resident_bytes("4096 invalid", 4096), None);
+    assert_eq!(
+        linux_statm_resident_bytes("1 18446744073709551615", 2),
+        None
+    );
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn linux_process_resource_observation_includes_current_rss() {
+    assert!(
+        resource_observation()
+            .resident_bytes
+            .is_some_and(|bytes| bytes > 0),
+        "Linux Runtime telemetry must derive current RSS from procfs"
+    );
 }
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
