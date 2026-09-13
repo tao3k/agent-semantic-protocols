@@ -9,6 +9,7 @@ use std::sync::atomic::Ordering;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
+use agent_semantic_client_core::state_core::ResolvedState;
 use agent_semantic_client_db::ClientDbEngine;
 use criterion::Criterion;
 use criterion::Throughput;
@@ -20,14 +21,25 @@ fn temp_project(name: &str, sequence: u64) -> PathBuf {
         .duration_since(UNIX_EPOCH)
         .expect("system clock after unix epoch")
         .as_nanos();
-    std::env::temp_dir().join(format!(
-        "asp-client-db-schema-v1-{name}-{}-{nonce}-{sequence}",
-        std::process::id()
-    ))
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../target/asp-client-db-bench-fixtures")
+        .join(format!(
+            "schema-v1-{name}-{}-{nonce}-{sequence}",
+            std::process::id()
+        ))
 }
 
 fn prepare_project(root: &std::path::Path) {
     std::fs::create_dir_all(root.join(".git")).expect("create benchmark project root");
+}
+
+fn prepare_engine(root: &std::path::Path, state_home: &std::path::Path) -> ClientDbEngine {
+    let state = ResolvedState::resolve_with_state_home(root, state_home)
+        .expect("resolve benchmark State Core");
+    state
+        .ensure_workspace_state_layout()
+        .expect("materialize benchmark-owned workspace binding");
+    ClientDbEngine::from_resolved_state(&state)
 }
 
 fn schema_v1_lifecycle(c: &mut Criterion) {
@@ -35,9 +47,11 @@ fn schema_v1_lifecycle(c: &mut Criterion) {
         .enable_all()
         .build()
         .expect("benchmark runtime");
+    let state_home = temp_project("state-home", 0);
+    std::fs::create_dir_all(&state_home).expect("create benchmark-owned State Home");
     let warm_root = temp_project("warm", 0);
     prepare_project(&warm_root);
-    let warm_engine = ClientDbEngine::resolve(&warm_root).expect("resolve warm client DB engine");
+    let warm_engine = prepare_engine(&warm_root, &state_home);
     runtime
         .block_on(warm_engine.bootstrap_active_turso())
         .expect("initial stable schema v1 bootstrap");
@@ -61,7 +75,7 @@ fn schema_v1_lifecycle(c: &mut Criterion) {
             let sequence = cold_sequence.fetch_add(1, Ordering::Relaxed);
             let root = temp_project("cold", sequence);
             prepare_project(&root);
-            let engine = ClientDbEngine::resolve(&root).expect("resolve cold client DB engine");
+            let engine = prepare_engine(&root, &state_home);
             let report = runtime
                 .block_on(engine.bootstrap_active_turso())
                 .expect("cold stable schema v1 bootstrap");
@@ -73,6 +87,7 @@ fn schema_v1_lifecycle(c: &mut Criterion) {
     group.finish();
 
     std::fs::remove_dir_all(&warm_root).expect("remove warm benchmark project");
+    std::fs::remove_dir_all(&state_home).expect("remove benchmark-owned State Home");
 }
 
 criterion_group!(benches, schema_v1_lifecycle);

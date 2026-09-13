@@ -37,7 +37,8 @@ def test_rust_package_matrix_covers_each_workspace_package_once() -> None:
         'cargo clippy -p "${{ matrix.package }}" --all-targets --all-features -- -D warnings'
         in workflow
     )
-    assert 'cargo test -p "${{ matrix.package }}" --all-targets --all-features' in workflow
+    assert 'cargo test -p "${{ matrix.package }}" --all-features' in workflow
+    assert 'cargo test -p "${{ matrix.package }}" --all-targets' not in workflow
     assert "needs: test-fixtures" not in workflow
     assert "cargo build --bin asp" not in workflow
     assert "setup-uv" not in workflow
