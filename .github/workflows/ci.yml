@@ -232,6 +232,7 @@ jobs:
             tests/unit/test_asp_server_first_architecture_rfc.py \
             tests/unit/test_agent_hook_interception_protocol_rfc.py \
             tests/unit/test_docs_rfc_skill_contracts.py \
+            tests/unit/test_ci_contract_dag.py \
             tests/unit/test_ci_workflow_contracts.py \
             tests/unit/semantic_query_packet_schema/test_basic.py \
             tests/unit/test_semantic_read_packet_schema.py \
@@ -245,12 +246,8 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Checkout Python provider and Rust workspace dependencies
-        run: |
-          git submodule update --init --depth 1 \
-            languages/asp-python \
-            languages/asp-rust \
-            languages/orgize
+      - name: Checkout Python provider
+        run: git submodule update --init --depth 1 languages/asp-python
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5
@@ -262,24 +259,8 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Set up Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache Rust artifacts
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: . -> target
-          shared-key: asp-python-contracts-${{ runner.os }}
-          cache-on-failure: true
-
       - name: Python provider schema gates
         run: |
-          cargo test -p agent-semantic-schema-manager \
-            canonical_client_profile_publishes_the_shared_schema_bundle_route \
-            --quiet
-          cargo test -p agent-semantic-runtime-server \
-            host_uds_schema_bundle_route_bypasses_workspace_generation \
-            --quiet
           uv run --project languages/asp-python --frozen --with pytest pytest \
             languages/asp-python/tests/unit/asp_python/test_semantic_language_schemas.py \
             -q
@@ -328,6 +309,12 @@ jobs:
 
       - name: Gerbil central schema profile gates
         run: |
+          cargo test -p agent-semantic-schema-manager \
+            canonical_client_profile_publishes_the_shared_schema_bundle_route \
+            --quiet
+          cargo test -p agent-semantic-runtime-server \
+            host_uds_schema_bundle_route_bypasses_workspace_generation \
+            --quiet
           cargo test -p agent-semantic-schema-manager \
             canonical_registry_verifies_every_registered_language_bundle \
             --quiet

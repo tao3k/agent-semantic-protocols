@@ -66,40 +66,6 @@ def test_rust_package_matrix_covers_each_workspace_package_once() -> None:
     assert "cargo run --quiet --bin asp -- guide" not in platform_matrix
 
 
-def test_contract_gates_form_a_parallel_dag_around_one_asp_binary() -> None:
-    workflow = CI_WORKFLOW.read_text(encoding="utf-8")
-
-    assert workflow.count("cargo build --bin asp") == 2
-    contract_jobs = workflow.split("  asp-linux-binary:", 1)[1]
-    assert contract_jobs.count("cargo build --bin asp") == 1
-    assert "name: asp-linux-contract-binary" in contract_jobs
-    assert "  shared-contract-gates:" in contract_jobs
-    assert "  python-provider-gates:" in contract_jobs
-    assert "  catalog-provider-gates:" in contract_jobs
-    assert "  rust-provider-gates:" in contract_jobs
-    assert "  tree-sitter-contract-gates:" in contract_jobs
-
-    python_provider = contract_jobs.split("  python-provider-gates:", 1)[1].split(
-        "  catalog-provider-gates:", 1
-    )[0]
-    assert "languages/asp-python" in python_provider
-    assert "languages/asp-rust" in python_provider
-    assert "languages/orgize" in python_provider
-
-    rust_provider = contract_jobs.split("  rust-provider-gates:", 1)[1].split(
-        "  tree-sitter-contract-gates:", 1
-    )[0]
-    assert "needs: asp-linux-binary" in rust_provider
-    assert "actions/download-artifact@v4" in rust_provider
-    assert "cargo run --quiet --bin asp" not in rust_provider
-    assert ".ci/bin/asp schema materialize" in rust_provider
-
-    tree_sitter = contract_jobs.split("  tree-sitter-contract-gates:", 1)[1]
-    assert "needs: asp-linux-binary" in tree_sitter
-    assert "--asp-bin .ci/bin/asp" in tree_sitter
-    assert "--no-build" in tree_sitter
-
-
 def test_root_schema_gate_references_only_present_test_paths() -> None:
     workflow = CI_WORKFLOW.read_text(encoding="utf-8")
     root_schema_gate = workflow.split("- name: Root schema gates", 1)[1]
