@@ -13,6 +13,79 @@ use agent_semantic_client_db::runtime_server_control::prepare_runtime_server_end
 use agent_semantic_client_db::runtime_server_control::publish_runtime_server_endpoint;
 use agent_semantic_client_db::runtime_server_runtime::RuntimeServerConnectionSupervisor;
 
+async fn raw_status_exchange(
+    endpoint: &agent_semantic_client_db::RuntimeServerEndpoint,
+    request_id: &str,
+) -> Result<agent_semantic_client_db::RuntimeServerControlReceipt, String> {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    // This test exercises transport replay itself. The public Status client
+    // additionally requires a canonical resident-transaction authority, which
+    // is deliberately outside this isolated transport fixture.
+    let request = agent_semantic_client_db::runtime_server_control::RuntimeServerControlRequest {
+        schema_id: "agent.semantic-protocols.runtime-server-control-request".to_owned(),
+        schema_version: "1".to_owned(),
+        operation: RuntimeServerOperation::Status,
+        expected_runtime_binary_identity:
+            agent_semantic_artifacts::runtime_artifact_catalog::RuntimeBinaryIdentity::from_bytes(
+                b"transport-replay-probe",
+            ),
+        request_id: request_id.to_owned(),
+        transport_contract_digest: endpoint.transport_contract_digest.clone(),
+        owner_epoch: endpoint.owner_epoch,
+        binding_token: endpoint.binding_token.clone(),
+        project_root: None,
+    };
+    let bytes = serde_json::to_vec(&vec![request])
+        .map_err(|error| format!("encode replay probe: {error}"))?;
+    let mut stream = tokio::net::TcpStream::connect(endpoint.control_endpoint.socket_addr())
+        .await
+        .map_err(|error| format!("connect replay probe: {error}"))?;
+    stream
+        .write_u32(u32::try_from(bytes.len()).map_err(|_| "replay probe is too large")?)
+        .await
+        .map_err(|error| format!("write replay probe length: {error}"))?;
+    stream
+        .write_all(&bytes)
+        .await
+        .map_err(|error| format!("write replay probe: {error}"))?;
+    let length = stream
+        .read_u32()
+        .await
+        .map_err(|error| format!("read replay receipt length: {error}"))?;
+    let mut bytes = vec![0; length as usize];
+    stream
+        .read_exact(&mut bytes)
+        .await
+        .map_err(|error| format!("read replay receipt: {error}"))?;
+    let mut receipts: Vec<agent_semantic_client_db::RuntimeServerControlReceipt> =
+        serde_json::from_slice(&bytes)
+            .map_err(|error| format!("decode replay receipt: {error}"))?;
+    if receipts.len() != 1 {
+        return Err(format!("replay probe returned {} receipts", receipts.len()));
+    }
+    Ok(receipts.remove(0))
+}
+
+fn private_runtime_dir() -> tempfile::TempDir {
+    use std::os::unix::fs::PermissionsExt;
+
+    // Production endpoint preparation validates both the serving directory
+    // and its Runtime root. A default tempfile lives directly below the
+    // world-writable OS temporary root, which is intentionally not a valid
+    // Runtime authority. Keep security fixtures beneath a private directory
+    // in this checkout's ignored target tree instead.
+    let fixture_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("target/runtime-server-security-tests");
+    std::fs::create_dir_all(&fixture_root).expect("create private Runtime fixture root");
+    std::fs::set_permissions(&fixture_root, std::fs::Permissions::from_mode(0o700))
+        .expect("protect private Runtime fixture root");
+    tempfile::Builder::new()
+        .prefix("runtime-")
+        .tempdir_in(fixture_root)
+        .expect("create isolated runtime server directory")
+}
+
 async fn fixture_endpoint(
     runtime_dir: &tempfile::TempDir,
     epoch: u64,
@@ -20,13 +93,12 @@ async fn fixture_endpoint(
     agent_semantic_client_db::RuntimeServerEndpoint,
     Arc<agent_semantic_artifacts::runtime_artifact_catalog::RuntimeArtifactCatalog>,
 ) {
-    let state_home = agent_semantic_runtime::resolve_state_home().expect("resolve State Home");
-    let catalog =
-        agent_semantic_artifacts::runtime_artifact_catalog::load_runtime_artifact_catalog(
-            &state_home,
-        )
-        .await
-        .expect("load runtime artifact catalog");
+    // Transport security is independent of the host's currently published
+    // provider closure. A self-contained catalog prevents local installation
+    // drift from changing these endpoint and replay tests.
+    let catalog = agent_semantic_artifacts::runtime_artifact_catalog::RuntimeArtifactCatalog::new(
+        agent_semantic_config::runtime_dev::RuntimeArtifactMode::Release,
+    );
     let endpoint = prepare_runtime_server_endpoint_in(
         runtime_dir.path(),
         std::path::Path::new("/runtime/asp"),
@@ -103,7 +175,7 @@ async fn rejects_symlinked_runtime_base_before_permission_changes() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn control_request_nonce_is_single_use_for_the_owner_epoch() {
-    let runtime_dir = tempfile::tempdir().expect("create isolated runtime server directory");
+    let runtime_dir = private_runtime_dir();
     let (endpoint, artifact_catalog) = fixture_endpoint(&runtime_dir, 29).await;
     let server = RuntimeServer::bind_with_catalog(
         endpoint.clone(),
@@ -113,26 +185,12 @@ async fn control_request_nonce_is_single_use_for_the_owner_epoch() {
     .await
     .expect("bind runtime server");
     let server = tokio::spawn(server.serve());
-    call_runtime_server(
-        &endpoint,
-        RuntimeServerOperation::Status,
-        agent_semantic_artifacts::runtime_artifact_catalog::RuntimeBinaryIdentity::from_bytes(
-            b"transport-replay-probe",
-        ),
-        "single-use-control-nonce".to_owned(),
-    )
-    .await
-    .expect("first use of control nonce succeeds");
-    let replay = call_runtime_server(
-        &endpoint,
-        RuntimeServerOperation::Status,
-        agent_semantic_artifacts::runtime_artifact_catalog::RuntimeBinaryIdentity::from_bytes(
-            b"transport-replay-probe",
-        ),
-        "single-use-control-nonce".to_owned(),
-    )
-    .await
-    .expect_err("replayed control nonce must fail closed");
+    raw_status_exchange(&endpoint, "single-use-control-nonce")
+        .await
+        .expect("first use of control nonce succeeds");
+    let replay = raw_status_exchange(&endpoint, "single-use-control-nonce")
+        .await
+        .expect_err("replayed control nonce must fail closed");
     assert!(!replay.is_empty(), "replay rejection must be typed");
     call_runtime_server(
         &endpoint,
@@ -152,7 +210,7 @@ async fn control_request_nonce_is_single_use_for_the_owner_epoch() {
 async fn endpoint_publication_is_private_and_non_symlink() {
     use std::os::unix::fs::MetadataExt;
     use std::os::unix::fs::PermissionsExt;
-    let runtime_dir = tempfile::tempdir().expect("create isolated runtime server directory");
+    let runtime_dir = private_runtime_dir();
     let (endpoint, _) = fixture_endpoint(&runtime_dir, 31).await;
     let endpoint_path = runtime_dir.path().join("endpoint.v1.json");
     publish_runtime_server_endpoint(&endpoint_path, &endpoint)
@@ -167,7 +225,7 @@ async fn endpoint_publication_is_private_and_non_symlink() {
 
 #[tokio::test]
 async fn endpoint_publication_does_not_follow_prepositioned_temp_symlink() {
-    let runtime_dir = tempfile::tempdir().expect("create isolated runtime server directory");
+    let runtime_dir = private_runtime_dir();
     let (endpoint, _) = fixture_endpoint(&runtime_dir, 37).await;
     let endpoint_path = runtime_dir.path().join("endpoint.v1.json");
     let temporary_identity =
@@ -194,7 +252,7 @@ async fn endpoint_publication_does_not_follow_prepositioned_temp_symlink() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn unauthenticated_control_connection_is_closed_at_first_frame_budget() {
-    let runtime_dir = tempfile::tempdir().expect("create isolated runtime server directory");
+    let runtime_dir = private_runtime_dir();
     let (endpoint, artifact_catalog) = fixture_endpoint(&runtime_dir, 41).await;
     let server = RuntimeServer::bind_with_catalog(
         endpoint.clone(),
