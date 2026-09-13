@@ -1887,6 +1887,11 @@ shared Search namespace, never command namespaces and never separate
 entrypoints. A language-specific =syntax= leaf may repeat; its second value is
 one quoted enhanced Tree-sitter Query source string, not a second
 =(where ...)= DSL.
+The retired language-first =semantic-tree-sitter-query= JSON packet runner is
+not a V1 qualification surface. Query-corpus qualification validates each
+provider-owned catalog and corpus, then executes the Runtime-owned native
+selector/capability tests. It MUST NOT call =asp <language> query=, restore a
+provider command namespace, or treat Query as structural discovery.
 Exact selector materialization must agree with Query's =--language= even though the
 selector also binds provider and parser identity; it bypasses lexical, graph,
 and ripgrep planning when current.

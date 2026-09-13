@@ -109,13 +109,6 @@ COMMANDS: tuple[CommandSpec, ...] = (
         "Validate a grammar-profile contract fingerprint.",
     ),
     CommandSpec(
-        ("tree-sitter", "validate", "json-abi-corpus"),
-        "tools.tree_sitter.validate_json_abi_corpus",
-        "main",
-        "no_args",
-        "Validate tree-sitter JSON ABI corpus capture output.",
-    ),
-    CommandSpec(
         ("tree-sitter", "validate", "contracts"),
         "tools.tree_sitter.contract_gates",
         "main",

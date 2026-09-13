@@ -50,17 +50,12 @@ QUERY_CORPUS_COMMANDS = (
         "python-query-corpus",
     ],
     [
-        "uv",
-        "run",
-        "--project",
-        "packages/python",
-        "--frozen",
-        "python",
-        "-m",
-        "tools",
-        "tree-sitter",
-        "validate",
-        "json-abi-corpus",
+        "cargo",
+        "test",
+        "-p",
+        "agent-semantic-runtime-server",
+        "runtime_asp_client_syntax_query",
+        "--quiet",
     ],
 )
 
