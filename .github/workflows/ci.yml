@@ -245,8 +245,11 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Checkout Python provider
-        run: git submodule update --init --depth 1 languages/asp-python
+      - name: Checkout Python provider and Rust workspace dependency
+        run: |
+          git submodule update --init --depth 1 \
+            languages/asp-python \
+            languages/asp-rust
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5
