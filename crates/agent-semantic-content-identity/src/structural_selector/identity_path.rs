@@ -97,7 +97,7 @@ pub fn decode_canonical_item_identity_path(
         decode_structural_selector_component(segments[1])?,
         decode_structural_selector_component(segments[2])?,
     );
-    for scope in trailing.chunks_exact(4) {
+    for scope in trailing.as_chunks::<4>().0 {
         if scope[0] != "scope" {
             return Err(StructuralSelectorCodecError::new(
                 "canonical item identity trailing segment must start with scope",

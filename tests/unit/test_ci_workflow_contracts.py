@@ -31,6 +31,10 @@ def test_rust_package_matrix_covers_each_workspace_package_once() -> None:
     assert len(matrix_packages) == 28
     assert set(matrix_packages) == set(workspace_packages)
     assert "max-parallel: 28" in workflow
+    assert (
+        'cargo clippy -p "${{ matrix.package }}" --all-targets --all-features -- -D warnings'
+        in workflow
+    )
     assert 'cargo test -p "${{ matrix.package }}" --all-targets --all-features' in workflow
     assert "needs: test-fixtures" not in workflow
     assert "cargo build --bin asp" not in workflow
@@ -42,9 +46,17 @@ def test_rust_package_matrix_covers_each_workspace_package_once() -> None:
     assert "matrix.package == 'agent-semantic-client'" in workflow
     assert "cargo build -p agent-semantic-hook --bin asp-hook" in workflow
     assert "--ignored --exact" not in workflow
-    assert "cargo test --workspace --all-targets --all-features" not in CI_WORKFLOW.read_text(
-        encoding="utf-8"
-    )
+    monolithic_workflow = CI_WORKFLOW.read_text(encoding="utf-8")
+    assert "cargo test --workspace --all-targets --all-features" not in monolithic_workflow
+    assert "cargo clippy --workspace --all-targets --all-features" not in monolithic_workflow
+    assert "rust-format:" in monolithic_workflow
+    assert "rust-platform-smoke:" in monolithic_workflow
+    platform_matrix = monolithic_workflow.split("rust-platform-smoke:", 1)[1].split(
+        "schema-and-provider-gates:", 1
+    )[0]
+    assert "ubuntu-latest" not in platform_matrix
+    assert "macos-latest" in platform_matrix
+    assert "windows-latest" in platform_matrix
 
 
 def test_root_schema_gate_references_only_present_test_paths() -> None:

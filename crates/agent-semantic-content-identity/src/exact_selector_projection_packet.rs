@@ -389,7 +389,7 @@ fn decode_canonical_base64(value: &str) -> Option<Vec<u8>> {
     }
     let chunk_count = value.len() / 4;
     let mut output = Vec::with_capacity(chunk_count * 3);
-    for (index, chunk) in value.as_bytes().chunks_exact(4).enumerate() {
+    for (index, chunk) in value.as_bytes().as_chunks::<4>().0.iter().enumerate() {
         let last = index + 1 == chunk_count;
         let first = base64_value(chunk[0])?;
         let second = base64_value(chunk[1])?;

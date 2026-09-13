@@ -18,15 +18,24 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  asp-rust:
-    name: ASP Rust / ${{ matrix.os }}
+  rust-format:
+    name: Rust format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - run: cargo fmt --all -- --check
+
+  rust-platform-smoke:
+    name: Rust platform smoke / ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
 
     strategy:
       fail-fast: false
       matrix:
         os:
-          - ubuntu-latest
           - macos-latest
           - windows-latest
 
@@ -53,8 +62,6 @@ jobs:
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy, rustfmt
 
       - name: Install sccache
         uses: taiki-e/install-action@v2
@@ -95,14 +102,6 @@ jobs:
       - name: Fetch cargo dependencies
         run: cargo fetch
 
-      - name: Check formatting
-        if: ${{ matrix.os == 'ubuntu-latest' }}
-        run: cargo fmt --all -- --check
-
-      - name: Run clippy
-        if: ${{ matrix.os == 'ubuntu-latest' }}
-        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
-
       - name: Check portable Rust contracts on Windows
         if: ${{ matrix.os == 'windows-latest' }}
         run: >-
@@ -111,12 +110,12 @@ jobs:
           -p agent-semantic-provider-protocol
           -p agent-semantic-tree-sitter
 
-      - name: Build asp binary
-        if: ${{ matrix.os != 'windows-latest' }}
+      - name: Build asp binary on macOS
+        if: ${{ matrix.os == 'macos-latest' }}
         run: cargo build --bin asp
 
-      - name: Run asp binary smoke
-        if: ${{ matrix.os != 'windows-latest' }}
+      - name: Run asp binary smoke on macOS
+        if: ${{ matrix.os == 'macos-latest' }}
         run: cargo run --quiet --bin asp -- guide
 
       - name: Save sccache cache (fallback)
